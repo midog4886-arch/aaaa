@@ -824,11 +824,63 @@ async def restore_invoice(invoice_id: str, current_user: dict = Depends(get_curr
 
 @api_router.delete("/invoices/{invoice_id}")
 async def delete_invoice(invoice_id: str, current_user: dict = Depends(get_current_user)):
-    """Permanently delete an invoice"""
+    """Permanently delete an invoice - Admin only"""
+    # Check if user is admin
+    if not current_user.get("is_admin"):
+        raise HTTPException(status_code=403, detail="Admin only action")
     result = await db.invoices.delete_one({"id": invoice_id})
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Invoice not found")
     return {"message": "Invoice deleted"}
+
+# ============ REFUND MODEL ============
+
+class RefundRequest(BaseModel):
+    amount: float
+    reason: Optional[str] = ""
+    refund_type: str = "full"  # full or partial
+
+@api_router.post("/invoices/{invoice_id}/refund")
+async def refund_invoice(invoice_id: str, refund: RefundRequest, current_user: dict = Depends(get_current_user)):
+    """Process a refund for a paid invoice"""
+    invoice = await db.invoices.find_one({"id": invoice_id}, {"_id": 0})
+    if not invoice:
+        raise HTTPException(status_code=404, detail="Invoice not found")
+    
+    if invoice["status"] != "paid":
+        raise HTTPException(status_code=400, detail="Can only refund paid invoices")
+    
+    if refund.amount <= 0 or refund.amount > invoice["total"]:
+        raise HTTPException(status_code=400, detail="Invalid refund amount")
+    
+    # Create refund record
+    refund_id = str(uuid.uuid4())
+    refund_record = {
+        "id": refund_id,
+        "invoice_id": invoice_id,
+        "amount": refund.amount,
+        "reason": refund.reason,
+        "refund_type": refund.refund_type,
+        "refunded_by": current_user.get("username"),
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+    await db.refunds.insert_one(refund_record)
+    
+    # Update invoice status based on refund type
+    new_status = "refunded" if refund.refund_type == "full" else "partially_refunded"
+    refund_info = {
+        "refund_amount": refund.amount,
+        "refund_reason": refund.reason,
+        "refund_type": refund.refund_type,
+        "refunded_at": datetime.now(timezone.utc).isoformat()
+    }
+    
+    await db.invoices.update_one(
+        {"id": invoice_id},
+        {"$set": {"status": new_status, **refund_info}}
+    )
+    
+    return {"message": f"Refund of {refund.amount} SAR processed successfully", "refund_id": refund_id}
 
 # ============ STRIPE PAYMENT ROUTES ============
 
