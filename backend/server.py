@@ -999,20 +999,37 @@ async def seed_data():
     ]
     await db.activities.insert_many(activities)
     
+    # Seed default branch
+    default_branch = {
+        "id": str(uuid.uuid4()),
+        "name": "Main Branch",
+        "name_ar": "الفرع الرئيسي",
+        "phone": "0500000000",
+        "manager_name": "Admin",
+        "manager_name_ar": "المدير",
+        "address": "",
+        "address_ar": "",
+        "is_active": True,
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+    await db.branches.insert_one(default_branch)
+    
     # Seed coaches
     coaches = [
-        {"id": str(uuid.uuid4()), "name": "Ahmed Ali", "name_ar": "أحمد علي", "phone": "0501234567", "email": "ahmed@academy.com", "activities": [activities[0]["id"], activities[3]["id"]], "notes": "", "created_at": datetime.now(timezone.utc).isoformat()},
-        {"id": str(uuid.uuid4()), "name": "Mohamed Hassan", "name_ar": "محمد حسن", "phone": "0507654321", "email": "mohamed@academy.com", "activities": [activities[1]["id"]], "notes": "", "created_at": datetime.now(timezone.utc).isoformat()},
-        {"id": str(uuid.uuid4()), "name": "Sara Ahmed", "name_ar": "سارة أحمد", "phone": "0509876543", "email": "sara@academy.com", "activities": [activities[2]["id"]], "notes": "", "created_at": datetime.now(timezone.utc).isoformat()},
+        {"id": str(uuid.uuid4()), "name": "Ahmed Ali", "name_ar": "أحمد علي", "phone": "0501234567", "email": "ahmed@academy.com", "activities": [activities[0]["id"], activities[3]["id"]], "notes": "", "branch_id": default_branch["id"], "created_at": datetime.now(timezone.utc).isoformat()},
+        {"id": str(uuid.uuid4()), "name": "Mohamed Hassan", "name_ar": "محمد حسن", "phone": "0507654321", "email": "mohamed@academy.com", "activities": [activities[1]["id"]], "notes": "", "branch_id": default_branch["id"], "created_at": datetime.now(timezone.utc).isoformat()},
+        {"id": str(uuid.uuid4()), "name": "Sara Ahmed", "name_ar": "سارة أحمد", "phone": "0509876543", "email": "sara@academy.com", "activities": [activities[2]["id"]], "notes": "", "branch_id": default_branch["id"], "created_at": datetime.now(timezone.utc).isoformat()},
     ]
     await db.coaches.insert_many(coaches)
     
-    # Seed default admin user
+    # Seed default admin user (has access to all branches)
     admin_user = {
         "id": str(uuid.uuid4()),
         "username": "admin",
         "password": hash_password("admin123"),
         "name": "مدير النظام",
+        "branch_id": default_branch["id"],
+        "is_admin": True,
         "created_at": datetime.now(timezone.utc).isoformat()
     }
     await db.users.insert_one(admin_user)
