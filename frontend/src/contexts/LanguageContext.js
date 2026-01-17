@@ -182,6 +182,7 @@ const translations = {
     messages: 'Messages',
     settings: 'Settings',
     branches: 'Branches',
+    users: 'Users',
     
     // Dashboard
     total_members: 'Total Members',
