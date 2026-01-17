@@ -284,10 +284,25 @@ export const MembersPage = () => {
             </Select>
           </div>
           
-          <Button onClick={() => setIsAddDialogOpen(true)} data-testid="add-member-btn">
-            <Plus className="w-4 h-4 me-2" />
-            {t('add_member')}
-          </Button>
+          <div className="flex gap-2">
+            <Button 
+              variant="outline" 
+              onClick={() => {
+                const token = localStorage.getItem('token');
+                const params = filterActivity !== 'all' ? { activity_id: filterActivity } : {};
+                const url = exportAPI.members(params) + `&token=${token}`;
+                window.open(url, '_blank');
+              }}
+              data-testid="export-members-btn"
+            >
+              <Download className="w-4 h-4 me-2" />
+              {language === 'ar' ? 'تصدير Excel' : 'Export Excel'}
+            </Button>
+            <Button onClick={() => setIsAddDialogOpen(true)} data-testid="add-member-btn">
+              <Plus className="w-4 h-4 me-2" />
+              {t('add_member')}
+            </Button>
+          </div>
         </div>
 
         {/* Members List */}
