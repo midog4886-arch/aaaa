@@ -11,9 +11,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { Textarea } from '../components/ui/textarea';
 import { invoicesAPI, membersAPI, activitiesAPI, exportAPI } from '../services/api';
 import { toast } from 'sonner';
+import html2canvas from 'html2canvas';
 import { 
   Plus, Search, Eye, Printer, Loader2, Receipt, CheckCircle, XCircle, Clock,
-  Filter, MessageSquare, X, UserPlus, Trash2, RotateCcw, FileSpreadsheet
+  Filter, MessageSquare, X, UserPlus, Trash2, RotateCcw, FileSpreadsheet, Image, Share2
 } from 'lucide-react';
 
 const COMPANY_INFO = {
