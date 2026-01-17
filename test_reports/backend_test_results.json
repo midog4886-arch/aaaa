@@ -1,0 +1,170 @@
+{
+  "timestamp": "2026-01-17T08:17:01.475251",
+  "total_tests": 27,
+  "passed_tests": 26,
+  "success_rate": 96.29629629629629,
+  "results": [
+    {
+      "test": "Seed Demo Data",
+      "success": true,
+      "details": "Status: 200",
+      "timestamp": "2026-01-17T08:17:00.905816"
+    },
+    {
+      "test": "Admin Login",
+      "success": true,
+      "details": "Status: 200",
+      "timestamp": "2026-01-17T08:17:01.165965"
+    },
+    {
+      "test": "Token Retrieved",
+      "success": true,
+      "details": "Authentication successful",
+      "timestamp": "2026-01-17T08:17:01.166586"
+    },
+    {
+      "test": "Dashboard Stats",
+      "success": true,
+      "details": "Status: 200",
+      "timestamp": "2026-01-17T08:17:01.200283"
+    },
+    {
+      "test": "Dashboard members_count",
+      "success": true,
+      "details": "Value: 0",
+      "timestamp": "2026-01-17T08:17:01.200700"
+    },
+    {
+      "test": "Dashboard activities_count",
+      "success": true,
+      "details": "Value: 4",
+      "timestamp": "2026-01-17T08:17:01.200706"
+    },
+    {
+      "test": "Dashboard coaches_count",
+      "success": true,
+      "details": "Value: 3",
+      "timestamp": "2026-01-17T08:17:01.200711"
+    },
+    {
+      "test": "Dashboard active_subscriptions",
+      "success": true,
+      "details": "Value: 0",
+      "timestamp": "2026-01-17T08:17:01.200716"
+    },
+    {
+      "test": "Get Activities",
+      "success": true,
+      "details": "Status: 200",
+      "timestamp": "2026-01-17T08:17:01.229774"
+    },
+    {
+      "test": "Activities List",
+      "success": true,
+      "details": "Found 4 activities",
+      "timestamp": "2026-01-17T08:17:01.230199"
+    },
+    {
+      "test": "Activity السباحة",
+      "success": true,
+      "details": "Found in activities",
+      "timestamp": "2026-01-17T08:17:01.230208"
+    },
+    {
+      "test": "Activity كرة القدم",
+      "success": true,
+      "details": "Found in activities",
+      "timestamp": "2026-01-17T08:17:01.230212"
+    },
+    {
+      "test": "Activity الكاراتيه",
+      "success": true,
+      "details": "Found in activities",
+      "timestamp": "2026-01-17T08:17:01.230215"
+    },
+    {
+      "test": "Activity الجمباز",
+      "success": true,
+      "details": "Found in activities",
+      "timestamp": "2026-01-17T08:17:01.230218"
+    },
+    {
+      "test": "Get Coaches",
+      "success": true,
+      "details": "Status: 200",
+      "timestamp": "2026-01-17T08:17:01.266713"
+    },
+    {
+      "test": "Coaches List",
+      "success": true,
+      "details": "Found 3 coaches",
+      "timestamp": "2026-01-17T08:17:01.267145"
+    },
+    {
+      "test": "Get Members",
+      "success": true,
+      "details": "Status: 200",
+      "timestamp": "2026-01-17T08:17:01.298688"
+    },
+    {
+      "test": "Members List",
+      "success": true,
+      "details": "Found 0 members",
+      "timestamp": "2026-01-17T08:17:01.299175"
+    },
+    {
+      "test": "Get Invoices",
+      "success": true,
+      "details": "Status: 200",
+      "timestamp": "2026-01-17T08:17:01.326699"
+    },
+    {
+      "test": "Invoices List",
+      "success": true,
+      "details": "Found 0 invoices",
+      "timestamp": "2026-01-17T08:17:01.327114"
+    },
+    {
+      "test": "Financial Report",
+      "success": true,
+      "details": "Status: 200",
+      "timestamp": "2026-01-17T08:17:01.360076"
+    },
+    {
+      "test": "Report total_revenue",
+      "success": true,
+      "details": "Present",
+      "timestamp": "2026-01-17T08:17:01.360498"
+    },
+    {
+      "test": "Report invoice_count",
+      "success": true,
+      "details": "Present",
+      "timestamp": "2026-01-17T08:17:01.360505"
+    },
+    {
+      "test": "Report revenue_by_activity",
+      "success": true,
+      "details": "Present",
+      "timestamp": "2026-01-17T08:17:01.360509"
+    },
+    {
+      "test": "Expiring Subscriptions",
+      "success": true,
+      "details": "Status: 200",
+      "timestamp": "2026-01-17T08:17:01.394397"
+    },
+    {
+      "test": "Get Activities for Member",
+      "success": true,
+      "details": "Status: 200",
+      "timestamp": "2026-01-17T08:17:01.424153"
+    },
+    {
+      "test": "Create Member",
+      "success": false,
+      "details": "Status: 200, Expected: 201, Error: Unknown error",
+      "timestamp": "2026-01-17T08:17:01.474514"
+    }
+  ]
+}
