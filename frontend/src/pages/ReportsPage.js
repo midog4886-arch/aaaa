@@ -223,7 +223,7 @@ export const ReportsPage = () => {
         </Card>
 
         {/* Summary Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <Card className="stat-card" data-testid="total-revenue-card">
             <div className="stat-card-icon bg-primary/10">
               <TrendingUp className="w-6 h-6 text-primary" />
@@ -231,7 +231,27 @@ export const ReportsPage = () => {
             <div className="stat-card-value text-primary">
               {formatCurrency(report?.total_revenue)}
             </div>
-            <div className="stat-card-label">{t('total_revenue')}</div>
+            <div className="stat-card-label">{language === 'ar' ? 'إجمالي الإيرادات' : 'Total Revenue'}</div>
+          </Card>
+
+          <Card className="stat-card" data-testid="total-refunds-card">
+            <div className="stat-card-icon bg-purple-500/10">
+              <RefreshCcw className="w-6 h-6 text-purple-500" />
+            </div>
+            <div className="stat-card-value text-purple-500">
+              {formatCurrency(report?.total_refunds)}
+            </div>
+            <div className="stat-card-label">{language === 'ar' ? 'إجمالي المسترجع' : 'Total Refunds'}</div>
+          </Card>
+
+          <Card className="stat-card" data-testid="net-revenue-card">
+            <div className="stat-card-icon bg-green-500/10">
+              <Wallet className="w-6 h-6 text-green-500" />
+            </div>
+            <div className="stat-card-value text-green-500">
+              {formatCurrency(report?.net_revenue)}
+            </div>
+            <div className="stat-card-label">{language === 'ar' ? 'صافي الإيرادات' : 'Net Revenue'}</div>
           </Card>
 
           <Card className="stat-card" data-testid="invoice-count-card">
@@ -243,17 +263,73 @@ export const ReportsPage = () => {
             </div>
             <div className="stat-card-label">{t('invoices')}</div>
           </Card>
-
-          <Card className="stat-card" data-testid="activities-count-card">
-            <div className="stat-card-icon bg-green-500/10">
-              <BarChart3 className="w-6 h-6 text-green-500" />
-            </div>
-            <div className="stat-card-value text-green-500">
-              {report?.revenue_by_activity?.length || 0}
-            </div>
-            <div className="stat-card-label">{t('activities')}</div>
-          </Card>
         </div>
+
+        {/* Refunds Summary */}
+        {(report?.refund_count > 0 || report?.total_refunds > 0) && (
+          <Card className="border-purple-200 bg-purple-50/30">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-purple-700">
+                <RefreshCcw className="w-5 h-5" />
+                {language === 'ar' ? 'ملخص الاسترجاعات' : 'Refunds Summary'}
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                <div className="p-4 bg-white rounded-lg border border-purple-200">
+                  <div className="text-2xl font-bold text-purple-600">{report?.refund_count || 0}</div>
+                  <div className="text-sm text-muted-foreground">{language === 'ar' ? 'عدد عمليات الاسترجاع' : 'Total Refund Operations'}</div>
+                </div>
+                <div className="p-4 bg-white rounded-lg border border-purple-200">
+                  <div className="text-2xl font-bold text-purple-600">{report?.full_refund_count || 0}</div>
+                  <div className="text-sm text-muted-foreground">{language === 'ar' ? 'استرجاع كامل' : 'Full Refunds'}</div>
+                </div>
+                <div className="p-4 bg-white rounded-lg border border-purple-200">
+                  <div className="text-2xl font-bold text-purple-600">{report?.partial_refund_count || 0}</div>
+                  <div className="text-sm text-muted-foreground">{language === 'ar' ? 'استرجاع جزئي' : 'Partial Refunds'}</div>
+                </div>
+              </div>
+
+              {/* Refund Details Table */}
+              {report?.refund_details?.length > 0 && (
+                <div className="overflow-x-auto">
+                  <table className="data-table w-full">
+                    <thead>
+                      <tr className="bg-purple-100">
+                        <th className="text-purple-700">{language === 'ar' ? 'رقم الفاتورة' : 'Invoice #'}</th>
+                        <th className="text-purple-700">{language === 'ar' ? 'العميل' : 'Customer'}</th>
+                        <th className="text-purple-700">{language === 'ar' ? 'المبلغ الأصلي' : 'Original Amount'}</th>
+                        <th className="text-purple-700">{language === 'ar' ? 'المبلغ المسترجع' : 'Refunded Amount'}</th>
+                        <th className="text-purple-700">{language === 'ar' ? 'النوع' : 'Type'}</th>
+                        <th className="text-purple-700">{language === 'ar' ? 'السبب' : 'Reason'}</th>
+                        <th className="text-purple-700">{language === 'ar' ? 'التاريخ' : 'Date'}</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {report.refund_details.map((refund, idx) => (
+                        <tr key={idx}>
+                          <td className="font-mono text-sm">#{refund.invoice_id?.slice(0, 8)}</td>
+                          <td>{refund.customer_name || '-'}</td>
+                          <td>{refund.original_amount} {t('sar')}</td>
+                          <td className="font-bold text-purple-600">{refund.refund_amount} {t('sar')}</td>
+                          <td>
+                            <Badge variant="outline" className={refund.refund_type === 'full' ? 'bg-purple-100 text-purple-700' : 'bg-amber-100 text-amber-700'}>
+                              {refund.refund_type === 'full' ? (language === 'ar' ? 'كامل' : 'Full') : (language === 'ar' ? 'جزئي' : 'Partial')}
+                            </Badge>
+                          </td>
+                          <td className="text-sm text-muted-foreground">{refund.refund_reason || '-'}</td>
+                          <td className="text-sm text-muted-foreground">
+                            {refund.refunded_at ? new Date(refund.refunded_at).toLocaleDateString(language === 'ar' ? 'ar-SA' : 'en-US') : '-'}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
 
         {/* Charts */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
