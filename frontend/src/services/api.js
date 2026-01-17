@@ -83,9 +83,9 @@ export const seedAPI = {
 
 // Export API
 export const exportAPI = {
-  members: (params = {}) => `${API}/export/members?${new URLSearchParams(params).toString()}`,
-  invoices: (params = {}) => `${API}/export/invoices?${new URLSearchParams(params).toString()}`,
-  reports: (params = {}) => `${API}/export/reports?${new URLSearchParams(params).toString()}`,
+  members: (params = {}) => `${API}/export/members?format=xlsx&${new URLSearchParams(params).toString()}`,
+  invoices: (params = {}) => `${API}/export/invoices?format=xlsx&${new URLSearchParams(params).toString()}`,
+  reports: (params = {}) => `${API}/export/reports?format=xlsx&${new URLSearchParams(params).toString()}`,
   allData: () => `${API}/export/all-data`,
 };
 
