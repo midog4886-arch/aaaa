@@ -39,6 +39,8 @@ const INVOICE_TERMS = {
 
 export const InvoicesPage = () => {
   const { t, language } = useLanguage();
+  const { user } = useAuth();
+  const isAdmin = user?.is_admin === true;
   const [invoices, setInvoices] = useState([]);
   const [members, setMembers] = useState([]);
   const [activities, setActivities] = useState([]);
@@ -53,6 +55,7 @@ export const InvoicesPage = () => {
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [isViewDialogOpen, setIsViewDialogOpen] = useState(false);
   const [isAddMemberDialogOpen, setIsAddMemberDialogOpen] = useState(false);
+  const [isRefundDialogOpen, setIsRefundDialogOpen] = useState(false);
   const [selectedInvoice, setSelectedInvoice] = useState(null);
   const [selectedMember, setSelectedMember] = useState(null);
   const [invoiceItems, setInvoiceItems] = useState([]);
@@ -62,6 +65,11 @@ export const InvoicesPage = () => {
   const [saving, setSaving] = useState(false);
   const [qrCode, setQrCode] = useState(null);
   const [savingImage, setSavingImage] = useState(false);
+  
+  // Refund state
+  const [refundType, setRefundType] = useState('full'); // full or partial
+  const [refundAmount, setRefundAmount] = useState(0);
+  const [refundReason, setRefundReason] = useState('');
   
   const [customerNameAr, setCustomerNameAr] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
