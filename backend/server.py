@@ -813,6 +813,188 @@ async def seed_data():
     
     return {"message": "Data seeded successfully", "admin_credentials": {"username": "admin", "password": "admin123"}}
 
+# ============ EXPORT ROUTES ============
+
+@api_router.get("/export/members")
+async def export_members(
+    activity_id: Optional[str] = None,
+    status: Optional[str] = None,
+    current_user: dict = Depends(get_current_user)
+):
+    """Export members to CSV"""
+    query = {}
+    if activity_id:
+        query["activities.activity_id"] = activity_id
+    if status:
+        query["activities.status"] = status
+    
+    members = await db.members.find(query, {"_id": 0}).to_list(10000)
+    
+    # Create CSV
+    output = io.StringIO()
+    writer = csv.writer(output)
+    
+    # Header
+    writer.writerow([
+        "ID", "الاسم (عربي)", "Name (English)", "العمر", 
+        "ولي الأمر (عربي)", "Guardian (English)", "الجوال", "البريد",
+        "الأنشطة", "حالة الاشتراك", "تاريخ التسجيل"
+    ])
+    
+    for member in members:
+        activities_list = ", ".join([a.get("activity_name", "") for a in member.get("activities", [])])
+        statuses = ", ".join([a.get("status", "") for a in member.get("activities", [])])
+        
+        writer.writerow([
+            member.get("id", "")[:8],
+            member.get("name_ar", ""),
+            member.get("name", ""),
+            member.get("age", ""),
+            member.get("guardian_name_ar", ""),
+            member.get("guardian_name", ""),
+            member.get("phone", ""),
+            member.get("email", ""),
+            activities_list,
+            statuses,
+            member.get("created_at", "")[:10]
+        ])
+    
+    output.seek(0)
+    
+    # Add BOM for Excel Arabic support
+    response_content = '\ufeff' + output.getvalue()
+    
+    return StreamingResponse(
+        iter([response_content]),
+        media_type="text/csv; charset=utf-8",
+        headers={
+            "Content-Disposition": f"attachment; filename=members_{datetime.now().strftime('%Y%m%d')}.csv"
+        }
+    )
+
+@api_router.get("/export/invoices")
+async def export_invoices(
+    status: Optional[str] = None,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    current_user: dict = Depends(get_current_user)
+):
+    """Export invoices to CSV"""
+    query = {}
+    if status:
+        query["status"] = status
+    if start_date:
+        query["created_at"] = {"$gte": start_date}
+    if end_date:
+        if "created_at" in query:
+            query["created_at"]["$lte"] = end_date
+        else:
+            query["created_at"] = {"$lte": end_date}
+    
+    invoices = await db.invoices.find(query, {"_id": 0}).sort("created_at", -1).to_list(10000)
+    
+    # Create CSV
+    output = io.StringIO()
+    writer = csv.writer(output)
+    
+    # Header
+    writer.writerow([
+        "رقم الفاتورة", "اسم العضو", "جوال العميل", "الأنشطة", 
+        "المجموع الفرعي", "الخصم", "الإجمالي", "الحالة", 
+        "طريقة الدفع", "تاريخ الإنشاء", "تاريخ الدفع"
+    ])
+    
+    for invoice in invoices:
+        activities_list = ", ".join([f"{item.get('activity_name', '')} ({item.get('fee', 0)} ر.س)" for item in invoice.get("items", [])])
+        
+        writer.writerow([
+            invoice.get("id", "")[:8],
+            invoice.get("member_name", ""),
+            invoice.get("customer_phone", ""),
+            activities_list,
+            invoice.get("subtotal", 0),
+            invoice.get("discount", 0),
+            invoice.get("total", 0),
+            invoice.get("status", ""),
+            invoice.get("payment_method", ""),
+            invoice.get("created_at", "")[:10],
+            (invoice.get("paid_at", "") or "")[:10]
+        ])
+    
+    output.seek(0)
+    
+    # Add BOM for Excel Arabic support
+    response_content = '\ufeff' + output.getvalue()
+    
+    return StreamingResponse(
+        iter([response_content]),
+        media_type="text/csv; charset=utf-8",
+        headers={
+            "Content-Disposition": f"attachment; filename=invoices_{datetime.now().strftime('%Y%m%d')}.csv"
+        }
+    )
+
+@api_router.get("/export/reports")
+async def export_financial_report(
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    current_user: dict = Depends(get_current_user)
+):
+    """Export financial report to CSV"""
+    query = {"status": "paid"}
+    
+    if start_date:
+        query["paid_at"] = {"$gte": start_date}
+    if end_date:
+        if "paid_at" in query:
+            query["paid_at"]["$lte"] = end_date
+        else:
+            query["paid_at"] = {"$lte": end_date}
+    
+    invoices = await db.invoices.find(query, {"_id": 0}).sort("paid_at", -1).to_list(10000)
+    
+    # Create CSV
+    output = io.StringIO()
+    writer = csv.writer(output)
+    
+    # Summary section
+    total_revenue = sum(inv["total"] for inv in invoices)
+    writer.writerow(["التقرير المالي - Financial Report"])
+    writer.writerow([f"الفترة: {start_date or 'الكل'} إلى {end_date or 'الآن'}"])
+    writer.writerow([f"إجمالي الإيرادات: {total_revenue} ر.س"])
+    writer.writerow([f"عدد الفواتير: {len(invoices)}"])
+    writer.writerow([])
+    
+    # Details header
+    writer.writerow([
+        "رقم الفاتورة", "اسم العضو", "الأنشطة", 
+        "الإجمالي", "تاريخ الدفع"
+    ])
+    
+    for invoice in invoices:
+        activities_list = ", ".join([item.get('activity_name', '') for item in invoice.get("items", [])])
+        
+        writer.writerow([
+            invoice.get("id", "")[:8],
+            invoice.get("member_name", ""),
+            activities_list,
+            invoice.get("total", 0),
+            (invoice.get("paid_at", "") or "")[:10]
+        ])
+    
+    output.seek(0)
+    
+    # Add BOM for Excel Arabic support
+    response_content = '\ufeff' + output.getvalue()
+    
+    return StreamingResponse(
+        iter([response_content]),
+        media_type="text/csv; charset=utf-8",
+        headers={
+            "Content-Disposition": f"attachment; filename=financial_report_{datetime.now().strftime('%Y%m%d')}.csv"
+        }
+    )
+
 # Include router
 app.include_router(api_router)
 
