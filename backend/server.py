@@ -989,9 +989,18 @@ async def export_invoices(
     status: Optional[str] = None,
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
-    current_user: dict = Depends(get_current_user)
+    format: str = "xlsx",
+    token: Optional[str] = None
 ):
-    """Export invoices to CSV"""
+    """Export invoices to Excel/CSV"""
+    # Verify token
+    if not token:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    try:
+        jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+    except:
+        raise HTTPException(status_code=401, detail="Invalid token")
+    
     query = {}
     if status:
         query["status"] = status
@@ -1005,46 +1014,92 @@ async def export_invoices(
     
     invoices = await db.invoices.find(query, {"_id": 0}).sort("created_at", -1).to_list(10000)
     
-    # Create CSV
-    output = io.StringIO()
-    writer = csv.writer(output)
-    
-    # Header
-    writer.writerow([
-        "رقم الفاتورة", "اسم العضو", "جوال العميل", "الأنشطة", 
-        "المجموع الفرعي", "الخصم", "الإجمالي", "الحالة", 
-        "طريقة الدفع", "تاريخ الإنشاء", "تاريخ الدفع"
-    ])
-    
-    for invoice in invoices:
-        activities_list = ", ".join([f"{item.get('activity_name', '')} ({item.get('fee', 0)} ر.س)" for item in invoice.get("items", [])])
+    if format == "xlsx":
+        # Create Excel file
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "الفواتير"
         
-        writer.writerow([
-            invoice.get("id", "")[:8],
-            invoice.get("member_name", ""),
-            invoice.get("customer_phone", ""),
-            activities_list,
-            invoice.get("subtotal", 0),
-            invoice.get("discount", 0),
-            invoice.get("total", 0),
-            invoice.get("status", ""),
-            invoice.get("payment_method", ""),
-            invoice.get("created_at", "")[:10],
-            (invoice.get("paid_at", "") or "")[:10]
-        ])
-    
-    output.seek(0)
-    
-    # Add BOM for Excel Arabic support
-    response_content = '\ufeff' + output.getvalue()
-    
-    return StreamingResponse(
-        iter([response_content]),
-        media_type="text/csv; charset=utf-8",
-        headers={
-            "Content-Disposition": f"attachment; filename=invoices_{datetime.now().strftime('%Y%m%d')}.csv"
-        }
-    )
+        # Header styling
+        header_fill = PatternFill(start_color="F97316", end_color="F97316", fill_type="solid")
+        header_font = Font(bold=True, color="FFFFFF")
+        thin_border = Border(
+            left=Side(style='thin'), right=Side(style='thin'),
+            top=Side(style='thin'), bottom=Side(style='thin')
+        )
+        
+        headers = ["م", "رقم الفاتورة", "اسم العميل", "الجوال", "الأنشطة", "المجموع الفرعي", "الضريبة", "الإجمالي", "الحالة", "طريقة الدفع", "التاريخ"]
+        for col, header in enumerate(headers, 1):
+            cell = ws.cell(row=1, column=col, value=header)
+            cell.fill = header_fill
+            cell.font = header_font
+            cell.border = thin_border
+            cell.alignment = Alignment(horizontal='center')
+        
+        for row_num, invoice in enumerate(invoices, 2):
+            activities_list = ", ".join([f"{item.get('activity_name', '')} ({item.get('fee', 0)})" for item in invoice.get("items", [])])
+            status_ar = {"paid": "مدفوعة", "pending": "غير مدفوعة", "cancelled": "ملغاة"}.get(invoice.get("status", ""), invoice.get("status", ""))
+            
+            row_data = [
+                row_num - 1,
+                invoice.get("id", "")[:8],
+                invoice.get("customer_name_ar", invoice.get("member_name", "")),
+                invoice.get("customer_phone", ""),
+                activities_list,
+                invoice.get("subtotal", 0),
+                invoice.get("vat_amount", 0),
+                invoice.get("total", 0),
+                status_ar,
+                invoice.get("payment_method", ""),
+                invoice.get("created_at", "")[:10]
+            ]
+            for col, value in enumerate(row_data, 1):
+                cell = ws.cell(row=row_num, column=col, value=value)
+                cell.border = thin_border
+                cell.alignment = Alignment(horizontal='right' if col > 1 else 'center')
+        
+        # Adjust column widths
+        ws.column_dimensions['A'].width = 5
+        ws.column_dimensions['B'].width = 12
+        ws.column_dimensions['C'].width = 20
+        ws.column_dimensions['D'].width = 15
+        ws.column_dimensions['E'].width = 30
+        ws.column_dimensions['F'].width = 12
+        ws.column_dimensions['G'].width = 10
+        ws.column_dimensions['H'].width = 12
+        ws.column_dimensions['I'].width = 12
+        ws.column_dimensions['J'].width = 12
+        ws.column_dimensions['K'].width = 12
+        
+        # Save to bytes
+        output = io.BytesIO()
+        wb.save(output)
+        output.seek(0)
+        
+        return StreamingResponse(
+            output,
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": f"attachment; filename=invoices_{datetime.now().strftime('%Y%m%d')}.xlsx"}
+        )
+    else:
+        # Create CSV
+        output = io.StringIO()
+        writer = csv.writer(output)
+        writer.writerow(["م", "رقم الفاتورة", "اسم العميل", "الجوال", "الأنشطة", "المجموع الفرعي", "الضريبة", "الإجمالي", "الحالة", "التاريخ"])
+        
+        for idx, invoice in enumerate(invoices, 1):
+            activities_list = ", ".join([f"{item.get('activity_name', '')}" for item in invoice.get("items", [])])
+            status_ar = {"paid": "مدفوعة", "pending": "غير مدفوعة", "cancelled": "ملغاة"}.get(invoice.get("status", ""), invoice.get("status", ""))
+            writer.writerow([idx, invoice.get("id", "")[:8], invoice.get("customer_name_ar", ""), invoice.get("customer_phone", ""), activities_list, invoice.get("subtotal", 0), invoice.get("vat_amount", 0), invoice.get("total", 0), status_ar, invoice.get("created_at", "")[:10]])
+        
+        output.seek(0)
+        response_content = '\ufeff' + output.getvalue()
+        
+        return StreamingResponse(
+            iter([response_content]),
+            media_type="text/csv; charset=utf-8",
+            headers={"Content-Disposition": f"attachment; filename=invoices_{datetime.now().strftime('%Y%m%d')}.csv"}
+        )
 
 @api_router.get("/export/reports")
 async def export_financial_report(
