@@ -342,6 +342,12 @@
         - New invoice statuses: "refunded" and "partially_refunded"
         - API endpoint: `POST /api/invoices/{id}/refund`
         - Refunds stored in `refunds` collection in MongoDB
+    -   ✅ **Refunds Report**: Added comprehensive refunds reporting to Reports page:
+        - Summary cards: Total Revenue, Total Refunds, Net Revenue, Invoice Count
+        - Refunds Summary section with counts (total, full, partial)
+        - Detailed refunds table with invoice #, customer, amounts, type, reason, date
+        - Updated print function to include refunds details
+        - API updated: `/api/reports/financial` now returns refund data
 
 **Upcoming Tasks**:
     -   **WhatsApp Business API Integration (P1)**: Send invoice images directly via WhatsApp API. User has provided phone number: 00966566238384. Waiting for Access Token and Phone Number ID from Meta Business Suite.
