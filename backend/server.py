@@ -1227,8 +1227,15 @@ async def export_financial_report(
         )
 
 @api_router.get("/export/all-data")
-async def export_all_data(current_user: dict = Depends(get_current_user)):
+async def export_all_data(token: Optional[str] = None):
     """Export all data (members, invoices, activities, coaches) to Excel"""
+    # Verify token
+    if not token:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    try:
+        jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+    except:
+        raise HTTPException(status_code=401, detail="Invalid token")
     
     # Fetch all data
     members = await db.members.find({}, {"_id": 0}).to_list(10000)
