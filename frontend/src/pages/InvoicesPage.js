@@ -532,7 +532,7 @@ export const InvoicesPage = () => {
               <Button variant="outline" onClick={() => handleSendWhatsApp(selectedInvoice)}><MessageSquare className="w-4 h-4 me-2" />{language === 'ar' ? 'واتساب' : 'WhatsApp'}</Button>
               <Button variant="outline" onClick={handlePrint}><Printer className="w-4 h-4 me-2" />{t('print')}</Button>
               {selectedInvoice?.status === 'cancelled' && <Button variant="outline" onClick={() => handleRestoreInvoice(selectedInvoice.id)}><RotateCcw className="w-4 h-4 me-2" />{language === 'ar' ? 'استرجاع' : 'Restore'}</Button>}
-              {selectedInvoice?.status === 'pending' && <Button onClick={() => handleStripePayment(selectedInvoice.id)} disabled={processingPayment}>{processingPayment ? <Loader2 className="w-4 h-4 me-2 animate-spin" /> : <CreditCard className="w-4 h-4 me-2" />}{t('pay_now')}</Button>}
+              {selectedInvoice?.status === 'pending' && <Button onClick={() => handleMarkPaid(selectedInvoice.id)}><CheckCircle className="w-4 h-4 me-2" />{language === 'ar' ? 'تم الدفع' : 'Mark Paid'}</Button>}
               <Button variant="destructive" onClick={() => handleDeleteInvoice(selectedInvoice?.id)}><Trash2 className="w-4 h-4 me-2" />{language === 'ar' ? 'حذف' : 'Delete'}</Button>
             </DialogFooter>
           </DialogContent>
