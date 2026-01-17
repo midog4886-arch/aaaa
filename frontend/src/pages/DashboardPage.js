@@ -3,6 +3,7 @@ import { useLanguage } from '../contexts/LanguageContext';
 import { Layout } from '../components/Layout';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Badge } from '../components/ui/badge';
+// eslint-disable-next-line react-hooks/exhaustive-deps
 import { dashboardAPI, reportsAPI } from '../services/api';
 import { 
   Users, 
