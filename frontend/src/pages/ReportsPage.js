@@ -259,7 +259,7 @@ export const ReportsPage = () => {
 
         {/* Summary Cards */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          <Card className="stat-card" data-testid="total-revenue-card">
+          <Card className={`stat-card cursor-pointer hover:shadow-lg transition-shadow ${activeDetail === 'revenue' ? 'ring-2 ring-primary' : ''}`} data-testid="total-revenue-card" onClick={() => toggleDetail('revenue')}>
             <div className="stat-card-icon bg-primary/10">
               <TrendingUp className="w-6 h-6 text-primary" />
             </div>
