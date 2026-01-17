@@ -838,7 +838,12 @@ async def get_financial_report(
     coach_id: Optional[str] = None,
     current_user: dict = Depends(get_current_user)
 ):
+    is_admin = current_user.get("is_admin", False)
+    branch_id = current_user.get("branch_id")
+    
     query = {"status": "paid"}
+    if not is_admin and branch_id:
+        query["branch_id"] = branch_id
     
     if start_date:
         query["paid_at"] = {"$gte": start_date}
@@ -871,10 +876,17 @@ async def get_financial_report(
 
 @api_router.get("/reports/expiring-subscriptions")
 async def get_expiring_subscriptions(days: int = 7, current_user: dict = Depends(get_current_user)):
+    is_admin = current_user.get("is_admin", False)
+    branch_id = current_user.get("branch_id")
+    
     threshold_date = (datetime.now(timezone.utc) + timedelta(days=days)).strftime('%Y-%m-%d')
     today = datetime.now(timezone.utc).strftime('%Y-%m-%d')
     
-    members = await db.members.find({}, {"_id": 0}).to_list(10000)
+    query = {}
+    if not is_admin and branch_id:
+        query["branch_id"] = branch_id
+    
+    members = await db.members.find(query, {"_id": 0}).to_list(10000)
     
     expiring = []
     for member in members:
