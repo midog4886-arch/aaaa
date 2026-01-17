@@ -1716,10 +1716,14 @@ async def export_all_data(token: Optional[str] = None):
 
 @api_router.get("/invoices/{invoice_id}/qr")
 async def get_invoice_qr(invoice_id: str, current_user: dict = Depends(get_current_user)):
-    """Generate QR code for invoice (ZATCA compliant)"""
+    """Generate QR code for invoice (ZATCA compliant) - Only for paid invoices"""
     invoice = await db.invoices.find_one({"id": invoice_id}, {"_id": 0})
     if not invoice:
         raise HTTPException(status_code=404, detail="Invoice not found")
+    
+    # Only generate QR for paid invoices
+    if invoice.get("status") != "paid":
+        raise HTTPException(status_code=400, detail="QR code is only available for paid invoices")
     
     # ZATCA TLV format for QR code
     def tlv_encode(tag, value):
@@ -1729,7 +1733,7 @@ async def get_invoice_qr(invoice_id: str, current_user: dict = Depends(get_curre
     # Build ZATCA-compliant data
     seller_name = "أكاديمية أداء الأبطال العالمية"
     vat_number = COMPANY_TAX_NUMBER
-    timestamp = invoice.get("created_at", datetime.now(timezone.utc).isoformat())
+    timestamp = invoice.get("paid_at", invoice.get("created_at", datetime.now(timezone.utc).isoformat()))
     total_with_vat = str(invoice.get("total", 0))
     vat_amount = str(invoice.get("vat_amount", 0))
     
