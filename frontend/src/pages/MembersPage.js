@@ -518,86 +518,173 @@ export const MembersPage = () => {
             
             {selectedMember && (
               <div className="space-y-6">
-                {/* Member Info */}
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 p-4 bg-muted/50 rounded-lg">
-                  <div>
-                    <p className="text-sm text-muted-foreground">{t('guardian_name')}</p>
-                    <p className="font-medium">
-                      {language === 'ar' ? selectedMember.guardian_name_ar : selectedMember.guardian_name}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-muted-foreground">{t('phone')}</p>
-                    <p className="font-medium" dir="ltr">{selectedMember.phone}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-muted-foreground">{t('age')}</p>
-                    <p className="font-medium">{selectedMember.age}</p>
-                  </div>
-                  {selectedMember.email && (
-                    <div className="col-span-2">
-                      <p className="text-sm text-muted-foreground">{t('email')}</p>
-                      <p className="font-medium" dir="ltr">{selectedMember.email}</p>
-                    </div>
-                  )}
+                {/* Tabs */}
+                <div className="flex gap-2 border-b">
+                  <button
+                    onClick={() => setViewTab('info')}
+                    className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+                      viewTab === 'info' 
+                        ? 'border-primary text-primary' 
+                        : 'border-transparent text-muted-foreground hover:text-foreground'
+                    }`}
+                  >
+                    <User className="w-4 h-4 inline me-1" />
+                    {language === 'ar' ? 'البيانات' : 'Info'}
+                  </button>
+                  <button
+                    onClick={() => setViewTab('activities')}
+                    className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+                      viewTab === 'activities' 
+                        ? 'border-primary text-primary' 
+                        : 'border-transparent text-muted-foreground hover:text-foreground'
+                    }`}
+                  >
+                    <Activity className="w-4 h-4 inline me-1" />
+                    {t('activities')} ({selectedMember.activities?.length || 0})
+                  </button>
+                  <button
+                    onClick={() => setViewTab('invoices')}
+                    className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+                      viewTab === 'invoices' 
+                        ? 'border-primary text-primary' 
+                        : 'border-transparent text-muted-foreground hover:text-foreground'
+                    }`}
+                  >
+                    <Receipt className="w-4 h-4 inline me-1" />
+                    {t('invoices')} ({memberInvoices.length})
+                  </button>
                 </div>
 
-                {/* Activities */}
-                <div>
-                  <div className="flex items-center justify-between mb-4">
-                    <h3 className="font-semibold flex items-center gap-2">
-                      <Activity className="w-5 h-5 text-primary" />
-                      {t('member_activities')}
-                    </h3>
-                    <Button 
-                      size="sm" 
-                      onClick={() => setIsActivityDialogOpen(true)}
-                      data-testid="add-activity-btn"
-                    >
-                      <Plus className="w-4 h-4 me-1" />
-                      {t('add_activity')}
-                    </Button>
-                  </div>
-                  
-                  {selectedMember.activities?.length > 0 ? (
-                    <div className="space-y-3">
-                      {selectedMember.activities.map((activity, idx) => (
-                        <Card key={idx} className="p-4">
-                          <div className="flex items-start justify-between">
-                            <div className="flex-1">
-                              <div className="flex items-center gap-2 mb-2">
-                                <Badge className={getActivityColor(activity.activity_name)}>
-                                  {activity.activity_name}
-                                </Badge>
-                                {getStatusBadge(activity.status)}
-                              </div>
-                              <div className="grid grid-cols-2 gap-4 text-sm">
-                                <div>
-                                  <span className="text-muted-foreground">{t('start_date')}: </span>
-                                  <span>{activity.start_date}</span>
+                {/* Tab Content: Info */}
+                {viewTab === 'info' && (
+                  <>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 p-4 bg-muted/50 rounded-lg">
+                      <div>
+                        <p className="text-sm text-muted-foreground">{t('guardian_name')}</p>
+                        <p className="font-medium">
+                          {language === 'ar' ? selectedMember.guardian_name_ar : selectedMember.guardian_name}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-sm text-muted-foreground">{t('phone')}</p>
+                        <p className="font-medium" dir="ltr">{selectedMember.phone}</p>
+                      </div>
+                      <div>
+                        <p className="text-sm text-muted-foreground">{t('age')}</p>
+                        <p className="font-medium">{selectedMember.age}</p>
+                      </div>
+                      {selectedMember.email && (
+                        <div className="col-span-2">
+                          <p className="text-sm text-muted-foreground">{t('email')}</p>
+                          <p className="font-medium" dir="ltr">{selectedMember.email}</p>
+                        </div>
+                      )}
+                    </div>
+                    {selectedMember.notes && (
+                      <div className="p-4 bg-muted/50 rounded-lg">
+                        <p className="text-sm text-muted-foreground mb-1">{t('notes')}</p>
+                        <p>{selectedMember.notes}</p>
+                      </div>
+                    )}
+                  </>
+                )}
+
+                {/* Tab Content: Activities */}
+                {viewTab === 'activities' && (
+                  <div>
+                    <div className="flex items-center justify-between mb-4">
+                      <h3 className="font-semibold flex items-center gap-2">
+                        <Activity className="w-5 h-5 text-primary" />
+                        {t('member_activities')}
+                      </h3>
+                      <Button 
+                        size="sm" 
+                        onClick={() => setIsActivityDialogOpen(true)}
+                        data-testid="add-activity-btn"
+                      >
+                        <Plus className="w-4 h-4 me-1" />
+                        {t('add_activity')}
+                      </Button>
+                    </div>
+                    
+                    {selectedMember.activities?.length > 0 ? (
+                      <div className="space-y-3">
+                        {selectedMember.activities.map((activity, idx) => (
+                          <Card key={idx} className="p-4">
+                            <div className="flex items-start justify-between">
+                              <div className="flex-1">
+                                <div className="flex items-center gap-2 mb-2">
+                                  <Badge className={getActivityColor(activity.activity_name)}>
+                                    {activity.activity_name}
+                                  </Badge>
+                                  {getStatusBadge(activity.status)}
                                 </div>
-                                <div>
-                                  <span className="text-muted-foreground">{t('end_date')}: </span>
-                                  <span>{activity.end_date}</span>
-                                </div>
-                                <div>
-                                  <span className="text-muted-foreground">{t('monthly_fee')}: </span>
-                                  <span>{activity.fee} {t('sar')}</span>
+                                <div className="grid grid-cols-2 gap-4 text-sm">
+                                  <div>
+                                    <span className="text-muted-foreground">{t('start_date')}: </span>
+                                    <span>{activity.start_date}</span>
+                                  </div>
+                                  <div>
+                                    <span className="text-muted-foreground">{t('end_date')}: </span>
+                                    <span>{activity.end_date}</span>
+                                  </div>
+                                  <div>
+                                    <span className="text-muted-foreground">{t('monthly_fee')}: </span>
+                                    <span>{activity.fee} {t('sar')}</span>
+                                  </div>
                                 </div>
                               </div>
                             </div>
-                          </div>
-                        </Card>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="text-center py-8 text-muted-foreground">
-                      {t('no_data')}
-                    </div>
-                  )}
-                </div>
+                          </Card>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="text-center py-8 text-muted-foreground">
+                        {t('no_data')}
+                      </div>
+                    )}
+                  </div>
+                )}
 
-                {/* Notes */}
+                {/* Tab Content: Invoices */}
+                {viewTab === 'invoices' && (
+                  <div>
+                    <h3 className="font-semibold flex items-center gap-2 mb-4">
+                      <Receipt className="w-5 h-5 text-primary" />
+                      {t('invoices')}
+                    </h3>
+                    
+                    {memberInvoices.length > 0 ? (
+                      <div className="space-y-2">
+                        {memberInvoices.map((invoice) => (
+                          <Card key={invoice.id} className="p-3">
+                            <div className="flex items-center justify-between">
+                              <div>
+                                <p className="font-mono text-sm">#{invoice.id.slice(0, 8)}</p>
+                                <p className="text-sm text-muted-foreground">
+                                  {new Date(invoice.created_at).toLocaleDateString(language === 'ar' ? 'ar-SA' : 'en-US')}
+                                </p>
+                              </div>
+                              <div className="text-end">
+                                <p className="font-bold text-primary">{invoice.total} {t('sar')}</p>
+                                <Badge 
+                                  variant="outline" 
+                                  className={invoice.status === 'paid' ? 'bg-green-500/15 text-green-600' : 'bg-amber-500/15 text-amber-600'}
+                                >
+                                  {invoice.status === 'paid' ? t('paid') : t('unpaid')}
+                                </Badge>
+                              </div>
+                            </div>
+                          </Card>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="text-center py-8 text-muted-foreground">
+                        {t('no_data')}
+                      </div>
+                    )}
+                  </div>
+                )}
                 {selectedMember.notes && (
                   <div className="p-4 bg-muted/50 rounded-lg">
                     <p className="text-sm text-muted-foreground mb-1">{t('notes')}</p>
