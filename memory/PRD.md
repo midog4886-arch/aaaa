@@ -180,3 +180,36 @@
 - PUT /api/invoices/{id}/restore - Restore cancelled invoice
 - DELETE /api/invoices/{id} - Delete invoice permanently
 - GET /api/invoices/{id}/qr - Get QR code for invoice
+
+---
+
+## Update 4 - Logo Removal & Subscription Alerts (January 17, 2026)
+
+### New Features Added:
+
+#### 1. Invoice Print Without Logo ✅
+- [x] Removed logo image from invoice print view
+- [x] Kept company name and details prominent
+- [x] Cleaner, more professional print layout
+
+#### 2. Subscription Expiry Alerts System ✅
+- [x] **Expiring Subscriptions List** - Shows members with subscriptions expiring within 7 days
+- [x] **Individual WhatsApp Reminder** - Send reminder to specific member with green message icon
+- [x] **Bulk Send All Reminders** - "إرسال تنبيهات" button to send reminders to all expiring members
+- [x] **Days Remaining Badge** - Red badge for 3 days or less, amber for 4-7 days
+- [x] **Arabic WhatsApp Message Template** - Professional reminder message in Arabic
+
+### WhatsApp Reminder Message Template:
+```
+مرحباً [اسم العضو]،
+
+نود تذكيركم بأن اشتراككم في نشاط "[النشاط]" سينتهي خلال [X] أيام.
+
+نأمل منكم تجديد الاشتراك في أقرب وقت للاستمرار في الاستفادة من خدماتنا.
+
+شكراً لكم،
+أكاديمية أداء الأبطال العالمية
+```
+
+### Bug Fix:
+- Fixed date comparison in expiring subscriptions API (was using ISO format instead of YYYY-MM-DD)
