@@ -24,6 +24,17 @@ const COMPANY_INFO = {
   vat_rate: 15
 };
 
+const INVOICE_TERMS = {
+  ar: [
+    "الاشتراك محدد البداية والنهاية ولا يتم تعويض حصص غياب المشترك",
+    "المبلغ المدفوع لا يسترد بعد مرور أسبوع من الاشتراك"
+  ],
+  en: [
+    "Subscription has fixed start and end dates. Missed sessions will not be compensated",
+    "Paid amount is non-refundable after one week from subscription date"
+  ]
+};
+
 export const InvoicesPage = () => {
   const { t, language } = useLanguage();
   const [invoices, setInvoices] = useState([]);
