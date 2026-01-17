@@ -302,7 +302,12 @@ export const InvoicesPage = () => {
     try { await invoicesAPI.cancel(invoiceId); toast.success(language === 'ar' ? 'تم إلغاء الفاتورة' : 'Invoice cancelled'); loadData(); } catch { toast.error(t('error')); }
   };
 
-  const loadQRCode = async (invoiceId) => {
+  const loadQRCode = async (invoiceId, status) => {
+    // Only load QR for paid invoices
+    if (status !== 'paid') {
+      setQrCode(null);
+      return;
+    }
     try {
       const response = await invoicesAPI.getQR(invoiceId);
       setQrCode(response.data.qr_image);
@@ -312,7 +317,7 @@ export const InvoicesPage = () => {
   const handleViewInvoice = async (invoice) => {
     setSelectedInvoice(invoice);
     setIsViewDialogOpen(true);
-    loadQRCode(invoice.id);
+    loadQRCode(invoice.id, invoice.status);
   };
 
   const handleSendWhatsApp = (invoice) => {
