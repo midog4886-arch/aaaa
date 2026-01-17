@@ -326,3 +326,14 @@
 
 ### Navigation:
 - "المستخدمين" (Users) link visible only to admin users
+
+---
+
+## Update 8 - Schedule Field & Payment Methods (January 2025)
+
+**Completed Tasks (January 2025)**:
+    -   ✅ **Schedule Field Fix**: Added `schedule` field to `InvoiceItem` model in backend. Now saves and displays correctly in invoices.
+    -   ✅ **Tabby & Tamara Payment Methods**: Added as payment method options in invoice creation form (no electronic integration - display only).
+
+**Upcoming Tasks**:
+    -   **WhatsApp Business API Integration (P1)**: Send invoice images directly via WhatsApp API. User has provided phone number: 00966566238384. Waiting for Access Token and Phone Number ID from Meta Business Suite.
