@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useSearchParams } from 'react-router-dom';
 import { useLanguage } from '../contexts/LanguageContext';
 import { Layout } from '../components/Layout';
 import { Card, CardContent } from '../components/ui/card';
@@ -10,11 +9,11 @@ import { Badge } from '../components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '../components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Textarea } from '../components/ui/textarea';
-import { invoicesAPI, membersAPI, activitiesAPI, paymentsAPI, exportAPI } from '../services/api';
+import { invoicesAPI, membersAPI, activitiesAPI, exportAPI } from '../services/api';
 import { toast } from 'sonner';
 import { 
-  Plus, Search, Eye, Printer, CreditCard, Loader2, Receipt, CheckCircle, XCircle, Clock,
-  Download, Filter, MessageSquare, X, UserPlus, Trash2, RotateCcw, QrCode, FileSpreadsheet
+  Plus, Search, Eye, Printer, Loader2, Receipt, CheckCircle, XCircle, Clock,
+  Filter, MessageSquare, X, UserPlus, Trash2, RotateCcw, FileSpreadsheet
 } from 'lucide-react';
 
 const COMPANY_INFO = {
