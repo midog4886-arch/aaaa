@@ -406,6 +406,29 @@ class AcademyAPITester:
             self.log_test("Date Range Search", True, f"Found {len(date_search)} invoices from today")
         
         return True
+
+    def test_company_info(self):
+        """Test company information endpoint"""
+        print("\n🏢 Testing Company Info...")
+        
+        result = self.run_test("Get Company Info", "GET", "company-info", 200)
+        
+        if result:
+            # Check required company fields
+            expected_fields = {
+                'tax_number': '312655637900003',
+                'commercial_reg': '7043630230',
+                'vat_rate': 15,
+                'name_ar': 'أكاديمية أداء الأبطال العالمية'
+            }
+            
+            for field, expected_value in expected_fields.items():
+                if field in result and result[field] == expected_value:
+                    self.log_test(f"Company {field}", True, f"Value: {result[field]}")
+                else:
+                    self.log_test(f"Company {field}", False, f"Expected {expected_value}, got {result.get(field)}")
+        
+        return result is not None
     def run_all_tests(self):
         """Run all API tests"""
         print("🚀 Starting Sports Academy API Tests")
