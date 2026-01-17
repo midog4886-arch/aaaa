@@ -8,7 +8,6 @@ import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { Badge } from '../components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '../components/ui/dialog';
-import { Switch } from '../components/ui/switch';
 import api from '../services/api';
 import { toast } from 'sonner';
 import { 
@@ -17,13 +16,11 @@ import {
   Trash2, 
   Building2,
   Phone,
-  User,
-  MapPin,
   Loader2
 } from 'lucide-react';
 
 const BranchesPage = () => {
-  const { t, language } = useLanguage();
+  const { language } = useLanguage();
   const { user } = useAuth();
   const [branches, setBranches] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -32,14 +29,8 @@ const BranchesPage = () => {
   const [saving, setSaving] = useState(false);
   
   const [formData, setFormData] = useState({
-    name: '',
     name_ar: '',
-    phone: '',
-    manager_name: '',
-    manager_name_ar: '',
-    address: '',
-    address_ar: '',
-    is_active: true
+    phone: ''
   });
 
   useEffect(() => {
@@ -66,11 +57,22 @@ const BranchesPage = () => {
 
     setSaving(true);
     try {
+      const dataToSend = {
+        name: formData.name_ar,
+        name_ar: formData.name_ar,
+        phone: formData.phone,
+        manager_name: '',
+        manager_name_ar: '',
+        address: '',
+        address_ar: '',
+        is_active: true
+      };
+      
       if (editingBranch) {
-        await api.put(`/branches/${editingBranch.id}`, formData);
+        await api.put(`/branches/${editingBranch.id}`, dataToSend);
         toast.success(language === 'ar' ? 'تم تحديث الفرع بنجاح' : 'Branch updated successfully');
       } else {
-        await api.post('/branches', formData);
+        await api.post('/branches', dataToSend);
         toast.success(language === 'ar' ? 'تم إضافة الفرع بنجاح' : 'Branch added successfully');
       }
       loadBranches();
@@ -98,14 +100,8 @@ const BranchesPage = () => {
   const handleEdit = (branch) => {
     setEditingBranch(branch);
     setFormData({
-      name: branch.name || '',
-      name_ar: branch.name_ar || '',
-      phone: branch.phone || '',
-      manager_name: branch.manager_name || '',
-      manager_name_ar: branch.manager_name_ar || '',
-      address: branch.address || '',
-      address_ar: branch.address_ar || '',
-      is_active: branch.is_active !== false
+      name_ar: branch.name_ar || branch.name || '',
+      phone: branch.phone || ''
     });
     setIsDialogOpen(true);
   };
@@ -114,14 +110,8 @@ const BranchesPage = () => {
     setIsDialogOpen(false);
     setEditingBranch(null);
     setFormData({
-      name: '',
       name_ar: '',
-      phone: '',
-      manager_name: '',
-      manager_name_ar: '',
-      address: '',
-      address_ar: '',
-      is_active: true
+      phone: ''
     });
   };
 
@@ -174,8 +164,8 @@ const BranchesPage = () => {
                       <Building2 className="w-5 h-5 text-primary" />
                       <CardTitle className="text-lg">{branch.name_ar || branch.name}</CardTitle>
                     </div>
-                    <Badge variant={branch.is_active ? "default" : "secondary"}>
-                      {branch.is_active ? (language === 'ar' ? 'نشط' : 'Active') : (language === 'ar' ? 'غير نشط' : 'Inactive')}
+                    <Badge variant={branch.is_active !== false ? "default" : "secondary"}>
+                      {branch.is_active !== false ? (language === 'ar' ? 'نشط' : 'Active') : (language === 'ar' ? 'غير نشط' : 'Inactive')}
                     </Badge>
                   </div>
                 </CardHeader>
@@ -184,18 +174,6 @@ const BranchesPage = () => {
                     <Phone className="w-4 h-4" />
                     <span dir="ltr">{branch.phone}</span>
                   </div>
-                  {(branch.manager_name_ar || branch.manager_name) && (
-                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                      <User className="w-4 h-4" />
-                      <span>{branch.manager_name_ar || branch.manager_name}</span>
-                    </div>
-                  )}
-                  {(branch.address_ar || branch.address) && (
-                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                      <MapPin className="w-4 h-4" />
-                      <span>{branch.address_ar || branch.address}</span>
-                    </div>
-                  )}
                   <div className="flex gap-2 pt-2">
                     <Button variant="outline" size="sm" onClick={() => handleEdit(branch)} data-testid={`edit-branch-${branch.id}`}>
                       <Edit className="w-4 h-4 me-1" />
@@ -212,9 +190,9 @@ const BranchesPage = () => {
           </div>
         )}
 
-        {/* Add/Edit Dialog */}
+        {/* Add/Edit Dialog - Simplified */}
         <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-          <DialogContent className="max-w-md">
+          <DialogContent className="max-w-sm">
             <DialogHeader>
               <DialogTitle>
                 {editingBranch 
@@ -224,25 +202,14 @@ const BranchesPage = () => {
               </DialogTitle>
             </DialogHeader>
             <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label>{language === 'ar' ? 'اسم الفرع (عربي)' : 'Branch Name (Arabic)'} *</Label>
-                  <Input
-                    value={formData.name_ar}
-                    onChange={(e) => setFormData({ ...formData, name_ar: e.target.value })}
-                    placeholder={language === 'ar' ? 'الفرع الرئيسي' : 'Main Branch'}
-                    data-testid="branch-name-ar-input"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>{language === 'ar' ? 'اسم الفرع (إنجليزي)' : 'Branch Name (English)'}</Label>
-                  <Input
-                    value={formData.name}
-                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                    placeholder="Main Branch"
-                    data-testid="branch-name-input"
-                  />
-                </div>
+              <div className="space-y-2">
+                <Label>{language === 'ar' ? 'اسم الفرع' : 'Branch Name'} *</Label>
+                <Input
+                  value={formData.name_ar}
+                  onChange={(e) => setFormData({ ...formData, name_ar: e.target.value })}
+                  placeholder={language === 'ar' ? 'مثال: الفرع الرئيسي' : 'e.g. Main Branch'}
+                  data-testid="branch-name-input"
+                />
               </div>
               
               <div className="space-y-2">
@@ -253,44 +220,6 @@ const BranchesPage = () => {
                   placeholder="05XXXXXXXX"
                   dir="ltr"
                   data-testid="branch-phone-input"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label>{language === 'ar' ? 'المدير المسؤول (عربي)' : 'Manager (Arabic)'}</Label>
-                  <Input
-                    value={formData.manager_name_ar}
-                    onChange={(e) => setFormData({ ...formData, manager_name_ar: e.target.value })}
-                    data-testid="branch-manager-ar-input"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>{language === 'ar' ? 'المدير المسؤول (إنجليزي)' : 'Manager (English)'}</Label>
-                  <Input
-                    value={formData.manager_name}
-                    onChange={(e) => setFormData({ ...formData, manager_name: e.target.value })}
-                    data-testid="branch-manager-input"
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <Label>{language === 'ar' ? 'العنوان' : 'Address'}</Label>
-                <Input
-                  value={formData.address_ar}
-                  onChange={(e) => setFormData({ ...formData, address_ar: e.target.value })}
-                  placeholder={language === 'ar' ? 'العنوان بالعربي' : 'Address in Arabic'}
-                  data-testid="branch-address-input"
-                />
-              </div>
-
-              <div className="flex items-center justify-between">
-                <Label>{language === 'ar' ? 'الفرع نشط' : 'Branch Active'}</Label>
-                <Switch
-                  checked={formData.is_active}
-                  onCheckedChange={(checked) => setFormData({ ...formData, is_active: checked })}
-                  data-testid="branch-active-switch"
                 />
               </div>
 
