@@ -3,7 +3,7 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 const translations = {
   ar: {
     // General
-    academy_name: 'أكاديمية أداء الأبطال العالمية',
+    academy_name: 'شركة اداء الابطال العالمية للرياضة',
     academy_name_short: 'أكاديمية الأبطال',
     login: 'تسجيل الدخول',
     logout: 'تسجيل الخروج',

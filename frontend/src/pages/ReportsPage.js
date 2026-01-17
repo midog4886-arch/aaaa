@@ -207,7 +207,7 @@ export const ReportsPage = () => {
                         </style>
                       </head>
                       <body>
-                        <h1>أكاديمية أداء الأبطال العالمية</h1>
+                        <h1>شركة اداء الابطال العالمية للرياضة</h1>
                         <h2>التقارير المالية ${filters.start_date ? '(' + filters.start_date + ' - ' + filters.end_date + ')' : ''}</h2>
                         <div class="summary">
                           <div class="summary-item">

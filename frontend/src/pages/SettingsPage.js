@@ -151,7 +151,7 @@ export const SettingsPage = () => {
           <CardContent className="space-y-2">
             <p className="text-sm text-muted-foreground">
               {language === 'ar' 
-                ? 'نظام إدارة أكاديمية أداء الأبطال العالمية - نسخة 1.0'
+                ? 'نظام إدارة شركة اداء الابطال العالمية للرياضة - نسخة 1.0'
                 : 'Champions Performance Academy Management System - Version 1.0'}
             </p>
             <p className="text-sm text-muted-foreground">

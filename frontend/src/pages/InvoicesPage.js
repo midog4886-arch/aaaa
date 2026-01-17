@@ -19,7 +19,7 @@ import {
 } from 'lucide-react';
 
 const COMPANY_INFO = {
-  name_ar: "أكاديمية أداء الأبطال العالمية",
+  name_ar: "شركة اداء الابطال العالمية للرياضة",
   name_en: "Global Champions Sports Performance",
   tax_number: "312655637900003",
   commercial_reg: "7043630230",
