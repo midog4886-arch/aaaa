@@ -8,6 +8,10 @@ import os
 import logging
 import io
 import csv
+import base64
+import qrcode
+from openpyxl import Workbook
+from openpyxl.styles import Font, Alignment, Border, Side, PatternFill
 from pathlib import Path
 from pydantic import BaseModel, Field
 from typing import List, Optional, Dict, Any
