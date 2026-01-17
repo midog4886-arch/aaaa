@@ -110,3 +110,48 @@
 - GET /api/reports/expiring-subscriptions
 - GET /api/dashboard/stats
 - POST /api/seed
+
+---
+
+## Update 2 - Export and Enhanced Invoice Features (January 2026)
+
+### New Features Added:
+
+#### 1. Export to Excel/CSV
+- [x] **Members Export** - Export all members with activities/status to CSV
+- [x] **Invoices Export** - Export invoices (filtered or all) to CSV
+- [x] **Financial Reports Export** - Export revenue reports to CSV
+- All exports include Arabic BOM for proper Excel rendering
+
+#### 2. Advanced Invoice Search
+- [x] Search by invoice number, member name, or phone
+- [x] Filter by status (paid/pending/cancelled)
+- [x] Filter by activity
+- [x] Filter by date range (from/to)
+- [x] Clear filters button
+
+#### 3. Customer Data in Invoice
+- [x] Customer name (Arabic)
+- [x] Customer name (English)
+- [x] Customer phone
+- [x] Customer email
+- [x] Customer address
+- [x] Auto-fill from member data
+- [x] Editable before saving invoice
+- [x] Stored with invoice for printing/WhatsApp
+
+#### 4. Member Invoice History
+- [x] Tabs in member view (Info, Activities, Invoices)
+- [x] List of all member invoices
+- [x] Quick view of invoice status and amount
+
+#### 5. WhatsApp Integration Enhancement
+- [x] Send invoice via WhatsApp button in list
+- [x] Send invoice via WhatsApp in view dialog
+- [x] Uses customer phone from invoice data
+
+### API Endpoints Added:
+- GET /api/export/members - Export members CSV
+- GET /api/export/invoices - Export invoices CSV  
+- GET /api/export/reports - Export financial report CSV
+- GET /api/invoices/search - Advanced invoice search
