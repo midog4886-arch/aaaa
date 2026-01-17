@@ -588,7 +588,11 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
             )}
             <DialogFooter className="flex-wrap gap-2">
               <Button variant="outline" onClick={() => setIsViewDialogOpen(false)}>{t('close')}</Button>
-              <Button variant="outline" onClick={() => handleSendWhatsApp(selectedInvoice)}><MessageSquare className="w-4 h-4 me-2" />{language === 'ar' ? 'واتساب' : 'WhatsApp'}</Button>
+              <Button variant="outline" onClick={handleSaveAsImage} disabled={savingImage} className="bg-green-50 border-green-500 text-green-700 hover:bg-green-100">
+                {savingImage ? <Loader2 className="w-4 h-4 me-2 animate-spin" /> : <Share2 className="w-4 h-4 me-2" />}
+                {language === 'ar' ? 'حفظ ومشاركة واتساب' : 'Save & Share WhatsApp'}
+              </Button>
+              <Button variant="outline" onClick={() => handleSendWhatsApp(selectedInvoice)}><MessageSquare className="w-4 h-4 me-2" />{language === 'ar' ? 'واتساب نص' : 'WhatsApp Text'}</Button>
               <Button variant="outline" onClick={handlePrint}><Printer className="w-4 h-4 me-2" />{t('print')}</Button>
               {selectedInvoice?.status === 'cancelled' && <Button variant="outline" onClick={() => handleRestoreInvoice(selectedInvoice.id)}><RotateCcw className="w-4 h-4 me-2" />{language === 'ar' ? 'استرجاع' : 'Restore'}</Button>}
               {selectedInvoice?.status === 'pending' && <Button onClick={() => handleMarkPaid(selectedInvoice.id)}><CheckCircle className="w-4 h-4 me-2" />{language === 'ar' ? 'تم الدفع' : 'Mark Paid'}</Button>}
