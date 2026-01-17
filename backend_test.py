@@ -338,6 +338,7 @@ class AcademyAPITester:
             self.log_test("Date Range Search", True, f"Found {len(date_search)} invoices from today")
         
         return True
+    def run_all_tests(self):
         """Run all API tests"""
         print("🚀 Starting Sports Academy API Tests")
         print("=" * 50)
@@ -358,6 +359,10 @@ class AcademyAPITester:
         self.test_members()
         self.test_invoices()
         self.test_reports()
+        
+        # Test new features
+        self.test_export_endpoints()
+        self.test_advanced_search()
         
         # Test creation operations
         member_id = self.test_member_creation()
