@@ -363,7 +363,6 @@ export const InvoicesPage = () => {
                         {invoice.status === 'pending' && (<>
                           <button className="action-button text-green-600" onClick={() => handleMarkPaid(invoice.id)} title={language === 'ar' ? 'تم الدفع' : 'Mark Paid'}><CheckCircle className="w-4 h-4" /></button>
                           <button className="action-button text-amber-600" onClick={() => handleCancelInvoice(invoice.id)} title={language === 'ar' ? 'إلغاء' : 'Cancel'}><XCircle className="w-4 h-4" /></button>
-                          <button className="action-button text-blue-600" onClick={() => handleStripePayment(invoice.id)} title={language === 'ar' ? 'دفع إلكتروني' : 'Pay Online'}><CreditCard className="w-4 h-4" /></button>
                         </>)}
                         {invoice.status === 'cancelled' && (
                           <button className="action-button text-blue-600" onClick={() => handleRestoreInvoice(invoice.id)} title={language === 'ar' ? 'استرجاع' : 'Restore'}><RotateCcw className="w-4 h-4" /></button>
