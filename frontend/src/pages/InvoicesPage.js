@@ -79,16 +79,6 @@ export const InvoicesPage = () => {
     }
   };
 
-  const checkPaymentStatus = async (sessionId) => {
-    try {
-      const response = await paymentsAPI.getStatus(sessionId);
-      if (response.data.payment_status === 'paid') {
-        toast.success(language === 'ar' ? 'تم الدفع بنجاح!' : 'Payment successful!');
-        loadData();
-      }
-    } catch (error) {}
-  };
-
   const handleMemberSelect = (memberId) => {
     if (memberId === 'new') { setIsAddMemberDialogOpen(true); return; }
     if (memberId === 'none') { setSelectedMember(null); return; }
