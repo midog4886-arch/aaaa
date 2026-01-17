@@ -205,14 +205,6 @@ export const InvoicesPage = () => {
     try { await invoicesAPI.cancel(invoiceId); toast.success(language === 'ar' ? 'تم إلغاء الفاتورة' : 'Invoice cancelled'); loadData(); } catch { toast.error(t('error')); }
   };
 
-  const handleStripePayment = async (invoiceId) => {
-    setProcessingPayment(true);
-    try {
-      const response = await paymentsAPI.createCheckout(invoiceId);
-      if (response.data.url) window.location.href = response.data.url;
-    } catch { toast.error(t('error')); } finally { setProcessingPayment(false); }
-  };
-
   const loadQRCode = async (invoiceId) => {
     try {
       const response = await invoicesAPI.getQR(invoiceId);
