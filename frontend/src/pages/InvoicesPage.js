@@ -254,7 +254,7 @@ export const InvoicesPage = () => {
   const handlePrint = () => {
     const printContent = printRef.current;
     const printWindow = window.open('', '', 'width=800,height=600');
-    printWindow.document.write(`<html><head><title>فاتورة</title><style>@import url('https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700&display=swap');body{font-family:'Tajawal',Arial,sans-serif;direction:rtl;padding:20px;max-width:800px;margin:0 auto}.invoice-header{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #F97316;padding-bottom:20px;margin-bottom:20px}.logo-section{display:flex;align-items:center;gap:15px}.logo-section img{width:80px;height:80px}.company-name{font-size:18px;font-weight:bold;color:#1E3A8A}.company-info{font-size:11px;color:#666;margin-top:5px}.invoice-details{text-align:left;font-size:12px}.customer-info{background:#f8fafc;padding:15px;border-radius:8px;margin-bottom:20px}.customer-info h4{margin:0 0 10px 0;color:#1E3A8A}table{width:100%;border-collapse:collapse;margin:20px 0}th,td{padding:12px;border:1px solid #e2e8f0;text-align:right}th{background:#f1f5f9;font-weight:600}.totals{margin-top:20px}.totals-row{display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #e2e8f0}.totals-row.vat{color:#059669}.totals-row.total{font-size:18px;font-weight:bold;color:#F97316;border-top:2px solid #1E3A8A;border-bottom:none;padding-top:15px}.footer{margin-top:30px;padding-top:20px;border-top:1px solid #e2e8f0;text-align:center;font-size:11px;color:#666}.qr-code{text-align:center;margin-top:20px}.qr-code img{width:120px;height:120px}</style></head><body>${printContent.innerHTML}</body></html>`);
+    printWindow.document.write(`<html><head><title>فاتورة</title><style>@import url('https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700&display=swap');@page{size:A4;margin:10mm}body{font-family:'Tajawal',Arial,sans-serif;direction:rtl;padding:15px;max-width:800px;margin:0 auto;font-size:11px}.invoice-header{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid #F97316;padding-bottom:10px;margin-bottom:10px}.logo-section{display:flex;align-items:center;gap:10px}.logo-section img{width:50px;height:50px}.company-name{font-size:14px;font-weight:bold;color:#1E3A8A}.company-info{font-size:9px;color:#666;margin-top:3px}.invoice-details{text-align:left;font-size:10px}.customer-info{background:#f8fafc;padding:10px;border-radius:6px;margin-bottom:10px}.customer-info h4{margin:0 0 5px 0;color:#1E3A8A;font-size:12px}table{width:100%;border-collapse:collapse;margin:10px 0}th,td{padding:6px 8px;border:1px solid #e2e8f0;text-align:right;font-size:10px}th{background:#f1f5f9;font-weight:600}.totals{margin-top:10px}.totals-row{display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid #e2e8f0;font-size:11px}.totals-row.vat{color:#059669}.totals-row.total{font-size:14px;font-weight:bold;color:#F97316;border-top:2px solid #1E3A8A;border-bottom:none;padding-top:8px}.footer{margin-top:15px;padding-top:10px;border-top:1px solid #e2e8f0;text-align:center;font-size:9px;color:#666}.qr-code{text-align:center;margin-top:10px}.qr-code img{width:80px;height:80px}</style></head><body>${printContent.innerHTML}</body></html>`);
     printWindow.document.close();
     printWindow.print();
   };
@@ -489,8 +489,8 @@ export const InvoicesPage = () => {
               <div ref={printRef} className="p-4">
                 <div className="flex justify-between items-start border-b-2 border-primary pb-4 mb-4">
                   <div className="flex items-center gap-3">
-                    <img src="/logo.svg" alt="Logo" className="w-16 h-16" />
-                    <div><div className="text-lg font-bold text-blue-900">{COMPANY_INFO.name_ar}</div>
+                    <img src="/logo.svg" alt="Logo" className="w-12 h-12" />
+                    <div><div className="text-base font-bold text-blue-900">{COMPANY_INFO.name_ar}</div>
                       <div className="text-xs text-muted-foreground">{language === 'ar' ? 'الرقم الضريبي' : 'Tax No'}: {COMPANY_INFO.tax_number}<br/>{language === 'ar' ? 'السجل التجاري' : 'CR'}: {COMPANY_INFO.commercial_reg}</div>
                     </div>
                   </div>
@@ -522,7 +522,7 @@ export const InvoicesPage = () => {
                   <div className="flex justify-between py-2 text-xl font-bold text-primary border-t-2 border-blue-900"><span>{t('total')}:</span><span>{selectedInvoice.total} {t('sar')}</span></div>
                 </div>
 
-                {qrCode && <div className="qr-code text-center mt-4 pt-4 border-t"><p className="text-xs text-muted-foreground mb-2">{language === 'ar' ? 'رمز QR للفاتورة الإلكترونية' : 'E-Invoice QR Code'}</p><img src={qrCode} alt="QR Code" className="w-24 h-24 mx-auto" /></div>}
+                {qrCode && <div className="qr-code text-center mt-4 pt-4 border-t"><p className="text-xs text-muted-foreground mb-2">{language === 'ar' ? 'رمز QR للفاتورة الإلكترونية' : 'E-Invoice QR Code'}</p><img src={qrCode} alt="QR Code" className="w-20 h-20 mx-auto" /></div>}
 
                 <div className="mt-4 pt-4 border-t text-center text-xs text-muted-foreground">
                   <p>{COMPANY_INFO.name_ar} | {COMPANY_INFO.name_en}</p>
