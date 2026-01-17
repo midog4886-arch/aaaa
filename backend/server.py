@@ -361,15 +361,27 @@ async def get_branch(branch_id: str, current_user: dict = Depends(get_current_us
 
 @api_router.get("/activities", response_model=List[Activity])
 async def get_activities(current_user: dict = Depends(get_current_user)):
-    activities = await db.activities.find({}, {"_id": 0}).to_list(100)
+    is_admin = current_user.get("is_admin", False)
+    branch_id = current_user.get("branch_id")
+    
+    if is_admin:
+        activities = await db.activities.find({}, {"_id": 0}).to_list(100)
+    else:
+        # Get activities for user's branch or shared activities
+        activities = await db.activities.find(
+            {"$or": [{"branch_id": branch_id}, {"branch_id": None}, {"branch_id": {"$exists": False}}]}, 
+            {"_id": 0}
+        ).to_list(100)
     return activities
 
 @api_router.post("/activities", response_model=Activity)
 async def create_activity(activity: ActivityCreate, current_user: dict = Depends(get_current_user)):
     activity_id = str(uuid.uuid4())
+    branch_id = current_user.get("branch_id")
     activity_doc = {
         "id": activity_id,
         **activity.model_dump(),
+        "branch_id": branch_id,
         "created_at": datetime.now(timezone.utc).isoformat()
     }
     await db.activities.insert_one(activity_doc)
