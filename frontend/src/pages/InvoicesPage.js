@@ -501,7 +501,13 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
                 <div className="space-y-2"><Label>{t('discount')} ({t('sar')})</Label><Input type="number" value={discount} onChange={(e) => setDiscount(e.target.value)} min="0" /></div>
                 <div className="space-y-2"><Label>{t('payment_method')}</Label>
                   <Select value={paymentMethod} onValueChange={setPaymentMethod}><SelectTrigger><SelectValue /></SelectTrigger>
-                    <SelectContent><SelectItem value="cash">{t('cash')}</SelectItem><SelectItem value="card">{t('card')}</SelectItem><SelectItem value="transfer">{t('transfer')}</SelectItem></SelectContent>
+                    <SelectContent>
+                      <SelectItem value="cash">{t('cash')}</SelectItem>
+                      <SelectItem value="card">{t('card')}</SelectItem>
+                      <SelectItem value="transfer">{t('transfer')}</SelectItem>
+                      <SelectItem value="tabby">{language === 'ar' ? 'تابي' : 'Tabby'}</SelectItem>
+                      <SelectItem value="tamara">{language === 'ar' ? 'تمارا' : 'Tamara'}</SelectItem>
+                    </SelectContent>
                   </Select>
                 </div>
               </div>
