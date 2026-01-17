@@ -126,6 +126,40 @@ export const InvoicesPage = () => {
     }]);
   };
 
+  // Save invoice as image and share to WhatsApp
+  const handleSaveAsImage = async () => {
+    if (!printRef.current) return;
+    setSavingImage(true);
+    try {
+      const canvas = await html2canvas(printRef.current, {
+        scale: 2,
+        backgroundColor: '#ffffff',
+        useCORS: true
+      });
+      
+      // Download the image
+      const link = document.createElement('a');
+      link.download = `invoice_${selectedInvoice.id.slice(0, 8)}.png`;
+      link.href = canvas.toDataURL('image/png');
+      link.click();
+      
+      toast.success(language === 'ar' ? 'تم حفظ الصورة! يمكنك الآن مشاركتها على الواتساب' : 'Image saved! You can now share it on WhatsApp');
+      
+      // Open WhatsApp with message
+      const phone = selectedInvoice.customer_phone?.replace(/^0/, '966') || '';
+      if (phone) {
+        const message = `مرحباً، مرفق فاتورتكم من ${COMPANY_INFO.name_ar} رقم #${selectedInvoice.id.slice(0, 8)}`;
+        setTimeout(() => {
+          window.open(`https://wa.me/${phone}?text=${encodeURIComponent(message)}`, '_blank');
+        }, 500);
+      }
+    } catch (error) {
+      toast.error(language === 'ar' ? 'خطأ في حفظ الصورة' : 'Error saving image');
+    } finally {
+      setSavingImage(false);
+    }
+  };
+
   const updateItemFee = (index, newFee) => {
     const updated = [...invoiceItems];
     updated[index].fee = parseFloat(newFee) || 0;
