@@ -334,6 +334,14 @@
 **Completed Tasks (January 2025)**:
     -   ✅ **Schedule Field Fix**: Added `schedule` field to `InvoiceItem` model in backend. Now saves and displays correctly in invoices.
     -   ✅ **Tabby & Tamara Payment Methods**: Added as payment method options in invoice creation form (no electronic integration - display only).
+    -   ✅ **Admin-Only Delete**: Invoice deletion is now restricted to admin users only.
+    -   ✅ **Refund Feature**: Added full and partial refund functionality for paid invoices.
+        - New refund dialog with type selection (full/partial)
+        - Partial refund allows custom amount input
+        - Refund reason field (optional)
+        - New invoice statuses: "refunded" and "partially_refunded"
+        - API endpoint: `POST /api/invoices/{id}/refund`
+        - Refunds stored in `refunds` collection in MongoDB
 
 **Upcoming Tasks**:
     -   **WhatsApp Business API Integration (P1)**: Send invoice images directly via WhatsApp API. User has provided phone number: 00966566238384. Waiting for Access Token and Phone Number ID from Meta Business Suite.
