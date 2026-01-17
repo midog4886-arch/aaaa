@@ -372,10 +372,10 @@ Thank you.`;
               </Select>
               <Button 
                 variant="outline" 
-                size="icon"
                 onClick={() => setShowAdvancedSearch(!showAdvancedSearch)}
               >
-                <Filter className="w-4 h-4" />
+                <Filter className="w-4 h-4 me-2" />
+                {language === 'ar' ? 'بحث متقدم' : 'Advanced Search'}
               </Button>
             </div>
             
