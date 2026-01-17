@@ -43,6 +43,8 @@ export const MembersPage = () => {
   const [isActivityDialogOpen, setIsActivityDialogOpen] = useState(false);
   const [selectedMember, setSelectedMember] = useState(null);
   const [saving, setSaving] = useState(false);
+  const [memberInvoices, setMemberInvoices] = useState([]);
+  const [viewTab, setViewTab] = useState('info'); // info, activities, invoices
 
   const [formData, setFormData] = useState({
     name: '',
