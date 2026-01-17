@@ -242,7 +242,7 @@ class AcademyAPITester:
         return None
 
     def test_invoice_creation(self, member_id=None):
-        """Test creating an invoice"""
+        """Test creating an invoice with customer data"""
         print("\n💰 Testing Invoice Creation...")
         
         if not member_id:
@@ -271,7 +271,13 @@ class AcademyAPITester:
             ],
             "discount": 0,
             "notes": "Test invoice",
-            "payment_method": "cash"
+            "payment_method": "cash",
+            # Customer data fields (new feature)
+            "customer_name": "Test Customer",
+            "customer_name_ar": "عميل تجريبي",
+            "customer_phone": "0501234567",
+            "customer_email": "customer@test.com",
+            "customer_address": "Test Address"
         }
         
         result = self.run_test("Create Invoice", "POST", "invoices", 201, invoice_data)
@@ -279,6 +285,13 @@ class AcademyAPITester:
         if result and 'id' in result:
             invoice_id = result['id']
             self.log_test("Invoice Created", True, f"ID: {invoice_id}")
+            
+            # Verify customer data is stored
+            if result.get('customer_name') == "Test Customer":
+                self.log_test("Customer Data Stored", True, "Customer name saved correctly")
+            else:
+                self.log_test("Customer Data Stored", False, "Customer data not saved")
+            
             return invoice_id
         
         return None
