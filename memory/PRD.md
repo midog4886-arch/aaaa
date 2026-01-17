@@ -348,6 +348,11 @@
         - Detailed refunds table with invoice #, customer, amounts, type, reason, date
         - Updated print function to include refunds details
         - API updated: `/api/reports/financial` now returns refund data
+    -   ✅ **Interactive Report Cards**: All summary cards are now clickable to show details:
+        - إجمالي الإيرادات (Total Revenue) → Shows revenue breakdown by activity
+        - إجمالي المسترجع (Total Refunds) → Shows refund operations details table
+        - صافي الإيرادات (Net Revenue) → Shows calculation breakdown (Revenue - Refunds = Net)
+        - الفواتير (Invoices) → Shows list of paid invoices with payment methods
 
 **Upcoming Tasks**:
     -   **WhatsApp Business API Integration (P1)**: Send invoice images directly via WhatsApp API. User has provided phone number: 00966566238384. Waiting for Access Token and Phone Number ID from Meta Business Suite.
