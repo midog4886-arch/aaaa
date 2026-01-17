@@ -1105,9 +1105,18 @@ async def export_invoices(
 async def export_financial_report(
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
-    current_user: dict = Depends(get_current_user)
+    format: str = "xlsx",
+    token: Optional[str] = None
 ):
-    """Export financial report to CSV"""
+    """Export financial report to Excel/CSV"""
+    # Verify token
+    if not token:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    try:
+        jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+    except:
+        raise HTTPException(status_code=401, detail="Invalid token")
+    
     query = {"status": "paid"}
     
     if start_date:
@@ -1119,48 +1128,103 @@ async def export_financial_report(
             query["paid_at"] = {"$lte": end_date}
     
     invoices = await db.invoices.find(query, {"_id": 0}).sort("paid_at", -1).to_list(10000)
+    activities_data = await db.activities.find({}, {"_id": 0}).to_list(100)
     
-    # Create CSV
-    output = io.StringIO()
-    writer = csv.writer(output)
-    
-    # Summary section
+    # Calculate summary
     total_revenue = sum(inv["total"] for inv in invoices)
-    writer.writerow(["التقرير المالي - Financial Report"])
-    writer.writerow([f"الفترة: {start_date or 'الكل'} إلى {end_date or 'الآن'}"])
-    writer.writerow([f"إجمالي الإيرادات: {total_revenue} ر.س"])
-    writer.writerow([f"عدد الفواتير: {len(invoices)}"])
-    writer.writerow([])
+    total_vat = sum(inv.get("vat_amount", 0) for inv in invoices)
     
-    # Details header
-    writer.writerow([
-        "رقم الفاتورة", "اسم العضو", "الأنشطة", 
-        "الإجمالي", "تاريخ الدفع"
-    ])
+    # Revenue by activity
+    revenue_by_activity = {}
+    for inv in invoices:
+        for item in inv.get("items", []):
+            act_name = item.get("activity_name", "غير محدد")
+            revenue_by_activity[act_name] = revenue_by_activity.get(act_name, 0) + item.get("fee", 0)
     
-    for invoice in invoices:
-        activities_list = ", ".join([item.get('activity_name', '') for item in invoice.get("items", [])])
+    if format == "xlsx":
+        wb = Workbook()
         
-        writer.writerow([
-            invoice.get("id", "")[:8],
-            invoice.get("member_name", ""),
-            activities_list,
-            invoice.get("total", 0),
-            (invoice.get("paid_at", "") or "")[:10]
-        ])
-    
-    output.seek(0)
-    
-    # Add BOM for Excel Arabic support
-    response_content = '\ufeff' + output.getvalue()
-    
-    return StreamingResponse(
-        iter([response_content]),
-        media_type="text/csv; charset=utf-8",
-        headers={
-            "Content-Disposition": f"attachment; filename=financial_report_{datetime.now().strftime('%Y%m%d')}.csv"
-        }
-    )
+        # Summary Sheet
+        ws_summary = wb.active
+        ws_summary.title = "ملخص التقرير"
+        
+        header_fill = PatternFill(start_color="F97316", end_color="F97316", fill_type="solid")
+        header_font = Font(bold=True, color="FFFFFF")
+        title_font = Font(bold=True, size=14)
+        thin_border = Border(left=Side(style='thin'), right=Side(style='thin'), top=Side(style='thin'), bottom=Side(style='thin'))
+        
+        ws_summary.cell(row=1, column=1, value="التقرير المالي - أكاديمية أداء الأبطال العالمية").font = title_font
+        ws_summary.cell(row=2, column=1, value=f"الفترة: {start_date or 'الكل'} إلى {end_date or 'الآن'}")
+        ws_summary.cell(row=4, column=1, value="إجمالي الإيرادات:").font = Font(bold=True)
+        ws_summary.cell(row=4, column=2, value=f"{total_revenue} ر.س")
+        ws_summary.cell(row=5, column=1, value="إجمالي الضريبة:").font = Font(bold=True)
+        ws_summary.cell(row=5, column=2, value=f"{total_vat} ر.س")
+        ws_summary.cell(row=6, column=1, value="عدد الفواتير:").font = Font(bold=True)
+        ws_summary.cell(row=6, column=2, value=len(invoices))
+        
+        # Revenue by activity section
+        ws_summary.cell(row=8, column=1, value="الإيرادات حسب النشاط").font = title_font
+        ws_summary.cell(row=9, column=1, value="النشاط").fill = header_fill
+        ws_summary.cell(row=9, column=1).font = header_font
+        ws_summary.cell(row=9, column=2, value="الإيرادات").fill = header_fill
+        ws_summary.cell(row=9, column=2).font = header_font
+        
+        row = 10
+        for act_name, revenue in revenue_by_activity.items():
+            ws_summary.cell(row=row, column=1, value=act_name).border = thin_border
+            ws_summary.cell(row=row, column=2, value=f"{revenue} ر.س").border = thin_border
+            row += 1
+        
+        ws_summary.column_dimensions['A'].width = 25
+        ws_summary.column_dimensions['B'].width = 20
+        
+        # Invoices Detail Sheet
+        ws_invoices = wb.create_sheet("تفاصيل الفواتير")
+        headers = ["م", "رقم الفاتورة", "اسم العميل", "الأنشطة", "الإجمالي", "تاريخ الدفع"]
+        for col, header in enumerate(headers, 1):
+            cell = ws_invoices.cell(row=1, column=col, value=header)
+            cell.fill = header_fill
+            cell.font = header_font
+            cell.border = thin_border
+        
+        for row_num, invoice in enumerate(invoices, 2):
+            activities_list = ", ".join([item.get('activity_name', '') for item in invoice.get("items", [])])
+            row_data = [row_num - 1, invoice.get("id", "")[:8], invoice.get("customer_name_ar", invoice.get("member_name", "")), activities_list, invoice.get("total", 0), (invoice.get("paid_at", "") or "")[:10]]
+            for col, value in enumerate(row_data, 1):
+                cell = ws_invoices.cell(row=row_num, column=col, value=value)
+                cell.border = thin_border
+        
+        output = io.BytesIO()
+        wb.save(output)
+        output.seek(0)
+        
+        return StreamingResponse(
+            output,
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": f"attachment; filename=financial_report_{datetime.now().strftime('%Y%m%d')}.xlsx"}
+        )
+    else:
+        output = io.StringIO()
+        writer = csv.writer(output)
+        writer.writerow(["التقرير المالي - أكاديمية أداء الأبطال العالمية"])
+        writer.writerow([f"الفترة: {start_date or 'الكل'} إلى {end_date or 'الآن'}"])
+        writer.writerow([f"إجمالي الإيرادات: {total_revenue} ر.س"])
+        writer.writerow([f"عدد الفواتير: {len(invoices)}"])
+        writer.writerow([])
+        writer.writerow(["م", "رقم الفاتورة", "اسم العميل", "الأنشطة", "الإجمالي", "تاريخ الدفع"])
+        
+        for idx, invoice in enumerate(invoices, 1):
+            activities_list = ", ".join([item.get('activity_name', '') for item in invoice.get("items", [])])
+            writer.writerow([idx, invoice.get("id", "")[:8], invoice.get("member_name", ""), activities_list, invoice.get("total", 0), (invoice.get("paid_at", "") or "")[:10]])
+        
+        output.seek(0)
+        response_content = '\ufeff' + output.getvalue()
+        
+        return StreamingResponse(
+            iter([response_content]),
+            media_type="text/csv; charset=utf-8",
+            headers={"Content-Disposition": f"attachment; filename=financial_report_{datetime.now().strftime('%Y%m%d')}.csv"}
+        )
 
 @api_router.get("/export/all-data")
 async def export_all_data(current_user: dict = Depends(get_current_user)):
