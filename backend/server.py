@@ -434,11 +434,18 @@ async def create_invoice(invoice: InvoiceCreate, current_user: dict = Depends(ge
     subtotal = sum(item.fee for item in invoice.items)
     total = subtotal - invoice.discount
     
+    # Use provided customer data or default to member data
+    customer_name = invoice.customer_name or member.get("name", "")
+    customer_name_ar = invoice.customer_name_ar or member.get("name_ar", "")
+    customer_phone = invoice.customer_phone or member.get("phone", "")
+    customer_email = invoice.customer_email or member.get("email", "")
+    customer_address = invoice.customer_address or ""
+    
     invoice_id = str(uuid.uuid4())
     invoice_doc = {
         "id": invoice_id,
         "member_id": invoice.member_id,
-        "member_name": member.get("name_ar", member.get("name", "")),
+        "member_name": customer_name_ar or customer_name,
         "items": [item.model_dump() for item in invoice.items],
         "subtotal": subtotal,
         "discount": invoice.discount,
@@ -447,7 +454,13 @@ async def create_invoice(invoice: InvoiceCreate, current_user: dict = Depends(ge
         "payment_method": invoice.payment_method,
         "notes": invoice.notes,
         "created_at": datetime.now(timezone.utc).isoformat(),
-        "paid_at": None
+        "paid_at": None,
+        # Customer data stored with invoice
+        "customer_name": customer_name,
+        "customer_name_ar": customer_name_ar,
+        "customer_phone": customer_phone,
+        "customer_email": customer_email,
+        "customer_address": customer_address
     }
     await db.invoices.insert_one(invoice_doc)
     return Invoice(**{k: v for k, v in invoice_doc.items() if k != "_id"})
