@@ -294,6 +294,123 @@ async def get_me(current_user: dict = Depends(get_current_user)):
         raise HTTPException(status_code=404, detail="User not found")
     return user
 
+# ============ USERS MANAGEMENT ROUTES ============
+
+@api_router.get("/users")
+async def get_users(current_user: dict = Depends(get_current_user)):
+    """Get all users - admin only"""
+    if not current_user.get("is_admin", False):
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    users = await db.users.find({}, {"_id": 0, "password": 0}).to_list(1000)
+    
+    # Add branch name to each user
+    branches = await db.branches.find({}, {"_id": 0}).to_list(100)
+    branch_map = {b["id"]: b for b in branches}
+    
+    for user in users:
+        branch_id = user.get("branch_id")
+        if branch_id and branch_id in branch_map:
+            user["branch_name"] = branch_map[branch_id].get("name_ar", branch_map[branch_id].get("name", ""))
+        else:
+            user["branch_name"] = ""
+    
+    return users
+
+@api_router.post("/users")
+async def create_user(current_user: dict = Depends(get_current_user)):
+    """Create a new user - admin only"""
+    if not current_user.get("is_admin", False):
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    # This endpoint expects JSON body with user data
+    return {"message": "Use /users/create endpoint"}
+
+class UserCreateAdmin(BaseModel):
+    username: str
+    password: str
+    name: str
+    branch_id: Optional[str] = None
+    is_admin: bool = False
+
+@api_router.post("/users/create")
+async def create_user_admin(user_data: UserCreateAdmin, current_user: dict = Depends(get_current_user)):
+    """Create a new user - admin only"""
+    if not current_user.get("is_admin", False):
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    # Check if username exists
+    existing = await db.users.find_one({"username": user_data.username})
+    if existing:
+        raise HTTPException(status_code=400, detail="Username already exists")
+    
+    user_id = str(uuid.uuid4())
+    user_doc = {
+        "id": user_id,
+        "username": user_data.username,
+        "password": hash_password(user_data.password),
+        "name": user_data.name,
+        "branch_id": user_data.branch_id,
+        "is_admin": user_data.is_admin,
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+    await db.users.insert_one(user_doc)
+    
+    # Return user without password
+    del user_doc["password"]
+    return user_doc
+
+class UserUpdateAdmin(BaseModel):
+    name: Optional[str] = None
+    branch_id: Optional[str] = None
+    is_admin: Optional[bool] = None
+    password: Optional[str] = None
+
+@api_router.put("/users/{user_id}")
+async def update_user(user_id: str, user_data: UserUpdateAdmin, current_user: dict = Depends(get_current_user)):
+    """Update a user - admin only"""
+    if not current_user.get("is_admin", False):
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    update_data = {}
+    if user_data.name is not None:
+        update_data["name"] = user_data.name
+    if user_data.branch_id is not None:
+        update_data["branch_id"] = user_data.branch_id
+    if user_data.is_admin is not None:
+        update_data["is_admin"] = user_data.is_admin
+    if user_data.password:
+        update_data["password"] = hash_password(user_data.password)
+    
+    if not update_data:
+        raise HTTPException(status_code=400, detail="No data to update")
+    
+    result = await db.users.find_one_and_update(
+        {"id": user_id},
+        {"$set": update_data},
+        return_document=True
+    )
+    if not result:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    # Return user without password
+    return {k: v for k, v in result.items() if k not in ["_id", "password"]}
+
+@api_router.delete("/users/{user_id}")
+async def delete_user(user_id: str, current_user: dict = Depends(get_current_user)):
+    """Delete a user - admin only"""
+    if not current_user.get("is_admin", False):
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    # Prevent deleting yourself
+    if user_id == current_user.get("user_id"):
+        raise HTTPException(status_code=400, detail="Cannot delete yourself")
+    
+    result = await db.users.delete_one({"id": user_id})
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="User not found")
+    return {"message": "User deleted"}
+
 # ============ BRANCHES ROUTES ============
 
 @api_router.get("/branches")
