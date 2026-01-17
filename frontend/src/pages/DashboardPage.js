@@ -189,9 +189,23 @@ export const DashboardPage = () => {
           {/* Expiring Subscriptions */}
           <Card data-testid="expiring-subscriptions">
             <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <AlertTriangle className="w-5 h-5 text-amber-500" />
-                {t('expiring_subscriptions')}
+              <CardTitle className="flex items-center justify-between">
+                <span className="flex items-center gap-2">
+                  <AlertTriangle className="w-5 h-5 text-amber-500" />
+                  {t('expiring_subscriptions')}
+                </span>
+                {expiring.length > 0 && (
+                  <Button 
+                    size="sm" 
+                    variant="outline" 
+                    onClick={sendAllReminders}
+                    className="text-amber-600 border-amber-500/30 hover:bg-amber-500/10"
+                    data-testid="send-all-reminders-btn"
+                  >
+                    <Send className="w-4 h-4 me-1" />
+                    {language === 'ar' ? 'إرسال تنبيهات' : 'Send All'}
+                  </Button>
+                )}
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -214,20 +228,30 @@ export const DashboardPage = () => {
                           </div>
                         </div>
                       </div>
-                      <Badge 
-                        variant="outline" 
-                        className={`${item.days_remaining <= 3 ? 'bg-red-500/10 text-red-500 border-red-500/30' : 'bg-amber-500/10 text-amber-500 border-amber-500/30'}`}
-                      >
-                        <Calendar className="w-3 h-3 me-1" />
-                        {item.days_remaining} {t('days')}
-                      </Badge>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => sendWhatsAppReminder(item)}
+                          className="p-2 rounded-full hover:bg-green-500/10 text-green-600 transition-colors"
+                          title={language === 'ar' ? 'إرسال تنبيه واتساب' : 'Send WhatsApp reminder'}
+                          data-testid={`send-reminder-${index}`}
+                        >
+                          <MessageSquare className="w-4 h-4" />
+                        </button>
+                        <Badge 
+                          variant="outline" 
+                          className={`${item.days_remaining <= 3 ? 'bg-red-500/10 text-red-500 border-red-500/30' : 'bg-amber-500/10 text-amber-500 border-amber-500/30'}`}
+                        >
+                          <Calendar className="w-3 h-3 me-1" />
+                          {item.days_remaining} {t('days')}
+                        </Badge>
+                      </div>
                     </div>
                   ))}
                 </div>
               ) : (
                 <div className="empty-state">
-                  <AlertTriangle className="empty-state-icon" />
-                  <p>{t('no_data')}</p>
+                  <Bell className="empty-state-icon" />
+                  <p>{language === 'ar' ? 'لا توجد اشتراكات تنتهي قريباً' : 'No expiring subscriptions'}</p>
                 </div>
               )}
             </CardContent>
