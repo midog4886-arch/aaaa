@@ -267,9 +267,10 @@ export const ReportsPage = () => {
               {formatCurrency(report?.total_revenue)}
             </div>
             <div className="stat-card-label">{language === 'ar' ? 'إجمالي الإيرادات' : 'Total Revenue'}</div>
+            <div className="text-xs text-muted-foreground mt-1">{language === 'ar' ? 'اضغط للتفاصيل' : 'Click for details'}</div>
           </Card>
 
-          <Card className="stat-card" data-testid="total-refunds-card">
+          <Card className={`stat-card cursor-pointer hover:shadow-lg transition-shadow ${activeDetail === 'refunds' ? 'ring-2 ring-purple-500' : ''}`} data-testid="total-refunds-card" onClick={() => toggleDetail('refunds')}>
             <div className="stat-card-icon bg-purple-500/10">
               <RefreshCcw className="w-6 h-6 text-purple-500" />
             </div>
@@ -277,9 +278,10 @@ export const ReportsPage = () => {
               {formatCurrency(report?.total_refunds)}
             </div>
             <div className="stat-card-label">{language === 'ar' ? 'إجمالي المسترجع' : 'Total Refunds'}</div>
+            <div className="text-xs text-muted-foreground mt-1">{language === 'ar' ? 'اضغط للتفاصيل' : 'Click for details'}</div>
           </Card>
 
-          <Card className="stat-card" data-testid="net-revenue-card">
+          <Card className={`stat-card cursor-pointer hover:shadow-lg transition-shadow ${activeDetail === 'net' ? 'ring-2 ring-green-500' : ''}`} data-testid="net-revenue-card" onClick={() => toggleDetail('net')}>
             <div className="stat-card-icon bg-green-500/10">
               <Wallet className="w-6 h-6 text-green-500" />
             </div>
@@ -287,9 +289,10 @@ export const ReportsPage = () => {
               {formatCurrency(report?.net_revenue)}
             </div>
             <div className="stat-card-label">{language === 'ar' ? 'صافي الإيرادات' : 'Net Revenue'}</div>
+            <div className="text-xs text-muted-foreground mt-1">{language === 'ar' ? 'اضغط للتفاصيل' : 'Click for details'}</div>
           </Card>
 
-          <Card className="stat-card" data-testid="invoice-count-card">
+          <Card className={`stat-card cursor-pointer hover:shadow-lg transition-shadow ${activeDetail === 'invoices' ? 'ring-2 ring-blue-500' : ''}`} data-testid="invoice-count-card" onClick={() => toggleDetail('invoices')}>
             <div className="stat-card-icon bg-blue-500/10">
               <Receipt className="w-6 h-6 text-blue-500" />
             </div>
@@ -297,17 +300,67 @@ export const ReportsPage = () => {
               {report?.invoice_count || 0}
             </div>
             <div className="stat-card-label">{t('invoices')}</div>
+            <div className="text-xs text-muted-foreground mt-1">{language === 'ar' ? 'اضغط للتفاصيل' : 'Click for details'}</div>
           </Card>
         </div>
 
-        {/* Refunds Summary */}
-        {(report?.refund_count > 0 || report?.total_refunds > 0) && (
-          <Card className="border-purple-200 bg-purple-50/30">
-            <CardHeader>
+        {/* Revenue Details */}
+        {activeDetail === 'revenue' && (
+          <Card className="border-primary/30 bg-primary/5 animate-in slide-in-from-top-2">
+            <CardHeader className="flex flex-row items-center justify-between">
+              <CardTitle className="flex items-center gap-2 text-primary">
+                <TrendingUp className="w-5 h-5" />
+                {language === 'ar' ? 'تفاصيل الإيرادات' : 'Revenue Details'}
+              </CardTitle>
+              <Button variant="ghost" size="sm" onClick={() => setActiveDetail(null)}>✕</Button>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                <div className="p-4 bg-white rounded-lg border">
+                  <div className="text-2xl font-bold text-primary">{formatCurrency(report?.total_revenue)}</div>
+                  <div className="text-sm text-muted-foreground">{language === 'ar' ? 'إجمالي الإيرادات من الفواتير المدفوعة' : 'Total from paid invoices'}</div>
+                </div>
+                <div className="p-4 bg-white rounded-lg border">
+                  <div className="text-2xl font-bold text-primary">{report?.invoice_count || 0}</div>
+                  <div className="text-sm text-muted-foreground">{language === 'ar' ? 'عدد الفواتير المدفوعة' : 'Paid invoices count'}</div>
+                </div>
+              </div>
+              {report?.revenue_by_activity?.length > 0 && (
+                <div className="overflow-x-auto">
+                  <h4 className="font-semibold mb-2">{language === 'ar' ? 'الإيرادات حسب النشاط:' : 'Revenue by Activity:'}</h4>
+                  <table className="data-table w-full">
+                    <thead>
+                      <tr className="bg-primary/10">
+                        <th>{language === 'ar' ? 'النشاط' : 'Activity'}</th>
+                        <th>{language === 'ar' ? 'عدد الاشتراكات' : 'Subscriptions'}</th>
+                        <th>{language === 'ar' ? 'الإيرادات' : 'Revenue'}</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {report.revenue_by_activity.map((activity, idx) => (
+                        <tr key={idx}>
+                          <td className="font-medium">{activity.name}</td>
+                          <td>{activity.count}</td>
+                          <td className="font-bold text-primary">{activity.total?.toLocaleString()} {t('sar')}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Refunds Details */}
+        {activeDetail === 'refunds' && (
+          <Card className="border-purple-200 bg-purple-50/30 animate-in slide-in-from-top-2">
+            <CardHeader className="flex flex-row items-center justify-between">
               <CardTitle className="flex items-center gap-2 text-purple-700">
                 <RefreshCcw className="w-5 h-5" />
-                {language === 'ar' ? 'ملخص الاسترجاعات' : 'Refunds Summary'}
+                {language === 'ar' ? 'تفاصيل الاسترجاعات' : 'Refunds Details'}
               </CardTitle>
+              <Button variant="ghost" size="sm" onClick={() => setActiveDetail(null)}>✕</Button>
             </CardHeader>
             <CardContent>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
@@ -324,20 +377,155 @@ export const ReportsPage = () => {
                   <div className="text-sm text-muted-foreground">{language === 'ar' ? 'استرجاع جزئي' : 'Partial Refunds'}</div>
                 </div>
               </div>
-
-              {/* Refund Details Table */}
-              {report?.refund_details?.length > 0 && (
+              {report?.refund_details?.length > 0 ? (
                 <div className="overflow-x-auto">
                   <table className="data-table w-full">
                     <thead>
                       <tr className="bg-purple-100">
                         <th className="text-purple-700">{language === 'ar' ? 'رقم الفاتورة' : 'Invoice #'}</th>
                         <th className="text-purple-700">{language === 'ar' ? 'العميل' : 'Customer'}</th>
-                        <th className="text-purple-700">{language === 'ar' ? 'المبلغ الأصلي' : 'Original Amount'}</th>
-                        <th className="text-purple-700">{language === 'ar' ? 'المبلغ المسترجع' : 'Refunded Amount'}</th>
+                        <th className="text-purple-700">{language === 'ar' ? 'المبلغ الأصلي' : 'Original'}</th>
+                        <th className="text-purple-700">{language === 'ar' ? 'المسترجع' : 'Refunded'}</th>
                         <th className="text-purple-700">{language === 'ar' ? 'النوع' : 'Type'}</th>
                         <th className="text-purple-700">{language === 'ar' ? 'السبب' : 'Reason'}</th>
                         <th className="text-purple-700">{language === 'ar' ? 'التاريخ' : 'Date'}</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {report.refund_details.map((refund, idx) => (
+                        <tr key={idx}>
+                          <td className="font-mono text-sm">#{refund.invoice_id?.slice(0, 8)}</td>
+                          <td>{refund.customer_name || '-'}</td>
+                          <td>{refund.original_amount} {t('sar')}</td>
+                          <td className="font-bold text-purple-600">{refund.refund_amount} {t('sar')}</td>
+                          <td>
+                            <Badge variant="outline" className={refund.refund_type === 'full' ? 'bg-purple-100 text-purple-700' : 'bg-amber-100 text-amber-700'}>
+                              {refund.refund_type === 'full' ? (language === 'ar' ? 'كامل' : 'Full') : (language === 'ar' ? 'جزئي' : 'Partial')}
+                            </Badge>
+                          </td>
+                          <td className="text-sm text-muted-foreground">{refund.refund_reason || '-'}</td>
+                          <td className="text-sm">{refund.refunded_at ? new Date(refund.refunded_at).toLocaleDateString(language === 'ar' ? 'ar-SA' : 'en-US') : '-'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <div className="text-center py-8 text-muted-foreground">{language === 'ar' ? 'لا توجد عمليات استرجاع' : 'No refunds found'}</div>
+              )}
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Net Revenue Details */}
+        {activeDetail === 'net' && (
+          <Card className="border-green-200 bg-green-50/30 animate-in slide-in-from-top-2">
+            <CardHeader className="flex flex-row items-center justify-between">
+              <CardTitle className="flex items-center gap-2 text-green-700">
+                <Wallet className="w-5 h-5" />
+                {language === 'ar' ? 'تفاصيل صافي الإيرادات' : 'Net Revenue Details'}
+              </CardTitle>
+              <Button variant="ghost" size="sm" onClick={() => setActiveDetail(null)}>✕</Button>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                <div className="p-4 bg-white rounded-lg border border-green-200">
+                  <div className="flex justify-between items-center py-2 border-b">
+                    <span className="text-muted-foreground">{language === 'ar' ? 'إجمالي الإيرادات' : 'Total Revenue'}</span>
+                    <span className="font-bold text-primary text-lg">{formatCurrency(report?.total_revenue)}</span>
+                  </div>
+                  <div className="flex justify-between items-center py-2 border-b">
+                    <span className="text-muted-foreground">{language === 'ar' ? 'إجمالي المسترجع (-)' : 'Total Refunds (-)'}</span>
+                    <span className="font-bold text-purple-600 text-lg">- {formatCurrency(report?.total_refunds)}</span>
+                  </div>
+                  <div className="flex justify-between items-center py-3 mt-2 bg-green-100 rounded-lg px-3">
+                    <span className="font-semibold text-green-800">{language === 'ar' ? 'صافي الإيرادات' : 'Net Revenue'}</span>
+                    <span className="font-bold text-green-700 text-2xl">{formatCurrency(report?.net_revenue)}</span>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="p-4 bg-white rounded-lg border">
+                    <div className="text-xl font-bold text-blue-600">{report?.invoice_count || 0}</div>
+                    <div className="text-sm text-muted-foreground">{language === 'ar' ? 'فواتير مدفوعة' : 'Paid Invoices'}</div>
+                  </div>
+                  <div className="p-4 bg-white rounded-lg border">
+                    <div className="text-xl font-bold text-purple-600">{report?.refund_count || 0}</div>
+                    <div className="text-sm text-muted-foreground">{language === 'ar' ? 'عمليات استرجاع' : 'Refund Operations'}</div>
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Invoices Details */}
+        {activeDetail === 'invoices' && (
+          <Card className="border-blue-200 bg-blue-50/30 animate-in slide-in-from-top-2">
+            <CardHeader className="flex flex-row items-center justify-between">
+              <CardTitle className="flex items-center gap-2 text-blue-700">
+                <Receipt className="w-5 h-5" />
+                {language === 'ar' ? 'تفاصيل الفواتير' : 'Invoices Details'}
+              </CardTitle>
+              <Button variant="ghost" size="sm" onClick={() => setActiveDetail(null)}>✕</Button>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                <div className="p-4 bg-white rounded-lg border border-blue-200">
+                  <div className="text-2xl font-bold text-blue-600">{report?.invoice_count || 0}</div>
+                  <div className="text-sm text-muted-foreground">{language === 'ar' ? 'إجمالي الفواتير المدفوعة' : 'Total Paid Invoices'}</div>
+                </div>
+                <div className="p-4 bg-white rounded-lg border border-blue-200">
+                  <div className="text-2xl font-bold text-blue-600">{formatCurrency(report?.total_revenue)}</div>
+                  <div className="text-sm text-muted-foreground">{language === 'ar' ? 'إجمالي قيمة الفواتير' : 'Total Invoice Value'}</div>
+                </div>
+              </div>
+              {report?.invoices?.length > 0 ? (
+                <div className="overflow-x-auto">
+                  <table className="data-table w-full">
+                    <thead>
+                      <tr className="bg-blue-100">
+                        <th className="text-blue-700">{language === 'ar' ? 'رقم الفاتورة' : 'Invoice #'}</th>
+                        <th className="text-blue-700">{language === 'ar' ? 'العميل' : 'Customer'}</th>
+                        <th className="text-blue-700">{language === 'ar' ? 'المبلغ' : 'Amount'}</th>
+                        <th className="text-blue-700">{language === 'ar' ? 'طريقة الدفع' : 'Payment'}</th>
+                        <th className="text-blue-700">{language === 'ar' ? 'التاريخ' : 'Date'}</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {report.invoices.slice(0, 20).map((invoice, idx) => (
+                        <tr key={idx}>
+                          <td className="font-mono text-sm">#{invoice.id?.slice(0, 8)}</td>
+                          <td>{invoice.customer_name_ar || invoice.member_name || '-'}</td>
+                          <td className="font-bold text-blue-600">{invoice.total} {t('sar')}</td>
+                          <td>
+                            <Badge variant="outline">
+                              {invoice.payment_method === 'cash' ? (language === 'ar' ? 'نقداً' : 'Cash') : 
+                               invoice.payment_method === 'card' ? (language === 'ar' ? 'بطاقة' : 'Card') : 
+                               invoice.payment_method === 'transfer' ? (language === 'ar' ? 'تحويل' : 'Transfer') :
+                               invoice.payment_method === 'tabby' ? 'تابي' :
+                               invoice.payment_method === 'tamara' ? 'تمارا' :
+                               invoice.payment_method}
+                            </Badge>
+                          </td>
+                          <td className="text-sm">{new Date(invoice.paid_at || invoice.created_at).toLocaleDateString(language === 'ar' ? 'ar-SA' : 'en-US')}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  {report.invoices.length > 20 && (
+                    <p className="text-center text-sm text-muted-foreground mt-2">
+                      {language === 'ar' ? `عرض 20 من ${report.invoices.length} فاتورة` : `Showing 20 of ${report.invoices.length} invoices`}
+                    </p>
+                  )}
+                </div>
+              ) : (
+                <div className="text-center py-8 text-muted-foreground">{language === 'ar' ? 'لا توجد فواتير' : 'No invoices found'}</div>
+              )}
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Refunds Summary - Old Section Removed, now interactive above */}
                       </tr>
                     </thead>
                     <tbody>
