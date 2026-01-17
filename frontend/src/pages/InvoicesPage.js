@@ -479,6 +479,13 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
                             <Input type="date" value={item.end_date} onChange={(e) => updateItemDate(idx, 'end_date', e.target.value)} className="h-8 text-sm" /></div>
                           <div className="space-y-1"><Label className="text-xs">{language === 'ar' ? 'المبلغ' : 'Fee'}</Label>
                             <Input type="number" value={item.fee} onChange={(e) => updateItemFee(idx, e.target.value)} className="h-8 text-sm" /></div>
+                          <div className="space-y-1 col-span-2"><Label className="text-xs">{language === 'ar' ? 'جدول المواعيد' : 'Schedule'}</Label>
+                            <Input 
+                              value={item.schedule || ''} 
+                              onChange={(e) => updateItemSchedule(idx, e.target.value)} 
+                              className="h-8 text-sm" 
+                              placeholder={language === 'ar' ? 'مثال: السبت والاثنين والأربعاء 4-5 مساءً' : 'e.g. Sat, Mon, Wed 4-5 PM'}
+                            /></div>
                         </div>
                       </div>
                     ))}
