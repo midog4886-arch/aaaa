@@ -542,6 +542,26 @@ async def cancel_invoice(invoice_id: str, current_user: dict = Depends(get_curre
         raise HTTPException(status_code=404, detail="Invoice not found")
     return {"message": "Invoice cancelled"}
 
+@api_router.put("/invoices/{invoice_id}/restore")
+async def restore_invoice(invoice_id: str, current_user: dict = Depends(get_current_user)):
+    """Restore a cancelled invoice to pending status"""
+    result = await db.invoices.find_one_and_update(
+        {"id": invoice_id, "status": "cancelled"},
+        {"$set": {"status": "pending"}},
+        return_document=True
+    )
+    if not result:
+        raise HTTPException(status_code=404, detail="Invoice not found or not cancelled")
+    return {"message": "Invoice restored"}
+
+@api_router.delete("/invoices/{invoice_id}")
+async def delete_invoice(invoice_id: str, current_user: dict = Depends(get_current_user)):
+    """Permanently delete an invoice"""
+    result = await db.invoices.delete_one({"id": invoice_id})
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Invoice not found")
+    return {"message": "Invoice deleted"}
+
 # ============ STRIPE PAYMENT ROUTES ============
 
 @api_router.post("/payments/checkout")
