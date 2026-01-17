@@ -108,5 +108,10 @@ export default {
   reports: reportsAPI,
   dashboard: dashboardAPI,
   seed: seedAPI,
+  branches: branchesAPI,
   export: exportAPI,
+  get: (url) => axios.get(`${API}${url}`),
+  post: (url, data) => axios.post(`${API}${url}`, data),
+  put: (url, data) => axios.put(`${API}${url}`, data),
+  delete: (url) => axios.delete(`${API}${url}`),
 };
