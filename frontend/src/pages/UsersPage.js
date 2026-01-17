@@ -330,14 +330,14 @@ const UsersPage = () => {
               <div className="space-y-2">
                 <Label>{language === 'ar' ? 'الفرع' : 'Branch'}</Label>
                 <Select 
-                  value={formData.branch_id} 
-                  onValueChange={(value) => setFormData({ ...formData, branch_id: value })}
+                  value={formData.branch_id || 'none'} 
+                  onValueChange={(value) => setFormData({ ...formData, branch_id: value === 'none' ? '' : value })}
                 >
                   <SelectTrigger data-testid="user-branch-select">
                     <SelectValue placeholder={language === 'ar' ? 'اختر الفرع' : 'Select branch'} />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">{language === 'ar' ? 'بدون فرع' : 'No branch'}</SelectItem>
+                    <SelectItem value="none">{language === 'ar' ? 'بدون فرع' : 'No branch'}</SelectItem>
                     {branches.map((branch) => (
                       <SelectItem key={branch.id} value={branch.id}>
                         {branch.name_ar || branch.name}
