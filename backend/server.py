@@ -356,9 +356,8 @@ async def create_user_admin(user_data: UserCreateAdmin, current_user: dict = Dep
     }
     await db.users.insert_one(user_doc)
     
-    # Return user without password
-    del user_doc["password"]
-    return user_doc
+    # Return user without password and _id
+    return {k: v for k, v in user_doc.items() if k not in ["password", "_id"]}
 
 class UserUpdateAdmin(BaseModel):
     name: Optional[str] = None
