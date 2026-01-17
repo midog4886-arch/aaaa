@@ -1010,6 +1010,7 @@ async def get_financial_report(
     is_admin = current_user.get("is_admin", False)
     branch_id = current_user.get("branch_id")
     
+    # Query for paid invoices
     query = {"status": "paid"}
     if not is_admin and branch_id:
         query["branch_id"] = branch_id
@@ -1024,7 +1025,29 @@ async def get_financial_report(
     
     invoices = await db.invoices.find(query, {"_id": 0}).to_list(10000)
     
+    # Also get refunded invoices for complete picture
+    refunded_query = {"status": {"$in": ["refunded", "partially_refunded"]}}
+    if not is_admin and branch_id:
+        refunded_query["branch_id"] = branch_id
+    if start_date:
+        refunded_query["refunded_at"] = {"$gte": start_date}
+    if end_date:
+        if "refunded_at" in refunded_query:
+            refunded_query["refunded_at"]["$lte"] = end_date
+        else:
+            refunded_query["refunded_at"] = {"$lte": end_date}
+    
+    refunded_invoices = await db.invoices.find(refunded_query, {"_id": 0}).to_list(10000)
+    
     total_revenue = sum(inv["total"] for inv in invoices)
+    
+    # Calculate refunds
+    total_refunds = sum(inv.get("refund_amount", 0) for inv in refunded_invoices)
+    full_refunds = [inv for inv in refunded_invoices if inv.get("refund_type") == "full"]
+    partial_refunds = [inv for inv in refunded_invoices if inv.get("refund_type") == "partial"]
+    
+    # Net revenue (after refunds)
+    net_revenue = total_revenue - total_refunds
     
     # Group by activity
     revenue_by_activity = {}
@@ -1036,10 +1059,27 @@ async def get_financial_report(
             revenue_by_activity[act_id]["total"] += item["fee"]
             revenue_by_activity[act_id]["count"] += 1
     
+    # Refund details list
+    refund_details = [{
+        "invoice_id": inv["id"],
+        "customer_name": inv.get("customer_name_ar") or inv.get("member_name", ""),
+        "original_amount": inv["total"],
+        "refund_amount": inv.get("refund_amount", 0),
+        "refund_type": inv.get("refund_type", ""),
+        "refund_reason": inv.get("refund_reason", ""),
+        "refunded_at": inv.get("refunded_at", "")
+    } for inv in refunded_invoices]
+    
     return {
         "total_revenue": total_revenue,
+        "total_refunds": total_refunds,
+        "net_revenue": net_revenue,
         "invoice_count": len(invoices),
+        "refund_count": len(refunded_invoices),
+        "full_refund_count": len(full_refunds),
+        "partial_refund_count": len(partial_refunds),
         "revenue_by_activity": list(revenue_by_activity.values()),
+        "refund_details": refund_details,
         "invoices": invoices[:50]  # Return last 50 invoices
     }
 
