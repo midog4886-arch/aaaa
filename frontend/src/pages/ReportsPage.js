@@ -140,6 +140,21 @@ export const ReportsPage = () => {
                 <Calendar className="w-4 h-4 me-2" />
                 {t('filter')}
               </Button>
+              <Button 
+                variant="outline" 
+                onClick={() => {
+                  const token = localStorage.getItem('token');
+                  const params = {};
+                  if (filters.start_date) params.start_date = filters.start_date;
+                  if (filters.end_date) params.end_date = filters.end_date;
+                  const url = exportAPI.reports(params) + `&token=${token}`;
+                  window.open(url, '_blank');
+                }}
+                data-testid="export-report-btn"
+              >
+                <Download className="w-4 h-4 me-2" />
+                {language === 'ar' ? 'تصدير Excel' : 'Export Excel'}
+              </Button>
             </div>
           </CardContent>
         </Card>
