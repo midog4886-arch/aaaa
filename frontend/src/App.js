@@ -143,6 +143,14 @@ function AppRoutes() {
           </ProtectedRoute>
         } 
       />
+      <Route 
+        path="/users" 
+        element={
+          <ProtectedRoute>
+            <UsersPage />
+          </ProtectedRoute>
+        } 
+      />
       
       {/* Default Redirect */}
       <Route path="/" element={<Navigate to="/dashboard" replace />} />
