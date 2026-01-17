@@ -278,10 +278,14 @@ export const InvoicesPage = () => {
     const formattedPhone = phone.replace(/^0/, '966');
     const vatAmount = invoice.vat_amount || 0;
     
-    // Build items list
-    const itemsList = invoice.items?.map((item, i) => 
-      `${i + 1}. ${item.activity_name} - ${item.fee} ر.س`
-    ).join('\n') || '';
+    // Build items list with schedule
+    const itemsList = invoice.items?.map((item, i) => {
+      let line = `${i + 1}. ${item.activity_name} - ${item.fee} ر.س`;
+      if (item.schedule) {
+        line += `\n   📅 ${item.schedule}`;
+      }
+      return line;
+    }).join('\n') || '';
     
     const message = `🏆 *${COMPANY_INFO.name_ar}*
 ━━━━━━━━━━━━━━
@@ -289,7 +293,7 @@ export const InvoicesPage = () => {
 📅 *التاريخ:* ${new Date(invoice.created_at).toLocaleDateString('ar-SA')}
 👤 *العميل:* ${invoice.customer_name_ar || invoice.member_name}
 ━━━━━━━━━━━━━━
-*الأنشطة:*
+*الأنشطة والمواعيد:*
 ${itemsList}
 ━━━━━━━━━━━━━━
 💰 *المجموع:* ${invoice.subtotal} ر.س
