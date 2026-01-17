@@ -128,12 +128,26 @@ class InvoiceItem(BaseModel):
     fee: float
     period: str
 
+# Customer data for invoice
+class CustomerData(BaseModel):
+    name: str
+    name_ar: str
+    phone: str
+    email: Optional[str] = ""
+    address: Optional[str] = ""
+
 class InvoiceCreate(BaseModel):
     member_id: str
     items: List[InvoiceItem]
     discount: float = 0
     notes: Optional[str] = ""
     payment_method: str = "cash"  # cash, card, transfer, stripe
+    # Customer data fields (auto-filled from member but can be edited)
+    customer_name: Optional[str] = ""
+    customer_name_ar: Optional[str] = ""
+    customer_phone: Optional[str] = ""
+    customer_email: Optional[str] = ""
+    customer_address: Optional[str] = ""
 
 class Invoice(BaseModel):
     id: str
@@ -148,6 +162,12 @@ class Invoice(BaseModel):
     notes: Optional[str] = ""
     created_at: str
     paid_at: Optional[str] = None
+    # Customer data stored with invoice
+    customer_name: Optional[str] = ""
+    customer_name_ar: Optional[str] = ""
+    customer_phone: Optional[str] = ""
+    customer_email: Optional[str] = ""
+    customer_address: Optional[str] = ""
 
 class MessageCreate(BaseModel):
     recipients: List[str]  # member IDs
