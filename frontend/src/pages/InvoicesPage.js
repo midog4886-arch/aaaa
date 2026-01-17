@@ -259,8 +259,42 @@ export const InvoicesPage = () => {
   };
 
   const handleDeleteInvoice = async (invoiceId) => {
+    if (!isAdmin) {
+      toast.error(language === 'ar' ? 'الحذف متاح للمدير فقط' : 'Delete is admin only');
+      return;
+    }
     if (!window.confirm(language === 'ar' ? 'هل أنت متأكد من حذف الفاتورة نهائياً؟' : 'Are you sure you want to permanently delete this invoice?')) return;
     try { await invoicesAPI.delete(invoiceId); toast.success(language === 'ar' ? 'تم حذف الفاتورة' : 'Invoice deleted'); loadData(); setIsViewDialogOpen(false); } catch { toast.error(t('error')); }
+  };
+
+  // Open refund dialog
+  const openRefundDialog = (invoice) => {
+    setSelectedInvoice(invoice);
+    setRefundType('full');
+    setRefundAmount(invoice.total);
+    setRefundReason('');
+    setIsRefundDialogOpen(true);
+  };
+
+  // Handle refund submission
+  const handleRefund = async () => {
+    if (!selectedInvoice) return;
+    const amount = refundType === 'full' ? selectedInvoice.total : parseFloat(refundAmount);
+    if (amount <= 0 || amount > selectedInvoice.total) {
+      toast.error(language === 'ar' ? 'مبلغ الاسترجاع غير صحيح' : 'Invalid refund amount');
+      return;
+    }
+    setSaving(true);
+    try {
+      await invoicesAPI.refund(selectedInvoice.id, { amount, reason: refundReason, refund_type: refundType });
+      toast.success(language === 'ar' ? `تم استرجاع ${amount} ر.س بنجاح` : `Refunded ${amount} SAR successfully`);
+      setIsRefundDialogOpen(false);
+      loadData();
+    } catch (error) {
+      toast.error(language === 'ar' ? 'خطأ في عملية الاسترجاع' : 'Refund failed');
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleCancelInvoice = async (invoiceId) => {
