@@ -86,6 +86,7 @@ export const exportAPI = {
   members: (params = {}) => `${API}/export/members?${new URLSearchParams(params).toString()}`,
   invoices: (params = {}) => `${API}/export/invoices?${new URLSearchParams(params).toString()}`,
   reports: (params = {}) => `${API}/export/reports?${new URLSearchParams(params).toString()}`,
+  allData: () => `${API}/export/all-data`,
 };
 
 export default {
