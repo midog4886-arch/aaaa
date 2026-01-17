@@ -925,13 +925,19 @@ async def get_company_info():
 
 @api_router.get("/dashboard/stats")
 async def get_dashboard_stats(current_user: dict = Depends(get_current_user)):
+    is_admin = current_user.get("is_admin", False)
+    branch_id = current_user.get("branch_id")
+    
+    # Build query based on user role
+    branch_query = {} if is_admin else {"branch_id": branch_id} if branch_id else {}
+    
     # Get counts
-    members_count = await db.members.count_documents({})
-    activities_count = await db.activities.count_documents({})
-    coaches_count = await db.coaches.count_documents({})
+    members_count = await db.members.count_documents(branch_query)
+    activities_count = await db.activities.count_documents(branch_query if branch_query else {})
+    coaches_count = await db.coaches.count_documents(branch_query if branch_query else {})
     
     # Get active subscriptions count
-    members = await db.members.find({}, {"_id": 0}).to_list(10000)
+    members = await db.members.find(branch_query, {"_id": 0}).to_list(10000)
     active_subscriptions = sum(
         1 for m in members 
         for a in m.get("activities", []) 
@@ -940,10 +946,10 @@ async def get_dashboard_stats(current_user: dict = Depends(get_current_user)):
     
     # Get this month's revenue
     start_of_month = datetime.now(timezone.utc).replace(day=1, hour=0, minute=0, second=0, microsecond=0).isoformat()
-    month_invoices = await db.invoices.find(
-        {"status": "paid", "paid_at": {"$gte": start_of_month}},
-        {"_id": 0}
-    ).to_list(10000)
+    invoice_query = {"status": "paid", "paid_at": {"$gte": start_of_month}}
+    if not is_admin and branch_id:
+        invoice_query["branch_id"] = branch_id
+    month_invoices = await db.invoices.find(invoice_query, {"_id": 0}).to_list(10000)
     month_revenue = sum(inv["total"] for inv in month_invoices)
     
     # Get expiring subscriptions (next 7 days)
