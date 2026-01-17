@@ -16,13 +16,16 @@ import {
   Menu,
   X,
   Languages,
-  Trophy
+  Trophy,
+  Building2
 } from 'lucide-react';
 
 export const Sidebar = ({ isOpen, onClose }) => {
   const { t, language, toggleLanguage } = useLanguage();
   const { logout, user } = useAuth();
   const navigate = useNavigate();
+
+  const isAdmin = user?.is_admin;
 
   const navItems = [
     { to: '/dashboard', icon: LayoutDashboard, label: 'dashboard' },
@@ -32,6 +35,7 @@ export const Sidebar = ({ isOpen, onClose }) => {
     { to: '/invoices', icon: Receipt, label: 'invoices' },
     { to: '/reports', icon: BarChart3, label: 'reports' },
     { to: '/messages', icon: MessageSquare, label: 'messages' },
+    ...(isAdmin ? [{ to: '/branches', icon: Building2, label: 'branches' }] : []),
     { to: '/settings', icon: Settings, label: 'settings' },
   ];
 
