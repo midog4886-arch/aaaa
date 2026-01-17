@@ -4,7 +4,7 @@ const translations = {
   ar: {
     // General
     academy_name: 'شركة اداء الابطال العالمية للرياضة',
-    academy_name_short: 'أكاديمية الأبطال',
+    academy_name_short: 'شركة الابطال للرياضة',
     login: 'تسجيل الدخول',
     logout: 'تسجيل الخروج',
     save: 'حفظ',

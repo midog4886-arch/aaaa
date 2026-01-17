@@ -1,4 +1,4 @@
-# أكاديمية أداء الأبطال العالمية - نظام إدارة الأكاديمية الرياضية
+# شركة اداء الابطال العالمية للرياضة - نظام إدارة الشركة الرياضية
 ## Champions Performance Academy Management System
 
 ### Original Problem Statement
