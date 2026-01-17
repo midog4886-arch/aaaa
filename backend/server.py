@@ -131,34 +131,30 @@ class InvoiceItem(BaseModel):
     fee: float
     period: str
 
-# Customer data for invoice
-class CustomerData(BaseModel):
-    name: str
-    name_ar: str
-    phone: str
-    email: Optional[str] = ""
-    address: Optional[str] = ""
+# Company registration info
+COMPANY_TAX_NUMBER = "312655637900003"
+COMPANY_COMMERCIAL_REG = "7043630230"
+VAT_RATE = 0.15  # 15% VAT
 
 class InvoiceCreate(BaseModel):
-    member_id: str
+    member_id: Optional[str] = None  # Optional - can create invoice without existing member
     items: List[InvoiceItem]
     discount: float = 0
     notes: Optional[str] = ""
     payment_method: str = "cash"  # cash, card, transfer, stripe
-    # Customer data fields (auto-filled from member but can be edited)
-    customer_name: Optional[str] = ""
+    # Customer data fields
     customer_name_ar: Optional[str] = ""
     customer_phone: Optional[str] = ""
-    customer_email: Optional[str] = ""
     customer_address: Optional[str] = ""
 
 class Invoice(BaseModel):
     id: str
-    member_id: str
+    member_id: Optional[str] = None
     member_name: str
     items: List[InvoiceItem]
     subtotal: float
     discount: float
+    vat_amount: float = 0
     total: float
     status: str = "pending"  # pending, paid, cancelled
     payment_method: str
@@ -166,11 +162,12 @@ class Invoice(BaseModel):
     created_at: str
     paid_at: Optional[str] = None
     # Customer data stored with invoice
-    customer_name: Optional[str] = ""
     customer_name_ar: Optional[str] = ""
     customer_phone: Optional[str] = ""
-    customer_email: Optional[str] = ""
     customer_address: Optional[str] = ""
+    # Company info
+    tax_number: str = COMPANY_TAX_NUMBER
+    commercial_reg: str = COMPANY_COMMERCIAL_REG
 
 class MessageCreate(BaseModel):
     recipients: List[str]  # member IDs
