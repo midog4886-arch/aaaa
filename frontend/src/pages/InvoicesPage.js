@@ -60,6 +60,7 @@ export const InvoicesPage = () => {
   const [paymentMethod, setPaymentMethod] = useState('cash');
   const [saving, setSaving] = useState(false);
   const [qrCode, setQrCode] = useState(null);
+  const [savingImage, setSavingImage] = useState(false);
   
   const [customerNameAr, setCustomerNameAr] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
