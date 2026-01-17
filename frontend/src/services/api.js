@@ -95,4 +95,5 @@ export default {
   reports: reportsAPI,
   dashboard: dashboardAPI,
   seed: seedAPI,
+  export: exportAPI,
 };
