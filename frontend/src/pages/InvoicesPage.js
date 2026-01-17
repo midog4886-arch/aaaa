@@ -122,8 +122,15 @@ export const InvoicesPage = () => {
       fee: activity.monthly_fee,
       period: `${today} - ${endDate}`,
       start_date: today,
-      end_date: endDate
+      end_date: endDate,
+      schedule: '' // جدول المواعيد
     }]);
+  };
+
+  const updateItemSchedule = (index, schedule) => {
+    const updated = [...invoiceItems];
+    updated[index].schedule = schedule;
+    setInvoiceItems(updated);
   };
 
   // Save invoice as image and share to WhatsApp
