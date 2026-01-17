@@ -244,3 +244,47 @@
 - Library: `openpyxl`
 - Arabic RTL Support: ✅
 - Token Authentication: Query parameter support for download links
+
+---
+
+## Update 6 - Multi-Branch Support (January 17, 2026)
+
+### Multi-Branch System Features:
+
+#### 1. Branch Management (Admin Only) ✅
+- **CRUD Operations**: Create, Read, Update, Delete branches
+- **Branch Data**: Name (AR/EN), Phone, Manager Name (AR/EN), Address, Status (Active/Inactive)
+- **Admin-Only Access**: Only admin users can access branch management page
+
+#### 2. Data Isolation by Branch ✅
+- **Members**: Each member belongs to a specific branch
+- **Invoices**: Each invoice is linked to the branch where it was created
+- **Activities**: Activities can be branch-specific or shared
+- **Coaches**: Coaches can be assigned to specific branches
+- **Reports**: Financial reports are filtered by branch
+
+#### 3. User Access Control ✅
+- **Admin Users**: Can see all branches and all data across branches
+- **Regular Users**: Can only see data from their assigned branch
+- **Token-Based**: Branch ID and admin status stored in JWT token
+
+#### 4. Navigation ✅
+- **Branches Page**: New menu item "الفروع" visible only to admin users
+- **URL**: `/branches`
+
+### Database Schema Changes:
+- Added `branch_id` field to: `members`, `invoices`, `activities`, `coaches`
+- Added `branch_id` and `is_admin` fields to `users` collection
+- New `branches` collection with branch details
+
+### API Endpoints Added:
+- `GET /api/branches` - Get all branches (admin) or user's branch
+- `POST /api/branches` - Create new branch (admin only)
+- `PUT /api/branches/{id}` - Update branch (admin only)
+- `DELETE /api/branches/{id}` - Delete branch (admin only)
+- `GET /api/branches/{id}` - Get single branch
+
+### Default Admin Credentials:
+- Username: `admin`
+- Password: `admin123`
+- Role: Admin (can see all branches)
