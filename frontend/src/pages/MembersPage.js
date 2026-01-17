@@ -184,9 +184,18 @@ export const MembersPage = () => {
     setIsAddDialogOpen(true);
   };
 
-  const openViewDialog = (member) => {
+  const openViewDialog = async (member) => {
     setSelectedMember(member);
+    setViewTab('info');
     setIsViewDialogOpen(true);
+    // Load member invoices
+    try {
+      const response = await invoicesAPI.getAll({ member_id: member.id });
+      setMemberInvoices(response.data);
+    } catch (error) {
+      console.error('Failed to load member invoices:', error);
+      setMemberInvoices([]);
+    }
   };
 
   const closeDialog = () => {
