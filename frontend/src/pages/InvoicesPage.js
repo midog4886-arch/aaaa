@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useLanguage } from '../contexts/LanguageContext';
+import { useAuth } from '../contexts/AuthContext';
 import { Layout } from '../components/Layout';
 import { Card, CardContent } from '../components/ui/card';
 import { Button } from '../components/ui/button';
@@ -14,7 +15,7 @@ import { toast } from 'sonner';
 import html2canvas from 'html2canvas';
 import { 
   Plus, Search, Eye, Printer, Loader2, Receipt, CheckCircle, XCircle, Clock,
-  Filter, MessageSquare, X, UserPlus, Trash2, RotateCcw, FileSpreadsheet, Image, Share2
+  Filter, MessageSquare, X, UserPlus, Trash2, RotateCcw, FileSpreadsheet, Image, Share2, RefreshCcw
 } from 'lucide-react';
 
 const COMPANY_INFO = {
