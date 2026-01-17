@@ -353,6 +353,11 @@
         - إجمالي المسترجع (Total Refunds) → Shows refund operations details table
         - صافي الإيرادات (Net Revenue) → Shows calculation breakdown (Revenue - Refunds = Net)
         - الفواتير (Invoices) → Shows list of paid invoices with payment methods
+    -   ✅ **Interactive Dashboard Cards**: All dashboard summary cards are now clickable:
+        - إجمالي الأعضاء (Total Members) → Shows members list with details
+        - الاشتراكات النشطة (Active Subscriptions) → Shows activities and subscription counts
+        - إيرادات الشهر (Monthly Revenue) → Shows revenue, refunds, and net revenue breakdown
+        - ينتهي قريباً (Expiring Soon) → Shows expiring subscriptions with WhatsApp reminder buttons
 
 **Upcoming Tasks**:
     -   **WhatsApp Business API Integration (P1)**: Send invoice images directly via WhatsApp API. User has provided phone number: 00966566238384. Waiting for Access Token and Phone Number ID from Meta Business Suite.
