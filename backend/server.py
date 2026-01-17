@@ -724,8 +724,8 @@ async def get_financial_report(
 
 @api_router.get("/reports/expiring-subscriptions")
 async def get_expiring_subscriptions(days: int = 7, current_user: dict = Depends(get_current_user)):
-    threshold_date = (datetime.now(timezone.utc) + timedelta(days=days)).isoformat()
-    today = datetime.now(timezone.utc).isoformat()
+    threshold_date = (datetime.now(timezone.utc) + timedelta(days=days)).strftime('%Y-%m-%d')
+    today = datetime.now(timezone.utc).strftime('%Y-%m-%d')
     
     members = await db.members.find({}, {"_id": 0}).to_list(10000)
     
@@ -735,13 +735,19 @@ async def get_expiring_subscriptions(days: int = 7, current_user: dict = Depends
             if activity.get("status") == "active":
                 end_date = activity.get("end_date", "")
                 if end_date and today <= end_date <= threshold_date:
+                    try:
+                        end_date_obj = datetime.strptime(end_date, '%Y-%m-%d')
+                        today_obj = datetime.strptime(today, '%Y-%m-%d')
+                        days_remaining = (end_date_obj - today_obj).days
+                    except:
+                        days_remaining = 0
                     expiring.append({
                         "member_id": member["id"],
                         "member_name": member.get("name_ar", member.get("name", "")),
                         "phone": member.get("phone", ""),
                         "activity_name": activity.get("activity_name", ""),
                         "end_date": end_date,
-                        "days_remaining": (datetime.fromisoformat(end_date.replace('Z', '+00:00')) - datetime.now(timezone.utc)).days
+                        "days_remaining": days_remaining
                     })
     
     return sorted(expiring, key=lambda x: x["end_date"])
