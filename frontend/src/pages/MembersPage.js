@@ -307,7 +307,21 @@ export const MembersPage = () => {
               data-testid="export-members-btn"
             >
               <Download className="w-4 h-4 me-2" />
-              {language === 'ar' ? 'تصدير Excel' : 'Export Excel'}
+              {language === 'ar' ? 'تصدير' : 'Export'}
+            </Button>
+            <Button 
+              variant="outline"
+              onClick={() => {
+                const printWindow = window.open('', '', 'width=900,height=700');
+                const rows = filteredMembers.map((m, i) => `<tr><td>${i+1}</td><td>${m.name_ar || m.name}</td><td>${m.age || '-'}</td><td>${m.guardian_name_ar || '-'}</td><td dir="ltr">${m.phone || '-'}</td><td>${m.activities?.map(a => a.activity_name).join(', ') || '-'}</td><td>${m.activities?.map(a => a.status === 'active' ? 'ساري' : 'منتهي').join(', ') || '-'}</td></tr>`).join('');
+                printWindow.document.write(`<html><head><title>بيانات الأعضاء</title><style>@import url('https://fonts.googleapis.com/css2?family=Tajawal:wght@400;700&display=swap');body{font-family:'Tajawal',Arial;direction:rtl;padding:20px}h1{color:#F97316;text-align:center;margin-bottom:20px}table{width:100%;border-collapse:collapse}th,td{border:1px solid #ddd;padding:8px;text-align:right;font-size:12px}th{background:#F97316;color:white}.footer{text-align:center;margin-top:20px;font-size:11px;color:#666}</style></head><body><h1>أكاديمية أداء الأبطال العالمية - بيانات الأعضاء</h1><table><thead><tr><th>م</th><th>الاسم</th><th>العمر</th><th>ولي الأمر</th><th>الجوال</th><th>الأنشطة</th><th>الحالة</th></tr></thead><tbody>${rows}</tbody></table><div class="footer">تاريخ الطباعة: ${new Date().toLocaleDateString('ar-SA')}</div></body></html>`);
+                printWindow.document.close();
+                printWindow.print();
+              }}
+              data-testid="print-members-btn"
+            >
+              <Printer className="w-4 h-4 me-2" />
+              {language === 'ar' ? 'طباعة' : 'Print'}
             </Button>
             <Button onClick={() => setIsAddDialogOpen(true)} data-testid="add-member-btn">
               <Plus className="w-4 h-4 me-2" />
