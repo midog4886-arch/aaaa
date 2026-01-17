@@ -409,15 +409,26 @@ async def delete_activity(activity_id: str, current_user: dict = Depends(get_cur
 
 @api_router.get("/coaches", response_model=List[Coach])
 async def get_coaches(current_user: dict = Depends(get_current_user)):
-    coaches = await db.coaches.find({}, {"_id": 0}).to_list(100)
+    is_admin = current_user.get("is_admin", False)
+    branch_id = current_user.get("branch_id")
+    
+    if is_admin:
+        coaches = await db.coaches.find({}, {"_id": 0}).to_list(100)
+    else:
+        coaches = await db.coaches.find(
+            {"$or": [{"branch_id": branch_id}, {"branch_id": None}, {"branch_id": {"$exists": False}}]}, 
+            {"_id": 0}
+        ).to_list(100)
     return coaches
 
 @api_router.post("/coaches", response_model=Coach)
 async def create_coach(coach: CoachCreate, current_user: dict = Depends(get_current_user)):
     coach_id = str(uuid.uuid4())
+    branch_id = current_user.get("branch_id")
     coach_doc = {
         "id": coach_id,
         **coach.model_dump(),
+        "branch_id": branch_id,
         "created_at": datetime.now(timezone.utc).isoformat()
     }
     await db.coaches.insert_one(coach_doc)
