@@ -1,0 +1,90 @@
+import axios from 'axios';
+
+const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
+const API = `${BACKEND_URL}/api`;
+
+// Set up axios interceptor to add token
+axios.interceptors.request.use((config) => {
+  const token = localStorage.getItem('token');
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+  return config;
+});
+
+// Auth API
+export const authAPI = {
+  login: (username, password) => axios.post(`${API}/auth/login`, { username, password }),
+  register: (data) => axios.post(`${API}/auth/register`, data),
+  getMe: () => axios.get(`${API}/auth/me`),
+};
+
+// Activities API
+export const activitiesAPI = {
+  getAll: () => axios.get(`${API}/activities`),
+  create: (data) => axios.post(`${API}/activities`, data),
+  update: (id, data) => axios.put(`${API}/activities/${id}`, data),
+  delete: (id) => axios.delete(`${API}/activities/${id}`),
+};
+
+// Coaches API
+export const coachesAPI = {
+  getAll: () => axios.get(`${API}/coaches`),
+  create: (data) => axios.post(`${API}/coaches`, data),
+  update: (id, data) => axios.put(`${API}/coaches/${id}`, data),
+  delete: (id) => axios.delete(`${API}/coaches/${id}`),
+};
+
+// Members API
+export const membersAPI = {
+  getAll: (params = {}) => axios.get(`${API}/members`, { params }),
+  getById: (id) => axios.get(`${API}/members/${id}`),
+  create: (data) => axios.post(`${API}/members`, data),
+  update: (id, data) => axios.put(`${API}/members/${id}`, data),
+  delete: (id) => axios.delete(`${API}/members/${id}`),
+  addActivity: (memberId, activity) => axios.post(`${API}/members/${memberId}/activities`, activity),
+  updateActivity: (memberId, activityId, activity) => axios.put(`${API}/members/${memberId}/activities/${activityId}`, activity),
+};
+
+// Invoices API
+export const invoicesAPI = {
+  getAll: (params = {}) => axios.get(`${API}/invoices`, { params }),
+  getById: (id) => axios.get(`${API}/invoices/${id}`),
+  create: (data) => axios.post(`${API}/invoices`, data),
+  pay: (id) => axios.put(`${API}/invoices/${id}/pay`),
+  cancel: (id) => axios.put(`${API}/invoices/${id}/cancel`),
+};
+
+// Payments API
+export const paymentsAPI = {
+  createCheckout: (invoiceId) => axios.post(`${API}/payments/checkout?invoice_id=${invoiceId}`),
+  getStatus: (sessionId) => axios.get(`${API}/payments/status/${sessionId}`),
+};
+
+// Reports API
+export const reportsAPI = {
+  getFinancial: (params = {}) => axios.get(`${API}/reports/financial`, { params }),
+  getExpiringSubscriptions: (days = 7) => axios.get(`${API}/reports/expiring-subscriptions`, { params: { days } }),
+};
+
+// Dashboard API
+export const dashboardAPI = {
+  getStats: () => axios.get(`${API}/dashboard/stats`),
+};
+
+// Seed API
+export const seedAPI = {
+  seed: () => axios.post(`${API}/seed`),
+};
+
+export default {
+  auth: authAPI,
+  activities: activitiesAPI,
+  coaches: coachesAPI,
+  members: membersAPI,
+  invoices: invoicesAPI,
+  payments: paymentsAPI,
+  reports: reportsAPI,
+  dashboard: dashboardAPI,
+  seed: seedAPI,
+};
