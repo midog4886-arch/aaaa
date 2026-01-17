@@ -242,16 +242,8 @@ class AcademyAPITester:
         return None
 
     def test_invoice_creation(self, member_id=None):
-        """Test creating an invoice with customer data"""
-        print("\n💰 Testing Invoice Creation...")
-        
-        if not member_id:
-            # Get first member
-            members = self.run_test("Get Members for Invoice", "GET", "members", 200)
-            if not members or len(members) == 0:
-                self.log_test("Invoice Creation", False, "No members available")
-                return False
-            member_id = members[0]['id']
+        """Test creating an invoice with customer data and VAT calculation"""
+        print("\n💰 Testing Invoice Creation with VAT...")
         
         # Get activities
         activities = self.run_test("Get Activities for Invoice", "GET", "activities", 200)
@@ -259,40 +251,116 @@ class AcademyAPITester:
             self.log_test("Invoice Creation", False, "No activities available")
             return False
         
-        invoice_data = {
-            "member_id": member_id,
+        # Test 1: Invoice with member
+        if member_id:
+            invoice_data = {
+                "member_id": member_id,
+                "items": [
+                    {
+                        "activity_id": activities[0]["id"],
+                        "activity_name": activities[0]["name_ar"],
+                        "fee": 300.0,  # Test with 300 SAR
+                        "period": f"{datetime.now().strftime('%Y-%m-%d')} - {(datetime.now() + timedelta(days=30)).strftime('%Y-%m-%d')}"
+                    }
+                ],
+                "discount": 0,
+                "notes": "Test invoice with VAT",
+                "payment_method": "cash",
+                "customer_name_ar": "عميل تجريبي",
+                "customer_phone": "0501234567",
+                "customer_address": "Test Address"
+            }
+            
+            result = self.run_test("Create Invoice with Member", "POST", "invoices", 201, invoice_data)
+            
+            if result and 'id' in result:
+                invoice_id = result['id']
+                self.log_test("Invoice Created", True, f"ID: {invoice_id}")
+                
+                # Test VAT calculation (300 * 0.15 = 45, total = 345)
+                expected_vat = 45.0
+                expected_total = 345.0
+                
+                if abs(result.get('vat_amount', 0) - expected_vat) < 0.01:
+                    self.log_test("VAT 15% Calculation", True, f"VAT: {result.get('vat_amount')} SAR")
+                else:
+                    self.log_test("VAT 15% Calculation", False, f"Expected {expected_vat}, got {result.get('vat_amount')}")
+                
+                if abs(result.get('total', 0) - expected_total) < 0.01:
+                    self.log_test("Total with VAT", True, f"Total: {result.get('total')} SAR")
+                else:
+                    self.log_test("Total with VAT", False, f"Expected {expected_total}, got {result.get('total')}")
+                
+                # Test company info
+                if result.get('tax_number') == "312655637900003":
+                    self.log_test("Tax Number", True, "Correct tax number stored")
+                else:
+                    self.log_test("Tax Number", False, f"Expected 312655637900003, got {result.get('tax_number')}")
+                
+                if result.get('commercial_reg') == "7043630230":
+                    self.log_test("Commercial Registration", True, "Correct commercial reg stored")
+                else:
+                    self.log_test("Commercial Registration", False, f"Expected 7043630230, got {result.get('commercial_reg')}")
+                
+                return invoice_id
+        
+        # Test 2: Invoice without member (new feature)
+        invoice_data_no_member = {
+            "member_id": None,
             "items": [
                 {
                     "activity_id": activities[0]["id"],
                     "activity_name": activities[0]["name_ar"],
-                    "fee": activities[0]["monthly_fee"],
+                    "fee": 250.0,
+                    "period": f"{datetime.now().strftime('%Y-%m-%d')} - {(datetime.now() + timedelta(days=30)).strftime('%Y-%m-%d')}"
+                },
+                {
+                    "activity_id": activities[1]["id"] if len(activities) > 1 else activities[0]["id"],
+                    "activity_name": activities[1]["name_ar"] if len(activities) > 1 else activities[0]["name_ar"],
+                    "fee": 350.0,
                     "period": f"{datetime.now().strftime('%Y-%m-%d')} - {(datetime.now() + timedelta(days=30)).strftime('%Y-%m-%d')}"
                 }
             ],
-            "discount": 0,
-            "notes": "Test invoice",
+            "discount": 50.0,  # Test with discount
+            "notes": "Test invoice without member, multiple activities",
             "payment_method": "cash",
-            # Customer data fields (new feature)
-            "customer_name": "Test Customer",
-            "customer_name_ar": "عميل تجريبي",
-            "customer_phone": "0501234567",
-            "customer_email": "customer@test.com",
-            "customer_address": "Test Address"
+            "customer_name_ar": "عميل بدون عضوية",
+            "customer_phone": "0509876543",
+            "customer_address": "عنوان تجريبي"
         }
         
-        result = self.run_test("Create Invoice", "POST", "invoices", 201, invoice_data)
+        result2 = self.run_test("Create Invoice without Member", "POST", "invoices", 201, invoice_data_no_member)
         
-        if result and 'id' in result:
-            invoice_id = result['id']
-            self.log_test("Invoice Created", True, f"ID: {invoice_id}")
+        if result2 and 'id' in result2:
+            # Test multiple activities and discount calculation
+            # Subtotal: 250 + 350 = 600, After discount: 600 - 50 = 550, VAT: 550 * 0.15 = 82.5, Total: 632.5
+            expected_subtotal = 600.0
+            expected_after_discount = 550.0
+            expected_vat = 82.5
+            expected_total = 632.5
             
-            # Verify customer data is stored
-            if result.get('customer_name') == "Test Customer":
-                self.log_test("Customer Data Stored", True, "Customer name saved correctly")
+            if abs(result2.get('subtotal', 0) - expected_subtotal) < 0.01:
+                self.log_test("Multiple Activities Subtotal", True, f"Subtotal: {result2.get('subtotal')} SAR")
             else:
-                self.log_test("Customer Data Stored", False, "Customer data not saved")
+                self.log_test("Multiple Activities Subtotal", False, f"Expected {expected_subtotal}, got {result2.get('subtotal')}")
             
-            return invoice_id
+            if abs(result2.get('vat_amount', 0) - expected_vat) < 0.01:
+                self.log_test("VAT with Discount", True, f"VAT: {result2.get('vat_amount')} SAR")
+            else:
+                self.log_test("VAT with Discount", False, f"Expected {expected_vat}, got {result2.get('vat_amount')}")
+            
+            if abs(result2.get('total', 0) - expected_total) < 0.01:
+                self.log_test("Total with Discount and VAT", True, f"Total: {result2.get('total')} SAR")
+            else:
+                self.log_test("Total with Discount and VAT", False, f"Expected {expected_total}, got {result2.get('total')}")
+            
+            # Test simplified customer fields (no email, no English name)
+            if 'customer_email' not in result2 or not result2.get('customer_email'):
+                self.log_test("No Email Field", True, "Email field removed as expected")
+            else:
+                self.log_test("No Email Field", False, "Email field still present")
+            
+            return result2['id']
         
         return None
 
