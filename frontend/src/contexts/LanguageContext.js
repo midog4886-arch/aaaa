@@ -180,6 +180,7 @@ const translations = {
     reports: 'Reports',
     messages: 'Messages',
     settings: 'Settings',
+    branches: 'Branches',
     
     // Dashboard
     total_members: 'Total Members',
