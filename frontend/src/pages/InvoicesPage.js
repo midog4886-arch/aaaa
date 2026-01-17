@@ -2,9 +2,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useLanguage } from '../contexts/LanguageContext';
 import { Layout } from '../components/Layout';
-import { Card, CardContent } from '../components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
-// eslint-disable-next-line react-hooks/exhaustive-deps
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { Badge } from '../components/ui/badge';
@@ -12,7 +11,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Textarea } from '../components/ui/textarea';
 import { Checkbox } from '../components/ui/checkbox';
-import { invoicesAPI, membersAPI, activitiesAPI, paymentsAPI } from '../services/api';
+import { invoicesAPI, membersAPI, activitiesAPI, paymentsAPI, exportAPI } from '../services/api';
 import { toast } from 'sonner';
 import { 
   Plus, 
@@ -25,7 +24,11 @@ import {
   CheckCircle,
   XCircle,
   Clock,
-  Trophy
+  Trophy,
+  Download,
+  Filter,
+  MessageSquare,
+  X
 } from 'lucide-react';
 
 export const InvoicesPage = () => {
@@ -37,6 +40,10 @@ export const InvoicesPage = () => {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState('all');
+  const [filterActivity, setFilterActivity] = useState('all');
+  const [filterStartDate, setFilterStartDate] = useState('');
+  const [filterEndDate, setFilterEndDate] = useState('');
+  const [showAdvancedSearch, setShowAdvancedSearch] = useState(false);
   
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [isViewDialogOpen, setIsViewDialogOpen] = useState(false);
@@ -49,6 +56,13 @@ export const InvoicesPage = () => {
   const [saving, setSaving] = useState(false);
   const [processingPayment, setProcessingPayment] = useState(false);
   
+  // Customer data fields
+  const [customerName, setCustomerName] = useState('');
+  const [customerNameAr, setCustomerNameAr] = useState('');
+  const [customerPhone, setCustomerPhone] = useState('');
+  const [customerEmail, setCustomerEmail] = useState('');
+  const [customerAddress, setCustomerAddress] = useState('');
+  
   const printRef = useRef();
 
   useEffect(() => {
@@ -60,6 +74,7 @@ export const InvoicesPage = () => {
     if (sessionId && invoiceId) {
       checkPaymentStatus(sessionId);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
 
   const loadData = async () => {
@@ -92,6 +107,22 @@ export const InvoicesPage = () => {
     }
   };
 
+  // When member is selected, auto-fill customer data
+  const handleMemberSelect = (memberId) => {
+    const member = members.find(m => m.id === memberId);
+    setSelectedMember(member);
+    setSelectedActivities([]);
+    
+    // Auto-fill customer data from member
+    if (member) {
+      setCustomerName(member.name || '');
+      setCustomerNameAr(member.name_ar || '');
+      setCustomerPhone(member.phone || '');
+      setCustomerEmail(member.email || '');
+      setCustomerAddress('');
+    }
+  };
+
   const handleCreateInvoice = async () => {
     if (!selectedMember || selectedActivities.length === 0) {
       toast.error(language === 'ar' ? 'اختر العضو والأنشطة' : 'Select member and activities');
@@ -112,7 +143,13 @@ export const InvoicesPage = () => {
         items,
         discount: parseFloat(discount) || 0,
         notes,
-        payment_method: paymentMethod
+        payment_method: paymentMethod,
+        // Customer data
+        customer_name: customerName,
+        customer_name_ar: customerNameAr,
+        customer_phone: customerPhone,
+        customer_email: customerEmail,
+        customer_address: customerAddress
       };
       
       await invoicesAPI.create(invoiceData);
@@ -153,6 +190,29 @@ export const InvoicesPage = () => {
     }
   };
 
+  const handleSendWhatsApp = (invoice) => {
+    const phone = invoice.customer_phone || '';
+    if (!phone) {
+      toast.error(language === 'ar' ? 'لا يوجد رقم جوال' : 'No phone number');
+      return;
+    }
+    
+    const formattedPhone = phone.replace(/^0/, '966');
+    const message = language === 'ar' 
+      ? `مرحباً، فاتورتك من أكاديمية أداء الأبطال العالمية:
+رقم الفاتورة: #${invoice.id.slice(0, 8)}
+المبلغ: ${invoice.total} ر.س
+الحالة: ${invoice.status === 'paid' ? 'مدفوعة' : 'غير مدفوعة'}
+شكراً لكم.`
+      : `Hello, your invoice from Champions Academy:
+Invoice #: ${invoice.id.slice(0, 8)}
+Amount: ${invoice.total} SAR
+Status: ${invoice.status === 'paid' ? 'Paid' : 'Unpaid'}
+Thank you.`;
+    
+    window.open(`https://wa.me/${formattedPhone}?text=${encodeURIComponent(message)}`, '_blank');
+  };
+
   const handlePrint = () => {
     const printContent = printRef.current;
     const printWindow = window.open('', '', 'width=800,height=600');
@@ -168,6 +228,7 @@ export const InvoicesPage = () => {
             th, td { padding: 12px; border: 1px solid #ddd; text-align: ${language === 'ar' ? 'right' : 'left'}; }
             th { background: #f5f5f5; }
             .total-row { font-weight: bold; font-size: 18px; }
+            .customer-info { background: #f9f9f9; padding: 15px; border-radius: 8px; margin-bottom: 20px; }
           </style>
         </head>
         <body>${printContent.innerHTML}</body>
@@ -177,6 +238,46 @@ export const InvoicesPage = () => {
     printWindow.print();
   };
 
+  const handleExport = () => {
+    const token = localStorage.getItem('token');
+    const params = {};
+    if (filterStatus !== 'all') params.status = filterStatus;
+    if (filterStartDate) params.start_date = filterStartDate;
+    if (filterEndDate) params.end_date = filterEndDate;
+    
+    const url = exportAPI.invoices(params) + `&token=${token}`;
+    window.open(url, '_blank');
+  };
+
+  const handleSearch = async () => {
+    setLoading(true);
+    try {
+      const params = {};
+      if (searchTerm) params.q = searchTerm;
+      if (filterStatus !== 'all') params.status = filterStatus;
+      if (filterActivity !== 'all') params.activity_id = filterActivity;
+      if (filterStartDate) params.start_date = filterStartDate;
+      if (filterEndDate) params.end_date = filterEndDate;
+      
+      const response = await invoicesAPI.search(params);
+      setInvoices(response.data);
+    } catch (error) {
+      console.error('Search failed:', error);
+      // Fall back to client-side filtering
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const resetFilters = () => {
+    setSearchTerm('');
+    setFilterStatus('all');
+    setFilterActivity('all');
+    setFilterStartDate('');
+    setFilterEndDate('');
+    loadData();
+  };
+
   const closeCreateDialog = () => {
     setIsCreateDialogOpen(false);
     setSelectedMember(null);
@@ -184,6 +285,11 @@ export const InvoicesPage = () => {
     setDiscount(0);
     setNotes('');
     setPaymentMethod('cash');
+    setCustomerName('');
+    setCustomerNameAr('');
+    setCustomerPhone('');
+    setCustomerEmail('');
+    setCustomerAddress('');
   };
 
   const toggleActivitySelection = (activity) => {
@@ -216,10 +322,12 @@ export const InvoicesPage = () => {
     );
   };
 
+  // Client-side filtering for basic search
   const filteredInvoices = invoices.filter(invoice => {
-    const matchesSearch = 
+    const matchesSearch = !searchTerm || 
       invoice.member_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      invoice.id?.includes(searchTerm);
+      invoice.id?.includes(searchTerm) ||
+      invoice.customer_phone?.includes(searchTerm);
     const matchesStatus = filterStatus === 'all' || invoice.status === filterStatus;
     return matchesSearch && matchesStatus;
   });
@@ -238,35 +346,100 @@ export const InvoicesPage = () => {
     <Layout title={t('invoices')}>
       <div className="space-y-6" data-testid="invoices-page">
         {/* Header */}
-        <div className="flex flex-col sm:flex-row gap-4 justify-between items-start sm:items-center">
-          <div className="flex flex-1 gap-3 w-full sm:w-auto">
-            <div className="relative flex-1 sm:max-w-xs">
-              <Search className="absolute start-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-              <Input
-                placeholder={t('search')}
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="ps-10"
-                data-testid="search-invoices"
-              />
+        <div className="flex flex-col gap-4">
+          <div className="flex flex-col sm:flex-row gap-4 justify-between items-start sm:items-center">
+            <div className="flex flex-1 gap-3 w-full sm:w-auto">
+              <div className="relative flex-1 sm:max-w-xs">
+                <Search className="absolute start-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                <Input
+                  placeholder={language === 'ar' ? 'بحث برقم الفاتورة أو اسم العضو أو الجوال...' : 'Search by invoice #, member name or phone...'}
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="ps-10"
+                  data-testid="search-invoices"
+                />
+              </div>
+              <Select value={filterStatus} onValueChange={setFilterStatus}>
+                <SelectTrigger className="w-[150px]" data-testid="filter-status">
+                  <SelectValue placeholder={t('invoice_status')} />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">{t('invoice_status')}</SelectItem>
+                  <SelectItem value="pending">{t('unpaid')}</SelectItem>
+                  <SelectItem value="paid">{t('paid')}</SelectItem>
+                  <SelectItem value="cancelled">{t('cancelled')}</SelectItem>
+                </SelectContent>
+              </Select>
+              <Button 
+                variant="outline" 
+                size="icon"
+                onClick={() => setShowAdvancedSearch(!showAdvancedSearch)}
+              >
+                <Filter className="w-4 h-4" />
+              </Button>
             </div>
-            <Select value={filterStatus} onValueChange={setFilterStatus}>
-              <SelectTrigger className="w-[150px]" data-testid="filter-status">
-                <SelectValue placeholder={t('invoice_status')} />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">{t('invoice_status')}</SelectItem>
-                <SelectItem value="pending">{t('unpaid')}</SelectItem>
-                <SelectItem value="paid">{t('paid')}</SelectItem>
-                <SelectItem value="cancelled">{t('cancelled')}</SelectItem>
-              </SelectContent>
-            </Select>
+            
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={handleExport} data-testid="export-invoices-btn">
+                <Download className="w-4 h-4 me-2" />
+                {language === 'ar' ? 'تصدير Excel' : 'Export Excel'}
+              </Button>
+              <Button onClick={() => setIsCreateDialogOpen(true)} data-testid="create-invoice-btn">
+                <Plus className="w-4 h-4 me-2" />
+                {t('create_invoice')}
+              </Button>
+            </div>
           </div>
-          
-          <Button onClick={() => setIsCreateDialogOpen(true)} data-testid="create-invoice-btn">
-            <Plus className="w-4 h-4 me-2" />
-            {t('create_invoice')}
-          </Button>
+
+          {/* Advanced Search Panel */}
+          {showAdvancedSearch && (
+            <Card className="p-4">
+              <div className="flex flex-wrap gap-4 items-end">
+                <div className="space-y-2">
+                  <Label>{t('activity_name')}</Label>
+                  <Select value={filterActivity} onValueChange={setFilterActivity}>
+                    <SelectTrigger className="w-[180px]">
+                      <SelectValue placeholder={t('activities')} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">{language === 'ar' ? 'الكل' : 'All'}</SelectItem>
+                      {activities.map(activity => (
+                        <SelectItem key={activity.id} value={activity.id}>
+                          {language === 'ar' ? activity.name_ar : activity.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label>{t('from')}</Label>
+                  <Input
+                    type="date"
+                    value={filterStartDate}
+                    onChange={(e) => setFilterStartDate(e.target.value)}
+                    data-testid="filter-start-date"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>{t('to')}</Label>
+                  <Input
+                    type="date"
+                    value={filterEndDate}
+                    onChange={(e) => setFilterEndDate(e.target.value)}
+                    data-testid="filter-end-date"
+                  />
+                </div>
+                <Button onClick={handleSearch} data-testid="search-btn">
+                  <Search className="w-4 h-4 me-2" />
+                  {t('search')}
+                </Button>
+                <Button variant="outline" onClick={resetFilters}>
+                  <X className="w-4 h-4 me-2" />
+                  {language === 'ar' ? 'مسح الفلاتر' : 'Clear Filters'}
+                </Button>
+              </div>
+            </Card>
+          )}
         </div>
 
         {/* Invoices List */}
@@ -278,6 +451,7 @@ export const InvoicesPage = () => {
                   <tr>
                     <th>{t('invoice_number')}</th>
                     <th>{t('member_name')}</th>
+                    <th>{t('phone')}</th>
                     <th>{t('total')}</th>
                     <th>{t('invoice_status')}</th>
                     <th>{t('invoice_date')}</th>
@@ -287,7 +461,7 @@ export const InvoicesPage = () => {
                 <tbody>
                   {filteredInvoices.length === 0 ? (
                     <tr>
-                      <td colSpan={6} className="text-center py-8 text-muted-foreground">
+                      <td colSpan={7} className="text-center py-8 text-muted-foreground">
                         {t('no_data')}
                       </td>
                     </tr>
@@ -298,6 +472,7 @@ export const InvoicesPage = () => {
                           #{invoice.id.slice(0, 8)}
                         </td>
                         <td className="font-medium">{invoice.member_name}</td>
+                        <td dir="ltr" className="text-sm">{invoice.customer_phone || '-'}</td>
                         <td className="font-bold text-primary">
                           {invoice.total} {t('sar')}
                         </td>
@@ -316,6 +491,13 @@ export const InvoicesPage = () => {
                               data-testid={`view-invoice-${invoice.id}`}
                             >
                               <Eye className="w-4 h-4" />
+                            </button>
+                            <button 
+                              className="action-button text-green-600"
+                              onClick={() => handleSendWhatsApp(invoice)}
+                              title={language === 'ar' ? 'إرسال واتساب' : 'Send WhatsApp'}
+                            >
+                              <MessageSquare className="w-4 h-4" />
                             </button>
                             {invoice.status === 'pending' && (
                               <>
@@ -349,7 +531,7 @@ export const InvoicesPage = () => {
 
         {/* Create Invoice Dialog */}
         <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
-          <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>{t('create_invoice')}</DialogTitle>
             </DialogHeader>
@@ -360,11 +542,7 @@ export const InvoicesPage = () => {
                 <Label>{t('member_name')}</Label>
                 <Select 
                   value={selectedMember?.id || ''} 
-                  onValueChange={(value) => {
-                    const member = members.find(m => m.id === value);
-                    setSelectedMember(member);
-                    setSelectedActivities([]);
-                  }}
+                  onValueChange={handleMemberSelect}
                 >
                   <SelectTrigger data-testid="select-member">
                     <SelectValue placeholder={t('member_name')} />
@@ -378,6 +556,62 @@ export const InvoicesPage = () => {
                   </SelectContent>
                 </Select>
               </div>
+
+              {/* Customer Data Section */}
+              {selectedMember && (
+                <Card className="p-4 border-primary/20 bg-primary/5">
+                  <h4 className="font-semibold mb-3 flex items-center gap-2">
+                    <Receipt className="w-4 h-4 text-primary" />
+                    {language === 'ar' ? 'بيانات العميل في الفاتورة' : 'Customer Data for Invoice'}
+                  </h4>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label>{language === 'ar' ? 'اسم العميل (عربي)' : 'Customer Name (Arabic)'}</Label>
+                      <Input
+                        value={customerNameAr}
+                        onChange={(e) => setCustomerNameAr(e.target.value)}
+                        data-testid="customer-name-ar"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>{language === 'ar' ? 'اسم العميل (English)' : 'Customer Name (English)'}</Label>
+                      <Input
+                        value={customerName}
+                        onChange={(e) => setCustomerName(e.target.value)}
+                        data-testid="customer-name-en"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>{t('phone')}</Label>
+                      <Input
+                        value={customerPhone}
+                        onChange={(e) => setCustomerPhone(e.target.value)}
+                        type="tel"
+                        dir="ltr"
+                        data-testid="customer-phone"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>{t('email')}</Label>
+                      <Input
+                        value={customerEmail}
+                        onChange={(e) => setCustomerEmail(e.target.value)}
+                        type="email"
+                        dir="ltr"
+                        data-testid="customer-email"
+                      />
+                    </div>
+                    <div className="space-y-2 sm:col-span-2">
+                      <Label>{language === 'ar' ? 'العنوان' : 'Address'}</Label>
+                      <Input
+                        value={customerAddress}
+                        onChange={(e) => setCustomerAddress(e.target.value)}
+                        data-testid="customer-address"
+                      />
+                    </div>
+                  </div>
+                </Card>
+              )}
 
               {/* Member Activities */}
               {selectedMember && selectedMember.activities?.length > 0 && (
@@ -519,8 +753,18 @@ export const InvoicesPage = () => {
                 </div>
 
                 {/* Customer Info */}
-                <div className="mb-4 p-3 bg-muted/50 rounded-lg">
-                  <p><strong>{t('member_name')}:</strong> {selectedInvoice.member_name}</p>
+                <div className="customer-info mb-4 p-3 bg-muted/50 rounded-lg">
+                  <h4 className="font-semibold mb-2">{language === 'ar' ? 'بيانات العميل' : 'Customer Information'}</h4>
+                  <div className="grid grid-cols-2 gap-2 text-sm">
+                    <p><strong>{t('member_name')}:</strong> {selectedInvoice.customer_name_ar || selectedInvoice.member_name}</p>
+                    <p><strong>{t('phone')}:</strong> <span dir="ltr">{selectedInvoice.customer_phone || '-'}</span></p>
+                    {selectedInvoice.customer_email && (
+                      <p><strong>{t('email')}:</strong> <span dir="ltr">{selectedInvoice.customer_email}</span></p>
+                    )}
+                    {selectedInvoice.customer_address && (
+                      <p><strong>{language === 'ar' ? 'العنوان' : 'Address'}:</strong> {selectedInvoice.customer_address}</p>
+                    )}
+                  </div>
                 </div>
 
                 {/* Items Table */}
@@ -572,6 +816,10 @@ export const InvoicesPage = () => {
             <DialogFooter className="no-print">
               <Button variant="outline" onClick={() => setIsViewDialogOpen(false)}>
                 {t('close')}
+              </Button>
+              <Button variant="outline" onClick={() => handleSendWhatsApp(selectedInvoice)} data-testid="whatsapp-invoice-btn">
+                <MessageSquare className="w-4 h-4 me-2" />
+                {language === 'ar' ? 'إرسال واتساب' : 'Send WhatsApp'}
               </Button>
               <Button onClick={handlePrint} data-testid="print-invoice-btn">
                 <Printer className="w-4 h-4 me-2" />
