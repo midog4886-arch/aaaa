@@ -875,9 +875,18 @@ async def seed_data():
 async def export_members(
     activity_id: Optional[str] = None,
     status: Optional[str] = None,
-    current_user: dict = Depends(get_current_user)
+    format: str = "xlsx",
+    token: Optional[str] = None
 ):
-    """Export members to CSV"""
+    """Export members to Excel/CSV"""
+    # Verify token
+    if not token:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    try:
+        jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+    except:
+        raise HTTPException(status_code=401, detail="Invalid token")
+    
     query = {}
     if activity_id:
         query["activities.activity_id"] = activity_id
@@ -886,47 +895,94 @@ async def export_members(
     
     members = await db.members.find(query, {"_id": 0}).to_list(10000)
     
-    # Create CSV
-    output = io.StringIO()
-    writer = csv.writer(output)
-    
-    # Header
-    writer.writerow([
-        "ID", "الاسم (عربي)", "Name (English)", "العمر", 
-        "ولي الأمر (عربي)", "Guardian (English)", "الجوال", "البريد",
-        "الأنشطة", "حالة الاشتراك", "تاريخ التسجيل"
-    ])
-    
-    for member in members:
-        activities_list = ", ".join([a.get("activity_name", "") for a in member.get("activities", [])])
-        statuses = ", ".join([a.get("status", "") for a in member.get("activities", [])])
+    if format == "xlsx":
+        # Create Excel file
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "الأعضاء"
         
-        writer.writerow([
-            member.get("id", "")[:8],
-            member.get("name_ar", ""),
-            member.get("name", ""),
-            member.get("age", ""),
-            member.get("guardian_name_ar", ""),
-            member.get("guardian_name", ""),
-            member.get("phone", ""),
-            member.get("email", ""),
-            activities_list,
-            statuses,
-            member.get("created_at", "")[:10]
-        ])
-    
-    output.seek(0)
-    
-    # Add BOM for Excel Arabic support
-    response_content = '\ufeff' + output.getvalue()
-    
-    return StreamingResponse(
-        iter([response_content]),
-        media_type="text/csv; charset=utf-8",
-        headers={
-            "Content-Disposition": f"attachment; filename=members_{datetime.now().strftime('%Y%m%d')}.csv"
-        }
-    )
+        # Header styling
+        header_fill = PatternFill(start_color="F97316", end_color="F97316", fill_type="solid")
+        header_font = Font(bold=True, color="FFFFFF")
+        thin_border = Border(
+            left=Side(style='thin'), right=Side(style='thin'),
+            top=Side(style='thin'), bottom=Side(style='thin')
+        )
+        
+        headers = ["م", "الاسم", "العمر", "ولي الأمر", "الجوال", "البريد", "الأنشطة", "حالة الاشتراك", "تاريخ البداية", "تاريخ النهاية"]
+        for col, header in enumerate(headers, 1):
+            cell = ws.cell(row=1, column=col, value=header)
+            cell.fill = header_fill
+            cell.font = header_font
+            cell.border = thin_border
+            cell.alignment = Alignment(horizontal='center')
+        
+        for row_num, member in enumerate(members, 2):
+            activities = member.get("activities", [])
+            activities_names = ", ".join([a.get("activity_name", "") for a in activities])
+            statuses = ", ".join(["نشط" if a.get("status") == "active" else "منتهي" for a in activities])
+            start_dates = ", ".join([a.get("start_date", "") for a in activities])
+            end_dates = ", ".join([a.get("end_date", "") for a in activities])
+            
+            row_data = [
+                row_num - 1,
+                member.get("name_ar", ""),
+                member.get("age", ""),
+                member.get("guardian_name_ar", ""),
+                member.get("phone", ""),
+                member.get("email", ""),
+                activities_names,
+                statuses,
+                start_dates,
+                end_dates
+            ]
+            for col, value in enumerate(row_data, 1):
+                cell = ws.cell(row=row_num, column=col, value=value)
+                cell.border = thin_border
+                cell.alignment = Alignment(horizontal='right' if col > 1 else 'center')
+        
+        # Adjust column widths
+        ws.column_dimensions['A'].width = 5
+        ws.column_dimensions['B'].width = 20
+        ws.column_dimensions['C'].width = 8
+        ws.column_dimensions['D'].width = 20
+        ws.column_dimensions['E'].width = 15
+        ws.column_dimensions['F'].width = 25
+        ws.column_dimensions['G'].width = 25
+        ws.column_dimensions['H'].width = 15
+        ws.column_dimensions['I'].width = 15
+        ws.column_dimensions['J'].width = 15
+        
+        # Save to bytes
+        output = io.BytesIO()
+        wb.save(output)
+        output.seek(0)
+        
+        return StreamingResponse(
+            output,
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": f"attachment; filename=members_{datetime.now().strftime('%Y%m%d')}.xlsx"}
+        )
+    else:
+        # Create CSV
+        output = io.StringIO()
+        writer = csv.writer(output)
+        writer.writerow(["م", "الاسم", "العمر", "ولي الأمر", "الجوال", "البريد", "الأنشطة", "حالة الاشتراك"])
+        
+        for idx, member in enumerate(members, 1):
+            activities_list = ", ".join([a.get("activity_name", "") for a in member.get("activities", [])])
+            statuses = ", ".join(["نشط" if a.get("status") == "active" else "منتهي" for a in member.get("activities", [])])
+            writer.writerow([idx, member.get("name_ar", ""), member.get("age", ""), member.get("guardian_name_ar", ""), member.get("phone", ""), member.get("email", ""), activities_list, statuses])
+        
+        output.seek(0)
+        response_content = '\ufeff' + output.getvalue()
+        
+        return StreamingResponse(
+            iter([response_content]),
+            media_type="text/csv; charset=utf-8",
+            headers={"Content-Disposition": f"attachment; filename=members_{datetime.now().strftime('%Y%m%d')}.csv"}
+        )
+
 
 @api_router.get("/export/invoices")
 async def export_invoices(
