@@ -234,7 +234,33 @@ export const InvoicesPage = () => {
     if (!phone) { toast.error(language === 'ar' ? 'لا يوجد رقم جوال' : 'No phone number'); return; }
     const formattedPhone = phone.replace(/^0/, '966');
     const vatAmount = invoice.vat_amount || 0;
-    const message = `فاتورة من ${COMPANY_INFO.name_ar}\n━━━━━━━━━━━━━━\nرقم الفاتورة: #${invoice.id.slice(0, 8)}\nالعميل: ${invoice.customer_name_ar || invoice.member_name}\n━━━━━━━━━━━━━━\nالمجموع: ${invoice.subtotal} ر.س\nالخصم: ${invoice.discount} ر.س\nضريبة القيمة المضافة (15%): ${vatAmount} ر.س\n━━━━━━━━━━━━━━\nالإجمالي: ${invoice.total} ر.س\nالحالة: ${invoice.status === 'paid' ? '✅ مدفوعة' : '⏳ غير مدفوعة'}\n━━━━━━━━━━━━━━\nالرقم الضريبي: ${COMPANY_INFO.tax_number}\nالسجل التجاري: ${COMPANY_INFO.commercial_reg}`;
+    
+    // Build items list
+    const itemsList = invoice.items?.map((item, i) => 
+      `${i + 1}. ${item.activity_name} - ${item.fee} ر.س`
+    ).join('\n') || '';
+    
+    const message = `🏆 *${COMPANY_INFO.name_ar}*
+━━━━━━━━━━━━━━
+📄 *فاتورة رقم:* #${invoice.id.slice(0, 8)}
+📅 *التاريخ:* ${new Date(invoice.created_at).toLocaleDateString('ar-SA')}
+👤 *العميل:* ${invoice.customer_name_ar || invoice.member_name}
+━━━━━━━━━━━━━━
+*الأنشطة:*
+${itemsList}
+━━━━━━━━━━━━━━
+💰 *المجموع:* ${invoice.subtotal} ر.س
+${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}📊 *ضريبة القيمة المضافة (15%):* ${vatAmount} ر.س
+━━━━━━━━━━━━━━
+✨ *الإجمالي:* ${invoice.total} ر.س
+📌 *الحالة:* ${invoice.status === 'paid' ? '✅ مدفوعة' : '⏳ غير مدفوعة'}
+━━━━━━━━━━━━━━
+⚠️ *شروط وأحكام:*
+• ${INVOICE_TERMS.ar[0]}
+• ${INVOICE_TERMS.ar[1]}
+━━━━━━━━━━━━━━
+🏛️ الرقم الضريبي: ${COMPANY_INFO.tax_number}
+📋 السجل التجاري: ${COMPANY_INFO.commercial_reg}`;
     window.open(`https://wa.me/${formattedPhone}?text=${encodeURIComponent(message)}`, '_blank');
   };
 
