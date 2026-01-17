@@ -54,6 +54,7 @@ export const invoicesAPI = {
   pay: (id) => axios.put(`${API}/invoices/${id}/pay`),
   cancel: (id) => axios.put(`${API}/invoices/${id}/cancel`),
   restore: (id) => axios.put(`${API}/invoices/${id}/restore`),
+  refund: (id, data) => axios.post(`${API}/invoices/${id}/refund`, data),
   delete: (id) => axios.delete(`${API}/invoices/${id}`),
   search: (params = {}) => axios.get(`${API}/invoices/search`, { params }),
   getQR: (id) => axios.get(`${API}/invoices/${id}/qr`),
