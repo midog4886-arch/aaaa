@@ -552,7 +552,12 @@ async def get_invoices(
     end_date: Optional[str] = None,
     current_user: dict = Depends(get_current_user)
 ):
+    is_admin = current_user.get("is_admin", False)
+    branch_id = current_user.get("branch_id")
+    
     query = {}
+    if not is_admin and branch_id:
+        query["branch_id"] = branch_id
     if member_id:
         query["member_id"] = member_id
     if status:
@@ -584,7 +589,12 @@ async def search_invoices(
     end_date: Optional[str] = None,
     current_user: dict = Depends(get_current_user)
 ):
+    is_admin = current_user.get("is_admin", False)
+    branch_id = current_user.get("branch_id")
+    
     query = {}
+    if not is_admin and branch_id:
+        query["branch_id"] = branch_id
     
     if q:
         query["$or"] = [
@@ -607,6 +617,7 @@ async def search_invoices(
             query["created_at"] = {"$lte": end_date}
     
     invoices = await db.invoices.find(query, {"_id": 0}).sort("created_at", -1).to_list(1000)
+    return invoices
     return invoices
 
 @api_router.get("/invoices/{invoice_id}", response_model=Invoice)
