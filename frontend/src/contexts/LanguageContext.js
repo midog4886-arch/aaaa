@@ -33,6 +33,7 @@ const translations = {
     messages: 'الرسائل',
     settings: 'الإعدادات',
     branches: 'الفروع',
+    users: 'المستخدمين',
     
     // Dashboard
     total_members: 'إجمالي الأعضاء',
