@@ -722,6 +722,18 @@ async def get_expiring_subscriptions(days: int = 7, current_user: dict = Depends
     
     return sorted(expiring, key=lambda x: x["end_date"])
 
+@api_router.get("/company-info")
+async def get_company_info():
+    """Get company registration info for invoices"""
+    return {
+        "name_ar": "أكاديمية أداء الأبطال العالمية",
+        "name_en": "Global Champions Sports Performance",
+        "tax_number": COMPANY_TAX_NUMBER,
+        "commercial_reg": COMPANY_COMMERCIAL_REG,
+        "vat_rate": VAT_RATE * 100,  # Return as percentage
+        "currency": "SAR"
+    }
+
 @api_router.get("/dashboard/stats")
 async def get_dashboard_stats(current_user: dict = Depends(get_current_user)):
     # Get counts
