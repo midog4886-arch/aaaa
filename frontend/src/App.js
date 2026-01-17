@@ -15,6 +15,7 @@ import ReportsPage from './pages/ReportsPage';
 import MessagesPage from './pages/MessagesPage';
 import SettingsPage from './pages/SettingsPage';
 import BranchesPage from './pages/BranchesPage';
+import UsersPage from './pages/UsersPage';
 
 import './App.css';
 
