@@ -26,7 +26,6 @@ const COMPANY_INFO = {
 
 export const InvoicesPage = () => {
   const { t, language } = useLanguage();
-  const [searchParams] = useSearchParams();
   const [invoices, setInvoices] = useState([]);
   const [members, setMembers] = useState([]);
   const [activities, setActivities] = useState([]);
@@ -48,7 +47,6 @@ export const InvoicesPage = () => {
   const [notes, setNotes] = useState('');
   const [paymentMethod, setPaymentMethod] = useState('cash');
   const [saving, setSaving] = useState(false);
-  const [processingPayment, setProcessingPayment] = useState(false);
   const [qrCode, setQrCode] = useState(null);
   
   const [customerNameAr, setCustomerNameAr] = useState('');
@@ -63,11 +61,8 @@ export const InvoicesPage = () => {
 
   useEffect(() => {
     loadData();
-    const sessionId = searchParams.get('session_id');
-    const invoiceId = searchParams.get('invoice_id');
-    if (sessionId && invoiceId) checkPaymentStatus(sessionId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchParams]);
+  }, []);
 
   const loadData = async () => {
     try {
