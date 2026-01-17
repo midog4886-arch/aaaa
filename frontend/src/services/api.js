@@ -81,6 +81,15 @@ export const seedAPI = {
   seed: () => axios.post(`${API}/seed`),
 };
 
+// Branches API
+export const branchesAPI = {
+  getAll: () => axios.get(`${API}/branches`),
+  getById: (id) => axios.get(`${API}/branches/${id}`),
+  create: (data) => axios.post(`${API}/branches`, data),
+  update: (id, data) => axios.put(`${API}/branches/${id}`, data),
+  delete: (id) => axios.delete(`${API}/branches/${id}`),
+};
+
 // Export API
 export const exportAPI = {
   members: (params = {}) => `${API}/export/members?format=xlsx&${new URLSearchParams(params).toString()}`,
