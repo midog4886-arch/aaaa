@@ -213,3 +213,34 @@
 
 ### Bug Fix:
 - Fixed date comparison in expiring subscriptions API (was using ISO format instead of YYYY-MM-DD)
+
+---
+
+## Update 5 - Enhanced Excel Export (January 17, 2026)
+
+### Export Features Enhanced:
+
+#### 1. Members Export (.xlsx) ✅
+- **Fields**: م، الاسم، العمر، ولي الأمر، الجوال، البريد، الأنشطة، حالة الاشتراك، تاريخ البداية، تاريخ النهاية
+- **Styling**: Orange header with white text, bordered cells
+- **Filters**: By activity, by subscription status
+
+#### 2. Invoices Export (.xlsx) ✅
+- **Fields**: م، رقم الفاتورة، اسم العميل، الجوال، الأنشطة، المجموع الفرعي، الضريبة، الإجمالي، الحالة، طريقة الدفع، التاريخ
+- **Status Translation**: مدفوعة/غير مدفوعة/ملغاة
+- **Filters**: By status, by date range
+
+#### 3. Financial Reports Export (.xlsx) ✅
+- **Summary Sheet**: إجمالي الإيرادات، إجمالي الضريبة، عدد الفواتير، الإيرادات حسب النشاط
+- **Details Sheet**: تفاصيل كل فاتورة مدفوعة
+- **Filters**: By date range
+
+#### 4. All Data Export (.xlsx) ✅
+- **Multiple Sheets**: الأعضاء، الفواتير، الأنشطة، المدربين
+- **Full Backup**: Export complete academy data for analysis
+
+### Technical Details:
+- Format: `.xlsx` (Microsoft Excel Open XML)
+- Library: `openpyxl`
+- Arabic RTL Support: ✅
+- Token Authentication: Query parameter support for download links
