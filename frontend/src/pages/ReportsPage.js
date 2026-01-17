@@ -13,7 +13,8 @@ import {
   Calendar,
   Download,
   TrendingUp,
-  Receipt
+  Receipt,
+  Printer
 } from 'lucide-react';
 import { 
   BarChart, 
@@ -154,6 +155,63 @@ export const ReportsPage = () => {
               >
                 <Download className="w-4 h-4 me-2" />
                 {language === 'ar' ? 'تصدير Excel' : 'Export Excel'}
+              </Button>
+              <Button 
+                variant="outline" 
+                onClick={() => {
+                  const printWindow = window.open('', '', 'width=900,height=700');
+                  const revenueRows = report?.revenue_by_activity?.map((r, i) => 
+                    `<tr><td>${i+1}</td><td>${r.name}</td><td>${r.total?.toLocaleString() || 0} ر.س</td></tr>`
+                  ).join('') || '<tr><td colspan="3">لا توجد بيانات</td></tr>';
+                  
+                  printWindow.document.write(`
+                    <html>
+                      <head>
+                        <title>التقارير المالية</title>
+                        <style>
+                          @import url('https://fonts.googleapis.com/css2?family=Tajawal:wght@400;700&display=swap');
+                          body { font-family: 'Tajawal', Arial; direction: rtl; padding: 20px; }
+                          h1 { color: #F97316; text-align: center; margin-bottom: 10px; }
+                          h2 { color: #1E3A8A; text-align: center; font-size: 16px; margin-bottom: 20px; }
+                          .summary { display: flex; justify-content: space-around; margin-bottom: 30px; padding: 15px; background: #f8fafc; border-radius: 8px; }
+                          .summary-item { text-align: center; }
+                          .summary-value { font-size: 24px; font-weight: bold; color: #F97316; }
+                          .summary-label { font-size: 12px; color: #666; }
+                          table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+                          th, td { border: 1px solid #ddd; padding: 10px; text-align: right; }
+                          th { background: #F97316; color: white; }
+                          .footer { text-align: center; margin-top: 30px; font-size: 11px; color: #666; }
+                        </style>
+                      </head>
+                      <body>
+                        <h1>أكاديمية أداء الأبطال العالمية</h1>
+                        <h2>التقارير المالية ${filters.start_date ? '(' + filters.start_date + ' - ' + filters.end_date + ')' : ''}</h2>
+                        <div class="summary">
+                          <div class="summary-item">
+                            <div class="summary-value">${report?.total_revenue?.toLocaleString() || 0} ر.س</div>
+                            <div class="summary-label">إجمالي الإيرادات</div>
+                          </div>
+                          <div class="summary-item">
+                            <div class="summary-value">${report?.invoice_count || 0}</div>
+                            <div class="summary-label">عدد الفواتير</div>
+                          </div>
+                        </div>
+                        <h3>الإيرادات حسب النشاط</h3>
+                        <table>
+                          <thead><tr><th>م</th><th>النشاط</th><th>الإيرادات</th></tr></thead>
+                          <tbody>${revenueRows}</tbody>
+                        </table>
+                        <div class="footer">تاريخ الطباعة: ${new Date().toLocaleDateString('ar-SA')}</div>
+                      </body>
+                    </html>
+                  `);
+                  printWindow.document.close();
+                  printWindow.print();
+                }}
+                data-testid="print-report-btn"
+              >
+                <Printer className="w-4 h-4 me-2" />
+                {language === 'ar' ? 'طباعة' : 'Print'}
               </Button>
             </div>
           </CardContent>

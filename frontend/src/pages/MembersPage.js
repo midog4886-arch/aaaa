@@ -25,7 +25,8 @@ import {
   X,
   Loader2,
   Download,
-  Receipt
+  Receipt,
+  Printer
 } from 'lucide-react';
 
 export const MembersPage = () => {
