@@ -36,6 +36,7 @@ export const Sidebar = ({ isOpen, onClose }) => {
     { to: '/reports', icon: BarChart3, label: 'reports' },
     { to: '/messages', icon: MessageSquare, label: 'messages' },
     ...(isAdmin ? [{ to: '/branches', icon: Building2, label: 'branches' }] : []),
+    ...(isAdmin ? [{ to: '/users', icon: Users, label: 'users' }] : []),
     { to: '/settings', icon: Settings, label: 'settings' },
   ];
 
