@@ -32,6 +32,7 @@ const translations = {
     reports: 'التقارير',
     messages: 'الرسائل',
     settings: 'الإعدادات',
+    branches: 'الفروع',
     
     // Dashboard
     total_members: 'إجمالي الأعضاء',
