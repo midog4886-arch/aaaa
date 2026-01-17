@@ -434,7 +434,7 @@ export const InvoicesPage = () => {
                 <div className="space-y-2"><Label>{t('discount')} ({t('sar')})</Label><Input type="number" value={discount} onChange={(e) => setDiscount(e.target.value)} min="0" /></div>
                 <div className="space-y-2"><Label>{t('payment_method')}</Label>
                   <Select value={paymentMethod} onValueChange={setPaymentMethod}><SelectTrigger><SelectValue /></SelectTrigger>
-                    <SelectContent><SelectItem value="cash">{t('cash')}</SelectItem><SelectItem value="card">{t('card')}</SelectItem><SelectItem value="transfer">{t('transfer')}</SelectItem><SelectItem value="stripe">{t('online')}</SelectItem></SelectContent>
+                    <SelectContent><SelectItem value="cash">{t('cash')}</SelectItem><SelectItem value="card">{t('card')}</SelectItem><SelectItem value="transfer">{t('transfer')}</SelectItem></SelectContent>
                   </Select>
                 </div>
               </div>
