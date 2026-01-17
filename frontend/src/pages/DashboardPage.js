@@ -50,6 +50,30 @@ export const DashboardPage = () => {
     return `${amount?.toLocaleString() || 0} ${t('sar')}`;
   };
 
+  const sendWhatsAppReminder = (member) => {
+    const phone = member.phone?.replace(/^0/, '966') || '';
+    if (!phone) {
+      toast.error(language === 'ar' ? 'لا يوجد رقم جوال' : 'No phone number');
+      return;
+    }
+    const message = `مرحباً ${member.member_name}،\n\nنود تذكيركم بأن اشتراككم في نشاط "${member.activity_name}" سينتهي خلال ${member.days_remaining} أيام.\n\nنأمل منكم تجديد الاشتراك في أقرب وقت للاستمرار في الاستفادة من خدماتنا.\n\nشكراً لكم،\nأكاديمية أداء الأبطال العالمية`;
+    window.open(`https://wa.me/${phone}?text=${encodeURIComponent(message)}`, '_blank');
+    toast.success(language === 'ar' ? 'تم فتح واتساب' : 'WhatsApp opened');
+  };
+
+  const sendAllReminders = () => {
+    if (expiring.length === 0) {
+      toast.error(language === 'ar' ? 'لا توجد اشتراكات منتهية' : 'No expiring subscriptions');
+      return;
+    }
+    expiring.forEach((member, index) => {
+      setTimeout(() => {
+        sendWhatsAppReminder(member);
+      }, index * 1000);
+    });
+    toast.success(language === 'ar' ? `جاري إرسال ${expiring.length} تنبيهات` : `Sending ${expiring.length} reminders`);
+  };
+
   const activityColors = {
     'السباحة': '#0EA5E9',
     'Swimming': '#0EA5E9',
