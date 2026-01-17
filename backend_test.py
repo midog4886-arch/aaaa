@@ -450,6 +450,7 @@ class AcademyAPITester:
         self.test_members()
         self.test_invoices()
         self.test_reports()
+        self.test_company_info()
         
         # Test new features
         self.test_export_endpoints()
@@ -457,8 +458,7 @@ class AcademyAPITester:
         
         # Test creation operations
         member_id = self.test_member_creation()
-        if member_id:
-            self.test_invoice_creation(member_id)
+        self.test_invoice_creation(member_id)
         
         return True
 
