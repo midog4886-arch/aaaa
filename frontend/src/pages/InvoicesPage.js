@@ -571,8 +571,8 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
                 </div>
 
                 <table className="w-full border-collapse mb-4">
-                  <thead><tr className="bg-muted"><th className="border p-2 text-start">{t('activity_name')}</th><th className="border p-2 text-start">{language === 'ar' ? 'الفترة' : 'Period'}</th><th className="border p-2 text-start">{language === 'ar' ? 'المبلغ' : 'Amount'}</th></tr></thead>
-                  <tbody>{selectedInvoice.items.map((item, idx) => <tr key={idx}><td className="border p-2">{item.activity_name}</td><td className="border p-2">{item.period}</td><td className="border p-2">{item.fee} {t('sar')}</td></tr>)}</tbody>
+                  <thead><tr className="bg-muted"><th className="border p-2 text-start">{t('activity_name')}</th><th className="border p-2 text-start">{language === 'ar' ? 'الفترة' : 'Period'}</th><th className="border p-2 text-start">{language === 'ar' ? 'المواعيد' : 'Schedule'}</th><th className="border p-2 text-start">{language === 'ar' ? 'المبلغ' : 'Amount'}</th></tr></thead>
+                  <tbody>{selectedInvoice.items.map((item, idx) => <tr key={idx}><td className="border p-2">{item.activity_name}</td><td className="border p-2 text-sm">{item.period}</td><td className="border p-2 text-sm text-blue-700">{item.schedule || '-'}</td><td className="border p-2">{item.fee} {t('sar')}</td></tr>)}</tbody>
                 </table>
 
                 <div className="space-y-2 text-sm">
