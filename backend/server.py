@@ -1124,7 +1124,7 @@ async def get_expiring_subscriptions(days: int = 7, current_user: dict = Depends
 async def get_company_info():
     """Get company registration info for invoices"""
     return {
-        "name_ar": "أكاديمية أداء الأبطال العالمية",
+        "name_ar": "شركة اداء الابطال العالمية للرياضة",
         "name_en": "Global Champions Sports Performance",
         "tax_number": COMPANY_TAX_NUMBER,
         "commercial_reg": COMPANY_COMMERCIAL_REG,
@@ -1529,7 +1529,7 @@ async def export_financial_report(
         title_font = Font(bold=True, size=14)
         thin_border = Border(left=Side(style='thin'), right=Side(style='thin'), top=Side(style='thin'), bottom=Side(style='thin'))
         
-        ws_summary.cell(row=1, column=1, value="التقرير المالي - أكاديمية أداء الأبطال العالمية").font = title_font
+        ws_summary.cell(row=1, column=1, value="التقرير المالي - شركة اداء الابطال العالمية للرياضة").font = title_font
         ws_summary.cell(row=2, column=1, value=f"الفترة: {start_date or 'الكل'} إلى {end_date or 'الآن'}")
         ws_summary.cell(row=4, column=1, value="إجمالي الإيرادات:").font = Font(bold=True)
         ws_summary.cell(row=4, column=2, value=f"{total_revenue} ر.س")
@@ -1582,7 +1582,7 @@ async def export_financial_report(
     else:
         output = io.StringIO()
         writer = csv.writer(output)
-        writer.writerow(["التقرير المالي - أكاديمية أداء الأبطال العالمية"])
+        writer.writerow(["التقرير المالي - شركة اداء الابطال العالمية للرياضة"])
         writer.writerow([f"الفترة: {start_date or 'الكل'} إلى {end_date or 'الآن'}"])
         writer.writerow([f"إجمالي الإيرادات: {total_revenue} ر.س"])
         writer.writerow([f"عدد الفواتير: {len(invoices)}"])
@@ -1731,7 +1731,7 @@ async def get_invoice_qr(invoice_id: str, current_user: dict = Depends(get_curre
         return bytes([tag, len(value_bytes)]) + value_bytes
     
     # Build ZATCA-compliant data
-    seller_name = "أكاديمية أداء الأبطال العالمية"
+    seller_name = "شركة اداء الابطال العالمية للرياضة"
     vat_number = COMPANY_TAX_NUMBER
     timestamp = invoice.get("paid_at", invoice.get("created_at", datetime.now(timezone.utc).isoformat()))
     total_with_vat = str(invoice.get("total", 0))
