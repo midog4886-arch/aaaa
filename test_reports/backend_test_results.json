@@ -1,242 +1,284 @@
 {
-  "timestamp": "2026-01-17T09:02:11.039752",
-  "total_tests": 39,
-  "passed_tests": 38,
-  "success_rate": 97.43589743589743,
+  "timestamp": "2026-01-17T09:03:00.720860",
+  "total_tests": 46,
+  "passed_tests": 44,
+  "success_rate": 95.65217391304348,
   "results": [
     {
       "test": "Seed Demo Data",
       "success": true,
       "details": "Status: 200",
-      "timestamp": "2026-01-17T09:02:10.125190"
+      "timestamp": "2026-01-17T09:02:59.872874"
     },
     {
       "test": "Admin Login",
       "success": true,
       "details": "Status: 200",
-      "timestamp": "2026-01-17T09:02:10.384588"
+      "timestamp": "2026-01-17T09:03:00.134091"
     },
     {
       "test": "Token Retrieved",
       "success": true,
       "details": "Authentication successful",
-      "timestamp": "2026-01-17T09:02:10.385188"
+      "timestamp": "2026-01-17T09:03:00.134710"
     },
     {
       "test": "Dashboard Stats",
       "success": true,
       "details": "Status: 200",
-      "timestamp": "2026-01-17T09:02:10.461668"
+      "timestamp": "2026-01-17T09:03:00.173349"
     },
     {
       "test": "Dashboard members_count",
       "success": true,
-      "details": "Value: 3",
-      "timestamp": "2026-01-17T09:02:10.462267"
+      "details": "Value: 4",
+      "timestamp": "2026-01-17T09:03:00.173781"
     },
     {
       "test": "Dashboard activities_count",
       "success": true,
       "details": "Value: 4",
-      "timestamp": "2026-01-17T09:02:10.462274"
+      "timestamp": "2026-01-17T09:03:00.173788"
     },
     {
       "test": "Dashboard coaches_count",
       "success": true,
       "details": "Value: 3",
-      "timestamp": "2026-01-17T09:02:10.462278"
+      "timestamp": "2026-01-17T09:03:00.173792"
     },
     {
       "test": "Dashboard active_subscriptions",
       "success": true,
-      "details": "Value: 2",
-      "timestamp": "2026-01-17T09:02:10.462283"
+      "details": "Value: 3",
+      "timestamp": "2026-01-17T09:03:00.173798"
     },
     {
       "test": "Get Activities",
       "success": true,
       "details": "Status: 200",
-      "timestamp": "2026-01-17T09:02:10.497521"
+      "timestamp": "2026-01-17T09:03:00.206797"
     },
     {
       "test": "Activities List",
       "success": true,
       "details": "Found 4 activities",
-      "timestamp": "2026-01-17T09:02:10.497931"
+      "timestamp": "2026-01-17T09:03:00.207302"
     },
     {
       "test": "Activity السباحة",
       "success": true,
       "details": "Found in activities",
-      "timestamp": "2026-01-17T09:02:10.497942"
+      "timestamp": "2026-01-17T09:03:00.207311"
     },
     {
       "test": "Activity كرة القدم",
       "success": true,
       "details": "Found in activities",
-      "timestamp": "2026-01-17T09:02:10.497947"
+      "timestamp": "2026-01-17T09:03:00.207315"
     },
     {
       "test": "Activity الكاراتيه",
       "success": true,
       "details": "Found in activities",
-      "timestamp": "2026-01-17T09:02:10.497951"
+      "timestamp": "2026-01-17T09:03:00.207319"
     },
     {
       "test": "Activity الجمباز",
       "success": true,
       "details": "Found in activities",
-      "timestamp": "2026-01-17T09:02:10.497954"
+      "timestamp": "2026-01-17T09:03:00.207322"
     },
     {
       "test": "Get Coaches",
       "success": true,
       "details": "Status: 200",
-      "timestamp": "2026-01-17T09:02:10.527251"
+      "timestamp": "2026-01-17T09:03:00.238159"
     },
     {
       "test": "Coaches List",
       "success": true,
       "details": "Found 3 coaches",
-      "timestamp": "2026-01-17T09:02:10.527659"
+      "timestamp": "2026-01-17T09:03:00.238563"
     },
     {
       "test": "Get Members",
       "success": true,
       "details": "Status: 200",
-      "timestamp": "2026-01-17T09:02:10.598601"
+      "timestamp": "2026-01-17T09:03:00.269280"
     },
     {
       "test": "Members List",
       "success": true,
-      "details": "Found 3 members",
-      "timestamp": "2026-01-17T09:02:10.599177"
+      "details": "Found 4 members",
+      "timestamp": "2026-01-17T09:03:00.269696"
     },
     {
       "test": "Get Invoices",
       "success": true,
       "details": "Status: 200",
-      "timestamp": "2026-01-17T09:02:10.632842"
+      "timestamp": "2026-01-17T09:03:00.303588"
     },
     {
       "test": "Invoices List",
       "success": true,
       "details": "Found 2 invoices",
-      "timestamp": "2026-01-17T09:02:10.633339"
+      "timestamp": "2026-01-17T09:03:00.304086"
     },
     {
       "test": "Financial Report",
       "success": true,
       "details": "Status: 200",
-      "timestamp": "2026-01-17T09:02:10.667519"
+      "timestamp": "2026-01-17T09:03:00.342359"
     },
     {
       "test": "Report total_revenue",
       "success": true,
       "details": "Present",
-      "timestamp": "2026-01-17T09:02:10.667939"
+      "timestamp": "2026-01-17T09:03:00.342996"
     },
     {
       "test": "Report invoice_count",
       "success": true,
       "details": "Present",
-      "timestamp": "2026-01-17T09:02:10.667946"
+      "timestamp": "2026-01-17T09:03:00.343003"
     },
     {
       "test": "Report revenue_by_activity",
       "success": true,
       "details": "Present",
-      "timestamp": "2026-01-17T09:02:10.667949"
+      "timestamp": "2026-01-17T09:03:00.343006"
     },
     {
       "test": "Expiring Subscriptions",
       "success": true,
       "details": "Status: 200",
-      "timestamp": "2026-01-17T09:02:10.702133"
+      "timestamp": "2026-01-17T09:03:00.378015"
+    },
+    {
+      "test": "Get Company Info",
+      "success": true,
+      "details": "Status: 200",
+      "timestamp": "2026-01-17T09:03:00.405761"
+    },
+    {
+      "test": "Company tax_number",
+      "success": true,
+      "details": "Value: 312655637900003",
+      "timestamp": "2026-01-17T09:03:00.406188"
+    },
+    {
+      "test": "Company commercial_reg",
+      "success": true,
+      "details": "Value: 7043630230",
+      "timestamp": "2026-01-17T09:03:00.406195"
+    },
+    {
+      "test": "Company vat_rate",
+      "success": true,
+      "details": "Value: 15.0",
+      "timestamp": "2026-01-17T09:03:00.406202"
+    },
+    {
+      "test": "Company name_ar",
+      "success": true,
+      "details": "Value: أكاديمية أداء الأبطال العالمية",
+      "timestamp": "2026-01-17T09:03:00.406205"
     },
     {
       "test": "Export Members",
       "success": true,
       "details": "Status: 200",
-      "timestamp": "2026-01-17T09:02:10.735622"
+      "timestamp": "2026-01-17T09:03:00.437796"
     },
     {
       "test": "Members Export",
       "success": true,
       "details": "CSV export successful",
-      "timestamp": "2026-01-17T09:02:10.736059"
+      "timestamp": "2026-01-17T09:03:00.438318"
     },
     {
       "test": "Export Invoices",
       "success": true,
       "details": "Status: 200",
-      "timestamp": "2026-01-17T09:02:10.770775"
+      "timestamp": "2026-01-17T09:03:00.470454"
     },
     {
       "test": "Invoices Export",
       "success": true,
       "details": "CSV export successful",
-      "timestamp": "2026-01-17T09:02:10.771266"
+      "timestamp": "2026-01-17T09:03:00.470962"
     },
     {
       "test": "Export Reports",
       "success": true,
       "details": "Status: 200",
-      "timestamp": "2026-01-17T09:02:10.841076"
+      "timestamp": "2026-01-17T09:03:00.501573"
     },
     {
       "test": "Reports Export",
       "success": true,
       "details": "CSV export successful",
-      "timestamp": "2026-01-17T09:02:10.841606"
+      "timestamp": "2026-01-17T09:03:00.502115"
     },
     {
       "test": "Search Invoices",
       "success": true,
       "details": "Status: 200",
-      "timestamp": "2026-01-17T09:02:10.874832"
+      "timestamp": "2026-01-17T09:03:00.531481"
     },
     {
       "test": "Invoice Search",
       "success": true,
       "details": "Found 0 results",
-      "timestamp": "2026-01-17T09:02:10.875250"
+      "timestamp": "2026-01-17T09:03:00.531918"
     },
     {
       "test": "Search by Status",
       "success": true,
       "details": "Status: 200",
-      "timestamp": "2026-01-17T09:02:10.906515"
+      "timestamp": "2026-01-17T09:03:00.562667"
     },
     {
       "test": "Status Filter Search",
       "success": true,
       "details": "Found 2 pending invoices",
-      "timestamp": "2026-01-17T09:02:10.907033"
+      "timestamp": "2026-01-17T09:03:00.563115"
     },
     {
       "test": "Search by Date",
       "success": true,
       "details": "Status: 200",
-      "timestamp": "2026-01-17T09:02:10.937288"
+      "timestamp": "2026-01-17T09:03:00.594094"
     },
     {
       "test": "Date Range Search",
       "success": true,
       "details": "Found 2 invoices from today",
-      "timestamp": "2026-01-17T09:02:10.937698"
+      "timestamp": "2026-01-17T09:03:00.594507"
     },
     {
       "test": "Get Activities for Member",
       "success": true,
       "details": "Status: 200",
-      "timestamp": "2026-01-17T09:02:10.967016"
+      "timestamp": "2026-01-17T09:03:00.623598"
     },
     {
       "test": "Create Member",
       "success": false,
       "details": "Status: 200, Expected: 201, Error: Unknown error",
-      "timestamp": "2026-01-17T09:02:11.038910"
+      "timestamp": "2026-01-17T09:03:00.658203"
+    },
+    {
+      "test": "Get Activities for Invoice",
+      "success": true,
+      "details": "Status: 200",
+      "timestamp": "2026-01-17T09:03:00.689113"
+    },
+    {
+      "test": "Create Invoice without Member",
+      "success": false,
+      "details": "Status: 200, Expected: 201, Error: Unknown error",
+      "timestamp": "2026-01-17T09:03:00.720206"
     }
   ]
 }
