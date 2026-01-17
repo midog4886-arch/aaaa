@@ -178,6 +178,25 @@ class MessageCreate(BaseModel):
     message: str
     message_type: str = "custom"  # payment_reminder, expiry_alert, promotion, custom
 
+# ============ BRANCH MODELS ============
+
+class BranchBase(BaseModel):
+    name: str
+    name_ar: str
+    phone: str
+    manager_name: Optional[str] = ""
+    manager_name_ar: Optional[str] = ""
+    address: Optional[str] = ""
+    address_ar: Optional[str] = ""
+    is_active: bool = True
+
+class BranchCreate(BranchBase):
+    pass
+
+class Branch(BranchBase):
+    id: str
+    created_at: str
+
 class ReportFilter(BaseModel):
     start_date: Optional[str] = None
     end_date: Optional[str] = None
