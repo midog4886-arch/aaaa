@@ -467,10 +467,15 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
                           <button className="action-button text-green-600" onClick={() => handleMarkPaid(invoice.id)} title={language === 'ar' ? 'تم الدفع' : 'Mark Paid'}><CheckCircle className="w-4 h-4" /></button>
                           <button className="action-button text-amber-600" onClick={() => handleCancelInvoice(invoice.id)} title={language === 'ar' ? 'إلغاء' : 'Cancel'}><XCircle className="w-4 h-4" /></button>
                         </>)}
-                        {invoice.status === 'cancelled' && (
-                          <button className="action-button text-blue-600" onClick={() => handleRestoreInvoice(invoice.id)} title={language === 'ar' ? 'استرجاع' : 'Restore'}><RotateCcw className="w-4 h-4" /></button>
+                        {invoice.status === 'paid' && (
+                          <button className="action-button text-purple-600" onClick={() => openRefundDialog(invoice)} title={language === 'ar' ? 'استرجاع مبلغ' : 'Refund'}><RefreshCcw className="w-4 h-4" /></button>
                         )}
-                        <button className="action-button text-red-600" onClick={() => handleDeleteInvoice(invoice.id)} title={language === 'ar' ? 'حذف' : 'Delete'}><Trash2 className="w-4 h-4" /></button>
+                        {invoice.status === 'cancelled' && (
+                          <button className="action-button text-blue-600" onClick={() => handleRestoreInvoice(invoice.id)} title={language === 'ar' ? 'استرجاع الفاتورة' : 'Restore'}><RotateCcw className="w-4 h-4" /></button>
+                        )}
+                        {isAdmin && (
+                          <button className="action-button text-red-600" onClick={() => handleDeleteInvoice(invoice.id)} title={language === 'ar' ? 'حذف' : 'Delete'}><Trash2 className="w-4 h-4" /></button>
+                        )}
                       </div>
                     </td>
                   </tr>
