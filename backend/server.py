@@ -1030,6 +1030,163 @@ async def export_financial_report(
         }
     )
 
+@api_router.get("/export/all-data")
+async def export_all_data(current_user: dict = Depends(get_current_user)):
+    """Export all data (members, invoices, activities, coaches) to Excel"""
+    
+    # Fetch all data
+    members = await db.members.find({}, {"_id": 0}).to_list(10000)
+    invoices = await db.invoices.find({}, {"_id": 0}).sort("created_at", -1).to_list(10000)
+    activities_data = await db.activities.find({}, {"_id": 0}).to_list(100)
+    coaches = await db.coaches.find({}, {"_id": 0}).to_list(100)
+    
+    # Create workbook
+    wb = Workbook()
+    
+    # Style definitions
+    header_font = Font(bold=True, color="FFFFFF")
+    header_fill = PatternFill(start_color="F97316", end_color="F97316", fill_type="solid")
+    header_alignment = Alignment(horizontal="center", vertical="center")
+    thin_border = Border(
+        left=Side(style='thin'), right=Side(style='thin'),
+        top=Side(style='thin'), bottom=Side(style='thin')
+    )
+    
+    # Members Sheet
+    ws_members = wb.active
+    ws_members.title = "الأعضاء"
+    member_headers = ["م", "الاسم", "العمر", "ولي الأمر", "الجوال", "الأنشطة", "الحالة", "تاريخ التسجيل"]
+    ws_members.append(member_headers)
+    for col, header in enumerate(member_headers, 1):
+        cell = ws_members.cell(row=1, column=col)
+        cell.font = header_font
+        cell.fill = header_fill
+        cell.alignment = header_alignment
+        cell.border = thin_border
+    
+    for idx, member in enumerate(members, 1):
+        activities_list = ", ".join([a.get("activity_name", "") for a in member.get("activities", [])])
+        statuses = ", ".join(set([a.get("status", "") for a in member.get("activities", [])]))
+        ws_members.append([
+            idx, member.get("name_ar", ""), member.get("age", ""),
+            member.get("guardian_name_ar", ""), member.get("phone", ""),
+            activities_list, statuses, member.get("created_at", "")[:10]
+        ])
+    
+    # Invoices Sheet
+    ws_invoices = wb.create_sheet("الفواتير")
+    invoice_headers = ["م", "رقم الفاتورة", "العميل", "الجوال", "الأنشطة", "المجموع", "الضريبة", "الإجمالي", "الحالة", "التاريخ"]
+    ws_invoices.append(invoice_headers)
+    for col, header in enumerate(invoice_headers, 1):
+        cell = ws_invoices.cell(row=1, column=col)
+        cell.font = header_font
+        cell.fill = header_fill
+        cell.alignment = header_alignment
+    
+    for idx, inv in enumerate(invoices, 1):
+        activities_list = ", ".join([item.get("activity_name", "") for item in inv.get("items", [])])
+        ws_invoices.append([
+            idx, inv.get("id", "")[:8], inv.get("customer_name_ar", inv.get("member_name", "")),
+            inv.get("customer_phone", ""), activities_list, inv.get("subtotal", 0),
+            inv.get("vat_amount", 0), inv.get("total", 0), inv.get("status", ""),
+            inv.get("created_at", "")[:10]
+        ])
+    
+    # Activities Sheet
+    ws_activities = wb.create_sheet("الأنشطة")
+    activity_headers = ["م", "النشاط", "الوصف", "الرسوم الشهرية"]
+    ws_activities.append(activity_headers)
+    for col, header in enumerate(activity_headers, 1):
+        cell = ws_activities.cell(row=1, column=col)
+        cell.font = header_font
+        cell.fill = header_fill
+        cell.alignment = header_alignment
+    
+    for idx, act in enumerate(activities_data, 1):
+        ws_activities.append([idx, act.get("name_ar", ""), act.get("description_ar", ""), act.get("monthly_fee", 0)])
+    
+    # Coaches Sheet
+    ws_coaches = wb.create_sheet("المدربين")
+    coach_headers = ["م", "الاسم", "الجوال", "البريد", "الأنشطة"]
+    ws_coaches.append(coach_headers)
+    for col, header in enumerate(coach_headers, 1):
+        cell = ws_coaches.cell(row=1, column=col)
+        cell.font = header_font
+        cell.fill = header_fill
+        cell.alignment = header_alignment
+    
+    for idx, coach in enumerate(coaches, 1):
+        ws_coaches.append([idx, coach.get("name_ar", ""), coach.get("phone", ""), coach.get("email", ""), len(coach.get("activities", []))])
+    
+    # Adjust column widths
+    for ws in [ws_members, ws_invoices, ws_activities, ws_coaches]:
+        for column in ws.columns:
+            max_length = max(len(str(cell.value or "")) for cell in column)
+            ws.column_dimensions[column[0].column_letter].width = min(max_length + 2, 50)
+    
+    # Save to buffer
+    output = io.BytesIO()
+    wb.save(output)
+    output.seek(0)
+    
+    return StreamingResponse(
+        output,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f"attachment; filename=academy_data_{datetime.now().strftime('%Y%m%d')}.xlsx"}
+    )
+
+@api_router.get("/invoices/{invoice_id}/qr")
+async def get_invoice_qr(invoice_id: str, current_user: dict = Depends(get_current_user)):
+    """Generate QR code for invoice (ZATCA compliant)"""
+    invoice = await db.invoices.find_one({"id": invoice_id}, {"_id": 0})
+    if not invoice:
+        raise HTTPException(status_code=404, detail="Invoice not found")
+    
+    # ZATCA TLV format for QR code
+    def tlv_encode(tag, value):
+        value_bytes = value.encode('utf-8')
+        return bytes([tag, len(value_bytes)]) + value_bytes
+    
+    # Build ZATCA-compliant data
+    seller_name = "أكاديمية أداء الأبطال العالمية"
+    vat_number = COMPANY_TAX_NUMBER
+    timestamp = invoice.get("created_at", datetime.now(timezone.utc).isoformat())
+    total_with_vat = str(invoice.get("total", 0))
+    vat_amount = str(invoice.get("vat_amount", 0))
+    
+    # Create TLV encoded data
+    tlv_data = (
+        tlv_encode(1, seller_name) +
+        tlv_encode(2, vat_number) +
+        tlv_encode(3, timestamp) +
+        tlv_encode(4, total_with_vat) +
+        tlv_encode(5, vat_amount)
+    )
+    
+    # Base64 encode for QR
+    qr_data = base64.b64encode(tlv_data).decode('utf-8')
+    
+    # Generate QR code
+    qr = qrcode.QRCode(version=1, error_correction=qrcode.constants.ERROR_CORRECT_L, box_size=10, border=4)
+    qr.add_data(qr_data)
+    qr.make(fit=True)
+    
+    img = qr.make_image(fill_color="black", back_color="white")
+    
+    # Save to buffer
+    img_buffer = io.BytesIO()
+    img.save(img_buffer, format='PNG')
+    img_buffer.seek(0)
+    
+    # Return as base64 for embedding
+    img_base64 = base64.b64encode(img_buffer.getvalue()).decode('utf-8')
+    
+    return {
+        "qr_image": f"data:image/png;base64,{img_base64}",
+        "qr_data": qr_data,
+        "invoice_id": invoice_id
+    }
+
 # Include router
 app.include_router(api_router)
 
