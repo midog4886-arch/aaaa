@@ -685,12 +685,6 @@ export const MembersPage = () => {
                     )}
                   </div>
                 )}
-                {selectedMember.notes && (
-                  <div className="p-4 bg-muted/50 rounded-lg">
-                    <p className="text-sm text-muted-foreground mb-1">{t('notes')}</p>
-                    <p>{selectedMember.notes}</p>
-                  </div>
-                )}
               </div>
             )}
           </DialogContent>
