@@ -595,7 +595,14 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
                 {/* Payment Info */}
                 <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
                   <div className="grid grid-cols-2 gap-4 text-sm">
-                    <div><strong>{language === 'ar' ? 'طريقة الدفع:' : 'Payment Method:'}</strong> {selectedInvoice.payment_method === 'cash' ? (language === 'ar' ? 'نقداً' : 'Cash') : selectedInvoice.payment_method === 'card' ? (language === 'ar' ? 'بطاقة' : 'Card') : selectedInvoice.payment_method === 'transfer' ? (language === 'ar' ? 'تحويل بنكي' : 'Transfer') : selectedInvoice.payment_method}</div>
+                    <div><strong>{language === 'ar' ? 'طريقة الدفع:' : 'Payment Method:'}</strong> {
+                      selectedInvoice.payment_method === 'cash' ? (language === 'ar' ? 'نقداً' : 'Cash') : 
+                      selectedInvoice.payment_method === 'card' ? (language === 'ar' ? 'بطاقة' : 'Card') : 
+                      selectedInvoice.payment_method === 'transfer' ? (language === 'ar' ? 'تحويل بنكي' : 'Transfer') : 
+                      selectedInvoice.payment_method === 'tabby' ? (language === 'ar' ? 'تابي' : 'Tabby') : 
+                      selectedInvoice.payment_method === 'tamara' ? (language === 'ar' ? 'تمارا' : 'Tamara') : 
+                      selectedInvoice.payment_method
+                    }</div>
                     <div><strong>{language === 'ar' ? 'الحالة:' : 'Status:'}</strong> {selectedInvoice.status === 'paid' ? (language === 'ar' ? '✅ مدفوعة' : '✅ Paid') : selectedInvoice.status === 'pending' ? (language === 'ar' ? '⏳ غير مدفوعة' : '⏳ Pending') : (language === 'ar' ? '❌ ملغاة' : '❌ Cancelled')}</div>
                   </div>
                 </div>
