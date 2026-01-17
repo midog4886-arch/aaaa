@@ -45,6 +45,9 @@ export const ReportsPage = () => {
     end_date: '',
     activity_id: 'all'
   });
+  
+  // Detail view states
+  const [activeDetail, setActiveDetail] = useState(null); // 'revenue', 'refunds', 'net', 'invoices'
 
   useEffect(() => {
     loadData();
@@ -86,6 +89,10 @@ export const ReportsPage = () => {
 
   const formatCurrency = (amount) => {
     return `${amount?.toLocaleString() || 0} ${t('sar')}`;
+  };
+  
+  const toggleDetail = (type) => {
+    setActiveDetail(activeDetail === type ? null : type);
   };
 
   if (loading) {
