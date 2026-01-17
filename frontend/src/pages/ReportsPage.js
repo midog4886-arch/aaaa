@@ -169,6 +169,10 @@ export const ReportsPage = () => {
                     `<tr><td>${i+1}</td><td>${r.name}</td><td>${r.total?.toLocaleString() || 0} ر.س</td></tr>`
                   ).join('') || '<tr><td colspan="3">لا توجد بيانات</td></tr>';
                   
+                  const refundRows = report?.refund_details?.map((r, i) => 
+                    `<tr><td>${i+1}</td><td>#${r.invoice_id?.slice(0,8)}</td><td>${r.customer_name || '-'}</td><td>${r.refund_amount?.toLocaleString() || 0} ر.س</td><td>${r.refund_type === 'full' ? 'كامل' : 'جزئي'}</td><td>${r.refund_reason || '-'}</td></tr>`
+                  ).join('') || '';
+                  
                   printWindow.document.write(`
                     <html>
                       <head>
@@ -178,14 +182,21 @@ export const ReportsPage = () => {
                           body { font-family: 'Tajawal', Arial; direction: rtl; padding: 20px; }
                           h1 { color: #F97316; text-align: center; margin-bottom: 10px; }
                           h2 { color: #1E3A8A; text-align: center; font-size: 16px; margin-bottom: 20px; }
-                          .summary { display: flex; justify-content: space-around; margin-bottom: 30px; padding: 15px; background: #f8fafc; border-radius: 8px; }
-                          .summary-item { text-align: center; }
-                          .summary-value { font-size: 24px; font-weight: bold; color: #F97316; }
-                          .summary-label { font-size: 12px; color: #666; }
-                          table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-                          th, td { border: 1px solid #ddd; padding: 10px; text-align: right; }
+                          h3 { color: #1E3A8A; margin-top: 25px; border-bottom: 2px solid #F97316; padding-bottom: 5px; }
+                          .summary { display: flex; flex-wrap: wrap; justify-content: space-around; margin-bottom: 30px; padding: 15px; background: #f8fafc; border-radius: 8px; gap: 15px; }
+                          .summary-item { text-align: center; min-width: 120px; }
+                          .summary-value { font-size: 20px; font-weight: bold; }
+                          .summary-value.revenue { color: #F97316; }
+                          .summary-value.refund { color: #9333ea; }
+                          .summary-value.net { color: #22c55e; }
+                          .summary-label { font-size: 11px; color: #666; }
+                          table { width: 100%; border-collapse: collapse; margin-top: 15px; }
+                          th, td { border: 1px solid #ddd; padding: 8px; text-align: right; font-size: 12px; }
                           th { background: #F97316; color: white; }
+                          th.refund { background: #9333ea; }
                           .footer { text-align: center; margin-top: 30px; font-size: 11px; color: #666; }
+                          .refund-section { margin-top: 30px; padding: 15px; background: #faf5ff; border: 1px solid #e9d5ff; border-radius: 8px; }
+                          .refund-section h3 { color: #9333ea; border-color: #9333ea; }
                         </style>
                       </head>
                       <body>
@@ -193,8 +204,16 @@ export const ReportsPage = () => {
                         <h2>التقارير المالية ${filters.start_date ? '(' + filters.start_date + ' - ' + filters.end_date + ')' : ''}</h2>
                         <div class="summary">
                           <div class="summary-item">
-                            <div class="summary-value">${report?.total_revenue?.toLocaleString() || 0} ر.س</div>
+                            <div class="summary-value revenue">${report?.total_revenue?.toLocaleString() || 0} ر.س</div>
                             <div class="summary-label">إجمالي الإيرادات</div>
+                          </div>
+                          <div class="summary-item">
+                            <div class="summary-value refund">${report?.total_refunds?.toLocaleString() || 0} ر.س</div>
+                            <div class="summary-label">إجمالي المسترجع</div>
+                          </div>
+                          <div class="summary-item">
+                            <div class="summary-value net">${report?.net_revenue?.toLocaleString() || 0} ر.س</div>
+                            <div class="summary-label">صافي الإيرادات</div>
                           </div>
                           <div class="summary-item">
                             <div class="summary-value">${report?.invoice_count || 0}</div>
@@ -206,6 +225,15 @@ export const ReportsPage = () => {
                           <thead><tr><th>م</th><th>النشاط</th><th>الإيرادات</th></tr></thead>
                           <tbody>${revenueRows}</tbody>
                         </table>
+                        ${report?.refund_count > 0 ? `
+                        <div class="refund-section">
+                          <h3>تفاصيل الاسترجاعات (${report?.refund_count || 0} عملية)</h3>
+                          <table>
+                            <thead><tr><th class="refund">م</th><th class="refund">رقم الفاتورة</th><th class="refund">العميل</th><th class="refund">المبلغ المسترجع</th><th class="refund">النوع</th><th class="refund">السبب</th></tr></thead>
+                            <tbody>${refundRows}</tbody>
+                          </table>
+                        </div>
+                        ` : ''}
                         <div class="footer">تاريخ الطباعة: ${new Date().toLocaleDateString('ar-SA')}</div>
                       </body>
                     </html>
