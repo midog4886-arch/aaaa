@@ -644,6 +644,7 @@ async def create_invoice(invoice: InvoiceCreate, current_user: dict = Depends(ge
     customer_address = invoice.customer_address or ""
     
     invoice_id = str(uuid.uuid4())
+    branch_id = current_user.get("branch_id")
     invoice_doc = {
         "id": invoice_id,
         "member_id": invoice.member_id,
@@ -656,6 +657,7 @@ async def create_invoice(invoice: InvoiceCreate, current_user: dict = Depends(ge
         "status": "pending",
         "payment_method": invoice.payment_method,
         "notes": invoice.notes,
+        "branch_id": branch_id,
         "created_at": datetime.now(timezone.utc).isoformat(),
         "paid_at": None,
         # Customer data stored with invoice
