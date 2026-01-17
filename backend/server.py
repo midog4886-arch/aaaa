@@ -260,14 +260,16 @@ async def register(user: UserCreate):
         "username": user.username,
         "password": hash_password(user.password),
         "name": user.name,
+        "branch_id": None,  # Will be assigned later
+        "is_admin": False,
         "created_at": datetime.now(timezone.utc).isoformat()
     }
     await db.users.insert_one(user_doc)
     
-    token = create_token(user_id, user.username)
+    token = create_token(user_id, user.username, None, False)
     return TokenResponse(
         access_token=token,
-        user={"id": user_id, "username": user.username, "name": user.name}
+        user={"id": user_id, "username": user.username, "name": user.name, "branch_id": None, "is_admin": False}
     )
 
 @api_router.post("/auth/login", response_model=TokenResponse)
@@ -276,10 +278,13 @@ async def login(credentials: UserLogin):
     if not user or not verify_password(credentials.password, user["password"]):
         raise HTTPException(status_code=401, detail="Invalid credentials")
     
-    token = create_token(user["id"], user["username"])
+    branch_id = user.get("branch_id")
+    is_admin = user.get("is_admin", False)
+    
+    token = create_token(user["id"], user["username"], branch_id, is_admin)
     return TokenResponse(
         access_token=token,
-        user={"id": user["id"], "username": user["username"], "name": user["name"]}
+        user={"id": user["id"], "username": user["username"], "name": user["name"], "branch_id": branch_id, "is_admin": is_admin}
     )
 
 @api_router.get("/auth/me")
