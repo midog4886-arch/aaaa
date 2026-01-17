@@ -407,6 +407,11 @@ async def update_member_activity(member_id: str, activity_id: str, activity: Mem
 async def get_invoices(
     member_id: Optional[str] = None,
     status: Optional[str] = None,
+    invoice_number: Optional[str] = None,
+    phone: Optional[str] = None,
+    activity_id: Optional[str] = None,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
     current_user: dict = Depends(get_current_user)
 ):
     query = {}
@@ -414,6 +419,54 @@ async def get_invoices(
         query["member_id"] = member_id
     if status:
         query["status"] = status
+    if invoice_number:
+        query["id"] = {"$regex": invoice_number, "$options": "i"}
+    if phone:
+        query["customer_phone"] = {"$regex": phone}
+    if activity_id:
+        query["items.activity_id"] = activity_id
+    if start_date:
+        query["created_at"] = {"$gte": start_date}
+    if end_date:
+        if "created_at" in query:
+            query["created_at"]["$lte"] = end_date
+        else:
+            query["created_at"] = {"$lte": end_date}
+    
+    invoices = await db.invoices.find(query, {"_id": 0}).sort("created_at", -1).to_list(1000)
+    return invoices
+
+# Search invoices with member name
+@api_router.get("/invoices/search")
+async def search_invoices(
+    q: Optional[str] = None,
+    status: Optional[str] = None,
+    activity_id: Optional[str] = None,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    current_user: dict = Depends(get_current_user)
+):
+    query = {}
+    
+    if q:
+        query["$or"] = [
+            {"id": {"$regex": q, "$options": "i"}},
+            {"member_name": {"$regex": q, "$options": "i"}},
+            {"customer_phone": {"$regex": q}},
+            {"customer_name": {"$regex": q, "$options": "i"}},
+            {"customer_name_ar": {"$regex": q}}
+        ]
+    if status:
+        query["status"] = status
+    if activity_id:
+        query["items.activity_id"] = activity_id
+    if start_date:
+        query["created_at"] = {"$gte": start_date}
+    if end_date:
+        if "created_at" in query:
+            query["created_at"]["$lte"] = end_date
+        else:
+            query["created_at"] = {"$lte": end_date}
     
     invoices = await db.invoices.find(query, {"_id": 0}).sort("created_at", -1).to_list(1000)
     return invoices
