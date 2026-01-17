@@ -526,33 +526,6 @@ export const ReportsPage = () => {
         )}
 
         {/* Refunds Summary - Old Section Removed, now interactive above */}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {report.refund_details.map((refund, idx) => (
-                        <tr key={idx}>
-                          <td className="font-mono text-sm">#{refund.invoice_id?.slice(0, 8)}</td>
-                          <td>{refund.customer_name || '-'}</td>
-                          <td>{refund.original_amount} {t('sar')}</td>
-                          <td className="font-bold text-purple-600">{refund.refund_amount} {t('sar')}</td>
-                          <td>
-                            <Badge variant="outline" className={refund.refund_type === 'full' ? 'bg-purple-100 text-purple-700' : 'bg-amber-100 text-amber-700'}>
-                              {refund.refund_type === 'full' ? (language === 'ar' ? 'كامل' : 'Full') : (language === 'ar' ? 'جزئي' : 'Partial')}
-                            </Badge>
-                          </td>
-                          <td className="text-sm text-muted-foreground">{refund.refund_reason || '-'}</td>
-                          <td className="text-sm text-muted-foreground">
-                            {refund.refunded_at ? new Date(refund.refunded_at).toLocaleDateString(language === 'ar' ? 'ar-SA' : 'en-US') : '-'}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        )}
 
         {/* Charts */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
