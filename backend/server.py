@@ -461,7 +461,12 @@ async def get_members(
     status: Optional[str] = None,
     current_user: dict = Depends(get_current_user)
 ):
+    is_admin = current_user.get("is_admin", False)
+    branch_id = current_user.get("branch_id")
+    
     query = {}
+    if not is_admin and branch_id:
+        query["branch_id"] = branch_id
     if activity_id:
         query["activities.activity_id"] = activity_id
     if coach_id:
@@ -482,9 +487,11 @@ async def get_member(member_id: str, current_user: dict = Depends(get_current_us
 @api_router.post("/members", response_model=Member)
 async def create_member(member: MemberCreate, current_user: dict = Depends(get_current_user)):
     member_id = str(uuid.uuid4())
+    branch_id = current_user.get("branch_id")
     member_doc = {
         "id": member_id,
         **member.model_dump(),
+        "branch_id": branch_id,
         "created_at": datetime.now(timezone.utc).isoformat()
     }
     await db.members.insert_one(member_doc)
