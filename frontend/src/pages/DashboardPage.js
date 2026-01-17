@@ -104,7 +104,7 @@ export const DashboardPage = () => {
       toast.error(language === 'ar' ? 'لا يوجد رقم جوال' : 'No phone number');
       return;
     }
-    const message = `مرحباً ${member.member_name}،\n\nنود تذكيركم بأن اشتراككم في نشاط "${member.activity_name}" سينتهي خلال ${member.days_remaining} أيام.\n\nنأمل منكم تجديد الاشتراك في أقرب وقت للاستمرار في الاستفادة من خدماتنا.\n\nشكراً لكم،\nأكاديمية أداء الأبطال العالمية`;
+    const message = `مرحباً ${member.member_name}،\n\nنود تذكيركم بأن اشتراككم في نشاط "${member.activity_name}" سينتهي خلال ${member.days_remaining} أيام.\n\nنأمل منكم تجديد الاشتراك في أقرب وقت للاستمرار في الاستفادة من خدماتنا.\n\nشكراً لكم،\nشركة اداء الابطال العالمية للرياضة`;
     window.open(`https://wa.me/${phone}?text=${encodeURIComponent(message)}`, '_blank');
     toast.success(language === 'ar' ? 'تم فتح واتساب' : 'WhatsApp opened');
   };

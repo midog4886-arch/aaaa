@@ -32,15 +32,15 @@ export const MessagesPage = () => {
 
   const messageTemplates = {
     payment_reminder: {
-      ar: 'السلام عليكم، نود تذكيركم بموعد سداد رسوم الاشتراك في أكاديمية أداء الأبطال العالمية. نرجو التواصل معنا لمزيد من التفاصيل.',
+      ar: 'السلام عليكم، نود تذكيركم بموعد سداد رسوم الاشتراك في شركة اداء الابطال العالمية للرياضة. نرجو التواصل معنا لمزيد من التفاصيل.',
       en: 'Hello, this is a reminder about your subscription payment at Champions Performance Academy. Please contact us for more details.'
     },
     expiry_alert: {
-      ar: 'السلام عليكم، نود إعلامكم بأن اشتراككم في أكاديمية أداء الأبطال العالمية سينتهي قريباً. يرجى التواصل معنا لتجديد الاشتراك.',
+      ar: 'السلام عليكم، نود إعلامكم بأن اشتراككم في شركة اداء الابطال العالمية للرياضة سينتهي قريباً. يرجى التواصل معنا لتجديد الاشتراك.',
       en: 'Hello, your subscription at Champions Performance Academy is expiring soon. Please contact us to renew.'
     },
     promotion: {
-      ar: 'السلام عليكم، نقدم لكم عروضاً خاصة في أكاديمية أداء الأبطال العالمية. تواصلوا معنا للاستفادة من هذه العروض!',
+      ar: 'السلام عليكم، نقدم لكم عروضاً خاصة في شركة اداء الابطال العالمية للرياضة. تواصلوا معنا للاستفادة من هذه العروض!',
       en: 'Hello, we have special offers at Champions Performance Academy. Contact us to learn more!'
     }
   };
