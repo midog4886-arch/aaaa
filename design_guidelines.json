@@ -1,0 +1,159 @@
+{
+  "identity": {
+    "name": "Champions Performance Academy",
+    "name_ar": "أكاديمية أداء الأبطال العالمية",
+    "tone": "Energetic, Professional, Disciplined, Champion-mindset",
+    "primary_audience": "Reception Staff, Managers, Coaches",
+    "design_archetype": "The Performance Pro"
+  },
+  "typography": {
+    "font_family_ar": "'Tajawal', sans-serif",
+    "font_family_en_headings": "'Barlow Condensed', sans-serif",
+    "font_family_en_body": "'Inter', sans-serif",
+    "imports": [
+      "https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;800&family=Barlow+Condensed:wght@500;700;900&family=Inter:wght@400;500;600&display=swap"
+    ],
+    "scale": {
+      "h1": "text-4xl md:text-5xl font-bold tracking-tight",
+      "h2": "text-3xl font-bold tracking-tight",
+      "h3": "text-2xl font-semibold",
+      "body": "text-base leading-relaxed",
+      "small": "text-sm text-muted-foreground"
+    }
+  },
+  "colors": {
+    "primary": {
+      "DEFAULT": "#F97316",
+      "foreground": "#FFFFFF",
+      "hover": "#EA580C",
+      "description": "Dynamic Orange - Represents energy and action"
+    },
+    "secondary": {
+      "DEFAULT": "#1E293B",
+      "foreground": "#FFFFFF",
+      "description": "Deep Slate - Represents discipline and professionalism"
+    },
+    "background": {
+      "light": "#F8FAFC",
+      "dark": "#0F172A"
+    },
+    "activities": {
+      "swimming": "#0EA5E9",
+      "football": "#22C55E",
+      "karate": "#EF4444",
+      "gymnastics": "#8B5CF6"
+    },
+    "status": {
+      "active": "#22C55E",
+      "expired": "#EF4444",
+      "pending": "#F59E0B"
+    }
+  },
+  "layout": {
+    "direction": "rtl",
+    "container": "max-w-7xl mx-auto px-4 sm:px-6 lg:px-8",
+    "grid_system": "Bento Grid Mode B (High Density)",
+    "spacing": {
+      "section_gap": "gap-8",
+      "card_padding": "p-6",
+      "internal_padding": "p-4"
+    },
+    "sidebar": {
+      "position": "right",
+      "width": "w-64",
+      "collapsed_width": "w-20"
+    }
+  },
+  "components": {
+    "buttons": {
+      "primary": "bg-primary text-primary-foreground hover:bg-primary/90 shadow-md rounded-md px-6 py-2 font-medium transition-all active:scale-95",
+      "secondary": "bg-secondary text-secondary-foreground hover:bg-secondary/90 rounded-md px-6 py-2 font-medium",
+      "outline": "border-2 border-primary text-primary hover:bg-primary/10 rounded-md px-6 py-2 font-medium"
+    },
+    "cards": {
+      "base": "bg-card text-card-foreground rounded-xl border shadow-sm hover:shadow-md transition-shadow duration-200",
+      "interactive": "cursor-pointer hover:border-primary/50 hover:shadow-lg transition-all duration-300 group"
+    },
+    "inputs": {
+      "base": "flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+    },
+    "badges": {
+      "base": "inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2",
+      "active": "border-transparent bg-green-500/15 text-green-700 hover:bg-green-500/25",
+      "expired": "border-transparent bg-red-500/15 text-red-700 hover:bg-red-500/25"
+    }
+  },
+  "visual_enhancers": {
+    "glassmorphism": "bg-white/80 dark:bg-slate-900/80 backdrop-blur-md border border-white/20 shadow-xl",
+    "gradients": {
+      "primary_fade": "bg-gradient-to-br from-orange-500 to-orange-600",
+      "dark_overlay": "bg-gradient-to-t from-black/80 to-transparent"
+    },
+    "shadows": {
+      "card": "shadow-[0_2px_8px_rgba(0,0,0,0.08)]",
+      "float": "shadow-[0_8px_30px_rgb(0,0,0,0.12)]"
+    },
+    "borders": {
+      "subtle": "border border-slate-200 dark:border-slate-800",
+      "accent": "border-l-4 border-primary"
+    }
+  },
+  "motion": {
+    "page_transition": {
+      "initial": { "opacity": 0, "y": 20 },
+      "animate": { "opacity": 1, "y": 0 },
+      "exit": { "opacity": 0, "y": -20 },
+      "transition": { "duration": 0.3, "ease": "easeOut" }
+    },
+    "hover_scale": "hover:scale-[1.02] transition-transform duration-200",
+    "list_stagger": 0.05
+  },
+  "image_urls": {
+    "activities": {
+      "swimming": "https://images.unsplash.com/photo-1662977015922-740114372ff6",
+      "football": "https://images.unsplash.com/photo-1715801903345-f1a971f0f17b",
+      "karate": "https://images.unsplash.com/photo-1634467793267-64242d2c06d2",
+      "gymnastics": "https://images.unsplash.com/photo-1585845708291-df2a96c5b0bf"
+    },
+    "placeholders": {
+      "user_avatar": "https://ui.shadcn.com/avatars/01.png",
+      "logo_placeholder": "https://placehold.co/200x80/F97316/FFFFFF?text=CHAMPIONS"
+    }
+  },
+  "accessibility": {
+    "contrast_check": "Ensure all text on orange backgrounds is White or Dark Slate. Avoid light grey on white.",
+    "rtl_support": "Use logical properties (ms-, me-, ps-, pe-) instead of left/right. Ensure 'dir=rtl' is set on the html/body tag.",
+    "focus_states": "Visible focus rings on all interactive elements."
+  },
+  "instructions_to_main_agent": [
+    "1. SETUP: Install 'lucide-react' for icons. Use 'Tajawal' font for all Arabic text.",
+    "2. LAYOUT: Create a SidebarLayout component that handles the RTL sidebar and top header.",
+    "3. DASHBOARD: Implement the 'Bento Grid' for the dashboard. Use the 'activities' colors for charts/stats related to specific sports.",
+    "4. FORMS: Use Shadcn Form components. Ensure labels are right-aligned for Arabic.",
+    "5. THEME: Default to Light Mode but implement the Dark Mode toggle in the settings/header.",
+    "6. MESSAGING: The WhatsApp interface should look like a chat app (bubbles, list on right).",
+    "7. INVOICES: Create a printable view that is clean, black and white friendly, but uses the logo.",
+    "8. CRITICAL: Do not use 'Inter' for Arabic text. Use 'Tajawal'."
+  ],
+  "UNIVERSAL_GUIDELINES_FOR_MAIN_AGENT": [
+    "You tend to converge toward generic, 'on distribution' outputs. In frontend design, this creates what users call the 'AI slop' aesthetic. Avoid this: make creative, distinctive frontends that surprise and delight.",
+    "Dark colors look good when used independently without gradients. DO NOT use dark colors as gradients",
+    "Don't make generic centered layouts, simplistic gradients, and uniform styling.",
+    "Create depth through layered design elements with z-index hierarchy",
+    "Use glass-morphism effects with backdrop filters (12-24px blur)",
+    "You MUST NOT apply universal transition. Eg: 'transition: all'. This results in breaking transforms. Always add transitions for specific interactive elements like button, input excluding transforms",
+    "You MUST NOT center align the app container, ie do not add '.App { text-align: center; }' in the css file. This disrupts the human natural reading flow of text",
+    "Always use modern button styles like pill-shaped, or sharp button with interaction animations & color relevant to the app style",
+    "NEVER: use AI assistant Emoji characters like 🤖🧠💭💡🔮🎯📚🎭🎬🎪🎉🎊🎁🎀🎂🍰🎈🎨🎰💰💵💳🏦💎🪙💸🤑📊📈📉💹🔢🏆🥇 etc for icons.",
+    "Every interaction needs micro-animations - hover states, transitions, parallax effects, and entrance animations. Static = dead.",
+    "Use 2-3x more spacing than feels comfortable. Cramped designs look cheap.",
+    "Subtle grain textures, noise overlays, custom cursors, selection states, and loading animations: separates good from extraordinary.",
+    "Main agent relies on these image URLs. Missing categories (especially sponsor logos) = main agent will use placeholder text which is FORBIDDEN",
+    "Prioritize using pre-existing components from src/components/ui when applicable",
+    "Create new components that match the style and conventions of existing components when needed",
+    "Examine existing components to understand the project's component patterns before creating new ones",
+    "Components MUST use named exports (export const ComponentName = ...)",
+    "Pages MUST use default exports (export default function PageName() {...})",
+    "Use 'sonner' for toasts. Sonner component are located in '/app/src/components/ui/sonner.tsx'"
+  ]
+}
