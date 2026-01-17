@@ -288,3 +288,41 @@
 - Username: `admin`
 - Password: `admin123`
 - Role: Admin (can see all branches)
+
+---
+
+## Update 7 - Users Management & Simplified Branches (January 17, 2026)
+
+### Users Management System ✅
+
+#### 1. Users Page (Admin Only)
+- **URL**: `/users`
+- **Features**:
+  - View all system users in a table
+  - Add new users with: username, full name, password, branch, admin role
+  - Edit existing users (name, branch, admin status, password)
+  - Delete users (cannot delete yourself)
+  - Assign users to specific branches
+  - Grant/revoke admin privileges
+
+#### 2. User Data Fields
+- **Username**: Login credential (unique)
+- **Full Name**: Display name
+- **Password**: Encrypted with bcrypt
+- **Branch**: Assigned branch (optional for admins)
+- **Is Admin**: Boolean - admin sees all branches
+
+### Simplified Branch Form ✅
+- Reduced to only 2 fields:
+  - **Branch Name** (required)
+  - **Phone Number** (required)
+- Removed: Manager name, address, active status toggle
+
+### API Endpoints Added:
+- `GET /api/users` - Get all users (admin only)
+- `POST /api/users/create` - Create new user (admin only)
+- `PUT /api/users/{id}` - Update user (admin only)
+- `DELETE /api/users/{id}` - Delete user (admin only)
+
+### Navigation:
+- "المستخدمين" (Users) link visible only to admin users
