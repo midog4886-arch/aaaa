@@ -155,3 +155,28 @@
 - GET /api/export/invoices - Export invoices CSV  
 - GET /api/export/reports - Export financial report CSV
 - GET /api/invoices/search - Advanced invoice search
+
+---
+
+## Update 3 - Print & Invoice Management Features (January 17, 2026)
+
+### New Features Added:
+
+#### 1. Print Controls ✅
+- [x] **Print Members Button** - Print member list with activities and status
+- [x] **Print Reports Button** - Print financial reports with summaries
+
+#### 2. Invoice Management ✅
+- [x] **Restore Invoice Button** - Restore cancelled invoices to pending status
+- [x] **Delete Invoice Button** - Permanently delete invoices (with confirmation)
+- [x] **QR Code Display** - Show QR code on electronic invoice view
+
+#### 3. Invoice Print Improvements ✅
+- [x] **Smaller Logo** - Reduced logo size from 16x16 to 12x12 for better fit
+- [x] **Single Page Layout** - Optimized print styles for A4 single page
+- [x] **Compact QR Code** - Reduced QR code size for print view
+
+### API Endpoints Used:
+- PUT /api/invoices/{id}/restore - Restore cancelled invoice
+- DELETE /api/invoices/{id} - Delete invoice permanently
+- GET /api/invoices/{id}/qr - Get QR code for invoice
