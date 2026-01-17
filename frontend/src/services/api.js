@@ -53,6 +53,7 @@ export const invoicesAPI = {
   create: (data) => axios.post(`${API}/invoices`, data),
   pay: (id) => axios.put(`${API}/invoices/${id}/pay`),
   cancel: (id) => axios.put(`${API}/invoices/${id}/cancel`),
+  search: (params = {}) => axios.get(`${API}/invoices/search`, { params }),
 };
 
 // Payments API
@@ -75,6 +76,13 @@ export const dashboardAPI = {
 // Seed API
 export const seedAPI = {
   seed: () => axios.post(`${API}/seed`),
+};
+
+// Export API
+export const exportAPI = {
+  members: (params = {}) => `${API}/export/members?${new URLSearchParams(params).toString()}`,
+  invoices: (params = {}) => `${API}/export/invoices?${new URLSearchParams(params).toString()}`,
+  reports: (params = {}) => `${API}/export/reports?${new URLSearchParams(params).toString()}`,
 };
 
 export default {
