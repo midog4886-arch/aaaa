@@ -296,7 +296,48 @@ class AcademyAPITester:
         
         return None
 
-    def run_all_tests(self):
+    def test_export_endpoints(self):
+        """Test new export functionality"""
+        print("\n📤 Testing Export Endpoints...")
+        
+        # Test members export
+        members_export = self.run_test("Export Members", "GET", "export/members", 200)
+        if members_export is not None:
+            self.log_test("Members Export", True, "CSV export successful")
+        
+        # Test invoices export  
+        invoices_export = self.run_test("Export Invoices", "GET", "export/invoices", 200)
+        if invoices_export is not None:
+            self.log_test("Invoices Export", True, "CSV export successful")
+        
+        # Test reports export
+        reports_export = self.run_test("Export Reports", "GET", "export/reports", 200)
+        if reports_export is not None:
+            self.log_test("Reports Export", True, "CSV export successful")
+        
+        return True
+
+    def test_advanced_search(self):
+        """Test advanced invoice search functionality"""
+        print("\n🔍 Testing Advanced Search...")
+        
+        # Test search with query parameter
+        search_result = self.run_test("Search Invoices", "GET", "invoices/search?q=test", 200)
+        if search_result is not None:
+            self.log_test("Invoice Search", True, f"Found {len(search_result)} results")
+        
+        # Test search with status filter
+        status_search = self.run_test("Search by Status", "GET", "invoices/search?status=pending", 200)
+        if status_search is not None:
+            self.log_test("Status Filter Search", True, f"Found {len(status_search)} pending invoices")
+        
+        # Test search with date range
+        today = datetime.now().strftime("%Y-%m-%d")
+        date_search = self.run_test("Search by Date", "GET", f"invoices/search?start_date={today}", 200)
+        if date_search is not None:
+            self.log_test("Date Range Search", True, f"Found {len(date_search)} invoices from today")
+        
+        return True
         """Run all API tests"""
         print("🚀 Starting Sports Academy API Tests")
         print("=" * 50)
