@@ -378,7 +378,9 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
     const statusMap = {
       paid: { label: t('paid'), icon: CheckCircle, class: 'bg-green-500/15 text-green-600 border-green-500/30' },
       pending: { label: t('unpaid'), icon: Clock, class: 'bg-amber-500/15 text-amber-600 border-amber-500/30' },
-      cancelled: { label: t('cancelled'), icon: XCircle, class: 'bg-red-500/15 text-red-600 border-red-500/30' }
+      cancelled: { label: t('cancelled'), icon: XCircle, class: 'bg-red-500/15 text-red-600 border-red-500/30' },
+      refunded: { label: language === 'ar' ? 'مسترجع' : 'Refunded', icon: RefreshCcw, class: 'bg-purple-500/15 text-purple-600 border-purple-500/30' },
+      partially_refunded: { label: language === 'ar' ? 'مسترجع جزئياً' : 'Partially Refunded', icon: RefreshCcw, class: 'bg-purple-500/15 text-purple-600 border-purple-500/30' }
     };
     const { label, icon: Icon, class: className } = statusMap[status] || statusMap.pending;
     return <Badge variant="outline" className={className}><Icon className="w-3 h-3 me-1" />{label}</Badge>;
