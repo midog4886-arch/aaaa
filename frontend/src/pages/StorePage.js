@@ -235,8 +235,11 @@ export const StorePage = () => {
     total: products.length,
     lowStock: products.filter(p => p.quantity <= p.min_quantity).length,
     totalValue: products.reduce((sum, p) => sum + (p.price * p.quantity), 0),
-    totalCost: products.reduce((sum, p) => sum + (p.cost * p.quantity), 0)
+    totalCost: products.reduce((sum, p) => sum + (p.cost * p.quantity), 0),
+    activeDiscounts: discounts.filter(d => d.is_active).length
   };
+
+  const toggleDetail = (type) => setActiveDetail(activeDetail === type ? null : type);
 
   if (loading) {
     return <Layout title={language === 'ar' ? 'المخزن' : 'Store'}><div className="flex items-center justify-center h-64"><div className="spinner" /></div></Layout>;
@@ -245,30 +248,108 @@ export const StorePage = () => {
   return (
     <Layout title={language === 'ar' ? 'المخزن' : 'Store'}>
       <div className="space-y-6" data-testid="store-page">
-        {/* Stats */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          <Card className="stat-card">
+        {/* Stats - Clickable */}
+        <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
+          <Card className={`stat-card cursor-pointer hover:shadow-lg transition-all ${activeDetail === 'total' ? 'ring-2 ring-primary' : ''}`} onClick={() => toggleDetail('total')}>
             <div className="stat-card-icon bg-primary/10"><Package className="w-6 h-6 text-primary" /></div>
             <div className="stat-card-value text-primary">{stats.total}</div>
             <div className="stat-card-label">{language === 'ar' ? 'إجمالي المنتجات' : 'Total Products'}</div>
+            <div className="text-xs text-muted-foreground mt-1">{language === 'ar' ? 'اضغط للتفاصيل' : 'Click'}</div>
           </Card>
-          <Card className="stat-card">
+          <Card className={`stat-card cursor-pointer hover:shadow-lg transition-all ${activeDetail === 'lowStock' ? 'ring-2 ring-amber-500' : ''}`} onClick={() => toggleDetail('lowStock')}>
             <div className="stat-card-icon bg-amber-500/10"><AlertTriangle className="w-6 h-6 text-amber-500" /></div>
             <div className="stat-card-value text-amber-500">{stats.lowStock}</div>
             <div className="stat-card-label">{language === 'ar' ? 'مخزون منخفض' : 'Low Stock'}</div>
+            <div className="text-xs text-muted-foreground mt-1">{language === 'ar' ? 'اضغط للتفاصيل' : 'Click'}</div>
           </Card>
-          <Card className="stat-card">
+          <Card className={`stat-card cursor-pointer hover:shadow-lg transition-all ${activeDetail === 'value' ? 'ring-2 ring-green-500' : ''}`} onClick={() => toggleDetail('value')}>
             <div className="stat-card-icon bg-green-500/10"><TrendingUp className="w-6 h-6 text-green-500" /></div>
             <div className="stat-card-value text-green-500">{stats.totalValue.toLocaleString()} {t('sar')}</div>
-            <div className="stat-card-label">{language === 'ar' ? 'قيمة المخزون (البيع)' : 'Stock Value (Sale)'}</div>
+            <div className="stat-card-label">{language === 'ar' ? 'قيمة البيع' : 'Sale Value'}</div>
+            <div className="text-xs text-muted-foreground mt-1">{language === 'ar' ? 'اضغط للتفاصيل' : 'Click'}</div>
           </Card>
-          <Card className="stat-card">
+          <Card className={`stat-card cursor-pointer hover:shadow-lg transition-all ${activeDetail === 'cost' ? 'ring-2 ring-blue-500' : ''}`} onClick={() => toggleDetail('cost')}>
             <div className="stat-card-icon bg-blue-500/10"><BarChart3 className="w-6 h-6 text-blue-500" /></div>
             <div className="stat-card-value text-blue-500">{stats.totalCost.toLocaleString()} {t('sar')}</div>
-            <div className="stat-card-label">{language === 'ar' ? 'قيمة المخزون (التكلفة)' : 'Stock Value (Cost)'}</div>
+            <div className="stat-card-label">{language === 'ar' ? 'قيمة التكلفة' : 'Cost Value'}</div>
+            <div className="text-xs text-muted-foreground mt-1">{language === 'ar' ? 'اضغط للتفاصيل' : 'Click'}</div>
+          </Card>
+          <Card className={`stat-card cursor-pointer hover:shadow-lg transition-all ${activeDetail === 'discounts' ? 'ring-2 ring-purple-500' : ''}`} onClick={() => { toggleDetail('discounts'); setActiveTab('discounts'); }}>
+            <div className="stat-card-icon bg-purple-500/10"><Percent className="w-6 h-6 text-purple-500" /></div>
+            <div className="stat-card-value text-purple-500">{stats.activeDiscounts}</div>
+            <div className="stat-card-label">{language === 'ar' ? 'كوبونات نشطة' : 'Active Coupons'}</div>
+            <div className="text-xs text-muted-foreground mt-1">{language === 'ar' ? 'اضغط للتفاصيل' : 'Click'}</div>
           </Card>
         </div>
 
+        {/* Detail Sections */}
+        {activeDetail && activeDetail !== 'discounts' && (
+          <Card className="animate-in slide-in-from-top-2 border-primary/20 bg-primary/5">
+            <CardHeader className="flex flex-row items-center justify-between">
+              <CardTitle className="text-primary">
+                {activeDetail === 'total' && (language === 'ar' ? 'تفاصيل المنتجات' : 'Products Details')}
+                {activeDetail === 'lowStock' && (language === 'ar' ? 'منتجات المخزون المنخفض' : 'Low Stock Products')}
+                {activeDetail === 'value' && (language === 'ar' ? 'تفاصيل قيمة البيع' : 'Sale Value Details')}
+                {activeDetail === 'cost' && (language === 'ar' ? 'تفاصيل قيمة التكلفة' : 'Cost Value Details')}
+              </CardTitle>
+              <Button variant="ghost" size="sm" onClick={() => setActiveDetail(null)}><X className="w-4 h-4" /></Button>
+            </CardHeader>
+            <CardContent>
+              {activeDetail === 'total' && (
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  {Object.entries(CATEGORIES).map(([key, val]) => {
+                    const count = products.filter(p => p.category === key).length;
+                    return (
+                      <div key={key} className="p-3 bg-white rounded-lg border text-center">
+                        <div className="text-xl font-bold">{count}</div>
+                        <div className="text-xs text-muted-foreground">{language === 'ar' ? val.ar : val.en}</div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+              {activeDetail === 'lowStock' && (
+                <div className="space-y-2 max-h-[200px] overflow-y-auto">
+                  {products.filter(p => p.quantity <= p.min_quantity).map(p => (
+                    <div key={p.id} className="flex justify-between items-center p-2 bg-amber-50 rounded border border-amber-200">
+                      <span className="font-medium">{p.name_ar}</span>
+                      <Badge className="bg-amber-500">{p.quantity} / {p.min_quantity}</Badge>
+                    </div>
+                  ))}
+                  {stats.lowStock === 0 && <p className="text-center text-muted-foreground">{language === 'ar' ? 'لا توجد منتجات بمخزون منخفض' : 'No low stock items'}</p>}
+                </div>
+              )}
+              {(activeDetail === 'value' || activeDetail === 'cost') && (
+                <div className="space-y-3">
+                  <div className="flex justify-between p-3 bg-white rounded-lg border">
+                    <span>{language === 'ar' ? 'إجمالي قيمة البيع:' : 'Total Sale Value:'}</span>
+                    <span className="font-bold text-green-600">{stats.totalValue.toLocaleString()} {t('sar')}</span>
+                  </div>
+                  <div className="flex justify-between p-3 bg-white rounded-lg border">
+                    <span>{language === 'ar' ? 'إجمالي التكلفة:' : 'Total Cost:'}</span>
+                    <span className="font-bold text-blue-600">{stats.totalCost.toLocaleString()} {t('sar')}</span>
+                  </div>
+                  <div className="flex justify-between p-3 bg-green-50 rounded-lg border border-green-200">
+                    <span className="font-medium">{language === 'ar' ? 'الربح المتوقع:' : 'Expected Profit:'}</span>
+                    <span className="font-bold text-green-700">{(stats.totalValue - stats.totalCost).toLocaleString()} {t('sar')}</span>
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Tabs */}
+        <div className="flex gap-2 border-b">
+          <Button variant={activeTab === 'products' ? 'default' : 'ghost'} onClick={() => setActiveTab('products')} className="rounded-b-none">
+            <Package className="w-4 h-4 me-2" />{language === 'ar' ? 'المنتجات' : 'Products'}
+          </Button>
+          <Button variant={activeTab === 'discounts' ? 'default' : 'ghost'} onClick={() => setActiveTab('discounts')} className="rounded-b-none">
+            <Percent className="w-4 h-4 me-2" />{language === 'ar' ? 'كوبونات الخصم' : 'Discount Coupons'}
+          </Button>
+        </div>
+
+        {activeTab === 'products' && (<>
         {/* Toolbar */}
         <Card>
           <CardContent className="pt-4">
