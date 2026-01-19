@@ -252,6 +252,7 @@ export const DashboardPage = () => {
                 {activeDetail === 'subscriptions' && <><Activity className="w-5 h-5" />{language === 'ar' ? 'تفاصيل الاشتراكات' : 'Subscriptions Details'}</>}
                 {activeDetail === 'revenue' && <><Banknote className="w-5 h-5" />{language === 'ar' ? 'تفاصيل الإيرادات' : 'Revenue Details'}</>}
                 {activeDetail === 'expiring' && <><AlertTriangle className="w-5 h-5" />{language === 'ar' ? 'الاشتراكات المنتهية قريباً' : 'Expiring Subscriptions'}</>}
+                {activeDetail === 'coupons' && <><Tag className="w-5 h-5" />{language === 'ar' ? 'كوبونات الخصم' : 'Discount Coupons'}</>}
               </CardTitle>
               <Button variant="ghost" size="sm" onClick={() => { setActiveDetail(null); setDetailData(null); }}>
                 <X className="w-4 h-4" />
