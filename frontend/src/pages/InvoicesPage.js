@@ -16,7 +16,7 @@ import html2canvas from 'html2canvas';
 import html2pdf from 'html2pdf.js';
 import { 
   Plus, Search, Eye, Printer, Loader2, Receipt, CheckCircle, XCircle, Clock,
-  Filter, MessageSquare, X, UserPlus, Trash2, RotateCcw, FileSpreadsheet, Image, Share2, RefreshCcw, Edit, FileText, Package, Percent, Tag
+  Filter, MessageSquare, X, UserPlus, Trash2, RotateCcw, FileSpreadsheet, Image, Share2, RefreshCcw, Edit, FileText, Package, Percent, Tag, Lock
 } from 'lucide-react';
 
 const COMPANY_INFO = {
