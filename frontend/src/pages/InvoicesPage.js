@@ -456,6 +456,7 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
     setIsCreateDialogOpen(false); setSelectedMember(null); setInvoiceItems([]);
     setDiscount(0); setNotes(''); setPaymentMethod('cash');
     setCustomerNameAr(''); setCustomerPhone(''); setCustomerAddress('');
+    setIsEditMode(false); setEditingInvoiceId(null);
   };
 
   const getStatusBadge = (status) => {
