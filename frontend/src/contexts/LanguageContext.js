@@ -29,6 +29,7 @@ const translations = {
     activities: 'الأنشطة',
     coaches: 'المدربين',
     invoices: 'الفواتير',
+    store: 'المخزن',
     reports: 'التقارير',
     messages: 'الرسائل',
     settings: 'الإعدادات',
