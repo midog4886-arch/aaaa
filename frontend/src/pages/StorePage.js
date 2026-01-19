@@ -1078,12 +1078,17 @@ export const StorePage = () => {
               </div>
             </div>
 
-            <DialogFooter>
+            <DialogFooter className="gap-2">
               <Button variant="outline" onClick={() => setIsInvoiceDialogOpen(false)}>{t('cancel')}</Button>
-              <Button onClick={handleCreateProductInvoice} disabled={saving || invoiceItems.length === 0} className="bg-green-600 hover:bg-green-700">
+              <Button variant="outline" onClick={() => handleCreateProductInvoice(false)} disabled={saving || invoiceItems.length === 0} className="border-amber-500 text-amber-700 hover:bg-amber-50">
+                {saving && <Loader2 className="w-4 h-4 me-2 animate-spin" />}
+                <FileText className="w-4 h-4 me-2" />
+                {language === 'ar' ? 'حفظ كمسودة' : 'Save as Draft'}
+              </Button>
+              <Button onClick={() => handleCreateProductInvoice(true)} disabled={saving || invoiceItems.length === 0} className="bg-green-600 hover:bg-green-700">
                 {saving && <Loader2 className="w-4 h-4 me-2 animate-spin" />}
                 <CheckCircle className="w-4 h-4 me-2" />
-                {language === 'ar' ? 'إنشاء الفاتورة' : 'Create Invoice'}
+                {language === 'ar' ? 'دفع وحفظ' : 'Pay & Save'}
               </Button>
             </DialogFooter>
           </DialogContent>
