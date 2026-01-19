@@ -374,9 +374,13 @@ export const InvoicesPage = () => {
     setSavingPdf(true);
     try {
       const element = printRef.current;
+      const invoiceNum = selectedInvoice.invoice_number || selectedInvoice.id.slice(0,8);
+      const customerName = selectedInvoice.customer_name_ar || selectedInvoice.member_name || 'invoice';
+      const filename = `${customerName}_${invoiceNum}.pdf`;
+      
       const opt = {
         margin: 10,
-        filename: `invoice_${selectedInvoice.id.slice(0,8)}.pdf`,
+        filename: filename,
         image: { type: 'jpeg', quality: 0.98 },
         html2canvas: { scale: 2, useCORS: true },
         jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
@@ -396,7 +400,7 @@ export const InvoicesPage = () => {
       // Open WhatsApp with message
       const phone = selectedInvoice.customer_phone?.replace(/^0/, '966') || '';
       if (phone) {
-        const message = `مرحباً،\n\nمرفق فاتورتكم رقم #${selectedInvoice.id.slice(0,8)} بمبلغ ${selectedInvoice.total} ر.س\n\nشكراً لكم،\nشركة اداء الابطال العالمية للرياضة`;
+        const message = `مرحباً،\n\nمرفق فاتورتكم رقم #${invoiceNum} بمبلغ ${selectedInvoice.total} ر.س\n\nشكراً لكم،\nشركة اداء الابطال العالمية للرياضة`;
         window.open(`https://wa.me/${phone}?text=${encodeURIComponent(message)}`, '_blank');
       }
     } catch (error) {
