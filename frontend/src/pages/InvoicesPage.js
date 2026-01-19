@@ -929,6 +929,15 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
                 <div className="p-4 bg-primary/5 rounded-lg border border-primary/20">
                   <div className="flex justify-between text-sm mb-2"><span>{t('subtotal')}</span><span>{subtotal.toFixed(2)} {t('sar')}</span></div>
                   {discount > 0 && <div className="flex justify-between text-sm mb-2 text-muted-foreground"><span>{t('discount')}</span><span>- {parseFloat(discount).toFixed(2)} {t('sar')}</span></div>}
+                  {couponDiscount > 0 && (
+                    <div className="flex justify-between text-sm mb-2 text-purple-600">
+                      <span className="flex items-center gap-1">
+                        <Tag className="w-3 h-3" />
+                        {language === 'ar' ? 'خصم الكوبون' : 'Coupon Discount'} ({appliedCoupon?.code})
+                      </span>
+                      <span>- {couponDiscount.toFixed(2)} {t('sar')}</span>
+                    </div>
+                  )}
                   <div className="flex justify-between text-sm mb-2 text-green-600"><span>{language === 'ar' ? `ضريبة القيمة المضافة (${COMPANY_INFO.vat_rate}%)` : `VAT (${COMPANY_INFO.vat_rate}%)`}</span><span>{vatAmount.toFixed(2)} {t('sar')}</span></div>
                   <div className="flex justify-between text-lg font-bold border-t pt-2"><span>{t('total')}</span><span className="text-primary">{total.toFixed(2)} {t('sar')}</span></div>
                 </div>
