@@ -237,6 +237,7 @@ export const DashboardPage = () => {
             activeDetail === 'members' ? 'border-primary/30 bg-primary/5' :
             activeDetail === 'subscriptions' ? 'border-green-500/30 bg-green-50/30' :
             activeDetail === 'revenue' ? 'border-blue-500/30 bg-blue-50/30' :
+            activeDetail === 'coupons' ? 'border-purple-500/30 bg-purple-50/30' :
             'border-amber-500/30 bg-amber-50/30'
           }`}>
             <CardHeader className="flex flex-row items-center justify-between">
@@ -244,6 +245,7 @@ export const DashboardPage = () => {
                 activeDetail === 'members' ? 'text-primary' :
                 activeDetail === 'subscriptions' ? 'text-green-600' :
                 activeDetail === 'revenue' ? 'text-blue-600' :
+                activeDetail === 'coupons' ? 'text-purple-600' :
                 'text-amber-600'
               }`}>
                 {activeDetail === 'members' && <><Users className="w-5 h-5" />{language === 'ar' ? 'تفاصيل الأعضاء' : 'Members Details'}</>}
