@@ -902,6 +902,76 @@ export const StorePage = () => {
           </>
         )}
 
+        {/* ============ Product Invoices Tab ============ */}
+        {activeTab === 'invoices' && (
+          <>
+            <Card>
+              <CardContent className="pt-4">
+                <div className="flex justify-between items-center">
+                  <div className="flex gap-4 items-center">
+                    <div className="text-sm">
+                      <span className="text-muted-foreground">{language === 'ar' ? 'إجمالي المبيعات:' : 'Total Sales:'}</span>
+                      <span className="font-bold text-green-600 ms-2">{stats.invoicesTotal.toLocaleString()} {t('sar')}</span>
+                    </div>
+                  </div>
+                  <Button onClick={() => openInvoiceDialog()} className="bg-green-600 hover:bg-green-700">
+                    <Plus className="w-4 h-4 me-2" />{language === 'ar' ? 'فاتورة جديدة' : 'New Invoice'}
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Invoices List */}
+            <div className="space-y-3">
+              {productInvoices.length === 0 ? (
+                <Card className="p-8 text-center text-muted-foreground">
+                  <Receipt className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                  <p>{language === 'ar' ? 'لا توجد فواتير منتجات' : 'No product invoices'}</p>
+                </Card>
+              ) : productInvoices.map(invoice => (
+                <Card key={invoice.id} className={`p-4 hover:shadow-md transition-shadow ${invoice.status === 'draft' ? 'border-amber-300 bg-amber-50/30' : 'border-green-300 bg-green-50/30'}`}>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-4">
+                      <div className={`p-2 rounded-full ${invoice.status === 'draft' ? 'bg-amber-100' : 'bg-green-100'}`}>
+                        <Receipt className={`w-5 h-5 ${invoice.status === 'draft' ? 'text-amber-600' : 'text-green-600'}`} />
+                      </div>
+                      <div>
+                        <p className="font-bold">{invoice.invoice_number}</p>
+                        <p className="text-sm text-muted-foreground">{invoice.customer_name}</p>
+                      </div>
+                    </div>
+                    <div className="text-center">
+                      <p className="font-bold text-lg">{invoice.total.toFixed(2)} {t('sar')}</p>
+                      <Badge variant="outline" className={invoice.status === 'draft' ? 'bg-amber-100 text-amber-700' : 'bg-green-100 text-green-700'}>
+                        {invoice.status === 'draft' ? (language === 'ar' ? 'مسودة' : 'Draft') : (language === 'ar' ? 'مدفوعة' : 'Paid')}
+                      </Badge>
+                    </div>
+                    <div className="text-sm text-muted-foreground text-end">
+                      <p>{new Date(invoice.created_at).toLocaleDateString('ar-SA')}</p>
+                      <p>{invoice.items.length} {language === 'ar' ? 'منتج' : 'items'}</p>
+                    </div>
+                    <div className="flex gap-2">
+                      {invoice.status === 'draft' && (
+                        <Button variant="outline" size="sm" onClick={() => openInvoiceDialog(invoice)}>
+                          <Edit className="w-4 h-4 me-1" />{language === 'ar' ? 'تعديل' : 'Edit'}
+                        </Button>
+                      )}
+                      <Button variant="outline" size="sm" onClick={() => viewInvoice(invoice)}>
+                        <FileText className="w-4 h-4 me-1" />{language === 'ar' ? 'عرض' : 'View'}
+                      </Button>
+                      {invoice.status === 'draft' && (
+                        <Button variant="outline" size="sm" className="text-red-600" onClick={() => handleDeleteInvoice(invoice.id)}>
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                </Card>
+              ))}
+            </div>
+          </>
+        )}
+
         {/* ============ Product Invoice Dialog ============ */}
         <Dialog open={isInvoiceDialogOpen} onOpenChange={setIsInvoiceDialogOpen}>
           <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
