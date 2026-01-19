@@ -159,6 +159,7 @@ class InvoiceCreate(BaseModel):
 
 class Invoice(BaseModel):
     id: str
+    invoice_number: Optional[str] = None
     member_id: Optional[str] = None
     member_name: str
     items: List[InvoiceItem]
