@@ -978,7 +978,10 @@ export const StorePage = () => {
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
                 <Receipt className="w-5 h-5 text-green-600" />
-                {language === 'ar' ? 'فاتورة منتجات جديدة' : 'New Product Invoice'}
+                {editingInvoice 
+                  ? (language === 'ar' ? `تعديل الفاتورة ${editingInvoice.invoice_number}` : `Edit Invoice ${editingInvoice.invoice_number}`)
+                  : (language === 'ar' ? 'فاتورة منتجات جديدة' : 'New Product Invoice')
+                }
               </DialogTitle>
             </DialogHeader>
             
