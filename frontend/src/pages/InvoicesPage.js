@@ -66,6 +66,9 @@ export const InvoicesPage = () => {
   const [saving, setSaving] = useState(false);
   const [qrCode, setQrCode] = useState(null);
   const [savingImage, setSavingImage] = useState(false);
+  const [savingPdf, setSavingPdf] = useState(false);
+  const [isEditMode, setIsEditMode] = useState(false);
+  const [editingInvoiceId, setEditingInvoiceId] = useState(null);
   
   // Refund state
   const [refundType, setRefundType] = useState('full'); // full or partial
