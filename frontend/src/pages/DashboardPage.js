@@ -29,10 +29,11 @@ export const DashboardPage = () => {
   const { t, language } = useLanguage();
   const [stats, setStats] = useState(null);
   const [expiring, setExpiring] = useState([]);
+  const [discounts, setDiscounts] = useState([]);
   const [loading, setLoading] = useState(true);
   
   // Detail view states
-  const [activeDetail, setActiveDetail] = useState(null); // 'members', 'subscriptions', 'revenue', 'expiring'
+  const [activeDetail, setActiveDetail] = useState(null); // 'members', 'subscriptions', 'revenue', 'expiring', 'coupons'
   const [detailData, setDetailData] = useState(null);
   const [detailLoading, setDetailLoading] = useState(false);
 
@@ -42,12 +43,14 @@ export const DashboardPage = () => {
 
   const loadData = async () => {
     try {
-      const [statsRes, expiringRes] = await Promise.all([
+      const [statsRes, expiringRes, discountsRes] = await Promise.all([
         dashboardAPI.getStats(),
-        reportsAPI.getExpiringSubscriptions(7)
+        reportsAPI.getExpiringSubscriptions(7),
+        discountsAPI.getAll()
       ]);
       setStats(statsRes.data);
       setExpiring(expiringRes.data);
+      setDiscounts(discountsRes.data);
     } catch (error) {
       console.error('Failed to load dashboard data:', error);
     } finally {
