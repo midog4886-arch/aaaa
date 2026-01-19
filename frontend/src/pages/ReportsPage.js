@@ -111,6 +111,73 @@ export const ReportsPage = () => {
         {/* Filters */}
         <Card>
           <CardContent className="p-4">
+            {/* Quick Date Filters */}
+            <div className="flex flex-wrap gap-2 mb-4">
+              <Button 
+                variant="outline" 
+                size="sm"
+                onClick={() => {
+                  const today = new Date().toISOString().split('T')[0];
+                  setFilters({...filters, start_date: today, end_date: today});
+                }}
+              >
+                {language === 'ar' ? 'اليوم' : 'Today'}
+              </Button>
+              <Button 
+                variant="outline" 
+                size="sm"
+                onClick={() => {
+                  const today = new Date();
+                  const weekStart = new Date(today);
+                  weekStart.setDate(today.getDate() - today.getDay());
+                  setFilters({
+                    ...filters, 
+                    start_date: weekStart.toISOString().split('T')[0], 
+                    end_date: today.toISOString().split('T')[0]
+                  });
+                }}
+              >
+                {language === 'ar' ? 'هذا الأسبوع' : 'This Week'}
+              </Button>
+              <Button 
+                variant="outline" 
+                size="sm"
+                onClick={() => {
+                  const today = new Date();
+                  const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
+                  setFilters({
+                    ...filters, 
+                    start_date: monthStart.toISOString().split('T')[0], 
+                    end_date: today.toISOString().split('T')[0]
+                  });
+                }}
+              >
+                {language === 'ar' ? 'هذا الشهر' : 'This Month'}
+              </Button>
+              <Button 
+                variant="outline" 
+                size="sm"
+                onClick={() => {
+                  const today = new Date();
+                  const yearStart = new Date(today.getFullYear(), 0, 1);
+                  setFilters({
+                    ...filters, 
+                    start_date: yearStart.toISOString().split('T')[0], 
+                    end_date: today.toISOString().split('T')[0]
+                  });
+                }}
+              >
+                {language === 'ar' ? 'هذه السنة' : 'This Year'}
+              </Button>
+              <Button 
+                variant="ghost" 
+                size="sm"
+                onClick={() => setFilters({start_date: '', end_date: '', activity_id: 'all'})}
+              >
+                {language === 'ar' ? 'مسح الفلتر' : 'Clear'}
+              </Button>
+            </div>
+            
             <div className="flex flex-wrap gap-4 items-end">
               <div className="space-y-2">
                 <Label>{t('from')}</Label>
