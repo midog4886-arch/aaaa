@@ -425,6 +425,7 @@ async def create_user_admin(user_data: UserCreateAdmin, current_user: dict = Dep
     return {k: v for k, v in user_doc.items() if k not in ["password", "_id"]}
 
 class UserUpdateAdmin(BaseModel):
+    username: Optional[str] = None
     name: Optional[str] = None
     branch_id: Optional[str] = None
     is_admin: Optional[bool] = None
@@ -437,6 +438,12 @@ async def update_user(user_id: str, user_data: UserUpdateAdmin, current_user: di
         raise HTTPException(status_code=403, detail="Admin access required")
     
     update_data = {}
+    if user_data.username is not None:
+        # Check if username is already taken by another user
+        existing = await db.users.find_one({"username": user_data.username, "id": {"$ne": user_id}})
+        if existing:
+            raise HTTPException(status_code=400, detail="اسم المستخدم موجود مسبقاً")
+        update_data["username"] = user_data.username
     if user_data.name is not None:
         update_data["name"] = user_data.name
     if user_data.branch_id is not None:
