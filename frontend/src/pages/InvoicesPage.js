@@ -1071,7 +1071,7 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
               {selectedInvoice?.status === 'cancelled' && <Button variant="outline" onClick={() => handleRestoreInvoice(selectedInvoice.id)}><RotateCcw className="w-4 h-4 me-2" />{language === 'ar' ? 'استرجاع الفاتورة' : 'Restore'}</Button>}
               {selectedInvoice?.status === 'paid' && <Button variant="outline" className="text-purple-600 border-purple-300" onClick={() => { setIsViewDialogOpen(false); openRefundDialog(selectedInvoice); }}><RefreshCcw className="w-4 h-4 me-2" />{language === 'ar' ? 'استرجاع مبلغ' : 'Refund'}</Button>}
               {selectedInvoice?.status === 'pending' && <Button onClick={() => handleMarkPaid(selectedInvoice.id)}><CheckCircle className="w-4 h-4 me-2" />{language === 'ar' ? 'تم الدفع' : 'Mark Paid'}</Button>}
-              {isAdmin && <Button variant="destructive" onClick={() => handleDeleteInvoice(selectedInvoice?.id)}><Trash2 className="w-4 h-4 me-2" />{language === 'ar' ? 'حذف' : 'Delete'}</Button>}
+              {isAdmin && <Button variant="destructive" onClick={() => handleDeleteInvoice(selectedInvoice?.id, selectedInvoice?.status)}><Trash2 className="w-4 h-4 me-2" />{language === 'ar' ? 'حذف' : 'Delete'}</Button>}
             </DialogFooter>
           </DialogContent>
         </Dialog>
