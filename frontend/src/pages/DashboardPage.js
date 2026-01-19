@@ -90,6 +90,9 @@ export const DashboardPage = () => {
         case 'expiring':
           data = expiring;
           break;
+        case 'coupons':
+          data = discounts;
+          break;
         default:
           break;
       }
