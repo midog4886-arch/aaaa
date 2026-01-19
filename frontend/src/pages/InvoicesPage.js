@@ -308,12 +308,14 @@ export const InvoicesPage = () => {
       return;
     }
     setSaving(true);
+    const totalDiscount = (parseFloat(discount) || 0) + couponDiscount;
     try {
       if (isEditMode && editingInvoiceId) {
         await invoicesAPI.update(editingInvoiceId, {
           member_id: selectedMember?.id || null,
           items: invoiceItems,
-          discount: parseFloat(discount) || 0,
+          discount: totalDiscount,
+          discount_code: appliedCoupon?.code || null,
           notes, payment_method: paymentMethod,
           customer_name_ar: customerNameAr, customer_phone: customerPhone, customer_address: customerAddress
         });
