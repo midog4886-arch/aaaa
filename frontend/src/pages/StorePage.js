@@ -49,7 +49,7 @@ export const StorePage = () => {
   const [stockChange, setStockChange] = useState(0);
   const [saving, setSaving] = useState(false);
   const [activeDetail, setActiveDetail] = useState(null);
-  const [activeTab, setActiveTab] = useState('products'); // products or discounts
+  const [activeTab, setActiveTab] = useState('products'); // products, discounts, or invoices
   
   // Product Invoice States
   const [isInvoiceDialogOpen, setIsInvoiceDialogOpen] = useState(false);
@@ -60,6 +60,8 @@ export const StorePage = () => {
   const [paymentMethod, setPaymentMethod] = useState('cash');
   const [currentInvoice, setCurrentInvoice] = useState(null);
   const [productInvoices, setProductInvoices] = useState([]);
+  const [editingInvoice, setEditingInvoice] = useState(null);
+  const [invoiceStatus, setInvoiceStatus] = useState('draft'); // draft or paid
   const invoiceRef = useRef(null);
   
   const [formData, setFormData] = useState({
