@@ -254,12 +254,23 @@ export const InvoicesPage = () => {
   };
 
   const EDIT_PASSWORD = '242456';
+  const [feeEditUnlocked, setFeeEditUnlocked] = useState(false);
+
+  const unlockFeeEdit = () => {
+    const password = window.prompt(language === 'ar' ? 'أدخل كلمة المرور لتغيير السعر:' : 'Enter password to change price:');
+    if (password === EDIT_PASSWORD) {
+      setFeeEditUnlocked(true);
+      toast.success(language === 'ar' ? 'تم فتح تعديل السعر' : 'Price edit unlocked');
+      return true;
+    } else {
+      toast.error(language === 'ar' ? 'كلمة المرور غير صحيحة' : 'Incorrect password');
+      return false;
+    }
+  };
 
   const updateItemFee = (index, newFee) => {
-    const password = window.prompt(language === 'ar' ? 'أدخل كلمة المرور لتغيير السعر:' : 'Enter password to change price:');
-    if (password !== EDIT_PASSWORD) {
-      toast.error(language === 'ar' ? 'كلمة المرور غير صحيحة' : 'Incorrect password');
-      return;
+    if (!feeEditUnlocked) {
+      if (!unlockFeeEdit()) return;
     }
     const updated = [...invoiceItems];
     updated[index].fee = parseFloat(newFee) || 0;
