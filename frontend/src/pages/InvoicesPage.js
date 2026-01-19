@@ -862,12 +862,16 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
                               />
                             </div>
                             <div className="space-y-1">
-                              <Label className="text-xs">{language === 'ar' ? 'المبلغ' : 'Fee'}</Label>
+                              <Label className="text-xs flex items-center gap-1">
+                                {language === 'ar' ? 'المبلغ' : 'Fee'}
+                                {!feeEditUnlocked && <Lock className="w-3 h-3 text-amber-500" />}
+                              </Label>
                               <Input 
                                 type="number" 
                                 value={item.fee} 
                                 onChange={(e) => updateItemFee(idx, e.target.value)} 
-                                className="h-8 text-sm" 
+                                className={`h-8 text-sm ${!feeEditUnlocked ? 'bg-amber-50 border-amber-200' : ''}`}
+                                onClick={() => !feeEditUnlocked && unlockFeeEdit()}
                               />
                             </div>
                             <div className="space-y-1 col-span-3">
