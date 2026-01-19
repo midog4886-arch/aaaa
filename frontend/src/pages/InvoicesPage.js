@@ -532,6 +532,9 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
     setDiscount(0); setNotes(''); setPaymentMethod('cash');
     setCustomerNameAr(''); setCustomerPhone(''); setCustomerAddress('');
     setIsEditMode(false); setEditingInvoiceId(null);
+    // Reset coupon state
+    setCouponCode(''); setAppliedCoupon(null); setCouponDiscount(0);
+    setItemType('activity');
   };
 
   const getStatusBadge = (status) => {
