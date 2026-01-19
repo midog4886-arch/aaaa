@@ -520,6 +520,129 @@ export const StorePage = () => {
             </DialogFooter>
           </DialogContent>
         </Dialog>
+        </>)}
+
+        {/* Discounts Tab */}
+        {activeTab === 'discounts' && (
+          <>
+            <Card>
+              <CardContent className="pt-4">
+                <div className="flex justify-between items-center">
+                  <h3 className="font-semibold">{language === 'ar' ? 'كوبونات الخصم' : 'Discount Coupons'}</h3>
+                  <Button onClick={() => openDiscountDialog()}>
+                    <Plus className="w-4 h-4 me-2" />{language === 'ar' ? 'إضافة كوبون' : 'Add Coupon'}
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {discounts.length === 0 ? (
+                <Card className="col-span-full p-8 text-center text-muted-foreground">
+                  <Percent className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                  <p>{language === 'ar' ? 'لا توجد كوبونات' : 'No coupons found'}</p>
+                </Card>
+              ) : discounts.map(discount => (
+                <Card key={discount.id} className={`${!discount.is_active ? 'opacity-60' : ''}`}>
+                  <CardHeader className="pb-2">
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <CardTitle className="text-lg font-mono">{discount.code}</CardTitle>
+                        <p className="text-sm text-muted-foreground">{discount.name_ar}</p>
+                      </div>
+                      <Badge className={discount.is_active ? 'bg-green-500' : 'bg-gray-400'}>
+                        {discount.is_active ? (language === 'ar' ? 'نشط' : 'Active') : (language === 'ar' ? 'معطل' : 'Disabled')}
+                      </Badge>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="space-y-2">
+                    <div className="text-center p-3 bg-purple-50 rounded-lg">
+                      <span className="text-3xl font-bold text-purple-600">
+                        {discount.discount_type === 'percentage' ? `${discount.value}%` : `${discount.value} ${t('sar')}`}
+                      </span>
+                      <p className="text-xs text-muted-foreground">
+                        {discount.discount_type === 'percentage' ? (language === 'ar' ? 'نسبة خصم' : 'Percentage') : (language === 'ar' ? 'مبلغ ثابت' : 'Fixed Amount')}
+                      </p>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-muted-foreground">{language === 'ar' ? 'الحد الأدنى:' : 'Min Purchase:'}</span>
+                      <span>{discount.min_purchase} {t('sar')}</span>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-muted-foreground">{language === 'ar' ? 'الاستخدام:' : 'Usage:'}</span>
+                      <span>{discount.used_count} / {discount.max_uses || '∞'}</span>
+                    </div>
+                    <div className="flex gap-2 pt-2 border-t">
+                      <Button size="sm" variant="outline" className="flex-1" onClick={() => openDiscountDialog(discount)}>
+                        <Edit className="w-3 h-3 me-1" />{language === 'ar' ? 'تعديل' : 'Edit'}
+                      </Button>
+                      <Button size="sm" variant="ghost" className="text-red-500" onClick={() => handleDeleteDiscount(discount.id)}>
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+
+            {/* Add/Edit Discount Dialog */}
+            <Dialog open={isDiscountDialogOpen} onOpenChange={setIsDiscountDialogOpen}>
+              <DialogContent className="max-w-md">
+                <DialogHeader>
+                  <DialogTitle className="flex items-center gap-2">
+                    <Percent className="w-5 h-5" />
+                    {editingDiscount ? (language === 'ar' ? 'تعديل الكوبون' : 'Edit Coupon') : (language === 'ar' ? 'إضافة كوبون جديد' : 'Add New Coupon')}
+                  </DialogTitle>
+                </DialogHeader>
+                <form onSubmit={handleDiscountSubmit} className="space-y-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <Label>{language === 'ar' ? 'رمز الكوبون *' : 'Coupon Code *'}</Label>
+                      <Input value={discountForm.code} onChange={(e) => setDiscountForm({...discountForm, code: e.target.value.toUpperCase()})} placeholder="SAVE20" required />
+                    </div>
+                    <div>
+                      <Label>{language === 'ar' ? 'الاسم *' : 'Name *'}</Label>
+                      <Input value={discountForm.name_ar} onChange={(e) => setDiscountForm({...discountForm, name_ar: e.target.value})} required />
+                    </div>
+                    <div>
+                      <Label>{language === 'ar' ? 'نوع الخصم' : 'Discount Type'}</Label>
+                      <Select value={discountForm.discount_type} onValueChange={(v) => setDiscountForm({...discountForm, discount_type: v})}>
+                        <SelectTrigger><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="percentage">{language === 'ar' ? 'نسبة مئوية %' : 'Percentage %'}</SelectItem>
+                          <SelectItem value="fixed">{language === 'ar' ? 'مبلغ ثابت' : 'Fixed Amount'}</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <Label>{language === 'ar' ? 'القيمة *' : 'Value *'}</Label>
+                      <Input type="number" step="0.01" value={discountForm.value} onChange={(e) => setDiscountForm({...discountForm, value: e.target.value})} required />
+                    </div>
+                    <div>
+                      <Label>{language === 'ar' ? 'الحد الأدنى للشراء' : 'Min Purchase'}</Label>
+                      <Input type="number" value={discountForm.min_purchase} onChange={(e) => setDiscountForm({...discountForm, min_purchase: e.target.value})} />
+                    </div>
+                    <div>
+                      <Label>{language === 'ar' ? 'الحد الأقصى للاستخدام' : 'Max Uses'}</Label>
+                      <Input type="number" value={discountForm.max_uses} onChange={(e) => setDiscountForm({...discountForm, max_uses: e.target.value})} placeholder="0 = غير محدود" />
+                    </div>
+                    <div className="col-span-2 flex items-center gap-2">
+                      <input type="checkbox" id="is_active" checked={discountForm.is_active} onChange={(e) => setDiscountForm({...discountForm, is_active: e.target.checked})} />
+                      <Label htmlFor="is_active">{language === 'ar' ? 'كوبون نشط' : 'Active Coupon'}</Label>
+                    </div>
+                  </div>
+                  <DialogFooter>
+                    <Button type="button" variant="outline" onClick={() => setIsDiscountDialogOpen(false)}>{t('cancel')}</Button>
+                    <Button type="submit" disabled={saving}>
+                      {saving && <Loader2 className="w-4 h-4 me-2 animate-spin" />}
+                      {editingDiscount ? (language === 'ar' ? 'تحديث' : 'Update') : (language === 'ar' ? 'إضافة' : 'Add')}
+                    </Button>
+                  </DialogFooter>
+                </form>
+              </DialogContent>
+            </Dialog>
+          </>
+        )}
       </div>
     </Layout>
   );
