@@ -1189,14 +1189,15 @@ export const StorePage = () => {
 
                 {/* Payment Method */}
                 <div className="mt-2 text-xs text-center text-gray-600">
-                  طريقة الدفع: {paymentMethod === 'cash' ? 'نقدي' : paymentMethod === 'card' ? 'بطاقة' : 'تحويل بنكي'}
+                  طريقة الدفع: {currentInvoice?.payment_method === 'cash' ? 'نقدي' : currentInvoice?.payment_method === 'card' ? 'بطاقة' : 'تحويل بنكي'}
                 </div>
 
-                {/* QR Code */}
-                <div className="mt-4 flex justify-center">
-                  <QRCodeSVG value={generateQRData(currentInvoice)} size={80} />
+                {/* ZATCA Compliant QR Code */}
+                <div className="mt-4 flex flex-col items-center">
+                  <QRCodeSVG value={generateZATCAQR(currentInvoice)} size={100} level="M" />
+                  <p className="text-center text-xs text-gray-600 mt-2 font-bold">فاتورة ضريبية مبسطة</p>
+                  <p className="text-center text-[10px] text-gray-400">متوافقة مع هيئة الزكاة والضريبة والجمارك</p>
                 </div>
-                <p className="text-center text-xs text-gray-500 mt-1">فاتورة ضريبية مبسطة</p>
 
                 {/* Footer */}
                 <div className="mt-4 text-center text-xs text-gray-500 border-t pt-2">
