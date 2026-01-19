@@ -2143,6 +2143,158 @@ async def get_invoice_qr(invoice_id: str, current_user: dict = Depends(get_curre
         "invoice_id": invoice_id
     }
 
+# ============ PRODUCT INVOICES (Store Sales) ============
+
+class ProductInvoiceItem(BaseModel):
+    product_id: str
+    name: str
+    price: float
+    quantity: int
+    total: float
+
+class ProductInvoiceCreate(BaseModel):
+    customer_name: str
+    customer_phone: Optional[str] = ""
+    payment_method: str = "cash"
+    items: List[ProductInvoiceItem]
+    status: str = "draft"  # draft or paid
+
+class ProductInvoice(BaseModel):
+    id: str
+    invoice_number: str
+    customer_name: str
+    customer_phone: Optional[str] = ""
+    payment_method: str
+    items: List[ProductInvoiceItem]
+    subtotal: float
+    vat_amount: float
+    vat_rate: float = 15.0
+    total: float
+    status: str
+    created_at: str
+    updated_at: Optional[str] = None
+    paid_at: Optional[str] = None
+    branch_id: Optional[str] = None
+
+@api_router.get("/product-invoices")
+async def get_product_invoices(current_user: dict = Depends(get_current_user)):
+    """Get all product invoices"""
+    query = {}
+    if not current_user.get("is_admin") and current_user.get("branch_id"):
+        query["branch_id"] = current_user["branch_id"]
+    
+    invoices = await db.product_invoices.find(query, {"_id": 0}).sort("created_at", -1).to_list(1000)
+    return invoices
+
+@api_router.post("/product-invoices")
+async def create_product_invoice(invoice: ProductInvoiceCreate, current_user: dict = Depends(get_current_user)):
+    """Create a new product invoice"""
+    subtotal = sum(item.total for item in invoice.items)
+    vat_rate = 15.0
+    vat_amount = round(subtotal * (vat_rate / 100), 2)
+    total = round(subtotal + vat_amount, 2)
+    
+    # Generate invoice number
+    last_invoice = await db.product_invoices.find_one(
+        {"invoice_number": {"$exists": True}},
+        sort=[("invoice_number", -1)]
+    )
+    if last_invoice and last_invoice.get("invoice_number"):
+        try:
+            last_num = int(last_invoice["invoice_number"].replace("P", ""))
+            next_num = last_num + 1
+        except:
+            next_num = 202601001
+    else:
+        next_num = 202601001
+    
+    invoice_doc = {
+        "id": str(uuid.uuid4()),
+        "invoice_number": f"P{next_num}",
+        "customer_name": invoice.customer_name,
+        "customer_phone": invoice.customer_phone,
+        "payment_method": invoice.payment_method,
+        "items": [item.model_dump() for item in invoice.items],
+        "subtotal": subtotal,
+        "vat_amount": vat_amount,
+        "vat_rate": vat_rate,
+        "total": total,
+        "status": invoice.status,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+        "paid_at": datetime.now(timezone.utc).isoformat() if invoice.status == "paid" else None,
+        "branch_id": current_user.get("branch_id")
+    }
+    
+    # If status is paid, deduct stock
+    if invoice.status == "paid":
+        for item in invoice.items:
+            await db.products.update_one(
+                {"id": item.product_id},
+                {"$inc": {"quantity": -item.quantity}}
+            )
+    
+    await db.product_invoices.insert_one(invoice_doc)
+    invoice_doc.pop("_id", None)
+    return invoice_doc
+
+@api_router.put("/product-invoices/{invoice_id}")
+async def update_product_invoice(invoice_id: str, invoice: ProductInvoiceCreate, current_user: dict = Depends(get_current_user)):
+    """Update a product invoice (only drafts can be updated)"""
+    existing = await db.product_invoices.find_one({"id": invoice_id})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Invoice not found")
+    
+    if existing.get("status") == "paid":
+        raise HTTPException(status_code=400, detail="Cannot update paid invoice")
+    
+    subtotal = sum(item.total for item in invoice.items)
+    vat_rate = 15.0
+    vat_amount = round(subtotal * (vat_rate / 100), 2)
+    total = round(subtotal + vat_amount, 2)
+    
+    update_data = {
+        "customer_name": invoice.customer_name,
+        "customer_phone": invoice.customer_phone,
+        "payment_method": invoice.payment_method,
+        "items": [item.model_dump() for item in invoice.items],
+        "subtotal": subtotal,
+        "vat_amount": vat_amount,
+        "total": total,
+        "status": invoice.status,
+        "updated_at": datetime.now(timezone.utc).isoformat()
+    }
+    
+    # If changing to paid, deduct stock and set paid_at
+    if invoice.status == "paid" and existing.get("status") != "paid":
+        update_data["paid_at"] = datetime.now(timezone.utc).isoformat()
+        for item in invoice.items:
+            await db.products.update_one(
+                {"id": item.product_id},
+                {"$inc": {"quantity": -item.quantity}}
+            )
+    
+    result = await db.product_invoices.find_one_and_update(
+        {"id": invoice_id},
+        {"$set": update_data},
+        return_document=True
+    )
+    result.pop("_id", None)
+    return result
+
+@api_router.delete("/product-invoices/{invoice_id}")
+async def delete_product_invoice(invoice_id: str, current_user: dict = Depends(get_current_user)):
+    """Delete a product invoice (only drafts can be deleted)"""
+    existing = await db.product_invoices.find_one({"id": invoice_id})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Invoice not found")
+    
+    if existing.get("status") == "paid":
+        raise HTTPException(status_code=400, detail="Cannot delete paid invoice")
+    
+    await db.product_invoices.delete_one({"id": invoice_id})
+    return {"message": "Invoice deleted"}
+
 # Include router
 app.include_router(api_router)
 
