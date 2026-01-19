@@ -928,7 +928,6 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
               {invoiceItems.length > 0 && (
                 <div className="p-4 bg-primary/5 rounded-lg border border-primary/20">
                   <div className="flex justify-between text-sm mb-2"><span>{t('subtotal')}</span><span>{subtotal.toFixed(2)} {t('sar')}</span></div>
-                  {discount > 0 && <div className="flex justify-between text-sm mb-2 text-muted-foreground"><span>{t('discount')}</span><span>- {parseFloat(discount).toFixed(2)} {t('sar')}</span></div>}
                   {couponDiscount > 0 && (
                     <div className="flex justify-between text-sm mb-2 text-purple-600">
                       <span className="flex items-center gap-1">
