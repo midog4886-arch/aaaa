@@ -823,10 +823,21 @@ async def create_invoice(invoice: InvoiceCreate, current_user: dict = Depends(ge
     customer_phone = invoice.customer_phone or (member.get("phone", "") if member else "")
     customer_address = invoice.customer_address or ""
     
+    # Generate sequential invoice number starting from 202601
+    last_invoice = await db.invoices.find_one(
+        {"invoice_number": {"$exists": True}},
+        sort=[("invoice_number", -1)]
+    )
+    if last_invoice and last_invoice.get("invoice_number"):
+        next_number = int(last_invoice["invoice_number"]) + 1
+    else:
+        next_number = 202601
+    
     invoice_id = str(uuid.uuid4())
     branch_id = current_user.get("branch_id")
     invoice_doc = {
         "id": invoice_id,
+        "invoice_number": str(next_number),
         "member_id": invoice.member_id,
         "member_name": customer_name_ar,
         "items": [item.model_dump() for item in invoice.items],
