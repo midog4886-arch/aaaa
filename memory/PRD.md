@@ -358,6 +358,13 @@
         - الاشتراكات النشطة (Active Subscriptions) → Shows activities and subscription counts
         - إيرادات الشهر (Monthly Revenue) → Shows revenue, refunds, and net revenue breakdown
         - ينتهي قريباً (Expiring Soon) → Shows expiring subscriptions with WhatsApp reminder buttons
+    -   ✅ **Edit Invoice Before Payment**: Added edit button for pending invoices to modify items, customer info, discounts
+    -   ✅ **PDF Invoice Export**: Added "Save PDF & Share" button to save invoice as PDF and open WhatsApp for sharing
+    -   ✅ **Store/Inventory Management**: New page for managing products (swimming equipment, sports accessories)
+        - Product CRUD operations with categories
+        - Stock management (add/remove inventory)
+        - Low stock alerts
+        - Product cards with price, cost, quantity display
 
 **Upcoming Tasks**:
     -   **WhatsApp Business API Integration (P1)**: Send invoice images directly via WhatsApp API. User has provided phone number: 00966566238384. Waiting for Access Token and Phone Number ID from Meta Business Suite.
