@@ -380,3 +380,47 @@
 
 **Upcoming Tasks**:
     -   **WhatsApp Business API Integration (P1)**: Send invoice images directly via WhatsApp API. User has provided phone number: 00966566238384. Waiting for Access Token and Phone Number ID from Meta Business Suite.
+
+---
+
+## Update 9 - Invoice Store & Discount Integration (January 19, 2026)
+
+### New Features Added:
+
+#### 1. Products in Invoices ✅
+- **Item Type Selector**: Toggle between "الأنشطة" (Activities) and "المنتجات" (Products) tabs
+- **Product Selection**: Dropdown to add products from store inventory to invoice
+- **Quantity Support**: Adjust product quantity with automatic price calculation
+- **Visual Distinction**: Products highlighted with green border and "منتج" badge
+- **Stock Validation**: Cannot add more than available stock
+
+#### 2. Discount Coupons in Invoices ✅
+- **Coupon Input Field**: Enter discount coupon code
+- **Validate & Apply**: Button to validate coupon against backend
+- **Applied Coupon Display**: Shows coupon code, discount type (percentage/fixed), and amount
+- **Remove Coupon**: Easy removal of applied coupon
+- **Subtotal Check**: Cannot apply coupon without items in invoice
+
+#### 3. Enhanced Invoice Calculation ✅
+- **Total Discount**: Combines manual discount + coupon discount
+- **VAT Calculation**: Applied after all discounts
+- **Visual Breakdown**: Shows subtotal, manual discount, coupon discount, VAT, and final total
+
+#### 4. Automatic Stock & Coupon Tracking ✅
+- **Stock Deduction**: When invoice is marked as paid, product stock is automatically reduced
+- **Coupon Usage Count**: Incremented when invoice with coupon is paid
+- **Usage Limit Check**: Validates coupon hasn't exceeded max uses
+
+### Backend Model Updates:
+- `InvoiceItem`: Added `is_product`, `product_id`, `quantity` fields
+- `InvoiceCreate`: Added `discount_code` field
+- `create_invoice`: Saves `discount_code` for tracking
+- `pay_invoice`: Deducts stock and increments coupon usage
+
+### Test Coverage:
+- 10/10 backend tests passing (100%)
+- Tests cover: activities, products, coupons, validation, stock deduction, usage tracking
+
+### Files Modified:
+- `/app/frontend/src/pages/InvoicesPage.js` - UI for products and coupons
+- `/app/backend/server.py` - Models and API logic
