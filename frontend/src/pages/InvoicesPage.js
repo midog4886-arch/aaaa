@@ -555,7 +555,7 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
     return matchesSearch && matchesStatus;
   });
 
-  const { subtotal, vatAmount, total } = calculateTotals();
+  const { subtotal, totalDiscount, vatAmount, total } = calculateTotals();
 
   if (loading) return <Layout title={t('invoices')}><div className="flex items-center justify-center h-64"><div className="spinner" /></div></Layout>;
 
