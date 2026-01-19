@@ -744,29 +744,103 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
               )}
 
               {invoiceItems.length > 0 && (
-                <div className="space-y-2"><Label>{language === 'ar' ? 'الأنشطة' : 'Items'}</Label>
+                <div className="space-y-2">
+                  <Label>{language === 'ar' ? 'عناصر الفاتورة' : 'Invoice Items'}</Label>
                   <div className="space-y-2 p-4 bg-muted/50 rounded-lg">
                     {invoiceItems.map((item, idx) => (
-                      <div key={idx} className="p-3 bg-background rounded-lg border space-y-2">
+                      <div key={idx} className={`p-3 bg-background rounded-lg border space-y-2 ${item.is_product ? 'border-green-300 bg-green-50/50' : ''}`}>
                         <div className="flex items-center justify-between">
-                          <p className="font-medium">{item.activity_name}</p>
-                          <Button variant="ghost" size="icon" onClick={() => removeItem(idx)} className="text-destructive"><Trash2 className="w-4 h-4" /></Button>
+                          <div className="flex items-center gap-2">
+                            {item.is_product ? (
+                              <Package className="w-4 h-4 text-green-600" />
+                            ) : (
+                              <Receipt className="w-4 h-4 text-blue-600" />
+                            )}
+                            <p className="font-medium">{item.activity_name}</p>
+                            {item.is_product && (
+                              <Badge variant="outline" className="bg-green-100 text-green-700 text-xs">
+                                {language === 'ar' ? 'منتج' : 'Product'}
+                              </Badge>
+                            )}
+                          </div>
+                          <Button variant="ghost" size="icon" onClick={() => removeItem(idx)} className="text-destructive">
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
                         </div>
-                        <div className="grid grid-cols-3 gap-2">
-                          <div className="space-y-1"><Label className="text-xs">{language === 'ar' ? 'تاريخ البداية' : 'Start Date'}</Label>
-                            <Input type="date" value={item.start_date} onChange={(e) => updateItemDate(idx, 'start_date', e.target.value)} className="h-8 text-sm" /></div>
-                          <div className="space-y-1"><Label className="text-xs">{language === 'ar' ? 'تاريخ النهاية' : 'End Date'}</Label>
-                            <Input type="date" value={item.end_date} onChange={(e) => updateItemDate(idx, 'end_date', e.target.value)} className="h-8 text-sm" /></div>
-                          <div className="space-y-1"><Label className="text-xs">{language === 'ar' ? 'المبلغ' : 'Fee'}</Label>
-                            <Input type="number" value={item.fee} onChange={(e) => updateItemFee(idx, e.target.value)} className="h-8 text-sm" /></div>
-                          <div className="space-y-1 col-span-2"><Label className="text-xs">{language === 'ar' ? 'جدول المواعيد' : 'Schedule'}</Label>
-                            <Input 
-                              value={item.schedule || ''} 
-                              onChange={(e) => updateItemSchedule(idx, e.target.value)} 
-                              className="h-8 text-sm" 
-                              placeholder={language === 'ar' ? 'مثال: السبت والاثنين والأربعاء 4-5 مساءً' : 'e.g. Sat, Mon, Wed 4-5 PM'}
-                            /></div>
-                        </div>
+                        
+                        {/* Product Item Fields */}
+                        {item.is_product ? (
+                          <div className="grid grid-cols-2 gap-2">
+                            <div className="space-y-1">
+                              <Label className="text-xs">{language === 'ar' ? 'الكمية' : 'Quantity'}</Label>
+                              <Input 
+                                type="number" 
+                                value={item.quantity || 1} 
+                                onChange={(e) => {
+                                  const qty = parseInt(e.target.value) || 1;
+                                  const product = products.find(p => p.id === item.product_id);
+                                  if (product && qty <= product.quantity) {
+                                    const updated = [...invoiceItems];
+                                    updated[idx].quantity = qty;
+                                    updated[idx].fee = product.price * qty;
+                                    setInvoiceItems(updated);
+                                  }
+                                }}
+                                min="1"
+                                className="h-8 text-sm"
+                              />
+                            </div>
+                            <div className="space-y-1">
+                              <Label className="text-xs">{language === 'ar' ? 'المبلغ' : 'Amount'}</Label>
+                              <Input 
+                                type="number" 
+                                value={item.fee} 
+                                className="h-8 text-sm bg-muted" 
+                                disabled 
+                              />
+                            </div>
+                          </div>
+                        ) : (
+                          /* Activity Item Fields */
+                          <div className="grid grid-cols-3 gap-2">
+                            <div className="space-y-1">
+                              <Label className="text-xs">{language === 'ar' ? 'تاريخ البداية' : 'Start Date'}</Label>
+                              <Input 
+                                type="date" 
+                                value={item.start_date} 
+                                onChange={(e) => updateItemDate(idx, 'start_date', e.target.value)} 
+                                className="h-8 text-sm" 
+                              />
+                            </div>
+                            <div className="space-y-1">
+                              <Label className="text-xs">{language === 'ar' ? 'تاريخ النهاية' : 'End Date'}</Label>
+                              <Input 
+                                type="date" 
+                                value={item.end_date} 
+                                onChange={(e) => updateItemDate(idx, 'end_date', e.target.value)} 
+                                className="h-8 text-sm" 
+                              />
+                            </div>
+                            <div className="space-y-1">
+                              <Label className="text-xs">{language === 'ar' ? 'المبلغ' : 'Fee'}</Label>
+                              <Input 
+                                type="number" 
+                                value={item.fee} 
+                                onChange={(e) => updateItemFee(idx, e.target.value)} 
+                                className="h-8 text-sm" 
+                              />
+                            </div>
+                            <div className="space-y-1 col-span-3">
+                              <Label className="text-xs">{language === 'ar' ? 'جدول المواعيد' : 'Schedule'}</Label>
+                              <Input 
+                                value={item.schedule || ''} 
+                                onChange={(e) => updateItemSchedule(idx, e.target.value)} 
+                                className="h-8 text-sm" 
+                                placeholder={language === 'ar' ? 'مثال: السبت والاثنين والأربعاء 4-5 مساءً' : 'e.g. Sat, Mon, Wed 4-5 PM'}
+                              />
+                            </div>
+                          </div>
+                        )}
                       </div>
                     ))}
                   </div>
