@@ -253,11 +253,11 @@ export const StorePage = () => {
     if (invoice) {
       // Edit existing invoice
       setEditingInvoice(invoice);
-      setInvoiceItems(invoice.items);
-      setCustomerName(invoice.customer_name);
+      setInvoiceItems(invoice.items || []);
+      setCustomerName(invoice.customer_name || '');
       setCustomerPhone(invoice.customer_phone || '');
-      setPaymentMethod(invoice.payment_method);
-      setInvoiceStatus(invoice.status);
+      setPaymentMethod(invoice.payment_method || 'cash');
+      setInvoiceStatus(invoice.status || 'draft');
     } else {
       // New invoice
       setEditingInvoice(null);
