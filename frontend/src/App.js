@@ -152,6 +152,14 @@ function AppRoutes() {
           </ProtectedRoute>
         } 
       />
+      <Route 
+        path="/store" 
+        element={
+          <ProtectedRoute>
+            <StorePage />
+          </ProtectedRoute>
+        } 
+      />
       
       {/* Default Redirect */}
       <Route path="/" element={<Navigate to="/dashboard" replace />} />
