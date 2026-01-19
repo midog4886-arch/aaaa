@@ -571,6 +571,7 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
     // Reset coupon state
     setCouponCode(''); setAppliedCoupon(null); setCouponDiscount(0);
     setItemType('activity');
+    setFeeEditUnlocked(false);
   };
 
   const getStatusBadge = (status) => {
