@@ -447,16 +447,46 @@ export const StorePage = () => {
     toast.success(language === 'ar' ? 'تم حفظ الفاتورة' : 'Invoice saved');
   };
 
-  const generateQRData = (invoice) => {
+  // Generate ZATCA-compliant QR Code (TLV Base64 format)
+  const generateZATCAQR = (invoice) => {
     if (!invoice) return '';
-    // ZATCA QR format (simplified)
-    return JSON.stringify({
-      seller: COMPANY_INFO.name_ar,
-      vat: COMPANY_INFO.tax_number,
-      date: new Date(invoice.created_at).toISOString(),
-      total: invoice.total,
-      vat_amount: invoice.vat_amount
-    });
+    
+    // ZATCA TLV Format:
+    // Tag 1: Seller Name
+    // Tag 2: VAT Registration Number
+    // Tag 3: Invoice Timestamp (ISO 8601)
+    // Tag 4: Invoice Total (with VAT)
+    // Tag 5: VAT Amount
+    
+    const sellerName = COMPANY_INFO.name_ar;
+    const vatNumber = COMPANY_INFO.tax_number;
+    const timestamp = new Date(invoice.created_at || new Date()).toISOString();
+    const totalWithVat = invoice.total?.toFixed(2) || '0.00';
+    const vatAmount = invoice.vat_amount?.toFixed(2) || '0.00';
+    
+    // Create TLV encoded data
+    const tlvEncode = (tag, value) => {
+      const encoder = new TextEncoder();
+      const valueBytes = encoder.encode(value);
+      return new Uint8Array([tag, valueBytes.length, ...valueBytes]);
+    };
+    
+    // Combine all TLV tags
+    const tag1 = tlvEncode(1, sellerName);
+    const tag2 = tlvEncode(2, vatNumber);
+    const tag3 = tlvEncode(3, timestamp);
+    const tag4 = tlvEncode(4, totalWithVat);
+    const tag5 = tlvEncode(5, vatAmount);
+    
+    // Merge all arrays
+    const combined = new Uint8Array([...tag1, ...tag2, ...tag3, ...tag4, ...tag5]);
+    
+    // Convert to Base64
+    let binary = '';
+    combined.forEach(byte => binary += String.fromCharCode(byte));
+    const base64 = btoa(binary);
+    
+    return base64;
   };
 
   const filteredProducts = products.filter(p => {
