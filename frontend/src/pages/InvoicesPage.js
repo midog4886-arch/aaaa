@@ -309,7 +309,7 @@ export const InvoicesPage = () => {
       return;
     }
     setSaving(true);
-    const totalDiscount = (parseFloat(discount) || 0) + couponDiscount;
+    const totalDiscount = couponDiscount;
     try {
       if (isEditMode && editingInvoiceId) {
         await invoicesAPI.update(editingInvoiceId, {
