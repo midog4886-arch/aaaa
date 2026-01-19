@@ -1065,7 +1065,7 @@ async def create_product(product: ProductCreate, current_user: dict = Depends(ge
     }
     
     await db.products.insert_one(product_doc)
-    del product_doc["_id"] if "_id" in product_doc else None
+    product_doc.pop("_id", None)
     return product_doc
 
 @api_router.put("/products/{product_id}")
