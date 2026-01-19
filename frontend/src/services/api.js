@@ -51,6 +51,7 @@ export const invoicesAPI = {
   getAll: (params = {}) => axios.get(`${API}/invoices`, { params }),
   getById: (id) => axios.get(`${API}/invoices/${id}`),
   create: (data) => axios.post(`${API}/invoices`, data),
+  update: (id, data) => axios.put(`${API}/invoices/${id}`, data),
   pay: (id) => axios.put(`${API}/invoices/${id}/pay`),
   cancel: (id) => axios.put(`${API}/invoices/${id}/cancel`),
   restore: (id) => axios.put(`${API}/invoices/${id}/restore`),
@@ -58,6 +59,16 @@ export const invoicesAPI = {
   delete: (id) => axios.delete(`${API}/invoices/${id}`),
   search: (params = {}) => axios.get(`${API}/invoices/search`, { params }),
   getQR: (id) => axios.get(`${API}/invoices/${id}/qr`),
+};
+
+// Products/Inventory API
+export const productsAPI = {
+  getAll: () => axios.get(`${API}/products`),
+  create: (data) => axios.post(`${API}/products`, data),
+  update: (id, data) => axios.put(`${API}/products/${id}`, data),
+  delete: (id) => axios.delete(`${API}/products/${id}`),
+  updateStock: (id, quantity) => axios.put(`${API}/products/${id}/stock`, null, { params: { quantity_change: quantity } }),
+  getLowStock: () => axios.get(`${API}/products/low-stock`),
 };
 
 // Payments API
