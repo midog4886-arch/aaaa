@@ -596,6 +596,10 @@ export const StorePage = () => {
           <Button variant={activeTab === 'discounts' ? 'default' : 'ghost'} onClick={() => setActiveTab('discounts')} className="rounded-b-none">
             <Percent className="w-4 h-4 me-2" />{language === 'ar' ? 'كوبونات الخصم' : 'Discount Coupons'}
           </Button>
+          <Button variant={activeTab === 'invoices' ? 'default' : 'ghost'} onClick={() => setActiveTab('invoices')} className="rounded-b-none">
+            <Receipt className="w-4 h-4 me-2" />{language === 'ar' ? 'فواتير المنتجات' : 'Product Invoices'}
+            {stats.draftInvoices > 0 && <Badge className="ms-2 bg-amber-500">{stats.draftInvoices}</Badge>}
+          </Button>
         </div>
 
         {activeTab === 'products' && (<>
