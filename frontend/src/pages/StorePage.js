@@ -559,9 +559,14 @@ export const StorePage = () => {
                   </SelectContent>
                 </Select>
               </div>
-              <Button onClick={openCreateDialog} data-testid="add-product-btn">
-                <Plus className="w-4 h-4 me-2" />{language === 'ar' ? 'إضافة منتج' : 'Add Product'}
-              </Button>
+              <div className="flex gap-2">
+                <Button onClick={openInvoiceDialog} variant="outline" className="bg-green-50 border-green-500 text-green-700 hover:bg-green-100" data-testid="create-product-invoice-btn">
+                  <Receipt className="w-4 h-4 me-2" />{language === 'ar' ? 'فاتورة منتجات' : 'Product Invoice'}
+                </Button>
+                <Button onClick={openCreateDialog} data-testid="add-product-btn">
+                  <Plus className="w-4 h-4 me-2" />{language === 'ar' ? 'إضافة منتج' : 'Add Product'}
+                </Button>
+              </div>
             </div>
           </CardContent>
         </Card>
