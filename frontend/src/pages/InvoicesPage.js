@@ -671,11 +671,77 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
                 </div>
               </Card>
 
-              <div className="space-y-2"><Label>{language === 'ar' ? 'إضافة نشاط' : 'Add activity'}</Label>
-                <Select onValueChange={addActivityToInvoice}><SelectTrigger><SelectValue placeholder={language === 'ar' ? 'اختر نشاط' : 'Select activity'} /></SelectTrigger>
-                  <SelectContent>{activities.map(a => <SelectItem key={a.id} value={a.id}>{language === 'ar' ? a.name_ar : a.name} - {a.monthly_fee} {t('sar')}</SelectItem>)}</SelectContent>
-                </Select>
+              {/* Item Type Selector */}
+              <div className="flex gap-2 p-2 bg-muted rounded-lg">
+                <Button
+                  type="button"
+                  variant={itemType === 'activity' ? 'default' : 'outline'}
+                  onClick={() => setItemType('activity')}
+                  className="flex-1"
+                  data-testid="item-type-activity"
+                >
+                  <Receipt className="w-4 h-4 me-2" />
+                  {language === 'ar' ? 'الأنشطة' : 'Activities'}
+                </Button>
+                <Button
+                  type="button"
+                  variant={itemType === 'product' ? 'default' : 'outline'}
+                  onClick={() => setItemType('product')}
+                  className="flex-1"
+                  data-testid="item-type-product"
+                >
+                  <Package className="w-4 h-4 me-2" />
+                  {language === 'ar' ? 'المنتجات' : 'Products'}
+                </Button>
               </div>
+
+              {/* Activity Selector */}
+              {itemType === 'activity' && (
+                <div className="space-y-2">
+                  <Label>{language === 'ar' ? 'إضافة نشاط' : 'Add activity'}</Label>
+                  <Select onValueChange={addActivityToInvoice}>
+                    <SelectTrigger data-testid="activity-selector">
+                      <SelectValue placeholder={language === 'ar' ? 'اختر نشاط' : 'Select activity'} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {activities.map(a => (
+                        <SelectItem key={a.id} value={a.id}>
+                          {language === 'ar' ? a.name_ar : a.name} - {a.monthly_fee} {t('sar')}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+
+              {/* Product Selector */}
+              {itemType === 'product' && (
+                <div className="space-y-2">
+                  <Label>{language === 'ar' ? 'إضافة منتج من المتجر' : 'Add product from store'}</Label>
+                  <Select onValueChange={(id) => addProductToInvoice(id, 1)}>
+                    <SelectTrigger data-testid="product-selector">
+                      <SelectValue placeholder={language === 'ar' ? 'اختر منتج' : 'Select product'} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {products.filter(p => p.quantity > 0).map(p => (
+                        <SelectItem key={p.id} value={p.id}>
+                          <div className="flex items-center gap-2">
+                            <Package className="w-4 h-4 text-green-600" />
+                            <span>{p.name_ar}</span>
+                            <span className="text-muted-foreground">({p.quantity} {language === 'ar' ? 'متوفر' : 'available'})</span>
+                            <span className="font-bold">{p.price} {t('sar')}</span>
+                          </div>
+                        </SelectItem>
+                      ))}
+                      {products.filter(p => p.quantity > 0).length === 0 && (
+                        <SelectItem value="none" disabled>
+                          {language === 'ar' ? 'لا توجد منتجات متوفرة' : 'No products available'}
+                        </SelectItem>
+                      )}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
 
               {invoiceItems.length > 0 && (
                 <div className="space-y-2"><Label>{language === 'ar' ? 'الأنشطة' : 'Items'}</Label>
