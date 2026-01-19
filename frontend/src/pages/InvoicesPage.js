@@ -886,12 +886,7 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
                         </p>
                       </div>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-lg font-bold text-green-700">-{couponDiscount} {t('sar')}</span>
-                      <Button variant="ghost" size="icon" onClick={removeCoupon} className="text-red-500 hover:text-red-700">
-                        <X className="w-4 h-4" />
-                      </Button>
-                    </div>
+                    <span className="text-lg font-bold text-green-700">-{couponDiscount} {t('sar')}</span>
                   </div>
                 ) : (
                   <div className="flex gap-2">
