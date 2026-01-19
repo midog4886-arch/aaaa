@@ -237,20 +237,95 @@ export const InvoicesPage = () => {
     }
     setSaving(true);
     try {
-      await invoicesAPI.create({
-        member_id: selectedMember?.id || null,
-        items: invoiceItems,
-        discount: parseFloat(discount) || 0,
-        notes, payment_method: paymentMethod,
-        customer_name_ar: customerNameAr, customer_phone: customerPhone, customer_address: customerAddress
-      });
-      toast.success(t('success'));
+      if (isEditMode && editingInvoiceId) {
+        await invoicesAPI.update(editingInvoiceId, {
+          member_id: selectedMember?.id || null,
+          items: invoiceItems,
+          discount: parseFloat(discount) || 0,
+          notes, payment_method: paymentMethod,
+          customer_name_ar: customerNameAr, customer_phone: customerPhone, customer_address: customerAddress
+        });
+        toast.success(language === 'ar' ? 'تم تحديث الفاتورة' : 'Invoice updated');
+      } else {
+        await invoicesAPI.create({
+          member_id: selectedMember?.id || null,
+          items: invoiceItems,
+          discount: parseFloat(discount) || 0,
+          notes, payment_method: paymentMethod,
+          customer_name_ar: customerNameAr, customer_phone: customerPhone, customer_address: customerAddress
+        });
+        toast.success(t('success'));
+      }
       loadData();
       closeCreateDialog();
     } catch (error) {
       toast.error(t('error'));
     } finally {
       setSaving(false);
+    }
+  };
+
+  // Open edit dialog for pending invoice
+  const openEditDialog = (invoice) => {
+    if (invoice.status !== 'pending') {
+      toast.error(language === 'ar' ? 'يمكن تعديل الفواتير المعلقة فقط' : 'Can only edit pending invoices');
+      return;
+    }
+    setIsEditMode(true);
+    setEditingInvoiceId(invoice.id);
+    setSelectedMember(members.find(m => m.id === invoice.member_id) || null);
+    setInvoiceItems(invoice.items.map(item => ({
+      activity_id: item.activity_id,
+      activity_name: item.activity_name,
+      fee: item.fee,
+      period: item.period,
+      schedule: item.schedule || ''
+    })));
+    setDiscount(invoice.discount || 0);
+    setNotes(invoice.notes || '');
+    setPaymentMethod(invoice.payment_method || 'cash');
+    setCustomerNameAr(invoice.customer_name_ar || '');
+    setCustomerPhone(invoice.customer_phone || '');
+    setCustomerAddress(invoice.customer_address || '');
+    setIsCreateDialogOpen(true);
+    setIsViewDialogOpen(false);
+  };
+
+  // Save invoice as PDF and share via WhatsApp
+  const handleSaveAsPdf = async () => {
+    if (!printRef.current) return;
+    setSavingPdf(true);
+    try {
+      const element = printRef.current;
+      const opt = {
+        margin: 10,
+        filename: `invoice_${selectedInvoice.id.slice(0,8)}.pdf`,
+        image: { type: 'jpeg', quality: 0.98 },
+        html2canvas: { scale: 2, useCORS: true },
+        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+      };
+      
+      const pdfBlob = await html2pdf().from(element).set(opt).outputPdf('blob');
+      const pdfUrl = URL.createObjectURL(pdfBlob);
+      
+      // Download PDF
+      const link = document.createElement('a');
+      link.href = pdfUrl;
+      link.download = opt.filename;
+      link.click();
+      
+      toast.success(language === 'ar' ? 'تم حفظ الفاتورة كـ PDF' : 'Invoice saved as PDF');
+      
+      // Open WhatsApp with message
+      const phone = selectedInvoice.customer_phone?.replace(/^0/, '966') || '';
+      if (phone) {
+        const message = `مرحباً،\n\nمرفق فاتورتكم رقم #${selectedInvoice.id.slice(0,8)} بمبلغ ${selectedInvoice.total} ر.س\n\nشكراً لكم،\nشركة اداء الابطال العالمية للرياضة`;
+        window.open(`https://wa.me/${phone}?text=${encodeURIComponent(message)}`, '_blank');
+      }
+    } catch (error) {
+      toast.error(language === 'ar' ? 'خطأ في حفظ PDF' : 'Failed to save PDF');
+    } finally {
+      setSavingPdf(false);
     }
   };
 
