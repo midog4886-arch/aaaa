@@ -214,6 +214,21 @@ export const DashboardPage = () => {
             <div className="stat-card-label">{t('expiring_soon')}</div>
             <div className="text-xs text-muted-foreground mt-1">{language === 'ar' ? 'اضغط للتفاصيل' : 'Click for details'}</div>
           </Card>
+
+          <Card 
+            className={`stat-card hover-scale cursor-pointer transition-all ${activeDetail === 'coupons' ? 'ring-2 ring-purple-500' : ''}`} 
+            data-testid="stat-coupons"
+            onClick={() => toggleDetail('coupons')}
+          >
+            <div className="stat-card-icon bg-purple-500/10">
+              <Tag className="w-6 h-6 text-purple-500" />
+            </div>
+            <div className="stat-card-value text-purple-500">
+              {discounts.filter(d => d.is_active).length}
+            </div>
+            <div className="stat-card-label">{language === 'ar' ? 'كوبونات الخصم' : 'Discount Coupons'}</div>
+            <div className="text-xs text-muted-foreground mt-1">{language === 'ar' ? 'اضغط للتفاصيل' : 'Click for details'}</div>
+          </Card>
         </div>
 
         {/* Detail Sections */}
