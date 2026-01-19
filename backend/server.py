@@ -832,6 +832,7 @@ async def create_invoice(invoice: InvoiceCreate, current_user: dict = Depends(ge
         "items": [item.model_dump() for item in invoice.items],
         "subtotal": subtotal,
         "discount": invoice.discount,
+        "discount_code": invoice.discount_code,  # Store coupon code for usage tracking
         "vat_amount": vat_amount,
         "total": total,
         "status": "pending",
