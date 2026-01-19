@@ -9,11 +9,11 @@ import { Badge } from '../components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '../components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Textarea } from '../components/ui/textarea';
-import { productsAPI } from '../services/api';
+import { productsAPI, discountsAPI } from '../services/api';
 import { toast } from 'sonner';
 import { 
   Package, Plus, Search, Edit, Trash2, AlertTriangle, 
-  ShoppingBag, TrendingUp, TrendingDown, Loader2, BarChart3
+  ShoppingBag, TrendingUp, TrendingDown, Loader2, BarChart3, X, Percent, Tag
 } from 'lucide-react';
 
 const CATEGORIES = {
@@ -26,22 +26,47 @@ const CATEGORIES = {
 export const StorePage = () => {
   const { t, language } = useLanguage();
   const [products, setProducts] = useState([]);
+  const [discounts, setDiscounts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterCategory, setFilterCategory] = useState('all');
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isStockDialogOpen, setIsStockDialogOpen] = useState(false);
+  const [isDiscountDialogOpen, setIsDiscountDialogOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState(null);
+  const [editingDiscount, setEditingDiscount] = useState(null);
   const [selectedProduct, setSelectedProduct] = useState(null);
   const [stockChange, setStockChange] = useState(0);
   const [saving, setSaving] = useState(false);
+  const [activeDetail, setActiveDetail] = useState(null);
+  const [activeTab, setActiveTab] = useState('products'); // products or discounts
   
   const [formData, setFormData] = useState({
     name_ar: '', name: '', category: 'swimming', sku: '',
     price: '', cost: '', quantity: '', min_quantity: '5', description: ''
   });
+  
+  const [discountForm, setDiscountForm] = useState({
+    code: '', name_ar: '', name: '', discount_type: 'percentage',
+    value: '', min_purchase: '0', max_uses: '0', is_active: true
+  });
 
-  useEffect(() => { loadProducts(); }, []);
+  useEffect(() => { loadData(); }, []);
+
+  const loadData = async () => {
+    try {
+      const [productsRes, discountsRes] = await Promise.all([
+        productsAPI.getAll(),
+        discountsAPI.getAll()
+      ]);
+      setProducts(productsRes.data);
+      setDiscounts(discountsRes.data);
+    } catch (error) {
+      toast.error(language === 'ar' ? 'خطأ في تحميل البيانات' : 'Failed to load data');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const loadProducts = async () => {
     try {
