@@ -365,6 +365,18 @@
         - Stock management (add/remove inventory)
         - Low stock alerts
         - Product cards with price, cost, quantity display
+    -   ✅ **Clickable Store Cards**: All store stat cards are now interactive showing details:
+        - Total Products → Shows breakdown by category
+        - Low Stock → Shows list of products needing restock
+        - Sale Value / Cost Value → Shows profit calculation
+        - Active Coupons → Opens discount coupons tab
+    -   ✅ **Discount Coupons System**: Full coupon management system:
+        - Create/edit/delete discount coupons
+        - Percentage or fixed amount discounts
+        - Minimum purchase requirement
+        - Usage limits (max uses)
+        - Active/inactive status
+        - Validate coupon API endpoint
 
 **Upcoming Tasks**:
     -   **WhatsApp Business API Integration (P1)**: Send invoice images directly via WhatsApp API. User has provided phone number: 00966566238384. Waiting for Access Token and Phone Number ID from Meta Business Suite.
