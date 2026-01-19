@@ -520,6 +520,15 @@ export const StorePage = () => {
             <div className="stat-card-label">{language === 'ar' ? 'كوبونات نشطة' : 'Active Coupons'}</div>
             <div className="text-xs text-muted-foreground mt-1">{language === 'ar' ? 'اضغط للتفاصيل' : 'Click'}</div>
           </Card>
+          <Card className={`stat-card cursor-pointer hover:shadow-lg transition-all ${activeTab === 'invoices' ? 'ring-2 ring-emerald-500' : ''}`} onClick={() => setActiveTab('invoices')}>
+            <div className="stat-card-icon bg-emerald-500/10"><Receipt className="w-6 h-6 text-emerald-500" /></div>
+            <div className="stat-card-value text-emerald-500">{stats.totalInvoices}</div>
+            <div className="stat-card-label">{language === 'ar' ? 'فواتير المنتجات' : 'Product Invoices'}</div>
+            <div className="text-xs text-muted-foreground mt-1">
+              {stats.draftInvoices > 0 && <Badge variant="outline" className="text-amber-600 me-1">{stats.draftInvoices} {language === 'ar' ? 'مسودة' : 'Draft'}</Badge>}
+              {stats.paidInvoices > 0 && <Badge variant="outline" className="text-green-600">{stats.paidInvoices} {language === 'ar' ? 'مدفوعة' : 'Paid'}</Badge>}
+            </div>
+          </Card>
         </div>
 
         {/* Detail Sections */}
