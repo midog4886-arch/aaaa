@@ -862,6 +862,63 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
                 </div>
               </div>
 
+              {/* Coupon Code Section */}
+              <Card className="p-4 border-purple-200 bg-purple-50/50">
+                <div className="flex items-center gap-2 mb-3">
+                  <Tag className="w-4 h-4 text-purple-600" />
+                  <Label className="font-semibold text-purple-700">{language === 'ar' ? 'كود الخصم' : 'Discount Coupon'}</Label>
+                </div>
+                {appliedCoupon ? (
+                  <div className="flex items-center justify-between p-3 bg-green-100 border border-green-300 rounded-lg">
+                    <div className="flex items-center gap-2">
+                      <CheckCircle className="w-5 h-5 text-green-600" />
+                      <div>
+                        <p className="font-semibold text-green-800">{appliedCoupon.code}</p>
+                        <p className="text-sm text-green-600">
+                          {appliedCoupon.discount_type === 'percentage' 
+                            ? `${appliedCoupon.value}% ${language === 'ar' ? 'خصم' : 'off'}`
+                            : `${appliedCoupon.value} ${t('sar')} ${language === 'ar' ? 'خصم' : 'off'}`
+                          }
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-lg font-bold text-green-700">-{couponDiscount} {t('sar')}</span>
+                      <Button variant="ghost" size="icon" onClick={removeCoupon} className="text-red-500 hover:text-red-700">
+                        <X className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex gap-2">
+                    <Input 
+                      value={couponCode} 
+                      onChange={(e) => setCouponCode(e.target.value.toUpperCase())} 
+                      placeholder={language === 'ar' ? 'أدخل كود الخصم...' : 'Enter coupon code...'}
+                      className="flex-1"
+                      data-testid="coupon-input"
+                    />
+                    <Button 
+                      type="button"
+                      onClick={validateCoupon} 
+                      disabled={!couponCode.trim() || validatingCoupon || invoiceItems.length === 0}
+                      variant="outline"
+                      className="border-purple-400 text-purple-700 hover:bg-purple-100"
+                      data-testid="apply-coupon-btn"
+                    >
+                      {validatingCoupon ? (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                      ) : (
+                        <>
+                          <Percent className="w-4 h-4 me-1" />
+                          {language === 'ar' ? 'تطبيق' : 'Apply'}
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                )}
+              </Card>
+
               <div className="space-y-2"><Label>{t('notes')}</Label><Textarea value={notes} onChange={(e) => setNotes(e.target.value)} /></div>
 
               {invoiceItems.length > 0 && (
