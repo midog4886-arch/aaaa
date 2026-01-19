@@ -253,7 +253,14 @@ export const InvoicesPage = () => {
     }
   };
 
+  const EDIT_PASSWORD = '242456';
+
   const updateItemFee = (index, newFee) => {
+    const password = window.prompt(language === 'ar' ? 'أدخل كلمة المرور لتغيير السعر:' : 'Enter password to change price:');
+    if (password !== EDIT_PASSWORD) {
+      toast.error(language === 'ar' ? 'كلمة المرور غير صحيحة' : 'Incorrect password');
+      return;
+    }
     const updated = [...invoiceItems];
     updated[index].fee = parseFloat(newFee) || 0;
     setInvoiceItems(updated);
