@@ -249,11 +249,24 @@ export const StorePage = () => {
   };
 
   // ============ Product Invoice Functions ============
-  const openInvoiceDialog = () => {
-    setInvoiceItems([]);
-    setCustomerName('');
-    setCustomerPhone('');
-    setPaymentMethod('cash');
+  const openInvoiceDialog = (invoice = null) => {
+    if (invoice) {
+      // Edit existing invoice
+      setEditingInvoice(invoice);
+      setInvoiceItems(invoice.items);
+      setCustomerName(invoice.customer_name);
+      setCustomerPhone(invoice.customer_phone || '');
+      setPaymentMethod(invoice.payment_method);
+      setInvoiceStatus(invoice.status);
+    } else {
+      // New invoice
+      setEditingInvoice(null);
+      setInvoiceItems([]);
+      setCustomerName('');
+      setCustomerPhone('');
+      setPaymentMethod('cash');
+      setInvoiceStatus('draft');
+    }
     setIsInvoiceDialogOpen(true);
   };
 
