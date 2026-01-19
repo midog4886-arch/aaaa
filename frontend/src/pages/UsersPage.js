@@ -279,18 +279,16 @@ const UsersPage = () => {
               </DialogTitle>
             </DialogHeader>
             <form onSubmit={handleSubmit} className="space-y-4">
-              {!editingUser && (
-                <div className="space-y-2">
-                  <Label>{language === 'ar' ? 'اسم المستخدم' : 'Username'} *</Label>
-                  <Input
-                    value={formData.username}
-                    onChange={(e) => setFormData({ ...formData, username: e.target.value })}
-                    placeholder={language === 'ar' ? 'اسم المستخدم للدخول' : 'Login username'}
-                    dir="ltr"
-                    data-testid="user-username-input"
-                  />
-                </div>
-              )}
+              <div className="space-y-2">
+                <Label>{language === 'ar' ? 'اسم المستخدم' : 'Username'} *</Label>
+                <Input
+                  value={formData.username}
+                  onChange={(e) => setFormData({ ...formData, username: e.target.value })}
+                  placeholder={language === 'ar' ? 'اسم المستخدم للدخول' : 'Login username'}
+                  dir="ltr"
+                  data-testid="user-username-input"
+                />
+              </div>
               
               <div className="space-y-2">
                 <Label>{language === 'ar' ? 'الاسم الكامل' : 'Full Name'} *</Label>
