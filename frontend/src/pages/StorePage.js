@@ -329,7 +329,7 @@ export const StorePage = () => {
     return `P${year}${month}${random}`;
   };
 
-  const handleCreateProductInvoice = async () => {
+  const handleCreateProductInvoice = async (asPaid = false) => {
     if (invoiceItems.length === 0) {
       toast.error(language === 'ar' ? 'أضف منتجات للفاتورة' : 'Add products to invoice');
       return;
@@ -341,14 +341,19 @@ export const StorePage = () => {
 
     setSaving(true);
     try {
-      // Deduct stock for each product
-      for (const item of invoiceItems) {
-        await productsAPI.updateStock(item.product_id, -item.quantity);
+      const status = asPaid ? 'paid' : 'draft';
+      
+      // Only deduct stock if marking as paid
+      if (asPaid) {
+        for (const item of invoiceItems) {
+          await productsAPI.updateStock(item.product_id, -item.quantity);
+        }
       }
 
       const { subtotal, vatAmount, total } = calculateInvoiceTotals();
       const invoice = {
-        invoice_number: generateInvoiceNumber(),
+        id: editingInvoice?.id || `INV-${Date.now()}`,
+        invoice_number: editingInvoice?.invoice_number || generateInvoiceNumber(),
         customer_name: customerName,
         customer_phone: customerPhone,
         payment_method: paymentMethod,
@@ -357,21 +362,47 @@ export const StorePage = () => {
         vat_amount: vatAmount,
         vat_rate: COMPANY_INFO.vat_rate,
         total,
-        created_at: new Date().toISOString(),
-        status: 'paid'
+        created_at: editingInvoice?.created_at || new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        status
       };
 
+      if (editingInvoice) {
+        // Update existing invoice
+        const updatedInvoices = productInvoices.map(inv => 
+          inv.id === editingInvoice.id ? invoice : inv
+        );
+        setProductInvoices(updatedInvoices);
+        toast.success(language === 'ar' ? 'تم تحديث الفاتورة' : 'Invoice updated');
+      } else {
+        // Add new invoice
+        setProductInvoices([invoice, ...productInvoices]);
+        toast.success(language === 'ar' ? (asPaid ? 'تم إنشاء الفاتورة ودفعها' : 'تم حفظ الفاتورة كمسودة') : (asPaid ? 'Invoice created and paid' : 'Invoice saved as draft'));
+      }
+
       setCurrentInvoice(invoice);
-      setProductInvoices([invoice, ...productInvoices]);
       setIsInvoiceDialogOpen(false);
-      setIsInvoiceViewOpen(true);
-      loadData(); // Refresh products to update stock
-      toast.success(language === 'ar' ? 'تم إنشاء الفاتورة بنجاح' : 'Invoice created successfully');
+      
+      if (asPaid) {
+        setIsInvoiceViewOpen(true);
+        loadData(); // Refresh products to update stock
+      }
     } catch (error) {
-      toast.error(language === 'ar' ? 'خطأ في إنشاء الفاتورة' : 'Failed to create invoice');
+      toast.error(language === 'ar' ? 'خطأ في حفظ الفاتورة' : 'Failed to save invoice');
     } finally {
       setSaving(false);
     }
+  };
+
+  const handleDeleteInvoice = (invoiceId) => {
+    if (!window.confirm(language === 'ar' ? 'هل تريد حذف هذه الفاتورة؟' : 'Delete this invoice?')) return;
+    setProductInvoices(productInvoices.filter(inv => inv.id !== invoiceId));
+    toast.success(language === 'ar' ? 'تم حذف الفاتورة' : 'Invoice deleted');
+  };
+
+  const viewInvoice = (invoice) => {
+    setCurrentInvoice(invoice);
+    setIsInvoiceViewOpen(true);
   };
 
   const handlePrintInvoice = () => {
