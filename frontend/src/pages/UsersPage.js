@@ -70,8 +70,8 @@ const UsersPage = () => {
       return;
     }
     
-    if (editingUser && !formData.name) {
-      toast.error(language === 'ar' ? 'يرجى إدخال اسم المستخدم' : 'Please enter user name');
+    if (editingUser && (!formData.name || !formData.username)) {
+      toast.error(language === 'ar' ? 'يرجى ملء الحقول المطلوبة' : 'Please fill required fields');
       return;
     }
 
@@ -79,6 +79,7 @@ const UsersPage = () => {
     try {
       if (editingUser) {
         const updateData = {
+          username: formData.username,
           name: formData.name,
           branch_id: formData.branch_id || null,
           is_admin: formData.is_admin
