@@ -269,10 +269,11 @@ export const InvoicesPage = () => {
 
   const calculateTotals = () => {
     const subtotal = invoiceItems.reduce((sum, item) => sum + item.fee, 0);
-    const afterDiscount = subtotal - (parseFloat(discount) || 0);
+    const totalDiscount = (parseFloat(discount) || 0) + couponDiscount;
+    const afterDiscount = Math.max(subtotal - totalDiscount, 0);
     const vatAmount = Math.round(afterDiscount * (COMPANY_INFO.vat_rate / 100) * 100) / 100;
     const total = Math.round((afterDiscount + vatAmount) * 100) / 100;
-    return { subtotal, afterDiscount, vatAmount, total };
+    return { subtotal, totalDiscount, afterDiscount, vatAmount, total };
   };
 
   const handleCreateMember = async () => {
