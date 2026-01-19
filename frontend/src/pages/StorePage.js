@@ -468,15 +468,15 @@ export const StorePage = () => {
   });
 
   const stats = {
-    total: products.length,
-    lowStock: products.filter(p => p.quantity <= p.min_quantity).length,
-    totalValue: products.reduce((sum, p) => sum + (p.price * p.quantity), 0),
-    totalCost: products.reduce((sum, p) => sum + (p.cost * p.quantity), 0),
-    activeDiscounts: discounts.filter(d => d.is_active).length,
-    totalInvoices: productInvoices.length,
-    draftInvoices: productInvoices.filter(i => i.status === 'draft').length,
-    paidInvoices: productInvoices.filter(i => i.status === 'paid').length,
-    invoicesTotal: productInvoices.filter(i => i.status === 'paid').reduce((sum, i) => sum + i.total, 0)
+    total: products?.length || 0,
+    lowStock: products?.filter(p => p.quantity <= p.min_quantity)?.length || 0,
+    totalValue: products?.reduce((sum, p) => sum + ((p.price || 0) * (p.quantity || 0)), 0) || 0,
+    totalCost: products?.reduce((sum, p) => sum + ((p.cost || 0) * (p.quantity || 0)), 0) || 0,
+    activeDiscounts: discounts?.filter(d => d.is_active)?.length || 0,
+    totalInvoices: productInvoices?.length || 0,
+    draftInvoices: productInvoices?.filter(i => i.status === 'draft')?.length || 0,
+    paidInvoices: productInvoices?.filter(i => i.status === 'paid')?.length || 0,
+    invoicesTotal: productInvoices?.filter(i => i.status === 'paid')?.reduce((sum, i) => sum + (i.total || 0), 0) || 0
   };
 
   const toggleDetail = (type) => setActiveDetail(activeDetail === type ? null : type);
