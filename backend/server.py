@@ -207,6 +207,36 @@ class Product(BaseModel):
     created_at: str
     updated_at: str
 
+# ============ DISCOUNT/COUPON MODELS ============
+
+class DiscountCreate(BaseModel):
+    code: str
+    name_ar: str
+    name: Optional[str] = ""
+    discount_type: str = "percentage"  # percentage or fixed
+    value: float  # percentage (0-100) or fixed amount
+    min_purchase: float = 0
+    max_uses: int = 0  # 0 = unlimited
+    valid_from: Optional[str] = None
+    valid_until: Optional[str] = None
+    is_active: bool = True
+
+class Discount(BaseModel):
+    id: str
+    code: str
+    name_ar: str
+    name: Optional[str] = ""
+    discount_type: str
+    value: float
+    min_purchase: float
+    max_uses: int
+    used_count: int = 0
+    valid_from: Optional[str] = None
+    valid_until: Optional[str] = None
+    is_active: bool
+    branch_id: Optional[str] = None
+    created_at: str
+
 # ============ BRANCH MODELS ============
 
 class BranchBase(BaseModel):
