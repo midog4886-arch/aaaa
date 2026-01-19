@@ -685,7 +685,6 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="space-y-2"><Label>{language === 'ar' ? 'اسم العميل *' : 'Customer Name *'}</Label><Input value={customerNameAr} onChange={(e) => setCustomerNameAr(e.target.value)} required /></div>
                   <div className="space-y-2"><Label>{t('phone')}</Label><Input value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)} type="tel" dir="ltr" /></div>
-                  <div className="space-y-2 sm:col-span-2"><Label>{language === 'ar' ? 'العنوان' : 'Address'}</Label><Input value={customerAddress} onChange={(e) => setCustomerAddress(e.target.value)} /></div>
                 </div>
               </Card>
 
