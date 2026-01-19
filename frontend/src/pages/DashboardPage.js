@@ -413,6 +413,62 @@ export const DashboardPage = () => {
                       )}
                     </div>
                   )}
+
+                  {/* Coupons Detail */}
+                  {activeDetail === 'coupons' && detailData && (
+                    <div className="space-y-4">
+                      <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                        <div className="p-3 bg-white rounded-lg border">
+                          <div className="text-xl font-bold text-purple-600">{detailData.length}</div>
+                          <div className="text-xs text-muted-foreground">{language === 'ar' ? 'إجمالي الكوبونات' : 'Total Coupons'}</div>
+                        </div>
+                        <div className="p-3 bg-white rounded-lg border">
+                          <div className="text-xl font-bold text-green-600">{detailData.filter(d => d.is_active).length}</div>
+                          <div className="text-xs text-muted-foreground">{language === 'ar' ? 'نشطة' : 'Active'}</div>
+                        </div>
+                        <div className="p-3 bg-white rounded-lg border">
+                          <div className="text-xl font-bold text-blue-600">{detailData.reduce((sum, d) => sum + (d.used_count || 0), 0)}</div>
+                          <div className="text-xs text-muted-foreground">{language === 'ar' ? 'مرات الاستخدام' : 'Total Uses'}</div>
+                        </div>
+                      </div>
+                      {detailData.length > 0 ? (
+                        <div className="overflow-x-auto max-h-[300px]">
+                          <table className="data-table w-full">
+                            <thead className="sticky top-0 bg-white">
+                              <tr className="bg-purple-50">
+                                <th>{language === 'ar' ? 'الكود' : 'Code'}</th>
+                                <th>{language === 'ar' ? 'الاسم' : 'Name'}</th>
+                                <th>{language === 'ar' ? 'قيمة الخصم' : 'Discount'}</th>
+                                <th>{language === 'ar' ? 'الاستخدام' : 'Usage'}</th>
+                                <th>{language === 'ar' ? 'الحالة' : 'Status'}</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {detailData.map((coupon, idx) => (
+                                <tr key={idx}>
+                                  <td className="font-mono font-bold text-purple-700">{coupon.code}</td>
+                                  <td>{coupon.name_ar || coupon.name}</td>
+                                  <td className="font-semibold">{coupon.value} {t('sar')}</td>
+                                  <td>
+                                    <span className="text-sm">
+                                      {coupon.used_count || 0} / {coupon.max_uses === 0 ? '∞' : coupon.max_uses}
+                                    </span>
+                                  </td>
+                                  <td>
+                                    <Badge variant="outline" className={coupon.is_active ? 'bg-green-100 text-green-600' : 'bg-gray-100 text-gray-600'}>
+                                      {coupon.is_active ? (language === 'ar' ? 'نشط' : 'Active') : (language === 'ar' ? 'غير نشط' : 'Inactive')}
+                                    </Badge>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      ) : (
+                        <div className="text-center py-8 text-muted-foreground">{language === 'ar' ? 'لا توجد كوبونات' : 'No coupons'}</div>
+                      )}
+                    </div>
+                  )}
                 </>
               )}
             </CardContent>
