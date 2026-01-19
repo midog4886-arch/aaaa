@@ -324,6 +324,23 @@ export const ReportsPage = () => {
           </CardContent>
         </Card>
 
+        {/* Selected Period Display */}
+        {(filters.start_date || filters.end_date) && (
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Calendar className="w-5 h-5 text-blue-600" />
+              <span className="font-medium text-blue-800">
+                {language === 'ar' ? 'الفترة المحددة:' : 'Selected Period:'}
+              </span>
+              <span className="text-blue-600">
+                {filters.start_date || (language === 'ar' ? 'البداية' : 'Start')} 
+                {' → '} 
+                {filters.end_date || (language === 'ar' ? 'النهاية' : 'End')}
+              </span>
+            </div>
+          </div>
+        )}
+
         {/* Summary Cards */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <Card className={`stat-card cursor-pointer hover:shadow-lg transition-shadow ${activeDetail === 'revenue' ? 'ring-2 ring-primary' : ''}`} data-testid="total-revenue-card" onClick={() => toggleDetail('revenue')}>
