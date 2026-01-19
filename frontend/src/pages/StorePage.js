@@ -51,6 +51,17 @@ export const StorePage = () => {
   const [activeDetail, setActiveDetail] = useState(null);
   const [activeTab, setActiveTab] = useState('products'); // products or discounts
   
+  // Product Invoice States
+  const [isInvoiceDialogOpen, setIsInvoiceDialogOpen] = useState(false);
+  const [isInvoiceViewOpen, setIsInvoiceViewOpen] = useState(false);
+  const [invoiceItems, setInvoiceItems] = useState([]);
+  const [customerName, setCustomerName] = useState('');
+  const [customerPhone, setCustomerPhone] = useState('');
+  const [paymentMethod, setPaymentMethod] = useState('cash');
+  const [currentInvoice, setCurrentInvoice] = useState(null);
+  const [productInvoices, setProductInvoices] = useState([]);
+  const invoiceRef = useRef(null);
+  
   const [formData, setFormData] = useState({
     name_ar: '', name: '', category: 'swimming', sku: '',
     price: '', cost: '', quantity: '', min_quantity: '5', description: ''
