@@ -397,7 +397,6 @@ export const StorePage = () => {
       toast.error(language === 'ar' ? 'خطأ في حذف الفاتورة' : 'Failed to delete invoice');
     }
   };
-  };
 
   const viewInvoice = (invoice) => {
     setCurrentInvoice(invoice);
