@@ -163,17 +163,18 @@ export const InvoicesPage = () => {
   // Validate and apply coupon
   const validateCoupon = async () => {
     if (!couponCode.trim()) return;
-    const subtotal = invoiceItems.reduce((sum, item) => sum + item.fee, 0);
-    if (subtotal === 0) {
+    if (invoiceItems.length === 0) {
       toast.error(language === 'ar' ? 'أضف عناصر أولاً' : 'Add items first');
       return;
     }
     setValidatingCoupon(true);
     try {
+      const subtotal = invoiceItems.reduce((sum, item) => sum + item.fee, 0);
       const res = await discountsAPI.validate(couponCode, subtotal);
       setAppliedCoupon(res.data.discount);
-      setCouponDiscount(res.data.discount_amount);
-      toast.success(language === 'ar' ? `تم تطبيق الكوبون! خصم ${res.data.discount_amount} ر.س` : `Coupon applied! Discount ${res.data.discount_amount} SAR`);
+      // تطبيق قيمة الخصم الثابتة من الكوبون مباشرة
+      setCouponDiscount(res.data.discount.value);
+      toast.success(language === 'ar' ? `تم تطبيق الكوبون! خصم ${res.data.discount.value} ر.س` : `Coupon applied! Discount ${res.data.discount.value} SAR`);
     } catch (error) {
       toast.error(error.response?.data?.detail || (language === 'ar' ? 'كوبون غير صالح' : 'Invalid coupon'));
       setAppliedCoupon(null);
