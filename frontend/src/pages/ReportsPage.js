@@ -218,6 +218,19 @@ export const ReportsPage = () => {
                   </SelectContent>
                 </Select>
               </div>
+              <div className="space-y-2">
+                <Label>{language === 'ar' ? 'بحث' : 'Search'}</Label>
+                <div className="relative">
+                  <Search className="absolute start-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                  <Input 
+                    placeholder={language === 'ar' ? 'بحث بالاسم أو رقم الفاتورة...' : 'Search by name or invoice...'} 
+                    value={searchTerm} 
+                    onChange={(e) => setSearchTerm(e.target.value)} 
+                    className="ps-10 w-[220px]"
+                    data-testid="report-search"
+                  />
+                </div>
+              </div>
               <Button onClick={handleFilter} data-testid="apply-filter-btn">
                 <Calendar className="w-4 h-4 me-2" />
                 {t('filter')}
