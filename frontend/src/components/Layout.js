@@ -17,7 +17,8 @@ import {
   X,
   Languages,
   Trophy,
-  Building2
+  Building2,
+  Package
 } from 'lucide-react';
 
 export const Sidebar = ({ isOpen, onClose }) => {
@@ -33,6 +34,7 @@ export const Sidebar = ({ isOpen, onClose }) => {
     { to: '/activities', icon: Dumbbell, label: 'activities' },
     { to: '/coaches', icon: UserCog, label: 'coaches' },
     { to: '/invoices', icon: Receipt, label: 'invoices' },
+    { to: '/store', icon: Package, label: 'store' },
     { to: '/reports', icon: BarChart3, label: 'reports' },
     { to: '/messages', icon: MessageSquare, label: 'messages' },
     ...(isAdmin ? [{ to: '/branches', icon: Building2, label: 'branches' }] : []),
