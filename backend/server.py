@@ -848,14 +848,37 @@ async def create_invoice(invoice: InvoiceCreate, current_user: dict = Depends(ge
 
 @api_router.put("/invoices/{invoice_id}/pay")
 async def pay_invoice(invoice_id: str, current_user: dict = Depends(get_current_user)):
+    invoice = await db.invoices.find_one({"id": invoice_id})
+    if not invoice:
+        raise HTTPException(status_code=404, detail="Invoice not found")
+    
+    # Deduct stock for product items
+    for item in invoice.get("items", []):
+        if item.get("is_product") and item.get("product_id"):
+            product = await db.products.find_one({"id": item["product_id"]})
+            if product:
+                qty = item.get("quantity", 1)
+                new_qty = product["quantity"] - qty
+                if new_qty < 0:
+                    raise HTTPException(status_code=400, detail=f"Insufficient stock for {item['activity_name']}")
+                await db.products.update_one(
+                    {"id": item["product_id"]},
+                    {"$set": {"quantity": new_qty, "updated_at": datetime.now(timezone.utc).isoformat()}}
+                )
+    
+    # Update discount usage if coupon was used
+    if invoice.get("discount_code"):
+        await db.discounts.update_one(
+            {"code": invoice["discount_code"]},
+            {"$inc": {"used_count": 1}}
+        )
+    
     result = await db.invoices.find_one_and_update(
         {"id": invoice_id},
         {"$set": {"status": "paid", "paid_at": datetime.now(timezone.utc).isoformat()}},
         return_document=True
     )
-    if not result:
-        raise HTTPException(status_code=404, detail="Invoice not found")
-    return {"message": "Invoice paid"}
+    return {"message": "Invoice paid", "status": "paid"}
 
 @api_router.put("/invoices/{invoice_id}/cancel")
 async def cancel_invoice(invoice_id: str, current_user: dict = Depends(get_current_user)):
