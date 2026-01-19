@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import { Badge } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
 // eslint-disable-next-line react-hooks/exhaustive-deps
-import { dashboardAPI, reportsAPI, membersAPI, activitiesAPI, invoicesAPI } from '../services/api';
+import { dashboardAPI, reportsAPI, membersAPI, activitiesAPI, invoicesAPI, discountsAPI } from '../services/api';
 import { toast } from 'sonner';
 import { 
   Users, 
@@ -20,7 +20,8 @@ import {
   Send,
   X,
   Receipt,
-  RefreshCcw
+  RefreshCcw,
+  Tag
 } from 'lucide-react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from 'recharts';
 
