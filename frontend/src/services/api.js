@@ -80,6 +80,14 @@ export const discountsAPI = {
   validate: (code, subtotal) => axios.post(`${API}/discounts/validate`, null, { params: { code, subtotal } }),
 };
 
+// Product Invoices API (Store Sales)
+export const productInvoicesAPI = {
+  getAll: () => axios.get(`${API}/product-invoices`),
+  create: (data) => axios.post(`${API}/product-invoices`, data),
+  update: (id, data) => axios.put(`${API}/product-invoices/${id}`, data),
+  delete: (id) => axios.delete(`${API}/product-invoices/${id}`),
+};
+
 // Payments API
 export const paymentsAPI = {
   createCheckout: (invoiceId) => axios.post(`${API}/payments/checkout?invoice_id=${invoiceId}`),
