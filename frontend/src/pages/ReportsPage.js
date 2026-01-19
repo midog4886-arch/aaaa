@@ -19,7 +19,8 @@ import {
   RefreshCcw,
   DollarSign,
   ArrowDownCircle,
-  Wallet
+  Wallet,
+  Search
 } from 'lucide-react';
 import { 
   BarChart, 
@@ -38,6 +39,7 @@ import {
 export const ReportsPage = () => {
   const { t, language } = useLanguage();
   const [report, setReport] = useState(null);
+  const [searchTerm, setSearchTerm] = useState('');
   const [activities, setActivities] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filters, setFilters] = useState({
