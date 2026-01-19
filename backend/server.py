@@ -1169,6 +1169,120 @@ async def get_low_stock_products(current_user: dict = Depends(get_current_user))
         p.pop("_id", None)
     return products
 
+# ============ DISCOUNT/COUPON ROUTES ============
+
+@api_router.get("/discounts")
+async def get_discounts(current_user: dict = Depends(get_current_user)):
+    """Get all discounts"""
+    is_admin = current_user.get("is_admin", False)
+    branch_id = current_user.get("branch_id")
+    
+    query = {}
+    if not is_admin and branch_id:
+        query["branch_id"] = branch_id
+    
+    discounts = await db.discounts.find(query, {"_id": 0}).to_list(1000)
+    return discounts
+
+@api_router.post("/discounts")
+async def create_discount(discount: DiscountCreate, current_user: dict = Depends(get_current_user)):
+    """Create a new discount coupon"""
+    # Check if code already exists
+    existing = await db.discounts.find_one({"code": discount.code.upper()})
+    if existing:
+        raise HTTPException(status_code=400, detail="Discount code already exists")
+    
+    discount_id = str(uuid.uuid4())
+    discount_doc = {
+        "id": discount_id,
+        "code": discount.code.upper(),
+        "name_ar": discount.name_ar,
+        "name": discount.name,
+        "discount_type": discount.discount_type,
+        "value": discount.value,
+        "min_purchase": discount.min_purchase,
+        "max_uses": discount.max_uses,
+        "used_count": 0,
+        "valid_from": discount.valid_from,
+        "valid_until": discount.valid_until,
+        "is_active": discount.is_active,
+        "branch_id": current_user.get("branch_id"),
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+    
+    await db.discounts.insert_one(discount_doc)
+    discount_doc.pop("_id", None)
+    return discount_doc
+
+@api_router.put("/discounts/{discount_id}")
+async def update_discount(discount_id: str, discount: DiscountCreate, current_user: dict = Depends(get_current_user)):
+    """Update a discount"""
+    update_data = {
+        "code": discount.code.upper(),
+        "name_ar": discount.name_ar,
+        "name": discount.name,
+        "discount_type": discount.discount_type,
+        "value": discount.value,
+        "min_purchase": discount.min_purchase,
+        "max_uses": discount.max_uses,
+        "valid_from": discount.valid_from,
+        "valid_until": discount.valid_until,
+        "is_active": discount.is_active
+    }
+    
+    result = await db.discounts.find_one_and_update(
+        {"id": discount_id},
+        {"$set": update_data},
+        return_document=True
+    )
+    if not result:
+        raise HTTPException(status_code=404, detail="Discount not found")
+    
+    result.pop("_id", None)
+    return result
+
+@api_router.delete("/discounts/{discount_id}")
+async def delete_discount(discount_id: str, current_user: dict = Depends(get_current_user)):
+    """Delete a discount"""
+    result = await db.discounts.delete_one({"id": discount_id})
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Discount not found")
+    return {"message": "Discount deleted"}
+
+@api_router.post("/discounts/validate")
+async def validate_discount(code: str, subtotal: float, current_user: dict = Depends(get_current_user)):
+    """Validate a discount code and return discount amount"""
+    discount = await db.discounts.find_one({"code": code.upper(), "is_active": True}, {"_id": 0})
+    if not discount:
+        raise HTTPException(status_code=404, detail="Invalid discount code")
+    
+    # Check validity dates
+    now = datetime.now(timezone.utc).isoformat()
+    if discount.get("valid_from") and now < discount["valid_from"]:
+        raise HTTPException(status_code=400, detail="Discount not yet active")
+    if discount.get("valid_until") and now > discount["valid_until"]:
+        raise HTTPException(status_code=400, detail="Discount has expired")
+    
+    # Check usage limit
+    if discount["max_uses"] > 0 and discount["used_count"] >= discount["max_uses"]:
+        raise HTTPException(status_code=400, detail="Discount usage limit reached")
+    
+    # Check minimum purchase
+    if subtotal < discount["min_purchase"]:
+        raise HTTPException(status_code=400, detail=f"Minimum purchase of {discount['min_purchase']} SAR required")
+    
+    # Calculate discount amount
+    if discount["discount_type"] == "percentage":
+        discount_amount = round(subtotal * (discount["value"] / 100), 2)
+    else:
+        discount_amount = min(discount["value"], subtotal)
+    
+    return {
+        "valid": True,
+        "discount": discount,
+        "discount_amount": discount_amount
+    }
+
 # ============ INVOICE UPDATE ROUTE ============
 
 @api_router.put("/invoices/{invoice_id}")
