@@ -9,14 +9,14 @@ import { Badge } from '../components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '../components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Textarea } from '../components/ui/textarea';
-import { productsAPI, discountsAPI } from '../services/api';
+import { productsAPI, discountsAPI, productInvoicesAPI } from '../services/api';
 import { toast } from 'sonner';
 import { QRCodeSVG } from 'qrcode.react';
 import html2pdf from 'html2pdf.js';
 import { 
   Package, Plus, Search, Edit, Trash2, AlertTriangle, 
   ShoppingBag, TrendingUp, TrendingDown, Loader2, BarChart3, X, Percent, Tag,
-  Receipt, Printer, FileText, CheckCircle
+  Receipt, Printer, FileText, CheckCircle, Eye
 } from 'lucide-react';
 
 const CATEGORIES = {
