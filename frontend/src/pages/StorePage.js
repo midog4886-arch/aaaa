@@ -472,7 +472,11 @@ export const StorePage = () => {
     lowStock: products.filter(p => p.quantity <= p.min_quantity).length,
     totalValue: products.reduce((sum, p) => sum + (p.price * p.quantity), 0),
     totalCost: products.reduce((sum, p) => sum + (p.cost * p.quantity), 0),
-    activeDiscounts: discounts.filter(d => d.is_active).length
+    activeDiscounts: discounts.filter(d => d.is_active).length,
+    totalInvoices: productInvoices.length,
+    draftInvoices: productInvoices.filter(i => i.status === 'draft').length,
+    paidInvoices: productInvoices.filter(i => i.status === 'paid').length,
+    invoicesTotal: productInvoices.filter(i => i.status === 'paid').reduce((sum, i) => sum + i.total, 0)
   };
 
   const toggleDetail = (type) => setActiveDetail(activeDetail === type ? null : type);
@@ -485,7 +489,7 @@ export const StorePage = () => {
     <Layout title={language === 'ar' ? 'المخزن' : 'Store'}>
       <div className="space-y-6" data-testid="store-page">
         {/* Stats - Clickable */}
-        <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
+        <div className="grid grid-cols-2 lg:grid-cols-6 gap-4">
           <Card className={`stat-card cursor-pointer hover:shadow-lg transition-all ${activeDetail === 'total' ? 'ring-2 ring-primary' : ''}`} onClick={() => toggleDetail('total')}>
             <div className="stat-card-icon bg-primary/10"><Package className="w-6 h-6 text-primary" /></div>
             <div className="stat-card-value text-primary">{stats.total}</div>
