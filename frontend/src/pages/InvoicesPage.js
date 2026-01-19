@@ -414,11 +414,23 @@ export const InvoicesPage = () => {
     try { await invoicesAPI.restore(invoiceId); toast.success(language === 'ar' ? 'تم استرجاع الفاتورة' : 'Invoice restored'); loadData(); } catch { toast.error(t('error')); }
   };
 
-  const handleDeleteInvoice = async (invoiceId) => {
+  const DELETE_PASSWORD = '242456';
+
+  const handleDeleteInvoice = async (invoiceId, invoiceStatus) => {
     if (!isAdmin) {
       toast.error(language === 'ar' ? 'الحذف متاح للمدير فقط' : 'Delete is admin only');
       return;
     }
+    
+    // For paid invoices, require password
+    if (invoiceStatus === 'paid') {
+      const password = window.prompt(language === 'ar' ? 'أدخل كلمة المرور لحذف الفاتورة المدفوعة:' : 'Enter password to delete paid invoice:');
+      if (password !== DELETE_PASSWORD) {
+        toast.error(language === 'ar' ? 'كلمة المرور غير صحيحة' : 'Incorrect password');
+        return;
+      }
+    }
+    
     if (!window.confirm(language === 'ar' ? 'هل أنت متأكد من حذف الفاتورة نهائياً؟' : 'Are you sure you want to permanently delete this invoice?')) return;
     try { await invoicesAPI.delete(invoiceId); toast.success(language === 'ar' ? 'تم حذف الفاتورة' : 'Invoice deleted'); loadData(); setIsViewDialogOpen(false); } catch { toast.error(t('error')); }
   };
