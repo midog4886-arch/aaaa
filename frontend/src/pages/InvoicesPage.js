@@ -13,9 +13,10 @@ import { Textarea } from '../components/ui/textarea';
 import { invoicesAPI, membersAPI, activitiesAPI, exportAPI } from '../services/api';
 import { toast } from 'sonner';
 import html2canvas from 'html2canvas';
+import html2pdf from 'html2pdf.js';
 import { 
   Plus, Search, Eye, Printer, Loader2, Receipt, CheckCircle, XCircle, Clock,
-  Filter, MessageSquare, X, UserPlus, Trash2, RotateCcw, FileSpreadsheet, Image, Share2, RefreshCcw
+  Filter, MessageSquare, X, UserPlus, Trash2, RotateCcw, FileSpreadsheet, Image, Share2, RefreshCcw, Edit, FileText
 } from 'lucide-react';
 
 const COMPANY_INFO = {
