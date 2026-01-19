@@ -70,6 +70,14 @@ export const InvoicesPage = () => {
   const [isEditMode, setIsEditMode] = useState(false);
   const [editingInvoiceId, setEditingInvoiceId] = useState(null);
   
+  // Products & Discounts
+  const [products, setProducts] = useState([]);
+  const [couponCode, setCouponCode] = useState('');
+  const [appliedCoupon, setAppliedCoupon] = useState(null);
+  const [couponDiscount, setCouponDiscount] = useState(0);
+  const [validatingCoupon, setValidatingCoupon] = useState(false);
+  const [itemType, setItemType] = useState('activity'); // activity or product
+  
   // Refund state
   const [refundType, setRefundType] = useState('full'); // full or partial
   const [refundAmount, setRefundAmount] = useState(0);
