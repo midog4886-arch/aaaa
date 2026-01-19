@@ -1027,6 +1027,159 @@ async def stripe_webhook(request: Request):
 
 # ============ REPORTS ROUTES ============
 
+# ============ STORE/INVENTORY ROUTES ============
+
+@api_router.get("/products")
+async def get_products(current_user: dict = Depends(get_current_user)):
+    """Get all products"""
+    is_admin = current_user.get("is_admin", False)
+    branch_id = current_user.get("branch_id")
+    
+    query = {}
+    if not is_admin and branch_id:
+        query["branch_id"] = branch_id
+    
+    products = await db.products.find(query, {"_id": 0}).to_list(1000)
+    return products
+
+@api_router.post("/products")
+async def create_product(product: ProductCreate, current_user: dict = Depends(get_current_user)):
+    """Create a new product"""
+    product_id = str(uuid.uuid4())
+    sku = product.sku or f"SKU-{product_id[:8].upper()}"
+    
+    product_doc = {
+        "id": product_id,
+        "name_ar": product.name_ar,
+        "name": product.name,
+        "category": product.category,
+        "sku": sku,
+        "price": product.price,
+        "cost": product.cost,
+        "quantity": product.quantity,
+        "min_quantity": product.min_quantity,
+        "description": product.description,
+        "branch_id": current_user.get("branch_id"),
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "updated_at": datetime.now(timezone.utc).isoformat()
+    }
+    
+    await db.products.insert_one(product_doc)
+    del product_doc["_id"] if "_id" in product_doc else None
+    return product_doc
+
+@api_router.put("/products/{product_id}")
+async def update_product(product_id: str, product: ProductCreate, current_user: dict = Depends(get_current_user)):
+    """Update a product"""
+    update_data = {
+        "name_ar": product.name_ar,
+        "name": product.name,
+        "category": product.category,
+        "price": product.price,
+        "cost": product.cost,
+        "quantity": product.quantity,
+        "min_quantity": product.min_quantity,
+        "description": product.description,
+        "updated_at": datetime.now(timezone.utc).isoformat()
+    }
+    if product.sku:
+        update_data["sku"] = product.sku
+    
+    result = await db.products.find_one_and_update(
+        {"id": product_id},
+        {"$set": update_data},
+        return_document=True
+    )
+    if not result:
+        raise HTTPException(status_code=404, detail="Product not found")
+    
+    result.pop("_id", None)
+    return result
+
+@api_router.delete("/products/{product_id}")
+async def delete_product(product_id: str, current_user: dict = Depends(get_current_user)):
+    """Delete a product"""
+    result = await db.products.delete_one({"id": product_id})
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Product not found")
+    return {"message": "Product deleted"}
+
+@api_router.put("/products/{product_id}/stock")
+async def update_stock(product_id: str, quantity_change: int, current_user: dict = Depends(get_current_user)):
+    """Update product stock (add or remove)"""
+    product = await db.products.find_one({"id": product_id})
+    if not product:
+        raise HTTPException(status_code=404, detail="Product not found")
+    
+    new_quantity = product["quantity"] + quantity_change
+    if new_quantity < 0:
+        raise HTTPException(status_code=400, detail="Insufficient stock")
+    
+    await db.products.update_one(
+        {"id": product_id},
+        {"$set": {"quantity": new_quantity, "updated_at": datetime.now(timezone.utc).isoformat()}}
+    )
+    
+    return {"product_id": product_id, "new_quantity": new_quantity}
+
+@api_router.get("/products/low-stock")
+async def get_low_stock_products(current_user: dict = Depends(get_current_user)):
+    """Get products with low stock"""
+    is_admin = current_user.get("is_admin", False)
+    branch_id = current_user.get("branch_id")
+    
+    pipeline = [
+        {"$match": {"$expr": {"$lte": ["$quantity", "$min_quantity"]}}},
+    ]
+    if not is_admin and branch_id:
+        pipeline.insert(0, {"$match": {"branch_id": branch_id}})
+    
+    products = await db.products.aggregate(pipeline).to_list(100)
+    for p in products:
+        p.pop("_id", None)
+    return products
+
+# ============ INVOICE UPDATE ROUTE ============
+
+@api_router.put("/invoices/{invoice_id}")
+async def update_invoice(invoice_id: str, invoice: InvoiceCreate, current_user: dict = Depends(get_current_user)):
+    """Update a pending invoice"""
+    existing = await db.invoices.find_one({"id": invoice_id})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Invoice not found")
+    
+    if existing["status"] != "pending":
+        raise HTTPException(status_code=400, detail="Can only edit pending invoices")
+    
+    # Calculate totals
+    subtotal = sum(item.fee for item in invoice.items)
+    discount = invoice.discount
+    subtotal_after_discount = subtotal - discount
+    vat_amount = round(subtotal_after_discount * VAT_RATE, 2)
+    total = round(subtotal_after_discount + vat_amount, 2)
+    
+    update_data = {
+        "items": [item.dict() for item in invoice.items],
+        "subtotal": subtotal,
+        "discount": discount,
+        "vat_amount": vat_amount,
+        "total": total,
+        "notes": invoice.notes,
+        "payment_method": invoice.payment_method,
+        "customer_name_ar": invoice.customer_name_ar,
+        "customer_phone": invoice.customer_phone,
+        "customer_address": invoice.customer_address,
+        "updated_at": datetime.now(timezone.utc).isoformat()
+    }
+    
+    result = await db.invoices.find_one_and_update(
+        {"id": invoice_id},
+        {"$set": update_data},
+        return_document=True
+    )
+    result.pop("_id", None)
+    return result
+
 @api_router.get("/reports/financial")
 async def get_financial_report(
     start_date: Optional[str] = None,
