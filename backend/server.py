@@ -149,6 +149,7 @@ class InvoiceCreate(BaseModel):
     member_id: Optional[str] = None  # Optional - can create invoice without existing member
     items: List[InvoiceItem]
     discount: float = 0
+    discount_code: Optional[str] = None  # Coupon code for tracking usage
     notes: Optional[str] = ""
     payment_method: str = "cash"  # cash, card, transfer, stripe
     # Customer data fields
