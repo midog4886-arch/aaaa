@@ -838,6 +838,217 @@ export const StorePage = () => {
             </Dialog>
           </>
         )}
+
+        {/* ============ Product Invoice Dialog ============ */}
+        <Dialog open={isInvoiceDialogOpen} onOpenChange={setIsInvoiceDialogOpen}>
+          <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <Receipt className="w-5 h-5 text-green-600" />
+                {language === 'ar' ? 'فاتورة منتجات جديدة' : 'New Product Invoice'}
+              </DialogTitle>
+            </DialogHeader>
+            
+            <div className="space-y-4">
+              {/* Customer Info */}
+              <Card className="p-4 bg-blue-50 border-blue-200">
+                <h4 className="font-semibold mb-3">{language === 'ar' ? 'بيانات العميل' : 'Customer Info'}</h4>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label>{language === 'ar' ? 'اسم العميل *' : 'Customer Name *'}</Label>
+                    <Input value={customerName} onChange={(e) => setCustomerName(e.target.value)} required />
+                  </div>
+                  <div>
+                    <Label>{language === 'ar' ? 'رقم الجوال' : 'Phone'}</Label>
+                    <Input value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)} dir="ltr" />
+                  </div>
+                </div>
+              </Card>
+
+              {/* Product Selection */}
+              <Card className="p-4">
+                <h4 className="font-semibold mb-3">{language === 'ar' ? 'اختر المنتجات' : 'Select Products'}</h4>
+                <Select onValueChange={addProductToInvoice}>
+                  <SelectTrigger>
+                    <SelectValue placeholder={language === 'ar' ? 'اختر منتج لإضافته...' : 'Select product to add...'} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {products.filter(p => p.quantity > 0).map(p => (
+                      <SelectItem key={p.id} value={p.id}>
+                        <div className="flex items-center gap-2">
+                          <Package className="w-4 h-4" />
+                          <span>{p.name_ar}</span>
+                          <span className="text-muted-foreground">({p.quantity})</span>
+                          <span className="font-bold">{p.price} {t('sar')}</span>
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </Card>
+
+              {/* Invoice Items */}
+              {invoiceItems.length > 0 && (
+                <Card className="p-4">
+                  <h4 className="font-semibold mb-3">{language === 'ar' ? 'عناصر الفاتورة' : 'Invoice Items'}</h4>
+                  <div className="space-y-2">
+                    {invoiceItems.map((item, idx) => (
+                      <div key={idx} className="flex items-center justify-between p-2 bg-gray-50 rounded-lg">
+                        <div className="flex items-center gap-2">
+                          <Package className="w-4 h-4 text-green-600" />
+                          <span className="font-medium">{item.name}</span>
+                          <span className="text-sm text-muted-foreground">@ {item.price} {t('sar')}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => updateInvoiceItemQty(idx, item.quantity - 1)}>-</Button>
+                          <span className="w-8 text-center font-bold">{item.quantity}</span>
+                          <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => updateInvoiceItemQty(idx, item.quantity + 1)}>+</Button>
+                          <span className="w-20 text-end font-bold">{item.total} {t('sar')}</span>
+                          <Button variant="ghost" size="icon" className="h-8 w-8 text-red-500" onClick={() => removeInvoiceItem(idx)}><X className="w-4 h-4" /></Button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Totals */}
+                  <div className="mt-4 p-3 bg-green-50 rounded-lg border border-green-200">
+                    <div className="flex justify-between text-sm mb-1">
+                      <span>{language === 'ar' ? 'المجموع الفرعي' : 'Subtotal'}</span>
+                      <span>{calculateInvoiceTotals().subtotal.toFixed(2)} {t('sar')}</span>
+                    </div>
+                    <div className="flex justify-between text-sm mb-1 text-green-600">
+                      <span>{language === 'ar' ? `ضريبة القيمة المضافة (${COMPANY_INFO.vat_rate}%)` : `VAT (${COMPANY_INFO.vat_rate}%)`}</span>
+                      <span>{calculateInvoiceTotals().vatAmount.toFixed(2)} {t('sar')}</span>
+                    </div>
+                    <div className="flex justify-between text-lg font-bold border-t pt-2 mt-2">
+                      <span>{language === 'ar' ? 'الإجمالي' : 'Total'}</span>
+                      <span className="text-green-700">{calculateInvoiceTotals().total.toFixed(2)} {t('sar')}</span>
+                    </div>
+                  </div>
+                </Card>
+              )}
+
+              {/* Payment Method */}
+              <div>
+                <Label>{language === 'ar' ? 'طريقة الدفع' : 'Payment Method'}</Label>
+                <Select value={paymentMethod} onValueChange={setPaymentMethod}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="cash">{language === 'ar' ? 'نقدي' : 'Cash'}</SelectItem>
+                    <SelectItem value="card">{language === 'ar' ? 'بطاقة' : 'Card'}</SelectItem>
+                    <SelectItem value="transfer">{language === 'ar' ? 'تحويل بنكي' : 'Bank Transfer'}</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setIsInvoiceDialogOpen(false)}>{t('cancel')}</Button>
+              <Button onClick={handleCreateProductInvoice} disabled={saving || invoiceItems.length === 0} className="bg-green-600 hover:bg-green-700">
+                {saving && <Loader2 className="w-4 h-4 me-2 animate-spin" />}
+                <CheckCircle className="w-4 h-4 me-2" />
+                {language === 'ar' ? 'إنشاء الفاتورة' : 'Create Invoice'}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* ============ Invoice View Dialog ============ */}
+        <Dialog open={isInvoiceViewOpen} onOpenChange={setIsInvoiceViewOpen}>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <Receipt className="w-5 h-5 text-green-600" />
+                {language === 'ar' ? 'فاتورة منتجات' : 'Product Invoice'}
+              </DialogTitle>
+            </DialogHeader>
+            
+            {currentInvoice && (
+              <div ref={invoiceRef} className="bg-white p-4 text-sm" dir="rtl">
+                {/* Header */}
+                <div className="text-center border-b pb-3 mb-3">
+                  <h2 className="font-bold text-lg">{COMPANY_INFO.name_ar}</h2>
+                  <p className="text-xs text-gray-600">الرقم الضريبي: {COMPANY_INFO.tax_number}</p>
+                  <p className="text-xs text-gray-600">السجل التجاري: {COMPANY_INFO.commercial_reg}</p>
+                </div>
+
+                {/* Invoice Info */}
+                <div className="mb-3 text-xs">
+                  <p><strong>رقم الفاتورة:</strong> {currentInvoice.invoice_number}</p>
+                  <p><strong>التاريخ:</strong> {new Date(currentInvoice.created_at).toLocaleDateString('ar-SA')}</p>
+                  <p><strong>العميل:</strong> {currentInvoice.customer_name}</p>
+                  {currentInvoice.customer_phone && <p><strong>الجوال:</strong> {currentInvoice.customer_phone}</p>}
+                </div>
+
+                {/* Items Table */}
+                <table className="w-full text-xs border-collapse mb-3">
+                  <thead>
+                    <tr className="bg-gray-100">
+                      <th className="border p-1 text-right">المنتج</th>
+                      <th className="border p-1 text-center">الكمية</th>
+                      <th className="border p-1 text-center">السعر</th>
+                      <th className="border p-1 text-left">المجموع</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {currentInvoice.items.map((item, idx) => (
+                      <tr key={idx}>
+                        <td className="border p-1">{item.name}</td>
+                        <td className="border p-1 text-center">{item.quantity}</td>
+                        <td className="border p-1 text-center">{item.price}</td>
+                        <td className="border p-1 text-left">{item.total}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+
+                {/* Totals */}
+                <div className="border-t pt-2 text-xs space-y-1">
+                  <div className="flex justify-between">
+                    <span>المجموع الفرعي:</span>
+                    <span>{currentInvoice.subtotal.toFixed(2)} ر.س</span>
+                  </div>
+                  <div className="flex justify-between text-green-600">
+                    <span>ضريبة القيمة المضافة ({COMPANY_INFO.vat_rate}%):</span>
+                    <span>{currentInvoice.vat_amount.toFixed(2)} ر.س</span>
+                  </div>
+                  <div className="flex justify-between font-bold text-base border-t pt-2">
+                    <span>الإجمالي:</span>
+                    <span>{currentInvoice.total.toFixed(2)} ر.س</span>
+                  </div>
+                </div>
+
+                {/* Payment Method */}
+                <div className="mt-2 text-xs text-center text-gray-600">
+                  طريقة الدفع: {paymentMethod === 'cash' ? 'نقدي' : paymentMethod === 'card' ? 'بطاقة' : 'تحويل بنكي'}
+                </div>
+
+                {/* QR Code */}
+                <div className="mt-4 flex justify-center">
+                  <QRCodeSVG value={generateQRData(currentInvoice)} size={80} />
+                </div>
+                <p className="text-center text-xs text-gray-500 mt-1">فاتورة ضريبية مبسطة</p>
+
+                {/* Footer */}
+                <div className="mt-4 text-center text-xs text-gray-500 border-t pt-2">
+                  <p>شكراً لتعاملكم معنا</p>
+                </div>
+              </div>
+            )}
+
+            <DialogFooter className="gap-2">
+              <Button variant="outline" onClick={() => setIsInvoiceViewOpen(false)}>{language === 'ar' ? 'إغلاق' : 'Close'}</Button>
+              <Button variant="outline" onClick={handleSaveInvoicePdf}>
+                <FileText className="w-4 h-4 me-2" />
+                {language === 'ar' ? 'حفظ PDF' : 'Save PDF'}
+              </Button>
+              <Button onClick={handlePrintInvoice}>
+                <Printer className="w-4 h-4 me-2" />
+                {language === 'ar' ? 'طباعة' : 'Print'}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
     </Layout>
   );
