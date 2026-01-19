@@ -879,10 +879,7 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
                       <div>
                         <p className="font-semibold text-green-800">{appliedCoupon.code}</p>
                         <p className="text-sm text-green-600">
-                          {appliedCoupon.discount_type === 'percentage' 
-                            ? `${appliedCoupon.value}% ${language === 'ar' ? 'خصم' : 'off'}`
-                            : `${appliedCoupon.value} ${t('sar')} ${language === 'ar' ? 'خصم' : 'off'}`
-                          }
+                          {appliedCoupon.value} {t('sar')} {language === 'ar' ? 'خصم' : 'off'}
                         </p>
                       </div>
                     </div>
