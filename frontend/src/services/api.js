@@ -71,6 +71,15 @@ export const productsAPI = {
   getLowStock: () => axios.get(`${API}/products/low-stock`),
 };
 
+// Discounts/Coupons API
+export const discountsAPI = {
+  getAll: () => axios.get(`${API}/discounts`),
+  create: (data) => axios.post(`${API}/discounts`, data),
+  update: (id, data) => axios.put(`${API}/discounts/${id}`, data),
+  delete: (id) => axios.delete(`${API}/discounts/${id}`),
+  validate: (code, subtotal) => axios.post(`${API}/discounts/validate`, null, { params: { code, subtotal } }),
+};
+
 // Payments API
 export const paymentsAPI = {
   createCheckout: (invoiceId) => axios.post(`${API}/payments/checkout?invoice_id=${invoiceId}`),
