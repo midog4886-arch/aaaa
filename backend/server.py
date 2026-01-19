@@ -135,6 +135,10 @@ class InvoiceItem(BaseModel):
     fee: float
     period: str
     schedule: Optional[str] = ""  # جدول المواعيد
+    # Product fields for store items
+    is_product: Optional[bool] = False
+    product_id: Optional[str] = None
+    quantity: Optional[int] = 1
 
 # Company registration info
 COMPANY_TAX_NUMBER = "312655637900003"
