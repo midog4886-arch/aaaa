@@ -78,12 +78,14 @@ export const StorePage = () => {
 
   const loadData = async () => {
     try {
-      const [productsRes, discountsRes] = await Promise.all([
+      const [productsRes, discountsRes, invoicesRes] = await Promise.all([
         productsAPI.getAll(),
-        discountsAPI.getAll()
+        discountsAPI.getAll(),
+        productInvoicesAPI.getAll()
       ]);
       setProducts(productsRes.data);
       setDiscounts(discountsRes.data);
+      setProductInvoices(invoicesRes.data || []);
     } catch (error) {
       toast.error(language === 'ar' ? 'خطأ في تحميل البيانات' : 'Failed to load data');
     } finally {
