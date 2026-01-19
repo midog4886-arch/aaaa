@@ -246,6 +246,175 @@ export const StorePage = () => {
     }
   };
 
+  // ============ Product Invoice Functions ============
+  const openInvoiceDialog = () => {
+    setInvoiceItems([]);
+    setCustomerName('');
+    setCustomerPhone('');
+    setPaymentMethod('cash');
+    setIsInvoiceDialogOpen(true);
+  };
+
+  const addProductToInvoice = (productId) => {
+    const product = products.find(p => p.id === productId);
+    if (!product) return;
+    
+    const existingIndex = invoiceItems.findIndex(i => i.product_id === productId);
+    if (existingIndex >= 0) {
+      const updated = [...invoiceItems];
+      if (updated[existingIndex].quantity < product.quantity) {
+        updated[existingIndex].quantity += 1;
+        updated[existingIndex].total = updated[existingIndex].quantity * product.price;
+        setInvoiceItems(updated);
+      } else {
+        toast.error(language === 'ar' ? 'الكمية غير متوفرة' : 'Not enough stock');
+      }
+    } else {
+      if (product.quantity < 1) {
+        toast.error(language === 'ar' ? 'المنتج غير متوفر' : 'Product not available');
+        return;
+      }
+      setInvoiceItems([...invoiceItems, {
+        product_id: productId,
+        name: product.name_ar,
+        price: product.price,
+        quantity: 1,
+        total: product.price,
+        max_qty: product.quantity
+      }]);
+    }
+  };
+
+  const updateInvoiceItemQty = (index, qty) => {
+    const updated = [...invoiceItems];
+    const maxQty = updated[index].max_qty;
+    if (qty > 0 && qty <= maxQty) {
+      updated[index].quantity = qty;
+      updated[index].total = qty * updated[index].price;
+      setInvoiceItems(updated);
+    }
+  };
+
+  const removeInvoiceItem = (index) => {
+    setInvoiceItems(invoiceItems.filter((_, i) => i !== index));
+  };
+
+  const calculateInvoiceTotals = () => {
+    const subtotal = invoiceItems.reduce((sum, item) => sum + item.total, 0);
+    const vatAmount = Math.round(subtotal * (COMPANY_INFO.vat_rate / 100) * 100) / 100;
+    const total = Math.round((subtotal + vatAmount) * 100) / 100;
+    return { subtotal, vatAmount, total };
+  };
+
+  const generateInvoiceNumber = () => {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const random = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
+    return `P${year}${month}${random}`;
+  };
+
+  const handleCreateProductInvoice = async () => {
+    if (invoiceItems.length === 0) {
+      toast.error(language === 'ar' ? 'أضف منتجات للفاتورة' : 'Add products to invoice');
+      return;
+    }
+    if (!customerName) {
+      toast.error(language === 'ar' ? 'أدخل اسم العميل' : 'Enter customer name');
+      return;
+    }
+
+    setSaving(true);
+    try {
+      // Deduct stock for each product
+      for (const item of invoiceItems) {
+        await productsAPI.updateStock(item.product_id, -item.quantity);
+      }
+
+      const { subtotal, vatAmount, total } = calculateInvoiceTotals();
+      const invoice = {
+        invoice_number: generateInvoiceNumber(),
+        customer_name: customerName,
+        customer_phone: customerPhone,
+        payment_method: paymentMethod,
+        items: invoiceItems,
+        subtotal,
+        vat_amount: vatAmount,
+        vat_rate: COMPANY_INFO.vat_rate,
+        total,
+        created_at: new Date().toISOString(),
+        status: 'paid'
+      };
+
+      setCurrentInvoice(invoice);
+      setProductInvoices([invoice, ...productInvoices]);
+      setIsInvoiceDialogOpen(false);
+      setIsInvoiceViewOpen(true);
+      loadData(); // Refresh products to update stock
+      toast.success(language === 'ar' ? 'تم إنشاء الفاتورة بنجاح' : 'Invoice created successfully');
+    } catch (error) {
+      toast.error(language === 'ar' ? 'خطأ في إنشاء الفاتورة' : 'Failed to create invoice');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handlePrintInvoice = () => {
+    const printContent = invoiceRef.current;
+    const printWindow = window.open('', '', 'width=400,height=600');
+    printWindow.document.write(`
+      <html dir="rtl">
+        <head>
+          <title>فاتورة منتجات</title>
+          <style>
+            body { font-family: Arial, sans-serif; padding: 20px; font-size: 12px; }
+            .header { text-align: center; margin-bottom: 20px; }
+            .header h1 { font-size: 16px; margin: 0; }
+            .header p { margin: 5px 0; font-size: 11px; color: #666; }
+            .info { margin-bottom: 15px; }
+            .info p { margin: 3px 0; }
+            table { width: 100%; border-collapse: collapse; margin: 15px 0; }
+            th, td { border: 1px solid #ddd; padding: 8px; text-align: right; }
+            th { background: #f5f5f5; }
+            .totals { margin-top: 15px; }
+            .totals p { display: flex; justify-content: space-between; margin: 5px 0; }
+            .totals .total { font-size: 16px; font-weight: bold; border-top: 2px solid #333; padding-top: 10px; }
+            .qr { text-align: center; margin-top: 20px; }
+            .footer { text-align: center; margin-top: 20px; font-size: 10px; color: #666; }
+          </style>
+        </head>
+        <body>${printContent.innerHTML}</body>
+      </html>
+    `);
+    printWindow.document.close();
+    printWindow.print();
+  };
+
+  const handleSaveInvoicePdf = async () => {
+    if (!invoiceRef.current) return;
+    const opt = {
+      margin: 5,
+      filename: `${customerName}_${currentInvoice?.invoice_number}.pdf`,
+      image: { type: 'jpeg', quality: 0.98 },
+      html2canvas: { scale: 2 },
+      jsPDF: { unit: 'mm', format: [80, 200], orientation: 'portrait' }
+    };
+    await html2pdf().from(invoiceRef.current).set(opt).save();
+    toast.success(language === 'ar' ? 'تم حفظ الفاتورة' : 'Invoice saved');
+  };
+
+  const generateQRData = (invoice) => {
+    if (!invoice) return '';
+    // ZATCA QR format (simplified)
+    return JSON.stringify({
+      seller: COMPANY_INFO.name_ar,
+      vat: COMPANY_INFO.tax_number,
+      date: new Date(invoice.created_at).toISOString(),
+      total: invoice.total,
+      vat_amount: invoice.vat_amount
+    });
+  };
+
   const filteredProducts = products.filter(p => {
     const matchSearch = p.name_ar.includes(searchTerm) || p.name?.includes(searchTerm) || p.sku?.includes(searchTerm);
     const matchCategory = filterCategory === 'all' || p.category === filterCategory;
