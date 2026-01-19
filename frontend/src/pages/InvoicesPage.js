@@ -100,12 +100,13 @@ export const InvoicesPage = () => {
 
   const loadData = async () => {
     try {
-      const [invoicesRes, membersRes, activitiesRes] = await Promise.all([
-        invoicesAPI.getAll(), membersAPI.getAll(), activitiesAPI.getAll()
+      const [invoicesRes, membersRes, activitiesRes, productsRes] = await Promise.all([
+        invoicesAPI.getAll(), membersAPI.getAll(), activitiesAPI.getAll(), productsAPI.getAll()
       ]);
       setInvoices(invoicesRes.data);
       setMembers(membersRes.data);
       setActivities(activitiesRes.data);
+      setProducts(productsRes.data);
     } catch (error) {
       toast.error(t('error'));
     } finally {
@@ -123,6 +124,69 @@ export const InvoicesPage = () => {
       setCustomerPhone(member.phone || '');
       setCustomerAddress('');
     }
+  };
+
+  // Add product to invoice
+  const addProductToInvoice = (productId, qty = 1) => {
+    const product = products.find(p => p.id === productId);
+    if (!product) return;
+    if (product.quantity < qty) {
+      toast.error(language === 'ar' ? 'الكمية غير متوفرة' : 'Insufficient stock');
+      return;
+    }
+    const existingIndex = invoiceItems.findIndex(i => i.product_id === productId);
+    if (existingIndex >= 0) {
+      const updated = [...invoiceItems];
+      updated[existingIndex].quantity = (updated[existingIndex].quantity || 1) + qty;
+      updated[existingIndex].fee = product.price * updated[existingIndex].quantity;
+      setInvoiceItems(updated);
+    } else {
+      setInvoiceItems([...invoiceItems, {
+        activity_id: productId,
+        product_id: productId,
+        activity_name: product.name_ar,
+        fee: product.price * qty,
+        period: '',
+        schedule: '',
+        is_product: true,
+        quantity: qty
+      }]);
+    }
+    // Reset coupon when items change
+    if (appliedCoupon) {
+      setAppliedCoupon(null);
+      setCouponDiscount(0);
+      setCouponCode('');
+    }
+  };
+
+  // Validate and apply coupon
+  const validateCoupon = async () => {
+    if (!couponCode.trim()) return;
+    const subtotal = invoiceItems.reduce((sum, item) => sum + item.fee, 0);
+    if (subtotal === 0) {
+      toast.error(language === 'ar' ? 'أضف عناصر أولاً' : 'Add items first');
+      return;
+    }
+    setValidatingCoupon(true);
+    try {
+      const res = await discountsAPI.validate(couponCode, subtotal);
+      setAppliedCoupon(res.data.discount);
+      setCouponDiscount(res.data.discount_amount);
+      toast.success(language === 'ar' ? `تم تطبيق الكوبون! خصم ${res.data.discount_amount} ر.س` : `Coupon applied! Discount ${res.data.discount_amount} SAR`);
+    } catch (error) {
+      toast.error(error.response?.data?.detail || (language === 'ar' ? 'كوبون غير صالح' : 'Invalid coupon'));
+      setAppliedCoupon(null);
+      setCouponDiscount(0);
+    } finally {
+      setValidatingCoupon(false);
+    }
+  };
+
+  const removeCoupon = () => {
+    setAppliedCoupon(null);
+    setCouponDiscount(0);
+    setCouponCode('');
   };
 
   const addActivityToInvoice = (activityId) => {
