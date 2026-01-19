@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { Layout } from '../components/Layout';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
@@ -11,9 +11,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { Textarea } from '../components/ui/textarea';
 import { productsAPI, discountsAPI } from '../services/api';
 import { toast } from 'sonner';
+import { QRCodeSVG } from 'qrcode.react';
+import html2pdf from 'html2pdf.js';
 import { 
   Package, Plus, Search, Edit, Trash2, AlertTriangle, 
-  ShoppingBag, TrendingUp, TrendingDown, Loader2, BarChart3, X, Percent, Tag
+  ShoppingBag, TrendingUp, TrendingDown, Loader2, BarChart3, X, Percent, Tag,
+  Receipt, Printer, FileText, CheckCircle
 } from 'lucide-react';
 
 const CATEGORIES = {
@@ -21,6 +24,13 @@ const CATEGORIES = {
   sports: { ar: 'أدوات رياضية', en: 'Sports' },
   accessories: { ar: 'إكسسوارات', en: 'Accessories' },
   clothing: { ar: 'ملابس رياضية', en: 'Clothing' },
+};
+
+const COMPANY_INFO = {
+  name_ar: "شركة اداء الابطال العالمية للرياضة",
+  tax_number: "312655637900003",
+  commercial_reg: "7043630230",
+  vat_rate: 15
 };
 
 export const StorePage = () => {
