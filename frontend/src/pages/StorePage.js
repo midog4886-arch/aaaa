@@ -130,7 +130,7 @@ export const StorePage = () => {
         toast.success(language === 'ar' ? 'تم إضافة المنتج' : 'Product added');
       }
       setIsDialogOpen(false);
-      loadProducts();
+      loadData();
     } catch (error) {
       toast.error(language === 'ar' ? 'حدث خطأ' : 'An error occurred');
     } finally {
@@ -145,7 +145,7 @@ export const StorePage = () => {
       await productsAPI.updateStock(selectedProduct.id, stockChange);
       toast.success(language === 'ar' ? 'تم تحديث المخزون' : 'Stock updated');
       setIsStockDialogOpen(false);
-      loadProducts();
+      loadData();
     } catch (error) {
       toast.error(error.response?.data?.detail || (language === 'ar' ? 'خطأ في تحديث المخزون' : 'Stock update failed'));
     } finally {
@@ -158,7 +158,68 @@ export const StorePage = () => {
     try {
       await productsAPI.delete(productId);
       toast.success(language === 'ar' ? 'تم حذف المنتج' : 'Product deleted');
-      loadProducts();
+      loadData();
+    } catch (error) {
+      toast.error(language === 'ar' ? 'خطأ في الحذف' : 'Delete failed');
+    }
+  };
+
+  // Discount handlers
+  const openDiscountDialog = (discount = null) => {
+    if (discount) {
+      setEditingDiscount(discount);
+      setDiscountForm({
+        code: discount.code, name_ar: discount.name_ar, name: discount.name || '',
+        discount_type: discount.discount_type, value: discount.value.toString(),
+        min_purchase: discount.min_purchase.toString(), max_uses: discount.max_uses.toString(),
+        is_active: discount.is_active
+      });
+    } else {
+      setEditingDiscount(null);
+      setDiscountForm({
+        code: '', name_ar: '', name: '', discount_type: 'percentage',
+        value: '', min_purchase: '0', max_uses: '0', is_active: true
+      });
+    }
+    setIsDiscountDialogOpen(true);
+  };
+
+  const handleDiscountSubmit = async (e) => {
+    e.preventDefault();
+    if (!discountForm.code || !discountForm.name_ar || !discountForm.value) {
+      toast.error(language === 'ar' ? 'يرجى ملء الحقول المطلوبة' : 'Please fill required fields');
+      return;
+    }
+    setSaving(true);
+    try {
+      const data = {
+        ...discountForm,
+        value: parseFloat(discountForm.value) || 0,
+        min_purchase: parseFloat(discountForm.min_purchase) || 0,
+        max_uses: parseInt(discountForm.max_uses) || 0
+      };
+      if (editingDiscount) {
+        await discountsAPI.update(editingDiscount.id, data);
+        toast.success(language === 'ar' ? 'تم تحديث الخصم' : 'Discount updated');
+      } else {
+        await discountsAPI.create(data);
+        toast.success(language === 'ar' ? 'تم إضافة الخصم' : 'Discount added');
+      }
+      setIsDiscountDialogOpen(false);
+      loadData();
+    } catch (error) {
+      toast.error(error.response?.data?.detail || (language === 'ar' ? 'حدث خطأ' : 'An error occurred'));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDeleteDiscount = async (discountId) => {
+    if (!window.confirm(language === 'ar' ? 'هل أنت متأكد من حذف الخصم؟' : 'Delete this discount?')) return;
+    try {
+      await discountsAPI.delete(discountId);
+      toast.success(language === 'ar' ? 'تم حذف الخصم' : 'Discount deleted');
+      loadData();
     } catch (error) {
       toast.error(language === 'ar' ? 'خطأ في الحذف' : 'Delete failed');
     }
