@@ -861,6 +861,20 @@ export const StorePage = () => {
                         {discount.discount_type === 'percentage' ? (language === 'ar' ? 'نسبة خصم' : 'Percentage') : (language === 'ar' ? 'مبلغ ثابت' : 'Fixed Amount')}
                       </p>
                     </div>
+                    {/* Show branch info for admin */}
+                    {isAdmin && (
+                      <div className="flex justify-between text-sm">
+                        <span className="text-muted-foreground flex items-center gap-1">
+                          <Building2 className="w-3 h-3" />
+                          {language === 'ar' ? 'الفرع:' : 'Branch:'}
+                        </span>
+                        <span className="font-medium">
+                          {discount.branch_id 
+                            ? (branches.find(b => b.id === discount.branch_id)?.name_ar || branches.find(b => b.id === discount.branch_id)?.name || discount.branch_id)
+                            : (language === 'ar' ? 'عام (جميع الفروع)' : 'Global (All)')}
+                        </span>
+                      </div>
+                    )}
                     <div className="flex justify-between text-sm">
                       <span className="text-muted-foreground">{language === 'ar' ? 'الحد الأدنى:' : 'Min Purchase:'}</span>
                       <span>{discount.min_purchase} {t('sar')}</span>
