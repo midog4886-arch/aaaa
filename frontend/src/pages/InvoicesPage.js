@@ -357,7 +357,8 @@ export const InvoicesPage = () => {
           discount: totalDiscount,
           discount_code: appliedCoupon?.code || null,
           notes, payment_method: paymentMethod,
-          customer_name_ar: customerNameAr, customer_phone: customerPhone, customer_address: customerAddress
+          customer_name_ar: customerNameAr, customer_phone: customerPhone, customer_address: customerAddress,
+          branch_id: selectedBranchId  // Send selected branch for admin
         });
         toast.success(t('success'));
       }
