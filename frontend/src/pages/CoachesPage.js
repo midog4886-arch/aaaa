@@ -239,6 +239,14 @@ export const CoachesPage = () => {
                   </div>
                 )}
                 
+                {/* Branch Badge */}
+                {isAdmin && (
+                  <div className="flex items-center gap-1 text-xs text-muted-foreground mb-2">
+                    <Building2 className="w-3 h-3" />
+                    <span>{getBranchName(coach.branch_id)}</span>
+                  </div>
+                )}
+                
                 <div className="flex flex-wrap gap-1">
                   {coach.activities?.map(activityId => (
                     <Badge 
