@@ -232,6 +232,14 @@ export const ActivitiesPage = () => {
                     {language === 'ar' ? activity.description_ar : activity.description}
                   </p>
                   
+                  {/* Branch Badge */}
+                  {isAdmin && (
+                    <div className="flex items-center gap-1 text-xs text-muted-foreground mb-2">
+                      <Building2 className="w-3 h-3" />
+                      <span>{getBranchName(activity.branch_id)}</span>
+                    </div>
+                  )}
+                  
                   <div className="flex items-baseline gap-1">
                     <span className="text-2xl font-bold" style={{ color: activity.color }}>
                       {activity.monthly_fee}
