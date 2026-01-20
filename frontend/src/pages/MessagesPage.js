@@ -56,16 +56,25 @@ export const MessagesPage = () => {
 
   useEffect(() => {
     loadData();
-  }, []);
+  }, [selectedBranchId]);
 
   const loadData = async () => {
     try {
-      const [membersRes, activitiesRes] = await Promise.all([
-        membersAPI.getAll(),
-        activitiesAPI.getAll()
+      const branchParams = selectedBranchId && selectedBranchId !== 'all' ? { branch_filter: selectedBranchId } : {};
+      const [membersRes, activitiesRes, branchesRes] = await Promise.all([
+        membersAPI.getAll(branchParams),
+        activitiesAPI.getAll(),
+        isAdmin ? branchesAPI.getAll() : Promise.resolve({ data: [] })
       ]);
       setMembers(membersRes.data);
       setActivities(activitiesRes.data);
+      setBranches(branchesRes.data || []);
+      
+      // Initialize all branches as expanded
+      const expanded = {};
+      (branchesRes.data || []).forEach(b => { expanded[b.id] = true; });
+      expanded['no_branch'] = true;
+      setExpandedBranches(expanded);
     } catch (error) {
       console.error('Failed to load data:', error);
       toast.error(t('error'));
