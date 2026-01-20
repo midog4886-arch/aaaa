@@ -1191,6 +1191,8 @@ export const StorePage = () => {
                   <h2 className="font-bold text-lg">{COMPANY_INFO.name_ar}</h2>
                   <p className="text-xs text-gray-600">الرقم الضريبي: {COMPANY_INFO.tax_number}</p>
                   <p className="text-xs text-gray-600">السجل التجاري: {COMPANY_INFO.commercial_reg}</p>
+                  {/* Branch Name */}
+                  <p className="mt-1 font-semibold text-orange-600">🏢 {getBranchName(currentInvoice.branch_id)}</p>
                 </div>
 
                 {/* Invoice Info */}
