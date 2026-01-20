@@ -738,13 +738,17 @@ async def get_invoices(
     activity_id: Optional[str] = None,
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
+    branch_filter: Optional[str] = None,
     current_user: dict = Depends(get_current_user)
 ):
     is_admin = current_user.get("is_admin", False)
     branch_id = current_user.get("branch_id")
     
     query = {}
-    if not is_admin and branch_id:
+    # Admin can filter by any branch
+    if is_admin and branch_filter and branch_filter != "all":
+        query["branch_id"] = branch_filter
+    elif not is_admin and branch_id:
         query["branch_id"] = branch_id
     if member_id:
         query["member_id"] = member_id
@@ -775,13 +779,17 @@ async def search_invoices(
     activity_id: Optional[str] = None,
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
+    branch_filter: Optional[str] = None,
     current_user: dict = Depends(get_current_user)
 ):
     is_admin = current_user.get("is_admin", False)
     branch_id = current_user.get("branch_id")
     
     query = {}
-    if not is_admin and branch_id:
+    # Admin can filter by any branch
+    if is_admin and branch_filter and branch_filter != "all":
+        query["branch_id"] = branch_filter
+    elif not is_admin and branch_id:
         query["branch_id"] = branch_id
     
     if q:
@@ -1506,12 +1514,20 @@ async def get_company_info():
     }
 
 @api_router.get("/dashboard/stats")
-async def get_dashboard_stats(current_user: dict = Depends(get_current_user)):
+async def get_dashboard_stats(
+    branch_filter: Optional[str] = None,
+    current_user: dict = Depends(get_current_user)
+):
     is_admin = current_user.get("is_admin", False)
     branch_id = current_user.get("branch_id")
     
-    # Build query based on user role
-    branch_query = {} if is_admin else {"branch_id": branch_id} if branch_id else {}
+    # Admin can filter by any branch, non-admin uses their assigned branch
+    if is_admin and branch_filter and branch_filter != "all":
+        branch_query = {"branch_id": branch_filter}
+    elif is_admin:
+        branch_query = {}
+    else:
+        branch_query = {"branch_id": branch_id} if branch_id else {}
     
     # Get counts
     members_count = await db.members.count_documents(branch_query)
