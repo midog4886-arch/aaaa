@@ -113,6 +113,31 @@ export const Sidebar = ({ isOpen, onClose }) => {
           ))}
         </nav>
 
+        {/* Branch Selector for Admin */}
+        {isAdmin && branches.length > 0 && (
+          <div className="px-3 py-2 border-t">
+            <div className="flex items-center gap-2 text-xs text-muted-foreground mb-2">
+              <GitBranch className="w-4 h-4" />
+              <span>{language === 'ar' ? 'التنقل بين الفروع' : 'Switch Branch'}</span>
+            </div>
+            <Select value={selectedBranchId} onValueChange={switchBranch}>
+              <SelectTrigger className="w-full h-9 text-sm" data-testid="branch-selector">
+                <SelectValue placeholder={language === 'ar' ? 'اختر الفرع' : 'Select Branch'} />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">
+                  <span className="font-medium">{language === 'ar' ? '🏢 جميع الفروع' : '🏢 All Branches'}</span>
+                </SelectItem>
+                {branches.map(branch => (
+                  <SelectItem key={branch.id} value={branch.id}>
+                    {branch.name_ar || branch.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
+
         {/* Footer */}
         <div className="sidebar-footer space-y-3">
           {user && (
