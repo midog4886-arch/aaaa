@@ -226,6 +226,7 @@ class DiscountCreate(BaseModel):
     valid_from: Optional[str] = None
     valid_until: Optional[str] = None
     is_active: bool = True
+    branch_id: Optional[str] = None  # Admin can specify branch for coupon
 
 class Discount(BaseModel):
     id: str
@@ -1238,13 +1239,19 @@ async def get_low_stock_products(current_user: dict = Depends(get_current_user))
 # ============ DISCOUNT/COUPON ROUTES ============
 
 @api_router.get("/discounts")
-async def get_discounts(current_user: dict = Depends(get_current_user)):
+async def get_discounts(
+    branch_filter: Optional[str] = None,
+    current_user: dict = Depends(get_current_user)
+):
     """Get all discounts"""
     is_admin = current_user.get("is_admin", False)
     branch_id = current_user.get("branch_id")
     
     query = {}
-    if not is_admin and branch_id:
+    # Admin can filter by any branch
+    if is_admin and branch_filter and branch_filter != "all":
+        query["branch_id"] = branch_filter
+    elif not is_admin and branch_id:
         query["branch_id"] = branch_id
     
     discounts = await db.discounts.find(query, {"_id": 0}).to_list(1000)
@@ -1257,6 +1264,14 @@ async def create_discount(discount: DiscountCreate, current_user: dict = Depends
     existing = await db.discounts.find_one({"code": discount.code.upper()})
     if existing:
         raise HTTPException(status_code=400, detail="Discount code already exists")
+    
+    is_admin = current_user.get("is_admin", False)
+    
+    # Determine branch_id: admin can specify, otherwise use user's branch
+    if is_admin and discount.branch_id:
+        final_branch_id = discount.branch_id if discount.branch_id != "all" else None
+    else:
+        final_branch_id = current_user.get("branch_id")
     
     discount_id = str(uuid.uuid4())
     discount_doc = {
@@ -1272,7 +1287,7 @@ async def create_discount(discount: DiscountCreate, current_user: dict = Depends
         "valid_from": discount.valid_from,
         "valid_until": discount.valid_until,
         "is_active": discount.is_active,
-        "branch_id": current_user.get("branch_id"),
+        "branch_id": final_branch_id,
         "created_at": datetime.now(timezone.utc).isoformat()
     }
     
