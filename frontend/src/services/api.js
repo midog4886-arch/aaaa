@@ -63,7 +63,7 @@ export const invoicesAPI = {
 
 // Products/Inventory API
 export const productsAPI = {
-  getAll: () => axios.get(`${API}/products`),
+  getAll: (params = {}) => axios.get(`${API}/products`, { params }),
   create: (data) => axios.post(`${API}/products`, data),
   update: (id, data) => axios.put(`${API}/products/${id}`, data),
   delete: (id) => axios.delete(`${API}/products/${id}`),
@@ -73,7 +73,7 @@ export const productsAPI = {
 
 // Discounts/Coupons API
 export const discountsAPI = {
-  getAll: () => axios.get(`${API}/discounts`),
+  getAll: (params = {}) => axios.get(`${API}/discounts`, { params }),
   create: (data) => axios.post(`${API}/discounts`, data),
   update: (id, data) => axios.put(`${API}/discounts/${id}`, data),
   delete: (id) => axios.delete(`${API}/discounts/${id}`),
@@ -82,7 +82,7 @@ export const discountsAPI = {
 
 // Product Invoices API (Store Sales)
 export const productInvoicesAPI = {
-  getAll: () => axios.get(`${API}/product-invoices`),
+  getAll: (params = {}) => axios.get(`${API}/product-invoices`, { params }),
   create: (data) => axios.post(`${API}/product-invoices`, data),
   update: (id, data) => axios.put(`${API}/product-invoices/${id}`, data),
   delete: (id) => axios.delete(`${API}/product-invoices/${id}`),
@@ -97,12 +97,16 @@ export const paymentsAPI = {
 // Reports API
 export const reportsAPI = {
   getFinancial: (params = {}) => axios.get(`${API}/reports/financial`, { params }),
-  getExpiringSubscriptions: (days = 7) => axios.get(`${API}/reports/expiring-subscriptions`, { params: { days } }),
+  getExpiringSubscriptions: (days = 7, branchFilter = null) => {
+    const params = { days };
+    if (branchFilter && branchFilter !== 'all') params.branch_filter = branchFilter;
+    return axios.get(`${API}/reports/expiring-subscriptions`, { params });
+  },
 };
 
 // Dashboard API
 export const dashboardAPI = {
-  getStats: () => axios.get(`${API}/dashboard/stats`),
+  getStats: (params = {}) => axios.get(`${API}/dashboard/stats`, { params }),
 };
 
 // Seed API
