@@ -40,7 +40,7 @@ const INVOICE_TERMS = {
 
 export const InvoicesPage = () => {
   const { t, language } = useLanguage();
-  const { user } = useAuth();
+  const { user, selectedBranchId } = useAuth();
   const isAdmin = user?.is_admin === true;
   const [invoices, setInvoices] = useState([]);
   const [members, setMembers] = useState([]);
@@ -96,12 +96,13 @@ export const InvoicesPage = () => {
   useEffect(() => {
     loadData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [selectedBranchId]);
 
   const loadData = async () => {
     try {
+      const branchParams = selectedBranchId && selectedBranchId !== 'all' ? { branch_filter: selectedBranchId } : {};
       const [invoicesRes, membersRes, activitiesRes, productsRes] = await Promise.all([
-        invoicesAPI.getAll(), membersAPI.getAll(), activitiesAPI.getAll(), productsAPI.getAll()
+        invoicesAPI.getAll(branchParams), membersAPI.getAll(branchParams), activitiesAPI.getAll(), productsAPI.getAll(branchParams)
       ]);
       setInvoices(invoicesRes.data);
       setMembers(membersRes.data);
