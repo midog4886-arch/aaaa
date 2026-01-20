@@ -647,13 +647,17 @@ async def get_members(
     activity_id: Optional[str] = None,
     coach_id: Optional[str] = None,
     status: Optional[str] = None,
+    branch_filter: Optional[str] = None,
     current_user: dict = Depends(get_current_user)
 ):
     is_admin = current_user.get("is_admin", False)
     branch_id = current_user.get("branch_id")
     
     query = {}
-    if not is_admin and branch_id:
+    # Admin can filter by any branch
+    if is_admin and branch_filter and branch_filter != "all":
+        query["branch_id"] = branch_filter
+    elif not is_admin and branch_id:
         query["branch_id"] = branch_id
     if activity_id:
         query["activities.activity_id"] = activity_id
@@ -1116,13 +1120,19 @@ async def stripe_webhook(request: Request):
 # ============ STORE/INVENTORY ROUTES ============
 
 @api_router.get("/products")
-async def get_products(current_user: dict = Depends(get_current_user)):
+async def get_products(
+    branch_filter: Optional[str] = None,
+    current_user: dict = Depends(get_current_user)
+):
     """Get all products"""
     is_admin = current_user.get("is_admin", False)
     branch_id = current_user.get("branch_id")
     
     query = {}
-    if not is_admin and branch_id:
+    # Admin can filter by any branch
+    if is_admin and branch_filter and branch_filter != "all":
+        query["branch_id"] = branch_filter
+    elif not is_admin and branch_id:
         query["branch_id"] = branch_id
     
     products = await db.products.find(query, {"_id": 0}).to_list(1000)
@@ -1465,7 +1475,11 @@ async def get_financial_report(
     }
 
 @api_router.get("/reports/expiring-subscriptions")
-async def get_expiring_subscriptions(days: int = 7, current_user: dict = Depends(get_current_user)):
+async def get_expiring_subscriptions(
+    days: int = 7,
+    branch_filter: Optional[str] = None,
+    current_user: dict = Depends(get_current_user)
+):
     is_admin = current_user.get("is_admin", False)
     branch_id = current_user.get("branch_id")
     
@@ -1473,7 +1487,10 @@ async def get_expiring_subscriptions(days: int = 7, current_user: dict = Depends
     today = datetime.now(timezone.utc).strftime('%Y-%m-%d')
     
     query = {}
-    if not is_admin and branch_id:
+    # Admin can filter by any branch
+    if is_admin and branch_filter and branch_filter != "all":
+        query["branch_id"] = branch_filter
+    elif not is_admin and branch_id:
         query["branch_id"] = branch_id
     
     members = await db.members.find(query, {"_id": 0}).to_list(10000)
