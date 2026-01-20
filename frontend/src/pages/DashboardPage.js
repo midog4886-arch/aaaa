@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useLanguage } from '../contexts/LanguageContext';
+import { useAuth } from '../contexts/AuthContext';
 import { Layout } from '../components/Layout';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Badge } from '../components/ui/badge';
@@ -27,6 +28,7 @@ import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from 'recha
 
 export const DashboardPage = () => {
   const { t, language } = useLanguage();
+  const { selectedBranchId } = useAuth();
   const [stats, setStats] = useState(null);
   const [expiring, setExpiring] = useState([]);
   const [discounts, setDiscounts] = useState([]);
@@ -39,14 +41,15 @@ export const DashboardPage = () => {
 
   useEffect(() => {
     loadData();
-  }, []);
+  }, [selectedBranchId]);
 
   const loadData = async () => {
     try {
+      const branchParams = selectedBranchId && selectedBranchId !== 'all' ? { branch_filter: selectedBranchId } : {};
       const [statsRes, expiringRes, discountsRes] = await Promise.all([
-        dashboardAPI.getStats(),
-        reportsAPI.getExpiringSubscriptions(7),
-        discountsAPI.getAll()
+        dashboardAPI.getStats(branchParams),
+        reportsAPI.getExpiringSubscriptions(7, selectedBranchId),
+        discountsAPI.getAll(branchParams)
       ]);
       setStats(statsRes.data);
       setExpiring(expiringRes.data);
