@@ -1590,7 +1590,10 @@ async def get_dashboard_stats(
     # Get this month's revenue
     start_of_month = datetime.now(timezone.utc).replace(day=1, hour=0, minute=0, second=0, microsecond=0).isoformat()
     invoice_query = {"status": "paid", "paid_at": {"$gte": start_of_month}}
-    if not is_admin and branch_id:
+    # Apply branch filter for invoices (admin with filter or non-admin)
+    if is_admin and branch_filter and branch_filter != "all":
+        invoice_query["branch_id"] = branch_filter
+    elif not is_admin and branch_id:
         invoice_query["branch_id"] = branch_id
     month_invoices = await db.invoices.find(invoice_query, {"_id": 0}).to_list(10000)
     month_revenue = sum(inv["total"] for inv in month_invoices)
