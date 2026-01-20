@@ -1023,6 +1023,10 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
                   <div>
                     <div className="text-lg font-bold text-blue-900">{COMPANY_INFO.name_ar}</div>
                     <div className="text-xs text-muted-foreground">{language === 'ar' ? 'الرقم الضريبي' : 'Tax No'}: {COMPANY_INFO.tax_number}<br/>{language === 'ar' ? 'السجل التجاري' : 'CR'}: {COMPANY_INFO.commercial_reg}</div>
+                    {/* Branch Name */}
+                    <div className="mt-2 text-sm font-semibold text-orange-600 bg-orange-50 px-2 py-1 rounded inline-block">
+                      🏢 {language === 'ar' ? 'الفرع:' : 'Branch:'} {getBranchName(selectedInvoice.branch_id)}
+                    </div>
                   </div>
                   <div className="text-sm text-end">
                     <p><strong>{t('invoice_number')}:</strong> #{selectedInvoice.invoice_number || selectedInvoice.id.slice(0, 8)}</p>
