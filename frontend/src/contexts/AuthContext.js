@@ -10,6 +10,7 @@ export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [token, setToken] = useState(() => localStorage.getItem('token'));
   const [loading, setLoading] = useState(true);
+  const [selectedBranchId, setSelectedBranchId] = useState(() => localStorage.getItem('selectedBranchId') || 'all');
 
   useEffect(() => {
     if (token) {
@@ -56,15 +57,31 @@ export const AuthProvider = ({ children }) => {
 
   const logout = () => {
     localStorage.removeItem('token');
+    localStorage.removeItem('selectedBranchId');
     delete axios.defaults.headers.common['Authorization'];
     setToken(null);
     setUser(null);
+    setSelectedBranchId('all');
+  };
+
+  const switchBranch = (branchId) => {
+    setSelectedBranchId(branchId);
+    localStorage.setItem('selectedBranchId', branchId);
   };
 
   const isAuthenticated = !!token && !!user;
 
   return (
-    <AuthContext.Provider value={{ user, token, login, logout, loading, isAuthenticated }}>
+    <AuthContext.Provider value={{ 
+      user, 
+      token, 
+      login, 
+      logout, 
+      loading, 
+      isAuthenticated,
+      selectedBranchId,
+      switchBranch
+    }}>
       {children}
     </AuthContext.Provider>
   );
