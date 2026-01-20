@@ -1,14 +1,17 @@
 import React, { useState, useEffect } from 'react';
 import { useLanguage } from '../contexts/LanguageContext';
+import { useAuth } from '../contexts/AuthContext';
 import { Layout } from '../components/Layout';
 import { Card, CardContent } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 // eslint-disable-next-line react-hooks/exhaustive-deps
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
+import { Badge } from '../components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '../components/ui/dialog';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Textarea } from '../components/ui/textarea';
-import { activitiesAPI } from '../services/api';
+import { activitiesAPI, branchesAPI } from '../services/api';
 import { toast } from 'sonner';
 import { 
   Plus, 
@@ -16,12 +19,16 @@ import {
   Trash2,
   Loader2,
   Waves,
-  Dumbbell
+  Dumbbell,
+  Building2
 } from 'lucide-react';
 
 export const ActivitiesPage = () => {
   const { t, language } = useLanguage();
+  const { user, selectedBranchId } = useAuth();
+  const isAdmin = user?.is_admin === true;
   const [activities, setActivities] = useState([]);
+  const [branches, setBranches] = useState([]);
   const [loading, setLoading] = useState(true);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [selectedActivity, setSelectedActivity] = useState(null);
@@ -33,7 +40,8 @@ export const ActivitiesPage = () => {
     description: '',
     description_ar: '',
     monthly_fee: '',
-    color: '#F97316'
+    color: '#F97316',
+    branch_id: 'all'
   });
 
   const colorOptions = [
@@ -47,12 +55,17 @@ export const ActivitiesPage = () => {
 
   useEffect(() => {
     loadActivities();
-  }, []);
+  }, [selectedBranchId]);
 
   const loadActivities = async () => {
     try {
-      const response = await activitiesAPI.getAll();
-      setActivities(response.data);
+      const branchParams = selectedBranchId && selectedBranchId !== 'all' ? { branch_filter: selectedBranchId } : {};
+      const [activitiesRes, branchesRes] = await Promise.all([
+        activitiesAPI.getAll(branchParams),
+        isAdmin ? branchesAPI.getAll() : Promise.resolve({ data: [] })
+      ]);
+      setActivities(activitiesRes.data);
+      setBranches(branchesRes.data || []);
     } catch (error) {
       console.error('Failed to load activities:', error);
       toast.error(t('error'));
