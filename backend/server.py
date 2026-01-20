@@ -553,12 +553,21 @@ async def get_branch(branch_id: str, current_user: dict = Depends(get_current_us
 # ============ ACTIVITIES ROUTES ============
 
 @api_router.get("/activities", response_model=List[Activity])
-async def get_activities(current_user: dict = Depends(get_current_user)):
+async def get_activities(
+    branch_filter: Optional[str] = None,
+    current_user: dict = Depends(get_current_user)
+):
     is_admin = current_user.get("is_admin", False)
     branch_id = current_user.get("branch_id")
     
     if is_admin:
-        activities = await db.activities.find({}, {"_id": 0}).to_list(100)
+        if branch_filter and branch_filter != "all":
+            activities = await db.activities.find(
+                {"$or": [{"branch_id": branch_filter}, {"branch_id": None}, {"branch_id": {"$exists": False}}]},
+                {"_id": 0}
+            ).to_list(100)
+        else:
+            activities = await db.activities.find({}, {"_id": 0}).to_list(100)
     else:
         # Get activities for user's branch or shared activities
         activities = await db.activities.find(
@@ -570,11 +579,18 @@ async def get_activities(current_user: dict = Depends(get_current_user)):
 @api_router.post("/activities", response_model=Activity)
 async def create_activity(activity: ActivityCreate, current_user: dict = Depends(get_current_user)):
     activity_id = str(uuid.uuid4())
-    branch_id = current_user.get("branch_id")
+    is_admin = current_user.get("is_admin", False)
+    
+    # Admin can specify branch, otherwise use user's branch
+    if is_admin and activity.branch_id:
+        final_branch_id = activity.branch_id if activity.branch_id != "all" else None
+    else:
+        final_branch_id = current_user.get("branch_id")
+    
     activity_doc = {
         "id": activity_id,
         **activity.model_dump(),
-        "branch_id": branch_id,
+        "branch_id": final_branch_id,
         "created_at": datetime.now(timezone.utc).isoformat()
     }
     await db.activities.insert_one(activity_doc)
@@ -601,12 +617,21 @@ async def delete_activity(activity_id: str, current_user: dict = Depends(get_cur
 # ============ COACHES ROUTES ============
 
 @api_router.get("/coaches", response_model=List[Coach])
-async def get_coaches(current_user: dict = Depends(get_current_user)):
+async def get_coaches(
+    branch_filter: Optional[str] = None,
+    current_user: dict = Depends(get_current_user)
+):
     is_admin = current_user.get("is_admin", False)
     branch_id = current_user.get("branch_id")
     
     if is_admin:
-        coaches = await db.coaches.find({}, {"_id": 0}).to_list(100)
+        if branch_filter and branch_filter != "all":
+            coaches = await db.coaches.find(
+                {"$or": [{"branch_id": branch_filter}, {"branch_id": None}, {"branch_id": {"$exists": False}}]},
+                {"_id": 0}
+            ).to_list(100)
+        else:
+            coaches = await db.coaches.find({}, {"_id": 0}).to_list(100)
     else:
         coaches = await db.coaches.find(
             {"$or": [{"branch_id": branch_id}, {"branch_id": None}, {"branch_id": {"$exists": False}}]}, 
@@ -617,11 +642,18 @@ async def get_coaches(current_user: dict = Depends(get_current_user)):
 @api_router.post("/coaches", response_model=Coach)
 async def create_coach(coach: CoachCreate, current_user: dict = Depends(get_current_user)):
     coach_id = str(uuid.uuid4())
-    branch_id = current_user.get("branch_id")
+    is_admin = current_user.get("is_admin", False)
+    
+    # Admin can specify branch, otherwise use user's branch
+    if is_admin and coach.branch_id:
+        final_branch_id = coach.branch_id if coach.branch_id != "all" else None
+    else:
+        final_branch_id = current_user.get("branch_id")
+    
     coach_doc = {
         "id": coach_id,
         **coach.model_dump(),
-        "branch_id": branch_id,
+        "branch_id": final_branch_id,
         "created_at": datetime.now(timezone.utc).isoformat()
     }
     await db.coaches.insert_one(coach_doc)
