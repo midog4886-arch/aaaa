@@ -119,7 +119,8 @@ export const CoachesPage = () => {
       phone: coach.phone || '',
       email: coach.email || '',
       activities: coach.activities || [],
-      notes: coach.notes || ''
+      notes: coach.notes || '',
+      branch_id: coach.branch_id || 'all'
     });
     setIsDialogOpen(true);
   };
@@ -133,7 +134,8 @@ export const CoachesPage = () => {
       phone: '',
       email: '',
       activities: [],
-      notes: ''
+      notes: '',
+      branch_id: 'all'
     });
   };
 
@@ -154,6 +156,12 @@ export const CoachesPage = () => {
   const getActivityColor = (activityId) => {
     const activity = activities.find(a => a.id === activityId);
     return activity?.color || '#64748b';
+  };
+  
+  const getBranchName = (branchId) => {
+    if (!branchId) return language === 'ar' ? 'عام (جميع الفروع)' : 'Global (All)';
+    const branch = branches.find(b => b.id === branchId);
+    return branch?.name_ar || branch?.name || branchId;
   };
 
   if (loading) {
