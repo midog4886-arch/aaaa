@@ -424,3 +424,78 @@
 ### Files Modified:
 - `/app/frontend/src/pages/InvoicesPage.js` - UI for products and coupons
 - `/app/backend/server.py` - Models and API logic
+
+
+---
+
+## Update 10 - Admin Branch Switching & Branch-Specific Coupons (January 20, 2026)
+
+### New Features Added:
+
+#### 1. Admin Branch Switching ✅
+- **Branch Selector Dropdown**: Admin users can see a dropdown in the sidebar to switch between branches
+- **Persistent Selection**: Selected branch is saved in localStorage and survives page refresh
+- **Visual Indicator**: Shows "التنقل بين الفروع" label with branch icon
+- **All Branches Option**: "جميع الفروع" option to view data across all branches
+
+#### 2. Data Filtering by Branch ✅
+- **Dashboard**: Members count, revenue, coupons count update based on selected branch
+- **Members Page**: Filters members list by selected branch
+- **Invoices Page**: Filters invoices by selected branch
+- **Store/Products**: Filters products and coupons by selected branch
+- **Reports Page**: Financial reports filter by selected branch
+- **Expiring Subscriptions**: Filters by selected branch
+
+#### 3. Branch-Specific Coupons ✅
+- **Branch Selection in Coupon Form**: Admin can specify which branch a coupon belongs to
+- **Global Coupons**: "جميع الفروع (كوبون عام)" option for coupons valid across all branches
+- **Branch Display in Coupon List**: Shows branch name for each coupon
+- **Backend Support**: `DiscountCreate` model updated with `branch_id` field
+
+### Backend API Updates:
+- All data endpoints now accept `branch_filter` query parameter for admin users
+- `GET /api/dashboard/stats?branch_filter={branch_id}` - Dashboard stats by branch
+- `GET /api/members?branch_filter={branch_id}` - Members by branch
+- `GET /api/invoices?branch_filter={branch_id}` - Invoices by branch
+- `GET /api/discounts?branch_filter={branch_id}` - Discounts by branch
+- `GET /api/products?branch_filter={branch_id}` - Products by branch
+- `POST /api/discounts` - Now accepts `branch_id` for branch-specific coupons
+
+### Files Modified:
+- `/app/backend/server.py` - Added `branch_filter` parameter to all data endpoints
+- `/app/frontend/src/contexts/AuthContext.js` - Added `selectedBranchId` and `switchBranch`
+- `/app/frontend/src/components/Layout.js` - Added branch selector dropdown for admin
+- `/app/frontend/src/pages/DashboardPage.js` - Uses `selectedBranchId` for API calls
+- `/app/frontend/src/pages/MembersPage.js` - Uses `selectedBranchId` for API calls
+- `/app/frontend/src/pages/InvoicesPage.js` - Uses `selectedBranchId` for API calls
+- `/app/frontend/src/pages/ReportsPage.js` - Uses `selectedBranchId` for API calls
+- `/app/frontend/src/pages/StorePage.js` - Branch selection in coupon form
+- `/app/frontend/src/services/api.js` - Updated APIs with params support
+
+### Test Coverage:
+- 12/12 backend tests passing (100%)
+- Tests include: admin branch switching, data filtering, coupon creation with branch, non-admin access restriction
+
+### Bug Fixes:
+- Fixed: Dashboard month_revenue was not filtering by branch for admin (line 1592-1596 in server.py)
+
+---
+
+## Prioritized Backlog (Updated January 20, 2026)
+
+### P0 - Critical (Completed)
+- [x] Admin Branch Switching
+- [x] Branch-Specific Coupons
+
+### P1 - High Priority
+- [ ] WhatsApp Business API Integration (Waiting for user's Access Token and Phone Number ID)
+
+### P2 - Medium Priority
+- [ ] Activity Timetable Management
+- [ ] Attendance Tracking
+- [ ] Advanced User Permissions
+
+### P3 - Nice to Have / Refactoring
+- [ ] Split monolithic server.py into routes/models/services
+- [ ] Refactor InvoicesPage.js (very large file)
+- [ ] Refactor StorePage.js (very large file)
