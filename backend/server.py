@@ -128,6 +128,7 @@ class MemberUpdate(BaseModel):
 class Member(MemberBase):
     id: str
     activities: List[MemberActivity] = []
+    branch_id: Optional[str] = None
     created_at: str
 
 class InvoiceItem(BaseModel):
