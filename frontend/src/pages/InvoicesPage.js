@@ -1092,6 +1092,7 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
 
                 <div className="mt-4 pt-4 border-t text-center text-xs text-muted-foreground">
                   <p>{COMPANY_INFO.name_ar} | {COMPANY_INFO.name_en}</p>
+                  <p className="mt-1 font-semibold text-orange-600">🏢 {getBranchName(selectedInvoice.branch_id)}</p>
                   <div className="flex justify-center gap-6 mt-2"><span>{language === 'ar' ? 'الرقم الضريبي' : 'Tax Number'}: {COMPANY_INFO.tax_number}</span><span>{language === 'ar' ? 'السجل التجاري' : 'Commercial Reg'}: {COMPANY_INFO.commercial_reg}</span></div>
                 </div>
               </div>
