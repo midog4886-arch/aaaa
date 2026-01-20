@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useLanguage } from '../contexts/LanguageContext';
+import { useAuth } from '../contexts/AuthContext';
 import { Layout } from '../components/Layout';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
@@ -38,6 +39,7 @@ import {
 
 export const ReportsPage = () => {
   const { t, language } = useLanguage();
+  const { selectedBranchId } = useAuth();
   const [report, setReport] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [activities, setActivities] = useState([]);
@@ -53,12 +55,13 @@ export const ReportsPage = () => {
 
   useEffect(() => {
     loadData();
-  }, []);
+  }, [selectedBranchId]);
 
   const loadData = async () => {
     try {
+      const branchParams = selectedBranchId && selectedBranchId !== 'all' ? { branch_filter: selectedBranchId } : {};
       const [reportRes, activitiesRes] = await Promise.all([
-        reportsAPI.getFinancial(filters),
+        reportsAPI.getFinancial({ ...filters, ...branchParams }),
         activitiesAPI.getAll()
       ]);
       setReport(reportRes.data);
@@ -77,6 +80,7 @@ export const ReportsPage = () => {
       if (filters.start_date) params.start_date = filters.start_date;
       if (filters.end_date) params.end_date = filters.end_date;
       if (filters.activity_id !== 'all') params.activity_id = filters.activity_id;
+      if (selectedBranchId && selectedBranchId !== 'all') params.branch_filter = selectedBranchId;
       
       const response = await reportsAPI.getFinancial(params);
       setReport(response.data);
