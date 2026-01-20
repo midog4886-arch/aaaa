@@ -146,7 +146,8 @@ export const ActivitiesPage = () => {
       description: '',
       description_ar: '',
       monthly_fee: '',
-      color: '#F97316'
+      color: '#F97316',
+      branch_id: 'all'
     });
   };
 
