@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useLanguage } from '../contexts/LanguageContext';
+import { useAuth } from '../contexts/AuthContext';
 import { Layout } from '../components/Layout';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
@@ -8,7 +9,7 @@ import { Textarea } from '../components/ui/textarea';
 import { Checkbox } from '../components/ui/checkbox';
 import { Badge } from '../components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
-import { membersAPI, activitiesAPI } from '../services/api';
+import { membersAPI, activitiesAPI, branchesAPI } from '../services/api';
 import { toast } from 'sonner';
 import { 
   MessageSquare, 
@@ -16,19 +17,27 @@ import {
   Users,
   Filter,
   Phone,
-  AlertTriangle
+  AlertTriangle,
+  Building2,
+  ChevronDown,
+  ChevronUp
 } from 'lucide-react';
 
 export const MessagesPage = () => {
   const { t, language } = useLanguage();
+  const { user, selectedBranchId } = useAuth();
+  const isAdmin = user?.is_admin === true;
   const [members, setMembers] = useState([]);
   const [activities, setActivities] = useState([]);
+  const [branches, setBranches] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedMembers, setSelectedMembers] = useState([]);
   const [message, setMessage] = useState('');
   const [messageType, setMessageType] = useState('custom');
   const [filterActivity, setFilterActivity] = useState('all');
+  const [filterBranch, setFilterBranch] = useState('all');
   const [selectAll, setSelectAll] = useState(false);
+  const [expandedBranches, setExpandedBranches] = useState({});
 
   const messageTemplates = {
     payment_reminder: {
