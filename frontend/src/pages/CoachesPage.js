@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useLanguage } from '../contexts/LanguageContext';
+import { useAuth } from '../contexts/AuthContext';
 import { Layout } from '../components/Layout';
 import { Card, CardContent } from '../components/ui/card';
 import { Button } from '../components/ui/button';
@@ -8,9 +9,10 @@ import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { Badge } from '../components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '../components/ui/dialog';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Textarea } from '../components/ui/textarea';
 import { Checkbox } from '../components/ui/checkbox';
-import { coachesAPI, activitiesAPI } from '../services/api';
+import { coachesAPI, activitiesAPI, branchesAPI } from '../services/api';
 import { toast } from 'sonner';
 import { 
   Plus, 
@@ -19,13 +21,17 @@ import {
   Loader2,
   UserCog,
   Phone,
-  Mail
+  Mail,
+  Building2
 } from 'lucide-react';
 
 export const CoachesPage = () => {
   const { t, language } = useLanguage();
+  const { user, selectedBranchId } = useAuth();
+  const isAdmin = user?.is_admin === true;
   const [coaches, setCoaches] = useState([]);
   const [activities, setActivities] = useState([]);
+  const [branches, setBranches] = useState([]);
   const [loading, setLoading] = useState(true);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [selectedCoach, setSelectedCoach] = useState(null);
@@ -37,21 +43,25 @@ export const CoachesPage = () => {
     phone: '',
     email: '',
     activities: [],
-    notes: ''
+    notes: '',
+    branch_id: 'all'
   });
 
   useEffect(() => {
     loadData();
-  }, []);
+  }, [selectedBranchId]);
 
   const loadData = async () => {
     try {
-      const [coachesRes, activitiesRes] = await Promise.all([
-        coachesAPI.getAll(),
-        activitiesAPI.getAll()
+      const branchParams = selectedBranchId && selectedBranchId !== 'all' ? { branch_filter: selectedBranchId } : {};
+      const [coachesRes, activitiesRes, branchesRes] = await Promise.all([
+        coachesAPI.getAll(branchParams),
+        activitiesAPI.getAll(branchParams),
+        isAdmin ? branchesAPI.getAll() : Promise.resolve({ data: [] })
       ]);
       setCoaches(coachesRes.data);
       setActivities(activitiesRes.data);
+      setBranches(branchesRes.data || []);
     } catch (error) {
       console.error('Failed to load data:', error);
       toast.error(t('error'));
@@ -65,8 +75,12 @@ export const CoachesPage = () => {
     setSaving(true);
     
     try {
+      const data = {
+        ...formData,
+        branch_id: isAdmin ? formData.branch_id : undefined
+      };
       if (selectedCoach) {
-        await coachesAPI.update(selectedCoach.id, formData);
+        await coachesAPI.update(selectedCoach.id, data);
       } else {
         await coachesAPI.create(formData);
       }
