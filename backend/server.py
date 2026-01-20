@@ -175,6 +175,7 @@ class Invoice(BaseModel):
     status: str = "pending"  # pending, paid, cancelled
     payment_method: str
     notes: Optional[str] = ""
+    branch_id: Optional[str] = None
     created_at: str
     paid_at: Optional[str] = None
     # Customer data stored with invoice
