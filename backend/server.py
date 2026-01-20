@@ -123,6 +123,7 @@ class MemberUpdate(BaseModel):
     email: Optional[str] = None
     notes: Optional[str] = None
     activities: Optional[List[MemberActivity]] = None
+    branch_id: Optional[str] = None
 
 class Member(MemberBase):
     id: str
