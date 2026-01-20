@@ -81,7 +81,8 @@ export const ActivitiesPage = () => {
     try {
       const data = {
         ...formData,
-        monthly_fee: parseFloat(formData.monthly_fee) || 0
+        monthly_fee: parseFloat(formData.monthly_fee) || 0,
+        branch_id: isAdmin ? formData.branch_id : undefined
       };
       
       if (selectedActivity) {
@@ -124,9 +125,16 @@ export const ActivitiesPage = () => {
       description: activity.description || '',
       description_ar: activity.description_ar || '',
       monthly_fee: activity.monthly_fee?.toString() || '',
-      color: activity.color || '#F97316'
+      color: activity.color || '#F97316',
+      branch_id: activity.branch_id || 'all'
     });
     setIsDialogOpen(true);
+  };
+  
+  const getBranchName = (branchId) => {
+    if (!branchId) return language === 'ar' ? 'عام (جميع الفروع)' : 'Global (All)';
+    const branch = branches.find(b => b.id === branchId);
+    return branch?.name_ar || branch?.name || branchId;
   };
 
   const closeDialog = () => {
