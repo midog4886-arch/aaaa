@@ -2332,7 +2332,7 @@ async def create_product_invoice(invoice: ProductInvoiceCreate, current_user: di
         "created_at": datetime.now(timezone.utc).isoformat(),
         "updated_at": datetime.now(timezone.utc).isoformat(),
         "paid_at": datetime.now(timezone.utc).isoformat() if invoice.status == "paid" else None,
-        "branch_id": current_user.get("branch_id")
+        "branch_id": invoice.branch_id if current_user.get("is_admin") and invoice.branch_id and invoice.branch_id != "all" else current_user.get("branch_id")
     }
     
     # If status is paid, deduct stock
