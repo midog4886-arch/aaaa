@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useLanguage } from '../contexts/LanguageContext';
+import { useAuth } from '../contexts/AuthContext';
 import { Layout } from '../components/Layout';
 import { Card, CardContent } from '../components/ui/card';
 import { Button } from '../components/ui/button';
@@ -31,6 +32,7 @@ import {
 
 export const MembersPage = () => {
   const { t, language } = useLanguage();
+  const { selectedBranchId } = useAuth();
   const [members, setMembers] = useState([]);
   const [activities, setActivities] = useState([]);
   const [coaches, setCoaches] = useState([]);
@@ -70,12 +72,13 @@ export const MembersPage = () => {
 
   useEffect(() => {
     loadData();
-  }, []);
+  }, [selectedBranchId]);
 
   const loadData = async () => {
     try {
+      const branchParams = selectedBranchId && selectedBranchId !== 'all' ? { branch_filter: selectedBranchId } : {};
       const [membersRes, activitiesRes, coachesRes] = await Promise.all([
-        membersAPI.getAll(),
+        membersAPI.getAll(branchParams),
         activitiesAPI.getAll(),
         coachesAPI.getAll()
       ]);
