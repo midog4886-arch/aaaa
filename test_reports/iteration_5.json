@@ -1,0 +1,59 @@
+{
+  "summary": "تم اختبار ميزة تبديل الفروع للمسؤول بنجاح. تم إصلاح خطأ في فلترة الإيرادات الشهرية في Dashboard. جميع الاختبارات نجحت (12/12 backend + UI tests).",
+  "backend_issues": {
+    "critical": [],
+    "fixed": [
+      {
+        "issue": "Dashboard month_revenue not filtering by branch for admin",
+        "fix": "Added branch_filter condition to invoice_query in get_dashboard_stats endpoint",
+        "file": "/app/backend/server.py",
+        "line": "1592-1596"
+      }
+    ],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "passed_tests": [
+    "✅ Admin can see branch selector in sidebar",
+    "✅ Admin can switch between branches (فندق الحمراء، فندق الضباب، الجيل)",
+    "✅ Dashboard stats update correctly when switching branches (members, revenue, coupons)",
+    "✅ Invoices page filters by selected branch",
+    "✅ Members page filters by selected branch",
+    "✅ Store/Coupons page filters by selected branch",
+    "✅ Admin can create coupon with specific branch",
+    "✅ Branch name displayed in coupon list",
+    "✅ Non-admin user does NOT see branch selector",
+    "✅ Non-admin user only sees their assigned branch data",
+    "✅ Products filter by branch correctly",
+    "✅ Dashboard revenue now correctly filters by branch (was bug - fixed)"
+  ],
+  "test_report_links": [
+    "/app/tests/test_branch_switching.py",
+    "/app/tests/test_non_admin_no_branch_selector.py",
+    "/app/test_reports/pytest/branch_switching_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [],
+  "updated_files": [
+    "/app/backend/server.py"
+  ],
+  "success_rate": {
+    "backend": "100%",
+    "frontend": "100%"
+  },
+  "test_credentials": {
+    "admin": {"username": "admin", "password": "admin123"},
+    "non_admin": {"username": "test_branch_user", "password": "test123"}
+  },
+  "seed_data_used": {
+    "branches": ["فندق الحمراء", "فندق الضباب", "الجيل"],
+    "coupons": ["242456 (الجيل)", "TEST_BRANCH_1768893492 (فندق الحمراء)"]
+  },
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Branch switching feature fully tested and working. Fixed bug where dashboard month_revenue was not filtering by branch for admin users. All 8 features tested: 1) Branch selector in sidebar (admin only), 2) Dashboard updates on branch switch, 3) Invoices filter by branch, 4) Members filter by branch, 5) Store/Coupons filter by branch, 6) Create coupon with specific branch, 7) Branch name in coupon list, 8) Non-admin cannot see branch selector. Test users created: admin (is_admin=true), test_branch_user (is_admin=false, branch=فندق الحمراء)."
+}
