@@ -892,7 +892,14 @@ async def create_invoice(invoice: InvoiceCreate, current_user: dict = Depends(ge
         next_number = 202601
     
     invoice_id = str(uuid.uuid4())
-    branch_id = current_user.get("branch_id")
+    
+    # Admin can specify branch, otherwise use user's branch
+    is_admin = current_user.get("is_admin", False)
+    if is_admin and invoice.branch_id and invoice.branch_id != "all":
+        branch_id = invoice.branch_id
+    else:
+        branch_id = current_user.get("branch_id")
+    
     invoice_doc = {
         "id": invoice_id,
         "invoice_number": str(next_number),
