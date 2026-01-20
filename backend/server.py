@@ -1417,6 +1417,7 @@ async def get_financial_report(
     end_date: Optional[str] = None,
     activity_id: Optional[str] = None,
     coach_id: Optional[str] = None,
+    branch_filter: Optional[str] = None,
     current_user: dict = Depends(get_current_user)
 ):
     is_admin = current_user.get("is_admin", False)
@@ -1424,7 +1425,10 @@ async def get_financial_report(
     
     # Query for paid invoices
     query = {"status": "paid"}
-    if not is_admin and branch_id:
+    # Admin can filter by any branch
+    if is_admin and branch_filter and branch_filter != "all":
+        query["branch_id"] = branch_filter
+    elif not is_admin and branch_id:
         query["branch_id"] = branch_id
     
     if start_date:
@@ -1439,7 +1443,10 @@ async def get_financial_report(
     
     # Also get refunded invoices for complete picture
     refunded_query = {"status": {"$in": ["refunded", "partially_refunded"]}}
-    if not is_admin and branch_id:
+    # Apply same branch filter
+    if is_admin and branch_filter and branch_filter != "all":
+        refunded_query["branch_id"] = branch_filter
+    elif not is_admin and branch_id:
         refunded_query["branch_id"] = branch_id
     if start_date:
         refunded_query["refunded_at"] = {"$gte": start_date}
