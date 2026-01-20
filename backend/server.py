@@ -70,10 +70,11 @@ class ActivityBase(BaseModel):
     color: str
 
 class ActivityCreate(ActivityBase):
-    pass
+    branch_id: Optional[str] = None
 
 class Activity(ActivityBase):
     id: str
+    branch_id: Optional[str] = None
     created_at: str
 
 class CoachBase(BaseModel):
@@ -85,10 +86,11 @@ class CoachBase(BaseModel):
     notes: Optional[str] = ""
 
 class CoachCreate(CoachBase):
-    pass
+    branch_id: Optional[str] = None
 
 class Coach(CoachBase):
     id: str
+    branch_id: Optional[str] = None
     created_at: str
 
 class MemberActivity(BaseModel):
