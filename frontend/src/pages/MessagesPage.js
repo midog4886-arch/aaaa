@@ -224,11 +224,11 @@ export const MessagesPage = () => {
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              {/* Filter */}
-              <div className="flex gap-3 items-center">
+              {/* Filters */}
+              <div className="flex gap-3 items-center flex-wrap">
                 <Filter className="w-4 h-4 text-muted-foreground" />
                 <Select value={filterActivity} onValueChange={setFilterActivity}>
-                  <SelectTrigger className="flex-1" data-testid="filter-activity">
+                  <SelectTrigger className="flex-1 min-w-[150px]" data-testid="filter-activity">
                     <SelectValue placeholder={t('activities')} />
                   </SelectTrigger>
                   <SelectContent>
@@ -240,6 +240,23 @@ export const MessagesPage = () => {
                     ))}
                   </SelectContent>
                 </Select>
+                
+                {/* Branch Filter */}
+                {isAdmin && branches.length > 0 && (
+                  <Select value={filterBranch} onValueChange={setFilterBranch}>
+                    <SelectTrigger className="flex-1 min-w-[150px]" data-testid="filter-branch">
+                      <SelectValue placeholder={language === 'ar' ? 'الفروع' : 'Branches'} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">{language === 'ar' ? 'جميع الفروع' : 'All Branches'}</SelectItem>
+                      {branches.map(branch => (
+                        <SelectItem key={branch.id} value={branch.id}>
+                          {branch.name_ar || branch.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
               </div>
 
               {/* Select All */}
