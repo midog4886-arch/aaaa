@@ -327,6 +327,12 @@ export const StorePage = () => {
     setInvoiceItems(invoiceItems.filter((_, i) => i !== index));
   };
 
+  const getBranchName = (branchId) => {
+    if (!branchId) return language === 'ar' ? 'الفرع الرئيسي' : 'Main Branch';
+    const branch = branches.find(b => b.id === branchId);
+    return branch?.name_ar || branch?.name || branchId;
+  };
+
   const calculateInvoiceTotals = () => {
     const subtotal = invoiceItems.reduce((sum, item) => sum + item.total, 0);
     const vatAmount = Math.round(subtotal * (COMPANY_INFO.vat_rate / 100) * 100) / 100;
