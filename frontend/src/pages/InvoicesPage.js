@@ -102,18 +102,26 @@ export const InvoicesPage = () => {
   const loadData = async () => {
     try {
       const branchParams = selectedBranchId && selectedBranchId !== 'all' ? { branch_filter: selectedBranchId } : {};
-      const [invoicesRes, membersRes, activitiesRes, productsRes] = await Promise.all([
-        invoicesAPI.getAll(branchParams), membersAPI.getAll(branchParams), activitiesAPI.getAll(), productsAPI.getAll(branchParams)
+      const [invoicesRes, membersRes, activitiesRes, productsRes, branchesRes] = await Promise.all([
+        invoicesAPI.getAll(branchParams), membersAPI.getAll(branchParams), activitiesAPI.getAll(), productsAPI.getAll(branchParams),
+        branchesAPI.getAll()
       ]);
       setInvoices(invoicesRes.data);
       setMembers(membersRes.data);
       setActivities(activitiesRes.data);
       setProducts(productsRes.data);
+      setBranches(branchesRes.data || []);
     } catch (error) {
       toast.error(t('error'));
     } finally {
       setLoading(false);
     }
+  };
+  
+  const getBranchName = (branchId) => {
+    if (!branchId) return language === 'ar' ? 'الفرع الرئيسي' : 'Main Branch';
+    const branch = branches.find(b => b.id === branchId);
+    return branch?.name_ar || branch?.name || branchId;
   };
 
   const handleMemberSelect = (memberId) => {
