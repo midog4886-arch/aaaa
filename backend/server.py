@@ -160,6 +160,7 @@ class InvoiceCreate(BaseModel):
     customer_name_ar: Optional[str] = ""
     customer_phone: Optional[str] = ""
     customer_address: Optional[str] = ""
+    branch_id: Optional[str] = None  # Admin can specify branch
 
 class Invoice(BaseModel):
     id: str
