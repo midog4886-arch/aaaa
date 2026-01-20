@@ -1,0 +1,194 @@
+<analysis>**original_problem_statement:**
+We want to design a management program for a sports academy named World Champions Performance Academy.
+
+**PRODUCT REQUIREMENTS:**
+-   **Core System:**
+    -   Member registration, invoice generation (SAR), subscription monitoring, member segmentation, and financial reporting.
+-   **Technical & Design:**
+    -   Web-based application with a modern, sports-themed design and bilingual (Arabic/English) support.
+-   **Subsequent User Requests:**
+    -   Members can enroll in multiple activities.
+    -   Export to Excel for members, invoices, and reports.
+    -   Advanced search and various customizations for invoices (15% VAT, editable total, company details, QR code, PDF/Image saving, manual schedule field, discount, payment method, notes, and pre-payment editing).
+    -   Ability to create a new member from the invoice page.
+    -   Multi-Branch Support: All entities (members, invoices, etc.) are tied to a branch.
+    -   User Management: Admins can create/manage users and assign them to branches.
+    -   Store & Inventory: A system to manage products, track stock, and sell them.
+    -   Discounts: A system to create and manage discount coupons.
+    -   Invoice Integration: Sell products and apply coupons directly within an invoice.
+    -   Branding: Change company name to شركة اداء الابطال العالمية للرياضة.
+    -   Refunds: Ability to process full or partial refunds.
+    -   Interactive Dashboards: Make statistics cards clickable for detailed data.
+    -   Security: Add password protection for deleting paid invoices and editing item prices.
+    -   Admin can switch between branches to view data.
+    -   Admin can create coupons for specific branches.
+
+**User's preferred language**: Arabic (العربية). The next agent MUST respond in Arabic only.
+
+**what currently exists?**
+A comprehensive full-stack application for شركة اداء الابطال العالمية للرياضة built with FastAPI, React, and MongoDB. The application is bilingual (AR/EN) with full RTL support. It includes a dashboard and management pages for members, activities, invoices, coaches, users, and branches.
+
+Key features implemented include:
+- Multi-branch operations with user roles (admin/user).
+- An advanced invoicing system for activities, with product sales and coupon integration.
+- A separate, dedicated invoicing system for store products, featuring ZATCA-compliant QR codes and draft/paid states.
+- Complete store/inventory and discount coupon management.
+- Interactive dashboards and reports with clickable cards and date/search filters.
+- Password protection for critical actions like deleting paid invoices and editing prices.
+- Admins have enhanced permissions to edit usernames.
+
+**Last working item**:
+The agent was implementing a feature to allow admin users to switch between different branches from the main layout.
+
+-   **Last item agent was working**: Adding a branch selector dropdown for admin users. The agent has modified  to manage the state for the selected branch and started adding the UI components to .
+-   **Status**: IN PROGRESS
+-   **Agent Testing Done**: N
+-   **Which testing method agent to use?**: frontend testing agent
+-   **User Testing Done**: N
+
+**All Pending/In progress Issue list**:
+-   **Issue 1**: Complete the branch switching feature for admins. (P0)
+-   **Issue 2**: Allow admins to create discount coupons for specific branches. (P1)
+
+**Issues Detail**:
+-   **Issue 1**:
+    -   **Attempted fixes**: State management for the selected branch has been added to . UI modifications have been started in .
+    -   **Next debug checklist**:
+        1.  Complete the branch selection dropdown UI in , ensuring it's only visible to admin users.
+        2.  Fetch and populate the dropdown with all available branches.
+        3.  Implement the  handler to call  from the .
+        4.  Update API calls across the application (e.g., in , , etc.) to pass the  from the context as a filter parameter.
+        5.  Ensure that changing the branch re-fetches data and updates the view accordingly.
+    -   **Why fix this issue and what will be achieved with the fix?**: This is a core requirement for multi-branch management, enabling admins to oversee operations across all academy locations from a single interface.
+    -   **Status**: IN PROGRESS
+    -   **Is recurring issue?** N
+    -   **Should Test frontend/backend/both after fix?**: both
+    -   **Blocked on other issue**: None
+
+-   **Issue 2**:
+    -   **Attempted fixes**: None. This was requested by the user but the agent correctly prioritized the branch-switching prerequisite.
+    -   **Next debug checklist**:
+        1.  Modify the Create/Edit Coupon dialog in  to include a branch selector dropdown, visible only to admins.
+        2.  Update the  Pydantic models in  to include an optional .
+        3.  Modify the backend endpoints for creating/updating discounts to save the .
+        4.  Update data-fetching endpoints (, , etc.) to filter by the user's current branch context.
+    -   **Why fix this issue and what will be achieved with the fix?**: It allows for targeted promotions and granular control over discounts for each specific branch.
+    -   **Status**: NOT STARTED
+    -   **Is recurring issue?** N
+    -   **Should Test frontend/backend/both after fix?**: both
+    -   **Blocked on other issue**: Issue 1: Complete the branch switching feature for admins.
+
+**In progress Task List**:
+-   None.
+
+**Upcoming and Future Tasks**
+-   **Upcoming Tasks**:
+    -   **WhatsApp Business API Integration (P1)**: The user has a business account. The next step is to ask the user for the  and  from their Meta Business Suite to implement sending of invoice PDFs/images.
+-   **Future Tasks**:
+    -   **Activity Timetable Management (P2)**: Create a dedicated interface for managing schedules.
+    -   **Attendance Tracking (P2)**: Implement a feature to track member attendance.
+    -   **Advanced User Permissions (P2)**: Refine user roles for more granular control.
+    -   **Code Refactoring (P2)**: Split the monolithic  and the large  and  components.
+
+**Completed work in this session**
+-   **Store & Discounts on Invoices**: Completed the integration of products and coupons into the main invoice creation flow.
+-   **Invoice Logic Refinements**: Removed manual discount field, made applied coupons non-removable, and corrected discount calculation to apply after VAT.
+-   **Dashboard Coupon Card**: Added a clickable card to the dashboard for viewing active discount coupons.
+-   **Security Enhancements**: Implemented password protection () for deleting paid invoices and for editing item prices within an invoice.
+-   **Admin User Management**: Admins can now edit a user's .
+-   **Login System Fix**: Resolved a critical bug where the  collection was empty, preventing login. Recreated the  user with the correct hash.
+-   **Store-Specific Invoicing**: Created a full-featured invoicing system within the Store page for product-only sales, including draft/paid states, editing, and ZATCA-compliant QR codes.
+-   **Reporting Enhancements**: Added a text search field and quick date-range filter buttons (Today, This Week, etc.) to the Reports page.
+
+**Earlier issues found/mentioned but not fixed**
+-   None.
+
+**Known issue recurrence from previous fork**
+-   The login functionality failed multiple times during the session, requiring the agent to manually re-create the  user in the database. This suggests a potential issue with database persistence in the environment that the next agent should be cautious of. If login fails, the first step should be to check if the  user exists in the  collection.
+
+**Code Architecture**
+
+
+**Key Technical Concepts**
+-   **Backend**: FastAPI, Pydantic, Motor, JWT, bcrypt.
+-   **Frontend**: React, React Router, Axios, TailwindCSS, Shadcn/UI, .
+-   **Database**: MongoDB.
+-   **QR Code**: ZATCA-compliant TLV Base64 format for electronic invoicing.
+-   **Key Libraries**: , , , , .
+
+**key DB schema**
+-   **products**: 
+-   **discounts**: 
+-   **invoices**: 
+-   **users**: 
+-   **product_invoices**:  (New Collection)
+
+**changes in tech stack**
+-   Added  on the frontend for generating ZATCA-compliant QR codes in the store's invoicing system.
+
+**All files of reference**
+-   **/app/backend/server.py**: Main backend file, modified for product invoices and user management.
+-   **/app/frontend/src/pages/StorePage.js**: Heavily modified to include a full product-invoicing system.
+-   **/app/frontend/src/pages/InvoicesPage.js**: Modified to enhance security and streamline invoice creation.
+-   **/app/frontend/src/pages/ReportsPage.js**: Modified to add search and date filters.
+-   **/app/frontend/src/pages/DashboardPage.js**: Modified to add a coupon statistics card.
+-   **/app/frontend/src/pages/UsersPage.js**: Modified to allow admin to edit usernames.
+-   **/app/frontend/src/contexts/AuthContext.js**: Modified to support branch switching.
+-   **/app/frontend/src/components/Layout.js**: Modified to support branch switching.
+-   **/app/frontend/src/services/api.js**: Updated with new API definitions for product invoices.
+-   **/app/memory/PRD.md**: Updated with completed tasks.
+
+**Areas that need refactoring**:
+-   **/app/backend/server.py**: Urgently needs to be broken down into a structured project (routes, models, services).
+-   **/app/frontend/src/pages/InvoicesPage.js**: Overloaded with state and logic.
+-   **/app/frontend/src/pages/StorePage.js**: Has also become very large and complex due to the addition of a complete invoicing subsystem.
+
+**key api endpoints**
+-   : Modified to allow username changes.
+-   : New CRUD endpoints for the store's product invoices.
+-   : The backend logic for this was confirmed to be ZATCA-compliant.
+
+**Critical Info for New Agent**
+-   You MUST respond in **Arabic**.
+-   The immediate task is to finish the admin's branch-switching feature.
+-   The login system is fragile. If you encounter login failures, immediately check if the  user exists in the database and recreate it if necessary using the previously successful scripts. The issue might be related to a non-persistent database in the environment.
+
+**documents and test reports created in this job**
+-   /app/test_reports/iteration_4.json
+-   /app/memory/PRD.md
+
+**Last 10 User Messages and any pending HUMAN messages**
+1.  **User**: Add a branch switching button for the admin, and allow admins to create coupons for specific branches. (Status: IN PROGRESS)
+2.  **User**: Ensure the QR code for product invoices is ZATCA-compliant. (Status: COMPLETED)
+3.  **User**: Clarified that a Filter button should apply date range searches, and asked where draft product invoices are saved. (Status: COMPLETED)
+4.  **User**: Add a search field to reports, a section for product invoices in the store, and allow editing of invoices before payment. (Status: COMPLETED)
+5.  **User**: Create an invoicing system within the store page to sell products, with 15% VAT and a QR code. (Status: COMPLETED)
+6.  **User**: Add a from date to to date filter to all reports. (Status: COMPLETED)
+7.  **User**: Asked if created users can log in. (Status: COMPLETED - agent debugged and fixed login issues).
+8.  **User**: The problem is not solved. (Reported that login was still failing after the agent's first attempt to fix it). (Status: COMPLETED - led to the final fix).
+9.  **User**: Admins should be able to change a user's username and password. (Status: COMPLETED)
+10. **User**: Changing the price of an item in an invoice should require a password. (Status: COMPLETED)
+
+**Project Health Check:**
+-   **Broken**: The branch switching feature is mid-implementation. The UI is incomplete and the logic is not fully wired up.
+-   **Mocked**: None.
+
+**3rd Party Integrations**
+-   **openpyxl**: Backend, for  exports.
+-   **qrcode**: Backend, for QR code generation.
+-   **html2canvas**: Frontend, for capturing invoice as an image (functionality was removed but code may remain).
+-   **jspdf** & **jspdf-autotable**: Frontend, for PDF generation.
+-   **qrcode.react**: Frontend, for ZATCA-compliant QR code generation in .
+
+**Testing status**
+-   **Testing agent used after significant changes**: YES (for the initial feature of adding products/coupons to invoices).
+-   **Troubleshoot agent used after agent stuck in loop**: NO
+-   **Test files created**: None.
+-   **Known regressions**: The login system proved unreliable and required manual intervention multiple times, indicating a potential environment issue with database persistence.
+
+**Credentials to test flow:**
+-   Username: 
+-   Password: 
+
+**What agent forgot to execute**
+-   The agent started but did not complete the user's request to add a branch-switching feature for admins. This is the highest priority pending task.</analysis>
