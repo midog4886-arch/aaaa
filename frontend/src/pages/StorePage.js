@@ -83,14 +83,16 @@ export const StorePage = () => {
   const loadData = async () => {
     try {
       const branchParams = selectedBranchId && selectedBranchId !== 'all' ? { branch_filter: selectedBranchId } : {};
-      const [productsRes, discountsRes, invoicesRes] = await Promise.all([
-        productsAPI.getAll(),
-        discountsAPI.getAll(),
-        productInvoicesAPI.getAll()
+      const [productsRes, discountsRes, invoicesRes, branchesRes] = await Promise.all([
+        productsAPI.getAll(branchParams),
+        discountsAPI.getAll(branchParams),
+        productInvoicesAPI.getAll(branchParams),
+        isAdmin ? branchesAPI.getAll() : Promise.resolve({ data: [] })
       ]);
       setProducts(productsRes.data);
       setDiscounts(discountsRes.data);
       setProductInvoices(invoicesRes.data || []);
+      setBranches(branchesRes.data || []);
     } catch (error) {
       toast.error(language === 'ar' ? 'خطأ في تحميل البيانات' : 'Failed to load data');
     } finally {
@@ -100,7 +102,8 @@ export const StorePage = () => {
 
   const loadProducts = async () => {
     try {
-      const res = await productsAPI.getAll();
+      const branchParams = selectedBranchId && selectedBranchId !== 'all' ? { branch_filter: selectedBranchId } : {};
+      const res = await productsAPI.getAll(branchParams);
       setProducts(res.data);
     } catch (error) {
       toast.error(language === 'ar' ? 'خطأ في تحميل المنتجات' : 'Failed to load products');
