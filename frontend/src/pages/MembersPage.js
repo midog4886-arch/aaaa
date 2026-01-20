@@ -368,24 +368,50 @@ export const MembersPage = () => {
                         <td>{member.age}</td>
                         <td>
                           <div className="flex flex-wrap gap-1">
-                            {member.activities?.slice(0, 2).map((activity, idx) => (
-                              <Badge 
-                                key={idx} 
-                                variant="outline"
-                                className={getActivityColor(activity.activity_name)}
-                              >
-                                {activity.activity_name}
-                              </Badge>
+                            {member.activities?.map((activity, idx) => (
+                              <div key={idx} className="flex items-center gap-1">
+                                <Badge 
+                                  variant="outline"
+                                  className={getActivityColor(activity.activity_name)}
+                                >
+                                  {activity.activity_name}
+                                </Badge>
+                                <span className={`text-xs px-1 rounded ${
+                                  activity.status === 'active' ? 'bg-green-100 text-green-700' :
+                                  activity.status === 'expired' ? 'bg-red-100 text-red-700' :
+                                  'bg-gray-100 text-gray-700'
+                                }`}>
+                                  {activity.status === 'active' ? (language === 'ar' ? '✓' : '✓') :
+                                   activity.status === 'expired' ? (language === 'ar' ? '✗' : '✗') : '-'}
+                                </span>
+                              </div>
                             ))}
-                            {member.activities?.length > 2 && (
-                              <Badge variant="outline">+{member.activities.length - 2}</Badge>
+                            {(!member.activities || member.activities.length === 0) && (
+                              <span className="text-muted-foreground text-sm">-</span>
                             )}
                           </div>
                         </td>
                         <td>
-                          {member.activities?.length > 0 && (
-                            getStatusBadge(member.activities[0].status)
-                          )}
+                          <div className="flex flex-wrap gap-1">
+                            {member.activities?.map((activity, idx) => (
+                              <Badge 
+                                key={idx}
+                                variant="outline"
+                                className={`text-xs ${
+                                  activity.status === 'active' ? 'bg-green-500/15 text-green-600 border-green-300' :
+                                  activity.status === 'expired' ? 'bg-red-500/15 text-red-600 border-red-300' :
+                                  'bg-gray-500/15 text-gray-600 border-gray-300'
+                                }`}
+                              >
+                                {activity.status === 'active' ? (language === 'ar' ? 'نشط' : 'Active') :
+                                 activity.status === 'expired' ? (language === 'ar' ? 'منتهي' : 'Expired') :
+                                 (language === 'ar' ? 'غير نشط' : 'Inactive')}
+                              </Badge>
+                            ))}
+                            {(!member.activities || member.activities.length === 0) && (
+                              <span className="text-muted-foreground text-sm">-</span>
+                            )}
+                          </div>
                         </td>
                         <td>
                           <div className="action-buttons">
