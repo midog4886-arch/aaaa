@@ -205,13 +205,15 @@ export const StorePage = () => {
         code: discount.code, name_ar: discount.name_ar, name: discount.name || '',
         discount_type: discount.discount_type, value: discount.value.toString(),
         min_purchase: discount.min_purchase.toString(), max_uses: discount.max_uses.toString(),
-        is_active: discount.is_active
+        is_active: discount.is_active,
+        branch_id: discount.branch_id || 'all'
       });
     } else {
       setEditingDiscount(null);
       setDiscountForm({
         code: '', name_ar: '', name: '', discount_type: 'percentage',
-        value: '', min_purchase: '0', max_uses: '0', is_active: true
+        value: '', min_purchase: '0', max_uses: '0', is_active: true,
+        branch_id: 'all'
       });
     }
     setIsDiscountDialogOpen(true);
@@ -229,7 +231,8 @@ export const StorePage = () => {
         ...discountForm,
         value: parseFloat(discountForm.value) || 0,
         min_purchase: parseFloat(discountForm.min_purchase) || 0,
-        max_uses: parseInt(discountForm.max_uses) || 0
+        max_uses: parseInt(discountForm.max_uses) || 0,
+        branch_id: isAdmin ? discountForm.branch_id : undefined
       };
       if (editingDiscount) {
         await discountsAPI.update(editingDiscount.id, data);
