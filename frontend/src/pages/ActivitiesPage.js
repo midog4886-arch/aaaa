@@ -342,6 +342,31 @@ export const ActivitiesPage = () => {
                 </div>
               </div>
               
+              {/* Branch Selection - Admin Only */}
+              {isAdmin && branches.length > 0 && (
+                <div className="space-y-2">
+                  <Label className="flex items-center gap-2">
+                    <Building2 className="w-4 h-4" />
+                    {language === 'ar' ? 'الفرع' : 'Branch'}
+                  </Label>
+                  <Select value={formData.branch_id} onValueChange={(v) => setFormData({...formData, branch_id: v})}>
+                    <SelectTrigger data-testid="activity-branch-select">
+                      <SelectValue placeholder={language === 'ar' ? 'اختر الفرع' : 'Select Branch'} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">
+                        {language === 'ar' ? '🏢 جميع الفروع (نشاط عام)' : '🏢 All Branches (Global)'}
+                      </SelectItem>
+                      {branches.map(branch => (
+                        <SelectItem key={branch.id} value={branch.id}>
+                          {branch.name_ar || branch.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+              
               <DialogFooter>
                 <Button type="button" variant="outline" onClick={closeDialog}>
                   {t('cancel')}
