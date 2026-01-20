@@ -142,9 +142,42 @@ export const MessagesPage = () => {
   };
 
   const filteredMembers = members.filter(member => {
-    if (filterActivity === 'all') return true;
-    return member.activities?.some(a => a.activity_id === filterActivity);
+    if (filterActivity === 'all' && filterBranch === 'all') return true;
+    const activityMatch = filterActivity === 'all' || member.activities?.some(a => a.activity_id === filterActivity);
+    const branchMatch = filterBranch === 'all' || member.branch_id === filterBranch;
+    return activityMatch && branchMatch;
   });
+  
+  // Group members by branch
+  const membersByBranch = {};
+  filteredMembers.forEach(member => {
+    const branchId = member.branch_id || 'no_branch';
+    if (!membersByBranch[branchId]) {
+      membersByBranch[branchId] = [];
+    }
+    membersByBranch[branchId].push(member);
+  });
+  
+  const getBranchName = (branchId) => {
+    if (branchId === 'no_branch') return language === 'ar' ? 'بدون فرع' : 'No Branch';
+    const branch = branches.find(b => b.id === branchId);
+    return branch?.name_ar || branch?.name || branchId;
+  };
+  
+  const toggleBranchExpanded = (branchId) => {
+    setExpandedBranches(prev => ({ ...prev, [branchId]: !prev[branchId] }));
+  };
+  
+  const toggleBranchMembers = (branchId, branchMembers) => {
+    const branchMemberIds = branchMembers.map(m => m.id);
+    const allSelected = branchMemberIds.every(id => selectedMembers.includes(id));
+    
+    if (allSelected) {
+      setSelectedMembers(prev => prev.filter(id => !branchMemberIds.includes(id)));
+    } else {
+      setSelectedMembers(prev => [...new Set([...prev, ...branchMemberIds])]);
+    }
+  };
 
   if (loading) {
     return (
