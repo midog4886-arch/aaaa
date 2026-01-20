@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useLanguage } from '../contexts/LanguageContext';
+import { useAuth } from '../contexts/AuthContext';
 import { Layout } from '../components/Layout';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
@@ -9,14 +10,14 @@ import { Badge } from '../components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '../components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Textarea } from '../components/ui/textarea';
-import { productsAPI, discountsAPI, productInvoicesAPI } from '../services/api';
+import { productsAPI, discountsAPI, productInvoicesAPI, branchesAPI } from '../services/api';
 import { toast } from 'sonner';
 import { QRCodeSVG } from 'qrcode.react';
 import html2pdf from 'html2pdf.js';
 import { 
   Package, Plus, Search, Edit, Trash2, AlertTriangle, 
   ShoppingBag, TrendingUp, TrendingDown, Loader2, BarChart3, X, Percent, Tag,
-  Receipt, Printer, FileText, CheckCircle, Eye
+  Receipt, Printer, FileText, CheckCircle, Eye, Building2
 } from 'lucide-react';
 
 const CATEGORIES = {
@@ -35,8 +36,11 @@ const COMPANY_INFO = {
 
 export const StorePage = () => {
   const { t, language } = useLanguage();
+  const { user, selectedBranchId } = useAuth();
+  const isAdmin = user?.is_admin === true;
   const [products, setProducts] = useState([]);
   const [discounts, setDiscounts] = useState([]);
+  const [branches, setBranches] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterCategory, setFilterCategory] = useState('all');
@@ -71,13 +75,14 @@ export const StorePage = () => {
   
   const [discountForm, setDiscountForm] = useState({
     code: '', name_ar: '', name: '', discount_type: 'percentage',
-    value: '', min_purchase: '0', max_uses: '0', is_active: true
+    value: '', min_purchase: '0', max_uses: '0', is_active: true, branch_id: 'all'
   });
 
-  useEffect(() => { loadData(); }, []);
+  useEffect(() => { loadData(); }, [selectedBranchId]);
 
   const loadData = async () => {
     try {
+      const branchParams = selectedBranchId && selectedBranchId !== 'all' ? { branch_filter: selectedBranchId } : {};
       const [productsRes, discountsRes, invoicesRes] = await Promise.all([
         productsAPI.getAll(),
         discountsAPI.getAll(),
