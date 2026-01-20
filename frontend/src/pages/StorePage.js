@@ -373,7 +373,8 @@ export const StorePage = () => {
           quantity: item.quantity,
           total: item.total
         })),
-        status
+        status,
+        branch_id: selectedBranchId  // Send selected branch for admin
       };
 
       let savedInvoice;
