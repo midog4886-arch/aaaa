@@ -923,6 +923,33 @@ export const StorePage = () => {
                       <Label>{language === 'ar' ? 'الحد الأقصى للاستخدام' : 'Max Uses'}</Label>
                       <Input type="number" value={discountForm.max_uses} onChange={(e) => setDiscountForm({...discountForm, max_uses: e.target.value})} placeholder="0 = غير محدود" />
                     </div>
+                    {/* Admin only: Branch selection */}
+                    {isAdmin && branches.length > 0 && (
+                      <div className="col-span-2">
+                        <Label className="flex items-center gap-2">
+                          <Building2 className="w-4 h-4" />
+                          {language === 'ar' ? 'الفرع' : 'Branch'}
+                        </Label>
+                        <Select value={discountForm.branch_id} onValueChange={(v) => setDiscountForm({...discountForm, branch_id: v})}>
+                          <SelectTrigger data-testid="coupon-branch-select">
+                            <SelectValue placeholder={language === 'ar' ? 'اختر الفرع' : 'Select Branch'} />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="all">
+                              {language === 'ar' ? '🏢 جميع الفروع (كوبون عام)' : '🏢 All Branches (Global)'}
+                            </SelectItem>
+                            {branches.map(branch => (
+                              <SelectItem key={branch.id} value={branch.id}>
+                                {branch.name_ar || branch.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          {language === 'ar' ? 'حدد "جميع الفروع" لإنشاء كوبون عام أو اختر فرع محدد' : 'Select "All Branches" for a global coupon or choose a specific branch'}
+                        </p>
+                      </div>
+                    )}
                     <div className="col-span-2 flex items-center gap-2">
                       <input type="checkbox" id="is_active" checked={discountForm.is_active} onChange={(e) => setDiscountForm({...discountForm, is_active: e.target.checked})} />
                       <Label htmlFor="is_active">{language === 'ar' ? 'كوبون نشط' : 'Active Coupon'}</Label>
