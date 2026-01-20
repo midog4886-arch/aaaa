@@ -2286,11 +2286,20 @@ class ProductInvoice(BaseModel):
     branch_id: Optional[str] = None
 
 @api_router.get("/product-invoices")
-async def get_product_invoices(current_user: dict = Depends(get_current_user)):
+async def get_product_invoices(
+    branch_filter: Optional[str] = None,
+    current_user: dict = Depends(get_current_user)
+):
     """Get all product invoices"""
+    is_admin = current_user.get("is_admin", False)
+    branch_id = current_user.get("branch_id")
+    
     query = {}
-    if not current_user.get("is_admin") and current_user.get("branch_id"):
-        query["branch_id"] = current_user["branch_id"]
+    # Admin can filter by any branch
+    if is_admin and branch_filter and branch_filter != "all":
+        query["branch_id"] = branch_filter
+    elif not is_admin and branch_id:
+        query["branch_id"] = branch_id
     
     invoices = await db.product_invoices.find(query, {"_id": 0}).sort("created_at", -1).to_list(1000)
     return invoices
