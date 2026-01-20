@@ -82,7 +82,7 @@ export const CoachesPage = () => {
       if (selectedCoach) {
         await coachesAPI.update(selectedCoach.id, data);
       } else {
-        await coachesAPI.create(formData);
+        await coachesAPI.create(data);
       }
       
       toast.success(t('success'));
