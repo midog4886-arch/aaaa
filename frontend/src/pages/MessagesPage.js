@@ -273,39 +273,121 @@ export const MessagesPage = () => {
                 </span>
               </div>
 
-              {/* Members List */}
-              <div className="space-y-2 max-h-[400px] overflow-y-auto">
-                {filteredMembers.map(member => (
-                  <div 
-                    key={member.id}
-                    className={`flex items-center justify-between p-3 rounded-lg border cursor-pointer transition-colors ${
-                      selectedMembers.includes(member.id)
-                        ? 'border-primary bg-primary/5'
-                        : 'border-border hover:border-primary/50'
-                    }`}
-                    onClick={() => toggleMember(member.id)}
-                    data-testid={`member-select-${member.id}`}
-                  >
-                    <div className="flex items-center gap-3">
-                      <Checkbox 
-                        checked={selectedMembers.includes(member.id)}
-                        onCheckedChange={() => toggleMember(member.id)}
-                      />
-                      <div>
-                        <p className="font-medium">
-                          {language === 'ar' ? member.name_ar : member.name}
-                        </p>
-                        <p className="text-sm text-muted-foreground">
-                          {language === 'ar' ? member.guardian_name_ar : member.guardian_name}
-                        </p>
+              {/* Members List Grouped by Branch */}
+              <div className="space-y-3 max-h-[500px] overflow-y-auto">
+                {isAdmin && branches.length > 0 ? (
+                  // Grouped view for admin
+                  Object.keys(membersByBranch).map(branchId => {
+                    const branchMembers = membersByBranch[branchId];
+                    const isExpanded = expandedBranches[branchId];
+                    const allBranchSelected = branchMembers.every(m => selectedMembers.includes(m.id));
+                    const someBranchSelected = branchMembers.some(m => selectedMembers.includes(m.id));
+                    
+                    return (
+                      <div key={branchId} className="border rounded-lg overflow-hidden">
+                        {/* Branch Header */}
+                        <div 
+                          className="flex items-center justify-between p-3 bg-muted/30 cursor-pointer hover:bg-muted/50"
+                          onClick={() => toggleBranchExpanded(branchId)}
+                        >
+                          <div className="flex items-center gap-3">
+                            <Checkbox 
+                              checked={allBranchSelected}
+                              className={someBranchSelected && !allBranchSelected ? 'opacity-50' : ''}
+                              onCheckedChange={(e) => {
+                                e.stopPropagation();
+                                toggleBranchMembers(branchId, branchMembers);
+                              }}
+                              onClick={(e) => e.stopPropagation()}
+                            />
+                            <Building2 className="w-4 h-4 text-primary" />
+                            <span className="font-semibold">{getBranchName(branchId)}</span>
+                            <Badge variant="secondary" className="text-xs">
+                              {branchMembers.length} {language === 'ar' ? 'عضو' : 'members'}
+                            </Badge>
+                          </div>
+                          {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                        </div>
+                        
+                        {/* Branch Members */}
+                        {isExpanded && (
+                          <div className="divide-y">
+                            {branchMembers.map(member => (
+                              <div 
+                                key={member.id}
+                                className={`flex items-center justify-between p-3 cursor-pointer transition-colors ${
+                                  selectedMembers.includes(member.id)
+                                    ? 'bg-primary/5'
+                                    : 'hover:bg-muted/20'
+                                }`}
+                                onClick={() => toggleMember(member.id)}
+                                data-testid={`member-select-${member.id}`}
+                              >
+                                <div className="flex items-center gap-3">
+                                  <Checkbox 
+                                    checked={selectedMembers.includes(member.id)}
+                                    onCheckedChange={() => toggleMember(member.id)}
+                                  />
+                                  <div>
+                                    <p className="font-medium">
+                                      {language === 'ar' ? member.name_ar : member.name}
+                                    </p>
+                                    <p className="text-sm text-muted-foreground">
+                                      {language === 'ar' ? member.guardian_name_ar : member.guardian_name}
+                                    </p>
+                                  </div>
+                                </div>
+                                <div className="flex items-center gap-1 text-sm text-muted-foreground">
+                                  <Phone className="w-3 h-3" />
+                                  <span dir="ltr">{member.phone}</span>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })
+                ) : (
+                  // Simple list for non-admin
+                  filteredMembers.map(member => (
+                    <div 
+                      key={member.id}
+                      className={`flex items-center justify-between p-3 rounded-lg border cursor-pointer transition-colors ${
+                        selectedMembers.includes(member.id)
+                          ? 'border-primary bg-primary/5'
+                          : 'border-border hover:border-primary/50'
+                      }`}
+                      onClick={() => toggleMember(member.id)}
+                      data-testid={`member-select-${member.id}`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <Checkbox 
+                          checked={selectedMembers.includes(member.id)}
+                          onCheckedChange={() => toggleMember(member.id)}
+                        />
+                        <div>
+                          <p className="font-medium">
+                            {language === 'ar' ? member.name_ar : member.name}
+                          </p>
+                          <p className="text-sm text-muted-foreground">
+                            {language === 'ar' ? member.guardian_name_ar : member.guardian_name}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1 text-sm text-muted-foreground">
+                        <Phone className="w-3 h-3" />
+                        <span dir="ltr">{member.phone}</span>
                       </div>
                     </div>
-                    <div className="flex items-center gap-1 text-sm text-muted-foreground">
-                      <Phone className="w-3 h-3" />
-                      <span dir="ltr">{member.phone}</span>
-                    </div>
+                  ))
+                )}
+                
+                {filteredMembers.length === 0 && (
+                  <div className="text-center py-8 text-muted-foreground">
+                    {language === 'ar' ? 'لا يوجد أعضاء' : 'No members found'}
                   </div>
-                ))}
+                )}
               </div>
             </CardContent>
           </Card>
