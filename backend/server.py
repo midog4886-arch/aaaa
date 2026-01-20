@@ -1298,6 +1298,8 @@ async def create_discount(discount: DiscountCreate, current_user: dict = Depends
 @api_router.put("/discounts/{discount_id}")
 async def update_discount(discount_id: str, discount: DiscountCreate, current_user: dict = Depends(get_current_user)):
     """Update a discount"""
+    is_admin = current_user.get("is_admin", False)
+    
     update_data = {
         "code": discount.code.upper(),
         "name_ar": discount.name_ar,
@@ -1310,6 +1312,10 @@ async def update_discount(discount_id: str, discount: DiscountCreate, current_us
         "valid_until": discount.valid_until,
         "is_active": discount.is_active
     }
+    
+    # Admin can update branch_id
+    if is_admin and discount.branch_id is not None:
+        update_data["branch_id"] = discount.branch_id if discount.branch_id != "all" else None
     
     result = await db.discounts.find_one_and_update(
         {"id": discount_id},
