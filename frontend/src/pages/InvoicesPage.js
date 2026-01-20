@@ -45,6 +45,7 @@ export const InvoicesPage = () => {
   const [invoices, setInvoices] = useState([]);
   const [members, setMembers] = useState([]);
   const [activities, setActivities] = useState([]);
+  const [branches, setBranches] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState('all');
