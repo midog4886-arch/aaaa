@@ -21,7 +21,7 @@ export const authAPI = {
 
 // Activities API
 export const activitiesAPI = {
-  getAll: () => axios.get(`${API}/activities`),
+  getAll: (params = {}) => axios.get(`${API}/activities`, { params }),
   create: (data) => axios.post(`${API}/activities`, data),
   update: (id, data) => axios.put(`${API}/activities/${id}`, data),
   delete: (id) => axios.delete(`${API}/activities/${id}`),
@@ -29,7 +29,7 @@ export const activitiesAPI = {
 
 // Coaches API
 export const coachesAPI = {
-  getAll: () => axios.get(`${API}/coaches`),
+  getAll: (params = {}) => axios.get(`${API}/coaches`, { params }),
   create: (data) => axios.post(`${API}/coaches`, data),
   update: (id, data) => axios.put(`${API}/coaches/${id}`, data),
   delete: (id) => axios.delete(`${API}/coaches/${id}`),
