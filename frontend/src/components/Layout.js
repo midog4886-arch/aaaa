@@ -1,8 +1,10 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/AuthContext';
 import { Button } from './ui/button';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
+import { branchesAPI } from '../services/api';
 import { 
   LayoutDashboard, 
   Users, 
@@ -18,15 +20,32 @@ import {
   Languages,
   Trophy,
   Building2,
-  Package
+  Package,
+  GitBranch
 } from 'lucide-react';
 
 export const Sidebar = ({ isOpen, onClose }) => {
   const { t, language, toggleLanguage } = useLanguage();
-  const { logout, user } = useAuth();
+  const { logout, user, selectedBranchId, switchBranch } = useAuth();
   const navigate = useNavigate();
+  const [branches, setBranches] = useState([]);
 
   const isAdmin = user?.is_admin;
+
+  useEffect(() => {
+    if (isAdmin) {
+      loadBranches();
+    }
+  }, [isAdmin]);
+
+  const loadBranches = async () => {
+    try {
+      const res = await branchesAPI.getAll();
+      setBranches(res.data || []);
+    } catch (error) {
+      console.error('Failed to load branches:', error);
+    }
+  };
 
   const navItems = [
     { to: '/dashboard', icon: LayoutDashboard, label: 'dashboard' },
