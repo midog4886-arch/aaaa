@@ -2266,6 +2266,7 @@ class ProductInvoiceCreate(BaseModel):
     payment_method: str = "cash"
     items: List[ProductInvoiceItem]
     status: str = "draft"  # draft or paid
+    branch_id: Optional[str] = None  # Admin can specify branch
 
 class ProductInvoice(BaseModel):
     id: str
