@@ -453,16 +453,72 @@ export const StorePage = () => {
   };
 
   const handleSaveInvoicePdf = async () => {
-    if (!invoiceRef.current) return;
+    if (!invoiceRef.current || !currentInvoice) return;
+    const branchName = getBranchName(currentInvoice.branch_id);
     const opt = {
       margin: 5,
-      filename: `${customerName}_${currentInvoice?.invoice_number}.pdf`,
+      filename: `فاتورة_${currentInvoice?.invoice_number}_${customerName || 'عميل'}.pdf`,
       image: { type: 'jpeg', quality: 0.98 },
       html2canvas: { scale: 2 },
       jsPDF: { unit: 'mm', format: [80, 200], orientation: 'portrait' }
     };
     await html2pdf().from(invoiceRef.current).set(opt).save();
-    toast.success(language === 'ar' ? 'تم حفظ الفاتورة' : 'Invoice saved');
+    toast.success(language === 'ar' ? 'تم حفظ الفاتورة كـ PDF' : 'Invoice saved as PDF');
+    
+    // Open WhatsApp with message
+    const phone = currentInvoice.customer_phone?.replace(/^0/, '966') || '';
+    if (phone) {
+      const message = `السلام عليكم،
+
+مرفق فاتورتكم رقم #${currentInvoice.invoice_number}
+المبلغ الإجمالي: ${currentInvoice.total} ر.س
+الفرع: ${branchName}
+
+يرجى إرفاق ملف PDF المحفوظ في هذه المحادثة.
+
+شكراً لكم،
+شركة اداء الابطال العالمية للرياضة`;
+      
+      setTimeout(() => {
+        window.open(`https://wa.me/${phone}?text=${encodeURIComponent(message)}`, '_blank');
+      }, 500);
+    }
+  };
+  
+  // Share product invoice to WhatsApp (text only)
+  const handleShareProductWhatsApp = () => {
+    if (!currentInvoice) return;
+    
+    const branchName = getBranchName(currentInvoice.branch_id);
+    const phone = currentInvoice.customer_phone?.replace(/^0/, '966') || '';
+    
+    const items = currentInvoice.items?.map(item => 
+      `• ${item.name} (${item.quantity}×): ${item.total} ر.س`
+    ).join('\n') || '';
+    
+    const message = `السلام عليكم،
+
+📄 *فاتورة منتجات رقم #${currentInvoice.invoice_number}*
+
+${items}
+
+💰 المجموع الفرعي: ${currentInvoice.subtotal} ر.س
+📊 ضريبة القيمة المضافة (${currentInvoice.vat_rate || 15}%): ${currentInvoice.vat_amount} ر.س
+✅ *الإجمالي: ${currentInvoice.total} ر.س*
+
+🏢 الفرع: ${branchName}
+📅 التاريخ: ${new Date(currentInvoice.created_at).toLocaleDateString('ar-SA')}
+
+شكراً لكم،
+شركة اداء الابطال العالمية للرياضة`;
+
+    if (phone) {
+      window.open(`https://wa.me/${phone}?text=${encodeURIComponent(message)}`, '_blank');
+    } else {
+      navigator.clipboard.writeText(message);
+      toast.success(language === 'ar' ? 'تم نسخ الرسالة!' : 'Message copied!');
+      window.open('https://wa.me/', '_blank');
+    }
   };
 
   // Generate ZATCA-compliant QR Code (TLV Base64 format)
