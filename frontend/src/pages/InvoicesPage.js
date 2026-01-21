@@ -837,9 +837,9 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
               {itemType === 'product' && (
                 <div className="space-y-2">
                   <Label>{language === 'ar' ? 'إضافة منتج من المتجر' : 'Add product from store'}</Label>
-                  <Select onValueChange={(id) => addProductToInvoice(id, 1)}>
+                  <Select value="" onValueChange={(id) => addProductToInvoice(id, 1)}>
                     <SelectTrigger data-testid="product-selector">
-                      <SelectValue placeholder={language === 'ar' ? 'اختر منتج' : 'Select product'} />
+                      <SelectValue placeholder={language === 'ar' ? '+ اختر منتج لإضافته' : '+ Select product to add'} />
                     </SelectTrigger>
                     <SelectContent>
                       {products.filter(p => p.quantity > 0).map(p => (
@@ -859,6 +859,13 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
                       )}
                     </SelectContent>
                   </Select>
+                  {invoiceItems.filter(item => item.is_product).length > 0 && (
+                    <p className="text-xs text-muted-foreground">
+                      {language === 'ar' 
+                        ? `✓ تم إضافة ${invoiceItems.filter(item => item.is_product).length} منتج - يمكنك إضافة المزيد`
+                        : `✓ ${invoiceItems.filter(item => item.is_product).length} products added - you can add more`}
+                    </p>
+                  )}
                 </div>
               )}
 
