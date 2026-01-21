@@ -405,7 +405,8 @@ export const InvoicesPage = () => {
       const element = printRef.current;
       const invoiceNum = selectedInvoice.invoice_number || selectedInvoice.id.slice(0,8);
       const customerName = selectedInvoice.customer_name_ar || selectedInvoice.member_name || 'invoice';
-      const filename = `${customerName}_${invoiceNum}.pdf`;
+      const branchName = getBranchName(selectedInvoice.branch_id);
+      const filename = `فاتورة_${invoiceNum}_${customerName}.pdf`;
       
       const opt = {
         margin: 10,
@@ -424,18 +425,72 @@ export const InvoicesPage = () => {
       link.download = opt.filename;
       link.click();
       
-      toast.success(language === 'ar' ? 'تم حفظ الفاتورة كـ PDF' : 'Invoice saved as PDF');
+      toast.success(language === 'ar' ? 'تم حفظ الفاتورة كـ PDF! يمكنك إرفاقها في الواتساب' : 'Invoice saved as PDF! You can attach it in WhatsApp');
       
       // Open WhatsApp with message
       const phone = selectedInvoice.customer_phone?.replace(/^0/, '966') || '';
       if (phone) {
-        const message = `مرحباً،\n\nمرفق فاتورتكم رقم #${invoiceNum} بمبلغ ${selectedInvoice.total} ر.س\n\nشكراً لكم،\nشركة اداء الابطال العالمية للرياضة`;
-        window.open(`https://wa.me/${phone}?text=${encodeURIComponent(message)}`, '_blank');
+        const message = `السلام عليكم،
+
+مرفق فاتورتكم رقم #${invoiceNum}
+المبلغ الإجمالي: ${selectedInvoice.total} ر.س
+الفرع: ${branchName}
+
+يرجى إرفاق ملف PDF المحفوظ في هذه المحادثة.
+
+شكراً لكم،
+شركة اداء الابطال العالمية للرياضة
+📞 ${branchName}`;
+        
+        // Small delay to ensure PDF download starts first
+        setTimeout(() => {
+          window.open(`https://wa.me/${phone}?text=${encodeURIComponent(message)}`, '_blank');
+        }, 500);
+      } else {
+        toast.info(language === 'ar' ? 'لا يوجد رقم جوال للعميل' : 'No phone number for customer');
       }
     } catch (error) {
       toast.error(language === 'ar' ? 'خطأ في حفظ PDF' : 'Failed to save PDF');
     } finally {
       setSavingPdf(false);
+    }
+  };
+  
+  // Share to WhatsApp directly (without PDF)
+  const handleShareWhatsApp = () => {
+    if (!selectedInvoice) return;
+    
+    const invoiceNum = selectedInvoice.invoice_number || selectedInvoice.id.slice(0,8);
+    const branchName = getBranchName(selectedInvoice.branch_id);
+    const phone = selectedInvoice.customer_phone?.replace(/^0/, '966') || '';
+    
+    const items = selectedInvoice.items?.map(item => 
+      `• ${item.activity_name}: ${item.fee} ر.س`
+    ).join('\n') || '';
+    
+    const message = `السلام عليكم،
+
+📄 *فاتورة رقم #${invoiceNum}*
+
+${items}
+
+💰 المجموع الفرعي: ${selectedInvoice.subtotal} ر.س
+${selectedInvoice.discount > 0 ? `🎁 الخصم: ${selectedInvoice.discount} ر.س\n` : ''}📊 ضريبة القيمة المضافة (15%): ${selectedInvoice.vat_amount} ر.س
+✅ *الإجمالي: ${selectedInvoice.total} ر.س*
+
+🏢 الفرع: ${branchName}
+📅 التاريخ: ${new Date(selectedInvoice.created_at).toLocaleDateString('ar-SA')}
+
+شكراً لكم،
+شركة اداء الابطال العالمية للرياضة`;
+
+    if (phone) {
+      window.open(`https://wa.me/${phone}?text=${encodeURIComponent(message)}`, '_blank');
+    } else {
+      // Copy message to clipboard and open WhatsApp
+      navigator.clipboard.writeText(message);
+      toast.success(language === 'ar' ? 'تم نسخ الرسالة! يمكنك لصقها في الواتساب' : 'Message copied! Paste it in WhatsApp');
+      window.open('https://wa.me/', '_blank');
     }
   };
 
