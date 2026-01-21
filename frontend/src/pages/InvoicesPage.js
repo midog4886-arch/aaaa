@@ -1155,9 +1155,13 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
             )}
             <DialogFooter className="flex-wrap gap-2">
               <Button variant="outline" onClick={() => setIsViewDialogOpen(false)}>{t('close')}</Button>
+              <Button variant="outline" onClick={handleShareWhatsApp} className="bg-green-50 border-green-400 text-green-700 hover:bg-green-100">
+                <MessageSquare className="w-4 h-4 me-2" />
+                {language === 'ar' ? 'مشاركة واتساب' : 'Share WhatsApp'}
+              </Button>
               <Button variant="outline" onClick={handleSaveAsPdf} disabled={savingPdf} className="bg-red-50 border-red-400 text-red-700 hover:bg-red-100">
                 {savingPdf ? <Loader2 className="w-4 h-4 me-2 animate-spin" /> : <FileText className="w-4 h-4 me-2" />}
-                {language === 'ar' ? 'حفظ PDF ومشاركة' : 'Save PDF & Share'}
+                {language === 'ar' ? 'PDF + واتساب' : 'PDF + WhatsApp'}
               </Button>
               <Button variant="outline" onClick={handlePrint}><Printer className="w-4 h-4 me-2" />{t('print')}</Button>
               {selectedInvoice?.status === 'pending' && <Button variant="outline" className="text-blue-600 border-blue-300" onClick={() => openEditDialog(selectedInvoice)}><Edit className="w-4 h-4 me-2" />{language === 'ar' ? 'تعديل' : 'Edit'}</Button>}
