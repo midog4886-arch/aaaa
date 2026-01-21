@@ -17,7 +17,7 @@ import html2pdf from 'html2pdf.js';
 import { 
   Package, Plus, Search, Edit, Trash2, AlertTriangle, 
   ShoppingBag, TrendingUp, TrendingDown, Loader2, BarChart3, X, Percent, Tag,
-  Receipt, Printer, FileText, CheckCircle, Eye, Building2
+  Receipt, Printer, FileText, CheckCircle, Eye, Building2, MessageSquare
 } from 'lucide-react';
 
 const CATEGORIES = {
