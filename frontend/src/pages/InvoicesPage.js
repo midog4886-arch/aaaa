@@ -805,18 +805,31 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
               {itemType === 'activity' && (
                 <div className="space-y-2">
                   <Label>{language === 'ar' ? 'إضافة نشاط' : 'Add activity'}</Label>
-                  <Select onValueChange={addActivityToInvoice}>
+                  <Select value="" onValueChange={addActivityToInvoice}>
                     <SelectTrigger data-testid="activity-selector">
-                      <SelectValue placeholder={language === 'ar' ? 'اختر نشاط' : 'Select activity'} />
+                      <SelectValue placeholder={language === 'ar' ? '+ اختر نشاط لإضافته' : '+ Select activity to add'} />
                     </SelectTrigger>
                     <SelectContent>
                       {activities.map(a => (
-                        <SelectItem key={a.id} value={a.id}>
-                          {language === 'ar' ? a.name_ar : a.name} - {a.monthly_fee} {t('sar')}
+                        <SelectItem key={a.id} value={a.id} disabled={invoiceItems.some(item => item.activity_id === a.id)}>
+                          <div className="flex items-center justify-between w-full gap-4">
+                            <span>{language === 'ar' ? a.name_ar : a.name}</span>
+                            <span className="font-bold text-orange-600">{a.monthly_fee} {t('sar')}</span>
+                            {invoiceItems.some(item => item.activity_id === a.id) && (
+                              <span className="text-xs text-green-600">✓ مُضاف</span>
+                            )}
+                          </div>
                         </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
+                  {invoiceItems.filter(item => !item.is_product).length > 0 && (
+                    <p className="text-xs text-muted-foreground">
+                      {language === 'ar' 
+                        ? `✓ تم إضافة ${invoiceItems.filter(item => !item.is_product).length} نشاط - يمكنك إضافة المزيد`
+                        : `✓ ${invoiceItems.filter(item => !item.is_product).length} activities added - you can add more`}
+                    </p>
+                  )}
                 </div>
               )}
 
