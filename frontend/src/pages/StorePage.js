@@ -1323,11 +1323,15 @@ ${items}
               </div>
             )}
 
-            <DialogFooter className="gap-2">
+            <DialogFooter className="gap-2 flex-wrap">
               <Button variant="outline" onClick={() => setIsInvoiceViewOpen(false)}>{language === 'ar' ? 'إغلاق' : 'Close'}</Button>
-              <Button variant="outline" onClick={handleSaveInvoicePdf}>
+              <Button variant="outline" onClick={handleShareProductWhatsApp} className="bg-green-50 border-green-400 text-green-700 hover:bg-green-100">
+                <MessageSquare className="w-4 h-4 me-2" />
+                {language === 'ar' ? 'مشاركة واتساب' : 'Share WhatsApp'}
+              </Button>
+              <Button variant="outline" onClick={handleSaveInvoicePdf} className="bg-red-50 border-red-400 text-red-700 hover:bg-red-100">
                 <FileText className="w-4 h-4 me-2" />
-                {language === 'ar' ? 'حفظ PDF' : 'Save PDF'}
+                {language === 'ar' ? 'PDF + واتساب' : 'PDF + WhatsApp'}
               </Button>
               <Button onClick={handlePrintInvoice}>
                 <Printer className="w-4 h-4 me-2" />
