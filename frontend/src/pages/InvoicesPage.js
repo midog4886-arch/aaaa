@@ -814,23 +814,20 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
                     </SelectTrigger>
                     <SelectContent>
                       {activities.map(a => (
-                        <SelectItem key={a.id} value={a.id} disabled={invoiceItems.some(item => item.activity_id === a.id)}>
+                        <SelectItem key={a.id} value={a.id}>
                           <div className="flex items-center justify-between w-full gap-4">
                             <span>{language === 'ar' ? a.name_ar : a.name}</span>
                             <span className="font-bold text-orange-600">{a.monthly_fee} {t('sar')}</span>
-                            {invoiceItems.some(item => item.activity_id === a.id) && (
-                              <span className="text-xs text-green-600">✓ مُضاف</span>
-                            )}
                           </div>
                         </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
                   {invoiceItems.filter(item => !item.is_product).length > 0 && (
-                    <p className="text-xs text-muted-foreground">
+                    <p className="text-xs text-green-600">
                       {language === 'ar' 
-                        ? `✓ تم إضافة ${invoiceItems.filter(item => !item.is_product).length} نشاط - يمكنك إضافة المزيد`
-                        : `✓ ${invoiceItems.filter(item => !item.is_product).length} activities added - you can add more`}
+                        ? `✓ تم إضافة ${invoiceItems.filter(item => !item.is_product).length} نشاط - يمكنك إضافة المزيد أو تكرار نفس النشاط`
+                        : `✓ ${invoiceItems.filter(item => !item.is_product).length} activities added - you can add more or repeat same activity`}
                     </p>
                   )}
                 </div>
