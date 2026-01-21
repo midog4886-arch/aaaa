@@ -203,14 +203,14 @@ export const InvoicesPage = () => {
   const addActivityToInvoice = (activityId) => {
     const activity = activities.find(a => a.id === activityId);
     if (!activity) return;
-    if (invoiceItems.find(item => item.activity_id === activityId)) {
-      toast.error(language === 'ar' ? 'النشاط مضاف مسبقاً' : 'Activity already added');
-      return;
-    }
+    
     const today = new Date().toISOString().split('T')[0];
     const nextMonth = new Date();
     nextMonth.setMonth(nextMonth.getMonth() + 1);
     const endDate = nextMonth.toISOString().split('T')[0];
+    
+    // Generate unique key for duplicate activities
+    const existingCount = invoiceItems.filter(item => item.activity_id === activityId).length;
     
     setInvoiceItems([...invoiceItems, {
       activity_id: activity.id,
@@ -219,8 +219,11 @@ export const InvoicesPage = () => {
       period: `${today} - ${endDate}`,
       start_date: today,
       end_date: endDate,
-      schedule: '' // جدول المواعيد
+      schedule: '', // جدول المواعيد
+      instance: existingCount + 1 // Track which instance this is
     }]);
+    
+    toast.success(language === 'ar' ? `تم إضافة ${activity.name_ar}` : `Added ${activity.name}`);
   };
 
   const updateItemSchedule = (index, schedule) => {
