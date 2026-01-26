@@ -705,7 +705,7 @@ async def get_members(
     if status:
         query["activities.status"] = status
     
-    members = await db.members.find(query, {"_id": 0}).to_list(1000)
+    members = await db.members.find(query, {"_id": 0}).sort("created_at", -1).to_list(1000)
     return members
 
 @api_router.get("/members/{member_id}", response_model=Member)
