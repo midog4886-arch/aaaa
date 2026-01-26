@@ -229,6 +229,24 @@ export const MembersPage = () => {
     return <Badge className={className}>{label}</Badge>;
   };
 
+  // Get overall member status based on activities
+  const getMemberOverallStatus = (member) => {
+    const activities = member.activities || [];
+    if (activities.length === 0) {
+      return { status: 'no_activity', label: language === 'ar' ? 'بدون نشاط' : 'No Activity', class: 'bg-gray-100 text-gray-600 border-gray-300' };
+    }
+    const hasActive = activities.some(a => a.status === 'active');
+    const allExpired = activities.every(a => a.status === 'expired');
+    
+    if (hasActive) {
+      return { status: 'active', label: language === 'ar' ? 'نشط' : 'Active', class: 'bg-green-100 text-green-700 border-green-300' };
+    } else if (allExpired) {
+      return { status: 'expired', label: language === 'ar' ? 'منتهي' : 'Expired', class: 'bg-red-100 text-red-700 border-red-300' };
+    } else {
+      return { status: 'inactive', label: language === 'ar' ? 'غير نشط' : 'Inactive', class: 'bg-gray-100 text-gray-600 border-gray-300' };
+    }
+  };
+
   const getActivityColor = (activityName) => {
     const colorMap = {
       'السباحة': 'activity-swimming',
