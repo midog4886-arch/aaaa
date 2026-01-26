@@ -1085,7 +1085,6 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
             <div class="info-row"><span class="info-label">الاسم:</span><span>${regFormData.customer_name || '_______________'}</span></div>
             <div class="info-row"><span class="info-label">رقم الجوال:</span><span dir="ltr">${regFormData.customer_phone || '_______________'}</span></div>
             <div class="info-row"><span class="info-label">التاريخ:</span><span>${new Date().toLocaleDateString('ar-SA')}</span></div>
-            ${regFormData.customer_address ? `<div class="info-row"><span class="info-label">العنوان:</span><span>${regFormData.customer_address}</span></div>` : ''}
           </div>
         </div>
         <div class="info-section">
