@@ -2098,13 +2098,6 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
                   ))}
                 </div>
               )}
-                          <X className="w-4 h-4 text-destructive" />
-                        </Button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
 
               {/* Payment Method */}
               <div className="space-y-2">
