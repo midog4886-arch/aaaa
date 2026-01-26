@@ -77,6 +77,13 @@ export const InvoicesPage = () => {
     customer_name: '', customer_phone: '', customer_address: ''
   });
   const [regFormItems, setRegFormItems] = useState([]);
+  const [regFormDiscount, setRegFormDiscount] = useState(0);
+  const [regFormNotes, setRegFormNotes] = useState('');
+  const [regFormPaymentMethod, setRegFormPaymentMethod] = useState('cash');
+  const [regFormCouponCode, setRegFormCouponCode] = useState('');
+  const [regFormAppliedCoupon, setRegFormAppliedCoupon] = useState(null);
+  const [regFormCouponDiscount, setRegFormCouponDiscount] = useState(0);
+  const [regFormItemType, setRegFormItemType] = useState('activity');
   
   // Products & Discounts
   const [products, setProducts] = useState([]);
