@@ -47,6 +47,7 @@ export const InvoicesPage = () => {
   const [members, setMembers] = useState([]);
   const [activities, setActivities] = useState([]);
   const [branches, setBranches] = useState([]);
+  const [registrationForms, setRegistrationForms] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState('all');
@@ -54,6 +55,7 @@ export const InvoicesPage = () => {
   const [filterStartDate, setFilterStartDate] = useState('');
   const [filterEndDate, setFilterEndDate] = useState('');
   const [showAdvancedSearch, setShowAdvancedSearch] = useState(false);
+  const [activeTab, setActiveTab] = useState('invoices');
   
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [isViewDialogOpen, setIsViewDialogOpen] = useState(false);
