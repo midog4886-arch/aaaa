@@ -74,7 +74,7 @@ export const InvoicesPage = () => {
   
   // Registration Form state
   const [regFormData, setRegFormData] = useState({
-    customer_name: '', customer_phone: '', customer_address: ''
+    customer_name: '', customer_phone: ''
   });
   const [regFormItems, setRegFormItems] = useState([]);
   const [regFormDiscount, setRegFormDiscount] = useState(0);
