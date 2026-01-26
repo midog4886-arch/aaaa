@@ -144,7 +144,7 @@ export const InvoicesPage = () => {
   };
 
   const handleMemberSelect = (memberId) => {
-    if (memberId === 'new') { setIsAddMemberDialogOpen(true); return; }
+    if (memberId === 'new') { setAddMemberSource('invoice'); setIsAddMemberDialogOpen(true); return; }
     if (memberId === 'none') { setSelectedMember(null); return; }
     const member = members.find(m => m.id === memberId);
     setSelectedMember(member);
