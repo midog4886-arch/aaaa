@@ -1052,6 +1052,9 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
               <Button variant="outline" onClick={handleExportAllData} data-testid="export-all-btn">
                 <FileSpreadsheet className="w-4 h-4 me-2" />{language === 'ar' ? 'تصدير Excel' : 'Export All'}
               </Button>
+              <Button variant="outline" onClick={() => setIsRegistrationFormDialogOpen(true)} className="bg-gray-800 text-white hover:bg-gray-900" data-testid="create-registration-form-btn">
+                <FileText className="w-4 h-4 me-2" />{language === 'ar' ? 'استمارة تسجيل' : 'Registration Form'}
+              </Button>
               <Button onClick={() => setIsCreateDialogOpen(true)} data-testid="create-invoice-btn">
                 <Plus className="w-4 h-4 me-2" />{t('create_invoice')}
               </Button>
