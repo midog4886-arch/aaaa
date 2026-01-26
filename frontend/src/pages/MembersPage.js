@@ -422,7 +422,9 @@ export const MembersPage = () => {
                         <td>{member.age}</td>
                         <td>
                           <div className="flex flex-wrap gap-1">
-                            {member.activities?.map((activity, idx) => (
+                            {member.activities?.map((activity, idx) => {
+                              const actStatus = getActivityStatusFromDate(activity);
+                              return (
                               <div key={idx} className="flex items-center gap-1">
                                 <Badge 
                                   variant="outline"
@@ -431,15 +433,15 @@ export const MembersPage = () => {
                                   {activity.activity_name}
                                 </Badge>
                                 <span className={`text-xs px-1 rounded ${
-                                  activity.status === 'active' ? 'bg-green-100 text-green-700' :
-                                  activity.status === 'expired' ? 'bg-red-100 text-red-700' :
+                                  actStatus === 'active' ? 'bg-green-100 text-green-700' :
+                                  actStatus === 'expired' ? 'bg-red-100 text-red-700' :
                                   'bg-gray-100 text-gray-700'
                                 }`}>
-                                  {activity.status === 'active' ? '✓' :
-                                   activity.status === 'expired' ? '✗' : '-'}
+                                  {actStatus === 'active' ? '✓' :
+                                   actStatus === 'expired' ? '✗' : '-'}
                                 </span>
                               </div>
-                            ))}
+                            )})}
                             {(!member.activities || member.activities.length === 0) && (
                               <span className="text-muted-foreground text-sm">-</span>
                             )}
