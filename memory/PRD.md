@@ -499,3 +499,29 @@
 - [ ] Split monolithic server.py into routes/models/services
 - [ ] Refactor InvoicesPage.js (very large file)
 - [ ] Refactor StorePage.js (very large file)
+
+---
+
+## Update 12 - Members Sorting & Invoice Member Registration (January 26, 2026)
+
+### Features Implemented:
+
+#### 1. ترتيب الأعضاء حسب الأحدث ✅
+- **الوصف**: قائمة الأعضاء الآن مرتبة تنازلياً حسب تاريخ الإضافة
+- **الملف**: `/app/backend/server.py` - تمت إضافة `.sort("created_at", -1)` لـ endpoint الأعضاء
+- **النتيجة**: الأعضاء الجدد يظهرون في أعلى القائمة
+
+#### 2. تسجيل العضو مع النشاط من الفاتورة ✅
+- **الوصف**: عند إنشاء عضو جديد من صفحة الفاتورة، يتم تسجيله مع الأنشطة المحددة في الفاتورة
+- **الملف**: `/app/frontend/src/pages/InvoicesPage.js` - تم تعديل دالة `handleCreateMember`
+- **السلوك**: 
+  - الأنشطة المضافة للفاتورة تُنقل تلقائياً للعضو الجديد
+  - حالة النشاط تُعيَّن كـ "active"
+  - تواريخ البداية والنهاية تُنسخ من بيانات الفاتورة
+
+### Files Modified:
+- `/app/backend/server.py` - Line 708: Added sorting by `created_at` descending
+- `/app/frontend/src/pages/InvoicesPage.js` - Lines 311-345: Updated `handleCreateMember` function
+
+### API Changes:
+- `GET /api/members` - Now returns members sorted by `created_at` descending (newest first)
