@@ -1006,7 +1006,7 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
   };
 
   // Print new Registration Form (standalone)
-  const handlePrintNewRegistrationForm = () => {
+  const handlePrintNewRegistrationForm = async () => {
     const branchName = branches.find(b => b.id === selectedBranchId)?.name_ar || '';
     
     // Calculate totals
