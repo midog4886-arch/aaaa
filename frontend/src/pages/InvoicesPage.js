@@ -315,7 +315,24 @@ export const InvoicesPage = () => {
     }
     setSaving(true);
     try {
-      const response = await membersAPI.create({ ...newMemberData, age: parseInt(newMemberData.age) || 0, activities: [] });
+      // Build activities from invoice items (only activity items, not products)
+      const memberActivities = invoiceItems
+        .filter(item => !item.is_product && item.activity_id)
+        .map(item => ({
+          activity_id: item.activity_id,
+          activity_name: item.activity_name,
+          start_date: item.start_date || new Date().toISOString().split('T')[0],
+          end_date: item.end_date || new Date(Date.now() + 30*24*60*60*1000).toISOString().split('T')[0],
+          fee: item.fee || 0,
+          status: 'active',
+          coach_id: ''
+        }));
+      
+      const response = await membersAPI.create({ 
+        ...newMemberData, 
+        age: parseInt(newMemberData.age) || 0, 
+        activities: memberActivities 
+      });
       const membersRes = await membersAPI.getAll();
       setMembers(membersRes.data);
       setSelectedMember(response.data);
@@ -323,7 +340,7 @@ export const InvoicesPage = () => {
       setCustomerPhone(response.data.phone);
       setIsAddMemberDialogOpen(false);
       setNewMemberData({ name_ar: '', name: '', age: '', guardian_name_ar: '', guardian_name: '', phone: '' });
-      toast.success(t('success'));
+      toast.success(language === 'ar' ? 'تم إضافة العضو مع الأنشطة' : 'Member added with activities');
     } catch (error) {
       toast.error(t('error'));
     } finally {
