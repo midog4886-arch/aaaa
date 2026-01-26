@@ -956,6 +956,76 @@ async def pay_invoice(invoice_id: str, current_user: dict = Depends(get_current_
             {"$inc": {"used_count": 1}}
         )
     
+    # Update member activities from invoice items
+    member_id = invoice.get("member_id")
+    if member_id:
+        member = await db.members.find_one({"id": member_id})
+        if member:
+            today = datetime.now(timezone.utc).strftime('%Y-%m-%d')
+            existing_activities = member.get("activities", [])
+            
+            for item in invoice.get("items", []):
+                # Skip product items
+                if item.get("is_product"):
+                    continue
+                
+                # Parse dates from period or use item dates
+                start_date = item.get("start_date", today)
+                end_date = item.get("end_date", "")
+                
+                # If period exists, try to parse it
+                if item.get("period") and " - " in item.get("period", ""):
+                    period_parts = item["period"].split(" - ")
+                    if len(period_parts) == 2:
+                        start_date = period_parts[0].strip()
+                        end_date = period_parts[1].strip()
+                
+                # Determine status based on end_date
+                status = "active"
+                if end_date:
+                    try:
+                        end_date_obj = datetime.strptime(end_date, '%Y-%m-%d')
+                        today_obj = datetime.strptime(today, '%Y-%m-%d')
+                        if end_date_obj < today_obj:
+                            status = "expired"
+                    except:
+                        pass
+                
+                # Check if activity already exists for this member
+                activity_exists = False
+                for idx, existing_act in enumerate(existing_activities):
+                    if existing_act.get("activity_id") == item.get("activity_id"):
+                        # Update existing activity with new dates
+                        existing_activities[idx] = {
+                            "activity_id": item.get("activity_id"),
+                            "activity_name": item.get("activity_name", ""),
+                            "start_date": start_date,
+                            "end_date": end_date,
+                            "fee": item.get("fee", 0),
+                            "status": status,
+                            "coach_id": existing_act.get("coach_id", "")
+                        }
+                        activity_exists = True
+                        break
+                
+                if not activity_exists:
+                    # Add new activity
+                    existing_activities.append({
+                        "activity_id": item.get("activity_id"),
+                        "activity_name": item.get("activity_name", ""),
+                        "start_date": start_date,
+                        "end_date": end_date,
+                        "fee": item.get("fee", 0),
+                        "status": status,
+                        "coach_id": ""
+                    })
+            
+            # Update member with new activities
+            await db.members.update_one(
+                {"id": member_id},
+                {"$set": {"activities": existing_activities}}
+            )
+    
     result = await db.invoices.find_one_and_update(
         {"id": invoice_id},
         {"$set": {"status": "paid", "paid_at": datetime.now(timezone.utc).isoformat()}},
