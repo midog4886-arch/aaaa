@@ -142,6 +142,10 @@ export const MessagesPage = () => {
   };
 
   const filteredMembers = members.filter(member => {
+    // Filter only members with at least one active activity
+    const hasActiveActivity = member.activities?.some(a => a.status === 'active');
+    if (!hasActiveActivity) return false;
+    
     if (filterActivity === 'all' && filterBranch === 'all') return true;
     const activityMatch = filterActivity === 'all' || member.activities?.some(a => a.activity_id === filterActivity);
     const branchMatch = filterBranch === 'all' || member.branch_id === filterBranch;
