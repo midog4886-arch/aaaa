@@ -1861,15 +1861,43 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
               </DialogTitle>
             </DialogHeader>
             <div className="space-y-4">
-              {/* Customer Info */}
+              {/* Customer Info with Member Selection */}
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label>{language === 'ar' ? 'اسم المشترك *' : 'Customer Name *'}</Label>
-                  <Input 
-                    value={regFormData.customer_name} 
-                    onChange={(e) => setRegFormData({...regFormData, customer_name: e.target.value})}
-                    placeholder={language === 'ar' ? 'أدخل الاسم' : 'Enter name'}
-                  />
+                  <div className="flex gap-2">
+                    <Select onValueChange={(val) => {
+                      if (val === 'new') {
+                        setIsAddMemberDialogOpen(true);
+                      } else {
+                        const member = members.find(m => m.id === val);
+                        if (member) {
+                          setRegFormData({
+                            ...regFormData,
+                            customer_name: member.name_ar || member.name,
+                            customer_phone: member.phone || ''
+                          });
+                        }
+                      }
+                    }}>
+                      <SelectTrigger className="flex-1">
+                        <SelectValue placeholder={regFormData.customer_name || (language === 'ar' ? 'اختر عضو...' : 'Select member...')} />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="new" className="text-primary font-semibold">
+                          <span className="flex items-center gap-2">
+                            <Plus className="w-4 h-4" />
+                            {language === 'ar' ? '+ إضافة عضو جديد' : '+ Add New Member'}
+                          </span>
+                        </SelectItem>
+                        {members.map(m => (
+                          <SelectItem key={m.id} value={m.id}>
+                            {m.name_ar || m.name} - {m.phone}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
                 </div>
                 <div className="space-y-2">
                   <Label>{t('phone')} *</Label>
@@ -1881,13 +1909,6 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
                     placeholder="05xxxxxxxx"
                   />
                 </div>
-              </div>
-              <div className="space-y-2">
-                <Label>{language === 'ar' ? 'العنوان (اختياري)' : 'Address (optional)'}</Label>
-                <Input 
-                  value={regFormData.customer_address} 
-                  onChange={(e) => setRegFormData({...regFormData, customer_address: e.target.value})}
-                />
               </div>
 
               {/* Item Type Selection */}
