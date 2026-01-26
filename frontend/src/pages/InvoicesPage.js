@@ -58,6 +58,7 @@ export const InvoicesPage = () => {
   const [isViewDialogOpen, setIsViewDialogOpen] = useState(false);
   const [isAddMemberDialogOpen, setIsAddMemberDialogOpen] = useState(false);
   const [isRefundDialogOpen, setIsRefundDialogOpen] = useState(false);
+  const [isRegistrationFormDialogOpen, setIsRegistrationFormDialogOpen] = useState(false);
   const [selectedInvoice, setSelectedInvoice] = useState(null);
   const [selectedMember, setSelectedMember] = useState(null);
   const [invoiceItems, setInvoiceItems] = useState([]);
@@ -70,6 +71,12 @@ export const InvoicesPage = () => {
   const [savingPdf, setSavingPdf] = useState(false);
   const [isEditMode, setIsEditMode] = useState(false);
   const [editingInvoiceId, setEditingInvoiceId] = useState(null);
+  
+  // Registration Form state
+  const [regFormData, setRegFormData] = useState({
+    customer_name: '', customer_phone: '', customer_address: ''
+  });
+  const [regFormItems, setRegFormItems] = useState([]);
   
   // Products & Discounts
   const [products, setProducts] = useState([]);
