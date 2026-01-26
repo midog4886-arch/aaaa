@@ -2299,20 +2299,12 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
               {regFormItems.length > 0 && (
                 <div className="border rounded-lg p-3 bg-muted/30">
                   <div className="space-y-1">
-                    <div className="flex justify-between text-sm">
-                      <span>{language === 'ar' ? 'المجموع الفرعي:' : 'Subtotal:'}</span>
-                      <span>{regFormItems.reduce((sum, i) => sum + ((i.fee || 0) * (i.quantity || 1)), 0).toFixed(2)} {t('sar')}</span>
-                    </div>
                     {(regFormDiscount > 0 || regFormCouponDiscount > 0) && (
                       <div className="flex justify-between text-sm text-red-600">
                         <span>{language === 'ar' ? 'الخصم:' : 'Discount:'}</span>
                         <span>- {(regFormDiscount + regFormCouponDiscount).toFixed(2)} {t('sar')}</span>
                       </div>
                     )}
-                    <div className="flex justify-between text-sm text-green-600">
-                      <span>{language === 'ar' ? 'ضريبة القيمة المضافة (15%):' : 'VAT (15%):'}</span>
-                      <span>{((regFormItems.reduce((sum, i) => sum + ((i.fee || 0) * (i.quantity || 1)), 0) - regFormDiscount - regFormCouponDiscount) * 0.15).toFixed(2)} {t('sar')}</span>
-                    </div>
                     <div className="flex justify-between font-bold text-lg text-primary pt-2 border-t">
                       <span>{t('total')}:</span>
                       <span>{((regFormItems.reduce((sum, i) => sum + ((i.fee || 0) * (i.quantity || 1)), 0) - regFormDiscount - regFormCouponDiscount) * 1.15).toFixed(2)} {t('sar')}</span>
