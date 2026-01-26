@@ -1258,6 +1258,7 @@ async def convert_registration_form(form_id: str, current_user: dict = Depends(g
         "customer_name_ar": form["customer_name"],
         "customer_phone": form["customer_phone"],
         "customer_address": "",
+        "member_name": form["customer_name"],  # Use customer_name as member_name
         "items": form["items"],
         "subtotal": form["subtotal"],
         "discount": form["discount"],
