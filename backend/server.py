@@ -45,6 +45,17 @@ security = HTTPBearer()
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
+# Health check endpoint (required for Kubernetes deployment)
+@app.get("/health")
+async def health_check():
+    """Health check endpoint for Kubernetes liveness/readiness probes"""
+    return {"status": "healthy", "service": "champions-academy-api"}
+
+@app.get("/")
+async def root():
+    """Root endpoint"""
+    return {"message": "Champions Academy API", "status": "running"}
+
 # ============ MODELS ============
 
 class UserCreate(BaseModel):
