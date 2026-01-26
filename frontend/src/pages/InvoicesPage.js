@@ -1854,7 +1854,7 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
 
         {/* Registration Form Dialog */}
         <Dialog open={isRegistrationFormDialogOpen} onOpenChange={setIsRegistrationFormDialogOpen}>
-          <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
                 <FileText className="w-5 h-5" />
@@ -1891,63 +1891,187 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
                 />
               </div>
 
-              {/* Activities Selection */}
-              <div className="space-y-2">
-                <Label>{language === 'ar' ? 'إضافة نشاط' : 'Add Activity'}</Label>
-                <Select onValueChange={(val) => {
-                  const activity = activities.find(a => a.id === val);
-                  if (activity) addActivityToRegForm(activity);
-                }}>
-                  <SelectTrigger><SelectValue placeholder={language === 'ar' ? 'اختر نشاط...' : 'Select activity...'} /></SelectTrigger>
-                  <SelectContent>
-                    {activities.map(a => (
-                      <SelectItem key={a.id} value={a.id}>
-                        {language === 'ar' ? a.name_ar : a.name} - {a.fee} {t('sar')}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+              {/* Item Type Selection */}
+              <div className="flex gap-2">
+                <Button 
+                  variant={regFormItemType === 'activity' ? 'default' : 'outline'} 
+                  size="sm"
+                  onClick={() => setRegFormItemType('activity')}
+                >
+                  {language === 'ar' ? 'نشاط' : 'Activity'}
+                </Button>
+                <Button 
+                  variant={regFormItemType === 'product' ? 'default' : 'outline'} 
+                  size="sm"
+                  onClick={() => setRegFormItemType('product')}
+                >
+                  {language === 'ar' ? 'منتج' : 'Product'}
+                </Button>
               </div>
 
-              {/* Selected Activities */}
+              {/* Activities Selection */}
+              {regFormItemType === 'activity' && (
+                <div className="space-y-2">
+                  <Label>{language === 'ar' ? 'إضافة نشاط' : 'Add Activity'}</Label>
+                  <Select onValueChange={(val) => {
+                    const activity = activities.find(a => a.id === val);
+                    if (activity) addActivityToRegForm(activity);
+                  }}>
+                    <SelectTrigger><SelectValue placeholder={language === 'ar' ? 'اختر نشاط...' : 'Select activity...'} /></SelectTrigger>
+                    <SelectContent>
+                      {activities.map(a => (
+                        <SelectItem key={a.id} value={a.id}>
+                          {language === 'ar' ? a.name_ar : a.name} - {a.fee} {t('sar')}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+
+              {/* Products Selection */}
+              {regFormItemType === 'product' && (
+                <div className="space-y-2">
+                  <Label>{language === 'ar' ? 'إضافة منتج من المخزن' : 'Add Product'}</Label>
+                  <Select onValueChange={(val) => {
+                    const product = products.find(p => p.id === val);
+                    if (product) addProductToRegForm(product);
+                  }}>
+                    <SelectTrigger><SelectValue placeholder={language === 'ar' ? 'اختر منتج...' : 'Select product...'} /></SelectTrigger>
+                    <SelectContent>
+                      {products.filter(p => p.quantity > 0).map(p => (
+                        <SelectItem key={p.id} value={p.id}>
+                          {p.name} - {p.price} {t('sar')} ({language === 'ar' ? `متوفر: ${p.quantity}` : `Stock: ${p.quantity}`})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+
+              {/* Selected Items */}
               {regFormItems.length > 0 && (
                 <div className="border rounded-lg p-3 space-y-2">
-                  <Label>{language === 'ar' ? 'الأنشطة المختارة' : 'Selected Activities'}</Label>
+                  <Label>{language === 'ar' ? 'العناصر المختارة' : 'Selected Items'}</Label>
                   {regFormItems.map((item, idx) => (
                     <div key={idx} className="flex items-center justify-between bg-muted/50 p-2 rounded">
                       <div className="flex-1">
                         <span className="font-medium">{item.activity_name}</span>
+                        {item.is_product && <Badge variant="outline" className="ms-2 text-xs">{language === 'ar' ? 'منتج' : 'Product'}</Badge>}
                         <span className="text-sm text-muted-foreground ms-2">({item.fee} {t('sar')})</span>
                       </div>
                       <div className="flex items-center gap-2">
-                        <Input 
-                          className="w-32 text-sm"
-                          placeholder={language === 'ar' ? 'المواعيد' : 'Schedule'}
-                          value={item.schedule}
-                          onChange={(e) => {
-                            const updated = [...regFormItems];
-                            updated[idx].schedule = e.target.value;
-                            setRegFormItems(updated);
-                          }}
-                        />
+                        {item.is_product ? (
+                          <Input 
+                            className="w-20 text-sm"
+                            type="number"
+                            min="1"
+                            value={item.quantity}
+                            onChange={(e) => {
+                              const updated = [...regFormItems];
+                              updated[idx].quantity = parseInt(e.target.value) || 1;
+                              setRegFormItems(updated);
+                            }}
+                          />
+                        ) : (
+                          <Input 
+                            className="w-32 text-sm"
+                            placeholder={language === 'ar' ? 'المواعيد' : 'Schedule'}
+                            value={item.schedule}
+                            onChange={(e) => {
+                              const updated = [...regFormItems];
+                              updated[idx].schedule = e.target.value;
+                              setRegFormItems(updated);
+                            }}
+                          />
+                        )}
                         <Button variant="ghost" size="sm" onClick={() => removeActivityFromRegForm(idx)}>
                           <X className="w-4 h-4 text-destructive" />
                         </Button>
                       </div>
                     </div>
                   ))}
-                  <div className="pt-2 border-t mt-2">
+                </div>
+              )}
+
+              {/* Payment Method */}
+              <div className="space-y-2">
+                <Label>{language === 'ar' ? 'طريقة الدفع' : 'Payment Method'}</Label>
+                <Select value={regFormPaymentMethod} onValueChange={setRegFormPaymentMethod}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="cash">{language === 'ar' ? 'نقداً' : 'Cash'}</SelectItem>
+                    <SelectItem value="card">{language === 'ar' ? 'بطاقة' : 'Card'}</SelectItem>
+                    <SelectItem value="transfer">{language === 'ar' ? 'تحويل بنكي' : 'Bank Transfer'}</SelectItem>
+                    <SelectItem value="tabby">{language === 'ar' ? 'تابي' : 'Tabby'}</SelectItem>
+                    <SelectItem value="tamara">{language === 'ar' ? 'تمارا' : 'Tamara'}</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Coupon Code */}
+              <div className="space-y-2">
+                <Label>{language === 'ar' ? 'كود الخصم' : 'Discount Code'}</Label>
+                <div className="flex gap-2">
+                  <Input 
+                    value={regFormCouponCode}
+                    onChange={(e) => setRegFormCouponCode(e.target.value)}
+                    placeholder={language === 'ar' ? 'أدخل كود الخصم' : 'Enter coupon code'}
+                    disabled={regFormAppliedCoupon}
+                  />
+                  {!regFormAppliedCoupon ? (
+                    <Button variant="outline" onClick={validateRegFormCoupon} disabled={!regFormCouponCode.trim()}>
+                      {language === 'ar' ? 'تطبيق' : 'Apply'}
+                    </Button>
+                  ) : (
+                    <Button variant="outline" onClick={() => {
+                      setRegFormAppliedCoupon(null);
+                      setRegFormCouponCode('');
+                      setRegFormCouponDiscount(0);
+                    }}>
+                      <X className="w-4 h-4" />
+                    </Button>
+                  )}
+                </div>
+                {regFormAppliedCoupon && (
+                  <p className="text-sm text-green-600">
+                    ✅ {language === 'ar' ? `تم تطبيق الكوبون: ${regFormAppliedCoupon.code}` : `Coupon applied: ${regFormAppliedCoupon.code}`}
+                  </p>
+                )}
+              </div>
+
+              {/* Notes */}
+              <div className="space-y-2">
+                <Label>{language === 'ar' ? 'ملاحظات' : 'Notes'}</Label>
+                <Textarea 
+                  value={regFormNotes}
+                  onChange={(e) => setRegFormNotes(e.target.value)}
+                  placeholder={language === 'ar' ? 'أدخل ملاحظات...' : 'Enter notes...'}
+                  rows={2}
+                />
+              </div>
+
+              {/* Totals */}
+              {regFormItems.length > 0 && (
+                <div className="border rounded-lg p-3 bg-muted/30">
+                  <div className="space-y-1">
                     <div className="flex justify-between text-sm">
-                      <span>{language === 'ar' ? 'المجموع:' : 'Subtotal:'}</span>
-                      <span>{regFormItems.reduce((sum, i) => sum + i.fee, 0).toFixed(2)} {t('sar')}</span>
+                      <span>{language === 'ar' ? 'المجموع الفرعي:' : 'Subtotal:'}</span>
+                      <span>{regFormItems.reduce((sum, i) => sum + ((i.fee || 0) * (i.quantity || 1)), 0).toFixed(2)} {t('sar')}</span>
                     </div>
+                    {(regFormDiscount > 0 || regFormCouponDiscount > 0) && (
+                      <div className="flex justify-between text-sm text-red-600">
+                        <span>{language === 'ar' ? 'الخصم:' : 'Discount:'}</span>
+                        <span>- {(regFormDiscount + regFormCouponDiscount).toFixed(2)} {t('sar')}</span>
+                      </div>
+                    )}
                     <div className="flex justify-between text-sm text-green-600">
-                      <span>{language === 'ar' ? 'الضريبة (15%):' : 'VAT (15%):'}</span>
-                      <span>{(regFormItems.reduce((sum, i) => sum + i.fee, 0) * 0.15).toFixed(2)} {t('sar')}</span>
+                      <span>{language === 'ar' ? 'ضريبة القيمة المضافة (15%):' : 'VAT (15%):'}</span>
+                      <span>{((regFormItems.reduce((sum, i) => sum + ((i.fee || 0) * (i.quantity || 1)), 0) - regFormDiscount - regFormCouponDiscount) * 0.15).toFixed(2)} {t('sar')}</span>
                     </div>
-                    <div className="flex justify-between font-bold text-lg text-primary">
+                    <div className="flex justify-between font-bold text-lg text-primary pt-2 border-t">
                       <span>{t('total')}:</span>
-                      <span>{(regFormItems.reduce((sum, i) => sum + i.fee, 0) * 1.15).toFixed(2)} {t('sar')}</span>
+                      <span>{((regFormItems.reduce((sum, i) => sum + ((i.fee || 0) * (i.quantity || 1)), 0) - regFormDiscount - regFormCouponDiscount) * 1.15).toFixed(2)} {t('sar')}</span>
                     </div>
                   </div>
                 </div>
@@ -1957,11 +2081,11 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
               <Button variant="outline" onClick={closeRegistrationFormDialog}>{t('cancel')}</Button>
               <Button 
                 onClick={handlePrintNewRegistrationForm} 
-                disabled={!regFormData.customer_name}
+                disabled={!regFormData.customer_name || regFormItems.length === 0}
                 className="bg-gray-800 hover:bg-gray-900"
               >
                 <Printer className="w-4 h-4 me-2" />
-                {language === 'ar' ? 'طباعة الاستمارة' : 'Print Form'}
+                {language === 'ar' ? 'إنشاء وطباعة الاستمارة' : 'Create & Print Form'}
               </Button>
             </DialogFooter>
           </DialogContent>
