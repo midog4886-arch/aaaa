@@ -417,6 +417,33 @@ export const InvoicesPage = () => {
     setIsViewDialogOpen(false);
   };
 
+  // Save invoice as PDF only (without WhatsApp)
+  const handleSaveAsPdfOnly = async () => {
+    if (!printRef.current) return;
+    setSavingPdf(true);
+    try {
+      const element = printRef.current;
+      const invoiceNum = selectedInvoice.invoice_number || selectedInvoice.id.slice(0,8);
+      const customerName = selectedInvoice.customer_name_ar || selectedInvoice.member_name || 'invoice';
+      const filename = `فاتورة_${invoiceNum}_${customerName}.pdf`;
+      
+      const opt = {
+        margin: 10,
+        filename: filename,
+        image: { type: 'jpeg', quality: 0.98 },
+        html2canvas: { scale: 2, useCORS: true },
+        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+      };
+      
+      await html2pdf().from(element).set(opt).save();
+      toast.success(language === 'ar' ? 'تم حفظ الفاتورة كـ PDF' : 'Invoice saved as PDF');
+    } catch (error) {
+      toast.error(language === 'ar' ? 'خطأ في حفظ PDF' : 'Failed to save PDF');
+    } finally {
+      setSavingPdf(false);
+    }
+  };
+
   // Save invoice as PDF and share via WhatsApp
   const handleSaveAsPdf = async () => {
     if (!printRef.current) return;
