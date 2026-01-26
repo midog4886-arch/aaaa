@@ -1504,6 +1504,10 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
                 {savingPdf ? <Loader2 className="w-4 h-4 me-2 animate-spin" /> : <FileText className="w-4 h-4 me-2" />}
                 {language === 'ar' ? 'PDF + واتساب' : 'PDF + WhatsApp'}
               </Button>
+              <Button variant="outline" onClick={handlePrintRegistrationForm} className="bg-gray-800 border-gray-700 text-white hover:bg-gray-900">
+                <FileText className="w-4 h-4 me-2" />
+                {language === 'ar' ? 'استمارة تسجيل' : 'Registration Form'}
+              </Button>
               <Button variant="outline" onClick={handlePrint}><Printer className="w-4 h-4 me-2" />{t('print')}</Button>
               {selectedInvoice?.status === 'pending' && <Button variant="outline" className="text-blue-600 border-blue-300" onClick={() => openEditDialog(selectedInvoice)}><Edit className="w-4 h-4 me-2" />{language === 'ar' ? 'تعديل' : 'Edit'}</Button>}
               {selectedInvoice?.status === 'cancelled' && <Button variant="outline" onClick={() => handleRestoreInvoice(selectedInvoice.id)}><RotateCcw className="w-4 h-4 me-2" />{language === 'ar' ? 'استرجاع الفاتورة' : 'Restore'}</Button>}
