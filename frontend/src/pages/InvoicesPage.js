@@ -2025,6 +2025,7 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
                   <div className="flex gap-2">
                     <Select onValueChange={(val) => {
                       if (val === 'new') {
+                        setAddMemberSource('registration');
                         setIsAddMemberDialogOpen(true);
                       } else {
                         const member = members.find(m => m.id === val);
