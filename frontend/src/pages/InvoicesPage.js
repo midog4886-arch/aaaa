@@ -1006,20 +1006,29 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
     const branchName = branches.find(b => b.id === selectedBranchId)?.name_ar || '';
     
     // Calculate totals
-    const formSubtotal = regFormItems.reduce((sum, item) => sum + (item.fee || 0), 0);
-    const formVat = formSubtotal * 0.15;
-    const formTotal = formSubtotal + formVat;
+    const formSubtotal = regFormItems.reduce((sum, item) => sum + ((item.fee || 0) * (item.quantity || 1)), 0);
+    const totalDiscountAmount = regFormDiscount + regFormCouponDiscount;
+    const afterDiscount = formSubtotal - totalDiscountAmount;
+    const formVat = afterDiscount * 0.15;
+    const formTotal = afterDiscount + formVat;
     
     // Build items table rows
     const itemsRows = regFormItems.map((item, idx) => `
       <tr>
         <td>${idx + 1}</td>
-        <td>${item.activity_name || ''}</td>
-        <td>${item.period || '-'}</td>
+        <td>${item.activity_name || ''}${item.is_product ? ' (منتج)' : ''}</td>
+        <td>${item.is_product ? (item.quantity || 1) : (item.period || '-')}</td>
         <td>${item.schedule || '-'}</td>
-        <td>${item.fee?.toFixed(2) || '0.00'} ر.س</td>
+        <td>${((item.fee || 0) * (item.quantity || 1)).toFixed(2)} ر.س</td>
       </tr>
-    `).join('') || '<tr><td colspan="5" style="text-align:center">لا يوجد أنشطة</td></tr>';
+    `).join('') || '<tr><td colspan="5" style="text-align:center">لا يوجد عناصر</td></tr>';
+    
+    // Payment method text
+    const paymentText = regFormPaymentMethod === 'cash' ? 'نقداً' : 
+                        regFormPaymentMethod === 'card' ? 'بطاقة' : 
+                        regFormPaymentMethod === 'transfer' ? 'تحويل بنكي' : 
+                        regFormPaymentMethod === 'tabby' ? 'تابي' : 
+                        regFormPaymentMethod === 'tamara' ? 'تمارا' : regFormPaymentMethod;
     
     const printWindow = window.open('', '', 'width=800,height=600');
     const content = `
@@ -1048,7 +1057,10 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
           th { background: #e0e0e0; font-weight: bold; }
           .totals-section { margin-top: 10px; border: 1px solid #000; padding: 10px; }
           .totals-row { display: flex; justify-content: space-between; padding: 5px 0; border-bottom: 1px solid #ccc; }
+          .totals-row.discount { color: #c00; }
           .totals-row.total { font-size: 14px; font-weight: bold; border-top: 2px solid #000; border-bottom: none; margin-top: 5px; padding-top: 8px; }
+          .payment-section { margin-top: 10px; padding: 10px; border: 1px solid #000; }
+          .notes-section { margin-top: 10px; padding: 10px; border: 1px solid #000; font-size: 11px; }
           .terms-section { margin-top: 15px; padding: 10px; border: 1px solid #000; }
           .terms-section h4 { font-weight: bold; margin-bottom: 8px; }
           .terms-section ul { padding-right: 20px; font-size: 10px; }
@@ -1077,17 +1089,24 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
           </div>
         </div>
         <div class="info-section">
-          <h4>الأنشطة المسجلة</h4>
+          <h4>الأنشطة والمنتجات</h4>
           <table>
-            <thead><tr><th>#</th><th>النشاط</th><th>الفترة</th><th>المواعيد</th><th>الرسوم</th></tr></thead>
+            <thead><tr><th>#</th><th>البند</th><th>الفترة/الكمية</th><th>المواعيد</th><th>الرسوم</th></tr></thead>
             <tbody>${itemsRows}</tbody>
           </table>
         </div>
         <div class="totals-section">
           <div class="totals-row"><span>المجموع الفرعي:</span><span>${formSubtotal.toFixed(2)} ر.س</span></div>
+          ${totalDiscountAmount > 0 ? `<div class="totals-row discount"><span>الخصم${regFormAppliedCoupon ? ` (${regFormAppliedCoupon.code})` : ''}:</span><span>- ${totalDiscountAmount.toFixed(2)} ر.س</span></div>` : ''}
           <div class="totals-row"><span>ضريبة القيمة المضافة (15%):</span><span>${formVat.toFixed(2)} ر.س</span></div>
           <div class="totals-row total"><span>الإجمالي:</span><span>${formTotal.toFixed(2)} ر.س</span></div>
         </div>
+        <div class="payment-section">
+          <div class="info-grid">
+            <div class="info-row"><span class="info-label">طريقة الدفع:</span><span>${paymentText}</span></div>
+          </div>
+        </div>
+        ${regFormNotes ? `<div class="notes-section"><strong>ملاحظات:</strong> ${regFormNotes}</div>` : ''}
         <div class="terms-section">
           <h4>الشروط والأحكام:</h4>
           <ul><li>${INVOICE_TERMS.ar[0]}</li><li>${INVOICE_TERMS.ar[1]}</li></ul>
@@ -1114,13 +1133,55 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
       activity_name: language === 'ar' ? activity.name_ar : activity.name,
       fee: activity.fee || 0,
       period: `${today} - ${endDate}`,
-      schedule: ''
+      schedule: '',
+      is_product: false,
+      quantity: 1
     }]);
   };
 
-  // Remove activity from registration form
+  // Add product to registration form
+  const addProductToRegForm = (product) => {
+    setRegFormItems([...regFormItems, {
+      product_id: product.id,
+      activity_name: product.name,
+      fee: product.price || 0,
+      period: '',
+      schedule: '',
+      is_product: true,
+      quantity: 1
+    }]);
+  };
+
+  // Remove item from registration form
   const removeActivityFromRegForm = (index) => {
     setRegFormItems(regFormItems.filter((_, i) => i !== index));
+  };
+
+  // Validate coupon for registration form
+  const validateRegFormCoupon = async () => {
+    if (!regFormCouponCode.trim()) return;
+    try {
+      const response = await discountsAPI.validate(regFormCouponCode.trim());
+      const coupon = response.data;
+      setRegFormAppliedCoupon(coupon);
+      
+      const subtotal = regFormItems.reduce((sum, item) => sum + ((item.fee || 0) * (item.quantity || 1)), 0);
+      let discountValue = 0;
+      if (coupon.type === 'percentage') {
+        discountValue = (subtotal * coupon.value) / 100;
+        if (coupon.max_discount && discountValue > coupon.max_discount) {
+          discountValue = coupon.max_discount;
+        }
+      } else {
+        discountValue = coupon.value;
+      }
+      setRegFormCouponDiscount(discountValue);
+      toast.success(language === 'ar' ? `تم تطبيق الكوبون: خصم ${discountValue.toFixed(2)} ر.س` : `Coupon applied: ${discountValue.toFixed(2)} SAR discount`);
+    } catch (error) {
+      toast.error(language === 'ar' ? 'كوبون غير صالح' : 'Invalid coupon');
+      setRegFormAppliedCoupon(null);
+      setRegFormCouponDiscount(0);
+    }
   };
 
   // Close registration form dialog
@@ -1128,6 +1189,14 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
     setIsRegistrationFormDialogOpen(false);
     setRegFormData({ customer_name: '', customer_phone: '', customer_address: '' });
     setRegFormItems([]);
+    setRegFormDiscount(0);
+    setRegFormNotes('');
+    setRegFormPaymentMethod('cash');
+    setRegFormCouponCode('');
+    setRegFormAppliedCoupon(null);
+    setRegFormCouponDiscount(0);
+    setRegFormItemType('activity');
+  };
   };
 
   const handleExportAllData = () => {
