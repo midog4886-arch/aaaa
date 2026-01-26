@@ -360,11 +360,11 @@ export const MembersPage = () => {
                 <thead>
                   <tr>
                     <th>{t('member_name')}</th>
+                    <th>{language === 'ar' ? 'حالة العضو' : 'Member Status'}</th>
                     <th>{t('guardian_name')}</th>
                     <th>{t('phone')}</th>
                     <th>{t('age')}</th>
                     <th>{t('activities')}</th>
-                    <th>{t('subscription_status')}</th>
                     <th></th>
                   </tr>
                 </thead>
@@ -376,10 +376,20 @@ export const MembersPage = () => {
                       </td>
                     </tr>
                   ) : (
-                    filteredMembers.map(member => (
+                    filteredMembers.map(member => {
+                      const overallStatus = getMemberOverallStatus(member);
+                      return (
                       <tr key={member.id} data-testid={`member-row-${member.id}`}>
                         <td className="font-medium">
                           {language === 'ar' ? member.name_ar : member.name}
+                        </td>
+                        <td>
+                          <Badge 
+                            variant="outline"
+                            className={`font-semibold ${overallStatus.class}`}
+                          >
+                            {overallStatus.label}
+                          </Badge>
                         </td>
                         <td>{language === 'ar' ? member.guardian_name_ar : member.guardian_name}</td>
                         <td dir="ltr" className="text-start">{member.phone}</td>
@@ -399,8 +409,8 @@ export const MembersPage = () => {
                                   activity.status === 'expired' ? 'bg-red-100 text-red-700' :
                                   'bg-gray-100 text-gray-700'
                                 }`}>
-                                  {activity.status === 'active' ? (language === 'ar' ? '✓' : '✓') :
-                                   activity.status === 'expired' ? (language === 'ar' ? '✗' : '✗') : '-'}
+                                  {activity.status === 'active' ? '✓' :
+                                   activity.status === 'expired' ? '✗' : '-'}
                                 </span>
                               </div>
                             ))}
@@ -410,24 +420,6 @@ export const MembersPage = () => {
                           </div>
                         </td>
                         <td>
-                          <div className="flex flex-wrap gap-1">
-                            {member.activities?.map((activity, idx) => (
-                              <Badge 
-                                key={idx}
-                                variant="outline"
-                                className={`text-xs ${
-                                  activity.status === 'active' ? 'bg-green-500/15 text-green-600 border-green-300' :
-                                  activity.status === 'expired' ? 'bg-red-500/15 text-red-600 border-red-300' :
-                                  'bg-gray-500/15 text-gray-600 border-gray-300'
-                                }`}
-                              >
-                                {activity.status === 'active' ? (language === 'ar' ? 'نشط' : 'Active') :
-                                 activity.status === 'expired' ? (language === 'ar' ? 'منتهي' : 'Expired') :
-                                 (language === 'ar' ? 'غير نشط' : 'Inactive')}
-                              </Badge>
-                            ))}
-                            {(!member.activities || member.activities.length === 0) && (
-                              <span className="text-muted-foreground text-sm">-</span>
                             )}
                           </div>
                         </td>
