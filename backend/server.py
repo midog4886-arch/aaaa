@@ -1160,6 +1160,124 @@ async def refund_invoice(invoice_id: str, refund: RefundRequest, current_user: d
     
     return {"message": f"Refund of {refund.amount} SAR processed successfully", "refund_id": refund_id}
 
+# ============ REGISTRATION FORMS ROUTES ============
+
+@api_router.get("/registration-forms")
+async def get_registration_forms(
+    branch_filter: Optional[str] = None,
+    current_user: dict = Depends(get_current_user)
+):
+    """Get all registration forms, optionally filtered by branch"""
+    query = {}
+    
+    # Filter by branch
+    if branch_filter and branch_filter != "all":
+        query["branch_id"] = branch_filter
+    elif not current_user.get("is_admin") and current_user.get("branch_id"):
+        query["branch_id"] = current_user["branch_id"]
+    
+    forms = await db.registration_forms.find(query, {"_id": 0}).sort("created_at", -1).to_list(1000)
+    return forms
+
+@api_router.post("/registration-forms")
+async def create_registration_form(
+    form: RegistrationFormCreate,
+    current_user: dict = Depends(get_current_user)
+):
+    """Create a new registration form"""
+    # Generate form number
+    count = await db.registration_forms.count_documents({})
+    form_number = f"REG-{count + 1:05d}"
+    
+    # Determine branch_id
+    branch_id = form.branch_id
+    if not current_user.get("is_admin"):
+        branch_id = current_user.get("branch_id")
+    
+    form_doc = {
+        "id": str(uuid.uuid4()),
+        "form_number": form_number,
+        "customer_name": form.customer_name,
+        "customer_phone": form.customer_phone,
+        "items": [item.dict() for item in form.items],
+        "subtotal": form.subtotal,
+        "discount": form.discount,
+        "discount_code": form.discount_code,
+        "vat_amount": form.vat_amount,
+        "total": form.total,
+        "payment_method": form.payment_method,
+        "notes": form.notes,
+        "branch_id": branch_id,
+        "status": "pending",
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+    
+    await db.registration_forms.insert_one(form_doc)
+    del form_doc["_id"]
+    return form_doc
+
+@api_router.get("/registration-forms/{form_id}")
+async def get_registration_form(form_id: str, current_user: dict = Depends(get_current_user)):
+    """Get a single registration form by ID"""
+    form = await db.registration_forms.find_one({"id": form_id}, {"_id": 0})
+    if not form:
+        raise HTTPException(status_code=404, detail="Registration form not found")
+    return form
+
+@api_router.put("/registration-forms/{form_id}/convert")
+async def convert_registration_form(form_id: str, current_user: dict = Depends(get_current_user)):
+    """Convert registration form to invoice"""
+    form = await db.registration_forms.find_one({"id": form_id}, {"_id": 0})
+    if not form:
+        raise HTTPException(status_code=404, detail="Registration form not found")
+    
+    if form["status"] == "converted":
+        raise HTTPException(status_code=400, detail="Form already converted to invoice")
+    
+    # Create invoice from form
+    count = await db.invoices.count_documents({})
+    invoice_number = f"INV-{count + 1:05d}"
+    
+    invoice_doc = {
+        "id": str(uuid.uuid4()),
+        "invoice_number": invoice_number,
+        "member_id": None,
+        "customer_name_ar": form["customer_name"],
+        "customer_phone": form["customer_phone"],
+        "customer_address": "",
+        "items": form["items"],
+        "subtotal": form["subtotal"],
+        "discount": form["discount"],
+        "discount_code": form.get("discount_code", ""),
+        "vat_amount": form["vat_amount"],
+        "total": form["total"],
+        "payment_method": form["payment_method"],
+        "notes": form.get("notes", "") + f"\n(من استمارة: {form['form_number']})",
+        "status": "pending",
+        "branch_id": form.get("branch_id"),
+        "registration_form_id": form_id,
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+    
+    await db.invoices.insert_one(invoice_doc)
+    
+    # Update form status
+    await db.registration_forms.update_one(
+        {"id": form_id},
+        {"$set": {"status": "converted", "invoice_id": invoice_doc["id"]}}
+    )
+    
+    del invoice_doc["_id"]
+    return {"message": "Form converted to invoice", "invoice": invoice_doc}
+
+@api_router.delete("/registration-forms/{form_id}")
+async def delete_registration_form(form_id: str, current_user: dict = Depends(get_current_user)):
+    """Delete a registration form"""
+    result = await db.registration_forms.delete_one({"id": form_id})
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Registration form not found")
+    return {"message": "Registration form deleted"}
+
 # ============ STRIPE PAYMENT ROUTES ============
 
 @api_router.post("/payments/checkout")
