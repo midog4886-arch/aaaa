@@ -994,6 +994,135 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
     printWindow.print();
   };
 
+  // Print new Registration Form (standalone)
+  const handlePrintNewRegistrationForm = () => {
+    const branchName = branches.find(b => b.id === selectedBranchId)?.name_ar || '';
+    
+    // Calculate totals
+    const formSubtotal = regFormItems.reduce((sum, item) => sum + (item.fee || 0), 0);
+    const formVat = formSubtotal * 0.15;
+    const formTotal = formSubtotal + formVat;
+    
+    // Build items table rows
+    const itemsRows = regFormItems.map((item, idx) => `
+      <tr>
+        <td>${idx + 1}</td>
+        <td>${item.activity_name || ''}</td>
+        <td>${item.period || '-'}</td>
+        <td>${item.schedule || '-'}</td>
+        <td>${item.fee?.toFixed(2) || '0.00'} ر.س</td>
+      </tr>
+    `).join('') || '<tr><td colspan="5" style="text-align:center">لا يوجد أنشطة</td></tr>';
+    
+    const printWindow = window.open('', '', 'width=800,height=600');
+    const content = `
+      <!DOCTYPE html>
+      <html dir="rtl" lang="ar">
+      <head>
+        <meta charset="UTF-8">
+        <title>استمارة تسجيل</title>
+        <style>
+          @import url('https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700&display=swap');
+          @page { size: A4; margin: 10mm; }
+          * { margin: 0; padding: 0; box-sizing: border-box; }
+          body { font-family: 'Tajawal', Arial, sans-serif; direction: rtl; padding: 20px; max-width: 800px; margin: 0 auto; color: #000; font-size: 12px; }
+          .header { text-align: center; border-bottom: 2px solid #000; padding-bottom: 15px; margin-bottom: 15px; }
+          .company-name { font-size: 20px; font-weight: bold; margin-bottom: 5px; }
+          .company-info { font-size: 10px; color: #333; }
+          .branch-name { font-size: 14px; font-weight: bold; margin-top: 5px; }
+          .form-title { font-size: 18px; font-weight: bold; text-align: center; margin: 15px 0; padding: 8px; background: #f0f0f0; border: 1px solid #000; }
+          .info-section { margin-bottom: 15px; padding: 10px; border: 1px solid #000; }
+          .info-section h4 { font-size: 13px; font-weight: bold; margin-bottom: 8px; border-bottom: 1px solid #ccc; padding-bottom: 5px; }
+          .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+          .info-row { display: flex; gap: 5px; }
+          .info-label { font-weight: bold; min-width: 80px; }
+          table { width: 100%; border-collapse: collapse; margin: 10px 0; }
+          th, td { padding: 8px; border: 1px solid #000; text-align: right; font-size: 11px; }
+          th { background: #e0e0e0; font-weight: bold; }
+          .totals-section { margin-top: 10px; border: 1px solid #000; padding: 10px; }
+          .totals-row { display: flex; justify-content: space-between; padding: 5px 0; border-bottom: 1px solid #ccc; }
+          .totals-row.total { font-size: 14px; font-weight: bold; border-top: 2px solid #000; border-bottom: none; margin-top: 5px; padding-top: 8px; }
+          .terms-section { margin-top: 15px; padding: 10px; border: 1px solid #000; }
+          .terms-section h4 { font-weight: bold; margin-bottom: 8px; }
+          .terms-section ul { padding-right: 20px; font-size: 10px; }
+          .terms-section li { margin-bottom: 3px; }
+          .signature-section { margin-top: 20px; display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+          .signature-box { border: 1px solid #000; padding: 10px; text-align: center; }
+          .signature-box p { margin-bottom: 30px; font-weight: bold; }
+          .signature-line { border-top: 1px solid #000; margin-top: 30px; padding-top: 5px; font-size: 10px; }
+          .footer { margin-top: 15px; text-align: center; font-size: 9px; color: #333; border-top: 1px solid #000; padding-top: 10px; }
+        </style>
+      </head>
+      <body>
+        <div class="header">
+          <div class="company-name">${COMPANY_INFO.name_ar}</div>
+          ${branchName ? `<div class="branch-name">فرع: ${branchName}</div>` : ''}
+          <div class="company-info">الرقم الضريبي: ${COMPANY_INFO.tax_number} | السجل التجاري: ${COMPANY_INFO.commercial_reg}</div>
+        </div>
+        <div class="form-title">استمارة تسجيل</div>
+        <div class="info-section">
+          <h4>بيانات المشترك</h4>
+          <div class="info-grid">
+            <div class="info-row"><span class="info-label">الاسم:</span><span>${regFormData.customer_name || '_______________'}</span></div>
+            <div class="info-row"><span class="info-label">رقم الجوال:</span><span dir="ltr">${regFormData.customer_phone || '_______________'}</span></div>
+            <div class="info-row"><span class="info-label">التاريخ:</span><span>${new Date().toLocaleDateString('ar-SA')}</span></div>
+            ${regFormData.customer_address ? `<div class="info-row"><span class="info-label">العنوان:</span><span>${regFormData.customer_address}</span></div>` : ''}
+          </div>
+        </div>
+        <div class="info-section">
+          <h4>الأنشطة المسجلة</h4>
+          <table>
+            <thead><tr><th>#</th><th>النشاط</th><th>الفترة</th><th>المواعيد</th><th>الرسوم</th></tr></thead>
+            <tbody>${itemsRows}</tbody>
+          </table>
+        </div>
+        <div class="totals-section">
+          <div class="totals-row"><span>المجموع الفرعي:</span><span>${formSubtotal.toFixed(2)} ر.س</span></div>
+          <div class="totals-row"><span>ضريبة القيمة المضافة (15%):</span><span>${formVat.toFixed(2)} ر.س</span></div>
+          <div class="totals-row total"><span>الإجمالي:</span><span>${formTotal.toFixed(2)} ر.س</span></div>
+        </div>
+        <div class="terms-section">
+          <h4>الشروط والأحكام:</h4>
+          <ul><li>${INVOICE_TERMS.ar[0]}</li><li>${INVOICE_TERMS.ar[1]}</li></ul>
+        </div>
+        <div class="signature-section">
+          <div class="signature-box"><p>توقيع المشترك / ولي الأمر</p><div class="signature-line">التاريخ: _______________</div></div>
+          <div class="signature-box"><p>توقيع الموظف</p><div class="signature-line">التاريخ: _______________</div></div>
+        </div>
+        <div class="footer">${COMPANY_INFO.name_ar} - جميع الحقوق محفوظة</div>
+      </body>
+      </html>
+    `;
+    printWindow.document.write(content);
+    printWindow.document.close();
+    printWindow.print();
+  };
+
+  // Add activity to registration form
+  const addActivityToRegForm = (activity) => {
+    const today = new Date().toISOString().split('T')[0];
+    const endDate = new Date(Date.now() + 30*24*60*60*1000).toISOString().split('T')[0];
+    setRegFormItems([...regFormItems, {
+      activity_id: activity.id,
+      activity_name: language === 'ar' ? activity.name_ar : activity.name,
+      fee: activity.fee || 0,
+      period: `${today} - ${endDate}`,
+      schedule: ''
+    }]);
+  };
+
+  // Remove activity from registration form
+  const removeActivityFromRegForm = (index) => {
+    setRegFormItems(regFormItems.filter((_, i) => i !== index));
+  };
+
+  // Close registration form dialog
+  const closeRegistrationFormDialog = () => {
+    setIsRegistrationFormDialogOpen(false);
+    setRegFormData({ customer_name: '', customer_phone: '', customer_address: '' });
+    setRegFormItems([]);
+  };
+
   const handleExportAllData = () => {
     const token = localStorage.getItem('token');
     const url = exportAPI.allData() + `?token=${token}`;
