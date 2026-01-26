@@ -88,6 +88,15 @@ export const productInvoicesAPI = {
   delete: (id) => axios.delete(`${API}/product-invoices/${id}`),
 };
 
+// Registration Forms API
+export const registrationFormsAPI = {
+  getAll: (params = {}) => axios.get(`${API}/registration-forms`, { params }),
+  getById: (id) => axios.get(`${API}/registration-forms/${id}`),
+  create: (data) => axios.post(`${API}/registration-forms`, data),
+  convert: (id) => axios.put(`${API}/registration-forms/${id}/convert`),
+  delete: (id) => axios.delete(`${API}/registration-forms/${id}`),
+};
+
 // Payments API
 export const paymentsAPI = {
   createCheckout: (invoiceId) => axios.post(`${API}/payments/checkout?invoice_id=${invoiceId}`),
