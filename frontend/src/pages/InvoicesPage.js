@@ -1346,48 +1346,133 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
           )}
         </div>
 
-        {/* Invoices Table */}
-        <Card><CardContent className="p-0"><div className="overflow-x-auto">
-          <table className="data-table">
-            <thead><tr>
-              <th>{t('invoice_number')}</th><th>{language === 'ar' ? 'العميل' : 'Customer'}</th><th>{t('phone')}</th>
-              <th>{language === 'ar' ? 'الإجمالي' : 'Total'}</th><th>{t('invoice_status')}</th><th>{t('invoice_date')}</th><th></th>
-            </tr></thead>
-            <tbody>
-              {filteredInvoices.length === 0 ? <tr><td colSpan={7} className="text-center py-8 text-muted-foreground">{t('no_data')}</td></tr> :
-                filteredInvoices.map(invoice => (
-                  <tr key={invoice.id}>
-                    <td className="font-mono text-sm font-bold">#{invoice.invoice_number || invoice.id.slice(0, 8)}</td>
-                    <td className="font-medium">{invoice.customer_name_ar || invoice.member_name}</td>
-                    <td dir="ltr" className="text-sm">{invoice.customer_phone || '-'}</td>
-                    <td className="font-bold text-primary">{invoice.total} {t('sar')}</td>
-                    <td>{getStatusBadge(invoice.status)}</td>
-                    <td className="text-sm text-muted-foreground">{new Date(invoice.created_at).toLocaleDateString(language === 'ar' ? 'ar-SA' : 'en-US')}</td>
-                    <td>
-                      <div className="action-buttons">
-                        <button className="action-button" onClick={() => handleViewInvoice(invoice)} title={language === 'ar' ? 'عرض' : 'View'}><Eye className="w-4 h-4" /></button>
-                        <button className="action-button text-green-600" onClick={() => handleSendWhatsApp(invoice)} title={language === 'ar' ? 'واتساب' : 'WhatsApp'}><MessageSquare className="w-4 h-4" /></button>
-                        {invoice.status === 'pending' && (<>
-                          <button className="action-button text-blue-600" onClick={() => openEditDialog(invoice)} title={language === 'ar' ? 'تعديل' : 'Edit'}><Edit className="w-4 h-4" /></button>
-                          <button className="action-button text-green-600" onClick={() => handleMarkPaid(invoice.id)} title={language === 'ar' ? 'تم الدفع' : 'Mark Paid'}><CheckCircle className="w-4 h-4" /></button>
-                          <button className="action-button text-amber-600" onClick={() => handleCancelInvoice(invoice.id)} title={language === 'ar' ? 'إلغاء' : 'Cancel'}><XCircle className="w-4 h-4" /></button>
-                        </>)}
-                        {invoice.status === 'paid' && (
-                          <button className="action-button text-purple-600" onClick={() => openRefundDialog(invoice)} title={language === 'ar' ? 'استرجاع مبلغ' : 'Refund'}><RefreshCcw className="w-4 h-4" /></button>
-                        )}
-                        {invoice.status === 'cancelled' && (
-                          <button className="action-button text-blue-600" onClick={() => handleRestoreInvoice(invoice.id)} title={language === 'ar' ? 'استرجاع الفاتورة' : 'Restore'}><RotateCcw className="w-4 h-4" /></button>
-                        )}
-                        {isAdmin && (
-                          <button className="action-button text-red-600" onClick={() => handleDeleteInvoice(invoice.id, invoice.status)} title={language === 'ar' ? 'حذف' : 'Delete'}><Trash2 className="w-4 h-4" /></button>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-            </tbody>
-          </table>
-        </div></CardContent></Card>
+        {/* Tabs for Invoices and Registration Forms */}
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+          <TabsList className="grid w-full grid-cols-2 max-w-md">
+            <TabsTrigger value="invoices" className="flex items-center gap-2">
+              <Receipt className="w-4 h-4" />
+              {language === 'ar' ? 'الفواتير' : 'Invoices'}
+              <Badge variant="secondary" className="ms-1">{filteredInvoices.length}</Badge>
+            </TabsTrigger>
+            <TabsTrigger value="forms" className="flex items-center gap-2">
+              <ClipboardList className="w-4 h-4" />
+              {language === 'ar' ? 'استمارات التسجيل' : 'Registration Forms'}
+              <Badge variant="secondary" className="ms-1">{registrationForms.length}</Badge>
+            </TabsTrigger>
+          </TabsList>
+
+          {/* Invoices Tab */}
+          <TabsContent value="invoices">
+            <Card><CardContent className="p-0"><div className="overflow-x-auto">
+              <table className="data-table">
+                <thead><tr>
+                  <th>{t('invoice_number')}</th><th>{language === 'ar' ? 'العميل' : 'Customer'}</th><th>{t('phone')}</th>
+                  <th>{language === 'ar' ? 'الإجمالي' : 'Total'}</th><th>{t('invoice_status')}</th><th>{t('invoice_date')}</th><th></th>
+                </tr></thead>
+                <tbody>
+                  {filteredInvoices.length === 0 ? <tr><td colSpan={7} className="text-center py-8 text-muted-foreground">{t('no_data')}</td></tr> :
+                    filteredInvoices.map(invoice => (
+                      <tr key={invoice.id}>
+                        <td className="font-mono text-sm font-bold">#{invoice.invoice_number || invoice.id.slice(0, 8)}</td>
+                        <td className="font-medium">{invoice.customer_name_ar || invoice.member_name}</td>
+                        <td dir="ltr" className="text-sm">{invoice.customer_phone || '-'}</td>
+                        <td className="font-bold text-primary">{invoice.total} {t('sar')}</td>
+                        <td>{getStatusBadge(invoice.status)}</td>
+                        <td className="text-sm text-muted-foreground">{new Date(invoice.created_at).toLocaleDateString(language === 'ar' ? 'ar-SA' : 'en-US')}</td>
+                        <td>
+                          <div className="action-buttons">
+                            <button className="action-button" onClick={() => handleViewInvoice(invoice)} title={language === 'ar' ? 'عرض' : 'View'}><Eye className="w-4 h-4" /></button>
+                            <button className="action-button text-green-600" onClick={() => handleSendWhatsApp(invoice)} title={language === 'ar' ? 'واتساب' : 'WhatsApp'}><MessageSquare className="w-4 h-4" /></button>
+                            {invoice.status === 'pending' && (<>
+                              <button className="action-button text-blue-600" onClick={() => openEditDialog(invoice)} title={language === 'ar' ? 'تعديل' : 'Edit'}><Edit className="w-4 h-4" /></button>
+                              <button className="action-button text-green-600" onClick={() => handleMarkPaid(invoice.id)} title={language === 'ar' ? 'تم الدفع' : 'Mark Paid'}><CheckCircle className="w-4 h-4" /></button>
+                              <button className="action-button text-amber-600" onClick={() => handleCancelInvoice(invoice.id)} title={language === 'ar' ? 'إلغاء' : 'Cancel'}><XCircle className="w-4 h-4" /></button>
+                            </>)}
+                            {invoice.status === 'paid' && (
+                              <button className="action-button text-purple-600" onClick={() => openRefundDialog(invoice)} title={language === 'ar' ? 'استرجاع مبلغ' : 'Refund'}><RefreshCcw className="w-4 h-4" /></button>
+                            )}
+                            {invoice.status === 'cancelled' && (
+                              <button className="action-button text-blue-600" onClick={() => handleRestoreInvoice(invoice.id)} title={language === 'ar' ? 'استرجاع الفاتورة' : 'Restore'}><RotateCcw className="w-4 h-4" /></button>
+                            )}
+                            {isAdmin && (
+                              <button className="action-button text-red-600" onClick={() => handleDeleteInvoice(invoice.id, invoice.status)} title={language === 'ar' ? 'حذف' : 'Delete'}><Trash2 className="w-4 h-4" /></button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                </tbody>
+              </table>
+            </div></CardContent></Card>
+          </TabsContent>
+
+          {/* Registration Forms Tab */}
+          <TabsContent value="forms">
+            <Card><CardContent className="p-0"><div className="overflow-x-auto">
+              <table className="data-table">
+                <thead><tr>
+                  <th>{language === 'ar' ? 'رقم الاستمارة' : 'Form Number'}</th>
+                  <th>{language === 'ar' ? 'العميل' : 'Customer'}</th>
+                  <th>{t('phone')}</th>
+                  <th>{language === 'ar' ? 'الإجمالي' : 'Total'}</th>
+                  <th>{language === 'ar' ? 'الحالة' : 'Status'}</th>
+                  <th>{t('invoice_date')}</th>
+                  <th></th>
+                </tr></thead>
+                <tbody>
+                  {registrationForms.length === 0 ? (
+                    <tr><td colSpan={7} className="text-center py-8 text-muted-foreground">
+                      {language === 'ar' ? 'لا توجد استمارات تسجيل' : 'No registration forms'}
+                    </td></tr>
+                  ) : (
+                    registrationForms.map(form => (
+                      <tr key={form.id}>
+                        <td className="font-mono text-sm font-bold">#{form.form_number}</td>
+                        <td className="font-medium">{form.customer_name}</td>
+                        <td dir="ltr" className="text-sm">{form.customer_phone || '-'}</td>
+                        <td className="font-bold text-primary">{form.total?.toFixed(2)} {t('sar')}</td>
+                        <td>
+                          <Badge variant="outline" className={
+                            form.status === 'converted' ? 'bg-green-100 text-green-700 border-green-300' :
+                            form.status === 'cancelled' ? 'bg-red-100 text-red-700 border-red-300' :
+                            'bg-amber-100 text-amber-700 border-amber-300'
+                          }>
+                            {form.status === 'converted' ? (language === 'ar' ? 'تم تحويلها' : 'Converted') :
+                             form.status === 'cancelled' ? (language === 'ar' ? 'ملغاة' : 'Cancelled') :
+                             (language === 'ar' ? 'قيد الانتظار' : 'Pending')}
+                          </Badge>
+                        </td>
+                        <td className="text-sm text-muted-foreground">
+                          {new Date(form.created_at).toLocaleDateString(language === 'ar' ? 'ar-SA' : 'en-US')}
+                        </td>
+                        <td>
+                          <div className="action-buttons">
+                            {form.status === 'pending' && (
+                              <button 
+                                className="action-button text-blue-600" 
+                                onClick={() => handleConvertFormToInvoice(form.id)}
+                                title={language === 'ar' ? 'تحويل إلى فاتورة' : 'Convert to Invoice'}
+                              >
+                                <ArrowRightCircle className="w-4 h-4" />
+                              </button>
+                            )}
+                            <button 
+                              className="action-button text-red-600" 
+                              onClick={() => handleDeleteRegForm(form.id)}
+                              title={language === 'ar' ? 'حذف' : 'Delete'}
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div></CardContent></Card>
+          </TabsContent>
+        </Tabs>
 
         {/* Create Invoice Dialog */}
         <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
