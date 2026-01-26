@@ -556,3 +556,42 @@
 - `/app/frontend/src/pages/MessagesPage.js` - Filter only active members
 - `/app/frontend/src/pages/MembersPage.js` - Added `getMemberOverallStatus` function and status column
 
+---
+
+## Update 14 - Registration Form & Invoice-Based Member Status (January 26, 2026)
+
+### Features Implemented:
+
+#### 1. زر استمارة تسجيل (أبيض وأسود بدون QR) ✅
+- **الوصف**: زر جديد باللون الأسود لطباعة استمارة تسجيل رسمية
+- **الملف**: `/app/frontend/src/pages/InvoicesPage.js`
+- **الدالة**: `handlePrintRegistrationForm`
+- **المميزات**:
+  - تصميم أبيض وأسود للطباعة
+  - بدون رمز QR
+  - يتضمن بيانات المشترك والأنشطة والمبالغ
+  - مكان للتوقيع (المشترك/ولي الأمر والموظف)
+  - الشروط والأحكام
+
+#### 2. تحديث أنشطة العضو عند دفع الفاتورة ✅
+- **الوصف**: عند الضغط على "تم الدفع"، يتم تحديث أنشطة العضو تلقائياً
+- **الملف**: `/app/backend/server.py` - دالة `pay_invoice`
+- **السلوك**:
+  - استخراج الأنشطة من بنود الفاتورة
+  - تحديث تاريخ البداية والنهاية من الفاتورة
+  - تحديد الحالة (active/expired) بناءً على تاريخ الانتهاء
+  - إضافة نشاط جديد أو تحديث نشاط موجود
+
+#### 3. تحديد حالة العضو من تاريخ انتهاء النشاط ✅
+- **الوصف**: حالة العضو تُحسب تلقائياً من تاريخ انتهاء كل نشاط
+- **الملف**: `/app/frontend/src/pages/MembersPage.js`
+- **الدوال**: `getMemberOverallStatus`, `getActivityStatusFromDate`
+- **المنطق**:
+  - إذا كان تاريخ الانتهاء >= اليوم → نشط (أخضر)
+  - إذا كان تاريخ الانتهاء < اليوم → منتهي (أحمر)
+
+### Files Modified:
+- `/app/backend/server.py` - Updated `pay_invoice` to sync member activities
+- `/app/frontend/src/pages/InvoicesPage.js` - Added registration form button and function
+- `/app/frontend/src/pages/MembersPage.js` - Status calculation based on end_date
+
