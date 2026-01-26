@@ -1223,6 +1223,10 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
                 <MessageSquare className="w-4 h-4 me-2" />
                 {language === 'ar' ? 'مشاركة واتساب' : 'Share WhatsApp'}
               </Button>
+              <Button variant="outline" onClick={handleSaveAsPdfOnly} disabled={savingPdf} className="bg-blue-50 border-blue-400 text-blue-700 hover:bg-blue-100">
+                {savingPdf ? <Loader2 className="w-4 h-4 me-2 animate-spin" /> : <FileText className="w-4 h-4 me-2" />}
+                {language === 'ar' ? 'حفظ PDF' : 'Save PDF'}
+              </Button>
               <Button variant="outline" onClick={handleSaveAsPdf} disabled={savingPdf} className="bg-red-50 border-red-400 text-red-700 hover:bg-red-100">
                 {savingPdf ? <Loader2 className="w-4 h-4 me-2 animate-spin" /> : <FileText className="w-4 h-4 me-2" />}
                 {language === 'ar' ? 'PDF + واتساب' : 'PDF + WhatsApp'}
