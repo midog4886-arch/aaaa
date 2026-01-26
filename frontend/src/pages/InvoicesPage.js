@@ -1197,7 +1197,6 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
     setRegFormCouponDiscount(0);
     setRegFormItemType('activity');
   };
-  };
 
   const handleExportAllData = () => {
     const token = localStorage.getItem('token');
