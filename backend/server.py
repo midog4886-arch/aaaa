@@ -177,7 +177,7 @@ class Invoice(BaseModel):
     id: str
     invoice_number: Optional[str] = None
     member_id: Optional[str] = None
-    member_name: str
+    member_name: Optional[str] = ""
     items: List[InvoiceItem]
     subtotal: float
     discount: float
@@ -196,6 +196,8 @@ class Invoice(BaseModel):
     # Company info
     tax_number: str = COMPANY_TAX_NUMBER
     commercial_reg: str = COMPANY_COMMERCIAL_REG
+    # Registration form reference
+    registration_form_id: Optional[str] = None
 
 class MessageCreate(BaseModel):
     recipients: List[str]  # member IDs
