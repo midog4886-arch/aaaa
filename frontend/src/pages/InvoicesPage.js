@@ -1189,7 +1189,7 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
   // Close registration form dialog
   const closeRegistrationFormDialog = () => {
     setIsRegistrationFormDialogOpen(false);
-    setRegFormData({ customer_name: '', customer_phone: '', customer_address: '' });
+    setRegFormData({ customer_name: '', customer_phone: '' });
     setRegFormItems([]);
     setRegFormDiscount(0);
     setRegFormNotes('');
