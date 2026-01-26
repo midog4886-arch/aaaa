@@ -1099,9 +1099,7 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
           </table>
         </div>
         <div class="totals-section">
-          <div class="totals-row"><span>المجموع الفرعي:</span><span>${formSubtotal.toFixed(2)} ر.س</span></div>
           ${totalDiscountAmount > 0 ? `<div class="totals-row discount"><span>الخصم${regFormAppliedCoupon ? ` (${regFormAppliedCoupon.code})` : ''}:</span><span>- ${totalDiscountAmount.toFixed(2)} ر.س</span></div>` : ''}
-          <div class="totals-row"><span>ضريبة القيمة المضافة (15%):</span><span>${formVat.toFixed(2)} ر.س</span></div>
           <div class="totals-row total"><span>الإجمالي:</span><span>${formTotal.toFixed(2)} ر.س</span></div>
         </div>
         <div class="payment-section">
