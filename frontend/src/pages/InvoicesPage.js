@@ -1108,8 +1108,11 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
         </div>
         ${regFormNotes ? `<div class="notes-section"><strong>ملاحظات:</strong> ${regFormNotes}</div>` : ''}
         <div class="terms-section">
-          <h4>الشروط والأحكام:</h4>
-          <ul><li>${INVOICE_TERMS.ar[0]}</li><li>${INVOICE_TERMS.ar[1]}</li></ul>
+          <h4>⚠️ شروط وأحكام:</h4>
+          <ul>
+            <li>الاشتراك محدد البداية والنهاية ولا يتم تعويض حصص غياب المشترك</li>
+            <li>المبلغ المدفوع لا يسترد بعد مرور أسبوع من الاشتراك</li>
+          </ul>
         </div>
         <div class="signature-section">
           <div class="signature-box"><p>توقيع المشترك / ولي الأمر</p><div class="signature-line">التاريخ: _______________</div></div>
