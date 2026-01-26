@@ -420,10 +420,6 @@ export const MembersPage = () => {
                           </div>
                         </td>
                         <td>
-                            )}
-                          </div>
-                        </td>
-                        <td>
                           <div className="action-buttons">
                             <button 
                               className="action-button"
@@ -449,7 +445,7 @@ export const MembersPage = () => {
                           </div>
                         </td>
                       </tr>
-                    ))
+                    )})
                   )}
                 </tbody>
               </table>
