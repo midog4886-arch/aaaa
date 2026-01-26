@@ -1128,6 +1128,54 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
     printWindow.document.write(content);
     printWindow.document.close();
     printWindow.print();
+    
+    // Save the registration form to database
+    try {
+      const formData = {
+        customer_name: regFormData.customer_name,
+        customer_phone: regFormData.customer_phone,
+        items: regFormItems,
+        subtotal: formSubtotal,
+        discount: totalDiscountAmount,
+        discount_code: regFormAppliedCoupon?.code || '',
+        vat_amount: formVat,
+        total: formTotal,
+        payment_method: regFormPaymentMethod,
+        notes: regFormNotes,
+        branch_id: selectedBranchId !== 'all' ? selectedBranchId : null
+      };
+      await registrationFormsAPI.create(formData);
+      toast.success(language === 'ar' ? 'تم حفظ استمارة التسجيل' : 'Registration form saved');
+      loadData(); // Reload to get updated list
+      closeRegistrationFormDialog();
+    } catch (error) {
+      console.error('Error saving form:', error);
+      // Form was printed but not saved - still close dialog
+      closeRegistrationFormDialog();
+    }
+  };
+
+  // Convert registration form to invoice
+  const handleConvertFormToInvoice = async (formId) => {
+    try {
+      const response = await registrationFormsAPI.convert(formId);
+      toast.success(language === 'ar' ? 'تم تحويل الاستمارة إلى فاتورة' : 'Form converted to invoice');
+      loadData();
+    } catch (error) {
+      toast.error(error.response?.data?.detail || t('error'));
+    }
+  };
+
+  // Delete registration form
+  const handleDeleteRegForm = async (formId) => {
+    if (!window.confirm(language === 'ar' ? 'هل أنت متأكد من حذف هذه الاستمارة؟' : 'Are you sure you want to delete this form?')) return;
+    try {
+      await registrationFormsAPI.delete(formId);
+      toast.success(language === 'ar' ? 'تم حذف الاستمارة' : 'Form deleted');
+      loadData();
+    } catch (error) {
+      toast.error(t('error'));
+    }
   };
 
   // Add activity to registration form
