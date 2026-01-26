@@ -60,6 +60,7 @@ export const InvoicesPage = () => {
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [isViewDialogOpen, setIsViewDialogOpen] = useState(false);
   const [isAddMemberDialogOpen, setIsAddMemberDialogOpen] = useState(false);
+  const [addMemberSource, setAddMemberSource] = useState('invoice'); // 'invoice' or 'registration'
   const [isRefundDialogOpen, setIsRefundDialogOpen] = useState(false);
   const [isRegistrationFormDialogOpen, setIsRegistrationFormDialogOpen] = useState(false);
   const [selectedInvoice, setSelectedInvoice] = useState(null);
