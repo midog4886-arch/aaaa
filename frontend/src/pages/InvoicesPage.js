@@ -1775,6 +1775,121 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
             </DialogFooter>
           </DialogContent>
         </Dialog>
+
+        {/* Registration Form Dialog */}
+        <Dialog open={isRegistrationFormDialogOpen} onOpenChange={setIsRegistrationFormDialogOpen}>
+          <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <FileText className="w-5 h-5" />
+                {language === 'ar' ? 'إنشاء استمارة تسجيل' : 'Create Registration Form'}
+              </DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4">
+              {/* Customer Info */}
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>{language === 'ar' ? 'اسم المشترك *' : 'Customer Name *'}</Label>
+                  <Input 
+                    value={regFormData.customer_name} 
+                    onChange={(e) => setRegFormData({...regFormData, customer_name: e.target.value})}
+                    placeholder={language === 'ar' ? 'أدخل الاسم' : 'Enter name'}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>{t('phone')} *</Label>
+                  <Input 
+                    value={regFormData.customer_phone} 
+                    onChange={(e) => setRegFormData({...regFormData, customer_phone: e.target.value})}
+                    type="tel" 
+                    dir="ltr"
+                    placeholder="05xxxxxxxx"
+                  />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label>{language === 'ar' ? 'العنوان (اختياري)' : 'Address (optional)'}</Label>
+                <Input 
+                  value={regFormData.customer_address} 
+                  onChange={(e) => setRegFormData({...regFormData, customer_address: e.target.value})}
+                />
+              </div>
+
+              {/* Activities Selection */}
+              <div className="space-y-2">
+                <Label>{language === 'ar' ? 'إضافة نشاط' : 'Add Activity'}</Label>
+                <Select onValueChange={(val) => {
+                  const activity = activities.find(a => a.id === val);
+                  if (activity) addActivityToRegForm(activity);
+                }}>
+                  <SelectTrigger><SelectValue placeholder={language === 'ar' ? 'اختر نشاط...' : 'Select activity...'} /></SelectTrigger>
+                  <SelectContent>
+                    {activities.map(a => (
+                      <SelectItem key={a.id} value={a.id}>
+                        {language === 'ar' ? a.name_ar : a.name} - {a.fee} {t('sar')}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Selected Activities */}
+              {regFormItems.length > 0 && (
+                <div className="border rounded-lg p-3 space-y-2">
+                  <Label>{language === 'ar' ? 'الأنشطة المختارة' : 'Selected Activities'}</Label>
+                  {regFormItems.map((item, idx) => (
+                    <div key={idx} className="flex items-center justify-between bg-muted/50 p-2 rounded">
+                      <div className="flex-1">
+                        <span className="font-medium">{item.activity_name}</span>
+                        <span className="text-sm text-muted-foreground ms-2">({item.fee} {t('sar')})</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Input 
+                          className="w-32 text-sm"
+                          placeholder={language === 'ar' ? 'المواعيد' : 'Schedule'}
+                          value={item.schedule}
+                          onChange={(e) => {
+                            const updated = [...regFormItems];
+                            updated[idx].schedule = e.target.value;
+                            setRegFormItems(updated);
+                          }}
+                        />
+                        <Button variant="ghost" size="sm" onClick={() => removeActivityFromRegForm(idx)}>
+                          <X className="w-4 h-4 text-destructive" />
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                  <div className="pt-2 border-t mt-2">
+                    <div className="flex justify-between text-sm">
+                      <span>{language === 'ar' ? 'المجموع:' : 'Subtotal:'}</span>
+                      <span>{regFormItems.reduce((sum, i) => sum + i.fee, 0).toFixed(2)} {t('sar')}</span>
+                    </div>
+                    <div className="flex justify-between text-sm text-green-600">
+                      <span>{language === 'ar' ? 'الضريبة (15%):' : 'VAT (15%):'}</span>
+                      <span>{(regFormItems.reduce((sum, i) => sum + i.fee, 0) * 0.15).toFixed(2)} {t('sar')}</span>
+                    </div>
+                    <div className="flex justify-between font-bold text-lg text-primary">
+                      <span>{t('total')}:</span>
+                      <span>{(regFormItems.reduce((sum, i) => sum + i.fee, 0) * 1.15).toFixed(2)} {t('sar')}</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={closeRegistrationFormDialog}>{t('cancel')}</Button>
+              <Button 
+                onClick={handlePrintNewRegistrationForm} 
+                disabled={!regFormData.customer_name}
+                className="bg-gray-800 hover:bg-gray-900"
+              >
+                <Printer className="w-4 h-4 me-2" />
+                {language === 'ar' ? 'طباعة الاستمارة' : 'Print Form'}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
     </Layout>
   );
