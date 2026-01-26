@@ -386,64 +386,63 @@ export const MembersPage = () => {
                 <thead>
                   <tr>
                     <th>{t('member_name')}</th>
-                    <th>{language === 'ar' ? 'حالة العضو' : 'Member Status'}</th>
                     <th>{t('guardian_name')}</th>
                     <th>{t('phone')}</th>
-                    <th>{t('age')}</th>
-                    <th>{t('activities')}</th>
+                    <th>{language === 'ar' ? 'الأنشطة وحالتها' : 'Activities & Status'}</th>
                     <th></th>
                   </tr>
                 </thead>
                 <tbody>
                   {filteredMembers.length === 0 ? (
                     <tr>
-                      <td colSpan={7} className="text-center py-8 text-muted-foreground">
+                      <td colSpan={5} className="text-center py-8 text-muted-foreground">
                         {t('no_data')}
                       </td>
                     </tr>
                   ) : (
                     filteredMembers.map(member => {
-                      const overallStatus = getMemberOverallStatus(member);
                       return (
                       <tr key={member.id} data-testid={`member-row-${member.id}`}>
                         <td className="font-medium">
                           {language === 'ar' ? member.name_ar : member.name}
                         </td>
-                        <td>
-                          <Badge 
-                            variant="outline"
-                            className={`font-semibold ${overallStatus.class}`}
-                          >
-                            {overallStatus.label}
-                          </Badge>
-                        </td>
                         <td>{language === 'ar' ? member.guardian_name_ar : member.guardian_name}</td>
                         <td dir="ltr" className="text-start">{member.phone}</td>
-                        <td>{member.age}</td>
                         <td>
-                          <div className="flex flex-wrap gap-1">
+                          <div className="flex flex-col gap-1">
                             {member.activities?.map((activity, idx) => {
                               const actStatus = getActivityStatusFromDate(activity);
+                              const statusLabel = actStatus === 'active' 
+                                ? (language === 'ar' ? 'ساري' : 'Active')
+                                : (language === 'ar' ? 'منتهي' : 'Expired');
+                              const endDateText = activity.end_date 
+                                ? new Date(activity.end_date).toLocaleDateString(language === 'ar' ? 'ar-SA' : 'en-US')
+                                : '-';
                               return (
-                              <div key={idx} className="flex items-center gap-1">
+                              <div key={idx} className="flex items-center gap-2 flex-wrap">
                                 <Badge 
                                   variant="outline"
                                   className={getActivityColor(activity.activity_name)}
                                 >
                                   {activity.activity_name}
                                 </Badge>
-                                <span className={`text-xs px-1 rounded ${
-                                  actStatus === 'active' ? 'bg-green-100 text-green-700' :
-                                  actStatus === 'expired' ? 'bg-red-100 text-red-700' :
-                                  'bg-gray-100 text-gray-700'
-                                }`}>
-                                  {actStatus === 'active' ? '✓' :
-                                   actStatus === 'expired' ? '✗' : '-'}
+                                <Badge 
+                                  variant="outline"
+                                  className={`text-xs ${
+                                    actStatus === 'active' 
+                                      ? 'bg-green-100 text-green-700 border-green-300' 
+                                      : 'bg-red-100 text-red-700 border-red-300'
+                                  }`}
+                                >
+                                  {statusLabel}
+                                </Badge>
+                                <span className="text-xs text-muted-foreground">
+                                  {language === 'ar' ? 'حتى' : 'until'} {endDateText}
                                 </span>
                               </div>
                             )})}
                             {(!member.activities || member.activities.length === 0) && (
-                              <span className="text-muted-foreground text-sm">-</span>
+                              <span className="text-muted-foreground text-sm">{language === 'ar' ? 'لا يوجد أنشطة' : 'No activities'}</span>
                             )}
                           </div>
                         </td>
