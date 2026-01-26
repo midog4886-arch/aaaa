@@ -525,3 +525,34 @@
 
 ### API Changes:
 - `GET /api/members` - Now returns members sorted by `created_at` descending (newest first)
+
+---
+
+## Update 13 - PDF Button, Active Members Filter, Member Status (January 26, 2026)
+
+### Features Implemented:
+
+#### 1. زر "حفظ PDF فقط" ✅
+- **الوصف**: زر جديد لحفظ الفاتورة كـ PDF بدون فتح واتساب
+- **الملف**: `/app/frontend/src/pages/InvoicesPage.js`
+- **الدالة**: `handleSaveAsPdfOnly` - تحفظ PDF مباشرة بدون أي إجراء إضافي
+- **الموقع**: نافذة عرض الفاتورة - زر أزرق "حفظ PDF"
+
+#### 2. المستلمون في الرسائل - الأعضاء الناشطون فقط ✅
+- **الوصف**: صفحة الرسائل الآن تعرض فقط الأعضاء الذين لديهم نشاط واحد على الأقل بحالة "active"
+- **الملف**: `/app/frontend/src/pages/MessagesPage.js`
+- **الفلترة**: `member.activities?.some(a => a.status === 'active')`
+
+#### 3. عمود حالة العضو الإجمالية ✅
+- **الوصف**: عمود جديد "حالة العضو" في جدول الأعضاء يعرض الحالة الإجمالية
+- **الملف**: `/app/frontend/src/pages/MembersPage.js`
+- **الحالات**:
+  - 🟢 **نشط** - لديه نشاط واحد على الأقل بحالة active
+  - 🔴 **منتهي** - جميع أنشطته منتهية
+  - ⚪ **بدون نشاط** - لا يوجد أنشطة مسجلة
+
+### Files Modified:
+- `/app/frontend/src/pages/InvoicesPage.js` - Added `handleSaveAsPdfOnly` function and "حفظ PDF" button
+- `/app/frontend/src/pages/MessagesPage.js` - Filter only active members
+- `/app/frontend/src/pages/MembersPage.js` - Added `getMemberOverallStatus` function and status column
+
