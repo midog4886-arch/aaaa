@@ -1973,41 +1973,131 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
 
               {/* Selected Items */}
               {regFormItems.length > 0 && (
-                <div className="border rounded-lg p-3 space-y-2">
+                <div className="border rounded-lg p-3 space-y-3">
                   <Label>{language === 'ar' ? 'العناصر المختارة' : 'Selected Items'}</Label>
                   {regFormItems.map((item, idx) => (
-                    <div key={idx} className="flex items-center justify-between bg-muted/50 p-2 rounded">
-                      <div className="flex-1">
-                        <span className="font-medium">{item.activity_name}</span>
-                        {item.is_product && <Badge variant="outline" className="ms-2 text-xs">{language === 'ar' ? 'منتج' : 'Product'}</Badge>}
-                        <span className="text-sm text-muted-foreground ms-2">({item.fee} {t('sar')})</span>
+                    <div key={idx} className="bg-muted/50 p-3 rounded-lg space-y-2">
+                      {/* Row 1: Name and Delete */}
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium">{item.activity_name}</span>
+                          {item.is_product && <Badge variant="outline" className="text-xs">{language === 'ar' ? 'منتج' : 'Product'}</Badge>}
+                        </div>
+                        <Button variant="ghost" size="sm" onClick={() => removeActivityFromRegForm(idx)}>
+                          <X className="w-4 h-4 text-destructive" />
+                        </Button>
                       </div>
-                      <div className="flex items-center gap-2">
+                      
+                      {/* Row 2: Dates and Price */}
+                      <div className="grid grid-cols-3 gap-2">
                         {item.is_product ? (
-                          <Input 
-                            className="w-20 text-sm"
-                            type="number"
-                            min="1"
-                            value={item.quantity}
-                            onChange={(e) => {
-                              const updated = [...regFormItems];
-                              updated[idx].quantity = parseInt(e.target.value) || 1;
-                              setRegFormItems(updated);
-                            }}
-                          />
+                          <>
+                            <div className="space-y-1">
+                              <Label className="text-xs">{language === 'ar' ? 'الكمية' : 'Quantity'}</Label>
+                              <Input 
+                                type="number"
+                                min="1"
+                                value={item.quantity}
+                                onChange={(e) => {
+                                  const updated = [...regFormItems];
+                                  updated[idx].quantity = parseInt(e.target.value) || 1;
+                                  setRegFormItems(updated);
+                                }}
+                                className="text-sm"
+                              />
+                            </div>
+                            <div className="space-y-1">
+                              <Label className="text-xs">{language === 'ar' ? 'السعر' : 'Price'}</Label>
+                              <Input 
+                                type="number"
+                                value={item.fee}
+                                onChange={(e) => {
+                                  const updated = [...regFormItems];
+                                  updated[idx].fee = parseFloat(e.target.value) || 0;
+                                  setRegFormItems(updated);
+                                }}
+                                className="text-sm"
+                              />
+                            </div>
+                            <div className="flex items-end">
+                              <span className="text-sm font-semibold text-primary pb-2">
+                                {((item.fee || 0) * (item.quantity || 1)).toFixed(2)} {t('sar')}
+                              </span>
+                            </div>
+                          </>
                         ) : (
+                          <>
+                            <div className="space-y-1">
+                              <Label className="text-xs">{language === 'ar' ? 'تاريخ البداية' : 'Start Date'}</Label>
+                              <Input 
+                                type="date"
+                                value={item.start_date || ''}
+                                onChange={(e) => {
+                                  const updated = [...regFormItems];
+                                  updated[idx].start_date = e.target.value;
+                                  // Update period
+                                  if (updated[idx].end_date) {
+                                    updated[idx].period = `${e.target.value} - ${updated[idx].end_date}`;
+                                  }
+                                  setRegFormItems(updated);
+                                }}
+                                className="text-sm"
+                              />
+                            </div>
+                            <div className="space-y-1">
+                              <Label className="text-xs">{language === 'ar' ? 'تاريخ النهاية' : 'End Date'}</Label>
+                              <Input 
+                                type="date"
+                                value={item.end_date || ''}
+                                onChange={(e) => {
+                                  const updated = [...regFormItems];
+                                  updated[idx].end_date = e.target.value;
+                                  // Update period
+                                  if (updated[idx].start_date) {
+                                    updated[idx].period = `${updated[idx].start_date} - ${e.target.value}`;
+                                  }
+                                  setRegFormItems(updated);
+                                }}
+                                className="text-sm"
+                              />
+                            </div>
+                            <div className="space-y-1">
+                              <Label className="text-xs">{language === 'ar' ? 'السعر' : 'Price'}</Label>
+                              <Input 
+                                type="number"
+                                value={item.fee}
+                                onChange={(e) => {
+                                  const updated = [...regFormItems];
+                                  updated[idx].fee = parseFloat(e.target.value) || 0;
+                                  setRegFormItems(updated);
+                                }}
+                                className="text-sm"
+                              />
+                            </div>
+                          </>
+                        )}
+                      </div>
+                      
+                      {/* Row 3: Schedule (separate line for activities) */}
+                      {!item.is_product && (
+                        <div className="space-y-1">
+                          <Label className="text-xs">{language === 'ar' ? 'المواعيد' : 'Schedule'}</Label>
                           <Input 
-                            className="w-32 text-sm"
-                            placeholder={language === 'ar' ? 'المواعيد' : 'Schedule'}
+                            placeholder={language === 'ar' ? 'مثال: السبت والاثنين 4-5 مساءً' : 'e.g., Sat & Mon 4-5 PM'}
                             value={item.schedule}
                             onChange={(e) => {
                               const updated = [...regFormItems];
                               updated[idx].schedule = e.target.value;
                               setRegFormItems(updated);
                             }}
+                            className="text-sm"
                           />
-                        )}
-                        <Button variant="ghost" size="sm" onClick={() => removeActivityFromRegForm(idx)}>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
                           <X className="w-4 h-4 text-destructive" />
                         </Button>
                       </div>
