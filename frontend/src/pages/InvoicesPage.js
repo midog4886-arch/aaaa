@@ -334,8 +334,11 @@ export const InvoicesPage = () => {
     }
     setSaving(true);
     try {
-      // Build activities from invoice items (only activity items, not products)
-      const memberActivities = invoiceItems
+      // Determine which items to use based on source
+      const itemsToUse = addMemberSource === 'registration' ? regFormItems : invoiceItems;
+      
+      // Build activities from items (only activity items, not products)
+      const memberActivities = itemsToUse
         .filter(item => !item.is_product && item.activity_id)
         .map(item => ({
           activity_id: item.activity_id,
@@ -350,16 +353,28 @@ export const InvoicesPage = () => {
       const response = await membersAPI.create({ 
         ...newMemberData, 
         age: parseInt(newMemberData.age) || 0, 
-        activities: memberActivities 
+        activities: memberActivities,
+        branch_id: selectedBranchId !== 'all' ? selectedBranchId : null
       });
       const membersRes = await membersAPI.getAll();
       setMembers(membersRes.data);
-      setSelectedMember(response.data);
-      setCustomerNameAr(response.data.name_ar);
-      setCustomerPhone(response.data.phone);
+      
+      // Update the appropriate form based on source
+      if (addMemberSource === 'registration') {
+        setRegFormData({
+          ...regFormData,
+          customer_name: response.data.name_ar,
+          customer_phone: response.data.phone
+        });
+      } else {
+        setSelectedMember(response.data);
+        setCustomerNameAr(response.data.name_ar);
+        setCustomerPhone(response.data.phone);
+      }
+      
       setIsAddMemberDialogOpen(false);
       setNewMemberData({ name_ar: '', name: '', age: '', guardian_name_ar: '', guardian_name: '', phone: '' });
-      toast.success(language === 'ar' ? 'تم إضافة العضو مع الأنشطة' : 'Member added with activities');
+      toast.success(language === 'ar' ? 'تم إضافة العضو وحفظه في قائمة الأعضاء' : 'Member added and saved to members list');
     } catch (error) {
       toast.error(t('error'));
     } finally {
