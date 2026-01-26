@@ -229,22 +229,48 @@ export const MembersPage = () => {
     return <Badge className={className}>{label}</Badge>;
   };
 
-  // Get overall member status based on activities
+  // Get overall member status based on activities and end dates
   const getMemberOverallStatus = (member) => {
     const activities = member.activities || [];
     if (activities.length === 0) {
       return { status: 'no_activity', label: language === 'ar' ? 'بدون نشاط' : 'No Activity', class: 'bg-gray-100 text-gray-600 border-gray-300' };
     }
-    const hasActive = activities.some(a => a.status === 'active');
-    const allExpired = activities.every(a => a.status === 'expired');
     
-    if (hasActive) {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    // Check each activity's end_date to determine status
+    const hasActiveActivity = activities.some(a => {
+      if (!a.end_date) return a.status === 'active';
+      const endDate = new Date(a.end_date);
+      endDate.setHours(0, 0, 0, 0);
+      return endDate >= today;
+    });
+    
+    const allExpired = activities.every(a => {
+      if (!a.end_date) return a.status === 'expired';
+      const endDate = new Date(a.end_date);
+      endDate.setHours(0, 0, 0, 0);
+      return endDate < today;
+    });
+    
+    if (hasActiveActivity) {
       return { status: 'active', label: language === 'ar' ? 'نشط' : 'Active', class: 'bg-green-100 text-green-700 border-green-300' };
     } else if (allExpired) {
       return { status: 'expired', label: language === 'ar' ? 'منتهي' : 'Expired', class: 'bg-red-100 text-red-700 border-red-300' };
     } else {
       return { status: 'inactive', label: language === 'ar' ? 'غير نشط' : 'Inactive', class: 'bg-gray-100 text-gray-600 border-gray-300' };
     }
+  };
+
+  // Get activity status based on end date
+  const getActivityStatusFromDate = (activity) => {
+    if (!activity.end_date) return activity.status;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const endDate = new Date(activity.end_date);
+    endDate.setHours(0, 0, 0, 0);
+    return endDate >= today ? 'active' : 'expired';
   };
 
   const getActivityColor = (activityName) => {
