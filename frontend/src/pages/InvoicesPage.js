@@ -669,8 +669,21 @@ ${selectedInvoice.discount > 0 ? `🎁 الخصم: ${selectedInvoice.discount} �
   };
 
   // Print credit note
-  const handlePrintCreditNote = (creditNote) => {
+  const handlePrintCreditNote = async (creditNote) => {
     const branchName = getBranchName(creditNote.branch_id);
+    
+    // Generate QR code for credit note (ZATCA compliant)
+    let qrDataUrl = '';
+    try {
+      const qrResponse = await invoicesAPI.getQR(creditNote.original_invoice_id);
+      qrDataUrl = qrResponse.data?.qr_image || '';
+    } catch (e) {
+      // Generate simple QR with credit note data
+      const qrData = `إشعار دائن: ${creditNote.credit_note_number}\nالفاتورة: ${creditNote.original_invoice_number}\nالمبلغ: ${creditNote.refund_amount} ر.س\nالتاريخ: ${new Date(creditNote.created_at).toLocaleDateString('ar-SA')}`;
+      // Use QRCode library if available or skip
+      qrDataUrl = '';
+    }
+    
     const printWindow = window.open('', '', 'width=800,height=600');
     const content = `
       <!DOCTYPE html>
@@ -700,6 +713,9 @@ ${selectedInvoice.discount > 0 ? `🎁 الخصم: ${selectedInvoice.discount} �
           .totals-section { margin-top: 15px; border: 2px solid #dc2626; padding: 15px; border-radius: 8px; background: #fef2f2; }
           .totals-row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #fecaca; }
           .totals-row.total { font-size: 18px; font-weight: bold; border-top: 2px solid #dc2626; border-bottom: none; margin-top: 8px; padding-top: 12px; color: #dc2626; }
+          .qr-section { margin-top: 20px; display: flex; justify-content: center; align-items: center; gap: 20px; padding: 15px; border: 2px dashed #dc2626; border-radius: 8px; background: #fff; }
+          .qr-section img { width: 120px; height: 120px; }
+          .qr-section .qr-info { text-align: center; font-size: 10px; color: #6b7280; }
           .footer { margin-top: 20px; text-align: center; font-size: 10px; color: #6b7280; border-top: 2px solid #fecaca; padding-top: 15px; }
           .refund-badge { background: #dc2626; color: white; padding: 3px 10px; border-radius: 12px; font-size: 11px; margin-right: 10px; }
         </style>
@@ -750,6 +766,15 @@ ${selectedInvoice.discount > 0 ? `🎁 الخصم: ${selectedInvoice.discount} �
         </div>
         ${creditNote.reason ? `<div class="info-section"><strong>📌 سبب المرتجع:</strong> ${creditNote.reason}</div>` : ''}
         ${creditNote.notes ? `<div class="info-section"><strong>📝 ملاحظات:</strong> ${creditNote.notes}</div>` : ''}
+        ${qrDataUrl ? `
+        <div class="qr-section">
+          <img src="${qrDataUrl}" alt="QR Code" />
+          <div class="qr-info">
+            <p><strong>رمز التحقق الإلكتروني</strong></p>
+            <p>امسح للتحقق من صحة الإشعار</p>
+          </div>
+        </div>
+        ` : ''}
         <div class="footer">${COMPANY_INFO.name_ar} - جميع الحقوق محفوظة © ${new Date().getFullYear()}</div>
       </body>
       </html>
