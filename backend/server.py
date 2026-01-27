@@ -960,6 +960,10 @@ async def create_invoice(invoice: InvoiceCreate, current_user: dict = Depends(ge
     else:
         branch_id = current_user.get("branch_id")
     
+    # Get supervisor name from current user
+    user_doc = await db.users.find_one({"id": current_user["user_id"]}, {"_id": 0})
+    supervisor_name = user_doc.get("name", current_user.get("username", "")) if user_doc else current_user.get("username", "")
+    
     invoice_doc = {
         "id": invoice_id,
         "invoice_number": str(next_number),
@@ -981,6 +985,8 @@ async def create_invoice(invoice: InvoiceCreate, current_user: dict = Depends(ge
         "customer_name_ar": customer_name_ar,
         "customer_phone": customer_phone,
         "customer_address": customer_address,
+        # Supervisor/Employee who created the invoice
+        "supervisor_name": supervisor_name,
         # Company info
         "tax_number": COMPANY_TAX_NUMBER,
         "commercial_reg": COMPANY_COMMERCIAL_REG
@@ -1253,6 +1259,10 @@ async def convert_registration_form(form_id: str, current_user: dict = Depends(g
     count = await db.invoices.count_documents({})
     invoice_number = f"INV-{count + 1:05d}"
     
+    # Get supervisor name from current user
+    user_doc = await db.users.find_one({"id": current_user["user_id"]}, {"_id": 0})
+    supervisor_name = user_doc.get("name", current_user.get("username", "")) if user_doc else current_user.get("username", "")
+    
     invoice_doc = {
         "id": str(uuid.uuid4()),
         "invoice_number": invoice_number,
@@ -1272,6 +1282,7 @@ async def convert_registration_form(form_id: str, current_user: dict = Depends(g
         "status": "pending",
         "branch_id": form.get("branch_id"),
         "registration_form_id": form_id,
+        "supervisor_name": supervisor_name,
         "created_at": datetime.now(timezone.utc).isoformat()
     }
     
