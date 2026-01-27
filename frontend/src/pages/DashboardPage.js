@@ -265,6 +265,7 @@ export const DashboardPage = () => {
             activeDetail === 'subscriptions' ? 'border-green-500/30 bg-green-50/30' :
             activeDetail === 'revenue' ? 'border-blue-500/30 bg-blue-50/30' :
             activeDetail === 'coupons' ? 'border-purple-500/30 bg-purple-50/30' :
+            activeDetail === 'pendingForms' ? 'border-teal-500/30 bg-teal-50/30' :
             'border-amber-500/30 bg-amber-50/30'
           }`}>
             <CardHeader className="flex flex-row items-center justify-between">
@@ -273,6 +274,7 @@ export const DashboardPage = () => {
                 activeDetail === 'subscriptions' ? 'text-green-600' :
                 activeDetail === 'revenue' ? 'text-blue-600' :
                 activeDetail === 'coupons' ? 'text-purple-600' :
+                activeDetail === 'pendingForms' ? 'text-teal-600' :
                 'text-amber-600'
               }`}>
                 {activeDetail === 'members' && <><Users className="w-5 h-5" />{language === 'ar' ? 'تفاصيل الأعضاء' : 'Members Details'}</>}
@@ -280,6 +282,7 @@ export const DashboardPage = () => {
                 {activeDetail === 'revenue' && <><Banknote className="w-5 h-5" />{language === 'ar' ? 'تفاصيل الإيرادات' : 'Revenue Details'}</>}
                 {activeDetail === 'expiring' && <><AlertTriangle className="w-5 h-5" />{language === 'ar' ? 'الاشتراكات المنتهية قريباً' : 'Expiring Subscriptions'}</>}
                 {activeDetail === 'coupons' && <><Tag className="w-5 h-5" />{language === 'ar' ? 'كوبونات الخصم' : 'Discount Coupons'}</>}
+                {activeDetail === 'pendingForms' && <><ClipboardList className="w-5 h-5" />{language === 'ar' ? 'استمارات التسجيل الغير مفوترة' : 'Pending Registration Forms'}</>}
               </CardTitle>
               <Button variant="ghost" size="sm" onClick={() => { setActiveDetail(null); setDetailData(null); }}>
                 <X className="w-4 h-4" />
@@ -290,6 +293,52 @@ export const DashboardPage = () => {
                 <div className="flex items-center justify-center py-8"><div className="spinner" /></div>
               ) : (
                 <>
+                  {/* Pending Forms Detail */}
+                  {activeDetail === 'pendingForms' && detailData && (
+                    <div className="space-y-4">
+                      <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                        <div className="p-3 bg-white rounded-lg border">
+                          <div className="text-xl font-bold text-teal-600">{detailData.length}</div>
+                          <div className="text-xs text-muted-foreground">{language === 'ar' ? 'عدد الاستمارات' : 'Forms Count'}</div>
+                        </div>
+                        <div className="p-3 bg-white rounded-lg border">
+                          <div className="text-xl font-bold text-teal-600">{formatCurrency(detailData.reduce((sum, f) => sum + (f.total || 0), 0))}</div>
+                          <div className="text-xs text-muted-foreground">{language === 'ar' ? 'الإجمالي' : 'Total'}</div>
+                        </div>
+                      </div>
+                      <div className="overflow-x-auto max-h-[300px]">
+                        <table className="data-table w-full">
+                          <thead className="sticky top-0 bg-white">
+                            <tr>
+                              <th>{language === 'ar' ? 'رقم الاستمارة' : 'Form #'}</th>
+                              <th>{language === 'ar' ? 'العميل' : 'Customer'}</th>
+                              <th>{t('phone')}</th>
+                              <th>{language === 'ar' ? 'المبلغ' : 'Amount'}</th>
+                              <th>{language === 'ar' ? 'التاريخ' : 'Date'}</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {detailData.slice(0, 15).map((form, idx) => (
+                              <tr key={idx}>
+                                <td className="font-mono text-sm">{form.form_number}</td>
+                                <td className="font-medium">{form.customer_name}</td>
+                                <td dir="ltr">{form.customer_phone}</td>
+                                <td className="font-bold text-teal-600">{form.total?.toFixed(2)} {t('sar')}</td>
+                                <td className="text-sm">{new Date(form.created_at).toLocaleDateString(language === 'ar' ? 'ar-SA' : 'en-US')}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                        {detailData.length > 15 && <p className="text-center text-sm text-muted-foreground mt-2">{language === 'ar' ? `وغيرهم ${detailData.length - 15}...` : `and ${detailData.length - 15} more...`}</p>}
+                      </div>
+                      {detailData.length === 0 && (
+                        <div className="text-center py-8 text-muted-foreground">
+                          {language === 'ar' ? 'لا توجد استمارات غير مفوترة' : 'No pending forms'}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
                   {/* Members Detail */}
                   {activeDetail === 'members' && detailData && (
                     <div className="space-y-4">
