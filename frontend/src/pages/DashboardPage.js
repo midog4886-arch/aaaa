@@ -233,6 +233,23 @@ export const DashboardPage = () => {
             <div className="stat-card-label">{language === 'ar' ? 'كوبونات الخصم' : 'Discount Coupons'}</div>
             <div className="text-xs text-muted-foreground mt-1">{language === 'ar' ? 'اضغط للتفاصيل' : 'Click for details'}</div>
           </Card>
+
+          <Card 
+            className={`stat-card hover-scale cursor-pointer transition-all ${activeDetail === 'pendingForms' ? 'ring-2 ring-teal-500' : ''}`} 
+            data-testid="stat-pending-forms"
+            onClick={() => toggleDetail('pendingForms')}
+          >
+            <div className="stat-card-icon bg-teal-500/10">
+              <ClipboardList className="w-6 h-6 text-teal-500" />
+            </div>
+            <div className="stat-card-value text-teal-500">
+              {formatCurrency(stats?.pending_forms_total)}
+            </div>
+            <div className="stat-card-label">{language === 'ar' ? 'استمارات غير مفوترة' : 'Pending Forms'}</div>
+            <div className="text-xs text-muted-foreground mt-1">
+              {stats?.pending_forms_count || 0} {language === 'ar' ? 'استمارة' : 'forms'}
+            </div>
+          </Card>
         </div>
 
         {/* Detail Sections */}
