@@ -1111,6 +1111,25 @@ async def pay_invoice(invoice_id: str, current_user: dict = Depends(get_current_
     )
     return {"message": "Invoice paid", "status": "paid"}
 
+@api_router.put("/invoices/{invoice_id}/branch")
+async def update_invoice_branch(invoice_id: str, branch_id: str, current_user: dict = Depends(get_current_user)):
+    """Update invoice branch"""
+    invoice = await db.invoices.find_one({"id": invoice_id})
+    if not invoice:
+        raise HTTPException(status_code=404, detail="Invoice not found")
+    
+    # Verify branch exists
+    if branch_id and branch_id != "all":
+        branch = await db.branches.find_one({"id": branch_id})
+        if not branch:
+            raise HTTPException(status_code=404, detail="Branch not found")
+    
+    await db.invoices.update_one(
+        {"id": invoice_id},
+        {"$set": {"branch_id": branch_id if branch_id != "all" else None}}
+    )
+    return {"message": "Invoice branch updated", "branch_id": branch_id}
+
 @api_router.put("/invoices/{invoice_id}/cancel")
 async def cancel_invoice(invoice_id: str, current_user: dict = Depends(get_current_user)):
     result = await db.invoices.find_one_and_update(
