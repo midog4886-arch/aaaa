@@ -263,7 +263,7 @@ export const ReportsPage = () => {
                   ).join('') || '<tr><td colspan="3">لا توجد بيانات</td></tr>';
                   
                   const refundRows = report?.refund_details?.map((r, i) => 
-                    `<tr><td>${i+1}</td><td>#${r.invoice_id?.slice(0,8)}</td><td>${r.customer_name || '-'}</td><td>${r.refund_amount?.toLocaleString() || 0} ر.س</td><td>${r.refund_type === 'full' ? 'كامل' : 'جزئي'}</td><td>${r.refund_reason || '-'}</td></tr>`
+                    `<tr><td>${i+1}</td><td>#${r.credit_note_number || '-'}</td><td>${r.original_invoice_number || '-'}</td><td>${r.customer_name || '-'}</td><td>${r.refund_amount?.toLocaleString() || 0} ر.س</td><td>${r.reason || '-'}</td><td>${r.created_by || '-'}</td></tr>`
                   ).join('') || '';
                   
                   printWindow.document.write(`
