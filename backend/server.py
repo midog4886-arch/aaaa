@@ -1934,6 +1934,16 @@ async def get_dashboard_stats(
                 act_name = activity.get("activity_name", "Unknown")
                 activity_counts[act_name] = activity_counts.get(act_name, 0) + 1
     
+    # Get pending registration forms total
+    forms_query = {"status": "pending"}
+    if is_admin and branch_filter and branch_filter != "all":
+        forms_query["branch_id"] = branch_filter
+    elif not is_admin and branch_id:
+        forms_query["branch_id"] = branch_id
+    pending_forms = await db.registration_forms.find(forms_query, {"_id": 0}).to_list(10000)
+    pending_forms_total = sum(form.get("total", 0) for form in pending_forms)
+    pending_forms_count = len(pending_forms)
+    
     return {
         "members_count": members_count,
         "activities_count": activities_count,
@@ -1941,7 +1951,9 @@ async def get_dashboard_stats(
         "active_subscriptions": active_subscriptions,
         "month_revenue": month_revenue,
         "expiring_count": expiring_count,
-        "members_by_activity": [{"name": k, "count": v} for k, v in activity_counts.items()]
+        "members_by_activity": [{"name": k, "count": v} for k, v in activity_counts.items()],
+        "pending_forms_total": pending_forms_total,
+        "pending_forms_count": pending_forms_count
     }
 
 # ============ SEED DATA ============
