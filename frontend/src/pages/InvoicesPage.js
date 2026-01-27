@@ -89,6 +89,12 @@ export const InvoicesPage = () => {
   const [regFormCouponDiscount, setRegFormCouponDiscount] = useState(0);
   const [regFormItemType, setRegFormItemType] = useState('activity');
   
+  // View/Edit Registration Form state
+  const [isViewRegFormDialogOpen, setIsViewRegFormDialogOpen] = useState(false);
+  const [isEditRegFormDialogOpen, setIsEditRegFormDialogOpen] = useState(false);
+  const [selectedRegForm, setSelectedRegForm] = useState(null);
+  const [editRegFormId, setEditRegFormId] = useState(null);
+  
   // Products & Discounts
   const [products, setProducts] = useState([]);
   const [couponCode, setCouponCode] = useState('');
