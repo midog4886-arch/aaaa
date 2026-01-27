@@ -1025,12 +1025,10 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
   const handlePrintNewRegistrationForm = async () => {
     const branchName = branches.find(b => b.id === selectedBranchId)?.name_ar || '';
     
-    // Calculate totals
+    // Calculate totals WITHOUT VAT
     const formSubtotal = regFormItems.reduce((sum, item) => sum + ((item.fee || 0) * (item.quantity || 1)), 0);
     const totalDiscountAmount = regFormDiscount + regFormCouponDiscount;
-    const afterDiscount = formSubtotal - totalDiscountAmount;
-    const formVat = afterDiscount * 0.15;
-    const formTotal = afterDiscount + formVat;
+    const formTotal = formSubtotal - totalDiscountAmount; // NO VAT for registration form
     
     // Build items table rows
     const itemsRows = regFormItems.map((item, idx) => `
@@ -1062,22 +1060,143 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
           @page { size: A4; margin: 10mm; }
           * { margin: 0; padding: 0; box-sizing: border-box; }
           body { font-family: 'Tajawal', Arial, sans-serif; direction: rtl; padding: 20px; max-width: 800px; margin: 0 auto; color: #000; font-size: 12px; }
-          .header { text-align: center; border-bottom: 2px solid #000; padding-bottom: 15px; margin-bottom: 15px; }
-          .company-name { font-size: 20px; font-weight: bold; margin-bottom: 5px; }
-          .company-info { font-size: 10px; color: #333; }
-          .branch-name { font-size: 14px; font-weight: bold; margin-top: 5px; }
-          .form-title { font-size: 18px; font-weight: bold; text-align: center; margin: 15px 0; padding: 8px; background: #f0f0f0; border: 1px solid #000; }
-          .info-section { margin-bottom: 15px; padding: 10px; border: 1px solid #000; }
-          .info-section h4 { font-size: 13px; font-weight: bold; margin-bottom: 8px; border-bottom: 1px solid #ccc; padding-bottom: 5px; }
-          .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-          .info-row { display: flex; gap: 5px; }
-          .info-label { font-weight: bold; min-width: 80px; }
+          .header-banner { background: linear-gradient(135deg, #1e3a8a 0%, #1e40af 100%); color: white; padding: 20px; text-align: center; margin: -20px -20px 20px -20px; }
+          .header-banner .company-name { font-size: 24px; font-weight: bold; margin-bottom: 5px; }
+          .header-banner .branch-name { font-size: 16px; margin-top: 8px; background: rgba(255,255,255,0.2); display: inline-block; padding: 4px 16px; border-radius: 20px; }
+          .header-banner .company-info { font-size: 11px; opacity: 0.9; margin-top: 8px; }
+          .form-title { font-size: 20px; font-weight: bold; text-align: center; margin: 20px 0; padding: 12px; background: #f8fafc; border: 2px solid #1e3a8a; border-radius: 8px; color: #1e3a8a; }
+          .info-section { margin-bottom: 15px; padding: 15px; border: 1px solid #e2e8f0; border-radius: 8px; background: #f8fafc; }
+          .info-section h4 { font-size: 14px; font-weight: bold; margin-bottom: 10px; color: #1e3a8a; border-bottom: 2px solid #1e3a8a; padding-bottom: 5px; }
+          .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+          .info-row { display: flex; gap: 8px; padding: 5px 0; }
+          .info-label { font-weight: bold; min-width: 90px; color: #374151; }
           table { width: 100%; border-collapse: collapse; margin: 10px 0; }
-          th, td { padding: 8px; border: 1px solid #000; text-align: right; font-size: 11px; }
-          th { background: #e0e0e0; font-weight: bold; }
-          .totals-section { margin-top: 10px; border: 1px solid #000; padding: 10px; }
-          .totals-row { display: flex; justify-content: space-between; padding: 5px 0; border-bottom: 1px solid #ccc; }
-          .totals-row.discount { color: #c00; }
+          th, td { padding: 10px; border: 1px solid #d1d5db; text-align: right; font-size: 11px; }
+          th { background: #1e3a8a; color: white; font-weight: bold; }
+          tr:nth-child(even) { background: #f8fafc; }
+          .totals-section { margin-top: 15px; border: 2px solid #1e3a8a; padding: 15px; border-radius: 8px; background: #eff6ff; }
+          .totals-row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #bfdbfe; }
+          .totals-row.discount { color: #dc2626; font-weight: 500; }
+          .totals-row.total { font-size: 18px; font-weight: bold; border-top: 2px solid #1e3a8a; border-bottom: none; margin-top: 8px; padding-top: 12px; color: #1e3a8a; }
+          .totals-note { text-align: center; font-size: 10px; color: #6b7280; margin-top: 8px; }
+          .payment-section { margin-top: 15px; padding: 12px; border: 1px solid #e2e8f0; border-radius: 8px; background: #fefce8; }
+          .notes-section { margin-top: 15px; padding: 12px; border: 1px solid #e2e8f0; border-radius: 8px; background: #f0fdf4; font-size: 11px; }
+          .terms-section { margin-top: 20px; padding: 15px; border: 2px solid #f59e0b; border-radius: 8px; background: #fffbeb; }
+          .terms-section h4 { font-weight: bold; margin-bottom: 10px; color: #92400e; }
+          .terms-section ul { padding-right: 20px; font-size: 11px; color: #78350f; }
+          .terms-section li { margin-bottom: 5px; }
+          .signature-section { margin-top: 25px; display: grid; grid-template-columns: 1fr 1fr; gap: 30px; }
+          .signature-box { border: 2px solid #d1d5db; padding: 15px; text-align: center; border-radius: 8px; background: white; }
+          .signature-box p { margin-bottom: 40px; font-weight: bold; color: #374151; }
+          .signature-line { border-top: 1px solid #000; margin-top: 40px; padding-top: 8px; font-size: 10px; }
+          .footer { margin-top: 20px; text-align: center; font-size: 10px; color: #6b7280; border-top: 2px solid #e2e8f0; padding-top: 15px; }
+        </style>
+      </head>
+      <body>
+        <div class="header-banner">
+          <div class="company-name">${COMPANY_INFO.name_ar}</div>
+          ${branchName ? `<div class="branch-name">🏢 فرع: ${branchName}</div>` : ''}
+          <div class="company-info">الرقم الضريبي: ${COMPANY_INFO.tax_number} | السجل التجاري: ${COMPANY_INFO.commercial_reg}</div>
+        </div>
+        <div class="form-title">📋 استمارة تسجيل</div>
+        <div class="info-section">
+          <h4>👤 بيانات المشترك</h4>
+          <div class="info-grid">
+            <div class="info-row"><span class="info-label">الاسم:</span><span>${regFormData.customer_name || '_______________'}</span></div>
+            <div class="info-row"><span class="info-label">رقم الجوال:</span><span dir="ltr">${regFormData.customer_phone || '_______________'}</span></div>
+            <div class="info-row"><span class="info-label">التاريخ:</span><span>${new Date().toLocaleDateString('ar-SA')}</span></div>
+          </div>
+        </div>
+        <div class="info-section">
+          <h4>📝 الأنشطة والمنتجات</h4>
+          <table>
+            <thead><tr><th>#</th><th>البند</th><th>الفترة/الكمية</th><th>المواعيد</th><th>الرسوم</th></tr></thead>
+            <tbody>${itemsRows}</tbody>
+          </table>
+        </div>
+        <div class="totals-section">
+          ${totalDiscountAmount > 0 ? `<div class="totals-row discount"><span>الخصم${regFormAppliedCoupon ? ` (${regFormAppliedCoupon.code})` : ''}:</span><span>- ${totalDiscountAmount.toFixed(2)} ر.س</span></div>` : ''}
+          <div class="totals-row total"><span>💰 الإجمالي:</span><span>${formTotal.toFixed(2)} ر.س</span></div>
+          <div class="totals-note">* الأسعار لا تشمل ضريبة القيمة المضافة</div>
+        </div>
+        <div class="payment-section">
+          <div class="info-row"><span class="info-label">💳 طريقة الدفع:</span><span>${paymentText}</span></div>
+        </div>
+        ${regFormNotes ? `<div class="notes-section"><strong>📌 ملاحظات:</strong> ${regFormNotes}</div>` : ''}
+        <div class="terms-section">
+          <h4>⚠️ شروط وأحكام:</h4>
+          <ul>
+            <li>الاشتراك محدد البداية والنهاية ولا يتم تعويض حصص غياب المشترك</li>
+            <li>المبلغ المدفوع لا يسترد بعد مرور أسبوع من الاشتراك</li>
+          </ul>
+        </div>
+        <div class="signature-section">
+          <div class="signature-box"><p>✍️ توقيع المشترك / ولي الأمر</p><div class="signature-line">التاريخ: _______________</div></div>
+          <div class="signature-box"><p>✍️ توقيع الموظف</p><div class="signature-line">التاريخ: _______________</div></div>
+        </div>
+        <div class="footer">${COMPANY_INFO.name_ar} - جميع الحقوق محفوظة © ${new Date().getFullYear()}</div>
+      </body>
+      </html>
+    `;
+    printWindow.document.write(content);
+    printWindow.document.close();
+    printWindow.print();
+    
+    // Save the registration form to database
+    try {
+      const formData = {
+        customer_name: regFormData.customer_name,
+        customer_phone: regFormData.customer_phone,
+        items: regFormItems,
+        subtotal: formSubtotal,
+        discount: totalDiscountAmount,
+        discount_code: regFormAppliedCoupon?.code || '',
+        vat_amount: 0, // No VAT for registration form
+        total: formTotal,
+        payment_method: regFormPaymentMethod,
+        notes: regFormNotes,
+        branch_id: selectedBranchId !== 'all' ? selectedBranchId : null
+      };
+      await registrationFormsAPI.create(formData);
+      toast.success(language === 'ar' ? 'تم حفظ وطباعة الاستمارة' : 'Form saved and printed');
+      loadData();
+      closeRegistrationFormDialog();
+    } catch (error) {
+      console.error('Error saving form:', error);
+      closeRegistrationFormDialog();
+    }
+  };
+
+  // Save registration form without printing
+  const handleSaveRegistrationFormOnly = async () => {
+    // Calculate totals WITHOUT VAT
+    const formSubtotal = regFormItems.reduce((sum, item) => sum + ((item.fee || 0) * (item.quantity || 1)), 0);
+    const totalDiscountAmount = regFormDiscount + regFormCouponDiscount;
+    const formTotal = formSubtotal - totalDiscountAmount;
+    
+    try {
+      const formData = {
+        customer_name: regFormData.customer_name,
+        customer_phone: regFormData.customer_phone,
+        items: regFormItems,
+        subtotal: formSubtotal,
+        discount: totalDiscountAmount,
+        discount_code: regFormAppliedCoupon?.code || '',
+        vat_amount: 0,
+        total: formTotal,
+        payment_method: regFormPaymentMethod,
+        notes: regFormNotes,
+        branch_id: selectedBranchId !== 'all' ? selectedBranchId : null
+      };
+      await registrationFormsAPI.create(formData);
+      toast.success(language === 'ar' ? 'تم حفظ استمارة التسجيل بنجاح' : 'Registration form saved successfully');
+      loadData();
+      closeRegistrationFormDialog();
+    } catch (error) {
+      console.error('Error saving form:', error);
+      toast.error(language === 'ar' ? 'خطأ في حفظ الاستمارة' : 'Error saving form');
+    }
+  };
           .totals-row.total { font-size: 14px; font-weight: bold; border-top: 2px solid #000; border-bottom: none; margin-top: 5px; padding-top: 8px; }
           .payment-section { margin-top: 10px; padding: 10px; border: 1px solid #000; }
           .notes-section { margin-top: 10px; padding: 10px; border: 1px solid #000; font-size: 11px; }
