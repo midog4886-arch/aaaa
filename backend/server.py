@@ -193,6 +193,8 @@ class Invoice(BaseModel):
     customer_name_ar: Optional[str] = ""
     customer_phone: Optional[str] = ""
     customer_address: Optional[str] = ""
+    # Supervisor/Employee who created the invoice
+    supervisor_name: Optional[str] = ""
     # Company info
     tax_number: str = COMPANY_TAX_NUMBER
     commercial_reg: str = COMPANY_COMMERCIAL_REG
