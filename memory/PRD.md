@@ -595,3 +595,74 @@
 - `/app/frontend/src/pages/InvoicesPage.js` - Added registration form button and function
 - `/app/frontend/src/pages/MembersPage.js` - Status calculation based on end_date
 
+
+
+
+---
+
+## Update 15 - Invoice Supervisor Field (January 27, 2026)
+
+### Features Implemented:
+
+#### 1. حقل مشرف الفاتورة (supervisor_name) ✅
+- **الوصف**: حقل جديد يُسجل اسم الموظف الذي أنشأ الفاتورة تلقائياً
+- **الملف Backend**: `/app/backend/server.py`
+  - `create_invoice` - يجلب اسم المستخدم من قاعدة البيانات ويحفظه في الفاتورة
+  - `convert_registration_form` - يضيف اسم المشرف عند تحويل استمارة التسجيل
+- **الملف Frontend**: `/app/frontend/src/pages/InvoicesPage.js`
+  - يعرض حقل "👤 مشرف الفاتورة" في قسم معلومات الدفع
+  - يظهر في نافذة عرض الفاتورة وعند الطباعة
+
+### Backend Changes:
+- **Invoice Model**: حقل `supervisor_name: Optional[str] = ""` موجود مسبقاً
+- **create_invoice endpoint** (line ~976): 
+  ```python
+  user_doc = await db.users.find_one({"id": current_user["user_id"]}, {"_id": 0})
+  supervisor_name = user_doc.get("name", current_user.get("username", ""))
+  ```
+- **convert_registration_form endpoint** (line ~1259): نفس المنطق لإضافة اسم المشرف
+
+### Frontend Changes:
+- **InvoicesPage.js** (line ~1879-1882): عرض حقل المشرف في قسم معلومات الدفع
+  ```jsx
+  {selectedInvoice.supervisor_name && (
+    <div className="col-span-2 mt-2 pt-2 border-t border-blue-200">
+      <strong>👤 مشرف الفاتورة:</strong> {selectedInvoice.supervisor_name}
+    </div>
+  )}
+  ```
+
+### Bug Fix:
+- إصلاح خطأ توليد رقم الفاتورة عند وجود أرقام بصيغة "INV-XXXXX"
+- الآن يتعامل مع كلا الصيغتين (الرقمية و INV-XXXXX)
+
+### Test Results:
+- ✅ 5/5 اختبارات ناجحة (100%)
+- ✅ إنشاء فاتورة يحفظ supervisor_name تلقائياً
+- ✅ تحويل استمارة يحفظ supervisor_name
+- ✅ الفواتير القديمة تعمل بدون أخطاء
+- ✅ حقل المشرف يظهر في الواجهة
+
+### Files Modified:
+- `/app/backend/server.py` - Lines 976-978, 1259-1261
+- `/app/frontend/src/pages/InvoicesPage.js` - Lines 1879-1882
+
+---
+
+## Prioritized Backlog (Updated January 27, 2026)
+
+### P0 - Critical (Completed)
+- [x] Invoice Supervisor Field (supervisor_name)
+
+### P1 - High Priority
+- [ ] WhatsApp Business API Integration (User's Access Token & Phone Number ID required)
+
+### P2 - Medium Priority
+- [ ] Activity Timetable Management
+- [ ] Attendance Tracking
+- [ ] Advanced User Permissions
+
+### P3 - Refactoring
+- [ ] Split monolithic server.py into routes/models/services
+- [ ] Refactor InvoicesPage.js (very large file)
+- [ ] Refactor StorePage.js (very large file)
