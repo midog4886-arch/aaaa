@@ -48,6 +48,7 @@ export const InvoicesPage = () => {
   const [activities, setActivities] = useState([]);
   const [branches, setBranches] = useState([]);
   const [registrationForms, setRegistrationForms] = useState([]);
+  const [creditNotes, setCreditNotes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState('all');
@@ -63,6 +64,8 @@ export const InvoicesPage = () => {
   const [addMemberSource, setAddMemberSource] = useState('invoice'); // 'invoice' or 'registration'
   const [isRefundDialogOpen, setIsRefundDialogOpen] = useState(false);
   const [isRegistrationFormDialogOpen, setIsRegistrationFormDialogOpen] = useState(false);
+  const [isViewCreditNoteDialogOpen, setIsViewCreditNoteDialogOpen] = useState(false);
+  const [selectedCreditNote, setSelectedCreditNote] = useState(null);
   const [selectedInvoice, setSelectedInvoice] = useState(null);
   const [selectedMember, setSelectedMember] = useState(null);
   const [invoiceItems, setInvoiceItems] = useState([]);
