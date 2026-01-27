@@ -335,6 +335,43 @@ class ReportFilter(BaseModel):
     coach_id: Optional[str] = None
     period: str = "monthly"  # daily, monthly, yearly
 
+# ============ CREDIT NOTE (REFUND INVOICE) MODELS ============
+
+class CreditNoteItem(BaseModel):
+    activity_id: Optional[str] = ""
+    product_id: Optional[str] = ""
+    activity_name: str
+    fee: float
+    quantity: int = 1
+    period: Optional[str] = ""
+    schedule: Optional[str] = ""
+    is_product: bool = False
+
+class CreditNoteCreate(BaseModel):
+    original_invoice_id: str
+    original_invoice_number: str
+    items: List[CreditNoteItem]
+    refund_amount: float
+    reason: Optional[str] = ""
+    notes: Optional[str] = ""
+
+class CreditNote(BaseModel):
+    id: str
+    credit_note_number: str
+    original_invoice_id: str
+    original_invoice_number: str
+    customer_name_ar: str
+    customer_phone: str
+    items: List[CreditNoteItem]
+    subtotal: float
+    vat_amount: float
+    refund_amount: float
+    reason: Optional[str] = ""
+    notes: Optional[str] = ""
+    branch_id: Optional[str] = None
+    created_by: Optional[str] = ""
+    created_at: str
+
 # ============ AUTH HELPERS ============
 
 def hash_password(password: str) -> str:
