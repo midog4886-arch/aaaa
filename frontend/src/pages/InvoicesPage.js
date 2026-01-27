@@ -11,13 +11,13 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Textarea } from '../components/ui/textarea';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
-import { invoicesAPI, membersAPI, activitiesAPI, exportAPI, productsAPI, discountsAPI, branchesAPI, registrationFormsAPI } from '../services/api';
+import { invoicesAPI, membersAPI, activitiesAPI, exportAPI, productsAPI, discountsAPI, branchesAPI, registrationFormsAPI, creditNotesAPI } from '../services/api';
 import { toast } from 'sonner';
 import html2canvas from 'html2canvas';
 import html2pdf from 'html2pdf.js';
 import { 
   Plus, Search, Eye, Printer, Loader2, Receipt, CheckCircle, XCircle, Clock,
-  Filter, MessageSquare, X, UserPlus, Trash2, RotateCcw, FileSpreadsheet, Image, Share2, RefreshCcw, Edit, FileText, Package, Percent, Tag, Lock, ClipboardList, ArrowRightCircle
+  Filter, MessageSquare, X, UserPlus, Trash2, RotateCcw, FileSpreadsheet, Image, Share2, RefreshCcw, Edit, FileText, Package, Percent, Tag, Lock, ClipboardList, ArrowRightCircle, CreditCard
 } from 'lucide-react';
 
 const COMPANY_INFO = {
