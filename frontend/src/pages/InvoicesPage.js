@@ -1805,6 +1805,13 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
                             >
                               <Eye className="w-4 h-4" />
                             </button>
+                            <button 
+                              className="action-button text-teal-600" 
+                              onClick={() => handleSaveRegFormPdf(form)}
+                              title={language === 'ar' ? 'حفظ PDF' : 'Save PDF'}
+                            >
+                              <FileText className="w-4 h-4" />
+                            </button>
                             {form.status === 'pending' && (
                               <>
                                 <button 
