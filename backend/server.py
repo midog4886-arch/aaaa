@@ -2771,6 +2771,59 @@ async def get_invoice_qr(invoice_id: str, current_user: dict = Depends(get_curre
         "invoice_id": invoice_id
     }
 
+@api_router.get("/credit-notes/{credit_note_id}/qr")
+async def get_credit_note_qr(credit_note_id: str, current_user: dict = Depends(get_current_user)):
+    """Generate QR code for credit note (ZATCA compliant)"""
+    credit_note = await db.credit_notes.find_one({"id": credit_note_id}, {"_id": 0})
+    if not credit_note:
+        raise HTTPException(status_code=404, detail="Credit note not found")
+    
+    # ZATCA TLV format for QR code
+    def tlv_encode(tag, value):
+        value_bytes = value.encode('utf-8')
+        return bytes([tag, len(value_bytes)]) + value_bytes
+    
+    # Build ZATCA-compliant data for credit note
+    seller_name = "شركة اداء الابطال العالمية للرياضة"
+    vat_number = COMPANY_TAX_NUMBER
+    timestamp = credit_note.get("created_at", datetime.now(timezone.utc).isoformat())
+    # Negative amounts for refund
+    total_with_vat = f"-{credit_note.get('refund_amount', 0)}"
+    vat_amount = f"-{credit_note.get('vat_amount', 0)}"
+    
+    # Create TLV encoded data
+    tlv_data = (
+        tlv_encode(1, seller_name) +
+        tlv_encode(2, vat_number) +
+        tlv_encode(3, timestamp) +
+        tlv_encode(4, total_with_vat) +
+        tlv_encode(5, vat_amount)
+    )
+    
+    # Base64 encode for QR
+    qr_data = base64.b64encode(tlv_data).decode('utf-8')
+    
+    # Generate QR code with red color for credit note
+    qr = qrcode.QRCode(version=1, error_correction=qrcode.constants.ERROR_CORRECT_L, box_size=10, border=4)
+    qr.add_data(qr_data)
+    qr.make(fit=True)
+    
+    img = qr.make_image(fill_color="#dc2626", back_color="white")
+    
+    # Save to buffer
+    img_buffer = io.BytesIO()
+    img.save(img_buffer, format='PNG')
+    img_buffer.seek(0)
+    
+    # Return as base64 for embedding
+    img_base64 = base64.b64encode(img_buffer.getvalue()).decode('utf-8')
+    
+    return {
+        "qr_image": f"data:image/png;base64,{img_base64}",
+        "qr_data": qr_data,
+        "credit_note_id": credit_note_id
+    }
+
 # ============ PRODUCT INVOICES (Store Sales) ============
 
 class ProductInvoiceItem(BaseModel):
