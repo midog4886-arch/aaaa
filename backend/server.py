@@ -1993,29 +1993,28 @@ async def get_financial_report(
     
     invoices = await db.invoices.find(query, {"_id": 0}).to_list(10000)
     
-    # Also get refunded invoices for complete picture
-    refunded_query = {"status": {"$in": ["refunded", "partially_refunded"]}}
-    # Apply same branch filter
+    # Get credit notes (refunds) from the new collection
+    credit_note_query = {}
     if is_admin and branch_filter and branch_filter != "all":
-        refunded_query["branch_id"] = branch_filter
+        credit_note_query["branch_id"] = branch_filter
     elif not is_admin and branch_id:
-        refunded_query["branch_id"] = branch_id
+        credit_note_query["branch_id"] = branch_id
     if start_date:
-        refunded_query["refunded_at"] = {"$gte": start_date}
+        credit_note_query["created_at"] = {"$gte": start_date}
     if end_date:
-        if "refunded_at" in refunded_query:
-            refunded_query["refunded_at"]["$lte"] = end_date
+        if "created_at" in credit_note_query:
+            credit_note_query["created_at"]["$lte"] = end_date
         else:
-            refunded_query["refunded_at"] = {"$lte": end_date}
+            credit_note_query["created_at"] = {"$lte": end_date}
     
-    refunded_invoices = await db.invoices.find(refunded_query, {"_id": 0}).to_list(10000)
+    credit_notes = await db.credit_notes.find(credit_note_query, {"_id": 0}).to_list(10000)
     
     total_revenue = sum(inv["total"] for inv in invoices)
     
-    # Calculate refunds
-    total_refunds = sum(inv.get("refund_amount", 0) for inv in refunded_invoices)
-    full_refunds = [inv for inv in refunded_invoices if inv.get("refund_type") == "full"]
-    partial_refunds = [inv for inv in refunded_invoices if inv.get("refund_type") == "partial"]
+    # Calculate refunds from credit notes
+    total_refunds = sum(cn.get("refund_amount", 0) for cn in credit_notes)
+    full_refunds = [cn for cn in credit_notes if "كامل" in cn.get("notes", "")]
+    partial_refunds = [cn for cn in credit_notes if "جزئي" in cn.get("notes", "")]
     
     # Net revenue (after refunds)
     net_revenue = total_revenue - total_refunds
@@ -2030,23 +2029,24 @@ async def get_financial_report(
             revenue_by_activity[act_id]["total"] += item["fee"]
             revenue_by_activity[act_id]["count"] += 1
     
-    # Refund details list
+    # Credit note details for report
     refund_details = [{
-        "invoice_id": inv["id"],
-        "customer_name": inv.get("customer_name_ar") or inv.get("member_name", ""),
-        "original_amount": inv["total"],
-        "refund_amount": inv.get("refund_amount", 0),
-        "refund_type": inv.get("refund_type", ""),
-        "refund_reason": inv.get("refund_reason", ""),
-        "refunded_at": inv.get("refunded_at", "")
-    } for inv in refunded_invoices]
+        "credit_note_id": cn["id"],
+        "credit_note_number": cn.get("credit_note_number", ""),
+        "original_invoice_number": cn.get("original_invoice_number", ""),
+        "customer_name": cn.get("customer_name_ar", ""),
+        "refund_amount": cn.get("refund_amount", 0),
+        "reason": cn.get("reason", ""),
+        "created_by": cn.get("created_by", ""),
+        "created_at": cn.get("created_at", "")
+    } for cn in credit_notes]
     
     return {
         "total_revenue": total_revenue,
         "total_refunds": total_refunds,
         "net_revenue": net_revenue,
         "invoice_count": len(invoices),
-        "refund_count": len(refunded_invoices),
+        "refund_count": len(credit_notes),
         "full_refund_count": len(full_refunds),
         "partial_refund_count": len(partial_refunds),
         "revenue_by_activity": list(revenue_by_activity.values()),
