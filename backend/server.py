@@ -1258,6 +1258,38 @@ async def get_registration_form(form_id: str, current_user: dict = Depends(get_c
         raise HTTPException(status_code=404, detail="Registration form not found")
     return form
 
+@api_router.put("/registration-forms/{form_id}")
+async def update_registration_form(form_id: str, form_data: RegistrationFormCreate, current_user: dict = Depends(get_current_user)):
+    """Update a registration form"""
+    existing = await db.registration_forms.find_one({"id": form_id})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Registration form not found")
+    
+    if existing["status"] == "converted":
+        raise HTTPException(status_code=400, detail="Cannot edit converted form")
+    
+    update_data = {
+        "customer_name": form_data.customer_name,
+        "customer_phone": form_data.customer_phone,
+        "items": [item.model_dump() for item in form_data.items],
+        "subtotal": form_data.subtotal,
+        "discount": form_data.discount,
+        "discount_code": form_data.discount_code,
+        "vat_amount": form_data.vat_amount,
+        "total": form_data.total,
+        "payment_method": form_data.payment_method,
+        "notes": form_data.notes,
+        "updated_at": datetime.now(timezone.utc).isoformat()
+    }
+    
+    await db.registration_forms.update_one(
+        {"id": form_id},
+        {"$set": update_data}
+    )
+    
+    updated = await db.registration_forms.find_one({"id": form_id}, {"_id": 0})
+    return updated
+
 @api_router.put("/registration-forms/{form_id}/convert")
 async def convert_registration_form(form_id: str, current_user: dict = Depends(get_current_user)):
     """Convert registration form to invoice"""
