@@ -1728,6 +1728,74 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
               </table>
             </div></CardContent></Card>
           </TabsContent>
+
+          {/* Credit Notes Tab */}
+          <TabsContent value="credit-notes">
+            <Card><CardContent className="p-0"><div className="overflow-x-auto">
+              <table className="data-table">
+                <thead><tr>
+                  <th>{language === 'ar' ? 'رقم الإشعار' : 'Credit Note #'}</th>
+                  <th>{language === 'ar' ? 'الفاتورة الأصلية' : 'Original Invoice'}</th>
+                  <th>{language === 'ar' ? 'العميل' : 'Customer'}</th>
+                  <th>{language === 'ar' ? 'المبلغ المرتجع' : 'Refund Amount'}</th>
+                  <th>{language === 'ar' ? 'التاريخ' : 'Date'}</th>
+                  <th>{language === 'ar' ? 'المحرر' : 'Created By'}</th>
+                  <th></th>
+                </tr></thead>
+                <tbody>
+                  {creditNotes.length === 0 ? (
+                    <tr><td colSpan={7} className="text-center py-8 text-muted-foreground">
+                      {language === 'ar' ? 'لا توجد إشعارات دائن' : 'No credit notes'}
+                    </td></tr>
+                  ) : (
+                    creditNotes.map(cn => (
+                      <tr key={cn.id}>
+                        <td className="font-mono text-sm font-bold text-red-600">#{cn.credit_note_number}</td>
+                        <td>
+                          <Badge variant="outline" className="bg-gray-100">
+                            {cn.original_invoice_number}
+                          </Badge>
+                        </td>
+                        <td className="font-medium">{cn.customer_name_ar}</td>
+                        <td className="font-bold text-red-600">- {cn.refund_amount?.toFixed(2)} {t('sar')}</td>
+                        <td className="text-sm text-muted-foreground">
+                          {new Date(cn.created_at).toLocaleDateString(language === 'ar' ? 'ar-SA' : 'en-US')}
+                        </td>
+                        <td className="text-sm">{cn.created_by || '-'}</td>
+                        <td>
+                          <div className="action-buttons">
+                            <button 
+                              className="action-button text-gray-600" 
+                              onClick={() => handleViewCreditNote(cn)}
+                              title={language === 'ar' ? 'عرض' : 'View'}
+                            >
+                              <Eye className="w-4 h-4" />
+                            </button>
+                            <button 
+                              className="action-button text-green-600" 
+                              onClick={() => handlePrintCreditNote(cn)}
+                              title={language === 'ar' ? 'طباعة' : 'Print'}
+                            >
+                              <Printer className="w-4 h-4" />
+                            </button>
+                            {isAdmin && (
+                              <button 
+                                className="action-button text-red-600" 
+                                onClick={() => handleDeleteCreditNote(cn.id)}
+                                title={language === 'ar' ? 'حذف' : 'Delete'}
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div></CardContent></Card>
+          </TabsContent>
         </Tabs>
 
         {/* Create Invoice Dialog */}
