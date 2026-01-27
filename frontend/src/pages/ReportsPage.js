@@ -320,9 +320,9 @@ export const ReportsPage = () => {
                         </table>
                         ${report?.refund_count > 0 ? `
                         <div class="refund-section">
-                          <h3>تفاصيل الاسترجاعات (${report?.refund_count || 0} عملية)</h3>
+                          <h3>إشعارات الدائن (المرتجعات) - ${report?.refund_count || 0} إشعار</h3>
                           <table>
-                            <thead><tr><th class="refund">م</th><th class="refund">رقم الفاتورة</th><th class="refund">العميل</th><th class="refund">المبلغ المسترجع</th><th class="refund">النوع</th><th class="refund">السبب</th></tr></thead>
+                            <thead><tr><th class="refund">م</th><th class="refund">رقم الإشعار</th><th class="refund">الفاتورة الأصلية</th><th class="refund">العميل</th><th class="refund">المبلغ المسترجع</th><th class="refund">السبب</th><th class="refund">المحرر</th></tr></thead>
                             <tbody>${refundRows}</tbody>
                           </table>
                         </div>
