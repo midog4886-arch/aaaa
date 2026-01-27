@@ -102,6 +102,7 @@ export const registrationFormsAPI = {
 export const creditNotesAPI = {
   getAll: (params = {}) => axios.get(`${API}/credit-notes`, { params }),
   getById: (id) => axios.get(`${API}/credit-notes/${id}`),
+  getQR: (id) => axios.get(`${API}/credit-notes/${id}/qr`),
   delete: (id) => axios.delete(`${API}/credit-notes/${id}`),
 };
 
