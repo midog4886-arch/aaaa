@@ -2877,8 +2877,12 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
                 </div>
               </div>
             )}
-            <DialogFooter>
+            <DialogFooter className="flex-wrap gap-2">
               <Button variant="outline" onClick={() => setIsViewRegFormDialogOpen(false)}>{t('close')}</Button>
+              <Button variant="outline" onClick={() => handleSaveRegFormPdf(selectedRegForm)} className="text-teal-600 border-teal-300">
+                <FileText className="w-4 h-4 me-2" />
+                {language === 'ar' ? 'حفظ PDF' : 'Save PDF'}
+              </Button>
               {selectedRegForm?.status === 'pending' && (
                 <>
                   <Button variant="outline" onClick={() => { setIsViewRegFormDialogOpen(false); handleEditRegForm(selectedRegForm); }} className="text-orange-600 border-orange-300">
