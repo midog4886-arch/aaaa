@@ -1369,6 +1369,25 @@ async def delete_registration_form(form_id: str, current_user: dict = Depends(ge
         raise HTTPException(status_code=404, detail="Registration form not found")
     return {"message": "Registration form deleted"}
 
+@api_router.put("/registration-forms/{form_id}/branch")
+async def update_registration_form_branch(form_id: str, branch_id: str, current_user: dict = Depends(get_current_user)):
+    """Update registration form branch"""
+    form = await db.registration_forms.find_one({"id": form_id})
+    if not form:
+        raise HTTPException(status_code=404, detail="Registration form not found")
+    
+    # Verify branch exists
+    if branch_id and branch_id != "all":
+        branch = await db.branches.find_one({"id": branch_id})
+        if not branch:
+            raise HTTPException(status_code=404, detail="Branch not found")
+    
+    await db.registration_forms.update_one(
+        {"id": form_id},
+        {"$set": {"branch_id": branch_id if branch_id != "all" else None}}
+    )
+    return {"message": "Registration form branch updated", "branch_id": branch_id}
+
 # ============ STRIPE PAYMENT ROUTES ============
 
 @api_router.post("/payments/checkout")
