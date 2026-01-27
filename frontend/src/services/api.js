@@ -98,6 +98,13 @@ export const registrationFormsAPI = {
   delete: (id) => axios.delete(`${API}/registration-forms/${id}`),
 };
 
+// Credit Notes (Refund Invoices) API
+export const creditNotesAPI = {
+  getAll: (params = {}) => axios.get(`${API}/credit-notes`, { params }),
+  getById: (id) => axios.get(`${API}/credit-notes/${id}`),
+  delete: (id) => axios.delete(`${API}/credit-notes/${id}`),
+};
+
 // Payments API
 export const paymentsAPI = {
   createCheckout: (invoiceId) => axios.post(`${API}/payments/checkout?invoice_id=${invoiceId}`),
