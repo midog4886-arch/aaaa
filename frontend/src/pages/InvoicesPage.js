@@ -1227,6 +1227,73 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
     }
   };
 
+  // View registration form
+  const handleViewRegForm = (form) => {
+    setSelectedRegForm(form);
+    setIsViewRegFormDialogOpen(true);
+  };
+
+  // Open edit registration form dialog
+  const handleEditRegForm = (form) => {
+    setEditRegFormId(form.id);
+    setRegFormData({
+      customer_name: form.customer_name || '',
+      customer_phone: form.customer_phone || ''
+    });
+    setRegFormItems(form.items || []);
+    setRegFormDiscount(form.discount || 0);
+    setRegFormNotes(form.notes || '');
+    setRegFormPaymentMethod(form.payment_method || 'cash');
+    setRegFormCouponCode(form.discount_code || '');
+    setRegFormAppliedCoupon(form.discount_code ? { code: form.discount_code } : null);
+    setRegFormCouponDiscount(0);
+    setIsEditRegFormDialogOpen(true);
+  };
+
+  // Save edited registration form
+  const handleSaveEditedRegForm = async () => {
+    const formSubtotal = regFormItems.reduce((sum, item) => sum + ((item.fee || 0) * (item.quantity || 1)), 0);
+    const totalDiscountAmount = regFormDiscount + regFormCouponDiscount;
+    const formTotal = formSubtotal - totalDiscountAmount;
+    
+    try {
+      const formData = {
+        customer_name: regFormData.customer_name,
+        customer_phone: regFormData.customer_phone,
+        items: regFormItems,
+        subtotal: formSubtotal,
+        discount: totalDiscountAmount,
+        discount_code: regFormAppliedCoupon?.code || '',
+        vat_amount: 0,
+        total: formTotal,
+        payment_method: regFormPaymentMethod,
+        notes: regFormNotes,
+        branch_id: selectedBranchId !== 'all' ? selectedBranchId : null
+      };
+      await registrationFormsAPI.update(editRegFormId, formData);
+      toast.success(language === 'ar' ? 'تم تحديث الاستمارة بنجاح' : 'Form updated successfully');
+      loadData();
+      closeEditRegFormDialog();
+    } catch (error) {
+      console.error('Error updating form:', error);
+      toast.error(language === 'ar' ? 'خطأ في تحديث الاستمارة' : 'Error updating form');
+    }
+  };
+
+  // Close edit registration form dialog
+  const closeEditRegFormDialog = () => {
+    setIsEditRegFormDialogOpen(false);
+    setEditRegFormId(null);
+    setRegFormData({ customer_name: '', customer_phone: '' });
+    setRegFormItems([]);
+    setRegFormDiscount(0);
+    setRegFormNotes('');
+    setRegFormPaymentMethod('cash');
+    setRegFormCouponCode('');
+    setRegFormAppliedCoupon(null);
+    setRegFormCouponDiscount(0);
+  };
+
   // Add activity to registration form
   const addActivityToRegForm = (activity) => {
     const today = new Date().toISOString().split('T')[0];
