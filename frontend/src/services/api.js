@@ -93,6 +93,7 @@ export const registrationFormsAPI = {
   getAll: (params = {}) => axios.get(`${API}/registration-forms`, { params }),
   getById: (id) => axios.get(`${API}/registration-forms/${id}`),
   create: (data) => axios.post(`${API}/registration-forms`, data),
+  update: (id, data) => axios.put(`${API}/registration-forms/${id}`, data),
   convert: (id) => axios.put(`${API}/registration-forms/${id}/convert`),
   delete: (id) => axios.delete(`${API}/registration-forms/${id}`),
 };
