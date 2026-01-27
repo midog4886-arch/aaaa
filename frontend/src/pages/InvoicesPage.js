@@ -1374,6 +1374,95 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
     setIsViewRegFormDialogOpen(true);
   };
 
+  // Save registration form as PDF
+  const handleSaveRegFormPdf = async (form) => {
+    const branchName = getBranchName(form.branch_id);
+    const paymentText = form.payment_method === 'cash' ? 'نقداً' : 
+                        form.payment_method === 'card' ? 'بطاقة' : 
+                        form.payment_method === 'transfer' ? 'تحويل بنكي' : 
+                        form.payment_method === 'tabby' ? 'تابي' : 
+                        form.payment_method === 'tamara' ? 'تمارا' : form.payment_method;
+    
+    const itemsRows = form.items?.map((item, idx) => `
+      <tr>
+        <td style="padding:10px;border:1px solid #e2e8f0;text-align:right">${idx + 1}</td>
+        <td style="padding:10px;border:1px solid #e2e8f0;text-align:right">${item.activity_name || ''}${item.is_product ? ' (منتج)' : ''}</td>
+        <td style="padding:10px;border:1px solid #e2e8f0;text-align:right">${item.is_product ? (item.quantity || 1) : (item.period || '-')}</td>
+        <td style="padding:10px;border:1px solid #e2e8f0;text-align:right">${item.schedule || '-'}</td>
+        <td style="padding:10px;border:1px solid #e2e8f0;text-align:right">${((item.fee || 0) * (item.quantity || 1)).toFixed(2)} ر.س</td>
+      </tr>
+    `).join('') || '<tr><td colspan="5" style="text-align:center;padding:20px">لا يوجد عناصر</td></tr>';
+    
+    const htmlContent = `
+      <div style="font-family:'Tajawal',Arial,sans-serif;direction:rtl;padding:20px;max-width:800px;margin:0 auto">
+        <div style="background:linear-gradient(135deg,#1e3a8a 0%,#1e40af 100%);color:white;padding:20px;text-align:center;margin:-20px -20px 20px -20px">
+          <div style="font-size:24px;font-weight:bold;margin-bottom:5px">${COMPANY_INFO.name_ar}</div>
+          ${branchName ? `<div style="font-size:16px;margin-top:8px;background:rgba(255,255,255,0.2);display:inline-block;padding:4px 16px;border-radius:20px">🏢 فرع: ${branchName}</div>` : ''}
+          <div style="font-size:11px;opacity:0.9;margin-top:8px">الرقم الضريبي: ${COMPANY_INFO.tax_number} | السجل التجاري: ${COMPANY_INFO.commercial_reg}</div>
+        </div>
+        <div style="font-size:20px;font-weight:bold;text-align:center;margin:20px 0;padding:12px;background:#f8fafc;border:2px solid #1e3a8a;border-radius:8px;color:#1e3a8a">📋 استمارة تسجيل - ${form.form_number}</div>
+        <div style="margin-bottom:15px;padding:15px;border:1px solid #e2e8f0;border-radius:8px;background:#f8fafc">
+          <h4 style="font-size:14px;font-weight:bold;margin-bottom:10px;color:#1e3a8a;border-bottom:2px solid #1e3a8a;padding-bottom:5px">👤 بيانات المشترك</h4>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+            <div style="display:flex;gap:8px;padding:5px 0"><span style="font-weight:bold;min-width:90px;color:#374151">الاسم:</span><span>${form.customer_name || '-'}</span></div>
+            <div style="display:flex;gap:8px;padding:5px 0"><span style="font-weight:bold;min-width:90px;color:#374151">رقم الجوال:</span><span dir="ltr">${form.customer_phone || '-'}</span></div>
+            <div style="display:flex;gap:8px;padding:5px 0"><span style="font-weight:bold;min-width:90px;color:#374151">التاريخ:</span><span>${new Date(form.created_at).toLocaleDateString('ar-SA')}</span></div>
+          </div>
+        </div>
+        <div style="margin-bottom:15px;padding:15px;border:1px solid #e2e8f0;border-radius:8px;background:#f8fafc">
+          <h4 style="font-size:14px;font-weight:bold;margin-bottom:10px;color:#1e3a8a;border-bottom:2px solid #1e3a8a;padding-bottom:5px">📝 الأنشطة والمنتجات</h4>
+          <table style="width:100%;border-collapse:collapse;margin:10px 0">
+            <thead><tr style="background:#1e3a8a;color:white"><th style="padding:10px;text-align:right">#</th><th style="padding:10px;text-align:right">البند</th><th style="padding:10px;text-align:right">الفترة/الكمية</th><th style="padding:10px;text-align:right">المواعيد</th><th style="padding:10px;text-align:right">الرسوم</th></tr></thead>
+            <tbody>${itemsRows}</tbody>
+          </table>
+        </div>
+        <div style="margin-top:15px;border:2px solid #1e3a8a;padding:15px;border-radius:8px;background:#eff6ff">
+          ${form.discount > 0 ? `<div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #bfdbfe;color:#dc2626;font-weight:500"><span>الخصم:</span><span>- ${form.discount?.toFixed(2)} ر.س</span></div>` : ''}
+          <div style="display:flex;justify-content:space-between;font-size:18px;font-weight:bold;padding-top:12px;color:#1e3a8a"><span>💰 الإجمالي:</span><span>${form.total?.toFixed(2)} ر.س</span></div>
+          <div style="text-align:center;font-size:10px;color:#6b7280;margin-top:8px">* الأسعار لا تشمل ضريبة القيمة المضافة</div>
+        </div>
+        <div style="margin-top:15px;padding:12px;border:1px solid #e2e8f0;border-radius:8px;background:#fefce8">
+          <span style="font-weight:bold">💳 طريقة الدفع:</span> ${paymentText}
+        </div>
+        ${form.notes ? `<div style="margin-top:15px;padding:12px;border:1px solid #e2e8f0;border-radius:8px;background:#f0fdf4"><strong>📌 ملاحظات:</strong> ${form.notes}</div>` : ''}
+        <div style="margin-top:20px;padding:15px;border:2px solid #f59e0b;border-radius:8px;background:#fffbeb">
+          <h4 style="font-weight:bold;margin-bottom:10px;color:#92400e">⚠️ شروط وأحكام:</h4>
+          <ul style="padding-right:20px;font-size:11px;color:#78350f;margin:0">
+            <li style="margin-bottom:5px">الاشتراك محدد البداية والنهاية ولا يتم تعويض حصص غياب المشترك</li>
+            <li>المبلغ المدفوع لا يسترد بعد مرور أسبوع من الاشتراك</li>
+          </ul>
+        </div>
+        <div style="margin-top:25px;display:grid;grid-template-columns:1fr 1fr;gap:30px">
+          <div style="border:2px solid #d1d5db;padding:15px;text-align:center;border-radius:8px;background:white"><p style="margin-bottom:40px;font-weight:bold;color:#374151">✍️ توقيع المشترك / ولي الأمر</p><div style="border-top:1px solid #000;margin-top:40px;padding-top:8px;font-size:10px">التاريخ: _______________</div></div>
+          <div style="border:2px solid #d1d5db;padding:15px;text-align:center;border-radius:8px;background:white"><p style="margin-bottom:40px;font-weight:bold;color:#374151">✍️ توقيع الموظف</p><div style="border-top:1px solid #000;margin-top:40px;padding-top:8px;font-size:10px">التاريخ: _______________</div></div>
+        </div>
+        <div style="margin-top:20px;text-align:center;font-size:10px;color:#6b7280;border-top:2px solid #e2e8f0;padding-top:15px">${COMPANY_INFO.name_ar} - جميع الحقوق محفوظة © ${new Date().getFullYear()}</div>
+      </div>
+    `;
+    
+    const element = document.createElement('div');
+    element.innerHTML = htmlContent;
+    document.body.appendChild(element);
+    
+    const opt = {
+      margin: 10,
+      filename: `استمارة_تسجيل_${form.form_number}.pdf`,
+      image: { type: 'jpeg', quality: 0.98 },
+      html2canvas: { scale: 2, useCORS: true },
+      jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+    };
+    
+    try {
+      await html2pdf().set(opt).from(element).save();
+      toast.success(language === 'ar' ? 'تم حفظ PDF بنجاح' : 'PDF saved successfully');
+    } catch (error) {
+      console.error('PDF error:', error);
+      toast.error(language === 'ar' ? 'خطأ في حفظ PDF' : 'PDF save failed');
+    } finally {
+      document.body.removeChild(element);
+    }
+  };
+
   // Open edit registration form dialog
   const handleEditRegForm = (form) => {
     setEditRegFormId(form.id);
