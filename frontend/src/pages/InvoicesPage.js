@@ -1446,7 +1446,7 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
     
     const opt = {
       margin: 10,
-      filename: `استمارة_تسجيل_${form.form_number}.pdf`,
+      filename: `استمارة_${form.customer_name.replace(/\s+/g, '_')}.pdf`,
       image: { type: 'jpeg', quality: 0.98 },
       html2canvas: { scale: 2, useCORS: true },
       jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
