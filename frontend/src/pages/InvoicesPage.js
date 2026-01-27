@@ -2319,6 +2319,10 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
               {regFormItems.length > 0 && (
                 <div className="border rounded-lg p-3 bg-muted/30">
                   <div className="space-y-1">
+                    <div className="flex justify-between text-sm">
+                      <span>{language === 'ar' ? 'المجموع:' : 'Subtotal:'}</span>
+                      <span>{regFormItems.reduce((sum, i) => sum + ((i.fee || 0) * (i.quantity || 1)), 0).toFixed(2)} {t('sar')}</span>
+                    </div>
                     {(regFormDiscount > 0 || regFormCouponDiscount > 0) && (
                       <div className="flex justify-between text-sm text-red-600">
                         <span>{language === 'ar' ? 'الخصم:' : 'Discount:'}</span>
@@ -2327,21 +2331,31 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
                     )}
                     <div className="flex justify-between font-bold text-lg text-primary pt-2 border-t">
                       <span>{t('total')}:</span>
-                      <span>{((regFormItems.reduce((sum, i) => sum + ((i.fee || 0) * (i.quantity || 1)), 0) - regFormDiscount - regFormCouponDiscount) * 1.15).toFixed(2)} {t('sar')}</span>
+                      <span>{(regFormItems.reduce((sum, i) => sum + ((i.fee || 0) * (i.quantity || 1)), 0) - regFormDiscount - regFormCouponDiscount).toFixed(2)} {t('sar')}</span>
                     </div>
+                    <p className="text-xs text-muted-foreground text-center">{language === 'ar' ? '* الأسعار لا تشمل ضريبة القيمة المضافة' : '* Prices exclude VAT'}</p>
                   </div>
                 </div>
               )}
             </div>
-            <DialogFooter>
+            <DialogFooter className="flex-wrap gap-2">
               <Button variant="outline" onClick={closeRegistrationFormDialog}>{t('cancel')}</Button>
+              <Button 
+                variant="outline"
+                onClick={handleSaveRegistrationFormOnly} 
+                disabled={!regFormData.customer_name || regFormItems.length === 0}
+                className="bg-teal-50 border-teal-400 text-teal-700 hover:bg-teal-100"
+              >
+                <FileText className="w-4 h-4 me-2" />
+                {language === 'ar' ? 'حفظ الاستمارة' : 'Save Form'}
+              </Button>
               <Button 
                 onClick={handlePrintNewRegistrationForm} 
                 disabled={!regFormData.customer_name || regFormItems.length === 0}
                 className="bg-gray-800 hover:bg-gray-900"
               >
                 <Printer className="w-4 h-4 me-2" />
-                {language === 'ar' ? 'إنشاء وطباعة الاستمارة' : 'Create & Print Form'}
+                {language === 'ar' ? 'حفظ وطباعة' : 'Save & Print'}
               </Button>
             </DialogFooter>
           </DialogContent>
