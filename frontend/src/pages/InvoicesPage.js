@@ -672,16 +672,13 @@ ${selectedInvoice.discount > 0 ? `🎁 الخصم: ${selectedInvoice.discount} �
   const handlePrintCreditNote = async (creditNote) => {
     const branchName = getBranchName(creditNote.branch_id);
     
-    // Generate QR code for credit note (ZATCA compliant)
+    // Generate QR code for credit note
     let qrDataUrl = '';
     try {
-      const qrResponse = await invoicesAPI.getQR(creditNote.original_invoice_id);
+      const qrResponse = await creditNotesAPI.getQR(creditNote.id);
       qrDataUrl = qrResponse.data?.qr_image || '';
     } catch (e) {
-      // Generate simple QR with credit note data
-      const qrData = `إشعار دائن: ${creditNote.credit_note_number}\nالفاتورة: ${creditNote.original_invoice_number}\nالمبلغ: ${creditNote.refund_amount} ر.س\nالتاريخ: ${new Date(creditNote.created_at).toLocaleDateString('ar-SA')}`;
-      // Use QRCode library if available or skip
-      qrDataUrl = '';
+      console.log('QR generation failed:', e);
     }
     
     const printWindow = window.open('', '', 'width=800,height=600');
