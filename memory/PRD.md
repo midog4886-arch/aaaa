@@ -666,3 +666,52 @@
 - [ ] Split monolithic server.py into routes/models/services
 - [ ] Refactor InvoicesPage.js (very large file)
 - [ ] Refactor StorePage.js (very large file)
+
+
+---
+
+## Update 16 - Dashboard Pending Forms Card & Registration Form Enhancements (January 27, 2026)
+
+### Features Implemented:
+
+#### 1. كرت استمارات التسجيل الغير مفوترة في لوحة التحكم ✅
+- **الوصف**: كرت جديد في Dashboard يعرض إجمالي مبالغ استمارات التسجيل التي لم يتم تحويلها إلى فواتير
+- **الملف Backend**: `/app/backend/server.py` - get_dashboard_stats
+- **الملف Frontend**: `/app/frontend/src/pages/DashboardPage.js`
+- **المميزات**:
+  - يعرض المبلغ الإجمالي وعدد الاستمارات
+  - لون تركواز مميز
+  - عند الضغط عليه يعرض تفاصيل الاستمارات
+
+#### 2. إزالة الضريبة من استمارة التسجيل ✅
+- **الوصف**: الإجمالي في الاستمارة = المجموع الفرعي - الخصم (بدون ضريبة)
+- **الملف**: `/app/frontend/src/pages/InvoicesPage.js`
+- **ملاحظة**: تظهر رسالة "الأسعار لا تشمل ضريبة القيمة المضافة" في الاستمارة
+
+#### 3. فصل زر الحفظ عن الطباعة ✅
+- **الوصف**: زران منفصلان في نموذج استمارة التسجيل
+- **الأزرار**:
+  - "حفظ الاستمارة" (تركواز) - يحفظ فقط بدون طباعة
+  - "حفظ وطباعة" (رمادي غامق) - يحفظ ويطبع
+- **الدوال**: `handleSaveRegistrationFormOnly`, `handlePrintNewRegistrationForm`
+
+#### 4. رأسية جديدة للاستمارة ✅
+- **الوصف**: تصميم جديد للاستمارة المطبوعة مع رأسية (header-banner)
+- **المميزات**:
+  - خلفية متدرجة باللون الأزرق
+  - اسم الشركة بخط كبير
+  - اسم الفرع في شريط منفصل
+  - تصميم عصري ومهني
+
+### Backend API Updates:
+- `GET /api/dashboard/stats` - إضافة حقول:
+  - `pending_forms_total`: إجمالي مبالغ الاستمارات الغير مفوترة
+  - `pending_forms_count`: عدد الاستمارات الغير مفوترة
+
+### Test Results:
+- ✅ 9/9 اختبارات ناجحة (100%)
+
+### Files Modified:
+- `/app/backend/server.py` - Lines ~1930-1960
+- `/app/frontend/src/pages/DashboardPage.js` - كرت pendingForms الجديد
+- `/app/frontend/src/pages/InvoicesPage.js` - Lines ~1024-1200, 2318-2360
