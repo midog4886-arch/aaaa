@@ -22,7 +22,8 @@ import {
   X,
   Receipt,
   RefreshCcw,
-  Tag
+  Tag,
+  ClipboardList
 } from 'lucide-react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from 'recharts';
 
