@@ -78,6 +78,7 @@ export const DashboardPage = () => {
     
     try {
       let data = null;
+      const branchParams = selectedBranchId && selectedBranchId !== 'all' ? { branch_filter: selectedBranchId } : {};
       switch (type) {
         case 'members':
           const membersRes = await membersAPI.getAll();
@@ -96,6 +97,11 @@ export const DashboardPage = () => {
           break;
         case 'coupons':
           data = discounts;
+          break;
+        case 'pendingForms':
+          const { registrationFormsAPI } = await import('../services/api');
+          const formsRes = await registrationFormsAPI.getAll(branchParams);
+          data = formsRes.data.filter(f => f.status === 'pending');
           break;
         default:
           break;
