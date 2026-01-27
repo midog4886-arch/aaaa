@@ -1201,16 +1201,43 @@ async def delete_invoice(invoice_id: str, current_user: dict = Depends(get_curre
         raise HTTPException(status_code=404, detail="Invoice not found")
     return {"message": "Invoice deleted"}
 
-# ============ REFUND MODEL ============
+# ============ CREDIT NOTES (REFUND INVOICES) ROUTES ============
 
 class RefundRequest(BaseModel):
     amount: float
     reason: Optional[str] = ""
     refund_type: str = "full"  # full or partial
+    items: Optional[List[dict]] = None  # Items to refund (for partial)
+
+@api_router.get("/credit-notes", response_model=List[CreditNote])
+async def get_credit_notes(
+    branch_filter: Optional[str] = None,
+    current_user: dict = Depends(get_current_user)
+):
+    """Get all credit notes (refund invoices)"""
+    is_admin = current_user.get("is_admin", False)
+    branch_id = current_user.get("branch_id")
+    
+    query = {}
+    if is_admin and branch_filter and branch_filter != "all":
+        query["branch_id"] = branch_filter
+    elif not is_admin and branch_id:
+        query["branch_id"] = branch_id
+    
+    credit_notes = await db.credit_notes.find(query, {"_id": 0}).sort("created_at", -1).to_list(1000)
+    return credit_notes
+
+@api_router.get("/credit-notes/{credit_note_id}", response_model=CreditNote)
+async def get_credit_note(credit_note_id: str, current_user: dict = Depends(get_current_user)):
+    """Get a single credit note"""
+    credit_note = await db.credit_notes.find_one({"id": credit_note_id}, {"_id": 0})
+    if not credit_note:
+        raise HTTPException(status_code=404, detail="Credit note not found")
+    return credit_note
 
 @api_router.post("/invoices/{invoice_id}/refund")
 async def refund_invoice(invoice_id: str, refund: RefundRequest, current_user: dict = Depends(get_current_user)):
-    """Process a refund for a paid invoice"""
+    """Process a refund for a paid invoice - Creates a Credit Note"""
     invoice = await db.invoices.find_one({"id": invoice_id}, {"_id": 0})
     if not invoice:
         raise HTTPException(status_code=404, detail="Invoice not found")
@@ -1221,34 +1248,134 @@ async def refund_invoice(invoice_id: str, refund: RefundRequest, current_user: d
     if refund.amount <= 0 or refund.amount > invoice["total"]:
         raise HTTPException(status_code=400, detail="Invalid refund amount")
     
-    # Create refund record
-    refund_id = str(uuid.uuid4())
-    refund_record = {
-        "id": refund_id,
-        "invoice_id": invoice_id,
-        "amount": refund.amount,
+    # Generate credit note number
+    last_cn = await db.credit_notes.find_one(
+        {"credit_note_number": {"$exists": True}},
+        sort=[("created_at", -1)]
+    )
+    if last_cn and last_cn.get("credit_note_number"):
+        cn_num = last_cn["credit_note_number"]
+        try:
+            num_part = int(cn_num.replace("CN-", ""))
+            next_cn_number = f"CN-{num_part + 1:05d}"
+        except ValueError:
+            next_cn_number = "CN-00001"
+    else:
+        next_cn_number = "CN-00001"
+    
+    # Determine items to refund
+    refund_items = []
+    if refund.refund_type == "full":
+        # Full refund - include all items
+        for item in invoice.get("items", []):
+            refund_items.append({
+                "activity_id": item.get("activity_id", ""),
+                "product_id": item.get("product_id", ""),
+                "activity_name": item.get("activity_name", ""),
+                "fee": item.get("fee", 0),
+                "quantity": item.get("quantity", 1),
+                "period": item.get("period", ""),
+                "schedule": item.get("schedule", ""),
+                "is_product": item.get("is_product", False)
+            })
+    elif refund.items:
+        # Partial refund with specific items
+        refund_items = refund.items
+    else:
+        # Partial refund without items - create a general refund item
+        refund_items = [{
+            "activity_id": "",
+            "product_id": "",
+            "activity_name": "مرتجع جزئي" if refund.refund_type == "partial" else "مرتجع",
+            "fee": refund.amount,
+            "quantity": 1,
+            "period": "",
+            "schedule": "",
+            "is_product": False
+        }]
+    
+    # Calculate VAT for refund (15%)
+    subtotal = refund.amount / 1.15
+    vat_amount = refund.amount - subtotal
+    
+    # Get supervisor name
+    user_doc = await db.users.find_one({"id": current_user["user_id"]}, {"_id": 0})
+    created_by = user_doc.get("name", current_user.get("username", "")) if user_doc else current_user.get("username", "")
+    
+    # Create Credit Note
+    credit_note_id = str(uuid.uuid4())
+    credit_note = {
+        "id": credit_note_id,
+        "credit_note_number": next_cn_number,
+        "original_invoice_id": invoice_id,
+        "original_invoice_number": invoice.get("invoice_number", ""),
+        "customer_name_ar": invoice.get("customer_name_ar") or invoice.get("member_name", ""),
+        "customer_phone": invoice.get("customer_phone", ""),
+        "items": refund_items,
+        "subtotal": round(subtotal, 2),
+        "vat_amount": round(vat_amount, 2),
+        "refund_amount": refund.amount,
         "reason": refund.reason,
-        "refund_type": refund.refund_type,
-        "refunded_by": current_user.get("username"),
+        "notes": f"مرتجع {'كامل' if refund.refund_type == 'full' else 'جزئي'} للفاتورة رقم {invoice.get('invoice_number', '')}",
+        "branch_id": invoice.get("branch_id"),
+        "created_by": created_by,
         "created_at": datetime.now(timezone.utc).isoformat()
     }
-    await db.refunds.insert_one(refund_record)
     
-    # Update invoice status based on refund type
-    new_status = "refunded" if refund.refund_type == "full" else "partially_refunded"
+    await db.credit_notes.insert_one(credit_note)
+    
+    # Update invoice with refund reference (but don't change original data)
     refund_info = {
-        "refund_amount": refund.amount,
-        "refund_reason": refund.reason,
+        "has_refund": True,
         "refund_type": refund.refund_type,
+        "credit_note_id": credit_note_id,
+        "credit_note_number": next_cn_number,
+        "refund_amount": refund.amount,
         "refunded_at": datetime.now(timezone.utc).isoformat()
     }
     
+    # Only update status if full refund
+    update_data = {**refund_info}
+    if refund.refund_type == "full":
+        update_data["status"] = "refunded"
+    else:
+        update_data["status"] = "partially_refunded"
+    
     await db.invoices.update_one(
         {"id": invoice_id},
-        {"$set": {"status": new_status, **refund_info}}
+        {"$set": update_data}
     )
     
-    return {"message": f"Refund of {refund.amount} SAR processed successfully", "refund_id": refund_id}
+    # Remove _id before returning
+    del credit_note["_id"] if "_id" in credit_note else None
+    
+    return {
+        "message": f"تم إنشاء إشعار دائن بمبلغ {refund.amount} ر.س",
+        "credit_note": credit_note
+    }
+
+@api_router.delete("/credit-notes/{credit_note_id}")
+async def delete_credit_note(credit_note_id: str, current_user: dict = Depends(get_current_user)):
+    """Delete a credit note (admin only)"""
+    if not current_user.get("is_admin", False):
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    credit_note = await db.credit_notes.find_one({"id": credit_note_id}, {"_id": 0})
+    if not credit_note:
+        raise HTTPException(status_code=404, detail="Credit note not found")
+    
+    # Remove refund reference from original invoice
+    await db.invoices.update_one(
+        {"id": credit_note["original_invoice_id"]},
+        {"$unset": {"has_refund": "", "refund_type": "", "credit_note_id": "", "credit_note_number": "", "refund_amount": "", "refunded_at": ""},
+         "$set": {"status": "paid"}}
+    )
+    
+    result = await db.credit_notes.delete_one({"id": credit_note_id})
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Credit note not found")
+    
+    return {"message": "Credit note deleted"}
 
 # ============ REGISTRATION FORMS ROUTES ============
 
