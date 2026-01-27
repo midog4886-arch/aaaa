@@ -1563,14 +1563,30 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
                         </td>
                         <td>
                           <div className="action-buttons">
+                            <button 
+                              className="action-button text-gray-600" 
+                              onClick={() => handleViewRegForm(form)}
+                              title={language === 'ar' ? 'عرض' : 'View'}
+                            >
+                              <Eye className="w-4 h-4" />
+                            </button>
                             {form.status === 'pending' && (
-                              <button 
-                                className="action-button text-blue-600" 
-                                onClick={() => handleConvertFormToInvoice(form.id)}
-                                title={language === 'ar' ? 'تحويل إلى فاتورة' : 'Convert to Invoice'}
-                              >
-                                <ArrowRightCircle className="w-4 h-4" />
-                              </button>
+                              <>
+                                <button 
+                                  className="action-button text-orange-600" 
+                                  onClick={() => handleEditRegForm(form)}
+                                  title={language === 'ar' ? 'تعديل' : 'Edit'}
+                                >
+                                  <Edit className="w-4 h-4" />
+                                </button>
+                                <button 
+                                  className="action-button text-blue-600" 
+                                  onClick={() => handleConvertFormToInvoice(form.id)}
+                                  title={language === 'ar' ? 'تحويل إلى فاتورة' : 'Convert to Invoice'}
+                                >
+                                  <ArrowRightCircle className="w-4 h-4" />
+                                </button>
+                              </>
                             )}
                             <button 
                               className="action-button text-red-600" 
