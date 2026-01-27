@@ -1347,7 +1347,8 @@ async def refund_invoice(invoice_id: str, refund: RefundRequest, current_user: d
     )
     
     # Remove _id before returning
-    del credit_note["_id"] if "_id" in credit_note else None
+    if "_id" in credit_note:
+        del credit_note["_id"]
     
     return {
         "message": f"تم إنشاء إشعار دائن بمبلغ {refund.amount} ر.س",
