@@ -633,15 +633,130 @@ ${selectedInvoice.discount > 0 ? `🎁 الخصم: ${selectedInvoice.discount} �
     }
     setSaving(true);
     try {
-      await invoicesAPI.refund(selectedInvoice.id, { amount, reason: refundReason, refund_type: refundType });
-      toast.success(language === 'ar' ? `تم استرجاع ${amount} ر.س بنجاح` : `Refunded ${amount} SAR successfully`);
+      const response = await invoicesAPI.refund(selectedInvoice.id, { amount, reason: refundReason, refund_type: refundType });
+      toast.success(language === 'ar' ? `تم إنشاء إشعار دائن رقم ${response.data.credit_note?.credit_note_number} بمبلغ ${amount} ر.س` : `Credit note ${response.data.credit_note?.credit_note_number} created for ${amount} SAR`);
       setIsRefundDialogOpen(false);
+      setIsViewDialogOpen(false);
       loadData();
+      // Open the credit note view
+      if (response.data.credit_note) {
+        setSelectedCreditNote(response.data.credit_note);
+        setIsViewCreditNoteDialogOpen(true);
+      }
     } catch (error) {
-      toast.error(language === 'ar' ? 'خطأ في عملية الاسترجاع' : 'Refund failed');
+      toast.error(language === 'ar' ? 'خطأ في إنشاء إشعار الدائن' : 'Failed to create credit note');
     } finally {
       setSaving(false);
     }
+  };
+
+  // View credit note
+  const handleViewCreditNote = (creditNote) => {
+    setSelectedCreditNote(creditNote);
+    setIsViewCreditNoteDialogOpen(true);
+  };
+
+  // Delete credit note
+  const handleDeleteCreditNote = async (creditNoteId) => {
+    if (!window.confirm(language === 'ar' ? 'هل أنت متأكد من حذف إشعار الدائن؟' : 'Delete this credit note?')) return;
+    try {
+      await creditNotesAPI.delete(creditNoteId);
+      toast.success(language === 'ar' ? 'تم حذف إشعار الدائن' : 'Credit note deleted');
+      loadData();
+    } catch (error) {
+      toast.error(language === 'ar' ? 'خطأ في حذف إشعار الدائن' : 'Failed to delete credit note');
+    }
+  };
+
+  // Print credit note
+  const handlePrintCreditNote = (creditNote) => {
+    const branchName = getBranchName(creditNote.branch_id);
+    const printWindow = window.open('', '', 'width=800,height=600');
+    const content = `
+      <!DOCTYPE html>
+      <html dir="rtl" lang="ar">
+      <head>
+        <meta charset="UTF-8">
+        <title>إشعار دائن ${creditNote.credit_note_number}</title>
+        <style>
+          @import url('https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700&display=swap');
+          @page { size: A4; margin: 10mm; }
+          * { margin: 0; padding: 0; box-sizing: border-box; }
+          body { font-family: 'Tajawal', Arial, sans-serif; direction: rtl; padding: 20px; max-width: 800px; margin: 0 auto; font-size: 12px; }
+          .header { background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%); color: white; padding: 20px; text-align: center; margin: -20px -20px 20px -20px; }
+          .header .company-name { font-size: 22px; font-weight: bold; margin-bottom: 5px; }
+          .header .doc-type { font-size: 18px; margin-top: 10px; background: rgba(255,255,255,0.2); display: inline-block; padding: 5px 20px; border-radius: 20px; }
+          .header .branch-name { font-size: 14px; margin-top: 8px; }
+          .header .company-info { font-size: 10px; opacity: 0.9; margin-top: 5px; }
+          .info-section { margin-bottom: 15px; padding: 15px; border: 1px solid #fecaca; border-radius: 8px; background: #fef2f2; }
+          .info-section h4 { font-size: 14px; font-weight: bold; margin-bottom: 10px; color: #dc2626; border-bottom: 2px solid #dc2626; padding-bottom: 5px; }
+          .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+          .info-row { display: flex; gap: 8px; padding: 5px 0; }
+          .info-label { font-weight: bold; min-width: 100px; color: #374151; }
+          table { width: 100%; border-collapse: collapse; margin: 10px 0; }
+          th, td { padding: 10px; border: 1px solid #fecaca; text-align: right; font-size: 11px; }
+          th { background: #dc2626; color: white; font-weight: bold; }
+          tr:nth-child(even) { background: #fef2f2; }
+          .totals-section { margin-top: 15px; border: 2px solid #dc2626; padding: 15px; border-radius: 8px; background: #fef2f2; }
+          .totals-row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #fecaca; }
+          .totals-row.total { font-size: 18px; font-weight: bold; border-top: 2px solid #dc2626; border-bottom: none; margin-top: 8px; padding-top: 12px; color: #dc2626; }
+          .footer { margin-top: 20px; text-align: center; font-size: 10px; color: #6b7280; border-top: 2px solid #fecaca; padding-top: 15px; }
+          .refund-badge { background: #dc2626; color: white; padding: 3px 10px; border-radius: 12px; font-size: 11px; margin-right: 10px; }
+        </style>
+      </head>
+      <body>
+        <div class="header">
+          <div class="company-name">${COMPANY_INFO.name_ar}</div>
+          <div class="doc-type">📄 إشعار دائن (مرتجع)</div>
+          ${branchName ? `<div class="branch-name">🏢 ${branchName}</div>` : ''}
+          <div class="company-info">الرقم الضريبي: ${COMPANY_INFO.tax_number} | السجل التجاري: ${COMPANY_INFO.commercial_reg}</div>
+        </div>
+        <div class="info-section">
+          <h4>📋 بيانات إشعار الدائن</h4>
+          <div class="info-grid">
+            <div class="info-row"><span class="info-label">رقم الإشعار:</span><span style="font-weight:bold;color:#dc2626">${creditNote.credit_note_number}</span></div>
+            <div class="info-row"><span class="info-label">التاريخ:</span><span>${new Date(creditNote.created_at).toLocaleDateString('ar-SA')}</span></div>
+            <div class="info-row"><span class="info-label">الفاتورة الأصلية:</span><span class="refund-badge">${creditNote.original_invoice_number}</span></div>
+            <div class="info-row"><span class="info-label">المحرر:</span><span>${creditNote.created_by || '-'}</span></div>
+          </div>
+        </div>
+        <div class="info-section">
+          <h4>👤 بيانات العميل</h4>
+          <div class="info-grid">
+            <div class="info-row"><span class="info-label">الاسم:</span><span>${creditNote.customer_name_ar}</span></div>
+            <div class="info-row"><span class="info-label">الجوال:</span><span dir="ltr">${creditNote.customer_phone || '-'}</span></div>
+          </div>
+        </div>
+        <div class="info-section">
+          <h4>📝 البنود المرتجعة</h4>
+          <table>
+            <thead><tr><th>#</th><th>البند</th><th>الكمية</th><th>المبلغ</th></tr></thead>
+            <tbody>
+              ${creditNote.items?.map((item, idx) => `
+                <tr>
+                  <td>${idx + 1}</td>
+                  <td>${item.activity_name}${item.is_product ? ' (منتج)' : ''}</td>
+                  <td>${item.quantity || 1}</td>
+                  <td>${((item.fee || 0) * (item.quantity || 1)).toFixed(2)} ر.س</td>
+                </tr>
+              `).join('') || '<tr><td colspan="4">لا توجد بنود</td></tr>'}
+            </tbody>
+          </table>
+        </div>
+        <div class="totals-section">
+          <div class="totals-row"><span>المجموع الفرعي:</span><span>${creditNote.subtotal?.toFixed(2)} ر.س</span></div>
+          <div class="totals-row"><span>ضريبة القيمة المضافة (15%):</span><span>${creditNote.vat_amount?.toFixed(2)} ر.س</span></div>
+          <div class="totals-row total"><span>💰 إجمالي المرتجع:</span><span>${creditNote.refund_amount?.toFixed(2)} ر.س</span></div>
+        </div>
+        ${creditNote.reason ? `<div class="info-section"><strong>📌 سبب المرتجع:</strong> ${creditNote.reason}</div>` : ''}
+        ${creditNote.notes ? `<div class="info-section"><strong>📝 ملاحظات:</strong> ${creditNote.notes}</div>` : ''}
+        <div class="footer">${COMPANY_INFO.name_ar} - جميع الحقوق محفوظة © ${new Date().getFullYear()}</div>
+      </body>
+      </html>
+    `;
+    printWindow.document.write(content);
+    printWindow.document.close();
+    printWindow.print();
   };
 
   const handleCancelInvoice = async (invoiceId) => {
