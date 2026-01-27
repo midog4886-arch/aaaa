@@ -129,9 +129,9 @@ export const InvoicesPage = () => {
   const loadData = async () => {
     try {
       const branchParams = selectedBranchId && selectedBranchId !== 'all' ? { branch_filter: selectedBranchId } : {};
-      const [invoicesRes, membersRes, activitiesRes, productsRes, branchesRes, regFormsRes] = await Promise.all([
+      const [invoicesRes, membersRes, activitiesRes, productsRes, branchesRes, regFormsRes, creditNotesRes] = await Promise.all([
         invoicesAPI.getAll(branchParams), membersAPI.getAll(branchParams), activitiesAPI.getAll(), productsAPI.getAll(branchParams),
-        branchesAPI.getAll(), registrationFormsAPI.getAll(branchParams)
+        branchesAPI.getAll(), registrationFormsAPI.getAll(branchParams), creditNotesAPI.getAll(branchParams)
       ]);
       setInvoices(invoicesRes.data);
       setMembers(membersRes.data);
@@ -139,6 +139,7 @@ export const InvoicesPage = () => {
       setProducts(productsRes.data);
       setBranches(branchesRes.data || []);
       setRegistrationForms(regFormsRes.data || []);
+      setCreditNotes(creditNotesRes.data || []);
     } catch (error) {
       toast.error(t('error'));
     } finally {
