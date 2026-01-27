@@ -485,36 +485,32 @@ export const ReportsPage = () => {
                   <table className="data-table w-full">
                     <thead>
                       <tr className="bg-purple-100">
-                        <th className="text-purple-700">{language === 'ar' ? 'رقم الفاتورة' : 'Invoice #'}</th>
+                        <th className="text-purple-700">{language === 'ar' ? 'رقم الإشعار' : 'Credit Note #'}</th>
+                        <th className="text-purple-700">{language === 'ar' ? 'الفاتورة الأصلية' : 'Original Invoice'}</th>
                         <th className="text-purple-700">{language === 'ar' ? 'العميل' : 'Customer'}</th>
-                        <th className="text-purple-700">{language === 'ar' ? 'المبلغ الأصلي' : 'Original'}</th>
                         <th className="text-purple-700">{language === 'ar' ? 'المسترجع' : 'Refunded'}</th>
-                        <th className="text-purple-700">{language === 'ar' ? 'النوع' : 'Type'}</th>
                         <th className="text-purple-700">{language === 'ar' ? 'السبب' : 'Reason'}</th>
+                        <th className="text-purple-700">{language === 'ar' ? 'المحرر' : 'Created By'}</th>
                         <th className="text-purple-700">{language === 'ar' ? 'التاريخ' : 'Date'}</th>
                       </tr>
                     </thead>
                     <tbody>
                       {report.refund_details.map((refund, idx) => (
                         <tr key={idx}>
-                          <td className="font-mono text-sm">#{refund.invoice_id?.slice(0, 8)}</td>
+                          <td className="font-mono text-sm font-bold text-purple-600">#{refund.credit_note_number || '-'}</td>
+                          <td><Badge variant="outline">{refund.original_invoice_number || '-'}</Badge></td>
                           <td>{refund.customer_name || '-'}</td>
-                          <td>{refund.original_amount} {t('sar')}</td>
-                          <td className="font-bold text-purple-600">{refund.refund_amount} {t('sar')}</td>
-                          <td>
-                            <Badge variant="outline" className={refund.refund_type === 'full' ? 'bg-purple-100 text-purple-700' : 'bg-amber-100 text-amber-700'}>
-                              {refund.refund_type === 'full' ? (language === 'ar' ? 'كامل' : 'Full') : (language === 'ar' ? 'جزئي' : 'Partial')}
-                            </Badge>
-                          </td>
-                          <td className="text-sm text-muted-foreground">{refund.refund_reason || '-'}</td>
-                          <td className="text-sm">{refund.refunded_at ? new Date(refund.refunded_at).toLocaleDateString(language === 'ar' ? 'ar-SA' : 'en-US') : '-'}</td>
+                          <td className="font-bold text-purple-600">- {refund.refund_amount} {t('sar')}</td>
+                          <td className="text-sm text-muted-foreground">{refund.reason || '-'}</td>
+                          <td className="text-sm">{refund.created_by || '-'}</td>
+                          <td className="text-sm">{refund.created_at ? new Date(refund.created_at).toLocaleDateString(language === 'ar' ? 'ar-SA' : 'en-US') : '-'}</td>
                         </tr>
                       ))}
                     </tbody>
                   </table>
                 </div>
               ) : (
-                <div className="text-center py-8 text-muted-foreground">{language === 'ar' ? 'لا توجد عمليات استرجاع' : 'No refunds found'}</div>
+                <div className="text-center py-8 text-muted-foreground">{language === 'ar' ? 'لا توجد إشعارات دائن' : 'No credit notes found'}</div>
               )}
             </CardContent>
           </Card>
