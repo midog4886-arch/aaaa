@@ -1581,9 +1581,9 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
           )}
         </div>
 
-        {/* Tabs for Invoices and Registration Forms */}
+        {/* Tabs for Invoices, Registration Forms, and Credit Notes */}
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <TabsList className="grid w-full grid-cols-2 max-w-md">
+          <TabsList className="grid w-full grid-cols-3 max-w-2xl">
             <TabsTrigger value="invoices" className="flex items-center gap-2">
               <Receipt className="w-4 h-4" />
               {language === 'ar' ? 'الفواتير' : 'Invoices'}
@@ -1593,6 +1593,11 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
               <ClipboardList className="w-4 h-4" />
               {language === 'ar' ? 'استمارات التسجيل' : 'Registration Forms'}
               <Badge variant="secondary" className="ms-1">{registrationForms.length}</Badge>
+            </TabsTrigger>
+            <TabsTrigger value="credit-notes" className="flex items-center gap-2">
+              <CreditCard className="w-4 h-4" />
+              {language === 'ar' ? 'إشعارات دائن' : 'Credit Notes'}
+              <Badge variant="secondary" className="ms-1 bg-red-100 text-red-700">{creditNotes.length}</Badge>
             </TabsTrigger>
           </TabsList>
 
