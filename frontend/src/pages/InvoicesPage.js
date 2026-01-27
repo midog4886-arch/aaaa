@@ -2478,6 +2478,266 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
             </DialogFooter>
           </DialogContent>
         </Dialog>
+
+        {/* View Registration Form Dialog */}
+        <Dialog open={isViewRegFormDialogOpen} onOpenChange={setIsViewRegFormDialogOpen}>
+          <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <ClipboardList className="w-5 h-5 text-teal-600" />
+                {language === 'ar' ? 'عرض استمارة التسجيل' : 'View Registration Form'}
+                {selectedRegForm && <span className="text-muted-foreground">#{selectedRegForm.form_number}</span>}
+              </DialogTitle>
+            </DialogHeader>
+            {selectedRegForm && (
+              <div className="space-y-4">
+                {/* Customer Info */}
+                <div className="p-4 bg-teal-50 border border-teal-200 rounded-lg">
+                  <h4 className="font-semibold text-teal-800 mb-2">{language === 'ar' ? '👤 بيانات المشترك' : '👤 Customer Info'}</h4>
+                  <div className="grid grid-cols-2 gap-4 text-sm">
+                    <div><strong>{language === 'ar' ? 'الاسم:' : 'Name:'}</strong> {selectedRegForm.customer_name}</div>
+                    <div><strong>{language === 'ar' ? 'الجوال:' : 'Phone:'}</strong> <span dir="ltr">{selectedRegForm.customer_phone || '-'}</span></div>
+                    <div><strong>{language === 'ar' ? 'التاريخ:' : 'Date:'}</strong> {new Date(selectedRegForm.created_at).toLocaleDateString(language === 'ar' ? 'ar-SA' : 'en-US')}</div>
+                    <div><strong>{language === 'ar' ? 'الحالة:' : 'Status:'}</strong> 
+                      <Badge variant="outline" className={`ms-2 ${
+                        selectedRegForm.status === 'converted' ? 'bg-green-100 text-green-700' :
+                        selectedRegForm.status === 'cancelled' ? 'bg-red-100 text-red-700' :
+                        'bg-amber-100 text-amber-700'
+                      }`}>
+                        {selectedRegForm.status === 'converted' ? (language === 'ar' ? 'تم تحويلها' : 'Converted') :
+                         selectedRegForm.status === 'cancelled' ? (language === 'ar' ? 'ملغاة' : 'Cancelled') :
+                         (language === 'ar' ? 'قيد الانتظار' : 'Pending')}
+                      </Badge>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Items */}
+                <div className="border rounded-lg overflow-hidden">
+                  <table className="w-full">
+                    <thead className="bg-muted">
+                      <tr>
+                        <th className="p-2 text-start">#</th>
+                        <th className="p-2 text-start">{language === 'ar' ? 'البند' : 'Item'}</th>
+                        <th className="p-2 text-start">{language === 'ar' ? 'الفترة' : 'Period'}</th>
+                        <th className="p-2 text-start">{language === 'ar' ? 'المواعيد' : 'Schedule'}</th>
+                        <th className="p-2 text-start">{language === 'ar' ? 'المبلغ' : 'Amount'}</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {selectedRegForm.items?.map((item, idx) => (
+                        <tr key={idx} className="border-t">
+                          <td className="p-2">{idx + 1}</td>
+                          <td className="p-2 font-medium">{item.activity_name} {item.is_product && <Badge variant="secondary" className="text-xs">منتج</Badge>}</td>
+                          <td className="p-2 text-sm">{item.is_product ? `الكمية: ${item.quantity || 1}` : (item.period || '-')}</td>
+                          <td className="p-2 text-sm text-blue-600">{item.schedule || '-'}</td>
+                          <td className="p-2 font-medium">{((item.fee || 0) * (item.quantity || 1)).toFixed(2)} {t('sar')}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Totals */}
+                <div className="p-4 bg-gray-50 border rounded-lg space-y-2">
+                  <div className="flex justify-between text-sm">
+                    <span>{language === 'ar' ? 'المجموع الفرعي:' : 'Subtotal:'}</span>
+                    <span>{selectedRegForm.subtotal?.toFixed(2)} {t('sar')}</span>
+                  </div>
+                  {selectedRegForm.discount > 0 && (
+                    <div className="flex justify-between text-sm text-red-600">
+                      <span>{language === 'ar' ? 'الخصم:' : 'Discount:'}</span>
+                      <span>- {selectedRegForm.discount?.toFixed(2)} {t('sar')}</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between font-bold text-lg text-primary pt-2 border-t">
+                    <span>{language === 'ar' ? 'الإجمالي:' : 'Total:'}</span>
+                    <span>{selectedRegForm.total?.toFixed(2)} {t('sar')}</span>
+                  </div>
+                </div>
+
+                {/* Payment & Notes */}
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                    <strong>{language === 'ar' ? '💳 طريقة الدفع:' : '💳 Payment:'}</strong> {
+                      selectedRegForm.payment_method === 'cash' ? (language === 'ar' ? 'نقداً' : 'Cash') :
+                      selectedRegForm.payment_method === 'card' ? (language === 'ar' ? 'بطاقة' : 'Card') :
+                      selectedRegForm.payment_method === 'transfer' ? (language === 'ar' ? 'تحويل' : 'Transfer') :
+                      selectedRegForm.payment_method
+                    }
+                  </div>
+                  {selectedRegForm.notes && (
+                    <div className="p-3 bg-gray-100 border rounded-lg">
+                      <strong>{language === 'ar' ? '📝 ملاحظات:' : '📝 Notes:'}</strong> {selectedRegForm.notes}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setIsViewRegFormDialogOpen(false)}>{t('close')}</Button>
+              {selectedRegForm?.status === 'pending' && (
+                <>
+                  <Button variant="outline" onClick={() => { setIsViewRegFormDialogOpen(false); handleEditRegForm(selectedRegForm); }} className="text-orange-600 border-orange-300">
+                    <Edit className="w-4 h-4 me-2" />
+                    {language === 'ar' ? 'تعديل' : 'Edit'}
+                  </Button>
+                  <Button onClick={() => { setIsViewRegFormDialogOpen(false); handleConvertFormToInvoice(selectedRegForm.id); }} className="bg-blue-600 hover:bg-blue-700">
+                    <ArrowRightCircle className="w-4 h-4 me-2" />
+                    {language === 'ar' ? 'تحويل إلى فاتورة' : 'Convert to Invoice'}
+                  </Button>
+                </>
+              )}
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Edit Registration Form Dialog */}
+        <Dialog open={isEditRegFormDialogOpen} onOpenChange={(open) => { if (!open) closeEditRegFormDialog(); }}>
+          <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <Edit className="w-5 h-5 text-orange-600" />
+                {language === 'ar' ? 'تعديل استمارة التسجيل' : 'Edit Registration Form'}
+              </DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4">
+              {/* Customer Data */}
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>{language === 'ar' ? 'اسم المشترك *' : 'Customer Name *'}</Label>
+                  <Input 
+                    value={regFormData.customer_name}
+                    onChange={(e) => setRegFormData({...regFormData, customer_name: e.target.value})}
+                    placeholder={language === 'ar' ? 'أدخل اسم المشترك' : 'Enter customer name'}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>{language === 'ar' ? 'رقم الجوال' : 'Phone Number'}</Label>
+                  <Input 
+                    value={regFormData.customer_phone}
+                    onChange={(e) => setRegFormData({...regFormData, customer_phone: e.target.value})}
+                    placeholder="05xxxxxxxx"
+                    dir="ltr"
+                  />
+                </div>
+              </div>
+
+              {/* Add Items */}
+              <div className="flex gap-2 p-2 bg-muted rounded-lg">
+                <Button
+                  type="button"
+                  variant={regFormItemType === 'activity' ? 'default' : 'outline'}
+                  onClick={() => setRegFormItemType('activity')}
+                  className="flex-1"
+                  size="sm"
+                >
+                  {language === 'ar' ? 'نشاط' : 'Activity'}
+                </Button>
+                <Button
+                  type="button"
+                  variant={regFormItemType === 'product' ? 'default' : 'outline'}
+                  onClick={() => setRegFormItemType('product')}
+                  className="flex-1"
+                  size="sm"
+                >
+                  {language === 'ar' ? 'منتج' : 'Product'}
+                </Button>
+              </div>
+
+              <div className="space-y-2">
+                <Label>{language === 'ar' ? 'إضافة ' + (regFormItemType === 'activity' ? 'نشاط' : 'منتج') : 'Add ' + (regFormItemType === 'activity' ? 'Activity' : 'Product')}</Label>
+                <Select onValueChange={(value) => {
+                  if (regFormItemType === 'activity') {
+                    const activity = activities.find(a => a.id === value);
+                    if (activity) addActivityToRegForm(activity);
+                  } else {
+                    const product = products.find(p => p.id === value);
+                    if (product) addProductToRegForm(product);
+                  }
+                }}>
+                  <SelectTrigger><SelectValue placeholder={language === 'ar' ? 'اختر...' : 'Select...'} /></SelectTrigger>
+                  <SelectContent>
+                    {regFormItemType === 'activity' ? 
+                      activities.map(a => <SelectItem key={a.id} value={a.id}>{a.name_ar || a.name} - {a.monthly_fee} {t('sar')}</SelectItem>) :
+                      products.map(p => <SelectItem key={p.id} value={p.id}>{p.name_ar || p.name} - {p.price} {t('sar')}</SelectItem>)
+                    }
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Items List */}
+              {regFormItems.length > 0 && (
+                <div className="space-y-2 max-h-[200px] overflow-y-auto border rounded-lg p-2">
+                  {regFormItems.map((item, idx) => (
+                    <div key={idx} className="flex items-center gap-2 p-2 bg-muted/50 rounded border">
+                      <span className="flex-1 font-medium text-sm">{item.activity_name}</span>
+                      <Input 
+                        type="number"
+                        value={item.fee}
+                        onChange={(e) => {
+                          const updated = [...regFormItems];
+                          updated[idx].fee = parseFloat(e.target.value) || 0;
+                          setRegFormItems(updated);
+                        }}
+                        className="w-24 text-sm"
+                      />
+                      <span className="text-sm text-muted-foreground">{t('sar')}</span>
+                      <Button variant="ghost" size="sm" onClick={() => removeActivityFromRegForm(idx)} className="text-red-600 h-8 w-8 p-0">
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Payment Method */}
+              <div className="space-y-2">
+                <Label>{language === 'ar' ? 'طريقة الدفع' : 'Payment Method'}</Label>
+                <Select value={regFormPaymentMethod} onValueChange={setRegFormPaymentMethod}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="cash">{language === 'ar' ? 'نقداً' : 'Cash'}</SelectItem>
+                    <SelectItem value="card">{language === 'ar' ? 'بطاقة' : 'Card'}</SelectItem>
+                    <SelectItem value="transfer">{language === 'ar' ? 'تحويل بنكي' : 'Bank Transfer'}</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Notes */}
+              <div className="space-y-2">
+                <Label>{language === 'ar' ? 'ملاحظات' : 'Notes'}</Label>
+                <Textarea 
+                  value={regFormNotes}
+                  onChange={(e) => setRegFormNotes(e.target.value)}
+                  placeholder={language === 'ar' ? 'أدخل ملاحظات...' : 'Enter notes...'}
+                  rows={2}
+                />
+              </div>
+
+              {/* Totals */}
+              {regFormItems.length > 0 && (
+                <div className="border rounded-lg p-3 bg-muted/30">
+                  <div className="flex justify-between font-bold text-lg text-primary">
+                    <span>{t('total')}:</span>
+                    <span>{(regFormItems.reduce((sum, i) => sum + ((i.fee || 0) * (i.quantity || 1)), 0) - regFormDiscount - regFormCouponDiscount).toFixed(2)} {t('sar')}</span>
+                  </div>
+                </div>
+              )}
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={closeEditRegFormDialog}>{t('cancel')}</Button>
+              <Button 
+                onClick={handleSaveEditedRegForm} 
+                disabled={!regFormData.customer_name || regFormItems.length === 0}
+                className="bg-orange-600 hover:bg-orange-700"
+              >
+                <FileText className="w-4 h-4 me-2" />
+                {language === 'ar' ? 'حفظ التعديلات' : 'Save Changes'}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
     </Layout>
   );
