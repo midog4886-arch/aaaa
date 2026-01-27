@@ -715,3 +715,57 @@
 - `/app/backend/server.py` - Lines ~1930-1960
 - `/app/frontend/src/pages/DashboardPage.js` - كرت pendingForms الجديد
 - `/app/frontend/src/pages/InvoicesPage.js` - Lines ~1024-1200, 2318-2360
+
+
+---
+
+## Update 17 - View & Edit Registration Forms (January 27, 2026)
+
+### Features Implemented:
+
+#### 1. عرض استمارة التسجيل ✅
+- **الوصف**: نافذة جديدة لعرض كامل تفاصيل استمارة التسجيل
+- **المكونات المعروضة**:
+  - بيانات المشترك (الاسم، الجوال، التاريخ، الحالة)
+  - جدول البنود (البند، الفترة، المواعيد، المبلغ)
+  - المجموع الفرعي والإجمالي
+  - طريقة الدفع والملاحظات
+  - أزرار إجراءات (تعديل، تحويل إلى فاتورة) للاستمارات pending
+
+#### 2. تعديل استمارة التسجيل ✅
+- **الوصف**: نافذة تعديل كاملة لاستمارات التسجيل بحالة pending
+- **إمكانيات التعديل**:
+  - تعديل بيانات المشترك (الاسم، الجوال)
+  - إضافة/حذف/تعديل البنود (أنشطة ومنتجات)
+  - تعديل الأسعار
+  - تغيير طريقة الدفع
+  - تعديل الملاحظات
+- **القيود**: لا يمكن تعديل الاستمارات المحولة (converted)
+
+### Backend API:
+- `PUT /api/registration-forms/{form_id}` - تحديث استمارة التسجيل
+  - يقبل: RegistrationFormCreate model
+  - يُرجع 400 إذا كانت الاستمارة محولة
+  - يُرجع 404 إذا لم توجد الاستمارة
+
+### Frontend Changes:
+- **أزرار جديدة في جدول الاستمارات**:
+  - 👁️ عرض (رمادي) - يظهر لجميع الاستمارات
+  - ✏️ تعديل (برتقالي) - يظهر فقط للاستمارات pending
+- **نافذتان جديدتان**:
+  - `isViewRegFormDialogOpen` / `selectedRegForm` - للعرض
+  - `isEditRegFormDialogOpen` / `editRegFormId` - للتعديل
+- **دوال جديدة**:
+  - `handleViewRegForm(form)`
+  - `handleEditRegForm(form)`
+  - `handleSaveEditedRegForm()`
+  - `closeEditRegFormDialog()`
+
+### Test Results:
+- ✅ 100% Backend (8/8 tests)
+- ✅ 100% Frontend
+
+### Files Modified:
+- `/app/backend/server.py` - Lines ~1269-1310
+- `/app/frontend/src/services/api.js` - registrationFormsAPI.update
+- `/app/frontend/src/pages/InvoicesPage.js` - View & Edit dialogs
