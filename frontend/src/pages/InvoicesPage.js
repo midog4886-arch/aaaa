@@ -2476,6 +2476,35 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
               </DialogTitle>
             </DialogHeader>
             <div className="space-y-4">
+              {/* Sibling Option - أخ لنفس ولي الأمر */}
+              <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                <Label className="text-blue-800 font-medium mb-2 block">{language === 'ar' ? '👨‍👧‍👦 أخ لنفس ولي الأمر' : '👨‍👧‍👦 Sibling (Same Guardian)'}</Label>
+                <Select value="" onValueChange={(memberId) => {
+                  const sibling = members.find(m => m.id === memberId);
+                  if (sibling) {
+                    setRegFormData({
+                      ...regFormData,
+                      customer_phone: sibling.phone || ''
+                    });
+                    toast.success(language === 'ar' 
+                      ? `تم نسخ رقم جوال ولي الأمر من: ${sibling.name_ar || sibling.name}` 
+                      : `Guardian phone copied from: ${sibling.name_ar || sibling.name}`);
+                  }
+                }}>
+                  <SelectTrigger className="bg-white">
+                    <SelectValue placeholder={language === 'ar' ? 'اختر أخ لنسخ بيانات ولي الأمر...' : 'Select sibling to copy guardian info...'} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {members.map(m => (
+                      <SelectItem key={m.id} value={m.id}>
+                        {language === 'ar' ? m.name_ar : m.name} - {m.guardian_name_ar || m.guardian_name || 'ولي الأمر'} ({m.phone})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-blue-600 mt-1">{language === 'ar' ? 'اختر عضو سابق لنسخ رقم جوال ولي الأمر تلقائياً، ثم أدخل اسم المشترك الجديد' : 'Select existing member to copy guardian phone, then enter new subscriber name'}</p>
+              </div>
+              
               {/* Customer Info with Member Selection */}
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
