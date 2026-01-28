@@ -4052,6 +4052,490 @@ async def get_purchases_report(
         }
     }
 
+# ============ VAT REPORT ============
+
+@api_router.get("/reports/vat")
+async def get_vat_report(
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    branch_filter: Optional[str] = None,
+    current_user: dict = Depends(get_current_user)
+):
+    """Get VAT declaration report - إقرار ضريبة القيمة المضافة"""
+    query_sales = {"status": "paid"}
+    query_purchases = {}
+    
+    if branch_filter and branch_filter != "all":
+        query_sales["branch_id"] = branch_filter
+        query_purchases["branch_id"] = branch_filter
+    elif not current_user.get("is_admin") and current_user.get("branch_id"):
+        query_sales["branch_id"] = current_user["branch_id"]
+        query_purchases["branch_id"] = current_user["branch_id"]
+    
+    if start_date:
+        query_sales["paid_at"] = {"$gte": start_date}
+        query_purchases["invoice_date"] = {"$gte": start_date}
+    if end_date:
+        if "paid_at" in query_sales:
+            query_sales["paid_at"]["$lte"] = end_date
+        else:
+            query_sales["paid_at"] = {"$lte": end_date}
+        if "invoice_date" in query_purchases:
+            query_purchases["invoice_date"]["$lte"] = end_date
+        else:
+            query_purchases["invoice_date"] = {"$lte": end_date}
+    
+    # Get sales invoices (فواتير المبيعات)
+    sales_invoices = await db.invoices.find(query_sales, {"_id": 0}).to_list(10000)
+    
+    # Get purchase invoices (فواتير المشتريات)
+    purchase_invoices = await db.purchase_invoices.find(query_purchases, {"_id": 0}).to_list(10000)
+    
+    # Calculate sales VAT (ضريبة المخرجات)
+    sales_subtotal = sum(inv.get("subtotal", 0) for inv in sales_invoices)
+    output_vat = sum(inv.get("vat_amount", 0) for inv in sales_invoices)
+    
+    # Calculate purchases VAT (ضريبة المدخلات)
+    purchases_subtotal = sum(inv.get("subtotal", 0) for inv in purchase_invoices)
+    input_vat = sum(inv.get("tax_amount", 0) for inv in purchase_invoices)
+    
+    # Net VAT (صافي الضريبة المستحقة)
+    net_vat = output_vat - input_vat
+    
+    return {
+        "period": {
+            "start_date": start_date or "الكل",
+            "end_date": end_date or "الآن"
+        },
+        "sales": {
+            "subtotal": round(sales_subtotal, 2),
+            "vat_amount": round(output_vat, 2),
+            "total": round(sales_subtotal + output_vat, 2),
+            "invoices_count": len(sales_invoices)
+        },
+        "purchases": {
+            "subtotal": round(purchases_subtotal, 2),
+            "vat_amount": round(input_vat, 2),
+            "total": round(purchases_subtotal + input_vat, 2),
+            "invoices_count": len(purchase_invoices)
+        },
+        "vat_summary": {
+            "output_vat": round(output_vat, 2),  # ضريبة المخرجات (على المبيعات)
+            "input_vat": round(input_vat, 2),    # ضريبة المدخلات (على المشتريات)
+            "net_vat": round(net_vat, 2),        # صافي الضريبة المستحقة
+            "vat_status": "مستحقة للهيئة" if net_vat > 0 else "مستحقة للمنشأة" if net_vat < 0 else "صفر"
+        },
+        "company_info": {
+            "name": "شركة اداء الابطال العالمية للرياضة",
+            "tax_number": COMPANY_TAX_NUMBER,
+            "commercial_reg": COMPANY_COMMERCIAL_REG
+        }
+    }
+
+# ============ SALES REPORT ============
+
+@api_router.get("/reports/sales")
+async def get_sales_report(
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    activity_id: Optional[str] = None,
+    payment_method: Optional[str] = None,
+    branch_filter: Optional[str] = None,
+    current_user: dict = Depends(get_current_user)
+):
+    """Get sales report - تقرير فواتير المبيعات"""
+    query = {"status": "paid"}
+    
+    if branch_filter and branch_filter != "all":
+        query["branch_id"] = branch_filter
+    elif not current_user.get("is_admin") and current_user.get("branch_id"):
+        query["branch_id"] = current_user["branch_id"]
+    
+    if start_date:
+        query["paid_at"] = {"$gte": start_date}
+    if end_date:
+        if "paid_at" in query:
+            query["paid_at"]["$lte"] = end_date
+        else:
+            query["paid_at"] = {"$lte": end_date}
+    if activity_id:
+        query["items.activity_id"] = activity_id
+    if payment_method:
+        query["payment_method"] = payment_method
+    
+    invoices = await db.invoices.find(query, {"_id": 0}).sort("paid_at", -1).to_list(10000)
+    
+    # Calculate totals
+    total_subtotal = sum(inv.get("subtotal", 0) for inv in invoices)
+    total_discount = sum(inv.get("discount", 0) for inv in invoices)
+    total_vat = sum(inv.get("vat_amount", 0) for inv in invoices)
+    total_amount = sum(inv.get("total", 0) for inv in invoices)
+    
+    # Group by payment method
+    by_payment_method = {}
+    for inv in invoices:
+        pm = inv.get("payment_method", "غير محدد")
+        if pm not in by_payment_method:
+            by_payment_method[pm] = {"count": 0, "total": 0}
+        by_payment_method[pm]["count"] += 1
+        by_payment_method[pm]["total"] += inv.get("total", 0)
+    
+    # Group by activity
+    by_activity = {}
+    for inv in invoices:
+        for item in inv.get("items", []):
+            if item.get("is_product"):
+                continue
+            act_name = item.get("activity_name", "غير محدد")
+            if act_name not in by_activity:
+                by_activity[act_name] = {"count": 0, "total": 0}
+            by_activity[act_name]["count"] += 1
+            by_activity[act_name]["total"] += item.get("fee", 0)
+    
+    return {
+        "invoices": invoices,
+        "summary": {
+            "total_subtotal": round(total_subtotal, 2),
+            "total_discount": round(total_discount, 2),
+            "total_vat": round(total_vat, 2),
+            "total_amount": round(total_amount, 2),
+            "invoices_count": len(invoices)
+        },
+        "by_payment_method": by_payment_method,
+        "by_activity": by_activity
+    }
+
+# ============ EXPORT ACCOUNTING REPORTS ============
+
+@api_router.get("/export/sales")
+async def export_sales_report(
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    format: str = "xlsx",
+    token: Optional[str] = None
+):
+    """Export sales report to Excel"""
+    if not token:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    try:
+        jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+    except:
+        raise HTTPException(status_code=401, detail="Invalid token")
+    
+    query = {"status": "paid"}
+    if start_date:
+        query["paid_at"] = {"$gte": start_date}
+    if end_date:
+        if "paid_at" in query:
+            query["paid_at"]["$lte"] = end_date
+        else:
+            query["paid_at"] = {"$lte": end_date}
+    
+    invoices = await db.invoices.find(query, {"_id": 0}).sort("paid_at", -1).to_list(10000)
+    
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "تقرير المبيعات"
+    
+    header_fill = PatternFill(start_color="10B981", end_color="10B981", fill_type="solid")
+    header_font = Font(bold=True, color="FFFFFF")
+    title_font = Font(bold=True, size=14)
+    thin_border = Border(left=Side(style='thin'), right=Side(style='thin'), top=Side(style='thin'), bottom=Side(style='thin'))
+    
+    # Title
+    ws.merge_cells('A1:H1')
+    ws.cell(row=1, column=1, value="تقرير فواتير المبيعات - شركة اداء الابطال العالمية للرياضة").font = title_font
+    ws.cell(row=2, column=1, value=f"الفترة: {start_date or 'الكل'} إلى {end_date or 'الآن'}")
+    
+    # Summary
+    total_subtotal = sum(inv.get("subtotal", 0) for inv in invoices)
+    total_vat = sum(inv.get("vat_amount", 0) for inv in invoices)
+    total_amount = sum(inv.get("total", 0) for inv in invoices)
+    
+    ws.cell(row=4, column=1, value="ملخص التقرير").font = Font(bold=True, size=12)
+    ws.cell(row=5, column=1, value="عدد الفواتير:")
+    ws.cell(row=5, column=2, value=len(invoices))
+    ws.cell(row=6, column=1, value="المجموع الفرعي:")
+    ws.cell(row=6, column=2, value=f"{total_subtotal:,.2f} ر.س")
+    ws.cell(row=7, column=1, value="ضريبة القيمة المضافة:")
+    ws.cell(row=7, column=2, value=f"{total_vat:,.2f} ر.س")
+    ws.cell(row=8, column=1, value="الإجمالي:").font = Font(bold=True)
+    ws.cell(row=8, column=2, value=f"{total_amount:,.2f} ر.س").font = Font(bold=True)
+    
+    # Headers
+    headers = ["م", "رقم الفاتورة", "اسم العميل", "الجوال", "المجموع الفرعي", "الضريبة", "الإجمالي", "طريقة الدفع", "التاريخ"]
+    for col, header in enumerate(headers, 1):
+        cell = ws.cell(row=10, column=col, value=header)
+        cell.fill = header_fill
+        cell.font = header_font
+        cell.border = thin_border
+        cell.alignment = Alignment(horizontal='center')
+    
+    # Data
+    for idx, inv in enumerate(invoices, 1):
+        row = 10 + idx
+        ws.cell(row=row, column=1, value=idx).border = thin_border
+        ws.cell(row=row, column=2, value=inv.get("invoice_number", "")).border = thin_border
+        ws.cell(row=row, column=3, value=inv.get("customer_name_ar") or inv.get("member_name", "")).border = thin_border
+        ws.cell(row=row, column=4, value=inv.get("customer_phone", "")).border = thin_border
+        ws.cell(row=row, column=5, value=inv.get("subtotal", 0)).border = thin_border
+        ws.cell(row=row, column=6, value=inv.get("vat_amount", 0)).border = thin_border
+        ws.cell(row=row, column=7, value=inv.get("total", 0)).border = thin_border
+        ws.cell(row=row, column=8, value=inv.get("payment_method", "")).border = thin_border
+        ws.cell(row=row, column=9, value=inv.get("paid_at", "")[:10] if inv.get("paid_at") else "").border = thin_border
+    
+    # Adjust column widths
+    ws.column_dimensions['A'].width = 6
+    ws.column_dimensions['B'].width = 15
+    ws.column_dimensions['C'].width = 25
+    ws.column_dimensions['D'].width = 15
+    ws.column_dimensions['E'].width = 15
+    ws.column_dimensions['F'].width = 12
+    ws.column_dimensions['G'].width = 15
+    ws.column_dimensions['H'].width = 15
+    ws.column_dimensions['I'].width = 12
+    
+    output = io.BytesIO()
+    wb.save(output)
+    output.seek(0)
+    
+    filename = f"sales_report_{start_date or 'all'}_{end_date or 'now'}.xlsx"
+    return StreamingResponse(
+        output,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f"attachment; filename={filename}"}
+    )
+
+@api_router.get("/export/purchases")
+async def export_purchases_report(
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    format: str = "xlsx",
+    token: Optional[str] = None
+):
+    """Export purchases report to Excel"""
+    if not token:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    try:
+        jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+    except:
+        raise HTTPException(status_code=401, detail="Invalid token")
+    
+    query = {}
+    if start_date:
+        query["invoice_date"] = {"$gte": start_date}
+    if end_date:
+        if "invoice_date" in query:
+            query["invoice_date"]["$lte"] = end_date
+        else:
+            query["invoice_date"] = {"$lte": end_date}
+    
+    invoices = await db.purchase_invoices.find(query, {"_id": 0}).sort("invoice_date", -1).to_list(10000)
+    
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "تقرير المشتريات"
+    
+    header_fill = PatternFill(start_color="3B82F6", end_color="3B82F6", fill_type="solid")
+    header_font = Font(bold=True, color="FFFFFF")
+    title_font = Font(bold=True, size=14)
+    thin_border = Border(left=Side(style='thin'), right=Side(style='thin'), top=Side(style='thin'), bottom=Side(style='thin'))
+    
+    # Title
+    ws.merge_cells('A1:I1')
+    ws.cell(row=1, column=1, value="تقرير فواتير المشتريات - شركة اداء الابطال العالمية للرياضة").font = title_font
+    ws.cell(row=2, column=1, value=f"الفترة: {start_date or 'الكل'} إلى {end_date or 'الآن'}")
+    
+    # Summary
+    total_subtotal = sum(inv.get("subtotal", 0) for inv in invoices)
+    total_tax = sum(inv.get("tax_amount", 0) for inv in invoices)
+    total_amount = sum(inv.get("total", 0) for inv in invoices)
+    total_paid = sum(inv.get("paid_amount", 0) for inv in invoices)
+    total_remaining = sum(inv.get("remaining_amount", 0) for inv in invoices)
+    
+    ws.cell(row=4, column=1, value="ملخص التقرير").font = Font(bold=True, size=12)
+    ws.cell(row=5, column=1, value="عدد الفواتير:")
+    ws.cell(row=5, column=2, value=len(invoices))
+    ws.cell(row=6, column=1, value="المجموع الفرعي:")
+    ws.cell(row=6, column=2, value=f"{total_subtotal:,.2f} ر.س")
+    ws.cell(row=7, column=1, value="ضريبة القيمة المضافة:")
+    ws.cell(row=7, column=2, value=f"{total_tax:,.2f} ر.س")
+    ws.cell(row=8, column=1, value="الإجمالي:").font = Font(bold=True)
+    ws.cell(row=8, column=2, value=f"{total_amount:,.2f} ر.س").font = Font(bold=True)
+    ws.cell(row=9, column=1, value="المدفوع:")
+    ws.cell(row=9, column=2, value=f"{total_paid:,.2f} ر.س")
+    ws.cell(row=10, column=1, value="المستحق:").font = Font(bold=True, color="FF0000")
+    ws.cell(row=10, column=2, value=f"{total_remaining:,.2f} ر.س").font = Font(bold=True, color="FF0000")
+    
+    # Headers
+    headers = ["م", "رقم الفاتورة", "المورد", "رقم فاتورة المورد", "المجموع الفرعي", "الضريبة", "الإجمالي", "المدفوع", "المستحق", "الحالة", "التاريخ"]
+    for col, header in enumerate(headers, 1):
+        cell = ws.cell(row=12, column=col, value=header)
+        cell.fill = header_fill
+        cell.font = header_font
+        cell.border = thin_border
+        cell.alignment = Alignment(horizontal='center')
+    
+    # Data
+    status_map = {"pending": "معلقة", "partial": "جزئي", "paid": "مدفوعة"}
+    for idx, inv in enumerate(invoices, 1):
+        row = 12 + idx
+        ws.cell(row=row, column=1, value=idx).border = thin_border
+        ws.cell(row=row, column=2, value=inv.get("invoice_number", "")).border = thin_border
+        ws.cell(row=row, column=3, value=inv.get("supplier_name", "")).border = thin_border
+        ws.cell(row=row, column=4, value=inv.get("supplier_invoice_number", "")).border = thin_border
+        ws.cell(row=row, column=5, value=inv.get("subtotal", 0)).border = thin_border
+        ws.cell(row=row, column=6, value=inv.get("tax_amount", 0)).border = thin_border
+        ws.cell(row=row, column=7, value=inv.get("total", 0)).border = thin_border
+        ws.cell(row=row, column=8, value=inv.get("paid_amount", 0)).border = thin_border
+        ws.cell(row=row, column=9, value=inv.get("remaining_amount", 0)).border = thin_border
+        ws.cell(row=row, column=10, value=status_map.get(inv.get("status", ""), inv.get("status", ""))).border = thin_border
+        ws.cell(row=row, column=11, value=inv.get("invoice_date", "")).border = thin_border
+    
+    # Adjust column widths
+    for col in ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K']:
+        ws.column_dimensions[col].width = 15
+    ws.column_dimensions['A'].width = 6
+    ws.column_dimensions['C'].width = 25
+    
+    output = io.BytesIO()
+    wb.save(output)
+    output.seek(0)
+    
+    filename = f"purchases_report_{start_date or 'all'}_{end_date or 'now'}.xlsx"
+    return StreamingResponse(
+        output,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f"attachment; filename={filename}"}
+    )
+
+@api_router.get("/export/vat")
+async def export_vat_report(
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    format: str = "xlsx",
+    token: Optional[str] = None
+):
+    """Export VAT declaration report to Excel"""
+    if not token:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    try:
+        jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+    except:
+        raise HTTPException(status_code=401, detail="Invalid token")
+    
+    query_sales = {"status": "paid"}
+    query_purchases = {}
+    
+    if start_date:
+        query_sales["paid_at"] = {"$gte": start_date}
+        query_purchases["invoice_date"] = {"$gte": start_date}
+    if end_date:
+        if "paid_at" in query_sales:
+            query_sales["paid_at"]["$lte"] = end_date
+        else:
+            query_sales["paid_at"] = {"$lte": end_date}
+        if "invoice_date" in query_purchases:
+            query_purchases["invoice_date"]["$lte"] = end_date
+        else:
+            query_purchases["invoice_date"] = {"$lte": end_date}
+    
+    sales_invoices = await db.invoices.find(query_sales, {"_id": 0}).to_list(10000)
+    purchase_invoices = await db.purchase_invoices.find(query_purchases, {"_id": 0}).to_list(10000)
+    
+    # Calculate
+    sales_subtotal = sum(inv.get("subtotal", 0) for inv in sales_invoices)
+    output_vat = sum(inv.get("vat_amount", 0) for inv in sales_invoices)
+    purchases_subtotal = sum(inv.get("subtotal", 0) for inv in purchase_invoices)
+    input_vat = sum(inv.get("tax_amount", 0) for inv in purchase_invoices)
+    net_vat = output_vat - input_vat
+    
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "إقرار الضريبة"
+    
+    header_fill = PatternFill(start_color="7C3AED", end_color="7C3AED", fill_type="solid")
+    green_fill = PatternFill(start_color="10B981", end_color="10B981", fill_type="solid")
+    blue_fill = PatternFill(start_color="3B82F6", end_color="3B82F6", fill_type="solid")
+    header_font = Font(bold=True, color="FFFFFF")
+    title_font = Font(bold=True, size=16)
+    subtitle_font = Font(bold=True, size=12)
+    thin_border = Border(left=Side(style='thin'), right=Side(style='thin'), top=Side(style='thin'), bottom=Side(style='thin'))
+    
+    # Title
+    ws.merge_cells('A1:D1')
+    ws.cell(row=1, column=1, value="إقرار ضريبة القيمة المضافة").font = title_font
+    ws.cell(row=2, column=1, value="شركة اداء الابطال العالمية للرياضة")
+    ws.cell(row=3, column=1, value=f"الرقم الضريبي: {COMPANY_TAX_NUMBER}")
+    ws.cell(row=4, column=1, value=f"الفترة: {start_date or 'الكل'} إلى {end_date or 'الآن'}")
+    
+    # Sales Section
+    ws.merge_cells('A6:D6')
+    cell = ws.cell(row=6, column=1, value="المبيعات (ضريبة المخرجات)")
+    cell.fill = green_fill
+    cell.font = header_font
+    
+    ws.cell(row=7, column=1, value="البيان").font = Font(bold=True)
+    ws.cell(row=7, column=2, value="المبلغ (ر.س)").font = Font(bold=True)
+    
+    ws.cell(row=8, column=1, value="إجمالي المبيعات (قبل الضريبة):")
+    ws.cell(row=8, column=2, value=f"{sales_subtotal:,.2f}")
+    ws.cell(row=9, column=1, value="ضريبة المخرجات (15%):")
+    ws.cell(row=9, column=2, value=f"{output_vat:,.2f}")
+    ws.cell(row=10, column=1, value="عدد الفواتير:")
+    ws.cell(row=10, column=2, value=len(sales_invoices))
+    
+    # Purchases Section
+    ws.merge_cells('A12:D12')
+    cell = ws.cell(row=12, column=1, value="المشتريات (ضريبة المدخلات)")
+    cell.fill = blue_fill
+    cell.font = header_font
+    
+    ws.cell(row=13, column=1, value="البيان").font = Font(bold=True)
+    ws.cell(row=13, column=2, value="المبلغ (ر.س)").font = Font(bold=True)
+    
+    ws.cell(row=14, column=1, value="إجمالي المشتريات (قبل الضريبة):")
+    ws.cell(row=14, column=2, value=f"{purchases_subtotal:,.2f}")
+    ws.cell(row=15, column=1, value="ضريبة المدخلات (15%):")
+    ws.cell(row=15, column=2, value=f"{input_vat:,.2f}")
+    ws.cell(row=16, column=1, value="عدد الفواتير:")
+    ws.cell(row=16, column=2, value=len(purchase_invoices))
+    
+    # Summary Section
+    ws.merge_cells('A18:D18')
+    cell = ws.cell(row=18, column=1, value="ملخص الإقرار الضريبي")
+    cell.fill = header_fill
+    cell.font = header_font
+    
+    ws.cell(row=19, column=1, value="ضريبة المخرجات (على المبيعات):").font = Font(bold=True)
+    ws.cell(row=19, column=2, value=f"{output_vat:,.2f}")
+    ws.cell(row=20, column=1, value="ضريبة المدخلات (على المشتريات):").font = Font(bold=True)
+    ws.cell(row=20, column=2, value=f"({input_vat:,.2f})")
+    
+    ws.cell(row=22, column=1, value="صافي الضريبة المستحقة:").font = Font(bold=True, size=14)
+    ws.cell(row=22, column=2, value=f"{net_vat:,.2f} ر.س").font = Font(bold=True, size=14, color="FF0000" if net_vat > 0 else "10B981")
+    
+    status_text = "مستحقة للهيئة (يجب السداد)" if net_vat > 0 else "رصيد لصالح المنشأة" if net_vat < 0 else "صفر"
+    ws.cell(row=23, column=1, value="الحالة:")
+    ws.cell(row=23, column=2, value=status_text)
+    
+    # Column widths
+    ws.column_dimensions['A'].width = 35
+    ws.column_dimensions['B'].width = 20
+    ws.column_dimensions['C'].width = 15
+    ws.column_dimensions['D'].width = 15
+    
+    output = io.BytesIO()
+    wb.save(output)
+    output.seek(0)
+    
+    filename = f"vat_report_{start_date or 'all'}_{end_date or 'now'}.xlsx"
+    return StreamingResponse(
+        output,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f"attachment; filename={filename}"}
+    )
+
 # Include router
 app.include_router(api_router)
 
