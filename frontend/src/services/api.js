@@ -196,6 +196,15 @@ export const accountingReportsAPI = {
   getJournalEntriesReport: (params = {}) => axios.get(`${API}/reports/journal-entries`, { params }),
   getSuppliersBalance: (params = {}) => axios.get(`${API}/reports/suppliers-balance`, { params }),
   getPurchasesReport: (params = {}) => axios.get(`${API}/reports/purchases`, { params }),
+  getSalesReport: (params = {}) => axios.get(`${API}/reports/sales`, { params }),
+  getVatReport: (params = {}) => axios.get(`${API}/reports/vat`, { params }),
+};
+
+// Export Accounting API
+export const exportAccountingAPI = {
+  sales: (params = {}) => `${API}/export/sales?${new URLSearchParams(params).toString()}`,
+  purchases: (params = {}) => `${API}/export/purchases?${new URLSearchParams(params).toString()}`,
+  vat: (params = {}) => `${API}/export/vat?${new URLSearchParams(params).toString()}`,
 };
 
 export default {
