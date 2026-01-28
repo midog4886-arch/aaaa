@@ -847,6 +847,225 @@ export default function AccountingPage() {
           <div className="text-gray-500">المستحق للموردين (ر.س)</div>
         </div>
       </div>
+      
+      {/* Sales Report Section */}
+      <div className="mt-8 border rounded-lg p-6 bg-white">
+        <div className="flex justify-between items-center mb-4">
+          <h3 className="text-lg font-bold">📊 تقرير المبيعات</h3>
+          <div className="flex gap-2">
+            <Button onClick={() => handleExportExcel('sales')} className="bg-green-600 hover:bg-green-700">
+              📥 Export Excel
+            </Button>
+          </div>
+        </div>
+        
+        {/* Date Filters */}
+        <div className="flex gap-4 mb-4 flex-wrap">
+          <div>
+            <label className="text-sm text-gray-600">من تاريخ</label>
+            <Input type="date" value={dateFilter.start} onChange={e => setDateFilter(prev => ({ ...prev, start: e.target.value }))} className="w-40" />
+          </div>
+          <div>
+            <label className="text-sm text-gray-600">إلى تاريخ</label>
+            <Input type="date" value={dateFilter.end} onChange={e => setDateFilter(prev => ({ ...prev, end: e.target.value }))} className="w-40" />
+          </div>
+          <Button variant="outline" onClick={fetchSalesReport}>تحديث</Button>
+        </div>
+        
+        {salesReport && (
+          <>
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
+              <div className="bg-blue-50 p-3 rounded text-center">
+                <div className="text-sm text-gray-500">الفواتير</div>
+                <div className="text-xl font-bold">{salesReport.summary?.invoices_count || 0}</div>
+              </div>
+              <div className="bg-gray-50 p-3 rounded text-center">
+                <div className="text-sm text-gray-500">الصافي</div>
+                <div className="text-xl font-bold">{(salesReport.summary?.total_subtotal || 0).toLocaleString()}</div>
+              </div>
+              <div className="bg-yellow-50 p-3 rounded text-center">
+                <div className="text-sm text-gray-500">الخصم</div>
+                <div className="text-xl font-bold">{(salesReport.summary?.total_discount || 0).toLocaleString()}</div>
+              </div>
+              <div className="bg-orange-50 p-3 rounded text-center">
+                <div className="text-sm text-gray-500">الضريبة</div>
+                <div className="text-xl font-bold">{(salesReport.summary?.total_vat || 0).toLocaleString()}</div>
+              </div>
+              <div className="bg-green-50 p-3 rounded text-center">
+                <div className="text-sm text-gray-500">الإجمالي</div>
+                <div className="text-xl font-bold text-green-600">{(salesReport.summary?.total_amount || 0).toLocaleString()}</div>
+              </div>
+            </div>
+            
+            {/* By Payment Method */}
+            {salesReport.by_payment_method && Object.keys(salesReport.by_payment_method).length > 0 && (
+              <div className="mb-4">
+                <h4 className="font-semibold mb-2">حسب طريقة الدفع</h4>
+                <div className="flex gap-4 flex-wrap">
+                  {Object.entries(salesReport.by_payment_method).map(([method, data]) => (
+                    <div key={method} className="border rounded p-3 min-w-32">
+                      <div className="text-sm text-gray-500">{method}</div>
+                      <div className="font-bold">{data.count} فاتورة</div>
+                      <div className="text-green-600">{data.total.toLocaleString()} ر.س</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            
+            {/* By Activity */}
+            {salesReport.by_activity && Object.keys(salesReport.by_activity).length > 0 && (
+              <div>
+                <h4 className="font-semibold mb-2">حسب النشاط</h4>
+                <div className="flex gap-4 flex-wrap">
+                  {Object.entries(salesReport.by_activity).map(([activity, data]) => (
+                    <div key={activity} className="border rounded p-3 min-w-32">
+                      <div className="text-sm text-gray-500">{activity}</div>
+                      <div className="font-bold">{data.count} اشتراك</div>
+                      <div className="text-blue-600">{data.total.toLocaleString()} ر.س</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </>
+        )}
+      </div>
+      
+      {/* Purchases Export */}
+      <div className="mt-4 border rounded-lg p-6 bg-white">
+        <div className="flex justify-between items-center">
+          <h3 className="text-lg font-bold">🧾 تقرير المشتريات</h3>
+          <Button onClick={() => handleExportExcel('purchases')} className="bg-blue-600 hover:bg-blue-700">
+            📥 Export Excel
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+
+  // VAT Report Tab
+  const renderVatTab = () => (
+    <div className="space-y-6">
+      <div className="flex justify-between items-center">
+        <h2 className="text-xl font-bold">🧾 إقرار ضريبة القيمة المضافة (VAT)</h2>
+        <Button onClick={() => handleExportExcel('vat')} className="bg-purple-600 hover:bg-purple-700">
+          📥 Export Excel
+        </Button>
+      </div>
+      
+      {/* Date Filters */}
+      <div className="flex gap-4 flex-wrap p-4 bg-gray-50 rounded-lg">
+        <div>
+          <label className="text-sm text-gray-600">من تاريخ</label>
+          <Input type="date" value={dateFilter.start} onChange={e => setDateFilter(prev => ({ ...prev, start: e.target.value }))} className="w-40" />
+        </div>
+        <div>
+          <label className="text-sm text-gray-600">إلى تاريخ</label>
+          <Input type="date" value={dateFilter.end} onChange={e => setDateFilter(prev => ({ ...prev, end: e.target.value }))} className="w-40" />
+        </div>
+        <Button variant="outline" onClick={fetchVatReport}>تحديث التقرير</Button>
+      </div>
+      
+      {vatReport ? (
+        <>
+          {/* Company Info */}
+          <div className="bg-gray-100 p-4 rounded-lg">
+            <h3 className="font-bold text-lg mb-2">{vatReport.company_info?.name}</h3>
+            <p className="text-sm">الرقم الضريبي: {vatReport.company_info?.tax_number}</p>
+            <p className="text-sm">الفترة: {vatReport.period?.start_date} إلى {vatReport.period?.end_date}</p>
+          </div>
+          
+          {/* Sales Section */}
+          <div className="border rounded-lg overflow-hidden">
+            <div className="bg-green-600 text-white p-3 font-bold">
+              📈 المبيعات (ضريبة المخرجات)
+            </div>
+            <div className="p-4">
+              <div className="grid grid-cols-4 gap-4">
+                <div className="text-center">
+                  <div className="text-sm text-gray-500">عدد الفواتير</div>
+                  <div className="text-2xl font-bold">{vatReport.sales?.invoices_count || 0}</div>
+                </div>
+                <div className="text-center">
+                  <div className="text-sm text-gray-500">الصافي</div>
+                  <div className="text-2xl font-bold">{(vatReport.sales?.subtotal || 0).toLocaleString()}</div>
+                </div>
+                <div className="text-center">
+                  <div className="text-sm text-gray-500">الضريبة 15%</div>
+                  <div className="text-2xl font-bold text-green-600">{(vatReport.sales?.vat_amount || 0).toLocaleString()}</div>
+                </div>
+                <div className="text-center">
+                  <div className="text-sm text-gray-500">الإجمالي</div>
+                  <div className="text-2xl font-bold">{(vatReport.sales?.total || 0).toLocaleString()}</div>
+                </div>
+              </div>
+            </div>
+          </div>
+          
+          {/* Purchases Section */}
+          <div className="border rounded-lg overflow-hidden">
+            <div className="bg-blue-600 text-white p-3 font-bold">
+              📉 المشتريات (ضريبة المدخلات)
+            </div>
+            <div className="p-4">
+              <div className="grid grid-cols-4 gap-4">
+                <div className="text-center">
+                  <div className="text-sm text-gray-500">عدد الفواتير</div>
+                  <div className="text-2xl font-bold">{vatReport.purchases?.invoices_count || 0}</div>
+                </div>
+                <div className="text-center">
+                  <div className="text-sm text-gray-500">الصافي</div>
+                  <div className="text-2xl font-bold">{(vatReport.purchases?.subtotal || 0).toLocaleString()}</div>
+                </div>
+                <div className="text-center">
+                  <div className="text-sm text-gray-500">الضريبة 15%</div>
+                  <div className="text-2xl font-bold text-blue-600">{(vatReport.purchases?.vat_amount || 0).toLocaleString()}</div>
+                </div>
+                <div className="text-center">
+                  <div className="text-sm text-gray-500">الإجمالي</div>
+                  <div className="text-2xl font-bold">{(vatReport.purchases?.total || 0).toLocaleString()}</div>
+                </div>
+              </div>
+            </div>
+          </div>
+          
+          {/* VAT Summary */}
+          <div className="border-2 border-purple-500 rounded-lg overflow-hidden">
+            <div className="bg-purple-600 text-white p-3 font-bold">
+              🧮 ملخص الإقرار الضريبي
+            </div>
+            <div className="p-6">
+              <div className="space-y-4">
+                <div className="flex justify-between items-center py-2 border-b">
+                  <span className="font-semibold">ضريبة المخرجات (على المبيعات):</span>
+                  <span className="text-xl font-bold text-green-600">{(vatReport.vat_summary?.output_vat || 0).toLocaleString()} ر.س</span>
+                </div>
+                <div className="flex justify-between items-center py-2 border-b">
+                  <span className="font-semibold">ضريبة المدخلات (على المشتريات):</span>
+                  <span className="text-xl font-bold text-blue-600">({(vatReport.vat_summary?.input_vat || 0).toLocaleString()}) ر.س</span>
+                </div>
+                <div className="flex justify-between items-center py-4 bg-gray-50 rounded-lg px-4">
+                  <span className="text-xl font-bold">صافي الضريبة المستحقة:</span>
+                  <span className={`text-3xl font-bold ${(vatReport.vat_summary?.net_vat || 0) > 0 ? 'text-red-600' : 'text-green-600'}`}>
+                    {(vatReport.vat_summary?.net_vat || 0).toLocaleString()} ر.س
+                  </span>
+                </div>
+                <div className="text-center p-4 rounded-lg bg-gray-100">
+                  <span className={`text-lg font-bold ${(vatReport.vat_summary?.net_vat || 0) > 0 ? 'text-red-600' : 'text-green-600'}`}>
+                    {vatReport.vat_summary?.vat_status}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </>
+      ) : (
+        <div className="text-center p-12 bg-gray-50 rounded-lg">
+          <div className="text-4xl mb-4">📋</div>
+          <p className="text-gray-500">اختر الفترة واضغط "تحديث التقرير" لعرض إقرار الضريبة</p>
+        </div>
+      )}
     </div>
   );
 
