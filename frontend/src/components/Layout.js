@@ -21,7 +21,8 @@ import {
   Trophy,
   Building2,
   Package,
-  GitBranch
+  GitBranch,
+  Calculator
 } from 'lucide-react';
 
 export const Sidebar = ({ isOpen, onClose }) => {
