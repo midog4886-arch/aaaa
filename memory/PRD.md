@@ -769,3 +769,112 @@
 - `/app/backend/server.py` - Lines ~1269-1310
 - `/app/frontend/src/services/api.js` - registrationFormsAPI.update
 - `/app/frontend/src/pages/InvoicesPage.js` - View & Edit dialogs
+
+
+
+---
+
+## Update 18 - Accounting System (January 28, 2026)
+
+### Features Implemented:
+
+#### 1. شجرة الحسابات (Chart of Accounts) ✅
+- **الوصف**: نظام كامل لإدارة الحسابات المحاسبية
+- **الحسابات الافتراضية**: 41 حساب مقسم إلى:
+  - الأصول (1xxx): الصندوق، البنك، المخزون، ضريبة المدخلات، الأصول الثابتة
+  - الخصوم (2xxx): حسابات الموردين، ضريبة المخرجات، إيرادات مؤجلة
+  - حقوق الملكية (3xxx): رأس المال، الأرباح المحتجزة
+  - الإيرادات (4xxx): إيرادات الاشتراكات (سباحة، كرة قدم، كاراتيه، جمباز)، مبيعات
+  - المصروفات (5xxx): المشتريات، الرواتب، الإيجارات، المصاريف الإدارية
+
+#### 2. إدارة الموردين (Suppliers) ✅
+- **البيانات**: الاسم، الجوال، البريد، العنوان، الرقم الضريبي، السجل التجاري
+- **المالية**: حد الائتمان، مدة السداد، إجمالي المشتريات، المدفوع، الرصيد المستحق
+- **العمليات**: إضافة، تعديل، حذف، كشف حساب
+
+#### 3. فواتير المشتريات (Purchase Invoices) ✅
+- **البيانات الأساسية**: رقم الفاتورة، المورد، التاريخ، تاريخ الاستحقاق
+- **البنود**: المنتج/الوصف، الكمية، سعر الوحدة، نسبة الضريبة
+- **الحسابات**: المجموع الفرعي، ضريبة القيمة المضافة 15%، الإجمالي
+- **الحالة**: معلقة، جزئي، مدفوعة
+- **القيد التلقائي**: إنشاء قيد محاسبي تلقائياً عند حفظ الفاتورة
+
+#### 4. القيود المحاسبية (Journal Entries) ✅
+- **القيود التلقائية**: من فواتير المشتريات والسداد
+- **القيود اليدوية**: إمكانية إنشاء قيود يدوية
+- **التحقق**: رفض القيود غير المتوازنة (المدين ≠ الدائن)
+- **الأنواع**: يومية المشتريات، المبيعات، العامة، المدفوعات، المقبوضات
+
+#### 5. سداد الموردين (Supplier Payments) ✅
+- **طرق الدفع**: نقدي، تحويل بنكي، شيك
+- **السداد**: جزئي أو كامل
+- **التحديث التلقائي**: رصيد المورد وحالة الفاتورة
+- **القيد التلقائي**: إنشاء قيد سداد تلقائياً
+
+#### 6. واجهة المحاسبة (Accounting UI) ✅
+- **التبويبات**: 6 تبويبات (شجرة الحسابات، الموردين، فواتير المشتريات، السداد، القيود، التقارير)
+- **الملخصات**: كروت إحصائية لكل قسم
+- **الفلاتر**: بالتاريخ، المورد، نوع اليومية
+- **مؤشر التوازن**: عرض حالة توازن القيود
+
+### Backend Models Added:
+- `Account` / `AccountCreate` - شجرة الحسابات
+- `Supplier` / `SupplierCreate` - الموردين
+- `PurchaseInvoice` / `PurchaseInvoiceCreate` / `PurchaseInvoiceItem` - فواتير المشتريات
+- `JournalEntry` / `JournalEntryCreate` / `JournalEntryLine` - القيود المحاسبية
+- `SupplierPaymentCreate` - سداد الموردين
+
+### Backend API Endpoints Added:
+- `GET/POST /api/accounts` - شجرة الحسابات
+- `POST /api/accounts/seed-default` - إنشاء الحسابات الافتراضية
+- `GET/POST/PUT/DELETE /api/suppliers` - الموردين
+- `GET /api/suppliers/{id}/statement` - كشف حساب المورد
+- `GET/POST/PUT/DELETE /api/purchase-invoices` - فواتير المشتريات
+- `GET/POST /api/supplier-payments` - سداد الموردين
+- `GET/POST/DELETE /api/journal-entries` - القيود المحاسبية
+- `GET /api/reports/journal-entries` - تقرير القيود
+- `GET /api/reports/suppliers-balance` - تقرير أرصدة الموردين
+- `GET /api/reports/purchases` - تقرير المشتريات
+
+### Frontend Files Added:
+- `/app/frontend/src/pages/AccountingPage.js` - صفحة المحاسبة الكاملة
+
+### Frontend Files Modified:
+- `/app/frontend/src/services/api.js` - إضافة APIs المحاسبة
+- `/app/frontend/src/App.js` - إضافة route المحاسبة
+- `/app/frontend/src/components/Layout.js` - إضافة رابط المحاسبة
+- `/app/frontend/src/contexts/LanguageContext.js` - إضافة ترجمة "المحاسبة"
+
+### Test Results:
+- ✅ 100% Backend (19/19 tests passed)
+- ✅ 100% Frontend
+
+### Accounting Standards Compliance:
+- ✅ نظام القيد المزدوج (Double Entry)
+- ✅ التوازن (المدين = الدائن)
+- ✅ ضريبة القيمة المضافة 15%
+- ✅ شجرة حسابات معيارية
+
+---
+
+## Prioritized Backlog (Updated January 28, 2026)
+
+### P0 - Critical (Completed)
+- [x] Accounting System (Chart of Accounts, Suppliers, Purchase Invoices, Journal Entries)
+
+### P1 - High Priority
+- [ ] WhatsApp Business API Integration (Waiting for user's Access Token and Phone Number ID)
+- [ ] ربط فواتير الاشتراكات بالقيود المحاسبية تلقائياً (Auto journal entries for subscription invoices)
+
+### P2 - Medium Priority
+- [ ] Activity Timetable Management
+- [ ] Attendance Tracking
+- [ ] Advanced User Permissions
+- [ ] تقرير الأرباح والخسائر (P&L Report)
+- [ ] تقرير الميزانية العمومية (Balance Sheet)
+
+### P3 - Refactoring
+- [ ] Split monolithic server.py into routes/models/services
+- [ ] Refactor InvoicesPage.js (very large file)
+- [ ] Refactor StorePage.js (very large file)
+- [ ] Refactor AccountingPage.js (large file)
