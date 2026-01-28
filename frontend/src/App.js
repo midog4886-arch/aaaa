@@ -161,6 +161,14 @@ function AppRoutes() {
           </ProtectedRoute>
         } 
       />
+      <Route 
+        path="/accounting" 
+        element={
+          <ProtectedRoute>
+            <AccountingPage />
+          </ProtectedRoute>
+        } 
+      />
       
       {/* Default Redirect */}
       <Route path="/" element={<Navigate to="/dashboard" replace />} />
