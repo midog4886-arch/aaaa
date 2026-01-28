@@ -2628,7 +2628,7 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
                                   }
                                   setRegFormItems(updated);
                                 }}
-                                className="h-11 text-base"
+                                className="h-14 text-lg"
                               />
                             </div>
                             <div className="space-y-2">
@@ -2645,7 +2645,7 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
                                   }
                                   setRegFormItems(updated);
                                 }}
-                                className="h-11 text-base"
+                                className="h-14 text-lg"
                               />
                             </div>
                             <div className="space-y-1">
