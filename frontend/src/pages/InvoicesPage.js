@@ -1934,6 +1934,33 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
 
               <Card className="p-4 border-primary/20 bg-primary/5">
                 <h4 className="font-semibold mb-3 flex items-center gap-2"><Receipt className="w-4 h-4 text-primary" />{language === 'ar' ? 'بيانات العميل' : 'Customer Data'}</h4>
+                
+                {/* Sibling Option - أخ لنفس ولي الأمر */}
+                <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                  <Label className="text-blue-800 font-medium mb-2 block">{language === 'ar' ? '👨‍👧‍👦 أخ لنفس ولي الأمر' : '👨‍👧‍👦 Sibling (Same Guardian)'}</Label>
+                  <Select value="" onValueChange={(memberId) => {
+                    const sibling = members.find(m => m.id === memberId);
+                    if (sibling) {
+                      setCustomerPhone(sibling.phone || '');
+                      toast.success(language === 'ar' 
+                        ? `تم نسخ بيانات ولي الأمر من: ${sibling.name_ar || sibling.name}` 
+                        : `Guardian info copied from: ${sibling.name_ar || sibling.name}`);
+                    }
+                  }}>
+                    <SelectTrigger className="bg-white">
+                      <SelectValue placeholder={language === 'ar' ? 'اختر أخ لنسخ بيانات ولي الأمر...' : 'Select sibling to copy guardian info...'} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {members.map(m => (
+                        <SelectItem key={m.id} value={m.id}>
+                          {language === 'ar' ? m.name_ar : m.name} - {m.guardian_name_ar || m.guardian_name || 'لا يوجد ولي أمر'} ({m.phone})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-blue-600 mt-1">{language === 'ar' ? 'اختر عضو سابق لنسخ رقم جوال ولي الأمر تلقائياً' : 'Select existing member to copy guardian phone automatically'}</p>
+                </div>
+                
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="space-y-2"><Label>{language === 'ar' ? 'اسم العميل *' : 'Customer Name *'}</Label><Input value={customerNameAr} onChange={(e) => setCustomerNameAr(e.target.value)} required /></div>
                   <div className="space-y-2"><Label>{t('phone')}</Label><Input value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)} type="tel" dir="ltr" /></div>
