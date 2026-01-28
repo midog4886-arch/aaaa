@@ -119,6 +119,9 @@ export const InvoicesPage = () => {
     name_ar: '', name: '', age: '', guardian_name_ar: '', guardian_name: '', phone: ''
   });
   
+  // Siblings state for adding multiple siblings
+  const [siblings, setSiblings] = useState([]);
+  
   const printRef = useRef();
 
   useEffect(() => {
