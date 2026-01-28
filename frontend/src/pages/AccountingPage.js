@@ -1084,7 +1084,8 @@ export default function AccountingPage() {
             { key: TABS.PURCHASES, label: 'فواتير المشتريات', icon: '🧾' },
             { key: TABS.PAYMENTS, label: 'السداد', icon: '💳' },
             { key: TABS.JOURNAL, label: 'القيود', icon: '📒' },
-            { key: TABS.REPORTS, label: 'التقارير', icon: '📈' }
+            { key: TABS.REPORTS, label: 'التقارير', icon: '📈' },
+            { key: TABS.VAT, label: 'إقرار الضريبة', icon: '🧾' }
           ].map(tab => (
             <Button
               key={tab.key}
