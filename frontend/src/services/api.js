@@ -149,6 +149,55 @@ export const exportAPI = {
   allData: () => `${API}/export/all-data`,
 };
 
+// Chart of Accounts API
+export const accountsAPI = {
+  getAll: (params = {}) => axios.get(`${API}/accounts`, { params }),
+  create: (data) => axios.post(`${API}/accounts`, data),
+  update: (id, data) => axios.put(`${API}/accounts/${id}`, data),
+  delete: (id) => axios.delete(`${API}/accounts/${id}`),
+  seedDefault: () => axios.post(`${API}/accounts/seed-default`),
+};
+
+// Suppliers API
+export const suppliersAPI = {
+  getAll: (params = {}) => axios.get(`${API}/suppliers`, { params }),
+  getById: (id) => axios.get(`${API}/suppliers/${id}`),
+  create: (data) => axios.post(`${API}/suppliers`, data),
+  update: (id, data) => axios.put(`${API}/suppliers/${id}`, data),
+  delete: (id) => axios.delete(`${API}/suppliers/${id}`),
+  getStatement: (id, params = {}) => axios.get(`${API}/suppliers/${id}/statement`, { params }),
+};
+
+// Purchase Invoices API
+export const purchaseInvoicesAPI = {
+  getAll: (params = {}) => axios.get(`${API}/purchase-invoices`, { params }),
+  getById: (id) => axios.get(`${API}/purchase-invoices/${id}`),
+  create: (data) => axios.post(`${API}/purchase-invoices`, data),
+  update: (id, data) => axios.put(`${API}/purchase-invoices/${id}`, data),
+  delete: (id) => axios.delete(`${API}/purchase-invoices/${id}`),
+};
+
+// Supplier Payments API
+export const supplierPaymentsAPI = {
+  getAll: (params = {}) => axios.get(`${API}/supplier-payments`, { params }),
+  create: (data) => axios.post(`${API}/supplier-payments`, data),
+};
+
+// Journal Entries API
+export const journalEntriesAPI = {
+  getAll: (params = {}) => axios.get(`${API}/journal-entries`, { params }),
+  getById: (id) => axios.get(`${API}/journal-entries/${id}`),
+  create: (data) => axios.post(`${API}/journal-entries`, data),
+  delete: (id) => axios.delete(`${API}/journal-entries/${id}`),
+};
+
+// Accounting Reports API
+export const accountingReportsAPI = {
+  getJournalEntriesReport: (params = {}) => axios.get(`${API}/reports/journal-entries`, { params }),
+  getSuppliersBalance: (params = {}) => axios.get(`${API}/reports/suppliers-balance`, { params }),
+  getPurchasesReport: (params = {}) => axios.get(`${API}/reports/purchases`, { params }),
+};
+
 export default {
   auth: authAPI,
   activities: activitiesAPI,
@@ -161,6 +210,12 @@ export default {
   seed: seedAPI,
   branches: branchesAPI,
   export: exportAPI,
+  accounts: accountsAPI,
+  suppliers: suppliersAPI,
+  purchaseInvoices: purchaseInvoicesAPI,
+  supplierPayments: supplierPaymentsAPI,
+  journalEntries: journalEntriesAPI,
+  accountingReports: accountingReportsAPI,
   get: (url) => axios.get(`${API}${url}`),
   post: (url, data) => axios.post(`${API}${url}`, data),
   put: (url, data) => axios.put(`${API}${url}`, data),
