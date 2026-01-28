@@ -2231,23 +2231,154 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
           </DialogContent>
         </Dialog>
 
-        {/* Add New Member Dialog */}
-        <Dialog open={isAddMemberDialogOpen} onOpenChange={setIsAddMemberDialogOpen}>
-          <DialogContent>
-            <DialogHeader><DialogTitle>{t('add_member')}</DialogTitle></DialogHeader>
+        {/* Add New Member Dialog - with Siblings Support */}
+        <Dialog open={isAddMemberDialogOpen} onOpenChange={(open) => {
+          setIsAddMemberDialogOpen(open);
+          if (!open) {
+            setSiblings([]);
+            setNewMemberData({ name_ar: '', name: '', age: '', guardian_name_ar: '', guardian_name: '', phone: '' });
+          }
+        }}>
+          <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                👤 {t('add_member')}
+                {siblings.length > 0 && <span className="text-sm bg-blue-100 text-blue-700 px-2 py-1 rounded-full">+{siblings.length} {language === 'ar' ? 'إخوة' : 'siblings'}</span>}
+              </DialogTitle>
+            </DialogHeader>
             <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2"><Label>{language === 'ar' ? 'اسم العضو *' : 'Name *'}</Label><Input value={newMemberData.name_ar} onChange={(e) => setNewMemberData({...newMemberData, name_ar: e.target.value})} required /></div>
-                <div className="space-y-2"><Label>{t('phone')} *</Label><Input value={newMemberData.phone} onChange={(e) => setNewMemberData({...newMemberData, phone: e.target.value})} type="tel" dir="ltr" required /></div>
+              {/* Guardian Info - Shared between all siblings */}
+              <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                <h4 className="font-semibold text-blue-800 mb-3 flex items-center gap-2">
+                  👨‍👧‍👦 {language === 'ar' ? 'بيانات ولي الأمر (مشتركة بين الإخوة)' : 'Guardian Info (Shared)'}
+                </h4>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label>{language === 'ar' ? 'اسم ولي الأمر' : 'Guardian Name'}</Label>
+                    <Input 
+                      value={newMemberData.guardian_name_ar} 
+                      onChange={(e) => setNewMemberData({...newMemberData, guardian_name_ar: e.target.value})} 
+                      placeholder={language === 'ar' ? 'اسم ولي الأمر' : 'Guardian name'}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>{t('phone')} * {language === 'ar' ? '(جوال ولي الأمر)' : '(Guardian Phone)'}</Label>
+                    <Input 
+                      value={newMemberData.phone} 
+                      onChange={(e) => setNewMemberData({...newMemberData, phone: e.target.value})} 
+                      type="tel" 
+                      dir="ltr" 
+                      required 
+                      placeholder="05xxxxxxxx"
+                    />
+                  </div>
+                </div>
               </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2"><Label>{language === 'ar' ? 'ولي الأمر' : 'Guardian'}</Label><Input value={newMemberData.guardian_name_ar} onChange={(e) => setNewMemberData({...newMemberData, guardian_name_ar: e.target.value})} /></div>
-                <div className="space-y-2"><Label>{t('age')}</Label><Input value={newMemberData.age} onChange={(e) => setNewMemberData({...newMemberData, age: e.target.value})} type="number" /></div>
+              
+              {/* First Member */}
+              <div className="p-4 border rounded-lg bg-gray-50">
+                <h4 className="font-semibold mb-3 flex items-center gap-2">
+                  👤 {language === 'ar' ? 'العضو الأول' : 'First Member'}
+                </h4>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label>{language === 'ar' ? 'اسم العضو *' : 'Name *'}</Label>
+                    <Input 
+                      value={newMemberData.name_ar} 
+                      onChange={(e) => setNewMemberData({...newMemberData, name_ar: e.target.value})} 
+                      required 
+                      placeholder={language === 'ar' ? 'اسم العضو' : 'Member name'}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>{t('age')}</Label>
+                    <Input 
+                      value={newMemberData.age} 
+                      onChange={(e) => setNewMemberData({...newMemberData, age: e.target.value})} 
+                      type="number" 
+                      placeholder={language === 'ar' ? 'العمر' : 'Age'}
+                    />
+                  </div>
+                </div>
               </div>
+              
+              {/* Siblings List */}
+              {siblings.map((sibling, idx) => (
+                <div key={idx} className="p-4 border border-green-200 rounded-lg bg-green-50">
+                  <div className="flex justify-between items-center mb-3">
+                    <h4 className="font-semibold text-green-800 flex items-center gap-2">
+                      👦 {language === 'ar' ? `الأخ ${idx + 2}` : `Sibling ${idx + 2}`}
+                    </h4>
+                    <Button 
+                      variant="ghost" 
+                      size="sm" 
+                      onClick={() => setSiblings(siblings.filter((_, i) => i !== idx))}
+                      className="text-red-500 hover:text-red-700 hover:bg-red-50"
+                    >
+                      ✕ {language === 'ar' ? 'حذف' : 'Remove'}
+                    </Button>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label>{language === 'ar' ? 'اسم الأخ *' : 'Sibling Name *'}</Label>
+                      <Input 
+                        value={sibling.name_ar} 
+                        onChange={(e) => {
+                          const updated = [...siblings];
+                          updated[idx].name_ar = e.target.value;
+                          setSiblings(updated);
+                        }} 
+                        required 
+                        placeholder={language === 'ar' ? 'اسم الأخ' : 'Sibling name'}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>{t('age')}</Label>
+                      <Input 
+                        value={sibling.age} 
+                        onChange={(e) => {
+                          const updated = [...siblings];
+                          updated[idx].age = e.target.value;
+                          setSiblings(updated);
+                        }} 
+                        type="number" 
+                        placeholder={language === 'ar' ? 'العمر' : 'Age'}
+                      />
+                    </div>
+                  </div>
+                </div>
+              ))}
+              
+              {/* Add Sibling Button */}
+              <Button 
+                type="button" 
+                variant="outline" 
+                onClick={() => setSiblings([...siblings, { name_ar: '', age: '' }])}
+                className="w-full border-dashed border-2 border-blue-300 text-blue-600 hover:bg-blue-50"
+              >
+                ➕ {language === 'ar' ? 'إضافة أخ آخر' : 'Add Another Sibling'}
+              </Button>
+              
+              {/* Summary */}
+              {siblings.length > 0 && (
+                <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+                  <p className="text-sm text-yellow-800">
+                    📋 {language === 'ar' 
+                      ? `سيتم إضافة ${siblings.length + 1} أعضاء بنفس بيانات ولي الأمر (${newMemberData.guardian_name_ar || 'غير محدد'} - ${newMemberData.phone || 'غير محدد'})` 
+                      : `Will add ${siblings.length + 1} members with same guardian info`}
+                  </p>
+                </div>
+              )}
             </div>
             <DialogFooter>
-              <Button variant="outline" onClick={() => setIsAddMemberDialogOpen(false)}>{t('cancel')}</Button>
-              <Button onClick={handleCreateMember} disabled={saving}>{saving && <Loader2 className="w-4 h-4 me-2 animate-spin" />}{t('save')}</Button>
+              <Button variant="outline" onClick={() => {
+                setIsAddMemberDialogOpen(false);
+                setSiblings([]);
+              }}>{t('cancel')}</Button>
+              <Button onClick={handleCreateMemberWithSiblings} disabled={saving}>
+                {saving && <Loader2 className="w-4 h-4 me-2 animate-spin" />}
+                {language === 'ar' ? `حفظ ${siblings.length > 0 ? `(${siblings.length + 1} أعضاء)` : ''}` : `Save ${siblings.length > 0 ? `(${siblings.length + 1} members)` : ''}`}
+              </Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>
