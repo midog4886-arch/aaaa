@@ -12,7 +12,8 @@ import {
   supplierPaymentsAPI,
   journalEntriesAPI,
   accountingReportsAPI,
-  productsAPI 
+  productsAPI,
+  exportAccountingAPI
 } from '../services/api';
 
 // Tab components
@@ -22,7 +23,8 @@ const TABS = {
   PURCHASES: 'purchases',
   PAYMENTS: 'payments',
   JOURNAL: 'journal',
-  REPORTS: 'reports'
+  REPORTS: 'reports',
+  VAT: 'vat'
 };
 
 const ACCOUNT_TYPES = [
