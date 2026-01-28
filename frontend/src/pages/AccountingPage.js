@@ -389,9 +389,36 @@ export default function AccountingPage() {
         return renderJournalTab();
       case TABS.REPORTS:
         return renderReportsTab();
+      case TABS.VAT:
+        return renderVatTab();
       default:
         return null;
     }
+  };
+
+  // Export to Excel handler
+  const handleExportExcel = (type) => {
+    const params = { token };
+    if (dateFilter.start) params.start_date = dateFilter.start;
+    if (dateFilter.end) params.end_date = dateFilter.end;
+    
+    let url;
+    switch (type) {
+      case 'sales':
+        url = exportAccountingAPI.sales(params);
+        break;
+      case 'purchases':
+        url = exportAccountingAPI.purchases(params);
+        break;
+      case 'vat':
+        url = exportAccountingAPI.vat(params);
+        break;
+      default:
+        return;
+    }
+    
+    window.open(url, '_blank');
+    toast.success('جاري تحميل التقرير...');
   };
 
   // Accounts Tab
