@@ -2095,7 +2095,7 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
                                 type="date" 
                                 value={item.start_date} 
                                 onChange={(e) => updateItemDate(idx, 'start_date', e.target.value)} 
-                                className="h-11 text-base" 
+                                className="h-14 text-lg" 
                               />
                             </div>
                             <div className="space-y-2">
@@ -2104,7 +2104,7 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
                                 type="date" 
                                 value={item.end_date} 
                                 onChange={(e) => updateItemDate(idx, 'end_date', e.target.value)} 
-                                className="h-11 text-base" 
+                                className="h-14 text-lg" 
                               />
                             </div>
                             <div className="space-y-1">
