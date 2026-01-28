@@ -2986,6 +2986,1072 @@ async def delete_product_invoice(invoice_id: str, current_user: dict = Depends(g
     await db.product_invoices.delete_one({"id": invoice_id})
     return {"message": "Invoice deleted"}
 
+# ============ ACCOUNTING SYSTEM MODELS ============
+
+# Chart of Accounts Model
+class AccountCreate(BaseModel):
+    code: str  # رقم الحساب
+    name_ar: str  # اسم الحساب بالعربي
+    name: Optional[str] = ""  # اسم الحساب بالإنجليزي
+    account_type: str  # assets, liabilities, equity, revenue, expenses
+    parent_id: Optional[str] = None  # الحساب الرئيسي
+    is_parent: bool = False  # هل هو حساب رئيسي
+    description: Optional[str] = ""
+    is_active: bool = True
+    branch_id: Optional[str] = None
+
+class Account(BaseModel):
+    id: str
+    code: str
+    name_ar: str
+    name: Optional[str] = ""
+    account_type: str
+    parent_id: Optional[str] = None
+    is_parent: bool = False
+    description: Optional[str] = ""
+    is_active: bool = True
+    branch_id: Optional[str] = None
+    balance: float = 0
+    created_at: str
+
+# Supplier Model
+class SupplierCreate(BaseModel):
+    name_ar: str
+    name: Optional[str] = ""
+    phone: str
+    email: Optional[str] = ""
+    address: Optional[str] = ""
+    tax_number: Optional[str] = ""  # الرقم الضريبي
+    commercial_reg: Optional[str] = ""  # السجل التجاري
+    contact_person: Optional[str] = ""
+    notes: Optional[str] = ""
+    credit_limit: float = 0  # حد الائتمان
+    payment_terms: int = 30  # عدد أيام السداد
+    branch_id: Optional[str] = None
+
+class Supplier(BaseModel):
+    id: str
+    name_ar: str
+    name: Optional[str] = ""
+    phone: str
+    email: Optional[str] = ""
+    address: Optional[str] = ""
+    tax_number: Optional[str] = ""
+    commercial_reg: Optional[str] = ""
+    contact_person: Optional[str] = ""
+    notes: Optional[str] = ""
+    credit_limit: float = 0
+    payment_terms: int = 30
+    total_purchases: float = 0  # إجمالي المشتريات
+    total_paid: float = 0  # إجمالي المدفوع
+    balance: float = 0  # الرصيد المستحق
+    branch_id: Optional[str] = None
+    created_at: str
+
+# Purchase Invoice Item Model
+class PurchaseInvoiceItem(BaseModel):
+    product_id: Optional[str] = None
+    description: str
+    quantity: int = 1
+    unit_price: float
+    tax_rate: float = 15  # نسبة الضريبة %
+    total: float = 0
+
+# Purchase Invoice Model
+class PurchaseInvoiceCreate(BaseModel):
+    supplier_id: str
+    supplier_invoice_number: Optional[str] = ""  # رقم فاتورة المورد
+    invoice_date: str
+    due_date: Optional[str] = ""  # تاريخ الاستحقاق
+    items: List[PurchaseInvoiceItem]
+    payment_method: str = "credit"  # cash, credit, transfer
+    notes: Optional[str] = ""
+    branch_id: Optional[str] = None
+
+class PurchaseInvoice(BaseModel):
+    id: str
+    invoice_number: str  # رقم فاتورة المشتريات الداخلي
+    supplier_id: str
+    supplier_name: str
+    supplier_invoice_number: Optional[str] = ""
+    invoice_date: str
+    due_date: Optional[str] = ""
+    items: List[PurchaseInvoiceItem]
+    subtotal: float
+    tax_amount: float
+    total: float
+    paid_amount: float = 0
+    remaining_amount: float = 0
+    status: str = "pending"  # pending, partial, paid
+    payment_method: str = "credit"
+    notes: Optional[str] = ""
+    journal_entry_id: Optional[str] = None  # ربط بالقيد المحاسبي
+    branch_id: Optional[str] = None
+    created_by: Optional[str] = ""
+    created_at: str
+
+# Journal Entry Model
+class JournalEntryLine(BaseModel):
+    account_id: str
+    account_code: str
+    account_name: str
+    debit: float = 0  # مدين
+    credit: float = 0  # دائن
+    description: Optional[str] = ""
+    party_type: Optional[str] = ""  # supplier, customer
+    party_id: Optional[str] = ""
+    party_name: Optional[str] = ""
+
+class JournalEntryCreate(BaseModel):
+    entry_date: str
+    journal_type: str  # purchases, sales, general, payment, receipt
+    reference_type: Optional[str] = ""  # purchase_invoice, sales_invoice, etc
+    reference_id: Optional[str] = ""
+    reference_number: Optional[str] = ""
+    lines: List[JournalEntryLine]
+    notes: Optional[str] = ""
+    branch_id: Optional[str] = None
+
+class JournalEntry(BaseModel):
+    id: str
+    entry_number: str  # رقم القيد
+    entry_date: str
+    journal_type: str
+    reference_type: Optional[str] = ""
+    reference_id: Optional[str] = ""
+    reference_number: Optional[str] = ""
+    lines: List[JournalEntryLine]
+    total_debit: float
+    total_credit: float
+    is_balanced: bool = True
+    notes: Optional[str] = ""
+    branch_id: Optional[str] = None
+    created_by: Optional[str] = ""
+    created_at: str
+    status: str = "posted"  # draft, posted, cancelled
+
+# ============ CHART OF ACCOUNTS ROUTES ============
+
+@api_router.get("/accounts")
+async def get_accounts(
+    account_type: Optional[str] = None,
+    is_parent: Optional[bool] = None,
+    branch_filter: Optional[str] = None,
+    current_user: dict = Depends(get_current_user)
+):
+    """Get all accounts from chart of accounts"""
+    query = {}
+    
+    if account_type:
+        query["account_type"] = account_type
+    if is_parent is not None:
+        query["is_parent"] = is_parent
+    if branch_filter and branch_filter != "all":
+        query["$or"] = [{"branch_id": branch_filter}, {"branch_id": None}, {"branch_id": {"$exists": False}}]
+    
+    accounts = await db.accounts.find(query, {"_id": 0}).sort("code", 1).to_list(1000)
+    return accounts
+
+@api_router.post("/accounts")
+async def create_account(account: AccountCreate, current_user: dict = Depends(get_current_user)):
+    """Create a new account in chart of accounts"""
+    # Check if code exists
+    existing = await db.accounts.find_one({"code": account.code})
+    if existing:
+        raise HTTPException(status_code=400, detail="رقم الحساب موجود مسبقاً")
+    
+    account_id = str(uuid.uuid4())
+    branch_id = account.branch_id if current_user.get("is_admin") else current_user.get("branch_id")
+    
+    account_doc = {
+        "id": account_id,
+        **account.model_dump(),
+        "branch_id": branch_id,
+        "balance": 0,
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+    await db.accounts.insert_one(account_doc)
+    return {k: v for k, v in account_doc.items() if k != "_id"}
+
+@api_router.put("/accounts/{account_id}")
+async def update_account(account_id: str, account: AccountCreate, current_user: dict = Depends(get_current_user)):
+    """Update an account"""
+    result = await db.accounts.find_one_and_update(
+        {"id": account_id},
+        {"$set": account.model_dump()},
+        return_document=True
+    )
+    if not result:
+        raise HTTPException(status_code=404, detail="Account not found")
+    return {k: v for k, v in result.items() if k != "_id"}
+
+@api_router.delete("/accounts/{account_id}")
+async def delete_account(account_id: str, current_user: dict = Depends(get_current_user)):
+    """Delete an account (only if no transactions)"""
+    # Check if account has journal entries
+    entry = await db.journal_entries.find_one({"lines.account_id": account_id})
+    if entry:
+        raise HTTPException(status_code=400, detail="لا يمكن حذف حساب له قيود محاسبية")
+    
+    result = await db.accounts.delete_one({"id": account_id})
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Account not found")
+    return {"message": "تم حذف الحساب"}
+
+@api_router.post("/accounts/seed-default")
+async def seed_default_accounts(current_user: dict = Depends(get_current_user)):
+    """Create default chart of accounts for sports academy"""
+    if not current_user.get("is_admin"):
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    # Check if accounts already exist
+    count = await db.accounts.count_documents({})
+    if count > 0:
+        raise HTTPException(status_code=400, detail="شجرة الحسابات موجودة مسبقاً")
+    
+    default_accounts = [
+        # الأصول - Assets (1xxx)
+        {"code": "1000", "name_ar": "الأصول", "name": "Assets", "account_type": "assets", "is_parent": True},
+        {"code": "1100", "name_ar": "الأصول المتداولة", "name": "Current Assets", "account_type": "assets", "is_parent": True, "parent_id": "1000"},
+        {"code": "1110", "name_ar": "الصندوق", "name": "Cash", "account_type": "assets", "parent_id": "1100"},
+        {"code": "1120", "name_ar": "البنك", "name": "Bank", "account_type": "assets", "parent_id": "1100"},
+        {"code": "1130", "name_ar": "حسابات العملاء", "name": "Accounts Receivable", "account_type": "assets", "parent_id": "1100"},
+        {"code": "1140", "name_ar": "المخزون", "name": "Inventory", "account_type": "assets", "parent_id": "1100"},
+        {"code": "1150", "name_ar": "ضريبة المدخلات", "name": "Input VAT", "account_type": "assets", "parent_id": "1100"},
+        {"code": "1200", "name_ar": "الأصول الثابتة", "name": "Fixed Assets", "account_type": "assets", "is_parent": True, "parent_id": "1000"},
+        {"code": "1210", "name_ar": "معدات رياضية", "name": "Sports Equipment", "account_type": "assets", "parent_id": "1200"},
+        {"code": "1220", "name_ar": "أثاث ومفروشات", "name": "Furniture", "account_type": "assets", "parent_id": "1200"},
+        {"code": "1230", "name_ar": "أجهزة وحاسبات", "name": "Computers & Equipment", "account_type": "assets", "parent_id": "1200"},
+        
+        # الخصوم - Liabilities (2xxx)
+        {"code": "2000", "name_ar": "الخصوم", "name": "Liabilities", "account_type": "liabilities", "is_parent": True},
+        {"code": "2100", "name_ar": "الخصوم المتداولة", "name": "Current Liabilities", "account_type": "liabilities", "is_parent": True, "parent_id": "2000"},
+        {"code": "2110", "name_ar": "حسابات الموردين", "name": "Accounts Payable", "account_type": "liabilities", "parent_id": "2100"},
+        {"code": "2120", "name_ar": "ضريبة المخرجات", "name": "Output VAT", "account_type": "liabilities", "parent_id": "2100"},
+        {"code": "2130", "name_ar": "إيرادات مؤجلة", "name": "Deferred Revenue", "account_type": "liabilities", "parent_id": "2100"},
+        {"code": "2140", "name_ar": "مستحقات الموظفين", "name": "Employee Payables", "account_type": "liabilities", "parent_id": "2100"},
+        
+        # حقوق الملكية - Equity (3xxx)
+        {"code": "3000", "name_ar": "حقوق الملكية", "name": "Equity", "account_type": "equity", "is_parent": True},
+        {"code": "3100", "name_ar": "رأس المال", "name": "Capital", "account_type": "equity", "parent_id": "3000"},
+        {"code": "3200", "name_ar": "الأرباح المحتجزة", "name": "Retained Earnings", "account_type": "equity", "parent_id": "3000"},
+        
+        # الإيرادات - Revenue (4xxx)
+        {"code": "4000", "name_ar": "الإيرادات", "name": "Revenue", "account_type": "revenue", "is_parent": True},
+        {"code": "4100", "name_ar": "إيرادات الاشتراكات", "name": "Subscription Revenue", "account_type": "revenue", "is_parent": True, "parent_id": "4000"},
+        {"code": "4110", "name_ar": "إيرادات السباحة", "name": "Swimming Revenue", "account_type": "revenue", "parent_id": "4100"},
+        {"code": "4120", "name_ar": "إيرادات كرة القدم", "name": "Football Revenue", "account_type": "revenue", "parent_id": "4100"},
+        {"code": "4130", "name_ar": "إيرادات الكاراتيه", "name": "Karate Revenue", "account_type": "revenue", "parent_id": "4100"},
+        {"code": "4140", "name_ar": "إيرادات الجمباز", "name": "Gymnastics Revenue", "account_type": "revenue", "parent_id": "4100"},
+        {"code": "4200", "name_ar": "إيرادات المبيعات", "name": "Sales Revenue", "account_type": "revenue", "parent_id": "4000"},
+        {"code": "4300", "name_ar": "إيرادات أخرى", "name": "Other Revenue", "account_type": "revenue", "parent_id": "4000"},
+        
+        # المصروفات - Expenses (5xxx)
+        {"code": "5000", "name_ar": "المصروفات", "name": "Expenses", "account_type": "expenses", "is_parent": True},
+        {"code": "5100", "name_ar": "تكلفة المبيعات", "name": "Cost of Sales", "account_type": "expenses", "parent_id": "5000"},
+        {"code": "5200", "name_ar": "المشتريات", "name": "Purchases", "account_type": "expenses", "is_parent": True, "parent_id": "5000"},
+        {"code": "5210", "name_ar": "مشتريات معدات سباحة", "name": "Swimming Equipment Purchases", "account_type": "expenses", "parent_id": "5200"},
+        {"code": "5220", "name_ar": "مشتريات أدوات رياضية", "name": "Sports Supplies Purchases", "account_type": "expenses", "parent_id": "5200"},
+        {"code": "5230", "name_ar": "مشتريات عامة", "name": "General Purchases", "account_type": "expenses", "parent_id": "5200"},
+        {"code": "5300", "name_ar": "رواتب وأجور", "name": "Salaries & Wages", "account_type": "expenses", "parent_id": "5000"},
+        {"code": "5400", "name_ar": "إيجارات", "name": "Rent", "account_type": "expenses", "parent_id": "5000"},
+        {"code": "5500", "name_ar": "مصاريف كهرباء ومياه", "name": "Utilities", "account_type": "expenses", "parent_id": "5000"},
+        {"code": "5600", "name_ar": "صيانة وإصلاحات", "name": "Maintenance", "account_type": "expenses", "parent_id": "5000"},
+        {"code": "5700", "name_ar": "مصاريف تسويق", "name": "Marketing", "account_type": "expenses", "parent_id": "5000"},
+        {"code": "5800", "name_ar": "مصاريف إدارية", "name": "Administrative", "account_type": "expenses", "parent_id": "5000"},
+        {"code": "5900", "name_ar": "مصاريف أخرى", "name": "Other Expenses", "account_type": "expenses", "parent_id": "5000"},
+    ]
+    
+    for acc in default_accounts:
+        acc["id"] = str(uuid.uuid4())
+        acc["is_active"] = True
+        acc["description"] = ""
+        acc["balance"] = 0
+        acc["branch_id"] = None
+        acc["is_parent"] = acc.get("is_parent", False)
+        acc["parent_id"] = acc.get("parent_id")
+        acc["created_at"] = datetime.now(timezone.utc).isoformat()
+    
+    await db.accounts.insert_many(default_accounts)
+    return {"message": "تم إنشاء شجرة الحسابات الافتراضية", "count": len(default_accounts)}
+
+# ============ SUPPLIERS ROUTES ============
+
+@api_router.get("/suppliers")
+async def get_suppliers(
+    branch_filter: Optional[str] = None,
+    current_user: dict = Depends(get_current_user)
+):
+    """Get all suppliers"""
+    query = {}
+    is_admin = current_user.get("is_admin", False)
+    
+    if is_admin and branch_filter and branch_filter != "all":
+        query["branch_id"] = branch_filter
+    elif not is_admin and current_user.get("branch_id"):
+        query["branch_id"] = current_user["branch_id"]
+    
+    suppliers = await db.suppliers.find(query, {"_id": 0}).sort("created_at", -1).to_list(1000)
+    return suppliers
+
+@api_router.get("/suppliers/{supplier_id}")
+async def get_supplier(supplier_id: str, current_user: dict = Depends(get_current_user)):
+    """Get a single supplier"""
+    supplier = await db.suppliers.find_one({"id": supplier_id}, {"_id": 0})
+    if not supplier:
+        raise HTTPException(status_code=404, detail="Supplier not found")
+    return supplier
+
+@api_router.post("/suppliers")
+async def create_supplier(supplier: SupplierCreate, current_user: dict = Depends(get_current_user)):
+    """Create a new supplier"""
+    supplier_id = str(uuid.uuid4())
+    branch_id = supplier.branch_id if current_user.get("is_admin") else current_user.get("branch_id")
+    
+    supplier_doc = {
+        "id": supplier_id,
+        **supplier.model_dump(),
+        "branch_id": branch_id,
+        "total_purchases": 0,
+        "total_paid": 0,
+        "balance": 0,
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+    await db.suppliers.insert_one(supplier_doc)
+    return {k: v for k, v in supplier_doc.items() if k != "_id"}
+
+@api_router.put("/suppliers/{supplier_id}")
+async def update_supplier(supplier_id: str, supplier: SupplierCreate, current_user: dict = Depends(get_current_user)):
+    """Update a supplier"""
+    result = await db.suppliers.find_one_and_update(
+        {"id": supplier_id},
+        {"$set": supplier.model_dump()},
+        return_document=True
+    )
+    if not result:
+        raise HTTPException(status_code=404, detail="Supplier not found")
+    return {k: v for k, v in result.items() if k != "_id"}
+
+@api_router.delete("/suppliers/{supplier_id}")
+async def delete_supplier(supplier_id: str, current_user: dict = Depends(get_current_user)):
+    """Delete a supplier (only if no transactions)"""
+    # Check if supplier has purchase invoices
+    invoice = await db.purchase_invoices.find_one({"supplier_id": supplier_id})
+    if invoice:
+        raise HTTPException(status_code=400, detail="لا يمكن حذف مورد له فواتير مشتريات")
+    
+    result = await db.suppliers.delete_one({"id": supplier_id})
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Supplier not found")
+    return {"message": "تم حذف المورد"}
+
+@api_router.get("/suppliers/{supplier_id}/statement")
+async def get_supplier_statement(
+    supplier_id: str,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    current_user: dict = Depends(get_current_user)
+):
+    """Get supplier account statement"""
+    supplier = await db.suppliers.find_one({"id": supplier_id}, {"_id": 0})
+    if not supplier:
+        raise HTTPException(status_code=404, detail="Supplier not found")
+    
+    query = {"supplier_id": supplier_id}
+    if start_date:
+        query["invoice_date"] = {"$gte": start_date}
+    if end_date:
+        if "invoice_date" in query:
+            query["invoice_date"]["$lte"] = end_date
+        else:
+            query["invoice_date"] = {"$lte": end_date}
+    
+    invoices = await db.purchase_invoices.find(query, {"_id": 0}).sort("invoice_date", 1).to_list(1000)
+    payments = await db.supplier_payments.find({"supplier_id": supplier_id}, {"_id": 0}).sort("payment_date", 1).to_list(1000)
+    
+    # Build statement
+    statement = []
+    balance = 0
+    
+    for inv in invoices:
+        balance += inv["total"]
+        statement.append({
+            "date": inv["invoice_date"],
+            "type": "invoice",
+            "reference": inv["invoice_number"],
+            "description": f"فاتورة مشتريات رقم {inv['invoice_number']}",
+            "debit": 0,
+            "credit": inv["total"],
+            "balance": balance
+        })
+    
+    for pmt in payments:
+        balance -= pmt["amount"]
+        statement.append({
+            "date": pmt["payment_date"],
+            "type": "payment",
+            "reference": pmt.get("reference", ""),
+            "description": f"سداد - {pmt.get('payment_method', '')}",
+            "debit": pmt["amount"],
+            "credit": 0,
+            "balance": balance
+        })
+    
+    # Sort by date
+    statement.sort(key=lambda x: x["date"])
+    
+    return {
+        "supplier": supplier,
+        "statement": statement,
+        "opening_balance": 0,
+        "total_invoices": sum(inv["total"] for inv in invoices),
+        "total_payments": sum(pmt["amount"] for pmt in payments),
+        "closing_balance": balance
+    }
+
+# ============ PURCHASE INVOICES ROUTES ============
+
+@api_router.get("/purchase-invoices")
+async def get_purchase_invoices(
+    supplier_id: Optional[str] = None,
+    status: Optional[str] = None,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    branch_filter: Optional[str] = None,
+    current_user: dict = Depends(get_current_user)
+):
+    """Get all purchase invoices"""
+    query = {}
+    is_admin = current_user.get("is_admin", False)
+    
+    if is_admin and branch_filter and branch_filter != "all":
+        query["branch_id"] = branch_filter
+    elif not is_admin and current_user.get("branch_id"):
+        query["branch_id"] = current_user["branch_id"]
+    
+    if supplier_id:
+        query["supplier_id"] = supplier_id
+    if status:
+        query["status"] = status
+    if start_date:
+        query["invoice_date"] = {"$gte": start_date}
+    if end_date:
+        if "invoice_date" in query:
+            query["invoice_date"]["$lte"] = end_date
+        else:
+            query["invoice_date"] = {"$lte": end_date}
+    
+    invoices = await db.purchase_invoices.find(query, {"_id": 0}).sort("created_at", -1).to_list(1000)
+    return invoices
+
+@api_router.get("/purchase-invoices/{invoice_id}")
+async def get_purchase_invoice(invoice_id: str, current_user: dict = Depends(get_current_user)):
+    """Get a single purchase invoice"""
+    invoice = await db.purchase_invoices.find_one({"id": invoice_id}, {"_id": 0})
+    if not invoice:
+        raise HTTPException(status_code=404, detail="Invoice not found")
+    return invoice
+
+@api_router.post("/purchase-invoices")
+async def create_purchase_invoice(invoice: PurchaseInvoiceCreate, current_user: dict = Depends(get_current_user)):
+    """Create a new purchase invoice and auto-generate journal entry"""
+    # Get supplier
+    supplier = await db.suppliers.find_one({"id": invoice.supplier_id}, {"_id": 0})
+    if not supplier:
+        raise HTTPException(status_code=404, detail="Supplier not found")
+    
+    # Calculate totals
+    subtotal = 0
+    tax_amount = 0
+    items_with_totals = []
+    
+    for item in invoice.items:
+        item_subtotal = item.quantity * item.unit_price
+        item_tax = round(item_subtotal * (item.tax_rate / 100), 2)
+        item_total = item_subtotal + item_tax
+        
+        items_with_totals.append({
+            **item.model_dump(),
+            "total": item_total
+        })
+        
+        subtotal += item_subtotal
+        tax_amount += item_tax
+    
+    total = round(subtotal + tax_amount, 2)
+    
+    # Generate invoice number
+    count = await db.purchase_invoices.count_documents({})
+    invoice_number = f"PUR-{count + 1:05d}"
+    
+    # Get user info
+    user_doc = await db.users.find_one({"id": current_user["user_id"]}, {"_id": 0})
+    created_by = user_doc.get("name", current_user.get("username", "")) if user_doc else ""
+    
+    branch_id = invoice.branch_id if current_user.get("is_admin") else current_user.get("branch_id")
+    
+    invoice_id = str(uuid.uuid4())
+    
+    invoice_doc = {
+        "id": invoice_id,
+        "invoice_number": invoice_number,
+        "supplier_id": invoice.supplier_id,
+        "supplier_name": supplier["name_ar"],
+        "supplier_invoice_number": invoice.supplier_invoice_number,
+        "invoice_date": invoice.invoice_date,
+        "due_date": invoice.due_date,
+        "items": items_with_totals,
+        "subtotal": round(subtotal, 2),
+        "tax_amount": round(tax_amount, 2),
+        "total": total,
+        "paid_amount": 0,
+        "remaining_amount": total,
+        "status": "pending",
+        "payment_method": invoice.payment_method,
+        "notes": invoice.notes,
+        "branch_id": branch_id,
+        "created_by": created_by,
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+    
+    # Create journal entry
+    # Get accounts
+    purchases_account = await db.accounts.find_one({"code": "5200"}, {"_id": 0})
+    input_vat_account = await db.accounts.find_one({"code": "1150"}, {"_id": 0})
+    supplier_account = await db.accounts.find_one({"code": "2110"}, {"_id": 0})
+    
+    if purchases_account and supplier_account:
+        journal_entry_id = str(uuid.uuid4())
+        je_count = await db.journal_entries.count_documents({})
+        entry_number = f"JE-{je_count + 1:05d}"
+        
+        lines = [
+            {
+                "account_id": purchases_account["id"],
+                "account_code": purchases_account["code"],
+                "account_name": purchases_account["name_ar"],
+                "debit": round(subtotal, 2),
+                "credit": 0,
+                "description": f"مشتريات - فاتورة رقم {invoice_number}",
+                "party_type": "supplier",
+                "party_id": invoice.supplier_id,
+                "party_name": supplier["name_ar"]
+            }
+        ]
+        
+        # Add VAT line if exists
+        if input_vat_account and tax_amount > 0:
+            lines.append({
+                "account_id": input_vat_account["id"],
+                "account_code": input_vat_account["code"],
+                "account_name": input_vat_account["name_ar"],
+                "debit": round(tax_amount, 2),
+                "credit": 0,
+                "description": f"ضريبة مدخلات - فاتورة {invoice_number}",
+                "party_type": "",
+                "party_id": "",
+                "party_name": ""
+            })
+        
+        # Supplier credit line
+        lines.append({
+            "account_id": supplier_account["id"],
+            "account_code": supplier_account["code"],
+            "account_name": supplier_account["name_ar"],
+            "debit": 0,
+            "credit": total,
+            "description": f"مستحق للمورد {supplier['name_ar']}",
+            "party_type": "supplier",
+            "party_id": invoice.supplier_id,
+            "party_name": supplier["name_ar"]
+        })
+        
+        journal_entry = {
+            "id": journal_entry_id,
+            "entry_number": entry_number,
+            "entry_date": invoice.invoice_date,
+            "journal_type": "purchases",
+            "reference_type": "purchase_invoice",
+            "reference_id": invoice_id,
+            "reference_number": invoice_number,
+            "lines": lines,
+            "total_debit": total,
+            "total_credit": total,
+            "is_balanced": True,
+            "notes": f"قيد تلقائي - فاتورة مشتريات {invoice_number}",
+            "branch_id": branch_id,
+            "created_by": created_by,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "status": "posted"
+        }
+        
+        await db.journal_entries.insert_one(journal_entry)
+        invoice_doc["journal_entry_id"] = journal_entry_id
+    
+    await db.purchase_invoices.insert_one(invoice_doc)
+    
+    # Update supplier balance
+    await db.suppliers.update_one(
+        {"id": invoice.supplier_id},
+        {"$inc": {"total_purchases": total, "balance": total}}
+    )
+    
+    # Update inventory if product_id exists
+    for item in items_with_totals:
+        if item.get("product_id"):
+            await db.products.update_one(
+                {"id": item["product_id"]},
+                {"$inc": {"quantity": item["quantity"]}, "$set": {"updated_at": datetime.now(timezone.utc).isoformat()}}
+            )
+    
+    return {k: v for k, v in invoice_doc.items() if k != "_id"}
+
+@api_router.put("/purchase-invoices/{invoice_id}")
+async def update_purchase_invoice(invoice_id: str, invoice: PurchaseInvoiceCreate, current_user: dict = Depends(get_current_user)):
+    """Update a purchase invoice"""
+    existing = await db.purchase_invoices.find_one({"id": invoice_id})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Invoice not found")
+    
+    if existing.get("status") == "paid":
+        raise HTTPException(status_code=400, detail="لا يمكن تعديل فاتورة مدفوعة")
+    
+    # Recalculate totals
+    subtotal = 0
+    tax_amount = 0
+    items_with_totals = []
+    
+    for item in invoice.items:
+        item_subtotal = item.quantity * item.unit_price
+        item_tax = round(item_subtotal * (item.tax_rate / 100), 2)
+        item_total = item_subtotal + item_tax
+        
+        items_with_totals.append({
+            **item.model_dump(),
+            "total": item_total
+        })
+        
+        subtotal += item_subtotal
+        tax_amount += item_tax
+    
+    total = round(subtotal + tax_amount, 2)
+    
+    # Update supplier balance (subtract old, add new)
+    old_total = existing.get("total", 0)
+    diff = total - old_total
+    await db.suppliers.update_one(
+        {"id": invoice.supplier_id},
+        {"$inc": {"total_purchases": diff, "balance": diff}}
+    )
+    
+    update_data = {
+        "supplier_id": invoice.supplier_id,
+        "supplier_invoice_number": invoice.supplier_invoice_number,
+        "invoice_date": invoice.invoice_date,
+        "due_date": invoice.due_date,
+        "items": items_with_totals,
+        "subtotal": round(subtotal, 2),
+        "tax_amount": round(tax_amount, 2),
+        "total": total,
+        "remaining_amount": total - existing.get("paid_amount", 0),
+        "payment_method": invoice.payment_method,
+        "notes": invoice.notes,
+        "updated_at": datetime.now(timezone.utc).isoformat()
+    }
+    
+    result = await db.purchase_invoices.find_one_and_update(
+        {"id": invoice_id},
+        {"$set": update_data},
+        return_document=True
+    )
+    return {k: v for k, v in result.items() if k != "_id"}
+
+@api_router.delete("/purchase-invoices/{invoice_id}")
+async def delete_purchase_invoice(invoice_id: str, current_user: dict = Depends(get_current_user)):
+    """Delete a purchase invoice (only if pending)"""
+    existing = await db.purchase_invoices.find_one({"id": invoice_id})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Invoice not found")
+    
+    if existing.get("status") != "pending":
+        raise HTTPException(status_code=400, detail="لا يمكن حذف فاتورة غير معلقة")
+    
+    # Update supplier balance
+    await db.suppliers.update_one(
+        {"id": existing["supplier_id"]},
+        {"$inc": {"total_purchases": -existing["total"], "balance": -existing["total"]}}
+    )
+    
+    # Delete journal entry
+    if existing.get("journal_entry_id"):
+        await db.journal_entries.delete_one({"id": existing["journal_entry_id"]})
+    
+    await db.purchase_invoices.delete_one({"id": invoice_id})
+    return {"message": "تم حذف فاتورة المشتريات"}
+
+# Supplier Payment Model
+class SupplierPaymentCreate(BaseModel):
+    supplier_id: str
+    purchase_invoice_id: Optional[str] = None  # Optional - can be general payment
+    amount: float
+    payment_date: str
+    payment_method: str = "cash"  # cash, bank_transfer, check
+    reference: Optional[str] = ""
+    notes: Optional[str] = ""
+
+@api_router.post("/supplier-payments")
+async def create_supplier_payment(payment: SupplierPaymentCreate, current_user: dict = Depends(get_current_user)):
+    """Record a payment to a supplier"""
+    supplier = await db.suppliers.find_one({"id": payment.supplier_id}, {"_id": 0})
+    if not supplier:
+        raise HTTPException(status_code=404, detail="Supplier not found")
+    
+    payment_id = str(uuid.uuid4())
+    
+    # Get user info
+    user_doc = await db.users.find_one({"id": current_user["user_id"]}, {"_id": 0})
+    created_by = user_doc.get("name", current_user.get("username", "")) if user_doc else ""
+    
+    payment_doc = {
+        "id": payment_id,
+        "supplier_id": payment.supplier_id,
+        "purchase_invoice_id": payment.purchase_invoice_id,
+        "amount": payment.amount,
+        "payment_date": payment.payment_date,
+        "payment_method": payment.payment_method,
+        "reference": payment.reference,
+        "notes": payment.notes,
+        "created_by": created_by,
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+    
+    await db.supplier_payments.insert_one(payment_doc)
+    
+    # Update supplier balance
+    await db.suppliers.update_one(
+        {"id": payment.supplier_id},
+        {"$inc": {"total_paid": payment.amount, "balance": -payment.amount}}
+    )
+    
+    # Update purchase invoice if specified
+    if payment.purchase_invoice_id:
+        invoice = await db.purchase_invoices.find_one({"id": payment.purchase_invoice_id})
+        if invoice:
+            new_paid = invoice.get("paid_amount", 0) + payment.amount
+            new_remaining = invoice["total"] - new_paid
+            new_status = "paid" if new_remaining <= 0 else "partial"
+            
+            await db.purchase_invoices.update_one(
+                {"id": payment.purchase_invoice_id},
+                {"$set": {
+                    "paid_amount": new_paid,
+                    "remaining_amount": max(0, new_remaining),
+                    "status": new_status
+                }}
+            )
+    
+    # Create journal entry for payment
+    cash_account = await db.accounts.find_one({"code": "1110" if payment.payment_method == "cash" else "1120"}, {"_id": 0})
+    supplier_account = await db.accounts.find_one({"code": "2110"}, {"_id": 0})
+    
+    if cash_account and supplier_account:
+        je_id = str(uuid.uuid4())
+        je_count = await db.journal_entries.count_documents({})
+        entry_number = f"JE-{je_count + 1:05d}"
+        
+        journal_entry = {
+            "id": je_id,
+            "entry_number": entry_number,
+            "entry_date": payment.payment_date,
+            "journal_type": "payment",
+            "reference_type": "supplier_payment",
+            "reference_id": payment_id,
+            "reference_number": payment.reference or "",
+            "lines": [
+                {
+                    "account_id": supplier_account["id"],
+                    "account_code": supplier_account["code"],
+                    "account_name": supplier_account["name_ar"],
+                    "debit": payment.amount,
+                    "credit": 0,
+                    "description": f"سداد للمورد {supplier['name_ar']}",
+                    "party_type": "supplier",
+                    "party_id": payment.supplier_id,
+                    "party_name": supplier["name_ar"]
+                },
+                {
+                    "account_id": cash_account["id"],
+                    "account_code": cash_account["code"],
+                    "account_name": cash_account["name_ar"],
+                    "debit": 0,
+                    "credit": payment.amount,
+                    "description": f"سداد مورد - {payment.payment_method}",
+                    "party_type": "",
+                    "party_id": "",
+                    "party_name": ""
+                }
+            ],
+            "total_debit": payment.amount,
+            "total_credit": payment.amount,
+            "is_balanced": True,
+            "notes": f"سداد للمورد {supplier['name_ar']}",
+            "branch_id": current_user.get("branch_id"),
+            "created_by": created_by,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "status": "posted"
+        }
+        
+        await db.journal_entries.insert_one(journal_entry)
+    
+    return {k: v for k, v in payment_doc.items() if k != "_id"}
+
+@api_router.get("/supplier-payments")
+async def get_supplier_payments(
+    supplier_id: Optional[str] = None,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    current_user: dict = Depends(get_current_user)
+):
+    """Get all supplier payments"""
+    query = {}
+    if supplier_id:
+        query["supplier_id"] = supplier_id
+    if start_date:
+        query["payment_date"] = {"$gte": start_date}
+    if end_date:
+        if "payment_date" in query:
+            query["payment_date"]["$lte"] = end_date
+        else:
+            query["payment_date"] = {"$lte": end_date}
+    
+    payments = await db.supplier_payments.find(query, {"_id": 0}).sort("payment_date", -1).to_list(1000)
+    return payments
+
+# ============ JOURNAL ENTRIES ROUTES ============
+
+@api_router.get("/journal-entries")
+async def get_journal_entries(
+    journal_type: Optional[str] = None,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    account_id: Optional[str] = None,
+    branch_filter: Optional[str] = None,
+    current_user: dict = Depends(get_current_user)
+):
+    """Get all journal entries with filters"""
+    query = {}
+    is_admin = current_user.get("is_admin", False)
+    
+    if is_admin and branch_filter and branch_filter != "all":
+        query["branch_id"] = branch_filter
+    elif not is_admin and current_user.get("branch_id"):
+        query["branch_id"] = current_user["branch_id"]
+    
+    if journal_type:
+        query["journal_type"] = journal_type
+    if start_date:
+        query["entry_date"] = {"$gte": start_date}
+    if end_date:
+        if "entry_date" in query:
+            query["entry_date"]["$lte"] = end_date
+        else:
+            query["entry_date"] = {"$lte": end_date}
+    if account_id:
+        query["lines.account_id"] = account_id
+    
+    entries = await db.journal_entries.find(query, {"_id": 0}).sort("entry_date", -1).to_list(1000)
+    return entries
+
+@api_router.get("/journal-entries/{entry_id}")
+async def get_journal_entry(entry_id: str, current_user: dict = Depends(get_current_user)):
+    """Get a single journal entry"""
+    entry = await db.journal_entries.find_one({"id": entry_id}, {"_id": 0})
+    if not entry:
+        raise HTTPException(status_code=404, detail="Journal entry not found")
+    return entry
+
+@api_router.post("/journal-entries")
+async def create_journal_entry(entry: JournalEntryCreate, current_user: dict = Depends(get_current_user)):
+    """Create a manual journal entry"""
+    # Validate balance
+    total_debit = sum(line.debit for line in entry.lines)
+    total_credit = sum(line.credit for line in entry.lines)
+    
+    if round(total_debit, 2) != round(total_credit, 2):
+        raise HTTPException(status_code=400, detail=f"القيد غير متوازن: المدين {total_debit} ≠ الدائن {total_credit}")
+    
+    entry_id = str(uuid.uuid4())
+    count = await db.journal_entries.count_documents({})
+    entry_number = f"JE-{count + 1:05d}"
+    
+    user_doc = await db.users.find_one({"id": current_user["user_id"]}, {"_id": 0})
+    created_by = user_doc.get("name", current_user.get("username", "")) if user_doc else ""
+    
+    branch_id = entry.branch_id if current_user.get("is_admin") else current_user.get("branch_id")
+    
+    entry_doc = {
+        "id": entry_id,
+        "entry_number": entry_number,
+        "entry_date": entry.entry_date,
+        "journal_type": entry.journal_type,
+        "reference_type": entry.reference_type,
+        "reference_id": entry.reference_id,
+        "reference_number": entry.reference_number,
+        "lines": [line.model_dump() for line in entry.lines],
+        "total_debit": round(total_debit, 2),
+        "total_credit": round(total_credit, 2),
+        "is_balanced": True,
+        "notes": entry.notes,
+        "branch_id": branch_id,
+        "created_by": created_by,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "status": "posted"
+    }
+    
+    await db.journal_entries.insert_one(entry_doc)
+    return {k: v for k, v in entry_doc.items() if k != "_id"}
+
+@api_router.delete("/journal-entries/{entry_id}")
+async def delete_journal_entry(entry_id: str, current_user: dict = Depends(get_current_user)):
+    """Delete a journal entry (admin only, and only if not linked to transactions)"""
+    if not current_user.get("is_admin"):
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    entry = await db.journal_entries.find_one({"id": entry_id})
+    if not entry:
+        raise HTTPException(status_code=404, detail="Journal entry not found")
+    
+    # Check if linked to a transaction
+    if entry.get("reference_type") and entry.get("reference_id"):
+        raise HTTPException(status_code=400, detail="لا يمكن حذف قيد مرتبط بعملية")
+    
+    await db.journal_entries.delete_one({"id": entry_id})
+    return {"message": "تم حذف القيد المحاسبي"}
+
+# ============ ACCOUNTING REPORTS ============
+
+@api_router.get("/reports/journal-entries")
+async def get_journal_entries_report(
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    journal_type: Optional[str] = None,
+    account_id: Optional[str] = None,
+    supplier_id: Optional[str] = None,
+    branch_filter: Optional[str] = None,
+    current_user: dict = Depends(get_current_user)
+):
+    """Get journal entries report with totals"""
+    query = {"status": "posted"}
+    
+    if branch_filter and branch_filter != "all":
+        query["branch_id"] = branch_filter
+    elif not current_user.get("is_admin") and current_user.get("branch_id"):
+        query["branch_id"] = current_user["branch_id"]
+    
+    if start_date:
+        query["entry_date"] = {"$gte": start_date}
+    if end_date:
+        if "entry_date" in query:
+            query["entry_date"]["$lte"] = end_date
+        else:
+            query["entry_date"] = {"$lte": end_date}
+    if journal_type:
+        query["journal_type"] = journal_type
+    if account_id:
+        query["lines.account_id"] = account_id
+    if supplier_id:
+        query["lines.party_id"] = supplier_id
+    
+    entries = await db.journal_entries.find(query, {"_id": 0}).sort("entry_date", 1).to_list(1000)
+    
+    total_debit = sum(e["total_debit"] for e in entries)
+    total_credit = sum(e["total_credit"] for e in entries)
+    
+    return {
+        "entries": entries,
+        "summary": {
+            "total_debit": round(total_debit, 2),
+            "total_credit": round(total_credit, 2),
+            "entries_count": len(entries),
+            "is_balanced": round(total_debit, 2) == round(total_credit, 2)
+        }
+    }
+
+@api_router.get("/reports/suppliers-balance")
+async def get_suppliers_balance_report(
+    branch_filter: Optional[str] = None,
+    current_user: dict = Depends(get_current_user)
+):
+    """Get suppliers balance report"""
+    query = {}
+    
+    if branch_filter and branch_filter != "all":
+        query["branch_id"] = branch_filter
+    elif not current_user.get("is_admin") and current_user.get("branch_id"):
+        query["branch_id"] = current_user["branch_id"]
+    
+    suppliers = await db.suppliers.find(query, {"_id": 0}).to_list(1000)
+    
+    total_purchases = sum(s.get("total_purchases", 0) for s in suppliers)
+    total_paid = sum(s.get("total_paid", 0) for s in suppliers)
+    total_balance = sum(s.get("balance", 0) for s in suppliers)
+    
+    return {
+        "suppliers": suppliers,
+        "summary": {
+            "total_purchases": round(total_purchases, 2),
+            "total_paid": round(total_paid, 2),
+            "total_balance": round(total_balance, 2),
+            "suppliers_count": len(suppliers)
+        }
+    }
+
+@api_router.get("/reports/purchases")
+async def get_purchases_report(
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    supplier_id: Optional[str] = None,
+    branch_filter: Optional[str] = None,
+    current_user: dict = Depends(get_current_user)
+):
+    """Get purchases report"""
+    query = {}
+    
+    if branch_filter and branch_filter != "all":
+        query["branch_id"] = branch_filter
+    elif not current_user.get("is_admin") and current_user.get("branch_id"):
+        query["branch_id"] = current_user["branch_id"]
+    
+    if start_date:
+        query["invoice_date"] = {"$gte": start_date}
+    if end_date:
+        if "invoice_date" in query:
+            query["invoice_date"]["$lte"] = end_date
+        else:
+            query["invoice_date"] = {"$lte": end_date}
+    if supplier_id:
+        query["supplier_id"] = supplier_id
+    
+    invoices = await db.purchase_invoices.find(query, {"_id": 0}).sort("invoice_date", -1).to_list(1000)
+    
+    total_subtotal = sum(inv.get("subtotal", 0) for inv in invoices)
+    total_tax = sum(inv.get("tax_amount", 0) for inv in invoices)
+    total_amount = sum(inv.get("total", 0) for inv in invoices)
+    total_paid = sum(inv.get("paid_amount", 0) for inv in invoices)
+    total_remaining = sum(inv.get("remaining_amount", 0) for inv in invoices)
+    
+    return {
+        "invoices": invoices,
+        "summary": {
+            "total_subtotal": round(total_subtotal, 2),
+            "total_tax": round(total_tax, 2),
+            "total_amount": round(total_amount, 2),
+            "total_paid": round(total_paid, 2),
+            "total_remaining": round(total_remaining, 2),
+            "invoices_count": len(invoices)
+        }
+    }
+
 # Include router
 app.include_router(api_router)
 
