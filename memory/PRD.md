@@ -870,7 +870,7 @@
 - [ ] Activity Timetable Management
 - [ ] Attendance Tracking
 - [ ] Advanced User Permissions
-- [ ] تقرير الأرباح والخسائر (P&L Report)
+- [x] تقرير الأرباح والخسائر (P&L Report) - تم ضمن تقرير المبيعات
 - [ ] تقرير الميزانية العمومية (Balance Sheet)
 
 ### P3 - Refactoring
@@ -878,3 +878,45 @@
 - [ ] Refactor InvoicesPage.js (very large file)
 - [ ] Refactor StorePage.js (very large file)
 - [ ] Refactor AccountingPage.js (large file)
+
+---
+
+## Update 19 - VAT & Sales Reports with Excel Export (January 28, 2026)
+
+### Features Implemented:
+
+#### 1. إقرار ضريبة القيمة المضافة (VAT Report) ✅
+- **المبيعات (ضريبة المخرجات)**: عدد الفواتير، الصافي، الضريبة 15%، الإجمالي
+- **المشتريات (ضريبة المدخلات)**: عدد الفواتير، الصافي، الضريبة 15%، الإجمالي
+- **ملخص الإقرار**: صافي الضريبة المستحقة (المخرجات - المدخلات)
+- **حالة الضريبة**: "مستحقة للهيئة" أو "رصيد لصالح المنشأة"
+
+#### 2. تقرير فواتير المبيعات ✅
+- **الملخص**: عدد الفواتير، الصافي، الخصم، الضريبة، الإجمالي
+- **حسب طريقة الدفع**: card, cash, tabby مع عدد الفواتير والإجمالي
+- **حسب النشاط**: كل نشاط مع عدد الاشتراكات والإيرادات
+
+#### 3. تصدير Excel ✅
+- **Export Sales Report**: تقرير المبيعات مع كل الفواتير
+- **Export Purchases Report**: تقرير المشتريات مع كل الفواتير
+- **Export VAT Report**: إقرار الضريبة الكامل
+
+### Backend API Endpoints Added:
+- `GET /api/reports/vat` - إقرار ضريبة القيمة المضافة
+- `GET /api/reports/sales` - تقرير فواتير المبيعات
+- `GET /api/export/sales` - تصدير تقرير المبيعات إلى Excel
+- `GET /api/export/purchases` - تصدير تقرير المشتريات إلى Excel
+- `GET /api/export/vat` - تصدير إقرار الضريبة إلى Excel
+
+### Frontend Updates:
+- تبويب جديد "إقرار الضريبة" في صفحة المحاسبة
+- قسم تقرير المبيعات مع زر Export Excel
+- قسم تقرير المشتريات مع زر Export Excel
+- فلاتر التاريخ لكل التقارير
+
+### Test Results:
+- ✅ VAT Report API - Working
+- ✅ Sales Report API - Working
+- ✅ Excel Export - All 3 reports generating valid .xlsx files
+- ✅ Frontend UI - All tabs and reports displaying correctly
+
