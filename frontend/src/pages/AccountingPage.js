@@ -44,7 +44,7 @@ const JOURNAL_TYPES = [
 ];
 
 export default function AccountingPage() {
-  const { selectedBranchId } = useAuth();
+  const { selectedBranchId, token } = useAuth();
   const [activeTab, setActiveTab] = useState(TABS.ACCOUNTS);
   
   // Data states
@@ -53,6 +53,8 @@ export default function AccountingPage() {
   const [purchaseInvoices, setPurchaseInvoices] = useState([]);
   const [journalEntries, setJournalEntries] = useState([]);
   const [products, setProducts] = useState([]);
+  const [salesReport, setSalesReport] = useState(null);
+  const [vatReport, setVatReport] = useState(null);
   const [loading, setLoading] = useState(false);
   
   // Dialog states
