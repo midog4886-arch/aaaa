@@ -2059,10 +2059,72 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
                 </Button>
               </div>
 
+              {/* Member's Current Activities */}
+              {selectedMember && selectedMember.activities && selectedMember.activities.length > 0 && itemType === 'activity' && (
+                <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                  <h4 className="font-semibold text-blue-800 mb-3 flex items-center gap-2">
+                    📋 {language === 'ar' ? `أنشطة ${selectedMember.name_ar || selectedMember.name} الحالية` : `${selectedMember.name_ar || selectedMember.name}'s Current Activities`}
+                  </h4>
+                  <div className="space-y-2">
+                    {selectedMember.activities.map((act, idx) => {
+                      const isAlreadyAdded = invoiceItems.some(item => 
+                        item.activity_id === act.activity_id && 
+                        item.start_date === act.start_date && 
+                        item.end_date === act.end_date
+                      );
+                      return (
+                        <div key={idx} className="flex items-center justify-between p-2 bg-white rounded border">
+                          <div>
+                            <span className="font-medium">{act.activity_name}</span>
+                            <span className="text-sm text-gray-500 mx-2">|</span>
+                            <span className="text-sm text-gray-600">{act.start_date} → {act.end_date}</span>
+                            <span className={`mx-2 text-xs px-2 py-0.5 rounded ${act.status === 'active' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                              {act.status === 'active' ? (language === 'ar' ? 'نشط' : 'Active') : (language === 'ar' ? 'منتهي' : 'Expired')}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className="font-bold text-orange-600">{act.fee || 0} {t('sar')}</span>
+                            {!isAlreadyAdded ? (
+                              <Button 
+                                type="button" 
+                                size="sm" 
+                                variant="outline"
+                                onClick={() => {
+                                  const activity = activities.find(a => a.id === act.activity_id);
+                                  if (activity) {
+                                    setInvoiceItems([...invoiceItems, {
+                                      activity_id: act.activity_id,
+                                      activity_name: act.activity_name,
+                                      start_date: act.start_date,
+                                      end_date: act.end_date,
+                                      fee: act.fee || activity.monthly_fee,
+                                      is_product: false
+                                    }]);
+                                    toast.success(language === 'ar' ? 'تم إضافة النشاط للفاتورة' : 'Activity added to invoice');
+                                  }
+                                }}
+                                className="text-blue-600 border-blue-300 hover:bg-blue-50"
+                              >
+                                + {language === 'ar' ? 'إضافة' : 'Add'}
+                              </Button>
+                            ) : (
+                              <span className="text-xs text-green-600">✓ {language === 'ar' ? 'مضاف' : 'Added'}</span>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <p className="text-xs text-blue-600 mt-2">
+                    {language === 'ar' ? '💡 يمكنك إضافة الأنشطة الحالية للعضو أو اختيار أنشطة جديدة من القائمة أدناه' : '💡 You can add member\'s current activities or select new ones from the list below'}
+                  </p>
+                </div>
+              )}
+
               {/* Activity Selector */}
               {itemType === 'activity' && (
                 <div className="space-y-2">
-                  <Label>{language === 'ar' ? 'إضافة نشاط' : 'Add activity'}</Label>
+                  <Label>{language === 'ar' ? 'إضافة نشاط جديد' : 'Add new activity'}</Label>
                   <Select value="" onValueChange={addActivityToInvoice}>
                     <SelectTrigger data-testid="activity-selector">
                       <SelectValue placeholder={language === 'ar' ? '+ اختر نشاط لإضافته' : '+ Select activity to add'} />
