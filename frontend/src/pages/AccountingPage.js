@@ -160,6 +160,32 @@ export default function AccountingPage() {
     }
   }, [selectedBranchId]);
 
+  const fetchSalesReport = useCallback(async () => {
+    try {
+      const params = {};
+      if (selectedBranchId && selectedBranchId !== 'all') params.branch_filter = selectedBranchId;
+      if (dateFilter.start) params.start_date = dateFilter.start;
+      if (dateFilter.end) params.end_date = dateFilter.end;
+      const res = await accountingReportsAPI.getSalesReport(params);
+      setSalesReport(res.data);
+    } catch (error) {
+      console.error('Error fetching sales report:', error);
+    }
+  }, [selectedBranchId, dateFilter]);
+
+  const fetchVatReport = useCallback(async () => {
+    try {
+      const params = {};
+      if (selectedBranchId && selectedBranchId !== 'all') params.branch_filter = selectedBranchId;
+      if (dateFilter.start) params.start_date = dateFilter.start;
+      if (dateFilter.end) params.end_date = dateFilter.end;
+      const res = await accountingReportsAPI.getVatReport(params);
+      setVatReport(res.data);
+    } catch (error) {
+      console.error('Error fetching VAT report:', error);
+    }
+  }, [selectedBranchId, dateFilter]);
+
   useEffect(() => {
     setLoading(true);
     Promise.all([fetchAccounts(), fetchSuppliers(), fetchProducts()]).finally(() => setLoading(false));
@@ -168,7 +194,9 @@ export default function AccountingPage() {
   useEffect(() => {
     if (activeTab === TABS.PURCHASES) fetchPurchaseInvoices();
     if (activeTab === TABS.JOURNAL) fetchJournalEntries();
-  }, [activeTab, fetchPurchaseInvoices, fetchJournalEntries]);
+    if (activeTab === TABS.REPORTS) fetchSalesReport();
+    if (activeTab === TABS.VAT) fetchVatReport();
+  }, [activeTab, fetchPurchaseInvoices, fetchJournalEntries, fetchSalesReport, fetchVatReport]);
 
   // Account handlers
   const handleSaveAccount = async () => {
