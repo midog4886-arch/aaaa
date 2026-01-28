@@ -55,6 +55,7 @@ export const Sidebar = ({ isOpen, onClose }) => {
     { to: '/coaches', icon: UserCog, label: 'coaches' },
     { to: '/invoices', icon: Receipt, label: 'invoices' },
     { to: '/store', icon: Package, label: 'store' },
+    { to: '/accounting', icon: Calculator, label: 'accounting' },
     { to: '/reports', icon: BarChart3, label: 'reports' },
     { to: '/messages', icon: MessageSquare, label: 'messages' },
     ...(isAdmin ? [{ to: '/branches', icon: Building2, label: 'branches' }] : []),
