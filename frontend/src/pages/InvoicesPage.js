@@ -2614,8 +2614,8 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
                           </>
                         ) : (
                           <>
-                            <div className="space-y-1">
-                              <Label className="text-xs">{language === 'ar' ? 'تاريخ البداية' : 'Start Date'}</Label>
+                            <div className="space-y-2">
+                              <Label className="text-sm font-medium">{language === 'ar' ? 'تاريخ البداية' : 'Start Date'}</Label>
                               <Input 
                                 type="date"
                                 value={item.start_date || ''}
@@ -2628,11 +2628,11 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
                                   }
                                   setRegFormItems(updated);
                                 }}
-                                className="text-sm"
+                                className="h-11 text-base"
                               />
                             </div>
-                            <div className="space-y-1">
-                              <Label className="text-xs">{language === 'ar' ? 'تاريخ النهاية' : 'End Date'}</Label>
+                            <div className="space-y-2">
+                              <Label className="text-sm font-medium">{language === 'ar' ? 'تاريخ النهاية' : 'End Date'}</Label>
                               <Input 
                                 type="date"
                                 value={item.end_date || ''}
@@ -2645,7 +2645,7 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
                                   }
                                   setRegFormItems(updated);
                                 }}
-                                className="text-sm"
+                                className="h-11 text-base"
                               />
                             </div>
                             <div className="space-y-1">
