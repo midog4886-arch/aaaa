@@ -225,6 +225,7 @@ export default {
   supplierPayments: supplierPaymentsAPI,
   journalEntries: journalEntriesAPI,
   accountingReports: accountingReportsAPI,
+  exportAccounting: exportAccountingAPI,
   get: (url) => axios.get(`${API}${url}`),
   post: (url, data) => axios.post(`${API}${url}`, data),
   put: (url, data) => axios.put(`${API}${url}`, data),
