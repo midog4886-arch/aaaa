@@ -1683,8 +1683,8 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
                     <SelectContent><SelectItem value="all">{language === 'ar' ? 'الكل' : 'All'}</SelectItem>
                       {activities.map(a => <SelectItem key={a.id} value={a.id}>{language === 'ar' ? a.name_ar : a.name}</SelectItem>)}
                     </SelectContent></Select></div>
-                <div className="space-y-2"><Label className="font-medium">{t('from')}</Label><Input type="date" value={filterStartDate} onChange={(e) => setFilterStartDate(e.target.value)} className="h-11 text-base w-44" /></div>
-                <div className="space-y-2"><Label className="font-medium">{t('to')}</Label><Input type="date" value={filterEndDate} onChange={(e) => setFilterEndDate(e.target.value)} className="h-11 text-base w-44" /></div>
+                <div className="space-y-2"><Label className="font-medium">{t('from')}</Label><Input type="date" value={filterStartDate} onChange={(e) => setFilterStartDate(e.target.value)} className="h-14 text-lg w-48" /></div>
+                <div className="space-y-2"><Label className="font-medium">{t('to')}</Label><Input type="date" value={filterEndDate} onChange={(e) => setFilterEndDate(e.target.value)} className="h-14 text-lg w-48" /></div>
                 <Button onClick={loadData}><Search className="w-4 h-4 me-2" />{t('search')}</Button>
                 <Button variant="outline" onClick={() => { setSearchTerm(''); setFilterStatus('all'); setFilterActivity('all'); setFilterStartDate(''); setFilterEndDate(''); loadData(); }}><X className="w-4 h-4 me-2" />{language === 'ar' ? 'مسح' : 'Clear'}</Button>
               </div>
