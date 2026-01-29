@@ -942,13 +942,69 @@
 - **الوصف**: عند إضافة مورد جديد، يظهر فوراً في القائمة بدون الحاجة لتحديث الصفحة
 - **الملف**: `/app/frontend/src/pages/AccountingPage.js` (Function: handleSaveSupplier)
 
+---
+
+## Update 21 - نظام تجديد الاشتراك (January 29, 2026)
+
+### الميزة الجديدة: نظام تجديد الاشتراك الكامل ✅
+
+#### 1. عرض الأنشطة مع الأيام المتبقية ✅
+- **الوصف**: في صفحة تفاصيل العضو، يتم عرض كل نشاط مع:
+  - شارة الأيام المتبقية (أخضر > 7 أيام، أصفر 4-7 أيام، أحمر ≤ 3 أيام أو منتهي)
+  - خلفية ملونة للتنبيه (أصفر للقريب من الانتهاء، أحمر للمنتهي)
+- **الملف**: `/app/frontend/src/pages/MembersPage.js`
+
+#### 2. زر التجديد ✅
+- **الوصف**: يظهر زر "تجديد" أمام كل نشاط منتهي أو قارب على الانتهاء (7 أيام أو أقل)
+- **المظهر**: زر أحمر للمنتهي، زر أصفر للقريب من الانتهاء
+- **الملف**: `/app/frontend/src/pages/MembersPage.js` (Lines 895-912)
+
+#### 3. نافذة تجديد الاشتراك ✅
+- **الوصف**: عند الضغط على "تجديد" يفتح نموذج يحتوي على:
+  - معلومات النشاط والعضو
+  - تاريخ انتهاء الاشتراك القديم
+  - تاريخ البداية الجديد (اليوم التالي لانتهاء القديم تلقائياً)
+  - تاريخ النهاية الجديد (شهر بعد البداية تلقائياً)
+  - الرسوم (قابلة للتعديل)
+  - طريقة الدفع (نقد، بطاقة، تحويل، Tabby، Tamara)
+  - ملاحظات اختيارية
+  - حساب الضريبة والإجمالي تلقائياً
+- **الملف**: `/app/frontend/src/pages/MembersPage.js` (Lines 1043-1180)
+
+#### 4. إنشاء فاتورة تلقائية ✅
+- **الوصف**: عند تأكيد التجديد، يتم:
+  - إنشاء فاتورة جديدة مدفوعة للعضو
+  - إضافة فترة اشتراك جديدة للنشاط
+  - الاحتفاظ بالفترة القديمة (لا يتم حذفها)
+  - ربط الفترة الجديدة برقم الفاتورة
+
+#### 5. سجل التجديدات ✅
+- **الوصف**: تبويب جديد "سجل التجديدات" يعرض:
+  - كل فترات الاشتراك لكل نشاط
+  - التواريخ والمبالغ والحالات
+  - شارة "تجديد" للفترات المجددة
+  - خلفية خضراء للنشط، رمادية للمنتهي
+- **الملف**: `/app/frontend/src/pages/MembersPage.js` (Lines 953-1040)
+
+### الدوال الجديدة:
+- `getDaysRemaining(endDate)` - حساب الأيام المتبقية
+- `needsRenewal(activity)` - التحقق من الحاجة للتجديد
+- `openRenewalDialog(activity)` - فتح نافذة التجديد
+- `handleRenewal()` - تنفيذ التجديد وإنشاء الفاتورة
+- `getActivityHistory(activityId)` - جلب سجل التجديدات
+
 ### Test Results:
-- ✅ Member activities displayed correctly in invoice creation dialog
-- ✅ New supplier appears immediately after creation
-- ✅ All accounting module features working as expected
+- ✅ Days remaining badge showing correctly
+- ✅ Renew button appears for expired activities
+- ✅ Renewal dialog opens with correct data
+- ✅ Invoice created successfully on renewal
+- ✅ New activity period added to member
+- ✅ Old activity period preserved (history)
+- ✅ Renewal history tab working
 
 ### Credentials for Testing:
 - **Admin**: username: `admin`, password: `admin123`
+- **Test Member**: كرم (has expired activity for testing renewal)
 
 ### Next Priority Tasks:
 1. **WhatsApp Business API Integration (P1)**: يحتاج Access Token و Phone Number ID من Meta Business Suite
