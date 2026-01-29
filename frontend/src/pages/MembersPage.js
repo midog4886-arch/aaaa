@@ -961,8 +961,220 @@ export const MembersPage = () => {
                     )}
                   </div>
                 )}
+
+                {/* Tab Content: History */}
+                {viewTab === 'history' && (
+                  <div>
+                    <h3 className="font-semibold flex items-center gap-2 mb-4">
+                      <History className="w-5 h-5 text-primary" />
+                      {language === 'ar' ? 'سجل التجديدات' : 'Renewal History'}
+                    </h3>
+                    
+                    {selectedMember.activities?.length > 0 ? (
+                      <div className="space-y-4">
+                        {/* Group by activity_id */}
+                        {(() => {
+                          const grouped = {};
+                          selectedMember.activities.forEach(act => {
+                            if (!grouped[act.activity_id]) {
+                              grouped[act.activity_id] = [];
+                            }
+                            grouped[act.activity_id].push(act);
+                          });
+                          return Object.entries(grouped);
+                        })().map(([activityId, periods]) => (
+                          <Card key={activityId} className="p-4">
+                            <h4 className="font-semibold mb-3 flex items-center gap-2">
+                              <Badge className={getActivityColor(periods[0]?.activity_name)}>
+                                {periods[0]?.activity_name}
+                              </Badge>
+                              <span className="text-sm text-muted-foreground">
+                                ({periods.length} {language === 'ar' ? 'فترة' : 'period(s)'})
+                              </span>
+                            </h4>
+                            <div className="space-y-2">
+                              {periods
+                                .sort((a, b) => new Date(b.start_date) - new Date(a.start_date))
+                                .map((period, idx) => {
+                                  const daysRemaining = getDaysRemaining(period.end_date);
+                                  const isActive = daysRemaining !== null && daysRemaining > 0;
+                                  
+                                  return (
+                                    <div 
+                                      key={idx} 
+                                      className={`p-3 rounded-lg border ${isActive ? 'bg-green-50 border-green-200' : 'bg-gray-50 border-gray-200'}`}
+                                    >
+                                      <div className="flex items-center justify-between">
+                                        <div className="flex items-center gap-2">
+                                          <Calendar className="w-4 h-4 text-muted-foreground" />
+                                          <span className="text-sm">
+                                            {period.start_date} → {period.end_date}
+                                          </span>
+                                          {period.renewed_from && (
+                                            <Badge variant="outline" className="text-xs bg-blue-50 text-blue-600 border-blue-200">
+                                              {language === 'ar' ? 'تجديد' : 'Renewal'}
+                                            </Badge>
+                                          )}
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                          <span className="font-medium text-primary">{period.fee} {t('sar')}</span>
+                                          {isActive ? (
+                                            <Badge className="bg-green-100 text-green-700 border-green-300">
+                                              {language === 'ar' ? 'نشط' : 'Active'}
+                                            </Badge>
+                                          ) : (
+                                            <Badge className="bg-gray-100 text-gray-600 border-gray-300">
+                                              {language === 'ar' ? 'منتهي' : 'Expired'}
+                                            </Badge>
+                                          )}
+                                        </div>
+                                      </div>
+                                      {period.invoice_id && (
+                                        <p className="text-xs text-muted-foreground mt-1">
+                                          {language === 'ar' ? 'رقم الفاتورة: ' : 'Invoice: '}
+                                          #{period.invoice_id.slice(0, 8)}
+                                        </p>
+                                      )}
+                                    </div>
+                                  );
+                                })}
+                            </div>
+                          </Card>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="text-center py-8 text-muted-foreground">
+                        {t('no_data')}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             )}
+          </DialogContent>
+        </Dialog>
+
+        {/* Renewal Dialog */}
+        <Dialog open={isRenewalDialogOpen} onOpenChange={setIsRenewalDialogOpen}>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <RefreshCcw className="w-5 h-5 text-primary" />
+                {language === 'ar' ? 'تجديد الاشتراك' : 'Renew Subscription'}
+              </DialogTitle>
+            </DialogHeader>
+            
+            {renewalActivity && (
+              <div className="space-y-4">
+                {/* Activity info */}
+                <div className="p-4 bg-muted/50 rounded-lg">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Badge className={getActivityColor(renewalActivity.activity_name)}>
+                      {renewalActivity.activity_name}
+                    </Badge>
+                  </div>
+                  <p className="text-sm text-muted-foreground">
+                    {language === 'ar' ? 'العضو: ' : 'Member: '}
+                    <span className="font-medium text-foreground">
+                      {language === 'ar' ? selectedMember?.name_ar : selectedMember?.name}
+                    </span>
+                  </p>
+                  <p className="text-sm text-muted-foreground">
+                    {language === 'ar' ? 'الاشتراك السابق انتهى في: ' : 'Previous subscription ended: '}
+                    <span className="font-medium text-foreground">{renewalActivity.end_date}</span>
+                  </p>
+                </div>
+
+                {/* Renewal form */}
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label>{language === 'ar' ? 'تاريخ البداية' : 'Start Date'}</Label>
+                    <Input
+                      type="date"
+                      value={renewalForm.start_date}
+                      onChange={(e) => setRenewalForm({...renewalForm, start_date: e.target.value})}
+                      className="h-12"
+                      data-testid="renewal-start-date"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>{language === 'ar' ? 'تاريخ النهاية' : 'End Date'}</Label>
+                    <Input
+                      type="date"
+                      value={renewalForm.end_date}
+                      onChange={(e) => setRenewalForm({...renewalForm, end_date: e.target.value})}
+                      className="h-12"
+                      data-testid="renewal-end-date"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label>{language === 'ar' ? 'الرسوم' : 'Fee'} ({t('sar')})</Label>
+                  <Input
+                    type="number"
+                    value={renewalForm.fee}
+                    onChange={(e) => setRenewalForm({...renewalForm, fee: parseFloat(e.target.value) || 0})}
+                    data-testid="renewal-fee"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label>{language === 'ar' ? 'طريقة الدفع' : 'Payment Method'}</Label>
+                  <Select 
+                    value={renewalForm.payment_method} 
+                    onValueChange={(value) => setRenewalForm({...renewalForm, payment_method: value})}
+                  >
+                    <SelectTrigger data-testid="renewal-payment-method">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="cash">{language === 'ar' ? 'نقداً' : 'Cash'}</SelectItem>
+                      <SelectItem value="card">{language === 'ar' ? 'بطاقة' : 'Card'}</SelectItem>
+                      <SelectItem value="transfer">{language === 'ar' ? 'تحويل بنكي' : 'Transfer'}</SelectItem>
+                      <SelectItem value="tabby">Tabby</SelectItem>
+                      <SelectItem value="tamara">Tamara</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label>{language === 'ar' ? 'ملاحظات' : 'Notes'}</Label>
+                  <Textarea
+                    value={renewalForm.notes}
+                    onChange={(e) => setRenewalForm({...renewalForm, notes: e.target.value})}
+                    placeholder={language === 'ar' ? 'ملاحظات اختيارية...' : 'Optional notes...'}
+                    data-testid="renewal-notes"
+                  />
+                </div>
+
+                {/* Total calculation */}
+                <div className="p-4 bg-primary/5 rounded-lg border border-primary/20">
+                  <div className="flex justify-between text-sm mb-1">
+                    <span>{language === 'ar' ? 'المبلغ' : 'Amount'}</span>
+                    <span>{renewalForm.fee} {t('sar')}</span>
+                  </div>
+                  <div className="flex justify-between text-sm mb-1">
+                    <span>{language === 'ar' ? 'الضريبة (15%)' : 'VAT (15%)'}</span>
+                    <span>{(renewalForm.fee * 0.15).toFixed(2)} {t('sar')}</span>
+                  </div>
+                  <div className="flex justify-between font-bold text-lg border-t pt-2 mt-2">
+                    <span>{language === 'ar' ? 'الإجمالي' : 'Total'}</span>
+                    <span className="text-primary">{(renewalForm.fee * 1.15).toFixed(2)} {t('sar')}</span>
+                  </div>
+                </div>
+              </div>
+            )}
+            
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setIsRenewalDialogOpen(false)}>
+                {t('cancel')}
+              </Button>
+              <Button onClick={handleRenewal} disabled={saving} data-testid="confirm-renewal-btn">
+                {saving && <Loader2 className="w-4 h-4 me-2 animate-spin" />}
+                {language === 'ar' ? 'تأكيد التجديد وإنشاء فاتورة' : 'Confirm Renewal & Create Invoice'}
+              </Button>
+            </DialogFooter>
           </DialogContent>
         </Dialog>
 
