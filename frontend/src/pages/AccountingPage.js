@@ -285,13 +285,19 @@ export default function AccountingPage() {
         return;
       }
       
-      await purchaseInvoicesAPI.create(purchaseForm);
+      // Add branch_id to the form
+      const dataToSend = {
+        ...purchaseForm,
+        branch_id: selectedBranchId !== 'all' ? selectedBranchId : ''
+      };
+      
+      await purchaseInvoicesAPI.create(dataToSend);
       toast.success('تم إنشاء فاتورة المشتريات');
       setIsPurchaseDialogOpen(false);
       setPurchaseForm({
         supplier_id: '', supplier_invoice_number: '', invoice_date: '',
         due_date: '', items: [{ product_id: '', description: '', quantity: 1, unit_price: 0, tax_rate: 15 }],
-        payment_method: 'credit', notes: ''
+        payment_method: 'credit', notes: '', branch_id: ''
       });
       fetchPurchaseInvoices();
       fetchSuppliers();
