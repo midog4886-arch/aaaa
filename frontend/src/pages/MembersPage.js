@@ -763,6 +763,17 @@ export const MembersPage = () => {
                     <Receipt className="w-4 h-4 inline me-1" />
                     {t('invoices')} ({memberInvoices.length})
                   </button>
+                  <button
+                    onClick={() => setViewTab('history')}
+                    className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+                      viewTab === 'history' 
+                        ? 'border-primary text-primary' 
+                        : 'border-transparent text-muted-foreground hover:text-foreground'
+                    }`}
+                  >
+                    <History className="w-4 h-4 inline me-1" />
+                    {language === 'ar' ? 'سجل التجديدات' : 'Renewal History'}
+                  </button>
                 </div>
 
                 {/* Tab Content: Info */}
