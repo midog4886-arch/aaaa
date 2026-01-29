@@ -3656,6 +3656,7 @@ async def update_purchase_invoice(invoice_id: str, invoice: PurchaseInvoiceCreat
         "remaining_amount": total - existing.get("paid_amount", 0),
         "payment_method": invoice.payment_method,
         "notes": invoice.notes,
+        "branch_id": invoice.branch_id if current_user.get("is_admin") else existing.get("branch_id"),
         "updated_at": datetime.now(timezone.utc).isoformat()
     }
     
