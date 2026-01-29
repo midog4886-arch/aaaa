@@ -3928,6 +3928,56 @@ async def delete_journal_entry(entry_id: str, current_user: dict = Depends(get_c
     await db.journal_entries.delete_one({"id": entry_id})
     return {"message": "تم حذف القيد المحاسبي"}
 
+@api_router.put("/journal-entries/{entry_id}")
+async def update_journal_entry(entry_id: str, entry: JournalEntryCreate, current_user: dict = Depends(get_current_user)):
+    """Update a journal entry (only manual entries can be edited)"""
+    existing = await db.journal_entries.find_one({"id": entry_id})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Journal entry not found")
+    
+    # Check if linked to automatic transactions (cannot edit auto-generated entries)
+    if existing.get("reference_type") and existing.get("reference_id"):
+        raise HTTPException(status_code=400, detail="لا يمكن تعديل قيد مرتبط بعملية آلية")
+    
+    # Validate debit = credit
+    total_debit = sum(line.debit for line in entry.lines)
+    total_credit = sum(line.credit for line in entry.lines)
+    if abs(total_debit - total_credit) > 0.01:
+        raise HTTPException(status_code=400, detail="القيد غير متوازن - المدين يجب أن يساوي الدائن")
+    
+    branch_id = entry.branch_id if current_user.get("is_admin") else current_user.get("branch_id")
+    
+    # Prepare lines with account info
+    lines_data = []
+    for line in entry.lines:
+        account = await db.accounts.find_one({"id": line.account_id}, {"_id": 0})
+        if account:
+            lines_data.append({
+                "account_id": line.account_id,
+                "account_code": account.get("code", ""),
+                "account_name": account.get("name_ar", ""),
+                "debit": line.debit,
+                "credit": line.credit,
+                "description": line.description
+            })
+    
+    update_data = {
+        "entry_date": entry.entry_date,
+        "description": entry.description,
+        "reference_number": entry.reference_number,
+        "journal_type": entry.journal_type,
+        "lines": lines_data,
+        "total_debit": round(total_debit, 2),
+        "total_credit": round(total_credit, 2),
+        "branch_id": branch_id,
+        "updated_at": datetime.now(timezone.utc).isoformat()
+    }
+    
+    await db.journal_entries.update_one({"id": entry_id}, {"$set": update_data})
+    
+    updated = await db.journal_entries.find_one({"id": entry_id}, {"_id": 0})
+    return updated
+
 # ============ ACCOUNTING REPORTS ============
 
 @api_router.get("/reports/journal-entries")
