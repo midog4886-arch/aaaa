@@ -344,11 +344,11 @@ export const MembersPage = () => {
           activity_id: renewalActivity.activity_id,
           activity_name: renewalActivity.activity_name,
           fee: parseFloat(renewalForm.fee),
+          period: `${renewalForm.start_date} - ${renewalForm.end_date}`,
           start_date: renewalForm.start_date,
           end_date: renewalForm.end_date,
           schedule: '',
-          is_renewal: true,
-          previous_end_date: renewalActivity.end_date
+          is_product: false
         }],
         subtotal: subtotal,
         vat: vatAmount,
