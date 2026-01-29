@@ -90,7 +90,7 @@ export default function AccountingPage() {
   const [purchaseForm, setPurchaseForm] = useState({
     supplier_id: '', supplier_invoice_number: '', invoice_date: '',
     due_date: '', items: [{ product_id: '', description: '', quantity: 1, unit_price: 0, tax_rate: 15 }],
-    payment_method: 'credit', notes: ''
+    payment_method: 'credit', notes: '', branch_id: ''
   });
   
   const [paymentForm, setPaymentForm] = useState({
