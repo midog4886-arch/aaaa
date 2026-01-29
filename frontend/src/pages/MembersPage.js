@@ -48,10 +48,19 @@ export const MembersPage = () => {
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [isViewDialogOpen, setIsViewDialogOpen] = useState(false);
   const [isActivityDialogOpen, setIsActivityDialogOpen] = useState(false);
+  const [isRenewalDialogOpen, setIsRenewalDialogOpen] = useState(false);
   const [selectedMember, setSelectedMember] = useState(null);
   const [saving, setSaving] = useState(false);
   const [memberInvoices, setMemberInvoices] = useState([]);
-  const [viewTab, setViewTab] = useState('info'); // info, activities, invoices
+  const [viewTab, setViewTab] = useState('info'); // info, activities, invoices, history
+  const [renewalActivity, setRenewalActivity] = useState(null);
+  const [renewalForm, setRenewalForm] = useState({
+    start_date: '',
+    end_date: '',
+    fee: 0,
+    notes: '',
+    payment_method: 'cash'
+  });
 
   const [formData, setFormData] = useState({
     name: '',
