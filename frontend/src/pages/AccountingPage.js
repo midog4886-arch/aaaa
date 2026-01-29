@@ -858,7 +858,10 @@ export default function AccountingPage() {
                   <td className="p-3 text-center">
                     <Button variant="ghost" size="sm" onClick={() => { setSelectedInvoice(inv); setIsViewInvoiceDialogOpen(true); }}>👁️</Button>
                     {inv.status === 'pending' && (
-                      <Button variant="ghost" size="sm" onClick={() => handleDeletePurchaseInvoice(inv.id)} className="text-red-600">🗑️</Button>
+                      <>
+                        <Button variant="ghost" size="sm" onClick={() => openEditPurchaseInvoice(inv)} className="text-blue-600">✏️</Button>
+                        <Button variant="ghost" size="sm" onClick={() => handleDeletePurchaseInvoice(inv.id)} className="text-red-600">🗑️</Button>
+                      </>
                     )}
                   </td>
                 </tr>
