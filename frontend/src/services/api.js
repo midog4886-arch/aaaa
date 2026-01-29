@@ -188,6 +188,7 @@ export const journalEntriesAPI = {
   getAll: (params = {}) => axios.get(`${API}/journal-entries`, { params }),
   getById: (id) => axios.get(`${API}/journal-entries/${id}`),
   create: (data) => axios.post(`${API}/journal-entries`, data),
+  update: (id, data) => axios.put(`${API}/journal-entries/${id}`, data),
   delete: (id) => axios.delete(`${API}/journal-entries/${id}`),
 };
 
