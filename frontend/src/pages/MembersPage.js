@@ -286,6 +286,126 @@ export const MembersPage = () => {
     return endDate >= today ? 'active' : 'expired';
   };
 
+  // Calculate days remaining for activity
+  const getDaysRemaining = (endDate) => {
+    if (!endDate) return null;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const end = new Date(endDate);
+    end.setHours(0, 0, 0, 0);
+    const diffTime = end - today;
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    return diffDays;
+  };
+
+  // Check if activity needs renewal (7 days or less)
+  const needsRenewal = (activity) => {
+    const days = getDaysRemaining(activity.end_date);
+    return days !== null && days <= 7;
+  };
+
+  // Open renewal dialog
+  const openRenewalDialog = (activity) => {
+    const endDate = new Date(activity.end_date);
+    const newStartDate = new Date(endDate);
+    newStartDate.setDate(newStartDate.getDate() + 1);
+    const newEndDate = new Date(newStartDate);
+    newEndDate.setMonth(newEndDate.getMonth() + 1);
+    
+    setRenewalActivity(activity);
+    setRenewalForm({
+      start_date: newStartDate.toISOString().split('T')[0],
+      end_date: newEndDate.toISOString().split('T')[0],
+      fee: activity.fee || 0,
+      notes: '',
+      payment_method: 'cash'
+    });
+    setIsRenewalDialogOpen(true);
+  };
+
+  // Handle renewal submission
+  const handleRenewal = async () => {
+    if (!selectedMember || !renewalActivity) return;
+    setSaving(true);
+    
+    try {
+      // Calculate invoice totals
+      const subtotal = parseFloat(renewalForm.fee);
+      const vatAmount = Math.round(subtotal * 0.15 * 100) / 100;
+      const total = Math.round((subtotal + vatAmount) * 100) / 100;
+      
+      // Create invoice for renewal
+      const invoiceData = {
+        member_id: selectedMember.id,
+        customer_name_ar: selectedMember.name_ar,
+        customer_name: selectedMember.name,
+        customer_phone: selectedMember.phone,
+        items: [{
+          activity_id: renewalActivity.activity_id,
+          activity_name: renewalActivity.activity_name,
+          fee: parseFloat(renewalForm.fee),
+          start_date: renewalForm.start_date,
+          end_date: renewalForm.end_date,
+          schedule: '',
+          is_renewal: true,
+          previous_end_date: renewalActivity.end_date
+        }],
+        subtotal: subtotal,
+        vat: vatAmount,
+        total: total,
+        discount: 0,
+        status: 'paid',
+        payment_method: renewalForm.payment_method,
+        notes: renewalForm.notes || `تجديد اشتراك ${renewalActivity.activity_name}`
+      };
+      
+      const invoiceRes = await invoicesAPI.create(invoiceData);
+      
+      // Add new activity period to member (keeping the old one as history)
+      const newActivityPeriod = {
+        activity_id: renewalActivity.activity_id,
+        activity_name: renewalActivity.activity_name,
+        start_date: renewalForm.start_date,
+        end_date: renewalForm.end_date,
+        fee: parseFloat(renewalForm.fee),
+        status: 'active',
+        coach_id: renewalActivity.coach_id || '',
+        invoice_id: invoiceRes.data.id,
+        renewed_from: renewalActivity.end_date
+      };
+      
+      await membersAPI.addActivity(selectedMember.id, newActivityPeriod);
+      
+      toast.success(language === 'ar' ? 'تم تجديد الاشتراك بنجاح' : 'Subscription renewed successfully');
+      setIsRenewalDialogOpen(false);
+      
+      // Refresh member data
+      const updatedMember = await membersAPI.getById(selectedMember.id);
+      setSelectedMember(updatedMember.data);
+      
+      // Refresh invoices
+      const invoicesRes = await invoicesAPI.getAll({ member_id: selectedMember.id });
+      setMemberInvoices(invoicesRes.data);
+      
+      // Refresh members list
+      loadData();
+      
+    } catch (error) {
+      console.error('Renewal error:', error);
+      toast.error(error.response?.data?.detail || (language === 'ar' ? 'حدث خطأ في التجديد' : 'Renewal failed'));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // Get subscription history for an activity
+  const getActivityHistory = (activityId) => {
+    if (!selectedMember?.activities) return [];
+    return selectedMember.activities
+      .filter(a => a.activity_id === activityId)
+      .sort((a, b) => new Date(b.start_date) - new Date(a.start_date));
+  };
+
   const getActivityColor = (activityName) => {
     const colorMap = {
       'السباحة': 'activity-swimming',
