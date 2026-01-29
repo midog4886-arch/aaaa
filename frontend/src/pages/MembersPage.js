@@ -27,7 +27,11 @@ import {
   Loader2,
   Download,
   Receipt,
-  Printer
+  Printer,
+  RefreshCcw,
+  AlertTriangle,
+  History,
+  Clock
 } from 'lucide-react';
 
 export const MembersPage = () => {
