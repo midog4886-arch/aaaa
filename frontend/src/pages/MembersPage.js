@@ -392,7 +392,9 @@ export const MembersPage = () => {
       
     } catch (error) {
       console.error('Renewal error:', error);
-      toast.error(error.response?.data?.detail || (language === 'ar' ? 'حدث خطأ في التجديد' : 'Renewal failed'));
+      const errorMsg = error.response?.data?.detail;
+      const displayError = typeof errorMsg === 'string' ? errorMsg : (language === 'ar' ? 'حدث خطأ في التجديد' : 'Renewal failed');
+      toast.error(displayError);
     } finally {
       setSaving(false);
     }
