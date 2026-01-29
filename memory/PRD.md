@@ -920,3 +920,39 @@
 - ✅ Excel Export - All 3 reports generating valid .xlsx files
 - ✅ Frontend UI - All tabs and reports displaying correctly
 
+
+---
+
+## Update 20 - Feature Verification (January 29, 2026)
+
+### التحقق من المميزات الموجودة ✅
+
+#### 1. عرض أنشطة العضو في نموذج الفاتورة ✅
+- **الحالة**: الميزة تعمل بشكل صحيح
+- **الوصف**: عند اختيار عضو في نموذج إنشاء الفاتورة، تظهر قائمة بأنشطته الحالية
+- **المكونات**:
+  - قسم "أنشطة [اسم العضو] الحالية" باللون الأزرق
+  - عرض كل نشاط مع: اسم النشاط، التواريخ (من → إلى)، الحالة (نشط/منتهي)، السعر
+  - زر "+ إضافة" لإضافة النشاط للفاتورة مباشرة
+  - علامة "✓ مضاف" للأنشطة المضافة مسبقاً
+- **الملف**: `/app/frontend/src/pages/InvoicesPage.js` (Lines 1967-2022)
+
+#### 2. إضافة مورد جديد وتحديث القائمة ✅
+- **الحالة**: الميزة تعمل بشكل صحيح
+- **الوصف**: عند إضافة مورد جديد، يظهر فوراً في القائمة بدون الحاجة لتحديث الصفحة
+- **الملف**: `/app/frontend/src/pages/AccountingPage.js` (Function: handleSaveSupplier)
+
+### Test Results:
+- ✅ Member activities displayed correctly in invoice creation dialog
+- ✅ New supplier appears immediately after creation
+- ✅ All accounting module features working as expected
+
+### Credentials for Testing:
+- **Admin**: username: `admin`, password: `admin123`
+
+### Next Priority Tasks:
+1. **WhatsApp Business API Integration (P1)**: يحتاج Access Token و Phone Number ID من Meta Business Suite
+2. **Code Refactoring (P0)**: تقسيم `server.py` و `InvoicesPage.js` و `AccountingPage.js` لتحسين الصيانة
+3. **Activity Timetable Management (P2)**: جدول الأنشطة وإدارة المواعيد
+4. **Attendance Tracking (P2)**: نظام تتبع الحضور
+
