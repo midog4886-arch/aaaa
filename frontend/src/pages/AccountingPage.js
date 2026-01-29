@@ -979,9 +979,22 @@ export default function AccountingPage() {
                     {JOURNAL_TYPES.find(t => t.value === entry.journal_type)?.label || entry.journal_type}
                   </span>
                 </div>
-                {entry.reference_number && (
-                  <span className="text-sm text-gray-500">المرجع: {entry.reference_number}</span>
-                )}
+                <div className="flex items-center gap-2">
+                  {entry.reference_number && (
+                    <span className="text-sm text-gray-500">المرجع: {entry.reference_number}</span>
+                  )}
+                  {/* Edit button - only for manual entries */}
+                  {!entry.reference_type && !entry.reference_id && (
+                    <Button 
+                      size="sm" 
+                      variant="outline"
+                      onClick={() => openEditJournal(entry)}
+                      className="text-blue-600 hover:bg-blue-50"
+                    >
+                      ✏️ تعديل
+                    </Button>
+                  )}
+                </div>
               </div>
               <table className="w-full">
                 <thead className="bg-gray-50">
