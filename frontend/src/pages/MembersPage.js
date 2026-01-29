@@ -830,34 +830,89 @@ export const MembersPage = () => {
                     
                     {selectedMember.activities?.length > 0 ? (
                       <div className="space-y-3">
-                        {selectedMember.activities.map((activity, idx) => (
-                          <Card key={idx} className="p-4">
-                            <div className="flex items-start justify-between">
-                              <div className="flex-1">
-                                <div className="flex items-center gap-2 mb-2">
-                                  <Badge className={getActivityColor(activity.activity_name)}>
-                                    {activity.activity_name}
-                                  </Badge>
-                                  {getStatusBadge(activity.status)}
+                        {/* Group activities by activity_id and show only the latest */}
+                        {(() => {
+                          const latestActivities = {};
+                          selectedMember.activities.forEach(act => {
+                            const existing = latestActivities[act.activity_id];
+                            if (!existing || new Date(act.end_date) > new Date(existing.end_date)) {
+                              latestActivities[act.activity_id] = act;
+                            }
+                          });
+                          return Object.values(latestActivities);
+                        })().map((activity, idx) => {
+                          const daysRemaining = getDaysRemaining(activity.end_date);
+                          const showRenewalBtn = needsRenewal(activity) || daysRemaining <= 0;
+                          const isExpired = daysRemaining !== null && daysRemaining <= 0;
+                          const isNearExpiry = daysRemaining !== null && daysRemaining > 0 && daysRemaining <= 7;
+                          
+                          return (
+                            <Card key={idx} className={`p-4 ${isNearExpiry ? 'border-amber-400 bg-amber-50/50' : ''} ${isExpired ? 'border-red-400 bg-red-50/50' : ''}`}>
+                              <div className="flex items-start justify-between">
+                                <div className="flex-1">
+                                  <div className="flex items-center gap-2 mb-2 flex-wrap">
+                                    <Badge className={getActivityColor(activity.activity_name)}>
+                                      {activity.activity_name}
+                                    </Badge>
+                                    {getStatusBadge(getActivityStatusFromDate(activity))}
+                                    
+                                    {/* Days remaining badge */}
+                                    {daysRemaining !== null && (
+                                      <Badge 
+                                        variant="outline" 
+                                        className={`${
+                                          daysRemaining <= 0 
+                                            ? 'bg-red-100 text-red-700 border-red-300' 
+                                            : daysRemaining <= 3 
+                                              ? 'bg-red-100 text-red-600 border-red-300'
+                                              : daysRemaining <= 7 
+                                                ? 'bg-amber-100 text-amber-700 border-amber-300' 
+                                                : 'bg-green-100 text-green-700 border-green-300'
+                                        }`}
+                                      >
+                                        <Clock className="w-3 h-3 me-1" />
+                                        {daysRemaining <= 0 
+                                          ? (language === 'ar' ? 'منتهي' : 'Expired')
+                                          : (language === 'ar' 
+                                              ? `${daysRemaining} يوم متبقي` 
+                                              : `${daysRemaining} days left`)}
+                                      </Badge>
+                                    )}
+                                  </div>
+                                  
+                                  <div className="grid grid-cols-2 gap-4 text-sm">
+                                    <div>
+                                      <span className="text-muted-foreground">{t('start_date')}: </span>
+                                      <span>{activity.start_date}</span>
+                                    </div>
+                                    <div>
+                                      <span className="text-muted-foreground">{t('end_date')}: </span>
+                                      <span>{activity.end_date}</span>
+                                    </div>
+                                    <div>
+                                      <span className="text-muted-foreground">{t('monthly_fee')}: </span>
+                                      <span>{activity.fee} {t('sar')}</span>
+                                    </div>
+                                  </div>
                                 </div>
-                                <div className="grid grid-cols-2 gap-4 text-sm">
-                                  <div>
-                                    <span className="text-muted-foreground">{t('start_date')}: </span>
-                                    <span>{activity.start_date}</span>
-                                  </div>
-                                  <div>
-                                    <span className="text-muted-foreground">{t('end_date')}: </span>
-                                    <span>{activity.end_date}</span>
-                                  </div>
-                                  <div>
-                                    <span className="text-muted-foreground">{t('monthly_fee')}: </span>
-                                    <span>{activity.fee} {t('sar')}</span>
-                                  </div>
-                                </div>
+                                
+                                {/* Renewal button */}
+                                {showRenewalBtn && (
+                                  <Button
+                                    size="sm"
+                                    variant={isExpired ? "default" : "outline"}
+                                    className={`ms-4 ${isExpired ? 'bg-red-500 hover:bg-red-600' : 'border-amber-500 text-amber-600 hover:bg-amber-50'}`}
+                                    onClick={() => openRenewalDialog(activity)}
+                                    data-testid={`renew-activity-${activity.activity_id}`}
+                                  >
+                                    <RefreshCcw className="w-4 h-4 me-1" />
+                                    {language === 'ar' ? 'تجديد' : 'Renew'}
+                                  </Button>
+                                )}
                               </div>
-                            </div>
-                          </Card>
-                        ))}
+                            </Card>
+                          );
+                        })}
                       </div>
                     ) : (
                       <div className="text-center py-8 text-muted-foreground">
