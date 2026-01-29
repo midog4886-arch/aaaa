@@ -397,6 +397,206 @@ export default function AccountingPage() {
     return { subtotal, tax, total: subtotal + tax };
   };
 
+  // ============ JOURNAL ENTRY HANDLERS ============
+  
+  // Add journal line
+  const addJournalLine = () => {
+    setJournalForm(prev => ({
+      ...prev,
+      lines: [...prev.lines, { account_id: '', debit: 0, credit: 0, description: '' }]
+    }));
+  };
+
+  // Remove journal line
+  const removeJournalLine = (index) => {
+    if (journalForm.lines.length <= 2) {
+      toast.error('يجب أن يحتوي القيد على سطرين على الأقل');
+      return;
+    }
+    setJournalForm(prev => ({
+      ...prev,
+      lines: prev.lines.filter((_, i) => i !== index)
+    }));
+  };
+
+  // Update journal line
+  const updateJournalLine = (index, field, value) => {
+    setJournalForm(prev => ({
+      ...prev,
+      lines: prev.lines.map((line, i) => i === index ? { ...line, [field]: value } : line)
+    }));
+  };
+
+  // Calculate journal totals
+  const calculateJournalTotals = () => {
+    const totalDebit = journalForm.lines.reduce((sum, l) => sum + (parseFloat(l.debit) || 0), 0);
+    const totalCredit = journalForm.lines.reduce((sum, l) => sum + (parseFloat(l.credit) || 0), 0);
+    return { totalDebit, totalCredit, isBalanced: Math.abs(totalDebit - totalCredit) < 0.01 };
+  };
+
+  // Save journal entry (create or update)
+  const handleSaveJournalEntry = async () => {
+    try {
+      const { totalDebit, totalCredit, isBalanced } = calculateJournalTotals();
+      
+      if (!journalForm.entry_date) {
+        toast.error('يرجى تحديد تاريخ القيد');
+        return;
+      }
+      if (!journalForm.description) {
+        toast.error('يرجى إدخال وصف القيد');
+        return;
+      }
+      if (!isBalanced) {
+        toast.error('القيد غير متوازن - إجمالي المدين يجب أن يساوي إجمالي الدائن');
+        return;
+      }
+      if (totalDebit === 0) {
+        toast.error('يرجى إدخال مبالغ في القيد');
+        return;
+      }
+      
+      // Validate lines
+      const validLines = journalForm.lines.filter(l => l.account_id && (l.debit > 0 || l.credit > 0));
+      if (validLines.length < 2) {
+        toast.error('يجب أن يحتوي القيد على سطرين على الأقل بمبالغ');
+        return;
+      }
+      
+      // Prepare lines with account info
+      const linesWithAccountInfo = validLines.map(line => {
+        const account = accounts.find(a => a.id === line.account_id);
+        return {
+          account_id: line.account_id,
+          account_code: account?.code || '',
+          account_name: account?.name_ar || '',
+          debit: parseFloat(line.debit) || 0,
+          credit: parseFloat(line.credit) || 0,
+          description: line.description || journalForm.description
+        };
+      });
+      
+      const data = {
+        entry_date: journalForm.entry_date,
+        description: journalForm.description,
+        reference_number: journalForm.reference_number,
+        journal_type: journalForm.journal_type,
+        lines: linesWithAccountInfo,
+        branch_id: selectedBranchId !== 'all' ? selectedBranchId : ''
+      };
+      
+      if (editingJournal) {
+        await journalEntriesAPI.update(editingJournal.id, data);
+        toast.success('تم تحديث القيد');
+      } else {
+        await journalEntriesAPI.create(data);
+        toast.success('تم إنشاء القيد');
+      }
+      
+      setIsJournalDialogOpen(false);
+      resetJournalForm();
+      fetchJournalEntries();
+    } catch (error) {
+      toast.error(error.response?.data?.detail || 'حدث خطأ');
+    }
+  };
+
+  // Reset journal form
+  const resetJournalForm = () => {
+    setJournalForm({
+      entry_date: new Date().toISOString().split('T')[0],
+      description: '',
+      reference_number: '',
+      journal_type: 'general',
+      lines: [
+        { account_id: '', debit: 0, credit: 0, description: '' },
+        { account_id: '', debit: 0, credit: 0, description: '' }
+      ]
+    });
+    setEditingJournal(null);
+  };
+
+  // Open journal for editing
+  const openEditJournal = (entry) => {
+    setEditingJournal(entry);
+    setJournalForm({
+      entry_date: entry.entry_date,
+      description: entry.description || '',
+      reference_number: entry.reference_number || '',
+      journal_type: entry.journal_type || 'general',
+      lines: entry.lines.map(l => ({
+        account_id: l.account_id,
+        debit: l.debit || 0,
+        credit: l.credit || 0,
+        description: l.description || ''
+      }))
+    });
+    setIsJournalDialogOpen(true);
+  };
+
+  // ============ EDIT PURCHASE INVOICE HANDLERS ============
+  
+  // Open purchase invoice for editing
+  const openEditPurchaseInvoice = (invoice) => {
+    setEditingPurchaseInvoice(invoice);
+    setPurchaseForm({
+      supplier_id: invoice.supplier_id,
+      supplier_invoice_number: invoice.supplier_invoice_number || '',
+      invoice_date: invoice.invoice_date,
+      due_date: invoice.due_date || '',
+      items: invoice.items.map(item => ({
+        product_id: item.product_id || '',
+        description: item.description,
+        quantity: item.quantity,
+        unit_price: item.unit_price,
+        tax_rate: item.tax_rate || 15
+      })),
+      payment_method: invoice.payment_method || 'credit',
+      notes: invoice.notes || '',
+      branch_id: invoice.branch_id || ''
+    });
+    setIsEditPurchaseDialogOpen(true);
+  };
+
+  // Save edited purchase invoice
+  const handleUpdatePurchaseInvoice = async () => {
+    try {
+      if (!editingPurchaseInvoice) return;
+      
+      if (!purchaseForm.supplier_id) {
+        toast.error('يرجى اختيار المورد');
+        return;
+      }
+      if (!purchaseForm.invoice_date) {
+        toast.error('يرجى تحديد تاريخ الفاتورة');
+        return;
+      }
+      if (purchaseForm.items.length === 0 || purchaseForm.items.every(i => !i.description)) {
+        toast.error('يرجى إضافة بند واحد على الأقل');
+        return;
+      }
+      
+      const dataToSend = {
+        ...purchaseForm,
+        branch_id: purchaseForm.branch_id || (selectedBranchId !== 'all' ? selectedBranchId : '')
+      };
+      
+      await purchaseInvoicesAPI.update(editingPurchaseInvoice.id, dataToSend);
+      toast.success('تم تحديث فاتورة المشتريات');
+      setIsEditPurchaseDialogOpen(false);
+      setEditingPurchaseInvoice(null);
+      setPurchaseForm({
+        supplier_id: '', supplier_invoice_number: '', invoice_date: '',
+        due_date: '', items: [{ product_id: '', description: '', quantity: 1, unit_price: 0, tax_rate: 15 }],
+        payment_method: 'credit', notes: '', branch_id: ''
+      });
+      fetchPurchaseInvoices();
+      fetchJournalEntries();
+    } catch (error) {
+      toast.error(error.response?.data?.detail || 'حدث خطأ في التحديث');
+    }
+  };
+
   // Render tabs
   const renderTabContent = () => {
     switch (activeTab) {
