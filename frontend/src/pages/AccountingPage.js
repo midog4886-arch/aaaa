@@ -98,6 +98,23 @@ export default function AccountingPage() {
     payment_date: '', payment_method: 'cash', reference: '', notes: ''
   });
 
+  // Journal form for manual entries
+  const [journalForm, setJournalForm] = useState({
+    entry_date: new Date().toISOString().split('T')[0],
+    description: '',
+    reference_number: '',
+    journal_type: 'general',
+    lines: [
+      { account_id: '', debit: 0, credit: 0, description: '' },
+      { account_id: '', debit: 0, credit: 0, description: '' }
+    ]
+  });
+  
+  // Edit states
+  const [editingJournal, setEditingJournal] = useState(null);
+  const [editingPurchaseInvoice, setEditingPurchaseInvoice] = useState(null);
+  const [isEditPurchaseDialogOpen, setIsEditPurchaseDialogOpen] = useState(false);
+
   // Fetch data
   const fetchAccounts = useCallback(async () => {
     try {
