@@ -1690,6 +1690,295 @@ export default function AccountingPage() {
           )}
         </DialogContent>
       </Dialog>
+
+      {/* Manual Journal Entry Dialog */}
+      <Dialog open={isJournalDialogOpen} onOpenChange={(open) => { 
+        if (!open) resetJournalForm(); 
+        setIsJournalDialogOpen(open); 
+      }}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <span className="text-purple-600">📝</span>
+              {editingJournal ? 'تعديل القيد المحاسبي' : 'قيد محاسبي يدوي جديد'}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            {/* Entry Header */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div>
+                <label className="text-sm font-medium">تاريخ القيد *</label>
+                <Input 
+                  type="date" 
+                  value={journalForm.entry_date} 
+                  onChange={e => setJournalForm(prev => ({ ...prev, entry_date: e.target.value }))}
+                  className="h-12"
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium">نوع اليومية</label>
+                <select 
+                  value={journalForm.journal_type} 
+                  onChange={e => setJournalForm(prev => ({ ...prev, journal_type: e.target.value }))}
+                  className="w-full border rounded p-2 h-12"
+                >
+                  {JOURNAL_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+                </select>
+              </div>
+              <div className="md:col-span-2">
+                <label className="text-sm font-medium">رقم المرجع</label>
+                <Input 
+                  value={journalForm.reference_number} 
+                  onChange={e => setJournalForm(prev => ({ ...prev, reference_number: e.target.value }))}
+                  placeholder="اختياري"
+                />
+              </div>
+            </div>
+            
+            <div>
+              <label className="text-sm font-medium">البيان / الوصف *</label>
+              <Input 
+                value={journalForm.description} 
+                onChange={e => setJournalForm(prev => ({ ...prev, description: e.target.value }))}
+                placeholder="وصف القيد المحاسبي"
+              />
+            </div>
+
+            {/* Journal Lines */}
+            <div>
+              <div className="flex justify-between items-center mb-2">
+                <label className="text-sm font-medium">بنود القيد</label>
+                <Button size="sm" variant="outline" onClick={addJournalLine}>
+                  + إضافة سطر
+                </Button>
+              </div>
+              <div className="border rounded overflow-hidden">
+                <table className="w-full">
+                  <thead className="bg-gray-100">
+                    <tr>
+                      <th className="p-2 text-right">الحساب</th>
+                      <th className="p-2 text-right">البيان</th>
+                      <th className="p-2 text-center w-32">مدين</th>
+                      <th className="p-2 text-center w-32">دائن</th>
+                      <th className="p-2 w-12"></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {journalForm.lines.map((line, idx) => (
+                      <tr key={idx} className="border-t">
+                        <td className="p-2">
+                          <select 
+                            value={line.account_id} 
+                            onChange={e => updateJournalLine(idx, 'account_id', e.target.value)}
+                            className="w-full border rounded p-1.5 text-sm"
+                          >
+                            <option value="">اختر الحساب</option>
+                            {accounts.filter(a => !a.is_parent).map(a => (
+                              <option key={a.id} value={a.id}>{a.code} - {a.name_ar}</option>
+                            ))}
+                          </select>
+                        </td>
+                        <td className="p-2">
+                          <Input 
+                            value={line.description} 
+                            onChange={e => updateJournalLine(idx, 'description', e.target.value)}
+                            placeholder="بيان السطر"
+                            className="text-sm"
+                          />
+                        </td>
+                        <td className="p-2">
+                          <Input 
+                            type="number" 
+                            min="0" 
+                            step="0.01"
+                            value={line.debit || ''} 
+                            onChange={e => {
+                              const val = parseFloat(e.target.value) || 0;
+                              updateJournalLine(idx, 'debit', val);
+                              if (val > 0) updateJournalLine(idx, 'credit', 0);
+                            }}
+                            className="text-center text-sm"
+                          />
+                        </td>
+                        <td className="p-2">
+                          <Input 
+                            type="number" 
+                            min="0" 
+                            step="0.01"
+                            value={line.credit || ''} 
+                            onChange={e => {
+                              const val = parseFloat(e.target.value) || 0;
+                              updateJournalLine(idx, 'credit', val);
+                              if (val > 0) updateJournalLine(idx, 'debit', 0);
+                            }}
+                            className="text-center text-sm"
+                          />
+                        </td>
+                        <td className="p-2">
+                          {journalForm.lines.length > 2 && (
+                            <Button variant="ghost" size="sm" onClick={() => removeJournalLine(idx)} className="text-red-600">✕</Button>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot className="bg-gray-50 font-bold">
+                    <tr>
+                      <td colSpan="2" className="p-2 text-left">المجموع</td>
+                      <td className="p-2 text-center">{calculateJournalTotals().totalDebit.toFixed(2)}</td>
+                      <td className="p-2 text-center">{calculateJournalTotals().totalCredit.toFixed(2)}</td>
+                      <td></td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            </div>
+
+            {/* Balance Check */}
+            <div className={`p-3 rounded-lg text-center ${calculateJournalTotals().isBalanced ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+              {calculateJournalTotals().isBalanced 
+                ? '✓ القيد متوازن' 
+                : `✗ القيد غير متوازن - الفرق: ${Math.abs(calculateJournalTotals().totalDebit - calculateJournalTotals().totalCredit).toFixed(2)} ر.س`}
+            </div>
+            
+            <div className="flex gap-2 justify-end">
+              <Button variant="outline" onClick={() => { resetJournalForm(); setIsJournalDialogOpen(false); }}>إلغاء</Button>
+              <Button onClick={handleSaveJournalEntry} className="bg-purple-600 hover:bg-purple-700" disabled={!calculateJournalTotals().isBalanced}>
+                {editingJournal ? 'تحديث القيد' : 'حفظ القيد'}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Purchase Invoice Dialog */}
+      <Dialog open={isEditPurchaseDialogOpen} onOpenChange={(open) => {
+        if (!open) {
+          setEditingPurchaseInvoice(null);
+          setPurchaseForm({
+            supplier_id: '', supplier_invoice_number: '', invoice_date: '',
+            due_date: '', items: [{ product_id: '', description: '', quantity: 1, unit_price: 0, tax_rate: 15 }],
+            payment_method: 'credit', notes: '', branch_id: ''
+          });
+        }
+        setIsEditPurchaseDialogOpen(open);
+      }}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>تعديل فاتورة المشتريات - {editingPurchaseInvoice?.invoice_number}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            {/* Same form as create but for editing */}
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="text-sm font-medium">المورد *</label>
+                <select value={purchaseForm.supplier_id} onChange={e => setPurchaseForm(prev => ({ ...prev, supplier_id: e.target.value }))} className="w-full border rounded p-2">
+                  <option value="">اختر المورد</option>
+                  {suppliers.map(s => <option key={s.id} value={s.id}>{s.name_ar}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="text-sm font-medium">رقم فاتورة المورد</label>
+                <Input value={purchaseForm.supplier_invoice_number} onChange={e => setPurchaseForm(prev => ({ ...prev, supplier_invoice_number: e.target.value }))} />
+              </div>
+            </div>
+            <div className="grid grid-cols-3 gap-4">
+              <div>
+                <label className="text-sm font-medium">تاريخ الفاتورة *</label>
+                <Input type="date" value={purchaseForm.invoice_date} onChange={e => setPurchaseForm(prev => ({ ...prev, invoice_date: e.target.value }))} className="h-12" />
+              </div>
+              <div>
+                <label className="text-sm font-medium">تاريخ الاستحقاق</label>
+                <Input type="date" value={purchaseForm.due_date} onChange={e => setPurchaseForm(prev => ({ ...prev, due_date: e.target.value }))} className="h-12" />
+              </div>
+              <div>
+                <label className="text-sm font-medium">طريقة الدفع</label>
+                <select value={purchaseForm.payment_method} onChange={e => setPurchaseForm(prev => ({ ...prev, payment_method: e.target.value }))} className="w-full border rounded p-2">
+                  <option value="cash">نقدي</option>
+                  <option value="credit">آجل</option>
+                </select>
+              </div>
+            </div>
+            
+            {/* Items Table */}
+            <div>
+              <div className="flex justify-between items-center mb-2">
+                <label className="text-sm font-medium">بنود الفاتورة</label>
+                <Button size="sm" variant="outline" onClick={addPurchaseItem}>+ إضافة بند</Button>
+              </div>
+              <div className="border rounded overflow-x-auto">
+                <table className="w-full">
+                  <thead className="bg-gray-100">
+                    <tr>
+                      <th className="p-2 text-right min-w-[200px]">الوصف</th>
+                      <th className="p-2 text-center w-24">الكمية</th>
+                      <th className="p-2 text-center w-28">السعر</th>
+                      <th className="p-2 text-center w-20">الضريبة %</th>
+                      <th className="p-2 text-center w-28">الإجمالي</th>
+                      <th className="p-2 w-12"></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {purchaseForm.items.map((item, idx) => {
+                      const itemSubtotal = item.quantity * item.unit_price;
+                      const itemTax = itemSubtotal * (item.tax_rate / 100);
+                      const itemTotal = itemSubtotal + itemTax;
+                      return (
+                        <tr key={idx} className="border-t">
+                          <td className="p-2">
+                            <Input value={item.description} onChange={e => updatePurchaseItem(idx, 'description', e.target.value)} placeholder="وصف البند" className="text-sm" />
+                          </td>
+                          <td className="p-2">
+                            <Input type="number" min="1" value={item.quantity} onChange={e => updatePurchaseItem(idx, 'quantity', parseInt(e.target.value) || 1)} className="text-center text-sm" />
+                          </td>
+                          <td className="p-2">
+                            <Input type="number" min="0" step="0.01" value={item.unit_price} onChange={e => updatePurchaseItem(idx, 'unit_price', parseFloat(e.target.value) || 0)} className="text-center text-sm" />
+                          </td>
+                          <td className="p-2">
+                            <Input type="number" min="0" max="100" value={item.tax_rate} onChange={e => updatePurchaseItem(idx, 'tax_rate', parseFloat(e.target.value) || 0)} className="text-center text-sm" />
+                          </td>
+                          <td className="p-2 text-center font-semibold">{itemTotal.toFixed(2)}</td>
+                          <td className="p-2">
+                            {purchaseForm.items.length > 1 && (
+                              <Button variant="ghost" size="sm" onClick={() => removePurchaseItem(idx)} className="text-red-600">✕</Button>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+            
+            {/* Totals */}
+            <div className="bg-gray-50 p-4 rounded-lg">
+              <div className="flex justify-between py-1">
+                <span>المجموع الفرعي:</span>
+                <span>{calculatePurchaseTotals().subtotal.toFixed(2)} ر.س</span>
+              </div>
+              <div className="flex justify-between py-1">
+                <span>ضريبة القيمة المضافة:</span>
+                <span>{calculatePurchaseTotals().tax.toFixed(2)} ر.س</span>
+              </div>
+              <div className="flex justify-between py-1 font-bold text-lg border-t pt-2">
+                <span>الإجمالي:</span>
+                <span>{calculatePurchaseTotals().total.toFixed(2)} ر.س</span>
+              </div>
+            </div>
+            
+            <div>
+              <label className="text-sm font-medium">ملاحظات</label>
+              <textarea value={purchaseForm.notes} onChange={e => setPurchaseForm(prev => ({ ...prev, notes: e.target.value }))} className="w-full border rounded p-2" rows="2" />
+            </div>
+            
+            <div className="flex gap-2 justify-end">
+              <Button variant="outline" onClick={() => setIsEditPurchaseDialogOpen(false)}>إلغاء</Button>
+              <Button onClick={handleUpdatePurchaseInvoice} className="bg-blue-600 hover:bg-blue-700">تحديث الفاتورة</Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </Layout>
   );
 }
