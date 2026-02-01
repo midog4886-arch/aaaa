@@ -3930,7 +3930,6 @@ async def check_subscription_renewals(current_user: dict = Depends(get_current_u
         raise HTTPException(status_code=403, detail="Admin access required")
     
     today = datetime.now(timezone.utc).date()
-    reminder_days = [7, 3, 1]  # Send reminders 7, 3, and 1 day before expiry
     
     members = await db.members.find({}, {"_id": 0}).to_list(10000)
     
@@ -3948,13 +3947,12 @@ async def check_subscription_renewals(current_user: dict = Depends(get_current_u
             
             days_until_expiry = (end_date - today).days
             
-            # Check if we should send a reminder
-            if days_until_expiry in reminder_days or days_until_expiry == 0:
+            # Create notification for subscriptions expiring within 7 days
+            if days_until_expiry <= 7 and days_until_expiry >= 0:
                 # Check if notification already exists for this activity and date
                 existing = await db.notifications.find_one({
                     "related_entity_type": "activity",
                     "related_entity_id": f"{member['id']}_{activity['activity_id']}_{activity['end_date']}",
-                    "days_before_expiry": days_until_expiry
                 })
                 
                 if existing:
@@ -3967,6 +3965,9 @@ async def check_subscription_renewals(current_user: dict = Depends(get_current_u
                 elif days_until_expiry == 1:
                     title = f"🔴 تنبيه: اشتراك ينتهي غداً!"
                     message = f"اشتراك {member.get('name_ar', member.get('name', ''))} في {activity['activity_name']} ينتهي غداً"
+                elif days_until_expiry <= 3:
+                    title = f"🟠 تنبيه: اشتراك ينتهي قريباً!"
+                    message = f"اشتراك {member.get('name_ar', member.get('name', ''))} في {activity['activity_name']} ينتهي خلال {days_until_expiry} أيام ({activity['end_date']})"
                 else:
                     title = f"🔔 تذكير بتجديد الاشتراك"
                     message = f"اشتراك {member.get('name_ar', member.get('name', ''))} في {activity['activity_name']} ينتهي خلال {days_until_expiry} أيام ({activity['end_date']})"
