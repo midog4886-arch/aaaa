@@ -3830,6 +3830,226 @@ async def get_supplier_payments(
     payments = await db.supplier_payments.find(query, {"_id": 0}).sort("payment_date", -1).to_list(1000)
     return payments
 
+# ============ NOTIFICATIONS SYSTEM ============
+
+class NotificationCreate(BaseModel):
+    title: str
+    message: str
+    notification_type: str = "renewal_reminder"  # renewal_reminder, payment_due, general
+    target_type: str = "member"  # member, user, all
+    target_id: Optional[str] = None
+    related_entity_type: Optional[str] = None  # member, invoice, activity
+    related_entity_id: Optional[str] = None
+    action_url: Optional[str] = None
+
+@api_router.get("/notifications")
+async def get_notifications(
+    is_read: Optional[bool] = None,
+    notification_type: Optional[str] = None,
+    limit: int = 50,
+    current_user: dict = Depends(get_current_user)
+):
+    """Get notifications for the current user"""
+    query = {}
+    
+    # Filter by user's branch if not admin
+    is_admin = current_user.get("is_admin", False)
+    if not is_admin and current_user.get("branch_id"):
+        query["$or"] = [
+            {"branch_id": current_user["branch_id"]},
+            {"branch_id": None},
+            {"branch_id": ""}
+        ]
+    
+    if is_read is not None:
+        query["is_read"] = is_read
+    if notification_type:
+        query["notification_type"] = notification_type
+    
+    notifications = await db.notifications.find(query, {"_id": 0}).sort("created_at", -1).limit(limit).to_list(limit)
+    return notifications
+
+@api_router.get("/notifications/unread-count")
+async def get_unread_count(current_user: dict = Depends(get_current_user)):
+    """Get count of unread notifications"""
+    query = {"is_read": False}
+    
+    is_admin = current_user.get("is_admin", False)
+    if not is_admin and current_user.get("branch_id"):
+        query["$or"] = [
+            {"branch_id": current_user["branch_id"]},
+            {"branch_id": None},
+            {"branch_id": ""}
+        ]
+    
+    count = await db.notifications.count_documents(query)
+    return {"count": count}
+
+@api_router.put("/notifications/{notification_id}/read")
+async def mark_notification_read(notification_id: str, current_user: dict = Depends(get_current_user)):
+    """Mark a notification as read"""
+    result = await db.notifications.update_one(
+        {"id": notification_id},
+        {"$set": {"is_read": True, "read_at": datetime.now(timezone.utc).isoformat()}}
+    )
+    if result.modified_count == 0:
+        raise HTTPException(status_code=404, detail="Notification not found")
+    return {"message": "تم تحديث الإشعار"}
+
+@api_router.put("/notifications/mark-all-read")
+async def mark_all_notifications_read(current_user: dict = Depends(get_current_user)):
+    """Mark all notifications as read"""
+    query = {"is_read": False}
+    
+    is_admin = current_user.get("is_admin", False)
+    if not is_admin and current_user.get("branch_id"):
+        query["$or"] = [
+            {"branch_id": current_user["branch_id"]},
+            {"branch_id": None},
+            {"branch_id": ""}
+        ]
+    
+    result = await db.notifications.update_many(
+        query,
+        {"$set": {"is_read": True, "read_at": datetime.now(timezone.utc).isoformat()}}
+    )
+    return {"message": f"تم تحديث {result.modified_count} إشعار"}
+
+@api_router.delete("/notifications/{notification_id}")
+async def delete_notification(notification_id: str, current_user: dict = Depends(get_current_user)):
+    """Delete a notification"""
+    result = await db.notifications.delete_one({"id": notification_id})
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Notification not found")
+    return {"message": "تم حذف الإشعار"}
+
+@api_router.post("/notifications/check-renewals")
+async def check_subscription_renewals(current_user: dict = Depends(get_current_user)):
+    """Check for subscriptions expiring soon and create notifications"""
+    if not current_user.get("is_admin"):
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    today = datetime.now(timezone.utc).date()
+    reminder_days = [7, 3, 1]  # Send reminders 7, 3, and 1 day before expiry
+    
+    members = await db.members.find({}, {"_id": 0}).to_list(10000)
+    
+    notifications_created = 0
+    
+    for member in members:
+        for activity in member.get("activities", []):
+            if not activity.get("end_date"):
+                continue
+            
+            try:
+                end_date = datetime.strptime(activity["end_date"], "%Y-%m-%d").date()
+            except:
+                continue
+            
+            days_until_expiry = (end_date - today).days
+            
+            # Check if we should send a reminder
+            if days_until_expiry in reminder_days or days_until_expiry == 0:
+                # Check if notification already exists for this activity and date
+                existing = await db.notifications.find_one({
+                    "related_entity_type": "activity",
+                    "related_entity_id": f"{member['id']}_{activity['activity_id']}_{activity['end_date']}",
+                    "days_before_expiry": days_until_expiry
+                })
+                
+                if existing:
+                    continue
+                
+                # Create notification
+                if days_until_expiry == 0:
+                    title = f"⚠️ اشتراك منتهي اليوم!"
+                    message = f"اشتراك {member.get('name_ar', member.get('name', ''))} في {activity['activity_name']} ينتهي اليوم"
+                elif days_until_expiry == 1:
+                    title = f"🔴 تنبيه: اشتراك ينتهي غداً!"
+                    message = f"اشتراك {member.get('name_ar', member.get('name', ''))} في {activity['activity_name']} ينتهي غداً"
+                else:
+                    title = f"🔔 تذكير بتجديد الاشتراك"
+                    message = f"اشتراك {member.get('name_ar', member.get('name', ''))} في {activity['activity_name']} ينتهي خلال {days_until_expiry} أيام ({activity['end_date']})"
+                
+                notification = {
+                    "id": str(uuid.uuid4()),
+                    "title": title,
+                    "message": message,
+                    "notification_type": "renewal_reminder",
+                    "target_type": "user",
+                    "target_id": None,
+                    "related_entity_type": "activity",
+                    "related_entity_id": f"{member['id']}_{activity['activity_id']}_{activity['end_date']}",
+                    "member_id": member["id"],
+                    "member_name": member.get("name_ar", member.get("name", "")),
+                    "member_phone": member.get("phone", ""),
+                    "activity_name": activity["activity_name"],
+                    "end_date": activity["end_date"],
+                    "days_before_expiry": days_until_expiry,
+                    "action_url": f"/members?search={member.get('name_ar', '')}",
+                    "is_read": False,
+                    "branch_id": member.get("branch_id"),
+                    "created_at": datetime.now(timezone.utc).isoformat()
+                }
+                
+                await db.notifications.insert_one(notification)
+                notifications_created += 1
+    
+    return {"message": f"تم إنشاء {notifications_created} إشعار جديد", "count": notifications_created}
+
+@api_router.get("/notifications/expiring-subscriptions")
+async def get_expiring_subscriptions(
+    days: int = 7,
+    branch_filter: Optional[str] = None,
+    current_user: dict = Depends(get_current_user)
+):
+    """Get list of subscriptions expiring within specified days"""
+    today = datetime.now(timezone.utc).date()
+    target_date = today + timedelta(days=days)
+    
+    members = await db.members.find({}, {"_id": 0}).to_list(10000)
+    
+    expiring = []
+    
+    for member in members:
+        # Filter by branch if specified
+        if branch_filter and branch_filter != "all" and member.get("branch_id") != branch_filter:
+            continue
+        
+        for activity in member.get("activities", []):
+            if not activity.get("end_date"):
+                continue
+            
+            try:
+                end_date = datetime.strptime(activity["end_date"], "%Y-%m-%d").date()
+            except:
+                continue
+            
+            days_until_expiry = (end_date - today).days
+            
+            if 0 <= days_until_expiry <= days:
+                expiring.append({
+                    "member_id": member["id"],
+                    "member_name": member.get("name_ar", member.get("name", "")),
+                    "member_phone": member.get("phone", ""),
+                    "activity_id": activity.get("activity_id"),
+                    "activity_name": activity.get("activity_name"),
+                    "start_date": activity.get("start_date"),
+                    "end_date": activity.get("end_date"),
+                    "days_remaining": days_until_expiry,
+                    "fee": activity.get("fee", 0),
+                    "branch_id": member.get("branch_id"),
+                    "status": "expired" if days_until_expiry <= 0 else "expiring_soon"
+                })
+    
+    # Sort by days remaining
+    expiring.sort(key=lambda x: x["days_remaining"])
+    
+    return {
+        "total": len(expiring),
+        "subscriptions": expiring
+    }
+
 # ============ JOURNAL ENTRIES ROUTES ============
 
 @api_router.get("/journal-entries")
