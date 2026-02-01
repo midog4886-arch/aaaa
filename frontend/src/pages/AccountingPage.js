@@ -13,7 +13,8 @@ import {
   journalEntriesAPI,
   accountingReportsAPI,
   productsAPI,
-  exportAccountingAPI
+  exportAccountingAPI,
+  reportsAPI
 } from '../services/api';
 
 // Tab components
