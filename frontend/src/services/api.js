@@ -208,6 +208,17 @@ export const exportAccountingAPI = {
   vat: (params = {}) => `${API}/export/vat?${new URLSearchParams(params).toString()}`,
 };
 
+// Notifications API
+export const notificationsAPI = {
+  getAll: (params = {}) => axios.get(`${API}/notifications`, { params }),
+  getUnreadCount: () => axios.get(`${API}/notifications/unread-count`),
+  markAsRead: (id) => axios.put(`${API}/notifications/${id}/read`),
+  markAllAsRead: () => axios.put(`${API}/notifications/mark-all-read`),
+  delete: (id) => axios.delete(`${API}/notifications/${id}`),
+  checkRenewals: () => axios.post(`${API}/notifications/check-renewals`),
+  getExpiringSubscriptions: (params = {}) => axios.get(`${API}/notifications/expiring-subscriptions`, { params }),
+};
+
 export default {
   auth: authAPI,
   activities: activitiesAPI,
@@ -227,6 +238,7 @@ export default {
   journalEntries: journalEntriesAPI,
   accountingReports: accountingReportsAPI,
   exportAccounting: exportAccountingAPI,
+  notifications: notificationsAPI,
   get: (url) => axios.get(`${API}${url}`),
   post: (url, data) => axios.post(`${API}${url}`, data),
   put: (url, data) => axios.put(`${API}${url}`, data),
