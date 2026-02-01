@@ -978,7 +978,7 @@ async def create_invoice(invoice: InvoiceCreate, current_user: dict = Depends(ge
     customer_phone = invoice.customer_phone or (member.get("phone", "") if member else "")
     customer_address = invoice.customer_address or ""
     
-    # Generate sequential invoice number starting from 202601
+    # Generate sequential invoice number starting from 26001
     last_invoice = await db.invoices.find_one(
         {"invoice_number": {"$exists": True}},
         sort=[("created_at", -1)]  # Sort by date to get the latest
@@ -990,16 +990,16 @@ async def create_invoice(invoice: InvoiceCreate, current_user: dict = Depends(ge
             # Extract number from INV-XXXXX format
             try:
                 num_part = int(inv_num.replace("INV-", ""))
-                next_number = max(num_part + 1, 202601)
+                next_number = max(num_part + 1, 26001)
             except ValueError:
-                next_number = 202601
+                next_number = 26001
         else:
             try:
                 next_number = int(inv_num) + 1
             except ValueError:
-                next_number = 202601
+                next_number = 26001
     else:
-        next_number = 202601
+        next_number = 26001
     
     invoice_id = str(uuid.uuid4())
     
