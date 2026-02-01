@@ -2818,7 +2818,6 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
                       <span>{t('total')}:</span>
                       <span>{(regFormItems.reduce((sum, i) => sum + ((i.fee || 0) * (i.quantity || 1)), 0) - regFormDiscount - regFormCouponDiscount).toFixed(2)} {t('sar')}</span>
                     </div>
-                    <p className="text-xs text-muted-foreground text-center">{language === 'ar' ? '* الأسعار لا تشمل ضريبة القيمة المضافة' : '* Prices exclude VAT'}</p>
                   </div>
                 </div>
               )}
