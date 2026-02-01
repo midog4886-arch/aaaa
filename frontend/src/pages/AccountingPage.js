@@ -226,9 +226,9 @@ export default function AccountingPage() {
   useEffect(() => {
     if (activeTab === TABS.PURCHASES) fetchPurchaseInvoices();
     if (activeTab === TABS.JOURNAL) fetchJournalEntries();
-    if (activeTab === TABS.REPORTS) fetchSalesReport();
+    if (activeTab === TABS.REPORTS) { fetchSalesReport(); fetchFinancialReport(); }
     if (activeTab === TABS.VAT) fetchVatReport();
-  }, [activeTab, fetchPurchaseInvoices, fetchJournalEntries, fetchSalesReport, fetchVatReport]);
+  }, [activeTab, fetchPurchaseInvoices, fetchJournalEntries, fetchSalesReport, fetchVatReport, fetchFinancialReport]);
 
   // Account handlers
   const handleSaveAccount = async () => {
