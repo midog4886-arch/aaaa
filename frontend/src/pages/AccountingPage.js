@@ -55,6 +55,7 @@ export default function AccountingPage() {
   const [products, setProducts] = useState([]);
   const [salesReport, setSalesReport] = useState(null);
   const [vatReport, setVatReport] = useState(null);
+  const [financialReport, setFinancialReport] = useState(null);
   const [loading, setLoading] = useState(false);
   
   // Dialog states
