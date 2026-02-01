@@ -4,7 +4,7 @@ import { useLanguage } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/AuthContext';
 import { Button } from './ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
-import { branchesAPI } from '../services/api';
+import { branchesAPI, notificationsAPI } from '../services/api';
 import { 
   LayoutDashboard, 
   Users, 
@@ -22,7 +22,12 @@ import {
   Building2,
   Package,
   GitBranch,
-  Calculator
+  Calculator,
+  Bell,
+  RefreshCcw,
+  CheckCheck,
+  Clock,
+  AlertTriangle
 } from 'lucide-react';
 
 export const Sidebar = ({ isOpen, onClose }) => {
