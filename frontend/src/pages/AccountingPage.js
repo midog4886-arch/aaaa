@@ -1185,6 +1185,79 @@ export default function AccountingPage() {
           </>
         )}
       </div>
+
+      {/* Refunds Section */}
+      <div className="mt-4 border rounded-lg p-6 bg-white">
+        <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
+          <span className="text-red-500">↩️</span> المسترجعات (Credit Notes)
+        </h3>
+        
+        {financialReport ? (
+          <>
+            {/* Refunds Summary */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+              <div className="bg-red-50 p-4 rounded-lg text-center">
+                <div className="text-sm text-gray-600">إجمالي المسترجعات</div>
+                <div className="text-xl font-bold text-red-600">{(financialReport.total_refunds || 0).toLocaleString()} ر.س</div>
+              </div>
+              <div className="bg-gray-50 p-4 rounded-lg text-center">
+                <div className="text-sm text-gray-600">عدد المسترجعات</div>
+                <div className="text-xl font-bold">{financialReport.refund_count || 0}</div>
+              </div>
+              <div className="bg-green-50 p-4 rounded-lg text-center">
+                <div className="text-sm text-gray-600">صافي الإيرادات</div>
+                <div className="text-xl font-bold text-green-600">{(financialReport.net_revenue || 0).toLocaleString()} ر.س</div>
+              </div>
+              <div className="bg-blue-50 p-4 rounded-lg text-center">
+                <div className="text-sm text-gray-600">نسبة الاسترجاع</div>
+                <div className="text-xl font-bold text-blue-600">
+                  {financialReport.total_revenue > 0 
+                    ? ((financialReport.total_refunds / financialReport.total_revenue) * 100).toFixed(1) 
+                    : 0}%
+                </div>
+              </div>
+            </div>
+
+            {/* Refund Details */}
+            {financialReport.refund_details && financialReport.refund_details.length > 0 && (
+              <div className="overflow-x-auto">
+                <table className="w-full border rounded">
+                  <thead className="bg-gray-100">
+                    <tr>
+                      <th className="p-2 text-right">رقم الإشعار</th>
+                      <th className="p-2 text-right">رقم الفاتورة الأصلية</th>
+                      <th className="p-2 text-right">العميل</th>
+                      <th className="p-2 text-right">المبلغ المسترجع</th>
+                      <th className="p-2 text-right">التاريخ</th>
+                      <th className="p-2 text-right">بواسطة</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {financialReport.refund_details.map((refund, idx) => (
+                      <tr key={idx} className="border-t hover:bg-gray-50">
+                        <td className="p-2 font-mono text-sm">{refund.credit_note_number}</td>
+                        <td className="p-2 font-mono text-sm">{refund.original_invoice_number}</td>
+                        <td className="p-2">{refund.customer_name}</td>
+                        <td className="p-2 font-bold text-red-600">{refund.refund_amount?.toLocaleString()} ر.س</td>
+                        <td className="p-2">{refund.created_at?.split('T')[0]}</td>
+                        <td className="p-2 text-sm text-gray-500">{refund.created_by}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {(!financialReport.refund_details || financialReport.refund_details.length === 0) && (
+              <div className="text-center py-6 text-gray-500 bg-gray-50 rounded-lg">
+                لا توجد مسترجعات في هذه الفترة
+              </div>
+            )}
+          </>
+        ) : (
+          <div className="text-center py-6 text-gray-500">جاري التحميل...</div>
+        )}
+      </div>
       
       {/* Purchases Export */}
       <div className="mt-4 border rounded-lg p-6 bg-white">
