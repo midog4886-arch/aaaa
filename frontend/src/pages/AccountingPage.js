@@ -205,6 +205,19 @@ export default function AccountingPage() {
     }
   }, [selectedBranchId, dateFilter]);
 
+  const fetchFinancialReport = useCallback(async () => {
+    try {
+      const params = {};
+      if (selectedBranchId && selectedBranchId !== 'all') params.branch_id = selectedBranchId;
+      if (dateFilter.start) params.start_date = dateFilter.start;
+      if (dateFilter.end) params.end_date = dateFilter.end;
+      const res = await reportsAPI.getFinancial(params);
+      setFinancialReport(res.data);
+    } catch (error) {
+      console.error('Error fetching financial report:', error);
+    }
+  }, [selectedBranchId, dateFilter]);
+
   useEffect(() => {
     setLoading(true);
     Promise.all([fetchAccounts(), fetchSuppliers(), fetchProducts()]).finally(() => setLoading(false));
