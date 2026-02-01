@@ -188,7 +188,85 @@ export const Sidebar = ({ isOpen, onClose }) => {
 };
 
 export const TopHeader = ({ onMenuClick, title }) => {
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
+  const { user } = useAuth();
+  const navigate = useNavigate();
+  const [notifications, setNotifications] = useState([]);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [showNotifications, setShowNotifications] = useState(false);
+  const [checkingRenewals, setCheckingRenewals] = useState(false);
+
+  const isAdmin = user?.is_admin;
+
+  useEffect(() => {
+    loadNotifications();
+    // Refresh every 5 minutes
+    const interval = setInterval(loadNotifications, 5 * 60 * 1000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const loadNotifications = async () => {
+    try {
+      const [notifRes, countRes] = await Promise.all([
+        notificationsAPI.getAll({ limit: 20 }),
+        notificationsAPI.getUnreadCount()
+      ]);
+      setNotifications(notifRes.data || []);
+      setUnreadCount(countRes.data?.count || 0);
+    } catch (error) {
+      console.error('Failed to load notifications:', error);
+    }
+  };
+
+  const handleCheckRenewals = async () => {
+    setCheckingRenewals(true);
+    try {
+      const res = await notificationsAPI.checkRenewals();
+      await loadNotifications();
+      if (res.data?.count > 0) {
+        alert(`تم إنشاء ${res.data.count} إشعار جديد`);
+      } else {
+        alert('لا توجد اشتراكات تحتاج تنبيه حالياً');
+      }
+    } catch (error) {
+      console.error('Failed to check renewals:', error);
+      alert('حدث خطأ');
+    } finally {
+      setCheckingRenewals(false);
+    }
+  };
+
+  const handleMarkAsRead = async (notificationId) => {
+    try {
+      await notificationsAPI.markAsRead(notificationId);
+      await loadNotifications();
+    } catch (error) {
+      console.error('Failed to mark notification as read:', error);
+    }
+  };
+
+  const handleMarkAllAsRead = async () => {
+    try {
+      await notificationsAPI.markAllAsRead();
+      await loadNotifications();
+    } catch (error) {
+      console.error('Failed to mark all as read:', error);
+    }
+  };
+
+  const handleNotificationClick = (notification) => {
+    handleMarkAsRead(notification.id);
+    if (notification.action_url) {
+      navigate(notification.action_url);
+    }
+    setShowNotifications(false);
+  };
+
+  const getNotificationIcon = (type, daysRemaining) => {
+    if (daysRemaining === 0) return <AlertTriangle className="w-4 h-4 text-red-500" />;
+    if (daysRemaining === 1) return <AlertTriangle className="w-4 h-4 text-orange-500" />;
+    return <Clock className="w-4 h-4 text-yellow-500" />;
+  };
   
   return (
     <header className="top-header">
@@ -200,6 +278,96 @@ export const TopHeader = ({ onMenuClick, title }) => {
           <Menu className="w-5 h-5" />
         </button>
         <h2 className="text-xl font-bold">{title || t('dashboard')}</h2>
+      </div>
+
+      <div className="flex items-center gap-2">
+        {/* Check Renewals Button (Admin only) */}
+        {isAdmin && (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleCheckRenewals}
+            disabled={checkingRenewals}
+            title={language === 'ar' ? 'فحص الاشتراكات' : 'Check Renewals'}
+          >
+            <RefreshCcw className={`w-4 h-4 ${checkingRenewals ? 'animate-spin' : ''}`} />
+          </Button>
+        )}
+
+        {/* Notifications Bell */}
+        <div className="relative">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setShowNotifications(!showNotifications)}
+            className="relative"
+          >
+            <Bell className="w-4 h-4" />
+            {unreadCount > 0 && (
+              <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white text-xs rounded-full flex items-center justify-center">
+                {unreadCount > 9 ? '9+' : unreadCount}
+              </span>
+            )}
+          </Button>
+
+          {/* Notifications Dropdown */}
+          {showNotifications && (
+            <div className="absolute left-0 top-full mt-2 w-96 max-h-[70vh] bg-white rounded-lg shadow-xl border overflow-hidden z-50" style={{ right: 'auto', left: language === 'ar' ? 'auto' : '0', [language === 'ar' ? 'left' : 'right']: '0' }}>
+              <div className="p-3 border-b bg-gray-50 flex justify-between items-center">
+                <h3 className="font-bold flex items-center gap-2">
+                  <Bell className="w-4 h-4" />
+                  {language === 'ar' ? 'الإشعارات' : 'Notifications'}
+                </h3>
+                {unreadCount > 0 && (
+                  <Button variant="ghost" size="sm" onClick={handleMarkAllAsRead}>
+                    <CheckCheck className="w-4 h-4 me-1" />
+                    {language === 'ar' ? 'قراءة الكل' : 'Mark all read'}
+                  </Button>
+                )}
+              </div>
+              
+              <div className="overflow-y-auto max-h-96">
+                {notifications.length > 0 ? (
+                  notifications.map((notif) => (
+                    <div
+                      key={notif.id}
+                      onClick={() => handleNotificationClick(notif)}
+                      className={`p-3 border-b hover:bg-gray-50 cursor-pointer transition-colors ${!notif.is_read ? 'bg-blue-50' : ''}`}
+                    >
+                      <div className="flex items-start gap-3">
+                        <div className="mt-1">
+                          {getNotificationIcon(notif.notification_type, notif.days_before_expiry)}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className={`text-sm ${!notif.is_read ? 'font-semibold' : ''}`}>
+                            {notif.title}
+                          </p>
+                          <p className="text-xs text-gray-600 mt-1 line-clamp-2">
+                            {notif.message}
+                          </p>
+                          <div className="flex items-center gap-2 mt-2 text-xs text-gray-400">
+                            <span>{notif.created_at?.split('T')[0]}</span>
+                            {notif.member_phone && (
+                              <span className="bg-gray-100 px-2 py-0.5 rounded">{notif.member_phone}</span>
+                            )}
+                          </div>
+                        </div>
+                        {!notif.is_read && (
+                          <span className="w-2 h-2 bg-blue-500 rounded-full mt-2"></span>
+                        )}
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <div className="p-8 text-center text-gray-500">
+                    <Bell className="w-12 h-12 mx-auto mb-3 opacity-30" />
+                    <p>{language === 'ar' ? 'لا توجد إشعارات' : 'No notifications'}</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
       </div>
     </header>
   );
