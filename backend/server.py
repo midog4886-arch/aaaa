@@ -45,6 +45,9 @@ app = FastAPI(title="Champions Academy API")
 api_router = APIRouter(prefix="/api")
 security = HTTPBearer()
 
+# Mount uploads directory for serving images
+app.mount("/uploads", StaticFiles(directory=str(UPLOADS_DIR)), name="uploads")
+
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
