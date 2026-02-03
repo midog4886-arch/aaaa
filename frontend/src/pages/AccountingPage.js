@@ -59,6 +59,9 @@ export default function AccountingPage() {
   const [salesReport, setSalesReport] = useState(null);
   const [vatReport, setVatReport] = useState(null);
   const [financialReport, setFinancialReport] = useState(null);
+  const [internalExpenses, setInternalExpenses] = useState([]);
+  const [expenseTypes, setExpenseTypes] = useState([]);
+  const [expensesSummary, setExpensesSummary] = useState(null);
   const [loading, setLoading] = useState(false);
   
   // Dialog states
@@ -68,16 +71,33 @@ export default function AccountingPage() {
   const [isPaymentDialogOpen, setIsPaymentDialogOpen] = useState(false);
   const [isJournalDialogOpen, setIsJournalDialogOpen] = useState(false);
   const [isViewInvoiceDialogOpen, setIsViewInvoiceDialogOpen] = useState(false);
+  const [isExpenseDialogOpen, setIsExpenseDialogOpen] = useState(false);
+  const [isPostToAccountingDialogOpen, setIsPostToAccountingDialogOpen] = useState(false);
   
   // Form states
   const [editingAccount, setEditingAccount] = useState(null);
   const [editingSupplier, setEditingSupplier] = useState(null);
   const [selectedInvoice, setSelectedInvoice] = useState(null);
+  const [editingExpense, setEditingExpense] = useState(null);
+  const [selectedExpenses, setSelectedExpenses] = useState([]);
+  const [expenseForm, setExpenseForm] = useState({
+    expense_date: new Date().toISOString().split('T')[0],
+    expense_type: '',
+    description: '',
+    amount: 0,
+    payment_method: 'cash',
+    executor_name: '',
+    cost_center: '',
+    notes: '',
+    receipt_image: null
+  });
   
   // Filter states
   const [dateFilter, setDateFilter] = useState({ start: '', end: '' });
   const [supplierFilter, setSupplierFilter] = useState('');
   const [journalTypeFilter, setJournalTypeFilter] = useState('');
+  const [expenseStatusFilter, setExpenseStatusFilter] = useState('');
+  const [expenseTypeFilter, setExpenseTypeFilter] = useState('');
   
   // Form data
   const [accountForm, setAccountForm] = useState({
