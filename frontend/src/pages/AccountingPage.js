@@ -2525,6 +2525,141 @@ export default function AccountingPage() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Internal Expense Dialog */}
+      <Dialog open={isExpenseDialogOpen} onOpenChange={setIsExpenseDialogOpen}>
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>{editingExpense ? 'تعديل مصروف' : 'إضافة مصروف جديد'}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="text-sm font-medium">التاريخ *</label>
+                <Input 
+                  type="date" 
+                  value={expenseForm.expense_date} 
+                  onChange={e => setExpenseForm(prev => ({ ...prev, expense_date: e.target.value }))} 
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium">نوع المصروف *</label>
+                <select 
+                  value={expenseForm.expense_type} 
+                  onChange={e => setExpenseForm(prev => ({ ...prev, expense_type: e.target.value }))}
+                  className="w-full border rounded p-2"
+                >
+                  <option value="">اختر النوع</option>
+                  <option value="petty_cash">صندوق النثرية</option>
+                  <option value="transportation">مواصلات</option>
+                  <option value="supplies">مستلزمات</option>
+                  <option value="maintenance">صيانة</option>
+                  <option value="utilities">مرافق</option>
+                  <option value="food">طعام وضيافة</option>
+                  <option value="communication">اتصالات</option>
+                  <option value="other">أخرى</option>
+                </select>
+              </div>
+            </div>
+
+            <div>
+              <label className="text-sm font-medium">الوصف *</label>
+              <Input 
+                value={expenseForm.description} 
+                onChange={e => setExpenseForm(prev => ({ ...prev, description: e.target.value }))}
+                placeholder="وصف المصروف"
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="text-sm font-medium">المبلغ (ر.س) *</label>
+                <Input 
+                  type="number" 
+                  min="0" 
+                  step="0.01"
+                  value={expenseForm.amount} 
+                  onChange={e => setExpenseForm(prev => ({ ...prev, amount: parseFloat(e.target.value) || 0 }))}
+                  placeholder="0.00"
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium">طريقة الدفع</label>
+                <select 
+                  value={expenseForm.payment_method} 
+                  onChange={e => setExpenseForm(prev => ({ ...prev, payment_method: e.target.value }))}
+                  className="w-full border rounded p-2"
+                >
+                  <option value="cash">نقدي</option>
+                  <option value="card">بطاقة</option>
+                  <option value="transfer">تحويل</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="text-sm font-medium">اسم المنفذ</label>
+                <Input 
+                  value={expenseForm.executor_name} 
+                  onChange={e => setExpenseForm(prev => ({ ...prev, executor_name: e.target.value }))}
+                  placeholder="من قام بالصرف"
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium">مركز التكلفة</label>
+                <Input 
+                  value={expenseForm.cost_center} 
+                  onChange={e => setExpenseForm(prev => ({ ...prev, cost_center: e.target.value }))}
+                  placeholder="القسم أو الفرع"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="text-sm font-medium">📎 صورة الإيصال</label>
+              <Input 
+                type="file" 
+                accept="image/*"
+                onChange={e => setExpenseForm(prev => ({ ...prev, receipt_image: e.target.files[0] }))}
+                className="mt-1"
+              />
+              {expenseForm.receipt_image && (
+                <p className="text-sm text-green-600 mt-1">
+                  تم اختيار: {expenseForm.receipt_image.name}
+                </p>
+              )}
+              {editingExpense?.attachment_url && !expenseForm.receipt_image && (
+                <p className="text-sm text-blue-600 mt-1">
+                  <a href={editingExpense.attachment_url} target="_blank" rel="noopener noreferrer">
+                    📎 عرض المرفق الحالي
+                  </a>
+                </p>
+              )}
+            </div>
+
+            <div>
+              <label className="text-sm font-medium">ملاحظات</label>
+              <textarea 
+                value={expenseForm.notes} 
+                onChange={e => setExpenseForm(prev => ({ ...prev, notes: e.target.value }))}
+                className="w-full border rounded p-2"
+                rows="2"
+                placeholder="ملاحظات إضافية..."
+              />
+            </div>
+
+            <div className="flex gap-2 justify-end pt-4 border-t">
+              <Button variant="outline" onClick={() => { setIsExpenseDialogOpen(false); resetExpenseForm(); }}>
+                إلغاء
+              </Button>
+              <Button onClick={handleSaveExpense} className="bg-green-600 hover:bg-green-700">
+                {editingExpense ? 'تحديث المصروف' : 'حفظ المصروف'}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </Layout>
   );
 }
