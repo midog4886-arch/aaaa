@@ -1394,10 +1394,10 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
     
     const htmlContent = `
       <div style="font-family:'Tajawal',Arial,sans-serif;direction:rtl;padding:20px;max-width:800px;margin:0 auto">
-        <div style="background:linear-gradient(135deg,#1e3a8a 0%,#1e40af 100%);color:white;padding:20px;text-align:center;margin:-20px -20px 20px -20px">
-          <div style="font-size:24px;font-weight:bold;margin-bottom:5px">${COMPANY_INFO.name_ar}</div>
-          ${branchName ? `<div style="font-size:16px;margin-top:8px;background:rgba(255,255,255,0.2);display:inline-block;padding:4px 16px;border-radius:20px">🏢 فرع: ${branchName}</div>` : ''}
-          <div style="font-size:11px;opacity:0.9;margin-top:8px">الرقم الضريبي: ${COMPANY_INFO.tax_number} | السجل التجاري: ${COMPANY_INFO.commercial_reg}</div>
+        <div style="background:linear-gradient(135deg,#1e3a8a 0%,#1e40af 100%);color:white;padding:12px;text-align:center;margin:-20px -20px 15px -20px">
+          <div style="font-size:16px;font-weight:bold;margin-bottom:3px">${COMPANY_INFO.name_ar}</div>
+          ${branchName ? `<div style="font-size:11px;margin-top:5px;background:rgba(255,255,255,0.2);display:inline-block;padding:3px 12px;border-radius:15px">🏢 فرع: ${branchName}</div>` : ''}
+          <div style="font-size:9px;opacity:0.9;margin-top:5px">الرقم الضريبي: ${COMPANY_INFO.tax_number} | السجل التجاري: ${COMPANY_INFO.commercial_reg}</div>
         </div>
         <div style="font-size:20px;font-weight:bold;text-align:center;margin:20px 0;padding:12px;background:#f8fafc;border:2px solid #1e3a8a;border-radius:8px;color:#1e3a8a">📋 استمارة تسجيل - ${form.form_number}</div>
         <div style="margin-bottom:15px;padding:15px;border:1px solid #e2e8f0;border-radius:8px;background:#f8fafc">
