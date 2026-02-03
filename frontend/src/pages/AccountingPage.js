@@ -686,6 +686,8 @@ export default function AccountingPage() {
         return renderPurchasesTab();
       case TABS.PAYMENTS:
         return renderPaymentsTab();
+      case TABS.EXPENSES:
+        return renderInternalExpensesTab();
       case TABS.JOURNAL:
         return renderJournalTab();
       case TABS.REPORTS:
