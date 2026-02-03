@@ -206,6 +206,7 @@ export const exportAccountingAPI = {
   sales: (params = {}) => `${API}/export/sales?${new URLSearchParams(params).toString()}`,
   purchases: (params = {}) => `${API}/export/purchases?${new URLSearchParams(params).toString()}`,
   vat: (params = {}) => `${API}/export/vat?${new URLSearchParams(params).toString()}`,
+  internalExpenses: (params = {}) => `${API}/export/internal-expenses?${new URLSearchParams(params).toString()}`,
 };
 
 // Notifications API
@@ -217,6 +218,22 @@ export const notificationsAPI = {
   delete: (id) => axios.delete(`${API}/notifications/${id}`),
   checkRenewals: () => axios.post(`${API}/notifications/check-renewals`),
   getExpiringSubscriptions: (params = {}) => axios.get(`${API}/notifications/expiring-subscriptions`, { params }),
+};
+
+// Internal Expenses (Petty Cash) API
+export const internalExpensesAPI = {
+  getAll: (params = {}) => axios.get(`${API}/internal-expenses`, { params }),
+  getSummary: (params = {}) => axios.get(`${API}/internal-expenses/summary`, { params }),
+  getTypes: () => axios.get(`${API}/internal-expenses/types`),
+  create: (formData) => axios.post(`${API}/internal-expenses`, formData, {
+    headers: { 'Content-Type': 'multipart/form-data' }
+  }),
+  update: (id, formData) => axios.put(`${API}/internal-expenses/${id}`, formData, {
+    headers: { 'Content-Type': 'multipart/form-data' }
+  }),
+  updateStatus: (id, status) => axios.put(`${API}/internal-expenses/${id}/status`, null, { params: { status } }),
+  postToAccounting: (data) => axios.post(`${API}/internal-expenses/post-to-accounting`, data),
+  delete: (id) => axios.delete(`${API}/internal-expenses/${id}`),
 };
 
 export default {
