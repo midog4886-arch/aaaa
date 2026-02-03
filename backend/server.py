@@ -3837,6 +3837,500 @@ async def get_supplier_payments(
     payments = await db.supplier_payments.find(query, {"_id": 0}).sort("payment_date", -1).to_list(1000)
     return payments
 
+# ============ INTERNAL EXPENSES (PETTY CASH) SYSTEM ============
+
+# Expense types
+EXPENSE_TYPES = [
+    {"value": "hospitality", "label": "ضيافة"},
+    {"value": "transportation", "label": "مواصلات"},
+    {"value": "maintenance", "label": "صيانة بسيطة"},
+    {"value": "office_supplies", "label": "أدوات مكتبية"},
+    {"value": "cleaning", "label": "نظافة"},
+    {"value": "utilities", "label": "مرافق"},
+    {"value": "equipment", "label": "معدات"},
+    {"value": "marketing", "label": "تسويق"},
+    {"value": "training", "label": "تدريب"},
+    {"value": "other", "label": "أخرى"}
+]
+
+class InternalExpenseCreate(BaseModel):
+    expense_date: str
+    expense_type: str
+    cost_center: Optional[str] = None  # branch_id or activity_id
+    description: str
+    amount: float
+    payment_method: str = "cash"  # cash, card, transfer
+    executor_name: str  # الشخص المنفذ
+    notes: Optional[str] = None
+
+@api_router.get("/internal-expenses")
+async def get_internal_expenses(
+    status_filter: Optional[str] = None,
+    expense_type: Optional[str] = None,
+    branch_filter: Optional[str] = None,
+    executor: Optional[str] = None,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    current_user: dict = Depends(get_current_user)
+):
+    """Get all internal expenses with filters"""
+    query = {}
+    
+    # Branch filter
+    is_admin = current_user.get("is_admin", False)
+    if branch_filter and branch_filter != "all":
+        query["branch_id"] = branch_filter
+    elif not is_admin and current_user.get("branch_id"):
+        query["branch_id"] = current_user["branch_id"]
+    
+    if status_filter and status_filter != "all":
+        query["status"] = status_filter
+    if expense_type and expense_type != "all":
+        query["expense_type"] = expense_type
+    if executor:
+        query["executor_name"] = {"$regex": executor, "$options": "i"}
+    if start_date:
+        query["expense_date"] = {"$gte": start_date}
+    if end_date:
+        if "expense_date" in query:
+            query["expense_date"]["$lte"] = end_date
+        else:
+            query["expense_date"] = {"$lte": end_date}
+    
+    expenses = await db.internal_expenses.find(query, {"_id": 0}).sort("created_at", -1).to_list(10000)
+    return expenses
+
+@api_router.get("/internal-expenses/summary")
+async def get_expenses_summary(
+    branch_filter: Optional[str] = None,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    current_user: dict = Depends(get_current_user)
+):
+    """Get summary of internal expenses"""
+    query = {}
+    
+    is_admin = current_user.get("is_admin", False)
+    if branch_filter and branch_filter != "all":
+        query["branch_id"] = branch_filter
+    elif not is_admin and current_user.get("branch_id"):
+        query["branch_id"] = current_user["branch_id"]
+    
+    if start_date:
+        query["expense_date"] = {"$gte": start_date}
+    if end_date:
+        if "expense_date" in query:
+            query["expense_date"]["$lte"] = end_date
+        else:
+            query["expense_date"] = {"$lte": end_date}
+    
+    expenses = await db.internal_expenses.find(query, {"_id": 0}).to_list(10000)
+    
+    # Calculate summary
+    total_amount = sum(e.get("amount", 0) for e in expenses)
+    by_status = {}
+    by_type = {}
+    by_executor = {}
+    
+    for exp in expenses:
+        # By status
+        status = exp.get("status", "pending")
+        if status not in by_status:
+            by_status[status] = {"count": 0, "total": 0}
+        by_status[status]["count"] += 1
+        by_status[status]["total"] += exp.get("amount", 0)
+        
+        # By type
+        exp_type = exp.get("expense_type", "other")
+        if exp_type not in by_type:
+            by_type[exp_type] = {"count": 0, "total": 0}
+        by_type[exp_type]["count"] += 1
+        by_type[exp_type]["total"] += exp.get("amount", 0)
+        
+        # By executor
+        executor = exp.get("executor_name", "غير محدد")
+        if executor not in by_executor:
+            by_executor[executor] = {"count": 0, "total": 0}
+        by_executor[executor]["count"] += 1
+        by_executor[executor]["total"] += exp.get("amount", 0)
+    
+    return {
+        "total_count": len(expenses),
+        "total_amount": round(total_amount, 2),
+        "by_status": by_status,
+        "by_type": by_type,
+        "by_executor": by_executor
+    }
+
+@api_router.post("/internal-expenses")
+async def create_internal_expense(
+    expense_date: str = Form(...),
+    expense_type: str = Form(...),
+    description: str = Form(...),
+    amount: float = Form(...),
+    payment_method: str = Form("cash"),
+    executor_name: str = Form(...),
+    cost_center: Optional[str] = Form(None),
+    notes: Optional[str] = Form(None),
+    branch_id: Optional[str] = Form(None),
+    receipt_image: Optional[UploadFile] = File(None),
+    current_user: dict = Depends(get_current_user)
+):
+    """Create a new internal expense with optional receipt image"""
+    
+    # Generate expense number
+    last_expense = await db.internal_expenses.find_one(
+        {"expense_number": {"$exists": True}},
+        sort=[("created_at", -1)]
+    )
+    if last_expense and last_expense.get("expense_number"):
+        try:
+            last_num = int(last_expense["expense_number"].replace("EXP-", ""))
+            next_num = last_num + 1
+        except:
+            next_num = 1
+    else:
+        next_num = 1
+    
+    expense_number = f"EXP-{next_num:05d}"
+    
+    # Handle image upload
+    receipt_url = None
+    if receipt_image and receipt_image.filename:
+        # Create unique filename
+        file_ext = receipt_image.filename.split(".")[-1] if "." in receipt_image.filename else "jpg"
+        unique_filename = f"{uuid.uuid4()}.{file_ext}"
+        file_path = UPLOADS_DIR / unique_filename
+        
+        # Save file
+        with open(file_path, "wb") as buffer:
+            shutil.copyfileobj(receipt_image.file, buffer)
+        
+        receipt_url = f"/uploads/{unique_filename}"
+    
+    # Determine branch_id
+    final_branch_id = branch_id if current_user.get("is_admin") else current_user.get("branch_id")
+    
+    expense_data = {
+        "id": str(uuid.uuid4()),
+        "expense_number": expense_number,
+        "expense_date": expense_date,
+        "expense_type": expense_type,
+        "cost_center": cost_center,
+        "description": description,
+        "amount": amount,
+        "payment_method": payment_method,
+        "executor_name": executor_name,
+        "notes": notes,
+        "receipt_url": receipt_url,
+        "status": "pending",  # pending, approved, rejected, posted
+        "branch_id": final_branch_id,
+        "created_by": current_user.get("username"),
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "journal_entry_id": None  # Will be set when posted to accounting
+    }
+    
+    await db.internal_expenses.insert_one(expense_data)
+    del expense_data["_id"]
+    
+    return expense_data
+
+@api_router.put("/internal-expenses/{expense_id}")
+async def update_internal_expense(
+    expense_id: str,
+    expense_date: str = Form(...),
+    expense_type: str = Form(...),
+    description: str = Form(...),
+    amount: float = Form(...),
+    payment_method: str = Form("cash"),
+    executor_name: str = Form(...),
+    cost_center: Optional[str] = Form(None),
+    notes: Optional[str] = Form(None),
+    receipt_image: Optional[UploadFile] = File(None),
+    current_user: dict = Depends(get_current_user)
+):
+    """Update an internal expense"""
+    existing = await db.internal_expenses.find_one({"id": expense_id})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Expense not found")
+    
+    if existing.get("status") == "posted":
+        raise HTTPException(status_code=400, detail="لا يمكن تعديل مصروف مرحّل للمحاسبة")
+    
+    # Handle image upload
+    receipt_url = existing.get("receipt_url")
+    if receipt_image and receipt_image.filename:
+        # Delete old image if exists
+        if receipt_url:
+            old_file = UPLOADS_DIR / receipt_url.replace("/uploads/", "")
+            if old_file.exists():
+                old_file.unlink()
+        
+        # Save new image
+        file_ext = receipt_image.filename.split(".")[-1] if "." in receipt_image.filename else "jpg"
+        unique_filename = f"{uuid.uuid4()}.{file_ext}"
+        file_path = UPLOADS_DIR / unique_filename
+        
+        with open(file_path, "wb") as buffer:
+            shutil.copyfileobj(receipt_image.file, buffer)
+        
+        receipt_url = f"/uploads/{unique_filename}"
+    
+    update_data = {
+        "expense_date": expense_date,
+        "expense_type": expense_type,
+        "cost_center": cost_center,
+        "description": description,
+        "amount": amount,
+        "payment_method": payment_method,
+        "executor_name": executor_name,
+        "notes": notes,
+        "receipt_url": receipt_url,
+        "updated_at": datetime.now(timezone.utc).isoformat()
+    }
+    
+    await db.internal_expenses.update_one({"id": expense_id}, {"$set": update_data})
+    
+    updated = await db.internal_expenses.find_one({"id": expense_id}, {"_id": 0})
+    return updated
+
+@api_router.put("/internal-expenses/{expense_id}/status")
+async def update_expense_status(
+    expense_id: str,
+    status: str,
+    current_user: dict = Depends(get_current_user)
+):
+    """Update expense status (approve/reject)"""
+    if status not in ["pending", "approved", "rejected"]:
+        raise HTTPException(status_code=400, detail="Invalid status")
+    
+    existing = await db.internal_expenses.find_one({"id": expense_id})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Expense not found")
+    
+    if existing.get("status") == "posted":
+        raise HTTPException(status_code=400, detail="لا يمكن تعديل مصروف مرحّل للمحاسبة")
+    
+    await db.internal_expenses.update_one(
+        {"id": expense_id},
+        {"$set": {
+            "status": status,
+            "status_updated_by": current_user.get("username"),
+            "status_updated_at": datetime.now(timezone.utc).isoformat()
+        }}
+    )
+    
+    return {"message": f"تم تحديث الحالة إلى {status}"}
+
+@api_router.post("/internal-expenses/post-to-accounting")
+async def post_expenses_to_accounting(
+    expense_ids: List[str],
+    debit_account_id: str,
+    credit_account_id: str,
+    current_user: dict = Depends(get_current_user)
+):
+    """Post multiple approved expenses to accounting as a journal entry"""
+    if not current_user.get("is_admin"):
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    # Get expenses
+    expenses = await db.internal_expenses.find({
+        "id": {"$in": expense_ids},
+        "status": "approved"
+    }, {"_id": 0}).to_list(1000)
+    
+    if len(expenses) != len(expense_ids):
+        raise HTTPException(status_code=400, detail="بعض المصروفات غير موجودة أو غير معتمدة")
+    
+    # Calculate total
+    total_amount = sum(e.get("amount", 0) for e in expenses)
+    
+    # Get accounts info
+    debit_account = await db.accounts.find_one({"id": debit_account_id}, {"_id": 0})
+    credit_account = await db.accounts.find_one({"id": credit_account_id}, {"_id": 0})
+    
+    if not debit_account or not credit_account:
+        raise HTTPException(status_code=400, detail="الحسابات غير موجودة")
+    
+    # Generate journal entry number
+    last_entry = await db.journal_entries.find_one(
+        {"entry_number": {"$exists": True}},
+        sort=[("created_at", -1)]
+    )
+    if last_entry:
+        try:
+            last_num = int(last_entry["entry_number"].replace("JE-", ""))
+            next_num = last_num + 1
+        except:
+            next_num = 1
+    else:
+        next_num = 1
+    
+    entry_number = f"JE-{next_num:05d}"
+    
+    # Create description
+    expense_nums = ", ".join([e["expense_number"] for e in expenses])
+    description = f"ترحيل مصروفات داخلية: {expense_nums}"
+    
+    # Create journal entry
+    journal_entry = {
+        "id": str(uuid.uuid4()),
+        "entry_number": entry_number,
+        "entry_date": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
+        "description": description,
+        "reference_number": expense_nums,
+        "journal_type": "expenses",
+        "lines": [
+            {
+                "account_id": debit_account_id,
+                "account_code": debit_account.get("code", ""),
+                "account_name": debit_account.get("name_ar", ""),
+                "debit": round(total_amount, 2),
+                "credit": 0,
+                "description": "مصروفات داخلية"
+            },
+            {
+                "account_id": credit_account_id,
+                "account_code": credit_account.get("code", ""),
+                "account_name": credit_account.get("name_ar", ""),
+                "debit": 0,
+                "credit": round(total_amount, 2),
+                "description": "سداد مصروفات داخلية"
+            }
+        ],
+        "total_debit": round(total_amount, 2),
+        "total_credit": round(total_amount, 2),
+        "reference_type": "internal_expenses",
+        "reference_id": ",".join(expense_ids),
+        "branch_id": expenses[0].get("branch_id") if expenses else None,
+        "created_by": current_user.get("username"),
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+    
+    await db.journal_entries.insert_one(journal_entry)
+    
+    # Update expenses status
+    await db.internal_expenses.update_many(
+        {"id": {"$in": expense_ids}},
+        {"$set": {
+            "status": "posted",
+            "journal_entry_id": journal_entry["id"],
+            "posted_at": datetime.now(timezone.utc).isoformat(),
+            "posted_by": current_user.get("username")
+        }}
+    )
+    
+    return {
+        "message": f"تم ترحيل {len(expenses)} مصروف إلى القيد المحاسبي {entry_number}",
+        "journal_entry_id": journal_entry["id"],
+        "total_amount": total_amount
+    }
+
+@api_router.delete("/internal-expenses/{expense_id}")
+async def delete_internal_expense(expense_id: str, current_user: dict = Depends(get_current_user)):
+    """Delete an internal expense"""
+    existing = await db.internal_expenses.find_one({"id": expense_id})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Expense not found")
+    
+    if existing.get("status") == "posted":
+        raise HTTPException(status_code=400, detail="لا يمكن حذف مصروف مرحّل للمحاسبة")
+    
+    # Delete receipt image if exists
+    if existing.get("receipt_url"):
+        file_path = UPLOADS_DIR / existing["receipt_url"].replace("/uploads/", "")
+        if file_path.exists():
+            file_path.unlink()
+    
+    await db.internal_expenses.delete_one({"id": expense_id})
+    return {"message": "تم حذف المصروف"}
+
+@api_router.get("/internal-expenses/types")
+async def get_expense_types():
+    """Get list of expense types"""
+    return EXPENSE_TYPES
+
+@api_router.get("/export/internal-expenses")
+async def export_internal_expenses(
+    status_filter: Optional[str] = None,
+    expense_type: Optional[str] = None,
+    branch_filter: Optional[str] = None,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    current_user: dict = Depends(get_current_user)
+):
+    """Export internal expenses to Excel"""
+    query = {}
+    
+    is_admin = current_user.get("is_admin", False)
+    if branch_filter and branch_filter != "all":
+        query["branch_id"] = branch_filter
+    elif not is_admin and current_user.get("branch_id"):
+        query["branch_id"] = current_user["branch_id"]
+    
+    if status_filter and status_filter != "all":
+        query["status"] = status_filter
+    if expense_type and expense_type != "all":
+        query["expense_type"] = expense_type
+    if start_date:
+        query["expense_date"] = {"$gte": start_date}
+    if end_date:
+        if "expense_date" in query:
+            query["expense_date"]["$lte"] = end_date
+        else:
+            query["expense_date"] = {"$lte": end_date}
+    
+    expenses = await db.internal_expenses.find(query, {"_id": 0}).sort("expense_date", -1).to_list(10000)
+    
+    # Create Excel workbook
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "المصروفات الداخلية"
+    
+    # Header styling
+    header_font = Font(bold=True, color="FFFFFF")
+    header_fill = PatternFill(start_color="1e3a8a", end_color="1e3a8a", fill_type="solid")
+    
+    headers = ["رقم العملية", "التاريخ", "نوع المصروف", "البيان", "المبلغ", "طريقة الدفع", "المنفذ", "الحالة"]
+    for col, header in enumerate(headers, 1):
+        cell = ws.cell(row=1, column=col, value=header)
+        cell.font = header_font
+        cell.fill = header_fill
+        cell.alignment = Alignment(horizontal="center")
+    
+    # Type labels map
+    type_labels = {t["value"]: t["label"] for t in EXPENSE_TYPES}
+    status_labels = {"pending": "تحت المراجعة", "approved": "مقبول", "rejected": "مرفوض", "posted": "مرحّل"}
+    payment_labels = {"cash": "نقدي", "card": "بطاقة", "transfer": "تحويل"}
+    
+    # Data rows
+    for row, exp in enumerate(expenses, 2):
+        ws.cell(row=row, column=1, value=exp.get("expense_number", ""))
+        ws.cell(row=row, column=2, value=exp.get("expense_date", ""))
+        ws.cell(row=row, column=3, value=type_labels.get(exp.get("expense_type"), exp.get("expense_type", "")))
+        ws.cell(row=row, column=4, value=exp.get("description", ""))
+        ws.cell(row=row, column=5, value=exp.get("amount", 0))
+        ws.cell(row=row, column=6, value=payment_labels.get(exp.get("payment_method"), exp.get("payment_method", "")))
+        ws.cell(row=row, column=7, value=exp.get("executor_name", ""))
+        ws.cell(row=row, column=8, value=status_labels.get(exp.get("status"), exp.get("status", "")))
+    
+    # Auto-width columns
+    for col in ws.columns:
+        max_length = max(len(str(cell.value or "")) for cell in col)
+        ws.column_dimensions[col[0].column_letter].width = max_length + 2
+    
+    # Save to buffer
+    buffer = io.BytesIO()
+    wb.save(buffer)
+    buffer.seek(0)
+    
+    filename = f"internal_expenses_{datetime.now().strftime('%Y%m%d')}.xlsx"
+    return StreamingResponse(
+        buffer,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f"attachment; filename={filename}"}
+    )
+
 # ============ NOTIFICATIONS SYSTEM ============
 
 class NotificationCreate(BaseModel):
