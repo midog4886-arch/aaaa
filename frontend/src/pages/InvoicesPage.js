@@ -1418,7 +1418,6 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
         <div style="margin-top:15px;border:2px solid #1e3a8a;padding:15px;border-radius:8px;background:#eff6ff">
           ${form.discount > 0 ? `<div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #bfdbfe;color:#dc2626;font-weight:500"><span>الخصم:</span><span>- ${form.discount?.toFixed(2)} ر.س</span></div>` : ''}
           <div style="display:flex;justify-content:space-between;font-size:18px;font-weight:bold;padding-top:12px;color:#1e3a8a"><span>💰 الإجمالي:</span><span>${form.total?.toFixed(2)} ر.س</span></div>
-          <div style="text-align:center;font-size:10px;color:#6b7280;margin-top:8px">* الأسعار لا تشمل ضريبة القيمة المضافة</div>
         </div>
         <div style="margin-top:15px;padding:12px;border:1px solid #e2e8f0;border-radius:8px;background:#fefce8">
           <span style="font-weight:bold">💳 طريقة الدفع:</span> ${paymentText}
