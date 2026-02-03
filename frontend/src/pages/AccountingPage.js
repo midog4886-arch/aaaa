@@ -290,7 +290,8 @@ export default function AccountingPage() {
     if (activeTab === TABS.JOURNAL) fetchJournalEntries();
     if (activeTab === TABS.REPORTS) { fetchSalesReport(); fetchFinancialReport(); }
     if (activeTab === TABS.VAT) fetchVatReport();
-  }, [activeTab, fetchPurchaseInvoices, fetchJournalEntries, fetchSalesReport, fetchVatReport, fetchFinancialReport]);
+    if (activeTab === TABS.EXPENSES) { fetchInternalExpenses(); fetchExpensesSummary(); }
+  }, [activeTab, fetchPurchaseInvoices, fetchJournalEntries, fetchSalesReport, fetchVatReport, fetchFinancialReport, fetchInternalExpenses, fetchExpensesSummary]);
 
   // Account handlers
   const handleSaveAccount = async () => {
