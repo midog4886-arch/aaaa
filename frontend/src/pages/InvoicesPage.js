@@ -1207,10 +1207,10 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
           @page { size: A4; margin: 10mm; }
           * { margin: 0; padding: 0; box-sizing: border-box; }
           body { font-family: 'Tajawal', Arial, sans-serif; direction: rtl; padding: 20px; max-width: 800px; margin: 0 auto; color: #000; font-size: 12px; }
-          .header-banner { background: linear-gradient(135deg, #1e3a8a 0%, #1e40af 100%); color: white; padding: 20px; text-align: center; margin: -20px -20px 20px -20px; }
-          .header-banner .company-name { font-size: 24px; font-weight: bold; margin-bottom: 5px; }
-          .header-banner .branch-name { font-size: 16px; margin-top: 8px; background: rgba(255,255,255,0.2); display: inline-block; padding: 4px 16px; border-radius: 20px; }
-          .header-banner .company-info { font-size: 11px; opacity: 0.9; margin-top: 8px; }
+          .header-banner { background: linear-gradient(135deg, #1e3a8a 0%, #1e40af 100%); color: white; padding: 12px; text-align: center; margin: -20px -20px 15px -20px; }
+          .header-banner .company-name { font-size: 16px; font-weight: bold; margin-bottom: 3px; }
+          .header-banner .branch-name { font-size: 11px; margin-top: 5px; background: rgba(255,255,255,0.2); display: inline-block; padding: 3px 12px; border-radius: 15px; }
+          .header-banner .company-info { font-size: 9px; opacity: 0.9; margin-top: 5px; }
           .form-title { font-size: 20px; font-weight: bold; text-align: center; margin: 20px 0; padding: 12px; background: #f8fafc; border: 2px solid #1e3a8a; border-radius: 8px; color: #1e3a8a; }
           .info-section { margin-bottom: 15px; padding: 15px; border: 1px solid #e2e8f0; border-radius: 8px; background: #f8fafc; }
           .info-section h4 { font-size: 14px; font-weight: bold; margin-bottom: 10px; color: #1e3a8a; border-bottom: 2px solid #1e3a8a; padding-bottom: 5px; }
