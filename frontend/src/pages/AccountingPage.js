@@ -240,10 +240,50 @@ export default function AccountingPage() {
     }
   }, [selectedBranchId, dateFilter]);
 
+  // Fetch internal expenses
+  const fetchInternalExpenses = useCallback(async () => {
+    try {
+      const params = {};
+      if (selectedBranchId && selectedBranchId !== 'all') params.branch_filter = selectedBranchId;
+      if (dateFilter.start) params.start_date = dateFilter.start;
+      if (dateFilter.end) params.end_date = dateFilter.end;
+      if (expenseStatusFilter) params.status = expenseStatusFilter;
+      if (expenseTypeFilter) params.expense_type = expenseTypeFilter;
+      const res = await internalExpensesAPI.getAll(params);
+      setInternalExpenses(res.data);
+    } catch (error) {
+      console.error('Error fetching internal expenses:', error);
+    }
+  }, [selectedBranchId, dateFilter, expenseStatusFilter, expenseTypeFilter]);
+
+  // Fetch expenses summary
+  const fetchExpensesSummary = useCallback(async () => {
+    try {
+      const params = {};
+      if (selectedBranchId && selectedBranchId !== 'all') params.branch_filter = selectedBranchId;
+      if (dateFilter.start) params.start_date = dateFilter.start;
+      if (dateFilter.end) params.end_date = dateFilter.end;
+      const res = await internalExpensesAPI.getSummary(params);
+      setExpensesSummary(res.data);
+    } catch (error) {
+      console.error('Error fetching expenses summary:', error);
+    }
+  }, [selectedBranchId, dateFilter]);
+
+  // Fetch expense types
+  const fetchExpenseTypes = useCallback(async () => {
+    try {
+      const res = await internalExpensesAPI.getTypes();
+      setExpenseTypes(res.data);
+    } catch (error) {
+      console.error('Error fetching expense types:', error);
+    }
+  }, []);
+
   useEffect(() => {
     setLoading(true);
-    Promise.all([fetchAccounts(), fetchSuppliers(), fetchProducts()]).finally(() => setLoading(false));
-  }, [fetchAccounts, fetchSuppliers, fetchProducts]);
+    Promise.all([fetchAccounts(), fetchSuppliers(), fetchProducts(), fetchExpenseTypes()]).finally(() => setLoading(false));
+  }, [fetchAccounts, fetchSuppliers, fetchProducts, fetchExpenseTypes]);
 
   useEffect(() => {
     if (activeTab === TABS.PURCHASES) fetchPurchaseInvoices();
