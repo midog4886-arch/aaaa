@@ -14,7 +14,8 @@ import {
   accountingReportsAPI,
   productsAPI,
   exportAccountingAPI,
-  reportsAPI
+  reportsAPI,
+  internalExpensesAPI
 } from '../services/api';
 
 // Tab components
@@ -23,6 +24,7 @@ const TABS = {
   SUPPLIERS: 'suppliers',
   PURCHASES: 'purchases',
   PAYMENTS: 'payments',
+  EXPENSES: 'expenses',
   JOURNAL: 'journal',
   REPORTS: 'reports',
   VAT: 'vat'
