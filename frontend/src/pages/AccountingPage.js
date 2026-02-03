@@ -1475,6 +1475,7 @@ export default function AccountingPage() {
             { key: TABS.SUPPLIERS, label: 'الموردين', icon: '👥' },
             { key: TABS.PURCHASES, label: 'فواتير المشتريات', icon: '🧾' },
             { key: TABS.PAYMENTS, label: 'السداد', icon: '💳' },
+            { key: TABS.EXPENSES, label: 'المصروفات الداخلية', icon: '💸' },
             { key: TABS.JOURNAL, label: 'القيود', icon: '📒' },
             { key: TABS.REPORTS, label: 'التقارير', icon: '📈' },
             { key: TABS.VAT, label: 'إقرار الضريبة', icon: '🧾' }
