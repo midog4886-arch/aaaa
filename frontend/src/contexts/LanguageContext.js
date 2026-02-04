@@ -30,6 +30,7 @@ const translations = {
     coaches: 'المدربين',
     invoices: 'الفواتير',
     store: 'المخزن',
+    attendance: 'الحضور',
     accounting: 'المحاسبة',
     reports: 'التقارير',
     messages: 'الرسائل',
