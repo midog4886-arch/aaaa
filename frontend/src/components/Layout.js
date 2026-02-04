@@ -27,7 +27,8 @@ import {
   RefreshCcw,
   CheckCheck,
   Clock,
-  AlertTriangle
+  AlertTriangle,
+  ClipboardList
 } from 'lucide-react';
 
 export const Sidebar = ({ isOpen, onClose }) => {
