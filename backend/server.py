@@ -3837,6 +3837,470 @@ async def get_supplier_payments(
     payments = await db.supplier_payments.find(query, {"_id": 0}).sort("payment_date", -1).to_list(1000)
     return payments
 
+# ============ ATTENDANCE TRACKING SYSTEM ============
+
+class AttendanceRecord(BaseModel):
+    id: str = ""
+    member_id: str
+    member_name: str = ""
+    activity_id: str
+    activity_name: str = ""
+    branch_id: str = ""
+    date: str  # YYYY-MM-DD
+    status: str = "present"  # present, absent
+    check_in_time: str = ""  # HH:MM
+    notes: str = ""
+    recorded_by: str = ""
+    created_at: str = ""
+
+class BulkAttendanceRequest(BaseModel):
+    activity_id: str
+    date: str
+    records: List[dict]  # [{member_id, status, notes}]
+
+@api_router.get("/attendance")
+async def get_attendance(
+    date: str = None,
+    activity_id: str = None,
+    member_id: str = None,
+    branch_id: str = None,
+    start_date: str = None,
+    end_date: str = None,
+    current_user: dict = Depends(get_current_user)
+):
+    """Get attendance records with filters"""
+    query = {}
+    
+    # Branch filter
+    if branch_id:
+        query["branch_id"] = branch_id
+    elif current_user.get("role") != "admin" and current_user.get("branch_id"):
+        query["branch_id"] = current_user["branch_id"]
+    
+    if date:
+        query["date"] = date
+    if activity_id:
+        query["activity_id"] = activity_id
+    if member_id:
+        query["member_id"] = member_id
+    if start_date:
+        query["date"] = {"$gte": start_date}
+    if end_date:
+        if "date" in query:
+            query["date"]["$lte"] = end_date
+        else:
+            query["date"] = {"$lte": end_date}
+    
+    records = await db.attendance.find(query, {"_id": 0}).sort("date", -1).to_list(5000)
+    return records
+
+@api_router.get("/attendance/by-activity/{activity_id}")
+async def get_attendance_by_activity(
+    activity_id: str,
+    date: str,
+    current_user: dict = Depends(get_current_user)
+):
+    """Get attendance for a specific activity on a specific date"""
+    # Get activity details
+    activity = await db.activities.find_one({"id": activity_id}, {"_id": 0})
+    if not activity:
+        raise HTTPException(status_code=404, detail="النشاط غير موجود")
+    
+    # Get all members enrolled in this activity with active subscription
+    members_query = {"activities.activity_id": activity_id}
+    if current_user.get("role") != "admin" and current_user.get("branch_id"):
+        members_query["branch_id"] = current_user["branch_id"]
+    
+    members = await db.members.find(members_query, {"_id": 0}).to_list(500)
+    
+    # Get existing attendance records for this date
+    existing_records = await db.attendance.find({
+        "activity_id": activity_id,
+        "date": date
+    }, {"_id": 0}).to_list(500)
+    
+    existing_map = {r["member_id"]: r for r in existing_records}
+    
+    # Build response with member info and attendance status
+    result = []
+    for member in members:
+        member_activity = next((a for a in member.get("activities", []) if a["activity_id"] == activity_id), None)
+        if member_activity:
+            attendance_record = existing_map.get(member["id"])
+            result.append({
+                "member_id": member["id"],
+                "member_name": member["name"],
+                "phone": member.get("phone", ""),
+                "activity_id": activity_id,
+                "activity_name": activity["name"],
+                "subscription_status": member_activity.get("status", "active"),
+                "status": attendance_record["status"] if attendance_record else None,
+                "check_in_time": attendance_record.get("check_in_time", "") if attendance_record else "",
+                "notes": attendance_record.get("notes", "") if attendance_record else "",
+                "recorded": attendance_record is not None
+            })
+    
+    return {
+        "activity": activity,
+        "date": date,
+        "members": result,
+        "total_members": len(result),
+        "present_count": sum(1 for r in result if r["status"] == "present"),
+        "absent_count": sum(1 for r in result if r["status"] == "absent")
+    }
+
+@api_router.post("/attendance")
+async def record_attendance(
+    record: AttendanceRecord,
+    current_user: dict = Depends(get_current_user)
+):
+    """Record single attendance"""
+    # Get member and activity info
+    member = await db.members.find_one({"id": record.member_id}, {"_id": 0})
+    if not member:
+        raise HTTPException(status_code=404, detail="العضو غير موجود")
+    
+    activity = await db.activities.find_one({"id": record.activity_id}, {"_id": 0})
+    if not activity:
+        raise HTTPException(status_code=404, detail="النشاط غير موجود")
+    
+    # Check if record already exists
+    existing = await db.attendance.find_one({
+        "member_id": record.member_id,
+        "activity_id": record.activity_id,
+        "date": record.date
+    })
+    
+    now = datetime.now(timezone.utc).isoformat()
+    
+    if existing:
+        # Update existing record
+        await db.attendance.update_one(
+            {"id": existing["id"]},
+            {"$set": {
+                "status": record.status,
+                "check_in_time": record.check_in_time or datetime.now().strftime("%H:%M"),
+                "notes": record.notes,
+                "recorded_by": current_user.get("username", "")
+            }}
+        )
+        return {"message": "تم تحديث سجل الحضور", "id": existing["id"]}
+    else:
+        # Create new record
+        record_doc = {
+            "id": str(uuid.uuid4()),
+            "member_id": record.member_id,
+            "member_name": member["name"],
+            "activity_id": record.activity_id,
+            "activity_name": activity["name"],
+            "branch_id": member.get("branch_id", ""),
+            "date": record.date,
+            "status": record.status,
+            "check_in_time": record.check_in_time or datetime.now().strftime("%H:%M"),
+            "notes": record.notes,
+            "recorded_by": current_user.get("username", ""),
+            "created_at": now
+        }
+        await db.attendance.insert_one(record_doc)
+        del record_doc["_id"]
+        return record_doc
+
+@api_router.post("/attendance/bulk")
+async def record_bulk_attendance(
+    request: BulkAttendanceRequest,
+    current_user: dict = Depends(get_current_user)
+):
+    """Record attendance for multiple members at once"""
+    activity = await db.activities.find_one({"id": request.activity_id}, {"_id": 0})
+    if not activity:
+        raise HTTPException(status_code=404, detail="النشاط غير موجود")
+    
+    now = datetime.now(timezone.utc).isoformat()
+    current_time = datetime.now().strftime("%H:%M")
+    recorded_count = 0
+    
+    for rec in request.records:
+        member = await db.members.find_one({"id": rec["member_id"]}, {"_id": 0})
+        if not member:
+            continue
+        
+        # Check if exists
+        existing = await db.attendance.find_one({
+            "member_id": rec["member_id"],
+            "activity_id": request.activity_id,
+            "date": request.date
+        })
+        
+        if existing:
+            await db.attendance.update_one(
+                {"id": existing["id"]},
+                {"$set": {
+                    "status": rec.get("status", "present"),
+                    "check_in_time": rec.get("check_in_time", current_time),
+                    "notes": rec.get("notes", ""),
+                    "recorded_by": current_user.get("username", "")
+                }}
+            )
+        else:
+            record_doc = {
+                "id": str(uuid.uuid4()),
+                "member_id": rec["member_id"],
+                "member_name": member["name"],
+                "activity_id": request.activity_id,
+                "activity_name": activity["name"],
+                "branch_id": member.get("branch_id", ""),
+                "date": request.date,
+                "status": rec.get("status", "present"),
+                "check_in_time": rec.get("check_in_time", current_time),
+                "notes": rec.get("notes", ""),
+                "recorded_by": current_user.get("username", ""),
+                "created_at": now
+            }
+            await db.attendance.insert_one(record_doc)
+        recorded_count += 1
+    
+    return {"message": f"تم تسجيل حضور {recorded_count} عضو", "count": recorded_count}
+
+@api_router.post("/attendance/qr-checkin")
+async def qr_checkin(
+    member_id: str = Form(...),
+    activity_id: str = Form(...),
+    current_user: dict = Depends(get_current_user)
+):
+    """Quick check-in via QR code scan"""
+    member = await db.members.find_one({"id": member_id}, {"_id": 0})
+    if not member:
+        raise HTTPException(status_code=404, detail="العضو غير موجود")
+    
+    activity = await db.activities.find_one({"id": activity_id}, {"_id": 0})
+    if not activity:
+        raise HTTPException(status_code=404, detail="النشاط غير موجود")
+    
+    # Check if member is enrolled in this activity
+    member_activity = next((a for a in member.get("activities", []) if a["activity_id"] == activity_id), None)
+    if not member_activity:
+        raise HTTPException(status_code=400, detail="العضو غير مسجل في هذا النشاط")
+    
+    today = datetime.now().strftime("%Y-%m-%d")
+    current_time = datetime.now().strftime("%H:%M")
+    now = datetime.now(timezone.utc).isoformat()
+    
+    # Check if already checked in today
+    existing = await db.attendance.find_one({
+        "member_id": member_id,
+        "activity_id": activity_id,
+        "date": today
+    })
+    
+    if existing:
+        return {
+            "message": "تم تسجيل الحضور مسبقاً",
+            "member_name": member["name"],
+            "activity_name": activity["name"],
+            "check_in_time": existing.get("check_in_time", ""),
+            "already_checked_in": True
+        }
+    
+    record_doc = {
+        "id": str(uuid.uuid4()),
+        "member_id": member_id,
+        "member_name": member["name"],
+        "activity_id": activity_id,
+        "activity_name": activity["name"],
+        "branch_id": member.get("branch_id", ""),
+        "date": today,
+        "status": "present",
+        "check_in_time": current_time,
+        "notes": "تسجيل عبر QR",
+        "recorded_by": current_user.get("username", ""),
+        "created_at": now
+    }
+    await db.attendance.insert_one(record_doc)
+    
+    return {
+        "message": "تم تسجيل الحضور بنجاح",
+        "member_name": member["name"],
+        "activity_name": activity["name"],
+        "check_in_time": current_time,
+        "already_checked_in": False
+    }
+
+@api_router.get("/attendance/member/{member_id}/report")
+async def get_member_attendance_report(
+    member_id: str,
+    activity_id: str = None,
+    start_date: str = None,
+    end_date: str = None,
+    current_user: dict = Depends(get_current_user)
+):
+    """Get attendance report for a specific member"""
+    member = await db.members.find_one({"id": member_id}, {"_id": 0})
+    if not member:
+        raise HTTPException(status_code=404, detail="العضو غير موجود")
+    
+    query = {"member_id": member_id}
+    if activity_id:
+        query["activity_id"] = activity_id
+    if start_date:
+        query["date"] = {"$gte": start_date}
+    if end_date:
+        if "date" in query:
+            query["date"]["$lte"] = end_date
+        else:
+            query["date"] = {"$lte": end_date}
+    
+    records = await db.attendance.find(query, {"_id": 0}).sort("date", -1).to_list(1000)
+    
+    present_count = sum(1 for r in records if r["status"] == "present")
+    absent_count = sum(1 for r in records if r["status"] == "absent")
+    total = len(records)
+    
+    return {
+        "member": member,
+        "records": records,
+        "summary": {
+            "total_records": total,
+            "present_count": present_count,
+            "absent_count": absent_count,
+            "attendance_rate": round((present_count / total * 100), 1) if total > 0 else 0
+        }
+    }
+
+@api_router.get("/attendance/activity/{activity_id}/report")
+async def get_activity_attendance_report(
+    activity_id: str,
+    start_date: str = None,
+    end_date: str = None,
+    current_user: dict = Depends(get_current_user)
+):
+    """Get attendance report for a specific activity"""
+    activity = await db.activities.find_one({"id": activity_id}, {"_id": 0})
+    if not activity:
+        raise HTTPException(status_code=404, detail="النشاط غير موجود")
+    
+    query = {"activity_id": activity_id}
+    if start_date:
+        query["date"] = {"$gte": start_date}
+    if end_date:
+        if "date" in query:
+            query["date"]["$lte"] = end_date
+        else:
+            query["date"] = {"$lte": end_date}
+    
+    records = await db.attendance.find(query, {"_id": 0}).sort("date", -1).to_list(5000)
+    
+    # Group by member
+    member_stats = {}
+    for r in records:
+        mid = r["member_id"]
+        if mid not in member_stats:
+            member_stats[mid] = {
+                "member_id": mid,
+                "member_name": r["member_name"],
+                "present": 0,
+                "absent": 0,
+                "total": 0
+            }
+        member_stats[mid]["total"] += 1
+        if r["status"] == "present":
+            member_stats[mid]["present"] += 1
+        else:
+            member_stats[mid]["absent"] += 1
+    
+    # Calculate rates
+    for mid, stats in member_stats.items():
+        stats["attendance_rate"] = round((stats["present"] / stats["total"] * 100), 1) if stats["total"] > 0 else 0
+    
+    # Group by date
+    date_stats = {}
+    for r in records:
+        d = r["date"]
+        if d not in date_stats:
+            date_stats[d] = {"date": d, "present": 0, "absent": 0}
+        if r["status"] == "present":
+            date_stats[d]["present"] += 1
+        else:
+            date_stats[d]["absent"] += 1
+    
+    return {
+        "activity": activity,
+        "total_records": len(records),
+        "total_present": sum(1 for r in records if r["status"] == "present"),
+        "total_absent": sum(1 for r in records if r["status"] == "absent"),
+        "member_stats": list(member_stats.values()),
+        "date_stats": sorted(date_stats.values(), key=lambda x: x["date"], reverse=True)
+    }
+
+@api_router.delete("/attendance/{record_id}")
+async def delete_attendance(
+    record_id: str,
+    current_user: dict = Depends(get_current_user)
+):
+    """Delete an attendance record"""
+    result = await db.attendance.delete_one({"id": record_id})
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="السجل غير موجود")
+    return {"message": "تم حذف السجل"}
+
+@api_router.get("/export/attendance")
+async def export_attendance_excel(
+    activity_id: str = None,
+    start_date: str = None,
+    end_date: str = None,
+    branch_id: str = None,
+    token: str = None
+):
+    """Export attendance to Excel"""
+    if token:
+        try:
+            payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        except:
+            raise HTTPException(status_code=401, detail="Invalid token")
+    
+    query = {}
+    if activity_id:
+        query["activity_id"] = activity_id
+    if branch_id:
+        query["branch_id"] = branch_id
+    if start_date:
+        query["date"] = {"$gte": start_date}
+    if end_date:
+        if "date" in query:
+            query["date"]["$lte"] = end_date
+        else:
+            query["date"] = {"$lte": end_date}
+    
+    records = await db.attendance.find(query, {"_id": 0}).sort("date", -1).to_list(10000)
+    
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "سجل الحضور"
+    
+    headers = ["التاريخ", "النشاط", "اسم العضو", "الحالة", "وقت الحضور", "ملاحظات", "المسجل"]
+    ws.append(headers)
+    
+    for r in records:
+        ws.append([
+            r.get("date", ""),
+            r.get("activity_name", ""),
+            r.get("member_name", ""),
+            "حاضر" if r.get("status") == "present" else "غائب",
+            r.get("check_in_time", ""),
+            r.get("notes", ""),
+            r.get("recorded_by", "")
+        ])
+    
+    output = BytesIO()
+    wb.save(output)
+    output.seek(0)
+    
+    filename = f"attendance_{datetime.now().strftime('%Y%m%d')}.xlsx"
+    return StreamingResponse(
+        output,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f"attachment; filename={filename}"}
+    )
+
 # ============ INTERNAL EXPENSES (PETTY CASH) SYSTEM ============
 
 # Expense types
