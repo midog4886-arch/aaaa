@@ -3081,6 +3081,10 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
             )}
             <DialogFooter className="flex-wrap gap-2">
               <Button variant="outline" onClick={() => setIsViewRegFormDialogOpen(false)}>{t('close')}</Button>
+              <Button variant="outline" onClick={() => handlePrintViewedRegForm(selectedRegForm)} className="text-gray-700 border-gray-400">
+                <Printer className="w-4 h-4 me-2" />
+                {language === 'ar' ? 'طباعة' : 'Print'}
+              </Button>
               <Button variant="outline" onClick={() => handleSaveRegFormPdf(selectedRegForm)} className="text-teal-600 border-teal-300">
                 <FileText className="w-4 h-4 me-2" />
                 {language === 'ar' ? 'حفظ PDF' : 'Save PDF'}
