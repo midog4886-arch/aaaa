@@ -59,6 +59,7 @@ export const Sidebar = ({ isOpen, onClose }) => {
     { to: '/members', icon: Users, label: 'members' },
     { to: '/activities', icon: Dumbbell, label: 'activities' },
     { to: '/coaches', icon: UserCog, label: 'coaches' },
+    { to: '/attendance', icon: ClipboardList, label: 'attendance' },
     { to: '/invoices', icon: Receipt, label: 'invoices' },
     { to: '/store', icon: Package, label: 'store' },
     { to: '/accounting', icon: Calculator, label: 'accounting' },
