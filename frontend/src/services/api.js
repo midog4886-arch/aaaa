@@ -236,6 +236,28 @@ export const internalExpensesAPI = {
   delete: (id) => axios.delete(`${API}/internal-expenses/${id}`),
 };
 
+// Attendance API
+export const attendanceAPI = {
+  getAll: (params = {}) => axios.get(`${API}/attendance`, { params }),
+  getByActivity: (activityId, date) => axios.get(`${API}/attendance/by-activity/${activityId}`, { params: { date } }),
+  record: (data) => axios.post(`${API}/attendance`, data),
+  recordBulk: (data) => axios.post(`${API}/attendance/bulk`, data),
+  qrCheckin: (memberId, activityId) => {
+    const formData = new FormData();
+    formData.append('member_id', memberId);
+    formData.append('activity_id', activityId);
+    return axios.post(`${API}/attendance/qr-checkin`, formData);
+  },
+  getMemberReport: (memberId, params = {}) => axios.get(`${API}/attendance/member/${memberId}/report`, { params }),
+  getActivityReport: (activityId, params = {}) => axios.get(`${API}/attendance/activity/${activityId}/report`, { params }),
+  delete: (id) => axios.delete(`${API}/attendance/${id}`),
+  export: (params = {}) => {
+    const token = localStorage.getItem('token');
+    const queryParams = new URLSearchParams({ token, ...params }).toString();
+    return `${API}/export/attendance?${queryParams}`;
+  }
+};
+
 export default {
   auth: authAPI,
   activities: activitiesAPI,
