@@ -1461,6 +1461,147 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
     }
   };
 
+  // Print registration form directly
+  const handlePrintViewedRegForm = (form) => {
+    const branchName = getBranchName(form.branch_id);
+    const paymentText = form.payment_method === 'cash' ? 'نقداً' : 
+                        form.payment_method === 'card' ? 'بطاقة' : 
+                        form.payment_method === 'transfer' ? 'تحويل بنكي' : 
+                        form.payment_method === 'tabby' ? 'تابي' : 
+                        form.payment_method === 'tamara' ? 'تمارا' : form.payment_method;
+    
+    const itemsRows = form.items?.map((item, idx) => `
+      <tr>
+        <td style="padding:10px;border:1px solid #e2e8f0;text-align:right">${idx + 1}</td>
+        <td style="padding:10px;border:1px solid #e2e8f0;text-align:right">${item.activity_name || ''}${item.is_product ? ' (منتج)' : ''}</td>
+        <td style="padding:10px;border:1px solid #e2e8f0;text-align:right">${item.is_product ? (item.quantity || 1) : (item.period || '-')}</td>
+        <td style="padding:10px;border:1px solid #e2e8f0;text-align:right">${item.schedule || '-'}</td>
+        <td style="padding:10px;border:1px solid #e2e8f0;text-align:right">${((item.fee || 0) * (item.quantity || 1)).toFixed(2)} ر.س</td>
+      </tr>
+    `).join('') || '<tr><td colspan="5" style="text-align:center;padding:20px">لا يوجد عناصر</td></tr>';
+    
+    const printContent = `
+      <!DOCTYPE html>
+      <html dir="rtl" lang="ar">
+      <head>
+        <meta charset="UTF-8">
+        <title>استمارة تسجيل - ${form.form_number}</title>
+        <style>
+          @import url('https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700&display=swap');
+          * { margin: 0; padding: 0; box-sizing: border-box; }
+          body { font-family: 'Tajawal', Arial, sans-serif; direction: rtl; padding: 20px; max-width: 800px; margin: 0 auto; }
+          @media print {
+            body { padding: 10px; }
+            @page { size: A4; margin: 10mm; }
+          }
+          .header { background: linear-gradient(135deg, #1e3a8a 0%, #1e40af 100%); color: white; padding: 12px; text-align: center; margin-bottom: 15px; border-radius: 8px; }
+          .company-name { font-size: 16px; font-weight: bold; margin-bottom: 3px; }
+          .branch-name { font-size: 11px; margin-top: 5px; background: rgba(255,255,255,0.2); display: inline-block; padding: 3px 12px; border-radius: 15px; }
+          .tax-info { font-size: 9px; opacity: 0.9; margin-top: 5px; }
+          .form-title { font-size: 20px; font-weight: bold; text-align: center; margin: 20px 0; padding: 12px; background: #f8fafc; border: 2px solid #1e3a8a; border-radius: 8px; color: #1e3a8a; }
+          .section { margin-bottom: 15px; padding: 15px; border: 1px solid #e2e8f0; border-radius: 8px; background: #f8fafc; }
+          .section-title { font-size: 14px; font-weight: bold; margin-bottom: 10px; color: #1e3a8a; border-bottom: 2px solid #1e3a8a; padding-bottom: 5px; }
+          .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+          .info-item { display: flex; gap: 8px; padding: 5px 0; }
+          .info-label { font-weight: bold; min-width: 90px; color: #374151; }
+          table { width: 100%; border-collapse: collapse; margin: 10px 0; }
+          thead tr { background: #1e3a8a; color: white; }
+          th, td { padding: 10px; text-align: right; }
+          .totals { margin-top: 15px; border: 2px solid #1e3a8a; padding: 15px; border-radius: 8px; background: #eff6ff; }
+          .total-row { display: flex; justify-content: space-between; padding: 8px 0; }
+          .total-main { font-size: 18px; font-weight: bold; padding-top: 12px; color: #1e3a8a; border-top: 1px solid #bfdbfe; }
+          .payment-box { margin-top: 15px; padding: 12px; border: 1px solid #e2e8f0; border-radius: 8px; background: #fefce8; }
+          .notes-box { margin-top: 15px; padding: 12px; border: 1px solid #e2e8f0; border-radius: 8px; background: #f0fdf4; }
+          .terms { margin-top: 20px; padding: 15px; border: 2px solid #f59e0b; border-radius: 8px; background: #fffbeb; }
+          .terms-title { font-weight: bold; margin-bottom: 10px; color: #92400e; }
+          .terms-list { padding-right: 20px; font-size: 11px; color: #78350f; }
+          .terms-list li { margin-bottom: 5px; }
+          .signatures { margin-top: 25px; display: grid; grid-template-columns: 1fr 1fr; gap: 30px; }
+          .signature-box { border: 2px solid #d1d5db; padding: 15px; text-align: center; border-radius: 8px; background: white; }
+          .signature-label { margin-bottom: 40px; font-weight: bold; color: #374151; }
+          .signature-line { border-top: 1px solid #000; margin-top: 40px; padding-top: 8px; font-size: 10px; }
+          .footer { margin-top: 20px; text-align: center; font-size: 10px; color: #6b7280; border-top: 2px solid #e2e8f0; padding-top: 15px; }
+        </style>
+      </head>
+      <body>
+        <div class="header">
+          <div class="company-name">${COMPANY_INFO.name_ar}</div>
+          ${branchName ? `<div class="branch-name">🏢 فرع: ${branchName}</div>` : ''}
+          <div class="tax-info">الرقم الضريبي: ${COMPANY_INFO.tax_number} | السجل التجاري: ${COMPANY_INFO.commercial_reg}</div>
+        </div>
+        
+        <div class="form-title">📋 استمارة تسجيل - ${form.form_number}</div>
+        
+        <div class="section">
+          <div class="section-title">👤 بيانات المشترك</div>
+          <div class="info-grid">
+            <div class="info-item"><span class="info-label">الاسم:</span><span>${form.customer_name || '-'}</span></div>
+            <div class="info-item"><span class="info-label">رقم الجوال:</span><span dir="ltr">${form.customer_phone || '-'}</span></div>
+            <div class="info-item"><span class="info-label">التاريخ:</span><span>${new Date(form.created_at).toLocaleDateString('ar-SA')}</span></div>
+          </div>
+        </div>
+        
+        <div class="section">
+          <div class="section-title">📝 الأنشطة والمنتجات</div>
+          <table>
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>البند</th>
+                <th>الفترة/الكمية</th>
+                <th>المواعيد</th>
+                <th>الرسوم</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${itemsRows}
+            </tbody>
+          </table>
+        </div>
+        
+        <div class="totals">
+          ${form.discount > 0 ? `<div class="total-row" style="color:#dc2626;font-weight:500;border-bottom:1px solid #bfdbfe"><span>الخصم:</span><span>- ${form.discount?.toFixed(2)} ر.س</span></div>` : ''}
+          <div class="total-row total-main"><span>💰 الإجمالي:</span><span>${form.total?.toFixed(2)} ر.س</span></div>
+        </div>
+        
+        <div class="payment-box">
+          <span style="font-weight:bold">💳 طريقة الدفع:</span> ${paymentText}
+        </div>
+        
+        ${form.notes ? `<div class="notes-box"><strong>📌 ملاحظات:</strong> ${form.notes}</div>` : ''}
+        
+        <div class="terms">
+          <div class="terms-title">⚠️ شروط وأحكام:</div>
+          <ul class="terms-list">
+            <li>الاشتراك محدد البداية والنهاية ولا يتم تعويض حصص غياب المشترك</li>
+            <li>المبلغ المدفوع لا يسترد بعد مرور أسبوع من الاشتراك</li>
+          </ul>
+        </div>
+        
+        <div class="signatures">
+          <div class="signature-box">
+            <div class="signature-label">✍️ توقيع المشترك / ولي الأمر</div>
+            <div class="signature-line">التاريخ: _______________</div>
+          </div>
+          <div class="signature-box">
+            <div class="signature-label">✍️ توقيع الموظف</div>
+            <div class="signature-line">التاريخ: _______________</div>
+          </div>
+        </div>
+        
+        <div class="footer">${COMPANY_INFO.name_ar} - جميع الحقوق محفوظة © ${new Date().getFullYear()}</div>
+      </body>
+      </html>
+    `;
+    
+    const printWindow = window.open('', '_blank');
+    printWindow.document.write(printContent);
+    printWindow.document.close();
+    printWindow.onload = () => {
+      printWindow.print();
+    };
+  };
+
   // Open edit registration form dialog
   const handleEditRegForm = (form) => {
     setEditRegFormId(form.id);
