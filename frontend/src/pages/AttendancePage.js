@@ -85,11 +85,10 @@ export default function AttendancePage() {
     } finally {
       setLoading(false);
     }
-  }, [selectedActivityId, selectedDate, t]);
+  }, [selectedActivityId, selectedDate]);
 
-  useEffect(() => {
-    fetchAttendance();
-  }, [fetchAttendance]);
+  // Remove auto-fetch - only fetch when button is clicked
+  // This prevents infinite loop caused by useCallback dependency changes
 
   // Handle attendance status change
   const handleStatusChange = (memberId, status) => {
