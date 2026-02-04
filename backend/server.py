@@ -3929,10 +3929,10 @@ async def get_attendance_by_activity(
             attendance_record = existing_map.get(member["id"])
             result.append({
                 "member_id": member["id"],
-                "member_name": member["name"],
+                "member_name": member.get("name_ar") or member.get("name", ""),
                 "phone": member.get("phone", ""),
                 "activity_id": activity_id,
-                "activity_name": activity["name"],
+                "activity_name": activity.get("name_ar") or activity.get("name", ""),
                 "subscription_status": member_activity.get("status", "active"),
                 "status": attendance_record["status"] if attendance_record else None,
                 "check_in_time": attendance_record.get("check_in_time", "") if attendance_record else "",
