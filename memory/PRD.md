@@ -1134,6 +1134,83 @@ GET    /api/export/internal-expenses    - تصدير Excel
 
 ### P2 - أولوية متوسطة:
 3. **جدول الأنشطة والمواعيد**
-4. **نظام تتبع الحضور**
-5. **صلاحيات متقدمة للمستخدمين**
+4. **صلاحيات متقدمة للمستخدمين**
+
+---
+
+## Update 17 - Attendance Tracking System (February 4, 2026)
+
+### New Feature: نظام تتبع الحضور ✅
+
+تم تنفيذ نظام كامل لتتبع حضور الأعضاء في الأنشطة مع دعم التسجيل اليدوي وQR.
+
+#### الميزات المنفذة:
+
+##### 1. صفحة الحضور الجديدة ✅
+- **المسار**: `/attendance`
+- **رابط القائمة**: "الحضور" مع أيقونة ClipboardList
+
+##### 2. تبويب تسجيل الحضور ✅
+- اختيار الفرع والنشاط والتاريخ
+- تحميل قائمة الأعضاء المسجلين في النشاط
+- أزرار "حاضر" و "غائب" لكل عضو
+- أزرار "الكل حاضر" و "الكل غائب"
+- حفظ الحضور دفعة واحدة
+- عرض ملخص (عدد الحاضرين/الغائبين)
+- علامة "مسجل" للحضور المحفوظ مسبقاً
+
+##### 3. تبويب تسجيل سريع QR ✅
+- اختيار النشاط وإدخال رقم العضوية
+- تسجيل الحضور بضغطة زر واحدة
+- إنشاء رمز QR للنشاط للمسح
+- عرض نتيجة التسجيل
+
+##### 4. تبويب التقارير ✅
+- فلترة بالنشاط والتواريخ
+- إحصائيات ملخصة (إجمالي، حضور، غياب، نسبة)
+- إحصائيات الأعضاء (نسبة حضور كل عضو)
+- إحصائيات يومية
+- تصدير Excel
+
+##### 5. تصدير Excel ✅
+- تصدير سجلات الحضور مع الفلاتر
+
+### API Endpoints المنفذة:
+
+```
+GET    /api/attendance                              - جلب سجلات الحضور
+GET    /api/attendance/by-activity/{id}?date=...   - حضور نشاط بتاريخ محدد
+POST   /api/attendance                              - تسجيل حضور فردي
+POST   /api/attendance/bulk                         - تسجيل حضور جماعي
+POST   /api/attendance/qr-checkin                   - تسجيل سريع عبر QR
+GET    /api/attendance/member/{id}/report          - تقرير حضور عضو
+GET    /api/attendance/activity/{id}/report        - تقرير حضور نشاط
+DELETE /api/attendance/{id}                         - حذف سجل
+GET    /api/export/attendance                       - تصدير Excel
+```
+
+### الملفات الجديدة/المعدلة:
+
+1. **Frontend**:
+   - `/app/frontend/src/pages/AttendancePage.js` - صفحة جديدة كاملة
+   - `/app/frontend/src/services/api.js` - إضافة `attendanceAPI`
+   - `/app/frontend/src/App.js` - إضافة route
+   - `/app/frontend/src/components/Layout.js` - إضافة رابط القائمة
+   - `/app/frontend/src/contexts/LanguageContext.js` - إضافة ترجمة
+
+2. **Backend**:
+   - `/app/backend/server.py` - إضافة ~400 سطر (Attendance system)
+
+### نتائج الاختبار (100% نجاح):
+- Backend: 11/11 tests passed
+- Frontend: 19/19 tests passed
+
+### Bugs Fixed During Testing:
+1. **أسماء الأنشطة**: تم تصحيح لعرض `name_ar` بدلاً من `name`
+2. **حلقة لا نهائية (Critical)**: تم إصلاح useEffect dependencies
+
+### ملاحظات تقنية:
+- استخدام `qrcode.react` لإنشاء QR codes
+- Bulk attendance API لحفظ الحضور دفعة واحدة
+- تخزين الحضور في collection `attendance`
 
