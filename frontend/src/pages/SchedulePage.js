@@ -223,12 +223,20 @@ export default function SchedulePage() {
                   className="w-44"
                 />
                 <Button 
-                  onClick={handleExecute}
+                  onClick={fetchActivities}
                   className="bg-primary hover:bg-primary/90"
                 >
                   {t('تنفيذ', 'Apply')}
                 </Button>
               </div>
+            </div>
+
+            {/* Selected Day Display */}
+            <div className="bg-primary/10 px-4 py-2 rounded-lg">
+              <div className="text-lg font-bold text-primary">
+                {language === 'ar' ? dayLabels[selectedDay].ar : dayLabels[selectedDay].en}
+              </div>
+              <div className="text-xs text-gray-500">{t('اليوم المحدد', 'Selected Day')}</div>
             </div>
 
             {/* Branch Filter */}
@@ -251,7 +259,7 @@ export default function SchedulePage() {
             {/* Stats */}
             <div className="flex gap-3 ms-auto">
               <div className="bg-primary/10 px-4 py-2 rounded-lg text-center">
-                <div className="text-xl font-bold text-primary">{activitiesData.length}</div>
+                <div className="text-xl font-bold text-primary">{activitiesData.filter(a => getTotalMembers(a) > 0).length}</div>
                 <div className="text-xs text-gray-500">{t('نشاط', 'Activities')}</div>
               </div>
               <div className="bg-green-100 px-4 py-2 rounded-lg text-center">
@@ -262,23 +270,6 @@ export default function SchedulePage() {
               </div>
             </div>
           </div>
-        </div>
-
-        {/* Day Filter Tabs */}
-        <div className="flex gap-1 mb-4 overflow-x-auto pb-2 bg-gray-100 p-1 rounded-lg">
-          {days.map(day => (
-            <button
-              key={day.key}
-              onClick={() => setSelectedDay(day.key)}
-              className={`px-3 py-2 rounded-md text-sm font-medium whitespace-nowrap transition-colors ${
-                selectedDay === day.key
-                  ? 'bg-white text-primary shadow-sm'
-                  : 'text-gray-600 hover:bg-gray-200'
-              }`}
-            >
-              {language === 'ar' ? day.ar : day.en}
-            </button>
-          ))}
         </div>
 
         {/* Loading */}
