@@ -120,7 +120,7 @@ export const Sidebar = ({ isOpen, onClose }) => {
 
         {/* Navigation */}
         <nav className="sidebar-nav">
-          {navItems.map((item) => (
+          {filteredNavItems.map((item) => (
             <NavLink
               key={item.to}
               to={item.to}
