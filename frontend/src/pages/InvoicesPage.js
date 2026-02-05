@@ -11,7 +11,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Textarea } from '../components/ui/textarea';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
-import { invoicesAPI, membersAPI, activitiesAPI, exportAPI, productsAPI, discountsAPI, branchesAPI, registrationFormsAPI, creditNotesAPI } from '../services/api';
+import { invoicesAPI, membersAPI, activitiesAPI, exportAPI, productsAPI, discountsAPI, branchesAPI, registrationFormsAPI, creditNotesAPI, levelsAPI } from '../services/api';
 import { toast } from 'sonner';
 import html2canvas from 'html2canvas';
 import html2pdf from 'html2pdf.js';
