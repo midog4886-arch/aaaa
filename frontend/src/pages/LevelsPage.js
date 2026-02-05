@@ -189,6 +189,7 @@ export const LevelsPage = () => {
 
   const getLevelColor = (levelNum) => {
     const colors = {
+      1: 'bg-purple-500',
       2: 'bg-green-500',
       3: 'bg-blue-500',
       4: 'bg-yellow-500',
@@ -198,28 +199,20 @@ export const LevelsPage = () => {
     return colors[levelNum] || 'bg-gray-500';
   };
 
-  // Filter members not in current level
-  const availableMembers = members.filter(m => {
-    if (!selectedLevel) return true;
-    return !(selectedLevel.members || []).includes(m.id);
-  }).filter(m => {
-    if (!searchQuery) return true;
-    const name = (m.name_ar || m.name || '').toLowerCase();
-    const phone = (m.phone || '').toLowerCase();
-    return name.includes(searchQuery.toLowerCase()) || phone.includes(searchQuery.toLowerCase());
-  });
-
-  // Group levels by activity
-  const levelsByActivity = activities.reduce((acc, activity) => {
-    const activityLevels = levels.filter(l => l.activity_id === activity.id);
-    if (activityLevels.length > 0) {
-      acc[activity.id] = {
-        activity,
-        levels: activityLevels.sort((a, b) => a.level_number - b.level_number)
-      };
+  // Group levels by activity name
+  const levelsByActivity = levels.reduce((acc, level) => {
+    const activityName = level.activity_name || t('بدون نشاط', 'No Activity');
+    if (!acc[activityName]) {
+      acc[activityName] = [];
     }
+    acc[activityName].push(level);
     return acc;
   }, {});
+
+  // Sort levels within each activity
+  Object.keys(levelsByActivity).forEach(key => {
+    levelsByActivity[key].sort((a, b) => a.level_number - b.level_number);
+  });
 
   if (loading) {
     return (
