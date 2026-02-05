@@ -50,14 +50,16 @@ export const DashboardPage = () => {
   const loadData = async () => {
     try {
       const branchParams = selectedBranchId && selectedBranchId !== 'all' ? { branch_filter: selectedBranchId } : {};
-      const [statsRes, expiringRes, discountsRes] = await Promise.all([
+      const [statsRes, expiringRes, discountsRes, notesRes] = await Promise.all([
         dashboardAPI.getStats(branchParams),
         reportsAPI.getExpiringSubscriptions(7, selectedBranchId),
-        discountsAPI.getAll(branchParams)
+        discountsAPI.getAll(branchParams),
+        activityNotesAPI.getRecent(5)
       ]);
       setStats(statsRes.data);
       setExpiring(expiringRes.data);
       setDiscounts(discountsRes.data);
+      setRecentNotes(notesRes.data || []);
     } catch (error) {
       console.error('Failed to load dashboard data:', error);
     } finally {
