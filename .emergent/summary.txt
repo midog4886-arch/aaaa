@@ -1,0 +1,193 @@
+<analysis>**original_problem_statement:**
+We want to design a management program for a sports academy named World Champions Performance Academy.
+
+**PRODUCT REQUIREMENTS:**
+*   **Core System:** Member registration, invoice generation (SAR), subscription monitoring, member segmentation, and financial reporting.
+*   **Technical & Design:** Web-based application with a modern, sports-themed design and bilingual (Arabic/English) support.
+*   **Subsequent User Requests:**
+    *   Members can enroll in multiple activities.
+    *   Export to Excel for members, invoices, and reports.
+    *   Advanced search and various customizations for invoices (15% VAT, editable total, company details, QR code, PDF/Image saving, manual schedule field, discount, payment method, notes, and pre-payment editing).
+    *   Ability to create a new member from the invoice page.
+    *   Multi-Branch Support: All entities are tied to a branch.
+    *   User Management: Admins can create/manage users and assign them to branches.
+    *   Store & Inventory.
+    *   Discounts and coupon management.
+    *   Invoice Integration: Sell products and apply coupons directly within an invoice.
+    *   Refunds (Credit Notes).
+    *   Interactive Dashboards.
+    *   Improved invoice display: show all member activities and their subscription status.
+    *   WhatsApp integration for sharing invoice details.
+    *   Separate Registration Form flow.
+    *   **Accounting System:** A full, double-entry accounting system including a Chart of Accounts, Supplier Management, Purchase Invoices, Journal Entries, and various accounting reports with Excel export.
+    *   **Subscription Renewal System:** A system to track expiring subscriptions, show renewal buttons, and maintain a historical record of all subscription periods for a member.
+    *   **Branch-Specific Accounting:** All accounting data must be filtered by the selected branch.
+    *   **Manual Journal Entries & Editing:** Ability to create manual journal entries and edit existing ones, plus the ability to edit purchase invoices.
+    *   **Report Enhancements:** Add refund data to financial reports.
+    *   **Invoice Numbering Sequence:** Change the invoice numbering to start from #26001.
+    *   **In-App Notifications:** An internal notification system to alert admins about subscriptions that are expiring soon.
+    *   **Internal Expenses Module:** A separate module for logging internal/petty cash expenses with optional image attachments, which can be reviewed and optionally converted into formal journal entries later.
+    *   **Attendance Tracking System:** A system to record member attendance (present/absent) for activities.
+    *   **Activity Schedule:** A visual weekly schedule showing all activities, their times, and the members enrolled in each session.
+    *   **Schedule & Attendance Integration:** The ability to record attendance directly from the schedule.
+    *   **Attendance in Member Profile:** Display a member's attendance history and statistics in their profile.
+    *   **Levels System:** A new module to replace Coaches for managing member skill levels, integrating them into invoices and the activity schedule.
+
+**User's preferred language**: Arabic (العربية). The next agent MUST respond in Arabic only.
+
+**what currently exists?**
+A comprehensive full-stack (FastAPI, React, MongoDB) sports academy management system. The application features modules for members, invoicing, a full accounting system, attendance, and a highly interactive activity schedule. A new Levels module was just created to replace the old Coaches functionality, allowing admins to define skill levels, assign members to them via invoices, and visualize these levels on the schedule page. The  has undergone numerous rapid, iterative enhancements and is now highly complex, with multiple filters and display modes. The backend remains a single large  file, though a new, more organized file structure has been scaffolded for future refactoring.
+
+**Last working item**:
+The agent was implementing a user request to add a filter for Activity Name on the  to allow users to see all schedules for a specific activity (e.g., all Swimming sessions) at once.
+
+-   **Last item agent was working**: Implementing the filtering logic for the new Activity Name dropdown on the . The agent added the state management and UI select component, but needs to apply the filter to the data being rendered.
+-   **Status**: IN PROGRESS
+-   **Agent Testing Done**: N
+-   **Which testing method agent to use?**: Frontend testing agent. The test should:
+    1.  Navigate to the Schedule page.
+    2.  Select a specific activity type from the new فلتر بالنشاط dropdown (e.g., السباحة).
+    3.  Verify that only activity cards matching that name are displayed.
+    4.  Select كل الأنشطة again and verify all activities are shown.
+-   **User Testing Done**: N
+
+**All Pending/In progress Issue list**:
+-   **Issue 1**: During previous testing, the agent had significant difficulty programmatically selecting a member from the search-enabled dropdown in . This indicates a potential fragility in the component that could hamper future automated testing. (P2)
+
+**Issues Detail**:
+-   **Issue 1**:
+    -   **Attempted fixes**: The previous agent tried multiple screenshot tool commands to select a member but failed.
+    -   **Next debug checklist**: Investigate the  component used for member selection in . Ensure  attributes are correctly placed on the trigger and the individual items in the dropdown list for more reliable selection by testing tools.
+    -   **Why fix this issue and what will be achieved with the fix?**: Improves the testability and robustness of a critical workflow (invoice creation).
+    -   **Status**: NOT STARTED
+    -   **Is recurring issue?** Y
+    -   **Should Test frontend/backend/both after fix?**: Frontend
+    -   **Blocked on other issue**: None
+
+**In progress Task List**:
+-   **Task 1**: Complete the filtering logic for the . (P0)
+
+**Task Detail**:
+-   **Task 1**:
+    -   **Where to resume**: In , locate the  variable declaration. Modify its logic to incorporate the new  state, so that if  is not 'all', the array is filtered to only include activities whose  matches.
+    -   **What will be achieved with this?**: The new Filter by Activity dropdown on the schedule page will become functional.
+    -   **Status**: IN PROGRESS
+    -   **Should Test frontend/backend/both after fix?**: Frontend
+    -   **Blocked on something**: None
+
+**Upcoming and Future Tasks**
+-   **Upcoming Tasks**:
+    -   **Code Refactoring (P0 - CRITICAL)**: The monolithic file  is over 6000 lines long. The user has approved a new backend structure (, ). The agent created the files/folders but **paused the migration** at the user's request to keep the current system stable. The next step is to discuss with the user a safe, incremental plan to migrate the logic from  into the new structure. The frontend pages  and  also need to be broken down into smaller components.
+    -   **WhatsApp Business API Integration (P1)**: The user has a business account. The next step is to ask for the  and  from their Meta Business Suite to implement sending of invoice PDFs/images automatically.
+-   **Future Tasks**:
+    -   Advanced User Permissions (P2)
+
+**Completed work in this session**
+-   **Schedule Page - Major Iterations**:
+    -   Implemented filtering by the selected date's day of the week.
+    -   Redesigned the UI multiple times: removed day tabs, added quick navigation buttons (prev/next/today), changed to a grid of activity cards, grouped members by time slots within cards, and finally grouped members by skill level within time slots.
+    -   Added advanced filters for Time, Level, and Branch.
+    -   Added a Print button that generates a print-friendly view of the current schedule.
+-   **Levels Module (Full Implementation)**:
+    -   Replaced the Coaches feature with a new Levels module.
+    -   Backend: Added new models and API endpoints in  for full CRUD on levels and assigning members.
+    -   Frontend: Created a new  for managing levels, with modals for adding/editing.
+    -   Modified the Levels page to support manually typed activity names and add Level 1 to the list of available levels.
+-   **Invoice & Registration Form Integration**:
+    -   Added a Level dropdown to the  when adding an activity, which automatically enrolls the member in that level upon invoice creation.
+    -   Added the same Level dropdown to the Registration Form modal.
+    -   Changed the logic to **delete** a registration form upon conversion to an invoice, instead of changing its status.
+-   **Backend Refactoring (Scaffolding)**:
+    -   Created a new, organized directory structure for the backend (, , , ) to prepare for future refactoring, but did not migrate existing code.
+
+**Earlier issues found/mentioned but not fixed**
+-   The test automation issue with the member selection dropdown in  remains unresolved.
+
+**Known issue recurrence from previous fork**
+-   None.
+
+**Code Architecture**
+
+
+**Key Technical Concepts**
+-   **Frontend**: Complex state management in React (, ) to handle multiple cascading filters and dynamic data grouping on the .
+-   **Backend**: All business logic, database queries (MongoDB/Motor), and API endpoints are contained within a single, massive FastAPI file ().
+-   **Iterative Development**: The agent performed rapid, continuous UI/UX enhancements on the  based on a tight feedback loop with the user.
+
+**key DB schema**
+-   **levels (New)**: 
+-   **invoices (Modified)**: Invoice items now include optional  and .
+-   **registration_forms (Modified)**: Form items now include optional  and .
+
+**changes in tech stack**
+-   None.
+
+**All files of reference**
+-   **/app/frontend/src/pages/SchedulePage.js**: The main file worked on, containing all logic for the interactive schedule. Now very large.
+-   **/app/frontend/src/pages/LevelsPage.js**: New page for managing levels.
+-   **/app/frontend/src/pages/InvoicesPage.js**: Modified to integrate Levels into invoices and registration forms.
+-   **/app/backend/server.py**: The monolithic backend file, modified to add all APIs and logic for the new Levels system.
+-   **/app/frontend/src/App.js**: Modified to replace the  route with .
+-   **/app/frontend/src/components/Layout.js**: Modified to update the navigation menu.
+-   **/app/frontend/src/services/api.js**: Updated with .
+-   **/app/frontend/src/contexts/LanguageContext.js**: Updated with new translations for Levels.
+-   **/app/backend/models/**, **/app/backend/routes/**: New empty/scaffolded directories for future refactoring.
+
+**Areas that need refactoring**:
+-   **/app/backend/server.py**: **CRITICAL RISK**. This 6000+ line file must be broken down into the newly created  structure. The user has agreed to this in principle but paused the actual migration.
+-   **/app/frontend/src/pages/SchedulePage.js**: This file has become extremely large and complex due to iterative feature additions. It should be broken down into smaller, manageable components (e.g., , , ).
+-   **/app/frontend/src/pages/InvoicesPage.js**: Remains very large and needs to be componentized.
+-   The obsolete file  should be deleted.
+
+**key api endpoints**
+-   
+-   
+-    (Modified to handle  and assign member to level)
+-    (Modified to delete registration form after conversion)
+
+**Critical Info for New Agent**
+-   You **MUST** respond in **Arabic**.
+-   Your immediate task (P0) is to finish the Filter by Activity feature on the .
+-   **Refactoring Status**: The user has **PAUSED** the major backend refactoring. Do not attempt to migrate the entire  at once. Your next step after the current task should be to propose an incremental refactoring plan to the user, for example, moving one router (like ) out of  as a first step.
+
+**documents and test reports created in this job**
+-    (Updated)
+
+**Last 10 User Messages and any pending HUMAN messages**
+1.  **User**: Add a filter by activity name to the schedule page. (Status: **IN PROGRESS**)
+2.  **User**: Add  to the registration form and delete the form after converting it to an invoice. (Status: COMPLETED)
+3.  **User**: Print the schedule page. (Status: COMPLETED)
+4.  **User**: Add filters for time and level to the schedule page. (Status: COMPLETED)
+5.  **User**: Show levels inside the time slots on the schedule page. (Status: COMPLETED)
+6.  **User**: Add a  selection dropdown to the invoice creation form. (Status: COMPLETED)
+7.  **User**: Add Level 1 and make the activity name a manual input field in the Levels page. (Status: COMPLETED)
+8.  **User**: Replace the Coaches screen with a new Levels screen. (Status: COMPLETED)
+9.  **User**: In the schedule, group activities first, then time slots within each activity. (Status: COMPLETED)
+10. **User**: Let's do the full refactoring. -> User then changes mind -> Keep the current structure for now, but use the new structure for future work. (Status: PAUSED)
+
+**Project Health Check:**
+-   **Broken**: None.
+-   **Mocked**: None.
+
+**3rd Party Integrations**
+-   **openpyxl**: Backend, for  exports.
+-   **qrcode**: Backend, for QR code generation.
+-   **jspdf** & **jspdf-autotable**: Frontend, for PDF generation.
+-   **qrcode.react**: Frontend, for QR code display.
+-   **python-multipart**: Backend, for handling file uploads.
+-   **aiofiles**: Backend, for async file operations.
+
+**Testing status**
+-   **Testing agent used after significant changes**: NO (Agent performed multiple manual tests with screenshots instead).
+-   **Troubleshoot agent used after agent stuck in loop**: NO
+-   **Test files created**: None.
+-   **Known regressions**: None.
+
+**Credentials to test flow:**
+-   Username: 
+-   Password: 
+
+**What agent forgot to execute**
+-   The critical refactoring of monolithic files was explicitly paused by the user, but remains the most important technical debt to address.
+-   The known issue regarding the difficulty of automating tests for the member selection dropdown in  was not addressed.
+-   The obsolete  file was not deleted.</analysis>
