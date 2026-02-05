@@ -1168,6 +1168,79 @@ export default function SchedulePage() {
           )}
         </DialogContent>
       </Dialog>
+
+      {/* Notes Dialog */}
+      <Dialog open={notesDialog.open} onOpenChange={(open) => !open && setNotesDialog({ open: false, activity: null, notes: [], loading: false })}>
+        <DialogContent className="max-w-lg max-h-[80vh] overflow-hidden flex flex-col">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <StickyNote className="w-5 h-5 text-primary" />
+              {t('ملاحظات', 'Notes')} - {notesDialog.activity?.activity_name}
+            </DialogTitle>
+          </DialogHeader>
+          
+          <div className="space-y-4 flex-1 overflow-hidden flex flex-col">
+            {/* Add New Note */}
+            <div className="space-y-2 bg-gray-50 p-3 rounded-lg">
+              <Textarea
+                value={newNoteText}
+                onChange={(e) => setNewNoteText(e.target.value)}
+                placeholder={t('اكتب ملاحظتك هنا...', 'Write your note here...')}
+                className="min-h-[80px] resize-none"
+                dir="rtl"
+              />
+              <Button
+                onClick={handleAddNote}
+                disabled={!newNoteText.trim() || savingNote}
+                className="w-full gap-2"
+              >
+                <MessageSquarePlus className="w-4 h-4" />
+                {savingNote ? t('جاري الحفظ...', 'Saving...') : t('إضافة ملاحظة', 'Add Note')}
+              </Button>
+            </div>
+
+            {/* Notes List */}
+            <div className="flex-1 overflow-y-auto space-y-2">
+              {notesDialog.loading ? (
+                <div className="text-center py-8 text-gray-500">
+                  {t('جاري التحميل...', 'Loading...')}
+                </div>
+              ) : notesDialog.notes.length === 0 ? (
+                <div className="text-center py-8 text-gray-400">
+                  <StickyNote className="w-12 h-12 mx-auto mb-2 opacity-30" />
+                  <p>{t('لا توجد ملاحظات', 'No notes yet')}</p>
+                </div>
+              ) : (
+                notesDialog.notes.map((note) => (
+                  <div key={note.id} className="bg-white border rounded-lg p-3 shadow-sm">
+                    <div className="flex items-start justify-between gap-2">
+                      <p className="text-gray-800 flex-1 whitespace-pre-wrap">{note.note_text}</p>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleDeleteNote(note.id)}
+                        className="text-red-500 hover:text-red-700 hover:bg-red-50 h-7 w-7 p-0"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
+                    </div>
+                    <div className="flex items-center gap-2 mt-2 text-xs text-gray-500">
+                      <Calendar className="w-3 h-3" />
+                      <span>{note.date}</span>
+                      {note.created_by_name && (
+                        <>
+                          <span>•</span>
+                          <span>{note.created_by_name}</span>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </Layout>
   );
 }
