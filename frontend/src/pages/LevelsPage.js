@@ -179,11 +179,6 @@ export const LevelsPage = () => {
     }
   };
 
-  const getActivityName = (activityId) => {
-    const activity = activities.find(a => a.id === activityId);
-    return activity ? (language === 'ar' ? activity.name_ar : activity.name) || activity.name_ar : '';
-  };
-
   const getLevelColor = (levelNum) => {
     const colors = {
       1: 'bg-purple-500',
