@@ -386,13 +386,13 @@ export default function AttendancePage() {
             <div className="bg-gradient-to-r from-green-50 to-emerald-50 border-2 border-green-200 rounded-xl p-6">
               <h2 className="text-lg font-bold text-green-800 mb-4 flex items-center gap-2">
                 <Zap className="w-5 h-5" />
-                {t('تسجيل سريع برقم العضوية', 'Quick Check-in by Member ID')}
+                {t('تسجيل سريع برقم العضوية أو الاسم', 'Quick Check-in by Member ID or Name')}
               </h2>
               
               <div className="flex gap-3 items-end">
-                <div className="flex-1 max-w-xs">
+                <div className="flex-1 max-w-md">
                   <label className="text-sm text-gray-600 mb-1 block">
-                    {t('رقم العضوية', 'Member ID')}
+                    {t('رقم العضوية أو الاسم', 'Member ID or Name')}
                   </label>
                   <div className="relative">
                     <Hash className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
