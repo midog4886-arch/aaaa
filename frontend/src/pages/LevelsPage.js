@@ -40,7 +40,7 @@ export const LevelsPage = () => {
   const [saving, setSaving] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
 
-  const levelNumbers = [2, 3, 4, 5, 6];
+  const levelNumbers = [1, 2, 3, 4, 5, 6];
 
   const [formData, setFormData] = useState({
     level_number: 2,
