@@ -527,6 +527,7 @@ export const MembersPage = () => {
               <table className="data-table">
                 <thead>
                   <tr>
+                    <th>{language === 'ar' ? 'الكود' : 'Code'}</th>
                     <th>{t('member_name')}</th>
                     <th>{t('guardian_name')}</th>
                     <th>{t('phone')}</th>
@@ -537,7 +538,7 @@ export const MembersPage = () => {
                 <tbody>
                   {filteredMembers.length === 0 ? (
                     <tr>
-                      <td colSpan={5} className="text-center py-8 text-muted-foreground">
+                      <td colSpan={6} className="text-center py-8 text-muted-foreground">
                         {t('no_data')}
                       </td>
                     </tr>
@@ -545,6 +546,9 @@ export const MembersPage = () => {
                     filteredMembers.map(member => {
                       return (
                       <tr key={member.id} data-testid={`member-row-${member.id}`}>
+                        <td className="font-mono text-primary font-bold">
+                          {member.member_code || '-'}
+                        </td>
                         <td className="font-medium">
                           {language === 'ar' ? member.name_ar : member.name}
                         </td>
