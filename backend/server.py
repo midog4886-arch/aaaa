@@ -4321,6 +4321,35 @@ async def get_activity_notes(
     
     return notes
 
+@api_router.get("/activity-notes/counts/all")
+async def get_all_activity_notes_counts(
+    current_user: dict = Depends(get_current_user)
+):
+    """Get notes count for all activities"""
+    
+    # Aggregate to get count per activity_id
+    pipeline = [
+        {
+            "$group": {
+                "_id": "$activity_id",
+                "count": {"$sum": 1},
+                "latest_date": {"$max": "$created_at"}
+            }
+        }
+    ]
+    
+    results = await db.activity_notes.aggregate(pipeline).to_list(1000)
+    
+    # Convert to dict for easy lookup
+    counts = {}
+    for item in results:
+        counts[item["_id"]] = {
+            "count": item["count"],
+            "latest_date": item["latest_date"]
+        }
+    
+    return counts
+
 @api_router.delete("/activity-notes/{note_id}")
 async def delete_activity_note(
     note_id: str,
