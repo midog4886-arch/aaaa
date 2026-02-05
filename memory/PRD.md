@@ -137,7 +137,51 @@
 
 ### Credentials:
 - **Admin**: username: `admin`, password: `admin123`
-- **Coach**: username: `coach1`, password: `coach123` (صلاحيات: الجدول، الحضور)
+- **Coach (Limited)**: username: `coach1`, password: `coach123` (صلاحيات: الجدول، الحضور)
+
+---
+
+## Update 22 - Activity Notes System (February 2026)
+
+### New Feature: نظام ملاحظات الأنشطة ✅
+
+تم إضافة نظام ملاحظات لكل نشاط في جدول الأنشطة.
+
+#### الميزات المنفذة:
+
+##### 1. زر الملاحظات في كل نشاط ✅
+- زر "ملاحظات" في header كل بطاقة نشاط
+- يفتح نافذة لعرض وإضافة الملاحظات
+
+##### 2. إضافة ملاحظة ✅
+- مربع نص لكتابة الملاحظة
+- زر "إضافة ملاحظة"
+- يتم حفظ الملاحظة مع:
+  - تاريخ اليوم تلقائياً
+  - اسم المستخدم الذي أضافها
+  - وقت الإنشاء
+
+##### 3. عرض الملاحظات ✅
+- قائمة الملاحظات مرتبة من الأحدث للأقدم
+- كل ملاحظة تعرض: النص، التاريخ، اسم المستخدم
+- زر حذف لكل ملاحظة
+
+##### 4. حذف الملاحظات ✅
+- تأكيد قبل الحذف
+- حذف من قاعدة البيانات
+
+### Backend API Endpoints:
+- `POST /api/activity-notes` - إضافة ملاحظة
+- `GET /api/activity-notes/{activity_id}` - جلب ملاحظات نشاط
+- `DELETE /api/activity-notes/{note_id}` - حذف ملاحظة
+
+### Files Modified:
+- `/app/backend/server.py` - إضافة APIs للملاحظات
+- `/app/frontend/src/services/api.js` - إضافة `activityNotesAPI`
+- `/app/frontend/src/pages/SchedulePage.js` - واجهة الملاحظات
+
+### Database Collection:
+- `activity_notes`: `{id, activity_id, activity_name, note_text, date, created_by, created_by_name, created_at}`
 
 ---
 
