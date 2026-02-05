@@ -201,6 +201,32 @@
 
 ---
 
+## Update 23 - Notes Dashboard Card & Notifications (February 2026)
+
+### New Features:
+
+#### 1. كارت الملاحظات في لوحة التحكم ✅
+- عرض آخر 5 ملاحظات في لوحة التحكم
+- يظهر اسم النشاط، نص الملاحظة، التاريخ، واسم المستخدم
+- زر "عرض الجدول" للانتقال لصفحة الجدول
+- تصميم برتقالي مميز
+
+#### 2. إشعارات الملاحظات الجديدة ✅
+- عند إضافة ملاحظة جديدة يتم إنشاء إشعار تلقائياً
+- الإشعار يظهر في جرس الإشعارات
+- يتضمن اسم النشاط ونص الملاحظة
+
+### Backend Changes:
+- `GET /api/activity-notes/recent` - جلب آخر الملاحظات (Fixed route order)
+- تم تصحيح ترتيب الـ routes لتجنب التعارض مع `/{activity_id}`
+- إضافة إشعار تلقائي عند إنشاء ملاحظة
+
+### Frontend Changes:
+- `/app/frontend/src/pages/DashboardPage.js` - إضافة كارت الملاحظات
+- `/app/frontend/src/services/api.js` - إضافة `getRecent` API
+
+---
+
 ## Credentials
 - **Admin**: username: `admin`, password: `admin123`
 - **Coach (Limited)**: username: `coach1`, password: `coach123`
