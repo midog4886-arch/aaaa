@@ -267,6 +267,26 @@ export default function SchedulePage() {
         ...prev,
         notes: prev.notes.filter(n => n.id !== noteId)
       }));
+      
+      // Update notes count
+      if (notesDialog.activity) {
+        setNotesCounts(prev => {
+          const currentCount = prev[notesDialog.activity.activity_id]?.count || 1;
+          if (currentCount <= 1) {
+            const newCounts = { ...prev };
+            delete newCounts[notesDialog.activity.activity_id];
+            return newCounts;
+          }
+          return {
+            ...prev,
+            [notesDialog.activity.activity_id]: {
+              ...prev[notesDialog.activity.activity_id],
+              count: currentCount - 1
+            }
+          };
+        });
+      }
+      
       toast.success(t('تم حذف الملاحظة', 'Note deleted'));
     } catch (error) {
       toast.error(t('خطأ في حذف الملاحظة', 'Error deleting note'));
