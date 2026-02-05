@@ -227,6 +227,38 @@
 
 ---
 
+## Update 24 - Permission-Based Route Protection (February 2026)
+
+### New Feature: حماية الصفحات حسب الصلاحيات ✅
+
+تم تحسين نظام الصلاحيات لمنع المستخدمين من الوصول لصفحات غير مصرح بها.
+
+#### الميزات المنفذة:
+
+##### 1. توجيه ذكي بعد تسجيل الدخول ✅
+- المدراء يُوجهون لـ `/dashboard`
+- المستخدمون المحدودون يُوجهون لأول صفحة مسموح بها (مثل `/schedule`)
+
+##### 2. حماية كل صفحة ✅
+- كل route الآن يتحقق من صلاحية المستخدم
+- إذا حاول المستخدم الوصول لصفحة بدون صلاحية يتم تحويله تلقائياً
+
+##### 3. إخفاء لوحة التحكم ✅
+- المستخدمون بدون صلاحية `dashboard` لا يرون لوحة التحكم في القائمة
+- لا يستطيعون الوصول إليها حتى بالرابط المباشر
+
+### Files Modified:
+- `/app/frontend/src/App.js` - إضافة `ProtectedRoute` مع permission و `SmartRedirect`
+- `/app/frontend/src/pages/SchedulePage.js` - إضافة title للـ Layout
+- `/app/frontend/src/pages/AttendancePage.js` - إضافة title للـ Layout
+
+### Test Results:
+- ✅ المستخدم `coach1` (صلاحيات: الجدول + الحضور) يُوجه مباشرة لـ `/schedule`
+- ✅ محاولة الوصول لـ `/dashboard` تعيده لـ `/schedule`
+- ✅ القائمة الجانبية تعرض فقط الجدول والحضور
+
+---
+
 ## Credentials
 - **Admin**: username: `admin`, password: `admin123`
 - **Coach (Limited)**: username: `coach1`, password: `coach123`
