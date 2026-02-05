@@ -2339,12 +2339,12 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
                             </div>
                             <div className="space-y-1 col-span-3">
                               <Label className="text-xs">{language === 'ar' ? 'المستوى' : 'Level'}</Label>
-                              <Select value={item.level_id || ''} onValueChange={(value) => updateItemLevel(idx, value)}>
+                              <Select value={item.level_id || 'none'} onValueChange={(value) => updateItemLevel(idx, value === 'none' ? '' : value)}>
                                 <SelectTrigger className="h-8 text-sm">
                                   <SelectValue placeholder={language === 'ar' ? 'اختر المستوى' : 'Select level'} />
                                 </SelectTrigger>
                                 <SelectContent>
-                                  <SelectItem value="">{language === 'ar' ? 'بدون مستوى' : 'No level'}</SelectItem>
+                                  <SelectItem value="none">{language === 'ar' ? 'بدون مستوى' : 'No level'}</SelectItem>
                                   {levels.map(level => (
                                     <SelectItem key={level.id} value={level.id}>
                                       {language === 'ar' ? 'المستوى' : 'Level'} {level.level_number} - {level.activity_name}
