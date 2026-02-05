@@ -246,41 +246,69 @@ export default function SchedulePage() {
             gap: 15px;
             margin-top: 20px;
           }
+          .activities-container {
+            margin-top: 20px;
+          }
           .activity-card {
             border: 2px solid #ddd;
             border-radius: 10px;
             overflow: hidden;
             break-inside: avoid;
+            margin-bottom: 20px;
           }
           .activity-header {
             background: #f97316;
             color: white;
-            padding: 10px;
+            padding: 12px 15px;
             font-weight: bold;
-            font-size: 14px;
+            font-size: 16px;
           }
           .activity-header .count {
             font-size: 12px;
             opacity: 0.9;
+            margin-top: 2px;
+          }
+          .times-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 10px;
+            padding: 15px;
+            background: #fff9f5;
+          }
+          .time-slot {
+            background: white;
+            border-radius: 8px;
+            border: 1px solid #eee;
+            overflow: hidden;
+          }
+          .time-header {
+            background: #fef3e8;
+            padding: 8px 10px;
+            font-weight: bold;
+            font-size: 13px;
+            color: #f97316;
+            border-bottom: 1px solid #eee;
+          }
+          .time-count {
+            color: #888;
+            font-weight: normal;
           }
           .members-list {
-            padding: 10px;
-            background: #fff9f5;
+            padding: 8px;
           }
           .member-item {
             padding: 6px 8px;
             margin: 4px 0;
-            background: white;
+            background: #f9f9f9;
             border-radius: 5px;
-            border: 1px solid #eee;
-            font-size: 13px;
+            font-size: 12px;
           }
           .member-name {
             font-weight: 500;
           }
           .member-phone {
             color: #888;
-            font-size: 11px;
+            font-size: 10px;
           }
           .footer {
             margin-top: 30px;
