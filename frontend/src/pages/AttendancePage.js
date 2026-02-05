@@ -395,7 +395,6 @@ export default function AttendancePage() {
                     {t('رقم العضوية أو الاسم', 'Member ID or Name')}
                   </label>
                   <div className="relative">
-                  <div className="relative">
                     <Search className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                     <Input
                       type="text"
