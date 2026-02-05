@@ -239,17 +239,22 @@ export default function SchedulePage() {
                     {weeklySchedule[day.key]?.map((session, idx) => (
                       <div
                         key={idx}
-                        className={`p-2 rounded-lg border ${getActivityColor(session.activity_id)} text-sm`}
+                        className={`p-2 rounded-lg border ${getActivityColor(session.activity_id)} text-sm group cursor-pointer hover:shadow-md transition-shadow`}
+                        onClick={() => goToAttendance(session.activity_id)}
+                        title={t('انقر لتسجيل الحضور', 'Click to record attendance')}
                       >
                         <div className="font-semibold truncate" title={session.activity_name}>
                           {session.activity_name}
                         </div>
-                        {session.time && (
-                          <div className="flex items-center gap-1 text-xs mt-1 opacity-80">
-                            <Clock className="w-3 h-3" />
-                            {session.time}
-                          </div>
-                        )}
+                        <div className="flex items-center justify-between mt-1">
+                          {session.time && (
+                            <div className="flex items-center gap-1 text-xs opacity-80">
+                              <Clock className="w-3 h-3" />
+                              {session.time}
+                            </div>
+                          )}
+                          <ClipboardList className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity" />
+                        </div>
                       </div>
                     ))}
                     {(!weeklySchedule[day.key] || weeklySchedule[day.key].length === 0) && (
