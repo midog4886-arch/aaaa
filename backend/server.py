@@ -157,6 +157,8 @@ class InvoiceItem(BaseModel):
     fee: float
     period: str
     schedule: Optional[str] = ""  # جدول المواعيد
+    level_id: Optional[str] = ""  # المستوى
+    level_name: Optional[str] = ""
     # Product fields for store items
     is_product: Optional[bool] = False
     product_id: Optional[str] = None
