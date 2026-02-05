@@ -433,6 +433,7 @@ export const MembersPage = () => {
     const matchesSearch = 
       member.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       member.name_ar?.includes(searchTerm) ||
+      member.member_code?.includes(searchTerm) ||
       member.phone?.includes(searchTerm);
     
     const matchesActivity = filterActivity === 'all' || 
