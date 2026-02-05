@@ -236,6 +236,16 @@ export default function SchedulePage() {
         ...prev,
         notes: [res.data, ...prev.notes]
       }));
+      
+      // Update notes count
+      setNotesCounts(prev => ({
+        ...prev,
+        [notesDialog.activity.activity_id]: {
+          count: (prev[notesDialog.activity.activity_id]?.count || 0) + 1,
+          latest_date: new Date().toISOString()
+        }
+      }));
+      
       setNewNoteText('');
       toast.success(t('تم إضافة الملاحظة ✓', 'Note added ✓'));
     } catch (error) {
