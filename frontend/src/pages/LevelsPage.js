@@ -214,6 +214,17 @@ export const LevelsPage = () => {
     levelsByActivity[key].sort((a, b) => a.level_number - b.level_number);
   });
 
+  // Filter members not in current level
+  const availableMembers = members.filter(m => {
+    if (!selectedLevel) return true;
+    return !(selectedLevel.members || []).includes(m.id);
+  }).filter(m => {
+    if (!searchQuery) return true;
+    const name = (m.name_ar || m.name || '').toLowerCase();
+    const phone = (m.phone || '').toLowerCase();
+    return name.includes(searchQuery.toLowerCase()) || phone.includes(searchQuery.toLowerCase());
+  });
+
   if (loading) {
     return (
       <Layout>
