@@ -7,8 +7,8 @@ import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../components/ui/dialog';
 import { toast } from 'sonner';
-import { schedulesAPI, branchesAPI, attendanceAPI } from '../services/api';
-import { Calendar, Clock, Users, Check, X, UserCheck, ChevronLeft, ChevronRight, Printer } from 'lucide-react';
+import { schedulesAPI, branchesAPI, attendanceAPI, levelsAPI } from '../services/api';
+import { Calendar, Clock, Users, Check, X, UserCheck, ChevronLeft, ChevronRight, Printer, Layers } from 'lucide-react';
 
 export default function SchedulePage() {
   const { language } = useLanguage();
