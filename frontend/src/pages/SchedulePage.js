@@ -33,26 +33,26 @@ export default function SchedulePage() {
   });
 
   // Day names
-  const days = [
-    { key: 'all', ar: 'الكل', en: 'All' },
-    { key: 'sunday', ar: 'الأحد', en: 'Sun' },
-    { key: 'monday', ar: 'الإثنين', en: 'Mon' },
-    { key: 'tuesday', ar: 'الثلاثاء', en: 'Tue' },
-    { key: 'wednesday', ar: 'الأربعاء', en: 'Wed' },
-    { key: 'thursday', ar: 'الخميس', en: 'Thu' },
-    { key: 'friday', ar: 'الجمعة', en: 'Fri' },
-    { key: 'saturday', ar: 'السبت', en: 'Sat' }
-  ];
-
   const dayLabels = {
-    sunday: { ar: 'الأحد', en: 'Sun' },
-    monday: { ar: 'الإثنين', en: 'Mon' },
-    tuesday: { ar: 'الثلاثاء', en: 'Tue' },
-    wednesday: { ar: 'الأربعاء', en: 'Wed' },
-    thursday: { ar: 'الخميس', en: 'Thu' },
-    friday: { ar: 'الجمعة', en: 'Fri' },
-    saturday: { ar: 'السبت', en: 'Sat' }
+    sunday: { ar: 'الأحد', en: 'Sunday' },
+    monday: { ar: 'الإثنين', en: 'Monday' },
+    tuesday: { ar: 'الثلاثاء', en: 'Tuesday' },
+    wednesday: { ar: 'الأربعاء', en: 'Wednesday' },
+    thursday: { ar: 'الخميس', en: 'Thursday' },
+    friday: { ar: 'الجمعة', en: 'Friday' },
+    saturday: { ar: 'السبت', en: 'Saturday' }
   };
+
+  // Get day of week from date
+  const getDayOfWeek = (dateString) => {
+    const date = new Date(dateString);
+    const dayIndex = date.getDay(); // 0 = Sunday, 1 = Monday, etc.
+    const dayKeys = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+    return dayKeys[dayIndex];
+  };
+
+  // Get current selected day based on date
+  const selectedDay = getDayOfWeek(selectedDate);
 
   // Activity styles
   const activityStyles = {
