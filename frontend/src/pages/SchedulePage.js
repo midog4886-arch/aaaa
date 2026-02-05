@@ -720,12 +720,31 @@ export default function SchedulePage() {
               <select
                 value={selectedTime}
                 onChange={e => setSelectedTime(e.target.value)}
-                className="border rounded-lg p-2 text-sm w-36"
+                className="border rounded-lg p-2 text-sm w-32"
               >
                 <option value="all">{t('كل المواعيد', 'All Times')}</option>
                 {getAvailableTimes().map(time => (
                   <option key={time} value={time}>
                     {time === 'غير محدد' ? t('بدون وقت', 'No time') : time}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Activity Type Filter */}
+            <div>
+              <label className="text-sm font-medium text-gray-600 block mb-1">
+                🏃 {t('النشاط', 'Activity')}
+              </label>
+              <select
+                value={selectedActivityType}
+                onChange={e => setSelectedActivityType(e.target.value)}
+                className="border rounded-lg p-2 text-sm w-32"
+              >
+                <option value="all">{t('كل الأنشطة', 'All Activities')}</option>
+                {Array.from(getActivityTypes()).map(([type, displayName]) => (
+                  <option key={type} value={type}>
+                    {displayName}
                   </option>
                 ))}
               </select>
@@ -739,7 +758,7 @@ export default function SchedulePage() {
               <select
                 value={selectedLevelFilter}
                 onChange={e => setSelectedLevelFilter(e.target.value)}
-                className="border rounded-lg p-2 text-sm w-44"
+                className="border rounded-lg p-2 text-sm w-40"
               >
                 <option value="all">{t('كل المستويات', 'All Levels')}</option>
                 <option value="none">{t('بدون مستوى', 'No Level')}</option>
