@@ -280,6 +280,7 @@ export const schedulesAPI = {
 export const activityNotesAPI = {
   create: (data) => axios.post(`${API}/activity-notes`, data),
   getByActivity: (activityId) => axios.get(`${API}/activity-notes/${activityId}`),
+  getCounts: () => axios.get(`${API}/activity-notes/counts/all`),
   delete: (noteId) => axios.delete(`${API}/activity-notes/${noteId}`)
 };
 
