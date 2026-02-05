@@ -191,6 +191,18 @@ export default function SchedulePage() {
     return date.toLocaleDateString(language === 'ar' ? 'ar-SA' : 'en-US', options);
   };
 
+  // Navigate to previous/next day
+  const changeDate = (days) => {
+    const date = new Date(selectedDate);
+    date.setDate(date.getDate() + days);
+    setSelectedDate(date.toISOString().split('T')[0]);
+  };
+
+  // Go to today
+  const goToToday = () => {
+    setSelectedDate(new Date().toISOString().split('T')[0]);
+  };
+
   return (
     <Layout>
       <div className="p-4 md:p-6 max-w-6xl mx-auto" data-testid="schedule-page">
