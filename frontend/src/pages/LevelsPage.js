@@ -30,7 +30,6 @@ export const LevelsPage = () => {
   const { user, selectedBranchId } = useAuth();
   const isAdmin = user?.is_admin === true;
   const [levels, setLevels] = useState([]);
-  const [activities, setActivities] = useState([]);
   const [members, setMembers] = useState([]);
   const [branches, setBranches] = useState([]);
   const [loading, setLoading] = useState(true);
