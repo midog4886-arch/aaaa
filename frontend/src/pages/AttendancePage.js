@@ -84,6 +84,19 @@ export default function AttendancePage() {
     fetchData();
   }, [user]);
 
+  // Fetch today's sessions when branch changes
+  useEffect(() => {
+    fetchTodaySessions();
+  }, [fetchTodaySessions]);
+
+  // Auto-load attendance if activity_id is passed via URL
+  useEffect(() => {
+    const activityFromUrl = searchParams.get('activity_id');
+    if (activityFromUrl && activities.length > 0) {
+      setSelectedActivityId(activityFromUrl);
+    }
+  }, [searchParams, activities]);
+
   // Fetch attendance for selected activity and date
   const fetchAttendance = useCallback(async () => {
     if (!selectedActivityId || !selectedDate) return;
