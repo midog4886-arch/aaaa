@@ -320,31 +320,38 @@ export default function SchedulePage() {
         </div>
         
         ${activitiesWithMembers.length > 0 ? `
-          <div class="activities-grid">
+          <div class="activities-container">
             ${activitiesWithMembers.map(activity => {
-              const allMembers = [];
-              Object.values(activity.times).forEach(timeData => {
-                const dayMembers = timeData[selectedDay] || [];
-                dayMembers.forEach(m => {
-                  if (!allMembers.find(x => x.member_id === m.member_id)) {
-                    allMembers.push(m);
-                  }
-                });
-              });
+              const timesWithMembers = Object.entries(activity.times)
+                .filter(([time, timeData]) => (timeData[selectedDay] || []).length > 0)
+                .sort(([a], [b]) => a.localeCompare(b));
               
               return `
                 <div class="activity-card">
                   <div class="activity-header">
                     ${activity.activity_name}
-                    <div class="count">${allMembers.length} ${t('مشترك', 'members')}</div>
+                    <div class="count">${getTotalMembers(activity)} ${t('مشترك', 'members')} • ${timesWithMembers.length} ${t('أوقات', 'times')}</div>
                   </div>
-                  <div class="members-list">
-                    ${allMembers.map(m => `
-                      <div class="member-item">
-                        <div class="member-name">${m.member_name}</div>
-                        ${m.phone ? `<div class="member-phone">${m.phone}</div>` : ''}
-                      </div>
-                    `).join('')}
+                  <div class="times-grid">
+                    ${timesWithMembers.map(([time, timeData]) => {
+                      const members = timeData[selectedDay] || [];
+                      return `
+                        <div class="time-slot">
+                          <div class="time-header">
+                            🕐 ${time === 'غير محدد' ? t('بدون وقت', 'No time') : time}
+                            <span class="time-count">(${members.length})</span>
+                          </div>
+                          <div class="members-list">
+                            ${members.map(m => `
+                              <div class="member-item">
+                                <div class="member-name">${m.member_name}</div>
+                                ${m.phone ? `<div class="member-phone">${m.phone}</div>` : ''}
+                              </div>
+                            `).join('')}
+                          </div>
+                        </div>
+                      `;
+                    }).join('')}
                   </div>
                 </div>
               `;
