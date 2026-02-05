@@ -126,6 +126,16 @@ function AppRoutes() {
         } 
       />
       
+      {/* Unauthorized Page */}
+      <Route 
+        path="/unauthorized" 
+        element={
+          <ProtectedRoute>
+            <UnauthorizedPage />
+          </ProtectedRoute>
+        } 
+      />
+      
       {/* Protected Routes with permissions */}
       <Route 
         path="/dashboard" 
