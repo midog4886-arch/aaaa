@@ -819,6 +819,11 @@ export default function SchedulePage() {
                 const style = getActivityStyle(activity.activity_name);
                 const totalMembers = getTotalMembers(activity);
                 
+                // Apply activity type filter
+                if (!activityMatchesType(activity.activity_name)) {
+                  return null;
+                }
+                
                 // Get times that have members for selected day, filtered by time filter
                 let timesWithMembers = Object.entries(activity.times)
                   .filter(([time, timeData]) => (timeData[selectedDay] || []).length > 0)
