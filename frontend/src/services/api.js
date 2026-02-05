@@ -276,6 +276,13 @@ export const schedulesAPI = {
   getByActivity: (activityId) => axios.get(`${API}/schedules/by-activity/${activityId}`)
 };
 
+// Activity Notes API
+export const activityNotesAPI = {
+  create: (data) => axios.post(`${API}/activity-notes`, data),
+  getByActivity: (activityId) => axios.get(`${API}/activity-notes/${activityId}`),
+  delete: (noteId) => axios.delete(`${API}/activity-notes/${noteId}`)
+};
+
 export default {
   auth: authAPI,
   activities: activitiesAPI,
