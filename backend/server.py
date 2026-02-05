@@ -989,8 +989,24 @@ async def get_member(member_id: str, current_user: dict = Depends(get_current_us
 async def create_member(member: MemberCreate, current_user: dict = Depends(get_current_user)):
     member_id = str(uuid.uuid4())
     branch_id = current_user.get("branch_id")
+    
+    # Generate sequential member code starting from 2601
+    last_member = await db.members.find_one(
+        {"member_code": {"$exists": True, "$ne": None}},
+        sort=[("member_code", -1)]
+    )
+    if last_member and last_member.get("member_code"):
+        try:
+            last_code = int(last_member["member_code"])
+            new_code = str(last_code + 1)
+        except ValueError:
+            new_code = "2601"
+    else:
+        new_code = "2601"
+    
     member_doc = {
         "id": member_id,
+        "member_code": new_code,
         **member.model_dump(),
         "branch_id": branch_id,
         "created_at": datetime.now(timezone.utc).isoformat()
