@@ -44,8 +44,8 @@ const ProtectedRoute = ({ children, permission }) => {
   if (permission && !isAdmin) {
     const userPermissions = user?.permissions || [];
     if (!userPermissions.includes(permission)) {
-      // Redirect to first allowed page
-      return <Navigate to={getFirstAllowedRoute(userPermissions)} replace />;
+      // Redirect to unauthorized page
+      return <Navigate to="/unauthorized" replace />;
     }
   }
   
