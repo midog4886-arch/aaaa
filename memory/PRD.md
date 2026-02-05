@@ -1620,4 +1620,71 @@ GET    /api/export/attendance                       - تصدير Excel
 - Models منظمة وجاهزة للاستخدام
 - Utils جاهزة للاستخدام
 
+---
+
+## Update 20 - Levels Module & Schedule Enhancements (February 2026)
+
+### Completed Features:
+
+#### 1. Levels Module (بديل المدربين) ✅
+- **صفحة جديدة**: `/levels` لإدارة مستويات المهارة
+- **CRUD كامل**: إضافة/تعديل/حذف المستويات
+- **ربط الأعضاء**: تعيين الأعضاء للمستويات
+- **اسم النشاط يدوي**: إدخال اسم النشاط يدوياً (بدلاً من قائمة منسدلة)
+- **"المستوى 1" مضاف**: ضمن قائمة المستويات المتاحة
+
+#### 2. Schedule Page Enhancements ✅
+- **فلتر الوقت**: فلترة حسب الموعد
+- **فلتر المستوى**: فلترة حسب المستوى
+- **فلتر النشاط**: فلترة حسب نوع النشاط (سباحة، كرة قدم، كاراتيه، إلخ) ✅ NEW
+- **فلتر الفرع**: فلترة حسب الفرع
+- **عرض المستويات**: تجميع الأعضاء حسب المستوى داخل كل وقت
+- **طباعة الجدول**: طباعة الجدول بتصميم احترافي
+
+#### 3. Invoice & Registration Form Integration ✅
+- **ربط المستوى بالفاتورة**: اختيار المستوى عند إضافة نشاط للفاتورة
+- **تعيين تلقائي**: عند إنشاء الفاتورة يتم تسجيل العضو في المستوى
+- **استمارة التسجيل**: إضافة حقل المستوى لاستمارة التسجيل
+- **حذف الاستمارة**: يتم حذف استمارة التسجيل عند تحويلها لفاتورة
+
+#### 4. Code Cleanup ✅
+- **حذف CoachesPage.js**: تم حذف الملف القديم غير المستخدم
+
+### Files Modified/Created:
+- `/app/frontend/src/pages/LevelsPage.js` - NEW
+- `/app/frontend/src/pages/SchedulePage.js` - MODIFIED (فلاتر متقدمة)
+- `/app/frontend/src/pages/InvoicesPage.js` - MODIFIED (دمج المستويات)
+- `/app/backend/server.py` - MODIFIED (APIs للمستويات)
+- `/app/frontend/src/pages/CoachesPage.js` - DELETED
+
+### API Endpoints Added:
+- `GET/POST /api/levels` - إدارة المستويات
+- `GET/PUT/DELETE /api/levels/{id}` - عمليات مستوى واحد
+
+---
+
+## Prioritized Backlog (Updated February 2026)
+
+### P0 - Critical (Completed)
+- [x] Levels Module (replacing Coaches)
+- [x] Schedule Activity Filter
+- [x] Delete obsolete CoachesPage.js
+
+### P1 - High Priority
+- [ ] WhatsApp Business API Integration (Waiting for Access Token & Phone Number ID)
+- [ ] Code Refactoring (server.py 6000+ lines)
+
+### P2 - Medium Priority
+- [ ] Advanced User Permissions
+- [ ] Split InvoicesPage.js into components
+- [ ] Split SchedulePage.js into components
+
+### P3 - Nice to Have
+- [ ] Mobile responsive improvements
+- [ ] Dark mode
+
+---
+
+## Credentials
+- **Admin**: username: `admin`, password: `admin123`
 
