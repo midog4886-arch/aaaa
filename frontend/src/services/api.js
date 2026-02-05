@@ -258,6 +258,13 @@ export const attendanceAPI = {
   }
 };
 
+// Schedule/Timetable API
+export const schedulesAPI = {
+  getAll: (params = {}) => axios.get(`${API}/schedules`, { params }),
+  getWeekly: (params = {}) => axios.get(`${API}/schedules/weekly`, { params }),
+  getByActivity: (activityId) => axios.get(`${API}/schedules/by-activity/${activityId}`)
+};
+
 export default {
   auth: authAPI,
   activities: activitiesAPI,
