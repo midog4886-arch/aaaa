@@ -280,9 +280,25 @@ const UsersPage = () => {
                               {language === 'ar' ? 'مدير' : 'Admin'}
                             </Badge>
                           ) : (
-                            <Badge variant="secondary">
-                              {language === 'ar' ? 'مستخدم' : 'User'}
-                            </Badge>
+                            <div className="flex flex-wrap gap-1">
+                              {user.permissions && user.permissions.length > 0 ? (
+                                user.permissions.length <= 3 ? (
+                                  user.permissions.map(perm => (
+                                    <Badge key={perm} variant="outline" className="text-xs">
+                                      {ALL_PERMISSIONS.find(p => p.key === perm)?.[language === 'ar' ? 'label_ar' : 'label_en'] || perm}
+                                    </Badge>
+                                  ))
+                                ) : (
+                                  <Badge variant="secondary">
+                                    {user.permissions.length} {language === 'ar' ? 'صلاحيات' : 'permissions'}
+                                  </Badge>
+                                )
+                              ) : (
+                                <Badge variant="outline" className="text-muted-foreground">
+                                  {language === 'ar' ? 'بدون صلاحيات' : 'No permissions'}
+                                </Badge>
+                              )}
+                            </div>
                           )}
                         </td>
                         <td className="p-4">
