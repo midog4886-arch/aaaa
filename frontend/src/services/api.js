@@ -252,7 +252,8 @@ export const attendanceAPI = {
   getByActivity: (activityId, date) => axios.get(`${API}/attendance/by-activity/${activityId}`, { params: { date } }),
   record: (data) => axios.post(`${API}/attendance`, data),
   recordBulk: (data) => axios.post(`${API}/attendance/bulk`, data),
-  quickSearch: (memberCode) => axios.get(`${API}/attendance/quick-search/${memberCode}`),
+  quickSearch: (searchTerm) => axios.get(`${API}/attendance/quick-search/${encodeURIComponent(searchTerm)}`),
+  quickSearchMulti: (searchTerm) => axios.get(`${API}/attendance/quick-search-multi/${encodeURIComponent(searchTerm)}`),
   quickAttendance: (memberCode, activityId) => axios.post(`${API}/attendance/quick?member_code=${memberCode}&activity_id=${activityId}`),
   qrCheckin: (memberId, activityId) => {
     const formData = new FormData();
