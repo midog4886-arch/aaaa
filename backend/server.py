@@ -1297,6 +1297,16 @@ async def pay_invoice(invoice_id: str, current_user: dict = Depends(get_current_
                 {"id": member_id},
                 {"$set": {"activities": existing_activities}}
             )
+            
+            # Add member to levels if specified in invoice items
+            for item in invoice.get("items", []):
+                level_id = item.get("level_id")
+                if level_id:
+                    # Add member to level if not already there
+                    await db.levels.update_one(
+                        {"id": level_id},
+                        {"$addToSet": {"members": member_id}}
+                    )
     
     result = await db.invoices.find_one_and_update(
         {"id": invoice_id},
