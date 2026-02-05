@@ -47,6 +47,7 @@ export const InvoicesPage = () => {
   const [members, setMembers] = useState([]);
   const [activities, setActivities] = useState([]);
   const [branches, setBranches] = useState([]);
+  const [levels, setLevels] = useState([]);
   const [registrationForms, setRegistrationForms] = useState([]);
   const [creditNotes, setCreditNotes] = useState([]);
   const [loading, setLoading] = useState(true);
