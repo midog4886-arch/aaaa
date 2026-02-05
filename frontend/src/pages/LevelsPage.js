@@ -56,14 +56,12 @@ export const LevelsPage = () => {
   const loadData = async () => {
     try {
       const branchParams = selectedBranchId && selectedBranchId !== 'all' ? { branch_filter: selectedBranchId } : {};
-      const [levelsRes, activitiesRes, membersRes, branchesRes] = await Promise.all([
+      const [levelsRes, membersRes, branchesRes] = await Promise.all([
         levelsAPI.getAll(branchParams),
-        activitiesAPI.getAll(branchParams),
         membersAPI.getAll(branchParams),
         isAdmin ? branchesAPI.getAll() : Promise.resolve({ data: [] })
       ]);
       setLevels(levelsRes.data);
-      setActivities(activitiesRes.data);
       setMembers(membersRes.data);
       setBranches(branchesRes.data || []);
     } catch (error) {
