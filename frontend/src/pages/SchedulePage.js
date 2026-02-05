@@ -107,7 +107,18 @@ export default function SchedulePage() {
       }
     };
     fetchBranches();
+    fetchNotesCounts();
   }, [user]);
+
+  // Fetch notes counts for all activities
+  const fetchNotesCounts = async () => {
+    try {
+      const res = await activityNotesAPI.getCounts();
+      setNotesCounts(res.data || {});
+    } catch (error) {
+      console.error('Error fetching notes counts:', error);
+    }
+  };
 
   // Fetch levels
   const fetchLevels = async () => {
