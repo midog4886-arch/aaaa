@@ -878,14 +878,9 @@ async def create_level(level: LevelCreate, current_user: dict = Depends(get_curr
 
 @api_router.put("/levels/{level_id}")
 async def update_level(level_id: str, level: LevelCreate, current_user: dict = Depends(get_current_user)):
-    # Get activity name
-    activity = await db.activities.find_one({"id": level.activity_id}, {"_id": 0})
-    activity_name = activity.get("name_ar", activity.get("name", "")) if activity else ""
-    
     update_data = {
         "level_number": level.level_number,
-        "activity_id": level.activity_id,
-        "activity_name": activity_name,
+        "activity_name": level.activity_name,
         "description": level.description,
         "members": level.members
     }
