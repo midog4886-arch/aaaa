@@ -1191,6 +1191,47 @@ GET /api/schedules/by-activity/{id} - مواعيد نشاط محدد
 2. **Backend**:
    - `/app/backend/server.py` - إضافة ~150 سطر (Schedule endpoints)
 
+### ملاحظة تقنية:
+- الجدول يستخرج المواعيد من حقل `schedule` في الفواتير
+- يتم تحليل نص الموعيد لاستخراج الأيام والأوقات
+
+---
+
+## Update 19 - Schedule-Attendance Integration (February 5, 2026)
+
+### New Feature: ربط الجدول بنظام الحضور ✅
+
+تم ربط جدول المواعيد بنظام الحضور للوصول السريع.
+
+#### الميزات المنفذة:
+
+##### 1. حصص اليوم في صفحة الحضور ✅
+- عرض حصص اليوم الحالي تلقائياً
+- أزرار للانتقال السريع لتسجيل الحضور
+- عرض وقت الحصة مع كل زر
+
+##### 2. الانتقال من الجدول للحضور ✅
+- **في العرض الأسبوعي**: النقر على أي حصة ينتقل لصفحة الحضور
+- **في عرض القائمة**: زر "تسجيل الحضور" لكل نشاط
+- يتم تمرير `activity_id` عبر URL parameter
+
+##### 3. التحميل التلقائي ✅
+- عند الانتقال من الجدول، يتم اختيار النشاط تلقائياً
+- يمكن الضغط على "تحميل القائمة" لعرض الأعضاء
+
+### الملفات المعدلة:
+
+1. **Frontend**:
+   - `/app/frontend/src/pages/AttendancePage.js`:
+     - إضافة `todaySessions` state
+     - إضافة `fetchTodaySessions()` function
+     - إضافة قسم "حصص اليوم" في الواجهة
+     - قراءة `activity_id` من URL parameters
+   - `/app/frontend/src/pages/SchedulePage.js`:
+     - إضافة `goToAttendance()` function
+     - إضافة `onClick` على بطاقات الحصص
+     - إضافة زر "تسجيل الحضور" في عرض القائمة
+
 ---
 
 ## Update 17 - Attendance Tracking System (February 4, 2026)
