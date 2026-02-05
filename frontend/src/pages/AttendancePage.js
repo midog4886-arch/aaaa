@@ -244,28 +244,43 @@ export default function AttendancePage() {
     toast.success(t('جاري تحميل التقرير...', 'Downloading report...'));
   };
 
-  // Quick Search by Member Code
+  // Quick Search by Member Code or Name
   const handleQuickSearch = async () => {
     if (!quickMemberCode.trim()) {
-      toast.error(t('أدخل رقم العضوية', 'Enter member ID'));
+      toast.error(t('أدخل رقم العضوية أو الاسم', 'Enter member ID or name'));
       return;
     }
     
     setQuickSearching(true);
     setQuickSearchResult(null);
+    setQuickSearchResults([]);
     
     try {
-      const res = await attendanceAPI.quickSearch(quickMemberCode.trim());
-      setQuickSearchResult(res.data);
-    } catch (error) {
-      if (error.response?.status === 404) {
-        toast.error(t('رقم العضوية غير موجود', 'Member ID not found'));
+      // Try multi-search first
+      const res = await attendanceAPI.quickSearchMulti(quickMemberCode.trim());
+      
+      if (res.data && res.data.length > 0) {
+        if (res.data.length === 1) {
+          // Single result - show directly
+          setQuickSearchResult(res.data[0]);
+        } else {
+          // Multiple results - show list
+          setQuickSearchResults(res.data);
+        }
       } else {
-        toast.error(t('خطأ في البحث', 'Search error'));
+        toast.error(t('لم يتم العثور على العضو', 'Member not found'));
       }
+    } catch (error) {
+      toast.error(t('خطأ في البحث', 'Search error'));
     } finally {
       setQuickSearching(false);
     }
+  };
+
+  // Select member from multiple results
+  const selectMemberFromResults = (member) => {
+    setQuickSearchResult(member);
+    setQuickSearchResults([]);
   };
 
   // Quick Attendance Registration
