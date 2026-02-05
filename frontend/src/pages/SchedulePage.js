@@ -385,6 +385,14 @@ export default function SchedulePage() {
               {t('انقر على اسم العضو لتسجيل الحضور', 'Click member name to record attendance')}
             </p>
           </div>
+          <Button
+            onClick={handlePrint}
+            variant="outline"
+            className="gap-2"
+          >
+            <Printer className="w-4 h-4" />
+            {t('طباعة', 'Print')}
+          </Button>
         </div>
 
         {/* Filters Row */}
