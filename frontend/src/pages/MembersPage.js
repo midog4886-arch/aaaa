@@ -52,7 +52,8 @@ export const MembersPage = () => {
   const [selectedMember, setSelectedMember] = useState(null);
   const [saving, setSaving] = useState(false);
   const [memberInvoices, setMemberInvoices] = useState([]);
-  const [viewTab, setViewTab] = useState('info'); // info, activities, invoices, history
+  const [memberAttendance, setMemberAttendance] = useState(null);
+  const [viewTab, setViewTab] = useState('info'); // info, activities, invoices, history, attendance
   const [renewalActivity, setRenewalActivity] = useState(null);
   const [renewalForm, setRenewalForm] = useState({
     start_date: '',
