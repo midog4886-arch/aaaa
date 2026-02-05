@@ -243,6 +243,62 @@ export default function AttendancePage() {
     toast.success(t('جاري تحميل التقرير...', 'Downloading report...'));
   };
 
+  // Quick Search by Member Code
+  const handleQuickSearch = async () => {
+    if (!quickMemberCode.trim()) {
+      toast.error(t('أدخل رقم العضوية', 'Enter member ID'));
+      return;
+    }
+    
+    setQuickSearching(true);
+    setQuickSearchResult(null);
+    
+    try {
+      const res = await attendanceAPI.quickSearch(quickMemberCode.trim());
+      setQuickSearchResult(res.data);
+    } catch (error) {
+      if (error.response?.status === 404) {
+        toast.error(t('رقم العضوية غير موجود', 'Member ID not found'));
+      } else {
+        toast.error(t('خطأ في البحث', 'Search error'));
+      }
+    } finally {
+      setQuickSearching(false);
+    }
+  };
+
+  // Quick Attendance Registration
+  const handleQuickAttendance = async (activityId) => {
+    if (!quickMemberCode.trim()) return;
+    
+    setQuickRegistering(true);
+    
+    try {
+      const res = await attendanceAPI.quickAttendance(quickMemberCode.trim(), activityId);
+      
+      if (res.data.already_recorded) {
+        toast.info(t('تم تسجيل الحضور مسبقاً', 'Already recorded'));
+      } else {
+        toast.success(res.data.message);
+        // Update the search result to show new attendance
+        setQuickSearchResult(prev => ({
+          ...prev,
+          today_attendance: [...(prev?.today_attendance || []), res.data.record]
+        }));
+      }
+    } catch (error) {
+      toast.error(error.response?.data?.detail || t('خطأ في التسجيل', 'Registration error'));
+    } finally {
+      setQuickRegistering(false);
+    }
+  };
+
+  // Clear quick search
+  const clearQuickSearch = () => {
+    setQuickMemberCode('');
+    setQuickSearchResult(null);
+  };
+
   // Get activity name
   const getActivityName = (id) => activities.find(a => a.id === id)?.name || '';
 
