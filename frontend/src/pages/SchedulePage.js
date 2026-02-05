@@ -269,7 +269,22 @@ export default function SchedulePage() {
   // Print schedule
   const handlePrint = () => {
     const dayName = language === 'ar' ? dayLabels[selectedDay].ar : dayLabels[selectedDay].en;
-    const activitiesWithMembers = activitiesData.filter(a => getTotalMembers(a) > 0);
+    
+    // Get level colors for print
+    const getLevelPrintColor = (levelNum) => {
+      const colors = {
+        1: '#8b5cf6', // purple
+        2: '#22c55e', // green
+        3: '#3b82f6', // blue
+        4: '#eab308', // yellow
+        5: '#f97316', // orange
+        6: '#ef4444'  // red
+      };
+      return colors[levelNum] || '#9ca3af';
+    };
+    
+    // Filter activities based on current filters
+    let filteredActivities = activitiesData.filter(a => getTotalMembers(a) > 0);
     
     const printContent = `
       <!DOCTYPE html>
@@ -304,6 +319,18 @@ export default function SchedulePage() {
             font-size: 16px; 
             color: #666;
           }
+          .filters-info {
+            text-align: center;
+            margin: 10px 0;
+            font-size: 12px;
+            color: #666;
+          }
+          .filters-info span {
+            background: #f3f4f6;
+            padding: 2px 8px;
+            border-radius: 4px;
+            margin: 0 4px;
+          }
           .stats {
             display: flex;
             justify-content: center;
@@ -321,15 +348,6 @@ export default function SchedulePage() {
           .stat-label {
             font-size: 12px;
             color: #666;
-          }
-          .activities-grid {
-            display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            gap: 15px;
-            margin-top: 20px;
-          }
-          .activities-container {
-            margin-top: 20px;
           }
           .activity-card {
             border: 2px solid #ddd;
@@ -375,22 +393,37 @@ export default function SchedulePage() {
             color: #888;
             font-weight: normal;
           }
-          .members-list {
-            padding: 8px;
+          .level-group {
+            margin: 8px;
+            border-radius: 6px;
+            overflow: hidden;
+            border: 1px solid #ddd;
+          }
+          .level-header {
+            color: white;
+            padding: 4px 8px;
+            font-size: 11px;
+            font-weight: bold;
+          }
+          .level-members {
+            padding: 6px;
           }
           .member-item {
-            padding: 6px 8px;
-            margin: 4px 0;
+            padding: 4px 6px;
+            margin: 2px 0;
             background: #f9f9f9;
-            border-radius: 5px;
-            font-size: 12px;
+            border-radius: 4px;
+            font-size: 11px;
           }
           .member-name {
             font-weight: 500;
           }
-          .member-phone {
-            color: #888;
-            font-size: 10px;
+          .no-level-group {
+            background: #f3f4f6;
+            border-color: #d1d5db;
+          }
+          .no-level-header {
+            background: #9ca3af;
           }
           .footer {
             margin-top: 30px;
@@ -407,7 +440,7 @@ export default function SchedulePage() {
           }
           @media print {
             body { padding: 10px; }
-            .activities-grid { grid-template-columns: repeat(3, 1fr); }
+            .times-grid { grid-template-columns: repeat(3, 1fr); }
           }
         </style>
       </head>
@@ -418,23 +451,39 @@ export default function SchedulePage() {
           <div class="day">${dayName}</div>
         </div>
         
+        ${(selectedTime !== 'all' || selectedLevelFilter !== 'all') ? `
+          <div class="filters-info">
+            ${t('الفلاتر المطبقة', 'Applied Filters')}:
+            ${selectedTime !== 'all' ? `<span>🕐 ${selectedTime}</span>` : ''}
+            ${selectedLevelFilter !== 'all' ? `<span>🎯 ${selectedLevelFilter === 'none' ? t('بدون مستوى', 'No Level') : levels.find(l => l.id === selectedLevelFilter)?.activity_name || ''}</span>` : ''}
+          </div>
+        ` : ''}
+        
         <div class="stats">
           <div class="stat">
-            <div class="stat-value">${activitiesWithMembers.length}</div>
+            <div class="stat-value">${filteredActivities.length}</div>
             <div class="stat-label">${t('نشاط', 'Activities')}</div>
           </div>
           <div class="stat">
-            <div class="stat-value">${activitiesWithMembers.reduce((sum, a) => sum + getTotalMembers(a), 0)}</div>
+            <div class="stat-value">${filteredActivities.reduce((sum, a) => sum + getTotalMembers(a), 0)}</div>
             <div class="stat-label">${t('مشترك', 'Members')}</div>
           </div>
         </div>
         
-        ${activitiesWithMembers.length > 0 ? `
+        ${filteredActivities.length > 0 ? `
           <div class="activities-container">
-            ${activitiesWithMembers.map(activity => {
-              const timesWithMembers = Object.entries(activity.times)
+            ${filteredActivities.map(activity => {
+              // Get times filtered
+              let timesWithMembers = Object.entries(activity.times)
                 .filter(([time, timeData]) => (timeData[selectedDay] || []).length > 0)
                 .sort(([a], [b]) => a.localeCompare(b));
+              
+              // Apply time filter
+              if (selectedTime !== 'all') {
+                timesWithMembers = timesWithMembers.filter(([time]) => time === selectedTime);
+              }
+              
+              if (timesWithMembers.length === 0) return '';
               
               return `
                 <div class="activity-card">
@@ -444,21 +493,60 @@ export default function SchedulePage() {
                   </div>
                   <div class="times-grid">
                     ${timesWithMembers.map(([time, timeData]) => {
-                      const members = timeData[selectedDay] || [];
+                      let members = timeData[selectedDay] || [];
+                      
+                      // Apply level filter
+                      if (selectedLevelFilter !== 'all') {
+                        members = members.filter(member => {
+                          const memberLevel = getMemberLevel(member.member_id);
+                          if (selectedLevelFilter === 'none') {
+                            return !memberLevel;
+                          }
+                          return memberLevel && memberLevel.id === selectedLevelFilter;
+                        });
+                      }
+                      
+                      if (members.length === 0) return '';
+                      
+                      // Group by level
+                      const { levelGroups, noLevel } = groupMembersByLevel(members);
+                      
                       return `
                         <div class="time-slot">
                           <div class="time-header">
                             🕐 ${time === 'غير محدد' ? t('بدون وقت', 'No time') : time}
                             <span class="time-count">(${members.length})</span>
                           </div>
-                          <div class="members-list">
-                            ${members.map(m => `
-                              <div class="member-item">
-                                <div class="member-name">${m.member_name}</div>
-                                ${m.phone ? `<div class="member-phone">${m.phone}</div>` : ''}
+                          
+                          ${levelGroups.map(group => `
+                            <div class="level-group">
+                              <div class="level-header" style="background: ${getLevelPrintColor(group.level_number)}">
+                                ${t('المستوى', 'Level')} ${group.level_number} - ${group.activity_name} (${group.members.length})
                               </div>
-                            `).join('')}
-                          </div>
+                              <div class="level-members">
+                                ${group.members.map(m => `
+                                  <div class="member-item">
+                                    <span class="member-name">${m.member_name}</span>
+                                  </div>
+                                `).join('')}
+                              </div>
+                            </div>
+                          `).join('')}
+                          
+                          ${noLevel.length > 0 ? `
+                            <div class="level-group no-level-group">
+                              <div class="level-header no-level-header">
+                                ${t('بدون مستوى', 'No Level')} (${noLevel.length})
+                              </div>
+                              <div class="level-members">
+                                ${noLevel.map(m => `
+                                  <div class="member-item">
+                                    <span class="member-name">${m.member_name}</span>
+                                  </div>
+                                `).join('')}
+                              </div>
+                            </div>
+                          ` : ''}
                         </div>
                       `;
                     }).join('')}
