@@ -101,11 +101,6 @@ export default function SchedulePage() {
       if (selectedBranchId) params.branch_id = selectedBranchId;
       const res = await schedulesAPI.getActivitiesWithMembers(params);
       setActivitiesData(res.data);
-      
-      // Auto-expand all activities
-      const expanded = {};
-      res.data.forEach(a => { expanded[a.activity_id] = true; });
-      setExpandedActivities(expanded);
     } catch (error) {
       toast.error(t('خطأ في جلب البيانات', 'Error fetching data'));
     } finally {
