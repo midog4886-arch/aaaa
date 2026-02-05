@@ -183,6 +183,22 @@
 ### Database Collection:
 - `activity_notes`: `{id, activity_id, activity_name, note_text, date, created_by, created_by_name, created_at}`
 
+### Update 22.1 - Notes Badge (February 2026)
+
+#### New Feature: تنبيه عدد الملاحظات ✅
+
+تم إضافة شارة (badge) حمراء على زر الملاحظات تعرض عدد الملاحظات لكل نشاط.
+
+##### الميزات المنفذة:
+1. **شارة حمراء مع العدد** - تظهر فقط إذا كان هناك ملاحظات
+2. **تحديث فوري** - العدد يتحدث عند إضافة أو حذف ملاحظة
+3. **API جديد** - `/api/activity-notes/counts/all` لجلب عدد الملاحظات لكل نشاط
+
+##### Files Modified:
+- `/app/backend/server.py` - إضافة endpoint لجلب عدد الملاحظات
+- `/app/frontend/src/services/api.js` - إضافة `getCounts`
+- `/app/frontend/src/pages/SchedulePage.js` - عرض الشارة وتحديث العدد
+
 ---
 
 ## Credentials
