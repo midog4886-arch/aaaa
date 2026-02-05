@@ -4305,6 +4305,22 @@ async def create_activity_note(
     
     await db.activity_notes.insert_one(note_doc)
     
+    # Create notification for new note
+    notification_doc = {
+        "id": str(uuid.uuid4()),
+        "type": "activity_note",
+        "title": f"ملاحظة جديدة - {note_data.activity_name}",
+        "message": note_data.note_text[:100] + "..." if len(note_data.note_text) > 100 else note_data.note_text,
+        "activity_id": note_data.activity_id,
+        "activity_name": note_data.activity_name,
+        "note_id": note_id,
+        "created_by": current_user["user_id"],
+        "created_by_name": user_name,
+        "is_read": False,
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+    await db.notifications.insert_one(notification_doc)
+    
     return {k: v for k, v in note_doc.items() if k != "_id"}
 
 @api_router.get("/activity-notes/{activity_id}")
