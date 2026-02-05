@@ -19,6 +19,7 @@ export default function SchedulePage() {
   // State
   const [activitiesData, setActivitiesData] = useState([]);
   const [branches, setBranches] = useState([]);
+  const [levels, setLevels] = useState([]);
   const [selectedBranchId, setSelectedBranchId] = useState('');
   const [loading, setLoading] = useState(false);
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
