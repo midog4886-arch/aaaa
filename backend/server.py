@@ -549,6 +549,13 @@ async def create_user_admin(user_data: UserCreateAdmin, current_user: dict = Dep
         raise HTTPException(status_code=400, detail="Username already exists")
     
     user_id = str(uuid.uuid4())
+    # Default permissions for non-admin users
+    permissions = user_data.permissions if user_data.permissions else []
+    # Admin users get all permissions
+    if user_data.is_admin:
+        permissions = ['dashboard', 'members', 'activities', 'levels', 'schedule', 'attendance', 
+                      'invoices', 'store', 'accounting', 'reports', 'messages', 'branches', 'users', 'settings']
+    
     user_doc = {
         "id": user_id,
         "username": user_data.username,
@@ -556,6 +563,7 @@ async def create_user_admin(user_data: UserCreateAdmin, current_user: dict = Dep
         "name": user_data.name,
         "branch_id": user_data.branch_id,
         "is_admin": user_data.is_admin,
+        "permissions": permissions,
         "created_at": datetime.now(timezone.utc).isoformat()
     }
     await db.users.insert_one(user_doc)
