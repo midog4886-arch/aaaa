@@ -2902,18 +2902,36 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
                       
                       {/* Row 3: Schedule (separate line for activities) */}
                       {!item.is_product && (
-                        <div className="space-y-1">
-                          <Label className="text-xs">{language === 'ar' ? 'المواعيد' : 'Schedule'}</Label>
-                          <Input 
-                            placeholder={language === 'ar' ? 'مثال: السبت والاثنين 4-5 مساءً' : 'e.g., Sat & Mon 4-5 PM'}
-                            value={item.schedule}
-                            onChange={(e) => {
-                              const updated = [...regFormItems];
-                              updated[idx].schedule = e.target.value;
-                              setRegFormItems(updated);
-                            }}
-                            className="text-sm"
-                          />
+                        <div className="grid grid-cols-2 gap-2">
+                          <div className="space-y-1">
+                            <Label className="text-xs">{language === 'ar' ? 'المواعيد' : 'Schedule'}</Label>
+                            <Input 
+                              placeholder={language === 'ar' ? 'مثال: السبت والاثنين 4-5 مساءً' : 'e.g., Sat & Mon 4-5 PM'}
+                              value={item.schedule}
+                              onChange={(e) => {
+                                const updated = [...regFormItems];
+                                updated[idx].schedule = e.target.value;
+                                setRegFormItems(updated);
+                              }}
+                              className="text-sm"
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <Label className="text-xs">{language === 'ar' ? 'المستوى' : 'Level'}</Label>
+                            <Select value={item.level_id || 'none'} onValueChange={(value) => updateRegFormItemLevel(idx, value === 'none' ? '' : value)}>
+                              <SelectTrigger className="text-sm">
+                                <SelectValue placeholder={language === 'ar' ? 'اختر المستوى' : 'Select level'} />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="none">{language === 'ar' ? 'بدون مستوى' : 'No level'}</SelectItem>
+                                {levels.map(level => (
+                                  <SelectItem key={level.id} value={level.id}>
+                                    {language === 'ar' ? 'المستوى' : 'Level'} {level.level_number} - {level.activity_name}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
                         </div>
                       )}
                     </div>
