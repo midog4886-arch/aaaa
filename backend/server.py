@@ -4261,6 +4261,80 @@ async def get_schedule_by_activity(
         "schedules": schedules
     }
 
+# ============ ACTIVITY NOTES SYSTEM ============
+
+class ActivityNoteCreate(BaseModel):
+    activity_id: str
+    activity_name: str = ""
+    note_text: str
+
+class ActivityNote(BaseModel):
+    id: str = ""
+    activity_id: str
+    activity_name: str = ""
+    note_text: str
+    date: str = ""  # YYYY-MM-DD
+    created_by: str = ""
+    created_by_name: str = ""
+    created_at: str = ""
+
+@api_router.post("/activity-notes")
+async def create_activity_note(
+    note_data: ActivityNoteCreate,
+    current_user: dict = Depends(get_current_user)
+):
+    """Create a new note for an activity"""
+    
+    # Get user info
+    user_doc = await db.users.find_one({"id": current_user["user_id"]}, {"_id": 0})
+    user_name = user_doc.get("name", current_user.get("username", "")) if user_doc else ""
+    
+    note_id = str(uuid.uuid4())
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    
+    note_doc = {
+        "id": note_id,
+        "activity_id": note_data.activity_id,
+        "activity_name": note_data.activity_name,
+        "note_text": note_data.note_text,
+        "date": today,
+        "created_by": current_user["user_id"],
+        "created_by_name": user_name,
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+    
+    await db.activity_notes.insert_one(note_doc)
+    
+    return {k: v for k, v in note_doc.items() if k != "_id"}
+
+@api_router.get("/activity-notes/{activity_id}")
+async def get_activity_notes(
+    activity_id: str,
+    current_user: dict = Depends(get_current_user)
+):
+    """Get all notes for a specific activity, sorted by date descending"""
+    
+    notes = await db.activity_notes.find(
+        {"activity_id": activity_id},
+        {"_id": 0}
+    ).sort("created_at", -1).to_list(100)
+    
+    return notes
+
+@api_router.delete("/activity-notes/{note_id}")
+async def delete_activity_note(
+    note_id: str,
+    current_user: dict = Depends(get_current_user)
+):
+    """Delete an activity note"""
+    
+    result = await db.activity_notes.delete_one({"id": note_id})
+    
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Note not found")
+    
+    return {"message": "Note deleted successfully"}
+
 # ============ ATTENDANCE TRACKING SYSTEM ============
 
 class AttendanceRecord(BaseModel):
