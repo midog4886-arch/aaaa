@@ -57,7 +57,8 @@ const UsersPage = () => {
     password: '',
     name: '',
     branch_id: '',
-    is_admin: false
+    is_admin: false,
+    permissions: []
   });
 
   useEffect(() => {
