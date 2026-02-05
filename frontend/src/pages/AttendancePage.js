@@ -449,7 +449,14 @@ export default function AttendancePage() {
                           {idx + 1}
                         </span>
                         <div>
-                          <div className="font-medium">{member.member_name}</div>
+                          <div className="font-medium flex items-center gap-2">
+                            {member.member_code && (
+                              <span className="text-xs font-mono bg-primary/10 text-primary px-1.5 py-0.5 rounded">
+                                #{member.member_code}
+                              </span>
+                            )}
+                            {member.member_name}
+                          </div>
                           <div className="text-xs text-gray-500">{member.phone}</div>
                         </div>
                         {member.subscription_status !== 'active' && (
