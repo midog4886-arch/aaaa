@@ -765,7 +765,7 @@ export default function SchedulePage() {
   };
 
   return (
-    <Layout>
+    <Layout title={t('الجدول', 'Schedule')}>
       <div className="p-4 md:p-6 max-w-6xl mx-auto" data-testid="schedule-page">
         {/* Header */}
         <div className="flex justify-between items-center mb-4 flex-wrap gap-4">
