@@ -48,7 +48,7 @@ export default function AttendancePage() {
   const [reportDateRange, setReportDateRange] = useState({ start: '', end: '' });
 
   // Tab state
-  const [activeTab, setActiveTab] = useState('record'); // record, qr, reports
+  const [activeTab, setActiveTab] = useState('quick'); // quick, record, qr, reports
 
   // Day mapping for today's sessions
   const dayMap = {
