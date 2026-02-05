@@ -313,6 +313,7 @@ export default function AttendancePage() {
   const clearQuickSearch = () => {
     setQuickMemberCode('');
     setQuickSearchResult(null);
+    setQuickSearchResults([]);
   };
 
   // Get activity name
