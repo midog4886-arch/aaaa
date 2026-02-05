@@ -343,9 +343,8 @@ class LevelMember(BaseModel):
     phone: Optional[str] = ""
 
 class LevelCreate(BaseModel):
-    level_number: int  # 2, 3, 4, 5, 6
-    activity_id: str
-    activity_name: Optional[str] = ""
+    level_number: int  # 1, 2, 3, 4, 5, 6
+    activity_name: str  # Manual activity name
     description: Optional[str] = ""
     members: List[str] = []  # List of member IDs
     branch_id: Optional[str] = None
@@ -353,8 +352,7 @@ class LevelCreate(BaseModel):
 class Level(BaseModel):
     id: str
     level_number: int
-    activity_id: str
-    activity_name: Optional[str] = ""
+    activity_name: str
     description: Optional[str] = ""
     members: List[str] = []
     members_details: List[LevelMember] = []
