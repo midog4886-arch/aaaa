@@ -21,8 +21,25 @@ import {
   Building2,
   Loader2,
   Eye,
-  EyeOff
+  EyeOff,
+  Check
 } from 'lucide-react';
+
+// Available permissions
+const ALL_PERMISSIONS = [
+  { key: 'dashboard', label_ar: 'لوحة التحكم', label_en: 'Dashboard' },
+  { key: 'members', label_ar: 'الأعضاء', label_en: 'Members' },
+  { key: 'activities', label_ar: 'الأنشطة', label_en: 'Activities' },
+  { key: 'levels', label_ar: 'المستويات', label_en: 'Levels' },
+  { key: 'schedule', label_ar: 'الجدول', label_en: 'Schedule' },
+  { key: 'attendance', label_ar: 'الحضور', label_en: 'Attendance' },
+  { key: 'invoices', label_ar: 'الفواتير', label_en: 'Invoices' },
+  { key: 'store', label_ar: 'المخزن', label_en: 'Store' },
+  { key: 'accounting', label_ar: 'المحاسبة', label_en: 'Accounting' },
+  { key: 'reports', label_ar: 'التقارير', label_en: 'Reports' },
+  { key: 'messages', label_ar: 'الرسائل', label_en: 'Messages' },
+  { key: 'settings', label_ar: 'الإعدادات', label_en: 'Settings' },
+];
 
 const UsersPage = () => {
   const { language } = useLanguage();
