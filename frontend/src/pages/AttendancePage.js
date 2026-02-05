@@ -285,12 +285,17 @@ export default function AttendancePage() {
 
   // Quick Attendance Registration
   const handleQuickAttendance = async (activityId) => {
-    if (!quickMemberCode.trim()) return;
+    // Use member_code from search result, not the search term
+    const memberCode = quickSearchResult?.member_code;
+    if (!memberCode) {
+      toast.error(t('يرجى اختيار العضو أولاً', 'Please select a member first'));
+      return;
+    }
     
     setQuickRegistering(true);
     
     try {
-      const res = await attendanceAPI.quickAttendance(quickMemberCode.trim(), activityId);
+      const res = await attendanceAPI.quickAttendance(memberCode, activityId);
       
       if (res.data.already_recorded) {
         toast.info(t('تم تسجيل الحضور مسبقاً', 'Already recorded'));
