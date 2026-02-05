@@ -112,14 +112,6 @@ export default function SchedulePage() {
     fetchActivities();
   }, [selectedBranchId]);
 
-  // Toggle activity expansion
-  const toggleActivity = (activityId) => {
-    setExpandedActivities(prev => ({
-      ...prev,
-      [activityId]: !prev[activityId]
-    }));
-  };
-
   // Navigate to attendance
   const goToAttendance = (activityId) => {
     navigate(`/attendance?activity_id=${activityId}`);
