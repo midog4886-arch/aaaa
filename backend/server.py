@@ -598,8 +598,14 @@ async def update_user(user_id: str, user_data: UserUpdateAdmin, current_user: di
         update_data["branch_id"] = user_data.branch_id
     if user_data.is_admin is not None:
         update_data["is_admin"] = user_data.is_admin
+        # If making admin, grant all permissions
+        if user_data.is_admin:
+            update_data["permissions"] = ['dashboard', 'members', 'activities', 'levels', 'schedule', 'attendance', 
+                                          'invoices', 'store', 'accounting', 'reports', 'messages', 'branches', 'users', 'settings']
     if user_data.password:
         update_data["password"] = hash_password(user_data.password)
+    if user_data.permissions is not None:
+        update_data["permissions"] = user_data.permissions
     
     if not update_data:
         raise HTTPException(status_code=400, detail="No data to update")
