@@ -335,6 +335,32 @@ class RegistrationForm(BaseModel):
     created_at: str
     status: str = "pending"  # pending, converted, cancelled
 
+# ============ LEVELS MODELS ============
+
+class LevelMember(BaseModel):
+    member_id: str
+    member_name: Optional[str] = ""
+    phone: Optional[str] = ""
+
+class LevelCreate(BaseModel):
+    level_number: int  # 2, 3, 4, 5, 6
+    activity_id: str
+    activity_name: Optional[str] = ""
+    description: Optional[str] = ""
+    members: List[str] = []  # List of member IDs
+    branch_id: Optional[str] = None
+
+class Level(BaseModel):
+    id: str
+    level_number: int
+    activity_id: str
+    activity_name: Optional[str] = ""
+    description: Optional[str] = ""
+    members: List[str] = []
+    members_details: List[LevelMember] = []
+    branch_id: Optional[str] = None
+    created_at: str
+
 class ReportFilter(BaseModel):
     start_date: Optional[str] = None
     end_date: Optional[str] = None
