@@ -281,6 +281,7 @@ export const activityNotesAPI = {
   create: (data) => axios.post(`${API}/activity-notes`, data),
   getByActivity: (activityId) => axios.get(`${API}/activity-notes/${activityId}`),
   getCounts: () => axios.get(`${API}/activity-notes/counts/all`),
+  getRecent: (limit = 10) => axios.get(`${API}/activity-notes/recent`, { params: { limit } }),
   delete: (noteId) => axios.delete(`${API}/activity-notes/${noteId}`)
 };
 
