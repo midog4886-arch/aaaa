@@ -27,6 +27,7 @@ const translations = {
     dashboard: 'لوحة التحكم',
     members: 'الأعضاء',
     activities: 'الأنشطة',
+    levels: 'المستويات',
     coaches: 'المدربين',
     invoices: 'الفواتير',
     store: 'المخزن',
