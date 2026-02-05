@@ -4350,6 +4350,20 @@ async def get_all_activity_notes_counts(
     
     return counts
 
+@api_router.get("/activity-notes/recent")
+async def get_recent_notes(
+    limit: int = 10,
+    current_user: dict = Depends(get_current_user)
+):
+    """Get most recent notes across all activities"""
+    
+    notes = await db.activity_notes.find(
+        {},
+        {"_id": 0}
+    ).sort("created_at", -1).limit(limit).to_list(limit)
+    
+    return notes
+
 @api_router.delete("/activity-notes/{note_id}")
 async def delete_activity_note(
     note_id: str,
