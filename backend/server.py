@@ -535,6 +535,7 @@ class UserCreateAdmin(BaseModel):
     name: str
     branch_id: Optional[str] = None
     is_admin: bool = False
+    permissions: Optional[List[str]] = None  # ['schedule', 'attendance', 'members', 'invoices', etc.]
 
 @api_router.post("/users/create")
 async def create_user_admin(user_data: UserCreateAdmin, current_user: dict = Depends(get_current_user)):
