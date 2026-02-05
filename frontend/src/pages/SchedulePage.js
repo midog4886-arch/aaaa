@@ -643,10 +643,29 @@ export default function SchedulePage() {
                 const style = getActivityStyle(activity.activity_name);
                 const totalMembers = getTotalMembers(activity);
                 
-                // Get times that have members for selected day
-                const timesWithMembers = Object.entries(activity.times)
+                // Get times that have members for selected day, filtered by time filter
+                let timesWithMembers = Object.entries(activity.times)
                   .filter(([time, timeData]) => (timeData[selectedDay] || []).length > 0)
                   .sort(([a], [b]) => a.localeCompare(b));
+                
+                // Apply time filter
+                if (selectedTime !== 'all') {
+                  timesWithMembers = timesWithMembers.filter(([time]) => time === selectedTime);
+                }
+                
+                // Apply level filter to check if activity has any matching members
+                if (selectedLevelFilter !== 'all') {
+                  timesWithMembers = timesWithMembers.filter(([time, timeData]) => {
+                    const members = timeData[selectedDay] || [];
+                    return members.some(member => {
+                      const memberLevel = getMemberLevel(member.member_id);
+                      if (selectedLevelFilter === 'none') {
+                        return !memberLevel;
+                      }
+                      return memberLevel && memberLevel.id === selectedLevelFilter;
+                    });
+                  });
+                }
                 
                 if (timesWithMembers.length === 0) return null;
                 
