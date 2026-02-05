@@ -147,6 +147,7 @@ class MemberUpdate(BaseModel):
 
 class Member(MemberBase):
     id: str
+    member_code: Optional[str] = None  # كود العضو التسلسلي
     activities: List[MemberActivity] = []
     branch_id: Optional[str] = None
     created_at: str
