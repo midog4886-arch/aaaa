@@ -125,11 +125,11 @@ function AppRoutes() {
         } 
       />
       
-      {/* Protected Routes */}
+      {/* Protected Routes with permissions */}
       <Route 
         path="/dashboard" 
         element={
-          <ProtectedRoute>
+          <ProtectedRoute permission="dashboard">
             <DashboardPage />
           </ProtectedRoute>
         } 
@@ -137,7 +137,7 @@ function AppRoutes() {
       <Route 
         path="/members" 
         element={
-          <ProtectedRoute>
+          <ProtectedRoute permission="members">
             <MembersPage />
           </ProtectedRoute>
         } 
@@ -145,7 +145,7 @@ function AppRoutes() {
       <Route 
         path="/activities" 
         element={
-          <ProtectedRoute>
+          <ProtectedRoute permission="activities">
             <ActivitiesPage />
           </ProtectedRoute>
         } 
@@ -153,7 +153,7 @@ function AppRoutes() {
       <Route 
         path="/levels" 
         element={
-          <ProtectedRoute>
+          <ProtectedRoute permission="levels">
             <LevelsPage />
           </ProtectedRoute>
         } 
@@ -161,7 +161,7 @@ function AppRoutes() {
       <Route 
         path="/invoices" 
         element={
-          <ProtectedRoute>
+          <ProtectedRoute permission="invoices">
             <InvoicesPage />
           </ProtectedRoute>
         } 
@@ -169,7 +169,7 @@ function AppRoutes() {
       <Route 
         path="/reports" 
         element={
-          <ProtectedRoute>
+          <ProtectedRoute permission="reports">
             <ReportsPage />
           </ProtectedRoute>
         } 
@@ -177,7 +177,7 @@ function AppRoutes() {
       <Route 
         path="/messages" 
         element={
-          <ProtectedRoute>
+          <ProtectedRoute permission="messages">
             <MessagesPage />
           </ProtectedRoute>
         } 
@@ -185,7 +185,7 @@ function AppRoutes() {
       <Route 
         path="/settings" 
         element={
-          <ProtectedRoute>
+          <ProtectedRoute permission="settings">
             <SettingsPage />
           </ProtectedRoute>
         } 
@@ -193,7 +193,7 @@ function AppRoutes() {
       <Route 
         path="/branches" 
         element={
-          <ProtectedRoute>
+          <ProtectedRoute permission="branches">
             <BranchesPage />
           </ProtectedRoute>
         } 
@@ -201,7 +201,7 @@ function AppRoutes() {
       <Route 
         path="/users" 
         element={
-          <ProtectedRoute>
+          <ProtectedRoute permission="users">
             <UsersPage />
           </ProtectedRoute>
         } 
@@ -209,7 +209,7 @@ function AppRoutes() {
       <Route 
         path="/store" 
         element={
-          <ProtectedRoute>
+          <ProtectedRoute permission="store">
             <StorePage />
           </ProtectedRoute>
         } 
@@ -217,7 +217,7 @@ function AppRoutes() {
       <Route 
         path="/accounting" 
         element={
-          <ProtectedRoute>
+          <ProtectedRoute permission="accounting">
             <AccountingPage />
           </ProtectedRoute>
         } 
@@ -225,7 +225,7 @@ function AppRoutes() {
       <Route 
         path="/attendance" 
         element={
-          <ProtectedRoute>
+          <ProtectedRoute permission="attendance">
             <AttendancePage />
           </ProtectedRoute>
         } 
@@ -233,15 +233,15 @@ function AppRoutes() {
       <Route 
         path="/schedule" 
         element={
-          <ProtectedRoute>
+          <ProtectedRoute permission="schedule">
             <SchedulePage />
           </ProtectedRoute>
         } 
       />
       
-      {/* Default Redirect */}
-      <Route path="/" element={<Navigate to="/dashboard" replace />} />
-      <Route path="*" element={<Navigate to="/dashboard" replace />} />
+      {/* Smart Default Redirect based on permissions */}
+      <Route path="/" element={<SmartRedirect />} />
+      <Route path="*" element={<SmartRedirect />} />
     </Routes>
   );
 }
