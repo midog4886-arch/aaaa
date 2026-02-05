@@ -10,7 +10,7 @@ import { Badge } from '../components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '../components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Checkbox } from '../components/ui/checkbox';
-import { levelsAPI, activitiesAPI, membersAPI, branchesAPI } from '../services/api';
+import { levelsAPI, membersAPI, branchesAPI } from '../services/api';
 import { toast } from 'sonner';
 import { 
   Plus, 
