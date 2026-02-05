@@ -28,7 +28,8 @@ import {
   CheckCheck,
   Clock,
   AlertTriangle,
-  ClipboardList
+  ClipboardList,
+  CalendarDays
 } from 'lucide-react';
 
 export const Sidebar = ({ isOpen, onClose }) => {
