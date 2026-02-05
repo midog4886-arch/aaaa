@@ -555,6 +555,45 @@ export default function SchedulePage() {
               </div>
             </div>
 
+            {/* Time Filter */}
+            <div>
+              <label className="text-sm font-medium text-gray-600 block mb-1">
+                🕐 {t('الموعد', 'Time')}
+              </label>
+              <select
+                value={selectedTime}
+                onChange={e => setSelectedTime(e.target.value)}
+                className="border rounded-lg p-2 text-sm w-36"
+              >
+                <option value="all">{t('كل المواعيد', 'All Times')}</option>
+                {getAvailableTimes().map(time => (
+                  <option key={time} value={time}>
+                    {time === 'غير محدد' ? t('بدون وقت', 'No time') : time}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Level Filter */}
+            <div>
+              <label className="text-sm font-medium text-gray-600 block mb-1">
+                🎯 {t('المستوى', 'Level')}
+              </label>
+              <select
+                value={selectedLevelFilter}
+                onChange={e => setSelectedLevelFilter(e.target.value)}
+                className="border rounded-lg p-2 text-sm w-44"
+              >
+                <option value="all">{t('كل المستويات', 'All Levels')}</option>
+                <option value="none">{t('بدون مستوى', 'No Level')}</option>
+                {levels.map(level => (
+                  <option key={level.id} value={level.id}>
+                    {t('المستوى', 'Level')} {level.level_number} - {level.activity_name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
             {/* Branch Filter */}
             <div>
               <label className="text-sm font-medium text-gray-600 block mb-1">
@@ -563,7 +602,7 @@ export default function SchedulePage() {
               <select
                 value={selectedBranchId}
                 onChange={e => setSelectedBranchId(e.target.value)}
-                className="border rounded-lg p-2 text-sm w-44"
+                className="border rounded-lg p-2 text-sm w-36"
               >
                 <option value="">{t('كل الفروع', 'All Branches')}</option>
                 {branches.map(b => (
