@@ -327,7 +327,15 @@ export default function AttendancePage() {
         </div>
 
         {/* Tabs */}
-        <div className="flex gap-2 mb-6 border-b pb-2">
+        <div className="flex gap-2 mb-6 border-b pb-2 flex-wrap">
+          <Button
+            variant={activeTab === 'quick' ? 'default' : 'ghost'}
+            onClick={() => setActiveTab('quick')}
+            className="gap-2"
+          >
+            <Zap className="w-4 h-4" />
+            {t('تسجيل سريع', 'Quick Check-in')}
+          </Button>
           <Button
             variant={activeTab === 'record' ? 'default' : 'ghost'}
             onClick={() => setActiveTab('record')}
@@ -342,7 +350,7 @@ export default function AttendancePage() {
             className="gap-2"
           >
             <QrCode className="w-4 h-4" />
-            {t('تسجيل سريع QR', 'QR Check-in')}
+            {t('QR', 'QR')}
           </Button>
           <Button
             variant={activeTab === 'reports' ? 'default' : 'ghost'}
@@ -353,6 +361,126 @@ export default function AttendancePage() {
             {t('التقارير', 'Reports')}
           </Button>
         </div>
+
+        {/* Quick Registration Tab */}
+        {activeTab === 'quick' && (
+          <div className="space-y-4">
+            {/* Quick Search Box */}
+            <div className="bg-gradient-to-r from-green-50 to-emerald-50 border-2 border-green-200 rounded-xl p-6">
+              <h2 className="text-lg font-bold text-green-800 mb-4 flex items-center gap-2">
+                <Zap className="w-5 h-5" />
+                {t('تسجيل سريع برقم العضوية', 'Quick Check-in by Member ID')}
+              </h2>
+              
+              <div className="flex gap-3 items-end">
+                <div className="flex-1 max-w-xs">
+                  <label className="text-sm text-gray-600 mb-1 block">
+                    {t('رقم العضوية', 'Member ID')}
+                  </label>
+                  <div className="relative">
+                    <Hash className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                    <Input
+                      type="text"
+                      value={quickMemberCode}
+                      onChange={(e) => setQuickMemberCode(e.target.value)}
+                      onKeyPress={(e) => e.key === 'Enter' && handleQuickSearch()}
+                      placeholder="2601"
+                      className="text-lg font-mono pr-10 h-12 text-center"
+                      dir="ltr"
+                    />
+                  </div>
+                </div>
+                <Button 
+                  onClick={handleQuickSearch} 
+                  disabled={quickSearching || !quickMemberCode.trim()}
+                  className="h-12 px-6 bg-green-600 hover:bg-green-700"
+                >
+                  <Search className="w-4 h-4 me-2" />
+                  {quickSearching ? t('جاري البحث...', 'Searching...') : t('بحث', 'Search')}
+                </Button>
+                {quickSearchResult && (
+                  <Button variant="outline" onClick={clearQuickSearch} className="h-12">
+                    {t('مسح', 'Clear')}
+                  </Button>
+                )}
+              </div>
+            </div>
+
+            {/* Search Result */}
+            {quickSearchResult && (
+              <div className="bg-white border-2 border-green-300 rounded-xl p-6 shadow-lg animate-in fade-in duration-300">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-4">
+                    <div className="w-16 h-16 rounded-full bg-green-100 flex items-center justify-center">
+                      <span className="text-2xl font-bold text-green-600">#{quickSearchResult.member_code}</span>
+                    </div>
+                    <div>
+                      <h3 className="text-xl font-bold text-gray-800">
+                        {quickSearchResult.name_ar || quickSearchResult.name}
+                      </h3>
+                      <p className="text-gray-500">{quickSearchResult.phone}</p>
+                    </div>
+                  </div>
+                  <UserCheck className="w-10 h-10 text-green-500" />
+                </div>
+
+                {/* Today's Attendance Status */}
+                {quickSearchResult.today_attendance?.length > 0 && (
+                  <div className="mb-4 p-3 bg-blue-50 rounded-lg">
+                    <p className="text-sm text-blue-700 font-medium mb-2">
+                      {t('تم تسجيل الحضور اليوم:', 'Recorded today:')}
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      {quickSearchResult.today_attendance.map((att, idx) => (
+                        <Badge key={idx} className="bg-blue-100 text-blue-700">
+                          ✓ {att.activity_name} - {att.check_in_time}
+                        </Badge>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Activities to Register */}
+                <div>
+                  <p className="text-sm text-gray-600 mb-3">
+                    {t('اختر النشاط لتسجيل الحضور:', 'Select activity to record attendance:')}
+                  </p>
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                    {quickSearchResult.activities?.length > 0 ? (
+                      quickSearchResult.activities.map((activity, idx) => {
+                        const alreadyRecorded = quickSearchResult.today_attendance?.some(
+                          att => att.activity_id === activity.activity_id
+                        );
+                        return (
+                          <Button
+                            key={idx}
+                            variant={alreadyRecorded ? "secondary" : "default"}
+                            disabled={quickRegistering || alreadyRecorded}
+                            onClick={() => handleQuickAttendance(activity.activity_id)}
+                            className={`h-auto py-3 flex flex-col gap-1 ${
+                              alreadyRecorded ? 'bg-gray-100' : 'bg-green-600 hover:bg-green-700'
+                            }`}
+                          >
+                            <span className="font-bold">{activity.activity_name}</span>
+                            {alreadyRecorded ? (
+                              <span className="text-xs opacity-70">✓ {t('مسجل', 'Recorded')}</span>
+                            ) : (
+                              <span className="text-xs opacity-70">{t('تسجيل حضور', 'Check-in')}</span>
+                            )}
+                          </Button>
+                        );
+                      })
+                    ) : (
+                      <p className="text-gray-500 col-span-3 text-center py-4">
+                        {t('لا توجد أنشطة مسجلة لهذا العضو', 'No activities registered for this member')}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Record Attendance Tab */}
         {activeTab === 'record' && (
