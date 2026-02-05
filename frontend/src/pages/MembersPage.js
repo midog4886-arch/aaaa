@@ -783,6 +783,22 @@ export const MembersPage = () => {
                     <History className="w-4 h-4 inline me-1" />
                     {language === 'ar' ? 'سجل التجديدات' : 'Renewal History'}
                   </button>
+                  <button
+                    onClick={() => setViewTab('attendance')}
+                    className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+                      viewTab === 'attendance' 
+                        ? 'border-primary text-primary' 
+                        : 'border-transparent text-muted-foreground hover:text-foreground'
+                    }`}
+                  >
+                    <Calendar className="w-4 h-4 inline me-1" />
+                    {language === 'ar' ? 'الحضور' : 'Attendance'}
+                    {memberAttendance?.summary && (
+                      <span className="ms-1 text-xs bg-red-100 text-red-700 px-1.5 py-0.5 rounded">
+                        {memberAttendance.summary.absent_count}
+                      </span>
+                    )}
+                  </button>
                 </div>
 
                 {/* Tab Content: Info */}
