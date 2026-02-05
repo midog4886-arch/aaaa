@@ -1,0 +1,70 @@
+from fastapi import APIRouter, HTTPException, Depends
+from typing import List, Optional
+from datetime import datetime, timezone
+import uuid
+
+from database import db
+from models.activity import ActivityCreate, Activity
+from utils.auth import get_current_user
+
+router = APIRouter(prefix="/activities", tags=["Activities"])
+
+@router.get("", response_model=List[Activity])
+async def get_activities(
+    branch_filter: Optional[str] = None,
+    current_user: dict = Depends(get_current_user)
+):
+    is_admin = current_user.get("is_admin", False)
+    branch_id = current_user.get("branch_id")
+    
+    if is_admin:
+        if branch_filter and branch_filter != "all":
+            activities = await db.activities.find(
+                {"$or": [{"branch_id": branch_filter}, {"branch_id": None}, {"branch_id": {"$exists": False}}]},
+                {"_id": 0}
+            ).to_list(100)
+        else:
+            activities = await db.activities.find({}, {"_id": 0}).to_list(100)
+    else:
+        activities = await db.activities.find(
+            {"$or": [{"branch_id": branch_id}, {"branch_id": None}, {"branch_id": {"$exists": False}}]}, 
+            {"_id": 0}
+        ).to_list(100)
+    return activities
+
+@router.post("", response_model=Activity)
+async def create_activity(activity: ActivityCreate, current_user: dict = Depends(get_current_user)):
+    activity_id = str(uuid.uuid4())
+    is_admin = current_user.get("is_admin", False)
+    
+    if is_admin and activity.branch_id:
+        final_branch_id = activity.branch_id if activity.branch_id != "all" else None
+    else:
+        final_branch_id = current_user.get("branch_id")
+    
+    activity_doc = {
+        "id": activity_id,
+        **activity.model_dump(),
+        "branch_id": final_branch_id,
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+    await db.activities.insert_one(activity_doc)
+    return Activity(**{k: v for k, v in activity_doc.items() if k != "_id"})
+
+@router.put("/{activity_id}", response_model=Activity)
+async def update_activity(activity_id: str, activity: ActivityCreate, current_user: dict = Depends(get_current_user)):
+    result = await db.activities.find_one_and_update(
+        {"id": activity_id},
+        {"$set": activity.model_dump()},
+        return_document=True
+    )
+    if not result:
+        raise HTTPException(status_code=404, detail="Activity not found")
+    return Activity(**{k: v for k, v in result.items() if k != "_id"})
+
+@router.delete("/{activity_id}")
+async def delete_activity(activity_id: str, current_user: dict = Depends(get_current_user)):
+    result = await db.activities.delete_one({"id": activity_id})
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Activity not found")
+    return {"message": "Activity deleted"}
