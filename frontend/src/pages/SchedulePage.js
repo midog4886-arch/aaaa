@@ -185,6 +185,72 @@ export default function SchedulePage() {
     }
   };
 
+  // Open notes dialog for an activity
+  const openNotesDialog = async (activity) => {
+    setNotesDialog({
+      open: true,
+      activity,
+      notes: [],
+      loading: true
+    });
+    setNewNoteText('');
+
+    try {
+      const res = await activityNotesAPI.getByActivity(activity.activity_id);
+      setNotesDialog(prev => ({
+        ...prev,
+        notes: res.data || [],
+        loading: false
+      }));
+    } catch (error) {
+      toast.error(t('خطأ في جلب الملاحظات', 'Error fetching notes'));
+      setNotesDialog(prev => ({ ...prev, loading: false }));
+    }
+  };
+
+  // Add a new note
+  const handleAddNote = async () => {
+    if (!newNoteText.trim() || !notesDialog.activity) return;
+
+    setSavingNote(true);
+    try {
+      const res = await activityNotesAPI.create({
+        activity_id: notesDialog.activity.activity_id,
+        activity_name: notesDialog.activity.activity_name,
+        note_text: newNoteText.trim()
+      });
+
+      setNotesDialog(prev => ({
+        ...prev,
+        notes: [res.data, ...prev.notes]
+      }));
+      setNewNoteText('');
+      toast.success(t('تم إضافة الملاحظة ✓', 'Note added ✓'));
+    } catch (error) {
+      toast.error(t('خطأ في إضافة الملاحظة', 'Error adding note'));
+    } finally {
+      setSavingNote(false);
+    }
+  };
+
+  // Delete a note
+  const handleDeleteNote = async (noteId) => {
+    if (!window.confirm(t('هل أنت متأكد من حذف هذه الملاحظة؟', 'Are you sure you want to delete this note?'))) {
+      return;
+    }
+
+    try {
+      await activityNotesAPI.delete(noteId);
+      setNotesDialog(prev => ({
+        ...prev,
+        notes: prev.notes.filter(n => n.id !== noteId)
+      }));
+      toast.success(t('تم حذف الملاحظة', 'Note deleted'));
+    } catch (error) {
+      toast.error(t('خطأ في حذف الملاحظة', 'Error deleting note'));
+    }
+  };
+
   // Get total members for an activity for selected day
   const getTotalMembers = (activity) => {
     const uniqueMembers = new Set();
