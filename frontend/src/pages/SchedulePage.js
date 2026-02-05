@@ -1,15 +1,17 @@
 import React, { useState, useEffect } from 'react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/AuthContext';
+import { useNavigate } from 'react-router-dom';
 import Layout from '../components/Layout';
 import { Button } from '../components/ui/button';
 import { toast } from 'sonner';
 import { schedulesAPI, branchesAPI, activitiesAPI } from '../services/api';
-import { Calendar, Clock, Users, List, Grid3X3 } from 'lucide-react';
+import { Calendar, Clock, Users, List, Grid3X3, ClipboardList } from 'lucide-react';
 
 export default function SchedulePage() {
   const { language } = useLanguage();
   const { user } = useAuth();
+  const navigate = useNavigate();
   const t = (ar, en) => language === 'ar' ? ar : en;
 
   // State
