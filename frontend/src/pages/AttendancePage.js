@@ -395,15 +395,16 @@ export default function AttendancePage() {
                     {t('رقم العضوية أو الاسم', 'Member ID or Name')}
                   </label>
                   <div className="relative">
-                    <Hash className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                  <div className="relative">
+                    <Search className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                     <Input
                       type="text"
                       value={quickMemberCode}
                       onChange={(e) => setQuickMemberCode(e.target.value)}
                       onKeyPress={(e) => e.key === 'Enter' && handleQuickSearch()}
-                      placeholder="2601"
-                      className="text-lg font-mono pr-10 h-12 text-center"
-                      dir="ltr"
+                      placeholder={t('2601 أو أحمد', '2601 or Ahmed')}
+                      className="text-lg pr-10 h-12"
+                      dir="auto"
                     />
                   </div>
                 </div>
@@ -415,7 +416,7 @@ export default function AttendancePage() {
                   <Search className="w-4 h-4 me-2" />
                   {quickSearching ? t('جاري البحث...', 'Searching...') : t('بحث', 'Search')}
                 </Button>
-                {quickSearchResult && (
+                {(quickSearchResult || quickSearchResults.length > 0) && (
                   <Button variant="outline" onClick={clearQuickSearch} className="h-12">
                     {t('مسح', 'Clear')}
                   </Button>
@@ -423,7 +424,34 @@ export default function AttendancePage() {
               </div>
             </div>
 
-            {/* Search Result */}
+            {/* Multiple Search Results */}
+            {quickSearchResults.length > 0 && (
+              <div className="bg-white border-2 border-blue-200 rounded-xl p-4 shadow-lg">
+                <h3 className="text-sm font-medium text-blue-700 mb-3">
+                  {t(`تم العثور على ${quickSearchResults.length} نتائج - اختر العضو:`, `Found ${quickSearchResults.length} results - Select member:`)}
+                </h3>
+                <div className="space-y-2 max-h-60 overflow-y-auto">
+                  {quickSearchResults.map((member, idx) => (
+                    <div
+                      key={member.member_id}
+                      onClick={() => selectMemberFromResults(member)}
+                      className="flex items-center gap-3 p-3 bg-gray-50 hover:bg-blue-50 rounded-lg cursor-pointer transition-colors border hover:border-blue-300"
+                    >
+                      <span className="font-mono text-primary font-bold">#{member.member_code}</span>
+                      <span className="font-medium">{member.name_ar || member.name}</span>
+                      <span className="text-gray-500 text-sm">{member.phone}</span>
+                      {member.today_attendance?.length > 0 && (
+                        <Badge className="bg-blue-100 text-blue-700 text-xs">
+                          {t('مسجل اليوم', 'Recorded today')}
+                        </Badge>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Single Search Result */}
             {quickSearchResult && (
               <div className="bg-white border-2 border-green-300 rounded-xl p-6 shadow-lg animate-in fade-in duration-300">
                 <div className="flex items-center justify-between mb-4">
