@@ -43,8 +43,8 @@ export const LevelsPage = () => {
   const levelNumbers = [1, 2, 3, 4, 5, 6];
 
   const [formData, setFormData] = useState({
-    level_number: 2,
-    activity_id: '',
+    level_number: 1,
+    activity_name: '',
     description: '',
     members: [],
     branch_id: 'all'
