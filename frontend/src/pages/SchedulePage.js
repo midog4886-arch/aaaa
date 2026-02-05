@@ -305,12 +305,24 @@ export default function SchedulePage() {
 
         {/* Activities Cards */}
         {!loading && (
-          <div className="space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {activitiesData.length > 0 ? (
               activitiesData.map(activity => {
                 const style = getActivityStyle(activity.activity_name);
-                const isExpanded = expandedActivities[activity.activity_id];
                 const totalMembers = getTotalMembers(activity);
+                
+                // Get all members for this activity on selected day
+                const allMembers = [];
+                Object.values(activity.times).forEach(timeData => {
+                  const dayMembers = timeData[selectedDay] || [];
+                  dayMembers.forEach(m => {
+                    if (!allMembers.find(x => x.member_id === m.member_id)) {
+                      allMembers.push(m);
+                    }
+                  });
+                });
+                
+                if (allMembers.length === 0) return null;
                 
                 return (
                   <div 
@@ -318,108 +330,72 @@ export default function SchedulePage() {
                     className={`rounded-xl border-2 ${style.border} overflow-hidden shadow-sm`}
                   >
                     {/* Activity Header */}
-                    <div 
-                      className={`${style.bg} text-white p-4 cursor-pointer flex items-center justify-between`}
-                      onClick={() => toggleActivity(activity.activity_id)}
-                    >
-                      <div className="flex items-center gap-3">
-                        <span className="text-2xl">{style.icon}</span>
+                    <div className={`${style.bg} text-white p-3 flex items-center justify-between`}>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xl">{style.icon}</span>
                         <div>
-                          <h2 className="font-bold text-lg">{activity.activity_name}</h2>
-                          <div className="flex items-center gap-2 text-sm opacity-90">
-                            <Users className="w-4 h-4" />
-                            <span>{totalMembers} {t('مشترك', 'members')}</span>
-                            <span className="opacity-60">•</span>
-                            <Clock className="w-4 h-4" />
-                            <span>{Object.keys(activity.times).length} {t('أوقات', 'times')}</span>
+                          <h2 className="font-bold">{activity.activity_name}</h2>
+                          <div className="flex items-center gap-1 text-xs opacity-90">
+                            <Users className="w-3 h-3" />
+                            <span>{allMembers.length} {t('مشترك', 'members')}</span>
                           </div>
                         </div>
                       </div>
-                      <div className="flex items-center gap-2">
-                        <Button
-                          size="sm"
-                          variant="secondary"
-                          onClick={(e) => { e.stopPropagation(); goToAttendance(activity.activity_id); }}
-                          className="bg-white/20 hover:bg-white/30 text-white border-0"
-                        >
-                          {t('صفحة الحضور', 'Attendance')}
-                        </Button>
-                        {isExpanded ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
-                      </div>
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        onClick={() => goToAttendance(activity.activity_id)}
+                        className="bg-white/20 hover:bg-white/30 text-white border-0 text-xs px-2 py-1 h-7"
+                      >
+                        {t('الحضور', 'Attendance')}
+                      </Button>
                     </div>
 
-                    {/* Time Slots & Members */}
-                    {isExpanded && (
-                      <div className={`${style.light} p-4`}>
-                        {Object.entries(activity.times).sort().map(([time, timeData]) => {
-                          const members = timeData[selectedDay] || [];
-                          if (members.length === 0) return null;
-                          
-                          return (
-                            <div key={time} className="mb-4 last:mb-0">
-                              {/* Time Header */}
-                              <div className={`flex items-center gap-2 ${style.text} font-semibold mb-3 pb-2 border-b ${style.border}`}>
-                                <Clock className="w-5 h-5" />
-                                <span className="text-lg">{time === 'غير محدد' ? t('بدون وقت محدد', 'No specific time') : time}</span>
-                                <span className="text-sm font-normal opacity-70">
-                                  ({members.length} {t('مشترك', 'members')})
-                                </span>
-                              </div>
-
-                              {/* Members Grid */}
-                              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2">
-                                {members.map((member, idx) => (
-                                  <div 
-                                    key={idx}
-                                    onClick={() => openAttendanceDialog(member, activity)}
-                                    className="flex items-center gap-2 p-2 bg-white rounded-lg border hover:bg-blue-50 hover:border-blue-300 cursor-pointer transition-all group shadow-sm"
-                                    title={t('انقر لتسجيل الحضور', 'Click to record attendance')}
-                                  >
-                                    <div className={`w-8 h-8 rounded-full ${style.bg} text-white flex items-center justify-center text-sm font-bold group-hover:scale-110 transition-transform`}>
-                                      {(member.member_name || '?').charAt(0)}
-                                    </div>
-                                    <div className="flex-1 min-w-0">
-                                      <div className="font-medium text-sm truncate group-hover:text-blue-600" title={member.member_name}>
-                                        {member.member_name}
-                                      </div>
-                                      {member.phone && (
-                                        <div className="text-gray-400 text-xs" dir="ltr">
-                                          {member.phone}
-                                        </div>
-                                      )}
-                                    </div>
-                                    <div className="opacity-0 group-hover:opacity-100 transition-opacity">
-                                      <UserCheck className="w-4 h-4 text-green-500" />
-                                    </div>
-                                  </div>
-                                ))}
-                              </div>
+                    {/* Members List */}
+                    <div className={`${style.light} p-3`}>
+                      <div className="space-y-2">
+                        {allMembers.map((member, idx) => (
+                          <div 
+                            key={idx}
+                            onClick={() => openAttendanceDialog(member, activity)}
+                            className="flex items-center gap-2 p-2 bg-white rounded-lg border hover:bg-blue-50 hover:border-blue-300 cursor-pointer transition-all group"
+                            title={t('انقر لتسجيل الحضور', 'Click to record attendance')}
+                          >
+                            <div className={`w-8 h-8 rounded-full ${style.bg} text-white flex items-center justify-center text-sm font-bold group-hover:scale-110 transition-transform`}>
+                              {(member.member_name || '?').charAt(0)}
                             </div>
-                          );
-                        })}
-                        
-                        {/* No data for this day message */}
-                        {Object.entries(activity.times).every(([_, timeData]) => !(timeData[selectedDay] || []).length) && (
-                          <div className="text-center py-4 text-gray-500">
-                            {t('لا يوجد مشتركين في هذا اليوم', 'No members scheduled for this day')}
+                            <div className="flex-1 min-w-0">
+                              <div className="font-medium text-sm truncate group-hover:text-blue-600">
+                                {member.member_name}
+                              </div>
+                              {member.phone && (
+                                <div className="text-gray-400 text-xs" dir="ltr">
+                                  {member.phone}
+                                </div>
+                              )}
+                            </div>
+                            <UserCheck className="w-4 h-4 text-green-500 opacity-0 group-hover:opacity-100 transition-opacity" />
                           </div>
-                        )}
+                        ))}
                       </div>
-                    )}
+                    </div>
                   </div>
                 );
               })
-            ) : (
-              <div className="text-center py-16 bg-gray-50 rounded-xl border">
-                <Calendar className="w-16 h-16 mx-auto mb-4 text-gray-300" />
-                <h3 className="text-lg font-medium text-gray-600 mb-2">
-                  {t('لا توجد أنشطة', 'No Activities')}
-                </h3>
-                <p className="text-gray-400 text-sm">
-                  {t('سيتم عرض الأنشطة والمواعيد من الفواتير هنا', 'Activities from invoices will appear here')}
-                </p>
-              </div>
-            )}
+            ) : null}
+          </div>
+        )}
+        
+        {/* Empty State */}
+        {!loading && activitiesData.filter(a => getTotalMembers(a) > 0).length === 0 && (
+          <div className="text-center py-16 bg-gray-50 rounded-xl border">
+            <Calendar className="w-16 h-16 mx-auto mb-4 text-gray-300" />
+            <h3 className="text-lg font-medium text-gray-600 mb-2">
+              {t('لا يوجد مشتركين في هذا اليوم', 'No members scheduled for this day')}
+            </h3>
+            <p className="text-gray-400 text-sm">
+              {t('اختر تاريخاً آخر لعرض الجدول', 'Select another date to view schedule')}
+            </p>
           </div>
         )}
 
