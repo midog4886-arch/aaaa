@@ -703,7 +703,21 @@ export default function SchedulePage() {
                     <div className={`${style.light} p-4`}>
                       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                         {timesWithMembers.map(([time, timeData]) => {
-                          const members = timeData[selectedDay] || [];
+                          let members = timeData[selectedDay] || [];
+                          
+                          // Apply level filter to members
+                          if (selectedLevelFilter !== 'all') {
+                            members = members.filter(member => {
+                              const memberLevel = getMemberLevel(member.member_id);
+                              if (selectedLevelFilter === 'none') {
+                                return !memberLevel;
+                              }
+                              return memberLevel && memberLevel.id === selectedLevelFilter;
+                            });
+                          }
+                          
+                          if (members.length === 0) return null;
+                          
                           const { levelGroups, noLevel } = groupMembersByLevel(members);
                           
                           return (
