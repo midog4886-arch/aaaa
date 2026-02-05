@@ -6,7 +6,7 @@ import Layout from '../components/Layout';
 import { Button } from '../components/ui/button';
 import { toast } from 'sonner';
 import { schedulesAPI, branchesAPI, activitiesAPI } from '../services/api';
-import { Calendar, Clock, Users, List, Grid3X3, ClipboardList } from 'lucide-react';
+import { Calendar, Clock, Users, ClipboardList, ChevronLeft, ChevronRight } from 'lucide-react';
 
 export default function SchedulePage() {
   const { language } = useLanguage();
@@ -16,41 +16,44 @@ export default function SchedulePage() {
 
   // State
   const [weeklySchedule, setWeeklySchedule] = useState(null);
-  const [schedulesList, setSchedulesList] = useState([]);
   const [branches, setBranches] = useState([]);
   const [activities, setActivities] = useState([]);
   const [selectedBranchId, setSelectedBranchId] = useState('');
-  const [selectedActivityId, setSelectedActivityId] = useState('');
   const [loading, setLoading] = useState(false);
-  const [viewMode, setViewMode] = useState('weekly'); // weekly, list
 
   // Day names in Arabic
   const days = [
-    { key: 'sunday', ar: 'الأحد', en: 'Sunday' },
-    { key: 'monday', ar: 'الإثنين', en: 'Monday' },
-    { key: 'tuesday', ar: 'الثلاثاء', en: 'Tuesday' },
-    { key: 'wednesday', ar: 'الأربعاء', en: 'Wednesday' },
-    { key: 'thursday', ar: 'الخميس', en: 'Thursday' },
-    { key: 'friday', ar: 'الجمعة', en: 'Friday' },
-    { key: 'saturday', ar: 'السبت', en: 'Saturday' }
+    { key: 'sunday', ar: 'الأحد', en: 'Sun' },
+    { key: 'monday', ar: 'الإثنين', en: 'Mon' },
+    { key: 'tuesday', ar: 'الثلاثاء', en: 'Tue' },
+    { key: 'wednesday', ar: 'الأربعاء', en: 'Wed' },
+    { key: 'thursday', ar: 'الخميس', en: 'Thu' },
+    { key: 'friday', ar: 'الجمعة', en: 'Fri' },
+    { key: 'saturday', ar: 'السبت', en: 'Sat' }
   ];
 
-  // Activity colors
-  const activityColors = [
-    'bg-blue-100 border-blue-300 text-blue-800',
-    'bg-green-100 border-green-300 text-green-800',
-    'bg-purple-100 border-purple-300 text-purple-800',
-    'bg-orange-100 border-orange-300 text-orange-800',
-    'bg-pink-100 border-pink-300 text-pink-800',
-    'bg-cyan-100 border-cyan-300 text-cyan-800',
-    'bg-yellow-100 border-yellow-300 text-yellow-800',
-    'bg-red-100 border-red-300 text-red-800',
-  ];
+  // Activity type colors and icons
+  const activityStyles = {
+    'سباحة': { bg: 'bg-blue-500', light: 'bg-blue-50', border: 'border-blue-400', text: 'text-blue-700', icon: '🏊' },
+    'swimming': { bg: 'bg-blue-500', light: 'bg-blue-50', border: 'border-blue-400', text: 'text-blue-700', icon: '🏊' },
+    'كرة قدم': { bg: 'bg-green-500', light: 'bg-green-50', border: 'border-green-400', text: 'text-green-700', icon: '⚽' },
+    'football': { bg: 'bg-green-500', light: 'bg-green-50', border: 'border-green-400', text: 'text-green-700', icon: '⚽' },
+    'كاراتيه': { bg: 'bg-red-500', light: 'bg-red-50', border: 'border-red-400', text: 'text-red-700', icon: '🥋' },
+    'karate': { bg: 'bg-red-500', light: 'bg-red-50', border: 'border-red-400', text: 'text-red-700', icon: '🥋' },
+    'جمباز': { bg: 'bg-purple-500', light: 'bg-purple-50', border: 'border-purple-400', text: 'text-purple-700', icon: '🤸' },
+    'تنس': { bg: 'bg-yellow-500', light: 'bg-yellow-50', border: 'border-yellow-400', text: 'text-yellow-700', icon: '🎾' },
+    'default': { bg: 'bg-gray-500', light: 'bg-gray-50', border: 'border-gray-400', text: 'text-gray-700', icon: '🏃' }
+  };
 
-  // Get color for activity
-  const getActivityColor = (activityId) => {
-    const index = activities.findIndex(a => a.id === activityId);
-    return activityColors[index % activityColors.length];
+  // Get style for activity based on name
+  const getActivityStyle = (name) => {
+    const lowerName = (name || '').toLowerCase();
+    for (const [key, style] of Object.entries(activityStyles)) {
+      if (lowerName.includes(key.toLowerCase())) {
+        return style;
+      }
+    }
+    return activityStyles.default;
   };
 
   // Fetch initial data
@@ -80,15 +83,9 @@ export default function SchedulePage() {
     try {
       const params = {};
       if (selectedBranchId) params.branch_id = selectedBranchId;
-      if (selectedActivityId) params.activity_id = selectedActivityId;
 
-      const [weeklyRes, listRes] = await Promise.all([
-        schedulesAPI.getWeekly(params),
-        schedulesAPI.getAll(params)
-      ]);
-      
+      const weeklyRes = await schedulesAPI.getWeekly(params);
       setWeeklySchedule(weeklyRes.data);
-      setSchedulesList(listRes.data);
     } catch (error) {
       toast.error(t('خطأ في جلب الجدول', 'Error fetching schedule'));
     } finally {
@@ -99,7 +96,35 @@ export default function SchedulePage() {
   // Initial fetch
   useEffect(() => {
     fetchSchedules();
-  }, [selectedBranchId, selectedActivityId]);
+  }, [selectedBranchId]);
+
+  // Navigate to attendance page with activity
+  const goToAttendance = (activityId) => {
+    navigate(`/attendance?activity_id=${activityId}`);
+  };
+
+  // Group sessions by activity for each day
+  const groupByActivity = (sessions) => {
+    const grouped = {};
+    sessions.forEach(session => {
+      const actName = session.activity_name;
+      if (!grouped[actName]) {
+        grouped[actName] = {
+          activity_id: session.activity_id,
+          activity_name: actName,
+          times: []
+        };
+      }
+      if (session.time && !grouped[actName].times.includes(session.time)) {
+        grouped[actName].times.push(session.time);
+      }
+    });
+    // Sort times
+    Object.values(grouped).forEach(g => {
+      g.times.sort();
+    });
+    return Object.values(grouped);
+  };
 
   // Count total sessions
   const getTotalSessions = () => {
@@ -107,240 +132,158 @@ export default function SchedulePage() {
     return Object.values(weeklySchedule).reduce((sum, day) => sum + day.length, 0);
   };
 
-  // Get unique activities count
-  const getUniqueActivitiesCount = () => {
-    if (!weeklySchedule) return 0;
-    const activityIds = new Set();
-    Object.values(weeklySchedule).forEach(day => {
-      day.forEach(session => activityIds.add(session.activity_id));
-    });
-    return activityIds.size;
-  };
-
-  // Navigate to attendance page with activity
-  const goToAttendance = (activityId) => {
-    navigate(`/attendance?activity_id=${activityId}`);
-  };
-
   return (
     <Layout>
-      <div className="p-6 max-w-7xl mx-auto" data-testid="schedule-page">
+      <div className="p-4 md:p-6 max-w-full mx-auto" data-testid="schedule-page">
         {/* Header */}
-        <div className="flex justify-between items-center mb-6 flex-wrap gap-4">
+        <div className="flex justify-between items-center mb-4 flex-wrap gap-4">
           <div>
-            <h1 className="text-2xl font-bold text-gray-800">
-              📅 {t('جدول الأنشطة والمواعيد', 'Activity Schedule')}
+            <h1 className="text-xl md:text-2xl font-bold text-gray-800 flex items-center gap-2">
+              <Calendar className="w-6 h-6 text-primary" />
+              {t('جدول الأنشطة والمواعيد', 'Activity Schedule')}
             </h1>
             <p className="text-gray-500 text-sm mt-1">
-              {t('عرض مواعيد الأنشطة الأسبوعية', 'View weekly activity timetable')}
+              {t('مواعيد الأنشطة الأسبوعية من الفواتير', 'Weekly activity timetable from invoices')}
             </p>
           </div>
           
-          {/* View Toggle */}
-          <div className="flex gap-2 bg-gray-100 p-1 rounded-lg">
-            <Button
-              variant={viewMode === 'weekly' ? 'default' : 'ghost'}
-              size="sm"
-              onClick={() => setViewMode('weekly')}
-              className="gap-1"
+          {/* Branch Filter */}
+          <div className="flex items-center gap-3">
+            <select
+              value={selectedBranchId}
+              onChange={e => setSelectedBranchId(e.target.value)}
+              className="border rounded-lg p-2 text-sm"
             >
-              <Grid3X3 className="w-4 h-4" />
-              {t('أسبوعي', 'Weekly')}
-            </Button>
-            <Button
-              variant={viewMode === 'list' ? 'default' : 'ghost'}
-              size="sm"
-              onClick={() => setViewMode('list')}
-              className="gap-1"
-            >
-              <List className="w-4 h-4" />
-              {t('قائمة', 'List')}
-            </Button>
-          </div>
-        </div>
-
-        {/* Filters */}
-        <div className="bg-white p-4 rounded-lg border shadow-sm mb-6">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {/* Branch Filter */}
-            <div>
-              <label className="text-sm font-medium text-gray-600 block mb-1">
-                {t('الفرع', 'Branch')}
-              </label>
-              <select
-                value={selectedBranchId}
-                onChange={e => setSelectedBranchId(e.target.value)}
-                className="w-full border rounded-lg p-2"
-              >
-                <option value="">{t('كل الفروع', 'All Branches')}</option>
-                {branches.map(b => (
-                  <option key={b.id} value={b.id}>{b.name}</option>
-                ))}
-              </select>
-            </div>
-
-            {/* Activity Filter */}
-            <div>
-              <label className="text-sm font-medium text-gray-600 block mb-1">
-                {t('النشاط', 'Activity')}
-              </label>
-              <select
-                value={selectedActivityId}
-                onChange={e => setSelectedActivityId(e.target.value)}
-                className="w-full border rounded-lg p-2"
-              >
-                <option value="">{t('كل الأنشطة', 'All Activities')}</option>
-                {activities.map(a => (
-                  <option key={a.id} value={a.id}>{a.name_ar || a.name}</option>
-                ))}
-              </select>
-            </div>
-
-            {/* Stats */}
-            <div className="flex items-end gap-4">
-              <div className="bg-blue-50 px-4 py-2 rounded-lg text-center flex-1">
-                <div className="text-xl font-bold text-blue-600">{getTotalSessions()}</div>
-                <div className="text-xs text-gray-600">{t('حصة', 'Sessions')}</div>
-              </div>
-              <div className="bg-green-50 px-4 py-2 rounded-lg text-center flex-1">
-                <div className="text-xl font-bold text-green-600">{getUniqueActivitiesCount()}</div>
-                <div className="text-xs text-gray-600">{t('نشاط', 'Activities')}</div>
-              </div>
+              <option value="">{t('كل الفروع', 'All Branches')}</option>
+              {branches.map(b => (
+                <option key={b.id} value={b.id}>{b.name}</option>
+              ))}
+            </select>
+            <div className="bg-primary/10 px-3 py-1 rounded-full text-sm font-medium text-primary">
+              {getTotalSessions()} {t('حصة', 'sessions')}
             </div>
           </div>
         </div>
 
         {/* Loading */}
         {loading && (
-          <div className="text-center py-10">
+          <div className="text-center py-20">
             <div className="spinner mx-auto"></div>
             <p className="mt-2 text-gray-500">{t('جاري التحميل...', 'Loading...')}</p>
           </div>
         )}
 
-        {/* Weekly View */}
-        {!loading && viewMode === 'weekly' && weeklySchedule && (
-          <div className="bg-white rounded-lg border shadow-sm overflow-hidden">
-            <div className="grid grid-cols-7 divide-x divide-gray-200">
-              {days.map(day => (
-                <div key={day.key} className="min-h-[400px]">
-                  {/* Day Header */}
-                  <div className="bg-gray-100 p-3 text-center border-b font-bold">
-                    {language === 'ar' ? day.ar : day.en}
-                    {weeklySchedule[day.key]?.length > 0 && (
-                      <span className="text-xs font-normal text-gray-500 block">
-                        ({weeklySchedule[day.key].length} {t('حصص', 'sessions')})
-                      </span>
+        {/* Weekly Schedule Grid */}
+        {!loading && weeklySchedule && (
+          <div className="bg-white rounded-xl shadow-sm border overflow-hidden">
+            {/* Days Header */}
+            <div className="grid grid-cols-7 bg-gray-800 text-white">
+              {days.map(day => {
+                const dayCount = weeklySchedule[day.key]?.length || 0;
+                return (
+                  <div key={day.key} className="p-3 text-center border-l border-gray-700 first:border-l-0">
+                    <div className="font-bold text-sm md:text-base">
+                      {language === 'ar' ? day.ar : day.en}
+                    </div>
+                    {dayCount > 0 && (
+                      <div className="text-xs opacity-75 mt-1">
+                        {dayCount} {t('حصة', '')}
+                      </div>
                     )}
                   </div>
-                  
-                  {/* Day Sessions */}
-                  <div className="p-2 space-y-2">
-                    {weeklySchedule[day.key]?.map((session, idx) => (
-                      <div
-                        key={idx}
-                        className={`p-2 rounded-lg border ${getActivityColor(session.activity_id)} text-sm group cursor-pointer hover:shadow-md transition-shadow`}
-                        onClick={() => goToAttendance(session.activity_id)}
-                        title={t('انقر لتسجيل الحضور', 'Click to record attendance')}
-                      >
-                        <div className="font-semibold truncate" title={session.activity_name}>
-                          {session.activity_name}
-                        </div>
-                        <div className="flex items-center justify-between mt-1">
-                          {session.time && (
-                            <div className="flex items-center gap-1 text-xs opacity-80">
-                              <Clock className="w-3 h-3" />
-                              {session.time}
+                );
+              })}
+            </div>
+
+            {/* Activity Cards Grid */}
+            <div className="grid grid-cols-7 min-h-[500px]">
+              {days.map(day => {
+                const sessions = weeklySchedule[day.key] || [];
+                const groupedActivities = groupByActivity(sessions);
+                
+                return (
+                  <div 
+                    key={day.key} 
+                    className="border-l border-gray-200 first:border-l-0 p-2 bg-gray-50"
+                  >
+                    {groupedActivities.length > 0 ? (
+                      <div className="space-y-2">
+                        {groupedActivities.map((activity, idx) => {
+                          const style = getActivityStyle(activity.activity_name);
+                          return (
+                            <div
+                              key={idx}
+                              className={`rounded-lg border-2 ${style.border} ${style.light} overflow-hidden cursor-pointer hover:shadow-md transition-all group`}
+                              onClick={() => goToAttendance(activity.activity_id)}
+                            >
+                              {/* Activity Header */}
+                              <div className={`${style.bg} text-white px-2 py-1.5 flex items-center justify-between`}>
+                                <div className="flex items-center gap-1">
+                                  <span className="text-sm">{style.icon}</span>
+                                  <span className="font-medium text-xs truncate max-w-[80px]" title={activity.activity_name}>
+                                    {activity.activity_name.split(' ')[0]}
+                                  </span>
+                                </div>
+                                <ClipboardList className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity" />
+                              </div>
+                              
+                              {/* Time Slots */}
+                              <div className="p-1.5 space-y-1">
+                                {activity.times.length > 0 ? (
+                                  activity.times.map((time, tIdx) => (
+                                    <div 
+                                      key={tIdx}
+                                      className={`flex items-center gap-1 ${style.text} text-xs bg-white rounded px-1.5 py-1 border ${style.border}`}
+                                    >
+                                      <Clock className="w-3 h-3" />
+                                      <span className="font-medium">{time}</span>
+                                    </div>
+                                  ))
+                                ) : (
+                                  <div className={`text-xs ${style.text} opacity-60 text-center py-1`}>
+                                    {t('بدون وقت محدد', 'No time')}
+                                  </div>
+                                )}
+                              </div>
                             </div>
-                          )}
-                          <ClipboardList className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity" />
-                        </div>
+                          );
+                        })}
                       </div>
-                    ))}
-                    {(!weeklySchedule[day.key] || weeklySchedule[day.key].length === 0) && (
-                      <div className="text-center text-gray-400 text-sm py-8">
+                    ) : (
+                      <div className="h-full flex items-center justify-center text-gray-300 text-xs">
                         {t('لا توجد حصص', 'No sessions')}
                       </div>
                     )}
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
-          </div>
-        )}
-
-        {/* List View */}
-        {!loading && viewMode === 'list' && (
-          <div className="bg-white rounded-lg border shadow-sm">
-            <div className="p-4 border-b bg-gray-50">
-              <h2 className="font-bold">{t('قائمة المواعيد حسب النشاط', 'Schedules by Activity')}</h2>
-            </div>
-            
-            {schedulesList.length > 0 ? (
-              <div className="divide-y">
-                {schedulesList.map((item, idx) => (
-                  <div key={idx} className="p-4 hover:bg-gray-50">
-                    <div className="flex items-start justify-between gap-4">
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2">
-                          <span className={`w-3 h-3 rounded-full ${activityColors[idx % activityColors.length].split(' ')[0]}`}></span>
-                          <h3 className="font-semibold text-lg">{item.activity_name}</h3>
-                        </div>
-                        <div className="mt-2 p-3 bg-gray-50 rounded-lg">
-                          <div className="flex items-center gap-2 text-gray-700">
-                            <Calendar className="w-4 h-4 text-gray-500" />
-                            <span>{item.schedule}</span>
-                          </div>
-                        </div>
-                      </div>
-                      <div className="flex flex-col gap-2 items-end">
-                        <div className="text-center bg-blue-50 px-4 py-2 rounded-lg">
-                          <div className="flex items-center gap-1 text-blue-600">
-                            <Users className="w-4 h-4" />
-                            <span className="font-bold">{item.member_count}</span>
-                          </div>
-                          <div className="text-xs text-gray-500">{t('مشترك', 'members')}</div>
-                        </div>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => goToAttendance(item.activity_id)}
-                          className="gap-1 text-green-600 border-green-300 hover:bg-green-50"
-                        >
-                          <ClipboardList className="w-4 h-4" />
-                          {t('تسجيل الحضور', 'Record Attendance')}
-                        </Button>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="p-10 text-center text-gray-500">
-                <Calendar className="w-12 h-12 mx-auto mb-3 opacity-30" />
-                <p>{t('لا توجد مواعيد محددة', 'No schedules defined')}</p>
-                <p className="text-sm mt-2">{t('يتم استخراج المواعيد من الفواتير', 'Schedules are extracted from invoices')}</p>
-              </div>
-            )}
           </div>
         )}
 
         {/* Legend */}
-        {!loading && activities.length > 0 && (
-          <div className="mt-6 bg-white rounded-lg border shadow-sm p-4">
-            <h3 className="font-semibold mb-3">{t('دليل الألوان', 'Color Legend')}</h3>
-            <div className="flex flex-wrap gap-2">
-              {activities.slice(0, 8).map((activity, idx) => (
-                <div
-                  key={activity.id}
-                  className={`px-3 py-1 rounded-full text-sm ${activityColors[idx % activityColors.length]}`}
-                >
-                  {activity.name_ar || activity.name}
-                </div>
-              ))}
-            </div>
+        <div className="mt-6 bg-white rounded-lg border shadow-sm p-4">
+          <h3 className="font-semibold mb-3 text-sm">{t('دليل الأنشطة', 'Activity Legend')}</h3>
+          <div className="flex flex-wrap gap-3">
+            {[
+              { name: t('سباحة', 'Swimming'), style: activityStyles['سباحة'] },
+              { name: t('كرة قدم', 'Football'), style: activityStyles['كرة قدم'] },
+              { name: t('كاراتيه', 'Karate'), style: activityStyles['كاراتيه'] },
+              { name: t('جمباز', 'Gymnastics'), style: activityStyles['جمباز'] },
+              { name: t('أخرى', 'Other'), style: activityStyles['default'] },
+            ].map((item, idx) => (
+              <div key={idx} className="flex items-center gap-2">
+                <div className={`w-4 h-4 rounded ${item.style.bg}`}></div>
+                <span className="text-sm text-gray-600">{item.name}</span>
+              </div>
+            ))}
           </div>
-        )}
+        </div>
+
+        {/* Instructions */}
+        <div className="mt-4 text-center text-sm text-gray-500">
+          <p>{t('💡 انقر على أي نشاط للانتقال لصفحة تسجيل الحضور', '💡 Click any activity to go to attendance page')}</p>
+        </div>
       </div>
     </Layout>
   );
