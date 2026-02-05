@@ -410,7 +410,7 @@ const UsersPage = () => {
               <div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
                 <div className="flex items-center gap-2">
                   <Shield className="w-4 h-4 text-primary" />
-                  <Label className="cursor-pointer">{language === 'ar' ? 'صلاحية مدير (رؤية جميع الفروع)' : 'Admin role (see all branches)'}</Label>
+                  <Label className="cursor-pointer">{language === 'ar' ? 'صلاحية مدير (جميع الصلاحيات)' : 'Admin role (all permissions)'}</Label>
                 </div>
                 <Switch
                   checked={formData.is_admin}
@@ -418,6 +418,49 @@ const UsersPage = () => {
                   data-testid="user-admin-switch"
                 />
               </div>
+
+              {/* Permissions Section - only show for non-admin users */}
+              {!formData.is_admin && (
+                <div className="space-y-3 p-3 border rounded-lg bg-gray-50">
+                  <div className="flex items-center justify-between">
+                    <Label className="font-medium">{language === 'ar' ? 'الصلاحيات' : 'Permissions'}</Label>
+                    <div className="flex gap-2">
+                      <Button type="button" variant="outline" size="sm" onClick={selectAllPermissions}>
+                        {language === 'ar' ? 'تحديد الكل' : 'Select All'}
+                      </Button>
+                      <Button type="button" variant="outline" size="sm" onClick={clearAllPermissions}>
+                        {language === 'ar' ? 'إلغاء الكل' : 'Clear All'}
+                      </Button>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    {ALL_PERMISSIONS.map(perm => (
+                      <div 
+                        key={perm.key}
+                        onClick={() => togglePermission(perm.key)}
+                        className={`flex items-center gap-2 p-2 rounded-lg border cursor-pointer transition-colors ${
+                          formData.permissions.includes(perm.key) 
+                            ? 'bg-primary/10 border-primary text-primary' 
+                            : 'bg-white hover:bg-gray-100'
+                        }`}
+                      >
+                        <div className={`w-4 h-4 rounded border flex items-center justify-center ${
+                          formData.permissions.includes(perm.key) 
+                            ? 'bg-primary border-primary' 
+                            : 'border-gray-300'
+                        }`}>
+                          {formData.permissions.includes(perm.key) && (
+                            <Check className="w-3 h-3 text-white" />
+                          )}
+                        </div>
+                        <span className="text-sm">
+                          {language === 'ar' ? perm.label_ar : perm.label_en}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               <DialogFooter>
                 <Button type="button" variant="outline" onClick={handleCloseDialog}>
