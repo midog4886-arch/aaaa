@@ -4764,6 +4764,14 @@ async def get_activity_attendance_report(
     
     records = await db.attendance.find(query, {"_id": 0}).sort("date", -1).to_list(5000)
     
+    # Get member codes
+    member_ids = list(set(r["member_id"] for r in records))
+    members_data = await db.members.find(
+        {"id": {"$in": member_ids}}, 
+        {"_id": 0, "id": 1, "member_code": 1}
+    ).to_list(1000)
+    member_codes = {m["id"]: m.get("member_code", "") for m in members_data}
+    
     # Group by member
     member_stats = {}
     for r in records:
@@ -4771,6 +4779,7 @@ async def get_activity_attendance_report(
         if mid not in member_stats:
             member_stats[mid] = {
                 "member_id": mid,
+                "member_code": member_codes.get(mid, ""),
                 "member_name": r["member_name"],
                 "present": 0,
                 "absent": 0,
