@@ -35,6 +35,16 @@ export const coachesAPI = {
   delete: (id) => axios.delete(`${API}/coaches/${id}`),
 };
 
+// Levels API
+export const levelsAPI = {
+  getAll: (params = {}) => axios.get(`${API}/levels`, { params }),
+  create: (data) => axios.post(`${API}/levels`, data),
+  update: (id, data) => axios.put(`${API}/levels/${id}`, data),
+  delete: (id) => axios.delete(`${API}/levels/${id}`),
+  addMember: (levelId, memberId) => axios.post(`${API}/levels/${levelId}/members/${memberId}`),
+  removeMember: (levelId, memberId) => axios.delete(`${API}/levels/${levelId}/members/${memberId}`),
+};
+
 // Members API
 export const membersAPI = {
   getAll: (params = {}) => axios.get(`${API}/members`, { params }),
