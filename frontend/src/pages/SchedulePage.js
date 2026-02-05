@@ -22,7 +22,6 @@ export default function SchedulePage() {
   const [selectedBranchId, setSelectedBranchId] = useState('');
   const [loading, setLoading] = useState(false);
   const [expandedActivities, setExpandedActivities] = useState({});
-  const [selectedDay, setSelectedDay] = useState('all');
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
   
   // Attendance dialog state
