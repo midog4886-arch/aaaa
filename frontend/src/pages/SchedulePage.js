@@ -94,14 +94,29 @@ export default function SchedulePage() {
     fetchBranches();
   }, [user]);
 
+  // Fetch levels
+  const fetchLevels = async () => {
+    try {
+      const params = {};
+      if (selectedBranchId) params.branch_filter = selectedBranchId;
+      const res = await levelsAPI.getAll(params);
+      setLevels(res.data || []);
+    } catch (error) {
+      console.error('Error fetching levels:', error);
+    }
+  };
+
   // Fetch activities with members
   const fetchActivities = async () => {
     setLoading(true);
     try {
       const params = {};
       if (selectedBranchId) params.branch_id = selectedBranchId;
-      const res = await schedulesAPI.getActivitiesWithMembers(params);
-      setActivitiesData(res.data);
+      const [activitiesRes] = await Promise.all([
+        schedulesAPI.getActivitiesWithMembers(params),
+        fetchLevels()
+      ]);
+      setActivitiesData(activitiesRes.data);
     } catch (error) {
       toast.error(t('خطأ في جلب البيانات', 'Error fetching data'));
     } finally {
