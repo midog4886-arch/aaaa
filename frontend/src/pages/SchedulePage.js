@@ -169,17 +169,9 @@ export default function SchedulePage() {
     }
   };
 
-  // Count members for a time slot across selected days
+  // Count members for a time slot for selected day
   const countMembersForTime = (timeData) => {
-    let count = 0;
-    const daysToCheck = selectedDay === 'all' 
-      ? Object.keys(dayLabels) 
-      : [selectedDay];
-    
-    daysToCheck.forEach(day => {
-      count += (timeData[day] || []).length;
-    });
-    return count;
+    return (timeData[selectedDay] || []).length;
   };
 
   // Get total members for an activity
