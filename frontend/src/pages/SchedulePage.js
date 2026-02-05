@@ -181,6 +181,57 @@ export default function SchedulePage() {
     return uniqueMembers.size;
   };
 
+  // Get member's level for a specific activity
+  const getMemberLevel = (memberId) => {
+    for (const level of levels) {
+      if (level.members && level.members.includes(memberId)) {
+        return level;
+      }
+    }
+    return null;
+  };
+
+  // Get level color
+  const getLevelColor = (levelNum) => {
+    const colors = {
+      1: { bg: 'bg-purple-500', light: 'bg-purple-50', border: 'border-purple-300', text: 'text-purple-700' },
+      2: { bg: 'bg-green-500', light: 'bg-green-50', border: 'border-green-300', text: 'text-green-700' },
+      3: { bg: 'bg-blue-500', light: 'bg-blue-50', border: 'border-blue-300', text: 'text-blue-700' },
+      4: { bg: 'bg-yellow-500', light: 'bg-yellow-50', border: 'border-yellow-300', text: 'text-yellow-700' },
+      5: { bg: 'bg-orange-500', light: 'bg-orange-50', border: 'border-orange-300', text: 'text-orange-700' },
+      6: { bg: 'bg-red-500', light: 'bg-red-50', border: 'border-red-300', text: 'text-red-700' }
+    };
+    return colors[levelNum] || { bg: 'bg-gray-500', light: 'bg-gray-50', border: 'border-gray-300', text: 'text-gray-700' };
+  };
+
+  // Group members by level
+  const groupMembersByLevel = (members) => {
+    const grouped = {};
+    const noLevel = [];
+    
+    members.forEach(member => {
+      const level = getMemberLevel(member.member_id);
+      if (level) {
+        const key = `${level.level_number}-${level.activity_name}`;
+        if (!grouped[key]) {
+          grouped[key] = {
+            level_number: level.level_number,
+            activity_name: level.activity_name,
+            members: []
+          };
+        }
+        grouped[key].members.push(member);
+      } else {
+        noLevel.push(member);
+      }
+    });
+    
+    // Sort by level number
+    const sortedGroups = Object.values(grouped).sort((a, b) => a.level_number - b.level_number);
+    
+    return { levelGroups: sortedGroups, noLevel };
+  };
+
   // Format date for display
   const formatDateDisplay = (dateString) => {
     const date = new Date(dateString);
