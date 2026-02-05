@@ -251,10 +251,20 @@ export const InvoicesPage = () => {
       start_date: today,
       end_date: endDate,
       schedule: '', // جدول المواعيد
+      level_id: '', // المستوى
+      level_name: '',
       instance: existingCount + 1 // Track which instance this is
     }]);
     
     toast.success(language === 'ar' ? `تم إضافة ${activity.name_ar}` : `Added ${activity.name}`);
+  };
+
+  const updateItemLevel = (index, levelId) => {
+    const updated = [...invoiceItems];
+    const level = levels.find(l => l.id === levelId);
+    updated[index].level_id = levelId;
+    updated[index].level_name = level ? `${language === 'ar' ? 'المستوى' : 'Level'} ${level.level_number} - ${level.activity_name}` : '';
+    setInvoiceItems(updated);
   };
 
   const updateItemSchedule = (index, schedule) => {
