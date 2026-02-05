@@ -155,7 +155,8 @@ const UsersPage = () => {
       password: '',
       name: user.name,
       branch_id: user.branch_id || '',
-      is_admin: user.is_admin || false
+      is_admin: user.is_admin || false,
+      permissions: user.permissions || []
     });
     setIsDialogOpen(true);
   };
