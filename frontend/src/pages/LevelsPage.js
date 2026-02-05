@@ -77,8 +77,8 @@ export const LevelsPage = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!formData.activity_id) {
-      toast.error(t('اختر النشاط', 'Select activity'));
+    if (!formData.activity_name.trim()) {
+      toast.error(t('أدخل اسم النشاط', 'Enter activity name'));
       return;
     }
     
