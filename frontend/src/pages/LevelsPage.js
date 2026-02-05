@@ -399,24 +399,15 @@ export const LevelsPage = () => {
                 </Select>
               </div>
 
-              {/* Activity */}
+              {/* Activity Name */}
               <div>
-                <Label>{t('النشاط', 'Activity')} *</Label>
-                <Select
-                  value={formData.activity_id}
-                  onValueChange={(value) => setFormData({ ...formData, activity_id: value })}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder={t('اختر النشاط', 'Select activity')} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {activities.map(activity => (
-                      <SelectItem key={activity.id} value={activity.id}>
-                        {language === 'ar' ? activity.name_ar : activity.name || activity.name_ar}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <Label>{t('اسم النشاط', 'Activity Name')} *</Label>
+                <Input
+                  value={formData.activity_name}
+                  onChange={(e) => setFormData({ ...formData, activity_name: e.target.value })}
+                  placeholder={t('مثال: كرة قدم، كاراتيه', 'e.g. Football, Karate')}
+                  required
+                />
               </div>
 
               {/* Description */}
