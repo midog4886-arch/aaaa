@@ -170,8 +170,32 @@ const UsersPage = () => {
       password: '',
       name: '',
       branch_id: '',
-      is_admin: false
+      is_admin: false,
+      permissions: []
     });
+  };
+
+  const togglePermission = (permKey) => {
+    setFormData(prev => {
+      const newPermissions = prev.permissions.includes(permKey)
+        ? prev.permissions.filter(p => p !== permKey)
+        : [...prev.permissions, permKey];
+      return { ...prev, permissions: newPermissions };
+    });
+  };
+
+  const selectAllPermissions = () => {
+    setFormData(prev => ({
+      ...prev,
+      permissions: ALL_PERMISSIONS.map(p => p.key)
+    }));
+  };
+
+  const clearAllPermissions = () => {
+    setFormData(prev => ({
+      ...prev,
+      permissions: []
+    }));
   };
 
   const isAdmin = currentUser?.is_admin;
