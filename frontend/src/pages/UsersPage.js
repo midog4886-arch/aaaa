@@ -100,7 +100,8 @@ const UsersPage = () => {
           username: formData.username,
           name: formData.name,
           branch_id: formData.branch_id || null,
-          is_admin: formData.is_admin
+          is_admin: formData.is_admin,
+          permissions: formData.is_admin ? [] : formData.permissions
         };
         if (formData.password) {
           updateData.password = formData.password;
@@ -113,7 +114,8 @@ const UsersPage = () => {
           password: formData.password,
           name: formData.name,
           branch_id: formData.branch_id || null,
-          is_admin: formData.is_admin
+          is_admin: formData.is_admin,
+          permissions: formData.is_admin ? [] : formData.permissions
         });
         toast.success(language === 'ar' ? 'تم إضافة المستخدم بنجاح' : 'User added successfully');
       }
