@@ -197,6 +197,74 @@ export default function SchedulePage() {
     return Array.from(times).sort();
   };
 
+  // Get activity types (swimming, football, karate, etc.)
+  const getActivityTypes = () => {
+    const types = new Map(); // Use Map to store type -> display name
+    activitiesData.forEach(activity => {
+      const name = activity.activity_name.toLowerCase();
+      let type = '';
+      let displayName = '';
+      
+      if (name.includes('سباح') || name.includes('swim')) {
+        type = 'swimming';
+        displayName = language === 'ar' ? 'السباحة' : 'Swimming';
+      } else if (name.includes('قدم') || name.includes('football') || name.includes('soccer')) {
+        type = 'football';
+        displayName = language === 'ar' ? 'كرة القدم' : 'Football';
+      } else if (name.includes('كارات') || name.includes('karate')) {
+        type = 'karate';
+        displayName = language === 'ar' ? 'الكاراتيه' : 'Karate';
+      } else if (name.includes('جمباز') || name.includes('gym')) {
+        type = 'gymnastics';
+        displayName = language === 'ar' ? 'الجمباز' : 'Gymnastics';
+      } else if (name.includes('سلة') || name.includes('basket')) {
+        type = 'basketball';
+        displayName = language === 'ar' ? 'كرة السلة' : 'Basketball';
+      } else if (name.includes('تنس') || name.includes('tennis')) {
+        type = 'tennis';
+        displayName = language === 'ar' ? 'التنس' : 'Tennis';
+      } else {
+        type = 'other';
+        displayName = language === 'ar' ? 'أخرى' : 'Other';
+      }
+      
+      if (!types.has(type)) {
+        types.set(type, displayName);
+      }
+    });
+    return types;
+  };
+
+  // Check if activity matches selected type
+  const activityMatchesType = (activityName) => {
+    if (selectedActivityType === 'all') return true;
+    
+    const name = activityName.toLowerCase();
+    switch (selectedActivityType) {
+      case 'swimming':
+        return name.includes('سباح') || name.includes('swim');
+      case 'football':
+        return name.includes('قدم') || name.includes('football') || name.includes('soccer');
+      case 'karate':
+        return name.includes('كارات') || name.includes('karate');
+      case 'gymnastics':
+        return name.includes('جمباز') || name.includes('gym');
+      case 'basketball':
+        return name.includes('سلة') || name.includes('basket');
+      case 'tennis':
+        return name.includes('تنس') || name.includes('tennis');
+      case 'other':
+        return !(name.includes('سباح') || name.includes('swim') || 
+                 name.includes('قدم') || name.includes('football') || name.includes('soccer') ||
+                 name.includes('كارات') || name.includes('karate') ||
+                 name.includes('جمباز') || name.includes('gym') ||
+                 name.includes('سلة') || name.includes('basket') ||
+                 name.includes('تنس') || name.includes('tennis'));
+      default:
+        return true;
+    }
+  };
+
   // Get member's level for a specific activity
   const getMemberLevel = (memberId) => {
     for (const level of levels) {
