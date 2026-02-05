@@ -9,7 +9,7 @@ import {
   LayoutDashboard, 
   Users, 
   Dumbbell, 
-  UserCog, 
+  Layers, 
   Receipt, 
   BarChart3, 
   MessageSquare, 
