@@ -262,6 +262,7 @@ export const attendanceAPI = {
 export const schedulesAPI = {
   getAll: (params = {}) => axios.get(`${API}/schedules`, { params }),
   getWeekly: (params = {}) => axios.get(`${API}/schedules/weekly`, { params }),
+  getActivitiesWithMembers: (params = {}) => axios.get(`${API}/schedules/activities-with-members`, { params }),
   getByActivity: (activityId) => axios.get(`${API}/schedules/by-activity/${activityId}`)
 };
 
