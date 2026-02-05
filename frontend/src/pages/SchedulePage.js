@@ -155,11 +155,6 @@ export default function SchedulePage() {
     }
   };
 
-  // Count members for a time slot for selected day
-  const countMembersForTime = (timeData) => {
-    return (timeData[selectedDay] || []).length;
-  };
-
   // Get total members for an activity for selected day
   const getTotalMembers = (activity) => {
     const uniqueMembers = new Set();
