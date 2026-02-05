@@ -90,7 +90,7 @@ const SmartRedirect = () => {
 
 // Public Route Component (redirect if authenticated)
 const PublicRoute = ({ children }) => {
-  const { isAuthenticated, loading } = useAuth();
+  const { isAuthenticated, loading, user, isAdmin } = useAuth();
   
   if (loading) {
     return (
@@ -101,7 +101,12 @@ const PublicRoute = ({ children }) => {
   }
   
   if (isAuthenticated) {
-    return <Navigate to="/dashboard" replace />;
+    // Admin goes to dashboard, others go to first allowed page
+    if (isAdmin) {
+      return <Navigate to="/dashboard" replace />;
+    }
+    const userPermissions = user?.permissions || [];
+    return <Navigate to={getFirstAllowedRoute(userPermissions)} replace />;
   }
   
   return children;
