@@ -262,14 +262,6 @@ export default function SchedulePage() {
               </div>
             </div>
 
-            {/* Selected Day Display */}
-            <div className="bg-primary/10 px-4 py-2 rounded-lg">
-              <div className="text-lg font-bold text-primary">
-                {language === 'ar' ? dayLabels[selectedDay].ar : dayLabels[selectedDay].en}
-              </div>
-              <div className="text-xs text-gray-500">{t('اليوم المحدد', 'Selected Day')}</div>
-            </div>
-
             {/* Branch Filter */}
             <div>
               <label className="text-sm font-medium text-gray-600 block mb-1">
