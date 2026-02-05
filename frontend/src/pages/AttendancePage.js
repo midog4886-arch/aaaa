@@ -34,6 +34,7 @@ export default function AttendancePage() {
   const [quickSearchResult, setQuickSearchResult] = useState(null);
   const [quickSearching, setQuickSearching] = useState(false);
   const [quickRegistering, setQuickRegistering] = useState(false);
+  const [quickSearchResults, setQuickSearchResults] = useState([]); // Multiple results
   
   // QR Scanner Dialog
   const [isQRDialogOpen, setIsQRDialogOpen] = useState(false);
