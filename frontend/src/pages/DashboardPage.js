@@ -673,6 +673,65 @@ export const DashboardPage = () => {
           </Card>
         </div>
 
+        {/* Recent Activity Notes Card */}
+        <Card data-testid="recent-notes">
+          <CardHeader>
+            <CardTitle className="flex items-center justify-between">
+              <span className="flex items-center gap-2">
+                <StickyNote className="w-5 h-5 text-orange-500" />
+                {language === 'ar' ? 'آخر الملاحظات' : 'Recent Notes'}
+              </span>
+              <Button 
+                size="sm" 
+                variant="outline" 
+                onClick={() => window.location.href = '/schedule'}
+                className="text-orange-600 border-orange-500/30 hover:bg-orange-500/10"
+              >
+                <ExternalLink className="w-4 h-4 me-1" />
+                {language === 'ar' ? 'عرض الجدول' : 'View Schedule'}
+              </Button>
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {recentNotes.length > 0 ? (
+              <div className="space-y-3 max-h-[300px] overflow-y-auto">
+                {recentNotes.map((note, index) => (
+                  <div 
+                    key={note.id}
+                    className="p-3 bg-orange-50 border border-orange-200 rounded-lg animate-slide-in"
+                    style={{ animationDelay: `${index * 0.05}s` }}
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-gray-800 whitespace-pre-wrap text-sm">{note.note_text}</p>
+                        <div className="flex items-center gap-2 mt-2 text-xs text-gray-500">
+                          <Badge variant="outline" className="bg-orange-100 border-orange-300">
+                            {note.activity_name}
+                          </Badge>
+                          <span>•</span>
+                          <Calendar className="w-3 h-3" />
+                          <span>{note.date}</span>
+                          {note.created_by_name && (
+                            <>
+                              <span>•</span>
+                              <span>{note.created_by_name}</span>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="empty-state">
+                <StickyNote className="empty-state-icon" />
+                <p>{language === 'ar' ? 'لا توجد ملاحظات' : 'No notes yet'}</p>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
         {/* Quick Stats */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
           <Card className="p-4 text-center">
