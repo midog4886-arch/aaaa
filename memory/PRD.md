@@ -1525,3 +1525,43 @@ GET    /api/export/attendance                       - تصدير Excel
 - UI updates properly with selected day tab
 
 
+
+
+---
+
+## Update 18 - Simplified Schedule View (February 5, 2026)
+
+### Changes Made:
+
+#### 1. Removed Day Tabs ✅
+- إزالة تبويبات الأيام (الأحد، الإثنين، إلخ)
+- الجدول الآن يعرض بيانات اليوم المحدد فقط حسب التاريخ
+
+#### 2. Auto Day Detection ✅
+- يتم تحديد يوم الأسبوع تلقائياً من التاريخ المختار
+- مثال: عند اختيار 08/01/2025 يتم تحديد "الأربعاء" تلقائياً
+
+#### 3. Day Display Box ✅
+- إضافة مربع يعرض اسم اليوم المحدد بجانب التاريخ
+- يتحدث تلقائياً عند تغيير التاريخ
+
+#### 4. Improved Members Grid ✅
+- عرض الأعضاء في شبكة واضحة (5 أعمدة على الشاشات الكبيرة)
+- بطاقات أكبر وأوضح لكل عضو
+- رسالة "لا يوجد مشتركين في هذا اليوم" عند عدم وجود بيانات
+
+### Technical Changes:
+- `selectedDay` is now computed from `selectedDate` using `getDayOfWeek()`
+- Removed day tabs UI component
+- Updated stats to show only activities with members for selected day
+- Simplified `getTotalMembers()` and `countMembersForTime()` functions
+
+### Files Modified:
+- `/app/frontend/src/pages/SchedulePage.js`
+
+### Testing Status: ✅ PASSED
+- Day detection working correctly
+- Members filtered by day
+- Empty state message displays properly
+
+
