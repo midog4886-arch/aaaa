@@ -577,6 +577,7 @@ class UserUpdateAdmin(BaseModel):
     branch_id: Optional[str] = None
     is_admin: Optional[bool] = None
     password: Optional[str] = None
+    permissions: Optional[List[str]] = None
 
 @api_router.put("/users/{user_id}")
 async def update_user(user_id: str, user_data: UserUpdateAdmin, current_user: dict = Depends(get_current_user)):
