@@ -218,12 +218,20 @@ export default function SchedulePage() {
               <label className="text-sm font-medium text-gray-600 block mb-1">
                 📅 {t('التاريخ', 'Date')}
               </label>
-              <Input
-                type="date"
-                value={selectedDate}
-                onChange={e => setSelectedDate(e.target.value)}
-                className="w-44"
-              />
+              <div className="flex gap-2">
+                <Input
+                  type="date"
+                  value={selectedDate}
+                  onChange={e => setSelectedDate(e.target.value)}
+                  className="w-44"
+                />
+                <Button 
+                  onClick={fetchActivities}
+                  className="bg-primary hover:bg-primary/90"
+                >
+                  {t('تنفيذ', 'Apply')}
+                </Button>
+              </div>
             </div>
 
             {/* Branch Filter */}
