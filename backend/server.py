@@ -4323,20 +4323,6 @@ async def create_activity_note(
     
     return {k: v for k, v in note_doc.items() if k != "_id"}
 
-@api_router.get("/activity-notes/{activity_id}")
-async def get_activity_notes(
-    activity_id: str,
-    current_user: dict = Depends(get_current_user)
-):
-    """Get all notes for a specific activity, sorted by date descending"""
-    
-    notes = await db.activity_notes.find(
-        {"activity_id": activity_id},
-        {"_id": 0}
-    ).sort("created_at", -1).to_list(100)
-    
-    return notes
-
 @api_router.get("/activity-notes/counts/all")
 async def get_all_activity_notes_counts(
     current_user: dict = Depends(get_current_user)
@@ -4377,6 +4363,20 @@ async def get_recent_notes(
         {},
         {"_id": 0}
     ).sort("created_at", -1).limit(limit).to_list(limit)
+    
+    return notes
+
+@api_router.get("/activity-notes/{activity_id}")
+async def get_activity_notes(
+    activity_id: str,
+    current_user: dict = Depends(get_current_user)
+):
+    """Get all notes for a specific activity, sorted by date descending"""
+    
+    notes = await db.activity_notes.find(
+        {"activity_id": activity_id},
+        {"_id": 0}
+    ).sort("created_at", -1).to_list(100)
     
     return notes
 
