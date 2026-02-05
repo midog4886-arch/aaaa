@@ -127,7 +127,7 @@ export const LevelsPage = () => {
     setSelectedLevel(level);
     setFormData({
       level_number: level.level_number,
-      activity_id: level.activity_id,
+      activity_name: level.activity_name || '',
       description: level.description || '',
       members: level.members || [],
       branch_id: level.branch_id || 'all'
@@ -138,8 +138,8 @@ export const LevelsPage = () => {
   const resetForm = () => {
     setSelectedLevel(null);
     setFormData({
-      level_number: 2,
-      activity_id: '',
+      level_number: 1,
+      activity_name: '',
       description: '',
       members: [],
       branch_id: 'all'
