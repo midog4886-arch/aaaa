@@ -3964,6 +3964,94 @@ async def get_weekly_schedule(
     
     return weekly
 
+@api_router.get("/schedules/activities-with-members")
+async def get_activities_schedule_with_members(
+    branch_id: str = None,
+    day: str = None,
+    current_user: dict = Depends(get_current_user)
+):
+    """Get activities organized by activity -> time -> members for the schedule view"""
+    
+    # Arabic day names mapping
+    day_keywords = {
+        "الأحد": "sunday", "الاحد": "sunday", "أحد": "sunday", "احد": "sunday",
+        "الإثنين": "monday", "الاثنين": "monday", "إثنين": "monday", "اثنين": "monday",
+        "الثلاثاء": "tuesday", "ثلاثاء": "tuesday",
+        "الأربعاء": "wednesday", "الاربعاء": "wednesday", "أربعاء": "wednesday", "اربعاء": "wednesday",
+        "الخميس": "thursday", "خميس": "thursday",
+        "الجمعة": "friday", "جمعة": "friday",
+        "السبت": "saturday", "سبت": "saturday"
+    }
+    
+    # Build query
+    invoice_query = {"status": {"$in": ["paid", "partial"]}}
+    if branch_id:
+        invoice_query["branch_id"] = branch_id
+    elif current_user.get("role") != "admin" and current_user.get("branch_id"):
+        invoice_query["branch_id"] = current_user["branch_id"]
+    
+    invoices = await db.invoices.find(invoice_query, {"_id": 0}).sort("created_at", -1).to_list(1000)
+    
+    # Structure: { activity_id: { name, times: { time: { day: [members] } } } }
+    activities_data = {}
+    
+    import re
+    
+    for inv in invoices:
+        member_id = inv.get("member_id", "")
+        member_name = inv.get("member_name", "")
+        member_phone = inv.get("member_phone", "")
+        
+        for item in inv.get("items", []):
+            schedule_text = item.get("schedule", "")
+            if not schedule_text:
+                continue
+            
+            activity_id = item.get("activity_id", "")
+            activity_name = item.get("activity_name", "")
+            
+            if not activity_id:
+                continue
+            
+            # Initialize activity if not exists
+            if activity_id not in activities_data:
+                activities_data[activity_id] = {
+                    "activity_id": activity_id,
+                    "activity_name": activity_name,
+                    "times": {}
+                }
+            
+            # Extract time
+            time_match = re.search(r'الساع[ةه]\s*(\d+(?::\d+)?)', schedule_text)
+            time_str = time_match.group(1) if time_match else "غير محدد"
+            if time_str != "غير محدد" and ":" not in time_str:
+                time_str = f"{time_str}:00"
+            
+            # Initialize time slot if not exists
+            if time_str not in activities_data[activity_id]["times"]:
+                activities_data[activity_id]["times"][time_str] = {
+                    "sunday": [], "monday": [], "tuesday": [], "wednesday": [],
+                    "thursday": [], "friday": [], "saturday": []
+                }
+            
+            # Find which days and add member
+            for ar_day, en_day in day_keywords.items():
+                if ar_day in schedule_text:
+                    # Check if member already added for this day/time
+                    existing_members = [m["member_id"] for m in activities_data[activity_id]["times"][time_str][en_day]]
+                    if member_id not in existing_members:
+                        activities_data[activity_id]["times"][time_str][en_day].append({
+                            "member_id": member_id,
+                            "member_name": member_name,
+                            "phone": member_phone
+                        })
+    
+    # Convert to list and sort
+    result = list(activities_data.values())
+    result.sort(key=lambda x: x["activity_name"])
+    
+    return result
+
 @api_router.get("/schedules/by-activity/{activity_id}")
 async def get_schedule_by_activity(
     activity_id: str,
