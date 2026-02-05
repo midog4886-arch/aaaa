@@ -127,6 +127,21 @@ export default function SchedulePage() {
     }));
   };
 
+  // Get day of week from date
+  const getDayOfWeek = (dateString) => {
+    const date = new Date(dateString);
+    const dayIndex = date.getDay(); // 0 = Sunday, 1 = Monday, etc.
+    const dayKeys = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+    return dayKeys[dayIndex];
+  };
+
+  // Handle execute button click - filter by selected date's day
+  const handleExecute = () => {
+    const dayOfWeek = getDayOfWeek(selectedDate);
+    setSelectedDay(dayOfWeek);
+    fetchActivities();
+  };
+
   // Navigate to attendance
   const goToAttendance = (activityId) => {
     navigate(`/attendance?activity_id=${activityId}`);
