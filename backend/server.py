@@ -304,6 +304,8 @@ class RegistrationFormItem(BaseModel):
     end_date: Optional[str] = ""
     period: Optional[str] = ""
     schedule: Optional[str] = ""
+    level_id: Optional[str] = ""
+    level_name: Optional[str] = ""
     is_product: bool = False
     quantity: int = 1
 
