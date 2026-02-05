@@ -206,13 +206,19 @@ export const MembersPage = () => {
     setSelectedMember(member);
     setViewTab('info');
     setIsViewDialogOpen(true);
-    // Load member invoices
+    setMemberAttendance(null);
+    // Load member invoices and attendance
     try {
-      const response = await invoicesAPI.getAll({ member_id: member.id });
-      setMemberInvoices(response.data);
+      const [invoicesRes, attendanceRes] = await Promise.all([
+        invoicesAPI.getAll({ member_id: member.id }),
+        attendanceAPI.getMemberReport(member.id)
+      ]);
+      setMemberInvoices(invoicesRes.data);
+      setMemberAttendance(attendanceRes.data);
     } catch (error) {
-      console.error('Failed to load member invoices:', error);
+      console.error('Failed to load member data:', error);
       setMemberInvoices([]);
+      setMemberAttendance(null);
     }
   };
 
