@@ -45,6 +45,7 @@ export default function SchedulePage() {
   });
   const [newNoteText, setNewNoteText] = useState('');
   const [savingNote, setSavingNote] = useState(false);
+  const [notesCounts, setNotesCounts] = useState({}); // {activity_id: {count, latest_date}}
 
   // Day names
   const dayLabels = {
