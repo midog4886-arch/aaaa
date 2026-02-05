@@ -4524,6 +4524,92 @@ async def get_attendance_by_activity(
         "absent_count": sum(1 for r in result if r["status"] == "absent")
     }
 
+@api_router.get("/attendance/quick-search/{member_code}")
+async def quick_search_member(
+    member_code: str,
+    current_user: dict = Depends(get_current_user)
+):
+    """Search member by member_code for quick attendance"""
+    member = await db.members.find_one({"member_code": member_code}, {"_id": 0})
+    if not member:
+        raise HTTPException(status_code=404, detail="رقم العضوية غير موجود")
+    
+    # Get today's date
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    
+    # Check if already recorded today
+    today_records = await db.attendance.find(
+        {"member_id": member["id"], "date": today},
+        {"_id": 0}
+    ).to_list(10)
+    
+    return {
+        "member_id": member["id"],
+        "member_code": member.get("member_code", ""),
+        "name": member.get("name", ""),
+        "name_ar": member.get("name_ar", ""),
+        "phone": member.get("phone", ""),
+        "activities": member.get("activities", []),
+        "today_attendance": today_records
+    }
+
+@api_router.post("/attendance/quick")
+async def quick_attendance(
+    member_code: str,
+    activity_id: str,
+    current_user: dict = Depends(get_current_user)
+):
+    """Quick attendance registration by member code"""
+    member = await db.members.find_one({"member_code": member_code}, {"_id": 0})
+    if not member:
+        raise HTTPException(status_code=404, detail="رقم العضوية غير موجود")
+    
+    activity = await db.activities.find_one({"id": activity_id}, {"_id": 0})
+    if not activity:
+        raise HTTPException(status_code=404, detail="النشاط غير موجود")
+    
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    now_time = datetime.now(timezone.utc).strftime("%H:%M")
+    
+    # Check if already recorded
+    existing = await db.attendance.find_one({
+        "member_id": member["id"],
+        "activity_id": activity_id,
+        "date": today
+    })
+    
+    if existing:
+        return {
+            "message": "تم تسجيل الحضور مسبقاً",
+            "already_recorded": True,
+            "record": {k: v for k, v in existing.items() if k != "_id"}
+        }
+    
+    # Record attendance
+    record_id = str(uuid.uuid4())
+    record_doc = {
+        "id": record_id,
+        "member_id": member["id"],
+        "member_code": member.get("member_code", ""),
+        "member_name": member.get("name_ar") or member.get("name", ""),
+        "activity_id": activity_id,
+        "activity_name": activity.get("name_ar") or activity.get("name", ""),
+        "date": today,
+        "status": "present",
+        "check_in_time": now_time,
+        "notes": "تسجيل سريع",
+        "recorded_by": current_user["user_id"],
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+    
+    await db.attendance.insert_one(record_doc)
+    
+    return {
+        "message": "تم تسجيل الحضور بنجاح ✓",
+        "already_recorded": False,
+        "record": {k: v for k, v in record_doc.items() if k != "_id"}
+    }
+
 @api_router.post("/attendance")
 async def record_attendance(
     record: AttendanceRecord,
