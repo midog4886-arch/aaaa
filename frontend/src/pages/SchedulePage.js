@@ -117,6 +117,11 @@ export default function SchedulePage() {
     return activityIds.size;
   };
 
+  // Navigate to attendance page with activity
+  const goToAttendance = (activityId) => {
+    navigate(`/attendance?activity_id=${activityId}`);
+  };
+
   return (
     <Layout>
       <div className="p-6 max-w-7xl mx-auto" data-testid="schedule-page">
