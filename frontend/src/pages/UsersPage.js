@@ -330,87 +330,94 @@ const UsersPage = () => {
 
         {/* Add/Edit Dialog */}
         <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-          <DialogContent className="max-w-md">
+          <DialogContent className="max-w-md max-h-[85vh] overflow-y-auto">
             <DialogHeader>
-              <DialogTitle>
+              <DialogTitle className="text-lg">
                 {editingUser 
                   ? (language === 'ar' ? 'تعديل المستخدم' : 'Edit User')
                   : (language === 'ar' ? 'إضافة مستخدم جديد' : 'Add New User')
                 }
               </DialogTitle>
             </DialogHeader>
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="space-y-2">
-                <Label>{language === 'ar' ? 'اسم المستخدم' : 'Username'} *</Label>
-                <Input
-                  value={formData.username}
-                  onChange={(e) => setFormData({ ...formData, username: e.target.value })}
-                  placeholder={language === 'ar' ? 'اسم المستخدم للدخول' : 'Login username'}
-                  dir="ltr"
-                  data-testid="user-username-input"
-                />
-              </div>
-              
-              <div className="space-y-2">
-                <Label>{language === 'ar' ? 'الاسم الكامل' : 'Full Name'} *</Label>
-                <Input
-                  value={formData.name}
-                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                  placeholder={language === 'ar' ? 'الاسم الكامل' : 'Full name'}
-                  data-testid="user-name-input"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label>
-                  {editingUser 
-                    ? (language === 'ar' ? 'كلمة المرور الجديدة (اتركها فارغة للإبقاء)' : 'New Password (leave empty to keep)')
-                    : (language === 'ar' ? 'كلمة المرور' : 'Password')
-                  } {!editingUser && '*'}
-                </Label>
-                <div className="relative">
+            <form onSubmit={handleSubmit} className="space-y-3">
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <Label className="text-sm">{language === 'ar' ? 'اسم المستخدم' : 'Username'} *</Label>
                   <Input
-                    type={showPassword ? "text" : "password"}
-                    value={formData.password}
-                    onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                    placeholder="••••••••"
+                    value={formData.username}
+                    onChange={(e) => setFormData({ ...formData, username: e.target.value })}
+                    placeholder={language === 'ar' ? 'اسم المستخدم' : 'Username'}
                     dir="ltr"
-                    data-testid="user-password-input"
+                    className="h-9"
+                    data-testid="user-username-input"
                   />
-                  <button
-                    type="button"
-                    className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                    onClick={() => setShowPassword(!showPassword)}
-                  >
-                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                  </button>
+                </div>
+                
+                <div className="space-y-1">
+                  <Label className="text-sm">{language === 'ar' ? 'الاسم الكامل' : 'Full Name'} *</Label>
+                  <Input
+                    value={formData.name}
+                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                    placeholder={language === 'ar' ? 'الاسم' : 'Name'}
+                    className="h-9"
+                    data-testid="user-name-input"
+                  />
                 </div>
               </div>
 
-              <div className="space-y-2">
-                <Label>{language === 'ar' ? 'الفرع' : 'Branch'}</Label>
-                <Select 
-                  value={formData.branch_id || 'none'} 
-                  onValueChange={(value) => setFormData({ ...formData, branch_id: value === 'none' ? '' : value })}
-                >
-                  <SelectTrigger data-testid="user-branch-select">
-                    <SelectValue placeholder={language === 'ar' ? 'اختر الفرع' : 'Select branch'} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">{language === 'ar' ? 'بدون فرع' : 'No branch'}</SelectItem>
-                    {branches.map((branch) => (
-                      <SelectItem key={branch.id} value={branch.id}>
-                        {branch.name_ar || branch.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <Label className="text-sm">
+                    {editingUser 
+                      ? (language === 'ar' ? 'كلمة المرور الجديدة' : 'New Password')
+                      : (language === 'ar' ? 'كلمة المرور' : 'Password')
+                    } {!editingUser && '*'}
+                  </Label>
+                  <div className="relative">
+                    <Input
+                      type={showPassword ? "text" : "password"}
+                      value={formData.password}
+                      onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                      placeholder="••••••"
+                      dir="ltr"
+                      className="h-9"
+                      data-testid="user-password-input"
+                    />
+                    <button
+                      type="button"
+                      className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                      onClick={() => setShowPassword(!showPassword)}
+                    >
+                      {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
+                </div>
+
+                <div className="space-y-1">
+                  <Label className="text-sm">{language === 'ar' ? 'الفرع' : 'Branch'}</Label>
+                  <Select 
+                    value={formData.branch_id || 'none'} 
+                    onValueChange={(value) => setFormData({ ...formData, branch_id: value === 'none' ? '' : value })}
+                  >
+                    <SelectTrigger className="h-9" data-testid="user-branch-select">
+                      <SelectValue placeholder={language === 'ar' ? 'اختر' : 'Select'} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">{language === 'ar' ? 'بدون فرع' : 'No branch'}</SelectItem>
+                      {branches.map((branch) => (
+                        <SelectItem key={branch.id} value={branch.id}>
+                          {branch.name_ar || branch.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
 
-              <div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
+              <div className="flex items-center justify-between p-2 bg-muted/50 rounded-lg">
                 <div className="flex items-center gap-2">
                   <Shield className="w-4 h-4 text-primary" />
-                  <Label className="cursor-pointer">{language === 'ar' ? 'صلاحية مدير (جميع الصلاحيات)' : 'Admin role (all permissions)'}</Label>
+                  <Label className="cursor-pointer text-sm">{language === 'ar' ? 'مدير (كل الصلاحيات)' : 'Admin (all)'}</Label>
                 </div>
                 <Switch
                   checked={formData.is_admin}
