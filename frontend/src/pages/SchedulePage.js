@@ -183,6 +183,19 @@ export default function SchedulePage() {
     return uniqueMembers.size;
   };
 
+  // Get all available times from activities
+  const getAvailableTimes = () => {
+    const times = new Set();
+    activitiesData.forEach(activity => {
+      Object.entries(activity.times).forEach(([time, timeData]) => {
+        if ((timeData[selectedDay] || []).length > 0) {
+          times.add(time);
+        }
+      });
+    });
+    return Array.from(times).sort();
+  };
+
   // Get member's level for a specific activity
   const getMemberLevel = (memberId) => {
     for (const level of levels) {
