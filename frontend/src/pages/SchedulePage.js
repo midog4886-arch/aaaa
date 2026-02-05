@@ -329,72 +329,58 @@ export default function SchedulePage() {
                     {isExpanded && (
                       <div className={`${style.light} p-4`}>
                         {Object.entries(activity.times).sort().map(([time, timeData]) => {
-                          const memberCount = countMembersForTime(timeData);
-                          if (memberCount === 0 && selectedDay !== 'all') return null;
+                          const members = timeData[selectedDay] || [];
+                          if (members.length === 0) return null;
                           
                           return (
                             <div key={time} className="mb-4 last:mb-0">
                               {/* Time Header */}
-                              <div className={`flex items-center gap-2 ${style.text} font-semibold mb-2 pb-2 border-b ${style.border}`}>
+                              <div className={`flex items-center gap-2 ${style.text} font-semibold mb-3 pb-2 border-b ${style.border}`}>
                                 <Clock className="w-5 h-5" />
                                 <span className="text-lg">{time === 'غير محدد' ? t('بدون وقت محدد', 'No specific time') : time}</span>
                                 <span className="text-sm font-normal opacity-70">
-                                  ({memberCount} {t('مشترك', 'members')})
+                                  ({members.length} {t('مشترك', 'members')})
                                 </span>
                               </div>
 
-                              {/* Days Grid with Members */}
-                              <div className="grid grid-cols-1 md:grid-cols-7 gap-2">
-                                {(selectedDay === 'all' ? Object.keys(dayLabels) : [selectedDay]).map(dayKey => {
-                                  const members = timeData[dayKey] || [];
-                                  if (members.length === 0) return null;
-                                  
-                                  return (
-                                    <div 
-                                      key={dayKey}
-                                      className="bg-white rounded-lg border p-2 shadow-sm"
-                                    >
-                                      {/* Day Label */}
-                                      <div className={`text-xs font-bold ${style.text} mb-2 pb-1 border-b`}>
-                                        {language === 'ar' ? dayLabels[dayKey].ar : dayLabels[dayKey].en}
-                                        <span className="float-left text-gray-400">({members.length})</span>
-                                      </div>
-                                      
-                                      {/* Members List */}
-                                      <div className="space-y-1">
-                                        {members.map((member, idx) => (
-                                          <div 
-                                            key={idx}
-                                            onClick={() => openAttendanceDialog(member, activity)}
-                                            className="flex items-center gap-2 text-xs p-1.5 bg-gray-50 rounded hover:bg-blue-50 hover:border-blue-300 border border-transparent cursor-pointer transition-all group"
-                                            title={t('انقر لتسجيل الحضور', 'Click to record attendance')}
-                                          >
-                                            <div className={`w-6 h-6 rounded-full ${style.bg} text-white flex items-center justify-center text-[10px] font-bold group-hover:scale-110 transition-transform`}>
-                                              {(member.member_name || '?').charAt(0)}
-                                            </div>
-                                            <div className="flex-1 min-w-0">
-                                              <div className="font-medium truncate group-hover:text-blue-600" title={member.member_name}>
-                                                {member.member_name}
-                                              </div>
-                                              {member.phone && (
-                                                <div className="text-gray-400 text-[10px]" dir="ltr">
-                                                  {member.phone}
-                                                </div>
-                                              )}
-                                            </div>
-                                            <div className="opacity-0 group-hover:opacity-100 transition-opacity">
-                                              <UserCheck className="w-4 h-4 text-green-500" />
-                                            </div>
-                                          </div>
-                                        ))}
-                                      </div>
+                              {/* Members Grid */}
+                              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2">
+                                {members.map((member, idx) => (
+                                  <div 
+                                    key={idx}
+                                    onClick={() => openAttendanceDialog(member, activity)}
+                                    className="flex items-center gap-2 p-2 bg-white rounded-lg border hover:bg-blue-50 hover:border-blue-300 cursor-pointer transition-all group shadow-sm"
+                                    title={t('انقر لتسجيل الحضور', 'Click to record attendance')}
+                                  >
+                                    <div className={`w-8 h-8 rounded-full ${style.bg} text-white flex items-center justify-center text-sm font-bold group-hover:scale-110 transition-transform`}>
+                                      {(member.member_name || '?').charAt(0)}
                                     </div>
-                                  );
-                                })}
+                                    <div className="flex-1 min-w-0">
+                                      <div className="font-medium text-sm truncate group-hover:text-blue-600" title={member.member_name}>
+                                        {member.member_name}
+                                      </div>
+                                      {member.phone && (
+                                        <div className="text-gray-400 text-xs" dir="ltr">
+                                          {member.phone}
+                                        </div>
+                                      )}
+                                    </div>
+                                    <div className="opacity-0 group-hover:opacity-100 transition-opacity">
+                                      <UserCheck className="w-4 h-4 text-green-500" />
+                                    </div>
+                                  </div>
+                                ))}
                               </div>
                             </div>
                           );
                         })}
+                        
+                        {/* No data for this day message */}
+                        {Object.entries(activity.times).every(([_, timeData]) => !(timeData[selectedDay] || []).length) && (
+                          <div className="text-center py-4 text-gray-500">
+                            {t('لا يوجد مشتركين في هذا اليوم', 'No members scheduled for this day')}
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>
