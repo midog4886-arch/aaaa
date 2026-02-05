@@ -245,7 +245,7 @@ export default function AttendancePage() {
     : activities;
 
   return (
-    <Layout>
+    <Layout title={t('الحضور', 'Attendance')}>
       <div className="p-6 max-w-7xl mx-auto" data-testid="attendance-page">
         {/* Header */}
         <div className="flex justify-between items-center mb-6 flex-wrap gap-4">
