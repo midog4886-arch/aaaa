@@ -294,6 +294,40 @@ export default function AttendancePage() {
         {/* Record Attendance Tab */}
         {activeTab === 'record' && (
           <div className="space-y-4">
+            {/* Today's Sessions from Schedule */}
+            {todaySessions.length > 0 && !attendanceData && (
+              <div className="bg-gradient-to-r from-blue-50 to-indigo-50 p-4 rounded-lg border border-blue-200 shadow-sm">
+                <div className="flex items-center gap-2 mb-3">
+                  <CalendarDays className="w-5 h-5 text-blue-600" />
+                  <h3 className="font-bold text-blue-800">{t('حصص اليوم', "Today's Sessions")}</h3>
+                  <span className="text-sm text-blue-600">({todaySessions.length} {t('حصة', 'sessions')})</span>
+                </div>
+                <div className="flex gap-2 flex-wrap">
+                  {todaySessions.map((session, idx) => (
+                    <Button
+                      key={idx}
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        setSelectedActivityId(session.activity_id);
+                        setTimeout(() => {
+                          document.querySelector('[data-testid="load-attendance-btn"]')?.click();
+                        }, 100);
+                      }}
+                      className="gap-2 bg-white hover:bg-blue-50 border-blue-300"
+                    >
+                      <span className="font-medium">{session.activity_name}</span>
+                      {session.time && (
+                        <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded">
+                          {session.time}
+                        </span>
+                      )}
+                    </Button>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {/* Filters */}
             <div className="bg-white p-4 rounded-lg border shadow-sm">
               <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
