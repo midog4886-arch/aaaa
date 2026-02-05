@@ -35,6 +35,7 @@ export const DashboardPage = () => {
   const [stats, setStats] = useState(null);
   const [expiring, setExpiring] = useState([]);
   const [discounts, setDiscounts] = useState([]);
+  const [recentNotes, setRecentNotes] = useState([]);
   const [loading, setLoading] = useState(true);
   
   // Detail view states
