@@ -1886,3 +1886,78 @@ GET    /api/export/attendance                       - تصدير Excel
 ## Credentials
 - **Admin**: username: `admin`, password: `admin123`
 
+
+---
+
+## Update 27 - Quick Check-in by Name Enhancement (December 2025)
+
+### New Feature: تحسين تسجيل الحضور السريع بالاسم ✅
+
+تم تحسين ميزة تسجيل الحضور السريع لدعم البحث بالاسم بالإضافة لرقم العضوية.
+
+#### الميزات المنفذة:
+
+##### 1. البحث المتعدد ✅
+- البحث برقم العضوية (مثل 2618) → يعرض العضو مباشرة
+- البحث بالاسم (مثل "محمد") → يعرض قائمة بالنتائج المتعددة
+
+##### 2. واجهة نتائج البحث ✅
+- قائمة قابلة للتمرير تعرض حتى 5 نتائج
+- كل نتيجة تعرض: رقم العضوية، الاسم، رقم الهاتف
+- شارة "مسجل اليوم" للأعضاء الذين سجلوا حضورهم
+
+##### 3. اختيار العضو ✅
+- النقر على عضو من القائمة يعرض تفاصيله
+- عرض أنشطة العضو مع أزرار تسجيل الحضور
+- زر "مسح" لإعادة البحث
+
+### إصلاحات الأخطاء:
+1. **خطأ JSX مكرر** - إصلاح `<div className="relative">` المكرر
+2. **خطأ 404 في تسجيل الحضور** - استخدام `member_code` من نتيجة البحث بدلاً من نص البحث
+
+### Files Modified:
+- `/app/frontend/src/pages/AttendancePage.js` - واجهة البحث المحسنة
+- `/app/frontend/src/services/api.js` - API quickSearchMulti
+- `/app/backend/server.py` - endpoint GET /api/attendance/quick-search-multi/{search_term}
+
+### Test Results:
+- ✅ البحث برقم العضوية (2618) يعرض العضو مباشرة - محمد الدخيل
+- ✅ البحث بالاسم (محمد) يعرض قائمة بـ 3 نتائج متعددة
+- ✅ اختيار عضو من قائمة النتائج يعرض تفاصيله وأنشطته
+- ✅ زر تسجيل الحضور لنشاط معين يعمل بنجاح
+- ✅ زر 'مسح' يمسح نتائج البحث وحقل الإدخال
+- ✅ رسالة النجاح 'تم تسجيل الحضور بنجاح ✓' تظهر بعد التسجيل
+- ✅ عرض 'تم تسجيل الحضور اليوم' مع اسم النشاط والوقت بعد التسجيل
+
+---
+
+## Prioritized Backlog (Updated December 2025)
+
+### P0 - Critical (Completed)
+- [x] Quick Check-in by Name Enhancement
+- [x] JSX Syntax Error Fix in AttendancePage.js
+
+### P1 - High Priority
+- [ ] WhatsApp Business API Integration (Waiting for Access Token & Phone Number ID)
+- [ ] Code Refactoring (server.py 6000+ lines) - **CRITICAL RISK**
+  - [ ] Migrate `/users` routes to `/app/backend/routes/users.py`
+  - [ ] Migrate `/levels` routes to `/app/backend/routes/levels.py`
+  - [ ] Create proper Pydantic models in `/app/backend/models/`
+
+### P2 - Medium Priority
+- [ ] Fix member selection dropdown testability in InvoicesPage.js
+- [ ] Split large frontend files into components:
+  - [ ] InvoicesPage.js
+  - [ ] SchedulePage.js
+  - [ ] AttendancePage.js
+
+### P3 - Nice to Have
+- [ ] Advanced User Permissions (read-only modes)
+- [ ] Log unauthorized access attempts
+- [ ] Mobile responsive improvements
+
+---
+
+## Credentials
+- **Admin**: username: `242456`, password: `242456`
+- **Limited User**: username: `coach1`, password: `coach1` (صلاحيات: الجدول، الحضور)
