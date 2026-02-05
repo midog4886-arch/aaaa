@@ -403,7 +403,7 @@ export default function SchedulePage() {
         {/* Instructions */}
         {!loading && activitiesData.length > 0 && (
           <div className="mt-4 text-center text-sm text-gray-500 bg-blue-50 p-3 rounded-lg">
-            💡 {t('انقر على اسم أي عضو لتسجيل حضوره أو غيابه بتاريخ', 'Click any member to record attendance for')} <strong>{selectedDate}</strong>
+            💡 {t('جدول يوم', 'Schedule for')} <strong>{language === 'ar' ? dayLabels[selectedDay].ar : dayLabels[selectedDay].en}</strong> - {t('انقر على اسم أي عضو لتسجيل حضوره أو غيابه بتاريخ', 'Click any member to record attendance for')} <strong>{selectedDate}</strong>
           </div>
         )}
       </div>
