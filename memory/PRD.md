@@ -1577,3 +1577,47 @@ GET    /api/export/attendance                       - تصدير Excel
 - `goToToday()`: للعودة لتاريخ اليوم
 
 
+
+
+---
+
+## Update 19 - Code Structure Preparation (February 5, 2026)
+
+### Prepared New Structure for Future Development:
+
+تم إنشاء هيكل جديد للكود سيُستخدم في الميزات القادمة:
+
+```
+/app/backend/
+├── server.py            # الملف الرئيسي (يبقى كما هو)
+├── database.py          # NEW: اتصال قاعدة البيانات
+├── models/              # NEW: نماذج Pydantic منظمة
+│   ├── user.py
+│   ├── activity.py
+│   ├── coach.py
+│   ├── member.py
+│   ├── invoice.py
+│   ├── product.py
+│   ├── discount.py
+│   ├── branch.py
+│   ├── registration.py
+│   ├── report.py
+│   ├── accounting.py
+│   ├── attendance.py
+│   ├── notification.py
+│   └── subscription.py
+└── utils/               # NEW: دوال مساعدة
+    └── auth.py          # JWT, password hashing, etc.
+```
+
+### Benefits:
+- الميزات الجديدة ستُضاف في ملفات منظمة
+- إمكانية نقل الكود تدريجياً من server.py
+- تسهيل الصيانة والتطوير المستقبلي
+
+### Current Status:
+- `server.py` يبقى كما هو (6,042 سطر) - يعمل بشكل طبيعي
+- Models منظمة وجاهزة للاستخدام
+- Utils جاهزة للاستخدام
+
+
