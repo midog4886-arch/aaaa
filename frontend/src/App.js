@@ -19,6 +19,7 @@ import UsersPage from './pages/UsersPage';
 import StorePage from './pages/StorePage';
 import AccountingPage from './pages/AccountingPage';
 import AttendancePage from './pages/AttendancePage';
+import SchedulePage from './pages/SchedulePage';
 
 import './App.css';
 
