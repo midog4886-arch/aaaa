@@ -631,6 +631,7 @@ export default function SchedulePage() {
                       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                         {timesWithMembers.map(([time, timeData]) => {
                           const members = timeData[selectedDay] || [];
+                          const { levelGroups, noLevel } = groupMembersByLevel(members);
                           
                           return (
                             <div key={time} className="bg-white rounded-lg border shadow-sm overflow-hidden">
@@ -643,31 +644,79 @@ export default function SchedulePage() {
                                 <span className="text-gray-500 text-sm">({members.length})</span>
                               </div>
                               
-                              {/* Members */}
-                              <div className="p-2 space-y-1">
-                                {members.map((member, idx) => (
-                                  <div 
-                                    key={idx}
-                                    onClick={() => openAttendanceDialog(member, activity)}
-                                    className="flex items-center gap-2 p-2 rounded hover:bg-blue-50 cursor-pointer transition-all group"
-                                    title={t('انقر لتسجيل الحضور', 'Click to record attendance')}
-                                  >
-                                    <div className={`w-7 h-7 rounded-full ${style.bg} text-white flex items-center justify-center text-xs font-bold group-hover:scale-110 transition-transform`}>
-                                      {(member.member_name || '?').charAt(0)}
-                                    </div>
-                                    <div className="flex-1 min-w-0">
-                                      <div className="font-medium text-sm truncate group-hover:text-blue-600">
-                                        {member.member_name}
+                              {/* Members grouped by Level */}
+                              <div className="p-2 space-y-3">
+                                {/* Level Groups */}
+                                {levelGroups.map((group, groupIdx) => {
+                                  const levelColor = getLevelColor(group.level_number);
+                                  return (
+                                    <div key={groupIdx} className={`rounded-lg ${levelColor.light} border ${levelColor.border} overflow-hidden`}>
+                                      {/* Level Header */}
+                                      <div className={`${levelColor.bg} text-white px-2 py-1 flex items-center gap-1 text-xs font-medium`}>
+                                        <Layers className="w-3 h-3" />
+                                        <span>{t('المستوى', 'Level')} {group.level_number}</span>
+                                        <span className="opacity-75">- {group.activity_name}</span>
+                                        <span className="ms-auto bg-white/20 px-1.5 py-0.5 rounded text-xs">
+                                          {group.members.length}
+                                        </span>
                                       </div>
-                                      {member.phone && (
-                                        <div className="text-gray-400 text-xs" dir="ltr">
-                                          {member.phone}
-                                        </div>
-                                      )}
+                                      {/* Level Members */}
+                                      <div className="p-1.5 space-y-1">
+                                        {group.members.map((member, idx) => (
+                                          <div 
+                                            key={idx}
+                                            onClick={() => openAttendanceDialog(member, activity)}
+                                            className="flex items-center gap-2 p-1.5 rounded bg-white hover:bg-blue-50 cursor-pointer transition-all group"
+                                            title={t('انقر لتسجيل الحضور', 'Click to record attendance')}
+                                          >
+                                            <div className={`w-6 h-6 rounded-full ${levelColor.bg} text-white flex items-center justify-center text-xs font-bold group-hover:scale-110 transition-transform`}>
+                                              {(member.member_name || '?').charAt(0)}
+                                            </div>
+                                            <div className="flex-1 min-w-0">
+                                              <div className="font-medium text-xs truncate group-hover:text-blue-600">
+                                                {member.member_name}
+                                              </div>
+                                            </div>
+                                            <UserCheck className="w-3 h-3 text-green-500 opacity-0 group-hover:opacity-100 transition-opacity" />
+                                          </div>
+                                        ))}
+                                      </div>
                                     </div>
-                                    <UserCheck className="w-4 h-4 text-green-500 opacity-0 group-hover:opacity-100 transition-opacity" />
+                                  );
+                                })}
+                                
+                                {/* Members without Level */}
+                                {noLevel.length > 0 && (
+                                  <div className="rounded-lg bg-gray-50 border border-gray-200 overflow-hidden">
+                                    <div className="bg-gray-400 text-white px-2 py-1 flex items-center gap-1 text-xs font-medium">
+                                      <Users className="w-3 h-3" />
+                                      <span>{t('بدون مستوى', 'No Level')}</span>
+                                      <span className="ms-auto bg-white/20 px-1.5 py-0.5 rounded text-xs">
+                                        {noLevel.length}
+                                      </span>
+                                    </div>
+                                    <div className="p-1.5 space-y-1">
+                                      {noLevel.map((member, idx) => (
+                                        <div 
+                                          key={idx}
+                                          onClick={() => openAttendanceDialog(member, activity)}
+                                          className="flex items-center gap-2 p-1.5 rounded bg-white hover:bg-blue-50 cursor-pointer transition-all group"
+                                          title={t('انقر لتسجيل الحضور', 'Click to record attendance')}
+                                        >
+                                          <div className="w-6 h-6 rounded-full bg-gray-400 text-white flex items-center justify-center text-xs font-bold group-hover:scale-110 transition-transform">
+                                            {(member.member_name || '?').charAt(0)}
+                                          </div>
+                                          <div className="flex-1 min-w-0">
+                                            <div className="font-medium text-xs truncate group-hover:text-blue-600">
+                                              {member.member_name}
+                                            </div>
+                                          </div>
+                                          <UserCheck className="w-3 h-3 text-green-500 opacity-0 group-hover:opacity-100 transition-opacity" />
+                                        </div>
+                                      ))}
+                                    </div>
                                   </div>
-                                ))}
+                                )}
                               </div>
                             </div>
                           );
