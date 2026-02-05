@@ -184,6 +184,193 @@ export default function SchedulePage() {
     setSelectedDate(new Date().toISOString().split('T')[0]);
   };
 
+  // Print schedule
+  const handlePrint = () => {
+    const dayName = language === 'ar' ? dayLabels[selectedDay].ar : dayLabels[selectedDay].en;
+    const activitiesWithMembers = activitiesData.filter(a => getTotalMembers(a) > 0);
+    
+    const printContent = `
+      <!DOCTYPE html>
+      <html dir="${language === 'ar' ? 'rtl' : 'ltr'}">
+      <head>
+        <meta charset="UTF-8">
+        <title>${t('جدول الأنشطة', 'Activity Schedule')} - ${selectedDate}</title>
+        <style>
+          * { margin: 0; padding: 0; box-sizing: border-box; }
+          body { 
+            font-family: 'Segoe UI', Tahoma, Arial, sans-serif; 
+            padding: 20px;
+            direction: ${language === 'ar' ? 'rtl' : 'ltr'};
+          }
+          .header { 
+            text-align: center; 
+            margin-bottom: 20px; 
+            padding-bottom: 15px;
+            border-bottom: 2px solid #f97316;
+          }
+          .header h1 { 
+            color: #f97316; 
+            font-size: 24px; 
+            margin-bottom: 5px;
+          }
+          .header .date { 
+            font-size: 18px; 
+            color: #333;
+            font-weight: bold;
+          }
+          .header .day { 
+            font-size: 16px; 
+            color: #666;
+          }
+          .stats {
+            display: flex;
+            justify-content: center;
+            gap: 30px;
+            margin: 15px 0;
+          }
+          .stat {
+            text-align: center;
+          }
+          .stat-value {
+            font-size: 24px;
+            font-weight: bold;
+            color: #f97316;
+          }
+          .stat-label {
+            font-size: 12px;
+            color: #666;
+          }
+          .activities-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 15px;
+            margin-top: 20px;
+          }
+          .activity-card {
+            border: 2px solid #ddd;
+            border-radius: 10px;
+            overflow: hidden;
+            break-inside: avoid;
+          }
+          .activity-header {
+            background: #f97316;
+            color: white;
+            padding: 10px;
+            font-weight: bold;
+            font-size: 14px;
+          }
+          .activity-header .count {
+            font-size: 12px;
+            opacity: 0.9;
+          }
+          .members-list {
+            padding: 10px;
+            background: #fff9f5;
+          }
+          .member-item {
+            padding: 6px 8px;
+            margin: 4px 0;
+            background: white;
+            border-radius: 5px;
+            border: 1px solid #eee;
+            font-size: 13px;
+          }
+          .member-name {
+            font-weight: 500;
+          }
+          .member-phone {
+            color: #888;
+            font-size: 11px;
+          }
+          .footer {
+            margin-top: 30px;
+            text-align: center;
+            font-size: 11px;
+            color: #999;
+            border-top: 1px solid #eee;
+            padding-top: 10px;
+          }
+          .empty-message {
+            text-align: center;
+            padding: 40px;
+            color: #666;
+          }
+          @media print {
+            body { padding: 10px; }
+            .activities-grid { grid-template-columns: repeat(3, 1fr); }
+          }
+        </style>
+      </head>
+      <body>
+        <div class="header">
+          <h1>🏆 ${t('شركة اداء الابطال العالمية للرياضة', 'World Champions Performance Academy')}</h1>
+          <div class="date">${t('جدول الأنشطة', 'Activity Schedule')} - ${selectedDate}</div>
+          <div class="day">${dayName}</div>
+        </div>
+        
+        <div class="stats">
+          <div class="stat">
+            <div class="stat-value">${activitiesWithMembers.length}</div>
+            <div class="stat-label">${t('نشاط', 'Activities')}</div>
+          </div>
+          <div class="stat">
+            <div class="stat-value">${activitiesWithMembers.reduce((sum, a) => sum + getTotalMembers(a), 0)}</div>
+            <div class="stat-label">${t('مشترك', 'Members')}</div>
+          </div>
+        </div>
+        
+        ${activitiesWithMembers.length > 0 ? `
+          <div class="activities-grid">
+            ${activitiesWithMembers.map(activity => {
+              const allMembers = [];
+              Object.values(activity.times).forEach(timeData => {
+                const dayMembers = timeData[selectedDay] || [];
+                dayMembers.forEach(m => {
+                  if (!allMembers.find(x => x.member_id === m.member_id)) {
+                    allMembers.push(m);
+                  }
+                });
+              });
+              
+              return `
+                <div class="activity-card">
+                  <div class="activity-header">
+                    ${activity.activity_name}
+                    <div class="count">${allMembers.length} ${t('مشترك', 'members')}</div>
+                  </div>
+                  <div class="members-list">
+                    ${allMembers.map(m => `
+                      <div class="member-item">
+                        <div class="member-name">${m.member_name}</div>
+                        ${m.phone ? `<div class="member-phone">${m.phone}</div>` : ''}
+                      </div>
+                    `).join('')}
+                  </div>
+                </div>
+              `;
+            }).join('')}
+          </div>
+        ` : `
+          <div class="empty-message">
+            ${t('لا يوجد مشتركين في هذا اليوم', 'No members scheduled for this day')}
+          </div>
+        `}
+        
+        <div class="footer">
+          ${t('تم الطباعة بتاريخ', 'Printed on')}: ${new Date().toLocaleString(language === 'ar' ? 'ar-SA' : 'en-US')}
+        </div>
+      </body>
+      </html>
+    `;
+    
+    const printWindow = window.open('', '_blank');
+    printWindow.document.write(printContent);
+    printWindow.document.close();
+    printWindow.onload = () => {
+      printWindow.print();
+    };
+  };
+
   return (
     <Layout>
       <div className="p-4 md:p-6 max-w-6xl mx-auto" data-testid="schedule-page">
