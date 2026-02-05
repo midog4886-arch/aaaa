@@ -1,29 +1,32 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/AuthContext';
+import { useSearchParams } from 'react-router-dom';
 import Layout from '../components/Layout';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../components/ui/dialog';
 import { toast } from 'sonner';
-import { activitiesAPI, attendanceAPI, branchesAPI } from '../services/api';
+import { activitiesAPI, attendanceAPI, branchesAPI, schedulesAPI } from '../services/api';
 import { QRCodeSVG } from 'qrcode.react';
-import { Check, X, Users, Calendar, QrCode, FileSpreadsheet, Search, Clock, UserCheck, UserX } from 'lucide-react';
+import { Check, X, Users, Calendar, QrCode, FileSpreadsheet, Search, Clock, UserCheck, UserX, CalendarDays } from 'lucide-react';
 
 export default function AttendancePage() {
   const { language } = useLanguage();
   const { user } = useAuth();
+  const [searchParams] = useSearchParams();
   const t = (ar, en) => language === 'ar' ? ar : en;
 
   // State
   const [activities, setActivities] = useState([]);
   const [branches, setBranches] = useState([]);
   const [selectedBranchId, setSelectedBranchId] = useState('');
-  const [selectedActivityId, setSelectedActivityId] = useState('');
+  const [selectedActivityId, setSelectedActivityId] = useState(searchParams.get('activity_id') || '');
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
   const [attendanceData, setAttendanceData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [attendanceRecords, setAttendanceRecords] = useState({});
+  const [todaySessions, setTodaySessions] = useState([]);
   
   // QR Scanner Dialog
   const [isQRDialogOpen, setIsQRDialogOpen] = useState(false);
@@ -39,6 +42,25 @@ export default function AttendancePage() {
 
   // Tab state
   const [activeTab, setActiveTab] = useState('record'); // record, qr, reports
+
+  // Day mapping for today's sessions
+  const dayMap = {
+    0: 'sunday', 1: 'monday', 2: 'tuesday', 3: 'wednesday',
+    4: 'thursday', 5: 'friday', 6: 'saturday'
+  };
+
+  // Fetch today's sessions from schedule
+  const fetchTodaySessions = useCallback(async () => {
+    try {
+      const params = {};
+      if (selectedBranchId) params.branch_id = selectedBranchId;
+      const res = await schedulesAPI.getWeekly(params);
+      const today = dayMap[new Date().getDay()];
+      setTodaySessions(res.data[today] || []);
+    } catch (error) {
+      console.error('Error fetching today sessions:', error);
+    }
+  }, [selectedBranchId]);
 
   // Fetch activities and branches
   useEffect(() => {
