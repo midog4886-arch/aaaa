@@ -3837,6 +3837,169 @@ async def get_supplier_payments(
     payments = await db.supplier_payments.find(query, {"_id": 0}).sort("payment_date", -1).to_list(1000)
     return payments
 
+# ============ ACTIVITY SCHEDULE/TIMETABLE SYSTEM ============
+
+@api_router.get("/schedules")
+async def get_activity_schedules(
+    branch_id: str = None,
+    activity_id: str = None,
+    current_user: dict = Depends(get_current_user)
+):
+    """Get activity schedules from invoices - extracts schedule info from invoice items"""
+    
+    # Build query for invoices
+    invoice_query = {"status": {"$in": ["paid", "partial"]}}
+    if branch_id:
+        invoice_query["branch_id"] = branch_id
+    elif current_user.get("role") != "admin" and current_user.get("branch_id"):
+        invoice_query["branch_id"] = current_user["branch_id"]
+    
+    # Get recent invoices with schedule data
+    invoices = await db.invoices.find(invoice_query, {"_id": 0}).sort("created_at", -1).to_list(500)
+    
+    # Extract unique schedules by activity
+    schedules_map = {}
+    for inv in invoices:
+        for item in inv.get("items", []):
+            if item.get("schedule") and item.get("activity_id"):
+                act_id = item["activity_id"]
+                if activity_id and act_id != activity_id:
+                    continue
+                
+                key = f"{act_id}_{item.get('schedule', '')}"
+                if key not in schedules_map:
+                    schedules_map[key] = {
+                        "activity_id": act_id,
+                        "activity_name": item.get("activity_name", ""),
+                        "schedule": item.get("schedule", ""),
+                        "member_count": 0,
+                        "members": []
+                    }
+                
+                # Add member info
+                member_info = {
+                    "member_id": inv.get("member_id"),
+                    "member_name": inv.get("member_name", ""),
+                    "invoice_number": inv.get("invoice_number")
+                }
+                if member_info not in schedules_map[key]["members"]:
+                    schedules_map[key]["members"].append(member_info)
+                    schedules_map[key]["member_count"] += 1
+    
+    return list(schedules_map.values())
+
+@api_router.get("/schedules/weekly")
+async def get_weekly_schedule(
+    branch_id: str = None,
+    current_user: dict = Depends(get_current_user)
+):
+    """Get weekly schedule organized by day"""
+    
+    # Arabic day names mapping
+    day_keywords = {
+        "الأحد": "sunday", "الاحد": "sunday", "أحد": "sunday", "احد": "sunday",
+        "الإثنين": "monday", "الاثنين": "monday", "إثنين": "monday", "اثنين": "monday",
+        "الثلاثاء": "tuesday", "ثلاثاء": "tuesday",
+        "الأربعاء": "wednesday", "الاربعاء": "wednesday", "أربعاء": "wednesday", "اربعاء": "wednesday",
+        "الخميس": "thursday", "خميس": "thursday",
+        "الجمعة": "friday", "جمعة": "friday",
+        "السبت": "saturday", "سبت": "saturday"
+    }
+    
+    # Build query
+    invoice_query = {"status": {"$in": ["paid", "partial"]}}
+    if branch_id:
+        invoice_query["branch_id"] = branch_id
+    elif current_user.get("role") != "admin" and current_user.get("branch_id"):
+        invoice_query["branch_id"] = current_user["branch_id"]
+    
+    invoices = await db.invoices.find(invoice_query, {"_id": 0}).sort("created_at", -1).to_list(500)
+    
+    # Initialize weekly schedule
+    weekly = {
+        "sunday": [],
+        "monday": [],
+        "tuesday": [],
+        "wednesday": [],
+        "thursday": [],
+        "friday": [],
+        "saturday": []
+    }
+    
+    # Track unique entries to avoid duplicates
+    seen_entries = set()
+    
+    for inv in invoices:
+        for item in inv.get("items", []):
+            schedule_text = item.get("schedule", "")
+            if not schedule_text:
+                continue
+            
+            activity_name = item.get("activity_name", "")
+            activity_id = item.get("activity_id", "")
+            
+            # Extract time from schedule (look for patterns like "الساعة 4" or "4:00")
+            import re
+            time_match = re.search(r'الساع[ةه]\s*(\d+(?::\d+)?)', schedule_text)
+            time_str = time_match.group(1) if time_match else ""
+            if time_str and ":" not in time_str:
+                time_str = f"{time_str}:00"
+            
+            # Find which days this schedule applies to
+            for ar_day, en_day in day_keywords.items():
+                if ar_day in schedule_text:
+                    entry_key = f"{activity_id}_{en_day}_{time_str}"
+                    if entry_key not in seen_entries:
+                        seen_entries.add(entry_key)
+                        weekly[en_day].append({
+                            "activity_id": activity_id,
+                            "activity_name": activity_name,
+                            "time": time_str,
+                            "schedule_text": schedule_text
+                        })
+    
+    # Sort each day by time
+    for day in weekly:
+        weekly[day] = sorted(weekly[day], key=lambda x: x.get("time", ""))
+    
+    return weekly
+
+@api_router.get("/schedules/by-activity/{activity_id}")
+async def get_schedule_by_activity(
+    activity_id: str,
+    current_user: dict = Depends(get_current_user)
+):
+    """Get all schedule entries for a specific activity"""
+    
+    invoice_query = {
+        "status": {"$in": ["paid", "partial"]},
+        "items.activity_id": activity_id
+    }
+    
+    invoices = await db.invoices.find(invoice_query, {"_id": 0}).to_list(500)
+    
+    schedules = []
+    seen = set()
+    
+    for inv in invoices:
+        for item in inv.get("items", []):
+            if item.get("activity_id") == activity_id and item.get("schedule"):
+                schedule_text = item["schedule"]
+                if schedule_text not in seen:
+                    seen.add(schedule_text)
+                    schedules.append({
+                        "schedule": schedule_text,
+                        "activity_name": item.get("activity_name", "")
+                    })
+    
+    # Get activity details
+    activity = await db.activities.find_one({"id": activity_id}, {"_id": 0})
+    
+    return {
+        "activity": activity,
+        "schedules": schedules
+    }
+
 # ============ ATTENDANCE TRACKING SYSTEM ============
 
 class AttendanceRecord(BaseModel):
