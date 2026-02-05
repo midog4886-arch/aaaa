@@ -481,24 +481,18 @@ export default function SchedulePage() {
 
         {/* Activities Cards */}
         {!loading && (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div className="space-y-4">
             {activitiesData.length > 0 ? (
               activitiesData.map(activity => {
                 const style = getActivityStyle(activity.activity_name);
                 const totalMembers = getTotalMembers(activity);
                 
-                // Get all members for this activity on selected day
-                const allMembers = [];
-                Object.values(activity.times).forEach(timeData => {
-                  const dayMembers = timeData[selectedDay] || [];
-                  dayMembers.forEach(m => {
-                    if (!allMembers.find(x => x.member_id === m.member_id)) {
-                      allMembers.push(m);
-                    }
-                  });
-                });
+                // Get times that have members for selected day
+                const timesWithMembers = Object.entries(activity.times)
+                  .filter(([time, timeData]) => (timeData[selectedDay] || []).length > 0)
+                  .sort(([a], [b]) => a.localeCompare(b));
                 
-                if (allMembers.length === 0) return null;
+                if (timesWithMembers.length === 0) return null;
                 
                 return (
                   <div 
@@ -508,12 +502,15 @@ export default function SchedulePage() {
                     {/* Activity Header */}
                     <div className={`${style.bg} text-white p-3 flex items-center justify-between`}>
                       <div className="flex items-center gap-2">
-                        <span className="text-xl">{style.icon}</span>
+                        <span className="text-2xl">{style.icon}</span>
                         <div>
-                          <h2 className="font-bold">{activity.activity_name}</h2>
-                          <div className="flex items-center gap-1 text-xs opacity-90">
-                            <Users className="w-3 h-3" />
-                            <span>{allMembers.length} {t('مشترك', 'members')}</span>
+                          <h2 className="font-bold text-lg">{activity.activity_name}</h2>
+                          <div className="flex items-center gap-2 text-sm opacity-90">
+                            <Users className="w-4 h-4" />
+                            <span>{totalMembers} {t('مشترك', 'members')}</span>
+                            <span className="opacity-60">•</span>
+                            <Clock className="w-4 h-4" />
+                            <span>{timesWithMembers.length} {t('أوقات', 'times')}</span>
                           </div>
                         </div>
                       </div>
@@ -521,33 +518,66 @@ export default function SchedulePage() {
                         size="sm"
                         variant="secondary"
                         onClick={() => goToAttendance(activity.activity_id)}
-                        className="bg-white/20 hover:bg-white/30 text-white border-0 text-xs px-2 py-1 h-7"
+                        className="bg-white/20 hover:bg-white/30 text-white border-0"
                       >
-                        {t('الحضور', 'Attendance')}
+                        {t('صفحة الحضور', 'Attendance')}
                       </Button>
                     </div>
 
-                    {/* Members List */}
-                    <div className={`${style.light} p-3`}>
-                      <div className="space-y-2">
-                        {allMembers.map((member, idx) => (
-                          <div 
-                            key={idx}
-                            onClick={() => openAttendanceDialog(member, activity)}
-                            className="flex items-center gap-2 p-2 bg-white rounded-lg border hover:bg-blue-50 hover:border-blue-300 cursor-pointer transition-all group"
-                            title={t('انقر لتسجيل الحضور', 'Click to record attendance')}
-                          >
-                            <div className={`w-8 h-8 rounded-full ${style.bg} text-white flex items-center justify-center text-sm font-bold group-hover:scale-110 transition-transform`}>
-                              {(member.member_name || '?').charAt(0)}
-                            </div>
-                            <div className="flex-1 min-w-0">
-                              <div className="font-medium text-sm truncate group-hover:text-blue-600">
-                                {member.member_name}
+                    {/* Time Slots */}
+                    <div className={`${style.light} p-4`}>
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                        {timesWithMembers.map(([time, timeData]) => {
+                          const members = timeData[selectedDay] || [];
+                          
+                          return (
+                            <div key={time} className="bg-white rounded-lg border shadow-sm overflow-hidden">
+                              {/* Time Header */}
+                              <div className={`${style.bg} bg-opacity-20 px-3 py-2 border-b flex items-center gap-2`}>
+                                <Clock className={`w-4 h-4 ${style.text}`} />
+                                <span className={`font-bold ${style.text}`}>
+                                  {time === 'غير محدد' ? t('بدون وقت محدد', 'No time') : time}
+                                </span>
+                                <span className="text-gray-500 text-sm">({members.length})</span>
                               </div>
-                              {member.phone && (
-                                <div className="text-gray-400 text-xs" dir="ltr">
-                                  {member.phone}
-                                </div>
+                              
+                              {/* Members */}
+                              <div className="p-2 space-y-1">
+                                {members.map((member, idx) => (
+                                  <div 
+                                    key={idx}
+                                    onClick={() => openAttendanceDialog(member, activity)}
+                                    className="flex items-center gap-2 p-2 rounded hover:bg-blue-50 cursor-pointer transition-all group"
+                                    title={t('انقر لتسجيل الحضور', 'Click to record attendance')}
+                                  >
+                                    <div className={`w-7 h-7 rounded-full ${style.bg} text-white flex items-center justify-center text-xs font-bold group-hover:scale-110 transition-transform`}>
+                                      {(member.member_name || '?').charAt(0)}
+                                    </div>
+                                    <div className="flex-1 min-w-0">
+                                      <div className="font-medium text-sm truncate group-hover:text-blue-600">
+                                        {member.member_name}
+                                      </div>
+                                      {member.phone && (
+                                        <div className="text-gray-400 text-xs" dir="ltr">
+                                          {member.phone}
+                                        </div>
+                                      )}
+                                    </div>
+                                    <UserCheck className="w-4 h-4 text-green-500 opacity-0 group-hover:opacity-100 transition-opacity" />
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })
+            ) : null}
+          </div>
+        )}
                               )}
                             </div>
                             <UserCheck className="w-4 h-4 text-green-500 opacity-0 group-hover:opacity-100 transition-opacity" />
