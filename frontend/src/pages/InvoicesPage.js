@@ -1687,9 +1687,20 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
       end_date: endDate,
       period: `${today} - ${endDate}`,
       schedule: '',
+      level_id: '',
+      level_name: '',
       is_product: false,
       quantity: 1
     }]);
+  };
+
+  // Update registration form item level
+  const updateRegFormItemLevel = (index, levelId) => {
+    const updated = [...regFormItems];
+    const level = levels.find(l => l.id === levelId);
+    updated[index].level_id = levelId;
+    updated[index].level_name = level ? `${language === 'ar' ? 'المستوى' : 'Level'} ${level.level_number} - ${level.activity_name}` : '';
+    setRegFormItems(updated);
   };
 
   // Add product to registration form
