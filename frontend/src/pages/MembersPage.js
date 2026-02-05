@@ -528,7 +528,7 @@ export const MembersPage = () => {
               <table className="data-table">
                 <thead>
                   <tr>
-                    <th>{language === 'ar' ? 'الكود' : 'Code'}</th>
+                    <th>{language === 'ar' ? 'رقم العضوية' : 'Member ID'}</th>
                     <th>{t('member_name')}</th>
                     <th>{t('guardian_name')}</th>
                     <th>{t('phone')}</th>
