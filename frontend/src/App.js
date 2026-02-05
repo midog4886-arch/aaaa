@@ -24,8 +24,8 @@ import SchedulePage from './pages/SchedulePage';
 import './App.css';
 
 // Protected Route Component
-const ProtectedRoute = ({ children }) => {
-  const { isAuthenticated, loading } = useAuth();
+const ProtectedRoute = ({ children, permission }) => {
+  const { isAuthenticated, loading, user, isAdmin } = useAuth();
   
   if (loading) {
     return (
@@ -39,7 +39,53 @@ const ProtectedRoute = ({ children }) => {
     return <Navigate to="/login" replace />;
   }
   
+  // Check permission if specified
+  if (permission && !isAdmin) {
+    const userPermissions = user?.permissions || [];
+    if (!userPermissions.includes(permission)) {
+      // Redirect to first allowed page
+      return <Navigate to={getFirstAllowedRoute(userPermissions)} replace />;
+    }
+  }
+  
   return children;
+};
+
+// Get first allowed route based on user permissions
+const getFirstAllowedRoute = (permissions) => {
+  const routeOrder = ['schedule', 'attendance', 'dashboard', 'members', 'activities', 'levels', 'invoices', 'store', 'accounting', 'reports', 'messages', 'settings'];
+  for (const route of routeOrder) {
+    if (permissions.includes(route)) {
+      return `/${route}`;
+    }
+  }
+  return '/schedule'; // fallback
+};
+
+// Smart Redirect Component - redirects to appropriate page based on permissions
+const SmartRedirect = () => {
+  const { isAuthenticated, loading, user, isAdmin } = useAuth();
+  
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <div className="spinner" />
+      </div>
+    );
+  }
+  
+  if (!isAuthenticated) {
+    return <Navigate to="/login" replace />;
+  }
+  
+  // Admin goes to dashboard
+  if (isAdmin) {
+    return <Navigate to="/dashboard" replace />;
+  }
+  
+  // Non-admin goes to first allowed page
+  const userPermissions = user?.permissions || [];
+  return <Navigate to={getFirstAllowedRoute(userPermissions)} replace />;
 };
 
 // Public Route Component (redirect if authenticated)
