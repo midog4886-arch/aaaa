@@ -4503,6 +4503,7 @@ async def get_attendance_by_activity(
             attendance_record = existing_map.get(member["id"])
             result.append({
                 "member_id": member["id"],
+                "member_code": member.get("member_code", ""),
                 "member_name": member.get("name_ar") or member.get("name", ""),
                 "phone": member.get("phone", ""),
                 "activity_id": activity_id,
