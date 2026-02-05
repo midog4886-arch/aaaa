@@ -947,14 +947,26 @@ export default function SchedulePage() {
                           </div>
                         </div>
                       </div>
-                      <Button
-                        size="sm"
-                        variant="secondary"
-                        onClick={() => goToAttendance(activity.activity_id)}
-                        className="bg-white/20 hover:bg-white/30 text-white border-0"
-                      >
-                        {t('صفحة الحضور', 'Attendance')}
-                      </Button>
+                      <div className="flex items-center gap-2">
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          onClick={() => openNotesDialog(activity)}
+                          className="bg-white/20 hover:bg-white/30 text-white border-0 gap-1"
+                          title={t('ملاحظات', 'Notes')}
+                        >
+                          <StickyNote className="w-4 h-4" />
+                          {t('ملاحظات', 'Notes')}
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          onClick={() => goToAttendance(activity.activity_id)}
+                          className="bg-white/20 hover:bg-white/30 text-white border-0"
+                        >
+                          {t('صفحة الحضور', 'Attendance')}
+                        </Button>
+                      </div>
                     </div>
 
                     {/* Time Slots */}
