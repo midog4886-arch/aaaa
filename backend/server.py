@@ -1643,7 +1643,7 @@ async def update_registration_form(form_id: str, form_data: RegistrationFormCrea
 
 @api_router.put("/registration-forms/{form_id}/convert")
 async def convert_registration_form(form_id: str, current_user: dict = Depends(get_current_user)):
-    """Convert registration form to invoice"""
+    """Convert registration form to invoice and delete the form"""
     form = await db.registration_forms.find_one({"id": form_id}, {"_id": 0})
     if not form:
         raise HTTPException(status_code=404, detail="Registration form not found")
@@ -1684,14 +1684,11 @@ async def convert_registration_form(form_id: str, current_user: dict = Depends(g
     
     await db.invoices.insert_one(invoice_doc)
     
-    # Update form status
-    await db.registration_forms.update_one(
-        {"id": form_id},
-        {"$set": {"status": "converted", "invoice_id": invoice_doc["id"]}}
-    )
+    # Delete the registration form after conversion
+    await db.registration_forms.delete_one({"id": form_id})
     
     del invoice_doc["_id"]
-    return {"message": "Form converted to invoice", "invoice": invoice_doc}
+    return {"message": "Form converted to invoice and deleted", "invoice": invoice_doc}
 
 @api_router.delete("/registration-forms/{form_id}")
 async def delete_registration_form(form_id: str, current_user: dict = Depends(get_current_user)):
