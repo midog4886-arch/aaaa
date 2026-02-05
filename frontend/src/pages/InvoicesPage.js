@@ -2337,6 +2337,22 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
                                 placeholder={language === 'ar' ? 'مثال: السبت والاثنين والأربعاء 4-5 مساءً' : 'e.g. Sat, Mon, Wed 4-5 PM'}
                               />
                             </div>
+                            <div className="space-y-1 col-span-3">
+                              <Label className="text-xs">{language === 'ar' ? 'المستوى' : 'Level'}</Label>
+                              <Select value={item.level_id || ''} onValueChange={(value) => updateItemLevel(idx, value)}>
+                                <SelectTrigger className="h-8 text-sm">
+                                  <SelectValue placeholder={language === 'ar' ? 'اختر المستوى' : 'Select level'} />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="">{language === 'ar' ? 'بدون مستوى' : 'No level'}</SelectItem>
+                                  {levels.map(level => (
+                                    <SelectItem key={level.id} value={level.id}>
+                                      {language === 'ar' ? 'المستوى' : 'Level'} {level.level_number} - {level.activity_name}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </div>
                           </div>
                         )}
                       </div>
