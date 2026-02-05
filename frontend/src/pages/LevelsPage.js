@@ -258,13 +258,11 @@ export const LevelsPage = () => {
         {/* Levels by Activity */}
         {Object.keys(levelsByActivity).length > 0 ? (
           <div className="space-y-6">
-            {Object.values(levelsByActivity).map(({ activity, levels: activityLevels }) => (
-              <Card key={activity.id} className="overflow-hidden">
+            {Object.entries(levelsByActivity).map(([activityName, activityLevels]) => (
+              <Card key={activityName} className="overflow-hidden">
                 <div className="bg-primary text-white p-4 flex items-center gap-3">
                   <Dumbbell className="w-6 h-6" />
-                  <h2 className="font-bold text-lg">
-                    {language === 'ar' ? activity.name_ar : activity.name || activity.name_ar}
-                  </h2>
+                  <h2 className="font-bold text-lg">{activityName}</h2>
                   <Badge variant="secondary" className="bg-white/20 text-white">
                     {activityLevels.length} {t('مستويات', 'levels')}
                   </Badge>
