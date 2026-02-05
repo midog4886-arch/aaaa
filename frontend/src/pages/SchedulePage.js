@@ -241,7 +241,7 @@ export default function SchedulePage() {
                   className="w-44"
                 />
                 <Button 
-                  onClick={fetchActivities}
+                  onClick={handleExecute}
                   className="bg-primary hover:bg-primary/90"
                 >
                   {t('تنفيذ', 'Apply')}
