@@ -4524,15 +4524,27 @@ async def get_attendance_by_activity(
         "absent_count": sum(1 for r in result if r["status"] == "absent")
     }
 
-@api_router.get("/attendance/quick-search/{member_code}")
+@api_router.get("/attendance/quick-search/{search_term}")
 async def quick_search_member(
-    member_code: str,
+    search_term: str,
     current_user: dict = Depends(get_current_user)
 ):
-    """Search member by member_code for quick attendance"""
-    member = await db.members.find_one({"member_code": member_code}, {"_id": 0})
+    """Search member by member_code or name for quick attendance"""
+    # First try to find by member_code
+    member = await db.members.find_one({"member_code": search_term}, {"_id": 0})
+    
+    # If not found, search by name
     if not member:
-        raise HTTPException(status_code=404, detail="رقم العضوية غير موجود")
+        # Search in name_ar or name (case insensitive for English)
+        member = await db.members.find_one({
+            "$or": [
+                {"name_ar": {"$regex": search_term, "$options": "i"}},
+                {"name": {"$regex": search_term, "$options": "i"}}
+            ]
+        }, {"_id": 0})
+    
+    if not member:
+        raise HTTPException(status_code=404, detail="لم يتم العثور على العضو")
     
     # Get today's date
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
@@ -4552,6 +4564,47 @@ async def quick_search_member(
         "activities": member.get("activities", []),
         "today_attendance": today_records
     }
+
+@api_router.get("/attendance/quick-search-multi/{search_term}")
+async def quick_search_members_multi(
+    search_term: str,
+    current_user: dict = Depends(get_current_user)
+):
+    """Search multiple members by member_code or name for quick attendance"""
+    # Search by member_code or name
+    members = await db.members.find({
+        "$or": [
+            {"member_code": {"$regex": search_term, "$options": "i"}},
+            {"name_ar": {"$regex": search_term, "$options": "i"}},
+            {"name": {"$regex": search_term, "$options": "i"}}
+        ]
+    }, {"_id": 0}).limit(10).to_list(10)
+    
+    if not members:
+        return []
+    
+    # Get today's date
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    
+    results = []
+    for member in members:
+        # Check if already recorded today
+        today_records = await db.attendance.find(
+            {"member_id": member["id"], "date": today},
+            {"_id": 0}
+        ).to_list(10)
+        
+        results.append({
+            "member_id": member["id"],
+            "member_code": member.get("member_code", ""),
+            "name": member.get("name", ""),
+            "name_ar": member.get("name_ar", ""),
+            "phone": member.get("phone", ""),
+            "activities": member.get("activities", []),
+            "today_attendance": today_records
+        })
+    
+    return results
 
 @api_router.post("/attendance/quick")
 async def quick_attendance(
