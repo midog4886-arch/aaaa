@@ -227,18 +227,37 @@ export default function SchedulePage() {
               <label className="text-sm font-medium text-gray-600 block mb-1">
                 📅 {t('التاريخ', 'Date')}
               </label>
-              <div className="flex gap-2">
+              <div className="flex gap-1 items-center">
+                <Button 
+                  variant="outline" 
+                  size="icon"
+                  onClick={() => changeDate(-1)}
+                  className="h-9 w-9"
+                  title={t('اليوم السابق', 'Previous Day')}
+                >
+                  <ChevronRight className="w-4 h-4" />
+                </Button>
                 <Input
                   type="date"
                   value={selectedDate}
                   onChange={e => setSelectedDate(e.target.value)}
-                  className="w-44"
+                  className="w-40"
                 />
                 <Button 
-                  onClick={fetchActivities}
-                  className="bg-primary hover:bg-primary/90"
+                  variant="outline" 
+                  size="icon"
+                  onClick={() => changeDate(1)}
+                  className="h-9 w-9"
+                  title={t('اليوم التالي', 'Next Day')}
                 >
-                  {t('تنفيذ', 'Apply')}
+                  <ChevronLeft className="w-4 h-4" />
+                </Button>
+                <Button 
+                  variant="outline"
+                  onClick={goToToday}
+                  className="h-9 px-3 text-sm"
+                >
+                  {t('اليوم', 'Today')}
                 </Button>
               </div>
             </div>
