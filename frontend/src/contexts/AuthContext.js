@@ -70,6 +70,7 @@ export const AuthProvider = ({ children }) => {
   };
 
   const isAuthenticated = !!token && !!user;
+  const isAdmin = user?.is_admin === true;
 
   return (
     <AuthContext.Provider value={{ 
@@ -79,6 +80,7 @@ export const AuthProvider = ({ children }) => {
       logout, 
       loading, 
       isAuthenticated,
+      isAdmin,
       selectedBranchId,
       switchBranch
     }}>
