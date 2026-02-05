@@ -100,10 +100,10 @@ function AppRoutes() {
         } 
       />
       <Route 
-        path="/coaches" 
+        path="/levels" 
         element={
           <ProtectedRoute>
-            <CoachesPage />
+            <LevelsPage />
           </ProtectedRoute>
         } 
       />
