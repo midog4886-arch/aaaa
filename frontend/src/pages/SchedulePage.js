@@ -174,15 +174,21 @@ export default function SchedulePage() {
     return (timeData[selectedDay] || []).length;
   };
 
-  // Get total members for an activity
+  // Get total members for an activity for selected day
   const getTotalMembers = (activity) => {
     const uniqueMembers = new Set();
     Object.values(activity.times).forEach(timeData => {
-      Object.values(timeData).forEach(dayMembers => {
-        dayMembers.forEach(m => uniqueMembers.add(m.member_id));
-      });
+      const dayMembers = timeData[selectedDay] || [];
+      dayMembers.forEach(m => uniqueMembers.add(m.member_id));
     });
     return uniqueMembers.size;
+  };
+
+  // Format date for display
+  const formatDateDisplay = (dateString) => {
+    const date = new Date(dateString);
+    const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
+    return date.toLocaleDateString(language === 'ar' ? 'ar-SA' : 'en-US', options);
   };
 
   return (
