@@ -1491,3 +1491,37 @@ GET    /api/export/attendance                       - تصدير Excel
 - Bulk attendance API لحفظ الحضور دفعة واحدة
 - تخزين الحضور في collection `attendance`
 
+
+
+---
+
+## Update 17 - Schedule Filtering by Date (February 5, 2026)
+
+### New Features Added:
+
+#### 1. Schedule Date Filtering ✅
+- **Execute Button**: يقوم بتصفية الجدول حسب يوم الأسبوع للتاريخ المحدد
+- **Day Detection**: يحدد تلقائياً يوم الأسبوع من التاريخ المدخل
+- **UI Update**: يتم تحديث التبويب النشط ليطابق اليوم المحدد
+
+### How It Works:
+1. المستخدم يختار تاريخاً (مثلاً 2025-01-06)
+2. يضغط على زر "تنفيذ"
+3. النظام يحدد أن هذا التاريخ هو يوم الإثنين
+4. يتم تصفية الجدول ليعرض فقط بيانات يوم الإثنين
+5. يتم تحديد تبويب "الإثنين" تلقائياً
+
+### Technical Implementation:
+- Added `getDayOfWeek()` function to convert date string to day key
+- Added `handleExecute()` function to set selected day and refresh data
+- Updated "تنفيذ" button to call `handleExecute()` instead of `fetchActivities()`
+
+### Files Modified:
+- `/app/frontend/src/pages/SchedulePage.js` - Added filtering logic
+
+### Testing Status: ✅ PASSED
+- Manual testing confirmed working correctly
+- Date 2025-01-06 correctly filters to Monday
+- UI updates properly with selected day tab
+
+
