@@ -6,10 +6,11 @@ import Layout from '../components/Layout';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../components/ui/dialog';
+import { Badge } from '../components/ui/badge';
 import { toast } from 'sonner';
 import { activitiesAPI, attendanceAPI, branchesAPI, schedulesAPI } from '../services/api';
 import { QRCodeSVG } from 'qrcode.react';
-import { Check, X, Users, Calendar, QrCode, FileSpreadsheet, Search, Clock, UserCheck, UserX, CalendarDays } from 'lucide-react';
+import { Check, X, Users, Calendar, QrCode, FileSpreadsheet, Search, Clock, UserCheck, UserX, CalendarDays, Zap, Hash } from 'lucide-react';
 
 export default function AttendancePage() {
   const { language } = useLanguage();
@@ -27,6 +28,12 @@ export default function AttendancePage() {
   const [loading, setLoading] = useState(false);
   const [attendanceRecords, setAttendanceRecords] = useState({});
   const [todaySessions, setTodaySessions] = useState([]);
+  
+  // Quick Registration State
+  const [quickMemberCode, setQuickMemberCode] = useState('');
+  const [quickSearchResult, setQuickSearchResult] = useState(null);
+  const [quickSearching, setQuickSearching] = useState(false);
+  const [quickRegistering, setQuickRegistering] = useState(false);
   
   // QR Scanner Dialog
   const [isQRDialogOpen, setIsQRDialogOpen] = useState(false);
