@@ -719,6 +719,7 @@ export default function AttendancePage() {
                     <table className="w-full">
                       <thead className="bg-gray-100">
                         <tr>
+                          <th className="p-3 text-right">{t('رقم العضوية', 'Member ID')}</th>
                           <th className="p-3 text-right">{t('العضو', 'Member')}</th>
                           <th className="p-3 text-center">{t('حضور', 'Present')}</th>
                           <th className="p-3 text-center">{t('غياب', 'Absent')}</th>
@@ -729,6 +730,7 @@ export default function AttendancePage() {
                       <tbody className="divide-y">
                         {reportData.member_stats?.map(stat => (
                           <tr key={stat.member_id} className="hover:bg-gray-50">
+                            <td className="p-3 font-mono text-primary font-bold">{stat.member_code || '-'}</td>
                             <td className="p-3">{stat.member_name}</td>
                             <td className="p-3 text-center text-green-600 font-medium">{stat.present}</td>
                             <td className="p-3 text-center text-red-600 font-medium">{stat.absent}</td>
