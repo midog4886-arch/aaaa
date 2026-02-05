@@ -56,21 +56,30 @@ export const Sidebar = ({ isOpen, onClose }) => {
   };
 
   const navItems = [
-    { to: '/dashboard', icon: LayoutDashboard, label: 'dashboard' },
-    { to: '/members', icon: Users, label: 'members' },
-    { to: '/activities', icon: Dumbbell, label: 'activities' },
-    { to: '/levels', icon: Layers, label: 'levels' },
-    { to: '/schedule', icon: CalendarDays, label: 'schedule' },
-    { to: '/attendance', icon: ClipboardList, label: 'attendance' },
-    { to: '/invoices', icon: Receipt, label: 'invoices' },
-    { to: '/store', icon: Package, label: 'store' },
-    { to: '/accounting', icon: Calculator, label: 'accounting' },
-    { to: '/reports', icon: BarChart3, label: 'reports' },
-    { to: '/messages', icon: MessageSquare, label: 'messages' },
-    ...(isAdmin ? [{ to: '/branches', icon: Building2, label: 'branches' }] : []),
-    ...(isAdmin ? [{ to: '/users', icon: Users, label: 'users' }] : []),
-    { to: '/settings', icon: Settings, label: 'settings' },
+    { to: '/dashboard', icon: LayoutDashboard, label: 'dashboard', permission: 'dashboard' },
+    { to: '/members', icon: Users, label: 'members', permission: 'members' },
+    { to: '/activities', icon: Dumbbell, label: 'activities', permission: 'activities' },
+    { to: '/levels', icon: Layers, label: 'levels', permission: 'levels' },
+    { to: '/schedule', icon: CalendarDays, label: 'schedule', permission: 'schedule' },
+    { to: '/attendance', icon: ClipboardList, label: 'attendance', permission: 'attendance' },
+    { to: '/invoices', icon: Receipt, label: 'invoices', permission: 'invoices' },
+    { to: '/store', icon: Package, label: 'store', permission: 'store' },
+    { to: '/accounting', icon: Calculator, label: 'accounting', permission: 'accounting' },
+    { to: '/reports', icon: BarChart3, label: 'reports', permission: 'reports' },
+    { to: '/messages', icon: MessageSquare, label: 'messages', permission: 'messages' },
+    ...(isAdmin ? [{ to: '/branches', icon: Building2, label: 'branches', permission: 'branches' }] : []),
+    ...(isAdmin ? [{ to: '/users', icon: Users, label: 'users', permission: 'users' }] : []),
+    { to: '/settings', icon: Settings, label: 'settings', permission: 'settings' },
   ];
+
+  // Filter nav items based on user permissions
+  const userPermissions = user?.permissions || [];
+  const filteredNavItems = navItems.filter(item => {
+    // Admin has all permissions
+    if (isAdmin) return true;
+    // Check if user has permission for this page
+    return userPermissions.includes(item.permission);
+  });
 
   const handleLogout = () => {
     logout();
