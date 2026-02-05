@@ -578,19 +578,6 @@ export default function SchedulePage() {
             ) : null}
           </div>
         )}
-                              )}
-                            </div>
-                            <UserCheck className="w-4 h-4 text-green-500 opacity-0 group-hover:opacity-100 transition-opacity" />
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                );
-              })
-            ) : null}
-          </div>
-        )}
         
         {/* Empty State */}
         {!loading && activitiesData.filter(a => getTotalMembers(a) > 0).length === 0 && (
