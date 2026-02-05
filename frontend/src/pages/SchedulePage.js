@@ -25,6 +25,7 @@ export default function SchedulePage() {
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
   const [selectedTime, setSelectedTime] = useState('all'); // فلتر المواعيد
   const [selectedLevelFilter, setSelectedLevelFilter] = useState('all'); // فلتر المستويات
+  const [selectedActivityType, setSelectedActivityType] = useState('all'); // فلتر نوع النشاط
   
   // Attendance dialog state
   const [attendanceDialog, setAttendanceDialog] = useState({
