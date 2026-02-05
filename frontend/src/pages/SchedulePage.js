@@ -4,9 +4,11 @@ import { useAuth } from '../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import Layout from '../components/Layout';
 import { Button } from '../components/ui/button';
+import { Input } from '../components/ui/input';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../components/ui/dialog';
 import { toast } from 'sonner';
-import { schedulesAPI, branchesAPI } from '../services/api';
-import { Calendar, Clock, Users, ChevronDown, ChevronUp, User } from 'lucide-react';
+import { schedulesAPI, branchesAPI, attendanceAPI } from '../services/api';
+import { Calendar, Clock, Users, ChevronDown, ChevronUp, Check, X, UserCheck, UserX } from 'lucide-react';
 
 export default function SchedulePage() {
   const { language } = useLanguage();
@@ -21,6 +23,15 @@ export default function SchedulePage() {
   const [loading, setLoading] = useState(false);
   const [expandedActivities, setExpandedActivities] = useState({});
   const [selectedDay, setSelectedDay] = useState('all');
+  const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
+  
+  // Attendance dialog state
+  const [attendanceDialog, setAttendanceDialog] = useState({
+    open: false,
+    member: null,
+    activity: null,
+    saving: false
+  });
 
   // Day names
   const days = [
@@ -121,6 +132,44 @@ export default function SchedulePage() {
     navigate(`/attendance?activity_id=${activityId}`);
   };
 
+  // Open attendance dialog for a member
+  const openAttendanceDialog = (member, activity) => {
+    setAttendanceDialog({
+      open: true,
+      member,
+      activity,
+      saving: false
+    });
+  };
+
+  // Record attendance (present or absent)
+  const recordAttendance = async (status) => {
+    const { member, activity } = attendanceDialog;
+    if (!member || !activity) return;
+
+    setAttendanceDialog(prev => ({ ...prev, saving: true }));
+
+    try {
+      await attendanceAPI.record({
+        member_id: member.member_id,
+        activity_id: activity.activity_id,
+        date: selectedDate,
+        status: status
+      });
+
+      toast.success(
+        status === 'present' 
+          ? t('تم تسجيل الحضور ✓', 'Attendance recorded ✓')
+          : t('تم تسجيل الغياب ✗', 'Absence recorded ✗')
+      );
+
+      setAttendanceDialog({ open: false, member: null, activity: null, saving: false });
+    } catch (error) {
+      toast.error(error.response?.data?.detail || t('خطأ في التسجيل', 'Error recording'));
+      setAttendanceDialog(prev => ({ ...prev, saving: false }));
+    }
+  };
+
   // Count members for a time slot across selected days
   const countMembersForTime = (timeData) => {
     let count = 0;
@@ -149,32 +198,69 @@ export default function SchedulePage() {
     <Layout>
       <div className="p-4 md:p-6 max-w-6xl mx-auto" data-testid="schedule-page">
         {/* Header */}
-        <div className="flex justify-between items-center mb-6 flex-wrap gap-4">
+        <div className="flex justify-between items-center mb-4 flex-wrap gap-4">
           <div>
             <h1 className="text-xl md:text-2xl font-bold text-gray-800 flex items-center gap-2">
               <Calendar className="w-6 h-6 text-primary" />
               {t('جدول الأنشطة والمواعيد', 'Activity Schedule')}
             </h1>
             <p className="text-gray-500 text-sm mt-1">
-              {t('الأنشطة والأعضاء حسب المواعيد', 'Activities and members by schedule')}
+              {t('انقر على اسم العضو لتسجيل الحضور', 'Click member name to record attendance')}
             </p>
           </div>
-          
-          {/* Branch Filter */}
-          <select
-            value={selectedBranchId}
-            onChange={e => setSelectedBranchId(e.target.value)}
-            className="border rounded-lg p-2 text-sm"
-          >
-            <option value="">{t('كل الفروع', 'All Branches')}</option>
-            {branches.map(b => (
-              <option key={b.id} value={b.id}>{b.name}</option>
-            ))}
-          </select>
+        </div>
+
+        {/* Filters Row */}
+        <div className="bg-white rounded-lg border p-4 mb-4 shadow-sm">
+          <div className="flex flex-wrap items-end gap-4">
+            {/* Date Filter */}
+            <div>
+              <label className="text-sm font-medium text-gray-600 block mb-1">
+                📅 {t('التاريخ', 'Date')}
+              </label>
+              <Input
+                type="date"
+                value={selectedDate}
+                onChange={e => setSelectedDate(e.target.value)}
+                className="w-44"
+              />
+            </div>
+
+            {/* Branch Filter */}
+            <div>
+              <label className="text-sm font-medium text-gray-600 block mb-1">
+                🏢 {t('الفرع', 'Branch')}
+              </label>
+              <select
+                value={selectedBranchId}
+                onChange={e => setSelectedBranchId(e.target.value)}
+                className="border rounded-lg p-2 text-sm w-44"
+              >
+                <option value="">{t('كل الفروع', 'All Branches')}</option>
+                {branches.map(b => (
+                  <option key={b.id} value={b.id}>{b.name}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Stats */}
+            <div className="flex gap-3 ms-auto">
+              <div className="bg-primary/10 px-4 py-2 rounded-lg text-center">
+                <div className="text-xl font-bold text-primary">{activitiesData.length}</div>
+                <div className="text-xs text-gray-500">{t('نشاط', 'Activities')}</div>
+              </div>
+              <div className="bg-green-100 px-4 py-2 rounded-lg text-center">
+                <div className="text-xl font-bold text-green-600">
+                  {activitiesData.reduce((sum, a) => sum + getTotalMembers(a), 0)}
+                </div>
+                <div className="text-xs text-gray-500">{t('مشترك', 'Members')}</div>
+              </div>
+            </div>
+          </div>
         </div>
 
         {/* Day Filter Tabs */}
-        <div className="flex gap-1 mb-6 overflow-x-auto pb-2 bg-gray-100 p-1 rounded-lg">
+        <div className="flex gap-1 mb-4 overflow-x-auto pb-2 bg-gray-100 p-1 rounded-lg">
           {days.map(day => (
             <button
               key={day.key}
@@ -237,7 +323,7 @@ export default function SchedulePage() {
                           onClick={(e) => { e.stopPropagation(); goToAttendance(activity.activity_id); }}
                           className="bg-white/20 hover:bg-white/30 text-white border-0"
                         >
-                          {t('تسجيل الحضور', 'Attendance')}
+                          {t('صفحة الحضور', 'Attendance')}
                         </Button>
                         {isExpanded ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
                       </div>
@@ -283,13 +369,15 @@ export default function SchedulePage() {
                                         {members.map((member, idx) => (
                                           <div 
                                             key={idx}
-                                            className="flex items-center gap-2 text-xs p-1.5 bg-gray-50 rounded hover:bg-gray-100 transition-colors"
+                                            onClick={() => openAttendanceDialog(member, activity)}
+                                            className="flex items-center gap-2 text-xs p-1.5 bg-gray-50 rounded hover:bg-blue-50 hover:border-blue-300 border border-transparent cursor-pointer transition-all group"
+                                            title={t('انقر لتسجيل الحضور', 'Click to record attendance')}
                                           >
-                                            <div className={`w-6 h-6 rounded-full ${style.bg} text-white flex items-center justify-center text-[10px] font-bold`}>
+                                            <div className={`w-6 h-6 rounded-full ${style.bg} text-white flex items-center justify-center text-[10px] font-bold group-hover:scale-110 transition-transform`}>
                                               {(member.member_name || '?').charAt(0)}
                                             </div>
                                             <div className="flex-1 min-w-0">
-                                              <div className="font-medium truncate" title={member.member_name}>
+                                              <div className="font-medium truncate group-hover:text-blue-600" title={member.member_name}>
                                                 {member.member_name}
                                               </div>
                                               {member.phone && (
@@ -297,6 +385,9 @@ export default function SchedulePage() {
                                                   {member.phone}
                                                 </div>
                                               )}
+                                            </div>
+                                            <div className="opacity-0 group-hover:opacity-100 transition-opacity">
+                                              <UserCheck className="w-4 h-4 text-green-500" />
                                             </div>
                                           </div>
                                         ))}
@@ -327,27 +418,74 @@ export default function SchedulePage() {
           </div>
         )}
 
-        {/* Summary */}
+        {/* Instructions */}
         {!loading && activitiesData.length > 0 && (
-          <div className="mt-6 bg-white rounded-lg border p-4 flex items-center justify-between flex-wrap gap-4">
-            <div className="flex items-center gap-6">
-              <div className="text-center">
-                <div className="text-2xl font-bold text-primary">{activitiesData.length}</div>
-                <div className="text-xs text-gray-500">{t('نشاط', 'Activities')}</div>
-              </div>
-              <div className="text-center">
-                <div className="text-2xl font-bold text-green-600">
-                  {activitiesData.reduce((sum, a) => sum + getTotalMembers(a), 0)}
-                </div>
-                <div className="text-xs text-gray-500">{t('مشترك', 'Members')}</div>
-              </div>
-            </div>
-            <p className="text-sm text-gray-500">
-              💡 {t('انقر على "تسجيل الحضور" للانتقال لصفحة الحضور', 'Click "Attendance" to record attendance')}
-            </p>
+          <div className="mt-4 text-center text-sm text-gray-500 bg-blue-50 p-3 rounded-lg">
+            💡 {t('انقر على اسم أي عضو لتسجيل حضوره أو غيابه بتاريخ', 'Click any member to record attendance for')} <strong>{selectedDate}</strong>
           </div>
         )}
       </div>
+
+      {/* Attendance Dialog */}
+      <Dialog open={attendanceDialog.open} onOpenChange={(open) => !open && setAttendanceDialog({ open: false, member: null, activity: null, saving: false })}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="text-center">
+              {t('تسجيل الحضور', 'Record Attendance')}
+            </DialogTitle>
+          </DialogHeader>
+          
+          {attendanceDialog.member && attendanceDialog.activity && (
+            <div className="space-y-4">
+              {/* Member Info */}
+              <div className="bg-gray-50 rounded-lg p-4 text-center">
+                <div className={`w-16 h-16 rounded-full ${getActivityStyle(attendanceDialog.activity.activity_name).bg} text-white flex items-center justify-center text-2xl font-bold mx-auto mb-2`}>
+                  {(attendanceDialog.member.member_name || '?').charAt(0)}
+                </div>
+                <h3 className="font-bold text-lg">{attendanceDialog.member.member_name}</h3>
+                {attendanceDialog.member.phone && (
+                  <p className="text-gray-500 text-sm" dir="ltr">{attendanceDialog.member.phone}</p>
+                )}
+              </div>
+
+              {/* Activity & Date */}
+              <div className="text-center text-sm text-gray-600">
+                <p><strong>{t('النشاط', 'Activity')}:</strong> {attendanceDialog.activity.activity_name}</p>
+                <p><strong>{t('التاريخ', 'Date')}:</strong> {selectedDate}</p>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="grid grid-cols-2 gap-3">
+                <Button
+                  onClick={() => recordAttendance('present')}
+                  disabled={attendanceDialog.saving}
+                  className="bg-green-600 hover:bg-green-700 text-white py-6 text-lg gap-2"
+                >
+                  <Check className="w-6 h-6" />
+                  {t('حاضر', 'Present')}
+                </Button>
+                <Button
+                  onClick={() => recordAttendance('absent')}
+                  disabled={attendanceDialog.saving}
+                  className="bg-red-600 hover:bg-red-700 text-white py-6 text-lg gap-2"
+                >
+                  <X className="w-6 h-6" />
+                  {t('غائب', 'Absent')}
+                </Button>
+              </div>
+
+              {/* Cancel */}
+              <Button
+                variant="outline"
+                onClick={() => setAttendanceDialog({ open: false, member: null, activity: null, saving: false })}
+                className="w-full"
+              >
+                {t('إلغاء', 'Cancel')}
+              </Button>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </Layout>
   );
 }
