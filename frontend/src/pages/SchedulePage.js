@@ -5,10 +5,11 @@ import { useNavigate } from 'react-router-dom';
 import Layout from '../components/Layout';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
+import { Textarea } from '../components/ui/textarea';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../components/ui/dialog';
 import { toast } from 'sonner';
-import { schedulesAPI, branchesAPI, attendanceAPI, levelsAPI } from '../services/api';
-import { Calendar, Clock, Users, Check, X, UserCheck, ChevronLeft, ChevronRight, Printer, Layers } from 'lucide-react';
+import { schedulesAPI, branchesAPI, attendanceAPI, levelsAPI, activityNotesAPI } from '../services/api';
+import { Calendar, Clock, Users, Check, X, UserCheck, ChevronLeft, ChevronRight, Printer, Layers, MessageSquarePlus, StickyNote, Trash2 } from 'lucide-react';
 
 export default function SchedulePage() {
   const { language } = useLanguage();
@@ -34,6 +35,16 @@ export default function SchedulePage() {
     activity: null,
     saving: false
   });
+
+  // Notes dialog state
+  const [notesDialog, setNotesDialog] = useState({
+    open: false,
+    activity: null,
+    notes: [],
+    loading: false
+  });
+  const [newNoteText, setNewNoteText] = useState('');
+  const [savingNote, setSavingNote] = useState(false);
 
   // Day names
   const dayLabels = {
