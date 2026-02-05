@@ -994,11 +994,16 @@ export default function SchedulePage() {
                           size="sm"
                           variant="secondary"
                           onClick={() => openNotesDialog(activity)}
-                          className="bg-white/20 hover:bg-white/30 text-white border-0 gap-1"
+                          className="bg-white/20 hover:bg-white/30 text-white border-0 gap-1 relative"
                           title={t('ملاحظات', 'Notes')}
                         >
                           <StickyNote className="w-4 h-4" />
                           {t('ملاحظات', 'Notes')}
+                          {notesCounts[activity.activity_id]?.count > 0 && (
+                            <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs font-bold rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1">
+                              {notesCounts[activity.activity_id].count}
+                            </span>
+                          )}
                         </Button>
                         <Button
                           size="sm"
