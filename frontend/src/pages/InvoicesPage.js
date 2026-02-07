@@ -966,6 +966,18 @@ ${selectedInvoice.discount > 0 ? `🎁 الخصم: ${selectedInvoice.discount} �
               cursor: pointer;
               font-family: 'Tajawal', Arial, sans-serif;
             }
+            
+            .size-info {
+              margin-top: 15px;
+              padding: 8px 15px;
+              background: #FEF3C7;
+              border: 2px dashed #F59E0B;
+              border-radius: 8px;
+              font-size: 14px;
+              font-weight: bold;
+              color: #92400E;
+              font-family: 'Tajawal', Arial, sans-serif;
+            }
           </style>
         </head>
         <body>
