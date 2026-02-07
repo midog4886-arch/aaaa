@@ -43,6 +43,8 @@ export default function AttendancePage() {
   const [qrScanResult, setQrScanResult] = useState(null);
   const [manualMemberId, setManualMemberId] = useState('');
   const [isScannerActive, setIsScannerActive] = useState(false);
+  const [qrMemberData, setQrMemberData] = useState(null); // Member data with activities after QR scan
+  const [qrLoading, setQrLoading] = useState(false);
   const scannerRef = useRef(null);
   // Report Dialog
   const [isReportDialogOpen, setIsReportDialogOpen] = useState(false);
