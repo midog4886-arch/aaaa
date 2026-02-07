@@ -84,6 +84,7 @@ export const InvoicesPage = () => {
   // QR Card Modal state
   const [isQRCardDialogOpen, setIsQRCardDialogOpen] = useState(false);
   const [qrCardMember, setQrCardMember] = useState(null);
+  const [qrCardSubscription, setQrCardSubscription] = useState(null); // For showing subscription details after invoice creation
   
   // Registration Form state
   const [regFormData, setRegFormData] = useState({
