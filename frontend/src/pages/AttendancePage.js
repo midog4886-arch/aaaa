@@ -890,8 +890,8 @@ export default function AttendancePage() {
             {/* QR Scanner Section */}
             <div className="bg-white p-6 rounded-lg border shadow-sm">
               <h2 className="text-lg font-bold mb-4 flex items-center gap-2">
-                <QrCode className="w-5 h-5" />
-                {t('تسجيل سريع', 'Quick Check-in')}
+                <Camera className="w-5 h-5" />
+                {t('مسح QR Code', 'Scan QR Code')}
               </h2>
               
               <div className="space-y-4">
@@ -911,23 +911,60 @@ export default function AttendancePage() {
                   </select>
                 </div>
 
-                <div>
-                  <label className="text-sm font-medium text-gray-600 block mb-1">
-                    {t('رقم العضوية', 'Member ID')}
-                  </label>
-                  <Input
-                    value={manualMemberId}
-                    onChange={e => setManualMemberId(e.target.value)}
-                    placeholder={t('أدخل رقم العضوية أو امسح QR', 'Enter member ID or scan QR')}
-                    onKeyPress={e => e.key === 'Enter' && handleQRCheckin()}
-                  />
+                {/* QR Scanner */}
+                <div className="border-2 border-dashed border-gray-200 rounded-lg overflow-hidden">
+                  {isScannerActive ? (
+                    <div>
+                      <div id="qr-reader" className="w-full"></div>
+                      <Button 
+                        onClick={stopQRScanner} 
+                        variant="outline"
+                        className="w-full mt-2 gap-2 text-red-600"
+                      >
+                        <CameraOff className="w-4 h-4" />
+                        {t('إيقاف الكاميرا', 'Stop Camera')}
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="p-8 text-center">
+                      <Camera className="w-16 h-16 mx-auto mb-4 text-gray-300" />
+                      <Button 
+                        onClick={startQRScanner} 
+                        disabled={!qrActivityId}
+                        className="gap-2 bg-blue-600 hover:bg-blue-700"
+                      >
+                        <Camera className="w-4 h-4" />
+                        {t('تشغيل الكاميرا', 'Start Camera')}
+                      </Button>
+                      {!qrActivityId && (
+                        <p className="text-sm text-orange-600 mt-2">
+                          {t('اختر النشاط أولاً', 'Select activity first')}
+                        </p>
+                      )}
+                    </div>
+                  )}
                 </div>
 
-                <Button 
-                  onClick={handleQRCheckin} 
-                  disabled={!qrActivityId || !manualMemberId}
-                  className="w-full gap-2"
-                >
+                {/* Manual Entry */}
+                <div className="border-t pt-4">
+                  <label className="text-sm font-medium text-gray-600 block mb-1">
+                    {t('أو أدخل رقم العضوية يدوياً', 'Or enter member ID manually')}
+                  </label>
+                  <div className="flex gap-2">
+                    <Input
+                      value={manualMemberId}
+                      onChange={e => setManualMemberId(e.target.value)}
+                      placeholder={t('رقم العضوية', 'Member ID')}
+                      onKeyPress={e => e.key === 'Enter' && handleQRCheckinWithCode(manualMemberId)}
+                    />
+                    <Button 
+                      onClick={() => handleQRCheckinWithCode(manualMemberId)} 
+                      disabled={!qrActivityId || !manualMemberId}
+                    >
+                      <UserCheck className="w-4 h-4" />
+                    </Button>
+                  </div>
+                </div>
                   <UserCheck className="w-4 h-4" />
                   {t('تسجيل الحضور', 'Check-in')}
                 </Button>
