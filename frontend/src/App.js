@@ -127,6 +127,9 @@ function AppRoutes() {
         } 
       />
       
+      {/* Member Card - Public page for members to view their QR */}
+      <Route path="/member-card" element={<MemberCardPage />} />
+      
       {/* Unauthorized Page */}
       <Route 
         path="/unauthorized" 
