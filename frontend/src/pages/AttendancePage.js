@@ -965,9 +965,6 @@ export default function AttendancePage() {
                     </Button>
                   </div>
                 </div>
-                  <UserCheck className="w-4 h-4" />
-                  {t('تسجيل الحضور', 'Check-in')}
-                </Button>
               </div>
 
               {/* Result */}
