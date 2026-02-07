@@ -77,6 +77,61 @@ async def root():
     """Root endpoint"""
     return {"message": "Champions Academy API", "status": "running"}
 
+# ============ PUBLIC API - Member Card ============
+
+@api_router.get("/public/member-card/{search_term}")
+async def get_member_card_public(search_term: str):
+    """Public API to get member card info by member_code or phone"""
+    # Search by member_code first
+    member = await db.members.find_one(
+        {"$or": [
+            {"member_code": search_term},
+            {"phone": search_term}
+        ]},
+        {"_id": 0}
+    )
+    
+    if not member:
+        # Try to search by name
+        member = await db.members.find_one(
+            {"$or": [
+                {"name_ar": {"$regex": search_term, "$options": "i"}},
+                {"name": {"$regex": search_term, "$options": "i"}}
+            ]},
+            {"_id": 0}
+        )
+    
+    if not member:
+        raise HTTPException(status_code=404, detail="العضو غير موجود")
+    
+    # Get member activities from invoices
+    today = datetime.now(timezone.utc).strftime('%Y-%m-%d')
+    invoices = await db.invoices.find(
+        {"member_id": member["id"], "status": {"$in": ["paid", "partial"]}},
+        {"_id": 0}
+    ).to_list(100)
+    
+    activities = []
+    for inv in invoices:
+        for item in inv.get("items", []):
+            if item.get("activity_id"):
+                end_date = item.get("end_date", "")
+                activities.append({
+                    "activity_id": item.get("activity_id"),
+                    "activity_name": item.get("activity_name"),
+                    "status": "active" if end_date >= today else "expired",
+                    "end_date": end_date
+                })
+    
+    return {
+        "id": member["id"],
+        "name": member.get("name"),
+        "name_ar": member.get("name_ar"),
+        "member_code": member.get("member_code"),
+        "phone": member.get("phone"),
+        "activities": activities
+    }
+
 # ============ MODELS ============
 
 class UserCreate(BaseModel):
