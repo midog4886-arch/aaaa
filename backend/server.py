@@ -53,6 +53,7 @@ security = HTTPBearer()
 # Include routers
 api_router.include_router(users_router)
 api_router.include_router(levels_router)
+api_router.include_router(branches_router)
 
 # Mount uploads directory for serving images
 app.mount("/uploads", StaticFiles(directory=str(UPLOADS_DIR)), name="uploads")
