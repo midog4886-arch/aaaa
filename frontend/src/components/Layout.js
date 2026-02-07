@@ -29,7 +29,8 @@ import {
   Clock,
   AlertTriangle,
   ClipboardList,
-  CalendarDays
+  CalendarDays,
+  QrCode
 } from 'lucide-react';
 
 export const Sidebar = ({ isOpen, onClose }) => {
