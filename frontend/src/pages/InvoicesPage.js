@@ -3620,8 +3620,8 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
         </Dialog>
 
         {/* QR Card Modal */}
-        <Dialog open={isQRCardDialogOpen} onOpenChange={setIsQRCardDialogOpen}>
-          <DialogContent className="max-w-sm">
+        <Dialog open={isQRCardDialogOpen} onOpenChange={(open) => { setIsQRCardDialogOpen(open); if (!open) setQrCardSubscription(null); }}>
+          <DialogContent className="max-w-md">
             <DialogHeader>
               <DialogTitle className="text-center flex items-center justify-center gap-2">
                 <QrCode className="w-5 h-5 text-purple-600" />
@@ -3657,6 +3657,28 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
                   <p className="text-lg font-bold text-gray-800">{qrCardMember.name_ar}</p>
                   <p className="text-xl font-bold text-orange-600">#{qrCardMember.member_code}</p>
                 </div>
+                
+                {/* Subscription Details (shown after invoice creation) */}
+                {qrCardSubscription && qrCardSubscription.length > 0 && (
+                  <div className="bg-green-50 border border-green-200 rounded-lg p-3 text-right">
+                    <p className="text-green-700 font-bold text-sm mb-2 flex items-center justify-center gap-1">
+                      <CheckCircle className="w-4 h-4" />
+                      {language === 'ar' ? 'تفاصيل الاشتراك' : 'Subscription Details'}
+                    </p>
+                    {qrCardSubscription.map((item, idx) => (
+                      <div key={idx} className="text-sm border-t border-green-100 pt-2 mt-2 first:border-0 first:pt-0 first:mt-0">
+                        <p className="font-bold text-gray-700">{item.activity_name}</p>
+                        <div className="flex justify-between text-gray-600 text-xs mt-1">
+                          <span>📅 من: {item.start_date || '-'}</span>
+                          <span>📅 إلى: {item.end_date || '-'}</span>
+                        </div>
+                        {item.schedule && (
+                          <p className="text-xs text-gray-500 mt-1">🕐 {item.schedule}</p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
                 
                 {/* Action Buttons */}
                 <div className="flex gap-3 justify-center pt-2">
