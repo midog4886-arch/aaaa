@@ -864,30 +864,42 @@ ${selectedInvoice.discount > 0 ? `🎁 الخصم: ${selectedInvoice.discount} �
       name: qrCardMember.name_ar
     });
     
-    const printWindow = window.open('', '', 'width=250,height=280');
+    const printWindow = window.open('', '_blank', 'width=300,height=350');
     printWindow.document.write(`
+      <!DOCTYPE html>
       <html>
         <head>
-          <title>بطاقة العضوية</title>
+          <meta charset="UTF-8">
+          <title>بطاقة العضوية - ${qrCardMember.member_code}</title>
           <style>
             @import url('https://fonts.googleapis.com/css2?family=Tajawal:wght@400;700&display=swap');
+            
+            /* Print settings for exact 6cm x 6cm */
             @page { 
-              size: 60mm 60mm; 
+              size: 6cm 6cm; 
               margin: 0; 
             }
+            
             @media print {
               html, body {
-                width: 60mm !important;
-                height: 60mm !important;
+                width: 6cm !important;
+                height: 6cm !important;
                 margin: 0 !important;
                 padding: 0 !important;
+                overflow: hidden !important;
               }
+              .no-print { display: none !important; }
             }
+            
             * { margin: 0; padding: 0; box-sizing: border-box; }
+            
+            html, body {
+              width: 6cm;
+              height: 6cm;
+            }
+            
             body { 
-              font-family: 'Tajawal', sans-serif; 
-              width: 60mm; 
-              height: 60mm; 
+              font-family: 'Tajawal', Arial, sans-serif; 
               display: flex;
               flex-direction: column;
               align-items: center;
@@ -896,38 +908,92 @@ ${selectedInvoice.discount > 0 ? `🎁 الخصم: ${selectedInvoice.discount} �
               direction: rtl;
               background: white;
             }
-            .logo { font-size: 7pt; font-weight: bold; color: #F97316; margin-bottom: 1mm; }
+            
+            .card {
+              width: 100%;
+              height: 100%;
+              display: flex;
+              flex-direction: column;
+              align-items: center;
+              justify-content: center;
+            }
+            
+            .logo { 
+              font-size: 7pt; 
+              font-weight: bold; 
+              color: #F97316; 
+              margin-bottom: 1mm; 
+            }
+            
             .qr-container { 
-              width: 40mm; 
-              height: 40mm; 
+              width: 38mm; 
+              height: 38mm; 
               display: flex; 
               align-items: center; 
               justify-content: center;
               background: white;
             }
-            .qr-container canvas { width: 40mm !important; height: 40mm !important; }
-            .name { font-size: 8pt; font-weight: bold; margin-top: 1mm; text-align: center; max-width: 55mm; overflow: hidden; }
-            .code { font-size: 9pt; font-weight: bold; color: #F97316; }
+            
+            .qr-container canvas { 
+              max-width: 38mm !important; 
+              max-height: 38mm !important; 
+            }
+            
+            .name { 
+              font-size: 7pt; 
+              font-weight: bold; 
+              margin-top: 1mm; 
+              text-align: center; 
+              max-width: 55mm; 
+              overflow: hidden;
+              white-space: nowrap;
+              text-overflow: ellipsis;
+            }
+            
+            .code { 
+              font-size: 9pt; 
+              font-weight: bold; 
+              color: #F97316; 
+            }
+            
+            .print-btn {
+              margin-top: 10px;
+              padding: 8px 20px;
+              background: #3B82F6;
+              color: white;
+              border: none;
+              border-radius: 5px;
+              cursor: pointer;
+              font-family: 'Tajawal', Arial, sans-serif;
+            }
           </style>
         </head>
         <body>
-          <div class="logo">🏆 أكاديمية أداء الأبطال</div>
-          <div class="qr-container" id="qr-print"></div>
-          <div class="name">${qrCardMember.name_ar || ''}</div>
-          <div class="code">#${qrCardMember.member_code || ''}</div>
-          <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
+          <div class="card">
+            <div class="logo">🏆 أكاديمية أداء الأبطال</div>
+            <div class="qr-container" id="qr-print"></div>
+            <div class="name">${qrCardMember.name_ar || ''}</div>
+            <div class="code">#${qrCardMember.member_code || ''}</div>
+          </div>
+          <button class="print-btn no-print" onclick="window.print()">🖨️ طباعة البطاقة</button>
+          
+          <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"><\/script>
           <script>
-            QRCode.toCanvas(document.createElement('canvas'), '${qrData}', { width: 150, margin: 1 }, function(err, canvas) {
+            QRCode.toCanvas(document.createElement('canvas'), '${qrData}', { 
+              width: 140, 
+              margin: 1,
+              errorCorrectionLevel: 'H'
+            }, function(err, canvas) {
               if (!err) {
                 const container = document.getElementById('qr-print');
                 container.appendChild(canvas);
-                setTimeout(() => window.print(), 500);
               }
             });
-          </script>
+          <\/script>
         </body>
       </html>
     `);
+    printWindow.document.close();
     printWindow.document.close();
   };
 
