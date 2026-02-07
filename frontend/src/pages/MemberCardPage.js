@@ -1,10 +1,12 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
-import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
+import { Card, CardContent } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
-import { User, CreditCard, Phone, Calendar, Download, Printer, ArrowRight, CheckCircle, XCircle } from 'lucide-react';
-import { membersAPI } from '../services/api';
+import { User, CreditCard, Phone, Download, Printer, CheckCircle, XCircle } from 'lucide-react';
+import axios from 'axios';
+
+const API_URL = process.env.REACT_APP_BACKEND_URL;
 
 const MemberCardPage = () => {
   const [searchQuery, setSearchQuery] = useState('');
@@ -20,23 +22,15 @@ const MemberCardPage = () => {
     setMember(null);
     
     try {
-      const response = await membersAPI.getAll();
-      const members = response.data;
-      
-      // Search by member_code or phone
-      const found = members.find(m => 
-        m.member_code === searchQuery.trim() || 
-        m.phone === searchQuery.trim() ||
-        m.name_ar?.includes(searchQuery.trim())
-      );
-      
-      if (found) {
-        setMember(found);
-      } else {
-        setError('لم يتم العثور على العضو');
-      }
+      // Use public API (no auth required)
+      const response = await axios.get(`${API_URL}/api/public/member-card/${encodeURIComponent(searchQuery.trim())}`);
+      setMember(response.data);
     } catch (err) {
-      setError('حدث خطأ في البحث');
+      if (err.response?.status === 404) {
+        setError('لم يتم العثور على العضو');
+      } else {
+        setError('حدث خطأ في البحث');
+      }
     } finally {
       setLoading(false);
     }
