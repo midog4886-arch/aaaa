@@ -188,6 +188,7 @@ class Invoice(BaseModel):
     invoice_number: Optional[str] = None
     member_id: Optional[str] = None
     member_name: Optional[str] = ""
+    member_code: Optional[str] = ""
     items: List[InvoiceItem]
     subtotal: float
     discount: float
