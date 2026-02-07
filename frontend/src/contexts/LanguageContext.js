@@ -189,6 +189,7 @@ const translations = {
     settings: 'Settings',
     branches: 'Branches',
     users: 'Users',
+    member_card: 'Member Card',
     
     // Dashboard
     total_members: 'Total Members',
