@@ -3527,6 +3527,72 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
             </DialogFooter>
           </DialogContent>
         </Dialog>
+
+        {/* QR Card Modal */}
+        <Dialog open={isQRCardDialogOpen} onOpenChange={setIsQRCardDialogOpen}>
+          <DialogContent className="max-w-sm">
+            <DialogHeader>
+              <DialogTitle className="text-center flex items-center justify-center gap-2">
+                <QrCode className="w-5 h-5 text-purple-600" />
+                {language === 'ar' ? 'بطاقة العضوية' : 'Member Card'}
+              </DialogTitle>
+            </DialogHeader>
+            
+            {qrCardMember && (
+              <div className="text-center space-y-4">
+                {/* Academy Logo */}
+                <div className="text-orange-500 font-bold">🏆 أكاديمية أداء الأبطال</div>
+                
+                {/* QR Code - 6cm x 6cm preview */}
+                <div 
+                  className="mx-auto bg-white p-4 rounded-xl border-2 border-purple-100 shadow-inner"
+                  style={{ width: '170px', height: '170px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                >
+                  <QRCodeSVG
+                    value={JSON.stringify({
+                      type: 'WCPA_MEMBER',
+                      id: qrCardMember.id,
+                      code: qrCardMember.member_code,
+                      name: qrCardMember.name_ar
+                    })}
+                    size={140}
+                    level="H"
+                    includeMargin={false}
+                  />
+                </div>
+                
+                {/* Member Info */}
+                <div>
+                  <p className="text-lg font-bold text-gray-800">{qrCardMember.name_ar}</p>
+                  <p className="text-xl font-bold text-orange-600">#{qrCardMember.member_code}</p>
+                </div>
+                
+                {/* Action Buttons */}
+                <div className="flex gap-3 justify-center pt-2">
+                  <Button 
+                    onClick={handleSendQRCardWhatsApp} 
+                    className="gap-2 bg-green-600 hover:bg-green-700"
+                  >
+                    <MessageSquare className="w-4 h-4" />
+                    {language === 'ar' ? 'إرسال واتساب' : 'Send WhatsApp'}
+                  </Button>
+                  <Button 
+                    onClick={handlePrintQRCard} 
+                    variant="outline"
+                    className="gap-2"
+                  >
+                    <Printer className="w-4 h-4" />
+                    {language === 'ar' ? 'طباعة 6×6 سم' : 'Print 6×6 cm'}
+                  </Button>
+                </div>
+                
+                <p className="text-xs text-gray-400">
+                  {language === 'ar' ? 'امسح الكود عند الدخول لتسجيل الحضور' : 'Scan code at entrance to check-in'}
+                </p>
+              </div>
+            )}
+          </DialogContent>
+        </Dialog>
       </div>
     </Layout>
   );
