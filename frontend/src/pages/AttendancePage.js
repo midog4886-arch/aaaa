@@ -949,22 +949,6 @@ export default function AttendancePage() {
               </h2>
               
               <div className="space-y-4">
-                <div>
-                  <label className="text-sm font-medium text-gray-600 block mb-1">
-                    {t('النشاط', 'Activity')} *
-                  </label>
-                  <select
-                    value={qrActivityId}
-                    onChange={e => setQrActivityId(e.target.value)}
-                    className="w-full border rounded-lg p-2"
-                  >
-                    <option value="">{t('اختر النشاط', 'Select Activity')}</option>
-                    {activities.map(a => (
-                      <option key={a.id} value={a.id}>{a.name_ar || a.name}</option>
-                    ))}
-                  </select>
-                </div>
-
                 {/* QR Scanner */}
                 <div className="border-2 border-dashed border-gray-200 rounded-lg overflow-hidden">
                   {isScannerActive ? (
@@ -983,18 +967,12 @@ export default function AttendancePage() {
                     <div className="p-8 text-center">
                       <Camera className="w-16 h-16 mx-auto mb-4 text-gray-300" />
                       <Button 
-                        onClick={startQRScanner} 
-                        disabled={!qrActivityId}
+                        onClick={startQRScanner}
                         className="gap-2 bg-blue-600 hover:bg-blue-700"
                       >
                         <Camera className="w-4 h-4" />
                         {t('تشغيل الكاميرا', 'Start Camera')}
                       </Button>
-                      {!qrActivityId && (
-                        <p className="text-sm text-orange-600 mt-2">
-                          {t('اختر النشاط أولاً', 'Select activity first')}
-                        </p>
-                      )}
                     </div>
                   )}
                 </div>
@@ -1013,9 +991,9 @@ export default function AttendancePage() {
                     />
                     <Button 
                       onClick={() => handleQRCheckinWithCode(manualMemberId)} 
-                      disabled={!qrActivityId || !manualMemberId}
+                      disabled={!manualMemberId || qrLoading}
                     >
-                      <UserCheck className="w-4 h-4" />
+                      {qrLoading ? <Clock className="w-4 h-4 animate-spin" /> : <UserCheck className="w-4 h-4" />}
                     </Button>
                   </div>
                 </div>
