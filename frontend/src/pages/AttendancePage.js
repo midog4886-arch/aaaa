@@ -1024,31 +1024,96 @@ export default function AttendancePage() {
               )}
             </div>
 
-            {/* QR Code Generator */}
+            {/* Member Activities Section (after QR scan) */}
             <div className="bg-white p-6 rounded-lg border shadow-sm">
               <h2 className="text-lg font-bold mb-4 flex items-center gap-2">
-                <QrCode className="w-5 h-5" />
-                {t('رمز QR للنشاط', 'Activity QR Code')}
+                <UserCheck className="w-5 h-5" />
+                {t('بيانات العضو', 'Member Data')}
               </h2>
               
-              {qrActivityId ? (
-                <div className="text-center">
-                  <div className="bg-white p-4 inline-block rounded-lg border">
-                    <QRCodeSVG 
-                      value={JSON.stringify({ activity_id: qrActivityId, type: 'attendance' })}
-                      size={200}
-                      level="H"
-                    />
+              {qrLoading ? (
+                <div className="text-center py-10">
+                  <Clock className="w-12 h-12 mx-auto mb-3 text-gray-300 animate-spin" />
+                  <p className="text-gray-500">{t('جاري البحث...', 'Searching...')}</p>
+                </div>
+              ) : qrMemberData ? (
+                <div className="space-y-4">
+                  {/* Member Info */}
+                  <div className="bg-blue-50 p-4 rounded-lg text-center">
+                    <p className="text-xl font-bold text-gray-800">{qrMemberData.name_ar}</p>
+                    <p className="text-lg text-blue-600 font-bold">#{qrMemberData.member_code}</p>
+                    {qrMemberData.phone && <p className="text-sm text-gray-500" dir="ltr">{qrMemberData.phone}</p>}
                   </div>
-                  <p className="mt-3 font-medium">{getActivityName(qrActivityId)}</p>
-                  <p className="text-sm text-gray-500">
-                    {t('امسح هذا الرمز لتسجيل الحضور', 'Scan this code to check-in')}
-                  </p>
+                  
+                  {/* Activities List */}
+                  {qrMemberData.activities && qrMemberData.activities.length > 0 ? (
+                    <div className="space-y-2">
+                      <p className="text-sm font-medium text-gray-600">{t('الأنشطة السارية - اضغط لتسجيل الحضور:', 'Active Activities - Click to check-in:')}</p>
+                      {qrMemberData.activities.map((act, idx) => (
+                        <button
+                          key={idx}
+                          onClick={() => handleQRActivityCheckin(act.activity_id, act.activity_name)}
+                          disabled={act.recorded_today || qrLoading}
+                          className={`w-full p-3 rounded-lg border-2 text-right transition-all ${
+                            act.recorded_today 
+                              ? 'bg-green-50 border-green-300 cursor-default' 
+                              : 'bg-white border-gray-200 hover:border-blue-400 hover:bg-blue-50 cursor-pointer'
+                          }`}
+                        >
+                          <div className="flex justify-between items-center">
+                            <div className="flex items-center gap-2">
+                              {act.recorded_today ? (
+                                <Check className="w-5 h-5 text-green-600" />
+                              ) : (
+                                <UserCheck className="w-5 h-5 text-blue-500" />
+                              )}
+                            </div>
+                            <div>
+                              <p className="font-bold">{act.activity_name}</p>
+                              <p className="text-xs text-gray-500">
+                                {t('ينتهي:', 'Ends:')} {act.end_date || '-'}
+                              </p>
+                            </div>
+                          </div>
+                          {act.recorded_today && (
+                            <p className="text-xs text-green-600 mt-1 text-center">
+                              {t('✓ تم تسجيل الحضور', '✓ Checked in')}
+                            </p>
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-center py-4 text-orange-600 bg-orange-50 rounded-lg">
+                      <X className="w-8 h-8 mx-auto mb-2" />
+                      <p>{t('لا يوجد اشتراكات سارية', 'No active subscriptions')}</p>
+                    </div>
+                  )}
+                  
+                  {/* Clear Button */}
+                  <Button onClick={clearQRScan} variant="outline" className="w-full gap-2">
+                    <X className="w-4 h-4" />
+                    {t('مسح وبدء من جديد', 'Clear and start over')}
+                  </Button>
                 </div>
               ) : (
                 <div className="text-center py-10 text-gray-500">
                   <QrCode className="w-16 h-16 mx-auto mb-3 opacity-30" />
-                  <p>{t('اختر النشاط لإنشاء رمز QR', 'Select activity to generate QR code')}</p>
+                  <p>{t('امسح QR Code أو أدخل رقم العضوية', 'Scan QR Code or enter member ID')}</p>
+                </div>
+              )}
+              
+              {/* Scan Result */}
+              {qrScanResult && (
+                <div className={`mt-4 p-4 rounded-lg ${qrScanResult.error ? 'bg-orange-50 border border-orange-200' : 'bg-green-50 border border-green-200'}`}>
+                  <p className={`font-bold ${qrScanResult.error ? 'text-orange-700' : 'text-green-700'}`}>
+                    {qrScanResult.message}
+                  </p>
+                  {!qrScanResult.error && qrScanResult.activity_name && (
+                    <p className="text-sm text-gray-600 mt-1">
+                      {qrScanResult.activity_name} - {qrScanResult.check_in_time}
+                    </p>
+                  )}
                 </div>
               )}
             </div>
