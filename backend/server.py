@@ -1167,6 +1167,7 @@ async def create_invoice(invoice: InvoiceCreate, current_user: dict = Depends(ge
     customer_name_ar = invoice.customer_name_ar or (member.get("name_ar", "") if member else "")
     customer_phone = invoice.customer_phone or (member.get("phone", "") if member else "")
     customer_address = invoice.customer_address or ""
+    member_code = member.get("member_code", "") if member else ""
     
     # Generate sequential invoice number starting from 26001
     # Get the highest invoice number to continue from there
