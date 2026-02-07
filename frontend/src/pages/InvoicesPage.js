@@ -833,7 +833,7 @@ ${selectedInvoice.discount > 0 ? `🎁 الخصم: ${selectedInvoice.discount} �
     setIsQRCardDialogOpen(true);
   };
 
-  // Print QR Card (6cm x 6cm)
+  // Print QR Card (6cm x 6cm exact size)
   const handlePrintQRCard = () => {
     if (!qrCardMember) return;
     
@@ -844,41 +844,50 @@ ${selectedInvoice.discount > 0 ? `🎁 الخصم: ${selectedInvoice.discount} �
       name: qrCardMember.name_ar
     });
     
-    const printWindow = window.open('', '', 'width=300,height=350');
+    const printWindow = window.open('', '', 'width=250,height=280');
     printWindow.document.write(`
       <html>
         <head>
           <title>بطاقة العضوية</title>
           <style>
             @import url('https://fonts.googleapis.com/css2?family=Tajawal:wght@400;700&display=swap');
-            @page { size: 6cm 6cm; margin: 0; }
+            @page { 
+              size: 60mm 60mm; 
+              margin: 0; 
+            }
+            @media print {
+              html, body {
+                width: 60mm !important;
+                height: 60mm !important;
+                margin: 0 !important;
+                padding: 0 !important;
+              }
+            }
             * { margin: 0; padding: 0; box-sizing: border-box; }
             body { 
               font-family: 'Tajawal', sans-serif; 
-              width: 6cm; 
-              height: 6cm; 
+              width: 60mm; 
+              height: 60mm; 
               display: flex;
               flex-direction: column;
               align-items: center;
               justify-content: center;
-              padding: 3mm;
+              padding: 2mm;
               direction: rtl;
+              background: white;
             }
-            .logo { font-size: 8pt; font-weight: bold; color: #F97316; margin-bottom: 2mm; }
+            .logo { font-size: 7pt; font-weight: bold; color: #F97316; margin-bottom: 1mm; }
             .qr-container { 
-              width: 3.5cm; 
-              height: 3.5cm; 
+              width: 40mm; 
+              height: 40mm; 
               display: flex; 
               align-items: center; 
               justify-content: center;
-              border: 1px solid #ddd;
-              border-radius: 4px;
-              padding: 2mm;
               background: white;
             }
-            .qr-container svg { width: 100%; height: 100%; }
-            .name { font-size: 9pt; font-weight: bold; margin-top: 2mm; text-align: center; }
-            .code { font-size: 10pt; font-weight: bold; color: #F97316; margin-top: 1mm; }
+            .qr-container canvas { width: 40mm !important; height: 40mm !important; }
+            .name { font-size: 8pt; font-weight: bold; margin-top: 1mm; text-align: center; max-width: 55mm; overflow: hidden; }
+            .code { font-size: 9pt; font-weight: bold; color: #F97316; }
           </style>
         </head>
         <body>
@@ -888,12 +897,10 @@ ${selectedInvoice.discount > 0 ? `🎁 الخصم: ${selectedInvoice.discount} �
           <div class="code">#${qrCardMember.member_code || ''}</div>
           <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
           <script>
-            QRCode.toCanvas(document.createElement('canvas'), '${qrData}', { width: 120, margin: 0 }, function(err, canvas) {
+            QRCode.toCanvas(document.createElement('canvas'), '${qrData}', { width: 150, margin: 1 }, function(err, canvas) {
               if (!err) {
                 const container = document.getElementById('qr-print');
                 container.appendChild(canvas);
-                canvas.style.width = '100%';
-                canvas.style.height = '100%';
                 setTimeout(() => window.print(), 500);
               }
             });
@@ -904,8 +911,8 @@ ${selectedInvoice.discount > 0 ? `🎁 الخصم: ${selectedInvoice.discount} �
     printWindow.document.close();
   };
 
-  // Send QR Card via WhatsApp
-  const handleSendQRCardWhatsApp = () => {
+  // Send QR Card Image via WhatsApp
+  const handleSendQRCardWhatsApp = async () => {
     if (!qrCardMember) return;
     
     const phone = qrCardMember.phone?.replace(/^0/, '966') || '';
@@ -914,10 +921,89 @@ ${selectedInvoice.discount > 0 ? `🎁 الخصم: ${selectedInvoice.discount} �
       return; 
     }
     
-    const memberCardUrl = `${window.location.origin}/member-card`;
-    const message = `🏆 *أكاديمية أداء الأبطال*
+    // Generate QR Code image
+    const qrData = JSON.stringify({
+      type: 'WCPA_MEMBER',
+      id: qrCardMember.id,
+      code: qrCardMember.member_code,
+      name: qrCardMember.name_ar
+    });
+    
+    try {
+      // Create canvas with QR code and member info
+      const canvas = document.createElement('canvas');
+      canvas.width = 400;
+      canvas.height = 500;
+      const ctx = canvas.getContext('2d');
+      
+      // Background
+      ctx.fillStyle = 'white';
+      ctx.fillRect(0, 0, 400, 500);
+      
+      // Header
+      ctx.fillStyle = '#F97316';
+      ctx.font = 'bold 18px Tajawal, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('🏆 أكاديمية أداء الأبطال', 200, 35);
+      
+      // Generate QR code
+      const QRCode = await import('qrcode');
+      const qrDataUrl = await QRCode.toDataURL(qrData, { width: 280, margin: 2 });
+      
+      // Draw QR code
+      const qrImg = new Image();
+      qrImg.onload = () => {
+        ctx.drawImage(qrImg, 60, 60, 280, 280);
+        
+        // Member name
+        ctx.fillStyle = '#1f2937';
+        ctx.font = 'bold 22px Tajawal, sans-serif';
+        ctx.fillText(qrCardMember.name_ar || '', 200, 380);
+        
+        // Member code
+        ctx.fillStyle = '#F97316';
+        ctx.font = 'bold 28px Tajawal, sans-serif';
+        ctx.fillText('#' + qrCardMember.member_code, 200, 420);
+        
+        // Footer
+        ctx.fillStyle = '#9ca3af';
+        ctx.font = '14px Tajawal, sans-serif';
+        ctx.fillText('امسح الكود عند الدخول لتسجيل الحضور', 200, 470);
+        
+        // Convert to blob and download/share
+        canvas.toBlob((blob) => {
+          // Create download link
+          const url = URL.createObjectURL(blob);
+          const link = document.createElement('a');
+          link.href = url;
+          link.download = `qr-${qrCardMember.member_code}.png`;
+          link.click();
+          URL.revokeObjectURL(url);
+          
+          // Open WhatsApp with message
+          const message = `🏆 *أكاديمية أداء الأبطال*
 ━━━━━━━━━━━━━━
-🎫 *بطاقة العضوية الخاصة بك*
+🎫 *بطاقة العضوية*
+
+👤 *الاسم:* ${qrCardMember.name_ar}
+🔢 *رقم العضوية:* #${qrCardMember.member_code}
+
+📎 تم إرفاق صورة QR Code
+امسح الكود عند الدخول للأكاديمية ✅`;
+          
+          window.open(`https://wa.me/${phone}?text=${encodeURIComponent(message)}`, '_blank');
+          toast.success(language === 'ar' ? 'تم تحميل الصورة - أرسلها في الواتساب' : 'Image downloaded - send it on WhatsApp');
+        }, 'image/png');
+      };
+      qrImg.src = qrDataUrl;
+      
+    } catch (err) {
+      console.error('Error generating QR:', err);
+      toast.error(language === 'ar' ? 'خطأ في إنشاء الصورة' : 'Error creating image');
+    }
+    
+    setIsQRCardDialogOpen(false);
+  };
 
 👤 *الاسم:* ${qrCardMember.name_ar}
 🔢 *رقم العضوية:* #${qrCardMember.member_code}
