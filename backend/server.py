@@ -1143,7 +1143,16 @@ async def search_invoices(
             query["created_at"] = {"$lte": end_date}
     
     invoices = await db.invoices.find(query, {"_id": 0}).sort("created_at", -1).to_list(1000)
-    return invoices
+    
+    # Enrich invoices with member_code for legacy invoices that don't have it
+    member_ids = list(set([inv.get("member_id") for inv in invoices if inv.get("member_id") and not inv.get("member_code")]))
+    if member_ids:
+        members = await db.members.find({"id": {"$in": member_ids}}, {"id": 1, "member_code": 1, "_id": 0}).to_list(len(member_ids))
+        member_codes = {m["id"]: m.get("member_code", "") for m in members}
+        for inv in invoices:
+            if inv.get("member_id") and not inv.get("member_code"):
+                inv["member_code"] = member_codes.get(inv["member_id"], "")
+    
     return invoices
 
 @api_router.get("/invoices/{invoice_id}", response_model=Invoice)
