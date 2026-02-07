@@ -835,7 +835,7 @@ ${selectedInvoice.discount > 0 ? `🎁 الخصم: ${selectedInvoice.discount} �
 ━━━━━━━━━━━━━━
 📄 *فاتورة رقم:* #${invoice.id.slice(0, 8)}
 📅 *التاريخ:* ${new Date(invoice.created_at).toLocaleDateString('ar-SA')}
-👤 *العميل:* ${invoice.customer_name_ar || invoice.member_name}
+👤 *العميل:* ${invoice.customer_name_ar || invoice.member_name}${invoice.member_code ? ` (#${invoice.member_code})` : ''}
 ━━━━━━━━━━━━━━
 *الأنشطة والمواعيد:*
 ${itemsList}
