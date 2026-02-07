@@ -1887,7 +1887,10 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
                     filteredInvoices.map(invoice => (
                       <tr key={invoice.id}>
                         <td className="font-mono text-sm font-bold">#{invoice.invoice_number || invoice.id.slice(0, 8)}</td>
-                        <td className="font-medium">{invoice.customer_name_ar || invoice.member_name}</td>
+                        <td className="font-medium">
+                          {invoice.customer_name_ar || invoice.member_name}
+                          {invoice.member_code && <span className="text-primary font-bold text-sm ms-1">(#{invoice.member_code})</span>}
+                        </td>
                         <td dir="ltr" className="text-sm">{invoice.customer_phone || '-'}</td>
                         <td className="font-bold text-primary">{invoice.total} {t('sar')}</td>
                         <td>{getStatusBadge(invoice.status)}</td>
