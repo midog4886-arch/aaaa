@@ -1212,6 +1212,7 @@ async def create_invoice(invoice: InvoiceCreate, current_user: dict = Depends(ge
         "invoice_number": str(next_number),
         "member_id": invoice.member_id,
         "member_name": customer_name_ar,
+        "member_code": member_code,
         "items": [item.model_dump() for item in invoice.items],
         "subtotal": subtotal,
         "discount": invoice.discount,
