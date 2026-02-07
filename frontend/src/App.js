@@ -21,6 +21,7 @@ import AccountingPage from './pages/AccountingPage';
 import AttendancePage from './pages/AttendancePage';
 import SchedulePage from './pages/SchedulePage';
 import UnauthorizedPage from './pages/UnauthorizedPage';
+import MemberCardPage from './pages/MemberCardPage';
 
 import './App.css';
 
