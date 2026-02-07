@@ -433,7 +433,7 @@ export const InvoicesPage = () => {
         });
         toast.success(language === 'ar' ? 'تم تحديث الفاتورة' : 'Invoice updated');
       } else {
-        await invoicesAPI.create({
+        const response = await invoicesAPI.create({
           member_id: selectedMember?.id || null,
           items: invoiceItems,
           discount: totalDiscount,
@@ -443,6 +443,25 @@ export const InvoicesPage = () => {
           branch_id: selectedBranchId  // Send selected branch for admin
         });
         toast.success(t('success'));
+        
+        // Show QR Card after creating invoice (if member exists)
+        if (selectedMember) {
+          const subscriptionItems = invoiceItems.map(item => ({
+            activity_name: item.activity_name,
+            start_date: item.start_date,
+            end_date: item.end_date,
+            schedule: item.schedule
+          }));
+          
+          setQrCardMember({
+            id: selectedMember.id,
+            name_ar: customerNameAr || selectedMember.name_ar || selectedMember.name,
+            member_code: selectedMember.member_code,
+            phone: customerPhone || selectedMember.phone
+          });
+          setQrCardSubscription(subscriptionItems);
+          setIsQRCardDialogOpen(true);
+        }
       }
       loadData();
       closeCreateDialog();
