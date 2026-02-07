@@ -821,6 +821,119 @@ ${selectedInvoice.discount > 0 ? `🎁 الخصم: ${selectedInvoice.discount} �
     loadQRCode(invoice.id, invoice.status);
   };
 
+  // Open QR Card Modal for member
+  const handleOpenQRCard = (invoice) => {
+    const memberData = {
+      id: invoice.member_id,
+      name_ar: invoice.customer_name_ar || invoice.member_name,
+      member_code: invoice.member_code,
+      phone: invoice.customer_phone
+    };
+    setQrCardMember(memberData);
+    setIsQRCardDialogOpen(true);
+  };
+
+  // Print QR Card (6cm x 6cm)
+  const handlePrintQRCard = () => {
+    if (!qrCardMember) return;
+    
+    const qrData = JSON.stringify({
+      type: 'WCPA_MEMBER',
+      id: qrCardMember.id,
+      code: qrCardMember.member_code,
+      name: qrCardMember.name_ar
+    });
+    
+    const printWindow = window.open('', '', 'width=300,height=350');
+    printWindow.document.write(`
+      <html>
+        <head>
+          <title>بطاقة العضوية</title>
+          <style>
+            @import url('https://fonts.googleapis.com/css2?family=Tajawal:wght@400;700&display=swap');
+            @page { size: 6cm 6cm; margin: 0; }
+            * { margin: 0; padding: 0; box-sizing: border-box; }
+            body { 
+              font-family: 'Tajawal', sans-serif; 
+              width: 6cm; 
+              height: 6cm; 
+              display: flex;
+              flex-direction: column;
+              align-items: center;
+              justify-content: center;
+              padding: 3mm;
+              direction: rtl;
+            }
+            .logo { font-size: 8pt; font-weight: bold; color: #F97316; margin-bottom: 2mm; }
+            .qr-container { 
+              width: 3.5cm; 
+              height: 3.5cm; 
+              display: flex; 
+              align-items: center; 
+              justify-content: center;
+              border: 1px solid #ddd;
+              border-radius: 4px;
+              padding: 2mm;
+              background: white;
+            }
+            .qr-container svg { width: 100%; height: 100%; }
+            .name { font-size: 9pt; font-weight: bold; margin-top: 2mm; text-align: center; }
+            .code { font-size: 10pt; font-weight: bold; color: #F97316; margin-top: 1mm; }
+          </style>
+        </head>
+        <body>
+          <div class="logo">🏆 أكاديمية أداء الأبطال</div>
+          <div class="qr-container" id="qr-print"></div>
+          <div class="name">${qrCardMember.name_ar || ''}</div>
+          <div class="code">#${qrCardMember.member_code || ''}</div>
+          <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
+          <script>
+            QRCode.toCanvas(document.createElement('canvas'), '${qrData}', { width: 120, margin: 0 }, function(err, canvas) {
+              if (!err) {
+                const container = document.getElementById('qr-print');
+                container.appendChild(canvas);
+                canvas.style.width = '100%';
+                canvas.style.height = '100%';
+                setTimeout(() => window.print(), 500);
+              }
+            });
+          </script>
+        </body>
+      </html>
+    `);
+    printWindow.document.close();
+  };
+
+  // Send QR Card via WhatsApp
+  const handleSendQRCardWhatsApp = () => {
+    if (!qrCardMember) return;
+    
+    const phone = qrCardMember.phone?.replace(/^0/, '966') || '';
+    if (!phone) { 
+      toast.error(language === 'ar' ? 'لا يوجد رقم جوال' : 'No phone number'); 
+      return; 
+    }
+    
+    const memberCardUrl = `${window.location.origin}/member-card`;
+    const message = `🏆 *أكاديمية أداء الأبطال*
+━━━━━━━━━━━━━━
+🎫 *بطاقة العضوية الخاصة بك*
+
+👤 *الاسم:* ${qrCardMember.name_ar}
+🔢 *رقم العضوية:* #${qrCardMember.member_code}
+
+📱 *للحصول على كود QR الخاص بك:*
+${memberCardUrl}
+
+ابحث برقم عضويتك: ${qrCardMember.member_code}
+
+━━━━━━━━━━━━━━
+امسح الكود عند الدخول للأكاديمية لتسجيل حضورك تلقائياً ✅`;
+
+    window.open(`https://wa.me/${phone}?text=${encodeURIComponent(message)}`, '_blank');
+    setIsQRCardDialogOpen(false);
+  };
+
   const handleSendWhatsApp = (invoice) => {
     const phone = invoice.customer_phone || '';
     if (!phone) { toast.error(language === 'ar' ? 'لا يوجد رقم جوال' : 'No phone number'); return; }
