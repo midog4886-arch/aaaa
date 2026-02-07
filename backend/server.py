@@ -4288,6 +4288,42 @@ async def quick_attendance(
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     now_time = datetime.now(timezone.utc).strftime("%H:%M")
     
+    # Check if member has active subscription for this activity
+    invoices = await db.invoices.find({
+        "member_id": member["id"],
+        "status": {"$in": ["paid", "partial"]}
+    }, {"_id": 0}).to_list(100)
+    
+    has_active_subscription = False
+    subscription_end_date = None
+    
+    for inv in invoices:
+        for item in inv.get("items", []):
+            if item.get("activity_id") == activity_id:
+                end_date = item.get("end_date", "")
+                if end_date >= today:
+                    has_active_subscription = True
+                    subscription_end_date = end_date
+                    break
+                else:
+                    # Keep track of expired subscription
+                    subscription_end_date = end_date
+        if has_active_subscription:
+            break
+    
+    # If subscription expired, return error
+    if not has_active_subscription:
+        if subscription_end_date:
+            raise HTTPException(
+                status_code=400, 
+                detail=f"⚠️ الاشتراك منتهي بتاريخ {subscription_end_date} - يرجى تجديد الاشتراك"
+            )
+        else:
+            raise HTTPException(
+                status_code=400, 
+                detail="⚠️ العضو غير مسجل في هذا النشاط"
+            )
+    
     # Check if already recorded
     existing = await db.attendance.find_one({
         "member_id": member["id"],
@@ -4299,6 +4335,7 @@ async def quick_attendance(
         return {
             "message": "تم تسجيل الحضور مسبقاً",
             "already_recorded": True,
+            "member_name": member.get("name_ar") or member.get("name", ""),
             "record": {k: v for k, v in existing.items() if k != "_id"}
         }
     
@@ -4324,6 +4361,7 @@ async def quick_attendance(
     return {
         "message": "تم تسجيل الحضور بنجاح ✓",
         "already_recorded": False,
+        "member_name": member.get("name_ar") or member.get("name", ""),
         "record": {k: v for k, v in record_doc.items() if k != "_id"}
     }
 
