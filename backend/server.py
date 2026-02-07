@@ -26,6 +26,7 @@ from emergentintegrations.payments.stripe.checkout import StripeCheckout, Checko
 # Import routers from routes package
 from routes.users import router as users_router
 from routes.levels import router as levels_router
+from routes.branches import router as branches_router
 
 ROOT_DIR = Path(__file__).parent
 UPLOADS_DIR = ROOT_DIR / "uploads"
