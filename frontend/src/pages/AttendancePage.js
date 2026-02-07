@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/AuthContext';
 import { useSearchParams } from 'react-router-dom';
@@ -10,7 +10,8 @@ import { Badge } from '../components/ui/badge';
 import { toast } from 'sonner';
 import { activitiesAPI, attendanceAPI, branchesAPI, schedulesAPI } from '../services/api';
 import { QRCodeSVG } from 'qrcode.react';
-import { Check, X, Users, Calendar, QrCode, FileSpreadsheet, Search, Clock, UserCheck, UserX, CalendarDays, Zap, Hash } from 'lucide-react';
+import { Html5QrcodeScanner } from 'html5-qrcode';
+import { Check, X, Users, Calendar, QrCode, FileSpreadsheet, Search, Clock, UserCheck, UserX, CalendarDays, Zap, Hash, Camera, CameraOff } from 'lucide-react';
 
 export default function AttendancePage() {
   const { language } = useLanguage();
