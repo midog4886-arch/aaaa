@@ -1005,21 +1005,6 @@ ${selectedInvoice.discount > 0 ? `🎁 الخصم: ${selectedInvoice.discount} �
     setIsQRCardDialogOpen(false);
   };
 
-👤 *الاسم:* ${qrCardMember.name_ar}
-🔢 *رقم العضوية:* #${qrCardMember.member_code}
-
-📱 *للحصول على كود QR الخاص بك:*
-${memberCardUrl}
-
-ابحث برقم عضويتك: ${qrCardMember.member_code}
-
-━━━━━━━━━━━━━━
-امسح الكود عند الدخول للأكاديمية لتسجيل حضورك تلقائياً ✅`;
-
-    window.open(`https://wa.me/${phone}?text=${encodeURIComponent(message)}`, '_blank');
-    setIsQRCardDialogOpen(false);
-  };
-
   const handleSendWhatsApp = (invoice) => {
     const phone = invoice.customer_phone || '';
     if (!phone) { toast.error(language === 'ar' ? 'لا يوجد رقم جوال' : 'No phone number'); return; }
