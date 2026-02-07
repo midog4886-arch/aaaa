@@ -33,6 +33,7 @@ const translations = {
     store: 'المخزن',
     schedule: 'الجدول',
     attendance: 'الحضور',
+    member_card: 'بطاقة العضوية',
     accounting: 'المحاسبة',
     reports: 'التقارير',
     messages: 'الرسائل',
