@@ -364,16 +364,10 @@ export default function AttendancePage() {
       if (data.type === 'WCPA_MEMBER' && data.code) {
         // Stop scanner after successful scan
         stopQRScanner();
-        
-        // Set the member code and trigger check-in
         setManualMemberId(data.code);
         
-        // If activity is selected, auto check-in
-        if (qrActivityId) {
-          await handleQRCheckinWithCode(data.code);
-        } else {
-          toast.success(t(`تم مسح: ${data.name}`, `Scanned: ${data.name}`));
-        }
+        // Fetch member data with activities
+        await fetchMemberActivities(data.code);
       } else {
         toast.error(t('كود غير صالح', 'Invalid QR code'));
       }
@@ -382,9 +376,7 @@ export default function AttendancePage() {
       if (decodedText.match(/^\d+$/)) {
         stopQRScanner();
         setManualMemberId(decodedText);
-        if (qrActivityId) {
-          await handleQRCheckinWithCode(decodedText);
-        }
+        await fetchMemberActivities(decodedText);
       } else {
         toast.error(t('كود غير صالح', 'Invalid QR code'));
       }
@@ -395,40 +387,100 @@ export default function AttendancePage() {
     // Ignore scan errors (they happen frequently while scanning)
   };
 
-  const handleQRCheckinWithCode = async (memberCode) => {
-    if (!qrActivityId || !memberCode) return;
+  // Fetch member activities after QR scan
+  const fetchMemberActivities = async (memberCode) => {
+    setQrLoading(true);
+    setQrScanResult(null);
+    setQrMemberData(null);
     
     try {
-      const res = await attendanceAPI.quickAttendance(memberCode, qrActivityId);
+      const API_URL = process.env.REACT_APP_BACKEND_URL;
+      const response = await fetch(`${API_URL}/api/public/member-card/${memberCode}`);
+      
+      if (!response.ok) {
+        throw new Error('Member not found');
+      }
+      
+      const memberData = await response.json();
+      
+      // Filter only active subscriptions
+      const activeActivities = (memberData.activities || []).filter(a => a.status === 'active');
+      
+      if (activeActivities.length === 0) {
+        setQrScanResult({
+          error: true,
+          message: t('⚠️ لا يوجد اشتراكات سارية لهذا العضو', '⚠️ No active subscriptions for this member')
+        });
+        setQrMemberData({ ...memberData, activities: [] });
+      } else {
+        setQrMemberData({ ...memberData, activities: activeActivities });
+        toast.success(t(`مرحباً ${memberData.name_ar}`, `Welcome ${memberData.name_ar}`));
+      }
+    } catch (error) {
+      setQrScanResult({
+        error: true,
+        message: t('⚠️ رقم العضوية غير موجود', '⚠️ Member ID not found')
+      });
+    } finally {
+      setQrLoading(false);
+    }
+  };
+
+  // Handle check-in for specific activity from QR scan
+  const handleQRActivityCheckin = async (activityId, activityName) => {
+    if (!qrMemberData || !activityId) return;
+    
+    setQrLoading(true);
+    
+    try {
+      const res = await attendanceAPI.quickAttendance(qrMemberData.member_code, activityId);
       
       if (res.data.already_recorded) {
         setQrScanResult({
           error: false,
           message: t('تم تسجيل الحضور مسبقاً ✓', 'Already checked in ✓'),
-          member_name: res.data.member_name,
-          activity_name: activities.find(a => a.id === qrActivityId)?.name_ar || '',
+          member_name: qrMemberData.name_ar,
+          activity_name: activityName,
           check_in_time: new Date().toLocaleTimeString('ar-SA')
         });
       } else {
         setQrScanResult({
           error: false,
           message: t('تم تسجيل الحضور بنجاح ✓', 'Check-in successful ✓'),
-          member_name: res.data.member_name,
-          activity_name: activities.find(a => a.id === qrActivityId)?.name_ar || '',
+          member_name: qrMemberData.name_ar,
+          activity_name: activityName,
           check_in_time: new Date().toLocaleTimeString('ar-SA')
         });
         toast.success(t('تم تسجيل الحضور ✓', 'Check-in successful ✓'));
+        
+        // Update the activity to show as recorded
+        setQrMemberData(prev => ({
+          ...prev,
+          activities: prev.activities.map(a => 
+            a.activity_id === activityId ? { ...a, recorded_today: true } : a
+          )
+        }));
       }
-      
-      // Clear for next scan
-      setManualMemberId('');
-      
     } catch (error) {
       setQrScanResult({
         error: true,
         message: error.response?.data?.detail || t('خطأ في تسجيل الحضور', 'Check-in error')
       });
+    } finally {
+      setQrLoading(false);
     }
+  };
+
+  // Clear QR scan data
+  const clearQRScan = () => {
+    setQrMemberData(null);
+    setQrScanResult(null);
+    setManualMemberId('');
+  };
+
+  const handleQRCheckinWithCode = async (memberCode) => {
+    if (!memberCode) return;
+    await fetchMemberActivities(memberCode);
   };
 
   // Cleanup scanner on unmount or tab change
