@@ -23,6 +23,9 @@ import jwt
 import bcrypt
 from emergentintegrations.payments.stripe.checkout import StripeCheckout, CheckoutSessionRequest
 
+# Import routers from routes package
+from routes.users import router as users_router
+
 ROOT_DIR = Path(__file__).parent
 UPLOADS_DIR = ROOT_DIR / "uploads"
 UPLOADS_DIR.mkdir(exist_ok=True)
@@ -44,6 +47,9 @@ STRIPE_API_KEY = os.environ.get('STRIPE_API_KEY', '')
 app = FastAPI(title="Champions Academy API")
 api_router = APIRouter(prefix="/api")
 security = HTTPBearer()
+
+# Include routers
+api_router.include_router(users_router)
 
 # Mount uploads directory for serving images
 app.mount("/uploads", StaticFiles(directory=str(UPLOADS_DIR)), name="uploads")
