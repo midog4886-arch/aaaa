@@ -3787,6 +3787,9 @@ async def get_activities_schedule_with_members(
     
     import re
     
+    # Get today's date for subscription status check
+    today = datetime.now(timezone.utc).strftime('%Y-%m-%d')
+    
     for inv in invoices:
         member_id = inv.get("member_id", "")
         member_name = inv.get("member_name", "")
@@ -3801,6 +3804,12 @@ async def get_activities_schedule_with_members(
             activity_name = item.get("activity_name", "")
             
             if not activity_id:
+                continue
+            
+            # Check if subscription is still active (end_date >= today)
+            end_date = item.get("end_date", "")
+            if end_date and end_date < today:
+                # Subscription expired, skip this member for this activity
                 continue
             
             # Initialize activity if not exists
