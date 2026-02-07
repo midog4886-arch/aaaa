@@ -81,6 +81,10 @@ export const InvoicesPage = () => {
   const [isEditMode, setIsEditMode] = useState(false);
   const [editingInvoiceId, setEditingInvoiceId] = useState(null);
   
+  // QR Card Modal state
+  const [isQRCardDialogOpen, setIsQRCardDialogOpen] = useState(false);
+  const [qrCardMember, setQrCardMember] = useState(null);
+  
   // Registration Form state
   const [regFormData, setRegFormData] = useState({
     customer_name: '', customer_phone: ''
