@@ -1065,7 +1065,7 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
           <div class="info-grid">
             <div class="info-row">
               <span class="info-label">الاسم:</span>
-              <span>${selectedInvoice.customer_name_ar || selectedInvoice.member_name || ''}</span>
+              <span>${selectedInvoice.customer_name_ar || selectedInvoice.member_name || ''}${selectedInvoice.member_code ? ` <strong style="color:#F97316">(#${selectedInvoice.member_code})</strong>` : ''}</span>
             </div>
             <div class="info-row">
               <span class="info-label">رقم الجوال:</span>
