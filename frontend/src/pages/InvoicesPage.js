@@ -975,6 +975,7 @@ ${selectedInvoice.discount > 0 ? `🎁 الخصم: ${selectedInvoice.discount} �
             <div class="name">${qrCardMember.name_ar || ''}</div>
             <div class="code">#${qrCardMember.member_code || ''}</div>
           </div>
+          <div class="size-info no-print">📐 مقاس البطاقة: 6 سم × 6 سم</div>
           <button class="print-btn no-print" onclick="window.print()">🖨️ طباعة البطاقة</button>
           
           <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"><\/script>
