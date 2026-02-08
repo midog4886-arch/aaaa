@@ -471,8 +471,10 @@ async def get_member_attendance_stats(member: dict = Depends(get_current_member)
 # ============ COACH RATINGS ============
 
 class CoachRatingCreate(BaseModel):
-    coach_id: str
-    activity_id: str
+    coach_id: Optional[str] = None
+    coach_name: Optional[str] = None  # For manual entry
+    activity_id: Optional[str] = None
+    activity_name: Optional[str] = None  # For manual entry
     rating: int  # 1-5 stars
     comment: Optional[str] = None
 
@@ -544,27 +546,84 @@ async def get_coaches_to_rate(member: dict = Depends(get_current_member)):
     return {"coaches": coaches}
 
 
+@router.get("/all-coaches")
+async def get_all_coaches_for_rating(member: dict = Depends(get_current_member)):
+    """Get all coaches for manual rating selection"""
+    coaches = await db.coaches.find({}, {"_id": 0}).to_list(100)
+    
+    # Get all activities
+    activities = await db.activities.find({}, {"_id": 0}).to_list(100)
+    
+    result = []
+    for coach in coaches:
+        # Get existing rating from this member
+        existing_rating = await db.coach_ratings.find_one(
+            {"member_id": member["id"], "coach_id": coach["id"]},
+            {"_id": 0}
+        )
+        
+        # Get coach's activities
+        coach_activities = [a for a in activities if a.get("coach_id") == coach["id"]]
+        
+        result.append({
+            "id": coach["id"],
+            "name": coach.get("name"),
+            "name_ar": coach.get("name_ar"),
+            "specialization": coach.get("specialization"),
+            "activities": [{"id": a["id"], "name": a.get("name_ar") or a.get("name")} for a in coach_activities],
+            "my_rating": existing_rating
+        })
+    
+    return {"coaches": result}
+
+
+@router.get("/all-activities")
+async def get_all_activities_for_rating(member: dict = Depends(get_current_member)):
+    """Get all activities for manual rating selection"""
+    activities = await db.activities.find({}, {"_id": 0, "id": 1, "name": 1, "name_ar": 1}).to_list(100)
+    return {"activities": activities}
+
+
 @router.post("/rate-coach")
 async def rate_coach(data: CoachRatingCreate, member: dict = Depends(get_current_member)):
     """Submit or update coach rating"""
     if data.rating < 1 or data.rating > 5:
         raise HTTPException(status_code=400, detail="Rating must be between 1 and 5")
     
-    # Check if rating exists
-    existing = await db.coach_ratings.find_one({
-        "member_id": member["id"],
-        "coach_id": data.coach_id
-    })
+    # Get coach name if coach_id provided
+    coach_name = data.coach_name
+    if data.coach_id:
+        coach = await db.coaches.find_one({"id": data.coach_id}, {"_id": 0, "name": 1, "name_ar": 1})
+        if coach:
+            coach_name = coach.get("name_ar") or coach.get("name")
+    
+    # Get activity name if activity_id provided
+    activity_name = data.activity_name
+    if data.activity_id:
+        activity = await db.activities.find_one({"id": data.activity_id}, {"_id": 0, "name": 1, "name_ar": 1})
+        if activity:
+            activity_name = activity.get("name_ar") or activity.get("name")
     
     rating_data = {
         "member_id": member["id"],
         "member_name": member.get("name_ar") or member.get("name"),
+        "member_phone": member.get("phone"),
         "coach_id": data.coach_id,
+        "coach_name": coach_name,
         "activity_id": data.activity_id,
+        "activity_name": activity_name,
         "rating": data.rating,
         "comment": data.comment,
         "updated_at": datetime.now(timezone.utc).isoformat()
     }
+    
+    # Check if rating exists (by coach_id or coach_name for manual entries)
+    existing = None
+    if data.coach_id:
+        existing = await db.coach_ratings.find_one({
+            "member_id": member["id"],
+            "coach_id": data.coach_id
+        })
     
     if existing:
         await db.coach_ratings.update_one(
@@ -576,7 +635,7 @@ async def rate_coach(data: CoachRatingCreate, member: dict = Depends(get_current
         rating_data["id"] = str(uuid.uuid4())
         rating_data["created_at"] = datetime.now(timezone.utc).isoformat()
         await db.coach_ratings.insert_one(rating_data)
-        message = "تم إضافة التقييم بنجاح"
+        message = "تم إرسال التقييم بنجاح"
     
     return {"message": message}
 
