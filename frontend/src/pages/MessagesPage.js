@@ -27,6 +27,7 @@ export const MessagesPage = () => {
   const { t, language } = useLanguage();
   const { user, selectedBranchId } = useAuth();
   const isAdmin = user?.is_admin === true;
+  const [activeTab, setActiveTab] = useState('whatsapp');
   const [members, setMembers] = useState([]);
   const [activities, setActivities] = useState([]);
   const [branches, setBranches] = useState([]);
@@ -38,6 +39,16 @@ export const MessagesPage = () => {
   const [filterBranch, setFilterBranch] = useState('all');
   const [selectAll, setSelectAll] = useState(false);
   const [expandedBranches, setExpandedBranches] = useState({});
+  
+  // Portal Notifications State
+  const [portalNotifications, setPortalNotifications] = useState([]);
+  const [notifTitle, setNotifTitle] = useState('');
+  const [notifMessage, setNotifMessage] = useState('');
+  const [notifTarget, setNotifTarget] = useState('all_members');
+  const [notifTargetMemberId, setNotifTargetMemberId] = useState('');
+  const [notifPriority, setNotifPriority] = useState('info');
+  const [notifType, setNotifType] = useState('announcement');
+  const [sendingNotif, setSendingNotif] = useState(false);
 
   const messageTemplates = {
     payment_reminder: {
