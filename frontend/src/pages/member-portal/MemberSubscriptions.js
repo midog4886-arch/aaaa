@@ -62,6 +62,9 @@ const MemberSubscriptions = () => {
                             <Clock className="w-4 h-4" />
                             إلى: {sub.end_date || '-'}
                           </p>
+                          {sub.coach_name && (
+                            <p className="text-gray-500 mt-1">👨‍🏫 المدرب: {sub.coach_name}</p>
+                          )}
                           {sub.schedule && (
                             <p className="text-gray-500 mt-1">📅 {sub.schedule}</p>
                           )}
@@ -71,9 +74,8 @@ const MemberSubscriptions = () => {
                         ساري ✓
                       </span>
                     </div>
-                    <div className="mt-3 pt-3 border-t border-green-200 flex justify-between text-sm">
-                      <span className="text-gray-500">فاتورة رقم: {sub.invoice_number}</span>
-                      <span className="text-green-700 font-bold">{sub.fee} ر.س</span>
+                    <div className="mt-3 pt-3 border-t border-green-200 flex justify-end text-sm">
+                      <span className="text-green-700 font-bold">{sub.fee || 0} ر.س</span>
                     </div>
                   </div>
                 ))}
