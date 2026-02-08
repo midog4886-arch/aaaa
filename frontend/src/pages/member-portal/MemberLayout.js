@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, createContext, useContext } from 'react';
 import { useNavigate, Link, useLocation } from 'react-router-dom';
 import { 
   Trophy, Home, CreditCard, Calendar, FileText, QrCode, Bell, 
@@ -21,7 +21,11 @@ export const memberLogout = () => {
   localStorage.removeItem('member_data');
 };
 
-// Dark mode helper
+// Dark mode context
+const DarkModeContext = createContext({ darkMode: false, toggleDarkMode: () => {} });
+export const useDarkMode = () => useContext(DarkModeContext);
+
+// Dark mode helper (for initial load only)
 export const getDarkMode = () => localStorage.getItem('portal_dark_mode') === 'true';
 export const setDarkMode = (value) => localStorage.setItem('portal_dark_mode', value);
 
