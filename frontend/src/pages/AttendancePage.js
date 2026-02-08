@@ -1111,8 +1111,36 @@ export default function AttendancePage() {
                     </div>
                   )}
                   
+                  {/* Expired Subscriptions */}
+                  {qrMemberData.expiredActivities && qrMemberData.expiredActivities.length > 0 && (
+                    <div className="space-y-3 mt-4">
+                      <p className="text-sm font-medium text-red-600">{t('⚠️ اشتراكات منتهية:', '⚠️ Expired Subscriptions:')}</p>
+                      {qrMemberData.expiredActivities.map((act, idx) => (
+                        <div
+                          key={idx}
+                          className="p-4 rounded-lg border-2 bg-red-50 border-red-300"
+                        >
+                          <div className="flex justify-between items-center mb-2">
+                            <div className="flex items-center gap-2">
+                              <X className="w-5 h-5 text-red-600" />
+                            </div>
+                            <div className="text-right">
+                              <p className="font-bold text-lg">{act.activity_name}</p>
+                              <p className="text-xs text-gray-500">
+                                {t('انتهى في:', 'Expired on:')} {act.end_date || '-'}
+                              </p>
+                            </div>
+                          </div>
+                          <div className="bg-red-100 text-red-700 py-2 px-4 rounded-lg text-center font-bold">
+                            ⛔ {t('انتهى الاشتراك - يرجى التجديد', 'Subscription expired - Please renew')}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  
                   {/* Clear Button */}
-                  <Button onClick={clearQRScan} variant="outline" className="w-full gap-2">
+                  <Button onClick={clearQRScan} variant="outline" className="w-full gap-2 mt-4">
                     <X className="w-4 h-4" />
                     {t('مسح وبدء من جديد', 'Clear and start over')}
                   </Button>
