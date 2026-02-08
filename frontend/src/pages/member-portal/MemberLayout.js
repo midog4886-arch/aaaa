@@ -44,6 +44,7 @@ const MemberLayout = ({ children }) => {
   const [member, setMember] = useState(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [notifications, setNotifications] = useState({ unread_count: 0 });
+  const [darkMode, setDarkModeState] = useState(getDarkMode());
 
   useEffect(() => {
     const memberData = getMemberData();
@@ -54,6 +55,21 @@ const MemberLayout = ({ children }) => {
     setMember(memberData);
     fetchNotifications();
   }, [navigate]);
+
+  useEffect(() => {
+    // Apply dark mode class to document
+    if (darkMode) {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
+  }, [darkMode]);
+
+  const toggleDarkMode = () => {
+    const newValue = !darkMode;
+    setDarkModeState(newValue);
+    setDarkMode(newValue.toString());
+  };
 
   const fetchNotifications = async () => {
     try {
@@ -71,11 +87,13 @@ const MemberLayout = ({ children }) => {
 
   const navItems = [
     { to: '/portal/dashboard', icon: Home, label: 'الرئيسية' },
+    { to: '/portal/attendance', icon: Activity, label: 'سجل الحضور' },
     { to: '/portal/registration-forms', icon: ClipboardList, label: 'استمارات التسجيل' },
     { to: '/portal/subscriptions', icon: CreditCard, label: 'اشتراكاتي' },
     { to: '/portal/schedule', icon: Calendar, label: 'جدول التدريبات' },
     { to: '/portal/invoices', icon: FileText, label: 'فواتيري' },
     { to: '/portal/card', icon: QrCode, label: 'بطاقة العضوية' },
+    { to: '/portal/rate-coach', icon: Star, label: 'تقييم المدربين' },
     { to: '/portal/notifications', icon: Bell, label: 'الإشعارات', badge: notifications.unread_count },
   ];
 
