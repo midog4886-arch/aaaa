@@ -546,12 +546,21 @@ export default function AttendancePage() {
     return 99; // Other activities at the end
   };
 
+  // Extract number from activity name (e.g., "السباحة 2 يوم" → 2)
+  const getActivityDaysNumber = (activity) => {
+    const name = activity.name_ar || activity.name || '';
+    const match = name.match(/(\d+)/);
+    return match ? parseInt(match[1]) : 999; // Activities without numbers go last
+  };
+
   const filteredActivities = [...filteredActivitiesRaw].sort((a, b) => {
     const categoryA = getActivityCategory(a);
     const categoryB = getActivityCategory(b);
     if (categoryA !== categoryB) return categoryA - categoryB;
-    // Same category, sort by name
-    return (a.name_ar || a.name || '').localeCompare(b.name_ar || b.name || '', 'ar');
+    // Same category, sort by number of days (2, 3, 4, then activities without numbers)
+    const daysA = getActivityDaysNumber(a);
+    const daysB = getActivityDaysNumber(b);
+    return daysA - daysB;
   });
 
   return (
