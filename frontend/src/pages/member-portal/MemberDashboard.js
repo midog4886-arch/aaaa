@@ -64,6 +64,16 @@ const MemberDashboard = () => {
                 <p className="text-gray-300">رقم العضوية: #{member?.member_code}</p>
               </div>
             </div>
+            
+            {/* Terms Notice */}
+            <div className="mt-4 p-3 bg-amber-500/20 border border-amber-400/50 rounded-lg">
+              <p className="text-amber-200 text-sm flex items-start gap-2">
+                <span className="text-amber-400">⚠️</span>
+                <span>
+                  <strong>تنبيه:</strong> عرض عدد الحصص لا يعني أن الاشتراك ما زال فعّالًا بعد تاريخ الانتهاء، ويُعتد فقط بتاريخ بداية ونهاية الاشتراك الموضّح في الفاتورة.
+                </span>
+              </p>
+            </div>
           </CardContent>
         </Card>
 
