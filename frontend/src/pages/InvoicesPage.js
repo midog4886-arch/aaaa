@@ -2693,13 +2693,53 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
                                 onClick={() => !feeEditUnlocked && unlockFeeEdit()}
                               />
                             </div>
-                            <div className="space-y-1 col-span-3">
-                              <Label className="text-xs">{language === 'ar' ? 'جدول المواعيد' : 'Schedule'}</Label>
+                            <div className="space-y-1 col-span-4">
+                              <Label className="text-xs">{language === 'ar' ? 'أيام التدريب' : 'Training Days'}</Label>
+                              <div className="flex flex-wrap gap-1">
+                                {['السبت', 'الأحد', 'الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة'].map((day) => (
+                                  <button
+                                    key={day}
+                                    type="button"
+                                    onClick={() => {
+                                      const currentDays = item.training_days || [];
+                                      const newDays = currentDays.includes(day)
+                                        ? currentDays.filter(d => d !== day)
+                                        : [...currentDays, day];
+                                      const updated = [...newInvoice.items];
+                                      updated[idx].training_days = newDays;
+                                      // Update schedule automatically
+                                      updated[idx].schedule = newDays.length > 0 
+                                        ? `${newDays.join(' - ')}${item.training_time ? ' | ' + item.training_time : ''}`
+                                        : '';
+                                      setNewInvoice({...newInvoice, items: updated});
+                                    }}
+                                    className={`px-2 py-1 text-xs rounded border transition-colors ${
+                                      (item.training_days || []).includes(day)
+                                        ? 'bg-blue-500 text-white border-blue-500'
+                                        : 'bg-white text-gray-700 border-gray-300 hover:border-blue-400'
+                                    }`}
+                                  >
+                                    {day}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                            <div className="space-y-1 col-span-2">
+                              <Label className="text-xs">{language === 'ar' ? 'الساعة' : 'Time'}</Label>
                               <Input 
-                                value={item.schedule || ''} 
-                                onChange={(e) => updateItemSchedule(idx, e.target.value)} 
+                                value={item.training_time || ''} 
+                                onChange={(e) => {
+                                  const updated = [...newInvoice.items];
+                                  updated[idx].training_time = e.target.value;
+                                  // Update schedule automatically
+                                  const days = updated[idx].training_days || [];
+                                  updated[idx].schedule = days.length > 0 
+                                    ? `${days.join(' - ')}${e.target.value ? ' | ' + e.target.value : ''}`
+                                    : e.target.value || '';
+                                  setNewInvoice({...newInvoice, items: updated});
+                                }} 
                                 className="h-8 text-sm" 
-                                placeholder={language === 'ar' ? 'مثال: السبت والاثنين والأربعاء 4-5 مساءً' : 'e.g. Sat, Mon, Wed 4-5 PM'}
+                                placeholder={language === 'ar' ? 'مثال: 4-5 مساءً' : 'e.g. 4-5 PM'}
                               />
                             </div>
                             <div className="space-y-1 col-span-3">
