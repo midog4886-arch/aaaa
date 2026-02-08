@@ -900,24 +900,25 @@ ${selectedInvoice.discount > 0 ? `🎁 الخصم: ${selectedInvoice.discount} �
                 padding: 0 !important;
                 background: white !important;
                 min-height: auto !important;
+                height: auto !important;
                 display: block !important;
+                align-items: flex-start !important;
                 justify-content: flex-start !important;
               }
               .no-print { display: none !important; }
               .card-wrapper { 
                 box-shadow: none !important;
                 border: none !important;
-                margin: 0 !important;
+                margin: 0 auto !important;
                 padding: 0 !important;
                 background: white !important;
-                position: absolute !important;
-                top: 0 !important;
-                left: 50% !important;
-                transform: translateX(-50%) !important;
+                position: static !important;
+                transform: none !important;
               }
               .card {
                 width: 6cm !important;
                 height: 6cm !important;
+                margin: 0 auto !important;
               }
             }
             
@@ -933,6 +934,14 @@ ${selectedInvoice.discount > 0 ? `🎁 الخصم: ${selectedInvoice.discount} �
               justify-content: center;
               padding: 20px;
               direction: rtl;
+            }
+            
+            @media print {
+              body {
+                display: block !important;
+                padding: 0 !important;
+                min-height: 0 !important;
+              }
             }
             
             .preview-title {
