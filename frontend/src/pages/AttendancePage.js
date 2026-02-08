@@ -406,17 +406,26 @@ export default function AttendancePage() {
       
       const memberData = await response.json();
       
-      // Filter only active subscriptions
-      const activeActivities = (memberData.activities || []).filter(a => a.status === 'active');
+      // Keep all activities (active and expired) to show status
+      const allActivities = memberData.activities || [];
+      const activeActivities = allActivities.filter(a => a.status === 'active');
+      const expiredActivities = allActivities.filter(a => a.status === 'expired');
       
-      if (activeActivities.length === 0) {
+      if (allActivities.length === 0) {
         setQrScanResult({
           error: true,
-          message: t('⚠️ لا يوجد اشتراكات سارية لهذا العضو', '⚠️ No active subscriptions for this member')
+          message: t('⚠️ لا يوجد اشتراكات لهذا العضو', '⚠️ No subscriptions for this member')
         });
-        setQrMemberData({ ...memberData, activities: [] });
+        setQrMemberData({ ...memberData, activities: [], expiredActivities: [] });
+      } else if (activeActivities.length === 0 && expiredActivities.length > 0) {
+        // Only expired subscriptions
+        setQrScanResult({
+          error: true,
+          message: t('⚠️ انتهت جميع اشتراكات هذا العضو', '⚠️ All subscriptions have expired')
+        });
+        setQrMemberData({ ...memberData, activities: [], expiredActivities: expiredActivities });
       } else {
-        setQrMemberData({ ...memberData, activities: activeActivities });
+        setQrMemberData({ ...memberData, activities: activeActivities, expiredActivities: expiredActivities });
         toast.success(t(`مرحباً ${memberData.name_ar}`, `Welcome ${memberData.name_ar}`));
       }
     } catch (error) {
