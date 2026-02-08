@@ -275,6 +275,14 @@ function AppRoutes() {
           </ProtectedRoute>
         } 
       />
+      <Route 
+        path="/coach-ratings" 
+        element={
+          <ProtectedRoute permission="coach-ratings">
+            <CoachRatingsPage />
+          </ProtectedRoute>
+        } 
+      />
       
       {/* Smart Default Redirect based on permissions */}
       <Route path="/" element={<SmartRedirect />} />
