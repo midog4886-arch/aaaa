@@ -74,9 +74,6 @@ const MemberSubscriptions = () => {
                         ساري ✓
                       </span>
                     </div>
-                    <div className="mt-3 pt-3 border-t border-green-200 flex justify-end text-sm">
-                      <span className="text-green-700 font-bold">{sub.fee || 0} ر.س</span>
-                    </div>
                   </div>
                 ))}
               </div>
