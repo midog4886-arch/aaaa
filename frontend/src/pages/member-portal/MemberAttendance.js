@@ -4,12 +4,12 @@ import {
   CheckCircle, Calendar, TrendingUp, Clock, Loader2, 
   CalendarDays, Activity, Award
 } from 'lucide-react';
-import MemberLayout, { memberAPI, getDarkMode } from './MemberLayout';
+import MemberLayout, { memberAPI, useDarkMode } from './MemberLayout';
 
 const MemberAttendance = () => {
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState(null);
-  const darkMode = getDarkMode();
+  const { darkMode } = useDarkMode();
 
   useEffect(() => {
     fetchStats();
