@@ -141,6 +141,17 @@ const MemberLayout = ({ children }) => {
 
             {/* User Menu */}
             <div className="flex items-center gap-3">
+              {/* Dark Mode Toggle */}
+              <Button 
+                variant="ghost" 
+                size="icon"
+                onClick={toggleDarkMode}
+                className="text-gray-300 hover:text-white hover:bg-white/10"
+                title={darkMode ? 'الوضع الفاتح' : 'الوضع المظلم'}
+              >
+                {darkMode ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
+              </Button>
+              
               <div className="hidden sm:block text-left">
                 <p className="text-sm font-medium">{member.name_ar}</p>
                 <p className="text-xs text-gray-300">#{member.member_code}</p>
@@ -158,7 +169,7 @@ const MemberLayout = ({ children }) => {
               <Button
                 variant="ghost"
                 size="icon"
-                className="md:hidden text-gray-300"
+                className="lg:hidden text-gray-300"
                 onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
               >
                 {mobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
@@ -169,7 +180,7 @@ const MemberLayout = ({ children }) => {
 
         {/* Mobile Nav */}
         {mobileMenuOpen && (
-          <nav className="md:hidden bg-slate-800 border-t border-slate-700 px-4 py-3 space-y-1">
+          <nav className={`lg:hidden ${darkMode ? 'bg-gray-700' : 'bg-slate-800'} border-t border-slate-700 px-4 py-3 space-y-1`}>
             {navItems.map((item) => (
               <Link
                 key={item.to}
