@@ -525,7 +525,39 @@ export default function AttendancePage() {
     ? activities.filter(a => a.branch_id === selectedBranchId || !a.branch_id)
     : activities;
 
-  // Group activities by category (السباحة، كرة القدم، الكاراتيه)
+  // Activity categories
+  const activityCategories = [
+    { id: 'swimming', name: '🏊 السباحة', keywords: ['سباح', 'swim'] },
+    { id: 'football', name: '⚽ كرة القدم', keywords: ['قدم', 'كرة', 'foot'] },
+    { id: 'karate', name: '🥋 الكاراتيه', keywords: ['كارات', 'karate'] },
+    { id: 'gymnastics', name: '🤸 الجمباز', keywords: ['جمباز', 'gym'] },
+  ];
+
+  // Get activities by category
+  const getActivitiesByCategory = (categoryId) => {
+    const category = activityCategories.find(c => c.id === categoryId);
+    if (!category) return [];
+    return filteredActivitiesRaw.filter(a => {
+      const name = (a.name_ar || a.name || '').toLowerCase();
+      return category.keywords.some(k => name.includes(k));
+    });
+  };
+
+  // Get available categories (only those with activities)
+  const availableCategories = activityCategories.filter(cat => 
+    getActivitiesByCategory(cat.id).length > 0
+  );
+
+  // Selected category state
+  const [selectedCategory, setSelectedCategory] = useState('');
+
+  // Get activity IDs for selected category
+  const getSelectedActivityIds = () => {
+    if (!selectedCategory) return [];
+    return getActivitiesByCategory(selectedCategory).map(a => a.id);
+  };
+
+  // Sort: by category first, then by number (for other uses)
   const getActivityCategory = (activity) => {
     const name = (activity.name_ar || activity.name || '').toLowerCase();
     if (name.includes('سباح') || name.includes('swim')) return 1;
@@ -535,14 +567,12 @@ export default function AttendancePage() {
     return 99;
   };
 
-  // Get number from activity name (2, 3, 4...)
   const getActivityNumber = (activity) => {
     const name = activity.name_ar || activity.name || '';
     const match = name.match(/(\d+)/);
     return match ? parseInt(match[1]) : 999;
   };
 
-  // Sort: by category first, then by number
   const filteredActivities = [...filteredActivitiesRaw].sort((a, b) => {
     const catA = getActivityCategory(a);
     const catB = getActivityCategory(b);
