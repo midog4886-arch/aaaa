@@ -4346,16 +4346,15 @@ async def quick_attendance(
                 detail="⚠️ العضو غير مسجل في هذا النشاط"
             )
     
-    # Check if already recorded
+    # Check if already recorded today (any activity)
     existing = await db.attendance.find_one({
         "member_id": member["id"],
-        "activity_id": activity_id,
         "date": today
     })
     
     if existing:
         return {
-            "message": "تم تسجيل الحضور مسبقاً",
+            "message": f"تم تسجيل الحضور مسبقاً اليوم في نشاط: {existing.get('activity_name', '')}",
             "already_recorded": True,
             "member_name": member.get("name_ar") or member.get("name", ""),
             "record": {k: v for k, v in existing.items() if k != "_id"}
