@@ -213,8 +213,8 @@ const MemberLayout = ({ children }) => {
       </main>
 
       {/* Footer */}
-      <footer className="bg-white border-t py-4 mt-auto">
-        <div className="max-w-7xl mx-auto px-4 text-center text-sm text-gray-500">
+      <footer className={`border-t py-4 mt-auto ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white'}`}>
+        <div className={`max-w-7xl mx-auto px-4 text-center text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
           <p>أكاديمية أداء الأبطال العالمية © {new Date().getFullYear()}</p>
         </div>
       </footer>
