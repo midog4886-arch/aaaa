@@ -339,7 +339,10 @@ export default function AttendancePage() {
           qrbox: { width: 250, height: 250 },
           aspectRatio: 1,
           showTorchButtonIfSupported: true,
-          showZoomSliderIfSupported: true
+          showZoomSliderIfSupported: true,
+          videoConstraints: {
+            facingMode: "environment"
+          }
         },
         false
       );
