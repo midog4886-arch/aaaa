@@ -895,10 +895,13 @@ ${selectedInvoice.discount > 0 ? `🎁 الخصم: ${selectedInvoice.discount} �
             }
             
             @media print {
-              body {
+              html, body {
                 margin: 0 !important;
                 padding: 0 !important;
                 background: white !important;
+                min-height: auto !important;
+                display: block !important;
+                justify-content: flex-start !important;
               }
               .no-print { display: none !important; }
               .card-wrapper { 
@@ -907,6 +910,10 @@ ${selectedInvoice.discount > 0 ? `🎁 الخصم: ${selectedInvoice.discount} �
                 margin: 0 !important;
                 padding: 0 !important;
                 background: white !important;
+                position: absolute !important;
+                top: 0 !important;
+                left: 50% !important;
+                transform: translateX(-50%) !important;
               }
               .card {
                 width: 6cm !important;
