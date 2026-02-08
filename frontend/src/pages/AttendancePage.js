@@ -521,9 +521,38 @@ export default function AttendancePage() {
   const getActivityName = (id) => activities.find(a => a.id === id)?.name || '';
 
   // Filter activities by branch
-  const filteredActivities = selectedBranchId 
+  const filteredActivitiesRaw = selectedBranchId 
     ? activities.filter(a => a.branch_id === selectedBranchId || !a.branch_id)
     : activities;
+
+  // Group and sort activities by category (السباحة، كرة القدم، الكاراتيه، الجمباز)
+  const activityCategories = {
+    'سباحة': 1,
+    'swimming': 1,
+    'قدم': 2,
+    'football': 2,
+    'كرة': 2,
+    'كاراتيه': 3,
+    'karate': 3,
+    'جمباز': 4,
+    'gymnastics': 4,
+  };
+
+  const getActivityCategory = (activity) => {
+    const name = (activity.name_ar || activity.name || '').toLowerCase();
+    for (const [keyword, order] of Object.entries(activityCategories)) {
+      if (name.includes(keyword)) return order;
+    }
+    return 99; // Other activities at the end
+  };
+
+  const filteredActivities = [...filteredActivitiesRaw].sort((a, b) => {
+    const categoryA = getActivityCategory(a);
+    const categoryB = getActivityCategory(b);
+    if (categoryA !== categoryB) return categoryA - categoryB;
+    // Same category, sort by name
+    return (a.name_ar || a.name || '').localeCompare(b.name_ar || b.name || '', 'ar');
+  });
 
   return (
     <Layout title={t('الحضور', 'Attendance')}>
