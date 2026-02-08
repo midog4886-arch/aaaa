@@ -864,7 +864,7 @@ ${selectedInvoice.discount > 0 ? `🎁 الخصم: ${selectedInvoice.discount} �
       name: qrCardMember.name_ar
     });
     
-    const printWindow = window.open('', '_blank', 'width=300,height=350');
+    const printWindow = window.open('', '_blank', 'width=450,height=550');
     printWindow.document.write(`
       <!DOCTYPE html>
       <html>
@@ -881,48 +881,84 @@ ${selectedInvoice.discount > 0 ? `🎁 الخصم: ${selectedInvoice.discount} �
             }
             
             @media print {
-              html, body {
-                width: 6cm !important;
-                height: 6cm !important;
+              body {
                 margin: 0 !important;
                 padding: 0 !important;
-                overflow: hidden !important;
               }
-              .no-print { display: none !important; }
+              .preview-container { display: none !important; }
+              .card-wrapper { 
+                box-shadow: none !important;
+                border: none !important;
+                margin: 0 !important;
+              }
+              .card {
+                width: 6cm !important;
+                height: 6cm !important;
+              }
             }
             
             * { margin: 0; padding: 0; box-sizing: border-box; }
             
-            html, body {
-              width: 6cm;
-              height: 6cm;
-            }
-            
             body { 
               font-family: 'Tajawal', Arial, sans-serif; 
+              background: #f3f4f6;
+              min-height: 100vh;
               display: flex;
               flex-direction: column;
               align-items: center;
               justify-content: center;
-              padding: 2mm;
+              padding: 20px;
               direction: rtl;
+            }
+            
+            .preview-container {
+              text-align: center;
+              margin-bottom: 20px;
+            }
+            
+            .preview-title {
+              font-size: 18px;
+              font-weight: bold;
+              color: #1f2937;
+              margin-bottom: 10px;
+            }
+            
+            .size-badge {
+              display: inline-block;
+              padding: 8px 16px;
+              background: linear-gradient(135deg, #FEF3C7, #FDE68A);
+              border: 2px dashed #F59E0B;
+              border-radius: 10px;
+              font-size: 16px;
+              font-weight: bold;
+              color: #92400E;
+              margin-bottom: 15px;
+            }
+            
+            .card-wrapper {
               background: white;
+              padding: 15px;
+              border-radius: 12px;
+              box-shadow: 0 10px 40px rgba(0,0,0,0.15);
+              border: 3px solid #e5e7eb;
             }
             
             .card {
-              width: 100%;
-              height: 100%;
+              width: 6cm;
+              height: 6cm;
               display: flex;
               flex-direction: column;
               align-items: center;
               justify-content: center;
+              background: white;
+              padding: 2mm;
             }
             
             .logo { 
-              font-size: 7pt; 
+              font-size: 8pt; 
               font-weight: bold; 
               color: #F97316; 
-              margin-bottom: 1mm; 
+              margin-bottom: 2mm; 
             }
             
             .qr-container { 
@@ -940,55 +976,68 @@ ${selectedInvoice.discount > 0 ? `🎁 الخصم: ${selectedInvoice.discount} �
             }
             
             .name { 
-              font-size: 7pt; 
+              font-size: 8pt; 
               font-weight: bold; 
-              margin-top: 1mm; 
+              margin-top: 2mm; 
               text-align: center; 
               max-width: 55mm; 
               overflow: hidden;
               white-space: nowrap;
               text-overflow: ellipsis;
+              color: #1f2937;
             }
             
             .code { 
-              font-size: 9pt; 
+              font-size: 10pt; 
               font-weight: bold; 
-              color: #F97316; 
+              color: #F97316;
+              margin-top: 1mm;
             }
             
             .print-btn {
-              margin-top: 10px;
-              padding: 8px 20px;
-              background: #3B82F6;
+              margin-top: 20px;
+              padding: 12px 30px;
+              background: linear-gradient(135deg, #3B82F6, #2563EB);
               color: white;
               border: none;
-              border-radius: 5px;
+              border-radius: 10px;
               cursor: pointer;
               font-family: 'Tajawal', Arial, sans-serif;
+              font-size: 16px;
+              font-weight: bold;
+              box-shadow: 0 4px 15px rgba(59, 130, 246, 0.4);
+              transition: transform 0.2s, box-shadow 0.2s;
             }
             
-            .size-info {
+            .print-btn:hover {
+              transform: translateY(-2px);
+              box-shadow: 0 6px 20px rgba(59, 130, 246, 0.5);
+            }
+            
+            .note {
               margin-top: 15px;
-              padding: 8px 15px;
-              background: #FEF3C7;
-              border: 2px dashed #F59E0B;
-              border-radius: 8px;
-              font-size: 14px;
-              font-weight: bold;
-              color: #92400E;
-              font-family: 'Tajawal', Arial, sans-serif;
+              font-size: 12px;
+              color: #6b7280;
             }
           </style>
         </head>
         <body>
-          <div class="card">
-            <div class="logo">🏆 أكاديمية أداء الأبطال</div>
-            <div class="qr-container" id="qr-print"></div>
-            <div class="name">${qrCardMember.name_ar || ''}</div>
-            <div class="code">#${qrCardMember.member_code || ''}</div>
+          <div class="preview-container">
+            <div class="preview-title">📋 معاينة بطاقة العضوية</div>
+            <div class="size-badge">📐 مقاس البطاقة: 6 سم × 6 سم</div>
           </div>
-          <div class="size-info no-print">📐 مقاس البطاقة: 6 سم × 6 سم</div>
-          <button class="print-btn no-print" onclick="window.print()">🖨️ طباعة البطاقة</button>
+          
+          <div class="card-wrapper">
+            <div class="card">
+              <div class="logo">🏆 أكاديمية أداء الأبطال</div>
+              <div class="qr-container" id="qr-print"></div>
+              <div class="name">${qrCardMember.name_ar || ''}</div>
+              <div class="code">#${qrCardMember.member_code || ''}</div>
+            </div>
+          </div>
+          
+          <button class="print-btn preview-container" onclick="window.print()">🖨️ طباعة البطاقة</button>
+          <p class="note preview-container">البطاقة ستُطبع بمقاس 6×6 سم بالضبط</p>
           
           <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"><\/script>
           <script>
@@ -1006,7 +1055,6 @@ ${selectedInvoice.discount > 0 ? `🎁 الخصم: ${selectedInvoice.discount} �
         </body>
       </html>
     `);
-    printWindow.document.close();
     printWindow.document.close();
   };
 
