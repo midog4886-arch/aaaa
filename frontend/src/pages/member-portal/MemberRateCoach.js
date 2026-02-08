@@ -5,7 +5,7 @@ import { Textarea } from '../../components/ui/textarea';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../../components/ui/dialog';
 import { Star, User, Loader2, Send, CheckCircle, MessageSquare } from 'lucide-react';
 import { toast } from 'sonner';
-import MemberLayout, { memberAPI, getDarkMode } from './MemberLayout';
+import MemberLayout, { memberAPI } from './MemberLayout';
 
 const MemberRateCoach = () => {
   const [loading, setLoading] = useState(true);
@@ -16,16 +16,6 @@ const MemberRateCoach = () => {
   const [hoverRating, setHoverRating] = useState(0);
   const [comment, setComment] = useState('');
   const [submitting, setSubmitting] = useState(false);
-  const [darkMode, setDarkModeLocal] = useState(getDarkMode());
-
-  // Listen for dark mode changes
-  useEffect(() => {
-    const interval = setInterval(() => {
-      const current = getDarkMode();
-      if (current !== darkMode) setDarkModeLocal(current);
-    }, 500);
-    return () => clearInterval(interval);
-  }, [darkMode]);
 
   useEffect(() => {
     fetchCoaches();
