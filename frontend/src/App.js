@@ -145,10 +145,8 @@ function AppRoutes() {
       {/* Member Portal Routes - Public */}
       <Route path="/portal/login" element={<MemberLogin />} />
       <Route path="/portal/dashboard" element={<MemberDashboard />} />
-      <Route path="/portal/registration-forms" element={<MemberRegistrationForms />} />
       <Route path="/portal/subscriptions" element={<MemberSubscriptions />} />
       <Route path="/portal/schedule" element={<MemberSchedule />} />
-      <Route path="/portal/invoices" element={<MemberInvoices />} />
       <Route path="/portal/card" element={<MemberQRCard />} />
       <Route path="/portal/notifications" element={<MemberNotifications />} />
       <Route path="/portal/attendance" element={<MemberAttendance />} />
