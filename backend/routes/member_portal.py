@@ -399,3 +399,126 @@ async def get_member_attendance(member: dict = Depends(get_current_member)):
     ).sort("date", -1).to_list(100)
     
     return {"attendance": attendance}
+
+
+# ============ REGISTRATION FORMS ============
+
+@router.get("/registration-forms")
+async def get_member_registration_forms(member: dict = Depends(get_current_member)):
+    """Get registration forms for the member"""
+    phone = member.get("phone")
+    
+    # Find registration forms by phone number
+    forms = await db.registration_forms.find(
+        {"customer_phone": phone},
+        {"_id": 0}
+    ).sort("created_at", -1).to_list(50)
+    
+    return {"forms": forms}
+
+
+@router.get("/registration-forms/{form_id}")
+async def get_registration_form_details(form_id: str, member: dict = Depends(get_current_member)):
+    """Get single registration form details"""
+    phone = member.get("phone")
+    
+    form = await db.registration_forms.find_one(
+        {"id": form_id, "customer_phone": phone},
+        {"_id": 0}
+    )
+    
+    if not form:
+        raise HTTPException(status_code=404, detail="Registration form not found")
+    
+    return form
+
+
+@router.get("/my-schedule")
+async def get_member_full_schedule(member: dict = Depends(get_current_member)):
+    """Get complete training schedule from registration forms and invoices"""
+    phone = member.get("phone")
+    today = datetime.now(timezone.utc).strftime('%Y-%m-%d')
+    
+    schedules = []
+    
+    # Get from registration forms
+    forms = await db.registration_forms.find(
+        {"customer_phone": phone},
+        {"_id": 0}
+    ).to_list(50)
+    
+    for form in forms:
+        for item in form.get("items", []):
+            if item.get("activity_id") and item.get("schedule"):
+                end_date = item.get("end_date", "")
+                start_date = item.get("start_date", "")
+                
+                if not end_date and item.get("period"):
+                    period = item.get("period", "")
+                    if " - " in period:
+                        parts = period.split(" - ")
+                        if len(parts) == 2:
+                            start_date = parts[0].strip()
+                            end_date = parts[1].strip()
+                
+                status = "active" if end_date and end_date >= today else "expired"
+                
+                schedules.append({
+                    "source": "registration_form",
+                    "form_number": form.get("form_number"),
+                    "activity_name": item.get("activity_name"),
+                    "schedule": item.get("schedule"),
+                    "start_date": start_date,
+                    "end_date": end_date,
+                    "status": status
+                })
+    
+    # Get from invoices (for items with schedule)
+    invoices = await db.invoices.find(
+        {"member_id": member["id"], "status": {"$in": ["paid", "partial"]}},
+        {"_id": 0}
+    ).to_list(100)
+    
+    for inv in invoices:
+        for item in inv.get("items", []):
+            if item.get("activity_id") and item.get("schedule"):
+                end_date = item.get("end_date", "")
+                start_date = item.get("start_date", "")
+                
+                if not end_date and item.get("period"):
+                    period = item.get("period", "")
+                    if " - " in period:
+                        parts = period.split(" - ")
+                        if len(parts) == 2:
+                            start_date = parts[0].strip()
+                            end_date = parts[1].strip()
+                
+                status = "active" if end_date and end_date >= today else "expired"
+                
+                # Check if not already added from registration form
+                already_exists = any(
+                    s.get("activity_name") == item.get("activity_name") and 
+                    s.get("start_date") == start_date 
+                    for s in schedules
+                )
+                
+                if not already_exists:
+                    schedules.append({
+                        "source": "invoice",
+                        "invoice_number": inv.get("invoice_number"),
+                        "activity_name": item.get("activity_name"),
+                        "schedule": item.get("schedule"),
+                        "start_date": start_date,
+                        "end_date": end_date,
+                        "status": status
+                    })
+    
+    # Sort by status (active first) then by end_date
+    schedules.sort(key=lambda x: (0 if x.get("status") == "active" else 1, x.get("end_date", "")), reverse=True)
+    
+    return {
+        "schedules": schedules,
+        "active_count": len([s for s in schedules if s.get("status") == "active"]),
+        "expired_count": len([s for s in schedules if s.get("status") == "expired"])
+    }
+
