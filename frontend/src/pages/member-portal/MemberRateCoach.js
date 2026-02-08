@@ -110,29 +110,29 @@ const MemberRateCoach = () => {
     <MemberLayout>
       <div className="space-y-6">
         <div>
-          <h1 className="text-2xl font-bold text-gray-800">تقييم المدربين</h1>
-          <p className="text-gray-500 mt-1">شاركنا رأيك في المدربين لتحسين جودة الخدمة</p>
+          <h1 className={`text-2xl font-bold ${darkMode ? 'text-white' : 'text-gray-800'}`}>تقييم المدربين</h1>
+          <p className={`mt-1 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>شاركنا رأيك في المدربين لتحسين جودة الخدمة</p>
         </div>
 
         {coaches.length > 0 ? (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {coaches.map((coach) => (
-              <Card key={coach.id} className="hover:shadow-lg transition-shadow">
+              <Card key={coach.id} className={`hover:shadow-lg transition-shadow ${darkMode ? 'bg-gray-800 border-gray-700' : ''}`}>
                 <CardContent className="p-6">
                   <div className="flex items-start gap-4">
                     <div className="w-16 h-16 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-full flex items-center justify-center flex-shrink-0">
                       <User className="w-8 h-8 text-white" />
                     </div>
                     <div className="flex-1">
-                      <h3 className="text-lg font-bold text-gray-800">
+                      <h3 className={`text-lg font-bold ${darkMode ? 'text-white' : 'text-gray-800'}`}>
                         {coach.name_ar || coach.name}
                       </h3>
                       {coach.specialization && (
-                        <p className="text-sm text-gray-500">{coach.specialization}</p>
+                        <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{coach.specialization}</p>
                       )}
                       <div className="flex flex-wrap gap-1 mt-2">
                         {coach.activities?.map((act, idx) => (
-                          <span key={idx} className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded">
+                          <span key={idx} className={`text-xs px-2 py-1 rounded ${darkMode ? 'bg-blue-900 text-blue-200' : 'bg-blue-100 text-blue-700'}`}>
                             {act.name}
                           </span>
                         ))}
@@ -140,10 +140,10 @@ const MemberRateCoach = () => {
                       
                       {/* Existing Rating */}
                       {coach.my_rating ? (
-                        <div className="mt-4 p-3 bg-green-50 rounded-lg border border-green-200">
+                        <div className={`mt-4 p-3 rounded-lg border ${darkMode ? 'bg-green-900/30 border-green-700' : 'bg-green-50 border-green-200'}`}>
                           <div className="flex items-center justify-between">
                             <div>
-                              <p className="text-sm text-green-700 font-medium flex items-center gap-1">
+                              <p className={`text-sm font-medium flex items-center gap-1 ${darkMode ? 'text-green-400' : 'text-green-700'}`}>
                                 <CheckCircle className="w-4 h-4" />
                                 تقييمك
                               </p>
@@ -155,12 +155,13 @@ const MemberRateCoach = () => {
                               size="sm" 
                               variant="outline"
                               onClick={() => openRatingDialog(coach)}
+                              className={darkMode ? 'border-gray-600 text-gray-200 hover:bg-gray-700' : ''}
                             >
                               تعديل
                             </Button>
                           </div>
                           {coach.my_rating.comment && (
-                            <p className="text-sm text-gray-600 mt-2 flex items-start gap-1">
+                            <p className={`text-sm mt-2 flex items-start gap-1 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
                               <MessageSquare className="w-4 h-4 mt-0.5 flex-shrink-0" />
                               {coach.my_rating.comment}
                             </p>
@@ -182,25 +183,25 @@ const MemberRateCoach = () => {
             ))}
           </div>
         ) : (
-          <Card>
+          <Card className={darkMode ? 'bg-gray-800 border-gray-700' : ''}>
             <CardContent className="py-12 text-center">
-              <User className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-              <p className="text-xl font-medium text-gray-600">لا يوجد مدربين للتقييم</p>
-              <p className="text-gray-400 mt-2">سيظهر المدربون هنا عند الاشتراك في الأنشطة</p>
+              <User className={`w-16 h-16 mx-auto mb-4 ${darkMode ? 'text-gray-600' : 'text-gray-300'}`} />
+              <p className={`text-xl font-medium ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>لا يوجد مدربين للتقييم</p>
+              <p className={`mt-2 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>سيظهر المدربون هنا عند الاشتراك في الأنشطة</p>
             </CardContent>
           </Card>
         )}
 
         {/* Info Card */}
-        <Card className="bg-gradient-to-r from-purple-50 to-pink-50 border-purple-200">
+        <Card className={`border ${darkMode ? 'bg-purple-900/30 border-purple-700' : 'bg-gradient-to-r from-purple-50 to-pink-50 border-purple-200'}`}>
           <CardContent className="p-6">
             <div className="flex items-start gap-4">
               <div className="w-12 h-12 bg-purple-500 rounded-full flex items-center justify-center flex-shrink-0">
                 <Star className="w-6 h-6 text-white" />
               </div>
               <div>
-                <h3 className="font-bold text-purple-800">لماذا التقييم مهم؟</h3>
-                <p className="text-purple-600 mt-1 text-sm">
+                <h3 className={`font-bold ${darkMode ? 'text-purple-300' : 'text-purple-800'}`}>لماذا التقييم مهم؟</h3>
+                <p className={`mt-1 text-sm ${darkMode ? 'text-purple-200' : 'text-purple-600'}`}>
                   تقييمك يساعدنا في تحسين جودة التدريب وتطوير أداء المدربين. 
                   نقدر مشاركتك ونأخذ ملاحظاتك بعين الاعتبار.
                 </p>
@@ -212,9 +213,9 @@ const MemberRateCoach = () => {
 
       {/* Rating Dialog */}
       <Dialog open={ratingDialogOpen} onOpenChange={setRatingDialogOpen}>
-        <DialogContent className="max-w-md" dir="rtl">
+        <DialogContent className={`max-w-md ${darkMode ? 'bg-gray-800 border-gray-700' : ''}`} dir="rtl">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
+            <DialogTitle className={`flex items-center gap-2 ${darkMode ? 'text-white' : ''}`}>
               <Star className="w-5 h-5 text-yellow-500" />
               تقييم المدرب
             </DialogTitle>
@@ -223,13 +224,13 @@ const MemberRateCoach = () => {
           {selectedCoach && (
             <div className="space-y-6">
               {/* Coach Info */}
-              <div className="flex items-center gap-4 p-4 bg-gray-50 rounded-lg">
+              <div className={`flex items-center gap-4 p-4 rounded-lg ${darkMode ? 'bg-gray-700' : 'bg-gray-50'}`}>
                 <div className="w-14 h-14 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-full flex items-center justify-center">
                   <User className="w-7 h-7 text-white" />
                 </div>
                 <div>
-                  <p className="font-bold text-lg">{selectedCoach.name_ar || selectedCoach.name}</p>
-                  <p className="text-sm text-gray-500">
+                  <p className={`font-bold text-lg ${darkMode ? 'text-white' : ''}`}>{selectedCoach.name_ar || selectedCoach.name}</p>
+                  <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
                     {selectedCoach.activities?.map(a => a.name).join(', ')}
                   </p>
                 </div>
@@ -237,7 +238,7 @@ const MemberRateCoach = () => {
 
               {/* Rating Stars */}
               <div className="text-center">
-                <p className="text-sm text-gray-500 mb-3">اختر تقييمك</p>
+                <p className={`text-sm mb-3 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>اختر تقييمك</p>
                 <div className="flex justify-center">
                   {renderStars(rating, 'w-10 h-10', true, setRating)}
                 </div>
@@ -250,7 +251,7 @@ const MemberRateCoach = () => {
 
               {/* Comment */}
               <div>
-                <label className="text-sm font-medium text-gray-700 mb-2 block">
+                <label className={`text-sm font-medium mb-2 block ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
                   تعليق (اختياري)
                 </label>
                 <Textarea
@@ -258,6 +259,7 @@ const MemberRateCoach = () => {
                   onChange={(e) => setComment(e.target.value)}
                   placeholder="شاركنا رأيك في المدرب..."
                   rows={3}
+                  className={darkMode ? 'bg-gray-700 border-gray-600 text-white placeholder:text-gray-400' : ''}
                 />
               </div>
 
