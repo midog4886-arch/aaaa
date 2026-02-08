@@ -4392,7 +4392,7 @@ async def record_attendance(
     record: AttendanceRecord,
     current_user: dict = Depends(get_current_user)
 ):
-    """Record single attendance"""
+    """Record single attendance - once per day for all activities"""
     # Get member and activity info
     member = await db.members.find_one({"id": record.member_id}, {"_id": 0})
     if not member:
@@ -4402,46 +4402,38 @@ async def record_attendance(
     if not activity:
         raise HTTPException(status_code=404, detail="النشاط غير موجود")
     
-    # Check if record already exists
-    existing = await db.attendance.find_one({
+    # Check if member already has attendance today (any activity)
+    existing_today = await db.attendance.find_one({
         "member_id": record.member_id,
-        "activity_id": record.activity_id,
         "date": record.date
     })
     
+    if existing_today:
+        raise HTTPException(
+            status_code=400, 
+            detail=f"تم تسجيل حضور هذا العضو مسبقاً اليوم في نشاط: {existing_today.get('activity_name', '')}"
+        )
+    
     now = datetime.now(timezone.utc).isoformat()
     
-    if existing:
-        # Update existing record
-        await db.attendance.update_one(
-            {"id": existing["id"]},
-            {"$set": {
-                "status": record.status,
-                "check_in_time": record.check_in_time or datetime.now().strftime("%H:%M"),
-                "notes": record.notes,
-                "recorded_by": current_user.get("username", "")
-            }}
-        )
-        return {"message": "تم تحديث سجل الحضور", "id": existing["id"]}
-    else:
-        # Create new record
-        record_doc = {
-            "id": str(uuid.uuid4()),
-            "member_id": record.member_id,
-            "member_name": member["name"],
-            "activity_id": record.activity_id,
-            "activity_name": activity["name"],
-            "branch_id": member.get("branch_id", ""),
-            "date": record.date,
-            "status": record.status,
-            "check_in_time": record.check_in_time or datetime.now().strftime("%H:%M"),
-            "notes": record.notes,
-            "recorded_by": current_user.get("username", ""),
-            "created_at": now
-        }
-        await db.attendance.insert_one(record_doc)
-        del record_doc["_id"]
-        return record_doc
+    # Create new record
+    record_doc = {
+        "id": str(uuid.uuid4()),
+        "member_id": record.member_id,
+        "member_name": member["name"],
+        "activity_id": record.activity_id,
+        "activity_name": activity["name"],
+        "branch_id": member.get("branch_id", ""),
+        "date": record.date,
+        "status": record.status,
+        "check_in_time": record.check_in_time or datetime.now().strftime("%H:%M"),
+        "notes": record.notes,
+        "recorded_by": current_user.get("username", ""),
+        "created_at": now
+    }
+    await db.attendance.insert_one(record_doc)
+    del record_doc["_id"]
+    return record_doc
 
 @api_router.post("/attendance/bulk")
 async def record_bulk_attendance(
