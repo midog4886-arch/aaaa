@@ -5410,6 +5410,60 @@ async def check_subscription_renewals(current_user: dict = Depends(get_current_u
     
     return {"message": f"تم إنشاء {notifications_created} إشعار جديد", "count": notifications_created}
 
+
+# ============ MEMBER PORTAL NOTIFICATIONS ============
+
+class MemberNotificationCreate(BaseModel):
+    title: str
+    message: str
+    target: str = "all_members"  # all_members, specific_member
+    target_member_id: Optional[str] = None
+    priority: str = "info"  # info, warning, danger
+    notification_type: str = "announcement"  # announcement, offer, reminder
+
+@api_router.post("/member-notifications")
+async def create_member_notification(data: MemberNotificationCreate, current_user: dict = Depends(get_current_user)):
+    """Create a notification for member portal"""
+    if not current_user.get("is_admin"):
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    notification = {
+        "id": str(uuid.uuid4()),
+        "title": data.title,
+        "message": data.message,
+        "target": data.target,
+        "target_members": [data.target_member_id] if data.target == "specific_member" and data.target_member_id else [],
+        "priority": data.priority,
+        "type": data.notification_type,
+        "created_by": current_user.get("id"),
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+    
+    await db.notifications.insert_one(notification)
+    
+    return {"message": "تم إرسال الإشعار بنجاح", "notification_id": notification["id"]}
+
+@api_router.get("/member-notifications")
+async def get_member_notifications(current_user: dict = Depends(get_current_user)):
+    """Get all member portal notifications"""
+    notifications = await db.notifications.find(
+        {"target": {"$in": ["all_members", "specific_member"]}},
+        {"_id": 0}
+    ).sort("created_at", -1).to_list(100)
+    return notifications
+
+@api_router.delete("/member-notifications/{notification_id}")
+async def delete_member_notification(notification_id: str, current_user: dict = Depends(get_current_user)):
+    """Delete a member portal notification"""
+    if not current_user.get("is_admin"):
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    result = await db.notifications.delete_one({"id": notification_id})
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Notification not found")
+    return {"message": "تم حذف الإشعار"}
+
+
 @api_router.get("/notifications/expiring-subscriptions")
 async def get_expiring_subscriptions(
     days: int = 7,
