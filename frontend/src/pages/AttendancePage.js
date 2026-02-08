@@ -584,9 +584,6 @@ export default function AttendancePage() {
     getActivitiesByCategory(cat.id).length > 0
   );
 
-  // Selected category state
-  const [selectedCategory, setSelectedCategory] = useState('');
-
   // Get activity IDs for selected category
   const getSelectedActivityIds = () => {
     if (!selectedCategory) return [];
