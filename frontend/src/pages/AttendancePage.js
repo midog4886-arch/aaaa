@@ -1277,13 +1277,13 @@ export default function AttendancePage() {
                     {t('النشاط', 'Activity')}
                   </label>
                   <select
-                    value={selectedActivityId}
-                    onChange={e => setSelectedActivityId(e.target.value)}
+                    value={selectedCategory}
+                    onChange={e => setSelectedCategory(e.target.value)}
                     className="w-full border rounded-lg p-2"
                   >
                     <option value="">{t('اختر النشاط', 'Select Activity')}</option>
-                    {filteredActivities.map(a => (
-                      <option key={a.id} value={a.id}>{a.name_ar || a.name}</option>
+                    {availableCategories.map(cat => (
+                      <option key={cat.id} value={cat.id}>{cat.name}</option>
                     ))}
                   </select>
                 </div>
@@ -1308,7 +1308,7 @@ export default function AttendancePage() {
                   />
                 </div>
                 <div className="flex items-end">
-                  <Button onClick={handleFetchReport} disabled={!selectedActivityId} className="w-full gap-2">
+                  <Button onClick={handleFetchReport} disabled={!selectedCategory} className="w-full gap-2">
                     <Search className="w-4 h-4" />
                     {t('عرض التقرير', 'Show Report')}
                   </Button>
