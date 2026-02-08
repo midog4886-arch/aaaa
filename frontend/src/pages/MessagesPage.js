@@ -300,6 +300,203 @@ export const MessagesPage = () => {
   return (
     <Layout title={t('messages')}>
       <div className="space-y-6" data-testid="messages-page">
+        
+        {/* Tabs */}
+        <div className="flex gap-2 border-b pb-2">
+          <Button
+            variant={activeTab === 'whatsapp' ? 'default' : 'outline'}
+            onClick={() => setActiveTab('whatsapp')}
+            className="gap-2"
+          >
+            <Phone className="w-4 h-4" />
+            {language === 'ar' ? 'رسائل واتساب' : 'WhatsApp Messages'}
+          </Button>
+          <Button
+            variant={activeTab === 'portal' ? 'default' : 'outline'}
+            onClick={() => setActiveTab('portal')}
+            className="gap-2"
+          >
+            <Bell className="w-4 h-4" />
+            {language === 'ar' ? 'إشعارات بوابة الأعضاء' : 'Portal Notifications'}
+          </Button>
+        </div>
+
+        {/* Portal Notifications Tab */}
+        {activeTab === 'portal' && (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Create Notification */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Megaphone className="w-5 h-5 text-primary" />
+                  {language === 'ar' ? 'إرسال إشعار جديد' : 'Send New Notification'}
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div>
+                  <label className="text-sm font-medium mb-1 block">{language === 'ar' ? 'عنوان الإشعار' : 'Notification Title'}</label>
+                  <Input
+                    value={notifTitle}
+                    onChange={(e) => setNotifTitle(e.target.value)}
+                    placeholder={language === 'ar' ? 'مثال: عرض خاص!' : 'Example: Special Offer!'}
+                  />
+                </div>
+                
+                <div>
+                  <label className="text-sm font-medium mb-1 block">{language === 'ar' ? 'نص الإشعار' : 'Notification Message'}</label>
+                  <Textarea
+                    value={notifMessage}
+                    onChange={(e) => setNotifMessage(e.target.value)}
+                    placeholder={language === 'ar' ? 'اكتب رسالة الإشعار هنا...' : 'Write notification message here...'}
+                    rows={4}
+                  />
+                </div>
+                
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-sm font-medium mb-1 block">{language === 'ar' ? 'نوع الإشعار' : 'Type'}</label>
+                    <Select value={notifType} onValueChange={setNotifType}>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="announcement">
+                          <span className="flex items-center gap-2"><Megaphone className="w-4 h-4" /> {language === 'ar' ? 'إعلان' : 'Announcement'}</span>
+                        </SelectItem>
+                        <SelectItem value="offer">
+                          <span className="flex items-center gap-2"><Gift className="w-4 h-4" /> {language === 'ar' ? 'عرض' : 'Offer'}</span>
+                        </SelectItem>
+                        <SelectItem value="reminder">
+                          <span className="flex items-center gap-2"><Clock className="w-4 h-4" /> {language === 'ar' ? 'تذكير' : 'Reminder'}</span>
+                        </SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  
+                  <div>
+                    <label className="text-sm font-medium mb-1 block">{language === 'ar' ? 'الأهمية' : 'Priority'}</label>
+                    <Select value={notifPriority} onValueChange={setNotifPriority}>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="info">
+                          <span className="flex items-center gap-2"><Info className="w-4 h-4 text-blue-500" /> {language === 'ar' ? 'عادي' : 'Normal'}</span>
+                        </SelectItem>
+                        <SelectItem value="warning">
+                          <span className="flex items-center gap-2"><AlertTriangle className="w-4 h-4 text-orange-500" /> {language === 'ar' ? 'مهم' : 'Important'}</span>
+                        </SelectItem>
+                        <SelectItem value="danger">
+                          <span className="flex items-center gap-2"><AlertTriangle className="w-4 h-4 text-red-500" /> {language === 'ar' ? 'عاجل' : 'Urgent'}</span>
+                        </SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                
+                <div>
+                  <label className="text-sm font-medium mb-1 block">{language === 'ar' ? 'المستلم' : 'Target'}</label>
+                  <Select value={notifTarget} onValueChange={setNotifTarget}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all_members">
+                        <span className="flex items-center gap-2"><Users className="w-4 h-4" /> {language === 'ar' ? 'جميع الأعضاء' : 'All Members'}</span>
+                      </SelectItem>
+                      <SelectItem value="specific_member">
+                        <span className="flex items-center gap-2"><Users className="w-4 h-4" /> {language === 'ar' ? 'عضو محدد' : 'Specific Member'}</span>
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                
+                {notifTarget === 'specific_member' && (
+                  <div>
+                    <label className="text-sm font-medium mb-1 block">{language === 'ar' ? 'اختر العضو' : 'Select Member'}</label>
+                    <Select value={notifTargetMemberId} onValueChange={setNotifTargetMemberId}>
+                      <SelectTrigger>
+                        <SelectValue placeholder={language === 'ar' ? 'اختر عضو...' : 'Select member...'} />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {members.map(m => (
+                          <SelectItem key={m.id} value={m.id}>
+                            {m.name_ar || m.name} - #{m.member_code}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+                
+                <Button 
+                  onClick={handleSendPortalNotification} 
+                  className="w-full gap-2"
+                  disabled={sendingNotif}
+                >
+                  <Send className="w-4 h-4" />
+                  {sendingNotif ? (language === 'ar' ? 'جاري الإرسال...' : 'Sending...') : (language === 'ar' ? 'إرسال الإشعار' : 'Send Notification')}
+                </Button>
+              </CardContent>
+            </Card>
+            
+            {/* Sent Notifications */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Bell className="w-5 h-5 text-primary" />
+                  {language === 'ar' ? 'الإشعارات المرسلة' : 'Sent Notifications'}
+                  <Badge variant="outline">{portalNotifications.length}</Badge>
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-3 max-h-[500px] overflow-y-auto">
+                  {portalNotifications.length === 0 ? (
+                    <div className="text-center py-8 text-gray-500">
+                      <Bell className="w-12 h-12 mx-auto mb-2 opacity-30" />
+                      <p>{language === 'ar' ? 'لا توجد إشعارات مرسلة' : 'No notifications sent'}</p>
+                    </div>
+                  ) : (
+                    portalNotifications.map((notif) => (
+                      <div 
+                        key={notif.id}
+                        className={`p-3 rounded-lg border ${
+                          notif.priority === 'danger' ? 'bg-red-50 border-red-200' :
+                          notif.priority === 'warning' ? 'bg-orange-50 border-orange-200' :
+                          'bg-blue-50 border-blue-200'
+                        }`}
+                      >
+                        <div className="flex justify-between items-start">
+                          <div>
+                            <p className="font-bold">{notif.title}</p>
+                            <p className="text-sm text-gray-600 mt-1">{notif.message}</p>
+                            <div className="flex items-center gap-2 mt-2 text-xs text-gray-400">
+                              <span>{notif.target === 'all_members' ? '👥 جميع الأعضاء' : '👤 عضو محدد'}</span>
+                              <span>•</span>
+                              <span>{new Date(notif.created_at).toLocaleDateString('ar-SA')}</span>
+                            </div>
+                          </div>
+                          <Button 
+                            variant="ghost" 
+                            size="icon"
+                            onClick={() => handleDeletePortalNotification(notif.id)}
+                            className="text-red-500 hover:text-red-700 hover:bg-red-50"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        )}
+
+        {/* WhatsApp Tab */}
+        {activeTab === 'whatsapp' && (
+          <>
         {/* Info Alert */}
         <Card className="border-amber-500/30 bg-amber-500/5">
           <CardContent className="p-4 flex items-start gap-3">
