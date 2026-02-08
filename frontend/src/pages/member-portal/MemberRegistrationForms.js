@@ -370,10 +370,37 @@ const MemberRegistrationForms = () => {
                   <span>الضريبة (15%):</span>
                   <span>{selectedForm.vat_amount} ر.س</span>
                 </div>
+              <div className="bg-gray-50 p-4 rounded-lg space-y-2">
+                <div className="flex justify-between">
+                  <span>المجموع الفرعي:</span>
+                  <span>{selectedForm.subtotal} ر.س</span>
+                </div>
+                {selectedForm.discount > 0 && (
+                  <div className="flex justify-between text-green-600">
+                    <span>الخصم:</span>
+                    <span>-{selectedForm.discount} ر.س</span>
+                  </div>
+                )}
+                <div className="flex justify-between">
+                  <span>الضريبة (15%):</span>
+                  <span>{selectedForm.vat_amount} ر.س</span>
+                </div>
                 <div className="flex justify-between font-bold text-lg pt-2 border-t text-orange-600">
                   <span>الإجمالي:</span>
                   <span>{selectedForm.total} ر.س</span>
                 </div>
+              </div>
+              
+              {/* Terms and Conditions */}
+              <div className="bg-amber-50 border-2 border-amber-400 rounded-lg p-4">
+                <p className="font-bold text-amber-800 mb-2 flex items-center gap-1">
+                  <span>⚠️</span> شروط وأحكام:
+                </p>
+                <ul className="text-sm text-amber-700 space-y-1 list-disc list-inside">
+                  <li>عرض عدد الحصص لا يعني أن الاشتراك ما زال فعّالًا بعد تاريخ الانتهاء.</li>
+                  <li><strong>يُعتد فقط بتاريخ بداية ونهاية الاشتراك</strong> الموضّح في هذه الاستمارة.</li>
+                  <li>لا يحق للمشترك المطالبة بالحصص بعد انتهاء فترة الاشتراك.</li>
+                </ul>
               </div>
               
               <Button 
