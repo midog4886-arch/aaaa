@@ -192,8 +192,12 @@ export default function AttendancePage() {
     }
 
     try {
+      // Get the first activity ID from the category for saving
+      const activityIds = getActivitiesByCategory(selectedCategory).map(a => a.id);
+      const activityId = activityIds[0] || selectedActivityId;
+      
       await attendanceAPI.recordBulk({
-        activity_id: selectedActivityId,
+        activity_id: activityId,
         date: selectedDate,
         records
       });
