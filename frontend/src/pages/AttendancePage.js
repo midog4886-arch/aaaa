@@ -1221,7 +1221,7 @@ export default function AttendancePage() {
                     className="w-full border rounded-lg p-2"
                   >
                     <option value="">{t('اختر النشاط', 'Select Activity')}</option>
-                    {activities.map(a => (
+                    {filteredActivities.map(a => (
                       <option key={a.id} value={a.id}>{a.name_ar || a.name}</option>
                     ))}
                   </select>
