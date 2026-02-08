@@ -874,64 +874,21 @@ export default function AttendancePage() {
                   </select>
                 </div>
 
-                {/* Activity Select */}
+                {/* Activity Category Select */}
                 <div>
                   <label className="text-sm font-medium text-gray-600 block mb-1">
                     {t('النشاط', 'Activity')} *
                   </label>
                   <select
-                    value={selectedActivityId}
-                    onChange={e => setSelectedActivityId(e.target.value)}
+                    value={selectedCategory}
+                    onChange={e => setSelectedCategory(e.target.value)}
                     className="w-full border rounded-lg p-2"
                     data-testid="activity-select"
                   >
                     <option value="">{t('اختر النشاط', 'Select Activity')}</option>
-                    {/* السباحة */}
-                    {filteredActivities.filter(a => (a.name_ar || a.name || '').includes('سباح')).length > 0 && (
-                      <optgroup label="🏊 السباحة">
-                        {filteredActivities.filter(a => (a.name_ar || a.name || '').includes('سباح')).map(a => (
-                          <option key={a.id} value={a.id}>{a.name_ar || a.name}</option>
-                        ))}
-                      </optgroup>
-                    )}
-                    {/* كرة القدم */}
-                    {filteredActivities.filter(a => (a.name_ar || a.name || '').includes('قدم') || (a.name_ar || a.name || '').includes('كرة')).length > 0 && (
-                      <optgroup label="⚽ كرة القدم">
-                        {filteredActivities.filter(a => (a.name_ar || a.name || '').includes('قدم') || (a.name_ar || a.name || '').includes('كرة')).map(a => (
-                          <option key={a.id} value={a.id}>{a.name_ar || a.name}</option>
-                        ))}
-                      </optgroup>
-                    )}
-                    {/* الكاراتيه */}
-                    {filteredActivities.filter(a => (a.name_ar || a.name || '').includes('كارات')).length > 0 && (
-                      <optgroup label="🥋 الكاراتيه">
-                        {filteredActivities.filter(a => (a.name_ar || a.name || '').includes('كارات')).map(a => (
-                          <option key={a.id} value={a.id}>{a.name_ar || a.name}</option>
-                        ))}
-                      </optgroup>
-                    )}
-                    {/* الجمباز */}
-                    {filteredActivities.filter(a => (a.name_ar || a.name || '').includes('جمباز')).length > 0 && (
-                      <optgroup label="🤸 الجمباز">
-                        {filteredActivities.filter(a => (a.name_ar || a.name || '').includes('جمباز')).map(a => (
-                          <option key={a.id} value={a.id}>{a.name_ar || a.name}</option>
-                        ))}
-                      </optgroup>
-                    )}
-                    {/* أنشطة أخرى */}
-                    {filteredActivities.filter(a => {
-                      const name = (a.name_ar || a.name || '').toLowerCase();
-                      return !name.includes('سباح') && !name.includes('قدم') && !name.includes('كرة') && !name.includes('كارات') && !name.includes('جمباز');
-                    }).length > 0 && (
-                      <optgroup label="📋 أخرى">
-                        {filteredActivities.filter(a => {
-                          const name = (a.name_ar || a.name || '').toLowerCase();
-                          return !name.includes('سباح') && !name.includes('قدم') && !name.includes('كرة') && !name.includes('كارات') && !name.includes('جمباز');
-                        }).map(a => (
-                          <option key={a.id} value={a.id}>{a.name_ar || a.name}</option>
-                        ))}
-                      </optgroup>
-                    )}
+                    {availableCategories.map(cat => (
+                      <option key={cat.id} value={cat.id}>{cat.name}</option>
+                    ))}
                   </select>
                 </div>
 
@@ -952,7 +909,7 @@ export default function AttendancePage() {
                 <div className="flex items-end">
                   <Button 
                     onClick={fetchAttendance} 
-                    disabled={!selectedActivityId}
+                    disabled={!selectedCategory}
                     className="w-full gap-2"
                     data-testid="load-attendance-btn"
                   >
