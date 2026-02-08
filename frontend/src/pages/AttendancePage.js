@@ -821,9 +821,52 @@ export default function AttendancePage() {
                     data-testid="activity-select"
                   >
                     <option value="">{t('اختر النشاط', 'Select Activity')}</option>
-                    {filteredActivities.map(a => (
-                      <option key={a.id} value={a.id}>{a.name_ar || a.name}</option>
-                    ))}
+                    {/* السباحة */}
+                    {filteredActivities.filter(a => (a.name_ar || a.name || '').includes('سباح')).length > 0 && (
+                      <optgroup label="🏊 السباحة">
+                        {filteredActivities.filter(a => (a.name_ar || a.name || '').includes('سباح')).map(a => (
+                          <option key={a.id} value={a.id}>{a.name_ar || a.name}</option>
+                        ))}
+                      </optgroup>
+                    )}
+                    {/* كرة القدم */}
+                    {filteredActivities.filter(a => (a.name_ar || a.name || '').includes('قدم') || (a.name_ar || a.name || '').includes('كرة')).length > 0 && (
+                      <optgroup label="⚽ كرة القدم">
+                        {filteredActivities.filter(a => (a.name_ar || a.name || '').includes('قدم') || (a.name_ar || a.name || '').includes('كرة')).map(a => (
+                          <option key={a.id} value={a.id}>{a.name_ar || a.name}</option>
+                        ))}
+                      </optgroup>
+                    )}
+                    {/* الكاراتيه */}
+                    {filteredActivities.filter(a => (a.name_ar || a.name || '').includes('كارات')).length > 0 && (
+                      <optgroup label="🥋 الكاراتيه">
+                        {filteredActivities.filter(a => (a.name_ar || a.name || '').includes('كارات')).map(a => (
+                          <option key={a.id} value={a.id}>{a.name_ar || a.name}</option>
+                        ))}
+                      </optgroup>
+                    )}
+                    {/* الجمباز */}
+                    {filteredActivities.filter(a => (a.name_ar || a.name || '').includes('جمباز')).length > 0 && (
+                      <optgroup label="🤸 الجمباز">
+                        {filteredActivities.filter(a => (a.name_ar || a.name || '').includes('جمباز')).map(a => (
+                          <option key={a.id} value={a.id}>{a.name_ar || a.name}</option>
+                        ))}
+                      </optgroup>
+                    )}
+                    {/* أنشطة أخرى */}
+                    {filteredActivities.filter(a => {
+                      const name = (a.name_ar || a.name || '').toLowerCase();
+                      return !name.includes('سباح') && !name.includes('قدم') && !name.includes('كرة') && !name.includes('كارات') && !name.includes('جمباز');
+                    }).length > 0 && (
+                      <optgroup label="📋 أخرى">
+                        {filteredActivities.filter(a => {
+                          const name = (a.name_ar || a.name || '').toLowerCase();
+                          return !name.includes('سباح') && !name.includes('قدم') && !name.includes('كرة') && !name.includes('كارات') && !name.includes('جمباز');
+                        }).map(a => (
+                          <option key={a.id} value={a.id}>{a.name_ar || a.name}</option>
+                        ))}
+                      </optgroup>
+                    )}
                   </select>
                 </div>
 
