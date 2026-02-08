@@ -69,6 +69,92 @@ export const MessagesPage = () => {
     loadData();
   }, [selectedBranchId]);
 
+  useEffect(() => {
+    if (activeTab === 'portal') {
+      loadPortalNotifications();
+    }
+  }, [activeTab]);
+
+  const loadPortalNotifications = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      const API_URL = process.env.REACT_APP_BACKEND_URL;
+      const res = await fetch(`${API_URL}/api/member-notifications`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setPortalNotifications(data);
+      }
+    } catch (error) {
+      console.error('Failed to load portal notifications:', error);
+    }
+  };
+
+  const handleSendPortalNotification = async () => {
+    if (!notifTitle.trim() || !notifMessage.trim()) {
+      toast.error('يرجى إدخال العنوان والرسالة');
+      return;
+    }
+    if (notifTarget === 'specific_member' && !notifTargetMemberId) {
+      toast.error('يرجى اختيار العضو');
+      return;
+    }
+
+    setSendingNotif(true);
+    try {
+      const token = localStorage.getItem('token');
+      const API_URL = process.env.REACT_APP_BACKEND_URL;
+      const res = await fetch(`${API_URL}/api/member-notifications`, {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}` 
+        },
+        body: JSON.stringify({
+          title: notifTitle,
+          message: notifMessage,
+          target: notifTarget,
+          target_member_id: notifTargetMemberId || null,
+          priority: notifPriority,
+          notification_type: notifType
+        })
+      });
+      
+      if (res.ok) {
+        toast.success('تم إرسال الإشعار بنجاح');
+        setNotifTitle('');
+        setNotifMessage('');
+        setNotifTargetMemberId('');
+        loadPortalNotifications();
+      } else {
+        toast.error('فشل إرسال الإشعار');
+      }
+    } catch (error) {
+      toast.error('حدث خطأ');
+    } finally {
+      setSendingNotif(false);
+    }
+  };
+
+  const handleDeletePortalNotification = async (notifId) => {
+    try {
+      const token = localStorage.getItem('token');
+      const API_URL = process.env.REACT_APP_BACKEND_URL;
+      const res = await fetch(`${API_URL}/api/member-notifications/${notifId}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      
+      if (res.ok) {
+        toast.success('تم حذف الإشعار');
+        loadPortalNotifications();
+      }
+    } catch (error) {
+      toast.error('حدث خطأ');
+    }
+  };
+
   const loadData = async () => {
     try {
       const branchParams = selectedBranchId && selectedBranchId !== 'all' ? { branch_filter: selectedBranchId } : {};
