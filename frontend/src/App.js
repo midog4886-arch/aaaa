@@ -23,6 +23,15 @@ import SchedulePage from './pages/SchedulePage';
 import UnauthorizedPage from './pages/UnauthorizedPage';
 import MemberCardPage from './pages/MemberCardPage';
 
+// Member Portal Pages
+import MemberLogin from './pages/member-portal/MemberLogin';
+import MemberDashboard from './pages/member-portal/MemberDashboard';
+import MemberSubscriptions from './pages/member-portal/MemberSubscriptions';
+import MemberSchedule from './pages/member-portal/MemberSchedule';
+import MemberInvoices from './pages/member-portal/MemberInvoices';
+import MemberQRCard from './pages/member-portal/MemberQRCard';
+import MemberNotifications from './pages/member-portal/MemberNotifications';
+
 import './App.css';
 
 // Protected Route Component
