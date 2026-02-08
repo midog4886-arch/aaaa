@@ -34,6 +34,7 @@ const translations = {
     schedule: 'الجدول',
     attendance: 'الحضور',
     member_card: 'بطاقة العضوية',
+    coach_ratings: 'تقييمات المدربين',
     accounting: 'المحاسبة',
     reports: 'التقارير',
     messages: 'الرسائل',
