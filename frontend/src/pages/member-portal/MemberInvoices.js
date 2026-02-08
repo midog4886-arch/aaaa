@@ -607,6 +607,18 @@ const MemberInvoices = () => {
                 </div>
               </div>
               
+              {/* Terms and Conditions */}
+              <div className="bg-amber-50 border-2 border-amber-400 rounded-lg p-4">
+                <p className="font-bold text-amber-800 mb-2 flex items-center gap-1">
+                  <span>⚠️</span> شروط وأحكام:
+                </p>
+                <ul className="text-sm text-amber-700 space-y-1 list-disc list-inside">
+                  <li>عرض عدد الحصص لا يعني أن الاشتراك ما زال فعّالًا بعد تاريخ الانتهاء.</li>
+                  <li><strong>يُعتد فقط بتاريخ بداية ونهاية الاشتراك</strong> الموضّح في هذه الاستمارة/الفاتورة.</li>
+                  <li>لا يحق للمشترك المطالبة بالحصص بعد انتهاء فترة الاشتراك.</li>
+                </ul>
+              </div>
+              
               <div className="flex gap-2">
                 {selectedItem.type === 'form' ? (
                   <Button 
