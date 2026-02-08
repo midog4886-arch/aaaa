@@ -114,16 +114,20 @@ const MemberSubscriptions = () => {
                             <Clock className="w-4 h-4" />
                             إلى: {sub.end_date || '-'}
                           </p>
+                          {sub.coach_name && (
+                            <p className="text-gray-500 mt-1">👨‍🏫 المدرب: {sub.coach_name}</p>
+                          )}
                         </div>
                       </div>
                       <span className="px-4 py-2 bg-red-600 text-white rounded-full text-sm font-bold">
                         منتهي ✗
                       </span>
                     </div>
-                    <div className="mt-3 pt-3 border-t border-red-200">
-                      <p className="text-red-700 text-center font-medium">
-                        ⚠️ يرجى التواصل مع الأكاديمية للتجديد
+                    <div className="mt-3 pt-3 border-t border-red-200 flex justify-between items-center">
+                      <p className="text-red-700 font-medium">
+                        ⚠️ يرجى التواصل للتجديد
                       </p>
+                      <span className="text-red-700 font-bold">{sub.fee || 0} ر.س</span>
                     </div>
                   </div>
                 ))}
