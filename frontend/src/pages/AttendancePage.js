@@ -478,9 +478,11 @@ export default function AttendancePage() {
         }));
       }
     } catch (error) {
+      const errorMsg = error.response?.data?.detail;
+      const message = typeof errorMsg === 'string' ? errorMsg : t('خطأ في تسجيل الحضور', 'Check-in error');
       setQrScanResult({
         error: true,
-        message: error.response?.data?.detail || t('خطأ في تسجيل الحضور', 'Check-in error')
+        message: message
       });
     } finally {
       setQrLoading(false);
