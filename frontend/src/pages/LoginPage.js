@@ -140,31 +140,6 @@ export const LoginPage = () => {
                 )}
               </Button>
             </form>
-
-            {/* Seed Data Button */}
-            <div className="mt-6 pt-4 border-t">
-              <Button
-                variant="outline"
-                className="w-full"
-                onClick={handleSeedData}
-                disabled={seeding}
-                data-testid="seed-data-btn"
-              >
-                {seeding ? (
-                  <>
-                    <Loader2 className="w-4 h-4 me-2 animate-spin" />
-                    {language === 'ar' ? 'جاري إنشاء البيانات...' : 'Creating demo data...'}
-                  </>
-                ) : (
-                  language === 'ar' ? 'إنشاء بيانات تجريبية' : 'Create Demo Data'
-                )}
-              </Button>
-              <p className="text-xs text-muted-foreground text-center mt-2">
-                {language === 'ar' 
-                  ? 'انقر لإنشاء حساب مدير وبيانات تجريبية'
-                  : 'Click to create admin account and demo data'}
-              </p>
-            </div>
           </CardContent>
         </Card>
       </div>
