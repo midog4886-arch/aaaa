@@ -95,16 +95,16 @@ const MemberRateCoach = () => {
       toast.error('يرجى اختيار التقييم');
       return;
     }
-    if (!manualCoachId) {
-      toast.error('يرجى اختيار المدرب');
+    if (!manualCoachName.trim()) {
+      toast.error('يرجى كتابة اسم المدرب');
       return;
     }
 
     setSubmitting(true);
     try {
       await memberAPI.post('/api/member-portal/rate-coach', {
-        coach_id: manualCoachId,
-        activity_id: manualActivityId || null,
+        coach_name: manualCoachName.trim(),
+        activity_name: manualActivityName.trim() || null,
         rating: manualRating,
         comment: manualComment
       });
