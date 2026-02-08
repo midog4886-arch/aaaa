@@ -3,7 +3,7 @@ import { useNavigate, Link, useLocation } from 'react-router-dom';
 import { 
   Trophy, Home, CreditCard, Calendar, FileText, QrCode, Bell, 
   LogOut, Menu, X, User, Clock, CheckCircle, AlertTriangle,
-  ChevronLeft, ClipboardList
+  ChevronLeft, ClipboardList, Moon, Sun, Star, Activity
 } from 'lucide-react';
 import { Button } from '../../components/ui/button';
 import axios from 'axios';
@@ -20,6 +20,10 @@ export const memberLogout = () => {
   localStorage.removeItem('member_token');
   localStorage.removeItem('member_data');
 };
+
+// Dark mode helper
+export const getDarkMode = () => localStorage.getItem('portal_dark_mode') === 'true';
+export const setDarkMode = (value) => localStorage.setItem('portal_dark_mode', value);
 
 // Axios instance with auth
 export const memberAPI = axios.create({
