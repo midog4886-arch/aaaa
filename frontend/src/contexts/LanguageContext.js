@@ -191,6 +191,7 @@ const translations = {
     branches: 'Branches',
     users: 'Users',
     member_card: 'Member Card',
+    coach_ratings: 'Coach Ratings',
     
     // Dashboard
     total_members: 'Total Members',
