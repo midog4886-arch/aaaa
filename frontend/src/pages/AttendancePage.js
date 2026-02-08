@@ -341,7 +341,7 @@ export default function AttendancePage() {
           showTorchButtonIfSupported: true,
           showZoomSliderIfSupported: true,
           videoConstraints: {
-            facingMode: "user"
+            facingMode: "environment"
           }
         },
         false
