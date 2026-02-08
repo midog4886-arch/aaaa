@@ -520,10 +520,35 @@ export default function AttendancePage() {
   // Get activity name
   const getActivityName = (id) => activities.find(a => a.id === id)?.name || '';
 
-  // Filter activities by branch (keep original order from database)
-  const filteredActivities = selectedBranchId 
+  // Filter activities by branch
+  const filteredActivitiesRaw = selectedBranchId 
     ? activities.filter(a => a.branch_id === selectedBranchId || !a.branch_id)
     : activities;
+
+  // Group activities by category (السباحة، كرة القدم، الكاراتيه)
+  const getActivityCategory = (activity) => {
+    const name = (activity.name_ar || activity.name || '').toLowerCase();
+    if (name.includes('سباح') || name.includes('swim')) return 1;
+    if (name.includes('قدم') || name.includes('كرة') || name.includes('foot')) return 2;
+    if (name.includes('كارات') || name.includes('karate')) return 3;
+    if (name.includes('جمباز') || name.includes('gym')) return 4;
+    return 99;
+  };
+
+  // Get number from activity name (2, 3, 4...)
+  const getActivityNumber = (activity) => {
+    const name = activity.name_ar || activity.name || '';
+    const match = name.match(/(\d+)/);
+    return match ? parseInt(match[1]) : 999;
+  };
+
+  // Sort: by category first, then by number
+  const filteredActivities = [...filteredActivitiesRaw].sort((a, b) => {
+    const catA = getActivityCategory(a);
+    const catB = getActivityCategory(b);
+    if (catA !== catB) return catA - catB;
+    return getActivityNumber(a) - getActivityNumber(b);
+  });
 
   return (
     <Layout title={t('الحضور', 'Attendance')}>
