@@ -1,9 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
+import { Card, CardContent } from '../../components/ui/card';
 import { Button } from '../../components/ui/button';
 import { Textarea } from '../../components/ui/textarea';
 import { Input } from '../../components/ui/input';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../../components/ui/dialog';
 import { Star, User, Loader2, Send, CheckCircle, MessageSquare, Plus, Award } from 'lucide-react';
 import { toast } from 'sonner';
@@ -12,7 +11,6 @@ import MemberLayout, { memberAPI } from './MemberLayout';
 const MemberRateCoach = () => {
   const [loading, setLoading] = useState(true);
   const [coaches, setCoaches] = useState([]);
-  const [allCoaches, setAllCoaches] = useState([]);
   const [activities, setActivities] = useState([]);
   const [selectedCoach, setSelectedCoach] = useState(null);
   const [ratingDialogOpen, setRatingDialogOpen] = useState(false);
