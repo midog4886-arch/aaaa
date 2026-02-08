@@ -894,53 +894,39 @@ ${selectedInvoice.discount > 0 ? `🎁 الخصم: ${selectedInvoice.discount} �
               margin: 0; 
             }
             
-            @media print {
-              html, body {
-                margin: 0 !important;
-                padding: 0 !important;
-                background: white !important;
-                min-height: auto !important;
-                height: auto !important;
-                display: block !important;
-                align-items: flex-start !important;
-                justify-content: flex-start !important;
-              }
-              .no-print { display: none !important; }
-              .card-wrapper { 
-                box-shadow: none !important;
-                border: none !important;
-                margin: 0 auto !important;
-                padding: 0 !important;
-                background: white !important;
-                position: static !important;
-                transform: none !important;
-              }
-              .card {
-                width: 6cm !important;
-                height: 6cm !important;
-                margin: 0 auto !important;
-              }
-            }
-            
             * { margin: 0; padding: 0; box-sizing: border-box; }
             
             body { 
               font-family: 'Tajawal', Arial, sans-serif; 
               background: #f3f4f6;
-              min-height: 100vh;
+              padding: 20px;
+              direction: rtl;
+              text-align: center;
+            }
+            
+            .preview-container {
               display: flex;
               flex-direction: column;
               align-items: center;
               justify-content: center;
-              padding: 20px;
-              direction: rtl;
+              min-height: calc(100vh - 40px);
             }
             
             @media print {
               body {
-                display: block !important;
-                padding: 0 !important;
-                min-height: 0 !important;
+                background: white;
+                padding: 0;
+              }
+              .preview-container {
+                display: block;
+                min-height: auto;
+              }
+              .no-print { display: none !important; }
+              .card-wrapper { 
+                box-shadow: none;
+                border: none;
+                padding: 0;
+                background: white;
               }
             }
             
@@ -964,6 +950,7 @@ ${selectedInvoice.discount > 0 ? `🎁 الخصم: ${selectedInvoice.discount} �
             }
             
             .card-wrapper {
+              display: inline-block;
               background: white;
               padding: 15px;
               border-radius: 12px;
@@ -1036,7 +1023,7 @@ ${selectedInvoice.discount > 0 ? `🎁 الخصم: ${selectedInvoice.discount} �
           </style>
         </head>
         <body>
-          <div class="no-print">
+          <div class="preview-container no-print">
             <div class="preview-title">📋 معاينة بطاقة العضوية</div>
             <div class="size-badge">📐 مقاس البطاقة: 6 سم × 6 سم</div>
           </div>
@@ -1050,8 +1037,10 @@ ${selectedInvoice.discount > 0 ? `🎁 الخصم: ${selectedInvoice.discount} �
             </div>
           </div>
           
-          <button class="print-btn no-print" onclick="window.print()">🖨️ طباعة البطاقة</button>
-          <p class="note no-print">البطاقة ستُطبع بمقاس 6×6 سم بالضبط</p>
+          <div class="preview-container no-print">
+            <button class="print-btn" onclick="window.print()">🖨️ طباعة البطاقة</button>
+            <p class="note">البطاقة ستُطبع بمقاس 6×6 سم بالضبط</p>
+          </div>
         </body>
       </html>
     `);
