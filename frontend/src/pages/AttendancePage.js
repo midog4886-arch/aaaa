@@ -520,48 +520,10 @@ export default function AttendancePage() {
   // Get activity name
   const getActivityName = (id) => activities.find(a => a.id === id)?.name || '';
 
-  // Filter activities by branch
-  const filteredActivitiesRaw = selectedBranchId 
+  // Filter activities by branch (keep original order from database)
+  const filteredActivities = selectedBranchId 
     ? activities.filter(a => a.branch_id === selectedBranchId || !a.branch_id)
     : activities;
-
-  // Group and sort activities by category (السباحة، كرة القدم، الكاراتيه، الجمباز)
-  const activityCategories = {
-    'سباحة': 1,
-    'swimming': 1,
-    'قدم': 2,
-    'football': 2,
-    'كرة': 2,
-    'كاراتيه': 3,
-    'karate': 3,
-    'جمباز': 4,
-    'gymnastics': 4,
-  };
-
-  const getActivityCategory = (activity) => {
-    const name = (activity.name_ar || activity.name || '').toLowerCase();
-    for (const [keyword, order] of Object.entries(activityCategories)) {
-      if (name.includes(keyword)) return order;
-    }
-    return 99; // Other activities at the end
-  };
-
-  // Extract number from activity name (e.g., "السباحة 2 يوم" → 2)
-  const getActivityDaysNumber = (activity) => {
-    const name = activity.name_ar || activity.name || '';
-    const match = name.match(/(\d+)/);
-    return match ? parseInt(match[1]) : 999; // Activities without numbers go last
-  };
-
-  const filteredActivities = [...filteredActivitiesRaw].sort((a, b) => {
-    const categoryA = getActivityCategory(a);
-    const categoryB = getActivityCategory(b);
-    if (categoryA !== categoryB) return categoryA - categoryB;
-    // Same category, sort by number of days (2, 3, 4, then activities without numbers)
-    const daysA = getActivityDaysNumber(a);
-    const daysB = getActivityDaysNumber(b);
-    return daysA - daysB;
-  });
 
   return (
     <Layout title={t('الحضور', 'Attendance')}>
