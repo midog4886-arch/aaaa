@@ -30,7 +30,8 @@ import {
   AlertTriangle,
   ClipboardList,
   CalendarDays,
-  QrCode
+  QrCode,
+  Star
 } from 'lucide-react';
 
 export const Sidebar = ({ isOpen, onClose }) => {
