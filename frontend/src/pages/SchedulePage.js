@@ -142,9 +142,13 @@ export default function SchedulePage() {
         schedulesAPI.getActivitiesWithMembers(params),
         fetchLevels()
       ]);
-      setActivitiesData(activitiesRes.data);
+      // API returns array directly
+      const data = Array.isArray(activitiesRes.data) ? activitiesRes.data : [];
+      setActivitiesData(data);
     } catch (error) {
+      console.error('Error fetching activities:', error);
       toast.error(t('خطأ في جلب البيانات', 'Error fetching data'));
+      setActivitiesData([]);
     } finally {
       setLoading(false);
     }
