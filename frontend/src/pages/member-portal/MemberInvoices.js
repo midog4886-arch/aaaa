@@ -118,6 +118,29 @@ const MemberInvoices = () => {
     doc.setTextColor(249, 115, 22);
     doc.text(`Total: ${item.total || 0} SAR`, 140, y);
     
+    // Terms and Conditions
+    y += 20;
+    doc.setFillColor(254, 243, 199);
+    doc.rect(20, y, 170, 35, 'F');
+    doc.setDrawColor(245, 158, 11);
+    doc.rect(20, y, 170, 35, 'S');
+    
+    y += 8;
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(146, 64, 14);
+    doc.text('Terms & Conditions:', 25, y);
+    
+    y += 8;
+    doc.setFontSize(8);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(120, 53, 15);
+    doc.text('- Session count does not mean subscription is active after end date.', 25, y);
+    y += 6;
+    doc.text('- Only start and end dates shown in this document are valid.', 25, y);
+    y += 6;
+    doc.text('- No claims for sessions after subscription period ends.', 25, y);
+    
     // Footer
     doc.setFontSize(8);
     doc.setFont('helvetica', 'normal');
