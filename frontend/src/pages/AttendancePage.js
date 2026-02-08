@@ -1050,20 +1050,18 @@ export default function AttendancePage() {
                   
                   {/* Activities List */}
                   {qrMemberData.activities && qrMemberData.activities.length > 0 ? (
-                    <div className="space-y-2">
-                      <p className="text-sm font-medium text-gray-600">{t('الأنشطة السارية - اضغط لتسجيل الحضور:', 'Active Activities - Click to check-in:')}</p>
+                    <div className="space-y-3">
+                      <p className="text-sm font-medium text-gray-600">{t('اختر النشاط لتسجيل الحضور:', 'Select activity to check-in:')}</p>
                       {qrMemberData.activities.map((act, idx) => (
-                        <button
+                        <div
                           key={idx}
-                          onClick={() => handleQRActivityCheckin(act.activity_id, act.activity_name)}
-                          disabled={act.recorded_today || qrLoading}
-                          className={`w-full p-3 rounded-lg border-2 text-right transition-all ${
+                          className={`p-4 rounded-lg border-2 ${
                             act.recorded_today 
-                              ? 'bg-green-50 border-green-300 cursor-default' 
-                              : 'bg-white border-gray-200 hover:border-blue-400 hover:bg-blue-50 cursor-pointer'
+                              ? 'bg-green-50 border-green-300' 
+                              : 'bg-white border-gray-200'
                           }`}
                         >
-                          <div className="flex justify-between items-center">
+                          <div className="flex justify-between items-center mb-3">
                             <div className="flex items-center gap-2">
                               {act.recorded_today ? (
                                 <Check className="w-5 h-5 text-green-600" />
@@ -1071,19 +1069,30 @@ export default function AttendancePage() {
                                 <UserCheck className="w-5 h-5 text-blue-500" />
                               )}
                             </div>
-                            <div>
-                              <p className="font-bold">{act.activity_name}</p>
+                            <div className="text-right">
+                              <p className="font-bold text-lg">{act.activity_name}</p>
                               <p className="text-xs text-gray-500">
-                                {t('ينتهي:', 'Ends:')} {act.end_date || '-'}
+                                {t('من:', 'From:')} {act.start_date || '-'} | {t('إلى:', 'To:')} {act.end_date || '-'}
                               </p>
                             </div>
                           </div>
-                          {act.recorded_today && (
-                            <p className="text-xs text-green-600 mt-1 text-center">
-                              {t('✓ تم تسجيل الحضور', '✓ Checked in')}
-                            </p>
+                          
+                          {act.recorded_today ? (
+                            <div className="bg-green-100 text-green-700 py-2 px-4 rounded-lg text-center font-bold">
+                              ✓ {t('تم تسجيل الحضور اليوم', 'Checked in today')}
+                            </div>
+                          ) : (
+                            <Button
+                              onClick={() => handleQRActivityCheckin(act.activity_id, act.activity_name)}
+                              disabled={qrLoading}
+                              className="w-full bg-green-600 hover:bg-green-700 text-white py-3 text-lg font-bold gap-2"
+                              data-testid={`checkin-btn-${act.activity_id}`}
+                            >
+                              <UserCheck className="w-5 h-5" />
+                              {t('تسجيل الحضور', 'Check In')}
+                            </Button>
                           )}
-                        </button>
+                        </div>
                       ))}
                     </div>
                   ) : (
