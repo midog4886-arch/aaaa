@@ -70,7 +70,7 @@ const MemberAttendance = () => {
   return (
     <MemberLayout>
       <div className="space-y-6">
-        <h1 className={`text-2xl font-bold ${darkMode ? 'text-white' : 'text-gray-800'}`}>سجل الحضور</h1>
+        <h1 className="text-2xl font-bold text-gray-800 dark:text-white">سجل الحضور</h1>
 
         {/* Stats Cards */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -132,9 +132,9 @@ const MemberAttendance = () => {
 
         {/* Activities Breakdown */}
         {stats?.this_month?.activities && Object.keys(stats.this_month.activities).length > 0 && (
-          <Card className={darkMode ? 'bg-gray-800 border-gray-700' : ''}>
+          <Card className="dark:bg-gray-800 dark:border-gray-700">
             <CardHeader>
-              <CardTitle className={`text-lg flex items-center gap-2 ${darkMode ? 'text-white' : ''}`}>
+              <CardTitle className="text-lg flex items-center gap-2 dark:text-white">
                 <Activity className="w-5 h-5 text-green-600" />
                 حضور هذا الشهر حسب النشاط
               </CardTitle>
@@ -142,16 +142,16 @@ const MemberAttendance = () => {
             <CardContent>
               <div className="space-y-3">
                 {Object.entries(stats.this_month.activities).map(([activity, count], idx) => (
-                  <div key={idx} className={`flex items-center justify-between p-3 rounded-lg ${darkMode ? 'bg-gray-700' : 'bg-green-50'}`}>
+                  <div key={idx} className="flex items-center justify-between p-3 rounded-lg bg-green-50 dark:bg-gray-700">
                     <div className="flex items-center gap-3">
                       <div className="w-10 h-10 bg-green-500 rounded-full flex items-center justify-center">
                         <CheckCircle className="w-5 h-5 text-white" />
                       </div>
-                      <span className={`font-medium ${darkMode ? 'text-white' : ''}`}>{activity}</span>
+                      <span className="font-medium dark:text-white">{activity}</span>
                     </div>
                     <div className="text-left">
                       <span className="text-2xl font-bold text-green-600">{count}</span>
-                      <span className={`text-sm mr-1 ${darkMode ? 'text-gray-300' : 'text-gray-500'}`}>حصة</span>
+                      <span className="text-sm mr-1 text-gray-500 dark:text-gray-300">حصة</span>
                     </div>
                   </div>
                 ))}
@@ -161,9 +161,9 @@ const MemberAttendance = () => {
         )}
 
         {/* Recent Attendance */}
-        <Card className={darkMode ? 'bg-gray-800 border-gray-700' : ''}>
+        <Card className="dark:bg-gray-800 dark:border-gray-700">
           <CardHeader>
-            <CardTitle className={`text-lg flex items-center gap-2 ${darkMode ? 'text-white' : ''}`}>
+            <CardTitle className="text-lg flex items-center gap-2 dark:text-white">
               <Clock className="w-5 h-5 text-blue-600" />
               آخر الحضور
             </CardTitle>
@@ -174,25 +174,25 @@ const MemberAttendance = () => {
                 {stats.recent.map((att, idx) => (
                   <div 
                     key={idx} 
-                    className={`flex items-center justify-between p-3 rounded-lg border ${darkMode ? 'bg-gray-700 border-gray-600' : 'bg-gray-50'}`}
+                    className="flex items-center justify-between p-3 rounded-lg border bg-gray-50 dark:bg-gray-700 dark:border-gray-600"
                   >
                     <div className="flex items-center gap-3">
-                      <div className={`w-10 h-10 rounded-full flex items-center justify-center ${darkMode ? 'bg-blue-900' : 'bg-blue-100'}`}>
+                      <div className="w-10 h-10 rounded-full flex items-center justify-center bg-blue-100 dark:bg-blue-900">
                         <CheckCircle className="w-5 h-5 text-blue-600" />
                       </div>
                       <div>
-                        <p className={`font-medium ${darkMode ? 'text-white' : ''}`}>{att.activity_name || 'نشاط'}</p>
-                        <p className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{att.time || ''}</p>
+                        <p className="font-medium dark:text-white">{att.activity_name || 'نشاط'}</p>
+                        <p className="text-xs text-gray-500 dark:text-gray-400">{att.time || ''}</p>
                       </div>
                     </div>
                     <div className="text-left">
-                      <p className={`font-bold ${darkMode ? 'text-gray-200' : 'text-gray-700'}`}>{att.date}</p>
+                      <p className="font-bold text-gray-700 dark:text-gray-200">{att.date}</p>
                     </div>
                   </div>
                 ))}
               </div>
             ) : (
-              <div className={`text-center py-8 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+              <div className="text-center py-8 text-gray-500 dark:text-gray-400">
                 <Calendar className="w-12 h-12 mx-auto mb-3 opacity-30" />
                 <p>لا يوجد سجل حضور</p>
               </div>
