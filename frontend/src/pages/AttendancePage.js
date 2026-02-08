@@ -109,18 +109,49 @@ export default function AttendancePage() {
     }
   }, [searchParams, activities]);
 
-  // Fetch attendance for selected activity and date
+  // Fetch attendance for selected category and date
   const fetchAttendance = useCallback(async () => {
-    if (!selectedActivityId || !selectedDate) return;
+    if (!selectedCategory || !selectedDate) return;
+    
+    const activityIds = getActivitiesByCategory(selectedCategory).map(a => a.id);
+    if (activityIds.length === 0) return;
     
     setLoading(true);
     try {
-      const res = await attendanceAPI.getByActivity(selectedActivityId, selectedDate);
-      setAttendanceData(res.data);
+      // Fetch attendance for all activities in the category
+      const allMembers = [];
+      const categoryName = activityCategories.find(c => c.id === selectedCategory)?.name || '';
+      
+      for (const activityId of activityIds) {
+        try {
+          const res = await attendanceAPI.getByActivity(activityId, selectedDate);
+          if (res.data?.members) {
+            res.data.members.forEach(m => {
+              // Check if member already added (avoid duplicates)
+              if (!allMembers.find(existing => existing.member_id === m.member_id)) {
+                allMembers.push({
+                  ...m,
+                  activity_name: res.data.activity?.name || res.data.activity?.name_ar || ''
+                });
+              }
+            });
+          }
+        } catch (e) {
+          // Continue with other activities if one fails
+        }
+      }
+      
+      setAttendanceData({
+        activity: { name: categoryName, name_ar: categoryName },
+        members: allMembers,
+        total_members: allMembers.length,
+        present_count: allMembers.filter(m => m.status === 'present').length,
+        absent_count: allMembers.filter(m => m.status === 'absent').length
+      });
       
       // Initialize local state for attendance records
       const initialRecords = {};
-      res.data.members.forEach(m => {
+      allMembers.forEach(m => {
         initialRecords[m.member_id] = {
           status: m.status || null,
           notes: m.notes || ''
@@ -132,7 +163,7 @@ export default function AttendancePage() {
     } finally {
       setLoading(false);
     }
-  }, [selectedActivityId, selectedDate]);
+  }, [selectedCategory, selectedDate, activities]);
 
   // Remove auto-fetch - only fetch when button is clicked
   // This prevents infinite loop caused by useCallback dependency changes
