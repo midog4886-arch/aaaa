@@ -151,6 +151,8 @@ function AppRoutes() {
       <Route path="/portal/invoices" element={<MemberInvoices />} />
       <Route path="/portal/card" element={<MemberQRCard />} />
       <Route path="/portal/notifications" element={<MemberNotifications />} />
+      <Route path="/portal/attendance" element={<MemberAttendance />} />
+      <Route path="/portal/rate-coach" element={<MemberRateCoach />} />
       <Route path="/portal" element={<Navigate to="/portal/login" replace />} />
       
       {/* Unauthorized Page */}
