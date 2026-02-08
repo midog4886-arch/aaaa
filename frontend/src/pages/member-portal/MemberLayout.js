@@ -88,10 +88,8 @@ const MemberLayout = ({ children }) => {
   const navItems = [
     { to: '/portal/dashboard', icon: Home, label: 'الرئيسية' },
     { to: '/portal/attendance', icon: Activity, label: 'سجل الحضور' },
-    { to: '/portal/registration-forms', icon: ClipboardList, label: 'استمارات التسجيل' },
     { to: '/portal/subscriptions', icon: CreditCard, label: 'اشتراكاتي' },
     { to: '/portal/schedule', icon: Calendar, label: 'جدول التدريبات' },
-    { to: '/portal/invoices', icon: FileText, label: 'فواتيري' },
     { to: '/portal/card', icon: QrCode, label: 'بطاقة العضوية' },
     { to: '/portal/rate-coach', icon: Star, label: 'تقييم المدربين' },
     { to: '/portal/notifications', icon: Bell, label: 'الإشعارات', badge: notifications.unread_count },
