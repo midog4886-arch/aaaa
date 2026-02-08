@@ -126,51 +126,51 @@ async def get_member_profile(member: dict = Depends(get_current_member)):
 
 @router.get("/subscriptions")
 async def get_member_subscriptions(member: dict = Depends(get_current_member)):
-    """Get all subscriptions (active and expired)"""
+    """Get all subscriptions from member's activities data"""
     today = datetime.now(timezone.utc).strftime('%Y-%m-%d')
     
-    # Get all paid invoices for this member
-    invoices = await db.invoices.find(
-        {"member_id": member["id"], "status": {"$in": ["paid", "partial"]}},
-        {"_id": 0}
-    ).to_list(100)
+    # Get member's activities directly from member data
+    activities = member.get("activities", [])
     
     active_subscriptions = []
     expired_subscriptions = []
     
-    for inv in invoices:
-        for item in inv.get("items", []):
-            if item.get("activity_id"):
-                # Parse dates from period field
-                end_date = item.get("end_date", "")
-                start_date = item.get("start_date", "")
-                
-                if not end_date and item.get("period"):
-                    period = item.get("period", "")
-                    if " - " in period:
-                        parts = period.split(" - ")
-                        if len(parts) == 2:
-                            start_date = parts[0].strip()
-                            end_date = parts[1].strip()
-                
-                subscription = {
-                    "invoice_id": inv.get("id"),
-                    "invoice_number": inv.get("invoice_number"),
-                    "activity_id": item.get("activity_id"),
-                    "activity_name": item.get("activity_name"),
-                    "start_date": start_date,
-                    "end_date": end_date,
-                    "schedule": item.get("schedule", ""),
-                    "fee": item.get("fee", 0),
-                    "created_at": inv.get("created_at")
-                }
-                
-                if end_date and end_date >= today:
-                    subscription["status"] = "active"
-                    active_subscriptions.append(subscription)
-                else:
-                    subscription["status"] = "expired"
-                    expired_subscriptions.append(subscription)
+    for activity in activities:
+        end_date = activity.get("end_date", "")
+        start_date = activity.get("start_date", "")
+        
+        # Get activity details for schedule
+        activity_data = await db.activities.find_one(
+            {"id": activity.get("activity_id")},
+            {"_id": 0, "schedule": 1, "coach_id": 1}
+        )
+        
+        # Get coach name if available
+        coach_name = ""
+        coach_id = activity.get("coach_id") or (activity_data.get("coach_id") if activity_data else "")
+        if coach_id:
+            coach = await db.coaches.find_one({"id": coach_id}, {"_id": 0, "name_ar": 1, "name": 1})
+            if coach:
+                coach_name = coach.get("name_ar") or coach.get("name")
+        
+        subscription = {
+            "activity_id": activity.get("activity_id"),
+            "activity_name": activity.get("activity_name"),
+            "start_date": start_date,
+            "end_date": end_date,
+            "schedule": activity.get("schedule") or (activity_data.get("schedule") if activity_data else ""),
+            "fee": activity.get("fee", 0),
+            "coach_name": coach_name,
+            "status": activity.get("status", "")
+        }
+        
+        # Check if active or expired
+        if end_date and end_date >= today:
+            subscription["status"] = "active"
+            active_subscriptions.append(subscription)
+        else:
+            subscription["status"] = "expired"
+            expired_subscriptions.append(subscription)
     
     return {
         "active": active_subscriptions,
