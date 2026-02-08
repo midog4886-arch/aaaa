@@ -4,29 +4,11 @@ import {
   CheckCircle, Calendar, TrendingUp, Clock, Loader2, 
   CalendarDays, Activity, Award
 } from 'lucide-react';
-import MemberLayout, { memberAPI, getDarkMode } from './MemberLayout';
+import MemberLayout, { memberAPI } from './MemberLayout';
 
 const MemberAttendance = () => {
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState(null);
-  const [darkMode, setDarkMode] = useState(getDarkMode());
-
-  // Listen for storage changes (for dark mode)
-  useEffect(() => {
-    const handleStorageChange = () => {
-      setDarkMode(getDarkMode());
-    };
-    window.addEventListener('storage', handleStorageChange);
-    // Also check periodically for same-tab changes
-    const interval = setInterval(() => {
-      const current = getDarkMode();
-      if (current !== darkMode) setDarkMode(current);
-    }, 500);
-    return () => {
-      window.removeEventListener('storage', handleStorageChange);
-      clearInterval(interval);
-    };
-  }, [darkMode]);
 
   useEffect(() => {
     fetchStats();
