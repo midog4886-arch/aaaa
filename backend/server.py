@@ -6276,6 +6276,85 @@ async def export_vat_report(
         headers={"Content-Disposition": f"attachment; filename={filename}"}
     )
 
+# ============ COACH RATINGS (ADMIN) ============
+
+@api_router.get("/coach-ratings")
+async def get_all_coach_ratings(
+    coach_id: Optional[str] = None,
+    _: dict = Depends(get_current_user)
+):
+    """Get all coach ratings for admin dashboard"""
+    query = {}
+    if coach_id:
+        query["coach_id"] = coach_id
+    
+    ratings = await db.coach_ratings.find(query, {"_id": 0}).sort("created_at", -1).to_list(500)
+    
+    # Enrich with coach and activity names
+    for rating in ratings:
+        coach = await db.coaches.find_one({"id": rating.get("coach_id")}, {"_id": 0, "name": 1, "name_ar": 1})
+        if coach:
+            rating["coach_name"] = coach.get("name_ar") or coach.get("name")
+        
+        activity = await db.activities.find_one({"id": rating.get("activity_id")}, {"_id": 0, "name": 1, "name_ar": 1})
+        if activity:
+            rating["activity_name"] = activity.get("name_ar") or activity.get("name")
+    
+    return {"ratings": ratings}
+
+
+@api_router.get("/coach-ratings/stats")
+async def get_coach_ratings_stats(_: dict = Depends(get_current_user)):
+    """Get coach ratings statistics"""
+    ratings = await db.coach_ratings.find({}, {"_id": 0}).to_list(1000)
+    
+    # Calculate stats per coach
+    coach_stats = {}
+    for rating in ratings:
+        coach_id = rating.get("coach_id")
+        if coach_id not in coach_stats:
+            coach_stats[coach_id] = {
+                "total_ratings": 0,
+                "sum_ratings": 0,
+                "comments_count": 0
+            }
+        coach_stats[coach_id]["total_ratings"] += 1
+        coach_stats[coach_id]["sum_ratings"] += rating.get("rating", 0)
+        if rating.get("comment"):
+            coach_stats[coach_id]["comments_count"] += 1
+    
+    # Calculate averages and enrich with coach names
+    result = []
+    for coach_id, stats in coach_stats.items():
+        coach = await db.coaches.find_one({"id": coach_id}, {"_id": 0, "name": 1, "name_ar": 1})
+        if coach:
+            avg = stats["sum_ratings"] / stats["total_ratings"] if stats["total_ratings"] > 0 else 0
+            result.append({
+                "coach_id": coach_id,
+                "coach_name": coach.get("name_ar") or coach.get("name"),
+                "total_ratings": stats["total_ratings"],
+                "average_rating": round(avg, 1),
+                "comments_count": stats["comments_count"]
+            })
+    
+    # Sort by average rating descending
+    result.sort(key=lambda x: x["average_rating"], reverse=True)
+    
+    return {
+        "coaches": result,
+        "total_ratings": len(ratings)
+    }
+
+
+@api_router.delete("/coach-ratings/{rating_id}")
+async def delete_coach_rating(rating_id: str, _: dict = Depends(get_current_user)):
+    """Delete a coach rating"""
+    result = await db.coach_ratings.delete_one({"id": rating_id})
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Rating not found")
+    return {"message": "تم حذف التقييم بنجاح"}
+
+
 # Include router
 app.include_router(api_router)
 
