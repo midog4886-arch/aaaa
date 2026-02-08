@@ -575,9 +575,9 @@ export default function SchedulePage() {
           }
           .time-header {
             background: #fef3e8;
-            padding: 8px 10px;
+            padding: 5px 8px;
             font-weight: bold;
-            font-size: 13px;
+            font-size: 11px;
             color: #f97316;
             border-bottom: 1px solid #eee;
           }
@@ -586,26 +586,26 @@ export default function SchedulePage() {
             font-weight: normal;
           }
           .level-group {
-            margin: 8px;
-            border-radius: 6px;
+            margin: 4px;
+            border-radius: 4px;
             overflow: hidden;
             border: 1px solid #ddd;
           }
           .level-header {
             color: white;
-            padding: 4px 8px;
-            font-size: 11px;
+            padding: 3px 6px;
+            font-size: 9px;
             font-weight: bold;
           }
           .level-members {
-            padding: 6px;
+            padding: 4px;
           }
           .member-item {
-            padding: 4px 6px;
-            margin: 2px 0;
+            padding: 2px 4px;
+            margin: 1px 0;
             background: #f9f9f9;
-            border-radius: 4px;
-            font-size: 11px;
+            border-radius: 3px;
+            font-size: 9px;
           }
           .member-name {
             font-weight: 500;
@@ -618,12 +618,12 @@ export default function SchedulePage() {
             background: #9ca3af;
           }
           .footer {
-            margin-top: 20px;
+            margin-top: 15px;
             text-align: center;
-            font-size: 9px;
+            font-size: 8px;
             color: #999;
             border-top: 1px solid #eee;
-            padding-top: 8px;
+            padding-top: 5px;
           }
           .empty-message {
             text-align: center;
@@ -632,30 +632,34 @@ export default function SchedulePage() {
           }
           @media print {
             @page {
-              size: A4;
-              margin: 5mm;
+              size: A4 landscape;
+              margin: 3mm;
             }
             body { 
-              padding: 5px;
-              font-size: 9px;
+              padding: 3px;
+              font-size: 8px;
             }
-            .header h1 { font-size: 14px; }
-            .header .date { font-size: 11px; }
-            .header .day { font-size: 10px; }
-            .stat-value { font-size: 18px; }
-            .stat-label { font-size: 9px; }
-            .activity-header { font-size: 12px; padding: 8px 10px; }
-            .activity-header .count { font-size: 9px; }
+            .header { margin-bottom: 5px; }
+            .header h1 { font-size: 12px; margin-bottom: 3px; }
+            .header .date { font-size: 10px; }
+            .header .day { font-size: 9px; }
+            .stats { margin: 5px 0; gap: 20px; }
+            .stat-value { font-size: 14px; }
+            .stat-label { font-size: 8px; }
+            .activities-container { grid-template-columns: repeat(2, 1fr); gap: 8px; }
+            .activity-header { font-size: 10px; padding: 5px 8px; }
+            .activity-header .count { font-size: 8px; }
             .times-grid { 
-              grid-template-columns: repeat(4, 1fr);
-              gap: 6px;
-              padding: 8px;
+              grid-template-columns: repeat(3, 1fr);
+              gap: 4px;
+              padding: 5px;
             }
-            .time-header { font-size: 10px; padding: 5px 8px; }
-            .level-group { margin: 4px; }
-            .level-header { font-size: 9px; padding: 3px 6px; }
-            .level-members { padding: 4px; }
-            .member-item { font-size: 9px; padding: 2px 4px; margin: 1px 0; }
+            .time-header { font-size: 9px; padding: 3px 5px; }
+            .level-group { margin: 3px; }
+            .level-header { font-size: 8px; padding: 2px 4px; }
+            .level-members { padding: 3px; }
+            .member-item { font-size: 8px; padding: 1px 3px; margin: 1px 0; }
+            .footer { margin-top: 5px; }
           }
         </style>
       </head>
