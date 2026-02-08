@@ -614,21 +614,44 @@ export default function SchedulePage() {
             background: #9ca3af;
           }
           .footer {
-            margin-top: 30px;
+            margin-top: 20px;
             text-align: center;
-            font-size: 11px;
+            font-size: 9px;
             color: #999;
             border-top: 1px solid #eee;
-            padding-top: 10px;
+            padding-top: 8px;
           }
           .empty-message {
             text-align: center;
-            padding: 40px;
+            padding: 20px;
             color: #666;
           }
           @media print {
-            body { padding: 10px; }
-            .times-grid { grid-template-columns: repeat(3, 1fr); }
+            @page {
+              size: A4;
+              margin: 5mm;
+            }
+            body { 
+              padding: 5px;
+              font-size: 9px;
+            }
+            .header h1 { font-size: 14px; }
+            .header .date { font-size: 11px; }
+            .header .day { font-size: 10px; }
+            .stat-value { font-size: 18px; }
+            .stat-label { font-size: 9px; }
+            .activity-header { font-size: 12px; padding: 8px 10px; }
+            .activity-header .count { font-size: 9px; }
+            .times-grid { 
+              grid-template-columns: repeat(4, 1fr);
+              gap: 6px;
+              padding: 8px;
+            }
+            .time-header { font-size: 10px; padding: 5px 8px; }
+            .level-group { margin: 4px; }
+            .level-header { font-size: 9px; padding: 3px 6px; }
+            .level-members { padding: 4px; }
+            .member-item { font-size: 9px; padding: 2px 4px; margin: 1px 0; }
           }
         </style>
       </head>
