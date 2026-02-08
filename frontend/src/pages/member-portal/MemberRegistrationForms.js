@@ -370,21 +370,6 @@ const MemberRegistrationForms = () => {
                   <span>الضريبة (15%):</span>
                   <span>{selectedForm.vat_amount} ر.س</span>
                 </div>
-              <div className="bg-gray-50 p-4 rounded-lg space-y-2">
-                <div className="flex justify-between">
-                  <span>المجموع الفرعي:</span>
-                  <span>{selectedForm.subtotal} ر.س</span>
-                </div>
-                {selectedForm.discount > 0 && (
-                  <div className="flex justify-between text-green-600">
-                    <span>الخصم:</span>
-                    <span>-{selectedForm.discount} ر.س</span>
-                  </div>
-                )}
-                <div className="flex justify-between">
-                  <span>الضريبة (15%):</span>
-                  <span>{selectedForm.vat_amount} ر.س</span>
-                </div>
                 <div className="flex justify-between font-bold text-lg pt-2 border-t text-orange-600">
                   <span>الإجمالي:</span>
                   <span>{selectedForm.total} ر.س</span>
