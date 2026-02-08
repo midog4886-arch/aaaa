@@ -23,8 +23,8 @@ const MemberRateCoach = () => {
   const [submitting, setSubmitting] = useState(false);
   
   // Manual rating form
-  const [manualCoachId, setManualCoachId] = useState('');
-  const [manualActivityId, setManualActivityId] = useState('');
+  const [manualCoachName, setManualCoachName] = useState('');
+  const [manualActivityName, setManualActivityName] = useState('');
   const [manualRating, setManualRating] = useState(0);
   const [manualHoverRating, setManualHoverRating] = useState(0);
   const [manualComment, setManualComment] = useState('');
