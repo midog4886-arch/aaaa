@@ -523,7 +523,7 @@ export default function SchedulePage() {
             display: flex;
             justify-content: center;
             gap: 30px;
-            margin: 15px 0;
+            margin: 10px 0;
           }
           .stat {
             text-align: center;
@@ -537,35 +537,39 @@ export default function SchedulePage() {
             font-size: 12px;
             color: #666;
           }
+          .activities-container {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 10px;
+          }
           .activity-card {
             border: 2px solid #ddd;
-            border-radius: 10px;
+            border-radius: 8px;
             overflow: hidden;
             break-inside: avoid;
-            margin-bottom: 20px;
           }
           .activity-header {
             background: #f97316;
             color: white;
-            padding: 12px 15px;
+            padding: 8px 10px;
             font-weight: bold;
-            font-size: 16px;
+            font-size: 13px;
           }
           .activity-header .count {
-            font-size: 12px;
+            font-size: 10px;
             opacity: 0.9;
             margin-top: 2px;
           }
           .times-grid {
             display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            gap: 10px;
-            padding: 15px;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 6px;
+            padding: 8px;
             background: #fff9f5;
           }
           .time-slot {
             background: white;
-            border-radius: 8px;
+            border-radius: 6px;
             border: 1px solid #eee;
             overflow: hidden;
           }
