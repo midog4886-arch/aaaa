@@ -3296,35 +3296,71 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
                       
                       {/* Row 3: Schedule (separate line for activities) */}
                       {!item.is_product && (
-                        <div className="grid grid-cols-2 gap-2">
+                        <div className="space-y-3">
                           <div className="space-y-1">
-                            <Label className="text-xs">{language === 'ar' ? 'المواعيد' : 'Schedule'}</Label>
-                            <Input 
-                              placeholder={language === 'ar' ? 'مثال: السبت والاثنين 4-5 مساءً' : 'e.g., Sat & Mon 4-5 PM'}
-                              value={item.schedule}
-                              onChange={(e) => {
-                                const updated = [...regFormItems];
-                                updated[idx].schedule = e.target.value;
-                                setRegFormItems(updated);
-                              }}
-                              className="text-sm"
-                            />
+                            <Label className="text-xs">{language === 'ar' ? 'أيام التدريب' : 'Training Days'}</Label>
+                            <div className="flex flex-wrap gap-1">
+                              {['السبت', 'الأحد', 'الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة'].map((day) => (
+                                <button
+                                  key={day}
+                                  type="button"
+                                  onClick={() => {
+                                    const currentDays = item.training_days || [];
+                                    const newDays = currentDays.includes(day)
+                                      ? currentDays.filter(d => d !== day)
+                                      : [...currentDays, day];
+                                    const updated = [...regFormItems];
+                                    updated[idx].training_days = newDays;
+                                    updated[idx].schedule = newDays.length > 0 
+                                      ? `${newDays.join(' - ')}${item.training_time ? ' | ' + item.training_time : ''}`
+                                      : '';
+                                    setRegFormItems(updated);
+                                  }}
+                                  className={`px-2 py-1 text-xs rounded border transition-colors ${
+                                    (item.training_days || []).includes(day)
+                                      ? 'bg-blue-500 text-white border-blue-500'
+                                      : 'bg-white text-gray-700 border-gray-300 hover:border-blue-400'
+                                  }`}
+                                >
+                                  {day}
+                                </button>
+                              ))}
+                            </div>
                           </div>
-                          <div className="space-y-1">
-                            <Label className="text-xs">{language === 'ar' ? 'المستوى' : 'Level'}</Label>
-                            <Select value={item.level_id || 'none'} onValueChange={(value) => updateRegFormItemLevel(idx, value === 'none' ? '' : value)}>
-                              <SelectTrigger className="text-sm">
-                                <SelectValue placeholder={language === 'ar' ? 'اختر المستوى' : 'Select level'} />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="none">{language === 'ar' ? 'بدون مستوى' : 'No level'}</SelectItem>
-                                {levels.map(level => (
-                                  <SelectItem key={level.id} value={level.id}>
-                                    {language === 'ar' ? 'المستوى' : 'Level'} {level.level_number} - {level.activity_name}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
+                          <div className="grid grid-cols-2 gap-2">
+                            <div className="space-y-1">
+                              <Label className="text-xs">{language === 'ar' ? 'الساعة' : 'Time'}</Label>
+                              <Input 
+                                placeholder={language === 'ar' ? 'مثال: 4-5 مساءً' : 'e.g., 4-5 PM'}
+                                value={item.training_time || ''}
+                                onChange={(e) => {
+                                  const updated = [...regFormItems];
+                                  updated[idx].training_time = e.target.value;
+                                  const days = updated[idx].training_days || [];
+                                  updated[idx].schedule = days.length > 0 
+                                    ? `${days.join(' - ')}${e.target.value ? ' | ' + e.target.value : ''}`
+                                    : e.target.value || '';
+                                  setRegFormItems(updated);
+                                }}
+                                className="text-sm"
+                              />
+                            </div>
+                            <div className="space-y-1">
+                              <Label className="text-xs">{language === 'ar' ? 'المستوى' : 'Level'}</Label>
+                              <Select value={item.level_id || 'none'} onValueChange={(value) => updateRegFormItemLevel(idx, value === 'none' ? '' : value)}>
+                                <SelectTrigger className="text-sm">
+                                  <SelectValue placeholder={language === 'ar' ? 'اختر المستوى' : 'Select level'} />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="none">{language === 'ar' ? 'بدون مستوى' : 'No level'}</SelectItem>
+                                  {levels.map(level => (
+                                    <SelectItem key={level.id} value={level.id}>
+                                      {language === 'ar' ? 'المستوى' : 'Level'} {level.level_number} - {level.activity_name}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </div>
                           </div>
                         </div>
                       )}
