@@ -93,15 +93,6 @@ const MemberLogin = () => {
               )}
             </Button>
           </form>
-          
-          <div className="mt-6 pt-6 border-t text-center">
-            <p className="text-sm text-gray-500">
-              ليس لديك حساب؟{' '}
-              <a href="/" className="text-orange-600 hover:underline font-medium">
-                تواصل مع الأكاديمية
-              </a>
-            </p>
-          </div>
         </CardContent>
       </Card>
     </div>
