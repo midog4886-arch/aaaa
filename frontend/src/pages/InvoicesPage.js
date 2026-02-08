@@ -890,43 +890,46 @@ ${selectedInvoice.discount > 0 ? `🎁 الخصم: ${selectedInvoice.discount} �
             @import url('https://fonts.googleapis.com/css2?family=Tajawal:wght@400;700&display=swap');
             
             @page { 
-              size: 6cm 6cm; 
-              margin: 0; 
+              size: A4;
+              margin: 0mm;
             }
             
             * { margin: 0; padding: 0; box-sizing: border-box; }
             
+            html, body {
+              margin: 0;
+              padding: 0;
+            }
+            
             body { 
               font-family: 'Tajawal', Arial, sans-serif; 
               background: #f3f4f6;
-              padding: 20px;
               direction: rtl;
-              text-align: center;
             }
             
-            .preview-container {
+            .screen-only {
+              padding: 20px;
+              text-align: center;
               display: flex;
               flex-direction: column;
               align-items: center;
               justify-content: center;
-              min-height: calc(100vh - 40px);
+              min-height: 100vh;
             }
             
             @media print {
-              body {
-                background: white !important;
-                padding: 0 !important;
-                text-align: right !important;
-              }
-              .no-print { display: none !important; }
-              .card-wrapper { 
-                box-shadow: none !important;
-                border: none !important;
-                padding: 0 !important;
-                background: white !important;
+              .screen-only { display: none !important; }
+              .print-area {
                 display: block !important;
-                margin: 0 !important;
+                position: absolute;
+                top: 0;
+                right: 0;
+                margin: 2mm;
               }
+            }
+            
+            @media screen {
+              .print-area { display: none; }
             }
             
             .preview-title {
@@ -966,6 +969,18 @@ ${selectedInvoice.discount > 0 ? `🎁 الخصم: ${selectedInvoice.discount} �
               justify-content: center;
               background: white;
               padding: 3mm;
+            }
+            
+            .print-card {
+              width: 6cm;
+              height: 6cm;
+              display: flex;
+              flex-direction: column;
+              align-items: center;
+              justify-content: center;
+              background: white;
+              padding: 3mm;
+              border: 1px solid #ddd;
             }
             
             .logo { 
@@ -1022,23 +1037,32 @@ ${selectedInvoice.discount > 0 ? `🎁 الخصم: ${selectedInvoice.discount} �
           </style>
         </head>
         <body>
-          <div class="preview-container no-print">
+          <!-- Screen Preview -->
+          <div class="screen-only">
             <div class="preview-title">📋 معاينة بطاقة العضوية</div>
             <div class="size-badge">📐 مقاس البطاقة: 6 سم × 6 سم</div>
+            
+            <div class="card-wrapper">
+              <div class="card">
+                <div class="logo">🏆 أكاديمية أداء الأبطال</div>
+                <img src="${qrImageUrl}" class="qr-img" alt="QR Code" />
+                <div class="name">${qrCardMember.name_ar || ''}</div>
+                <div class="code">#${qrCardMember.member_code || ''}</div>
+              </div>
+            </div>
+            
+            <button class="print-btn" onclick="window.print()">🖨️ طباعة البطاقة</button>
+            <p class="note">البطاقة ستُطبع في أعلى الصفحة</p>
           </div>
           
-          <div class="card-wrapper">
-            <div class="card">
+          <!-- Print Only - Top of page -->
+          <div class="print-area">
+            <div class="print-card">
               <div class="logo">🏆 أكاديمية أداء الأبطال</div>
               <img src="${qrImageUrl}" class="qr-img" alt="QR Code" />
               <div class="name">${qrCardMember.name_ar || ''}</div>
               <div class="code">#${qrCardMember.member_code || ''}</div>
             </div>
-          </div>
-          
-          <div class="preview-container no-print">
-            <button class="print-btn" onclick="window.print()">🖨️ طباعة البطاقة</button>
-            <p class="note">البطاقة ستُطبع بمقاس 6×6 سم بالضبط</p>
           </div>
         </body>
       </html>
