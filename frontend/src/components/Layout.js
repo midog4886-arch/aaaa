@@ -58,13 +58,13 @@ export const Sidebar = ({ isOpen, onClose }) => {
 
   const navItems = [
     { to: '/dashboard', icon: LayoutDashboard, label: 'dashboard', permission: 'dashboard' },
+    { to: '/invoices', icon: Receipt, label: 'invoices', permission: 'invoices' },
     { to: '/members', icon: Users, label: 'members', permission: 'members' },
     { to: '/activities', icon: Dumbbell, label: 'activities', permission: 'activities' },
     { to: '/levels', icon: Layers, label: 'levels', permission: 'levels' },
     { to: '/schedule', icon: CalendarDays, label: 'schedule', permission: 'schedule' },
     { to: '/attendance', icon: ClipboardList, label: 'attendance', permission: 'attendance' },
     { to: '/member-card', icon: QrCode, label: 'member_card', permission: 'attendance' },
-    { to: '/invoices', icon: Receipt, label: 'invoices', permission: 'invoices' },
     { to: '/store', icon: Package, label: 'store', permission: 'store' },
     { to: '/accounting', icon: Calculator, label: 'accounting', permission: 'accounting' },
     { to: '/reports', icon: BarChart3, label: 'reports', permission: 'reports' },
