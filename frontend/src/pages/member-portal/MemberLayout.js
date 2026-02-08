@@ -209,9 +209,7 @@ const MemberLayout = ({ children }) => {
 
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 py-6">
-        <DarkModeContext.Provider value={{ darkMode, toggleDarkMode }}>
-          {children}
-        </DarkModeContext.Provider>
+        {children}
       </main>
 
       {/* Footer */}
