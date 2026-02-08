@@ -3321,7 +3321,7 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
                           <div className="space-y-1">
                             <Label className="text-xs">{language === 'ar' ? 'أيام التدريب' : 'Training Days'}</Label>
                             <div className="flex flex-wrap gap-1">
-                              {['السبت', 'الأحد', 'الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة'].map((day) => (
+                              {['الأحد', 'الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'].map((day) => (
                                 <button
                                   key={day}
                                   type="button"
@@ -3332,9 +3332,21 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
                                       : [...currentDays, day];
                                     const updated = [...regFormItems];
                                     updated[idx].training_days = newDays;
-                                    updated[idx].schedule = newDays.length > 0 
-                                      ? `${newDays.join(' - ')}${item.training_time ? ' | ' + item.training_time : ''}`
-                                      : '';
+                                    // Format schedule: "الأحد، الإثنين، الثلاثاء و الأربعاء - 04:00 م"
+                                    const formatSchedule = (days, time) => {
+                                      if (days.length === 0) return time || '';
+                                      const dayOrder = ['الأحد', 'الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'];
+                                      const sortedDays = [...days].sort((a, b) => dayOrder.indexOf(a) - dayOrder.indexOf(b));
+                                      let daysStr;
+                                      if (sortedDays.length === 1) {
+                                        daysStr = sortedDays[0];
+                                      } else {
+                                        const lastDay = sortedDays.pop();
+                                        daysStr = sortedDays.join('، ') + ' و ' + lastDay;
+                                      }
+                                      return time ? `${daysStr} - ${time}` : daysStr;
+                                    };
+                                    updated[idx].schedule = formatSchedule(newDays, item.training_time);
                                     setRegFormItems(updated);
                                   }}
                                   className={`px-2 py-1 text-xs rounded border transition-colors ${
@@ -3352,15 +3364,26 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
                             <div className="space-y-1">
                               <Label className="text-xs">{language === 'ar' ? 'الساعة' : 'Time'}</Label>
                               <Input 
-                                placeholder={language === 'ar' ? 'مثال: 4-5 مساءً' : 'e.g., 4-5 PM'}
+                                placeholder={language === 'ar' ? 'مثال: 4:00 م' : 'e.g., 4:00 PM'}
                                 value={item.training_time || ''}
                                 onChange={(e) => {
                                   const updated = [...regFormItems];
                                   updated[idx].training_time = e.target.value;
-                                  const days = updated[idx].training_days || [];
-                                  updated[idx].schedule = days.length > 0 
-                                    ? `${days.join(' - ')}${e.target.value ? ' | ' + e.target.value : ''}`
-                                    : e.target.value || '';
+                                  // Format schedule: "الأحد، الإثنين، الثلاثاء و الأربعاء - 04:00 م"
+                                  const formatSchedule = (days, time) => {
+                                    if (!days || days.length === 0) return time || '';
+                                    const dayOrder = ['الأحد', 'الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'];
+                                    const sortedDays = [...days].sort((a, b) => dayOrder.indexOf(a) - dayOrder.indexOf(b));
+                                    let daysStr;
+                                    if (sortedDays.length === 1) {
+                                      daysStr = sortedDays[0];
+                                    } else {
+                                      const lastDay = sortedDays.pop();
+                                      daysStr = sortedDays.join('، ') + ' و ' + lastDay;
+                                    }
+                                    return time ? `${daysStr} - ${time}` : daysStr;
+                                  };
+                                  updated[idx].schedule = formatSchedule(updated[idx].training_days, e.target.value);
                                   setRegFormItems(updated);
                                 }}
                                 className="text-sm"
