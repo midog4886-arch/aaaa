@@ -58,8 +58,8 @@ const MemberRateCoach = () => {
   };
 
   const openManualDialog = () => {
-    setManualCoachId('');
-    setManualActivityId('');
+    setManualCoachName('');
+    setManualActivityName('');
     setManualRating(0);
     setManualComment('');
     setManualDialogOpen(true);
