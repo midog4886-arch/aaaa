@@ -120,7 +120,7 @@ const MemberSchedule = () => {
               <div>
                 <h3 className="font-bold text-gray-800 mb-2">موقع الأكاديمية</h3>
                 <p className="text-gray-600">للاستفسارات والتواصل:</p>
-                <p className="text-blue-700 font-medium mt-1" dir="ltr">📞 0500000000</p>
+                <p className="text-blue-700 font-medium mt-1 text-lg" dir="ltr">📞 +966 56 623 8384</p>
               </div>
             </div>
           </CardContent>
