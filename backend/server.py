@@ -115,11 +115,29 @@ async def get_member_card_public(search_term: str):
     for inv in invoices:
         for item in inv.get("items", []):
             if item.get("activity_id"):
+                # Try to get end_date directly, or parse from period field
                 end_date = item.get("end_date", "")
+                start_date = item.get("start_date", "")
+                
+                # If no end_date, try to parse from period (format: "2026-02-04 - 2026-03-02")
+                if not end_date and item.get("period"):
+                    period = item.get("period", "")
+                    if " - " in period:
+                        parts = period.split(" - ")
+                        if len(parts) == 2:
+                            start_date = parts[0].strip()
+                            end_date = parts[1].strip()
+                
+                # Determine status
+                status = "expired"
+                if end_date:
+                    status = "active" if end_date >= today else "expired"
+                
                 activities.append({
                     "activity_id": item.get("activity_id"),
                     "activity_name": item.get("activity_name"),
-                    "status": "active" if end_date >= today else "expired",
+                    "status": status,
+                    "start_date": start_date,
                     "end_date": end_date
                 })
     
