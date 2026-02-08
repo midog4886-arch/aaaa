@@ -762,6 +762,8 @@ export const MessagesPage = () => {
             </CardContent>
           </Card>
         </div>
+          </>
+        )}
       </div>
     </Layout>
   );
