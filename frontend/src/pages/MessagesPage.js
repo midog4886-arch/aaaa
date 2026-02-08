@@ -20,7 +20,13 @@ import {
   AlertTriangle,
   Building2,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  Bell,
+  Trash2,
+  Megaphone,
+  Gift,
+  Clock,
+  Info
 } from 'lucide-react';
 
 export const MessagesPage = () => {
