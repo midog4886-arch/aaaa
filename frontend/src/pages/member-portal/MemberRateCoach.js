@@ -429,7 +429,7 @@ const MemberRateCoach = () => {
             <Button 
               className="w-full gap-2 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600"
               onClick={handleSubmitManualRating}
-              disabled={submitting || manualRating === 0 || !manualCoachId}
+              disabled={submitting || manualRating === 0 || !manualCoachName.trim()}
             >
               {submitting ? (
                 <Loader2 className="w-4 h-4 animate-spin" />
