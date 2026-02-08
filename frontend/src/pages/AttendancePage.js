@@ -210,8 +210,10 @@ export default function AttendancePage() {
       }
       setManualMemberId('');
     } catch (error) {
-      toast.error(error.response?.data?.detail || t('خطأ في التسجيل', 'Check-in error'));
-      setQrScanResult({ error: true, message: error.response?.data?.detail });
+      const errorMsg = error.response?.data?.detail;
+      const message = typeof errorMsg === 'string' ? errorMsg : t('خطأ في التسجيل', 'Check-in error');
+      toast.error(message);
+      setQrScanResult({ error: true, message: message });
     }
   };
 
