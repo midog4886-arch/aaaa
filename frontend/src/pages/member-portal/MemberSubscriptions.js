@@ -120,11 +120,10 @@ const MemberSubscriptions = () => {
                         منتهي ✗
                       </span>
                     </div>
-                    <div className="mt-3 pt-3 border-t border-red-200 flex justify-between items-center">
-                      <p className="text-red-700 font-medium">
+                    <div className="mt-3 pt-3 border-t border-red-200">
+                      <p className="text-red-700 text-center font-medium">
                         ⚠️ يرجى التواصل للتجديد
                       </p>
-                      <span className="text-red-700 font-bold">{sub.fee || 0} ر.س</span>
                     </div>
                   </div>
                 ))}
