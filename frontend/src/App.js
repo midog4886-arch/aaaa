@@ -32,6 +32,8 @@ import MemberInvoices from './pages/member-portal/MemberInvoices';
 import MemberQRCard from './pages/member-portal/MemberQRCard';
 import MemberNotifications from './pages/member-portal/MemberNotifications';
 import MemberRegistrationForms from './pages/member-portal/MemberRegistrationForms';
+import MemberAttendance from './pages/member-portal/MemberAttendance';
+import MemberRateCoach from './pages/member-portal/MemberRateCoach';
 
 import './App.css';
 
