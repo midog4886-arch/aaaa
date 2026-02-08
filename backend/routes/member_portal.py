@@ -401,6 +401,203 @@ async def get_member_attendance(member: dict = Depends(get_current_member)):
     return {"attendance": attendance}
 
 
+# ============ ATTENDANCE STATS ============
+
+@router.get("/attendance-stats")
+async def get_member_attendance_stats(member: dict = Depends(get_current_member)):
+    """Get attendance statistics for the member"""
+    from datetime import datetime, timedelta
+    
+    # Get current month dates
+    today = datetime.now(timezone.utc)
+    first_day_of_month = today.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    first_day_str = first_day_of_month.strftime('%Y-%m-%d')
+    today_str = today.strftime('%Y-%m-%d')
+    
+    # Get last month dates
+    last_month = first_day_of_month - timedelta(days=1)
+    first_day_last_month = last_month.replace(day=1)
+    first_day_last_month_str = first_day_last_month.strftime('%Y-%m-%d')
+    last_day_last_month_str = last_month.strftime('%Y-%m-%d')
+    
+    # Get attendance for this month
+    this_month_attendance = await db.attendance.find(
+        {
+            "member_id": member["id"],
+            "date": {"$gte": first_day_str, "$lte": today_str}
+        },
+        {"_id": 0}
+    ).to_list(100)
+    
+    # Get attendance for last month
+    last_month_attendance = await db.attendance.find(
+        {
+            "member_id": member["id"],
+            "date": {"$gte": first_day_last_month_str, "$lte": last_day_last_month_str}
+        },
+        {"_id": 0}
+    ).to_list(100)
+    
+    # Get all-time attendance
+    total_attendance = await db.attendance.count_documents({"member_id": member["id"]})
+    
+    # Group by activity for this month
+    activities_count = {}
+    for att in this_month_attendance:
+        activity_name = att.get("activity_name", "غير محدد")
+        activities_count[activity_name] = activities_count.get(activity_name, 0) + 1
+    
+    # Recent attendance (last 10)
+    recent_attendance = await db.attendance.find(
+        {"member_id": member["id"]},
+        {"_id": 0}
+    ).sort("date", -1).to_list(10)
+    
+    return {
+        "this_month": {
+            "count": len(this_month_attendance),
+            "month_name": today.strftime('%B %Y'),
+            "activities": activities_count
+        },
+        "last_month": {
+            "count": len(last_month_attendance),
+            "month_name": last_month.strftime('%B %Y')
+        },
+        "total": total_attendance,
+        "recent": recent_attendance
+    }
+
+
+# ============ COACH RATINGS ============
+
+class CoachRatingCreate(BaseModel):
+    coach_id: str
+    activity_id: str
+    rating: int  # 1-5 stars
+    comment: Optional[str] = None
+
+@router.get("/coaches-to-rate")
+async def get_coaches_to_rate(member: dict = Depends(get_current_member)):
+    """Get list of coaches the member can rate based on their subscriptions"""
+    today = datetime.now(timezone.utc).strftime('%Y-%m-%d')
+    
+    # Get active subscriptions
+    invoices = await db.invoices.find(
+        {"member_id": member["id"], "status": {"$in": ["paid", "partial"]}},
+        {"_id": 0}
+    ).to_list(100)
+    
+    activity_ids = set()
+    for inv in invoices:
+        for item in inv.get("items", []):
+            if item.get("activity_id"):
+                end_date = item.get("end_date", "")
+                if not end_date and item.get("period"):
+                    period = item.get("period", "")
+                    if " - " in period:
+                        parts = period.split(" - ")
+                        if len(parts) == 2:
+                            end_date = parts[1].strip()
+                
+                # Include both active and recently expired (last 30 days)
+                if end_date:
+                    activity_ids.add(item.get("activity_id"))
+    
+    # Get coaches for these activities
+    coaches = []
+    if activity_ids:
+        activities = await db.activities.find(
+            {"id": {"$in": list(activity_ids)}},
+            {"_id": 0}
+        ).to_list(100)
+        
+        coach_ids = set()
+        for act in activities:
+            if act.get("coach_id"):
+                coach_ids.add(act.get("coach_id"))
+        
+        if coach_ids:
+            coaches_data = await db.coaches.find(
+                {"id": {"$in": list(coach_ids)}},
+                {"_id": 0}
+            ).to_list(50)
+            
+            for coach in coaches_data:
+                # Get existing rating from this member
+                existing_rating = await db.coach_ratings.find_one(
+                    {"member_id": member["id"], "coach_id": coach["id"]},
+                    {"_id": 0}
+                )
+                
+                # Get coach's activities
+                coach_activities = [a for a in activities if a.get("coach_id") == coach["id"]]
+                
+                coaches.append({
+                    "id": coach["id"],
+                    "name": coach.get("name"),
+                    "name_ar": coach.get("name_ar"),
+                    "specialization": coach.get("specialization"),
+                    "activities": [{"id": a["id"], "name": a.get("name_ar") or a.get("name")} for a in coach_activities],
+                    "my_rating": existing_rating
+                })
+    
+    return {"coaches": coaches}
+
+
+@router.post("/rate-coach")
+async def rate_coach(data: CoachRatingCreate, member: dict = Depends(get_current_member)):
+    """Submit or update coach rating"""
+    if data.rating < 1 or data.rating > 5:
+        raise HTTPException(status_code=400, detail="Rating must be between 1 and 5")
+    
+    # Check if rating exists
+    existing = await db.coach_ratings.find_one({
+        "member_id": member["id"],
+        "coach_id": data.coach_id
+    })
+    
+    rating_data = {
+        "member_id": member["id"],
+        "member_name": member.get("name_ar") or member.get("name"),
+        "coach_id": data.coach_id,
+        "activity_id": data.activity_id,
+        "rating": data.rating,
+        "comment": data.comment,
+        "updated_at": datetime.now(timezone.utc).isoformat()
+    }
+    
+    if existing:
+        await db.coach_ratings.update_one(
+            {"member_id": member["id"], "coach_id": data.coach_id},
+            {"$set": rating_data}
+        )
+        message = "تم تحديث التقييم بنجاح"
+    else:
+        rating_data["id"] = str(uuid.uuid4())
+        rating_data["created_at"] = datetime.now(timezone.utc).isoformat()
+        await db.coach_ratings.insert_one(rating_data)
+        message = "تم إضافة التقييم بنجاح"
+    
+    return {"message": message}
+
+
+@router.get("/my-ratings")
+async def get_my_ratings(member: dict = Depends(get_current_member)):
+    """Get all ratings submitted by this member"""
+    ratings = await db.coach_ratings.find(
+        {"member_id": member["id"]},
+        {"_id": 0}
+    ).to_list(50)
+    
+    # Enrich with coach names
+    for rating in ratings:
+        coach = await db.coaches.find_one({"id": rating["coach_id"]}, {"_id": 0, "name": 1, "name_ar": 1})
+        if coach:
+            rating["coach_name"] = coach.get("name_ar") or coach.get("name")
+    
+    return {"ratings": ratings}
+
+
 # ============ REGISTRATION FORMS ============
 
 @router.get("/registration-forms")
