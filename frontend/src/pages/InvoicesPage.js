@@ -914,19 +914,18 @@ ${selectedInvoice.discount > 0 ? `🎁 الخصم: ${selectedInvoice.discount} �
             
             @media print {
               body {
-                background: white;
-                padding: 0;
-              }
-              .preview-container {
-                display: block;
-                min-height: auto;
+                background: white !important;
+                padding: 0 !important;
+                text-align: right !important;
               }
               .no-print { display: none !important; }
               .card-wrapper { 
-                box-shadow: none;
-                border: none;
-                padding: 0;
-                background: white;
+                box-shadow: none !important;
+                border: none !important;
+                padding: 0 !important;
+                background: white !important;
+                display: block !important;
+                margin: 0 !important;
               }
             }
             
