@@ -314,7 +314,9 @@ export default function AttendancePage() {
         }));
       }
     } catch (error) {
-      toast.error(error.response?.data?.detail || t('خطأ في التسجيل', 'Registration error'));
+      const errorMsg = error.response?.data?.detail;
+      const message = typeof errorMsg === 'string' ? errorMsg : t('خطأ في التسجيل', 'Registration error');
+      toast.error(message);
     } finally {
       setQuickRegistering(false);
     }
