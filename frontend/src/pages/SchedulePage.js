@@ -196,7 +196,9 @@ export default function SchedulePage() {
 
       setAttendanceDialog({ open: false, member: null, activity: null, saving: false });
     } catch (error) {
-      toast.error(error.response?.data?.detail || t('خطأ في التسجيل', 'Error recording'));
+      const errorMsg = error.response?.data?.detail;
+      const message = typeof errorMsg === 'string' ? errorMsg : t('خطأ في التسجيل', 'Error recording');
+      toast.error(message);
       setAttendanceDialog(prev => ({ ...prev, saving: false }));
     }
   };
