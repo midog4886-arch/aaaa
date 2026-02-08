@@ -139,6 +139,16 @@ function AppRoutes() {
       {/* Member Card - Public page for members to view their QR */}
       <Route path="/member-card" element={<MemberCardPage />} />
       
+      {/* Member Portal Routes - Public */}
+      <Route path="/portal/login" element={<MemberLogin />} />
+      <Route path="/portal/dashboard" element={<MemberDashboard />} />
+      <Route path="/portal/subscriptions" element={<MemberSubscriptions />} />
+      <Route path="/portal/schedule" element={<MemberSchedule />} />
+      <Route path="/portal/invoices" element={<MemberInvoices />} />
+      <Route path="/portal/card" element={<MemberQRCard />} />
+      <Route path="/portal/notifications" element={<MemberNotifications />} />
+      <Route path="/portal" element={<Navigate to="/portal/login" replace />} />
+      
       {/* Unauthorized Page */}
       <Route 
         path="/unauthorized" 
