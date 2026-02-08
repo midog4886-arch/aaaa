@@ -11,7 +11,6 @@ import MemberLayout, { memberAPI } from './MemberLayout';
 const MemberRateCoach = () => {
   const [loading, setLoading] = useState(true);
   const [coaches, setCoaches] = useState([]);
-  const [activities, setActivities] = useState([]);
   const [selectedCoach, setSelectedCoach] = useState(null);
   const [ratingDialogOpen, setRatingDialogOpen] = useState(false);
   const [manualDialogOpen, setManualDialogOpen] = useState(false);
@@ -33,14 +32,8 @@ const MemberRateCoach = () => {
 
   const fetchData = async () => {
     try {
-      const [coachesRes, allCoachesRes, activitiesRes] = await Promise.all([
-        memberAPI.get('/api/member-portal/coaches-to-rate'),
-        memberAPI.get('/api/member-portal/all-coaches'),
-        memberAPI.get('/api/member-portal/all-activities')
-      ]);
+      const coachesRes = await memberAPI.get('/api/member-portal/coaches-to-rate');
       setCoaches(coachesRes.data.coaches || []);
-      setAllCoaches(allCoachesRes.data.coaches || []);
-      setActivities(activitiesRes.data.activities || []);
     } catch (error) {
       console.error('Failed to fetch data');
     } finally {
