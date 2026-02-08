@@ -360,42 +360,30 @@ const MemberRateCoach = () => {
           </DialogHeader>
           
           <div className="space-y-6">
-            {/* Coach Selection */}
+            {/* Coach Name - Manual Input */}
             <div>
               <label className="text-sm font-medium mb-2 block text-gray-700 dark:text-gray-300">
-                اختر المدرب <span className="text-red-500">*</span>
+                اسم المدرب <span className="text-red-500">*</span>
               </label>
-              <Select value={manualCoachId} onValueChange={setManualCoachId}>
-                <SelectTrigger className="dark:bg-gray-700 dark:border-gray-600 dark:text-white">
-                  <SelectValue placeholder="اختر المدرب" />
-                </SelectTrigger>
-                <SelectContent>
-                  {allCoaches.map((coach) => (
-                    <SelectItem key={coach.id} value={coach.id}>
-                      {coach.name_ar || coach.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Input
+                value={manualCoachName}
+                onChange={(e) => setManualCoachName(e.target.value)}
+                placeholder="اكتب اسم المدرب..."
+                className="dark:bg-gray-700 dark:border-gray-600 dark:text-white dark:placeholder:text-gray-400"
+              />
             </div>
 
-            {/* Activity Selection */}
+            {/* Activity Name - Manual Input */}
             <div>
               <label className="text-sm font-medium mb-2 block text-gray-700 dark:text-gray-300">
                 النشاط (اختياري)
               </label>
-              <Select value={manualActivityId} onValueChange={setManualActivityId}>
-                <SelectTrigger className="dark:bg-gray-700 dark:border-gray-600 dark:text-white">
-                  <SelectValue placeholder="اختر النشاط" />
-                </SelectTrigger>
-                <SelectContent>
-                  {activities.map((activity) => (
-                    <SelectItem key={activity.id} value={activity.id}>
-                      {activity.name_ar || activity.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Input
+                value={manualActivityName}
+                onChange={(e) => setManualActivityName(e.target.value)}
+                placeholder="اكتب اسم النشاط..."
+                className="dark:bg-gray-700 dark:border-gray-600 dark:text-white dark:placeholder:text-gray-400"
+              />
             </div>
 
             {/* Rating Stars */}
