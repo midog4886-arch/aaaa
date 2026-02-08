@@ -225,6 +225,14 @@ const MemberCardPage = () => {
       {/* Print Styles */}
       <style>{`
         @media print {
+          @page {
+            margin: 0;
+            padding: 0;
+          }
+          html, body {
+            margin: 0 !important;
+            padding: 0 !important;
+          }
           body * {
             visibility: hidden;
           }
@@ -232,11 +240,13 @@ const MemberCardPage = () => {
             visibility: visible;
           }
           #member-card {
-            position: absolute;
-            left: 50%;
-            top: 20px;
-            transform: translateX(-50%);
-            width: 400px;
+            position: fixed !important;
+            left: 50% !important;
+            top: 0 !important;
+            transform: translateX(-50%) !important;
+            width: 400px !important;
+            margin: 10px auto !important;
+            padding-top: 10px !important;
           }
         }
       `}</style>
