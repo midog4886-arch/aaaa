@@ -67,6 +67,7 @@ const MemberLayout = ({ children }) => {
 
   const navItems = [
     { to: '/portal/dashboard', icon: Home, label: 'الرئيسية' },
+    { to: '/portal/registration-forms', icon: ClipboardList, label: 'استمارات التسجيل' },
     { to: '/portal/subscriptions', icon: CreditCard, label: 'اشتراكاتي' },
     { to: '/portal/schedule', icon: Calendar, label: 'جدول التدريبات' },
     { to: '/portal/invoices', icon: FileText, label: 'فواتيري' },
