@@ -24,6 +24,7 @@ export default function AttendancePage() {
   const [branches, setBranches] = useState([]);
   const [selectedBranchId, setSelectedBranchId] = useState('');
   const [selectedActivityId, setSelectedActivityId] = useState(searchParams.get('activity_id') || '');
+  const [selectedCategory, setSelectedCategory] = useState(''); // Category state for grouped activities
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
   const [attendanceData, setAttendanceData] = useState(null);
   const [loading, setLoading] = useState(false);
