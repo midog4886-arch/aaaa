@@ -60,6 +60,9 @@ api_router.include_router(branches_router)
 api_router.include_router(activities_router)
 api_router.include_router(coaches_router)
 
+# Member Portal router (mounted directly on app, not api_router)
+app.include_router(member_portal_router)
+
 # Mount uploads directory for serving images
 app.mount("/uploads", StaticFiles(directory=str(UPLOADS_DIR)), name="uploads")
 
