@@ -176,6 +176,16 @@ const MemberRegistrationForms = () => {
             </div>
           </div>
 
+          <div style="margin-top: 25px; padding: 15px; background: #fef3c7; border: 2px solid #f59e0b; border-radius: 10px;">
+            <div style="font-weight: bold; color: #92400e; margin-bottom: 10px; font-size: 14px;">⚠️ شروط وأحكام:</div>
+            <ul style="font-size: 12px; color: #78350f; padding-right: 20px; line-height: 1.8;">
+              <li>عرض عدد الحصص لا يعني أن الاشتراك ما زال فعّالًا بعد تاريخ الانتهاء.</li>
+              <li><strong>يُعتد فقط بتاريخ بداية ونهاية الاشتراك</strong> الموضّح في هذه الاستمارة/الفاتورة.</li>
+              <li>لا يحق للمشترك المطالبة بالحصص بعد انتهاء فترة الاشتراك.</li>
+              <li>في حال الرغبة بالتجديد، يرجى التواصل مع إدارة الأكاديمية قبل انتهاء الاشتراك.</li>
+            </ul>
+          </div>
+
           <div class="footer">
             <p>شكراً لاختياركم أكاديمية أداء الأبطال العالمية</p>
             <p style="margin-top: 5px;">📞 +966 56 623 8384</p>
