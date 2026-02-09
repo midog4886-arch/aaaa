@@ -1210,9 +1210,8 @@ ${selectedInvoice.discount > 0 ? `🎁 الخصم: ${selectedInvoice.discount} �
     const startDate = firstActivity?.start_date || '';
     const endDate = firstActivity?.end_date || '';
     
-    // Get schedule/days info
-    const schedule = firstActivity?.schedule || firstActivity?.days || '';
-    const time = firstActivity?.time || '';
+    // Get schedule info
+    const schedule = firstActivity?.schedule || '';
     
     // Generate activities HTML
     const activitiesHtml = cardPrintMember?.activities?.map(act => {
