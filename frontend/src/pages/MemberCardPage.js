@@ -118,7 +118,7 @@ const MemberCardPage = () => {
               <!-- Member Card - Position 1 -->
               <div class="card">
                 <div class="card-header">
-                  <div class="header-text"><h2>أكاديمية أداء الأبطال</h2><p>World Champions Performance Academy</p></div>
+                  <div class="header-text"><h2>أكاديمية أداء الأبطال</h2><p>Global Champions Sports Performance</p></div>
                   <div class="trophy">🏆</div>
                 </div>
                 <div class="card-body">
@@ -159,7 +159,7 @@ const MemberCardPage = () => {
             <!-- Member Card - Position 1 -->
             <div class="card">
               <div class="card-header">
-                <div class="header-text"><h2>أكاديمية أداء الأبطال</h2><p>World Champions Performance Academy</p></div>
+                <div class="header-text"><h2>أكاديمية أداء الأبطال</h2><p>Global Champions Sports Performance</p></div>
                 <div class="trophy">🏆</div>
               </div>
               <div class="card-body">
@@ -326,7 +326,7 @@ const MemberCardPage = () => {
                 <div className="flex items-center justify-between">
                   <div>
                     <h2 className="text-xl font-bold">أكاديمية أداء الأبطال</h2>
-                    <p className="text-orange-100 text-sm">World Champions Performance Academy</p>
+                    <p className="text-orange-100 text-sm">Global Champions Sports Performance</p>
                   </div>
                   <div className="text-4xl">🏆</div>
                 </div>

@@ -1277,7 +1277,7 @@ ${selectedInvoice.discount > 0 ? `🎁 الخصم: ${selectedInvoice.discount} �
               <!-- Member Card - Position 1 -->
               <div class="card">
                 <div class="card-header">
-                  <div class="header-text"><h2>أكاديمية أداء الأبطال</h2><p>World Champions Performance Academy</p></div>
+                  <div class="header-text"><h2>أكاديمية أداء الأبطال</h2><p>Global Champions Sports Performance</p></div>
                   <div class="trophy">🏆</div>
                 </div>
                 <div class="card-body">
@@ -1318,7 +1318,7 @@ ${selectedInvoice.discount > 0 ? `🎁 الخصم: ${selectedInvoice.discount} �
             <!-- Member Card - Position 1 -->
             <div class="card">
               <div class="card-header">
-                <div class="header-text"><h2>أكاديمية أداء الأبطال</h2><p>World Champions Performance Academy</p></div>
+                <div class="header-text"><h2>أكاديمية أداء الأبطال</h2><p>Global Champions Sports Performance</p></div>
                 <div class="trophy">🏆</div>
               </div>
               <div class="card-body">
@@ -1481,7 +1481,7 @@ ${selectedInvoice.discount > 0 ? `🎁 الخصم: ${selectedInvoice.discount} �
               <!-- Member Card - Position 1 -->
               <div class="card">
                 <div class="card-header">
-                  <div class="header-text"><h2>أكاديمية أداء الأبطال</h2><p>World Champions Performance Academy</p></div>
+                  <div class="header-text"><h2>أكاديمية أداء الأبطال</h2><p>Global Champions Sports Performance</p></div>
                   <div class="trophy">🏆</div>
                 </div>
                 <div class="card-body">
@@ -1522,7 +1522,7 @@ ${selectedInvoice.discount > 0 ? `🎁 الخصم: ${selectedInvoice.discount} �
             <!-- Member Card - Position 1 -->
             <div class="card">
               <div class="card-header">
-                <div class="header-text"><h2>أكاديمية أداء الأبطال</h2><p>World Champions Performance Academy</p></div>
+                <div class="header-text"><h2>أكاديمية أداء الأبطال</h2><p>Global Champions Sports Performance</p></div>
                 <div class="trophy">🏆</div>
               </div>
               <div class="card-body">
