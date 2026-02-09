@@ -1190,65 +1190,13 @@ ${selectedInvoice.discount > 0 ? `🎁 الخصم: ${selectedInvoice.discount} �
     }
   };
 
-  const handleStickerPrint = (position) => {
+  const handleStickerPrint = () => {
     setShowCardPrintDialog(false);
     if (!cardPrintMember) return;
     
     const printWindow = window.open('', '_blank', 'width=800,height=600');
     
-    // 2 horizontal cards layout on A4
-    const cardWidth = 90; // mm
-    const horizontalMargin = 15; // mm from sides
-    const topMargin = 30; // mm from top
-    const gap = 10; // mm between cards
-    const leftOffset = horizontalMargin + (position * (cardWidth + gap));
-    const topOffset = topMargin;
-    
-    // Position 0 = Member Card, Position 1 = Logo
-    if (position === 1) {
-      // Print Logo Card
-      printWindow.document.write(`
-        <!DOCTYPE html>
-        <html>
-          <head>
-            <meta charset="UTF-8">
-            <title>شعار الأكاديمية</title>
-            <style>
-              @import url('https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700&display=swap');
-              @page { size: A4; margin: 0mm; }
-              * { margin: 0; padding: 0; box-sizing: border-box; }
-              body { font-family: 'Tajawal', Arial, sans-serif; background: #f3f4f6; direction: rtl; }
-              .screen-only { padding: 20px; text-align: center; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; }
-              @media print { .screen-only { display: none !important; } .print-area { display: block !important; position: absolute; top: ${topOffset}mm; right: ${leftOffset}mm; } }
-              @media screen { .print-area { display: none; } }
-              .logo-card { width: 90mm; height: 70mm; background: white; border-radius: 4mm; overflow: hidden; box-shadow: 0 4px 15px rgba(0,0,0,0.1); display: flex; align-items: center; justify-content: center; padding: 5mm; }
-              .logo-card img { max-width: 100%; max-height: 100%; object-fit: contain; }
-              .print-btn { margin-top: 20px; padding: 12px 30px; background: linear-gradient(135deg, #F97316, #EA580C); color: white; border: none; border-radius: 10px; cursor: pointer; font-family: 'Tajawal', Arial, sans-serif; font-size: 16px; font-weight: bold; }
-              .position-info { margin-top: 15px; padding: 10px 20px; background: #FEF3C7; border-radius: 8px; color: #92400E; font-size: 14px; }
-            </style>
-          </head>
-          <body>
-            <div class="screen-only">
-              <p style="font-size: 18px; margin-bottom: 20px;">📋 معاينة شعار الأكاديمية</p>
-              <div class="logo-card">
-                <img src="${window.location.origin}/images/academy-logo.png" alt="شعار الأكاديمية" />
-              </div>
-              <div class="position-info">📍 موقع الطباعة: خانة 2 (شعار الأكاديمية)</div>
-              <button class="print-btn" onclick="window.print()">🖨️ طباعة</button>
-            </div>
-            <div class="print-area">
-              <div class="logo-card">
-                <img src="${window.location.origin}/images/academy-logo.png" alt="شعار الأكاديمية" />
-              </div>
-            </div>
-          </body>
-        </html>
-      `);
-      printWindow.document.close();
-      return;
-    }
-    
-    // Position 0 = Member Card
+    // QR Data for member card
     const qrData = JSON.stringify({
       type: 'WCPA_MEMBER',
       code: cardPrintMember.member_code,
@@ -1272,6 +1220,7 @@ ${selectedInvoice.discount > 0 ? `🎁 الخصم: ${selectedInvoice.discount} �
       `;
     }).join('') || '';
     
+    // Print BOTH card and logo together
     printWindow.document.write(`
       <!DOCTYPE html>
       <html>
@@ -1284,8 +1233,9 @@ ${selectedInvoice.discount > 0 ? `🎁 الخصم: ${selectedInvoice.discount} �
             * { margin: 0; padding: 0; box-sizing: border-box; }
             body { font-family: 'Tajawal', Arial, sans-serif; background: #f3f4f6; direction: rtl; }
             .screen-only { padding: 20px; text-align: center; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; }
-            @media print { .screen-only { display: none !important; } .print-area { display: block !important; position: absolute; top: ${topOffset}mm; right: ${leftOffset}mm; } }
+            @media print { .screen-only { display: none !important; } .print-area { display: flex !important; position: absolute; top: 30mm; right: 15mm; gap: 10mm; } }
             @media screen { .print-area { display: none; } }
+            .sticker-preview { display: flex; gap: 15px; justify-content: center; margin-bottom: 20px; }
             .card { width: 90mm; height: 70mm; background: white; border-radius: 4mm; overflow: hidden; box-shadow: 0 4px 15px rgba(0,0,0,0.1); display: flex; flex-direction: column; }
             .card-header { background: linear-gradient(135deg, #F97316, #F59E0B); padding: 2mm; display: flex; justify-content: space-between; align-items: center; color: white; }
             .header-text h2 { font-size: 9pt; font-weight: 700; margin: 0; }
@@ -1313,13 +1263,59 @@ ${selectedInvoice.discount > 0 ? `🎁 الخصم: ${selectedInvoice.discount} �
             .activity-item.expired .activity-status { color: #DC2626; }
             .card-footer { text-align: right; padding: 1.5mm 2mm; background: #f9fafb; font-size: 5pt; color: #374151; border-top: 1px dashed #e5e7eb; line-height: 1.4; }
             .card-footer .terms-title { font-weight: 700; color: #1f2937; font-size: 6pt; margin-bottom: 0.5mm; }
+            .logo-card { width: 90mm; height: 70mm; background: white; border-radius: 4mm; overflow: hidden; box-shadow: 0 4px 15px rgba(0,0,0,0.1); display: flex; align-items: center; justify-content: center; padding: 5mm; }
+            .logo-card img { max-width: 100%; max-height: 100%; object-fit: contain; }
             .print-btn { margin-top: 20px; padding: 12px 30px; background: linear-gradient(135deg, #F97316, #EA580C); color: white; border: none; border-radius: 10px; cursor: pointer; font-family: 'Tajawal', Arial, sans-serif; font-size: 16px; font-weight: bold; }
-            .position-info { margin-top: 15px; padding: 10px 20px; background: #FEF3C7; border-radius: 8px; color: #92400E; font-size: 14px; }
+            .position-labels { display: flex; gap: 15px; justify-content: center; margin-top: 10px; }
+            .position-label { padding: 8px 16px; background: #FEF3C7; border-radius: 8px; color: #92400E; font-size: 12px; }
           </style>
         </head>
         <body>
           <div class="screen-only">
-            <p style="font-size: 18px; margin-bottom: 20px;">📋 معاينة بطاقة العضوية</p>
+            <p style="font-size: 18px; margin-bottom: 20px;">📋 معاينة الطباعة - كرت العضوية + شعار الأكاديمية</p>
+            <div class="sticker-preview">
+              <!-- Member Card - Position 1 -->
+              <div class="card">
+                <div class="card-header">
+                  <div class="header-text"><h2>أكاديمية أداء الأبطال</h2><p>World Champions Performance Academy</p></div>
+                  <div class="trophy">🏆</div>
+                </div>
+                <div class="card-body">
+                  <div class="qr-container">
+                    <div class="qr-section"><img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(qrData)}" /></div>
+                    <div class="qr-dates">
+                      <span>من: ${startDate || '----'}</span>
+                      <span>إلى: ${endDate || '----'}</span>
+                    </div>
+                  </div>
+                  <div class="info-section">
+                    <div class="info-label">الاسم</div>
+                    <div class="member-name">${cardPrintMember?.name_ar || ''}</div>
+                    <div class="info-row"><span class="info-label">رقم العضوية:</span><span class="member-code">#${cardPrintMember?.member_code || ''}</span></div>
+                    <div class="info-row"><span class="info-label">رقم الجوال:</span><span>${cardPrintMember?.phone || '-'}</span></div>
+                    ${activitiesHtml ? `<div class="activities"><div class="activities-label">الأنشطة المسجلة</div>${activitiesHtml}</div>` : ''}
+                  </div>
+                </div>
+                <div class="card-footer">
+                  <div class="terms-title">شروط وأحكام:</div>
+                  <div>• الاشتراك محدد البداية والنهاية ولا يتم تعويض حصص غياب المشترك</div>
+                  <div>• المبلغ المدفوع لا يسترد بعد مرور أسبوع من الاشتراك</div>
+                </div>
+              </div>
+              <!-- Logo Card - Position 2 -->
+              <div class="logo-card">
+                <img src="${window.location.origin}/images/academy-logo.png" alt="شعار الأكاديمية" />
+              </div>
+            </div>
+            <div class="position-labels">
+              <div class="position-label">📍 خانة 1: كرت العضوية</div>
+              <div class="position-label">📍 خانة 2: شعار الأكاديمية</div>
+            </div>
+            <p style="margin-top: 10px; color: #6b7280; font-size: 14px;">📐 حجم كل كرت: 9سم × 7سم</p>
+            <button class="print-btn" onclick="window.print()">🖨️ طباعة الملصقات</button>
+          </div>
+          <div class="print-area">
+            <!-- Member Card - Position 1 -->
             <div class="card">
               <div class="card-header">
                 <div class="header-text"><h2>أكاديمية أداء الأبطال</h2><p>World Champions Performance Academy</p></div>
@@ -1347,36 +1343,9 @@ ${selectedInvoice.discount > 0 ? `🎁 الخصم: ${selectedInvoice.discount} �
                 <div>• المبلغ المدفوع لا يسترد بعد مرور أسبوع من الاشتراك</div>
               </div>
             </div>
-            <div class="position-info">📍 موقع الطباعة: خانة 1 (كرت العضوية)</div>
-            <button class="print-btn" onclick="window.print()">🖨️ طباعة</button>
-          </div>
-          <div class="print-area">
-            <div class="card">
-              <div class="card-header">
-                <div class="header-text"><h2>أكاديمية أداء الأبطال</h2><p>World Champions Performance Academy</p></div>
-                <div class="trophy">🏆</div>
-              </div>
-              <div class="card-body">
-                <div class="qr-container">
-                  <div class="qr-section"><img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(qrData)}" /></div>
-                  <div class="qr-dates">
-                    <span>من: ${startDate || '----'}</span>
-                    <span>إلى: ${endDate || '----'}</span>
-                  </div>
-                </div>
-                <div class="info-section">
-                  <div class="info-label">الاسم</div>
-                  <div class="member-name">${cardPrintMember?.name_ar || ''}</div>
-                  <div class="info-row"><span class="info-label">رقم العضوية:</span><span class="member-code">#${cardPrintMember?.member_code || ''}</span></div>
-                  <div class="info-row"><span class="info-label">رقم الجوال:</span><span>${cardPrintMember?.phone || '-'}</span></div>
-                  ${activitiesHtml ? `<div class="activities"><div class="activities-label">الأنشطة المسجلة</div>${activitiesHtml}</div>` : ''}
-                </div>
-              </div>
-              <div class="card-footer">
-                <div class="terms-title">شروط وأحكام:</div>
-                <div>• الاشتراك محدد البداية والنهاية ولا يتم تعويض حصص غياب المشترك</div>
-                <div>• المبلغ المدفوع لا يسترد بعد مرور أسبوع من الاشتراك</div>
-              </div>
+            <!-- Logo Card - Position 2 -->
+            <div class="logo-card">
+              <img src="${window.location.origin}/images/academy-logo.png" alt="شعار الأكاديمية" />
             </div>
           </div>
         </body>
