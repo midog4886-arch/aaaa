@@ -2824,7 +2824,7 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
                             <div className="space-y-1 col-span-3">
                               <Label className="text-xs">{language === 'ar' ? 'المستوى' : 'Level'}</Label>
                               <Select value={item.level_id || 'none'} onValueChange={(value) => updateItemLevel(idx, value === 'none' ? '' : value)}>
-                                <SelectTrigger className="h-8 text-sm">
+                                <SelectTrigger className={`h-8 text-sm ${levelCapacityWarnings[idx]?.isFull ? 'border-red-500 border-2' : ''}`}>
                                   <SelectValue placeholder={language === 'ar' ? 'اختر المستوى' : 'Select level'} />
                                 </SelectTrigger>
                                 <SelectContent>
@@ -2836,6 +2836,11 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
                                   ))}
                                 </SelectContent>
                               </Select>
+                              {levelCapacityWarnings[idx]?.isFull && (
+                                <p className="text-xs text-red-600 font-medium mt-1">
+                                  ⚠️ {levelCapacityWarnings[idx].message}
+                                </p>
+                              )}
                             </div>
                           </div>
                         )}
