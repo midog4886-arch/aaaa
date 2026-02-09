@@ -1443,24 +1443,54 @@ async def create_registration_form(
             }
             await db.members.insert_one(new_member)
     
-    # Add member to levels if specified
+    # Add activities to member and add member to levels
     if member_id:
+        activities_to_add = []
         for item in form.items:
-            level_id = item.level_id if hasattr(item, 'level_id') else item.dict().get("level_id")
+            item_dict = item.dict() if hasattr(item, 'dict') else item
+            activity_id = item_dict.get("activity_id")
+            level_id = item_dict.get("level_id")
+            start_date = item_dict.get("start_date", "")
+            end_date = item_dict.get("end_date", "")
+            schedule = item_dict.get("schedule", "")
+            
+            # Add activity to member's activities list
+            if activity_id:
+                activity = await db.activities.find_one({"id": activity_id}, {"_id": 0, "name_ar": 1, "name": 1})
+                if activity:
+                    activity_entry = {
+                        "activity_id": activity_id,
+                        "activity_name": activity.get("name_ar") or activity.get("name", ""),
+                        "level_id": level_id,
+                        "start_date": start_date,
+                        "end_date": end_date,
+                        "schedule": schedule,
+                        "status": "active",
+                        "source": "registration_form",
+                        "source_id": form_doc["id"]
+                    }
+                    activities_to_add.append(activity_entry)
+            
+            # Add member to level if specified
             if level_id:
-                # Add member to level if not already there
                 await db.levels.update_one(
                     {"id": level_id},
                     {"$addToSet": {"members": member_id}}
                 )
                 # Store end_date for auto-removal
-                end_date = item.end_date if hasattr(item, 'end_date') else item.dict().get("end_date")
                 if end_date:
                     await db.level_subscriptions.update_one(
                         {"member_id": member_id, "level_id": level_id},
                         {"$set": {"end_date": end_date, "member_id": member_id, "level_id": level_id}},
                         upsert=True
                     )
+        
+        # Update member with activities
+        if activities_to_add:
+            await db.members.update_one(
+                {"id": member_id},
+                {"$push": {"activities": {"$each": activities_to_add}}}
+            )
     
     # Add member_id to form response
     form_doc["member_id"] = member_id
