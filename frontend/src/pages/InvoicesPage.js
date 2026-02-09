@@ -1165,8 +1165,18 @@ ${selectedInvoice.discount > 0 ? `🎁 الخصم: ${selectedInvoice.discount} �
     
     // Get activities with dates from invoice
     const activitiesWithDates = invoice.items?.filter(item => !item.is_product).map(item => {
-      const endDate = item.end_date || '';
-      const startDate = item.start_date || '';
+      let startDate = item.start_date || '';
+      let endDate = item.end_date || '';
+      
+      // If no start/end date, try to extract from period field
+      if ((!startDate || !endDate) && item.period) {
+        const periodParts = item.period.split(' - ');
+        if (periodParts.length === 2) {
+          startDate = startDate || periodParts[0].trim();
+          endDate = endDate || periodParts[1].trim();
+        }
+      }
+      
       const isActive = endDate ? endDate >= today : true;
       return {
         activity_name: item.activity_name,
