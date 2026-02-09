@@ -1367,14 +1367,15 @@ ${selectedInvoice.discount > 0 ? `🎁 الخصم: ${selectedInvoice.discount} �
       setRegFormCardData({
         ...member,
         form_number: form.form_number,
+        member_code: form.member_code || member.member_code,
         activities: activities
       });
     } else {
-      // Use form data
+      // Use form data with member_code from form
       setRegFormCardData({
         name_ar: form.customer_name,
         phone: form.customer_phone,
-        member_code: form.form_number,
+        member_code: form.member_code || form.form_number,
         activities: activities
       });
     }
