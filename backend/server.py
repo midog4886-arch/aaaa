@@ -1452,10 +1452,12 @@ async def create_registration_form(
     
     # Find or create member by phone and add to levels if specified
     member_id = None
+    member_code = None
     if form.customer_phone:
-        member = await db.members.find_one({"phone": form.customer_phone}, {"_id": 0, "id": 1})
+        member = await db.members.find_one({"phone": form.customer_phone}, {"_id": 0, "id": 1, "member_code": 1})
         if member:
             member_id = member["id"]
+            member_code = member.get("member_code")
         else:
             # Create new member from registration form data
             # Generate sequential member number
@@ -1476,6 +1478,7 @@ async def create_registration_form(
             
             next_member_code = str(max_number + 1)
             member_id = str(uuid.uuid4())
+            member_code = next_member_code
             
             new_member = {
                 "id": member_id,
@@ -1497,6 +1500,15 @@ async def create_registration_form(
                 "created_at": datetime.now(timezone.utc).isoformat()
             }
             await db.members.insert_one(new_member)
+    
+    # Update the registration form with member_id and member_code
+    if member_id:
+        await db.registration_forms.update_one(
+            {"id": form_doc["id"]},
+            {"$set": {"member_id": member_id, "member_code": member_code}}
+        )
+        form_doc["member_id"] = member_id
+        form_doc["member_code"] = member_code
     
     # Add activities to member and add member to levels
     if member_id:
