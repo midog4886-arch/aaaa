@@ -265,11 +265,57 @@ export const InvoicesPage = () => {
     toast.success(language === 'ar' ? `تم إضافة ${activity.name_ar}` : `Added ${activity.name}`);
   };
 
-  const updateItemLevel = (index, levelId) => {
+  // State for level capacity warning
+  const [levelCapacityWarnings, setLevelCapacityWarnings] = useState({});
+
+  const updateItemLevel = async (index, levelId) => {
     const updated = [...invoiceItems];
     const level = levels.find(l => l.id === levelId);
     updated[index].level_id = levelId;
     updated[index].level_name = level ? `${language === 'ar' ? 'المستوى' : 'Level'} ${level.level_number} - ${level.activity_name}` : '';
+    
+    // Check level capacity
+    if (levelId) {
+      try {
+        const response = await levelsAPI.getMemberCount(levelId);
+        const { is_full, member_count, max_capacity } = response.data;
+        
+        if (is_full) {
+          // Show warning and mark level as full
+          setLevelCapacityWarnings(prev => ({
+            ...prev,
+            [index]: {
+              isFull: true,
+              message: language === 'ar' 
+                ? `العدد في هذا المستوى مكتمل (${member_count}/${max_capacity} مشتركين)، يرجى اختيار مستوى آخر.`
+                : `This level is full (${member_count}/${max_capacity} members), please select another level.`
+            }
+          }));
+          toast.error(
+            language === 'ar' 
+              ? `العدد في هذا المستوى مكتمل (${member_count} مشتركين)، يرجى اختيار مستوى آخر.`
+              : `This level is full (${member_count} members), please select another level.`
+          );
+        } else {
+          // Clear warning for this index
+          setLevelCapacityWarnings(prev => {
+            const newWarnings = { ...prev };
+            delete newWarnings[index];
+            return newWarnings;
+          });
+        }
+      } catch (error) {
+        console.error('Error checking level capacity:', error);
+      }
+    } else {
+      // Clear warning when no level selected
+      setLevelCapacityWarnings(prev => {
+        const newWarnings = { ...prev };
+        delete newWarnings[index];
+        return newWarnings;
+      });
+    }
+    
     setInvoiceItems(updated);
   };
 
