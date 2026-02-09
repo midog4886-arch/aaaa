@@ -272,33 +272,49 @@ const MemberCardPage = () => {
           <div className="space-y-4">
             {/* Print Position Dialog */}
             <Dialog open={showPrintDialog} onOpenChange={setShowPrintDialog}>
-              <DialogContent className="max-w-md" dir="rtl">
+              <DialogContent className="max-w-lg" dir="rtl">
                 <DialogHeader>
-                  <DialogTitle className="text-center text-xl">🖨️ اختر موقع الطباعة</DialogTitle>
+                  <DialogTitle className="text-center text-xl">🖨️ طباعة الملصقات</DialogTitle>
                 </DialogHeader>
                 <div className="py-4">
-                  <p className="text-center text-gray-600 mb-4">اختر الخانة المطلوبة على ورقة الاستيكر</p>
+                  <p className="text-center text-gray-600 mb-2 font-bold">{member?.name_ar || member?.name}</p>
+                  <p className="text-center text-sm text-orange-600 mb-4 font-bold">#{member?.member_code}</p>
+                  <p className="text-center text-sm text-gray-500 mb-4">سيتم طباعة كرت العضوية + شعار الأكاديمية معاً</p>
                   
-                  {/* Sticker Sheet Grid - 2 columns x 3 rows */}
+                  {/* Preview Cards */}
                   <div className="bg-gray-100 p-4 rounded-lg">
-                    <div className="grid grid-cols-2 gap-2 max-w-[280px] mx-auto">
-                      {[0, 1, 2, 3, 4, 5].map((position) => (
-                        <button
-                          key={position}
-                          onClick={() => handleStickerPrint(position)}
-                          className="aspect-square bg-white border-2 border-dashed border-gray-300 rounded-lg hover:border-orange-500 hover:bg-orange-50 transition-all flex flex-col items-center justify-center gap-1 p-2"
-                        >
-                          <span className="text-2xl">📇</span>
-                          <span className="text-xs text-gray-500">كرت {position + 1}</span>
-                          <span className="text-[10px] text-gray-400">
-                            صف {Math.floor(position / 2) + 1} - عمود {(position % 2) + 1}
-                          </span>
-                        </button>
-                      ))}
+                    <div className="flex gap-3 justify-center max-w-[360px] mx-auto">
+                      {/* Preview Card 1 - Member Card */}
+                      <div className="aspect-[9/7] w-[140px] bg-white border-2 border-orange-400 rounded-lg flex flex-col items-center justify-center gap-2 p-3">
+                        <span className="text-3xl">📇</span>
+                        <span className="text-sm font-bold text-gray-700">كرت العضوية</span>
+                        <span className="text-xs text-orange-500">خانة 1</span>
+                      </div>
+                      
+                      {/* Preview Card 2 - Academy Logo */}
+                      <div className="aspect-[9/7] w-[140px] bg-white border-2 border-orange-400 rounded-lg flex flex-col items-center justify-center gap-2 p-3 overflow-hidden">
+                        <img 
+                          src="/images/academy-logo.png" 
+                          alt="شعار الأكاديمية" 
+                          className="w-14 h-14 object-contain"
+                        />
+                        <span className="text-sm font-bold text-gray-700">شعار الأكاديمية</span>
+                        <span className="text-xs text-orange-500">خانة 2</span>
+                      </div>
                     </div>
                     <p className="text-center text-xs text-gray-500 mt-3">
                       📐 حجم كل كرت: 9سم × 7سم
                     </p>
+                  </div>
+                  
+                  <div className="mt-4 flex justify-center">
+                    <Button
+                      onClick={handleStickerPrint}
+                      className="bg-orange-500 hover:bg-orange-600 text-white px-8 py-3 text-lg"
+                    >
+                      <Printer className="w-5 h-5 ml-2" />
+                      طباعة الملصقات
+                    </Button>
                   </div>
                 </div>
               </DialogContent>
