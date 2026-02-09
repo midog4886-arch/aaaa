@@ -2102,3 +2102,86 @@ GET    /api/export/attendance                       - تصدير Excel
 ```
 
 ---
+
+---
+
+## Update 31 - Unified Member Card Design (February 2026)
+
+### ميزة جديدة: توحيد تصميم بطاقة العضو ✅
+
+تم توحيد تصميم بطاقة العضو عبر جميع صفحات التطبيق لضمان تجربة متسقة واحترافية.
+
+#### ما تم إنجازه:
+
+##### 1. إصلاح كود MemberCardPage.js ✅
+- **المشكلة**: وجود كود مكرر/فاسد بعد دالة `handleStickerPrint`
+- **الحل**: حذف الكود المكرر وإبقاء التصميم الموحد الجديد
+- **التحقق**: التصميم الموحد (9×7 سم) يعمل بشكل صحيح
+
+##### 2. تحديث بطاقة بوابة العضو (MemberQRCard.js) ✅
+- **المشكلة**: التصميم كان مختلفاً عن التصميم الموحد (10×7 سم، QR على اليمين)
+- **الحل**: تم تحديث التصميم ليتوافق مع التصميم الموحد:
+  - **الأبعاد**: 9 سم عرض × 7 سم ارتفاع
+  - **التخطيط**: QR على اليسار، المعلومات على اليمين
+  - **التواريخ**: تحت QR code (من: / إلى:)
+  - **الأنشطة**: عرض الأنشطة السارية
+  - **الشروط والأحكام**: في أسفل البطاقة
+
+##### 3. تحديث نص حجم البطاقة ✅
+- تم تحديث حجم البطاقة المعروض في حوار الطباعة من "10سم × 7سم" إلى "9سم × 7سم" في:
+  - `/app/frontend/src/pages/MemberCardPage.js`
+  - `/app/frontend/src/pages/member-portal/MemberQRCard.js`
+
+### التصميم الموحد للبطاقة:
+```
+┌─────────────────────────────────────────┐ 90mm
+│ 🏆 أكاديمية أداء الأبطال              │ Header (برتقالي)
+│    World Champions Performance Academy  │
+├────────────┬────────────────────────────┤
+│   ┌─────┐  │   الاسم                    │
+│   │ QR  │  │   محمد عبدالله             │
+│   │Code │  │   رقم العضوية: #2620      │
+│   └─────┘  │   رقم الجوال: 05xxxxxxxx   │
+│ من: ----   │   ─────────────────────────│
+│ إلى: ----  │   الأنشطة المسجلة          │
+│            │   ✓ كرة قدم (ساري)        │
+├────────────┴────────────────────────────┤
+│ شروط وأحكام:                           │
+│ • الاشتراك محدد البداية والنهاية...    │ 70mm
+│ • المبلغ المدفوع لا يسترد...          │
+└─────────────────────────────────────────┘
+```
+
+### الملفات المعدلة:
+- `/app/frontend/src/pages/MemberCardPage.js` - إصلاح كود مكرر + تحديث نص الحجم
+- `/app/frontend/src/pages/member-portal/MemberQRCard.js` - تصميم جديد موحد + تحديث نص الحجم
+
+### نتائج الاختبار:
+- ✅ صفحة بطاقة العضو (Admin) تعمل بشكل صحيح
+- ✅ حوار اختيار موقع الطباعة يظهر الحجم الجديد "9سم × 7سم"
+- ✅ بوابة العضو تعمل بشكل صحيح
+- ✅ حوار طباعة بوابة العضو يظهر الحجم الجديد
+
+---
+
+## Prioritized Backlog (Updated February 2026)
+
+### P0 - Critical (Completed)
+- [x] Unified Member Card Design (9×7 cm)
+- [x] MemberCardPage.js code cleanup
+- [x] MemberQRCard.js redesign
+
+### P1 - High Priority
+- [ ] WhatsApp Business API Integration (Waiting for Access Token & Phone Number ID)
+- [ ] Code Refactoring (server.py 6000+ lines)
+- [ ] InvoicesPage.js Refactoring (CRITICAL - very large file)
+
+### P2 - Medium Priority
+- [ ] Advanced User Permissions
+- [ ] Online Subscription Renewal (Member Portal)
+
+### P3 - Nice to Have
+- [ ] PWA Conversion
+- [ ] Mobile responsive improvements
+
+---
