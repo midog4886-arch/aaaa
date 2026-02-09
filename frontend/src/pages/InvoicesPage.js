@@ -1611,6 +1611,17 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
 
   // Print new Registration Form (standalone)
   const handlePrintNewRegistrationForm = async () => {
+    // Check if any level is full and NOT accepted
+    const hasUnacceptedFullLevel = Object.values(regFormLevelWarnings).some(w => w.isFull && !w.isAccepted);
+    if (hasUnacceptedFullLevel) {
+      toast.error(
+        language === 'ar' 
+          ? 'يوجد مستوى مكتمل العدد، يرجى الموافقة أو اختيار مستوى آخر.'
+          : 'A selected level is full, please accept or choose another level.'
+      );
+      return;
+    }
+    
     const branchName = branches.find(b => b.id === selectedBranchId)?.name_ar || '';
     
     // Calculate totals WITHOUT VAT
