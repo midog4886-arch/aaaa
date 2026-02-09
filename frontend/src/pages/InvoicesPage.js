@@ -1219,13 +1219,16 @@ ${selectedInvoice.discount > 0 ? `🎁 الخصم: ${selectedInvoice.discount} �
     const rowGap = 18.5; // mm between rows for exact 20mm bottom margin
     const topOffset = 30 + (row * (cardHeight + rowGap));
     
-    // Generate activities HTML with dates
+    // Get first activity dates for display under QR
+    const firstActivity = cardPrintMember?.activities?.[0];
+    const startDate = firstActivity?.start_date || '';
+    const endDate = firstActivity?.end_date || '';
+    
+    // Generate activities HTML without dates (dates will be under QR)
     const activitiesHtml = cardPrintMember?.activities?.map(act => {
       return `
         <div class="activity-item ${act.status}">
           <div class="activity-name">${act.status === 'active' ? '✓' : '✗'} ${act.activity_name}</div>
-          ${act.start_date ? `<div class="activity-dates">من: ${act.start_date}</div>` : ''}
-          ${act.end_date ? `<div class="activity-dates">إلى: ${act.end_date}</div>` : ''}
           <div class="activity-status">${act.status === 'active' ? 'ساري' : 'منتهي'}</div>
         </div>
       `;
@@ -1245,15 +1248,18 @@ ${selectedInvoice.discount > 0 ? `🎁 الخصم: ${selectedInvoice.discount} �
             .screen-only { padding: 20px; text-align: center; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; }
             @media print { .screen-only { display: none !important; } .print-area { display: block !important; position: absolute; top: ${topOffset}mm; right: ${leftOffset}mm; } }
             @media screen { .print-area { display: none; } }
-            .card { width: 100mm; height: 70mm; background: white; border-radius: 4mm; overflow: hidden; box-shadow: 0 4px 15px rgba(0,0,0,0.1); display: flex; flex-direction: column; }
+            .card { width: 90mm; height: 70mm; background: white; border-radius: 4mm; overflow: hidden; box-shadow: 0 4px 15px rgba(0,0,0,0.1); display: flex; flex-direction: column; }
             .card-header { background: linear-gradient(135deg, #F97316, #F59E0B); padding: 2mm; display: flex; justify-content: space-between; align-items: center; color: white; }
             .header-text h2 { font-size: 8pt; font-weight: 700; margin: 0; }
             .header-text p { font-size: 5pt; opacity: 0.9; margin: 0; }
             .trophy { font-size: 14pt; }
             .card-body { padding: 2mm; display: flex; gap: 2mm; flex: 1; }
             .info-section { flex: 1; text-align: right; overflow: hidden; }
-            .qr-section { width: 32mm; height: 32mm; background: white; border: 1px solid #eee; border-radius: 2mm; padding: 0.5mm; flex-shrink: 0; align-self: flex-start; }
+            .qr-container { display: flex; flex-direction: column; align-items: center; }
+            .qr-section { width: 28mm; height: 28mm; background: white; border: 1px solid #eee; border-radius: 2mm; padding: 0.5mm; }
             .qr-section img { width: 100%; height: 100%; }
+            .qr-dates { text-align: center; font-size: 5pt; color: #374151; margin-top: 1mm; line-height: 1.4; }
+            .qr-dates span { display: block; }
             .member-name { font-size: 8pt; font-weight: 700; color: #1f2937; margin-bottom: 1mm; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
             .info-row { display: flex; align-items: center; gap: 1mm; margin-bottom: 0.5mm; font-size: 6pt; }
             .info-label { color: #6b7280; font-size: 5pt; }
@@ -1264,7 +1270,6 @@ ${selectedInvoice.discount > 0 ? `🎁 الخصم: ${selectedInvoice.discount} �
             .activity-item.active { background: #D1FAE5; border-right: 2px solid #10B981; }
             .activity-item.expired { background: #FEE2E2; border-right: 2px solid #EF4444; }
             .activity-name { font-weight: 600; color: #1f2937; font-size: 6pt; }
-            .activity-dates { font-size: 5pt; color: #374151; margin: 0.2mm 0; }
             .activity-status { font-size: 5pt; font-weight: 700; }
             .activity-item.active .activity-status { color: #059669; }
             .activity-item.expired .activity-status { color: #DC2626; }
@@ -1283,11 +1288,52 @@ ${selectedInvoice.discount > 0 ? `🎁 الخصم: ${selectedInvoice.discount} �
                 <div class="trophy">🏆</div>
               </div>
               <div class="card-body">
-                <div class="qr-section"><img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(qrData)}" /></div>
+                <div class="qr-container">
+                  <div class="qr-section"><img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(qrData)}" /></div>
+                  <div class="qr-dates">
+                    ${startDate ? `<span>من: ${startDate}</span>` : ''}
+                    ${endDate ? `<span>إلى: ${endDate}</span>` : ''}
+                  </div>
+                </div>
                 <div class="info-section">
                   <div class="info-label">الاسم</div>
                   <div class="member-name">${cardPrintMember?.name_ar || ''}</div>
                   <div class="info-row"><span class="info-label">رقم العضوية:</span><span class="member-code">#${cardPrintMember?.member_code || ''}</span></div>
+                  <div class="info-row"><span class="info-label">رقم الجوال:</span><span>${cardPrintMember?.phone || '-'}</span></div>
+                  ${activitiesHtml ? `<div class="activities"><div class="activities-label">الأنشطة المسجلة</div>${activitiesHtml}</div>` : ''}
+                </div>
+              </div>
+              <div class="card-footer">
+                <div class="terms-title">شروط وأحكام:</div>
+                <div>• الاشتراك محدد البداية والنهاية ولا يتم تعويض حصص غياب المشترك</div>
+                <div>• المبلغ المدفوع لا يسترد بعد مرور أسبوع من الاشتراك</div>
+              </div>
+            </div>
+            <div class="position-info">📍 موقع الطباعة: الصف ${row + 1} - العمود ${col + 1} (الكرت رقم ${position + 1})</div>
+            <button class="print-btn" onclick="window.print()">🖨️ طباعة البطاقة</button>
+          </div>
+          <div class="print-area">
+            <div class="card">
+              <div class="card-header">
+                <div class="header-text"><h2>أكاديمية أداء الأبطال</h2><p>World Champions Performance Academy</p></div>
+                <div class="trophy">🏆</div>
+              </div>
+              <div class="card-body">
+                <div class="qr-container">
+                  <div class="qr-section"><img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(qrData)}" /></div>
+                  <div class="qr-dates">
+                    ${startDate ? `<span>من: ${startDate}</span>` : ''}
+                    ${endDate ? `<span>إلى: ${endDate}</span>` : ''}
+                  </div>
+                </div>
+                <div class="info-section">
+                  <div class="info-label">الاسم</div>
+                  <div class="member-name">${cardPrintMember?.name_ar || ''}</div>
+                  <div class="info-row"><span class="info-label">رقم العضوية:</span><span class="member-code">#${cardPrintMember?.member_code || ''}</span></div>
+                  <div class="info-row"><span class="info-label">رقم الجوال:</span><span>${cardPrintMember?.phone || '-'}</span></div>
+                  ${activitiesHtml ? `<div class="activities"><div class="activities-label">الأنشطة المسجلة</div>${activitiesHtml}</div>` : ''}
+                </div>
+              </div>
                   <div class="info-row"><span class="info-label">رقم الجوال:</span><span>${cardPrintMember?.phone || '-'}</span></div>
                   ${activitiesHtml ? `<div class="activities"><div class="activities-label">الأنشطة المسجلة</div>${activitiesHtml}</div>` : ''}
                 </div>
