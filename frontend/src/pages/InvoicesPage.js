@@ -1383,17 +1383,13 @@ ${selectedInvoice.discount > 0 ? `🎁 الخصم: ${selectedInvoice.discount} �
     if (!regFormCardData) return;
     
     const printWindow = window.open('', '_blank', 'width=800,height=600');
+    // Use WCPA_MEMBER type so attendance scanner can read it
     const qrData = JSON.stringify({
-      type: 'WCPA_REG_FORM',
-      member_code: regFormCardData.member_code || regFormCardData.form_number,
+      type: 'WCPA_MEMBER',
+      code: regFormCardData.member_code || regFormCardData.form_number,
+      id: regFormCardData.id || '',
       phone: regFormCardData.phone,
-      name: regFormCardData.name_ar,
-      activities: regFormCardData.activities?.map(a => ({
-        name: a.activity_name,
-        start: a.start_date,
-        end: a.end_date,
-        status: a.status
-      }))
+      name: regFormCardData.name_ar
     });
     
     // Calculate position offsets (2 columns x 3 rows, each card 9cm width x 7cm height)
