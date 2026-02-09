@@ -58,3 +58,11 @@ export const DAYS_OF_WEEK = [
   { value: 'friday', label: 'الجمعة', labelEn: 'Friday' },
   { value: 'saturday', label: 'السبت', labelEn: 'Saturday' }
 ];
+
+// Invoice terms
+export const INVOICE_TERMS = [
+  "الاشتراك محدد البداية والنهاية ولا يتم تعويض حصص غياب المشترك",
+  "المبلغ المدفوع لا يسترد بعد مرور أسبوع من الاشتراك",
+  "يجب إحضار بطاقة العضوية عند كل زيارة",
+  "الالتزام بمواعيد الحصص المحددة"
+];
