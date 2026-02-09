@@ -339,17 +339,34 @@ const MemberCardPage = () => {
               
               <CardContent className="p-6">
                 <div className="flex flex-col md:flex-row gap-6 items-center">
-                  {/* QR Code */}
-                  <div className="bg-white p-4 rounded-xl shadow-inner border-2 border-orange-100">
-                    <QRCodeSVG
-                      id="member-qr-code"
-                      value={getQRData()}
-                      size={180}
-                      level="H"
-                      includeMargin={true}
-                      bgColor="#ffffff"
-                      fgColor="#000000"
-                    />
+                  {/* QR Code with Dates and Schedule */}
+                  <div className="flex flex-col items-center">
+                    <div className="bg-white p-4 rounded-xl shadow-inner border-2 border-orange-100">
+                      <QRCodeSVG
+                        id="member-qr-code"
+                        value={getQRData()}
+                        size={180}
+                        level="H"
+                        includeMargin={true}
+                        bgColor="#ffffff"
+                        fgColor="#000000"
+                      />
+                    </div>
+                    {/* Dates under QR */}
+                    {member.activities && member.activities[0] && (
+                      <div className="mt-3 text-center">
+                        <div className="text-lg font-bold text-gray-800">
+                          <span>من: {member.activities[0].start_date || '----'}</span>
+                          <span className="mx-2">|</span>
+                          <span>إلى: {member.activities[0].end_date || '----'}</span>
+                        </div>
+                        {member.activities[0].schedule && (
+                          <div className="mt-2 px-4 py-2 bg-orange-50 rounded-lg text-orange-600 font-semibold">
+                            📅 {member.activities[0].schedule}
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                   
                   {/* Member Info */}
