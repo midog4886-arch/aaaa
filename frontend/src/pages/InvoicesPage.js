@@ -1514,7 +1514,13 @@ ${selectedInvoice.discount > 0 ? `🎁 الخصم: ${selectedInvoice.discount} �
                 <div class="trophy">🏆</div>
               </div>
               <div class="card-body">
-                <div class="qr-section"><img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(qrData)}" /></div>
+                <div class="qr-container">
+                  <div class="qr-section"><img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(qrData)}" /></div>
+                  <div class="qr-dates">
+                    ${startDate ? `<span>من: ${startDate}</span>` : ''}
+                    ${endDate ? `<span>إلى: ${endDate}</span>` : ''}
+                  </div>
+                </div>
                 <div class="info-section">
                   <div class="info-label">الاسم</div>
                   <div class="member-name">${regFormCardData?.name_ar || ''}</div>
