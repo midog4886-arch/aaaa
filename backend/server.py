@@ -922,6 +922,13 @@ async def create_invoice(invoice: InvoiceCreate, current_user: dict = Depends(ge
                     {"id": level_id},
                     {"$addToSet": {"members": invoice.member_id}}
                 )
+                # Store end_date for auto-removal
+                if item.end_date:
+                    await db.level_subscriptions.update_one(
+                        {"member_id": invoice.member_id, "level_id": level_id},
+                        {"$set": {"end_date": item.end_date, "member_id": invoice.member_id, "level_id": level_id}},
+                        upsert=True
+                    )
     
     return Invoice(**{k: v for k, v in invoice_doc.items() if k != "_id"})
 
