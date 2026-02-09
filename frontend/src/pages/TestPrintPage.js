@@ -163,14 +163,14 @@ const TestPrintPage = () => {
             }
             
             .cards-grid {
+              position: absolute;
+              top: 30mm;
+              right: 10mm;
+              left: 10mm;
               display: grid;
               grid-template-columns: repeat(2, 100mm);
               grid-template-rows: repeat(3, 70mm);
               gap: 0;
-              padding-top: 30mm;
-              padding-right: 10mm;
-              padding-left: 10mm;
-              padding-bottom: 20mm;
             }
             
             .print-btn {
