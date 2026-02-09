@@ -57,15 +57,31 @@ const TestPrintPage = () => {
   const openPrintWindow = () => {
     const printWindow = window.open('', '_blank', 'width=900,height=700');
     
-    // Generate cards HTML
+    // Calculate positions for exact margins
+    // A4: 297mm height, 210mm width
+    // Top margin: 30mm, Bottom margin: 20mm, Side margins: 10mm each
+    // Card size: 100mm x 70mm
+    // Available height for cards: 297 - 30 - 20 = 247mm
+    // 3 rows with gaps: (247 - 210) / 2 = 18.5mm gap between rows
+    const topMargin = 30; // mm
+    const sideMargin = 10; // mm (changed from 5 to fit)
+    const cardWidth = 100; // mm
+    const cardHeight = 70; // mm
+    const rowGap = 18.5; // mm between rows to achieve 20mm bottom margin
+    
+    // Generate cards HTML with absolute positioning
     const cardsHtml = members.map((member, index) => {
       const col = index % 2;
       const row = Math.floor(index / 2);
       const qrData = getQRData(member);
       const activitiesHtml = getActivitiesHtml(member);
       
+      // Calculate position
+      const leftPos = sideMargin + (col * cardWidth);
+      const topPos = topMargin + (row * (cardHeight + rowGap));
+      
       return `
-        <div class="card" style="grid-column: ${col + 1}; grid-row: ${row + 1};">
+        <div class="card" style="position: absolute; top: ${topPos}mm; right: ${leftPos}mm;">
           <div class="card-header">
             <div class="header-text">
               <h2>أكاديمية أداء الأبطال</h2>
