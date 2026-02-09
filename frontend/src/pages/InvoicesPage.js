@@ -2458,6 +2458,40 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
 
   return (
     <Layout title={t('invoices')}>
+      {/* Member Card Print Position Dialog */}
+      <Dialog open={showCardPrintDialog} onOpenChange={setShowCardPrintDialog}>
+        <DialogContent className="max-w-md" dir="rtl">
+          <DialogHeader>
+            <DialogTitle className="text-center text-xl">🖨️ اختر موقع الطباعة</DialogTitle>
+          </DialogHeader>
+          <div className="py-4">
+            <p className="text-center text-gray-600 mb-2">{cardPrintMember?.name_ar}</p>
+            <p className="text-center text-sm text-gray-500 mb-4">اختر الخانة المطلوبة على ورقة الاستيكر</p>
+            
+            <div className="bg-gray-100 p-4 rounded-lg">
+              <div className="grid grid-cols-2 gap-2 max-w-[280px] mx-auto">
+                {[0, 1, 2, 3, 4, 5].map((position) => (
+                  <button
+                    key={position}
+                    onClick={() => handleStickerPrint(position)}
+                    className="aspect-[10/7] bg-white border-2 border-dashed border-gray-300 rounded-lg hover:border-orange-500 hover:bg-orange-50 transition-all flex flex-col items-center justify-center gap-1 p-2"
+                  >
+                    <span className="text-xl">📇</span>
+                    <span className="text-xs text-gray-500">كرت {position + 1}</span>
+                    <span className="text-[10px] text-gray-400">
+                      صف {Math.floor(position / 2) + 1} - عمود {(position % 2) + 1}
+                    </span>
+                  </button>
+                ))}
+              </div>
+              <p className="text-center text-xs text-gray-500 mt-3">
+                📐 حجم كل كرت: 10سم × 7سم
+              </p>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       <div className="space-y-6" data-testid="invoices-page">
         {/* Header */}
         <div className="flex flex-col gap-4">
