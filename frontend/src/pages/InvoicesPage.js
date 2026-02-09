@@ -489,13 +489,13 @@ export const InvoicesPage = () => {
       return;
     }
     
-    // Check if any level is full
-    const hasFullLevel = Object.values(levelCapacityWarnings).some(w => w.isFull);
-    if (hasFullLevel) {
+    // Check if any level is full and NOT accepted
+    const hasUnacceptedFullLevel = Object.values(levelCapacityWarnings).some(w => w.isFull && !w.isAccepted);
+    if (hasUnacceptedFullLevel) {
       toast.error(
         language === 'ar' 
-          ? 'لا يمكن حفظ الفاتورة. يوجد مستوى مكتمل العدد، يرجى اختيار مستوى آخر.'
-          : 'Cannot save invoice. A selected level is full, please choose another level.'
+          ? 'يوجد مستوى مكتمل العدد، يرجى الموافقة أو اختيار مستوى آخر.'
+          : 'A selected level is full, please accept or choose another level.'
       );
       return;
     }
