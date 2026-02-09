@@ -3593,7 +3593,7 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
                             <div className="space-y-1">
                               <Label className="text-xs">{language === 'ar' ? 'المستوى' : 'Level'}</Label>
                               <Select value={item.level_id || 'none'} onValueChange={(value) => updateRegFormItemLevel(idx, value === 'none' ? '' : value)}>
-                                <SelectTrigger className="text-sm">
+                                <SelectTrigger className={`text-sm ${regFormLevelWarnings[idx]?.isFull && !regFormLevelWarnings[idx]?.isAccepted ? 'border-orange-500 border-2' : regFormLevelWarnings[idx]?.isAccepted ? 'border-green-500 border-2' : ''}`}>
                                   <SelectValue placeholder={language === 'ar' ? 'اختر المستوى' : 'Select level'} />
                                 </SelectTrigger>
                                 <SelectContent>
@@ -3605,6 +3605,37 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
                                   ))}
                                 </SelectContent>
                               </Select>
+                              {regFormLevelWarnings[idx]?.isFull && !regFormLevelWarnings[idx]?.isAccepted && (
+                                <div className="mt-2 p-2 bg-orange-50 border border-orange-300 rounded-lg">
+                                  <p className="text-xs text-orange-700 font-medium mb-2">
+                                    ⚠️ {regFormLevelWarnings[idx].message}
+                                  </p>
+                                  <div className="flex gap-2">
+                                    <Button 
+                                      type="button"
+                                      size="sm"
+                                      className="bg-green-600 hover:bg-green-700 text-white text-xs h-7"
+                                      onClick={() => handleAcceptRegFormFullLevel(idx)}
+                                    >
+                                      ✓ {language === 'ar' ? 'موافق' : 'Accept'}
+                                    </Button>
+                                    <Button 
+                                      type="button"
+                                      size="sm"
+                                      variant="outline"
+                                      className="border-red-500 text-red-600 hover:bg-red-50 text-xs h-7"
+                                      onClick={() => handleRejectRegFormFullLevel(idx)}
+                                    >
+                                      ✗ {language === 'ar' ? 'رفض' : 'Reject'}
+                                    </Button>
+                                  </div>
+                                </div>
+                              )}
+                              {regFormLevelWarnings[idx]?.isAccepted && (
+                                <p className="text-xs text-green-600 font-medium mt-1">
+                                  ✓ {language === 'ar' ? 'تم قبول التسجيل رغم اكتمال العدد' : 'Registration accepted despite full capacity'}
+                                </p>
+                              )}
                             </div>
                           </div>
                         </div>
