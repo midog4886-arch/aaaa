@@ -361,13 +361,6 @@ const TestPrintPage = () => {
                 height: 297mm;
               }
               
-              .cards-grid {
-                position: absolute;
-                top: 30mm;
-                right: 10mm;
-                left: 10mm;
-              }
-              
               .card {
                 box-shadow: none;
                 border: 0.5px solid #ccc;
@@ -388,7 +381,7 @@ const TestPrintPage = () => {
             <p class="subtitle">صفحة A4 كاملة - 2 أعمدة × 3 صفوف</p>
             
             <div class="preview-container">
-              <div class="cards-grid">
+              <div class="cards-container">
                 ${cardsHtml}
               </div>
             </div>
