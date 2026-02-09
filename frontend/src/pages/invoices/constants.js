@@ -14,6 +14,15 @@ export const COMPANY_TAX_NUMBER = "312655637900003";
 export const COMPANY_COMMERCIAL_REG = "7043630230";
 export const VAT_RATE = 0.15; // 15%
 
+// Company info object
+export const COMPANY_INFO = {
+  name_ar: "أكاديمية أداء الأبطال",
+  name_en: "Global Champions Sports Performance",
+  tax_number: COMPANY_TAX_NUMBER,
+  commercial_reg: COMPANY_COMMERCIAL_REG,
+  vat_rate: VAT_RATE
+};
+
 // Payment methods
 export const PAYMENT_METHODS = [
   { value: 'cash', label: 'نقدي', labelEn: 'Cash' },
