@@ -1292,6 +1292,7 @@ ${selectedInvoice.discount > 0 ? `🎁 الخصم: ${selectedInvoice.discount} �
                       <span>من: ${startDate || '----'}</span>
                       <span>إلى: ${endDate || '----'}</span>
                     </div>
+                    ${(schedule || time) ? `<div class="schedule-info">${schedule ? schedule : ''}${schedule && time ? ' | ' : ''}${time ? time : ''}</div>` : ''}
                   </div>
                   <div class="info-section">
                     <div class="info-label">الاسم</div>
@@ -1497,6 +1498,7 @@ ${selectedInvoice.discount > 0 ? `🎁 الخصم: ${selectedInvoice.discount} �
                       <span>من: ${startDate || '----'}</span>
                       <span>إلى: ${endDate || '----'}</span>
                     </div>
+                    ${(schedule || time) ? `<div class="schedule-info">${schedule ? schedule : ''}${schedule && time ? ' | ' : ''}${time ? time : ''}</div>` : ''}
                   </div>
                   <div class="info-section">
                     <div class="info-label">الاسم</div>
