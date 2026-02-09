@@ -42,9 +42,8 @@ const MemberCard = () => {
     const startDate = firstActivity?.start_date || '';
     const endDate = firstActivity?.end_date || '';
     
-    // Get schedule/days info
-    const schedule = firstActivity?.schedule || firstActivity?.days || '';
-    const time = firstActivity?.time || '';
+    // Get schedule info
+    const schedule = firstActivity?.schedule || '';
     
     // Generate activities HTML
     const activitiesHtml = cardData?.active_activities?.map(act => `
