@@ -1415,7 +1415,8 @@ ${selectedInvoice.discount > 0 ? `🎁 الخصم: ${selectedInvoice.discount} �
             .activity-status { font-size: 4.5pt; font-weight: 700; }
             .activity-item.active .activity-status { color: #059669; }
             .activity-item.expired .activity-status { color: #DC2626; }
-            .card-footer { text-align: center; padding: 1mm; background: #f9fafb; font-size: 4.5pt; color: #9ca3af; border-top: 1px dashed #e5e7eb; }
+            .card-footer { text-align: right; padding: 1.5mm 2mm; background: #f9fafb; font-size: 3.5pt; color: #6b7280; border-top: 1px dashed #e5e7eb; line-height: 1.4; }
+            .card-footer .terms-title { font-weight: 700; color: #374151; margin-bottom: 0.3mm; }
             .print-btn { margin-top: 20px; padding: 12px 30px; background: linear-gradient(135deg, #F97316, #EA580C); color: white; border: none; border-radius: 10px; cursor: pointer; font-family: 'Tajawal', Arial, sans-serif; font-size: 16px; font-weight: bold; }
             .position-info { margin-top: 15px; padding: 10px 20px; background: #FEF3C7; border-radius: 8px; color: #92400E; font-size: 14px; }
           </style>
@@ -1438,7 +1439,11 @@ ${selectedInvoice.discount > 0 ? `🎁 الخصم: ${selectedInvoice.discount} �
                 </div>
                 <div class="qr-section"><img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(qrData)}" /></div>
               </div>
-              <div class="card-footer">امسح الكود عند الدخول لتسجيل الحضور</div>
+              <div class="card-footer">
+                <div class="terms-title">شروط وأحكام:</div>
+                <div>• الاشتراك محدد البداية والنهاية ولا يتم تعويض حصص غياب المشترك</div>
+                <div>• المبلغ المدفوع لا يسترد بعد مرور أسبوع من الاشتراك</div>
+              </div>
             </div>
             <div class="position-info">📍 موقع الطباعة: الصف ${row + 1} - العمود ${col + 1} (الكرت رقم ${position + 1})</div>
             <button class="print-btn" onclick="window.print()">🖨️ طباعة البطاقة</button>
@@ -1459,7 +1464,11 @@ ${selectedInvoice.discount > 0 ? `🎁 الخصم: ${selectedInvoice.discount} �
                 </div>
                 <div class="qr-section"><img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(qrData)}" /></div>
               </div>
-              <div class="card-footer">امسح الكود عند الدخول لتسجيل الحضور</div>
+              <div class="card-footer">
+                <div class="terms-title">شروط وأحكام:</div>
+                <div>• الاشتراك محدد البداية والنهاية ولا يتم تعويض حصص غياب المشترك</div>
+                <div>• المبلغ المدفوع لا يسترد بعد مرور أسبوع من الاشتراك</div>
+              </div>
             </div>
           </div>
         </body>
