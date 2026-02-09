@@ -1297,15 +1297,30 @@ ${selectedInvoice.discount > 0 ? `🎁 الخصم: ${selectedInvoice.discount} �
 
   // Print card from registration form
   const handlePrintRegFormCard = (form) => {
+    // Calculate activity status based on dates
+    const today = new Date().toISOString().split('T')[0];
+    
     // Find member by phone or create data from form
     const member = members.find(m => m.phone === form.customer_phone);
+    const activities = form.items?.filter(item => !item.is_product).map(item => {
+      const endDate = item.end_date || '';
+      const startDate = item.start_date || '';
+      const isActive = endDate ? endDate >= today : true;
+      
+      return {
+        activity_name: item.activity_name,
+        start_date: startDate,
+        end_date: endDate,
+        status: isActive ? 'active' : 'expired',
+        level_name: item.level_name || ''
+      };
+    }) || [];
+    
     if (member) {
       setRegFormCardData({
         ...member,
-        activities: form.items?.map(item => ({
-          activity_name: item.activity_name,
-          status: 'active'
-        })) || []
+        form_number: form.form_number,
+        activities: activities
       });
     } else {
       // Use form data
@@ -1313,10 +1328,7 @@ ${selectedInvoice.discount > 0 ? `🎁 الخصم: ${selectedInvoice.discount} �
         name_ar: form.customer_name,
         phone: form.customer_phone,
         member_code: form.form_number,
-        activities: form.items?.map(item => ({
-          activity_name: item.activity_name,
-          status: 'active'
-        })) || []
+        activities: activities
       });
     }
     setShowRegFormCardPrintDialog(true);
@@ -1329,9 +1341,15 @@ ${selectedInvoice.discount > 0 ? `🎁 الخصم: ${selectedInvoice.discount} �
     const printWindow = window.open('', '_blank', 'width=800,height=600');
     const qrData = JSON.stringify({
       type: 'WCPA_REG_FORM',
-      member_code: regFormCardData.member_code,
+      member_code: regFormCardData.member_code || regFormCardData.form_number,
       phone: regFormCardData.phone,
-      name: regFormCardData.name_ar
+      name: regFormCardData.name_ar,
+      activities: regFormCardData.activities?.map(a => ({
+        name: a.activity_name,
+        start: a.start_date,
+        end: a.end_date,
+        status: a.status
+      }))
     });
     
     // Calculate position offsets (2 columns x 3 rows, each card 10cm width x 7cm height)
@@ -1346,11 +1364,19 @@ ${selectedInvoice.discount > 0 ? `🎁 الخصم: ${selectedInvoice.discount} �
     const rowGap = 18.5; // mm between rows for exact 20mm bottom margin
     const topOffset = 30 + (row * (cardHeight + rowGap));
     
-    const activitiesHtml = regFormCardData?.activities?.map(act => `
-      <span class="activity ${act.status === 'active' ? 'active' : 'inactive'}">
-        ${act.status === 'active' ? '✓' : '✗'} ${act.activity_name}
-      </span>
-    `).join('') || '';
+    // Generate activities HTML with dates and status
+    const activitiesHtml = regFormCardData?.activities?.map(act => {
+      const dateRange = act.start_date && act.end_date 
+        ? `${act.start_date} → ${act.end_date}` 
+        : '';
+      return `
+        <div class="activity-item ${act.status}">
+          <div class="activity-name">${act.status === 'active' ? '✓' : '✗'} ${act.activity_name}</div>
+          ${dateRange ? `<div class="activity-dates">${dateRange}</div>` : ''}
+          <div class="activity-status">${act.status === 'active' ? 'ساري' : 'منتهي'}</div>
+        </div>
+      `;
+    }).join('') || '';
     
     printWindow.document.write(`
       <!DOCTYPE html>
