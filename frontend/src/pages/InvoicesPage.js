@@ -1334,36 +1334,6 @@ ${selectedInvoice.discount > 0 ? `🎁 الخصم: ${selectedInvoice.discount} �
                   ${activitiesHtml ? `<div class="activities"><div class="activities-label">الأنشطة المسجلة</div>${activitiesHtml}</div>` : ''}
                 </div>
               </div>
-                  <div class="info-row"><span class="info-label">رقم الجوال:</span><span>${cardPrintMember?.phone || '-'}</span></div>
-                  ${activitiesHtml ? `<div class="activities"><div class="activities-label">الأنشطة المسجلة</div>${activitiesHtml}</div>` : ''}
-                </div>
-              </div>
-              <div class="card-footer">
-                <div class="terms-title">شروط وأحكام:</div>
-                <div>• الاشتراك محدد البداية والنهاية ولا يتم تعويض حصص غياب المشترك</div>
-                <div>• المبلغ المدفوع لا يسترد بعد مرور أسبوع من الاشتراك</div>
-              </div>
-            </div>
-            <div class="position-info">📍 موقع الطباعة: الصف ${row + 1} - العمود ${col + 1} (الكرت رقم ${position + 1})</div>
-            <button class="print-btn" onclick="window.print()">🖨️ طباعة البطاقة</button>
-          </div>
-          <div class="print-area">
-            <div class="card">
-              <div class="card-header">
-                <div class="header-text"><h2>أكاديمية أداء الأبطال</h2><p>World Champions Performance Academy</p></div>
-                <div class="trophy">🏆</div>
-              </div>
-              <div class="card-body">
-                <div class="qr-section"><img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(qrData)}" /></div>
-                <div class="info-section">
-                  <div class="info-label">الاسم</div>
-                  <div class="member-name">${cardPrintMember?.name_ar || ''}</div>
-                  <div class="info-row"><span class="info-label">رقم العضوية:</span><span class="member-code">#${cardPrintMember?.member_code || ''}</span></div>
-                  <div class="info-row"><span class="info-label">رقم الجوال:</span><span>${cardPrintMember?.phone || '-'}</span></div>
-                  ${activitiesHtml ? `<div class="activities"><div class="activities-label">الأنشطة المسجلة</div>${activitiesHtml}</div>` : ''}
-                </div>
-              </div>
-              </div>
               <div class="card-footer">
                 <div class="terms-title">شروط وأحكام:</div>
                 <div>• الاشتراك محدد البداية والنهاية ولا يتم تعويض حصص غياب المشترك</div>
