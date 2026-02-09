@@ -6,76 +6,65 @@ We want to design a management program for a sports academy named World Champion
 *   **Technical & Design:** Web-based application with a modern, sports-themed design and bilingual (Arabic/English) support.
 *   **Subsequent User Requests (Implemented & In-Progress):**
     *   Members can enroll in multiple activities.
-    *   Export to Excel for members, invoices, and reports.
-    *   Advanced invoice customizations (VAT, editable total, QR code, PDF/Image saving, discounts, etc.).
+    *   Export to Excel for various reports.
+    *   Advanced invoice customizations (VAT, discounts, QR code, etc.).
     *   Multi-Branch Support.
-    *   User Management (RBAC) with granular permissions.
-    *   Store & Inventory, Discounts, and integration into invoices.
+    *   User Management (RBAC).
+    *   Store & Inventory.
     *   Refunds (Credit Notes).
     *   Interactive Dashboards.
-    *   Full, branch-specific, double-entry Accounting System with manual Journal Entries.
+    *   Full, branch-specific, double-entry Accounting System.
     *   Subscription Renewal System.
-    *   Internal Notifications for expiring subscriptions and activity notes.
+    *   Internal Notifications.
     *   Internal Expenses Module.
-    *   Attendance Tracking System, including a Quick Check-in feature.
-    *   Visual Activity Schedule with an integrated notes system.
-    *   Member skill levels management system.
-    *   Sequential Membership Numbers, starting from 2601.
-    *   **QR Code Attendance System:** A system for quick attendance using member-specific QR codes.
-    *   **Backend Refactoring:** User-approved initiative to break down the monolithic backend  into a modular structure.
-    *   **Advanced Member Portal:** A new, client-facing web portal for members to manage their data, view schedules, and interact with the academy.
+    *   Attendance Tracking System with a Quick Check-in feature, limited to one check-in per member per day.
+    *   Visual Activity Schedule with an improved, compact print format.
+    *   Member skill levels management.
+    *   Sequential Membership Numbers.
+    *   **Advanced Member Portal:** A client-facing portal for members with features like dashboard, subscription viewing, schedules, QR card, notifications, attendance history, and a full coach rating system (member submission and admin viewing).
+    *   **Coach Rating System:** A dedicated page in the admin panel to view all coach ratings submitted by members. Members can submit ratings manually, with the ability to type in the coach and activity names.
+    *   **Invoice/Registration Schedule Input:** The schedule dropdown has been replaced with a multi-day-of-the-week selector and a manual time input field.
+    *   **Grouped Attendance View:** The activity dropdown on the attendance page has been replaced with a category selector (e.g., Swimming, Football) to show all members for a given sport at once.
+    *   **Level Capacity Check:** When creating an invoice or registration form, the system now checks if a selected level is full (capacity: 7). If it is, it presents a warning with an option for the admin to override and proceed.
+    *   **Automatic Level Enrollment:** Members are now automatically added to the selected level upon the creation of an invoice or registration form. New members are created on-the-fly from registration forms if they don't exist.
+    *   **Automatic Level Cleanup:** Members are automatically removed from a level's roster when their subscription end date passes. This cleanup runs when the Levels page is viewed.
+    *   **Sticker Card Printing:** A feature to print member cards onto a specific location on a 2x3 sticker sheet (A4) with custom margins and dimensions (10cm x 7cm). This is available from the admin member card page, the member portal, and the invoices page.
 
 **User's preferred language**: Arabic (العربية). The next agent MUST respond in Arabic only.
 
 **what currently exists?**
-A comprehensive full-stack sports academy management system. The main focus of this session was the creation of an **Advanced Member Portal**, which is now live.
-
-**Completed in this session:**
-*   **Member Portal (New Major Feature):**
-    *   A separate, client-facing portal at .
-    *   **Authentication:** Members can log in using only their registered phone number.
-    *   **Features:** Dashboard, viewing active/expired subscriptions, training schedules, a unified My Documents page (for invoices and registration forms with print/PDF capability), QR card display, and a notification center.
-*   **Admin-side Notification System:**
-    *   A new tab in the Messages page allows administrators to send manual notifications (to all members or a specific member) that appear in the member portal.
-*   **QR Code System Fixes:**
-    *   Fixed a critical bug where active subscriptions were incorrectly identified as expired.
-    *   Set the QR scanner to default to the device's rear camera.
-    *   Adjusted the print style for QR cards to appear at the top of the page.
-*   **UX/UI Enhancements:**
-    *   Made user sessions permanent (lifespan of 100 years) as requested.
-    *   Added user-requested Terms and Conditions text to all printable documents (invoices, registration forms).
-    *   Reordered the navigation menu in the admin panel.
+The application is a comprehensive sports academy management system. In this session, the agent successfully completed several major feature requests. The broken invoice schedule input was fixed and is now fully functional. The attendance page has been refactored to show activity categories instead of a long list of individual activities. A sophisticated level capacity check, with an admin override option, has been implemented for both invoices and registration forms. The system now automatically enrolls members into levels when an invoice/form is created (even creating new members on-the-fly) and automatically cleans them up when their subscription expires. Finally, a highly specific sticker printing feature for member cards was developed and integrated into three different pages. The codebase, particularly  and , has grown significantly more complex as a result.
 
 **Last working item**:
-The agent just finished implementing three new user-requested features for the Member Portal: a page for members to view their monthly attendance history, a page to rate coaches, and a dark mode toggle for the portal's theme.
+The user requested a way to test the sticker printing layout by printing a full sheet of 6 cards at once.
 
--   **Last item agent was working**: Implementing Monthly Attendance History, Coach Rating, and Dark Mode features for the Member Portal. The backend APIs and frontend pages have been created.
--   **Status**: IN PROGRESS
+-   **Last item agent was working**: Creating a new test page to display and print 6 member cards on a single A4 sheet to verify the sticker layout.
+-   **Status**: NOT STARTED
 -   **Agent Testing Done**: N
--   **Which testing method agent to use?**: Frontend testing agent. The agent should log in to the member portal (), navigate to the new pages (Attendance History, Rate Coaches), and test their functionality. It should also test the dark mode toggle button in the portal's header.
+-   **Which testing method agent to use?**: Frontend testing agent or screenshot tool. The agent needs to create a new page/route (e.g., ), fetch 6 members, and arrange them in a 2x3 grid using CSS. The key is to verify the print preview () matches the desired A4 sticker sheet layout with correct margins.
 -   **User Testing Done**: N
 
 **All Pending/In progress Issue list**:
--   **Issue 1**: The three newly implemented Member Portal features (Monthly Attendance, Coach Rating, Dark Mode) are untested. (P0)
--   **Issue 2**: Programmatic selection of a member from the search-enabled dropdown in  remains difficult for automated testing tools. (P2)
+-   **Issue 1**: Implement the user's request for a test page to print 6 member cards on a single A4 sheet. (P0)
+-   **Issue 2**: The searchable member dropdown in  remains difficult for automated testing tools to interact with, which complicates regression testing for the invoicing feature. (P2)
 
 **Issues Detail**:
 -   **Issue 1**:
-    -   **Attempted fixes**: Implementation is complete. The agent created backend APIs (, ) and frontend pages (, ), and added the dark mode toggle and logic to .
+    -   **Attempted fixes**: None. This is a new request.
     -   **Next debug checklist**:
-        1.  Log in to the Member Portal (e.g., with phone number ).
-        2.  Navigate to the Attendance History page and verify it loads and displays attendance data correctly.
-        3.  Navigate to the Rate Coaches page, submit a rating for a coach, and verify the request succeeds.
-        4.  Click the dark mode toggle (sun/moon icon) in the header and confirm the theme changes across all portal pages.
-        5.  Fix any bugs found during testing.
-    -   **Why fix this issue and what will be achieved with the fix?**: This will complete the user's latest feature request and make the new functionality available for them to review.
-    -   **Status**: IN PROGRESS
+        1.  Create a new route (e.g., ) in  and a corresponding page component file.
+        2.  In the new component, fetch data for at least 6 members.
+        3.  Create the layout for the page, which will be a 2x3 grid of the  component.
+        4.  Add a Print button.
+        5.  Write  CSS to handle the layout on a physical A4 page, applying the user-specified margins (Top: 3cm, Sides: 1cm, Bottom: 2cm) and card dimensions (10cm x 7cm).
+    -   **Why fix this issue and what will be achieved with the fix?**: Fulfills a direct user request to facilitate testing of the physical sticker printing output.
+    -   **Status**: NOT STARTED
     -   **Is recurring issue?** N
-    -   **Should Test frontend/backend/both after fix?**: Both
+    -   **Should Test frontend/backend/both after fix?**: Frontend
     -   **Blocked on other issue**: None
 -   **Issue 2**:
     -   **Attempted fixes**: None in this session.
-    -   **Next debug checklist**: Examine the  component in . Ensure  attributes are correctly assigned to the trigger and dropdown items to enable reliable selection by testing tools.
+    -   **Next debug checklist**: Examine the  component used for member searching in . Ensure unique and stable  attributes are assigned to the trigger, input field, and dropdown items to enable reliable selection by testing tools.
     -   **Why fix this issue and what will be achieved with the fix?**: It will improve the reliability of automated tests for the critical invoice creation process.
     -   **Status**: NOT STARTED
     -   **Is recurring issue?** Y
@@ -83,103 +72,103 @@ The agent just finished implementing three new user-requested features for the M
     -   **Blocked on other issue**: None
 
 **In progress Task List**:
--   **Task 1**: Test and finalize the new Member Portal features: Monthly Attendance, Coach Rating, and Dark Mode. (P0)
-
-**Task Detail**:
--   **Task 1**:
-    -   **Where to resume**: Begin by testing the newly added features from the perspective of a logged-in member.
-    -   **What will be achieved with this?**: The user's latest requested enhancements for the Member Portal will be fully implemented and verified.
-    -   **Status**: IN PROGRESS
-    -   **Should Test frontend/backend/both after fix?**: Both
-    -   **Blocked on something**: None.
+-   None.
 
 **Upcoming and Future Tasks**
 -   **Upcoming Tasks**:
-    -   **Backend Refactoring (Phase 2) (P0 - CRITICAL)**: Continue migrating endpoints from  to the  directory. Prioritize moving , , and the recently expanded  logic.
-    -   **Member Portal - Online Renewal (P1)**: Implement online payment functionality for subscription renewals, as this was the agent's top suggestion and aligns with user interest. This will likely require Stripe integration.
+    -   **Backend Refactoring (Phase 2) (P0 - CRITICAL)**: Continue migrating endpoints from  to the  directory. This is now more urgent than ever.
+    -   **Frontend Refactoring (P0 - CRITICAL)**: Decompose the massive  file into smaller, reusable components (e.g., , , , ). The file has become unmanageably large.
+    -   **Member Portal - Online Renewal (P1)**: Implement online payment functionality for subscription renewals.
     -   **WhatsApp Business API Integration (P1)**: Ask the user for their  and  to begin implementation.
 -   **Future Tasks**:
+    -   **PWA Conversion (P1)**: Convert the web app into a Progressive Web App (PWA) to allow installation on mobile devices, as discussed with the user.
+    -   **Schedule Templates (P2)**: Implement the agent's suggestion to allow saving frequently used schedules as templates to speed up invoice creation.
     -   **Member Portal - Booking/Leave Requests (P2)**: Implement features for members to book classes or request to freeze their subscription.
-    -   **Frontend Refactoring (P2)**: Decompose large pages like  and  into smaller, reusable components.
     -   Log unauthorized access attempts.
-    -   Implement advanced, granular user permissions (e.g., read-only access).
+    -   Implement advanced, granular user permissions.
 
 **Completed work in this session**
--   **Advanced Member Portal (Implemented from scratch)**
-    -   Secure login for members using only their phone number ().
-    -   Created all portal pages: Dashboard, Subscriptions, Schedule, QR Card, Notifications, and a unified My Documents (Invoices & Forms) page.
-    -   Implemented a new admin interface in  to send custom notifications to the member portal.
--   **QR Code & Attendance Fixes**
-    -   Resolved a critical bug preventing correct detection of active subscriptions.
-    -   Fixed print alignment for QR cards and set the scanner to use the rear camera.
--   **General Enhancements**
-    -   Extended user login sessions to be effectively permanent, per user request.
-    -   Added a Terms and Conditions notice to all member-facing printable documents.
+-   **Flexible Schedule Input**: Fixed the state management and successfully implemented the day-of-the-week picker and manual time input on the  for both invoices and registration forms.
+-   **Attendance Page Refactor**: Replaced the long list of activities with a simple category dropdown (Swimming, Football, Karate) that fetches all members for that category.
+-   **Level Capacity Check**: Implemented a system to check if a level is full (capacity 7) during invoice/registration creation. It shows a warning with Approve and Decline buttons, allowing an admin to override the limit.
+-   **Automatic Level Management**:
+    -   Modified the backend to automatically add a member to a level's roster when an invoice or registration form is created.
+    -   The system now auto-creates a new member record if a registration form is saved for a non-existent phone number.
+    -   A cleanup mechanism was added to automatically remove members from levels when their subscription end date passes.
+-   **Sticker Card Printing**:
+    -   Created a feature to print member cards onto a specific position on a 2x3 sticker sheet.
+    -   Implemented a dialog for the user to select one of 6 positions.
+    -   Dynamically generates print CSS to handle custom margins (3cm top, 2cm bottom, 1cm sides) and card dimensions (10cm x 7cm).
+    -   This feature was added to the Admin , the , and the .
+-   **Bug Fixes & Minor Changes**:
+    -   Fixed a critical  on the  endpoint caused by auto-created members missing required fields.
+    -   Removed the Create demo data button from the .
+    -   Provided the correct URL for the member portal.
 
 **Earlier issues found/mentioned but not fixed**
 -   The difficulty in automating tests for the member selection dropdown on the  remains unaddressed.
 
 **Known issue recurrence from previous fork**
--   The aforementioned test automation issue with the member selection dropdown is a recurring problem.
+-   The test automation issue with the member selection dropdown is a recurring problem.
 
 **Code Architecture**
 
 
 **Key Technical Concepts**
--   **Separate Client-Facing App**: A new sub-application (Member Portal) was created with its own authentication, layout, and routes, completely separate from the admin dashboard.
--   **Dynamic Theming (Dark Mode)**: Implemented using React Context and  to manage and persist the theme state ().
--   **Monolithic Backend Risk**: New, significant features (manual notifications API) were added directly to  instead of a modular route file, increasing technical debt and the urgency of refactoring.
+-   **Dynamic Print CSS**: Using JavaScript to generate  and  CSS rules on the fly to control layout, margins, and absolute positioning for printing on specific areas of a page.
+-   **Defensive API Design**: Adding fallback default values to an API response () to prevent validation errors from inconsistent or legacy data in the database.
+-   **Implicit Data Creation & Linking**: Modifying a  endpoint () to automatically create a new  document if one doesn't exist by phone number, and then linking it to a .
+-   **Self-Healing Data**: Implementing a cleanup function () that is automatically triggered by a frequently used  endpoint, ensuring data hygiene without requiring a separate cron job.
+-   **Conditional UI with Overrides**: Building a feature that warns the user about a business rule violation (level capacity) but provides them with the explicit ability to override the warning and proceed.
 
 **key DB schema**
--   **notifications**: This collection is now used to store manual notifications sent from the admin panel, with fields like , , , , and  ( or a specific member ID).
--   **coach_ratings**: A new collection is implicitly required to store data from the Rate Coach feature, likely containing , , , , and Sun Feb  8 08:41:18 UTC 2026.
-
-**changes in tech stack**
--   None.
+-   **levels**: The  array within a level document now stores objects containing both the  and the  to facilitate the auto-cleanup process.
+-   **members**: Can now be created automatically with just  and  from a registration form. The backend logic has been hardened to handle documents that may be missing other fields like  or .
 
 **All files of reference**
--   **/app/backend/routes/member_portal.py**: **(New)** Contains all APIs for the Member Portal feature.
--   **/app/frontend/src/pages/member-portal/**: **(New Directory)** Contains all frontend pages for the portal.
--   **/app/backend/server.py**: **(Heavily Modified)** Contains the new admin API for sending portal notifications and the fix for subscription date logic. **This file needs urgent refactoring.**
--   **/app/frontend/src/pages/MessagesPage.js**: **(Modified)** Updated with a new tab and UI for the admin to send notifications to the member portal.
--   **/app/frontend/src/App.js**: **(Heavily Modified)** All routes for the new member portal were added.
--   **/app/frontend/src/pages/member-portal/MemberLayout.js**: **(Modified)** Contains the new dark mode toggle logic.
+-   **/app/frontend/src/pages/InvoicesPage.js**: **(Dangerously Modified)** The primary file worked on. It is now extremely large and complex, handling multiple distinct features. It urgently needs to be broken down into smaller components.
+-   **/app/backend/server.py**: **(Dangerously Modified)** Contains critical new business logic for automatic member creation and level enrollment, increasing its monolithic nature.
+-   **/app/backend/routes/levels.py**: **(Modified)** Contains new endpoints for checking level capacity and cleaning up expired members.
+-   **/app/frontend/src/pages/AttendancePage.js**: **(Heavily Modified)** The core logic for fetching and displaying attendance data was completely rewritten to support categories.
+-   **/app/frontend/src/pages/MemberCardPage.js**: **(Modified)** Sticker printing feature added.
+-   **/app/frontend/src/pages/member-portal/MemberQRCard.js**: **(Modified)** Sticker printing feature added.
 
 **Areas that need refactoring**:
--   **/app/backend/server.py**: **CRITICAL RISK**. The file is growing unsustainably. The user-approved refactoring plan must be prioritized. The next agent should immediately plan to move the , , and  endpoints into their own route files.
--   **/app/frontend/src/pages/MessagesPage.js**: This page has become large and complex. The logic for WhatsApp and Portal Notifications should be split into separate, manageable components.
+-   **/app/frontend/src/pages/InvoicesPage.js**: **CRITICAL RISK**. This file is now over 4,500 lines long and handles invoicing, registration forms, level capacity logic, and sticker printing. It is a major source of technical debt and must be decomposed into smaller, dedicated components as a top priority.
+-   **/app/backend/server.py**: **CRITICAL RISK**. This monolithic file continues to absorb new, complex business logic (auto-creating members, managing level enrollment). The planned refactoring to move endpoints into the  directory must be executed immediately to maintain the project's health.
 
 **key api endpoints**
--   : (New) Authenticates a member via phone number.
--   : (New) Fetches the logged-in member's profile.
--   : (New) A unified endpoint to get a member's invoices and registration forms.
--   : (New & Untested) Gets attendance history for the current month.
--   : (New & Untested) Submits a coach rating.
--   : (New) Admin endpoint for sending manual notifications to members.
+-   : **(New)** Checks the current number of members in a level.
+-   : **(New)** Internal endpoint to remove members with expired subscriptions from all levels.
+-   : **(Modified)** Now automatically adds the specified member to the specified level upon creation.
+-   : **(Modified)** Now automatically creates a new member if the phone number doesn't exist, and then adds that member to the specified level.
+-   : **(Modified)** Made more robust to handle member documents with missing fields, preventing validation errors.
+-   : **(Modified)** The frontend now calls this with a list of  when a category is selected.
 
 **Critical Info for New Agent**
 -   You **MUST** respond in **Arabic**.
--   Your first task (P0) is to **test the three new, unverified features** in the Member Portal: Monthly Attendance, Coach Rating, and Dark Mode. Log in as a member (phone: ) at , fix any issues, and confirm functionality before proceeding.
--   After testing, you **must proactively propose continuing the backend refactoring**. The  file is a major risk. Plan to migrate the , , and  modules next.
+-   Your immediate task (P0) is to implement the user's request for a **6-card test print page**.
+-   After completing the test page, you **MUST** propose and prioritize the **critical refactoring** of both  and . These files have accumulated significant technical debt in this session and pose a risk to future development. Breaking down  into smaller components is particularly urgent.
 
 **documents and test reports created in this job**
--   None.
+-   : Updated with the new features.
 
 **Last 10 User Messages and any pending HUMAN messages**
-1.  **User**: Selects monthly attendance, coach rating, and dark mode as the next features for the member portal. (Status: IN PROGRESS, implementation done, testing pending).
-2.  **User**: Asks for suggestions to improve the member portal. (Status: COMPLETED).
-3.  **User**: Requests a specific T&C warning to be placed under the membership number on the member dashboard. (Status: COMPLETED).
-4.  **User**: Reports that the main site URL is not working. (Status: COMPLETED, bug was fixed).
-5.  **User**: Provides the exact text for a Terms and Conditions warning to be added to documents. (Status: COMPLETED).
-6.  **User**: Clarifies the request to show Registration Form data (like schedule) within the member portal. (Status: COMPLETED).
-7.  **User**: Requests that Registration Forms be accessible in the member portal, similar to invoices. (Status: COMPLETED).
-8.  **User**: Agrees to add an admin feature to send manual notifications to the member portal. (Status: COMPLETED).
-9.  **User**: Asks for an explanation of how notifications will work in the member portal. (Status: COMPLETED).
-10. **User**: Confirms the contact phone number for the academy. (Status: COMPLETED).
+10. **User**: Add the sticker printing feature to the admin member card page. (Status: COMPLETED)
+9.  **User**: The printed card should use the golden design. (Status: COMPLETED)
+8.  **User**: Set the top margin to 3cm and the bottom to 2cm. (Status: COMPLETED)
+7.  **User**: Set the card size to 10cm width by 7cm height. (Status: COMPLETED)
+6.  **User**: Add 1cm side margins. (Status: COMPLETED)
+5.  **User**: Add the same card printing button to the invoices page. (Status: COMPLETED)
+4.  **User**: Confirm the bottom margin is 2cm. (Status: AWAITING CLARIFICATION) The agent noted the actual margin was ~5.7cm and asked the user if they wanted to adjust it.
+3.  **User**: Print a test image of 6 cards on one page. (Status: **IN PROGRESS - Last working item**)
+2.  **User**: The link for the member portal is wrong. (Status: COMPLETED)
+1.  **User**: Suggest how to print the member card on a sticker sheet with selectable positions. (Status: COMPLETED)
 
 **Project Health Check:**
--   **Broken**: None, but the last three implemented features are untested and potentially buggy.
+-   **Broken**: None.
 -   **Mocked**: None.
+-   **Technical Debt**: HIGH. The  and  files are critically oversized and complex.
 
 **3rd Party Integrations**
 -   **openpyxl**: Backend, for  exports.
@@ -204,6 +193,5 @@ The agent just finished implementing three new user-requested features for the M
     -   Login using a registered member's phone number. Example: .
 
 **What agent forgot to execute**
--   The agent did not address the recurring issue of the  dropdown being difficult for test automation.
--   The agent added significant new API logic () to the monolithic , directly contradicting the approved backend refactoring initiative. This increases the project's technical debt.
--   No automated tests (e.g., using Pytest or a testing agent) were created for the complex, multi-page Member Portal feature.</analysis>
+-   The agent did not address the recurring issue of the  member search dropdown being difficult for test automation.
+-   The agent correctly identified the need for refactoring  and  from the previous handoff but proceeded to add several large, complex features to them, significantly worsening the technical debt instead of addressing it.</analysis>
