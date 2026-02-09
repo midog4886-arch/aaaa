@@ -465,6 +465,18 @@ export const InvoicesPage = () => {
       toast.error(language === 'ar' ? 'أدخل اسم العميل' : 'Enter customer name');
       return;
     }
+    
+    // Check if any level is full
+    const hasFullLevel = Object.values(levelCapacityWarnings).some(w => w.isFull);
+    if (hasFullLevel) {
+      toast.error(
+        language === 'ar' 
+          ? 'لا يمكن حفظ الفاتورة. يوجد مستوى مكتمل العدد، يرجى اختيار مستوى آخر.'
+          : 'Cannot save invoice. A selected level is full, please choose another level.'
+      );
+      return;
+    }
+    
     setSaving(true);
     const totalDiscount = couponDiscount;
     try {
