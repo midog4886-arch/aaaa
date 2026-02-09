@@ -53,6 +53,10 @@ const MemberCardPage = () => {
     const startDate = firstActivity?.start_date || '';
     const endDate = firstActivity?.end_date || '';
     
+    // Get schedule/days info
+    const schedule = firstActivity?.schedule || firstActivity?.days || '';
+    const time = firstActivity?.time || '';
+    
     // Get activities list
     const activitiesHtml = member?.activities?.map(act => `
       <div class="activity-item ${act.status === 'active' ? 'active' : 'expired'}">
