@@ -281,21 +281,19 @@ export const InvoicesPage = () => {
         const { is_full, member_count, max_capacity } = response.data;
         
         if (is_full) {
-          // Show warning and mark level as full
+          // Show warning with accept/reject options
           setLevelCapacityWarnings(prev => ({
             ...prev,
             [index]: {
               isFull: true,
+              isAccepted: false, // Not accepted yet
+              memberCount: member_count,
+              maxCapacity: max_capacity,
               message: language === 'ar' 
-                ? `العدد في هذا المستوى مكتمل (${member_count}/${max_capacity} مشتركين)، يرجى اختيار مستوى آخر.`
-                : `This level is full (${member_count}/${max_capacity} members), please select another level.`
+                ? `العدد في هذا المستوى مكتمل (${member_count}/${max_capacity} مشتركين)`
+                : `This level is full (${member_count}/${max_capacity} members)`
             }
           }));
-          toast.error(
-            language === 'ar' 
-              ? `العدد في هذا المستوى مكتمل (${member_count} مشتركين)، يرجى اختيار مستوى آخر.`
-              : `This level is full (${member_count} members), please select another level.`
-          );
         } else {
           // Clear warning for this index
           setLevelCapacityWarnings(prev => {
@@ -317,6 +315,31 @@ export const InvoicesPage = () => {
     }
     
     setInvoiceItems(updated);
+  };
+
+  // Accept full level warning
+  const handleAcceptFullLevel = (index) => {
+    setLevelCapacityWarnings(prev => ({
+      ...prev,
+      [index]: {
+        ...prev[index],
+        isAccepted: true
+      }
+    }));
+    toast.success(language === 'ar' ? 'تم قبول التسجيل في هذا المستوى' : 'Registration accepted for this level');
+  };
+
+  // Reject full level - clear selection
+  const handleRejectFullLevel = (index) => {
+    const updated = [...invoiceItems];
+    updated[index].level_id = '';
+    updated[index].level_name = '';
+    setInvoiceItems(updated);
+    setLevelCapacityWarnings(prev => {
+      const newWarnings = { ...prev };
+      delete newWarnings[index];
+      return newWarnings;
+    });
   };
 
   const updateItemSchedule = (index, schedule) => {
