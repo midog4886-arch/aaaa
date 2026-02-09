@@ -1383,7 +1383,7 @@ ${selectedInvoice.discount > 0 ? `🎁 الخصم: ${selectedInvoice.discount} �
       <html>
         <head>
           <meta charset="UTF-8">
-          <title>بطاقة العضوية - ${regFormCardData?.member_code}</title>
+          <title>بطاقة العضوية - ${regFormCardData?.member_code || regFormCardData?.form_number}</title>
           <style>
             @import url('https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700&display=swap');
             @page { size: A4; margin: 0mm; }
@@ -1393,24 +1393,29 @@ ${selectedInvoice.discount > 0 ? `🎁 الخصم: ${selectedInvoice.discount} �
             @media print { .screen-only { display: none !important; } .print-area { display: block !important; position: absolute; top: ${topOffset}mm; right: ${leftOffset}mm; } }
             @media screen { .print-area { display: none; } }
             .card { width: 100mm; height: 70mm; background: white; border-radius: 4mm; overflow: hidden; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
-            .card-header { background: linear-gradient(135deg, #F97316, #F59E0B); padding: 2.5mm; display: flex; justify-content: space-between; align-items: center; color: white; }
-            .header-text h2 { font-size: 9pt; font-weight: 700; margin: 0; }
+            .card-header { background: linear-gradient(135deg, #F97316, #F59E0B); padding: 2mm; display: flex; justify-content: space-between; align-items: center; color: white; }
+            .header-text h2 { font-size: 8pt; font-weight: 700; margin: 0; }
             .header-text p { font-size: 5pt; opacity: 0.9; margin: 0; }
-            .trophy { font-size: 16pt; }
-            .card-body { padding: 2.5mm; display: flex; gap: 2.5mm; }
-            .info-section { flex: 1; text-align: right; }
-            .qr-section { width: 28mm; height: 28mm; background: white; border: 1px solid #eee; border-radius: 2mm; padding: 0.5mm; }
+            .trophy { font-size: 14pt; }
+            .card-body { padding: 2mm; display: flex; gap: 2mm; height: calc(70mm - 12mm - 6mm); }
+            .info-section { flex: 1; text-align: right; overflow: hidden; }
+            .qr-section { width: 24mm; height: 24mm; background: white; border: 1px solid #eee; border-radius: 2mm; padding: 0.5mm; flex-shrink: 0; }
             .qr-section img { width: 100%; height: 100%; }
-            .member-name { font-size: 9pt; font-weight: 700; color: #1f2937; margin-bottom: 1.5mm; }
-            .info-row { display: flex; align-items: center; gap: 1mm; margin-bottom: 1mm; font-size: 7pt; }
+            .member-name { font-size: 8pt; font-weight: 700; color: #1f2937; margin-bottom: 1mm; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+            .info-row { display: flex; align-items: center; gap: 1mm; margin-bottom: 0.5mm; font-size: 6pt; }
             .info-label { color: #6b7280; font-size: 5pt; }
-            .member-code { color: #F97316; font-weight: 700; font-size: 9pt; }
-            .activities { margin-top: 1.5mm; padding-top: 1.5mm; border-top: 1px dashed #e5e7eb; }
+            .member-code { color: #F97316; font-weight: 700; font-size: 8pt; }
+            .activities { margin-top: 1mm; padding-top: 1mm; border-top: 1px dashed #e5e7eb; max-height: 28mm; overflow: hidden; }
             .activities-label { font-size: 5pt; color: #6b7280; margin-bottom: 0.5mm; }
-            .activity { display: inline-block; padding: 0.3mm 1.5mm; border-radius: 1.5mm; font-size: 5pt; margin: 0.3mm; }
-            .activity.active { background: #D1FAE5; color: #065F46; }
-            .activity.inactive { background: #FEE2E2; color: #991B1B; }
-            .card-footer { text-align: center; padding: 1.5mm; background: #f9fafb; font-size: 5pt; color: #9ca3af; border-top: 1px dashed #e5e7eb; }
+            .activity-item { padding: 0.8mm 1.5mm; margin-bottom: 0.5mm; border-radius: 1.5mm; font-size: 5pt; }
+            .activity-item.active { background: #D1FAE5; border-right: 2px solid #10B981; }
+            .activity-item.expired { background: #FEE2E2; border-right: 2px solid #EF4444; }
+            .activity-name { font-weight: 600; color: #1f2937; font-size: 5.5pt; }
+            .activity-dates { font-size: 4.5pt; color: #6b7280; margin: 0.3mm 0; direction: ltr; text-align: right; }
+            .activity-status { font-size: 4.5pt; font-weight: 700; }
+            .activity-item.active .activity-status { color: #059669; }
+            .activity-item.expired .activity-status { color: #DC2626; }
+            .card-footer { text-align: center; padding: 1mm; background: #f9fafb; font-size: 4.5pt; color: #9ca3af; border-top: 1px dashed #e5e7eb; }
             .print-btn { margin-top: 20px; padding: 12px 30px; background: linear-gradient(135deg, #F97316, #EA580C); color: white; border: none; border-radius: 10px; cursor: pointer; font-family: 'Tajawal', Arial, sans-serif; font-size: 16px; font-weight: bold; }
             .position-info { margin-top: 15px; padding: 10px 20px; background: #FEF3C7; border-radius: 8px; color: #92400E; font-size: 14px; }
           </style>
@@ -1427,7 +1432,7 @@ ${selectedInvoice.discount > 0 ? `🎁 الخصم: ${selectedInvoice.discount} �
                 <div class="info-section">
                   <div class="info-label">الاسم</div>
                   <div class="member-name">${regFormCardData?.name_ar || ''}</div>
-                  <div class="info-row"><span class="info-label">رقم الاستمارة:</span><span class="member-code">#${regFormCardData?.member_code || ''}</span></div>
+                  <div class="info-row"><span class="info-label">رقم الاستمارة:</span><span class="member-code">#${regFormCardData?.member_code || regFormCardData?.form_number || ''}</span></div>
                   <div class="info-row"><span class="info-label">رقم الجوال:</span><span>${regFormCardData?.phone || '-'}</span></div>
                   ${activitiesHtml ? `<div class="activities"><div class="activities-label">الأنشطة المسجلة</div>${activitiesHtml}</div>` : ''}
                 </div>
@@ -1448,9 +1453,20 @@ ${selectedInvoice.discount > 0 ? `🎁 الخصم: ${selectedInvoice.discount} �
                 <div class="info-section">
                   <div class="info-label">الاسم</div>
                   <div class="member-name">${regFormCardData?.name_ar || ''}</div>
-                  <div class="info-row"><span class="info-label">رقم الاستمارة:</span><span class="member-code">#${regFormCardData?.member_code || ''}</span></div>
+                  <div class="info-row"><span class="info-label">رقم الاستمارة:</span><span class="member-code">#${regFormCardData?.member_code || regFormCardData?.form_number || ''}</span></div>
                   <div class="info-row"><span class="info-label">رقم الجوال:</span><span>${regFormCardData?.phone || '-'}</span></div>
                   ${activitiesHtml ? `<div class="activities"><div class="activities-label">الأنشطة المسجلة</div>${activitiesHtml}</div>` : ''}
+                </div>
+                <div class="qr-section"><img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(qrData)}" /></div>
+              </div>
+              <div class="card-footer">امسح الكود عند الدخول لتسجيل الحضور</div>
+            </div>
+          </div>
+        </body>
+      </html>
+    `);
+    printWindow.document.close();
+  };
                 </div>
                 <div class="qr-section"><img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(qrData)}" /></div>
               </div>
