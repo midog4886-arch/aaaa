@@ -2673,6 +2673,13 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
                             >
                               <FileText className="w-4 h-4" />
                             </button>
+                            <button 
+                              className="action-button text-purple-600" 
+                              onClick={() => handlePrintRegFormCard(form)}
+                              title={language === 'ar' ? 'طباعة كارت العضوية' : 'Print Member Card'}
+                            >
+                              <QrCode className="w-4 h-4" />
+                            </button>
                             {form.status === 'pending' && (
                               <>
                                 <button 
