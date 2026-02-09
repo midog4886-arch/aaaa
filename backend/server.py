@@ -256,9 +256,13 @@ class MemberActivity(BaseModel):
     activity_name: Optional[str] = ""
     start_date: str
     end_date: str
-    fee: float
+    fee: Optional[float] = 0
     status: str = "active"  # active, expired, frozen
     coach_id: Optional[str] = ""
+    level_id: Optional[str] = ""
+    schedule: Optional[str] = ""
+    source: Optional[str] = ""
+    source_id: Optional[str] = ""
 
 class MemberBase(BaseModel):
     name: str
