@@ -2515,7 +2515,7 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
     setRegFormItems([...regFormItems, {
       activity_id: activity.id,
       activity_name: language === 'ar' ? activity.name_ar : activity.name,
-      fee: activity.fee || 0,
+      fee: activity.monthly_fee || activity.fee || 0,
       start_date: today,
       end_date: endDate,
       period: `${today} - ${endDate}`,
