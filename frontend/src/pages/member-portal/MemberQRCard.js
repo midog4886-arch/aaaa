@@ -263,7 +263,7 @@ const MemberCard = () => {
                   ))}
                 </div>
                 <p className="text-center text-xs text-gray-500 mt-3">
-                  📐 حجم كل كرت: 10سم × 7سم
+                  📐 حجم كل كرت: 9سم × 7سم
                 </p>
               </div>
             </div>
