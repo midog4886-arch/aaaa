@@ -49,10 +49,11 @@ const MemberCardPage = () => {
     const qrData = getQRData();
     
     // Calculate position offsets (2 columns x 3 rows, each card 10cm x 10cm)
+    // Top margin: 30mm, Bottom margin: 20mm
     const col = position % 2; // 0 or 1
     const row = Math.floor(position / 2); // 0, 1, or 2
     const leftOffset = col * 100; // mm
-    const topOffset = row * 100; // mm
+    const topOffset = 30 + (row * 100); // mm (30mm top margin)
     
     // Get activities list
     const activitiesHtml = member?.activities?.map(act => `
