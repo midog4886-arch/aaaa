@@ -1430,7 +1430,60 @@ ${selectedInvoice.discount > 0 ? `🎁 الخصم: ${selectedInvoice.discount} �
     if (!regFormCardData) return;
     
     const printWindow = window.open('', '_blank', 'width=800,height=600');
-    // Use WCPA_MEMBER type so attendance scanner can read it
+    
+    // 2 horizontal cards layout on A4
+    const cardWidth = 90; // mm
+    const horizontalMargin = 15; // mm from sides
+    const topMargin = 30; // mm from top
+    const gap = 10; // mm between cards
+    const leftOffset = horizontalMargin + (position * (cardWidth + gap));
+    const topOffset = topMargin;
+    
+    // Position 0 = Member Card, Position 1 = Logo
+    if (position === 1) {
+      // Print Logo Card
+      printWindow.document.write(`
+        <!DOCTYPE html>
+        <html>
+          <head>
+            <meta charset="UTF-8">
+            <title>شعار الأكاديمية</title>
+            <style>
+              @import url('https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700&display=swap');
+              @page { size: A4; margin: 0mm; }
+              * { margin: 0; padding: 0; box-sizing: border-box; }
+              body { font-family: 'Tajawal', Arial, sans-serif; background: #f3f4f6; direction: rtl; }
+              .screen-only { padding: 20px; text-align: center; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; }
+              @media print { .screen-only { display: none !important; } .print-area { display: block !important; position: absolute; top: ${topOffset}mm; right: ${leftOffset}mm; } }
+              @media screen { .print-area { display: none; } }
+              .logo-card { width: 90mm; height: 70mm; background: white; border-radius: 4mm; overflow: hidden; box-shadow: 0 4px 15px rgba(0,0,0,0.1); display: flex; align-items: center; justify-content: center; padding: 5mm; }
+              .logo-card img { max-width: 100%; max-height: 100%; object-fit: contain; }
+              .print-btn { margin-top: 20px; padding: 12px 30px; background: linear-gradient(135deg, #F97316, #EA580C); color: white; border: none; border-radius: 10px; cursor: pointer; font-family: 'Tajawal', Arial, sans-serif; font-size: 16px; font-weight: bold; }
+              .position-info { margin-top: 15px; padding: 10px 20px; background: #FEF3C7; border-radius: 8px; color: #92400E; font-size: 14px; }
+            </style>
+          </head>
+          <body>
+            <div class="screen-only">
+              <p style="font-size: 18px; margin-bottom: 20px;">📋 معاينة شعار الأكاديمية</p>
+              <div class="logo-card">
+                <img src="${window.location.origin}/images/academy-logo.png" alt="شعار الأكاديمية" />
+              </div>
+              <div class="position-info">📍 موقع الطباعة: خانة 2 (شعار الأكاديمية)</div>
+              <button class="print-btn" onclick="window.print()">🖨️ طباعة</button>
+            </div>
+            <div class="print-area">
+              <div class="logo-card">
+                <img src="${window.location.origin}/images/academy-logo.png" alt="شعار الأكاديمية" />
+              </div>
+            </div>
+          </body>
+        </html>
+      `);
+      printWindow.document.close();
+      return;
+    }
+    
+    // Position 0 = Member Card
     const qrData = JSON.stringify({
       type: 'WCPA_MEMBER',
       code: regFormCardData.member_code || regFormCardData.form_number,
@@ -1439,22 +1492,12 @@ ${selectedInvoice.discount > 0 ? `🎁 الخصم: ${selectedInvoice.discount} �
       name: regFormCardData.name_ar
     });
     
-    // Calculate position offsets (2 columns x 3 rows, each card 9cm width x 7cm height)
-    // A4 page: 297mm height
-    // Top margin: 30mm, Bottom margin: 20mm, Side margins: 10mm
-    const col = position % 2;
-    const row = Math.floor(position / 2);
-    const leftOffset = 10 + (col * 90); // 90mm card width
-    const cardHeight = 70; // mm
-    const rowGap = 18.5; // mm between rows for exact 20mm bottom margin
-    const topOffset = 30 + (row * (cardHeight + rowGap));
-    
     // Get first activity dates for display under QR
     const firstActivity = regFormCardData?.activities?.[0];
     const startDate = firstActivity?.start_date || '';
     const endDate = firstActivity?.end_date || '';
     
-    // Generate activities HTML without dates (dates will be under QR)
+    // Generate activities HTML
     const activitiesHtml = regFormCardData?.activities?.map(act => {
       return `
         <div class="activity-item ${act.status}">
@@ -1511,7 +1554,7 @@ ${selectedInvoice.discount > 0 ? `🎁 الخصم: ${selectedInvoice.discount} �
         </head>
         <body>
           <div class="screen-only">
-            <p style="font-size: 18px; margin-bottom: 20px;">📋 معاينة بطاقة العضوية - استمارة تسجيل</p>
+            <p style="font-size: 18px; margin-bottom: 20px;">📋 معاينة بطاقة العضوية</p>
             <div class="card">
               <div class="card-header">
                 <div class="header-text"><h2>أكاديمية أداء الأبطال</h2><p>World Champions Performance Academy</p></div>
@@ -1539,8 +1582,8 @@ ${selectedInvoice.discount > 0 ? `🎁 الخصم: ${selectedInvoice.discount} �
                 <div>• المبلغ المدفوع لا يسترد بعد مرور أسبوع من الاشتراك</div>
               </div>
             </div>
-            <div class="position-info">📍 موقع الطباعة: الصف ${row + 1} - العمود ${col + 1} (الكرت رقم ${position + 1})</div>
-            <button class="print-btn" onclick="window.print()">🖨️ طباعة البطاقة</button>
+            <div class="position-info">📍 موقع الطباعة: خانة 1 (كرت العضوية)</div>
+            <button class="print-btn" onclick="window.print()">🖨️ طباعة</button>
           </div>
           <div class="print-area">
             <div class="card">
