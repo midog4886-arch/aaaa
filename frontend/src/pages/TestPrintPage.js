@@ -178,15 +178,10 @@ const TestPrintPage = () => {
               overflow: hidden;
             }
             
-            .cards-grid {
-              position: absolute;
-              top: 30mm;
-              right: 10mm;
-              left: 10mm;
-              display: grid;
-              grid-template-columns: repeat(2, 100mm);
-              grid-template-rows: repeat(3, 70mm);
-              gap: 0;
+            .cards-container {
+              position: relative;
+              width: 100%;
+              height: 100%;
             }
             
             .print-btn {
