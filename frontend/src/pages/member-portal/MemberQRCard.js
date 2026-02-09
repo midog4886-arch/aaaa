@@ -80,8 +80,9 @@ const MemberCard = () => {
             .qr-container { display: flex; flex-direction: column; align-items: center; }
             .qr-section { width: 26mm; height: 26mm; background: white; border: 1px solid #eee; border-radius: 2mm; padding: 0.5mm; }
             .qr-section img { width: 100%; height: 100%; }
-            .qr-dates { text-align: center; font-size: 6pt; color: #1f2937; margin-top: 1mm; line-height: 1.3; font-weight: 600; }
+            .qr-dates { text-align: center; font-size: 8pt; color: #1f2937; margin-top: 1mm; line-height: 1.4; font-weight: 700; }
             .qr-dates span { display: block; }
+            .schedule-info { text-align: center; font-size: 6pt; color: #F97316; margin-top: 1mm; font-weight: 600; background: #FFF7ED; padding: 1mm; border-radius: 2mm; }
             .member-name { font-size: 10pt; font-weight: 700; color: #1f2937; margin-bottom: 1mm; }
             .info-row { display: flex; align-items: center; gap: 1mm; margin-bottom: 0.8mm; font-size: 7pt; }
             .info-label { color: #6b7280; font-size: 6pt; }
