@@ -2285,3 +2285,44 @@ GET    /api/export/attendance                       - تصدير Excel
 ```
 
 ---
+
+---
+
+## Update 34 - QR Code Scanner Fix (February 2026)
+
+### إصلاح مشكلة مسح QR Code ✅
+
+**المشكلة**: عند مسح QR code لاستمارة التسجيل تظهر رسالة "الكود غير صالح"
+
+**السبب**: QR code كان يستخدم صيغة مختلفة (`WCPA_REG_FORM` و `member_code`) بينما نظام الحضور يتوقع (`WCPA_MEMBER` و `code`)
+
+### الإصلاحات:
+
+#### 1. Frontend - InvoicesPage.js
+- **handleStickerPrint**: تم تحديث QR data لاستخدام الصيغة الصحيحة
+- **handleRegFormStickerPrint**: تم تحديث QR data لاستخدام `type: 'WCPA_MEMBER'` و `code`
+
+#### 2. Backend - server.py
+- **get_member_card_public**: تم إضافة `qr_data` object بالصيغة الصحيحة
+- تم تحسين البحث عن الأنشطة ليشمل:
+  1. قائمة activities في العضو
+  2. الفواتير
+  3. استمارات التسجيل
+
+### صيغة QR Code الموحدة:
+```json
+{
+  "type": "WCPA_MEMBER",
+  "code": "2623",
+  "id": "member-uuid",
+  "phone": "0551234567",
+  "name": "اسم العضو"
+}
+```
+
+### نتائج الاختبار:
+- ✅ البحث برقم العضوية يعمل
+- ✅ نظام الحضور يتعرف على العضو ويعرض أنشطته
+- ✅ تسجيل الحضور يعمل بنجاح
+
+---
