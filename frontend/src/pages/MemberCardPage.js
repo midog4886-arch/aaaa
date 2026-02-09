@@ -77,7 +77,7 @@ const MemberCardPage = () => {
             @media print { .screen-only { display: none !important; } .print-area { display: flex !important; position: absolute; top: 30mm; right: 15mm; gap: 5mm; } }
             @media screen { .print-area { display: none; } }
             .sticker-preview { display: flex; gap: 15px; justify-content: center; margin-bottom: 20px; }
-            .card { width: 60mm; height: 90mm; background: white; border-radius: 4mm; overflow: hidden; box-shadow: 0 4px 15px rgba(0,0,0,0.1); display: flex; flex-direction: column; }
+            .card { width: 90mm; height: 60mm; background: white; border-radius: 4mm; overflow: hidden; box-shadow: 0 4px 15px rgba(0,0,0,0.1); display: flex; flex-direction: column; }
             .card-header { background: linear-gradient(135deg, #F97316, #F59E0B); padding: 2mm; display: flex; justify-content: space-between; align-items: center; color: white; }
             .header-text h2 { font-size: 9pt; font-weight: 700; margin: 0; }
             .header-text p { font-size: 6pt; opacity: 0.9; margin: 0; }
@@ -104,7 +104,7 @@ const MemberCardPage = () => {
             .activity-item.expired .activity-status { color: #DC2626; }
             .card-footer { text-align: right; padding: 1.5mm 2mm; background: #f9fafb; font-size: 5pt; color: #374151; border-top: 1px dashed #e5e7eb; line-height: 1.4; }
             .card-footer .terms-title { font-weight: 700; color: #1f2937; font-size: 6pt; margin-bottom: 0.5mm; }
-            .logo-card { width: 60mm; height: 90mm; background: white; border-radius: 4mm; overflow: hidden; box-shadow: 0 4px 15px rgba(0,0,0,0.1); display: flex; align-items: center; justify-content: center; padding: 5mm; }
+            .logo-card { width: 90mm; height: 60mm; background: white; border-radius: 4mm; overflow: hidden; box-shadow: 0 4px 15px rgba(0,0,0,0.1); display: flex; align-items: center; justify-content: center; padding: 5mm; }
             .logo-card img { max-width: 100%; max-height: 100%; object-fit: contain; }
             .print-btn { margin-top: 20px; padding: 12px 30px; background: linear-gradient(135deg, #F97316, #EA580C); color: white; border: none; border-radius: 10px; cursor: pointer; font-family: 'Tajawal', Arial, sans-serif; font-size: 16px; font-weight: bold; }
             .position-labels { display: flex; gap: 15px; justify-content: center; margin-top: 10px; }
@@ -152,7 +152,7 @@ const MemberCardPage = () => {
               <div class="position-label">📍 خانة 1: كرت العضوية</div>
               <div class="position-label">📍 خانة 2: شعار الأكاديمية</div>
             </div>
-            <p style="margin-top: 10px; color: #6b7280; font-size: 14px;">📐 حجم كل كرت: 6سم × 9سم</p>
+            <p style="margin-top: 10px; color: #6b7280; font-size: 14px;">📐 حجم كل كرت: 9سم × 6سم</p>
             <button class="print-btn" onclick="window.print()">🖨️ طباعة الملصقات</button>
           </div>
           <div class="print-area">
@@ -285,14 +285,14 @@ const MemberCardPage = () => {
                   <div className="bg-gray-100 p-4 rounded-lg">
                     <div className="flex gap-3 justify-center max-w-[360px] mx-auto">
                       {/* Preview Card 1 - Member Card */}
-                      <div className="aspect-[6/9] w-[100px] bg-white border-2 border-orange-400 rounded-lg flex flex-col items-center justify-center gap-2 p-3">
+                      <div className="aspect-[9/6] w-[140px] bg-white border-2 border-orange-400 rounded-lg flex flex-col items-center justify-center gap-2 p-3">
                         <span className="text-3xl">📇</span>
                         <span className="text-sm font-bold text-gray-700">كرت العضوية</span>
                         <span className="text-xs text-orange-500">خانة 1</span>
                       </div>
                       
                       {/* Preview Card 2 - Academy Logo */}
-                      <div className="aspect-[6/9] w-[100px] bg-white border-2 border-orange-400 rounded-lg flex flex-col items-center justify-center gap-2 p-3 overflow-hidden">
+                      <div className="aspect-[9/6] w-[140px] bg-white border-2 border-orange-400 rounded-lg flex flex-col items-center justify-center gap-2 p-3 overflow-hidden">
                         <img 
                           src="/images/academy-logo.png" 
                           alt="شعار الأكاديمية" 
@@ -303,7 +303,7 @@ const MemberCardPage = () => {
                       </div>
                     </div>
                     <p className="text-center text-xs text-gray-500 mt-3">
-                      📐 حجم كل كرت: 6سم × 9سم
+                      📐 حجم كل كرت: 9سم × 6سم
                     </p>
                   </div>
                   
