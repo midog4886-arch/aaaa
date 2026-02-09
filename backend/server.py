@@ -126,7 +126,8 @@ async def get_member_card_public(search_term: str):
             "activity_name": act.get("activity_name"),
             "status": status,
             "start_date": start_date,
-            "end_date": end_date
+            "end_date": end_date,
+            "schedule": act.get("schedule", "")
         })
     
     # Also check invoices if no activities found
