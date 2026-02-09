@@ -160,7 +160,8 @@ async def get_member_card_public(search_term: str):
                         "activity_name": item.get("activity_name"),
                         "status": status,
                         "start_date": start_date,
-                        "end_date": end_date
+                        "end_date": end_date,
+                        "schedule": item.get("schedule", "")
                     })
     
     # Also check registration forms
@@ -186,7 +187,8 @@ async def get_member_card_public(search_term: str):
                         "activity_name": item.get("activity_name"),
                         "status": status,
                         "start_date": start_date,
-                        "end_date": end_date
+                        "end_date": end_date,
+                        "schedule": item.get("schedule", "")
                     })
     
     return {
