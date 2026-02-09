@@ -4395,13 +4395,68 @@ async def quick_search_member(
         {"_id": 0}
     ).to_list(10)
     
+    # Get activities from invoices
+    activities_from_invoices = []
+    invoices = await db.invoices.find({
+        "member_id": member["id"],
+        "status": {"$in": ["paid", "partial"]}
+    }, {"_id": 0}).to_list(100)
+    
+    for inv in invoices:
+        for item in inv.get("items", []):
+            if item.get("activity_id"):
+                end_date = item.get("end_date", "")
+                is_active = end_date >= today if end_date else False
+                activities_from_invoices.append({
+                    "activity_id": item.get("activity_id"),
+                    "activity_name": item.get("activity_name"),
+                    "start_date": item.get("start_date", ""),
+                    "end_date": end_date,
+                    "status": "active" if is_active else "expired",
+                    "source": "invoice"
+                })
+    
+    # Get activities from registration forms
+    activities_from_reg_forms = []
+    reg_forms = await db.registration_forms.find({
+        "$or": [
+            {"customer_phone": member.get("phone", "")},
+            {"customer_name": member.get("name_ar", "")}
+        ],
+        "status": {"$in": ["pending", "converted"]}
+    }, {"_id": 0}).to_list(100)
+    
+    for form in reg_forms:
+        for item in form.get("items", []):
+            if item.get("activity_id") or item.get("activity_name"):
+                end_date = item.get("end_date", "")
+                is_active = end_date >= today if end_date else False
+                activities_from_reg_forms.append({
+                    "activity_id": item.get("activity_id", ""),
+                    "activity_name": item.get("activity_name"),
+                    "start_date": item.get("start_date", ""),
+                    "end_date": end_date,
+                    "status": "active" if is_active else "expired",
+                    "source": "registration_form"
+                })
+    
+    # Combine activities (remove duplicates by activity_id)
+    all_activities = activities_from_invoices + activities_from_reg_forms
+    seen_activities = set()
+    unique_activities = []
+    for act in all_activities:
+        key = act.get("activity_id") or act.get("activity_name")
+        if key and key not in seen_activities:
+            seen_activities.add(key)
+            unique_activities.append(act)
+    
     return {
         "member_id": member["id"],
         "member_code": member.get("member_code", ""),
         "name": member.get("name", ""),
         "name_ar": member.get("name_ar", ""),
         "phone": member.get("phone", ""),
-        "activities": member.get("activities", []),
+        "activities": unique_activities,
         "today_attendance": today_records
     }
 
