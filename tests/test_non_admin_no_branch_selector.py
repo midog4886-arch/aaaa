@@ -5,7 +5,7 @@ import pytest
 import requests
 import os
 
-BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', 'https://sports-portal-6.preview.emergentagent.com')
+BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', 'https://sportacademy-11.preview.emergentagent.com')
 
 class TestNonAdminBranchAccess:
     """Test that non-admin users don't have branch switching access"""
