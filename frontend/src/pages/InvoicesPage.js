@@ -1248,31 +1248,31 @@ ${selectedInvoice.discount > 0 ? `🎁 الخصم: ${selectedInvoice.discount} �
             @media screen { .print-area { display: none; } }
             .card { width: 90mm; height: 70mm; background: white; border-radius: 4mm; overflow: hidden; box-shadow: 0 4px 15px rgba(0,0,0,0.1); display: flex; flex-direction: column; }
             .card-header { background: linear-gradient(135deg, #F97316, #F59E0B); padding: 2mm; display: flex; justify-content: space-between; align-items: center; color: white; }
-            .header-text h2 { font-size: 8pt; font-weight: 700; margin: 0; }
-            .header-text p { font-size: 5pt; opacity: 0.9; margin: 0; }
-            .trophy { font-size: 14pt; }
+            .header-text h2 { font-size: 9pt; font-weight: 700; margin: 0; }
+            .header-text p { font-size: 6pt; opacity: 0.9; margin: 0; }
+            .trophy { font-size: 16pt; }
             .card-body { padding: 2mm; display: flex; gap: 2mm; flex: 1; }
             .info-section { flex: 1; text-align: right; overflow: hidden; }
             .qr-container { display: flex; flex-direction: column; align-items: center; }
-            .qr-section { width: 28mm; height: 28mm; background: white; border: 1px solid #eee; border-radius: 2mm; padding: 0.5mm; }
+            .qr-section { width: 26mm; height: 26mm; background: white; border: 1px solid #eee; border-radius: 2mm; padding: 0.5mm; }
             .qr-section img { width: 100%; height: 100%; }
-            .qr-dates { text-align: center; font-size: 5pt; color: #374151; margin-top: 1mm; line-height: 1.4; }
+            .qr-dates { text-align: center; font-size: 6pt; color: #1f2937; margin-top: 1mm; line-height: 1.3; font-weight: 600; }
             .qr-dates span { display: block; }
-            .member-name { font-size: 8pt; font-weight: 700; color: #1f2937; margin-bottom: 1mm; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-            .info-row { display: flex; align-items: center; gap: 1mm; margin-bottom: 0.5mm; font-size: 6pt; }
-            .info-label { color: #6b7280; font-size: 5pt; }
-            .member-code { color: #F97316; font-weight: 700; font-size: 8pt; }
+            .member-name { font-size: 10pt; font-weight: 700; color: #1f2937; margin-bottom: 1mm; }
+            .info-row { display: flex; align-items: center; gap: 1mm; margin-bottom: 0.8mm; font-size: 7pt; }
+            .info-label { color: #6b7280; font-size: 6pt; }
+            .member-code { color: #F97316; font-weight: 700; font-size: 10pt; }
             .activities { margin-top: 1mm; padding-top: 1mm; border-top: 1px dashed #e5e7eb; }
-            .activities-label { font-size: 5pt; color: #6b7280; margin-bottom: 0.5mm; }
-            .activity-item { padding: 0.8mm 1.5mm; margin-bottom: 0.3mm; border-radius: 1.5mm; font-size: 5pt; }
+            .activities-label { font-size: 6pt; color: #6b7280; margin-bottom: 0.5mm; }
+            .activity-item { padding: 1mm 1.5mm; margin-bottom: 0.5mm; border-radius: 1.5mm; font-size: 6pt; }
             .activity-item.active { background: #D1FAE5; border-right: 2px solid #10B981; }
             .activity-item.expired { background: #FEE2E2; border-right: 2px solid #EF4444; }
-            .activity-name { font-weight: 600; color: #1f2937; font-size: 6pt; }
-            .activity-status { font-size: 5pt; font-weight: 700; }
+            .activity-name { font-weight: 600; color: #1f2937; font-size: 7pt; }
+            .activity-status { font-size: 6pt; font-weight: 700; }
             .activity-item.active .activity-status { color: #059669; }
             .activity-item.expired .activity-status { color: #DC2626; }
-            .card-footer { text-align: right; padding: 1mm 2mm; background: #f9fafb; font-size: 4.5pt; color: #4b5563; border-top: 1px dashed #e5e7eb; line-height: 1.3; }
-            .card-footer .terms-title { font-weight: 700; color: #374151; font-size: 5pt; }
+            .card-footer { text-align: right; padding: 1.5mm 2mm; background: #f9fafb; font-size: 5pt; color: #374151; border-top: 1px dashed #e5e7eb; line-height: 1.4; }
+            .card-footer .terms-title { font-weight: 700; color: #1f2937; font-size: 6pt; margin-bottom: 0.5mm; }
             .print-btn { margin-top: 20px; padding: 12px 30px; background: linear-gradient(135deg, #F97316, #EA580C); color: white; border: none; border-radius: 10px; cursor: pointer; font-family: 'Tajawal', Arial, sans-serif; font-size: 16px; font-weight: bold; }
             .position-info { margin-top: 15px; padding: 10px 20px; background: #FEF3C7; border-radius: 8px; color: #92400E; font-size: 14px; }
           </style>
@@ -1289,8 +1289,8 @@ ${selectedInvoice.discount > 0 ? `🎁 الخصم: ${selectedInvoice.discount} �
                 <div class="qr-container">
                   <div class="qr-section"><img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(qrData)}" /></div>
                   <div class="qr-dates">
-                    ${startDate ? `<span>من: ${startDate}</span>` : ''}
-                    ${endDate ? `<span>إلى: ${endDate}</span>` : ''}
+                    <span>من: ${startDate || '----'}</span>
+                    <span>إلى: ${endDate || '----'}</span>
                   </div>
                 </div>
                 <div class="info-section">
@@ -1320,8 +1320,8 @@ ${selectedInvoice.discount > 0 ? `🎁 الخصم: ${selectedInvoice.discount} �
                 <div class="qr-container">
                   <div class="qr-section"><img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(qrData)}" /></div>
                   <div class="qr-dates">
-                    ${startDate ? `<span>من: ${startDate}</span>` : ''}
-                    ${endDate ? `<span>إلى: ${endDate}</span>` : ''}
+                    <span>من: ${startDate || '----'}</span>
+                    <span>إلى: ${endDate || '----'}</span>
                   </div>
                 </div>
                 <div class="info-section">
@@ -1332,6 +1332,18 @@ ${selectedInvoice.discount > 0 ? `🎁 الخصم: ${selectedInvoice.discount} �
                   ${activitiesHtml ? `<div class="activities"><div class="activities-label">الأنشطة المسجلة</div>${activitiesHtml}</div>` : ''}
                 </div>
               </div>
+              <div class="card-footer">
+                <div class="terms-title">شروط وأحكام:</div>
+                <div>• الاشتراك محدد البداية والنهاية ولا يتم تعويض حصص غياب المشترك</div>
+                <div>• المبلغ المدفوع لا يسترد بعد مرور أسبوع من الاشتراك</div>
+              </div>
+            </div>
+          </div>
+        </body>
+      </html>
+    `);
+    printWindow.document.close();
+  };
               <div class="card-footer">
                 <div class="terms-title">شروط وأحكام:</div>
                 <div>• الاشتراك محدد البداية والنهاية ولا يتم تعويض حصص غياب المشترك</div>
