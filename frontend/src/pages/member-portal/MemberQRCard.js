@@ -10,7 +10,6 @@ const MemberCard = () => {
   const [loading, setLoading] = useState(true);
   const [cardData, setCardData] = useState(null);
   const [showPrintDialog, setShowPrintDialog] = useState(false);
-  const [selectedPosition, setSelectedPosition] = useState(null);
   const member = getMemberData();
 
   useEffect(() => {
