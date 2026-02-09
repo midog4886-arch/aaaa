@@ -1295,6 +1295,148 @@ ${selectedInvoice.discount > 0 ? `🎁 الخصم: ${selectedInvoice.discount} �
     printWindow.document.close();
   };
 
+  // Print card from registration form
+  const handlePrintRegFormCard = (form) => {
+    // Find member by phone or create data from form
+    const member = members.find(m => m.phone === form.customer_phone);
+    if (member) {
+      setRegFormCardData({
+        ...member,
+        activities: form.items?.map(item => ({
+          activity_name: item.activity_name,
+          status: 'active'
+        })) || []
+      });
+    } else {
+      // Use form data
+      setRegFormCardData({
+        name_ar: form.customer_name,
+        phone: form.customer_phone,
+        member_code: form.form_number,
+        activities: form.items?.map(item => ({
+          activity_name: item.activity_name,
+          status: 'active'
+        })) || []
+      });
+    }
+    setShowRegFormCardPrintDialog(true);
+  };
+
+  const handleRegFormStickerPrint = (position) => {
+    setShowRegFormCardPrintDialog(false);
+    if (!regFormCardData) return;
+    
+    const printWindow = window.open('', '_blank', 'width=800,height=600');
+    const qrData = JSON.stringify({
+      type: 'WCPA_REG_FORM',
+      member_code: regFormCardData.member_code,
+      phone: regFormCardData.phone,
+      name: regFormCardData.name_ar
+    });
+    
+    // Calculate position offsets (2 columns x 3 rows, each card 10cm width x 7cm height)
+    // A4 page: 297mm height
+    // Top margin: 30mm, Bottom margin: 20mm, Side margins: 10mm
+    // Available height: 297 - 30 - 20 = 247mm
+    // 3 cards × 70mm = 210mm, remaining: 37mm, gap between rows: 18.5mm
+    const col = position % 2;
+    const row = Math.floor(position / 2);
+    const leftOffset = 10 + (col * 100);
+    const cardHeight = 70; // mm
+    const rowGap = 18.5; // mm between rows for exact 20mm bottom margin
+    const topOffset = 30 + (row * (cardHeight + rowGap));
+    
+    const activitiesHtml = regFormCardData?.activities?.map(act => `
+      <span class="activity ${act.status === 'active' ? 'active' : 'inactive'}">
+        ${act.status === 'active' ? '✓' : '✗'} ${act.activity_name}
+      </span>
+    `).join('') || '';
+    
+    printWindow.document.write(`
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <meta charset="UTF-8">
+          <title>بطاقة العضوية - ${regFormCardData?.member_code}</title>
+          <style>
+            @import url('https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700&display=swap');
+            @page { size: A4; margin: 0mm; }
+            * { margin: 0; padding: 0; box-sizing: border-box; }
+            body { font-family: 'Tajawal', Arial, sans-serif; background: #f3f4f6; direction: rtl; }
+            .screen-only { padding: 20px; text-align: center; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; }
+            @media print { .screen-only { display: none !important; } .print-area { display: block !important; position: absolute; top: ${topOffset}mm; right: ${leftOffset}mm; } }
+            @media screen { .print-area { display: none; } }
+            .card { width: 100mm; height: 70mm; background: white; border-radius: 4mm; overflow: hidden; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
+            .card-header { background: linear-gradient(135deg, #F97316, #F59E0B); padding: 2.5mm; display: flex; justify-content: space-between; align-items: center; color: white; }
+            .header-text h2 { font-size: 9pt; font-weight: 700; margin: 0; }
+            .header-text p { font-size: 5pt; opacity: 0.9; margin: 0; }
+            .trophy { font-size: 16pt; }
+            .card-body { padding: 2.5mm; display: flex; gap: 2.5mm; }
+            .info-section { flex: 1; text-align: right; }
+            .qr-section { width: 28mm; height: 28mm; background: white; border: 1px solid #eee; border-radius: 2mm; padding: 0.5mm; }
+            .qr-section img { width: 100%; height: 100%; }
+            .member-name { font-size: 9pt; font-weight: 700; color: #1f2937; margin-bottom: 1.5mm; }
+            .info-row { display: flex; align-items: center; gap: 1mm; margin-bottom: 1mm; font-size: 7pt; }
+            .info-label { color: #6b7280; font-size: 5pt; }
+            .member-code { color: #F97316; font-weight: 700; font-size: 9pt; }
+            .activities { margin-top: 1.5mm; padding-top: 1.5mm; border-top: 1px dashed #e5e7eb; }
+            .activities-label { font-size: 5pt; color: #6b7280; margin-bottom: 0.5mm; }
+            .activity { display: inline-block; padding: 0.3mm 1.5mm; border-radius: 1.5mm; font-size: 5pt; margin: 0.3mm; }
+            .activity.active { background: #D1FAE5; color: #065F46; }
+            .activity.inactive { background: #FEE2E2; color: #991B1B; }
+            .card-footer { text-align: center; padding: 1.5mm; background: #f9fafb; font-size: 5pt; color: #9ca3af; border-top: 1px dashed #e5e7eb; }
+            .print-btn { margin-top: 20px; padding: 12px 30px; background: linear-gradient(135deg, #F97316, #EA580C); color: white; border: none; border-radius: 10px; cursor: pointer; font-family: 'Tajawal', Arial, sans-serif; font-size: 16px; font-weight: bold; }
+            .position-info { margin-top: 15px; padding: 10px 20px; background: #FEF3C7; border-radius: 8px; color: #92400E; font-size: 14px; }
+          </style>
+        </head>
+        <body>
+          <div class="screen-only">
+            <p style="font-size: 18px; margin-bottom: 20px;">📋 معاينة بطاقة العضوية - استمارة تسجيل</p>
+            <div class="card">
+              <div class="card-header">
+                <div class="header-text"><h2>أكاديمية أداء الأبطال</h2><p>World Champions Performance Academy</p></div>
+                <div class="trophy">🏆</div>
+              </div>
+              <div class="card-body">
+                <div class="info-section">
+                  <div class="info-label">الاسم</div>
+                  <div class="member-name">${regFormCardData?.name_ar || ''}</div>
+                  <div class="info-row"><span class="info-label">رقم الاستمارة:</span><span class="member-code">#${regFormCardData?.member_code || ''}</span></div>
+                  <div class="info-row"><span class="info-label">رقم الجوال:</span><span>${regFormCardData?.phone || '-'}</span></div>
+                  ${activitiesHtml ? `<div class="activities"><div class="activities-label">الأنشطة المسجلة</div>${activitiesHtml}</div>` : ''}
+                </div>
+                <div class="qr-section"><img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(qrData)}" /></div>
+              </div>
+              <div class="card-footer">امسح الكود عند الدخول لتسجيل الحضور</div>
+            </div>
+            <div class="position-info">📍 موقع الطباعة: الصف ${row + 1} - العمود ${col + 1} (الكرت رقم ${position + 1})</div>
+            <button class="print-btn" onclick="window.print()">🖨️ طباعة البطاقة</button>
+          </div>
+          <div class="print-area">
+            <div class="card">
+              <div class="card-header">
+                <div class="header-text"><h2>أكاديمية أداء الأبطال</h2><p>World Champions Performance Academy</p></div>
+                <div class="trophy">🏆</div>
+              </div>
+              <div class="card-body">
+                <div class="info-section">
+                  <div class="info-label">الاسم</div>
+                  <div class="member-name">${regFormCardData?.name_ar || ''}</div>
+                  <div class="info-row"><span class="info-label">رقم الاستمارة:</span><span class="member-code">#${regFormCardData?.member_code || ''}</span></div>
+                  <div class="info-row"><span class="info-label">رقم الجوال:</span><span>${regFormCardData?.phone || '-'}</span></div>
+                  ${activitiesHtml ? `<div class="activities"><div class="activities-label">الأنشطة المسجلة</div>${activitiesHtml}</div>` : ''}
+                </div>
+                <div class="qr-section"><img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(qrData)}" /></div>
+              </div>
+              <div class="card-footer">امسح الكود عند الدخول لتسجيل الحضور</div>
+            </div>
+          </div>
+        </body>
+      </html>
+    `);
+    printWindow.document.close();
+  };
+
   // Send QR Card Image via WhatsApp
   const handleSendQRCardWhatsApp = async () => {
     if (!qrCardMember) return;
