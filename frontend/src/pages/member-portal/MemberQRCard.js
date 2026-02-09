@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
 import { Button } from '../../components/ui/button';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../../components/ui/dialog';
 import { QrCode, Download, Printer, User, Phone, Loader2, CheckCircle } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import MemberLayout, { memberAPI, getMemberData } from './MemberLayout';
@@ -8,6 +9,8 @@ import MemberLayout, { memberAPI, getMemberData } from './MemberLayout';
 const MemberCard = () => {
   const [loading, setLoading] = useState(true);
   const [cardData, setCardData] = useState(null);
+  const [showPrintDialog, setShowPrintDialog] = useState(false);
+  const [selectedPosition, setSelectedPosition] = useState(null);
   const member = getMemberData();
 
   useEffect(() => {
