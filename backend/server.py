@@ -1453,6 +1453,7 @@ async def create_registration_form(
             start_date = item_dict.get("start_date", "")
             end_date = item_dict.get("end_date", "")
             schedule = item_dict.get("schedule", "")
+            fee = item_dict.get("fee", 0)
             
             # Add activity to member's activities list
             if activity_id:
@@ -1464,6 +1465,7 @@ async def create_registration_form(
                         "level_id": level_id,
                         "start_date": start_date,
                         "end_date": end_date,
+                        "fee": fee,
                         "schedule": schedule,
                         "status": "active",
                         "source": "registration_form",
