@@ -64,6 +64,10 @@ export const InvoicesPage = () => {
   const [showCardPrintDialog, setShowCardPrintDialog] = useState(false);
   const [cardPrintMember, setCardPrintMember] = useState(null);
   
+  // Registration Form card print states
+  const [showRegFormCardPrintDialog, setShowRegFormCardPrintDialog] = useState(false);
+  const [regFormCardData, setRegFormCardData] = useState(null);
+  
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [isViewDialogOpen, setIsViewDialogOpen] = useState(false);
   const [isAddMemberDialogOpen, setIsAddMemberDialogOpen] = useState(false);
