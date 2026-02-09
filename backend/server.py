@@ -1562,8 +1562,8 @@ async def create_registration_form(
             )
     
     # Add member_id to form response
-    form_doc["member_id"] = member_id
-    del form_doc["_id"]
+    if "_id" in form_doc:
+        del form_doc["_id"]
     return form_doc
 
 @api_router.get("/registration-forms/{form_id}")
