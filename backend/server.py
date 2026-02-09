@@ -1322,6 +1322,29 @@ async def create_registration_form(
     }
     
     await db.registration_forms.insert_one(form_doc)
+    
+    # Find member by phone and add to levels if specified
+    if form.customer_phone:
+        member = await db.members.find_one({"phone": form.customer_phone}, {"_id": 0, "id": 1})
+        if member:
+            member_id = member["id"]
+            for item in form.items:
+                level_id = item.level_id if hasattr(item, 'level_id') else item.dict().get("level_id")
+                if level_id:
+                    # Add member to level if not already there
+                    await db.levels.update_one(
+                        {"id": level_id},
+                        {"$addToSet": {"members": member_id}}
+                    )
+                    # Store end_date for auto-removal
+                    end_date = item.end_date if hasattr(item, 'end_date') else item.dict().get("end_date")
+                    if end_date:
+                        await db.level_subscriptions.update_one(
+                            {"member_id": member_id, "level_id": level_id},
+                            {"$set": {"end_date": end_date, "member_id": member_id, "level_id": level_id}},
+                            upsert=True
+                        )
+    
     del form_doc["_id"]
     return form_doc
 
