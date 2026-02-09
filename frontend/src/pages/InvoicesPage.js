@@ -1767,6 +1767,17 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
 
   // Save registration form without printing
   const handleSaveRegistrationFormOnly = async () => {
+    // Check if any level is full and NOT accepted
+    const hasUnacceptedFullLevel = Object.values(regFormLevelWarnings).some(w => w.isFull && !w.isAccepted);
+    if (hasUnacceptedFullLevel) {
+      toast.error(
+        language === 'ar' 
+          ? 'يوجد مستوى مكتمل العدد، يرجى الموافقة أو اختيار مستوى آخر.'
+          : 'A selected level is full, please accept or choose another level.'
+      );
+      return;
+    }
+    
     // Calculate totals WITHOUT VAT
     const formSubtotal = regFormItems.reduce((sum, item) => sum + ((item.fee || 0) * (item.quantity || 1)), 0);
     const totalDiscountAmount = regFormDiscount + regFormCouponDiscount;
