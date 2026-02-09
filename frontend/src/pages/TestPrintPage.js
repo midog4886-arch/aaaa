@@ -335,7 +335,6 @@ const TestPrintPage = () => {
               border-top: 1px dashed #e5e7eb;
             }
             
-            /* Print Styles */
             @media print {
               .screen-preview > *:not(.preview-container) {
                 display: none !important;
@@ -352,9 +351,10 @@ const TestPrintPage = () => {
               }
               
               .cards-grid {
-                padding-top: 30mm;
-                padding-right: 10mm;
-                padding-left: 10mm;
+                position: absolute;
+                top: 30mm;
+                right: 10mm;
+                left: 10mm;
               }
               
               .card {
