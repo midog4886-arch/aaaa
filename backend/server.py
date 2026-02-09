@@ -30,6 +30,10 @@ from routes.branches import router as branches_router
 from routes.activities import router as activities_router
 from routes.coaches import router as coaches_router
 from routes.member_portal import router as member_portal_router
+from routes.members import router as members_router
+from routes.invoices import router as invoices_router
+from routes.attendance import router as attendance_router
+from routes.notifications import router as notifications_router
 
 ROOT_DIR = Path(__file__).parent
 UPLOADS_DIR = ROOT_DIR / "uploads"
