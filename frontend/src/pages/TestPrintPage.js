@@ -19,8 +19,8 @@ const TestPrintPage = () => {
     setLoading(true);
     setError('');
     try {
-      const response = await axios.get(`${API_URL}/api/members?limit=6`);
-      const membersList = response.data.members || response.data || [];
+      const response = await axios.get(`${API_URL}/api/public/members-for-print?limit=6`);
+      const membersList = response.data.members || [];
       setMembers(membersList.slice(0, 6));
     } catch (err) {
       setError('حدث خطأ في جلب بيانات الأعضاء');
