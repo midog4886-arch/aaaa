@@ -1161,10 +1161,28 @@ ${selectedInvoice.discount > 0 ? `🎁 الخصم: ${selectedInvoice.discount} �
 
   // Print member card from invoice
   const handleOpenCardPrint = (invoice) => {
+    const today = new Date().toISOString().split('T')[0];
+    
+    // Get activities with dates from invoice
+    const activitiesWithDates = invoice.items?.filter(item => !item.is_product).map(item => {
+      const endDate = item.end_date || '';
+      const startDate = item.start_date || '';
+      const isActive = endDate ? endDate >= today : true;
+      return {
+        activity_name: item.activity_name,
+        start_date: startDate,
+        end_date: endDate,
+        status: isActive ? 'active' : 'expired'
+      };
+    }) || [];
+    
     // Find member data
     const member = members.find(m => m.id === invoice.member_id);
     if (member) {
-      setCardPrintMember(member);
+      setCardPrintMember({
+        ...member,
+        activities: activitiesWithDates
+      });
       setShowCardPrintDialog(true);
     } else if (invoice.customer_name_ar || invoice.customer_phone) {
       // Use invoice customer data
@@ -1172,10 +1190,7 @@ ${selectedInvoice.discount > 0 ? `🎁 الخصم: ${selectedInvoice.discount} �
         name_ar: invoice.customer_name_ar,
         phone: invoice.customer_phone,
         member_code: invoice.invoice_number,
-        activities: invoice.items?.map(item => ({
-          activity_name: item.activity_name,
-          status: 'active'
-        })) || []
+        activities: activitiesWithDates
       });
       setShowCardPrintDialog(true);
     }
