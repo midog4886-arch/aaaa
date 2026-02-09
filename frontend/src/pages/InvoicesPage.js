@@ -3840,7 +3840,7 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
                     <SelectContent>
                       {activities.map(a => (
                         <SelectItem key={a.id} value={a.id}>
-                          {language === 'ar' ? a.name_ar : a.name} - {a.fee} {t('sar')}
+                          {language === 'ar' ? a.name_ar : a.name} - {a.monthly_fee} {t('sar')}
                         </SelectItem>
                       ))}
                     </SelectContent>
