@@ -634,6 +634,20 @@ async def get_members(
         query["activities.status"] = status
     
     members = await db.members.find(query, {"_id": 0}).sort("created_at", -1).to_list(1000)
+    
+    # Ensure all required fields exist with defaults
+    for member in members:
+        member.setdefault("age", 0)
+        member.setdefault("guardian_name", "")
+        member.setdefault("guardian_name_ar", "")
+        member.setdefault("guardian_phone", "")
+        member.setdefault("email", "")
+        member.setdefault("date_of_birth", "")
+        member.setdefault("gender", "")
+        member.setdefault("address", "")
+        member.setdefault("activities", [])
+        member.setdefault("status", "active")
+    
     return members
 
 @api_router.get("/members/{member_id}", response_model=Member)
