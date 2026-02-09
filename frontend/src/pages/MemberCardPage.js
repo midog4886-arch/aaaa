@@ -39,7 +39,138 @@ const MemberCardPage = () => {
   };
 
   const handlePrint = () => {
-    window.print();
+    setShowPrintDialog(true);
+  };
+
+  const handleStickerPrint = (position) => {
+    setShowPrintDialog(false);
+    
+    const printWindow = window.open('', '_blank', 'width=800,height=600');
+    const qrData = getQRData();
+    
+    // Calculate position offsets (2 columns x 3 rows, each card 10cm x 10cm)
+    const col = position % 2; // 0 or 1
+    const row = Math.floor(position / 2); // 0, 1, or 2
+    const leftOffset = col * 100; // mm
+    const topOffset = row * 100; // mm
+    
+    printWindow.document.write(`
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <meta charset="UTF-8">
+          <title>بطاقة العضوية - ${member?.member_code}</title>
+          <style>
+            @import url('https://fonts.googleapis.com/css2?family=Tajawal:wght@400;700&display=swap');
+            @page { size: A4; margin: 0mm; }
+            * { margin: 0; padding: 0; box-sizing: border-box; }
+            html, body { margin: 0; padding: 0; }
+            body { 
+              font-family: 'Tajawal', Arial, sans-serif; 
+              background: #f3f4f6;
+              direction: rtl;
+            }
+            .screen-only {
+              padding: 20px;
+              text-align: center;
+              display: flex;
+              flex-direction: column;
+              align-items: center;
+              justify-content: center;
+              min-height: 100vh;
+            }
+            @media print {
+              .screen-only { display: none !important; }
+              .print-area {
+                display: block !important;
+                position: absolute;
+                top: ${topOffset}mm;
+                right: ${leftOffset}mm;
+              }
+            }
+            @media screen { .print-area { display: none; } }
+            .card-wrapper {
+              display: inline-block;
+              background: white;
+              padding: 15px;
+              border-radius: 12px;
+              box-shadow: 0 10px 40px rgba(0,0,0,0.15);
+              border: 2px solid #e5e7eb;
+            }
+            .card {
+              width: 90mm;
+              height: 90mm;
+              display: flex;
+              flex-direction: column;
+              align-items: center;
+              justify-content: center;
+              background: white;
+              padding: 5mm;
+            }
+            .print-card {
+              width: 95mm;
+              height: 95mm;
+              display: flex;
+              flex-direction: column;
+              align-items: center;
+              justify-content: center;
+              background: white;
+              padding: 5mm;
+            }
+            .logo { font-size: 11pt; font-weight: bold; color: #F97316; margin-bottom: 3mm; }
+            .qr-img { width: 50mm; height: 50mm; }
+            .name { font-size: 12pt; font-weight: bold; margin-top: 3mm; text-align: center; color: #1f2937; }
+            .code { font-size: 14pt; font-weight: bold; color: #F97316; margin-top: 2mm; }
+            .print-btn {
+              margin-top: 20px;
+              padding: 12px 30px;
+              background: linear-gradient(135deg, #F97316, #EA580C);
+              color: white;
+              border: none;
+              border-radius: 10px;
+              cursor: pointer;
+              font-family: 'Tajawal', Arial, sans-serif;
+              font-size: 16px;
+              font-weight: bold;
+            }
+            .position-info {
+              margin-top: 15px;
+              padding: 10px 20px;
+              background: #FEF3C7;
+              border-radius: 8px;
+              color: #92400E;
+              font-size: 14px;
+            }
+          </style>
+        </head>
+        <body>
+          <div class="screen-only">
+            <p style="font-size: 18px; margin-bottom: 20px;">📋 معاينة بطاقة العضوية</p>
+            <div class="card-wrapper">
+              <div class="card">
+                <div class="logo">🏆 أكاديمية أداء الأبطال</div>
+                <img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(qrData)}" class="qr-img" />
+                <div class="name">${member?.name_ar || member?.name || ''}</div>
+                <div class="code">#${member?.member_code || ''}</div>
+              </div>
+            </div>
+            <div class="position-info">
+              📍 موقع الطباعة: الصف ${row + 1} - العمود ${col + 1} (الكرت رقم ${position + 1})
+            </div>
+            <button class="print-btn" onclick="window.print()">🖨️ طباعة البطاقة</button>
+          </div>
+          <div class="print-area">
+            <div class="print-card">
+              <div class="logo">🏆 أكاديمية أداء الأبطال</div>
+              <img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(qrData)}" class="qr-img" />
+              <div class="name">${member?.name_ar || member?.name || ''}</div>
+              <div class="code">#${member?.member_code || ''}</div>
+            </div>
+          </div>
+        </body>
+      </html>
+    `);
+    printWindow.document.close();
   };
 
   const handleDownload = () => {
