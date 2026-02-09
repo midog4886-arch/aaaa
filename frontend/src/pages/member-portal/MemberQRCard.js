@@ -40,10 +40,10 @@ const MemberCard = () => {
     const qrData = JSON.stringify(cardData?.qr_data || {});
     
     // Calculate position offsets (2 columns x 3 rows, each card 10cm width x 7cm height)
-    // Top margin: 30mm, Bottom margin: 20mm
+    // Top margin: 30mm, Bottom margin: 20mm, Side margins: 10mm
     const col = position % 2; // 0 or 1
     const row = Math.floor(position / 2); // 0, 1, or 2
-    const leftOffset = col * 100; // mm (card width 100mm)
+    const leftOffset = 10 + (col * 100); // mm (10mm side margin + card width 100mm)
     const topOffset = 30 + (row * 70); // mm (30mm top margin + 70mm per row)
     
     printWindow.document.write(`
