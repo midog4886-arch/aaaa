@@ -1,19 +1,31 @@
 import { COMPANY_INFO, INVOICE_TERMS } from './constants';
 
+// Academy logo URL
+const ACADEMY_LOGO_URL = '/images/academy-logo.png';
+
 /**
- * Generate print HTML for member card (9cm x 7cm)
+ * Generate print HTML for member card (9cm x 7cm) - 2 horizontal cards layout
  * @param {Object} member - Member data (name_ar, member_code, phone, activities)
- * @param {number} position - Sticker position (0-5)
+ * @param {number} position - Sticker position (0 = member card, 1 = logo)
  * @returns {string} HTML content for print window
  */
 export const generateMemberCardPrintHtml = (member, position) => {
-  // Calculate position offsets (2 columns x 3 rows, each card 9cm width x 7cm height)
-  const col = position % 2;
-  const row = Math.floor(position / 2);
-  const leftOffset = 10 + (col * 90); // 90mm card width
+  // 2 horizontal cards layout on A4
+  // A4 page: 210mm width x 297mm height
+  // 2 cards side by side: each 90mm width x 70mm height
+  // Centered horizontally: (210 - 180) / 2 = 15mm margins
+  // Centered vertically: (297 - 70) / 2 = 113.5mm from top
+  
+  const cardWidth = 90; // mm
   const cardHeight = 70; // mm
-  const rowGap = 18.5; // mm between rows for exact 20mm bottom margin
-  const topOffset = 30 + (row * (cardHeight + rowGap));
+  const horizontalMargin = 15; // mm from sides
+  const topMargin = 30; // mm from top
+  const gap = 10; // mm between cards
+  
+  // Position 0 = left card (member card), Position 1 = right card (logo)
+  const col = position;
+  const leftOffset = horizontalMargin + (col * (cardWidth + gap));
+  const topOffset = topMargin;
   
   // Get first activity dates for display under QR
   const firstActivity = member?.activities?.[0];
@@ -23,7 +35,7 @@ export const generateMemberCardPrintHtml = (member, position) => {
   // Generate QR data
   const qrData = JSON.stringify({
     type: 'WCPA_MEMBER',
-    member_code: member?.member_code,
+    code: member?.member_code,
     phone: member?.phone,
     name: member?.name_ar
   });
@@ -36,7 +48,8 @@ export const generateMemberCardPrintHtml = (member, position) => {
     </div>
   `).join('') || '';
 
-  const cardHtml = `
+  // Member card HTML
+  const memberCardHtml = `
     <div class="card">
       <div class="card-header">
         <div class="header-text"><h2>أكاديمية أداء الأبطال</h2><p>World Champions Performance Academy</p></div>
@@ -66,6 +79,17 @@ export const generateMemberCardPrintHtml = (member, position) => {
     </div>
   `;
 
+  // Logo card HTML
+  const logoCardHtml = `
+    <div class="logo-card">
+      <img src="${window.location.origin}${ACADEMY_LOGO_URL}" alt="شعار الأكاديمية" />
+    </div>
+  `;
+
+  // Select which card to show based on position
+  const cardContent = position === 0 ? memberCardHtml : logoCardHtml;
+  const previewContent = position === 0 ? memberCardHtml : logoCardHtml;
+
   return `
     <!DOCTYPE html>
     <html>
@@ -81,6 +105,8 @@ export const generateMemberCardPrintHtml = (member, position) => {
           @media print { .screen-only { display: none !important; } .print-area { display: block !important; position: absolute; top: ${topOffset}mm; right: ${leftOffset}mm; } }
           @media screen { .print-area { display: none; } }
           .card { width: 90mm; height: 70mm; background: white; border-radius: 4mm; overflow: hidden; box-shadow: 0 4px 15px rgba(0,0,0,0.1); display: flex; flex-direction: column; }
+          .logo-card { width: 90mm; height: 70mm; background: white; border-radius: 4mm; overflow: hidden; box-shadow: 0 4px 15px rgba(0,0,0,0.1); display: flex; align-items: center; justify-content: center; padding: 5mm; }
+          .logo-card img { max-width: 100%; max-height: 100%; object-fit: contain; }
           .card-header { background: linear-gradient(135deg, #F97316, #F59E0B); padding: 2mm; display: flex; justify-content: space-between; align-items: center; color: white; }
           .header-text h2 { font-size: 9pt; font-weight: 700; margin: 0; }
           .header-text p { font-size: 6pt; opacity: 0.9; margin: 0; }
@@ -113,13 +139,13 @@ export const generateMemberCardPrintHtml = (member, position) => {
       </head>
       <body>
         <div class="screen-only">
-          <p style="font-size: 18px; margin-bottom: 20px;">📋 معاينة بطاقة العضوية</p>
-          ${cardHtml}
-          <div class="position-info">📍 موقع الطباعة: الصف ${row + 1} - العمود ${col + 1} (الكرت رقم ${position + 1})</div>
-          <button class="print-btn" onclick="window.print()">🖨️ طباعة البطاقة</button>
+          <p style="font-size: 18px; margin-bottom: 20px;">📋 معاينة ${position === 0 ? 'بطاقة العضوية' : 'شعار الأكاديمية'}</p>
+          ${previewContent}
+          <div class="position-info">📍 موقع الطباعة: خانة ${position + 1} (${position === 0 ? 'كرت العضوية' : 'شعار الأكاديمية'})</div>
+          <button class="print-btn" onclick="window.print()">🖨️ طباعة</button>
         </div>
         <div class="print-area">
-          ${cardHtml}
+          ${cardContent}
         </div>
       </body>
     </html>
@@ -129,7 +155,7 @@ export const generateMemberCardPrintHtml = (member, position) => {
 /**
  * Open print window with member card
  * @param {Object} member - Member data
- * @param {number} position - Sticker position (0-5)
+ * @param {number} position - Sticker position (0 = member card, 1 = logo)
  */
 export const printMemberCard = (member, position) => {
   const printWindow = window.open('', '_blank', 'width=800,height=600');
