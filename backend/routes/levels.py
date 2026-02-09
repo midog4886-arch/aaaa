@@ -48,6 +48,22 @@ async def get_levels(
     is_admin = current_user.get("is_admin", False)
     branch_id = current_user.get("branch_id")
     
+    # Auto-cleanup expired subscriptions
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    expired = await db.level_subscriptions.find({
+        "end_date": {"$lt": today}
+    }).to_list(1000)
+    
+    for sub in expired:
+        member_id = sub.get("member_id")
+        level_id = sub.get("level_id")
+        if member_id and level_id:
+            await db.levels.update_one(
+                {"id": level_id},
+                {"$pull": {"members": member_id}}
+            )
+            await db.level_subscriptions.delete_one({"_id": sub["_id"]})
+    
     query = {}
     if is_admin:
         if branch_filter and branch_filter != "all":
