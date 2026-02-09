@@ -154,6 +154,55 @@ async def get_member_card_public(search_term: str):
         "activities": activities
     }
 
+@api_router.get("/public/members-for-print")
+async def get_members_for_print(limit: int = 6):
+    """Public API to get members for test printing (limited info)"""
+    members_cursor = db.members.find(
+        {},
+        {"_id": 0, "id": 1, "name": 1, "name_ar": 1, "member_code": 1, "phone": 1}
+    ).limit(limit)
+    
+    members = await members_cursor.to_list(limit)
+    
+    # Get activities for each member
+    today = datetime.now(timezone.utc).strftime('%Y-%m-%d')
+    result = []
+    
+    for member in members:
+        invoices = await db.invoices.find(
+            {"member_id": member.get("id"), "status": {"$in": ["paid", "partial"]}},
+            {"_id": 0}
+        ).to_list(100)
+        
+        activities = []
+        for inv in invoices:
+            for item in inv.get("items", []):
+                if item.get("activity_id"):
+                    end_date = item.get("end_date", "")
+                    if not end_date and item.get("period"):
+                        period = item.get("period", "")
+                        if " - " in period:
+                            parts = period.split(" - ")
+                            if len(parts) == 2:
+                                end_date = parts[1].strip()
+                    
+                    status = "active" if end_date and end_date >= today else "expired"
+                    activities.append({
+                        "activity_name": item.get("activity_name"),
+                        "status": status
+                    })
+        
+        result.append({
+            "id": member.get("id"),
+            "name": member.get("name"),
+            "name_ar": member.get("name_ar"),
+            "member_code": member.get("member_code"),
+            "phone": member.get("phone"),
+            "activities": activities
+        })
+    
+    return {"members": result}
+
 # ============ MODELS ============
 
 class UserCreate(BaseModel):
