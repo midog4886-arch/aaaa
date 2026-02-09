@@ -43,6 +43,7 @@ export const levelsAPI = {
   delete: (id) => axios.delete(`${API}/levels/${id}`),
   addMember: (levelId, memberId) => axios.post(`${API}/levels/${levelId}/members/${memberId}`),
   removeMember: (levelId, memberId) => axios.delete(`${API}/levels/${levelId}/members/${memberId}`),
+  getMemberCount: (levelId) => axios.get(`${API}/levels/${levelId}/count`),
 };
 
 // Members API
