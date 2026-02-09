@@ -1682,6 +1682,33 @@ async def update_registration_form_branch(form_id: str, branch_id: str, current_
     )
     return {"message": "Registration form branch updated", "branch_id": branch_id}
 
+@api_router.post("/registration-forms/migrate-member-codes")
+async def migrate_registration_forms_member_codes(current_user: dict = Depends(get_current_user)):
+    """Migrate existing registration forms to add member_code from members collection"""
+    if not current_user.get("is_admin"):
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    # Get all forms without member_code
+    forms = await db.registration_forms.find(
+        {"$or": [{"member_code": {"$exists": False}}, {"member_code": None}]},
+        {"_id": 0}
+    ).to_list(1000)
+    
+    updated_count = 0
+    for form in forms:
+        phone = form.get("customer_phone")
+        if phone:
+            # Find member by phone
+            member = await db.members.find_one({"phone": phone}, {"_id": 0, "id": 1, "member_code": 1})
+            if member:
+                await db.registration_forms.update_one(
+                    {"id": form["id"]},
+                    {"$set": {"member_id": member["id"], "member_code": member.get("member_code")}}
+                )
+                updated_count += 1
+    
+    return {"message": f"Updated {updated_count} registration forms with member codes"}
+
 # ============ STRIPE PAYMENT ROUTES ============
 
 @api_router.post("/payments/checkout")
