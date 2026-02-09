@@ -181,3 +181,36 @@ async def get_level_member_count(level_id: str, current_user: dict = Depends(get
         "is_full": member_count >= 7,
         "max_capacity": 7
     }
+
+
+@router.post("/cleanup-expired")
+async def cleanup_expired_subscriptions(current_user: dict = Depends(get_current_user)):
+    """Remove members from levels whose subscriptions have expired"""
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    
+    # Find all expired subscriptions
+    expired = await db.level_subscriptions.find({
+        "end_date": {"$lt": today}
+    }).to_list(1000)
+    
+    removed_count = 0
+    for sub in expired:
+        member_id = sub.get("member_id")
+        level_id = sub.get("level_id")
+        
+        if member_id and level_id:
+            # Remove member from level
+            result = await db.levels.update_one(
+                {"id": level_id},
+                {"$pull": {"members": member_id}}
+            )
+            if result.modified_count > 0:
+                removed_count += 1
+            
+            # Delete the subscription record
+            await db.level_subscriptions.delete_one({"_id": sub["_id"]})
+    
+    return {
+        "message": f"تم إزالة {removed_count} عضو من المستويات المنتهية اشتراكاتهم",
+        "removed_count": removed_count
+    }
