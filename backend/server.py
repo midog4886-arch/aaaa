@@ -112,6 +112,18 @@ async def get_member_card_public(search_term: str):
     today = datetime.now(timezone.utc).strftime('%Y-%m-%d')
     activities = []
     
+    # Build a map of schedule from invoices
+    schedule_map = {}
+    invoices = await db.invoices.find(
+        {"member_id": member["id"], "status": {"$in": ["paid", "partial"]}},
+        {"_id": 0, "items": 1}
+    ).to_list(100)
+    
+    for inv in invoices:
+        for item in inv.get("items", []):
+            if item.get("activity_id") and item.get("schedule"):
+                schedule_map[item.get("activity_id")] = item.get("schedule")
+    
     # First, get activities from member document
     member_activities = member.get("activities", [])
     for act in member_activities:
@@ -121,13 +133,16 @@ async def get_member_card_public(search_term: str):
         if end_date:
             status = "active" if end_date >= today else "expired"
         
+        # Get schedule from member activity or from invoice
+        schedule = act.get("schedule", "") or schedule_map.get(act.get("activity_id"), "")
+        
         activities.append({
             "activity_id": act.get("activity_id"),
             "activity_name": act.get("activity_name"),
             "status": status,
             "start_date": start_date,
             "end_date": end_date,
-            "schedule": act.get("schedule", "")
+            "schedule": schedule
         })
     
     # Also check invoices if no activities found
