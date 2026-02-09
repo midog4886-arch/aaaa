@@ -251,6 +251,8 @@ class InvoiceItem(BaseModel):
     schedule: Optional[str] = ""  # جدول المواعيد
     level_id: Optional[str] = ""  # المستوى
     level_name: Optional[str] = ""
+    start_date: Optional[str] = ""  # تاريخ البداية
+    end_date: Optional[str] = ""  # تاريخ النهاية
     # Product fields for store items
     is_product: Optional[bool] = False
     product_id: Optional[str] = None
