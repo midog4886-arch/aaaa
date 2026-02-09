@@ -2124,12 +2124,79 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
   };
 
   // Update registration form item level
-  const updateRegFormItemLevel = (index, levelId) => {
+  // State for registration form level capacity warning
+  const [regFormLevelWarnings, setRegFormLevelWarnings] = useState({});
+
+  const updateRegFormItemLevel = async (index, levelId) => {
     const updated = [...regFormItems];
     const level = levels.find(l => l.id === levelId);
     updated[index].level_id = levelId;
     updated[index].level_name = level ? `${language === 'ar' ? 'المستوى' : 'Level'} ${level.level_number} - ${level.activity_name}` : '';
+    
+    // Check level capacity
+    if (levelId) {
+      try {
+        const response = await levelsAPI.getMemberCount(levelId);
+        const { is_full, member_count, max_capacity } = response.data;
+        
+        if (is_full) {
+          // Show warning with accept/reject options
+          setRegFormLevelWarnings(prev => ({
+            ...prev,
+            [index]: {
+              isFull: true,
+              isAccepted: false,
+              memberCount: member_count,
+              maxCapacity: max_capacity,
+              message: language === 'ar' 
+                ? `العدد في هذا المستوى مكتمل (${member_count}/${max_capacity} مشتركين)`
+                : `This level is full (${member_count}/${max_capacity} members)`
+            }
+          }));
+        } else {
+          setRegFormLevelWarnings(prev => {
+            const newWarnings = { ...prev };
+            delete newWarnings[index];
+            return newWarnings;
+          });
+        }
+      } catch (error) {
+        console.error('Error checking level capacity:', error);
+      }
+    } else {
+      setRegFormLevelWarnings(prev => {
+        const newWarnings = { ...prev };
+        delete newWarnings[index];
+        return newWarnings;
+      });
+    }
+    
     setRegFormItems(updated);
+  };
+
+  // Accept full level warning for registration form
+  const handleAcceptRegFormFullLevel = (index) => {
+    setRegFormLevelWarnings(prev => ({
+      ...prev,
+      [index]: {
+        ...prev[index],
+        isAccepted: true
+      }
+    }));
+    toast.success(language === 'ar' ? 'تم قبول التسجيل في هذا المستوى' : 'Registration accepted for this level');
+  };
+
+  // Reject full level for registration form
+  const handleRejectRegFormFullLevel = (index) => {
+    const updated = [...regFormItems];
+    updated[index].level_id = '';
+    updated[index].level_name = '';
+    setRegFormItems(updated);
+    setRegFormLevelWarnings(prev => {
+      const newWarnings = { ...prev };
+      delete newWarnings[index];
+      return newWarnings;
+    });
   };
 
   // Add product to registration form
