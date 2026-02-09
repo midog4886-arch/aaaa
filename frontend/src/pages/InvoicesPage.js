@@ -2743,14 +2743,14 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
             <div className="bg-gray-100 p-4 rounded-lg">
               <div className="flex gap-3 justify-center max-w-[360px] mx-auto">
                 {/* Preview Card 1 - Member Card */}
-                <div className="aspect-[6/9] w-[140px] bg-white border-2 border-orange-400 rounded-lg flex flex-col items-center justify-center gap-2 p-3">
+                <div className="aspect-[6/9] w-[100px] bg-white border-2 border-orange-400 rounded-lg flex flex-col items-center justify-center gap-2 p-3">
                   <span className="text-3xl">📇</span>
                   <span className="text-sm font-bold text-gray-700">كرت العضوية</span>
                   <span className="text-xs text-orange-500">خانة 1</span>
                 </div>
                 
                 {/* Preview Card 2 - Academy Logo */}
-                <div className="aspect-[6/9] w-[140px] bg-white border-2 border-orange-400 rounded-lg flex flex-col items-center justify-center gap-2 p-3 overflow-hidden">
+                <div className="aspect-[6/9] w-[100px] bg-white border-2 border-orange-400 rounded-lg flex flex-col items-center justify-center gap-2 p-3 overflow-hidden">
                   <img 
                     src="/images/academy-logo.png" 
                     alt="شعار الأكاديمية" 
@@ -2792,14 +2792,14 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
             <div className="bg-gray-100 p-4 rounded-lg">
               <div className="flex gap-3 justify-center max-w-[360px] mx-auto">
                 {/* Preview Card 1 - Member Card */}
-                <div className="aspect-[6/9] w-[140px] bg-white border-2 border-purple-400 rounded-lg flex flex-col items-center justify-center gap-2 p-3">
+                <div className="aspect-[6/9] w-[100px] bg-white border-2 border-purple-400 rounded-lg flex flex-col items-center justify-center gap-2 p-3">
                   <span className="text-3xl">📇</span>
                   <span className="text-sm font-bold text-gray-700">كرت العضوية</span>
                   <span className="text-xs text-purple-500">خانة 1</span>
                 </div>
                 
                 {/* Preview Card 2 - Academy Logo */}
-                <div className="aspect-[6/9] w-[140px] bg-white border-2 border-purple-400 rounded-lg flex flex-col items-center justify-center gap-2 p-3 overflow-hidden">
+                <div className="aspect-[6/9] w-[100px] bg-white border-2 border-purple-400 rounded-lg flex flex-col items-center justify-center gap-2 p-3 overflow-hidden">
                   <img 
                     src="/images/academy-logo.png" 
                     alt="شعار الأكاديمية" 
