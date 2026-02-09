@@ -1344,18 +1344,6 @@ ${selectedInvoice.discount > 0 ? `🎁 الخصم: ${selectedInvoice.discount} �
     `);
     printWindow.document.close();
   };
-              <div class="card-footer">
-                <div class="terms-title">شروط وأحكام:</div>
-                <div>• الاشتراك محدد البداية والنهاية ولا يتم تعويض حصص غياب المشترك</div>
-                <div>• المبلغ المدفوع لا يسترد بعد مرور أسبوع من الاشتراك</div>
-              </div>
-            </div>
-          </div>
-        </body>
-      </html>
-    `);
-    printWindow.document.close();
-  };
 
   // Print card from registration form
   const handlePrintRegFormCard = (form) => {
