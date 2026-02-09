@@ -23,6 +23,7 @@ import SchedulePage from './pages/SchedulePage';
 import UnauthorizedPage from './pages/UnauthorizedPage';
 import MemberCardPage from './pages/MemberCardPage';
 import CoachRatingsPage from './pages/CoachRatingsPage';
+import TestPrintPage from './pages/TestPrintPage';
 
 // Member Portal Pages
 import MemberLogin from './pages/member-portal/MemberLogin';
