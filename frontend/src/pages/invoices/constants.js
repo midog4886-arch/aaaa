@@ -66,3 +66,39 @@ export const INVOICE_TERMS = [
   "يجب إحضار بطاقة العضوية عند كل زيارة",
   "الالتزام بمواعيد الحصص المحددة"
 ];
+
+/**
+ * Get status information (color, label)
+ */
+export const getStatusInfo = (status, language = 'ar') => {
+  const statusMap = {
+    pending: { color: 'yellow', label: language === 'ar' ? 'معلق' : 'Pending' },
+    paid: { color: 'green', label: language === 'ar' ? 'مدفوع' : 'Paid' },
+    cancelled: { color: 'red', label: language === 'ar' ? 'ملغي' : 'Cancelled' },
+    partial: { color: 'orange', label: language === 'ar' ? 'جزئي' : 'Partial' },
+    active: { color: 'green', label: language === 'ar' ? 'ساري' : 'Active' },
+    expired: { color: 'red', label: language === 'ar' ? 'منتهي' : 'Expired' }
+  };
+  return statusMap[status] || { color: 'gray', label: status };
+};
+
+/**
+ * Get payment method label
+ */
+export const getPaymentMethodLabel = (method, language = 'ar') => {
+  const methodMap = {
+    cash: { ar: 'نقدي', en: 'Cash' },
+    card: { ar: 'بطاقة', en: 'Card' },
+    transfer: { ar: 'تحويل', en: 'Transfer' },
+    stripe: { ar: 'أونلاين', en: 'Online' }
+  };
+  return methodMap[method]?.[language] || method;
+};
+
+/**
+ * Format schedule for display
+ */
+export const formatSchedule = (schedule) => {
+  if (!schedule) return '';
+  return schedule;
+};
