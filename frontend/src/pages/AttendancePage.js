@@ -404,13 +404,16 @@ export default function AttendancePage() {
     try {
       const data = JSON.parse(decodedText);
       
-      if (data.type === 'WCPA_MEMBER' && data.code) {
+      // Support multiple QR formats (old and new)
+      const memberCode = data.code || data.member_code || data.id;
+      
+      if ((data.type === 'WCPA_MEMBER' || data.type === 'WCPA_REG_FORM' || data.member_id || data.member_code) && memberCode) {
         // Stop scanner after successful scan
         stopQRScanner();
-        setManualMemberId(data.code);
+        setManualMemberId(memberCode);
         
         // Fetch member data with activities
-        await fetchMemberActivities(data.code);
+        await fetchMemberActivities(memberCode);
       } else {
         toast.error(t('كود غير صالح', 'Invalid QR code'));
       }
