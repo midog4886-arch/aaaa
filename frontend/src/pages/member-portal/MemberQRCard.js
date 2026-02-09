@@ -63,7 +63,7 @@ const MemberCard = () => {
             * { margin: 0; padding: 0; box-sizing: border-box; }
             body { font-family: 'Tajawal', Arial, sans-serif; background: #f3f4f6; direction: rtl; }
             .screen-only { padding: 20px; text-align: center; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; }
-            @media print { .screen-only { display: none !important; } .print-area { display: flex !important; position: absolute; top: 30mm; right: 15mm; gap: 10mm; } }
+            @media print { .screen-only { display: none !important; } .print-area { display: flex !important; position: absolute; top: 30mm; right: 15mm; gap: 5mm; } }
             @media screen { .print-area { display: none; } }
             .sticker-preview { display: flex; gap: 15px; justify-content: center; margin-bottom: 20px; }
             .card { width: 60mm; height: 90mm; background: white; border-radius: 4mm; overflow: hidden; box-shadow: 0 4px 15px rgba(0,0,0,0.1); display: flex; flex-direction: column; }
