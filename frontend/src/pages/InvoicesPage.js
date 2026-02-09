@@ -3403,10 +3403,30 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
                                 </SelectTrigger>
                                 <SelectContent>
                                   <SelectItem value="none">{language === 'ar' ? 'بدون مستوى' : 'No level'}</SelectItem>
-                                  {levels.map(level => (
-                                    <SelectItem key={level.id} value={level.id}>
-                                      {language === 'ar' ? 'المستوى' : 'Level'} {level.level_number} - {level.activity_name}
-                                    </SelectItem>
+                                  {/* Group levels by activity name */}
+                                  {Object.entries(
+                                    levels.reduce((acc, level) => {
+                                      const actName = level.activity_name || 'أخرى';
+                                      if (!acc[actName]) acc[actName] = [];
+                                      acc[actName].push(level);
+                                      return acc;
+                                    }, {})
+                                  ).map(([actName, actLevels]) => (
+                                    <div key={actName}>
+                                      <div className="px-2 py-1 text-xs font-bold text-gray-500 bg-gray-100 sticky top-0">
+                                        🏋️ {actName}
+                                      </div>
+                                      {actLevels.sort((a, b) => a.level_number - b.level_number).map(level => {
+                                        const memberCount = (level.members || []).length;
+                                        const maxCapacity = actName.includes('سباح') ? 6 : (level.capacity || 10);
+                                        const isFull = memberCount >= maxCapacity;
+                                        return (
+                                          <SelectItem key={level.id} value={level.id} className={isFull ? 'text-red-600' : ''}>
+                                            {language === 'ar' ? 'المستوى' : 'Level'} {level.level_number} ({memberCount}/{maxCapacity}) {isFull ? '⚠️' : ''}
+                                          </SelectItem>
+                                        );
+                                      })}
+                                    </div>
                                   ))}
                                 </SelectContent>
                               </Select>
