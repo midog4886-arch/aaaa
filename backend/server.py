@@ -151,7 +151,15 @@ async def get_member_card_public(search_term: str):
         "name_ar": member.get("name_ar"),
         "member_code": member.get("member_code"),
         "phone": member.get("phone"),
-        "activities": activities
+        "activities": activities,
+        "active_activities": [a for a in activities if a.get("status") == "active"],
+        "qr_data": {
+            "type": "WCPA_MEMBER",
+            "code": member.get("member_code"),
+            "id": member["id"],
+            "phone": member.get("phone"),
+            "name": member.get("name_ar") or member.get("name")
+        }
     }
 
 @api_router.get("/public/members-for-print")
