@@ -1195,10 +1195,13 @@ ${selectedInvoice.discount > 0 ? `🎁 الخصم: ${selectedInvoice.discount} �
     if (!cardPrintMember) return;
     
     const printWindow = window.open('', '_blank', 'width=800,height=600');
+    // Use WCPA_MEMBER type so attendance scanner can read it
     const qrData = JSON.stringify({
-      member_id: cardPrintMember.id,
-      member_code: cardPrintMember.member_code,
-      phone: cardPrintMember.phone
+      type: 'WCPA_MEMBER',
+      code: cardPrintMember.member_code,
+      id: cardPrintMember.id,
+      phone: cardPrintMember.phone,
+      name: cardPrintMember.name_ar
     });
     
     // Calculate position offsets (2 columns x 3 rows, each card 9cm width x 7cm height)
