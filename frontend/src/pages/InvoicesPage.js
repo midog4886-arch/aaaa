@@ -20,25 +20,9 @@ import {
   Filter, MessageSquare, X, UserPlus, Trash2, RotateCcw, FileSpreadsheet, Image, Share2, RefreshCcw, Edit, FileText, Package, Percent, Tag, Lock, ClipboardList, ArrowRightCircle, CreditCard, QrCode
 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
-
-const COMPANY_INFO = {
-  name_ar: "شركة اداء الابطال العالمية للرياضة",
-  name_en: "Global Champions Sports Performance",
-  tax_number: "312655637900003",
-  commercial_reg: "7043630230",
-  vat_rate: 15
-};
-
-const INVOICE_TERMS = {
-  ar: [
-    "الاشتراك محدد البداية والنهاية ولا يتم تعويض حصص غياب المشترك",
-    "المبلغ المدفوع لا يسترد بعد مرور أسبوع من الاشتراك"
-  ],
-  en: [
-    "Subscription has fixed start and end dates. Missed sessions will not be compensated",
-    "Paid amount is non-refundable after one week from subscription date"
-  ]
-};
+import { COMPANY_INFO, INVOICE_TERMS, getStatusInfo, getPaymentMethodLabel, formatSchedule } from './invoices/constants';
+import StickerPrintDialog from './invoices/StickerPrintDialog';
+import { printMemberCard } from './invoices/printUtils';
 
 export const InvoicesPage = () => {
   const { t, language } = useLanguage();
