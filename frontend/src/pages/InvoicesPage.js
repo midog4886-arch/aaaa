@@ -2717,20 +2717,30 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
             <p className="text-center text-sm text-gray-500 mb-4">اختر الخانة المطلوبة على ورقة الاستيكر</p>
             
             <div className="bg-gray-100 p-4 rounded-lg">
-              <div className="grid grid-cols-2 gap-2 max-w-[280px] mx-auto">
-                {[0, 1, 2, 3, 4, 5].map((position) => (
-                  <button
-                    key={position}
-                    onClick={() => handleStickerPrint(position)}
-                    className="aspect-[10/7] bg-white border-2 border-dashed border-gray-300 rounded-lg hover:border-orange-500 hover:bg-orange-50 transition-all flex flex-col items-center justify-center gap-1 p-2"
-                  >
-                    <span className="text-xl">📇</span>
-                    <span className="text-xs text-gray-500">كرت {position + 1}</span>
-                    <span className="text-[10px] text-gray-400">
-                      صف {Math.floor(position / 2) + 1} - عمود {(position % 2) + 1}
-                    </span>
-                  </button>
-                ))}
+              <div className="grid grid-cols-2 gap-3 max-w-[320px] mx-auto">
+                {/* Card 1 - Member Card */}
+                <button
+                  onClick={() => handleStickerPrint(0)}
+                  className="aspect-[9/7] bg-white border-2 border-dashed border-gray-300 rounded-lg hover:border-orange-500 hover:bg-orange-50 transition-all flex flex-col items-center justify-center gap-2 p-3"
+                >
+                  <span className="text-3xl">📇</span>
+                  <span className="text-sm font-bold text-gray-700">كرت العضوية</span>
+                  <span className="text-xs text-gray-400">خانة 1</span>
+                </button>
+                
+                {/* Card 2 - Academy Logo */}
+                <button
+                  onClick={() => handleStickerPrint(1)}
+                  className="aspect-[9/7] bg-white border-2 border-dashed border-gray-300 rounded-lg hover:border-orange-500 hover:bg-orange-50 transition-all flex flex-col items-center justify-center gap-2 p-3 overflow-hidden"
+                >
+                  <img 
+                    src="/images/academy-logo.png" 
+                    alt="شعار الأكاديمية" 
+                    className="w-16 h-16 object-contain"
+                  />
+                  <span className="text-sm font-bold text-gray-700">شعار الأكاديمية</span>
+                  <span className="text-xs text-gray-400">خانة 2</span>
+                </button>
               </div>
               <p className="text-center text-xs text-gray-500 mt-3">
                 📐 حجم كل كرت: 9سم × 7سم
@@ -2752,23 +2762,33 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
             <p className="text-center text-sm text-gray-500 mb-4">اختر الخانة المطلوبة على ورقة الاستيكر</p>
             
             <div className="bg-gray-100 p-4 rounded-lg">
-              <div className="grid grid-cols-2 gap-2 max-w-[280px] mx-auto">
-                {[0, 1, 2, 3, 4, 5].map((position) => (
-                  <button
-                    key={position}
-                    onClick={() => handleRegFormStickerPrint(position)}
-                    className="aspect-[10/7] bg-white border-2 border-dashed border-gray-300 rounded-lg hover:border-purple-500 hover:bg-purple-50 transition-all flex flex-col items-center justify-center gap-1 p-2"
-                  >
-                    <span className="text-xl">📇</span>
-                    <span className="text-xs text-gray-500">كرت {position + 1}</span>
-                    <span className="text-[10px] text-gray-400">
-                      صف {Math.floor(position / 2) + 1} - عمود {(position % 2) + 1}
-                    </span>
-                  </button>
-                ))}
+              <div className="grid grid-cols-2 gap-3 max-w-[320px] mx-auto">
+                {/* Card 1 - Member Card */}
+                <button
+                  onClick={() => handleRegFormStickerPrint(0)}
+                  className="aspect-[9/7] bg-white border-2 border-dashed border-gray-300 rounded-lg hover:border-purple-500 hover:bg-purple-50 transition-all flex flex-col items-center justify-center gap-2 p-3"
+                >
+                  <span className="text-3xl">📇</span>
+                  <span className="text-sm font-bold text-gray-700">كرت العضوية</span>
+                  <span className="text-xs text-gray-400">خانة 1</span>
+                </button>
+                
+                {/* Card 2 - Academy Logo */}
+                <button
+                  onClick={() => handleRegFormStickerPrint(1)}
+                  className="aspect-[9/7] bg-white border-2 border-dashed border-gray-300 rounded-lg hover:border-purple-500 hover:bg-purple-50 transition-all flex flex-col items-center justify-center gap-2 p-3 overflow-hidden"
+                >
+                  <img 
+                    src="/images/academy-logo.png" 
+                    alt="شعار الأكاديمية" 
+                    className="w-16 h-16 object-contain"
+                  />
+                  <span className="text-sm font-bold text-gray-700">شعار الأكاديمية</span>
+                  <span className="text-xs text-gray-400">خانة 2</span>
+                </button>
               </div>
               <p className="text-center text-xs text-gray-500 mt-3">
-                📐 حجم كل كرت: 9سم × 7سم | الهوامش: أعلى 3سم، أسفل 2سم، جانبي 1سم
+                📐 حجم كل كرت: 9سم × 7سم
               </p>
             </div>
           </div>
