@@ -4464,14 +4464,14 @@ async def quick_attendance(
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     now_time = datetime.now(timezone.utc).strftime("%H:%M")
     
-    # Check if member has active subscription for this activity
+    has_active_subscription = False
+    subscription_end_date = None
+    
+    # Check if member has active subscription for this activity from INVOICES
     invoices = await db.invoices.find({
         "member_id": member["id"],
         "status": {"$in": ["paid", "partial"]}
     }, {"_id": 0}).to_list(100)
-    
-    has_active_subscription = False
-    subscription_end_date = None
     
     for inv in invoices:
         for item in inv.get("items", []):
@@ -4486,6 +4486,31 @@ async def quick_attendance(
                     subscription_end_date = end_date
         if has_active_subscription:
             break
+    
+    # If not found in invoices, check REGISTRATION FORMS
+    if not has_active_subscription:
+        reg_forms = await db.registration_forms.find({
+            "$or": [
+                {"customer_phone": member.get("phone", "")},
+                {"customer_name": member.get("name_ar", "")}
+            ],
+            "status": {"$in": ["pending", "converted"]}
+        }, {"_id": 0}).to_list(100)
+        
+        for form in reg_forms:
+            for item in form.get("items", []):
+                if item.get("activity_id") == activity_id or item.get("activity_name", "").lower() in activity.get("name_ar", "").lower() or activity.get("name_ar", "").lower() in item.get("activity_name", "").lower():
+                    end_date = item.get("end_date", "")
+                    if end_date and end_date >= today:
+                        has_active_subscription = True
+                        subscription_end_date = end_date
+                        break
+                    elif end_date:
+                        # Keep track of expired subscription
+                        if not subscription_end_date or end_date > subscription_end_date:
+                            subscription_end_date = end_date
+            if has_active_subscription:
+                break
     
     # If subscription expired, return error
     if not has_active_subscription:
