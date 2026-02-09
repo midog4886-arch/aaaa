@@ -201,12 +201,18 @@ const MemberCardPage = () => {
               color: #991B1B;
             }
             .card-footer {
-              text-align: center;
-              padding: 1.5mm;
+              text-align: right;
+              padding: 1.5mm 2mm;
               background: #f9fafb;
-              font-size: 5pt;
-              color: #9ca3af;
+              font-size: 3.5pt;
+              color: #6b7280;
               border-top: 1px dashed #e5e7eb;
+              line-height: 1.4;
+            }
+            .card-footer .terms-title {
+              font-weight: 700;
+              color: #374151;
+              margin-bottom: 0.3mm;
             }
             
             .print-btn {
