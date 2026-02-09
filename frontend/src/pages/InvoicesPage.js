@@ -1467,17 +1467,6 @@ ${selectedInvoice.discount > 0 ? `🎁 الخصم: ${selectedInvoice.discount} �
     `);
     printWindow.document.close();
   };
-                </div>
-                <div class="qr-section"><img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(qrData)}" /></div>
-              </div>
-              <div class="card-footer">امسح الكود عند الدخول لتسجيل الحضور</div>
-            </div>
-          </div>
-        </body>
-      </html>
-    `);
-    printWindow.document.close();
-  };
 
   // Send QR Card Image via WhatsApp
   const handleSendQRCardWhatsApp = async () => {
