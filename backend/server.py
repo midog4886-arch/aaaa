@@ -108,42 +108,85 @@ async def get_member_card_public(search_term: str):
     if not member:
         raise HTTPException(status_code=404, detail="العضو غير موجود")
     
-    # Get member activities from invoices
+    # Get member activities from member's activities list first
     today = datetime.now(timezone.utc).strftime('%Y-%m-%d')
-    invoices = await db.invoices.find(
-        {"member_id": member["id"], "status": {"$in": ["paid", "partial"]}},
-        {"_id": 0}
-    ).to_list(100)
-    
     activities = []
-    for inv in invoices:
-        for item in inv.get("items", []):
-            if item.get("activity_id"):
-                # Try to get end_date directly, or parse from period field
-                end_date = item.get("end_date", "")
-                start_date = item.get("start_date", "")
-                
-                # If no end_date, try to parse from period (format: "2026-02-04 - 2026-03-02")
-                if not end_date and item.get("period"):
-                    period = item.get("period", "")
-                    if " - " in period:
-                        parts = period.split(" - ")
-                        if len(parts) == 2:
-                            start_date = parts[0].strip()
-                            end_date = parts[1].strip()
-                
-                # Determine status
-                status = "expired"
-                if end_date:
-                    status = "active" if end_date >= today else "expired"
-                
-                activities.append({
-                    "activity_id": item.get("activity_id"),
-                    "activity_name": item.get("activity_name"),
-                    "status": status,
-                    "start_date": start_date,
-                    "end_date": end_date
-                })
+    
+    # First, get activities from member document
+    member_activities = member.get("activities", [])
+    for act in member_activities:
+        end_date = act.get("end_date", "")
+        start_date = act.get("start_date", "")
+        status = "expired"
+        if end_date:
+            status = "active" if end_date >= today else "expired"
+        
+        activities.append({
+            "activity_id": act.get("activity_id"),
+            "activity_name": act.get("activity_name"),
+            "status": status,
+            "start_date": start_date,
+            "end_date": end_date
+        })
+    
+    # Also check invoices if no activities found
+    if not activities:
+        invoices = await db.invoices.find(
+            {"member_id": member["id"], "status": {"$in": ["paid", "partial"]}},
+            {"_id": 0}
+        ).to_list(100)
+        
+        for inv in invoices:
+            for item in inv.get("items", []):
+                if item.get("activity_id"):
+                    end_date = item.get("end_date", "")
+                    start_date = item.get("start_date", "")
+                    
+                    if not end_date and item.get("period"):
+                        period = item.get("period", "")
+                        if " - " in period:
+                            parts = period.split(" - ")
+                            if len(parts) == 2:
+                                start_date = parts[0].strip()
+                                end_date = parts[1].strip()
+                    
+                    status = "expired"
+                    if end_date:
+                        status = "active" if end_date >= today else "expired"
+                    
+                    activities.append({
+                        "activity_id": item.get("activity_id"),
+                        "activity_name": item.get("activity_name"),
+                        "status": status,
+                        "start_date": start_date,
+                        "end_date": end_date
+                    })
+    
+    # Also check registration forms
+    if not activities:
+        reg_forms = await db.registration_forms.find({
+            "$or": [
+                {"customer_phone": member.get("phone", "")},
+            ],
+            "status": {"$in": ["pending", "converted"]}
+        }, {"_id": 0}).to_list(100)
+        
+        for form in reg_forms:
+            for item in form.get("items", []):
+                if item.get("activity_id"):
+                    end_date = item.get("end_date", "")
+                    start_date = item.get("start_date", "")
+                    status = "expired"
+                    if end_date:
+                        status = "active" if end_date >= today else "expired"
+                    
+                    activities.append({
+                        "activity_id": item.get("activity_id"),
+                        "activity_name": item.get("activity_name"),
+                        "status": status,
+                        "start_date": start_date,
+                        "end_date": end_date
+                    })
     
     return {
         "id": member["id"],
