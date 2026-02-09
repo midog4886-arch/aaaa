@@ -83,8 +83,8 @@ const MemberCard = () => {
             @media screen { .print-area { display: none; } }
             
             .card {
-              width: 95mm;
-              height: 95mm;
+              width: 100mm;
+              height: 70mm;
               background: white;
               border-radius: 4mm;
               overflow: hidden;
