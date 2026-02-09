@@ -2901,6 +2901,7 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
               <table className="data-table">
                 <thead><tr>
                   <th>{language === 'ar' ? 'رقم الاستمارة' : 'Form Number'}</th>
+                  <th>{language === 'ar' ? 'رقم العضوية' : 'Member ID'}</th>
                   <th>{language === 'ar' ? 'العميل' : 'Customer'}</th>
                   <th>{t('phone')}</th>
                   <th>{language === 'ar' ? 'الإجمالي' : 'Total'}</th>
@@ -2910,13 +2911,14 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
                 </tr></thead>
                 <tbody>
                   {registrationForms.length === 0 ? (
-                    <tr><td colSpan={7} className="text-center py-8 text-muted-foreground">
+                    <tr><td colSpan={8} className="text-center py-8 text-muted-foreground">
                       {language === 'ar' ? 'لا توجد استمارات تسجيل' : 'No registration forms'}
                     </td></tr>
                   ) : (
                     registrationForms.map(form => (
                       <tr key={form.id}>
                         <td className="font-mono text-sm font-bold">#{form.form_number}</td>
+                        <td className="font-mono text-sm font-bold text-orange-600">{form.member_code ? `#${form.member_code}` : '-'}</td>
                         <td className="font-medium">{form.customer_name}</td>
                         <td dir="ltr" className="text-sm">{form.customer_phone || '-'}</td>
                         <td className="font-bold text-primary">{form.total?.toFixed(2)} {t('sar')}</td>
