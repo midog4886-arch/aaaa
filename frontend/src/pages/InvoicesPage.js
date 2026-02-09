@@ -1189,11 +1189,16 @@ ${selectedInvoice.discount > 0 ? `🎁 الخصم: ${selectedInvoice.discount} �
     });
     
     // Calculate position offsets (2 columns x 3 rows, each card 10cm width x 7cm height)
+    // A4 page: 297mm height
     // Top margin: 30mm, Bottom margin: 20mm, Side margins: 10mm
+    // Available height: 297 - 30 - 20 = 247mm
+    // 3 cards × 70mm = 210mm, remaining: 37mm, gap between rows: 18.5mm
     const col = position % 2;
     const row = Math.floor(position / 2);
     const leftOffset = 10 + (col * 100);
-    const topOffset = 30 + (row * 70);
+    const cardHeight = 70; // mm
+    const rowGap = 18.5; // mm between rows for exact 20mm bottom margin
+    const topOffset = 30 + (row * (cardHeight + rowGap));
     
     const activitiesHtml = cardPrintMember?.activities?.map(act => `
       <span class="activity ${act.status === 'active' ? 'active' : 'inactive'}">
