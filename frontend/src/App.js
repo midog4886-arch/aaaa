@@ -142,6 +142,9 @@ function AppRoutes() {
       {/* Member Card - Public page for members to view their QR */}
       <Route path="/member-card" element={<MemberCardPage />} />
       
+      {/* Test Print Page - Public page for testing sticker printing */}
+      <Route path="/test-print" element={<TestPrintPage />} />
+      
       {/* Member Portal Routes - Public */}
       <Route path="/portal/login" element={<MemberLogin />} />
       <Route path="/portal/dashboard" element={<MemberDashboard />} />
