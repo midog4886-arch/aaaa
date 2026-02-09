@@ -21,92 +21,107 @@ We want to design a management program for a sports academy named World Champion
     *   Visual Activity Schedule with an improved, compact print format.
     *   Member skill levels management.
     *   Sequential Membership Numbers.
-    *   **Advanced Member Portal:** A client-facing portal for members with features like dashboard, subscription viewing, schedules, QR card, notifications, attendance history, and a full coach rating system (member submission and admin viewing).
-    *   **Coach Rating System:** A dedicated page in the admin panel to view all coach ratings submitted by members. Members can submit ratings manually, with the ability to type in the coach and activity names.
-    *   **Invoice/Registration Schedule Input:** The schedule dropdown has been replaced with a multi-day-of-the-week selector and a manual time input field.
-    *   **Grouped Attendance View:** The activity dropdown on the attendance page has been replaced with a category selector (e.g., Swimming, Football) to show all members for a given sport at once.
-    *   **Level Capacity Check:** When creating an invoice or registration form, the system now checks if a selected level is full (capacity: 7). If it is, it presents a warning with an option for the admin to override and proceed.
-    *   **Automatic Level Enrollment:** Members are now automatically added to the selected level upon the creation of an invoice or registration form. New members are created on-the-fly from registration forms if they don't exist.
-    *   **Automatic Level Cleanup:** Members are automatically removed from a level's roster when their subscription end date passes. This cleanup runs when the Levels page is viewed.
-    *   **Sticker Card Printing:** A feature to print member cards onto a specific location on a 2x3 sticker sheet (A4) with custom margins and dimensions (10cm x 7cm). This is available from the admin member card page, the member portal, and the invoices page.
+    *   **Advanced Member Portal:** A client-facing portal for members with features like dashboard, subscription viewing, schedules, QR card, notifications, attendance history, and a full coach rating system.
+    *   **Coach Rating System:** A dedicated page in the admin panel to view all coach ratings.
+    *   **Invoice/Registration Schedule Input:** Multi-day-of-the-week selector and a manual time input field.
+    *   **Grouped Attendance View:** The activity dropdown on the attendance page has been replaced with a category selector.
+    *   **Level Capacity Check:** Warning system with admin override for full levels.
+    *   **Automatic Level Enrollment & Cleanup:** Members are auto-enrolled in levels upon invoice/registration and removed when their subscription expires.
+    *   **Sticker Card Printing:** A feature to print member cards onto a specific location on a 2x3 sticker sheet (A4) with custom margins and dimensions. This feature was added for invoices, registration forms, and the main member card page.
+    *   **Unified Card Design:** A standardized, redesigned member card (9cm x 7cm) showing activity details, subscription dates, and terms/conditions, implemented for invoices and registration forms.
+    *   **Attendance from Registration Forms:** The attendance system now recognizes subscriptions created via registration forms, not just invoices.
 
 **User's preferred language**: Arabic (العربية). The next agent MUST respond in Arabic only.
 
 **what currently exists?**
-The application is a comprehensive sports academy management system. In this session, the agent successfully completed several major feature requests. The broken invoice schedule input was fixed and is now fully functional. The attendance page has been refactored to show activity categories instead of a long list of individual activities. A sophisticated level capacity check, with an admin override option, has been implemented for both invoices and registration forms. The system now automatically enrolls members into levels when an invoice/form is created (even creating new members on-the-fly) and automatically cleans them up when their subscription expires. Finally, a highly specific sticker printing feature for member cards was developed and integrated into three different pages. The codebase, particularly  and , has grown significantly more complex as a result.
+The agent implemented a series of rapid, user-driven enhancements focused on the member card printing and attendance systems. An initial request for a 6-card test print page was canceled by the user. The agent then fixed a layout bug, ensuring the bottom margin for sticker printing was exactly 2cm across all relevant pages. A significant new feature was added to print member cards directly from the Registration Forms list on the . A critical bug was fixed in the backend () to allow the attendance system to recognize members whose subscriptions were created via registration forms, not just invoices. Finally, following multiple iterative requests, the agent executed a complete redesign of the member card, changing its dimensions to 9x7cm, rearranging the layout, adding subscription dates and terms/conditions, and enlarging all text for readability. This new design was applied to cards generated from invoices and registration forms. The agent was in the process of applying this same unified design to the main admin member card page when the session ended. The  file has grown even more complex and is in dire need of refactoring.
 
 **Last working item**:
-The user requested a way to test the sticker printing layout by printing a full sheet of 6 cards at once.
+The user requested that the design of the member card on the Admin's  be updated to match the new, unified design that was just implemented for invoices and registration forms.
 
--   **Last item agent was working**: Creating a new test page to display and print 6 member cards on a single A4 sheet to verify the sticker layout.
--   **Status**: NOT STARTED
+-   **Last item agent was working**: Rewriting the  function in  to implement the new 9x7cm card design, which includes a new layout, enlarged text, subscription dates, and terms/conditions.
+-   **Status**: IN PROGRESS
 -   **Agent Testing Done**: N
--   **Which testing method agent to use?**: Frontend testing agent or screenshot tool. The agent needs to create a new page/route (e.g., ), fetch 6 members, and arrange them in a 2x3 grid using CSS. The key is to verify the print preview () matches the desired A4 sticker sheet layout with correct margins.
+-   **Which testing method agent to use?**: Screenshot tool. The agent needs to navigate to a member's details page (e.g., ), click the Print Sticker button, select a position, and verify that the print preview window shows the new card design correctly.
 -   **User Testing Done**: N
 
 **All Pending/In progress Issue list**:
--   **Issue 1**: Implement the user's request for a test page to print 6 member cards on a single A4 sheet. (P0)
--   **Issue 2**: The searchable member dropdown in  remains difficult for automated testing tools to interact with, which complicates regression testing for the invoicing feature. (P2)
+-   **Issue 1**: Complete the member card redesign on . (P0)
+-   **Issue 2**: The member card in the Member Portal () has an inconsistent design and needs to be updated to match the new 9x7cm layout. (P1)
+-   **Issue 3**: The searchable member dropdown in  remains difficult for automated testing tools, hindering regression testing. (P2)
 
 **Issues Detail**:
 -   **Issue 1**:
-    -   **Attempted fixes**: None. This is a new request.
+    -   **Attempted fixes**: The agent started rewriting the  function in  to replace the old card's HTML and CSS.
     -   **Next debug checklist**:
-        1.  Create a new route (e.g., ) in  and a corresponding page component file.
-        2.  In the new component, fetch data for at least 6 members.
-        3.  Create the layout for the page, which will be a 2x3 grid of the  component.
-        4.  Add a Print button.
-        5.  Write  CSS to handle the layout on a physical A4 page, applying the user-specified margins (Top: 3cm, Sides: 1cm, Bottom: 2cm) and card dimensions (10cm x 7cm).
-    -   **Why fix this issue and what will be achieved with the fix?**: Fulfills a direct user request to facilitate testing of the physical sticker printing output.
-    -   **Status**: NOT STARTED
+        1.  Review .
+        2.  Finish replacing the old HTML/CSS in  with the new structure from .
+        3.  Ensure the card's data (member info, dates) is correctly fetched and passed to the print template.
+        4.  Verify the new layout (9x7cm, QR on left, info on right, dates below QR) is correctly implemented.
+        5.  Remove any remaining old, redundant code from the function.
+    -   **Why fix this issue and what will be achieved with the fix?**: Fulfills a direct user request and ensures a consistent, professional design across all card printing functionalities.
+    -   **Status**: IN PROGRESS
     -   **Is recurring issue?** N
     -   **Should Test frontend/backend/both after fix?**: Frontend
     -   **Blocked on other issue**: None
 -   **Issue 2**:
+    -   **Attempted fixes**: The agent updated the text and date logic in  but did not update the core layout, dimensions, or styling to match the final design from .
+    -   **Next debug checklist**:
+        1.  Open .
+        2.  Inspect the  function.
+        3.  Completely replace the existing card HTML/CSS with the new unified design.
+        4.  Ensure card dimensions are set to 9cm width x 7cm height.
+        5.  Implement the QR-on-left layout with dates below and member info on the right.
+        6.  Adjust styling to match the enlarged text and spacing of the new design.
+    -   **Why fix this issue and what will be achieved with the fix?**: Ensures a consistent user experience and design across all parts of the application, including the client-facing portal.
+    -   **Status**: NOT STARTED
+    -   **Is recurring issue?** N
+    -   **Should Test frontend/backend/both after fix?**: Frontend
+    -   **Blocked on other issue**: None
+-   **Issue 3**:
     -   **Attempted fixes**: None in this session.
-    -   **Next debug checklist**: Examine the  component used for member searching in . Ensure unique and stable  attributes are assigned to the trigger, input field, and dropdown items to enable reliable selection by testing tools.
-    -   **Why fix this issue and what will be achieved with the fix?**: It will improve the reliability of automated tests for the critical invoice creation process.
+    -   **Next debug checklist**: Examine the  component used for member searching in . Assign unique and stable  attributes to the trigger, input field, and dropdown items to enable reliable selection by testing tools.
+    -   **Why fix this issue and what will be achieved with the fix?**: Improves the reliability of automated tests for the critical invoice creation process.
     -   **Status**: NOT STARTED
     -   **Is recurring issue?** Y
     -   **Should Test frontend/backend/both after fix?**: Frontend
     -   **Blocked on other issue**: None
 
 **In progress Task List**:
--   None.
+-   **Task 1**: Complete the design unification for .
+    -   **Where to resume**: . The  function has been partially rewritten. The next step is to remove the old, now-redundant code block within that function and test the result.
+    -   **What will be achieved with this?**: The card printed from the admin member details page will match the new, unified 9x7cm design.
+    -   **Status**: IN PROGRESS
+    -   **Should Test frontend/backend/both after fix?**: Frontend
+    -   **Blocked on something**: None
 
 **Upcoming and Future Tasks**
 -   **Upcoming Tasks**:
-    -   **Backend Refactoring (Phase 2) (P0 - CRITICAL)**: Continue migrating endpoints from  to the  directory. This is now more urgent than ever.
-    -   **Frontend Refactoring (P0 - CRITICAL)**: Decompose the massive  file into smaller, reusable components (e.g., , , , ). The file has become unmanageably large.
+    -   **Backend Refactoring (Phase 2) (P0 - CRITICAL)**: Continue migrating endpoints from  to the  directory.
+    -   **Frontend Refactoring (P0 - CRITICAL)**: Decompose the massive  file into smaller, reusable components.
     -   **Member Portal - Online Renewal (P1)**: Implement online payment functionality for subscription renewals.
     -   **WhatsApp Business API Integration (P1)**: Ask the user for their  and  to begin implementation.
 -   **Future Tasks**:
-    -   **PWA Conversion (P1)**: Convert the web app into a Progressive Web App (PWA) to allow installation on mobile devices, as discussed with the user.
-    -   **Schedule Templates (P2)**: Implement the agent's suggestion to allow saving frequently used schedules as templates to speed up invoice creation.
-    -   **Member Portal - Booking/Leave Requests (P2)**: Implement features for members to book classes or request to freeze their subscription.
+    -   **PWA Conversion (P1)**: Convert the web app into a Progressive Web App (PWA).
+    -   **Schedule Templates (P2)**: Allow saving frequently used schedules as templates.
+    -   **Member Portal - Booking/Leave Requests (P2)**: Implement features for members to book classes or freeze subscriptions.
     -   Log unauthorized access attempts.
     -   Implement advanced, granular user permissions.
 
 **Completed work in this session**
--   **Flexible Schedule Input**: Fixed the state management and successfully implemented the day-of-the-week picker and manual time input on the  for both invoices and registration forms.
--   **Attendance Page Refactor**: Replaced the long list of activities with a simple category dropdown (Swimming, Football, Karate) that fetches all members for that category.
--   **Level Capacity Check**: Implemented a system to check if a level is full (capacity 7) during invoice/registration creation. It shows a warning with Approve and Decline buttons, allowing an admin to override the limit.
--   **Automatic Level Management**:
-    -   Modified the backend to automatically add a member to a level's roster when an invoice or registration form is created.
-    -   The system now auto-creates a new member record if a registration form is saved for a non-existent phone number.
-    -   A cleanup mechanism was added to automatically remove members from levels when their subscription end date passes.
--   **Sticker Card Printing**:
-    -   Created a feature to print member cards onto a specific position on a 2x3 sticker sheet.
-    -   Implemented a dialog for the user to select one of 6 positions.
-    -   Dynamically generates print CSS to handle custom margins (3cm top, 2cm bottom, 1cm sides) and card dimensions (10cm x 7cm).
-    -   This feature was added to the Admin , the , and the .
--   **Bug Fixes & Minor Changes**:
-    -   Fixed a critical  on the  endpoint caused by auto-created members missing required fields.
-    -   Removed the Create demo data button from the .
-    -   Provided the correct URL for the member portal.
+-   **Attendance System Bug Fix**: Modified the backend () so the  feature now correctly identifies member subscriptions from both **invoices** and **registration forms**.
+-   **Registration Form Card Printing**: Added a button to the registration forms list on  to print a member card. This includes a print position selection dialog and logic to populate the card with data from the form.
+-   **Unified Member Card Redesign**: Executed a complete redesign of the member card for invoices and registration forms with the following changes:
+    -   **Dimensions**: Set to 9cm width x 7cm height.
+    -   **Layout**: QR code on the left, member info on the right.
+    -   **Content**: Added subscription start/end dates below the QR code and replaced generic text with specific Terms & Conditions.
+    -   **Styling**: Significantly increased the font size of all text elements (name, member ID, activity, dates, T&Cs) and the QR code size for better readability.
+-   **Data Handling Improvement**: Enhanced the card printing logic to parse dates from a  text field as a fallback for older invoices that don't have separate  and  fields.
+-   **Sticker Margin Fix**: Corrected the CSS calculations in all three card-printing locations to ensure the bottom margin on the A4 sticker sheet is exactly 2cm.
+-   **Canceled Task**: Removed the code for a 6-card test print page as requested by the user.
 
 **Earlier issues found/mentioned but not fixed**
--   The difficulty in automating tests for the member selection dropdown on the  remains unaddressed.
+-   The difficulty in automating tests for the member selection dropdown on  remains unaddressed.
 
 **Known issue recurrence from previous fork**
 -   The test automation issue with the member selection dropdown is a recurring problem.
@@ -115,60 +130,53 @@ The user requested a way to test the sticker printing layout by printing a full 
 
 
 **Key Technical Concepts**
--   **Dynamic Print CSS**: Using JavaScript to generate  and  CSS rules on the fly to control layout, margins, and absolute positioning for printing on specific areas of a page.
--   **Defensive API Design**: Adding fallback default values to an API response () to prevent validation errors from inconsistent or legacy data in the database.
--   **Implicit Data Creation & Linking**: Modifying a  endpoint () to automatically create a new  document if one doesn't exist by phone number, and then linking it to a .
--   **Self-Healing Data**: Implementing a cleanup function () that is automatically triggered by a frequently used  endpoint, ensuring data hygiene without requiring a separate cron job.
--   **Conditional UI with Overrides**: Building a feature that warns the user about a business rule violation (level capacity) but provides them with the explicit ability to override the warning and proceed.
+-   **Dynamic HTML/CSS for Printing**: Heavy use of JavaScript template literals to construct HTML and CSS for a print-specific window.
+-   **Data Fallbacks**: Modifying frontend logic to handle data inconsistencies, such as parsing a  string when dedicated / fields are missing in older database records.
+-   **Backend Logic Expansion**: Extending existing API endpoints (e.g., ) to query multiple MongoDB collections (, ) to provide a unified data source for the frontend.
+-   **Iterative UI Refinement**: Rapidly evolving a UI component (the member card) based on a series of specific, detailed user requests regarding layout, content, and styling.
 
 **key DB schema**
--   **levels**: The  array within a level document now stores objects containing both the  and the  to facilitate the auto-cleanup process.
--   **members**: Can now be created automatically with just  and  from a registration form. The backend logic has been hardened to handle documents that may be missing other fields like  or .
+-   **invoices**: No schema change, but the agent discovered that this collection contains inconsistent data models for dates. Some documents have  and  fields, while older ones have a combined  string (e.g., ). The frontend now handles both cases.
 
 **All files of reference**
--   **/app/frontend/src/pages/InvoicesPage.js**: **(Dangerously Modified)** The primary file worked on. It is now extremely large and complex, handling multiple distinct features. It urgently needs to be broken down into smaller components.
--   **/app/backend/server.py**: **(Dangerously Modified)** Contains critical new business logic for automatic member creation and level enrollment, increasing its monolithic nature.
--   **/app/backend/routes/levels.py**: **(Modified)** Contains new endpoints for checking level capacity and cleaning up expired members.
--   **/app/frontend/src/pages/AttendancePage.js**: **(Heavily Modified)** The core logic for fetching and displaying attendance data was completely rewritten to support categories.
--   **/app/frontend/src/pages/MemberCardPage.js**: **(Modified)** Sticker printing feature added.
--   **/app/frontend/src/pages/member-portal/MemberQRCard.js**: **(Modified)** Sticker printing feature added.
+-   **/app/frontend/src/pages/InvoicesPage.js**: **(CRITICAL RISK)** The file's size and complexity have increased further. It now contains two highly detailed and customized card printing implementations. Refactoring this into smaller components is the highest priority technical task.
+-   **/app/backend/server.py**: **(CRITICAL RISK)** More business logic was added to this monolithic file to fix the attendance system. The planned refactoring is essential for maintainability.
+-   **/app/frontend/src/pages/MemberCardPage.js**: **(Modified)** Currently undergoing a complete rewrite of its card printing feature to match the new unified design.
+-   **/app/frontend/src/pages/member-portal/MemberQRCard.js**: **(Modified)** The logic was updated, but its visual design is now inconsistent with the rest of the application's cards and needs to be updated.
 
 **Areas that need refactoring**:
--   **/app/frontend/src/pages/InvoicesPage.js**: **CRITICAL RISK**. This file is now over 4,500 lines long and handles invoicing, registration forms, level capacity logic, and sticker printing. It is a major source of technical debt and must be decomposed into smaller, dedicated components as a top priority.
--   **/app/backend/server.py**: **CRITICAL RISK**. This monolithic file continues to absorb new, complex business logic (auto-creating members, managing level enrollment). The planned refactoring to move endpoints into the  directory must be executed immediately to maintain the project's health.
+-   **/app/frontend/src/pages/InvoicesPage.js**: **CRITICAL**. This file is unmanageable. It must be broken down into smaller components (e.g., , , , , ).
+-   **/app/backend/server.py**: **CRITICAL**. The planned migration of endpoints to the  directory must be prioritized to reduce the complexity of this single file.
 
 **key api endpoints**
--   : **(New)** Checks the current number of members in a level.
--   : **(New)** Internal endpoint to remove members with expired subscriptions from all levels.
--   : **(Modified)** Now automatically adds the specified member to the specified level upon creation.
--   : **(Modified)** Now automatically creates a new member if the phone number doesn't exist, and then adds that member to the specified level.
--   : **(Modified)** Made more robust to handle member documents with missing fields, preventing validation errors.
--   : **(Modified)** The frontend now calls this with a list of  when a category is selected.
+-   : **(Modified)** Now checks both the  and  collections for a member's active subscription.
+-   : **(Modified)** Now aggregates a member's activities from both  and .
 
 **Critical Info for New Agent**
 -   You **MUST** respond in **Arabic**.
--   Your immediate task (P0) is to implement the user's request for a **6-card test print page**.
--   After completing the test page, you **MUST** propose and prioritize the **critical refactoring** of both  and . These files have accumulated significant technical debt in this session and pose a risk to future development. Breaking down  into smaller components is particularly urgent.
+-   Your immediate task (P0) is to **finish the redesign of the member card in **.
+-   Your next task (P1) is to apply the same redesign to the member portal card in  to fix the design inconsistency.
+-   After completing the card redesigns, you **MUST** propose and prioritize the **critical refactoring** of both  and . These files have accumulated significant technical debt and pose a risk to future development.
 
 **documents and test reports created in this job**
--   : Updated with the new features.
+-   None.
 
 **Last 10 User Messages and any pending HUMAN messages**
-10. **User**: Add the sticker printing feature to the admin member card page. (Status: COMPLETED)
-9.  **User**: The printed card should use the golden design. (Status: COMPLETED)
-8.  **User**: Set the top margin to 3cm and the bottom to 2cm. (Status: COMPLETED)
-7.  **User**: Set the card size to 10cm width by 7cm height. (Status: COMPLETED)
-6.  **User**: Add 1cm side margins. (Status: COMPLETED)
-5.  **User**: Add the same card printing button to the invoices page. (Status: COMPLETED)
-4.  **User**: Confirm the bottom margin is 2cm. (Status: AWAITING CLARIFICATION) The agent noted the actual margin was ~5.7cm and asked the user if they wanted to adjust it.
-3.  **User**: Print a test image of 6 cards on one page. (Status: **IN PROGRESS - Last working item**)
-2.  **User**: The link for the member portal is wrong. (Status: COMPLETED)
-1.  **User**: Suggest how to print the member card on a sticker sheet with selectable positions. (Status: COMPLETED)
+1.  **User**: Update the design on  to match the invoice page's new card design. (Status: **IN PROGRESS**)
+2.  **User**: Test invoice #26022. (Status: COMPLETED - agent implemented a fallback for the  date format).
+3.  **User**: Ensure the card on the invoice page uses the invoice's date, and the card on the registration form list uses the registration form's date. (Status: COMPLETED - agent verified logic and implemented a fallback for inconsistent data).
+4.  **User**: Problem - User reported a UI-breaking error. (Status: COMPLETED - agent fixed a JSX syntax error in ).
+5.  **User**: The subscription date is missing on the invoice page card. Also, make the T&Cs and other data bigger. (Status: COMPLETED - agent enlarged all text and ensured dates are always rendered).
+6.  **User**: Put the start/end dates under the QR code. Card size should be 7cm height x 9cm width. (Status: COMPLETED).
+7.  **User**: Add start/end dates, make the QR code bigger, reduce space, and enlarge T&Cs text. (Status: COMPLETED).
+8.  **User**: Add the start and end date to the card and replace Scan the code... text with specific terms and conditions. (Status: COMPLETED).
+9.  **User**: The attendance system should work for members who registered via a registration form. (Status: COMPLETED - agent fixed the backend logic).
+10. **User**: The QR card for registration forms should show the activity, dates, and subscription status. (Status: COMPLETED).
 
 **Project Health Check:**
 -   **Broken**: None.
 -   **Mocked**: None.
--   **Technical Debt**: HIGH. The  and  files are critically oversized and complex.
+-   **Technical Debt**: **CRITICAL**. The  and  files have significantly worsened, making refactoring an urgent necessity.
 
 **3rd Party Integrations**
 -   **openpyxl**: Backend, for  exports.
@@ -183,7 +191,7 @@ The user requested a way to test the sticker printing layout by printing a full 
 -   **Testing agent used after significant changes**: NO
 -   **Troubleshoot agent used after agent stuck in loop**: NO
 -   **Test files created**: None.
--   **Known regressions**: None.
+-   **Known regressions**: A new design inconsistency was introduced: the member card in the Member Portal () does not match the new unified design of the other cards.
 
 **Credentials to test flow:**
 -   **Admin Panel**:
@@ -194,4 +202,5 @@ The user requested a way to test the sticker printing layout by printing a full 
 
 **What agent forgot to execute**
 -   The agent did not address the recurring issue of the  member search dropdown being difficult for test automation.
--   The agent correctly identified the need for refactoring  and  from the previous handoff but proceeded to add several large, complex features to them, significantly worsening the technical debt instead of addressing it.</analysis>
+-   The agent again postponed the critical refactoring of  and , instead adding more features and complexity to them, significantly worsening the project's technical debt.
+-   After creating the new unified card design, the agent forgot to apply it to all relevant locations, leaving the member portal card () with an outdated and inconsistent design.</analysis>

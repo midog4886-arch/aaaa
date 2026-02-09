@@ -15,7 +15,7 @@ import os
 import json
 from datetime import datetime
 
-BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', 'https://athleteportal-1.preview.emergentagent.com')
+BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', 'https://sports-portal-6.preview.emergentagent.com')
 VAT_RATE = 0.15
 
 class TestInvoiceStoreDiscountIntegration:
