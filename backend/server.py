@@ -911,6 +911,18 @@ async def create_invoice(invoice: InvoiceCreate, current_user: dict = Depends(ge
         "commercial_reg": COMPANY_COMMERCIAL_REG
     }
     await db.invoices.insert_one(invoice_doc)
+    
+    # Add member to levels if specified in invoice items
+    if invoice.member_id:
+        for item in invoice.items:
+            level_id = item.level_id
+            if level_id:
+                # Add member to level if not already there
+                await db.levels.update_one(
+                    {"id": level_id},
+                    {"$addToSet": {"members": invoice.member_id}}
+                )
+    
     return Invoice(**{k: v for k, v in invoice_doc.items() if k != "_id"})
 
 @api_router.put("/invoices/{invoice_id}/pay")
