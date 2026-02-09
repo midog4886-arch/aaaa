@@ -52,7 +52,7 @@ const MemberCard = () => {
           <meta charset="UTF-8">
           <title>بطاقة العضوية - ${cardData?.member_code}</title>
           <style>
-            @import url('https://fonts.googleapis.com/css2?family=Tajawal:wght@400;700&display=swap');
+            @import url('https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700&display=swap');
             @page { size: A4; margin: 0mm; }
             * { margin: 0; padding: 0; box-sizing: border-box; }
             html, body { margin: 0; padding: 0; }
@@ -80,38 +80,88 @@ const MemberCard = () => {
               }
             }
             @media screen { .print-area { display: none; } }
-            .card-wrapper {
-              display: inline-block;
-              background: white;
-              padding: 15px;
-              border-radius: 12px;
-              box-shadow: 0 10px 40px rgba(0,0,0,0.15);
-              border: 2px solid #e5e7eb;
-            }
+            
             .card {
-              width: 90mm;
-              height: 90mm;
-              display: flex;
-              flex-direction: column;
-              align-items: center;
-              justify-content: center;
-              background: white;
-              padding: 5mm;
-            }
-            .print-card {
               width: 95mm;
               height: 95mm;
-              display: flex;
-              flex-direction: column;
-              align-items: center;
-              justify-content: center;
               background: white;
-              padding: 5mm;
+              border-radius: 4mm;
+              overflow: hidden;
+              box-shadow: 0 4px 15px rgba(0,0,0,0.1);
             }
-            .logo { font-size: 11pt; font-weight: bold; color: #F97316; margin-bottom: 3mm; }
-            .qr-img { width: 50mm; height: 50mm; }
-            .name { font-size: 12pt; font-weight: bold; margin-top: 3mm; text-align: center; color: #1f2937; }
-            .code { font-size: 14pt; font-weight: bold; color: #F97316; margin-top: 2mm; }
+            .card-header {
+              background: linear-gradient(135deg, #F97316, #F59E0B);
+              padding: 3mm;
+              display: flex;
+              justify-content: space-between;
+              align-items: center;
+              color: white;
+            }
+            .header-text h2 {
+              font-size: 10pt;
+              font-weight: 700;
+              margin: 0;
+            }
+            .header-text p {
+              font-size: 6pt;
+              opacity: 0.9;
+              margin: 0;
+            }
+            .trophy {
+              font-size: 18pt;
+            }
+            .card-body {
+              padding: 3mm;
+              display: flex;
+              gap: 3mm;
+            }
+            .info-section {
+              flex: 1;
+              text-align: right;
+            }
+            .qr-section {
+              width: 35mm;
+              height: 35mm;
+              background: white;
+              border: 1px solid #eee;
+              border-radius: 2mm;
+              padding: 1mm;
+            }
+            .qr-section img {
+              width: 100%;
+              height: 100%;
+            }
+            .member-name {
+              font-size: 10pt;
+              font-weight: 700;
+              color: #1f2937;
+              margin-bottom: 2mm;
+            }
+            .info-row {
+              display: flex;
+              align-items: center;
+              gap: 1mm;
+              margin-bottom: 1.5mm;
+              font-size: 8pt;
+            }
+            .info-label {
+              color: #6b7280;
+              font-size: 6pt;
+            }
+            .member-code {
+              color: #F97316;
+              font-weight: 700;
+              font-size: 11pt;
+            }
+            .card-footer {
+              text-align: center;
+              padding: 1.5mm;
+              background: #f9fafb;
+              font-size: 5pt;
+              color: #9ca3af;
+              border-top: 1px dashed #e5e7eb;
+            }
+            
             .print-btn {
               margin-top: 20px;
               padding: 12px 30px;
@@ -137,12 +187,35 @@ const MemberCard = () => {
         <body>
           <div class="screen-only">
             <p style="font-size: 18px; margin-bottom: 20px;">📋 معاينة بطاقة العضوية</p>
-            <div class="card-wrapper">
-              <div class="card">
-                <div class="logo">🏆 أكاديمية أداء الأبطال</div>
-                <img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(qrData)}" class="qr-img" />
-                <div class="name">${cardData?.name_ar || ''}</div>
-                <div class="code">#${cardData?.member_code || ''}</div>
+            <div class="card">
+              <div class="card-header">
+                <div class="header-text">
+                  <h2>أكاديمية أداء الأبطال</h2>
+                  <p>World Champions Performance Academy</p>
+                </div>
+                <div class="trophy">🏆</div>
+              </div>
+              <div class="card-body">
+                <div class="info-section">
+                  <div class="info-label">الاسم</div>
+                  <div class="member-name">${cardData?.name_ar || ''}</div>
+                  
+                  <div class="info-row">
+                    <span class="info-label">رقم العضوية:</span>
+                    <span class="member-code">#${cardData?.member_code || ''}</span>
+                  </div>
+                  
+                  <div class="info-row">
+                    <span class="info-label">رقم الجوال:</span>
+                    <span>${cardData?.phone || '-'}</span>
+                  </div>
+                </div>
+                <div class="qr-section">
+                  <img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(qrData)}" />
+                </div>
+              </div>
+              <div class="card-footer">
+                امسح الكود عند الدخول لتسجيل الحضور
               </div>
             </div>
             <div class="position-info">
@@ -151,11 +224,36 @@ const MemberCard = () => {
             <button class="print-btn" onclick="window.print()">🖨️ طباعة البطاقة</button>
           </div>
           <div class="print-area">
-            <div class="print-card">
-              <div class="logo">🏆 أكاديمية أداء الأبطال</div>
-              <img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(qrData)}" class="qr-img" />
-              <div class="name">${cardData?.name_ar || ''}</div>
-              <div class="code">#${cardData?.member_code || ''}</div>
+            <div class="card">
+              <div class="card-header">
+                <div class="header-text">
+                  <h2>أكاديمية أداء الأبطال</h2>
+                  <p>World Champions Performance Academy</p>
+                </div>
+                <div class="trophy">🏆</div>
+              </div>
+              <div class="card-body">
+                <div class="info-section">
+                  <div class="info-label">الاسم</div>
+                  <div class="member-name">${cardData?.name_ar || ''}</div>
+                  
+                  <div class="info-row">
+                    <span class="info-label">رقم العضوية:</span>
+                    <span class="member-code">#${cardData?.member_code || ''}</span>
+                  </div>
+                  
+                  <div class="info-row">
+                    <span class="info-label">رقم الجوال:</span>
+                    <span>${cardData?.phone || '-'}</span>
+                  </div>
+                </div>
+                <div class="qr-section">
+                  <img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(qrData)}" />
+                </div>
+              </div>
+              <div class="card-footer">
+                امسح الكود عند الدخول لتسجيل الحضور
+              </div>
             </div>
           </div>
         </body>
