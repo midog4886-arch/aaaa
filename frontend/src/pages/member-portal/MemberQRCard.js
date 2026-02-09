@@ -227,7 +227,9 @@ const MemberCard = () => {
                 </div>
               </div>
               <div class="card-footer">
-                امسح الكود عند الدخول لتسجيل الحضور
+                <div class="terms-title">شروط وأحكام:</div>
+                <div>• الاشتراك محدد البداية والنهاية ولا يتم تعويض حصص غياب المشترك</div>
+                <div>• المبلغ المدفوع لا يسترد بعد مرور أسبوع من الاشتراك</div>
               </div>
             </div>
             <div class="position-info">
@@ -264,7 +266,9 @@ const MemberCard = () => {
                 </div>
               </div>
               <div class="card-footer">
-                امسح الكود عند الدخول لتسجيل الحضور
+                <div class="terms-title">شروط وأحكام:</div>
+                <div>• الاشتراك محدد البداية والنهاية ولا يتم تعويض حصص غياب المشترك</div>
+                <div>• المبلغ المدفوع لا يسترد بعد مرور أسبوع من الاشتراك</div>
               </div>
             </div>
           </div>
