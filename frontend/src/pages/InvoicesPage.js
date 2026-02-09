@@ -60,6 +60,10 @@ export const InvoicesPage = () => {
   const [showAdvancedSearch, setShowAdvancedSearch] = useState(false);
   const [activeTab, setActiveTab] = useState('invoices');
   
+  // Member card print states
+  const [showCardPrintDialog, setShowCardPrintDialog] = useState(false);
+  const [cardPrintMember, setCardPrintMember] = useState(null);
+  
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [isViewDialogOpen, setIsViewDialogOpen] = useState(false);
   const [isAddMemberDialogOpen, setIsAddMemberDialogOpen] = useState(false);
