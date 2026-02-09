@@ -23,7 +23,6 @@ import SchedulePage from './pages/SchedulePage';
 import UnauthorizedPage from './pages/UnauthorizedPage';
 import MemberCardPage from './pages/MemberCardPage';
 import CoachRatingsPage from './pages/CoachRatingsPage';
-import TestPrintPage from './pages/TestPrintPage';
 
 // Member Portal Pages
 import MemberLogin from './pages/member-portal/MemberLogin';
@@ -141,9 +140,6 @@ function AppRoutes() {
       
       {/* Member Card - Public page for members to view their QR */}
       <Route path="/member-card" element={<MemberCardPage />} />
-      
-      {/* Test Print Page - Public page for testing sticker printing */}
-      <Route path="/test-print" element={<TestPrintPage />} />
       
       {/* Member Portal Routes - Public */}
       <Route path="/portal/login" element={<MemberLogin />} />
