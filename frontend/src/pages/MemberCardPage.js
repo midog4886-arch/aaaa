@@ -3,6 +3,7 @@ import { QRCodeSVG } from 'qrcode.react';
 import { Card, CardContent } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../components/ui/dialog';
 import { User, CreditCard, Phone, Download, Printer, CheckCircle, XCircle } from 'lucide-react';
 import axios from 'axios';
 
@@ -13,6 +14,7 @@ const MemberCardPage = () => {
   const [member, setMember] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [showPrintDialog, setShowPrintDialog] = useState(false);
 
   const searchMember = async () => {
     if (!searchQuery.trim()) return;
