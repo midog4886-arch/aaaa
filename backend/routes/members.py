@@ -16,7 +16,7 @@ class MemberActivity(BaseModel):
     activity_name: str
     start_date: str
     end_date: str
-    fee: float
+    fee: Optional[float] = 0
     status: str = "active"
     coach_id: Optional[str] = ""
     level_id: Optional[str] = ""
