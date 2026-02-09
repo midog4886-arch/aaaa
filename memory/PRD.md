@@ -2185,3 +2185,54 @@ GET    /api/export/attendance                       - تصدير Excel
 - [ ] Mobile responsive improvements
 
 ---
+
+---
+
+## Update 32 - Code Refactoring Phase 1 (February 2026)
+
+### إعادة هيكلة الكود - المرحلة الأولى ✅
+
+تم إنشاء مجلد جديد `/app/frontend/src/pages/invoices/` لتقسيم ملف `InvoicesPage.js` الضخم (4681 سطر).
+
+#### الملفات الجديدة:
+
+##### 1. `/app/frontend/src/pages/invoices/constants.js`
+- **COMPANY_INFO**: معلومات الشركة (الاسم، الرقم الضريبي، السجل التجاري، نسبة الضريبة)
+- **INVOICE_TERMS**: شروط وأحكام الفواتير
+- **PAYMENT_METHODS**: طرق الدفع المتاحة
+- **INVOICE_STATUSES**: حالات الفاتورة مع الألوان
+- **DAYS_OF_WEEK**: أيام الأسبوع
+- **Helper Functions**: `getStatusInfo()`, `getPaymentMethodLabel()`, `calculateTotals()`, `formatSchedule()`
+
+##### 2. `/app/frontend/src/pages/invoices/StickerPrintDialog.js`
+مكون قابل لإعادة الاستخدام لحوار اختيار موقع طباعة الاستيكر (2×3 خانات).
+
+##### 3. `/app/frontend/src/pages/invoices/printUtils.js`
+- **generateMemberCardPrintHtml()**: إنشاء HTML لطباعة بطاقة العضو
+- **printMemberCard()**: فتح نافذة الطباعة
+
+##### 4. `/app/frontend/src/pages/invoices/index.js`
+ملف تصدير رئيسي لجميع المكونات والثوابت.
+
+#### التغييرات في InvoicesPage.js:
+- تم استيراد الثوابت من الملف الجديد
+- حذف تعريفات `COMPANY_INFO` و `INVOICE_TERMS` المكررة
+- استيراد المكونات والدوال المساعدة الجديدة
+
+#### نتيجة البناء: ✅ نجاح
+```
+✓ Bundle size: 767.78 kB (gzipped)
+✓ No compilation errors
+✓ Application running correctly
+```
+
+### الخطوات القادمة للمرحلة الثانية:
+1. نقل دوال الطباعة المتبقية إلى `printUtils.js`
+2. إنشاء مكونات منفصلة لـ:
+   - قائمة الفواتير (InvoiceList)
+   - نموذج الفاتورة (InvoiceForm)
+   - عرض الفاتورة (InvoiceView)
+   - قائمة استمارات التسجيل (RegistrationFormList)
+3. تقليل حجم `InvoicesPage.js` من 4681 سطر إلى أقل من 500 سطر
+
+---
