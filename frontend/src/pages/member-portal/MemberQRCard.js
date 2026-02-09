@@ -29,8 +29,21 @@ const MemberCard = () => {
   };
 
   const handlePrint = () => {
-    const printWindow = window.open('', '_blank', 'width=450,height=600');
+    setShowPrintDialog(true);
+  };
+
+  const handleStickerPrint = (position) => {
+    setSelectedPosition(position);
+    setShowPrintDialog(false);
+    
+    const printWindow = window.open('', '_blank', 'width=800,height=600');
     const qrData = JSON.stringify(cardData?.qr_data || {});
+    
+    // Calculate position offsets (2 columns x 3 rows, each card 10cm x 10cm)
+    const col = position % 2; // 0 or 1
+    const row = Math.floor(position / 2); // 0, 1, or 2
+    const leftOffset = col * 100; // mm
+    const topOffset = row * 100; // mm
     
     printWindow.document.write(`
       <!DOCTYPE html>
@@ -62,9 +75,8 @@ const MemberCard = () => {
               .print-area {
                 display: block !important;
                 position: absolute;
-                top: 0;
-                right: 0;
-                margin: 2mm;
+                top: ${topOffset}mm;
+                right: ${leftOffset}mm;
               }
             }
             @media screen { .print-area { display: none; } }
@@ -77,30 +89,29 @@ const MemberCard = () => {
               border: 2px solid #e5e7eb;
             }
             .card {
-              width: 6cm;
-              height: 6cm;
+              width: 90mm;
+              height: 90mm;
               display: flex;
               flex-direction: column;
               align-items: center;
               justify-content: center;
               background: white;
-              padding: 3mm;
+              padding: 5mm;
             }
             .print-card {
-              width: 6cm;
-              height: 6cm;
+              width: 95mm;
+              height: 95mm;
               display: flex;
               flex-direction: column;
               align-items: center;
               justify-content: center;
               background: white;
-              padding: 3mm;
-              border: 1px solid #ddd;
+              padding: 5mm;
             }
-            .logo { font-size: 9pt; font-weight: bold; color: #F97316; margin-bottom: 2mm; }
-            .qr-img { width: 35mm; height: 35mm; }
-            .name { font-size: 9pt; font-weight: bold; margin-top: 2mm; text-align: center; color: #1f2937; }
-            .code { font-size: 11pt; font-weight: bold; color: #F97316; margin-top: 1mm; }
+            .logo { font-size: 11pt; font-weight: bold; color: #F97316; margin-bottom: 3mm; }
+            .qr-img { width: 50mm; height: 50mm; }
+            .name { font-size: 12pt; font-weight: bold; margin-top: 3mm; text-align: center; color: #1f2937; }
+            .code { font-size: 14pt; font-weight: bold; color: #F97316; margin-top: 2mm; }
             .print-btn {
               margin-top: 20px;
               padding: 12px 30px;
@@ -113,6 +124,14 @@ const MemberCard = () => {
               font-size: 16px;
               font-weight: bold;
             }
+            .position-info {
+              margin-top: 15px;
+              padding: 10px 20px;
+              background: #FEF3C7;
+              border-radius: 8px;
+              color: #92400E;
+              font-size: 14px;
+            }
           </style>
         </head>
         <body>
@@ -121,17 +140,20 @@ const MemberCard = () => {
             <div class="card-wrapper">
               <div class="card">
                 <div class="logo">🏆 أكاديمية أداء الأبطال</div>
-                <img src="https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(qrData)}" class="qr-img" />
+                <img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(qrData)}" class="qr-img" />
                 <div class="name">${cardData?.name_ar || ''}</div>
                 <div class="code">#${cardData?.member_code || ''}</div>
               </div>
+            </div>
+            <div class="position-info">
+              📍 موقع الطباعة: الصف ${row + 1} - العمود ${col + 1} (الكرت رقم ${position + 1})
             </div>
             <button class="print-btn" onclick="window.print()">🖨️ طباعة البطاقة</button>
           </div>
           <div class="print-area">
             <div class="print-card">
               <div class="logo">🏆 أكاديمية أداء الأبطال</div>
-              <img src="https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(qrData)}" class="qr-img" />
+              <img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(qrData)}" class="qr-img" />
               <div class="name">${cardData?.name_ar || ''}</div>
               <div class="code">#${cardData?.member_code || ''}</div>
             </div>
