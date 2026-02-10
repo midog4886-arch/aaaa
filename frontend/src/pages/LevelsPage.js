@@ -253,6 +253,141 @@ export const LevelsPage = () => {
     return activityLevels[timeSlot] || [];
   };
 
+  // ========== Time Slot Edit/Delete Functions ==========
+  
+  // Open edit dialog for time slot
+  const handleEditTimeSlot = (e, activityId, timeSlot) => {
+    e.stopPropagation();
+    setEditingTimeSlot({ oldName: timeSlot, newName: timeSlot, activityId });
+    setIsTimeSlotEditDialogOpen(true);
+  };
+
+  // Save time slot name change
+  const handleSaveTimeSlotEdit = async () => {
+    if (!editingTimeSlot.newName.trim()) {
+      toast.error(t('أدخل اسم الوقت', 'Enter time name'));
+      return;
+    }
+    
+    setSaving(true);
+    try {
+      // Get all levels with this time slot and update their activity_name
+      const levelsToUpdate = getLevelsForTimeSlot(editingTimeSlot.activityId, editingTimeSlot.oldName);
+      
+      for (const level of levelsToUpdate) {
+        await levelsAPI.update(level.id, {
+          ...level,
+          activity_name: editingTimeSlot.newName
+        });
+      }
+      
+      toast.success(t('تم تحديث اسم الوقت', 'Time slot name updated'));
+      setIsTimeSlotEditDialogOpen(false);
+      loadData();
+    } catch (error) {
+      toast.error(t('error', 'Error'));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // Delete entire time slot (all levels within it)
+  const handleDeleteTimeSlot = async (e, activityId, timeSlot) => {
+    e.stopPropagation();
+    
+    const levelsInSlot = getLevelsForTimeSlot(activityId, timeSlot);
+    const totalMembers = levelsInSlot.reduce((sum, l) => sum + (l.members || []).length, 0);
+    
+    const confirmMsg = totalMembers > 0 
+      ? t(`هل أنت متأكد من حذف "${timeSlot}" وجميع مستوياته (${levelsInSlot.length})؟ يوجد ${totalMembers} لاعب مسجل.`,
+          `Are you sure you want to delete "${timeSlot}" and all its levels (${levelsInSlot.length})? ${totalMembers} players are enrolled.`)
+      : t(`هل أنت متأكد من حذف "${timeSlot}" وجميع مستوياته (${levelsInSlot.length})؟`,
+          `Are you sure you want to delete "${timeSlot}" and all its levels (${levelsInSlot.length})?`);
+    
+    if (!window.confirm(confirmMsg)) {
+      return;
+    }
+    
+    try {
+      for (const level of levelsInSlot) {
+        await levelsAPI.delete(level.id);
+      }
+      toast.success(t('تم حذف الوقت وجميع مستوياته', 'Time slot and all its levels deleted'));
+      loadData();
+    } catch (error) {
+      toast.error(t('error', 'Error'));
+    }
+  };
+
+  // ========== Drag and Drop Functions ==========
+  
+  // Start dragging a member
+  const handleDragStart = (e, member, level) => {
+    setDraggedMember(member);
+    setDraggedFromLevel(level);
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', member.id);
+  };
+
+  // Drag over a level card
+  const handleDragOver = (e, level) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    if (level.id !== draggedFromLevel?.id) {
+      setDropTargetLevel(level.id);
+    }
+  };
+
+  // Leave drag area
+  const handleDragLeave = (e) => {
+    setDropTargetLevel(null);
+  };
+
+  // Drop member on a level
+  const handleDrop = async (e, targetLevel) => {
+    e.preventDefault();
+    setDropTargetLevel(null);
+    
+    if (!draggedMember || !draggedFromLevel || targetLevel.id === draggedFromLevel.id) {
+      return;
+    }
+    
+    // Check capacity
+    const { mainActivity } = parseActivityName(targetLevel.activity_name);
+    const currentCount = (targetLevel.members || []).length;
+    const maxCapacity = mainActivity === 'swimming' ? 6 : (targetLevel.capacity || 10);
+    
+    if (currentCount >= maxCapacity) {
+      toast.error(t(`المستوى ممتلئ (الحد الأقصى ${maxCapacity})`, `Level is full (max ${maxCapacity})`));
+      setDraggedMember(null);
+      setDraggedFromLevel(null);
+      return;
+    }
+    
+    try {
+      // Remove from old level
+      await levelsAPI.removeMember(draggedFromLevel.id, draggedMember.id);
+      // Add to new level
+      await levelsAPI.addMember(targetLevel.id, draggedMember.id);
+      
+      toast.success(t(`تم نقل ${draggedMember.name_ar || draggedMember.name} إلى المستوى ${targetLevel.level_number}`,
+                      `Moved ${draggedMember.name_ar || draggedMember.name} to Level ${targetLevel.level_number}`));
+      loadData();
+    } catch (error) {
+      toast.error(t('فشل في نقل العضو', 'Failed to move member'));
+    } finally {
+      setDraggedMember(null);
+      setDraggedFromLevel(null);
+    }
+  };
+
+  // End drag
+  const handleDragEnd = () => {
+    setDraggedMember(null);
+    setDraggedFromLevel(null);
+    setDropTargetLevel(null);
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!formData.activity_name.trim()) {
