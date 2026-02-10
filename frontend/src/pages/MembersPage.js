@@ -1145,13 +1145,18 @@ export const MembersPage = () => {
                           </div>
                         </div>
                         
-                        {/* Training Time - Text input like Invoices */}
+                        {/* Training Time - Number input auto-converted to time format */}
                         <div className="space-y-2">
                           <Label className="text-xs">{language === 'ar' ? 'الساعة' : 'Time'}</Label>
                           <Input 
-                            value={activityForm.training_time || ''} 
+                            type="number"
+                            min="1"
+                            max="12"
+                            value={activityForm.training_time_hour || ''} 
                             onChange={(e) => {
-                              const time = e.target.value;
+                              const hour = e.target.value;
+                              // Auto convert to time format (e.g., 4 → 4:00 م)
+                              const timeStr = hour ? `${hour}:00 م` : '';
                               // Format schedule like invoices
                               const formatSchedule = (days, time) => {
                                 if (!days || days.length === 0) return time || '';
@@ -1169,13 +1174,17 @@ export const MembersPage = () => {
                               
                               setActivityForm({
                                 ...activityForm,
-                                training_time: time,
-                                schedule: formatSchedule(activityForm.training_days, time)
+                                training_time_hour: hour,
+                                training_time: timeStr,
+                                schedule: formatSchedule(activityForm.training_days, timeStr)
                               });
                             }} 
                             className="h-8 text-sm" 
-                            placeholder={language === 'ar' ? 'مثال: 4:00 م' : 'e.g. 4:00 PM'}
+                            placeholder={language === 'ar' ? 'مثال: 4' : 'e.g. 4'}
                           />
+                          {activityForm.training_time && (
+                            <p className="text-xs text-muted-foreground">{activityForm.training_time}</p>
+                          )}
                         </div>
                         
                         {/* Level Selection - Cascading like Invoices */}
