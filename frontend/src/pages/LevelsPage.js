@@ -554,18 +554,24 @@ export const LevelsPage = () => {
     );
   }
 
-  // Render a level card component
+  // Render a level card component with drag & drop support
   const renderLevelCard = (level, activityId) => {
     const memberCount = (level.members || []).length;
     const maxCapacity = activityId === 'swimming' ? 6 : (level.capacity || 10);
     const isFull = memberCount >= maxCapacity;
     const levelMembers = getLevelMembers(level);
+    const isDropTarget = dropTargetLevel === level.id;
     
     return (
       <div 
         key={level.id}
-        className={`border rounded-xl overflow-hidden shadow-sm hover:shadow-lg transition-all duration-300 ${isFull ? 'border-red-300 bg-red-50/30' : 'bg-white'}`}
+        className={`border rounded-xl overflow-hidden shadow-sm hover:shadow-lg transition-all duration-300 
+          ${isFull ? 'border-red-300 bg-red-50/30' : 'bg-white'}
+          ${isDropTarget ? 'ring-2 ring-primary ring-offset-2 scale-[1.02]' : ''}`}
         data-testid={`level-card-${level.id}`}
+        onDragOver={(e) => handleDragOver(e, level)}
+        onDragLeave={handleDragLeave}
+        onDrop={(e) => handleDrop(e, level)}
       >
         {/* Level Header */}
         <div className={`${getLevelColor(level.level_number)} text-white p-3 flex items-center justify-between`}>
@@ -623,7 +629,15 @@ export const LevelsPage = () => {
             </div>
           </div>
           
-          {/* Members Preview */}
+          {/* Drag & Drop Hint */}
+          {isDropTarget && (
+            <div className="mb-2 p-2 bg-primary/10 rounded-lg text-center text-sm text-primary animate-pulse">
+              <Move className="w-4 h-4 inline me-1" />
+              {t('أفلت هنا لنقل اللاعب', 'Drop here to move player')}
+            </div>
+          )}
+          
+          {/* Members Preview - Draggable */}
           <div className="space-y-1.5 max-h-32 overflow-y-auto mb-3 scrollbar-thin">
             {levelMembers.length === 0 ? (
               <p className="text-center text-gray-400 py-3 text-sm">
@@ -634,8 +648,13 @@ export const LevelsPage = () => {
                 {levelMembers.slice(0, 5).map(member => (
                   <div 
                     key={member.id}
-                    className="flex items-center gap-2 p-2 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors"
+                    draggable
+                    onDragStart={(e) => handleDragStart(e, member, level)}
+                    onDragEnd={handleDragEnd}
+                    className={`flex items-center gap-2 p-2 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors cursor-grab active:cursor-grabbing
+                      ${draggedMember?.id === member.id ? 'opacity-50 scale-95' : ''}`}
                   >
+                    <GripVertical className="w-4 h-4 text-gray-400 shrink-0" />
                     <div className={`w-7 h-7 rounded-full ${getLevelColor(level.level_number)} text-white flex items-center justify-center text-xs font-bold shadow-sm`}>
                       {(member.name_ar || member.name || '?').charAt(0)}
                     </div>
