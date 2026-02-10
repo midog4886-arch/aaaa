@@ -906,7 +906,7 @@ export default function SchedulePage() {
               </select>
             </div>
 
-            {/* Activity Type Filter - Combined main activities + specific activities from Activities page */}
+            {/* Activity Type Filter - Grouped by main activity type */}
             <div>
               <label className="text-sm font-medium text-gray-600 block mb-1">
                 🏃 {t('النشاط', 'Activity')}
@@ -914,27 +914,69 @@ export default function SchedulePage() {
               <select
                 value={selectedActivityType}
                 onChange={e => setSelectedActivityType(e.target.value)}
-                className="border rounded-lg p-2 text-sm w-40"
+                className="border rounded-lg p-2 text-sm w-44"
               >
                 <option value="all">{t('كل الأنشطة', 'All Activities')}</option>
-                <optgroup label={t('الأنشطة الرئيسية', 'Main Activities')}>
-                  <option value="swimming">{t('السباحة', 'Swimming')}</option>
-                  <option value="football">{t('كرة القدم', 'Football')}</option>
-                  <option value="karate">{t('الكاراتيه', 'Karate')}</option>
+                
+                {/* Swimming Group */}
+                <optgroup label={t('🏊 السباحة', '🏊 Swimming')}>
+                  <option value="swimming">{t('كل السباحة', 'All Swimming')}</option>
+                  {activitiesList
+                    .filter(a => (a.name_ar || a.name || '').toLowerCase().includes('سباح') || (a.name || '').toLowerCase().includes('swim'))
+                    .map(activity => (
+                      <option key={activity.id} value={`activity_${activity.id}`}>
+                        {language === 'ar' ? activity.name_ar : activity.name}
+                      </option>
+                    ))
+                  }
+                </optgroup>
+                
+                {/* Football Group */}
+                <optgroup label={t('⚽ كرة القدم', '⚽ Football')}>
+                  <option value="football">{t('كل كرة القدم', 'All Football')}</option>
+                  {activitiesList
+                    .filter(a => (a.name_ar || a.name || '').toLowerCase().includes('قدم') || (a.name || '').toLowerCase().includes('football'))
+                    .map(activity => (
+                      <option key={activity.id} value={`activity_${activity.id}`}>
+                        {language === 'ar' ? activity.name_ar : activity.name}
+                      </option>
+                    ))
+                  }
+                </optgroup>
+                
+                {/* Karate Group */}
+                <optgroup label={t('🥋 الكاراتيه', '🥋 Karate')}>
+                  <option value="karate">{t('كل الكاراتيه', 'All Karate')}</option>
+                  {activitiesList
+                    .filter(a => (a.name_ar || a.name || '').toLowerCase().includes('كارات') || (a.name || '').toLowerCase().includes('karate'))
+                    .map(activity => (
+                      <option key={activity.id} value={`activity_${activity.id}`}>
+                        {language === 'ar' ? activity.name_ar : activity.name}
+                      </option>
+                    ))
+                  }
+                </optgroup>
+                
+                {/* Other Activities */}
+                <optgroup label={t('📋 أنشطة أخرى', '📋 Other Activities')}>
                   <option value="gymnastics">{t('الجمباز', 'Gymnastics')}</option>
                   <option value="basketball">{t('كرة السلة', 'Basketball')}</option>
                   <option value="tennis">{t('التنس', 'Tennis')}</option>
                   <option value="other">{t('أخرى', 'Other')}</option>
-                </optgroup>
-                {activitiesList.length > 0 && (
-                  <optgroup label={t('من صفحة الأنشطة', 'From Activities Page')}>
-                    {activitiesList.map(activity => (
+                  {activitiesList
+                    .filter(a => {
+                      const name = (a.name_ar || a.name || '').toLowerCase();
+                      return !name.includes('سباح') && !name.includes('swim') &&
+                             !name.includes('قدم') && !name.includes('football') &&
+                             !name.includes('كارات') && !name.includes('karate');
+                    })
+                    .map(activity => (
                       <option key={activity.id} value={`activity_${activity.id}`}>
                         {language === 'ar' ? activity.name_ar : activity.name}
                       </option>
-                    ))}
-                  </optgroup>
-                )}
+                    ))
+                  }
+                </optgroup>
               </select>
             </div>
 
