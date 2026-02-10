@@ -146,9 +146,17 @@ export const LevelsPage = () => {
       mainActivity = 'karate';
     }
     
-    // Extract time slot (e.g., "الساعة 4", "الساعه 5")
-    const timeMatch = activityName.match(/الساع[ةه]\s*(\d+)/i);
-    const timeSlot = timeMatch ? `الساعة ${timeMatch[1]}` : '';
+    // Extract time slot
+    // First try format "النشاط - الوقت"
+    let timeSlot = '';
+    if (activityName.includes(' - ')) {
+      const parts = activityName.split(' - ');
+      timeSlot = parts[1] || parts[0];
+    } else {
+      // Try to extract time pattern (e.g., "الساعة 4", "الساعه 5")
+      const timeMatch = activityName.match(/الساع[ةه]\s*(\d+)/i);
+      timeSlot = timeMatch ? `الساعة ${timeMatch[1]}` : activityName;
+    }
     
     return { mainActivity, timeSlot, original: activityName };
   };
