@@ -944,78 +944,53 @@ export const MembersPage = () => {
             
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label>{t('member_name')} (العربية)</Label>
+                {/* Name - Required */}
+                <div className="space-y-2 sm:col-span-2">
+                  <Label>{language === 'ar' ? 'الاسم' : 'Name'} <span className="text-red-500">*</span></Label>
                   <Input
                     value={formData.name_ar}
-                    onChange={(e) => setFormData({...formData, name_ar: e.target.value})}
+                    onChange={(e) => setFormData({...formData, name_ar: e.target.value, name: e.target.value})}
                     required
+                    placeholder={language === 'ar' ? 'أدخل اسم العضو' : 'Enter member name'}
                     data-testid="member-name-ar-input"
                   />
                 </div>
+                
+                {/* Phone - Required */}
                 <div className="space-y-2">
-                  <Label>{t('member_name')} (English)</Label>
-                  <Input
-                    value={formData.name}
-                    onChange={(e) => setFormData({...formData, name: e.target.value})}
-                    data-testid="member-name-en-input"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>{t('guardian_name')} (العربية)</Label>
-                  <Input
-                    value={formData.guardian_name_ar}
-                    onChange={(e) => setFormData({...formData, guardian_name_ar: e.target.value})}
-                    required
-                    data-testid="guardian-name-ar-input"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>{t('guardian_name')} (English)</Label>
-                  <Input
-                    value={formData.guardian_name}
-                    onChange={(e) => setFormData({...formData, guardian_name: e.target.value})}
-                    data-testid="guardian-name-en-input"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>{t('phone')}</Label>
+                  <Label>{language === 'ar' ? 'رقم الجوال' : 'Phone'} <span className="text-red-500">*</span></Label>
                   <Input
                     value={formData.phone}
                     onChange={(e) => setFormData({...formData, phone: e.target.value})}
                     type="tel"
                     dir="ltr"
                     required
+                    placeholder="05xxxxxxxx"
                     data-testid="member-phone-input"
                   />
                 </div>
+                
+                {/* Age - Optional */}
                 <div className="space-y-2">
-                  <Label>{t('age')}</Label>
+                  <Label>{language === 'ar' ? 'العمر' : 'Age'} <span className="text-gray-400 text-xs">({language === 'ar' ? 'اختياري' : 'optional'})</span></Label>
                   <Input
                     value={formData.age}
                     onChange={(e) => setFormData({...formData, age: e.target.value})}
                     type="number"
                     min="1"
                     max="100"
-                    required
+                    placeholder={language === 'ar' ? 'العمر' : 'Age'}
                     data-testid="member-age-input"
                   />
                 </div>
+                
+                {/* Notes - Optional */}
                 <div className="space-y-2 sm:col-span-2">
-                  <Label>{t('email')}</Label>
-                  <Input
-                    value={formData.email}
-                    onChange={(e) => setFormData({...formData, email: e.target.value})}
-                    type="email"
-                    dir="ltr"
-                    data-testid="member-email-input"
-                  />
-                </div>
-                <div className="space-y-2 sm:col-span-2">
-                  <Label>{t('notes')}</Label>
+                  <Label>{language === 'ar' ? 'الملاحظات' : 'Notes'}</Label>
                   <Textarea
                     value={formData.notes}
                     onChange={(e) => setFormData({...formData, notes: e.target.value})}
+                    placeholder={language === 'ar' ? 'أضف ملاحظات...' : 'Add notes...'}
                     data-testid="member-notes-input"
                   />
                 </div>
