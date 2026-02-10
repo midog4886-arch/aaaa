@@ -164,16 +164,64 @@ export const MembersPage = () => {
         age: parseInt(formData.age) || 0
       };
       
+      // If creating new member and activity is selected, add it to activities array
+      if (!selectedMember && activityForm.activity_id) {
+        const activity = activities.find(a => a.id === activityForm.activity_id);
+        const trainingDaysStr = activityForm.training_days?.join(', ') || '';
+        const scheduleStr = `${trainingDaysStr}${activityForm.training_time ? ` - ${activityForm.training_time}` : ''}`;
+        
+        data.activities = [{
+          activity_id: activityForm.activity_id,
+          activity_name: activity?.name || '',
+          start_date: activityForm.start_date,
+          end_date: activityForm.end_date,
+          fee: 0, // No fee when adding from members page
+          status: 'active',
+          coach_id: activityForm.coach_id || '',
+          level_id: activityForm.level_id || '',
+          schedule: scheduleStr,
+          training_days: activityForm.training_days || [],
+          training_time: activityForm.training_time || ''
+        }];
+      }
+      
+      let memberId = selectedMember?.id;
+      
       if (selectedMember) {
         await membersAPI.update(selectedMember.id, data);
         toast.success(t('success'));
       } else {
-        await membersAPI.create(data);
+        const response = await membersAPI.create(data);
+        memberId = response.data.id;
         toast.success(t('success'));
+        
+        // If level was selected, add member to level
+        if (activityForm.level_id && memberId) {
+          try {
+            await levelsAPI.addMember(activityForm.level_id, memberId);
+          } catch (levelError) {
+            console.error('Error adding member to level:', levelError);
+          }
+        }
       }
       
       loadData();
       closeDialog();
+      
+      // Reset activity form
+      setActivityForm({
+        activity_id: '',
+        start_date: '',
+        end_date: '',
+        fee: '',
+        status: 'active',
+        coach_id: '',
+        training_days: [],
+        training_time: '',
+        level_id: '',
+        schedule: ''
+      });
+      setMemberLevelSelectorState(null);
     } catch (error) {
       console.error('Failed to save member:', error);
       toast.error(t('error'));
