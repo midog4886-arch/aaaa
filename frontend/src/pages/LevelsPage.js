@@ -48,7 +48,12 @@ export const LevelsPage = () => {
   const [saving, setSaving] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   
-  // Expanded states for accordion
+  // Navigation states for drill-down view
+  const [currentView, setCurrentView] = useState('activities'); // 'activities' | 'times' | 'levels'
+  const [selectedActivityId, setSelectedActivityId] = useState(null);
+  const [selectedTimeSlotKey, setSelectedTimeSlotKey] = useState(null);
+  
+  // Expanded states for accordion (fallback)
   const [expandedActivities, setExpandedActivities] = useState({});
   const [expandedTimeSlots, setExpandedTimeSlots] = useState({});
 
