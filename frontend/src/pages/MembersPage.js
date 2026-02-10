@@ -1121,14 +1121,44 @@ export const MembersPage = () => {
                         </div>
                       </div>
                       
-                      {/* Training Time */}
+                      {/* Training Time - Number input converted to time format */}
                       <div className="space-y-2">
-                        <Label>{language === 'ar' ? 'وقت التدريب' : 'Training Time'}</Label>
-                        <Input
-                          type="time"
-                          value={activityForm.training_time}
-                          onChange={(e) => setActivityForm({...activityForm, training_time: e.target.value})}
-                        />
+                        <Label>{language === 'ar' ? 'وقت التدريب (ساعة)' : 'Training Time (Hour)'}</Label>
+                        <div className="flex items-center gap-2">
+                          <Input
+                            type="number"
+                            min="1"
+                            max="12"
+                            placeholder={language === 'ar' ? 'مثال: 4' : 'e.g. 4'}
+                            value={activityForm.training_hour || ''}
+                            onChange={(e) => {
+                              const hour = parseInt(e.target.value) || '';
+                              setActivityForm({
+                                ...activityForm, 
+                                training_hour: hour,
+                                training_time: hour ? `${hour}:00` : ''
+                              });
+                            }}
+                            className="w-24"
+                          />
+                          <Select 
+                            value={activityForm.training_period || 'pm'} 
+                            onValueChange={(val) => setActivityForm({...activityForm, training_period: val})}
+                          >
+                            <SelectTrigger className="w-28">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="am">{language === 'ar' ? 'صباحاً' : 'AM'}</SelectItem>
+                              <SelectItem value="pm">{language === 'ar' ? 'مساءً' : 'PM'}</SelectItem>
+                            </SelectContent>
+                          </Select>
+                          {activityForm.training_hour && (
+                            <span className="text-sm text-muted-foreground">
+                              ({activityForm.training_hour}:00 {activityForm.training_period === 'am' ? (language === 'ar' ? 'صباحاً' : 'AM') : (language === 'ar' ? 'مساءً' : 'PM')})
+                            </span>
+                          )}
+                        </div>
                       </div>
                       
                       {/* Level Selection - Cascading */}
