@@ -366,11 +366,21 @@ export default function SchedulePage() {
     return types;
   };
 
-  // Check if activity matches selected type
-  const activityMatchesType = (activityName) => {
+  // Check if activity matches selected type/activity
+  const activityMatchesType = (activity) => {
     if (selectedActivityType === 'all') return true;
     
-    const name = activityName.toLowerCase();
+    // Check if selectedActivityType is an activity ID from the activities list
+    const selectedActivity = activitiesList.find(a => a.id === selectedActivityType);
+    if (selectedActivity) {
+      // Match by activity name (comparing with the activity_name or using activity_id if available)
+      const activityName = activity.activity_name?.toLowerCase() || '';
+      const selectedName = (selectedActivity.name_ar || selectedActivity.name || '').toLowerCase();
+      return activityName.includes(selectedName) || selectedName.includes(activityName.split(' ')[0]);
+    }
+    
+    // Fallback to old type-based matching
+    const name = (activity.activity_name || '').toLowerCase();
     switch (selectedActivityType) {
       case 'swimming':
         return name.includes('سباح') || name.includes('swim');
