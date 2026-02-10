@@ -1121,15 +1121,15 @@ export const LevelsPage = () => {
                   {/* Add New Time Slot Card */}
                   <Card 
                     className="overflow-hidden cursor-pointer border-2 border-dashed border-gray-300 hover:border-primary hover:shadow-lg transition-all duration-300 bg-gray-50/50"
-                    onClick={() => handleAddNewLevel(selectedActivityId, '')}
+                    onClick={openAddTimeSlotDialog}
                     data-testid="add-time-slot-card"
                   >
                     <div className="p-8 flex flex-col items-center justify-center h-full min-h-[180px]">
                       <div className="w-14 h-14 rounded-full bg-gray-200 flex items-center justify-center mb-3">
-                        <Plus className="w-7 h-7 text-gray-500" />
+                        <Clock className="w-7 h-7 text-gray-500" />
                       </div>
-                      <p className="font-medium text-gray-600">{t('إضافة مستوى جديد', 'Add New Level')}</p>
-                      <p className="text-sm text-gray-400 mt-1">{t('وقت جديد أو مستوى موجود', 'New time or existing level')}</p>
+                      <p className="font-medium text-gray-600">{t('إضافة ساعة جديدة', 'Add New Time Slot')}</p>
+                      <p className="text-sm text-gray-400 mt-1">{t('أدخل اسم الوقت يدوياً', 'Enter time name manually')}</p>
                     </div>
                   </Card>
                 </div>
