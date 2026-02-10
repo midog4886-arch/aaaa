@@ -1286,10 +1286,12 @@ export const LevelsPage = () => {
                       </div>
                       <Button 
                         variant="secondary" 
-                        onClick={() => handleAddNewLevel(selectedActivityId, selectedTimeSlotKey)}
+                        onClick={handleQuickAddLevel}
+                        disabled={saving || slotLevels.length >= 6}
                         className="gap-2"
+                        data-testid="quick-add-level-btn"
                       >
-                        <Plus className="w-4 h-4" />
+                        {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
                         {t('مستوى جديد', 'New Level')}
                       </Button>
                     </div>
