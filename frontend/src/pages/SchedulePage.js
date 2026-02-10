@@ -903,7 +903,7 @@ export default function SchedulePage() {
               </select>
             </div>
 
-            {/* Activity Type Filter - Uses activities from Activities page */}
+            {/* Activity Type Filter - Combined main activities + specific activities from Activities page */}
             <div>
               <label className="text-sm font-medium text-gray-600 block mb-1">
                 🏃 {t('النشاط', 'Activity')}
@@ -914,11 +914,24 @@ export default function SchedulePage() {
                 className="border rounded-lg p-2 text-sm w-40"
               >
                 <option value="all">{t('كل الأنشطة', 'All Activities')}</option>
-                {activitiesList.map(activity => (
-                  <option key={activity.id} value={activity.id}>
-                    {language === 'ar' ? activity.name_ar : activity.name}
-                  </option>
-                ))}
+                <optgroup label={t('الأنشطة الرئيسية', 'Main Activities')}>
+                  <option value="swimming">{t('السباحة', 'Swimming')}</option>
+                  <option value="football">{t('كرة القدم', 'Football')}</option>
+                  <option value="karate">{t('الكاراتيه', 'Karate')}</option>
+                  <option value="gymnastics">{t('الجمباز', 'Gymnastics')}</option>
+                  <option value="basketball">{t('كرة السلة', 'Basketball')}</option>
+                  <option value="tennis">{t('التنس', 'Tennis')}</option>
+                  <option value="other">{t('أخرى', 'Other')}</option>
+                </optgroup>
+                {activitiesList.length > 0 && (
+                  <optgroup label={t('من صفحة الأنشطة', 'From Activities Page')}>
+                    {activitiesList.map(activity => (
+                      <option key={activity.id} value={`activity_${activity.id}`}>
+                        {language === 'ar' ? activity.name_ar : activity.name}
+                      </option>
+                    ))}
+                  </optgroup>
+                )}
               </select>
             </div>
 
