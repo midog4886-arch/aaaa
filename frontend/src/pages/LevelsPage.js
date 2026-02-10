@@ -13,7 +13,7 @@ import { levelsAPI, membersAPI, branchesAPI, activitiesAPI } from '../services/a
 import { toast } from 'sonner';
 import { 
   Plus, Edit, Trash2, Loader2, Layers, Users, Dumbbell, UserPlus, UserMinus, Search,
-  ChevronDown, ChevronUp, Clock, AlertTriangle, ArrowRight, ArrowLeft, Home
+  ChevronDown, ChevronUp, ChevronRight, Clock, AlertTriangle, ArrowRight, ArrowLeft, Home
 } from 'lucide-react';
 
 // Main activity types with Arabic names
