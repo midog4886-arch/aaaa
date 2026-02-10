@@ -341,6 +341,45 @@ export const LevelsPage = () => {
     }
   };
 
+  // ========== Activity Edit Functions ==========
+  
+  // Open edit dialog for activity
+  const handleEditActivity = (e, activityId) => {
+    e.stopPropagation();
+    const activity = getMainActivityInfo(activityId);
+    setEditingActivity({
+      id: activityId,
+      name_ar: activity.name_ar,
+      name_en: activity.name_en,
+      icon: activity.icon,
+      color: activity.color
+    });
+    setIsActivityEditDialogOpen(true);
+  };
+
+  // Save activity name change
+  const handleSaveActivityEdit = () => {
+    if (!editingActivity.name_ar.trim()) {
+      toast.error(t('أدخل اسم النشاط', 'Enter activity name'));
+      return;
+    }
+    
+    const newCustomNames = {
+      ...customActivityNames,
+      [editingActivity.id]: {
+        name_ar: editingActivity.name_ar,
+        name_en: editingActivity.name_en,
+        icon: editingActivity.icon
+      }
+    };
+    
+    setCustomActivityNames(newCustomNames);
+    localStorage.setItem('customActivityNames', JSON.stringify(newCustomNames));
+    
+    toast.success(t('تم تحديث اسم النشاط', 'Activity name updated'));
+    setIsActivityEditDialogOpen(false);
+  };
+
   // ========== Drag and Drop Functions ==========
   
   // Start dragging a member
