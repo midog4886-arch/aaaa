@@ -88,8 +88,6 @@ export const MembersPage = () => {
     coach_id: '',
     training_days: [],
     training_time: '',
-    training_hour: '',
-    training_period: 'pm',
     level_id: '',
     schedule: ''
   });
