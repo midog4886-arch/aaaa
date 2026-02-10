@@ -2464,14 +2464,56 @@ GET    /api/export/attendance                       - تصدير Excel
 
 ---
 
-## Prioritized Backlog (Updated February 10, 2026)
+## Update - Backend Refactoring (December 2025)
+
+### إعادة هيكلة الـ Backend ✅
+
+#### ما تم إنجازه:
+
+1. **حذف كود الـ Members المكرر من server.py**:
+   - تم نقل جميع endpoints الأعضاء إلى `/app/backend/routes/members.py`
+   - تم حذف ~125 سطر مكرر من server.py
+   - الـ endpoints تعمل الآن من ملف routes/members.py فقط
+
+2. **تحديث routes/invoices.py**:
+   - تم إضافة endpoint `/search` للبحث في الفواتير
+   - تم تحسين `get_invoices` لتشمل member_code enrichment
+   - تم تحسين `create_invoice` لتشمل:
+     - توليد رقم الفاتورة التسلسلي
+     - حفظ discount_code
+     - إضافة العضو للمستوى عند الإنشاء
+   - تم تحسين `pay_invoice` لتشمل:
+     - خصم المخزون للمنتجات
+     - تتبع استخدام الكوبونات
+     - تحديث أنشطة العضو
+     - إضافة العضو للمستوى
+
+3. **حذف كود الـ Invoices المكرر من server.py**:
+   - تم حذف ~365 سطر إضافية
+   - **إجمالي التوفير: ~490 سطر** (من 6748 إلى 6258)
+
+#### الملفات المُحدثة:
+- `/app/backend/server.py` - تنظيف الكود المكرر
+- `/app/backend/routes/invoices.py` - تحسين شامل
+- `/app/backend/routes/members.py` - بدون تغيير (كان كامل)
+
+#### اختبار APIs:
+- ✅ GET /api/members - يعمل بشكل صحيح
+- ✅ GET /api/invoices - يعمل بشكل صحيح
+- ✅ GET /api/invoices/search - يعمل بشكل صحيح
+- ✅ GET /api/levels - يعمل بشكل صحيح
+- ✅ تسجيل الدخول والواجهة تعمل بشكل صحيح
+
+---
+
+## Prioritized Backlog (Updated December 2025)
 
 ### P0 - Critical (Completed)
-- [x] Interactive Levels Page Redesign ✅ NEW
+- [x] Interactive Levels Page Redesign ✅
+- [x] Backend Refactoring (Members & Invoices) ✅ NEW
 
-### P1 - High Priority (In Progress)
-- [ ] Complete InvoicesPage.js refactoring (component files created but empty)
-- [ ] Remove duplicated endpoints from server.py (routes created)
+### P1 - High Priority (Pending)
+- [ ] Frontend InvoicesPage.js refactoring (large file ~5175 lines)
 - [ ] WhatsApp Business API Integration
 
 ### P2 - Medium Priority
