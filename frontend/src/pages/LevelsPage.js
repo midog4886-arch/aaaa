@@ -1380,6 +1380,42 @@ export const LevelsPage = () => {
             </DialogFooter>
           </DialogContent>
         </Dialog>
+
+        {/* Edit Time Slot Name Dialog */}
+        <Dialog open={isTimeSlotEditDialogOpen} onOpenChange={setIsTimeSlotEditDialogOpen}>
+          <DialogContent className="max-w-sm">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <Clock className="w-5 h-5 text-primary" />
+                {t('تعديل اسم الوقت', 'Edit Time Slot Name')}
+              </DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div>
+                <Label>{t('الاسم الحالي', 'Current Name')}</Label>
+                <p className="text-sm text-gray-500 bg-gray-100 p-2 rounded mt-1">{editingTimeSlot.oldName}</p>
+              </div>
+              <div>
+                <Label>{t('الاسم الجديد', 'New Name')} *</Label>
+                <Input
+                  value={editingTimeSlot.newName}
+                  onChange={(e) => setEditingTimeSlot({ ...editingTimeSlot, newName: e.target.value })}
+                  placeholder={t('أدخل الاسم الجديد', 'Enter new name')}
+                  className="mt-1"
+                />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setIsTimeSlotEditDialogOpen(false)}>
+                {t('إلغاء', 'Cancel')}
+              </Button>
+              <Button onClick={handleSaveTimeSlotEdit} disabled={saving}>
+                {saving && <Loader2 className="w-4 h-4 me-2 animate-spin" />}
+                {t('حفظ', 'Save')}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
     </Layout>
   );
