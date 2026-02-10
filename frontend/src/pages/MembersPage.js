@@ -11,7 +11,7 @@ import { Badge } from '../components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '../components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Textarea } from '../components/ui/textarea';
-import { membersAPI, activitiesAPI, coachesAPI, exportAPI, invoicesAPI, attendanceAPI } from '../services/api';
+import { membersAPI, activitiesAPI, coachesAPI, exportAPI, invoicesAPI, attendanceAPI, levelsAPI } from '../services/api';
 import { toast } from 'sonner';
 import { 
   Plus, 
