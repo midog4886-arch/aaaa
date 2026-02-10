@@ -4415,39 +4415,166 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
                             </div>
                             <div className="space-y-1">
                               <Label className="text-xs">{language === 'ar' ? 'المستوى' : 'Level'}</Label>
-                              <Select value={item.level_id || 'none'} onValueChange={(value) => updateRegFormItemLevel(idx, value === 'none' ? '' : value)}>
-                                <SelectTrigger className={`text-sm ${regFormLevelWarnings[idx]?.isFull && !regFormLevelWarnings[idx]?.isAccepted ? 'border-orange-500 border-2' : regFormLevelWarnings[idx]?.isAccepted ? 'border-green-500 border-2' : ''}`}>
-                                  <SelectValue placeholder={language === 'ar' ? 'اختر المستوى' : 'Select level'} />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  <SelectItem value="none">{language === 'ar' ? 'بدون مستوى' : 'No level'}</SelectItem>
-                                  {/* Group levels by activity name */}
-                                  {Object.entries(
-                                    levels.reduce((acc, level) => {
-                                      const actName = level.activity_name || 'أخرى';
-                                      if (!acc[actName]) acc[actName] = [];
-                                      acc[actName].push(level);
-                                      return acc;
-                                    }, {})
-                                  ).map(([actName, actLevels]) => (
-                                    <div key={actName}>
-                                      <div className="px-2 py-1 text-xs font-bold text-gray-500 bg-gray-100 sticky top-0">
-                                        🏋️ {actName}
+                              
+                              {/* Cascading Level Selector for Registration Form */}
+                              {!regFormLevelSelectorState[idx] ? (
+                                // Show current selection or trigger button
+                                <div>
+                                  {item.level_id ? (
+                                    <div className={`flex items-center justify-between p-2 border rounded-lg ${regFormLevelWarnings[idx]?.isFull && !regFormLevelWarnings[idx]?.isAccepted ? 'border-orange-500 border-2 bg-orange-50' : regFormLevelWarnings[idx]?.isAccepted ? 'border-green-500 border-2 bg-green-50' : 'bg-gray-50'}`}>
+                                      <span className="text-sm">{item.level_name}</span>
+                                      <div className="flex gap-1">
+                                        <Button type="button" variant="ghost" size="sm" className="h-7 px-2" onClick={() => initRegFormLevelSelector(idx)}>
+                                          {language === 'ar' ? 'تغيير' : 'Change'}
+                                        </Button>
+                                        <Button type="button" variant="ghost" size="sm" className="h-7 px-2 text-red-500" onClick={() => updateRegFormItemLevel(idx, '')}>
+                                          ✕
+                                        </Button>
                                       </div>
-                                      {actLevels.sort((a, b) => a.level_number - b.level_number).map(level => {
-                                        const memberCount = (level.members || []).length;
-                                        const maxCapacity = actName.includes('سباح') ? 6 : (level.capacity || 10);
-                                        const isFull = memberCount >= maxCapacity;
+                                    </div>
+                                  ) : (
+                                    <Button 
+                                      type="button" 
+                                      variant="outline" 
+                                      className="w-full h-8 text-sm justify-start gap-2"
+                                      onClick={() => initRegFormLevelSelector(idx)}
+                                    >
+                                      <span>🎯</span>
+                                      {language === 'ar' ? 'اختر المستوى' : 'Select Level'}
+                                    </Button>
+                                  )}
+                                </div>
+                              ) : (
+                                // Cascading selector UI
+                                <div className="border rounded-lg overflow-hidden bg-white shadow-sm">
+                                  {/* Header with back button */}
+                                  <div className="flex items-center justify-between p-2 bg-gray-100 border-b">
+                                    <div className="flex items-center gap-2">
+                                      {regFormLevelSelectorState[idx].step !== 'activity' && (
+                                        <Button type="button" variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={() => goBackRegFormLevelSelector(idx)}>
+                                          {language === 'ar' ? '→' : '←'}
+                                        </Button>
+                                      )}
+                                      <span className="text-xs font-medium text-gray-600">
+                                        {regFormLevelSelectorState[idx].step === 'activity' && (language === 'ar' ? 'اختر النشاط' : 'Select Activity')}
+                                        {regFormLevelSelectorState[idx].step === 'time' && (language === 'ar' ? 'اختر الساعة' : 'Select Time')}
+                                        {regFormLevelSelectorState[idx].step === 'level' && (language === 'ar' ? 'اختر المستوى' : 'Select Level')}
+                                      </span>
+                                    </div>
+                                    <Button type="button" variant="ghost" size="sm" className="h-6 px-2 text-xs" onClick={() => resetRegFormLevelSelector(idx)}>
+                                      ✕
+                                    </Button>
+                                  </div>
+                                  
+                                  {/* Step 1: Activities */}
+                                  {regFormLevelSelectorState[idx].step === 'activity' && (
+                                    <div className="p-2 space-y-1 max-h-48 overflow-y-auto">
+                                      {MAIN_ACTIVITIES_FOR_LEVELS.map(activity => {
+                                        const activityLevels = groupedLevelsForSelector[activity.id] || {};
+                                        const timeCount = Object.keys(activityLevels).length;
+                                        if (timeCount === 0) return null;
                                         return (
-                                          <SelectItem key={level.id} value={level.id} className={isFull ? 'text-red-600' : ''}>
-                                            {language === 'ar' ? 'المستوى' : 'Level'} {level.level_number} ({memberCount}/{maxCapacity}) {isFull ? '⚠️' : ''}
-                                          </SelectItem>
+                                          <button
+                                            key={activity.id}
+                                            type="button"
+                                            className={`w-full flex items-center justify-between p-2 rounded-lg hover:bg-gray-100 transition-colors ${activity.color} bg-opacity-10 hover:bg-opacity-20`}
+                                            onClick={() => selectRegFormLevelActivity(idx, activity.id)}
+                                          >
+                                            <div className="flex items-center gap-2">
+                                              <span className="text-xl">{activity.icon}</span>
+                                              <span className="font-medium">{language === 'ar' ? activity.name_ar : activity.name_en}</span>
+                                            </div>
+                                            <div className="flex items-center gap-1 text-gray-500">
+                                              <span className="text-xs">{timeCount} {language === 'ar' ? 'أوقات' : 'times'}</span>
+                                              <span>{language === 'ar' ? '←' : '→'}</span>
+                                            </div>
+                                          </button>
+                                        );
+                                      })}
+                                      {groupedLevelsForSelector['other'] && Object.keys(groupedLevelsForSelector['other']).length > 0 && (
+                                        <button
+                                          type="button"
+                                          className="w-full flex items-center justify-between p-2 rounded-lg hover:bg-gray-100 transition-colors bg-gray-100"
+                                          onClick={() => selectRegFormLevelActivity(idx, 'other')}
+                                        >
+                                          <div className="flex items-center gap-2">
+                                            <span className="text-xl">📋</span>
+                                            <span className="font-medium">{language === 'ar' ? 'أخرى' : 'Other'}</span>
+                                          </div>
+                                          <span>{language === 'ar' ? '←' : '→'}</span>
+                                        </button>
+                                      )}
+                                    </div>
+                                  )}
+                                  
+                                  {/* Step 2: Time Slots */}
+                                  {regFormLevelSelectorState[idx].step === 'time' && (
+                                    <div className="p-2 space-y-1 max-h-48 overflow-y-auto">
+                                      {Object.entries(groupedLevelsForSelector[regFormLevelSelectorState[idx].selectedActivity] || {}).map(([timeSlot, timeLevels]) => {
+                                        const totalMembers = timeLevels.reduce((sum, l) => sum + (l.members || []).length, 0);
+                                        const totalCapacity = timeLevels.reduce((sum, l) => sum + (regFormLevelSelectorState[idx].selectedActivity === 'swimming' ? 6 : (l.capacity || 10)), 0);
+                                        return (
+                                          <button
+                                            key={timeSlot}
+                                            type="button"
+                                            className="w-full flex items-center justify-between p-2 rounded-lg hover:bg-blue-50 transition-colors border"
+                                            onClick={() => selectRegFormLevelTime(idx, timeSlot)}
+                                          >
+                                            <div className="flex items-center gap-2">
+                                              <span className="text-lg">🕐</span>
+                                              <span className="font-medium text-sm">{timeSlot}</span>
+                                            </div>
+                                            <div className="flex items-center gap-2">
+                                              <span className="text-xs text-gray-500">
+                                                {timeLevels.length} {language === 'ar' ? 'مستويات' : 'levels'} • {totalMembers}/{totalCapacity}
+                                              </span>
+                                              <span className="text-gray-400">{language === 'ar' ? '←' : '→'}</span>
+                                            </div>
+                                          </button>
                                         );
                                       })}
                                     </div>
-                                  ))}
-                                </SelectContent>
-                              </Select>
+                                  )}
+                                  
+                                  {/* Step 3: Levels */}
+                                  {regFormLevelSelectorState[idx].step === 'level' && (
+                                    <div className="p-2 space-y-1 max-h-48 overflow-y-auto">
+                                      {(groupedLevelsForSelector[regFormLevelSelectorState[idx].selectedActivity]?.[regFormLevelSelectorState[idx].selectedTime] || [])
+                                        .sort((a, b) => a.level_number - b.level_number)
+                                        .map(level => {
+                                          const memberCount = (level.members || []).length;
+                                          const maxCapacity = regFormLevelSelectorState[idx].selectedActivity === 'swimming' ? 6 : (level.capacity || 10);
+                                          const isFull = memberCount >= maxCapacity;
+                                          const fillPercent = Math.round((memberCount / maxCapacity) * 100);
+                                          return (
+                                            <button
+                                              key={level.id}
+                                              type="button"
+                                              className={`w-full p-2 rounded-lg transition-colors border ${isFull ? 'bg-red-50 border-red-200 hover:bg-red-100' : 'hover:bg-green-50 border-gray-200'}`}
+                                              onClick={() => updateRegFormItemLevel(idx, level.id)}
+                                            >
+                                              <div className="flex items-center justify-between mb-1">
+                                                <span className={`font-bold ${isFull ? 'text-red-600' : 'text-gray-800'}`}>
+                                                  {language === 'ar' ? 'المستوى' : 'Level'} {level.level_number}
+                                                </span>
+                                                <span className={`text-sm ${isFull ? 'text-red-600' : 'text-gray-600'}`}>
+                                                  {memberCount}/{maxCapacity} {isFull && '⚠️'}
+                                                </span>
+                                              </div>
+                                              <div className="w-full bg-gray-200 rounded-full h-1.5">
+                                                <div 
+                                                  className={`h-1.5 rounded-full ${isFull ? 'bg-red-500' : 'bg-green-500'}`}
+                                                  style={{ width: `${Math.min(fillPercent, 100)}%` }}
+                                                />
+                                              </div>
+                                            </button>
+                                          );
+                                        })}
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+                              
                               {regFormLevelWarnings[idx]?.isFull && !regFormLevelWarnings[idx]?.isAccepted && (
                                 <div className="mt-2 p-2 bg-orange-50 border border-orange-300 rounded-lg">
                                   <p className="text-xs text-orange-700 font-medium mb-2">
