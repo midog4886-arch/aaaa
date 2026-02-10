@@ -3583,10 +3583,17 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
                             <div className="space-y-1 col-span-2">
                               <Label className="text-xs">{language === 'ar' ? 'الساعة' : 'Time'}</Label>
                               <Input 
-                                value={item.training_time || ''} 
+                                type="number"
+                                min="1"
+                                max="12"
+                                value={item.training_time_hour || ''} 
                                 onChange={(e) => {
+                                  const hour = e.target.value;
                                   const updated = [...invoiceItems];
-                                  updated[idx].training_time = e.target.value;
+                                  updated[idx].training_time_hour = hour;
+                                  // Auto convert to time format (e.g., 4 → 4:00 م)
+                                  const timeStr = hour ? `${hour}:00 م` : '';
+                                  updated[idx].training_time = timeStr;
                                   // Format schedule: "الأحد، الإثنين، الثلاثاء و الأربعاء - 04:00 م"
                                   const formatSchedule = (days, time) => {
                                     if (!days || days.length === 0) return time || '';
@@ -3601,12 +3608,15 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
                                     }
                                     return time ? `${daysStr} - ${time}` : daysStr;
                                   };
-                                  updated[idx].schedule = formatSchedule(updated[idx].training_days, e.target.value);
+                                  updated[idx].schedule = formatSchedule(updated[idx].training_days, timeStr);
                                   setInvoiceItems(updated);
                                 }} 
                                 className="h-8 text-sm" 
-                                placeholder={language === 'ar' ? 'مثال: 4:00 م' : 'e.g. 4:00 PM'}
+                                placeholder={language === 'ar' ? 'مثال: 4' : 'e.g. 4'}
                               />
+                              {item.training_time && (
+                                <p className="text-xs text-muted-foreground mt-1">{item.training_time}</p>
+                              )}
                             </div>
                             <div className="space-y-1 col-span-3">
                               <Label className="text-xs">{language === 'ar' ? 'المستوى' : 'Level'}</Label>
