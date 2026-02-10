@@ -4184,25 +4184,53 @@ async def quick_attendance(
     has_active_subscription = False
     subscription_end_date = None
     
-    # Check if member has active subscription for this activity from INVOICES
-    invoices = await db.invoices.find({
-        "member_id": member["id"],
-        "status": {"$in": ["paid", "partial"]}
-    }, {"_id": 0}).to_list(100)
-    
-    for inv in invoices:
-        for item in inv.get("items", []):
-            if item.get("activity_id") == activity_id:
-                end_date = item.get("end_date", "")
+    # FIRST: Check member's direct activities (added from Members page)
+    member_activities = member.get("activities", [])
+    for act in member_activities:
+        # Match by activity_id or activity_name
+        activity_name_lower = (activity.get("name_ar", "") or activity.get("name", "")).lower()
+        member_activity_name_lower = (act.get("activity_name", "")).lower()
+        
+        if act.get("activity_id") == activity_id or \
+           member_activity_name_lower in activity_name_lower or \
+           activity_name_lower in member_activity_name_lower or \
+           any(word in activity_name_lower for word in member_activity_name_lower.split() if len(word) > 2):
+            # Check if subscription is active
+            end_date = act.get("end_date", "")
+            if end_date:
                 if end_date >= today:
                     has_active_subscription = True
                     subscription_end_date = end_date
                     break
                 else:
                     # Keep track of expired subscription
-                    subscription_end_date = end_date
-        if has_active_subscription:
-            break
+                    if not subscription_end_date or end_date > subscription_end_date:
+                        subscription_end_date = end_date
+            else:
+                # No end date means active subscription
+                has_active_subscription = True
+                break
+    
+    # SECOND: Check if member has active subscription for this activity from INVOICES
+    if not has_active_subscription:
+        invoices = await db.invoices.find({
+            "member_id": member["id"],
+            "status": {"$in": ["paid", "partial"]}
+        }, {"_id": 0}).to_list(100)
+        
+        for inv in invoices:
+            for item in inv.get("items", []):
+                if item.get("activity_id") == activity_id:
+                    end_date = item.get("end_date", "")
+                    if end_date >= today:
+                        has_active_subscription = True
+                        subscription_end_date = end_date
+                        break
+                    else:
+                        # Keep track of expired subscription
+                        subscription_end_date = end_date
+            if has_active_subscription:
+                break
     
     # If not found in invoices, check REGISTRATION FORMS
     if not has_active_subscription:
