@@ -722,143 +722,18 @@ async def get_me(current_user: dict = Depends(get_current_user)):
         raise HTTPException(status_code=404, detail="User not found")
     return user
 
-# ============ USERS MANAGEMENT ROUTES ============
-# Moved to routes/users.py - imported via users_router
+# ============ ROUTES MOVED TO /routes/ DIRECTORY ============
+# - Users: routes/users.py
+# - Branches: routes/branches.py
+# - Activities: routes/activities.py
+# - Coaches: routes/coaches.py
+# - Levels: routes/levels.py
+# - Members: routes/members.py
+# - Invoices (basic CRUD): routes/invoices.py
+# - Attendance: routes/attendance.py
+# - Notifications: routes/notifications.py
 
-# ============ BRANCHES ROUTES ============
-# Moved to routes/branches.py - imported via branches_router
-
-# ============ ACTIVITIES ROUTES ============
-# Moved to routes/activities.py - imported via activities_router
-
-# ============ COACHES ROUTES ============
-# Moved to routes/coaches.py - imported via coaches_router
-
-# ============ LEVELS ROUTES ============
-# Moved to routes/levels.py - imported via levels_router
-
-# ============ MEMBERS ROUTES ============
-
-@api_router.get("/members", response_model=List[Member])
-async def get_members(
-    activity_id: Optional[str] = None,
-    coach_id: Optional[str] = None,
-    status: Optional[str] = None,
-    branch_filter: Optional[str] = None,
-    current_user: dict = Depends(get_current_user)
-):
-    is_admin = current_user.get("is_admin", False)
-    branch_id = current_user.get("branch_id")
-    
-    query = {}
-    # Admin can filter by any branch
-    if is_admin and branch_filter and branch_filter != "all":
-        query["branch_id"] = branch_filter
-    elif not is_admin and branch_id:
-        query["branch_id"] = branch_id
-    if activity_id:
-        query["activities.activity_id"] = activity_id
-    if coach_id:
-        query["activities.coach_id"] = coach_id
-    if status:
-        query["activities.status"] = status
-    
-    members = await db.members.find(query, {"_id": 0}).sort("created_at", -1).to_list(1000)
-    
-    # Ensure all required fields exist with defaults
-    for member in members:
-        member.setdefault("age", 0)
-        member.setdefault("guardian_name", "")
-        member.setdefault("guardian_name_ar", "")
-        member.setdefault("guardian_phone", "")
-        member.setdefault("email", "")
-        member.setdefault("date_of_birth", "")
-        member.setdefault("gender", "")
-        member.setdefault("address", "")
-        member.setdefault("activities", [])
-        member.setdefault("status", "active")
-    
-    return members
-
-@api_router.get("/members/{member_id}", response_model=Member)
-async def get_member(member_id: str, current_user: dict = Depends(get_current_user)):
-    member = await db.members.find_one({"id": member_id}, {"_id": 0})
-    if not member:
-        raise HTTPException(status_code=404, detail="Member not found")
-    return member
-
-@api_router.post("/members", response_model=Member)
-async def create_member(member: MemberCreate, current_user: dict = Depends(get_current_user)):
-    member_id = str(uuid.uuid4())
-    branch_id = current_user.get("branch_id")
-    
-    # Generate sequential member code starting from 2601
-    last_member = await db.members.find_one(
-        {"member_code": {"$exists": True, "$ne": None}},
-        sort=[("member_code", -1)]
-    )
-    if last_member and last_member.get("member_code"):
-        try:
-            last_code = int(last_member["member_code"])
-            new_code = str(last_code + 1)
-        except ValueError:
-            new_code = "2601"
-    else:
-        new_code = "2601"
-    
-    member_doc = {
-        "id": member_id,
-        "member_code": new_code,
-        **member.model_dump(),
-        "branch_id": branch_id,
-        "created_at": datetime.now(timezone.utc).isoformat()
-    }
-    await db.members.insert_one(member_doc)
-    return Member(**{k: v for k, v in member_doc.items() if k != "_id"})
-
-@api_router.put("/members/{member_id}", response_model=Member)
-async def update_member(member_id: str, member: MemberUpdate, current_user: dict = Depends(get_current_user)):
-    update_data = {k: v for k, v in member.model_dump().items() if v is not None}
-    if not update_data:
-        raise HTTPException(status_code=400, detail="No data to update")
-    
-    result = await db.members.find_one_and_update(
-        {"id": member_id},
-        {"$set": update_data},
-        return_document=True
-    )
-    if not result:
-        raise HTTPException(status_code=404, detail="Member not found")
-    return Member(**{k: v for k, v in result.items() if k != "_id"})
-
-@api_router.delete("/members/{member_id}")
-async def delete_member(member_id: str, current_user: dict = Depends(get_current_user)):
-    result = await db.members.delete_one({"id": member_id})
-    if result.deleted_count == 0:
-        raise HTTPException(status_code=404, detail="Member not found")
-    return {"message": "Member deleted"}
-
-@api_router.post("/members/{member_id}/activities")
-async def add_member_activity(member_id: str, activity: MemberActivity, current_user: dict = Depends(get_current_user)):
-    result = await db.members.update_one(
-        {"id": member_id},
-        {"$push": {"activities": activity.model_dump()}}
-    )
-    if result.modified_count == 0:
-        raise HTTPException(status_code=404, detail="Member not found")
-    return {"message": "Activity added"}
-
-@api_router.put("/members/{member_id}/activities/{activity_id}")
-async def update_member_activity(member_id: str, activity_id: str, activity: MemberActivity, current_user: dict = Depends(get_current_user)):
-    result = await db.members.update_one(
-        {"id": member_id, "activities.activity_id": activity_id},
-        {"$set": {"activities.$": activity.model_dump()}}
-    )
-    if result.modified_count == 0:
-        raise HTTPException(status_code=404, detail="Member or activity not found")
-    return {"message": "Activity updated"}
-
-# ============ INVOICES ROUTES ============
+# ============ ADDITIONAL INVOICES ROUTES (NOT IN routes/invoices.py) ============
 
 @api_router.get("/invoices", response_model=List[Invoice])
 async def get_invoices(
