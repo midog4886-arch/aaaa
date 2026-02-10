@@ -1019,12 +1019,12 @@ export const LevelsPage = () => {
                     <h3 className="text-xl font-bold text-gray-700 mb-2">
                       {t('لا توجد أوقات', 'No Time Slots')}
                     </h3>
-                    <p className="text-gray-500 mb-4">
+                    <p className="text-gray-500 mb-6">
                       {t('لم يتم إضافة أوقات لهذا النشاط بعد', 'No time slots have been added for this activity yet')}
                     </p>
-                    <Button onClick={() => handleAddNewLevel(selectedActivityId, '')} className="gap-2">
-                      <Plus className="w-4 h-4" />
-                      {t('إضافة مستوى جديد', 'Add New Level')}
+                    <Button onClick={openAddTimeSlotDialog} className="gap-2" size="lg">
+                      <Plus className="w-5 h-5" />
+                      {t('إضافة ساعة', 'Add Time Slot')}
                     </Button>
                   </div>
                 );
