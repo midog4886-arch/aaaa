@@ -190,24 +190,37 @@ async def create_invoice(invoice: InvoiceCreate, current_user: dict = Depends(ge
     """Create a new invoice"""
     invoice_id = str(uuid.uuid4())
     is_admin = current_user.get("is_admin", False)
-    branch_id = invoice.branch_id if (is_admin and invoice.branch_id) else current_user.get("branch_id")
-    user_name = current_user.get("name", current_user.get("username", ""))
+    branch_id = invoice.branch_id if (is_admin and invoice.branch_id and invoice.branch_id != "all") else current_user.get("branch_id")
+    
+    # Get supervisor name
+    user_doc = await db.users.find_one({"id": current_user["user_id"]}, {"_id": 0})
+    supervisor_name = user_doc.get("name", current_user.get("username", "")) if user_doc else current_user.get("username", "")
     
     # Generate invoice number
-    last_invoice = await db.invoices.find_one(
-        {"invoice_number": {"$exists": True, "$ne": None}},
-        sort=[("invoice_number", -1)]
-    )
-    if last_invoice and last_invoice.get("invoice_number"):
+    all_invoices = await db.invoices.find(
+        {"invoice_number": {"$exists": True}},
+        {"invoice_number": 1, "_id": 0}
+    ).to_list(10000)
+    
+    max_number = 26000
+    for inv in all_invoices:
+        inv_num = inv.get("invoice_number", "")
         try:
-            last_num = int(last_invoice["invoice_number"])
-            new_invoice_number = str(last_num + 1)
+            if inv_num.startswith("INV-"):
+                num = int(inv_num.replace("INV-", ""))
+            else:
+                num = int(inv_num)
+            if num > max_number:
+                max_number = num
         except ValueError:
-            new_invoice_number = "26001"
-    else:
-        new_invoice_number = "26001"
+            continue
+    
+    next_number = max_number + 1
+    if next_number < 26001:
+        next_number = 26001
     
     # Get member info if member_id provided
+    member = None
     member_name = ""
     member_code = ""
     customer_name = invoice.customer_name_ar
@@ -224,7 +237,7 @@ async def create_invoice(invoice: InvoiceCreate, current_user: dict = Depends(ge
                 customer_phone = member.get("phone", "")
     
     # Calculate totals
-    subtotal = sum(item.fee * item.quantity for item in invoice.items)
+    subtotal = sum(item.fee * (item.quantity or 1) for item in invoice.items)
     discount = invoice.discount
     taxable_amount = subtotal - discount
     vat_amount = round(taxable_amount * VAT_RATE, 2)
@@ -232,13 +245,14 @@ async def create_invoice(invoice: InvoiceCreate, current_user: dict = Depends(ge
     
     invoice_doc = {
         "id": invoice_id,
-        "invoice_number": new_invoice_number,
+        "invoice_number": str(next_number),
         "member_id": invoice.member_id,
-        "member_name": member_name,
+        "member_name": customer_name,
         "member_code": member_code,
         "items": [item.model_dump() for item in invoice.items],
         "subtotal": subtotal,
         "discount": discount,
+        "discount_code": invoice.discount_code,
         "vat_amount": vat_amount,
         "total": total,
         "status": "pending",
@@ -246,15 +260,33 @@ async def create_invoice(invoice: InvoiceCreate, current_user: dict = Depends(ge
         "notes": invoice.notes,
         "branch_id": branch_id,
         "created_at": datetime.now(timezone.utc).isoformat(),
+        "paid_at": None,
         "customer_name_ar": customer_name,
         "customer_phone": customer_phone,
         "customer_address": invoice.customer_address,
-        "supervisor_name": user_name,
+        "supervisor_name": supervisor_name,
         "tax_number": COMPANY_TAX_NUMBER,
         "commercial_reg": COMPANY_COMMERCIAL_REG
     }
     
     await db.invoices.insert_one(invoice_doc)
+    
+    # Add member to levels if specified in invoice items
+    if invoice.member_id:
+        for item in invoice.items:
+            level_id = item.level_id
+            if level_id:
+                await db.levels.update_one(
+                    {"id": level_id},
+                    {"$addToSet": {"members": invoice.member_id}}
+                )
+                if item.end_date:
+                    await db.level_subscriptions.update_one(
+                        {"member_id": invoice.member_id, "level_id": level_id},
+                        {"$set": {"end_date": item.end_date, "member_id": invoice.member_id, "level_id": level_id}},
+                        upsert=True
+                    )
+    
     return Invoice(**{k: v for k, v in invoice_doc.items() if k != "_id"})
 
 @router.put("/{invoice_id}/pay")
