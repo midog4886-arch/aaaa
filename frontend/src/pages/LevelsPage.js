@@ -859,8 +859,9 @@ export const LevelsPage = () => {
         {/* VIEW: Activities (Main View) */}
         {currentView === 'activities' && (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4" data-testid="activities-view">
-            {MAIN_ACTIVITIES.map(activity => {
-              const activityLevels = groupedLevels[activity.id] || {};
+            {MAIN_ACTIVITIES.map(baseActivity => {
+              const activity = getMainActivityInfo(baseActivity.id);
+              const activityLevels = groupedLevels[baseActivity.id] || {};
               const timeSlots = Object.keys(activityLevels);
               const totalLevels = timeSlots.reduce((sum, slot) => sum + activityLevels[slot].length, 0);
               const totalMembers = timeSlots.reduce((sum, slot) => 
@@ -868,22 +869,30 @@ export const LevelsPage = () => {
               
               return (
                 <Card 
-                  key={activity.id} 
-                  className={`overflow-hidden cursor-pointer hover:shadow-xl transition-all duration-300 transform hover:scale-[1.02] border-2 border-transparent hover:border-${activity.color.replace('bg-', '')}`}
-                  onClick={() => navigateToTimes(activity.id)}
-                  data-testid={`activity-card-${activity.id}`}
+                  key={baseActivity.id} 
+                  className={`overflow-hidden cursor-pointer hover:shadow-xl transition-all duration-300 transform hover:scale-[1.02] border-2 border-transparent hover:border-${baseActivity.color.replace('bg-', '')}`}
+                  onClick={() => navigateToTimes(baseActivity.id)}
+                  data-testid={`activity-card-${baseActivity.id}`}
                 >
-                  <div className={`${activity.color} text-white p-6`}>
+                  <div className={`${baseActivity.color} text-white p-6`}>
                     <div className="flex items-center justify-between">
                       <span className="text-5xl">{activity.icon}</span>
-                      <div className={`p-2 rounded-full bg-white/20`}>
-                        {language === 'ar' ? <ArrowLeft className="w-6 h-6" /> : <ArrowRight className="w-6 h-6" />}
+                      <div className="flex items-center gap-1">
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="h-9 w-9 text-white hover:bg-white/20"
+                          onClick={(e) => handleEditActivity(e, baseActivity.id)}
+                          data-testid={`edit-activity-${baseActivity.id}`}
+                        >
+                          <Edit className="w-5 h-5" />
+                        </Button>
                       </div>
                     </div>
                     <h2 className="font-bold text-2xl mt-4">
                       {language === 'ar' ? activity.name_ar : activity.name_en}
                     </h2>
-                    {activity.id === 'swimming' && (
+                    {baseActivity.id === 'swimming' && (
                       <Badge className="bg-white/20 text-white border-0 mt-2">
                         {t('الحد الأقصى 6 لاعبين', 'Max 6 players')}
                       </Badge>
