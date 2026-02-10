@@ -54,6 +54,15 @@ export const LevelsPage = () => {
   const [selectedActivityId, setSelectedActivityId] = useState(null);
   const [selectedTimeSlotKey, setSelectedTimeSlotKey] = useState(null);
   
+  // Drag and drop states
+  const [draggedMember, setDraggedMember] = useState(null);
+  const [draggedFromLevel, setDraggedFromLevel] = useState(null);
+  const [dropTargetLevel, setDropTargetLevel] = useState(null);
+  
+  // Time slot edit/delete dialog
+  const [isTimeSlotEditDialogOpen, setIsTimeSlotEditDialogOpen] = useState(false);
+  const [editingTimeSlot, setEditingTimeSlot] = useState({ oldName: '', newName: '', activityId: '' });
+  
   // Expanded states for accordion (fallback)
   const [expandedActivities, setExpandedActivities] = useState({});
   const [expandedTimeSlots, setExpandedTimeSlots] = useState({});
