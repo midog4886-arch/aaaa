@@ -896,13 +896,23 @@ export const MembersPage = () => {
                               className="action-button"
                               onClick={() => openViewDialog(member)}
                               data-testid={`view-member-${member.id}`}
+                              title={language === 'ar' ? 'عرض' : 'View'}
                             >
                               <Eye className="w-4 h-4" />
                             </button>
                             <button 
                               className="action-button"
+                              onClick={() => openMemberCardDialog(member)}
+                              data-testid={`card-member-${member.id}`}
+                              title={language === 'ar' ? 'كرت العضوية' : 'Member Card'}
+                            >
+                              <CreditCard className="w-4 h-4" />
+                            </button>
+                            <button 
+                              className="action-button"
                               onClick={() => openEditDialog(member)}
                               data-testid={`edit-member-${member.id}`}
+                              title={language === 'ar' ? 'تعديل' : 'Edit'}
                             >
                               <Edit className="w-4 h-4" />
                             </button>
@@ -910,6 +920,7 @@ export const MembersPage = () => {
                               className="action-button danger"
                               onClick={() => handleDelete(member.id)}
                               data-testid={`delete-member-${member.id}`}
+                              title={language === 'ar' ? 'حذف' : 'Delete'}
                             >
                               <Trash2 className="w-4 h-4" />
                             </button>
