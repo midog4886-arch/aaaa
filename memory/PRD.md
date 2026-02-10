@@ -2370,3 +2370,96 @@ GET    /api/export/attendance                       - تصدير Excel
 - موضع الطباعة: top: 30mm, right: 15mm, gap: 10mm
 
 ---
+
+
+
+## Update 36 - Interactive Levels Page Redesign (February 10, 2026)
+
+### ميزة جديدة: إعادة تصميم صفحة المستويات التفاعلية ✅
+
+تم إعادة تصميم صفحة المستويات `/levels` بالكامل لتوفير تجربة مستخدم أفضل مع واجهة drill-down تفاعلية.
+
+#### الميزات المنفذة:
+
+##### 1. عرض الأنشطة (Activity Cards View) ✅
+- **بطاقات كبيرة وجذابة** لكل نشاط (السباحة، كرة القدم، الكاراتيه، أخرى)
+- **إحصائيات واضحة**: عدد الأوقات، عدد المستويات، عدد اللاعبين
+- **ألوان مميزة** لكل نشاط
+- **تأثيرات hover** مع scale animation
+- **النقر يفتح عرض الأوقات**
+
+##### 2. عرض الأوقات (Time Slots View) ✅
+- **بطاقات الأوقات** مع إحصائيات تفصيلية
+- **شريط التقدم**: نسبة الامتلاء بألوان (أخضر/أصفر/أحمر)
+- **Badge المستويات**: عرض أرقام المستويات المتاحة
+- **بطاقة إضافة مستوى جديد**: للإضافة السريعة
+- **النقر يفتح عرض المستويات**
+
+##### 3. عرض المستويات (Levels Detail View) ✅
+- **ملخص في الأعلى**: اسم النشاط والوقت مع زر إضافة مستوى جديد
+- **بطاقات المستويات المحسنة**:
+  - رقم المستوى بدائرة ملونة
+  - عداد اللاعبين مع شريط تقدم متحرك
+  - قائمة اللاعبين مع avatars
+  - badge "ممتلئ" للمستويات الكاملة
+  - أزرار: تعديل، حذف، إدارة الأعضاء
+- **تصميم Grid متجاوب**: 1-3 أعمدة حسب حجم الشاشة
+
+##### 4. نظام التنقل (Breadcrumb Navigation) ✅
+- **شريط تنقل واضح**: الأنشطة > النشاط > الوقت
+- **زر الرجوع**: للعودة للمستوى السابق
+- **روابط قابلة للنقر**: للتنقل السريع بين المستويات
+- **دعم RTL**: الأسهم تتكيف مع اتجاه اللغة
+
+##### 5. دعم الحالات الفارغة ✅
+- رسائل واضحة عند عدم وجود أوقات أو مستويات
+- أيقونات كبيرة ملونة
+- أزرار إضافة مباشرة
+
+### التقنيات المستخدمة:
+- **State Management**: `currentView`, `selectedActivityId`, `selectedTimeSlotKey`
+- **Views**: `'activities'` | `'times'` | `'levels'`
+- **Navigation Functions**: `navigateToTimes()`, `navigateToLevels()`, `goBack()`, `goHome()`
+- **Animations**: Tailwind CSS transitions & transforms
+
+### Icons Added:
+- `ChevronRight`, `ArrowRight`, `ArrowLeft`, `Home` من lucide-react
+
+### الملفات المُحدثة:
+- `/app/frontend/src/pages/LevelsPage.js` - إعادة كتابة كاملة (~1200 سطر)
+
+### Test Results:
+- ✅ عرض الأنشطة يظهر جميع الأنشطة مع الإحصائيات
+- ✅ النقر على نشاط يفتح عرض الأوقات
+- ✅ النقر على وقت يفتح عرض المستويات
+- ✅ Breadcrumb يعمل بشكل صحيح
+- ✅ زر الرجوع يعمل
+- ✅ جميع الوظائف الأصلية (تعديل، حذف، إدارة الأعضاء) تعمل
+
+---
+
+## Prioritized Backlog (Updated February 10, 2026)
+
+### P0 - Critical (Completed)
+- [x] Interactive Levels Page Redesign ✅ NEW
+
+### P1 - High Priority (In Progress)
+- [ ] Complete InvoicesPage.js refactoring (component files created but empty)
+- [ ] Remove duplicated endpoints from server.py (routes created)
+- [ ] WhatsApp Business API Integration
+
+### P2 - Medium Priority
+- [ ] Fix member dropdown automation testing issue
+- [ ] Member Portal - Online Renewal
+- [ ] PWA Conversion
+
+### P3 - Nice to Have
+- [ ] Schedule Templates
+- [ ] Member Portal - Booking/Leave Requests
+
+---
+
+## Credentials
+- **Admin Panel**: Username: `242456`, Password: `242456`
+- **Member Portal**: Login using member phone (e.g., `0500694704`)
+
