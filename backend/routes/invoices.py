@@ -213,8 +213,9 @@ async def pay_invoice(invoice_id: str, current_user: dict = Depends(get_current_
         }}
     )
     
-    # Update member activities if member_id exists
-    if invoice.get("member_id"):
+    # Update member activities and levels if member_id exists
+    member_id = invoice.get("member_id")
+    if member_id:
         for item in invoice.get("items", []):
             if item.get("activity_id") and not item.get("is_product"):
                 activity_data = {
@@ -233,9 +234,37 @@ async def pay_invoice(invoice_id: str, current_user: dict = Depends(get_current_
                 
                 # Add or update activity
                 await db.members.update_one(
-                    {"id": invoice["member_id"]},
+                    {"id": member_id},
                     {"$push": {"activities": activity_data}}
                 )
+                
+                # Add member to level if level_id is specified
+                level_id = item.get("level_id")
+                if level_id:
+                    # Check if level exists
+                    level = await db.levels.find_one({"id": level_id})
+                    if level:
+                        # Add member to level if not already there
+                        if member_id not in level.get("members", []):
+                            await db.levels.update_one(
+                                {"id": level_id},
+                                {"$addToSet": {"members": member_id}}
+                            )
+                        
+                        # Create or update level subscription for auto-cleanup
+                        end_date = item.get("end_date", "")
+                        if end_date:
+                            await db.level_subscriptions.update_one(
+                                {"member_id": member_id, "level_id": level_id},
+                                {"$set": {
+                                    "member_id": member_id,
+                                    "level_id": level_id,
+                                    "start_date": item.get("start_date", ""),
+                                    "end_date": end_date,
+                                    "invoice_id": invoice_id
+                                }},
+                                upsert=True
+                            )
     
     return {"message": "Invoice paid successfully"}
 
