@@ -8,7 +8,7 @@ import { Input } from '../components/ui/input';
 import { Textarea } from '../components/ui/textarea';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../components/ui/dialog';
 import { toast } from 'sonner';
-import { schedulesAPI, branchesAPI, attendanceAPI, levelsAPI, activityNotesAPI } from '../services/api';
+import { schedulesAPI, branchesAPI, attendanceAPI, levelsAPI, activityNotesAPI, activitiesAPI } from '../services/api';
 import { Calendar, Clock, Users, Check, X, UserCheck, ChevronLeft, ChevronRight, Printer, Layers, MessageSquarePlus, StickyNote, Trash2 } from 'lucide-react';
 
 export default function SchedulePage() {
@@ -19,6 +19,7 @@ export default function SchedulePage() {
 
   // State
   const [activitiesData, setActivitiesData] = useState([]);
+  const [activitiesList, setActivitiesList] = useState([]); // Activities from Activities page
   const [branches, setBranches] = useState([]);
   const [levels, setLevels] = useState([]);
   const [selectedBranchId, setSelectedBranchId] = useState('');
