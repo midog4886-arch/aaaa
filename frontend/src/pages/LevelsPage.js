@@ -917,8 +917,26 @@ export const LevelsPage = () => {
                                 <p className="text-sm opacity-90">{slotLevels.length} {t('مستويات', 'levels')}</p>
                               </div>
                             </div>
-                            <div className="p-2 rounded-full bg-white/20">
-                              {language === 'ar' ? <ArrowLeft className="w-5 h-5" /> : <ArrowRight className="w-5 h-5" />}
+                            {/* Edit & Delete Buttons */}
+                            <div className="flex items-center gap-1">
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                className="h-8 w-8 text-white hover:bg-white/20"
+                                onClick={(e) => handleEditTimeSlot(e, selectedActivityId, timeSlot)}
+                                data-testid={`edit-time-${timeSlot}`}
+                              >
+                                <Edit className="w-4 h-4" />
+                              </Button>
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                className="h-8 w-8 text-white hover:bg-red-500/50"
+                                onClick={(e) => handleDeleteTimeSlot(e, selectedActivityId, timeSlot)}
+                                data-testid={`delete-time-${timeSlot}`}
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </Button>
                             </div>
                           </div>
                         </div>
@@ -948,6 +966,18 @@ export const LevelsPage = () => {
                                 className={`${getLevelColor(level.level_number)} text-white text-xs`}
                               >
                                 {t('م', 'L')}{level.level_number}
+                              </Badge>
+                            ))}
+                            {slotLevels.length > 6 && (
+                              <Badge variant="outline" className="text-xs">
+                                +{slotLevels.length - 6}
+                              </Badge>
+                            )}
+                          </div>
+                        </CardContent>
+                      </Card>
+                    );
+                  })}
                               </Badge>
                             ))}
                             {slotLevels.length > 6 && (
