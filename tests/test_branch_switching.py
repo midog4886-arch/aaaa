@@ -10,7 +10,7 @@ import pytest
 import requests
 import os
 
-BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', 'https://sportacademy-11.preview.emergentagent.com')
+BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', 'https://sports-system-1.preview.emergentagent.com')
 
 class TestBranchSwitching:
     """Test branch switching feature for admin"""
