@@ -2051,7 +2051,7 @@ export const MembersPage = () => {
                       <div className="flex flex-col items-center shrink-0">
                         <div className="bg-white p-2 rounded-lg shadow-inner border-2 border-orange-100">
                           <img 
-                            src={`https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=${encodeURIComponent(JSON.stringify({type:'WCPA_MEMBER',id:memberCardData.id,code:memberCardData.member_code,name:memberCardData.name_ar||memberCardData.name}))}`}
+                            src={`https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=${encodeURIComponent(memberCardData.member_code || memberCardData.id)}`}
                             alt="QR"
                             className="w-24 h-24"
                           />
