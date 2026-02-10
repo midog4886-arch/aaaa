@@ -992,7 +992,7 @@ export default function SchedulePage() {
                 const totalMembers = getTotalMembers(activity);
                 
                 // Apply activity type filter
-                if (!activityMatchesType(activity.activity_name)) {
+                if (!activityMatchesType(activity)) {
                   return null;
                 }
                 
