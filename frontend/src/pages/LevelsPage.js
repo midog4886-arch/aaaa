@@ -178,7 +178,7 @@ export const LevelsPage = () => {
   });
 
   const getMainActivityInfo = (activityId) => {
-    return MAIN_ACTIVITIES.find(a => a.id === activityId) || {
+    const baseActivity = MAIN_ACTIVITIES.find(a => a.id === activityId) || {
       id: 'other',
       name_ar: 'أخرى',
       name_en: 'Other',
@@ -186,6 +186,18 @@ export const LevelsPage = () => {
       color: 'bg-gray-500',
       maxCapacity: 10
     };
+    
+    // Apply custom names if available
+    const customNames = customActivityNames[activityId];
+    if (customNames) {
+      return {
+        ...baseActivity,
+        name_ar: customNames.name_ar || baseActivity.name_ar,
+        name_en: customNames.name_en || baseActivity.name_en,
+        icon: customNames.icon || baseActivity.icon
+      };
+    }
+    return baseActivity;
   };
 
   const getLevelColor = (levelNum) => {
