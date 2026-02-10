@@ -1260,8 +1260,8 @@ export const LevelsPage = () => {
                     <p className="text-gray-500 mb-4">
                       {t('لم يتم إضافة مستويات لهذا الوقت بعد', 'No levels have been added for this time slot yet')}
                     </p>
-                    <Button onClick={() => handleAddNewLevel(selectedActivityId, selectedTimeSlotKey)} className="gap-2">
-                      <Plus className="w-4 h-4" />
+                    <Button onClick={handleQuickAddLevel} disabled={saving} className="gap-2">
+                      {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
                       {t('إضافة مستوى', 'Add Level')}
                     </Button>
                   </div>
