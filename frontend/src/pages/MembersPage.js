@@ -285,6 +285,194 @@ export const MembersPage = () => {
     }
   };
 
+  // Open member card dialog
+  const openMemberCardDialog = (member) => {
+    setMemberCardData(member);
+    setIsMemberCardDialogOpen(true);
+  };
+
+  // Print member card
+  const printMemberCard = () => {
+    if (!memberCardData) return;
+    
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) return;
+    
+    const qrData = `${memberCardData.member_code || memberCardData.id}`;
+    const qrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=${encodeURIComponent(qrData)}`;
+    
+    // Get active activities with schedules
+    const activeActivities = (memberCardData.activities || []).filter(a => {
+      const endDate = a.end_date ? new Date(a.end_date) : null;
+      return !endDate || endDate >= new Date();
+    });
+    
+    const activitiesHtml = activeActivities.map(act => `
+      <div style="margin-bottom: 4px; font-size: 9px;">
+        <strong>${act.activity_name || ''}</strong>
+        ${act.schedule ? `<br><span style="color: #666;">${act.schedule}</span>` : ''}
+        ${act.end_date ? `<br><span style="color: #888;">حتى: ${new Date(act.end_date).toLocaleDateString('ar-SA')}</span>` : ''}
+      </div>
+    `).join('');
+    
+    const printContent = `
+      <!DOCTYPE html>
+      <html dir="rtl">
+      <head>
+        <meta charset="UTF-8">
+        <title>بطاقة العضوية - ${memberCardData.name_ar || memberCardData.name}</title>
+        <style>
+          @page { size: 9cm 6cm; margin: 0; }
+          @media print {
+            body { margin: 0; padding: 0; }
+            .no-print { display: none !important; }
+          }
+          body {
+            font-family: 'Segoe UI', Tahoma, Arial, sans-serif;
+            margin: 0;
+            padding: 10px;
+            direction: rtl;
+          }
+          .card-container {
+            display: flex;
+            gap: 15mm;
+            align-items: flex-start;
+          }
+          .member-card {
+            width: 9cm;
+            height: 6cm;
+            border: 2px solid #1e3a5f;
+            border-radius: 10px;
+            overflow: hidden;
+            background: linear-gradient(135deg, #1e3a5f 0%, #2d5a87 100%);
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            position: relative;
+          }
+          .card-header {
+            background: rgba(255,255,255,0.1);
+            padding: 8px 12px;
+            text-align: center;
+            border-bottom: 1px solid rgba(255,255,255,0.2);
+          }
+          .card-header h1 {
+            margin: 0;
+            font-size: 14px;
+            color: #fff;
+            font-weight: bold;
+          }
+          .card-header p {
+            margin: 2px 0 0;
+            font-size: 9px;
+            color: rgba(255,255,255,0.8);
+          }
+          .card-body {
+            padding: 10px 12px;
+            display: flex;
+            gap: 10px;
+          }
+          .qr-section {
+            flex-shrink: 0;
+          }
+          .qr-section img {
+            width: 70px;
+            height: 70px;
+            border: 3px solid #fff;
+            border-radius: 8px;
+          }
+          .info-section {
+            flex: 1;
+            color: #fff;
+          }
+          .member-name {
+            font-size: 14px;
+            font-weight: bold;
+            margin-bottom: 4px;
+            color: #fff;
+          }
+          .member-code {
+            font-size: 18px;
+            font-weight: bold;
+            color: #ffd700;
+            margin-bottom: 6px;
+          }
+          .activities-section {
+            background: rgba(255,255,255,0.1);
+            border-radius: 5px;
+            padding: 6px 8px;
+            margin-top: 4px;
+          }
+          .activities-title {
+            font-size: 8px;
+            color: rgba(255,255,255,0.7);
+            margin-bottom: 3px;
+          }
+          .logo-section {
+            width: 9cm;
+            height: 6cm;
+            border: 2px dashed #ccc;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: #f9f9f9;
+          }
+          .logo-section img {
+            max-width: 80%;
+            max-height: 80%;
+            object-fit: contain;
+          }
+          .print-btn {
+            display: block;
+            margin: 20px auto;
+            padding: 10px 30px;
+            background: #1e3a5f;
+            color: #fff;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+          }
+          .print-btn:hover {
+            background: #2d5a87;
+          }
+        </style>
+      </head>
+      <body>
+        <div class="card-container">
+          <div class="member-card">
+            <div class="card-header">
+              <h1>Global Champions Sports Performance</h1>
+              <p>أداء الأبطال العالمية للرياضة</p>
+            </div>
+            <div class="card-body">
+              <div class="qr-section">
+                <img src="${qrCodeUrl}" alt="QR Code" />
+              </div>
+              <div class="info-section">
+                <div class="member-name">${memberCardData.name_ar || memberCardData.name}</div>
+                <div class="member-code">#${memberCardData.member_code || '---'}</div>
+                ${activeActivities.length > 0 ? `
+                  <div class="activities-section">
+                    <div class="activities-title">الأنشطة</div>
+                    ${activitiesHtml}
+                  </div>
+                ` : ''}
+              </div>
+            </div>
+          </div>
+          <div class="logo-section">
+            <img src="/logo.png" alt="Logo" onerror="this.style.display='none'" />
+          </div>
+        </div>
+        <button class="print-btn no-print" onclick="window.print()">🖨️ طباعة</button>
+      </body>
+      </html>
+    `;
+    
+    printWindow.document.write(printContent);
+    printWindow.document.close();
+  };
+
   const openEditDialog = (member) => {
     setSelectedMember(member);
     setFormData({
