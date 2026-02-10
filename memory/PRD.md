@@ -2393,6 +2393,7 @@ GET    /api/export/attendance                       - تصدير Excel
 - **شريط التقدم**: نسبة الامتلاء بألوان (أخضر/أصفر/أحمر)
 - **Badge المستويات**: عرض أرقام المستويات المتاحة
 - **بطاقة إضافة مستوى جديد**: للإضافة السريعة
+- **أزرار تعديل وحذف الوقت** ✅ NEW
 - **النقر يفتح عرض المستويات**
 
 ##### 3. عرض المستويات (Levels Detail View) ✅
@@ -2416,25 +2417,42 @@ GET    /api/export/attendance                       - تصدير Excel
 - أيقونات كبيرة ملونة
 - أزرار إضافة مباشرة
 
+##### 6. تعديل وحذف الأوقات ✅ NEW
+- **زر تعديل ✏️**: يفتح حوار لتغيير اسم الوقت
+- **زر حذف 🗑️**: يحذف الوقت وجميع مستوياته مع تأكيد
+- **حوار التعديل**: يُظهر الاسم القديم والجديد
+
+##### 7. السحب والإفلات (Drag & Drop) ✅ NEW
+- **أيقونة السحب (⋮⋮)**: تظهر على كل لاعب
+- **السحب بين المستويات**: اسحب لاعب من مستوى وأفلته في آخر
+- **تأثيرات بصرية**: المستوى المستهدف يُضاء عند السحب فوقه
+- **رسالة "أفلت هنا"**: تظهر عند السحب فوق مستوى
+- **فحص السعة**: يمنع الإفلات في مستوى ممتلئ
+- **رسائل نجاح**: "تم نقل [الاسم] إلى المستوى [رقم]"
+
 ### التقنيات المستخدمة:
 - **State Management**: `currentView`, `selectedActivityId`, `selectedTimeSlotKey`
+- **Drag States**: `draggedMember`, `draggedFromLevel`, `dropTargetLevel`
 - **Views**: `'activities'` | `'times'` | `'levels'`
 - **Navigation Functions**: `navigateToTimes()`, `navigateToLevels()`, `goBack()`, `goHome()`
+- **Drag Functions**: `handleDragStart()`, `handleDragOver()`, `handleDrop()`, `handleDragEnd()`
 - **Animations**: Tailwind CSS transitions & transforms
 
 ### Icons Added:
-- `ChevronRight`, `ArrowRight`, `ArrowLeft`, `Home` من lucide-react
+- `ChevronRight`, `ArrowRight`, `ArrowLeft`, `Home`, `GripVertical`, `Move` من lucide-react
 
 ### الملفات المُحدثة:
-- `/app/frontend/src/pages/LevelsPage.js` - إعادة كتابة كاملة (~1200 سطر)
+- `/app/frontend/src/pages/LevelsPage.js` - إعادة كتابة كاملة (~1400 سطر)
 
 ### Test Results:
 - ✅ عرض الأنشطة يظهر جميع الأنشطة مع الإحصائيات
 - ✅ النقر على نشاط يفتح عرض الأوقات
+- ✅ أزرار تعديل وحذف الأوقات تعمل
 - ✅ النقر على وقت يفتح عرض المستويات
+- ✅ أيقونات السحب تظهر على اللاعبين
+- ✅ السحب والإفلات يعمل بين المستويات
 - ✅ Breadcrumb يعمل بشكل صحيح
-- ✅ زر الرجوع يعمل
-- ✅ جميع الوظائف الأصلية (تعديل، حذف، إدارة الأعضاء) تعمل
+- ✅ جميع الوظائف الأصلية تعمل
 
 ---
 
