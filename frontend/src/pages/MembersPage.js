@@ -31,7 +31,9 @@ import {
   RefreshCcw,
   AlertTriangle,
   History,
-  Clock
+  Clock,
+  CreditCard,
+  QrCode
 } from 'lucide-react';
 
 export const MembersPage = () => {
