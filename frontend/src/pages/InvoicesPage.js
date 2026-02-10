@@ -4398,11 +4398,18 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
                             <div className="space-y-1">
                               <Label className="text-xs">{language === 'ar' ? 'الساعة' : 'Time'}</Label>
                               <Input 
-                                placeholder={language === 'ar' ? 'مثال: 4:00 م' : 'e.g., 4:00 PM'}
-                                value={item.training_time || ''}
+                                type="number"
+                                min="1"
+                                max="12"
+                                placeholder={language === 'ar' ? 'مثال: 4' : 'e.g., 4'}
+                                value={item.training_time_hour || ''}
                                 onChange={(e) => {
+                                  const hour = e.target.value;
                                   const updated = [...regFormItems];
-                                  updated[idx].training_time = e.target.value;
+                                  updated[idx].training_time_hour = hour;
+                                  // Auto convert to time format (e.g., 4 → 4:00 م)
+                                  const timeStr = hour ? `${hour}:00 م` : '';
+                                  updated[idx].training_time = timeStr;
                                   // Format schedule: "الأحد، الإثنين، الثلاثاء و الأربعاء - 04:00 م"
                                   const formatSchedule = (days, time) => {
                                     if (!days || days.length === 0) return time || '';
@@ -4417,11 +4424,14 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
                                     }
                                     return time ? `${daysStr} - ${time}` : daysStr;
                                   };
-                                  updated[idx].schedule = formatSchedule(updated[idx].training_days, e.target.value);
+                                  updated[idx].schedule = formatSchedule(updated[idx].training_days, timeStr);
                                   setRegFormItems(updated);
                                 }}
                                 className="text-sm"
                               />
+                              {item.training_time && (
+                                <p className="text-xs text-muted-foreground mt-1">{item.training_time}</p>
+                              )}
                             </div>
                             <div className="space-y-1">
                               <Label className="text-xs">{language === 'ar' ? 'المستوى' : 'Level'}</Label>
