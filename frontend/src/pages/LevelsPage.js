@@ -997,18 +997,6 @@ export const LevelsPage = () => {
                       </Card>
                     );
                   })}
-                              </Badge>
-                            ))}
-                            {slotLevels.length > 6 && (
-                              <Badge variant="outline" className="text-xs">
-                                +{slotLevels.length - 6}
-                              </Badge>
-                            )}
-                          </div>
-                        </CardContent>
-                      </Card>
-                    );
-                  })}
                   
                   {/* Add New Time Slot Card */}
                   <Card 
