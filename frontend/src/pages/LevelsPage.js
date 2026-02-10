@@ -73,6 +73,10 @@ export const LevelsPage = () => {
     return saved ? JSON.parse(saved) : {};
   });
   
+  // Add new time slot dialog
+  const [isAddTimeSlotDialogOpen, setIsAddTimeSlotDialogOpen] = useState(false);
+  const [newTimeSlotName, setNewTimeSlotName] = useState('');
+  
   // Expanded states for accordion (fallback)
   const [expandedActivities, setExpandedActivities] = useState({});
   const [expandedTimeSlots, setExpandedTimeSlots] = useState({});
