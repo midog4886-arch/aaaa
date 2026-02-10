@@ -173,31 +173,19 @@ export const MembersPage = () => {
       // If creating new member and activity is selected, add it to activities array
       if (!selectedMember && activityForm.activity_id) {
         const activity = activities.find(a => a.id === activityForm.activity_id);
-        const trainingDaysStr = activityForm.training_days?.join(', ') || '';
-        
-        // Format training time
-        let trainingTimeStr = '';
-        if (activityForm.training_hour) {
-          const periodLabel = activityForm.training_period === 'am' 
-            ? (language === 'ar' ? 'صباحاً' : 'AM') 
-            : (language === 'ar' ? 'مساءً' : 'PM');
-          trainingTimeStr = `${activityForm.training_hour}:00 ${periodLabel}`;
-        }
-        
-        const scheduleStr = `${trainingDaysStr}${trainingTimeStr ? ` - ${trainingTimeStr}` : ''}`;
         
         data.activities = [{
           activity_id: activityForm.activity_id,
-          activity_name: activity?.name || '',
+          activity_name: language === 'ar' ? (activity?.name_ar || activity?.name || '') : (activity?.name || ''),
           start_date: activityForm.start_date,
           end_date: activityForm.end_date,
           fee: 0, // No fee when adding from members page
           status: 'active',
           coach_id: activityForm.coach_id || '',
           level_id: activityForm.level_id || '',
-          schedule: scheduleStr,
+          schedule: activityForm.schedule || '',
           training_days: activityForm.training_days || [],
-          training_time: trainingTimeStr
+          training_time: activityForm.training_time || ''
         }];
       }
       
