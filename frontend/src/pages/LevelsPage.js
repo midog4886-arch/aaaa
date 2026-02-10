@@ -464,6 +464,75 @@ export const LevelsPage = () => {
     }
   };
 
+  // Add a new level directly to the current time slot
+  const handleQuickAddLevel = async () => {
+    if (!selectedActivityId || !selectedTimeSlotKey) {
+      toast.error(t('اختر وقت أولاً', 'Select a time slot first'));
+      return;
+    }
+    
+    // Get existing levels for this time slot to determine next level number
+    const existingLevels = getLevelsForTimeSlot(selectedActivityId, selectedTimeSlotKey);
+    const existingNumbers = existingLevels.map(l => l.level_number);
+    
+    // Find the next available level number (1-6)
+    let nextLevelNumber = 1;
+    for (let i = 1; i <= 6; i++) {
+      if (!existingNumbers.includes(i)) {
+        nextLevelNumber = i;
+        break;
+      }
+    }
+    
+    // Check if all levels (1-6) are already used
+    if (existingNumbers.length >= 6) {
+      toast.error(t('تم الوصول للحد الأقصى من المستويات (6)', 'Maximum levels reached (6)'));
+      return;
+    }
+    
+    // Get the activity_name from an existing level in this time slot
+    // This ensures the new level has the same activity_name format
+    let activityName = selectedTimeSlotKey;
+    if (existingLevels.length > 0) {
+      activityName = existingLevels[0].activity_name;
+    } else {
+      // Construct activity name if no existing levels
+      const activity = getMainActivityInfo(selectedActivityId);
+      if (selectedActivityId === 'swimming') {
+        activityName = `سباحة - ${selectedTimeSlotKey}`;
+      } else if (selectedActivityId === 'football') {
+        activityName = `كرة قدم - ${selectedTimeSlotKey}`;
+      } else if (selectedActivityId === 'karate') {
+        activityName = `كاراتيه - ${selectedTimeSlotKey}`;
+      }
+    }
+    
+    setSaving(true);
+    try {
+      const newLevel = {
+        level_number: nextLevelNumber,
+        activity_name: activityName,
+        branch_id: selectedBranchId || 'all',
+        capacity: selectedActivityId === 'swimming' ? 6 : 10,
+        members: []
+      };
+      
+      await levelsAPI.create(newLevel);
+      
+      toast.success(t(`تم إضافة المستوى ${nextLevelNumber} بنجاح`, `Level ${nextLevelNumber} added successfully`));
+      loadData();
+    } catch (error) {
+      console.error('Error creating level:', error);
+      if (error.response?.data?.detail) {
+        toast.error(error.response.data.detail);
+      } else {
+        toast.error(t('فشل في إضافة المستوى', 'Failed to add level'));
+      }
+    } finally {
+      setSaving(false);
+    }
+  };
+
   // ========== Drag and Drop Functions ==========
   
   // Start dragging a member
