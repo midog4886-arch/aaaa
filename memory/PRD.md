@@ -2506,11 +2506,36 @@ GET    /api/export/attendance                       - تصدير Excel
 
 ---
 
+## Update - Members Page Activity Form (December 2025)
+
+### تحسين نموذج إضافة العضو ✅
+
+#### ما تم إنجازه:
+
+1. **قائمة الأنشطة بدون أسعار**:
+   - الأنشطة تظهر من صفحة الأنشطة
+   - عرض اسم النشاط فقط بدون السعر
+   - دعم اللغة العربية في عرض الأنشطة
+
+2. **إدخال وقت التدريب كرقم**:
+   - حقل رقمي لإدخال الساعة (1-12)
+   - قائمة اختيار صباحاً/مساءً
+   - تحويل تلقائي للصيغة (مثال: 4 → 4:00 مساءً)
+
+#### الملفات المُحدثة:
+- `/app/frontend/src/pages/MembersPage.js`
+  - تحديث `activityForm` state لتشمل `training_hour` و `training_period`
+  - تحديث واجهة إدخال الوقت
+  - تحديث دالة `handleSubmit` لتنسيق الوقت
+
+---
+
 ## Prioritized Backlog (Updated December 2025)
 
 ### P0 - Critical (Completed)
 - [x] Interactive Levels Page Redesign ✅
-- [x] Backend Refactoring (Members & Invoices) ✅ NEW
+- [x] Backend Refactoring (Members & Invoices) ✅
+- [x] Members Page Activity Form Enhancement ✅ NEW
 
 ### P1 - High Priority (Pending)
 - [ ] Frontend InvoicesPage.js refactoring (large file ~5175 lines)
