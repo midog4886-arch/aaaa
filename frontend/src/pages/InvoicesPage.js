@@ -259,12 +259,106 @@ export const InvoicesPage = () => {
 
   // State for level capacity warning
   const [levelCapacityWarnings, setLevelCapacityWarnings] = useState({});
+  
+  // State for cascading level selector (invoice)
+  const [levelSelectorState, setLevelSelectorState] = useState({});
+  // { itemIndex: { step: 'activity' | 'time' | 'level', selectedActivity: '', selectedTime: '' } }
+
+  // Main activities for level selector
+  const MAIN_ACTIVITIES_FOR_LEVELS = [
+    { id: 'swimming', name_ar: 'السباحة', name_en: 'Swimming', icon: '🏊', color: 'bg-blue-500' },
+    { id: 'football', name_ar: 'كرة القدم', name_en: 'Football', icon: '⚽', color: 'bg-green-500' },
+    { id: 'karate', name_ar: 'الكاراتيه', name_en: 'Karate', icon: '🥋', color: 'bg-red-500' },
+  ];
+
+  // Parse activity name to get main activity
+  const parseActivityForLevel = (activityName) => {
+    if (!activityName) return 'other';
+    const name = activityName.toLowerCase();
+    if (name.includes('سباح') || name.includes('swim')) return 'swimming';
+    if (name.includes('كر') || name.includes('foot') || name.includes('قدم')) return 'football';
+    if (name.includes('كارات') || name.includes('karate')) return 'karate';
+    return 'other';
+  };
+
+  // Group levels by main activity and time slot
+  const groupedLevelsForSelector = React.useMemo(() => {
+    const grouped = {};
+    levels.forEach(level => {
+      const mainActivity = parseActivityForLevel(level.activity_name);
+      if (!grouped[mainActivity]) grouped[mainActivity] = {};
+      
+      // Extract time slot from activity_name
+      let timeSlot = level.activity_name;
+      if (level.activity_name.includes(' - ')) {
+        timeSlot = level.activity_name.split(' - ')[1] || level.activity_name;
+      }
+      
+      if (!grouped[mainActivity][timeSlot]) grouped[mainActivity][timeSlot] = [];
+      grouped[mainActivity][timeSlot].push(level);
+    });
+    return grouped;
+  }, [levels]);
+
+  // Initialize level selector for an item
+  const initLevelSelector = (index) => {
+    setLevelSelectorState(prev => ({
+      ...prev,
+      [index]: { step: 'activity', selectedActivity: '', selectedTime: '' }
+    }));
+  };
+
+  // Select activity in level selector
+  const selectLevelActivity = (index, activityId) => {
+    setLevelSelectorState(prev => ({
+      ...prev,
+      [index]: { step: 'time', selectedActivity: activityId, selectedTime: '' }
+    }));
+  };
+
+  // Select time in level selector
+  const selectLevelTime = (index, timeSlot) => {
+    setLevelSelectorState(prev => ({
+      ...prev,
+      [index]: { ...prev[index], step: 'level', selectedTime: timeSlot }
+    }));
+  };
+
+  // Go back in level selector
+  const goBackLevelSelector = (index) => {
+    const current = levelSelectorState[index];
+    if (!current) return;
+    
+    if (current.step === 'level') {
+      setLevelSelectorState(prev => ({
+        ...prev,
+        [index]: { ...prev[index], step: 'time', selectedTime: '' }
+      }));
+    } else if (current.step === 'time') {
+      setLevelSelectorState(prev => ({
+        ...prev,
+        [index]: { step: 'activity', selectedActivity: '', selectedTime: '' }
+      }));
+    }
+  };
+
+  // Reset level selector
+  const resetLevelSelector = (index) => {
+    setLevelSelectorState(prev => {
+      const newState = { ...prev };
+      delete newState[index];
+      return newState;
+    });
+  };
 
   const updateItemLevel = async (index, levelId) => {
     const updated = [...invoiceItems];
     const level = levels.find(l => l.id === levelId);
     updated[index].level_id = levelId;
     updated[index].level_name = level ? `${language === 'ar' ? 'المستوى' : 'Level'} ${level.level_number} - ${level.activity_name}` : '';
+    
+    // Reset selector state after selection
+    resetLevelSelector(index);
     
     // Check level capacity
     if (levelId) {
