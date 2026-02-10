@@ -2659,12 +2659,69 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
   // Update registration form item level
   // State for registration form level capacity warning
   const [regFormLevelWarnings, setRegFormLevelWarnings] = useState({});
+  
+  // State for cascading level selector (registration form)
+  const [regFormLevelSelectorState, setRegFormLevelSelectorState] = useState({});
+
+  // Initialize level selector for reg form item
+  const initRegFormLevelSelector = (index) => {
+    setRegFormLevelSelectorState(prev => ({
+      ...prev,
+      [index]: { step: 'activity', selectedActivity: '', selectedTime: '' }
+    }));
+  };
+
+  // Select activity in reg form level selector
+  const selectRegFormLevelActivity = (index, activityId) => {
+    setRegFormLevelSelectorState(prev => ({
+      ...prev,
+      [index]: { step: 'time', selectedActivity: activityId, selectedTime: '' }
+    }));
+  };
+
+  // Select time in reg form level selector
+  const selectRegFormLevelTime = (index, timeSlot) => {
+    setRegFormLevelSelectorState(prev => ({
+      ...prev,
+      [index]: { ...prev[index], step: 'level', selectedTime: timeSlot }
+    }));
+  };
+
+  // Go back in reg form level selector
+  const goBackRegFormLevelSelector = (index) => {
+    const current = regFormLevelSelectorState[index];
+    if (!current) return;
+    
+    if (current.step === 'level') {
+      setRegFormLevelSelectorState(prev => ({
+        ...prev,
+        [index]: { ...prev[index], step: 'time', selectedTime: '' }
+      }));
+    } else if (current.step === 'time') {
+      setRegFormLevelSelectorState(prev => ({
+        ...prev,
+        [index]: { step: 'activity', selectedActivity: '', selectedTime: '' }
+      }));
+    }
+  };
+
+  // Reset reg form level selector
+  const resetRegFormLevelSelector = (index) => {
+    setRegFormLevelSelectorState(prev => {
+      const newState = { ...prev };
+      delete newState[index];
+      return newState;
+    });
+  };
 
   const updateRegFormItemLevel = async (index, levelId) => {
     const updated = [...regFormItems];
     const level = levels.find(l => l.id === levelId);
     updated[index].level_id = levelId;
     updated[index].level_name = level ? `${language === 'ar' ? 'المستوى' : 'Level'} ${level.level_number} - ${level.activity_name}` : '';
+    
+    // Reset selector state after selection
+    resetRegFormLevelSelector(index);
     
     // Check level capacity
     if (levelId) {
