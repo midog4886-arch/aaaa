@@ -2030,58 +2030,104 @@ export const MembersPage = () => {
             
             {memberCardData && (
               <div className="space-y-4">
-                {/* Card Preview */}
+                {/* Card Preview - Same design as MemberCardPage */}
                 <div className="flex flex-wrap gap-4 justify-center p-4 bg-gray-100 rounded-lg">
-                  {/* Member Card */}
-                  <div 
-                    className="w-[340px] h-[227px] rounded-xl overflow-hidden shadow-lg"
-                    style={{ background: 'linear-gradient(135deg, #1e3a5f 0%, #2d5a87 100%)' }}
-                  >
-                    {/* Header */}
-                    <div className="px-4 py-2 text-center border-b border-white/20" style={{ background: 'rgba(255,255,255,0.1)' }}>
-                      <h3 className="text-white font-bold text-sm">Global Champions Sports Performance</h3>
-                      <p className="text-white/80 text-xs">أداء الأبطال العالمية للرياضة</p>
+                  {/* Member Card - Orange/Amber theme like MemberCardPage */}
+                  <div className="w-[340px] rounded-xl overflow-hidden shadow-lg bg-white">
+                    {/* Header - Orange gradient */}
+                    <div className="bg-gradient-to-r from-orange-500 to-amber-500 p-3 text-white">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <h3 className="text-base font-bold">أكاديمية أداء الأبطال</h3>
+                          <p className="text-orange-100 text-xs">Global Champions Sports Performance</p>
+                        </div>
+                        <div className="text-3xl">🏆</div>
+                      </div>
                     </div>
                     
                     {/* Body */}
-                    <div className="p-4 flex gap-3">
-                      {/* QR Code */}
-                      <div className="shrink-0">
-                        <img 
-                          src={`https://api.qrserver.com/v1/create-qr-code/?size=80x80&data=${memberCardData.member_code || memberCardData.id}`}
-                          alt="QR"
-                          className="w-20 h-20 rounded-lg border-2 border-white"
-                        />
+                    <div className="p-4 flex gap-4">
+                      {/* QR Code with Dates */}
+                      <div className="flex flex-col items-center shrink-0">
+                        <div className="bg-white p-2 rounded-lg shadow-inner border-2 border-orange-100">
+                          <img 
+                            src={`https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=${encodeURIComponent(JSON.stringify({type:'WCPA_MEMBER',id:memberCardData.id,code:memberCardData.member_code,name:memberCardData.name_ar||memberCardData.name}))}`}
+                            alt="QR"
+                            className="w-24 h-24"
+                          />
+                        </div>
+                        {/* Dates under QR */}
+                        {memberCardData.activities?.[0] && (
+                          <div className="text-center mt-2 text-xs">
+                            <p className="text-gray-600">
+                              <span className="font-bold">من:</span> {memberCardData.activities[0].start_date || '----'}
+                            </p>
+                            <p className="text-gray-600">
+                              <span className="font-bold">إلى:</span> {memberCardData.activities[0].end_date || '----'}
+                            </p>
+                            {memberCardData.activities[0].schedule && (
+                              <p className="text-orange-600 bg-orange-50 rounded px-2 py-1 mt-1 text-[10px]">
+                                📅 {memberCardData.activities[0].schedule}
+                              </p>
+                            )}
+                          </div>
+                        )}
                       </div>
                       
                       {/* Info */}
-                      <div className="flex-1 text-white">
-                        <p className="font-bold text-base mb-1">{memberCardData.name_ar || memberCardData.name}</p>
-                        <p className="text-yellow-400 font-bold text-xl mb-2">#{memberCardData.member_code || '---'}</p>
+                      <div className="flex-1">
+                        <p className="text-xs text-gray-500 mb-1">{language === 'ar' ? 'الاسم' : 'Name'}</p>
+                        <p className="font-bold text-gray-800 text-lg mb-2">{memberCardData.name_ar || memberCardData.name}</p>
+                        
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="text-xs text-gray-500">{language === 'ar' ? 'رقم العضوية:' : 'ID:'}</span>
+                          <span className="font-bold text-orange-600 text-lg">#{memberCardData.member_code || '---'}</span>
+                        </div>
+                        
+                        <div className="flex items-center gap-2 mb-2">
+                          <span className="text-xs text-gray-500">{language === 'ar' ? 'الجوال:' : 'Phone:'}</span>
+                          <span className="text-sm" dir="ltr">{memberCardData.phone || '-'}</span>
+                        </div>
                         
                         {/* Activities */}
                         {memberCardData.activities?.length > 0 && (
-                          <div className="bg-white/10 rounded-lg p-2 text-xs">
-                            <p className="text-white/70 mb-1">{language === 'ar' ? 'الأنشطة' : 'Activities'}</p>
+                          <div className="border-t border-dashed pt-2">
+                            <p className="text-xs text-gray-500 mb-1">{language === 'ar' ? 'الأنشطة المسجلة' : 'Activities'}</p>
                             {memberCardData.activities.slice(0, 2).map((act, idx) => (
-                              <div key={idx} className="mb-1">
-                                <span className="font-medium">{act.activity_name}</span>
-                                {act.schedule && <span className="text-white/60 text-[10px] block">{act.schedule}</span>}
+                              <div 
+                                key={idx} 
+                                className={`text-xs px-2 py-1 rounded mb-1 ${
+                                  act.status === 'active' 
+                                    ? 'bg-green-100 border-r-2 border-green-500' 
+                                    : 'bg-red-100 border-r-2 border-red-500'
+                                }`}
+                              >
+                                <span className="font-medium">{act.status === 'active' ? '✓' : '✗'} {act.activity_name}</span>
+                                <span className={`float-left font-bold ${act.status === 'active' ? 'text-green-600' : 'text-red-600'}`}>
+                                  {act.status === 'active' ? 'ساري' : 'منتهي'}
+                                </span>
                               </div>
                             ))}
                           </div>
                         )}
                       </div>
                     </div>
+                    
+                    {/* Footer - Terms */}
+                    <div className="bg-gray-50 px-4 py-2 border-t border-dashed text-[10px] text-gray-600">
+                      <p className="font-bold text-gray-700 mb-1">شروط وأحكام:</p>
+                      <p>• الاشتراك محدد البداية والنهاية ولا يتم تعويض حصص غياب المشترك</p>
+                      <p>• المبلغ المدفوع لا يسترد بعد مرور أسبوع من الاشتراك</p>
+                    </div>
                   </div>
                   
                   {/* Logo Card */}
-                  <div className="w-[340px] h-[227px] rounded-xl border-2 border-dashed border-gray-300 bg-white flex items-center justify-center">
+                  <div className="w-[340px] h-[280px] rounded-xl border-2 border-dashed border-gray-300 bg-white flex items-center justify-center">
                     <img src="/logo.png" alt="Logo" className="max-w-[80%] max-h-[80%] object-contain" onError={(e) => e.target.style.display='none'} />
                   </div>
                 </div>
                 
-                {/* Member Info */}
+                {/* Member Info Summary */}
                 <div className="grid grid-cols-2 gap-4 p-4 bg-gray-50 rounded-lg text-sm">
                   <div>
                     <span className="text-gray-500">{language === 'ar' ? 'الاسم:' : 'Name:'}</span>
@@ -2107,7 +2153,7 @@ export const MembersPage = () => {
               <Button variant="outline" onClick={() => setIsMemberCardDialogOpen(false)}>
                 {language === 'ar' ? 'إغلاق' : 'Close'}
               </Button>
-              <Button onClick={printMemberCard} className="gap-2">
+              <Button onClick={printMemberCard} className="gap-2 bg-orange-500 hover:bg-orange-600">
                 <Printer className="w-4 h-4" />
                 {language === 'ar' ? 'طباعة البطاقة' : 'Print Card'}
               </Button>
