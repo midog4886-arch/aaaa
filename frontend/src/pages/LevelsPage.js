@@ -195,6 +195,54 @@ export const LevelsPage = () => {
     }));
   };
 
+  // Navigate to time slots view
+  const navigateToTimes = (activityId) => {
+    setSelectedActivityId(activityId);
+    setCurrentView('times');
+  };
+
+  // Navigate to levels view
+  const navigateToLevels = (activityId, timeSlot) => {
+    setSelectedActivityId(activityId);
+    setSelectedTimeSlotKey(timeSlot);
+    setCurrentView('levels');
+  };
+
+  // Go back navigation
+  const goBack = () => {
+    if (currentView === 'levels') {
+      setCurrentView('times');
+      setSelectedTimeSlotKey(null);
+    } else if (currentView === 'times') {
+      setCurrentView('activities');
+      setSelectedActivityId(null);
+    }
+  };
+
+  // Go to home (activities view)
+  const goHome = () => {
+    setCurrentView('activities');
+    setSelectedActivityId(null);
+    setSelectedTimeSlotKey(null);
+  };
+
+  // Get current activity info
+  const getCurrentActivity = () => {
+    return getMainActivityInfo(selectedActivityId);
+  };
+
+  // Get time slots for selected activity
+  const getTimeSlotsForActivity = (activityId) => {
+    const activityLevels = groupedLevels[activityId] || {};
+    return Object.keys(activityLevels);
+  };
+
+  // Get levels for selected time slot
+  const getLevelsForTimeSlot = (activityId, timeSlot) => {
+    const activityLevels = groupedLevels[activityId] || {};
+    return activityLevels[timeSlot] || [];
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!formData.activity_name.trim()) {
