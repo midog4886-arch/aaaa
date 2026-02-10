@@ -1066,7 +1066,7 @@ export const MembersPage = () => {
                             <SelectItem value="none">{language === 'ar' ? '-- بدون نشاط --' : '-- No Activity --'}</SelectItem>
                             {activities.map(activity => (
                               <SelectItem key={activity.id} value={activity.id}>
-                                {activity.name}
+                                {language === 'ar' ? activity.name_ar : activity.name}
                               </SelectItem>
                             ))}
                           </SelectContent>
