@@ -51,6 +51,8 @@ export const MembersPage = () => {
   const [isViewDialogOpen, setIsViewDialogOpen] = useState(false);
   const [isActivityDialogOpen, setIsActivityDialogOpen] = useState(false);
   const [isRenewalDialogOpen, setIsRenewalDialogOpen] = useState(false);
+  const [isMemberCardDialogOpen, setIsMemberCardDialogOpen] = useState(false);
+  const [memberCardData, setMemberCardData] = useState(null);
   const [selectedMember, setSelectedMember] = useState(null);
   const [saving, setSaving] = useState(false);
   const [memberInvoices, setMemberInvoices] = useState([]);
