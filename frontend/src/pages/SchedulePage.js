@@ -139,17 +139,22 @@ export default function SchedulePage() {
     try {
       const params = {};
       if (selectedBranchId) params.branch_id = selectedBranchId;
-      const [activitiesRes] = await Promise.all([
+      const branchParams = selectedBranchId ? { branch_filter: selectedBranchId } : {};
+      
+      const [activitiesRes, activitiesListRes] = await Promise.all([
         schedulesAPI.getActivitiesWithMembers(params),
+        activitiesAPI.getAll(branchParams), // Fetch activities from Activities page
         fetchLevels()
       ]);
       // API returns array directly
       const data = Array.isArray(activitiesRes.data) ? activitiesRes.data : [];
       setActivitiesData(data);
+      setActivitiesList(activitiesListRes.data || []); // Store activities list
     } catch (error) {
       console.error('Error fetching activities:', error);
       toast.error(t('خطأ في جلب البيانات', 'Error fetching data'));
       setActivitiesData([]);
+      setActivitiesList([]);
     } finally {
       setLoading(false);
     }
