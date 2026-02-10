@@ -136,14 +136,16 @@ export const MembersPage = () => {
   const loadData = async () => {
     try {
       const branchParams = selectedBranchId && selectedBranchId !== 'all' ? { branch_filter: selectedBranchId } : {};
-      const [membersRes, activitiesRes, coachesRes] = await Promise.all([
+      const [membersRes, activitiesRes, coachesRes, levelsRes] = await Promise.all([
         membersAPI.getAll(branchParams),
         activitiesAPI.getAll(),
-        coachesAPI.getAll()
+        coachesAPI.getAll(),
+        levelsAPI.getAll()
       ]);
       setMembers(membersRes.data);
       setActivities(activitiesRes.data);
       setCoaches(coachesRes.data);
+      setLevels(levelsRes.data);
     } catch (error) {
       console.error('Failed to load data:', error);
       toast.error(t('error'));
