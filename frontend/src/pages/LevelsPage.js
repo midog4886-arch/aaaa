@@ -384,6 +384,52 @@ export const LevelsPage = () => {
     setIsActivityEditDialogOpen(false);
   };
 
+  // ========== Add New Time Slot ==========
+  
+  // Open dialog to add new time slot
+  const openAddTimeSlotDialog = () => {
+    setNewTimeSlotName('');
+    setIsAddTimeSlotDialogOpen(true);
+  };
+
+  // Create a new time slot with a default level
+  const handleAddNewTimeSlot = async () => {
+    if (!newTimeSlotName.trim()) {
+      toast.error(t('أدخل اسم الساعة', 'Enter time slot name'));
+      return;
+    }
+    
+    if (!selectedActivityId) {
+      toast.error(t('اختر نشاط أولاً', 'Select an activity first'));
+      return;
+    }
+    
+    setSaving(true);
+    try {
+      // Create a new level with this time slot
+      const activity = getMainActivityInfo(selectedActivityId);
+      const newLevel = {
+        level_number: 1,
+        activity_name: newTimeSlotName.trim(),
+        main_activity: selectedActivityId,
+        branch_id: selectedBranchId || 'all',
+        capacity: selectedActivityId === 'swimming' ? 6 : 10,
+        members: []
+      };
+      
+      await levelsAPI.create(newLevel);
+      
+      toast.success(t(`تم إضافة "${newTimeSlotName}" بنجاح`, `"${newTimeSlotName}" added successfully`));
+      setIsAddTimeSlotDialogOpen(false);
+      setNewTimeSlotName('');
+      loadData();
+    } catch (error) {
+      toast.error(t('فشل في إضافة الساعة', 'Failed to add time slot'));
+    } finally {
+      setSaving(false);
+    }
+  };
+
   // ========== Drag and Drop Functions ==========
   
   // Start dragging a member
