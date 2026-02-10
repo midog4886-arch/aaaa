@@ -1577,6 +1577,43 @@ export const LevelsPage = () => {
             </DialogFooter>
           </DialogContent>
         </Dialog>
+
+        {/* Add New Time Slot Dialog */}
+        <Dialog open={isAddTimeSlotDialogOpen} onOpenChange={setIsAddTimeSlotDialogOpen}>
+          <DialogContent className="max-w-sm">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <Clock className="w-5 h-5 text-primary" />
+                {t('إضافة ساعة جديدة', 'Add New Time Slot')}
+              </DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div>
+                <Label>{t('اسم الساعة / الوقت', 'Time Slot Name')} *</Label>
+                <Input
+                  value={newTimeSlotName}
+                  onChange={(e) => setNewTimeSlotName(e.target.value)}
+                  placeholder={t('مثال: الساعة 4، صباحي، مسائي', 'e.g. 4 PM, Morning, Evening')}
+                  className="mt-1"
+                  dir="rtl"
+                  autoFocus
+                />
+                <p className="text-xs text-gray-400 mt-2">
+                  {t('سيتم إنشاء المستوى 1 تلقائياً مع هذه الساعة', 'Level 1 will be created automatically with this time slot')}
+                </p>
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setIsAddTimeSlotDialogOpen(false)}>
+                {t('إلغاء', 'Cancel')}
+              </Button>
+              <Button onClick={handleAddNewTimeSlot} disabled={saving}>
+                {saving && <Loader2 className="w-4 h-4 me-2 animate-spin" />}
+                {t('إضافة', 'Add')}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
     </Layout>
   );
