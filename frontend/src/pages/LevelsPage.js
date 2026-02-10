@@ -1474,6 +1474,59 @@ export const LevelsPage = () => {
             </DialogFooter>
           </DialogContent>
         </Dialog>
+
+        {/* Edit Activity Name Dialog */}
+        <Dialog open={isActivityEditDialogOpen} onOpenChange={setIsActivityEditDialogOpen}>
+          <DialogContent className="max-w-sm">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <Layers className="w-5 h-5 text-primary" />
+                {t('تعديل اسم النشاط', 'Edit Activity Name')}
+              </DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div>
+                <Label>{t('الأيقونة', 'Icon')}</Label>
+                <Input
+                  value={editingActivity.icon}
+                  onChange={(e) => setEditingActivity({ ...editingActivity, icon: e.target.value })}
+                  placeholder="🏊"
+                  className="mt-1 text-2xl text-center"
+                  maxLength={2}
+                />
+                <p className="text-xs text-gray-400 mt-1">{t('أدخل إيموجي واحد', 'Enter one emoji')}</p>
+              </div>
+              <div>
+                <Label>{t('الاسم بالعربي', 'Arabic Name')} *</Label>
+                <Input
+                  value={editingActivity.name_ar}
+                  onChange={(e) => setEditingActivity({ ...editingActivity, name_ar: e.target.value })}
+                  placeholder={t('مثال: السباحة', 'e.g. Swimming')}
+                  className="mt-1"
+                  dir="rtl"
+                />
+              </div>
+              <div>
+                <Label>{t('الاسم بالإنجليزي', 'English Name')}</Label>
+                <Input
+                  value={editingActivity.name_en}
+                  onChange={(e) => setEditingActivity({ ...editingActivity, name_en: e.target.value })}
+                  placeholder="Swimming"
+                  className="mt-1"
+                  dir="ltr"
+                />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setIsActivityEditDialogOpen(false)}>
+                {t('إلغاء', 'Cancel')}
+              </Button>
+              <Button onClick={handleSaveActivityEdit}>
+                {t('حفظ', 'Save')}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
     </Layout>
   );
