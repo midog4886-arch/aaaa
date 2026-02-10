@@ -580,13 +580,14 @@ export const MembersPage = () => {
                     <th>{t('guardian_name')}</th>
                     <th>{t('phone')}</th>
                     <th>{language === 'ar' ? 'الأنشطة وحالتها' : 'Activities & Status'}</th>
+                    <th>{language === 'ar' ? 'ملاحظات' : 'Notes'}</th>
                     <th></th>
                   </tr>
                 </thead>
                 <tbody>
                   {filteredMembers.length === 0 ? (
                     <tr>
-                      <td colSpan={6} className="text-center py-8 text-muted-foreground">
+                      <td colSpan={7} className="text-center py-8 text-muted-foreground">
                         {t('no_data')}
                       </td>
                     </tr>
@@ -639,6 +640,15 @@ export const MembersPage = () => {
                               <span className="text-muted-foreground text-sm">{language === 'ar' ? 'لا يوجد أنشطة' : 'No activities'}</span>
                             )}
                           </div>
+                        </td>
+                        <td className="max-w-[150px]">
+                          {member.notes ? (
+                            <span className="text-sm text-gray-600 truncate block" title={member.notes}>
+                              {member.notes.length > 30 ? member.notes.substring(0, 30) + '...' : member.notes}
+                            </span>
+                          ) : (
+                            <span className="text-muted-foreground text-sm">-</span>
+                          )}
                         </td>
                         <td>
                           <div className="action-buttons">
