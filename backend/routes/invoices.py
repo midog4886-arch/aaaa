@@ -75,9 +75,9 @@ async def get_invoices(
     status: Optional[str] = None,
     invoice_number: Optional[str] = None,
     phone: Optional[str] = None,
-    activity: Optional[str] = None,
-    date_from: Optional[str] = None,
-    date_to: Optional[str] = None,
+    activity_id: Optional[str] = None,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
     branch_filter: Optional[str] = None,
     current_user: dict = Depends(get_current_user)
 ):
@@ -98,20 +98,83 @@ async def get_invoices(
     if status:
         query["status"] = status
     if invoice_number:
-        query["invoice_number"] = {"$regex": invoice_number, "$options": "i"}
+        query["id"] = {"$regex": invoice_number, "$options": "i"}
     if phone:
-        query["customer_phone"] = {"$regex": phone, "$options": "i"}
-    if activity:
-        query["items.activity_name"] = {"$regex": activity, "$options": "i"}
-    if date_from:
-        query["created_at"] = {"$gte": date_from}
-    if date_to:
+        query["customer_phone"] = {"$regex": phone}
+    if activity_id:
+        query["items.activity_id"] = activity_id
+    if start_date:
+        query["created_at"] = {"$gte": start_date}
+    if end_date:
         if "created_at" in query:
-            query["created_at"]["$lte"] = date_to + "T23:59:59"
+            query["created_at"]["$lte"] = end_date
         else:
-            query["created_at"] = {"$lte": date_to + "T23:59:59"}
+            query["created_at"] = {"$lte": end_date}
     
     invoices = await db.invoices.find(query, {"_id": 0}).sort("created_at", -1).to_list(1000)
+    
+    # Enrich invoices with member_code for legacy invoices that don't have it
+    member_ids = list(set([inv.get("member_id") for inv in invoices if inv.get("member_id") and not inv.get("member_code")]))
+    if member_ids:
+        members = await db.members.find({"id": {"$in": member_ids}}, {"id": 1, "member_code": 1, "_id": 0}).to_list(len(member_ids))
+        member_codes = {m["id"]: m.get("member_code", "") for m in members}
+        for inv in invoices:
+            if inv.get("member_id") and not inv.get("member_code"):
+                inv["member_code"] = member_codes.get(inv["member_id"], "")
+    
+    return invoices
+
+@router.get("/search")
+async def search_invoices(
+    q: Optional[str] = None,
+    status: Optional[str] = None,
+    activity_id: Optional[str] = None,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    branch_filter: Optional[str] = None,
+    current_user: dict = Depends(get_current_user)
+):
+    """Search invoices with member name"""
+    is_admin = current_user.get("is_admin", False)
+    branch_id = current_user.get("branch_id")
+    
+    query = {}
+    if is_admin and branch_filter and branch_filter != "all":
+        query["branch_id"] = branch_filter
+    elif not is_admin and branch_id:
+        query["branch_id"] = branch_id
+    
+    if q:
+        query["$or"] = [
+            {"id": {"$regex": q, "$options": "i"}},
+            {"member_name": {"$regex": q, "$options": "i"}},
+            {"customer_phone": {"$regex": q}},
+            {"customer_name": {"$regex": q, "$options": "i"}},
+            {"customer_name_ar": {"$regex": q}}
+        ]
+    if status:
+        query["status"] = status
+    if activity_id:
+        query["items.activity_id"] = activity_id
+    if start_date:
+        query["created_at"] = {"$gte": start_date}
+    if end_date:
+        if "created_at" in query:
+            query["created_at"]["$lte"] = end_date
+        else:
+            query["created_at"] = {"$lte": end_date}
+    
+    invoices = await db.invoices.find(query, {"_id": 0}).sort("created_at", -1).to_list(1000)
+    
+    # Enrich invoices with member_code
+    member_ids = list(set([inv.get("member_id") for inv in invoices if inv.get("member_id") and not inv.get("member_code")]))
+    if member_ids:
+        members = await db.members.find({"id": {"$in": member_ids}}, {"id": 1, "member_code": 1, "_id": 0}).to_list(len(member_ids))
+        member_codes = {m["id"]: m.get("member_code", "") for m in members}
+        for inv in invoices:
+            if inv.get("member_id") and not inv.get("member_code"):
+                inv["member_code"] = member_codes.get(inv["member_id"], "")
+    
     return invoices
 
 @router.get("/{invoice_id}", response_model=Invoice)
