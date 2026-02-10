@@ -409,286 +409,498 @@ export const LevelsPage = () => {
     );
   }
 
+  // Render a level card component
+  const renderLevelCard = (level, activityId) => {
+    const memberCount = (level.members || []).length;
+    const maxCapacity = activityId === 'swimming' ? 6 : (level.capacity || 10);
+    const isFull = memberCount >= maxCapacity;
+    const levelMembers = getLevelMembers(level);
+    
+    return (
+      <div 
+        key={level.id}
+        className={`border rounded-xl overflow-hidden shadow-sm hover:shadow-lg transition-all duration-300 ${isFull ? 'border-red-300 bg-red-50/30' : 'bg-white'}`}
+        data-testid={`level-card-${level.id}`}
+      >
+        {/* Level Header */}
+        <div className={`${getLevelColor(level.level_number)} text-white p-3 flex items-center justify-between`}>
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center">
+              <span className="text-2xl font-bold">{level.level_number}</span>
+            </div>
+            <div>
+              <span className="text-sm opacity-90">{t('المستوى', 'Level')}</span>
+              <p className="text-xs opacity-75">{level.activity_name}</p>
+            </div>
+          </div>
+          <div className="flex gap-1">
+            <Button
+              size="icon"
+              variant="ghost"
+              className="h-8 w-8 text-white hover:bg-white/20"
+              onClick={() => handleEdit(level)}
+              data-testid={`edit-level-${level.id}`}
+            >
+              <Edit className="w-4 h-4" />
+            </Button>
+            <Button
+              size="icon"
+              variant="ghost"
+              className="h-8 w-8 text-white hover:bg-white/20"
+              onClick={() => handleDelete(level)}
+              data-testid={`delete-level-${level.id}`}
+            >
+              <Trash2 className="w-4 h-4" />
+            </Button>
+          </div>
+        </div>
+        
+        {/* Level Content */}
+        <div className="p-3">
+          {/* Capacity Bar */}
+          <div className="mb-3">
+            <div className="flex items-center justify-between text-sm mb-1">
+              <span className={`font-medium ${isFull ? 'text-red-600' : 'text-gray-700'}`}>
+                {memberCount}/{maxCapacity} {t('لاعب', 'players')}
+              </span>
+              {isFull && (
+                <Badge variant="destructive" className="text-xs gap-1">
+                  <AlertTriangle className="w-3 h-3" />
+                  {t('ممتلئ', 'Full')}
+                </Badge>
+              )}
+            </div>
+            <div className="w-full bg-gray-200 rounded-full h-2.5">
+              <div 
+                className={`h-2.5 rounded-full transition-all duration-500 ${isFull ? 'bg-red-500' : 'bg-gradient-to-r from-green-400 to-green-600'}`}
+                style={{ width: `${Math.min((memberCount / maxCapacity) * 100, 100)}%` }}
+              />
+            </div>
+          </div>
+          
+          {/* Members Preview */}
+          <div className="space-y-1.5 max-h-32 overflow-y-auto mb-3 scrollbar-thin">
+            {levelMembers.length === 0 ? (
+              <p className="text-center text-gray-400 py-3 text-sm">
+                {t('لا يوجد لاعبين', 'No players')}
+              </p>
+            ) : (
+              <>
+                {levelMembers.slice(0, 5).map(member => (
+                  <div 
+                    key={member.id}
+                    className="flex items-center gap-2 p-2 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors"
+                  >
+                    <div className={`w-7 h-7 rounded-full ${getLevelColor(level.level_number)} text-white flex items-center justify-center text-xs font-bold shadow-sm`}>
+                      {(member.name_ar || member.name || '?').charAt(0)}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium text-sm truncate">{member.name_ar || member.name}</p>
+                    </div>
+                    <Badge variant="outline" className="text-[10px] px-1.5">
+                      #{member.member_code}
+                    </Badge>
+                  </div>
+                ))}
+                {levelMembers.length > 5 && (
+                  <p className="text-center text-gray-500 text-xs py-1 bg-gray-50 rounded-lg">
+                    +{levelMembers.length - 5} {t('آخرين', 'more')}
+                  </p>
+                )}
+              </>
+            )}
+          </div>
+          
+          {/* Manage Button */}
+          <Button
+            variant="outline"
+            onClick={() => openMembersDialog(level)}
+            className="w-full gap-2 h-9"
+            data-testid={`manage-members-${level.id}`}
+          >
+            <UserPlus className="w-4 h-4" />
+            {t('إدارة الأعضاء', 'Manage Members')}
+          </Button>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <Layout>
       <div className="p-4 md:p-6 max-w-6xl mx-auto" data-testid="levels-page">
-        {/* Header */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
-          <div>
-            <h1 className="text-xl md:text-2xl font-bold text-gray-800 flex items-center gap-2">
-              <Layers className="w-6 h-6 text-primary" />
-              {t('المستويات', 'Levels')}
-            </h1>
-            <p className="text-gray-500 text-sm mt-1">
-              {t('إدارة مستويات اللاعبين حسب النشاط والساعة', 'Manage player levels by activity and time')}
-            </p>
+        {/* Header with Breadcrumb */}
+        <div className="mb-6">
+          {/* Breadcrumb Navigation */}
+          {currentView !== 'activities' && (
+            <div className="flex items-center gap-2 mb-4 text-sm">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={goHome}
+                className="gap-1 text-gray-600 hover:text-primary"
+                data-testid="breadcrumb-home"
+              >
+                <Home className="w-4 h-4" />
+                {t('الأنشطة', 'Activities')}
+              </Button>
+              
+              {currentView === 'times' && selectedActivityId && (
+                <>
+                  <ChevronRight className="w-4 h-4 text-gray-400 rtl:rotate-180" />
+                  <span className="font-medium text-primary flex items-center gap-1">
+                    <span>{getCurrentActivity().icon}</span>
+                    {language === 'ar' ? getCurrentActivity().name_ar : getCurrentActivity().name_en}
+                  </span>
+                </>
+              )}
+              
+              {currentView === 'levels' && selectedActivityId && (
+                <>
+                  <ChevronRight className="w-4 h-4 text-gray-400 rtl:rotate-180" />
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setCurrentView('times')}
+                    className="gap-1 text-gray-600 hover:text-primary"
+                    data-testid="breadcrumb-times"
+                  >
+                    <span>{getCurrentActivity().icon}</span>
+                    {language === 'ar' ? getCurrentActivity().name_ar : getCurrentActivity().name_en}
+                  </Button>
+                  <ChevronRight className="w-4 h-4 text-gray-400 rtl:rotate-180" />
+                  <span className="font-medium text-primary flex items-center gap-1">
+                    <Clock className="w-4 h-4" />
+                    {selectedTimeSlotKey}
+                  </span>
+                </>
+              )}
+            </div>
+          )}
+          
+          {/* Main Header */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              {currentView !== 'activities' && (
+                <Button
+                  variant="outline"
+                  size="icon"
+                  onClick={goBack}
+                  className="shrink-0"
+                  data-testid="back-button"
+                >
+                  {language === 'ar' ? <ArrowRight className="w-4 h-4" /> : <ArrowLeft className="w-4 h-4" />}
+                </Button>
+              )}
+              <div>
+                <h1 className="text-xl md:text-2xl font-bold text-gray-800 flex items-center gap-2">
+                  <Layers className="w-6 h-6 text-primary" />
+                  {currentView === 'activities' && t('المستويات', 'Levels')}
+                  {currentView === 'times' && (
+                    <>
+                      <span>{getCurrentActivity().icon}</span>
+                      {language === 'ar' ? getCurrentActivity().name_ar : getCurrentActivity().name_en}
+                    </>
+                  )}
+                  {currentView === 'levels' && selectedTimeSlotKey}
+                </h1>
+                <p className="text-gray-500 text-sm mt-1">
+                  {currentView === 'activities' && t('اختر النشاط لعرض الأوقات والمستويات', 'Select an activity to view times and levels')}
+                  {currentView === 'times' && t('اختر الوقت لعرض المستويات', 'Select a time to view levels')}
+                  {currentView === 'levels' && t('إدارة اللاعبين في كل مستوى', 'Manage players in each level')}
+                </p>
+              </div>
+            </div>
+            <Button 
+              onClick={() => { 
+                if (currentView === 'levels' && selectedActivityId && selectedTimeSlotKey) {
+                  handleAddNewLevel(selectedActivityId, selectedTimeSlotKey);
+                } else if (currentView === 'times' && selectedActivityId) {
+                  handleAddNewLevel(selectedActivityId, '');
+                } else {
+                  resetForm(); 
+                  setIsDialogOpen(true);
+                }
+              }} 
+              className="gap-2"
+              data-testid="add-level-btn"
+            >
+              <Plus className="w-4 h-4" />
+              {t('إضافة مستوى', 'Add Level')}
+            </Button>
           </div>
-          <Button onClick={() => { resetForm(); setIsDialogOpen(true); }} className="gap-2">
-            <Plus className="w-4 h-4" />
-            {t('إضافة مستوى', 'Add Level')}
-          </Button>
         </div>
 
-        {/* Main Activities */}
-        <div className="space-y-4">
-          {MAIN_ACTIVITIES.map(activity => {
-            const activityLevels = groupedLevels[activity.id] || {};
-            const timeSlots = Object.keys(activityLevels);
-            const totalLevels = timeSlots.reduce((sum, slot) => sum + activityLevels[slot].length, 0);
-            const totalMembers = timeSlots.reduce((sum, slot) => 
-              sum + activityLevels[slot].reduce((s, l) => s + (l.members || []).length, 0), 0);
-            const isExpanded = expandedActivities[activity.id];
-            
-            return (
-              <Card key={activity.id} className="overflow-hidden">
-                {/* Activity Header */}
-                <div 
-                  className={`${activity.color} text-white p-4 cursor-pointer hover:opacity-90 transition-opacity`}
-                  onClick={() => toggleActivity(activity.id)}
+        {/* VIEW: Activities (Main View) */}
+        {currentView === 'activities' && (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4" data-testid="activities-view">
+            {MAIN_ACTIVITIES.map(activity => {
+              const activityLevels = groupedLevels[activity.id] || {};
+              const timeSlots = Object.keys(activityLevels);
+              const totalLevels = timeSlots.reduce((sum, slot) => sum + activityLevels[slot].length, 0);
+              const totalMembers = timeSlots.reduce((sum, slot) => 
+                sum + activityLevels[slot].reduce((s, l) => s + (l.members || []).length, 0), 0);
+              
+              return (
+                <Card 
+                  key={activity.id} 
+                  className={`overflow-hidden cursor-pointer hover:shadow-xl transition-all duration-300 transform hover:scale-[1.02] border-2 border-transparent hover:border-${activity.color.replace('bg-', '')}`}
+                  onClick={() => navigateToTimes(activity.id)}
+                  data-testid={`activity-card-${activity.id}`}
                 >
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <span className="text-3xl">{activity.icon}</span>
-                      <div>
-                        <h2 className="font-bold text-xl">
-                          {language === 'ar' ? activity.name_ar : activity.name_en}
-                        </h2>
-                        <div className="flex gap-3 text-sm opacity-90 mt-1">
-                          <span>{timeSlots.length} {t('أوقات', 'time slots')}</span>
-                          <span>•</span>
-                          <span>{totalLevels} {t('مستويات', 'levels')}</span>
-                          <span>•</span>
-                          <span>{totalMembers} {t('لاعب', 'players')}</span>
-                        </div>
+                  <div className={`${activity.color} text-white p-6`}>
+                    <div className="flex items-center justify-between">
+                      <span className="text-5xl">{activity.icon}</span>
+                      <div className={`p-2 rounded-full bg-white/20`}>
+                        {language === 'ar' ? <ArrowLeft className="w-6 h-6" /> : <ArrowRight className="w-6 h-6" />}
                       </div>
                     </div>
-                    <div className="flex items-center gap-2">
-                      {activity.id === 'swimming' && (
-                        <Badge className="bg-white/20 text-white border-0">
-                          {t('الحد الأقصى 6 لاعبين', 'Max 6 players')}
-                        </Badge>
-                      )}
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        className="text-white hover:bg-white/20"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleAddNewLevel(activity.id, '');
-                        }}
-                      >
-                        <Plus className="w-5 h-5" />
-                      </Button>
-                      {isExpanded ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
+                    <h2 className="font-bold text-2xl mt-4">
+                      {language === 'ar' ? activity.name_ar : activity.name_en}
+                    </h2>
+                    {activity.id === 'swimming' && (
+                      <Badge className="bg-white/20 text-white border-0 mt-2">
+                        {t('الحد الأقصى 6 لاعبين', 'Max 6 players')}
+                      </Badge>
+                    )}
+                  </div>
+                  <CardContent className="p-4 bg-white">
+                    <div className="grid grid-cols-3 gap-2 text-center">
+                      <div className="p-2 bg-gray-50 rounded-lg">
+                        <p className="text-2xl font-bold text-gray-800">{timeSlots.length}</p>
+                        <p className="text-xs text-gray-500">{t('أوقات', 'Times')}</p>
+                      </div>
+                      <div className="p-2 bg-gray-50 rounded-lg">
+                        <p className="text-2xl font-bold text-gray-800">{totalLevels}</p>
+                        <p className="text-xs text-gray-500">{t('مستويات', 'Levels')}</p>
+                      </div>
+                      <div className="p-2 bg-gray-50 rounded-lg">
+                        <p className="text-2xl font-bold text-gray-800">{totalMembers}</p>
+                        <p className="text-xs text-gray-500">{t('لاعب', 'Players')}</p>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              );
+            })}
+
+            {/* Other Activities Card */}
+            {groupedLevels['other'] && Object.keys(groupedLevels['other']).length > 0 && (
+              <Card 
+                className="overflow-hidden cursor-pointer hover:shadow-xl transition-all duration-300"
+                onClick={() => navigateToTimes('other')}
+                data-testid="activity-card-other"
+              >
+                <div className="bg-gray-500 text-white p-6">
+                  <div className="flex items-center justify-between">
+                    <span className="text-5xl">📋</span>
+                    <div className="p-2 rounded-full bg-white/20">
+                      {language === 'ar' ? <ArrowLeft className="w-6 h-6" /> : <ArrowRight className="w-6 h-6" />}
                     </div>
                   </div>
+                  <h2 className="font-bold text-2xl mt-4">{t('أخرى', 'Other')}</h2>
                 </div>
-
-                {/* Time Slots */}
-                {isExpanded && (
-                  <CardContent className="p-4">
-                    {timeSlots.length > 0 ? (
-                      <div className="space-y-4">
-                        {timeSlots.map(timeSlot => {
-                          const slotLevels = activityLevels[timeSlot] || [];
-                          const slotKey = `${activity.id}-${timeSlot}`;
-                          const isSlotExpanded = expandedTimeSlots[slotKey] !== false; // Default expanded
-                          const slotMembers = slotLevels.reduce((sum, l) => sum + (l.members || []).length, 0);
-                          
-                          return (
-                            <div key={timeSlot} className="border rounded-lg overflow-hidden">
-                              {/* Time Slot Header */}
-                              <div 
-                                className="bg-gray-100 p-3 cursor-pointer hover:bg-gray-200 transition-colors flex items-center justify-between"
-                                onClick={() => toggleTimeSlot(activity.id, timeSlot)}
-                              >
-                                <div className="flex items-center gap-3">
-                                  <Clock className="w-5 h-5 text-gray-600" />
-                                  <span className="font-bold text-gray-800">{timeSlot}</span>
-                                  <Badge variant="secondary">
-                                    {slotLevels.length} {t('مستويات', 'levels')} • {slotMembers} {t('لاعب', 'players')}
-                                  </Badge>
-                                </div>
-                                <div className="flex items-center gap-2">
-                                  <Button
-                                    size="sm"
-                                    variant="outline"
-                                    className="gap-1"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      handleAddNewLevel(activity.id, timeSlot);
-                                    }}
-                                  >
-                                    <Plus className="w-4 h-4" />
-                                    {t('مستوى', 'Level')}
-                                  </Button>
-                                  {isSlotExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-                                </div>
-                              </div>
-
-                              {/* Levels Grid */}
-                              {isSlotExpanded && (
-                                <div className="p-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                                  {slotLevels.map(level => {
-                                    const memberCount = (level.members || []).length;
-                                    const maxCapacity = activity.id === 'swimming' ? 6 : (level.capacity || 10);
-                                    const isFull = memberCount >= maxCapacity;
-                                    const levelMembers = getLevelMembers(level);
-                                    
-                                    return (
-                                      <div 
-                                        key={level.id}
-                                        className={`border rounded-lg overflow-hidden shadow-sm hover:shadow-md transition-shadow ${isFull ? 'border-red-300' : ''}`}
-                                      >
-                                        {/* Level Header */}
-                                        <div className={`${getLevelColor(level.level_number)} text-white p-2 flex items-center justify-between`}>
-                                          <div className="flex items-center gap-2">
-                                            <span className="text-xl font-bold">{level.level_number}</span>
-                                            <span className="text-xs opacity-90">{t('المستوى', 'Level')}</span>
-                                          </div>
-                                          <div className="flex gap-1">
-                                            <Button
-                                              size="icon"
-                                              variant="ghost"
-                                              className="h-7 w-7 text-white hover:bg-white/20"
-                                              onClick={() => handleEdit(level)}
-                                            >
-                                              <Edit className="w-3 h-3" />
-                                            </Button>
-                                            <Button
-                                              size="icon"
-                                              variant="ghost"
-                                              className="h-7 w-7 text-white hover:bg-white/20"
-                                              onClick={() => handleDelete(level)}
-                                            >
-                                              <Trash2 className="w-3 h-3" />
-                                            </Button>
-                                          </div>
-                                        </div>
-                                        
-                                        {/* Level Content */}
-                                        <div className="p-2">
-                                          {/* Capacity Bar */}
-                                          <div className="mb-2">
-                                            <div className="flex items-center justify-between text-xs mb-1">
-                                              <span className={`font-medium ${isFull ? 'text-red-600' : 'text-gray-600'}`}>
-                                                {memberCount}/{maxCapacity} {t('لاعب', 'players')}
-                                              </span>
-                                              {isFull && (
-                                                <span className="text-red-600 flex items-center gap-1">
-                                                  <AlertTriangle className="w-3 h-3" />
-                                                  {t('ممتلئ', 'Full')}
-                                                </span>
-                                              )}
-                                            </div>
-                                            <div className="w-full bg-gray-200 rounded-full h-2">
-                                              <div 
-                                                className={`h-2 rounded-full transition-all ${isFull ? 'bg-red-500' : 'bg-green-500'}`}
-                                                style={{ width: `${Math.min((memberCount / maxCapacity) * 100, 100)}%` }}
-                                              />
-                                            </div>
-                                          </div>
-                                          
-                                          {/* Members Preview */}
-                                          <div className="space-y-1 max-h-24 overflow-y-auto mb-2">
-                                            {levelMembers.slice(0, 4).map(member => (
-                                              <div 
-                                                key={member.id}
-                                                className="flex items-center gap-1 p-1 bg-gray-50 rounded text-xs"
-                                              >
-                                                <div className={`w-5 h-5 rounded-full ${getLevelColor(level.level_number)} text-white flex items-center justify-center text-[10px] font-bold`}>
-                                                  {(member.name_ar || member.name || '?').charAt(0)}
-                                                </div>
-                                                <span className="flex-1 truncate text-xs">{member.name_ar || member.name}</span>
-                                                <span className="text-gray-400 text-[10px]">#{member.member_code}</span>
-                                              </div>
-                                            ))}
-                                            {levelMembers.length > 4 && (
-                                              <p className="text-center text-gray-400 text-[10px] py-0.5">
-                                                +{levelMembers.length - 4} {t('آخرين', 'more')}
-                                              </p>
-                                            )}
-                                          </div>
-                                          
-                                          {/* Manage Button */}
-                                          <Button
-                                            size="sm"
-                                            variant="outline"
-                                            onClick={() => openMembersDialog(level)}
-                                            className="w-full gap-1 h-7 text-xs"
-                                          >
-                                            <UserPlus className="w-3 h-3" />
-                                            {t('إدارة الأعضاء', 'Manage')}
-                                          </Button>
-                                        </div>
-                                      </div>
-                                    );
-                                  })}
-                                </div>
-                              )}
-                            </div>
-                          );
-                        })}
-                      </div>
-                    ) : (
-                      <div className="text-center py-8 text-gray-500">
-                        <Clock className="w-12 h-12 mx-auto mb-2 opacity-50" />
-                        <p>{t('لا توجد مستويات لهذا النشاط', 'No levels for this activity')}</p>
-                        <Button 
-                          variant="outline" 
-                          className="mt-3"
-                          onClick={() => handleAddNewLevel(activity.id, '')}
-                        >
-                          <Plus className="w-4 h-4 me-2" />
-                          {t('إضافة مستوى', 'Add Level')}
-                        </Button>
-                      </div>
-                    )}
-                  </CardContent>
-                )}
+                <CardContent className="p-4 bg-white">
+                  <div className="grid grid-cols-2 gap-2 text-center">
+                    <div className="p-2 bg-gray-50 rounded-lg">
+                      <p className="text-2xl font-bold text-gray-800">{Object.keys(groupedLevels['other']).length}</p>
+                      <p className="text-xs text-gray-500">{t('مستويات', 'Levels')}</p>
+                    </div>
+                    <div className="p-2 bg-gray-50 rounded-lg">
+                      <p className="text-2xl font-bold text-gray-800">
+                        {Object.values(groupedLevels['other']).flat().reduce((s, l) => s + (l.members || []).length, 0)}
+                      </p>
+                      <p className="text-xs text-gray-500">{t('لاعب', 'Players')}</p>
+                    </div>
+                  </div>
+                </CardContent>
               </Card>
-            );
-          })}
+            )}
+          </div>
+        )}
 
-          {/* Other Activities (if any) */}
-          {groupedLevels['other'] && Object.keys(groupedLevels['other']).length > 0 && (
-            <Card className="overflow-hidden">
-              <div className="bg-gray-500 text-white p-4">
-                <div className="flex items-center gap-3">
-                  <span className="text-3xl">📋</span>
-                  <h2 className="font-bold text-xl">{t('أخرى', 'Other')}</h2>
-                </div>
-              </div>
-              <CardContent className="p-4">
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                  {Object.entries(groupedLevels['other']).map(([name, lvls]) => 
-                    lvls.map(level => (
-                      <div key={level.id} className="border rounded-lg p-3">
-                        <div className="flex items-center justify-between mb-2">
-                          <span className="font-bold">{level.activity_name}</span>
-                          <Badge>{t('المستوى', 'Level')} {level.level_number}</Badge>
-                        </div>
-                        <div className="flex items-center justify-between">
-                          <span className="text-sm text-gray-600">
-                            {(level.members || []).length} {t('لاعب', 'players')}
-                          </span>
-                          <div className="flex gap-1">
-                            <Button size="sm" variant="outline" onClick={() => handleEdit(level)}>
-                              <Edit className="w-3 h-3" />
-                            </Button>
-                            <Button size="sm" variant="outline" onClick={() => openMembersDialog(level)}>
-                              <Users className="w-3 h-3" />
-                            </Button>
+        {/* VIEW: Time Slots */}
+        {currentView === 'times' && selectedActivityId && (
+          <div data-testid="times-view">
+            {(() => {
+              const activity = getCurrentActivity();
+              const timeSlots = getTimeSlotsForActivity(selectedActivityId);
+              
+              if (timeSlots.length === 0) {
+                return (
+                  <div className="text-center py-16">
+                    <div className={`w-24 h-24 mx-auto mb-4 rounded-full ${activity.color} flex items-center justify-center`}>
+                      <Clock className="w-12 h-12 text-white" />
+                    </div>
+                    <h3 className="text-xl font-bold text-gray-700 mb-2">
+                      {t('لا توجد أوقات', 'No Time Slots')}
+                    </h3>
+                    <p className="text-gray-500 mb-4">
+                      {t('لم يتم إضافة أوقات لهذا النشاط بعد', 'No time slots have been added for this activity yet')}
+                    </p>
+                    <Button onClick={() => handleAddNewLevel(selectedActivityId, '')} className="gap-2">
+                      <Plus className="w-4 h-4" />
+                      {t('إضافة مستوى جديد', 'Add New Level')}
+                    </Button>
+                  </div>
+                );
+              }
+              
+              return (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                  {timeSlots.map(timeSlot => {
+                    const slotLevels = getLevelsForTimeSlot(selectedActivityId, timeSlot);
+                    const slotMembers = slotLevels.reduce((sum, l) => sum + (l.members || []).length, 0);
+                    const maxCapacity = slotLevels.reduce((sum, l) => sum + (selectedActivityId === 'swimming' ? 6 : (l.capacity || 10)), 0);
+                    const fillPercentage = maxCapacity > 0 ? Math.round((slotMembers / maxCapacity) * 100) : 0;
+                    
+                    return (
+                      <Card 
+                        key={timeSlot}
+                        className="overflow-hidden cursor-pointer hover:shadow-xl transition-all duration-300 transform hover:scale-[1.02]"
+                        onClick={() => navigateToLevels(selectedActivityId, timeSlot)}
+                        data-testid={`time-card-${timeSlot}`}
+                      >
+                        <div className={`${activity.color} text-white p-4`}>
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                              <div className="p-2 rounded-full bg-white/20">
+                                <Clock className="w-6 h-6" />
+                              </div>
+                              <div>
+                                <h3 className="font-bold text-xl">{timeSlot}</h3>
+                                <p className="text-sm opacity-90">{slotLevels.length} {t('مستويات', 'levels')}</p>
+                              </div>
+                            </div>
+                            <div className="p-2 rounded-full bg-white/20">
+                              {language === 'ar' ? <ArrowLeft className="w-5 h-5" /> : <ArrowRight className="w-5 h-5" />}
+                            </div>
                           </div>
                         </div>
+                        <CardContent className="p-4">
+                          <div className="flex items-center justify-between mb-2">
+                            <span className="text-sm text-gray-600">
+                              <Users className="w-4 h-4 inline me-1" />
+                              {slotMembers} {t('لاعب', 'players')}
+                            </span>
+                            <Badge variant={fillPercentage >= 90 ? "destructive" : fillPercentage >= 70 ? "warning" : "secondary"}>
+                              {fillPercentage}%
+                            </Badge>
+                          </div>
+                          <div className="w-full bg-gray-200 rounded-full h-2">
+                            <div 
+                              className={`h-2 rounded-full transition-all ${
+                                fillPercentage >= 90 ? 'bg-red-500' : 
+                                fillPercentage >= 70 ? 'bg-yellow-500' : 'bg-green-500'
+                              }`}
+                              style={{ width: `${fillPercentage}%` }}
+                            />
+                          </div>
+                          <div className="mt-3 flex flex-wrap gap-1">
+                            {slotLevels.slice(0, 6).map(level => (
+                              <Badge 
+                                key={level.id} 
+                                className={`${getLevelColor(level.level_number)} text-white text-xs`}
+                              >
+                                {t('م', 'L')}{level.level_number}
+                              </Badge>
+                            ))}
+                            {slotLevels.length > 6 && (
+                              <Badge variant="outline" className="text-xs">
+                                +{slotLevels.length - 6}
+                              </Badge>
+                            )}
+                          </div>
+                        </CardContent>
+                      </Card>
+                    );
+                  })}
+                  
+                  {/* Add New Time Slot Card */}
+                  <Card 
+                    className="overflow-hidden cursor-pointer border-2 border-dashed border-gray-300 hover:border-primary hover:shadow-lg transition-all duration-300 bg-gray-50/50"
+                    onClick={() => handleAddNewLevel(selectedActivityId, '')}
+                    data-testid="add-time-slot-card"
+                  >
+                    <div className="p-8 flex flex-col items-center justify-center h-full min-h-[180px]">
+                      <div className="w-14 h-14 rounded-full bg-gray-200 flex items-center justify-center mb-3">
+                        <Plus className="w-7 h-7 text-gray-500" />
                       </div>
-                    ))
-                  )}
+                      <p className="font-medium text-gray-600">{t('إضافة مستوى جديد', 'Add New Level')}</p>
+                      <p className="text-sm text-gray-400 mt-1">{t('وقت جديد أو مستوى موجود', 'New time or existing level')}</p>
+                    </div>
+                  </Card>
                 </div>
-              </CardContent>
-            </Card>
-          )}
-        </div>
+              );
+            })()}
+          </div>
+        )}
+
+        {/* VIEW: Levels */}
+        {currentView === 'levels' && selectedActivityId && selectedTimeSlotKey && (
+          <div data-testid="levels-view">
+            {(() => {
+              const activity = getCurrentActivity();
+              const slotLevels = getLevelsForTimeSlot(selectedActivityId, selectedTimeSlotKey);
+              
+              if (slotLevels.length === 0) {
+                return (
+                  <div className="text-center py-16">
+                    <div className={`w-24 h-24 mx-auto mb-4 rounded-full ${activity.color} flex items-center justify-center`}>
+                      <Layers className="w-12 h-12 text-white" />
+                    </div>
+                    <h3 className="text-xl font-bold text-gray-700 mb-2">
+                      {t('لا توجد مستويات', 'No Levels')}
+                    </h3>
+                    <p className="text-gray-500 mb-4">
+                      {t('لم يتم إضافة مستويات لهذا الوقت بعد', 'No levels have been added for this time slot yet')}
+                    </p>
+                    <Button onClick={() => handleAddNewLevel(selectedActivityId, selectedTimeSlotKey)} className="gap-2">
+                      <Plus className="w-4 h-4" />
+                      {t('إضافة مستوى', 'Add Level')}
+                    </Button>
+                  </div>
+                );
+              }
+              
+              return (
+                <>
+                  {/* Summary Header */}
+                  <div className={`${activity.color} text-white p-4 rounded-xl mb-6`}>
+                    <div className="flex items-center justify-between flex-wrap gap-4">
+                      <div className="flex items-center gap-3">
+                        <span className="text-3xl">{activity.icon}</span>
+                        <div>
+                          <h3 className="font-bold text-lg">
+                            {language === 'ar' ? activity.name_ar : activity.name_en} - {selectedTimeSlotKey}
+                          </h3>
+                          <p className="text-sm opacity-90">
+                            {slotLevels.length} {t('مستويات', 'levels')} • {slotLevels.reduce((s, l) => s + (l.members || []).length, 0)} {t('لاعب', 'players')}
+                          </p>
+                        </div>
+                      </div>
+                      <Button 
+                        variant="secondary" 
+                        onClick={() => handleAddNewLevel(selectedActivityId, selectedTimeSlotKey)}
+                        className="gap-2"
+                      >
+                        <Plus className="w-4 h-4" />
+                        {t('مستوى جديد', 'New Level')}
+                      </Button>
+                    </div>
+                  </div>
+                  
+                  {/* Levels Grid */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {slotLevels.sort((a, b) => a.level_number - b.level_number).map(level => 
+                      renderLevelCard(level, selectedActivityId)
+                    )}
+                  </div>
+                </>
+              );
+            })()}
+          </div>
+        )}
 
         {/* Add/Edit Level Dialog */}
         <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
