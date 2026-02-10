@@ -1044,276 +1044,315 @@ export const MembersPage = () => {
                       {language === 'ar' ? 'النشاط (اختياري)' : 'Activity (Optional)'}
                     </h3>
                     
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                      {/* Activity Selection */}
-                      <div className="space-y-2">
-                        <Label>{language === 'ar' ? 'النشاط' : 'Activity'}</Label>
-                        <Select 
-                          value={activityForm.activity_id || 'none'} 
-                          onValueChange={(value) => {
-                            const activity = activities.find(a => a.id === value);
-                            setActivityForm({
-                              ...activityForm, 
-                              activity_id: value === 'none' ? '' : value,
-                              fee: activity ? activity.fee : ''
-                            });
-                          }}
-                        >
-                          <SelectTrigger>
-                            <SelectValue placeholder={language === 'ar' ? 'اختر النشاط' : 'Select activity'} />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="none">{language === 'ar' ? '-- بدون نشاط --' : '-- No Activity --'}</SelectItem>
-                            {activities.map(activity => (
-                              <SelectItem key={activity.id} value={activity.id}>
-                                {language === 'ar' ? activity.name_ar : activity.name}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      
-                      {/* Start Date */}
-                      <div className="space-y-2">
-                        <Label>{language === 'ar' ? 'تاريخ البداية' : 'Start Date'}</Label>
-                        <Input
-                          type="date"
-                          value={activityForm.start_date}
-                          onChange={(e) => setActivityForm({...activityForm, start_date: e.target.value})}
-                        />
-                      </div>
-                      
-                      {/* End Date */}
-                      <div className="space-y-2">
-                        <Label>{language === 'ar' ? 'تاريخ النهاية' : 'End Date'}</Label>
-                        <Input
-                          type="date"
-                          value={activityForm.end_date}
-                          onChange={(e) => setActivityForm({...activityForm, end_date: e.target.value})}
-                        />
-                      </div>
-                      
-                      {/* Training Days */}
-                      <div className="space-y-2">
-                        <Label>{language === 'ar' ? 'أيام التدريب' : 'Training Days'}</Label>
-                        <div className="flex flex-wrap gap-2">
-                          {[
-                            { en: 'Sun', ar: 'أحد' },
-                            { en: 'Mon', ar: 'إثنين' },
-                            { en: 'Tue', ar: 'ثلاثاء' },
-                            { en: 'Wed', ar: 'أربعاء' },
-                            { en: 'Thu', ar: 'خميس' },
-                            { en: 'Fri', ar: 'جمعة' },
-                            { en: 'Sat', ar: 'سبت' }
-                          ].map(day => (
-                            <button
-                              key={day.en}
-                              type="button"
-                              className={`px-2 py-1 text-xs rounded border transition-colors ${
-                                activityForm.training_days?.includes(day.en)
-                                  ? 'bg-primary text-white border-primary'
-                                  : 'bg-white text-gray-600 border-gray-300 hover:border-primary'
-                              }`}
-                              onClick={() => {
-                                const days = activityForm.training_days || [];
-                                if (days.includes(day.en)) {
-                                  setActivityForm({
-                                    ...activityForm,
-                                    training_days: days.filter(d => d !== day.en)
-                                  });
-                                } else {
-                                  setActivityForm({
-                                    ...activityForm,
-                                    training_days: [...days, day.en]
-                                  });
-                                }
-                              }}
-                            >
-                              {language === 'ar' ? day.ar : day.en}
-                            </button>
+                    {/* Activity Selection Dropdown */}
+                    <div className="space-y-2 mb-4">
+                      <Label>{language === 'ar' ? 'اختر النشاط' : 'Select Activity'}</Label>
+                      <Select 
+                        value={activityForm.activity_id || 'none'} 
+                        onValueChange={(value) => {
+                          const activity = activities.find(a => a.id === value);
+                          setActivityForm({
+                            ...activityForm, 
+                            activity_id: value === 'none' ? '' : value
+                          });
+                        }}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder={language === 'ar' ? '+ اختر نشاط لإضافته' : '+ Select activity to add'} />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="none">{language === 'ar' ? '-- بدون نشاط --' : '-- No Activity --'}</SelectItem>
+                          {activities.map(activity => (
+                            <SelectItem key={activity.id} value={activity.id}>
+                              {language === 'ar' ? activity.name_ar : activity.name}
+                            </SelectItem>
                           ))}
-                        </div>
-                      </div>
-                      
-                      {/* Training Time - Number input converted to time format */}
-                      <div className="space-y-2">
-                        <Label>{language === 'ar' ? 'وقت التدريب (ساعة)' : 'Training Time (Hour)'}</Label>
-                        <div className="flex items-center gap-2">
-                          <Input
-                            type="number"
-                            min="1"
-                            max="12"
-                            placeholder={language === 'ar' ? 'مثال: 4' : 'e.g. 4'}
-                            value={activityForm.training_hour || ''}
-                            onChange={(e) => {
-                              const hour = parseInt(e.target.value) || '';
-                              setActivityForm({
-                                ...activityForm, 
-                                training_hour: hour,
-                                training_time: hour ? `${hour}:00` : ''
-                              });
-                            }}
-                            className="w-24"
-                          />
-                          <Select 
-                            value={activityForm.training_period || 'pm'} 
-                            onValueChange={(val) => setActivityForm({...activityForm, training_period: val})}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    
+                    {/* Activity Details - Show only when activity is selected */}
+                    {activityForm.activity_id && (
+                      <div className="p-4 bg-muted/50 rounded-lg border space-y-4">
+                        <div className="flex items-center justify-between">
+                          <p className="font-medium">
+                            {(() => {
+                              const activity = activities.find(a => a.id === activityForm.activity_id);
+                              return language === 'ar' ? activity?.name_ar : activity?.name;
+                            })()}
+                          </p>
+                          <Button 
+                            type="button" 
+                            variant="ghost" 
+                            size="icon" 
+                            onClick={() => setActivityForm({...activityForm, activity_id: '', training_days: [], training_time: '', level_id: ''})} 
+                            className="text-destructive h-8 w-8"
                           >
-                            <SelectTrigger className="w-28">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="am">{language === 'ar' ? 'صباحاً' : 'AM'}</SelectItem>
-                              <SelectItem value="pm">{language === 'ar' ? 'مساءً' : 'PM'}</SelectItem>
-                            </SelectContent>
-                          </Select>
-                          {activityForm.training_hour && (
-                            <span className="text-sm text-muted-foreground">
-                              ({activityForm.training_hour}:00 {activityForm.training_period === 'am' ? (language === 'ar' ? 'صباحاً' : 'AM') : (language === 'ar' ? 'مساءً' : 'PM')})
-                            </span>
-                          )}
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
                         </div>
-                      </div>
-                      
-                      {/* Level Selection - Cascading */}
-                      <div className="space-y-2 sm:col-span-2">
-                        <Label>{language === 'ar' ? 'المستوى' : 'Level'}</Label>
                         
-                        {!memberLevelSelectorState ? (
-                          <div>
-                            {activityForm.level_id ? (
-                              <div className="flex items-center justify-between p-2 border rounded-lg bg-gray-50">
-                                <span className="text-sm">
-                                  {(() => {
-                                    const level = levels.find(l => l.id === activityForm.level_id);
-                                    return level ? `${language === 'ar' ? 'المستوى' : 'Level'} ${level.level_number} - ${level.activity_name}` : '';
-                                  })()}
-                                </span>
-                                <div className="flex gap-1">
-                                  <Button type="button" variant="ghost" size="sm" className="h-7 px-2" onClick={() => setMemberLevelSelectorState({ step: 'activity', selectedActivity: '', selectedTime: '' })}>
-                                    {language === 'ar' ? 'تغيير' : 'Change'}
-                                  </Button>
-                                  <Button type="button" variant="ghost" size="sm" className="h-7 px-2 text-red-500" onClick={() => setActivityForm({...activityForm, level_id: ''})}>
-                                    ✕
-                                  </Button>
-                                </div>
-                              </div>
-                            ) : (
-                              <Button 
-                                type="button" 
-                                variant="outline" 
-                                className="w-full h-9 text-sm justify-start gap-2"
-                                onClick={() => setMemberLevelSelectorState({ step: 'activity', selectedActivity: '', selectedTime: '' })}
-                              >
-                                <span>🎯</span>
-                                {language === 'ar' ? 'اختر المستوى (اختياري)' : 'Select Level (Optional)'}
-                              </Button>
-                            )}
+                        {/* Dates Row */}
+                        <div className="grid grid-cols-2 gap-3">
+                          <div className="space-y-2">
+                            <Label className="text-sm font-medium">{language === 'ar' ? 'تاريخ البداية' : 'Start Date'}</Label>
+                            <Input
+                              type="date"
+                              value={activityForm.start_date}
+                              onChange={(e) => setActivityForm({...activityForm, start_date: e.target.value})}
+                              className="h-12 text-base"
+                            />
                           </div>
-                        ) : (
-                          <div className="border rounded-lg overflow-hidden bg-white shadow-sm">
-                            <div className="flex items-center justify-between p-2 bg-gray-100 border-b">
-                              <div className="flex items-center gap-2">
-                                {memberLevelSelectorState.step !== 'activity' && (
-                                  <Button type="button" variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={() => {
-                                    if (memberLevelSelectorState.step === 'level') {
-                                      setMemberLevelSelectorState({ ...memberLevelSelectorState, step: 'time', selectedTime: '' });
-                                    } else if (memberLevelSelectorState.step === 'time') {
-                                      setMemberLevelSelectorState({ step: 'activity', selectedActivity: '', selectedTime: '' });
+                          <div className="space-y-2">
+                            <Label className="text-sm font-medium">{language === 'ar' ? 'تاريخ النهاية' : 'End Date'}</Label>
+                            <Input
+                              type="date"
+                              value={activityForm.end_date}
+                              onChange={(e) => setActivityForm({...activityForm, end_date: e.target.value})}
+                              className="h-12 text-base"
+                            />
+                          </div>
+                        </div>
+                        
+                        {/* Training Days - Arabic names like Invoices */}
+                        <div className="space-y-2">
+                          <Label className="text-xs">{language === 'ar' ? 'أيام التدريب' : 'Training Days'}</Label>
+                          <div className="flex flex-wrap gap-1">
+                            {['الأحد', 'الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'].map((day) => (
+                              <button
+                                key={day}
+                                type="button"
+                                onClick={() => {
+                                  const currentDays = activityForm.training_days || [];
+                                  const newDays = currentDays.includes(day)
+                                    ? currentDays.filter(d => d !== day)
+                                    : [...currentDays, day];
+                                  
+                                  // Format schedule like invoices
+                                  const formatSchedule = (days, time) => {
+                                    if (days.length === 0) return time || '';
+                                    const dayOrder = ['الأحد', 'الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'];
+                                    const sortedDays = [...days].sort((a, b) => dayOrder.indexOf(a) - dayOrder.indexOf(b));
+                                    let daysStr;
+                                    if (sortedDays.length === 1) {
+                                      daysStr = sortedDays[0];
+                                    } else {
+                                      const lastDay = sortedDays.pop();
+                                      daysStr = sortedDays.join('، ') + ' و ' + lastDay;
                                     }
-                                  }}>
-                                    {language === 'ar' ? '→' : '←'}
-                                  </Button>
-                                )}
-                                <span className="text-xs font-medium text-gray-600">
-                                  {memberLevelSelectorState.step === 'activity' && (language === 'ar' ? 'اختر النشاط' : 'Select Activity')}
-                                  {memberLevelSelectorState.step === 'time' && (language === 'ar' ? 'اختر الساعة' : 'Select Time')}
-                                  {memberLevelSelectorState.step === 'level' && (language === 'ar' ? 'اختر المستوى' : 'Select Level')}
-                                </span>
-                              </div>
-                              <Button type="button" variant="ghost" size="sm" className="h-6 px-2 text-xs" onClick={() => setMemberLevelSelectorState(null)}>
-                                ✕
-                              </Button>
+                                    return time ? `${daysStr} - ${time}` : daysStr;
+                                  };
+                                  
+                                  setActivityForm({
+                                    ...activityForm,
+                                    training_days: newDays,
+                                    schedule: formatSchedule(newDays, activityForm.training_time)
+                                  });
+                                }}
+                                className={`px-2 py-1 text-xs rounded border transition-colors ${
+                                  (activityForm.training_days || []).includes(day)
+                                    ? 'bg-blue-500 text-white border-blue-500'
+                                    : 'bg-white text-gray-700 border-gray-300 hover:border-blue-400'
+                                }`}
+                              >
+                                {day}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                        
+                        {/* Training Time - Text input like Invoices */}
+                        <div className="space-y-2">
+                          <Label className="text-xs">{language === 'ar' ? 'الساعة' : 'Time'}</Label>
+                          <Input 
+                            value={activityForm.training_time || ''} 
+                            onChange={(e) => {
+                              const time = e.target.value;
+                              // Format schedule like invoices
+                              const formatSchedule = (days, time) => {
+                                if (!days || days.length === 0) return time || '';
+                                const dayOrder = ['الأحد', 'الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'];
+                                const sortedDays = [...days].sort((a, b) => dayOrder.indexOf(a) - dayOrder.indexOf(b));
+                                let daysStr;
+                                if (sortedDays.length === 1) {
+                                  daysStr = sortedDays[0];
+                                } else {
+                                  const lastDay = sortedDays.pop();
+                                  daysStr = sortedDays.join('، ') + ' و ' + lastDay;
+                                }
+                                return time ? `${daysStr} - ${time}` : daysStr;
+                              };
+                              
+                              setActivityForm({
+                                ...activityForm,
+                                training_time: time,
+                                schedule: formatSchedule(activityForm.training_days, time)
+                              });
+                            }} 
+                            className="h-8 text-sm" 
+                            placeholder={language === 'ar' ? 'مثال: 4:00 م' : 'e.g. 4:00 PM'}
+                          />
+                        </div>
+                        
+                        {/* Level Selection - Cascading like Invoices */}
+                        <div className="space-y-2">
+                          <Label className="text-xs">{language === 'ar' ? 'المستوى' : 'Level'}</Label>
+                          
+                          {!memberLevelSelectorState ? (
+                            <div>
+                              {activityForm.level_id ? (
+                                <div className="flex items-center justify-between p-2 border rounded-lg bg-gray-50">
+                                  <span className="text-sm">
+                                    {(() => {
+                                      const level = levels.find(l => l.id === activityForm.level_id);
+                                      return level ? `${language === 'ar' ? 'المستوى' : 'Level'} ${level.level_number} - ${level.activity_name}` : '';
+                                    })()}
+                                  </span>
+                                  <div className="flex gap-1">
+                                    <Button type="button" variant="ghost" size="sm" className="h-7 px-2" onClick={() => setMemberLevelSelectorState({ step: 'activity', selectedActivity: '', selectedTime: '' })}>
+                                      {language === 'ar' ? 'تغيير' : 'Change'}
+                                    </Button>
+                                    <Button type="button" variant="ghost" size="sm" className="h-7 px-2 text-red-500" onClick={() => setActivityForm({...activityForm, level_id: ''})}>
+                                      ✕
+                                    </Button>
+                                  </div>
+                                </div>
+                              ) : (
+                                <Button 
+                                  type="button" 
+                                  variant="outline" 
+                                  className="w-full h-8 text-sm justify-start gap-2"
+                                  onClick={() => setMemberLevelSelectorState({ step: 'activity', selectedActivity: '', selectedTime: '' })}
+                                >
+                                  <span>🎯</span>
+                                  {language === 'ar' ? 'اختر المستوى' : 'Select Level'}
+                                </Button>
+                              )}
                             </div>
-                            
-                            {memberLevelSelectorState.step === 'activity' && (
-                              <div className="p-2 space-y-1 max-h-40 overflow-y-auto">
-                                {MAIN_ACTIVITIES_FOR_LEVELS.map(activity => {
-                                  const activityLevels = groupedLevelsForSelector[activity.id] || {};
-                                  const timeCount = Object.keys(activityLevels).length;
-                                  if (timeCount === 0) return null;
-                                  return (
-                                    <button
-                                      key={activity.id}
-                                      type="button"
-                                      className={`w-full flex items-center justify-between p-2 rounded-lg hover:bg-gray-100 transition-colors ${activity.color} bg-opacity-10`}
-                                      onClick={() => setMemberLevelSelectorState({ ...memberLevelSelectorState, step: 'time', selectedActivity: activity.id })}
-                                    >
-                                      <div className="flex items-center gap-2">
-                                        <span className="text-xl">{activity.icon}</span>
-                                        <span className="font-medium">{language === 'ar' ? activity.name_ar : activity.name_en}</span>
-                                      </div>
-                                      <span className="text-xs text-gray-500">{timeCount} {language === 'ar' ? 'أوقات' : 'times'} →</span>
-                                    </button>
-                                  );
-                                })}
+                          ) : (
+                            <div className="border rounded-lg overflow-hidden bg-white shadow-sm">
+                              <div className="flex items-center justify-between p-2 bg-gray-100 border-b">
+                                <div className="flex items-center gap-2">
+                                  {memberLevelSelectorState.step !== 'activity' && (
+                                    <Button type="button" variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={() => {
+                                      if (memberLevelSelectorState.step === 'level') {
+                                        setMemberLevelSelectorState({ ...memberLevelSelectorState, step: 'time', selectedTime: '' });
+                                      } else if (memberLevelSelectorState.step === 'time') {
+                                        setMemberLevelSelectorState({ step: 'activity', selectedActivity: '', selectedTime: '' });
+                                      }
+                                    }}>
+                                      {language === 'ar' ? '→' : '←'}
+                                    </Button>
+                                  )}
+                                  <span className="text-xs font-medium text-gray-600">
+                                    {memberLevelSelectorState.step === 'activity' && (language === 'ar' ? 'اختر النشاط' : 'Select Activity')}
+                                    {memberLevelSelectorState.step === 'time' && (language === 'ar' ? 'اختر الساعة' : 'Select Time')}
+                                    {memberLevelSelectorState.step === 'level' && (language === 'ar' ? 'اختر المستوى' : 'Select Level')}
+                                  </span>
+                                </div>
+                                <Button type="button" variant="ghost" size="sm" className="h-6 px-2 text-xs" onClick={() => setMemberLevelSelectorState(null)}>
+                                  ✕
+                                </Button>
                               </div>
-                            )}
-                            
-                            {memberLevelSelectorState.step === 'time' && (
-                              <div className="p-2 space-y-1 max-h-40 overflow-y-auto">
-                                {Object.entries(groupedLevelsForSelector[memberLevelSelectorState.selectedActivity] || {}).map(([timeSlot, timeLevels]) => (
-                                  <button
-                                    key={timeSlot}
-                                    type="button"
-                                    className="w-full flex items-center justify-between p-2 rounded-lg hover:bg-blue-50 transition-colors border"
-                                    onClick={() => setMemberLevelSelectorState({ ...memberLevelSelectorState, step: 'level', selectedTime: timeSlot })}
-                                  >
-                                    <div className="flex items-center gap-2">
-                                      <span>🕐</span>
-                                      <span className="font-medium text-sm">{timeSlot}</span>
-                                    </div>
-                                    <span className="text-xs text-gray-500">{timeLevels.length} {language === 'ar' ? 'مستويات' : 'levels'} →</span>
-                                  </button>
-                                ))}
-                              </div>
-                            )}
-                            
-                            {memberLevelSelectorState.step === 'level' && (
-                              <div className="p-2 space-y-1 max-h-40 overflow-y-auto">
-                                {(groupedLevelsForSelector[memberLevelSelectorState.selectedActivity]?.[memberLevelSelectorState.selectedTime] || [])
-                                  .sort((a, b) => a.level_number - b.level_number)
-                                  .map(level => {
-                                    const memberCount = (level.members || []).length;
-                                    const maxCapacity = memberLevelSelectorState.selectedActivity === 'swimming' ? 6 : (level.capacity || 10);
-                                    const isFull = memberCount >= maxCapacity;
+                              
+                              {memberLevelSelectorState.step === 'activity' && (
+                                <div className="p-2 space-y-1 max-h-48 overflow-y-auto">
+                                  {MAIN_ACTIVITIES_FOR_LEVELS.map(activity => {
+                                    const activityLevels = groupedLevelsForSelector[activity.id] || {};
+                                    const timeCount = Object.keys(activityLevels).length;
+                                    if (timeCount === 0) return null;
                                     return (
                                       <button
-                                        key={level.id}
+                                        key={activity.id}
                                         type="button"
-                                        className={`w-full p-2 rounded-lg transition-colors border ${isFull ? 'bg-red-50 border-red-200' : 'hover:bg-green-50'}`}
-                                        onClick={() => {
-                                          setActivityForm({...activityForm, level_id: level.id});
-                                          setMemberLevelSelectorState(null);
-                                        }}
+                                        className={`w-full flex items-center justify-between p-2 rounded-lg hover:bg-gray-100 transition-colors ${activity.color} bg-opacity-10`}
+                                        onClick={() => setMemberLevelSelectorState({ ...memberLevelSelectorState, step: 'time', selectedActivity: activity.id })}
                                       >
-                                        <div className="flex items-center justify-between">
-                                          <span className={`font-bold ${isFull ? 'text-red-600' : ''}`}>
-                                            {language === 'ar' ? 'المستوى' : 'Level'} {level.level_number}
-                                          </span>
-                                          <span className={`text-sm ${isFull ? 'text-red-600' : 'text-gray-600'}`}>
-                                            {memberCount}/{maxCapacity} {isFull && '⚠️'}
-                                          </span>
+                                        <div className="flex items-center gap-2">
+                                          <span className="text-xl">{activity.icon}</span>
+                                          <span className="font-medium">{language === 'ar' ? activity.name_ar : activity.name_en}</span>
+                                        </div>
+                                        <div className="flex items-center gap-1 text-gray-500">
+                                          <span className="text-xs">{timeCount} {language === 'ar' ? 'أوقات' : 'times'}</span>
+                                          <span>{language === 'ar' ? '←' : '→'}</span>
                                         </div>
                                       </button>
                                     );
                                   })}
-                              </div>
-                            )}
-                          </div>
-                        )}
+                                </div>
+                              )}
+                              
+                              {memberLevelSelectorState.step === 'time' && (
+                                <div className="p-2 space-y-1 max-h-48 overflow-y-auto">
+                                  {Object.entries(groupedLevelsForSelector[memberLevelSelectorState.selectedActivity] || {}).map(([timeSlot, timeLevels]) => {
+                                    const totalMembers = timeLevels.reduce((sum, l) => sum + (l.members || []).length, 0);
+                                    const totalCapacity = timeLevels.reduce((sum, l) => sum + (memberLevelSelectorState.selectedActivity === 'swimming' ? 6 : (l.capacity || 10)), 0);
+                                    return (
+                                      <button
+                                        key={timeSlot}
+                                        type="button"
+                                        className="w-full flex items-center justify-between p-2 rounded-lg hover:bg-blue-50 transition-colors border"
+                                        onClick={() => setMemberLevelSelectorState({ ...memberLevelSelectorState, step: 'level', selectedTime: timeSlot })}
+                                      >
+                                        <div className="flex items-center gap-2">
+                                          <span className="text-lg">🕐</span>
+                                          <span className="font-medium text-sm">{timeSlot}</span>
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                          <span className="text-xs text-gray-500">
+                                            {timeLevels.length} {language === 'ar' ? 'مستويات' : 'levels'} • {totalMembers}/{totalCapacity}
+                                          </span>
+                                          <span className="text-gray-400">{language === 'ar' ? '←' : '→'}</span>
+                                        </div>
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                              )}
+                              
+                              {memberLevelSelectorState.step === 'level' && (
+                                <div className="p-2 space-y-1 max-h-48 overflow-y-auto">
+                                  {(groupedLevelsForSelector[memberLevelSelectorState.selectedActivity]?.[memberLevelSelectorState.selectedTime] || [])
+                                    .sort((a, b) => a.level_number - b.level_number)
+                                    .map(level => {
+                                      const memberCount = (level.members || []).length;
+                                      const maxCapacity = memberLevelSelectorState.selectedActivity === 'swimming' ? 6 : (level.capacity || 10);
+                                      const isFull = memberCount >= maxCapacity;
+                                      const fillPercent = Math.round((memberCount / maxCapacity) * 100);
+                                      return (
+                                        <button
+                                          key={level.id}
+                                          type="button"
+                                          className={`w-full p-2 rounded-lg transition-colors border ${isFull ? 'bg-red-50 border-red-200 hover:bg-red-100' : 'hover:bg-green-50 border-gray-200'}`}
+                                          onClick={() => {
+                                            setActivityForm({...activityForm, level_id: level.id});
+                                            setMemberLevelSelectorState(null);
+                                          }}
+                                        >
+                                          <div className="flex items-center justify-between mb-1">
+                                            <span className={`font-bold ${isFull ? 'text-red-600' : 'text-gray-800'}`}>
+                                              {language === 'ar' ? 'المستوى' : 'Level'} {level.level_number}
+                                            </span>
+                                            <span className={`text-sm ${isFull ? 'text-red-600' : 'text-gray-600'}`}>
+                                              {memberCount}/{maxCapacity} {isFull && '⚠️'}
+                                            </span>
+                                          </div>
+                                          <div className="w-full bg-gray-200 rounded-full h-1.5">
+                                            <div 
+                                              className={`h-1.5 rounded-full ${isFull ? 'bg-red-500' : 'bg-green-500'}`}
+                                              style={{ width: `${Math.min(fillPercent, 100)}%` }}
+                                            />
+                                          </div>
+                                        </button>
+                                      );
+                                    })}
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
                       </div>
-                    </div>
+                    )}
                   </div>
                 )}
               </div>
