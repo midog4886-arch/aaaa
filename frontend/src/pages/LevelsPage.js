@@ -406,12 +406,37 @@ export const LevelsPage = () => {
     
     setSaving(true);
     try {
-      // Create a new level with this time slot
+      // Get activity info to include the activity name prefix
       const activity = getMainActivityInfo(selectedActivityId);
+      const activityPrefix = language === 'ar' ? activity.name_ar : activity.name_en;
+      
+      // Create activity_name that includes both the activity and time slot
+      // Format: "النشاط - الوقت" or just the time slot name if it already includes the activity
+      let activityName = newTimeSlotName.trim();
+      
+      // Only add prefix if the time slot name doesn't already contain activity keywords
+      const hasActivityKeyword = activityName.toLowerCase().includes('سباح') || 
+                                  activityName.toLowerCase().includes('كر') ||
+                                  activityName.toLowerCase().includes('كارات') ||
+                                  activityName.toLowerCase().includes('swim') ||
+                                  activityName.toLowerCase().includes('foot') ||
+                                  activityName.toLowerCase().includes('karat');
+      
+      if (!hasActivityKeyword && selectedActivityId !== 'other') {
+        // For display purposes, we'll use a format that parseActivityName can understand
+        // We add keywords to help with classification
+        if (selectedActivityId === 'swimming') {
+          activityName = `سباحة - ${newTimeSlotName.trim()}`;
+        } else if (selectedActivityId === 'football') {
+          activityName = `كرة قدم - ${newTimeSlotName.trim()}`;
+        } else if (selectedActivityId === 'karate') {
+          activityName = `كاراتيه - ${newTimeSlotName.trim()}`;
+        }
+      }
+      
       const newLevel = {
         level_number: 1,
-        activity_name: newTimeSlotName.trim(),
-        main_activity: selectedActivityId,
+        activity_name: activityName,
         branch_id: selectedBranchId || 'all',
         capacity: selectedActivityId === 'swimming' ? 6 : 10,
         members: []
@@ -424,6 +449,7 @@ export const LevelsPage = () => {
       setNewTimeSlotName('');
       loadData();
     } catch (error) {
+      console.error('Error creating time slot:', error);
       toast.error(t('فشل في إضافة الساعة', 'Failed to add time slot'));
     } finally {
       setSaving(false);
