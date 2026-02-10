@@ -370,16 +370,19 @@ export default function SchedulePage() {
   const activityMatchesType = (activity) => {
     if (selectedActivityType === 'all') return true;
     
-    // Check if selectedActivityType is an activity ID from the activities list
-    const selectedActivity = activitiesList.find(a => a.id === selectedActivityType);
-    if (selectedActivity) {
-      // Match by activity name (comparing with the activity_name or using activity_id if available)
-      const activityName = activity.activity_name?.toLowerCase() || '';
-      const selectedName = (selectedActivity.name_ar || selectedActivity.name || '').toLowerCase();
-      return activityName.includes(selectedName) || selectedName.includes(activityName.split(' ')[0]);
+    // Check if it's a specific activity from Activities page (prefixed with "activity_")
+    if (selectedActivityType.startsWith('activity_')) {
+      const activityId = selectedActivityType.replace('activity_', '');
+      const selectedActivity = activitiesList.find(a => a.id === activityId);
+      if (selectedActivity) {
+        const activityName = activity.activity_name?.toLowerCase() || '';
+        const selectedName = (selectedActivity.name_ar || selectedActivity.name || '').toLowerCase();
+        return activityName.includes(selectedName) || selectedName.includes(activityName.split(' ')[0]);
+      }
+      return false;
     }
     
-    // Fallback to old type-based matching
+    // Main activity type matching
     const name = (activity.activity_name || '').toLowerCase();
     switch (selectedActivityType) {
       case 'swimming':
