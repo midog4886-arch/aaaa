@@ -63,6 +63,16 @@ export const LevelsPage = () => {
   const [isTimeSlotEditDialogOpen, setIsTimeSlotEditDialogOpen] = useState(false);
   const [editingTimeSlot, setEditingTimeSlot] = useState({ oldName: '', newName: '', activityId: '' });
   
+  // Activity edit dialog
+  const [isActivityEditDialogOpen, setIsActivityEditDialogOpen] = useState(false);
+  const [editingActivity, setEditingActivity] = useState({ id: '', name_ar: '', name_en: '', icon: '', color: '' });
+  
+  // Custom activities (user-defined names)
+  const [customActivityNames, setCustomActivityNames] = useState(() => {
+    const saved = localStorage.getItem('customActivityNames');
+    return saved ? JSON.parse(saved) : {};
+  });
+  
   // Expanded states for accordion (fallback)
   const [expandedActivities, setExpandedActivities] = useState({});
   const [expandedTimeSlots, setExpandedTimeSlots] = useState({});
