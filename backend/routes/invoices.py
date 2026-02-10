@@ -292,12 +292,33 @@ async def create_invoice(invoice: InvoiceCreate, current_user: dict = Depends(ge
 @router.put("/{invoice_id}/pay")
 async def pay_invoice(invoice_id: str, current_user: dict = Depends(get_current_user)):
     """Mark an invoice as paid"""
-    invoice = await db.invoices.find_one({"id": invoice_id}, {"_id": 0})
+    invoice = await db.invoices.find_one({"id": invoice_id})
     if not invoice:
         raise HTTPException(status_code=404, detail="Invoice not found")
     
     if invoice.get("status") == "paid":
         raise HTTPException(status_code=400, detail="Invoice already paid")
+    
+    # Deduct stock for product items
+    for item in invoice.get("items", []):
+        if item.get("is_product") and item.get("product_id"):
+            product = await db.products.find_one({"id": item["product_id"]})
+            if product:
+                qty = item.get("quantity", 1)
+                new_qty = product["quantity"] - qty
+                if new_qty < 0:
+                    raise HTTPException(status_code=400, detail=f"Insufficient stock for {item['activity_name']}")
+                await db.products.update_one(
+                    {"id": item["product_id"]},
+                    {"$set": {"quantity": new_qty, "updated_at": datetime.now(timezone.utc).isoformat()}}
+                )
+    
+    # Update discount usage if coupon was used
+    if invoice.get("discount_code"):
+        await db.discounts.update_one(
+            {"code": invoice["discount_code"]},
+            {"$inc": {"used_count": 1}}
+        )
     
     # Update invoice status
     await db.invoices.update_one(
@@ -311,57 +332,106 @@ async def pay_invoice(invoice_id: str, current_user: dict = Depends(get_current_
     # Update member activities and levels if member_id exists
     member_id = invoice.get("member_id")
     if member_id:
-        for item in invoice.get("items", []):
-            if item.get("activity_id") and not item.get("is_product"):
-                activity_data = {
-                    "activity_id": item.get("activity_id"),
-                    "activity_name": item.get("activity_name"),
-                    "start_date": item.get("start_date", ""),
-                    "end_date": item.get("end_date", ""),
-                    "fee": item.get("fee", 0),
-                    "status": "active",
-                    "coach_id": "",
-                    "level_id": item.get("level_id", ""),
-                    "schedule": item.get("schedule", ""),
-                    "source": "invoice",
-                    "source_id": invoice_id
-                }
+        member = await db.members.find_one({"id": member_id})
+        if member:
+            today = datetime.now(timezone.utc).strftime('%Y-%m-%d')
+            existing_activities = member.get("activities", [])
+            
+            for item in invoice.get("items", []):
+                # Skip product items
+                if item.get("is_product"):
+                    continue
                 
-                # Add or update activity
-                await db.members.update_one(
-                    {"id": member_id},
-                    {"$push": {"activities": activity_data}}
-                )
+                # Parse dates from period or use item dates
+                start_date = item.get("start_date", today)
+                end_date = item.get("end_date", "")
                 
-                # Add member to level if level_id is specified
+                # If period exists, try to parse it
+                if item.get("period") and " - " in item.get("period", ""):
+                    period_parts = item["period"].split(" - ")
+                    if len(period_parts) == 2:
+                        start_date = period_parts[0].strip()
+                        end_date = period_parts[1].strip()
+                
+                # Determine status based on end_date
+                status = "active"
+                if end_date:
+                    try:
+                        end_date_obj = datetime.strptime(end_date, '%Y-%m-%d')
+                        today_obj = datetime.strptime(today, '%Y-%m-%d')
+                        if end_date_obj < today_obj:
+                            status = "expired"
+                    except:
+                        pass
+                
+                # Check if activity already exists for this member
+                activity_exists = False
+                for idx, existing_act in enumerate(existing_activities):
+                    if existing_act.get("activity_id") == item.get("activity_id"):
+                        # Update existing activity with new dates
+                        existing_activities[idx] = {
+                            "activity_id": item.get("activity_id"),
+                            "activity_name": item.get("activity_name", ""),
+                            "start_date": start_date,
+                            "end_date": end_date,
+                            "fee": item.get("fee", 0),
+                            "status": status,
+                            "coach_id": existing_act.get("coach_id", ""),
+                            "level_id": item.get("level_id", ""),
+                            "schedule": item.get("schedule", ""),
+                            "source": "invoice",
+                            "source_id": invoice_id
+                        }
+                        activity_exists = True
+                        break
+                
+                if not activity_exists:
+                    # Add new activity
+                    existing_activities.append({
+                        "activity_id": item.get("activity_id"),
+                        "activity_name": item.get("activity_name", ""),
+                        "start_date": start_date,
+                        "end_date": end_date,
+                        "fee": item.get("fee", 0),
+                        "status": status,
+                        "coach_id": "",
+                        "level_id": item.get("level_id", ""),
+                        "schedule": item.get("schedule", ""),
+                        "source": "invoice",
+                        "source_id": invoice_id
+                    })
+            
+            # Update member with new activities
+            await db.members.update_one(
+                {"id": member_id},
+                {"$set": {"activities": existing_activities}}
+            )
+            
+            # Add member to levels if specified in invoice items
+            for item in invoice.get("items", []):
                 level_id = item.get("level_id")
                 if level_id:
-                    # Check if level exists
-                    level = await db.levels.find_one({"id": level_id})
-                    if level:
-                        # Add member to level if not already there
-                        if member_id not in level.get("members", []):
-                            await db.levels.update_one(
-                                {"id": level_id},
-                                {"$addToSet": {"members": member_id}}
-                            )
-                        
-                        # Create or update level subscription for auto-cleanup
-                        end_date = item.get("end_date", "")
-                        if end_date:
-                            await db.level_subscriptions.update_one(
-                                {"member_id": member_id, "level_id": level_id},
-                                {"$set": {
-                                    "member_id": member_id,
-                                    "level_id": level_id,
-                                    "start_date": item.get("start_date", ""),
-                                    "end_date": end_date,
-                                    "invoice_id": invoice_id
-                                }},
-                                upsert=True
-                            )
+                    # Add member to level if not already there
+                    await db.levels.update_one(
+                        {"id": level_id},
+                        {"$addToSet": {"members": member_id}}
+                    )
+                    # Create subscription record
+                    end_date = item.get("end_date", "")
+                    if end_date:
+                        await db.level_subscriptions.update_one(
+                            {"member_id": member_id, "level_id": level_id},
+                            {"$set": {
+                                "member_id": member_id,
+                                "level_id": level_id,
+                                "start_date": item.get("start_date", ""),
+                                "end_date": end_date,
+                                "invoice_id": invoice_id
+                            }},
+                            upsert=True
+                        )
     
-    return {"message": "Invoice paid successfully"}
+    return {"message": "Invoice paid", "status": "paid"}
 
 @router.put("/{invoice_id}/cancel")
 async def cancel_invoice(invoice_id: str, current_user: dict = Depends(get_current_user)):
