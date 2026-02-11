@@ -1247,6 +1247,226 @@ export default function AccountingPage() {
             )}
           </>
         )}
+        </div>
+        
+        {/* Right Side - Bank Account */}
+        <div className="border-2 border-blue-200 rounded-lg p-6 bg-gradient-to-br from-blue-50 to-white">
+          <div className="flex justify-between items-center mb-4">
+            <h3 className="text-lg font-bold text-blue-800">🏦 الحساب البنكي</h3>
+            <Button 
+              size="sm"
+              onClick={() => {
+                const cardPayments = salesReport?.by_payment_method?.['بطاقة']?.total || 
+                                     salesReport?.by_payment_method?.['شبكة']?.total || 
+                                     salesReport?.by_payment_method?.['مدى']?.total || 
+                                     salesReport?.by_payment_method?.['فيزا']?.total || 0;
+                const tabyAmount = salesReport?.by_payment_method?.['تابي']?.total || 0;
+                const tamaraAmount = salesReport?.by_payment_method?.['تمارة']?.total || 0;
+                const totalBNPL = tabyAmount + tamaraAmount;
+                const bnplFees = totalBNPL * 0.075;
+                const bnplNet = totalBNPL - bnplFees;
+                const expensesTotal = tempExpenses.reduce((sum, e) => sum + parseFloat(e.amount || 0), 0);
+                const netTotal = cardPayments + bnplNet - expensesTotal;
+                
+                const printContent = `
+                  <!DOCTYPE html>
+                  <html dir="rtl">
+                  <head>
+                    <meta charset="UTF-8">
+                    <title>الحساب البنكي</title>
+                    <style>
+                      body { font-family: Arial, sans-serif; padding: 20px; max-width: 600px; margin: 0 auto; }
+                      .header { text-align: center; margin-bottom: 20px; border-bottom: 2px solid #1e40af; padding-bottom: 15px; }
+                      .header h1 { color: #1e40af; margin: 0; }
+                      .date { text-align: center; color: #666; margin-bottom: 20px; font-size: 14px; }
+                      .row { display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #eee; }
+                      .row.total { border-top: 2px solid #333; border-bottom: none; font-weight: bold; font-size: 18px; margin-top: 10px; padding-top: 15px; }
+                      .label { color: #333; }
+                      .amount { font-weight: bold; }
+                      .amount.green { color: #16a34a; }
+                      .amount.purple { color: #9333ea; }
+                      .amount.red { color: #dc2626; }
+                      .amount.blue { color: #1e40af; }
+                      .section { margin: 20px 0; padding: 15px; border-radius: 8px; }
+                      .section-green { background: #f0fdf4; border: 1px solid #22c55e; }
+                      .section-purple { background: #faf5ff; border: 1px solid #a855f7; }
+                      .section-red { background: #fef2f2; border: 1px solid #ef4444; }
+                      .section-title { font-weight: bold; margin-bottom: 10px; }
+                      .expense-item { display: flex; justify-content: space-between; padding: 5px 0; font-size: 14px; }
+                      .footer { margin-top: 30px; text-align: center; color: #999; font-size: 11px; }
+                    </style>
+                  </head>
+                  <body>
+                    <div class="header">
+                      <h1>🏦 الحساب البنكي</h1>
+                      <p style="margin: 5px 0; color: #666;">أكاديمية أداء الأبطال</p>
+                    </div>
+                    <div class="date">
+                      ${dateFilter.start ? `من: ${dateFilter.start}` : ''} ${dateFilter.end ? `إلى: ${dateFilter.end}` : ''} 
+                      ${!dateFilter.start && !dateFilter.end ? 'جميع الفترات' : ''}
+                    </div>
+                    
+                    <div class="section section-green">
+                      <div class="section-title">💳 الدفع بالبطاقة (كامل)</div>
+                      <div class="row">
+                        <span>المبلغ الإجمالي</span>
+                        <span class="amount green">${cardPayments.toLocaleString()} ر.س</span>
+                      </div>
+                    </div>
+                    
+                    <div class="section section-purple">
+                      <div class="section-title">📱 تابي وتمارة (خصم 7.50%)</div>
+                      <div class="row"><span>تابي</span><span>${tabyAmount.toLocaleString()} ر.س</span></div>
+                      <div class="row"><span>تمارة</span><span>${tamaraAmount.toLocaleString()} ر.س</span></div>
+                      <div class="row"><span>الإجمالي</span><span>${totalBNPL.toLocaleString()} ر.س</span></div>
+                      <div class="row"><span>رسوم (7.50%)</span><span class="amount red">- ${bnplFees.toLocaleString()} ر.س</span></div>
+                      <div class="row" style="border-top: 1px solid #a855f7; margin-top: 5px; padding-top: 10px;">
+                        <span><strong>الصافي</strong></span>
+                        <span class="amount purple">${bnplNet.toLocaleString()} ر.س</span>
+                      </div>
+                    </div>
+                    
+                    ${tempExpenses.length > 0 ? `
+                    <div class="section section-red">
+                      <div class="section-title">📤 المصروفات</div>
+                      ${tempExpenses.map(e => `<div class="expense-item"><span>${e.description}</span><span class="amount red">- ${parseFloat(e.amount).toLocaleString()} ر.س</span></div>`).join('')}
+                      <div class="row" style="border-top: 1px solid #ef4444; margin-top: 10px; padding-top: 10px;">
+                        <span><strong>إجمالي المصروفات</strong></span>
+                        <span class="amount red">- ${expensesTotal.toLocaleString()} ر.س</span>
+                      </div>
+                    </div>
+                    ` : ''}
+                    
+                    <div class="row total">
+                      <span>💎 الإجمالي في الحساب البنكي</span>
+                      <span class="amount blue">${netTotal.toLocaleString()} ر.س</span>
+                    </div>
+                    
+                    <div class="footer">تم الطباعة: ${new Date().toLocaleString('ar-SA')}</div>
+                  </body>
+                  </html>
+                `;
+                const printWindow = window.open('', '_blank');
+                printWindow.document.write(printContent);
+                printWindow.document.close();
+                printWindow.onload = () => printWindow.print();
+              }}
+              className="bg-blue-600 hover:bg-blue-700"
+            >
+              🖨️ طباعة
+            </Button>
+          </div>
+          
+          {salesReport && (
+            <div className="space-y-3">
+              {/* Card Payments */}
+              <div className="bg-white border border-green-300 rounded-lg p-4">
+                <div className="flex items-center justify-between">
+                  <span className="text-gray-600">💳 الدفع بالبطاقة (كامل)</span>
+                  <span className="text-xl font-bold text-green-600">
+                    {(() => {
+                      const card = salesReport.by_payment_method?.['بطاقة']?.total || 0;
+                      const shabaka = salesReport.by_payment_method?.['شبكة']?.total || 0;
+                      const mada = salesReport.by_payment_method?.['مدى']?.total || 0;
+                      const visa = salesReport.by_payment_method?.['فيزا']?.total || 0;
+                      return (card + shabaka + mada + visa).toLocaleString();
+                    })()} ر.س
+                  </span>
+                </div>
+              </div>
+              
+              {/* Taby & Tamara */}
+              <div className="bg-white border border-purple-300 rounded-lg p-4">
+                <div className="text-gray-600 text-sm mb-2">📱 تابي وتمارة (خصم 7.50%)</div>
+                {(() => {
+                  const tabyAmount = salesReport.by_payment_method?.['تابي']?.total || 0;
+                  const tamaraAmount = salesReport.by_payment_method?.['تمارة']?.total || 0;
+                  const totalBNPL = tabyAmount + tamaraAmount;
+                  const fees = totalBNPL * 0.075;
+                  const netBNPL = totalBNPL - fees;
+                  return (
+                    <div className="space-y-1 text-sm">
+                      <div className="flex justify-between"><span>تابي:</span><span>{tabyAmount.toLocaleString()}</span></div>
+                      <div className="flex justify-between"><span>تمارة:</span><span>{tamaraAmount.toLocaleString()}</span></div>
+                      <div className="flex justify-between border-t pt-1"><span>الإجمالي:</span><span>{totalBNPL.toLocaleString()}</span></div>
+                      <div className="flex justify-between text-red-600"><span>رسوم 7.50%:</span><span>- {fees.toLocaleString()}</span></div>
+                      <div className="flex justify-between font-bold text-purple-700 border-t pt-1"><span>الصافي:</span><span>{netBNPL.toLocaleString()} ر.س</span></div>
+                    </div>
+                  );
+                })()}
+              </div>
+              
+              {/* Temporary Expenses */}
+              <div className="bg-white border border-red-300 rounded-lg p-4">
+                <div className="text-gray-600 text-sm mb-2">📤 فواتير المصروفات</div>
+                <div className="flex gap-2 mb-2">
+                  <Input
+                    placeholder="البيان"
+                    value={newTempExpense.description}
+                    onChange={(e) => setNewTempExpense({...newTempExpense, description: e.target.value})}
+                    className="flex-1 h-8 text-sm"
+                  />
+                  <Input
+                    type="number"
+                    placeholder="المبلغ"
+                    value={newTempExpense.amount}
+                    onChange={(e) => setNewTempExpense({...newTempExpense, amount: e.target.value})}
+                    className="w-24 h-8 text-sm"
+                  />
+                  <Button
+                    size="sm"
+                    onClick={() => {
+                      if (newTempExpense.description && newTempExpense.amount) {
+                        setTempExpenses([...tempExpenses, { ...newTempExpense, id: Date.now() }]);
+                        setNewTempExpense({ description: '', amount: '' });
+                      }
+                    }}
+                    className="bg-red-500 hover:bg-red-600 h-8"
+                  >
+                    +
+                  </Button>
+                </div>
+                {tempExpenses.length > 0 ? (
+                  <div className="space-y-1 text-sm max-h-32 overflow-y-auto">
+                    {tempExpenses.map((expense) => (
+                      <div key={expense.id} className="flex items-center justify-between bg-red-50 p-2 rounded">
+                        <span>{expense.description}</span>
+                        <div className="flex items-center gap-2">
+                          <span className="text-red-600">- {parseFloat(expense.amount).toLocaleString()}</span>
+                          <button onClick={() => setTempExpenses(tempExpenses.filter(e => e.id !== expense.id))} className="text-red-500 hover:text-red-700">✕</button>
+                        </div>
+                      </div>
+                    ))}
+                    <div className="border-t pt-1 flex justify-between font-bold text-red-700">
+                      <span>الإجمالي:</span>
+                      <span>- {tempExpenses.reduce((sum, e) => sum + parseFloat(e.amount || 0), 0).toLocaleString()} ر.س</span>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-center text-gray-400 text-xs py-2">لا توجد مصروفات</p>
+                )}
+              </div>
+              
+              {/* Net Total */}
+              <div className="bg-gradient-to-r from-blue-600 to-blue-700 rounded-lg p-4 text-white">
+                <div className="text-blue-200 text-sm">💎 الإجمالي في الحساب البنكي</div>
+                <div className="text-2xl font-bold">
+                  {(() => {
+                    const card = (salesReport.by_payment_method?.['بطاقة']?.total || 0) +
+                                 (salesReport.by_payment_method?.['شبكة']?.total || 0) +
+                                 (salesReport.by_payment_method?.['مدى']?.total || 0) +
+                                 (salesReport.by_payment_method?.['فيزا']?.total || 0);
+                    const taby = salesReport.by_payment_method?.['تابي']?.total || 0;
+                    const tamara = salesReport.by_payment_method?.['تمارة']?.total || 0;
+                    const bnplNet = (taby + tamara) * 0.925; // After 7.5% fee
+                    const expenses = tempExpenses.reduce((sum, e) => sum + parseFloat(e.amount || 0), 0);
+                    return (card + bnplNet - expenses).toLocaleString();
+                  })()} ر.س
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Refunds Section */}
