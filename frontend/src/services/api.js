@@ -289,6 +289,14 @@ export const activityNotesAPI = {
   delete: (noteId) => axios.delete(`${API}/activity-notes/${noteId}`)
 };
 
+// Bank Reports API - Monthly bank account reports
+export const bankReportsAPI = {
+  getAll: (params = {}) => axios.get(`${API}/bank-reports`, { params }),
+  getByMonth: (month, year, branchId) => axios.get(`${API}/bank-reports/${month}/${year}`, { params: { branch_id: branchId } }),
+  save: (data) => axios.post(`${API}/bank-reports`, data),
+  delete: (id) => axios.delete(`${API}/bank-reports/${id}`)
+};
+
 export default {
   auth: authAPI,
   activities: activitiesAPI,
