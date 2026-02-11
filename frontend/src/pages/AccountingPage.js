@@ -99,6 +99,10 @@ export default function AccountingPage() {
   const [expenseStatusFilter, setExpenseStatusFilter] = useState('');
   const [expenseTypeFilter, setExpenseTypeFilter] = useState('');
   
+  // Temporary expenses state (local only - not saved to DB)
+  const [tempExpenses, setTempExpenses] = useState([]);
+  const [newTempExpense, setNewTempExpense] = useState({ description: '', amount: '' });
+  
   // Form data
   const [accountForm, setAccountForm] = useState({
     code: '', name_ar: '', name: '', account_type: 'assets', 
