@@ -1256,12 +1256,15 @@ export default function AccountingPage() {
             <Button 
               size="sm"
               onClick={() => {
-                const cardPayments = salesReport?.by_payment_method?.['بطاقة']?.total || 
-                                     salesReport?.by_payment_method?.['شبكة']?.total || 
-                                     salesReport?.by_payment_method?.['مدى']?.total || 
-                                     salesReport?.by_payment_method?.['فيزا']?.total || 0;
-                const tabyAmount = salesReport?.by_payment_method?.['تابي']?.total || 0;
-                const tamaraAmount = salesReport?.by_payment_method?.['تمارة']?.total || 0;
+                const cardPayments = (salesReport?.by_payment_method?.['بطاقة']?.total || 0) + 
+                                     (salesReport?.by_payment_method?.['card']?.total || 0) +
+                                     (salesReport?.by_payment_method?.['شبكة']?.total || 0) +
+                                     (salesReport?.by_payment_method?.['مدى']?.total || 0) +
+                                     (salesReport?.by_payment_method?.['فيزا']?.total || 0);
+                const tabyAmount = (salesReport?.by_payment_method?.['تابي']?.total || 0) + 
+                                   (salesReport?.by_payment_method?.['tabby']?.total || 0);
+                const tamaraAmount = (salesReport?.by_payment_method?.['تمارة']?.total || 0) + 
+                                     (salesReport?.by_payment_method?.['tamara']?.total || 0);
                 const totalBNPL = tabyAmount + tamaraAmount;
                 const bnplFees = totalBNPL * 0.075;
                 const bnplNet = totalBNPL - bnplFees;
