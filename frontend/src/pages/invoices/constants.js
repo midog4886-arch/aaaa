@@ -94,10 +94,48 @@ export const getPaymentMethodLabel = (method, language = 'ar') => {
   const methodMap = {
     cash: { ar: 'نقدي', en: 'Cash' },
     card: { ar: 'بطاقة', en: 'Card' },
+    'شبكة': { ar: 'شبكة', en: 'Network' },
+    'مدى': { ar: 'مدى', en: 'Mada' },
+    'فيزا': { ar: 'فيزا', en: 'Visa' },
     transfer: { ar: 'تحويل', en: 'Transfer' },
+    'تابي': { ar: 'تابي', en: 'Tabby' },
+    'تمارة': { ar: 'تمارة', en: 'Tamara' },
     stripe: { ar: 'أونلاين', en: 'Online' }
   };
   return methodMap[method]?.[language] || method;
+};
+
+/**
+ * Get payment method fee percentage
+ */
+export const getPaymentMethodFee = (method) => {
+  const feeMap = {
+    'تابي': 7.5,
+    'تمارة': 7.5
+  };
+  return feeMap[method] || 0;
+};
+
+/**
+ * Calculate net amount after payment method fees
+ */
+export const calculateNetAmount = (amount, paymentMethod) => {
+  const fee = getPaymentMethodFee(paymentMethod);
+  if (fee > 0) {
+    const feeAmount = (amount * fee) / 100;
+    return {
+      grossAmount: amount,
+      feePercent: fee,
+      feeAmount: feeAmount,
+      netAmount: amount - feeAmount
+    };
+  }
+  return {
+    grossAmount: amount,
+    feePercent: 0,
+    feeAmount: 0,
+    netAmount: amount
+  };
 };
 
 /**
