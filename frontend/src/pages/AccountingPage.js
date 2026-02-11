@@ -1519,7 +1519,6 @@ export default function AccountingPage() {
             >
               🖨️ طباعة
             </Button>
-          </div>
           
           {salesReport && (
             <div className="space-y-3">
