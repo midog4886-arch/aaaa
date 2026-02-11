@@ -1456,11 +1456,14 @@ export default function AccountingPage() {
                 <div className="text-2xl font-bold">
                   {(() => {
                     const card = (salesReport.by_payment_method?.['بطاقة']?.total || 0) +
+                                 (salesReport.by_payment_method?.['card']?.total || 0) +
                                  (salesReport.by_payment_method?.['شبكة']?.total || 0) +
                                  (salesReport.by_payment_method?.['مدى']?.total || 0) +
                                  (salesReport.by_payment_method?.['فيزا']?.total || 0);
-                    const taby = salesReport.by_payment_method?.['تابي']?.total || 0;
-                    const tamara = salesReport.by_payment_method?.['تمارة']?.total || 0;
+                    const taby = (salesReport.by_payment_method?.['تابي']?.total || 0) + 
+                                 (salesReport.by_payment_method?.['tabby']?.total || 0);
+                    const tamara = (salesReport.by_payment_method?.['تمارة']?.total || 0) + 
+                                   (salesReport.by_payment_method?.['tamara']?.total || 0);
                     const bnplNet = (taby + tamara) * 0.925; // After 7.5% fee
                     const expenses = tempExpenses.reduce((sum, e) => sum + parseFloat(e.amount || 0), 0);
                     return (card + bnplNet - expenses).toLocaleString();
