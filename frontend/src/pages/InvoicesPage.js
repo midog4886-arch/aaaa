@@ -3832,25 +3832,10 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
                     <SelectItem value="مدى">{language === 'ar' ? 'مدى' : 'Mada'}</SelectItem>
                     <SelectItem value="فيزا">{language === 'ar' ? 'فيزا' : 'Visa'}</SelectItem>
                     <SelectItem value="transfer">{t('transfer')}</SelectItem>
-                    <SelectItem value="تابي">
-                      <span className="flex items-center gap-2">
-                        {language === 'ar' ? 'تابي' : 'Tabby'}
-                        <span className="text-xs text-orange-600 bg-orange-100 px-1.5 py-0.5 rounded">7.5%</span>
-                      </span>
-                    </SelectItem>
-                    <SelectItem value="تمارة">
-                      <span className="flex items-center gap-2">
-                        {language === 'ar' ? 'تمارة' : 'Tamara'}
-                        <span className="text-xs text-orange-600 bg-orange-100 px-1.5 py-0.5 rounded">7.5%</span>
-                      </span>
-                    </SelectItem>
+                    <SelectItem value="تابي">{language === 'ar' ? 'تابي' : 'Tabby'}</SelectItem>
+                    <SelectItem value="تمارة">{language === 'ar' ? 'تمارة' : 'Tamara'}</SelectItem>
                   </SelectContent>
                 </Select>
-                {(paymentMethod === 'تابي' || paymentMethod === 'تمارة') && (
-                  <p className="text-xs text-orange-600 mt-1">
-                    ⚠️ {language === 'ar' ? 'سيتم خصم رسوم 7.5% من صافي المبلغ' : '7.5% fee will be deducted from net amount'}
-                  </p>
-                )}
               </div>
 
               {/* Coupon Code Section */}
