@@ -301,6 +301,82 @@ export default function AccountingPage() {
     }
   }, []);
 
+  // Fetch saved bank reports
+  const fetchSavedBankReports = useCallback(async () => {
+    try {
+      const params = {};
+      if (bankReportYear) params.year = bankReportYear;
+      if (selectedBranchId && selectedBranchId !== 'all') params.branch_id = selectedBranchId;
+      const res = await bankReportsAPI.getAll(params);
+      setSavedBankReports(res.data);
+    } catch (error) {
+      console.error('Error fetching saved bank reports:', error);
+    }
+  }, [bankReportYear, selectedBranchId]);
+
+  // Load saved bank report for selected month
+  const loadSavedBankReport = useCallback(async () => {
+    try {
+      const res = await bankReportsAPI.getByMonth(bankReportMonth, bankReportYear, selectedBranchId);
+      if (res.data) {
+        setTempExpenses(res.data.expenses?.map((e, i) => ({ ...e, id: Date.now() + i })) || []);
+      } else {
+        setTempExpenses([]);
+      }
+    } catch (error) {
+      console.error('Error loading saved bank report:', error);
+      setTempExpenses([]);
+    }
+  }, [bankReportMonth, bankReportYear, selectedBranchId]);
+
+  // Save current bank report
+  const saveBankReport = async () => {
+    if (!salesReport) {
+      toast.error('لا توجد بيانات للحفظ');
+      return;
+    }
+
+    setSavingBankReport(true);
+    try {
+      const cardTotal = (salesReport.by_payment_method?.['بطاقة']?.total || 0) + 
+                        (salesReport.by_payment_method?.['card']?.total || 0) +
+                        (salesReport.by_payment_method?.['شبكة']?.total || 0) +
+                        (salesReport.by_payment_method?.['مدى']?.total || 0) +
+                        (salesReport.by_payment_method?.['فيزا']?.total || 0);
+      const tabyTotal = (salesReport.by_payment_method?.['تابي']?.total || 0) + 
+                        (salesReport.by_payment_method?.['tabby']?.total || 0);
+      const tamaraTotal = (salesReport.by_payment_method?.['تمارة']?.total || 0) + 
+                          (salesReport.by_payment_method?.['tamara']?.total || 0);
+      const bnplTotal = tabyTotal + tamaraTotal;
+      const bnplFees = bnplTotal * 0.075;
+      const bnplNet = bnplTotal - bnplFees;
+      const expensesTotal = tempExpenses.reduce((sum, e) => sum + parseFloat(e.amount || 0), 0);
+      const netTotal = cardTotal + bnplNet - expensesTotal;
+
+      const reportData = {
+        month: bankReportMonth,
+        year: bankReportYear,
+        card_total: cardTotal,
+        tabby_total: tabyTotal,
+        tamara_total: tamaraTotal,
+        bnpl_fees: bnplFees,
+        bnpl_net: bnplNet,
+        expenses: tempExpenses.map(e => ({ description: e.description, amount: parseFloat(e.amount || 0) })),
+        expenses_total: expensesTotal,
+        net_total: netTotal,
+        branch_id: selectedBranchId !== 'all' ? selectedBranchId : null
+      };
+
+      const res = await bankReportsAPI.save(reportData);
+      toast.success(res.data.message);
+      fetchSavedBankReports();
+    } catch (error) {
+      toast.error(error.response?.data?.detail || 'حدث خطأ في حفظ التقرير');
+    } finally {
+      setSavingBankReport(false);
+    }
+  };
+
   useEffect(() => {
     setLoading(true);
     Promise.all([fetchAccounts(), fetchSuppliers(), fetchProducts(), fetchExpenseTypes()]).finally(() => setLoading(false));
