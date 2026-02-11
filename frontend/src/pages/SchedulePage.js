@@ -497,7 +497,51 @@ export default function SchedulePage() {
     };
     
     // Filter activities based on current filters
-    let filteredActivities = activitiesData.filter(a => getTotalMembers(a) > 0);
+    let filteredActivities = activitiesData.filter(a => {
+      // First check if activity has members
+      if (getTotalMembers(a) <= 0) return false;
+      
+      // Apply activity type filter
+      if (selectedActivityType === 'all') return true;
+      
+      // Check if it's a specific activity from Activities page (prefixed with "activity_")
+      if (selectedActivityType.startsWith('activity_')) {
+        const activityId = selectedActivityType.replace('activity_', '');
+        const selectedActivity = activitiesList.find(act => act.id === activityId);
+        if (selectedActivity) {
+          const activityName = a.activity_name?.toLowerCase() || '';
+          const selectedName = (selectedActivity.name_ar || selectedActivity.name || '').toLowerCase();
+          return activityName.includes(selectedName) || selectedName.includes(activityName.split(' ')[0]);
+        }
+        return false;
+      }
+      
+      // Main activity type matching
+      const name = (a.activity_name || '').toLowerCase();
+      switch (selectedActivityType) {
+        case 'swimming':
+          return name.includes('سباح') || name.includes('swim');
+        case 'football':
+          return name.includes('قدم') || name.includes('football') || name.includes('soccer');
+        case 'karate':
+          return name.includes('كارات') || name.includes('karate');
+        case 'gymnastics':
+          return name.includes('جمباز') || name.includes('gym');
+        case 'basketball':
+          return name.includes('سلة') || name.includes('basket');
+        case 'tennis':
+          return name.includes('تنس') || name.includes('tennis');
+        case 'other':
+          return !(name.includes('سباح') || name.includes('swim') || 
+                   name.includes('قدم') || name.includes('football') || name.includes('soccer') ||
+                   name.includes('كارات') || name.includes('karate') ||
+                   name.includes('جمباز') || name.includes('gym') ||
+                   name.includes('سلة') || name.includes('basket') ||
+                   name.includes('تنس') || name.includes('tennis'));
+        default:
+          return true;
+      }
+    });
     
     const printContent = `
       <!DOCTYPE html>
