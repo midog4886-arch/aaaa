@@ -739,9 +739,20 @@ export default function SchedulePage() {
           <div class="day">${dayName}</div>
         </div>
         
-        ${(selectedTime !== 'all' || selectedLevelFilter !== 'all') ? `
+        ${(selectedActivityType !== 'all' || selectedTime !== 'all' || selectedLevelFilter !== 'all') ? `
           <div class="filters-info">
             ${t('الفلاتر المطبقة', 'Applied Filters')}:
+            ${selectedActivityType !== 'all' ? `<span>🏃 ${
+              selectedActivityType === 'swimming' ? t('السباحة', 'Swimming') :
+              selectedActivityType === 'football' ? t('كرة القدم', 'Football') :
+              selectedActivityType === 'karate' ? t('الكاراتيه', 'Karate') :
+              selectedActivityType === 'gymnastics' ? t('الجمباز', 'Gymnastics') :
+              selectedActivityType === 'basketball' ? t('كرة السلة', 'Basketball') :
+              selectedActivityType === 'tennis' ? t('التنس', 'Tennis') :
+              selectedActivityType === 'other' ? t('أخرى', 'Other') :
+              selectedActivityType.startsWith('activity_') ? (activitiesList.find(a => a.id === selectedActivityType.replace('activity_', ''))?.name_ar || '') :
+              selectedActivityType
+            }</span>` : ''}
             ${selectedTime !== 'all' ? `<span>🕐 ${selectedTime}</span>` : ''}
             ${selectedLevelFilter !== 'all' ? `<span>🎯 ${selectedLevelFilter === 'none' ? t('بدون مستوى', 'No Level') : levels.find(l => l.id === selectedLevelFilter)?.activity_name || ''}</span>` : ''}
           </div>
