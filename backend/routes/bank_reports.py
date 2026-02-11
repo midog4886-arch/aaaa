@@ -7,7 +7,7 @@ from typing import Optional, List
 from datetime import datetime, timezone
 from bson import ObjectId
 
-router = APIRouter(prefix="/api/bank-reports", tags=["Bank Reports"])
+router = APIRouter(prefix="/bank-reports", tags=["Bank Reports"])
 
 # Pydantic models
 class ExpenseItem(BaseModel):
