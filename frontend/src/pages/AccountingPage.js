@@ -3048,6 +3048,94 @@ export default function AccountingPage() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Saved Bank Reports Dialog */}
+      <Dialog open={showSavedReportsDialog} onOpenChange={setShowSavedReportsDialog}>
+        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>📂 التقارير البنكية المحفوظة</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="flex gap-2 items-center">
+              <span className="text-sm text-gray-600">السنة:</span>
+              <Select value={String(bankReportYear)} onValueChange={(v) => { setBankReportYear(parseInt(v)); }}>
+                <SelectTrigger className="w-24">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {[2024, 2025, 2026, 2027].map(year => (
+                    <SelectItem key={year} value={String(year)}>{year}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Button size="sm" variant="outline" onClick={fetchSavedBankReports}>🔄 تحديث</Button>
+            </div>
+            
+            {savedBankReports.length === 0 ? (
+              <div className="text-center py-8 text-gray-500">
+                <div className="text-4xl mb-2">📭</div>
+                <p>لا توجد تقارير محفوظة لهذه السنة</p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {savedBankReports.map((report) => (
+                  <div 
+                    key={report.id} 
+                    className="border rounded-lg p-4 hover:bg-gray-50 cursor-pointer transition"
+                    onClick={() => {
+                      setBankReportMonth(report.month);
+                      setBankReportYear(report.year);
+                      setTempExpenses(report.expenses?.map((e, i) => ({ ...e, id: Date.now() + i })) || []);
+                      setShowSavedReportsDialog(false);
+                      toast.success(`تم تحميل تقرير ${report.month_name} ${report.year}`);
+                    }}
+                  >
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <div className="font-bold text-blue-800">
+                          📅 {report.month_name} {report.year}
+                        </div>
+                        <div className="text-sm text-gray-500 mt-1">
+                          آخر تحديث: {report.updated_at ? new Date(report.updated_at).toLocaleDateString('ar-SA') : '-'}
+                        </div>
+                      </div>
+                      <div className="text-left">
+                        <div className="text-lg font-bold text-green-600">
+                          {report.net_total?.toLocaleString()} ر.س
+                        </div>
+                        <div className="text-xs text-gray-500">صافي الحساب</div>
+                      </div>
+                    </div>
+                    <div className="mt-3 grid grid-cols-4 gap-2 text-xs">
+                      <div className="bg-green-50 p-2 rounded text-center">
+                        <div className="text-gray-500">البطاقات</div>
+                        <div className="font-bold">{report.card_total?.toLocaleString()}</div>
+                      </div>
+                      <div className="bg-purple-50 p-2 rounded text-center">
+                        <div className="text-gray-500">تابي/تمارة</div>
+                        <div className="font-bold">{report.bnpl_net?.toLocaleString()}</div>
+                      </div>
+                      <div className="bg-red-50 p-2 rounded text-center">
+                        <div className="text-gray-500">الرسوم</div>
+                        <div className="font-bold text-red-600">-{report.bnpl_fees?.toLocaleString()}</div>
+                      </div>
+                      <div className="bg-orange-50 p-2 rounded text-center">
+                        <div className="text-gray-500">المصروفات</div>
+                        <div className="font-bold text-orange-600">-{report.expenses_total?.toLocaleString()}</div>
+                      </div>
+                    </div>
+                    {report.expenses?.length > 0 && (
+                      <div className="mt-2 text-xs text-gray-500">
+                        المصروفات: {report.expenses.map(e => e.description).join('، ')}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </Layout>
   );
 }
