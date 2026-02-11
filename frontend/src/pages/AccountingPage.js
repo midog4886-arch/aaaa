@@ -4,6 +4,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../components/ui/dialog';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { toast } from 'sonner';
 import { 
   accountsAPI, 
@@ -15,8 +16,16 @@ import {
   productsAPI,
   exportAccountingAPI,
   reportsAPI,
-  internalExpensesAPI
+  internalExpensesAPI,
+  bankReportsAPI
 } from '../services/api';
+
+// Arabic month names
+const ARABIC_MONTHS = {
+  1: "يناير", 2: "فبراير", 3: "مارس", 4: "أبريل",
+  5: "مايو", 6: "يونيو", 7: "يوليو", 8: "أغسطس",
+  9: "سبتمبر", 10: "أكتوبر", 11: "نوفمبر", 12: "ديسمبر"
+};
 
 // Tab components
 const TABS = {
