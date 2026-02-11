@@ -108,6 +108,14 @@ export default function AccountingPage() {
   const [expenseStatusFilter, setExpenseStatusFilter] = useState('');
   const [expenseTypeFilter, setExpenseTypeFilter] = useState('');
   
+  // Bank Report Month/Year filter
+  const currentDate = new Date();
+  const [bankReportMonth, setBankReportMonth] = useState(currentDate.getMonth() + 1);
+  const [bankReportYear, setBankReportYear] = useState(currentDate.getFullYear());
+  const [savedBankReports, setSavedBankReports] = useState([]);
+  const [savingBankReport, setSavingBankReport] = useState(false);
+  const [showSavedReportsDialog, setShowSavedReportsDialog] = useState(false);
+  
   // Temporary expenses state (local only - not saved to DB)
   const [tempExpenses, setTempExpenses] = useState([]);
   const [newTempExpense, setNewTempExpense] = useState({ description: '', amount: '' });
