@@ -62,7 +62,7 @@ async def create_bank_report(report: BankReportCreate, db=Depends(get_db)):
     """Create or update a monthly bank report"""
     
     # Check if report already exists for this month/year
-    existing = db.bank_reports.find_one({
+    existing = await db.bank_reports.find_one({
         "month": report.month,
         "year": report.year,
         "branch_id": report.branch_id
@@ -87,7 +87,7 @@ async def create_bank_report(report: BankReportCreate, db=Depends(get_db)):
     
     if existing:
         # Update existing report
-        db.bank_reports.update_one(
+        await db.bank_reports.update_one(
             {"_id": existing["_id"]},
             {"$set": report_data}
         )
@@ -95,7 +95,7 @@ async def create_bank_report(report: BankReportCreate, db=Depends(get_db)):
     else:
         # Create new report
         report_data["created_at"] = datetime.now(timezone.utc).isoformat()
-        result = db.bank_reports.insert_one(report_data)
+        result = await db.bank_reports.insert_one(report_data)
         return {"message": "تم حفظ التقرير بنجاح", "id": str(result.inserted_id), "created": True}
 
 @router.get("")
@@ -112,7 +112,8 @@ async def get_bank_reports(
     if branch_id and branch_id != "all":
         query["branch_id"] = branch_id
     
-    reports = list(db.bank_reports.find(query).sort([("year", -1), ("month", -1)]))
+    cursor = db.bank_reports.find(query).sort([("year", -1), ("month", -1)])
+    reports = await cursor.to_list(length=100)
     
     result = []
     for r in reports:
@@ -150,7 +151,7 @@ async def get_bank_report_by_month(
     if branch_id and branch_id != "all":
         query["branch_id"] = branch_id
     
-    report = db.bank_reports.find_one(query)
+    report = await db.bank_reports.find_one(query)
     
     if not report:
         return None
@@ -179,7 +180,7 @@ async def delete_bank_report(report_id: str, db=Depends(get_db)):
     """Delete a bank report"""
     
     try:
-        result = db.bank_reports.delete_one({"_id": ObjectId(report_id)})
+        result = await db.bank_reports.delete_one({"_id": ObjectId(report_id)})
         if result.deleted_count == 0:
             raise HTTPException(status_code=404, detail="التقرير غير موجود")
         return {"message": "تم حذف التقرير بنجاح"}
