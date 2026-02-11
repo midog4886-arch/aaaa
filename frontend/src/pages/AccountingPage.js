@@ -1467,8 +1467,7 @@ export default function AccountingPage() {
                       <p style="margin: 5px 0; color: #666;">أكاديمية أداء الأبطال</p>
                     </div>
                     <div class="date">
-                      ${dateFilter.start ? `من: ${dateFilter.start}` : ''} ${dateFilter.end ? `إلى: ${dateFilter.end}` : ''} 
-                      ${!dateFilter.start && !dateFilter.end ? 'جميع الفترات' : ''}
+                      📅 ${ARABIC_MONTHS[bankReportMonth]} ${bankReportYear}
                     </div>
                     
                     <div class="section section-green">
