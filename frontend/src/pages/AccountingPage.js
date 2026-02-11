@@ -1356,23 +1356,82 @@ export default function AccountingPage() {
         <div className="border-2 border-blue-200 rounded-lg p-6 bg-gradient-to-br from-blue-50 to-white">
           <div className="flex justify-between items-center mb-4">
             <h3 className="text-lg font-bold text-blue-800">🏦 الحساب البنكي</h3>
+            <div className="flex gap-2">
+              <Button 
+                size="sm"
+                variant="outline"
+                onClick={() => setShowSavedReportsDialog(true)}
+                className="border-blue-300 text-blue-700"
+              >
+                📂 التقارير المحفوظة
+              </Button>
+              <Button 
+                size="sm"
+                onClick={saveBankReport}
+                disabled={savingBankReport}
+                className="bg-green-600 hover:bg-green-700"
+              >
+                {savingBankReport ? '⏳' : '💾'} حفظ
+              </Button>
+            </div>
+          </div>
+          
+          {/* Month/Year Selector */}
+          <div className="flex gap-2 mb-4 p-3 bg-white rounded-lg border">
+            <Select value={String(bankReportMonth)} onValueChange={(v) => setBankReportMonth(parseInt(v))}>
+              <SelectTrigger className="w-32">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {Object.entries(ARABIC_MONTHS).map(([num, name]) => (
+                  <SelectItem key={num} value={num}>{name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select value={String(bankReportYear)} onValueChange={(v) => setBankReportYear(parseInt(v))}>
+              <SelectTrigger className="w-24">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {[2024, 2025, 2026, 2027].map(year => (
+                  <SelectItem key={year} value={String(year)}>{year}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
             <Button 
-              size="sm"
-              onClick={() => {
-                const cardPayments = (salesReport?.by_payment_method?.['بطاقة']?.total || 0) + 
-                                     (salesReport?.by_payment_method?.['card']?.total || 0) +
-                                     (salesReport?.by_payment_method?.['شبكة']?.total || 0) +
-                                     (salesReport?.by_payment_method?.['مدى']?.total || 0) +
-                                     (salesReport?.by_payment_method?.['فيزا']?.total || 0);
-                const tabyAmount = (salesReport?.by_payment_method?.['تابي']?.total || 0) + 
-                                   (salesReport?.by_payment_method?.['tabby']?.total || 0);
-                const tamaraAmount = (salesReport?.by_payment_method?.['تمارة']?.total || 0) + 
-                                     (salesReport?.by_payment_method?.['tamara']?.total || 0);
-                const totalBNPL = tabyAmount + tamaraAmount;
-                const bnplFees = totalBNPL * 0.075;
-                const bnplNet = totalBNPL - bnplFees;
-                const expensesTotal = tempExpenses.reduce((sum, e) => sum + parseFloat(e.amount || 0), 0);
-                const netTotal = cardPayments + bnplNet - expensesTotal;
+              size="sm" 
+              variant="outline" 
+              onClick={() => { fetchSalesReport(); loadSavedBankReport(); }}
+            >
+              🔄 تحديث
+            </Button>
+          </div>
+          
+          <div className="text-center mb-3 py-2 bg-blue-100 rounded-lg">
+            <span className="font-bold text-blue-800">
+              📅 {ARABIC_MONTHS[bankReportMonth]} {bankReportYear}
+            </span>
+          </div>
+          
+          <Button 
+            size="sm"
+            variant="outline"
+            className="w-full mb-3"
+            onClick={() => {
+              const cardPayments = (salesReport?.by_payment_method?.['بطاقة']?.total || 0) + 
+                                   (salesReport?.by_payment_method?.['card']?.total || 0) +
+                                   (salesReport?.by_payment_method?.['شبكة']?.total || 0) +
+                                   (salesReport?.by_payment_method?.['مدى']?.total || 0) +
+                                   (salesReport?.by_payment_method?.['فيزا']?.total || 0);
+              const tabyAmount = (salesReport?.by_payment_method?.['تابي']?.total || 0) + 
+                                 (salesReport?.by_payment_method?.['tabby']?.total || 0);
+              const tamaraAmount = (salesReport?.by_payment_method?.['تمارة']?.total || 0) + 
+                                   (salesReport?.by_payment_method?.['tamara']?.total || 0);
+              const totalBNPL = tabyAmount + tamaraAmount;
+              const bnplFees = totalBNPL * 0.075;
+              const bnplNet = totalBNPL - bnplFees;
+              const expensesTotal = tempExpenses.reduce((sum, e) => sum + parseFloat(e.amount || 0), 0);
+              const netTotal = cardPayments + bnplNet - expensesTotal;
                 
                 const printContent = `
                   <!DOCTYPE html>
