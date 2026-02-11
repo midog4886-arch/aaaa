@@ -1365,7 +1365,8 @@ export default function AccountingPage() {
                   <span className="text-gray-600">💳 الدفع بالبطاقة (كامل)</span>
                   <span className="text-xl font-bold text-green-600">
                     {(() => {
-                      const card = salesReport.by_payment_method?.['بطاقة']?.total || 0;
+                      const card = (salesReport.by_payment_method?.['بطاقة']?.total || 0) + 
+                                   (salesReport.by_payment_method?.['card']?.total || 0);
                       const shabaka = salesReport.by_payment_method?.['شبكة']?.total || 0;
                       const mada = salesReport.by_payment_method?.['مدى']?.total || 0;
                       const visa = salesReport.by_payment_method?.['فيزا']?.total || 0;
@@ -1379,8 +1380,10 @@ export default function AccountingPage() {
               <div className="bg-white border border-purple-300 rounded-lg p-4">
                 <div className="text-gray-600 text-sm mb-2">📱 تابي وتمارة (خصم 7.50%)</div>
                 {(() => {
-                  const tabyAmount = salesReport.by_payment_method?.['تابي']?.total || 0;
-                  const tamaraAmount = salesReport.by_payment_method?.['تمارة']?.total || 0;
+                  const tabyAmount = (salesReport.by_payment_method?.['تابي']?.total || 0) + 
+                                     (salesReport.by_payment_method?.['tabby']?.total || 0);
+                  const tamaraAmount = (salesReport.by_payment_method?.['تمارة']?.total || 0) + 
+                                       (salesReport.by_payment_method?.['tamara']?.total || 0);
                   const totalBNPL = tabyAmount + tamaraAmount;
                   const fees = totalBNPL * 0.075;
                   const netBNPL = totalBNPL - fees;
