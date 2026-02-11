@@ -385,10 +385,20 @@ export default function AccountingPage() {
   useEffect(() => {
     if (activeTab === TABS.PURCHASES) fetchPurchaseInvoices();
     if (activeTab === TABS.JOURNAL) fetchJournalEntries();
-    if (activeTab === TABS.REPORTS) { fetchSalesReport(); fetchFinancialReport(); }
+    if (activeTab === TABS.REPORTS) { fetchSalesReport(); fetchFinancialReport(); fetchSavedBankReports(); loadSavedBankReport(); }
     if (activeTab === TABS.VAT) fetchVatReport();
     if (activeTab === TABS.EXPENSES) { fetchInternalExpenses(); fetchExpensesSummary(); }
-  }, [activeTab, fetchPurchaseInvoices, fetchJournalEntries, fetchSalesReport, fetchVatReport, fetchFinancialReport, fetchInternalExpenses, fetchExpensesSummary]);
+  }, [activeTab, fetchPurchaseInvoices, fetchJournalEntries, fetchSalesReport, fetchVatReport, fetchFinancialReport, fetchInternalExpenses, fetchExpensesSummary, fetchSavedBankReports, loadSavedBankReport]);
+
+  // Update date filter when month/year changes for bank report
+  useEffect(() => {
+    if (activeTab === TABS.REPORTS) {
+      const startDate = `${bankReportYear}-${String(bankReportMonth).padStart(2, '0')}-01`;
+      const lastDay = new Date(bankReportYear, bankReportMonth, 0).getDate();
+      const endDate = `${bankReportYear}-${String(bankReportMonth).padStart(2, '0')}-${lastDay}`;
+      setDateFilter({ start: startDate, end: endDate });
+    }
+  }, [bankReportMonth, bankReportYear, activeTab]);
 
   // Account handlers
   const handleSaveAccount = async () => {
