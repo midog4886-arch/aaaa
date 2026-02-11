@@ -1172,28 +1172,22 @@ export default function AccountingPage() {
       </div>
       
       {/* Sales Report Section */}
-      <div className="mt-8 border rounded-lg p-6 bg-white">
-        <div className="flex justify-between items-center mb-4">
-          <h3 className="text-lg font-bold">📊 تقرير المبيعات</h3>
-          <div className="flex gap-2">
-            <Button onClick={() => handleExportExcel('sales')} className="bg-green-600 hover:bg-green-700">
-              📥 Export Excel
+      <div className="mt-8 grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Left Side - Sales Report */}
+        <div className="border rounded-lg p-6 bg-white">
+          <div className="flex justify-between items-center mb-4">
+            <h3 className="text-lg font-bold">📊 تقرير المبيعات</h3>
+            <Button onClick={() => handleExportExcel('sales')} size="sm" className="bg-green-600 hover:bg-green-700">
+              📥 Excel
             </Button>
           </div>
-        </div>
-        
-        {/* Date Filters */}
-        <div className="flex gap-4 mb-4 flex-wrap">
-          <div>
-            <label className="text-sm text-gray-600">من تاريخ</label>
-            <Input type="date" value={dateFilter.start} onChange={e => setDateFilter(prev => ({ ...prev, start: e.target.value }))} className="w-40" />
+          
+          {/* Date Filters */}
+          <div className="flex gap-2 mb-4 flex-wrap">
+            <Input type="date" value={dateFilter.start} onChange={e => setDateFilter(prev => ({ ...prev, start: e.target.value }))} className="w-36" placeholder="من" />
+            <Input type="date" value={dateFilter.end} onChange={e => setDateFilter(prev => ({ ...prev, end: e.target.value }))} className="w-36" placeholder="إلى" />
+            <Button variant="outline" size="sm" onClick={fetchSalesReport}>تحديث</Button>
           </div>
-          <div>
-            <label className="text-sm text-gray-600">إلى تاريخ</label>
-            <Input type="date" value={dateFilter.end} onChange={e => setDateFilter(prev => ({ ...prev, end: e.target.value }))} className="w-40" />
-          </div>
-          <Button variant="outline" onClick={fetchSalesReport}>تحديث</Button>
-        </div>
         
         {salesReport && (
           <>
