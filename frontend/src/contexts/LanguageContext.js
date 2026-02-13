@@ -36,6 +36,7 @@ const translations = {
     member_card: 'بطاقة العضوية',
     coach_ratings: 'تقييمات المدربين',
     advertisements: 'الإعلانات',
+    daily_videos: 'الفيديوهات اليومية',
     accounting: 'المحاسبة',
     reports: 'التقارير',
     messages: 'الرسائل',
