@@ -6,6 +6,7 @@ import {
   AlertTriangle, Clock, ChevronLeft, Trophy, Loader2
 } from 'lucide-react';
 import MemberLayout, { memberAPI, getMemberData } from './MemberLayout';
+import { HeroBannerAds, InlineAds, PopupAd } from './MemberAds';
 
 const MemberDashboard = () => {
   const [loading, setLoading] = useState(true);
