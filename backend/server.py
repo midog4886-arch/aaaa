@@ -36,8 +36,9 @@ from routes.attendance import router as attendance_router, set_loyalty_award_fun
 from routes.notifications import router as notifications_router
 from routes.bank_reports import router as bank_reports_router
 from routes.advertisements import router as advertisements_router
-from routes.daily_videos import router as daily_videos_router, set_loyalty_award_function as set_videos_loyalty
+from routes.daily_videos import router as daily_videos_router, set_loyalty_award_function as set_videos_loyalty, set_push_notify_function
 from routes.loyalty import router as loyalty_router, set_database as set_loyalty_db, award_points as loyalty_award_points
+from routes.push_notifications import router as push_notifications_router, notify_new_video as push_notify_new_video
 
 ROOT_DIR = Path(__file__).parent
 UPLOADS_DIR = ROOT_DIR / "uploads"
