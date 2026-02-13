@@ -7,6 +7,13 @@ import { memberAPI, getDarkMode } from './MemberLayout';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 
+// Helper function to get proper image URL
+const getImageUrl = (url) => {
+  if (!url) return '';
+  if (url.startsWith('/api')) return `${BACKEND_URL}${url}`;
+  return `${BACKEND_URL}/api${url}`;
+};
+
 // Hero Banner Carousel Component
 export const HeroBannerAds = ({ branchId }) => {
   const [ads, setAds] = useState([]);
