@@ -375,7 +375,26 @@ async def get_member_notifications(member: dict = Depends(get_current_member)):
             "title": notif.get("title"),
             "message": notif.get("message"),
             "priority": notif.get("priority", "info"),
-            "created_at": notif.get("created_at")
+            "created_at": notif.get("created_at"),
+            "is_read": notif.get("is_read", False)
+        })
+    
+    # Get member-specific notifications (videos, loyalty, etc.)
+    member_notifs = await db.member_notifications.find(
+        {"member_id": member["id"]},
+        {"_id": 0}
+    ).sort("created_at", -1).to_list(50)
+    
+    for notif in member_notifs:
+        notifications.append({
+            "id": str(notif.get("_id", "")),
+            "type": notif.get("type", "info"),
+            "title": notif.get("title_ar", notif.get("title", "")),
+            "message": notif.get("message_ar", notif.get("message", "")),
+            "priority": "info",
+            "link": notif.get("link"),
+            "created_at": notif.get("created_at"),
+            "is_read": notif.get("is_read", False)
         })
     
     # Sort by priority and date
