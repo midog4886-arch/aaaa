@@ -476,7 +476,7 @@ async def get_all_redemptions(status: str = None, limit: int = 100):
     
     # Enrich with member info
     for r in redemptions:
-        member = await db.members.find_one({"_id": ObjectId(r['member_id'])})
+        member = await db.members.find_one({"id": r['member_id']}, {"_id": 0})
         if member:
             r['member_name'] = member.get('name_ar', '')
             r['member_code'] = member.get('member_code', '')
