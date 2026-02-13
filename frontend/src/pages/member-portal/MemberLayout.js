@@ -252,24 +252,6 @@ const MemberLayout = ({ children }) => {
                 <span className="text-xs">{language === 'ar' ? 'EN' : 'ع'}</span>
               </Button>
 
-              {/* PWA Install Button - Always visible */}
-              <Button 
-                variant="ghost" 
-                size="sm"
-                onClick={() => {
-                  if (deferredPrompt) {
-                    handleInstallClick();
-                  } else {
-                    setShowInstallGuide(true);
-                  }
-                }}
-                className="bg-green-500 text-white hover:bg-green-600"
-                title={language === 'ar' ? 'تثبيت التطبيق' : 'Install App'}
-              >
-                <Download className="w-4 h-4 me-1" />
-                <span className="hidden sm:inline">{getText('install')}</span>
-              </Button>
-
               {/* Dark Mode Toggle */}
               <Button 
                 variant="ghost" 
