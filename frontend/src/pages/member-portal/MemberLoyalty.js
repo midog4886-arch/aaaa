@@ -65,7 +65,7 @@ const MemberLoyalty = () => {
       setRedeemDialogOpen(false);
       setSelectedReward(null);
       setRedeemNotes('');
-      fetchData();
+      setDataLoaded(false); // Allow refetch
     } catch (error) {
       console.error('Error redeeming reward:', error);
       alert(error.response?.data?.detail || t('حدث خطأ', 'An error occurred'));
