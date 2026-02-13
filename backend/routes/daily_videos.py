@@ -53,6 +53,7 @@ class DailyVideoBase(BaseModel):
     coach_name: Optional[str] = ""
     is_active: bool = True
     tags: List[str] = []
+    priority: int = 0  # Higher priority shows first
 
 
 class DailyVideoCreate(DailyVideoBase):
