@@ -92,6 +92,22 @@ export const HeroBannerAds = ({ branchId }) => {
             alt={currentAd.title_ar}
             className="w-full h-full object-cover"
           />
+        ) : currentAd.ad_type === 'link' && currentAd.link_url ? (
+          <div className={`w-full h-full flex flex-col items-center justify-center ${darkMode ? 'bg-gray-700' : 'bg-gradient-to-br from-blue-600 to-purple-700'}`}>
+            <div className="text-center text-white p-6">
+              <div className="w-20 h-20 bg-white/20 rounded-full flex items-center justify-center mx-auto mb-4">
+                <ExternalLink className="w-10 h-10 text-white" />
+              </div>
+              <h3 className="text-2xl font-bold">{currentAd.title_ar}</h3>
+              {currentAd.description_ar && (
+                <p className="mt-2 opacity-90">{currentAd.description_ar}</p>
+              )}
+              <div className="mt-4 inline-flex items-center gap-2 bg-white/20 hover:bg-white/30 px-6 py-3 rounded-full transition-all">
+                <span className="font-medium">اضغط للزيارة</span>
+                <ExternalLink className="w-5 h-5" />
+              </div>
+            </div>
+          </div>
         ) : (
           <div className={`w-full h-full flex items-center justify-center ${darkMode ? 'bg-gray-700' : 'bg-gradient-to-br from-blue-600 to-purple-700'}`}>
             <div className="text-center text-white p-6">
