@@ -225,7 +225,16 @@ const LoyaltyPage = () => {
           </h1>
           <p className="text-gray-600 mt-1">إدارة نقاط المكافآت ومستويات العضوية</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
+          <Button 
+            variant="outline" 
+            onClick={handleProcessBirthdays}
+            disabled={processingBirthdays}
+            className="bg-pink-50 border-pink-200 text-pink-700 hover:bg-pink-100"
+          >
+            <Cake className="w-4 h-4 me-1" />
+            {processingBirthdays ? 'جاري المعالجة...' : 'منح نقاط أعياد الميلاد'}
+          </Button>
           <Button variant="outline" onClick={() => setSettingsDialogOpen(true)}>
             <Settings className="w-4 h-4 me-1" />
             الإعدادات
