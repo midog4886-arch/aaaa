@@ -5,14 +5,42 @@ import {
   CreditCard, Calendar, FileText, QrCode, Bell, CheckCircle, 
   AlertTriangle, Clock, ChevronLeft, Trophy, Loader2
 } from 'lucide-react';
-import MemberLayout, { memberAPI, getMemberData } from './MemberLayout';
+import MemberLayout, { memberAPI, getMemberData, getDarkMode } from './MemberLayout';
 import { HeroBannerAds, InlineAds, PopupAd } from './MemberAds';
+
+// Skeleton Components
+const StatCardSkeleton = ({ darkMode }) => (
+  <div className={`rounded-xl p-4 ${darkMode ? 'bg-gray-800' : 'bg-white'} shadow-sm`}>
+    <div className="flex items-center gap-3">
+      <div className={`w-12 h-12 rounded-full animate-pulse ${darkMode ? 'bg-gray-700' : 'bg-gray-300'}`} />
+      <div className="flex-1">
+        <div className={`h-3 w-20 rounded animate-pulse mb-2 ${darkMode ? 'bg-gray-700' : 'bg-gray-300'}`} />
+        <div className={`h-6 w-16 rounded animate-pulse ${darkMode ? 'bg-gray-700' : 'bg-gray-300'}`} />
+      </div>
+    </div>
+  </div>
+);
+
+const BannerSkeleton = ({ darkMode }) => (
+  <div className={`rounded-xl overflow-hidden ${darkMode ? 'bg-gray-800' : 'bg-gray-200'}`}>
+    <div className="aspect-[21/9] animate-pulse bg-gradient-to-r from-gray-300 via-gray-200 to-gray-300 dark:from-gray-700 dark:via-gray-600 dark:to-gray-700" 
+      style={{ backgroundSize: '200% 100%', animation: 'shimmer 1.5s infinite' }} />
+  </div>
+);
+
+const QuickLinkSkeleton = ({ darkMode }) => (
+  <div className={`rounded-xl p-4 ${darkMode ? 'bg-gray-800' : 'bg-white'} shadow-sm`}>
+    <div className={`w-10 h-10 rounded-lg animate-pulse mb-2 ${darkMode ? 'bg-gray-700' : 'bg-gray-300'}`} />
+    <div className={`h-4 w-20 rounded animate-pulse ${darkMode ? 'bg-gray-700' : 'bg-gray-300'}`} />
+  </div>
+);
 
 const MemberDashboard = () => {
   const [loading, setLoading] = useState(true);
   const [subscriptions, setSubscriptions] = useState({ active: [], expired: [] });
   const [notifications, setNotifications] = useState({ notifications: [], unread_count: 0 });
   const member = getMemberData();
+  const darkMode = getDarkMode();
 
   useEffect(() => {
     fetchData();
@@ -42,8 +70,25 @@ const MemberDashboard = () => {
   if (loading) {
     return (
       <MemberLayout>
-        <div className="flex items-center justify-center min-h-[400px]">
-          <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
+        <div className="space-y-6">
+          {/* Welcome Skeleton */}
+          <div className={`rounded-xl p-6 ${darkMode ? 'bg-gray-800' : 'bg-gradient-to-r from-blue-600 to-indigo-600'}`}>
+            <div className={`h-8 w-48 rounded animate-pulse mb-2 ${darkMode ? 'bg-gray-700' : 'bg-white/30'}`} />
+            <div className={`h-4 w-32 rounded animate-pulse ${darkMode ? 'bg-gray-700' : 'bg-white/30'}`} />
+          </div>
+          
+          {/* Banner Skeleton */}
+          <BannerSkeleton darkMode={darkMode} />
+          
+          {/* Stats Skeleton */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            {[1, 2, 3, 4].map(i => <StatCardSkeleton key={i} darkMode={darkMode} />)}
+          </div>
+          
+          {/* Quick Links Skeleton */}
+          <div className="grid grid-cols-3 gap-4">
+            {[1, 2, 3].map(i => <QuickLinkSkeleton key={i} darkMode={darkMode} />)}
+          </div>
         </div>
       </MemberLayout>
     );
