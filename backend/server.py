@@ -79,6 +79,9 @@ api_router.include_router(loyalty_router)
 # Set database for loyalty router
 set_loyalty_db(db)
 
+# Set loyalty award function for attendance router
+set_loyalty_award_function(loyalty_award_points)
+
 # Member Portal router (mounted directly on app, not api_router)
 app.include_router(member_portal_router)
 
