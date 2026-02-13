@@ -1,6 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Trophy, Star } from 'lucide-react';
+import { Star } from 'lucide-react';
+
+// Academy Logo URL
+const ACADEMY_LOGO = "/logo-new.png";
 
 const SplashScreen = ({ onComplete }) => {
   const [showSplash, setShowSplash] = useState(true);
@@ -60,8 +63,12 @@ const SplashScreen = ({ onComplete }) => {
               }}
               className="relative"
             >
-              <div className="w-32 h-32 mx-auto bg-white rounded-3xl shadow-2xl flex items-center justify-center">
-                <Trophy className="w-16 h-16 text-yellow-500" />
+              <div className="w-32 h-32 mx-auto bg-white rounded-3xl shadow-2xl flex items-center justify-center p-3 overflow-hidden">
+                <img 
+                  src={ACADEMY_LOGO} 
+                  alt="Global Champions" 
+                  className="w-full h-full object-contain"
+                />
               </div>
               
               {/* Floating stars */}

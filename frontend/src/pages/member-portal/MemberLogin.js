@@ -11,7 +11,7 @@ import axios from 'axios';
 const API_URL = process.env.REACT_APP_BACKEND_URL;
 
 // Academy Logo URL
-const ACADEMY_LOGO = "https://customer-assets.emergentagent.com/job_academysystem-1/artifacts/so6kr7rz_White%20Orange%20Minimalist%20Frame%20Paper%20Document%20%281024%20x%201024%20%D9%85%D9%84%D9%85%29%20%28500%20x%20500%20%D9%85%D9%84%D9%85%29.png";
+const ACADEMY_LOGO = "/logo-new.png";
 
 // Splash Screen Component
 const SplashScreen = ({ onComplete }) => {
