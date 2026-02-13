@@ -320,6 +320,19 @@ const MemberLoyalty = () => {
                               </Badge>
                             )}
                           </div>
+                          {canRedeem && (
+                            <Button 
+                              className="w-full mt-3 bg-gradient-to-r from-yellow-500 to-orange-500 hover:from-yellow-600 hover:to-orange-600"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSelectedReward(reward);
+                                setRedeemDialogOpen(true);
+                              }}
+                            >
+                              <Gift className="w-4 h-4 me-2" />
+                              {t('استبدال', 'Redeem')}
+                            </Button>
+                          )}
                         </div>
                       </div>
                       {!canRedeem && (
