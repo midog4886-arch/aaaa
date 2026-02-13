@@ -189,3 +189,142 @@ async def get_expiring_subscriptions(
     expiring.sort(key=lambda x: x.get("days_remaining", 999))
     
     return expiring
+
+
+@router.post("/check-ads-expiry")
+async def check_ads_expiry(current_user: dict = Depends(get_current_user)):
+    """Check for expiring and expired advertisements and create notifications"""
+    branch_id = current_user.get("branch_id")
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    
+    # Date 3 days from now
+    three_days_later = (datetime.now(timezone.utc) + timedelta(days=3)).strftime("%Y-%m-%d")
+    
+    # Query for active ads
+    query = {"is_active": True}
+    if branch_id:
+        query["branch_id"] = branch_id
+    
+    ads = await db.advertisements.find(query, {"_id": 0}).to_list(1000)
+    
+    notifications_created = 0
+    
+    for ad in ads:
+        end_date = ad.get("end_date", "")
+        if not end_date:
+            continue
+        
+        ad_id = ad.get("id")
+        ad_title = ad.get("title_ar", ad.get("title", "إعلان"))
+        
+        # Check if ad is expired
+        if end_date < today:
+            # Check if notification already exists for today
+            existing = await db.notifications.find_one({
+                "type": "ad_expired",
+                "ad_id": ad_id,
+                "created_at": {"$regex": f"^{today}"}
+            })
+            
+            if not existing:
+                notification_id = str(uuid.uuid4())
+                await db.notifications.insert_one({
+                    "id": notification_id,
+                    "title": "⚠️ إعلان منتهي",
+                    "message": f"انتهى الإعلان \"{ad_title}\" بتاريخ {end_date}",
+                    "type": "ad_expired",
+                    "ad_id": ad_id,
+                    "link": "/advertisements",
+                    "is_read": False,
+                    "branch_id": branch_id,
+                    "created_at": datetime.now(timezone.utc).isoformat()
+                })
+                notifications_created += 1
+        
+        # Check if ad expires within 3 days
+        elif today <= end_date <= three_days_later:
+            days_remaining = (datetime.strptime(end_date, "%Y-%m-%d") - datetime.now(timezone.utc).replace(tzinfo=None)).days
+            
+            # Check if notification already exists for today
+            existing = await db.notifications.find_one({
+                "type": "ad_expiring_soon",
+                "ad_id": ad_id,
+                "created_at": {"$regex": f"^{today}"}
+            })
+            
+            if not existing:
+                notification_id = str(uuid.uuid4())
+                await db.notifications.insert_one({
+                    "id": notification_id,
+                    "title": "🔔 إعلان ينتهي قريباً",
+                    "message": f"الإعلان \"{ad_title}\" سينتهي خلال {days_remaining} أيام ({end_date})",
+                    "type": "ad_expiring_soon",
+                    "ad_id": ad_id,
+                    "link": "/advertisements",
+                    "is_read": False,
+                    "branch_id": branch_id,
+                    "created_at": datetime.now(timezone.utc).isoformat()
+                })
+                notifications_created += 1
+    
+    return {"message": f"تم إنشاء {notifications_created} إشعار للإعلانات", "notifications_created": notifications_created}
+
+
+@router.get("/ads-status")
+async def get_ads_status(current_user: dict = Depends(get_current_user)):
+    """Get status of all advertisements (expiring soon, expired, active)"""
+    branch_id = current_user.get("branch_id")
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    three_days_later = (datetime.now(timezone.utc) + timedelta(days=3)).strftime("%Y-%m-%d")
+    
+    query = {}
+    if branch_id:
+        query["branch_id"] = branch_id
+    
+    ads = await db.advertisements.find(query, {"_id": 0}).to_list(1000)
+    
+    expired = []
+    expiring_soon = []
+    active = []
+    no_end_date = []
+    
+    for ad in ads:
+        end_date = ad.get("end_date", "")
+        ad_info = {
+            "id": ad.get("id"),
+            "title_ar": ad.get("title_ar", ""),
+            "title": ad.get("title", ""),
+            "ad_type": ad.get("ad_type", ""),
+            "position": ad.get("position", ""),
+            "end_date": end_date,
+            "is_active": ad.get("is_active", False),
+            "views_count": ad.get("views_count", 0),
+            "clicks_count": ad.get("clicks_count", 0)
+        }
+        
+        if not end_date:
+            no_end_date.append(ad_info)
+        elif end_date < today:
+            ad_info["days_expired"] = (datetime.now(timezone.utc).replace(tzinfo=None) - datetime.strptime(end_date, "%Y-%m-%d")).days
+            expired.append(ad_info)
+        elif today <= end_date <= three_days_later:
+            ad_info["days_remaining"] = (datetime.strptime(end_date, "%Y-%m-%d") - datetime.now(timezone.utc).replace(tzinfo=None)).days
+            expiring_soon.append(ad_info)
+        else:
+            ad_info["days_remaining"] = (datetime.strptime(end_date, "%Y-%m-%d") - datetime.now(timezone.utc).replace(tzinfo=None)).days
+            active.append(ad_info)
+    
+    return {
+        "expired": expired,
+        "expiring_soon": expiring_soon,
+        "active": active,
+        "no_end_date": no_end_date,
+        "summary": {
+            "total": len(ads),
+            "expired_count": len(expired),
+            "expiring_soon_count": len(expiring_soon),
+            "active_count": len(active),
+            "no_end_date_count": len(no_end_date)
+        }
+    }
+
