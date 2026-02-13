@@ -223,7 +223,7 @@ export const InlineAds = ({ branchId, maxAds = 2 }) => {
                 </>
               ) : ad.banner_image_url ? (
                 <img 
-                  src={`${BACKEND_URL}${ad.banner_image_url}`}
+                  src={getImageUrl(ad.banner_image_url)}
                   alt={ad.title_ar}
                   className="w-full h-full object-cover"
                 />
@@ -323,7 +323,7 @@ export const SidebarAds = ({ branchId }) => {
                 </>
               ) : ad.banner_image_url ? (
                 <img 
-                  src={`${BACKEND_URL}${ad.banner_image_url}`}
+                  src={getImageUrl(ad.banner_image_url)}
                   alt={ad.title_ar}
                   className="w-full h-full object-cover"
                 />
