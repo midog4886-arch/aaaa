@@ -121,6 +121,14 @@ async def create_attendance(
     }
     
     await db.attendance.insert_one(record)
+    
+    # Award loyalty points for attendance
+    if loyalty_award_points:
+        try:
+            await award_attendance_points(attendance.member_id)
+        except Exception as e:
+            print(f"Error awarding loyalty points: {e}")
+    
     return {"message": "Attendance recorded", "record": {k: v for k, v in record.items() if k != "_id"}}
 
 @router.post("/qr-checkin")
