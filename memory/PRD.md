@@ -2961,6 +2961,64 @@ SW Status: Service Worker registered: https://championsmgmt.preview.emergentagen
 
 ---
 
+## Update - UI/UX Overhaul Phase 2 (February 13, 2026)
+
+### تحسين واجهة المستخدم - المرحلة الثانية ✅
+
+#### الميزات الجديدة:
+
+#### 1. خاصية السحب للتحديث (Pull-to-Refresh) ✅
+- **المكون الجديد**: `PullToRefresh.jsx` - مكون قابل لإعادة الاستخدام
+- **التطبيق**: تم إضافته إلى `MemberDashboard.js` و `MemberDailyVideos.js`
+- **الميزات**:
+  - سحب للأسفل لتحديث البيانات
+  - أيقونة تحديث متحركة باستخدام `framer-motion`
+  - رسائل تفاعلية ("اسحب للتحديث" / "اترك للتحديث" / "جاري التحديث...")
+  - يعمل على أجهزة اللمس والكمبيوتر
+  - إشعار toast عند اكتمال التحديث
+
+#### 2. التمرير اللانهائي (Infinite Scroll) ✅
+- **المكون الجديد**: `InfiniteScroll.jsx` - تحميل المزيد عند التمرير
+- **التطبيق**: تم إضافته إلى صفحة الفيديوهات الأسبوعية
+- **الميزات**:
+  - تحميل 6 فيديوهات في كل مرة
+  - Intersection Observer API للأداء الأمثل
+  - مؤشر تحميل متحرك
+  - رسالة "لا يوجد المزيد" عند انتهاء المحتوى
+  - حركات انتقالية سلسة للعناصر الجديدة
+
+#### 3. إشعارات Toast المتحركة ✅
+- **المكتبة**: `sonner` (موجودة مسبقاً)
+- **التطبيق**: إشعارات نجاح/فشل التحديث
+- **الميزات**:
+  - إشعار أخضر عند نجاح التحديث
+  - إشعار أحمر عند فشل التحديث
+  - يظهر أعلى الشاشة ويختفي تلقائياً
+
+#### 4. تحديث الشعار ✅
+- **الملفات المحدثة**: `SplashScreen.jsx`, `MemberLogin.js`
+- **الشعار الجديد**: `/logo-new.png` (شعار Global Champions الجديد)
+
+### الملفات الجديدة:
+- `/app/frontend/src/components/PullToRefresh.jsx`
+- `/app/frontend/src/components/InfiniteScroll.jsx`
+- `/app/frontend/public/logo-new.png`
+
+### الملفات المُحدثة:
+- `/app/frontend/src/pages/member-portal/MemberDashboard.js` - إضافة Pull-to-Refresh
+- `/app/frontend/src/pages/member-portal/MemberDailyVideos.js` - إضافة Pull-to-Refresh و Infinite Scroll
+- `/app/frontend/src/pages/member-portal/MemberLogin.js` - تحديث الشعار
+- `/app/frontend/src/components/SplashScreen.jsx` - تحديث الشعار
+
+### الاختبارات:
+- ✅ صفحة تسجيل الدخول تعمل بالشعار الجديد
+- ✅ لوحة التحكم تعمل مع Pull-to-Refresh
+- ✅ صفحة الفيديوهات تعمل مع Infinite Scroll
+- ✅ شريط التنقل السفلي يعمل بشكل صحيح
+- ✅ لا توجد أخطاء في Console
+
+
+
 ## Credentials
 - **Admin Panel**: Username: `242456`, Password: `242456`
 - **Member Portal**: Login using member phone (e.g., `0500694704`)
