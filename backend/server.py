@@ -82,6 +82,12 @@ set_loyalty_db(db)
 # Set loyalty award function for attendance router
 set_loyalty_award_function(loyalty_award_points)
 
+# Set loyalty award function for invoices router (subscription renewals)
+set_invoices_loyalty(loyalty_award_points)
+
+# Set loyalty award function for daily videos router (video watch)
+set_videos_loyalty(loyalty_award_points)
+
 # Member Portal router (mounted directly on app, not api_router)
 app.include_router(member_portal_router)
 
