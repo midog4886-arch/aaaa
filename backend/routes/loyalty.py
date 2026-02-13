@@ -765,3 +765,47 @@ async def get_today_birthdays():
                 })
     
     return birthday_members
+
+
+@router.post("/initialize-all-members")
+async def initialize_loyalty_for_all_members():
+    """Initialize loyalty points for all existing members"""
+    members = await db.members.find({}, {"_id": 0}).to_list(10000)
+    
+    initialized_count = 0
+    already_exists_count = 0
+    
+    for member in members:
+        member_id = member.get("id")
+        if not member_id:
+            continue
+            
+        # Check if already has points record
+        existing = await db.member_points.find_one({"member_id": member_id})
+        if existing:
+            already_exists_count += 1
+            continue
+        
+        # Generate referral code
+        referral_code = generate_referral_code(member.get('name_ar', 'MEMBER'))
+        
+        # Create points record
+        await db.member_points.insert_one({
+            "member_id": member_id,
+            "total_points": 0,
+            "available_points": 0,
+            "referral_code": referral_code,
+            "referred_by": None,
+            "referral_count": 0,
+            "attendance_streak": 0,
+            "last_attendance_date": None,
+            "created_at": datetime.now(timezone.utc).isoformat()
+        })
+        initialized_count += 1
+    
+    return {
+        "message": f"تم تفعيل نظام الولاء بنجاح",
+        "initialized": initialized_count,
+        "already_exists": already_exists_count,
+        "total_members": len(members)
+    }
