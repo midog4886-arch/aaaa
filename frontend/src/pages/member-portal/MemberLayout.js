@@ -50,15 +50,6 @@ const MemberLayout = ({ children }) => {
   const [notifications, setNotifications] = useState({ unread_count: 0 });
   const [darkMode, setDarkModeState] = useState(getDarkMode());
   const [language, setLanguageState] = useState(getLanguage());
-  
-  // PWA Install prompt
-  const [deferredPrompt, setDeferredPrompt] = useState(null);
-  const [showInstallButton, setShowInstallButton] = useState(false);
-  const [showInstallGuide, setShowInstallGuide] = useState(false);
-
-  // Detect device type for install instructions
-  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
-  const isAndroid = /Android/.test(navigator.userAgent);
 
   // Toggle language
   const toggleLanguage = () => {
