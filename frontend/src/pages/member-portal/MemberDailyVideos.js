@@ -150,7 +150,7 @@ const MemberDailyVideos = () => {
           height="100%"
           playing={playing}
           muted={muted}
-          controls={false}
+          controls={true}
           config={{
             youtube: {
               playerVars: {
@@ -158,52 +158,19 @@ const MemberDailyVideos = () => {
                 rel: 0,
                 showinfo: 0,
                 iv_load_policy: 3,
-                fs: 0,
-                disablekb: 1,
-                playsinline: 1,
-                origin: window.location.origin
+                playsinline: 1
               }
             }
           }}
           onEnded={() => setPlaying(false)}
+          onReady={() => console.log('Video ready')}
+          onError={(e) => console.error('Video error:', e)}
         />
-        
-        {/* Custom Controls Overlay */}
-        <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => setPlaying(!playing)}
-                className="text-white hover:bg-white/20"
-              >
-                {playing ? <Pause className="w-6 h-6" /> : <Play className="w-6 h-6" fill="white" />}
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => setMuted(!muted)}
-                className="text-white hover:bg-white/20"
-              >
-                {muted ? <VolumeX className="w-5 h-5" /> : <Volume2 className="w-5 h-5" />}
-              </Button>
-            </div>
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={handleFullscreen}
-              className="text-white hover:bg-white/20"
-            >
-              <Maximize className="w-5 h-5" />
-            </Button>
-          </div>
-        </div>
         
         {/* Play button overlay when paused */}
         {!playing && (
           <div 
-            className="absolute inset-0 flex items-center justify-center cursor-pointer"
+            className="absolute inset-0 flex items-center justify-center cursor-pointer z-10"
             onClick={() => setPlaying(true)}
           >
             <div className="w-20 h-20 bg-red-600 rounded-full flex items-center justify-center shadow-lg hover:scale-110 transition-transform">
