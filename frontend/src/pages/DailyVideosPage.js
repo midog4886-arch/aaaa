@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
@@ -17,8 +18,10 @@ import { ar } from 'date-fns/locale';
 import { 
   Plus, Pencil, Trash2, Eye, Video, Calendar as CalendarIcon, 
   Play, Search, Filter, Clock, Users, Activity, ChevronLeft, 
-  ChevronRight, LayoutGrid, List, RefreshCw
+  ChevronRight, LayoutGrid, List, RefreshCw, Megaphone, LayoutDashboard,
+  Link2, CheckCircle, AlertCircle
 } from 'lucide-react';
+import { extractYouTubeVideoId, generateYouTubeEmbedUrl, getYouTubeThumbnail, isValidYouTubeUrl } from '../utils/youtubeUtils';
 
 const DailyVideosPage = () => {
   const { toast } = useToast();
