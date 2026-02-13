@@ -197,6 +197,12 @@ const translations = {
     coach_ratings: 'Coach Ratings',
     advertisements: 'Advertisements',
     daily_videos: 'Daily Videos',
+    loyalty: 'Loyalty',
+    levels: 'Levels',
+    store: 'Store',
+    schedule: 'Schedule',
+    attendance: 'Attendance',
+    accounting: 'Accounting',
     
     // Dashboard
     total_members: 'Total Members',
