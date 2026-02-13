@@ -249,8 +249,8 @@ async def upload_banner_image(
     with open(file_path, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
     
-    # Return URL
-    return {"url": f"/uploads/ads/{filename}", "filename": filename}
+    # Return URL with /api prefix for proper routing through ingress
+    return {"url": f"/api/uploads/ads/{filename}", "filename": filename}
 
 
 @router.put("/{ad_id}", response_model=Advertisement)
