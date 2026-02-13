@@ -33,7 +33,10 @@ import {
   QrCode,
   Star,
   Megaphone,
-  Video
+  Video,
+  ExternalLink,
+  Download,
+  Smartphone
 } from 'lucide-react';
 
 export const Sidebar = ({ isOpen, onClose }) => {
