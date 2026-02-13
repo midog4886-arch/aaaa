@@ -444,8 +444,6 @@ async def pay_invoice(invoice_id: str, current_user: dict = Depends(get_current_
             # Determine renewal type based on duration
             activity_items = [i for i in invoice.get("items", []) if not i.get("is_product")]
             if activity_items:
-                total = invoice.get("total", 0)
-                
                 # Check if this is a renewal (member had previous activity)
                 member = await db.members.find_one({"id": member_id})
                 if member and member.get("activities"):
@@ -472,7 +470,7 @@ async def pay_invoice(invoice_id: str, current_user: dict = Depends(get_current_
                                 renewal_type = "quarterly_renewal"
                                 description_ar = "مكافأة تجديد اشتراك ربع سنوي"
                                 description_en = "Quarterly subscription renewal bonus"
-                        except:
+                        except Exception:
                             pass
                     
                     await loyalty_award_points(
