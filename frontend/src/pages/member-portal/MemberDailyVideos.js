@@ -89,8 +89,12 @@ const MemberDailyVideos = () => {
     setVideoDialogOpen(true);
     setPlaying(true);
     
-    // Record view
-    memberAPI.post(`/api/daily-videos/${video.id}/view`).catch(() => {});
+    // Record view and award loyalty points
+    if (member && member.id) {
+      memberAPI.post(`/api/daily-videos/${video.id}/view?member_id=${member.id}`).catch(() => {});
+    } else {
+      memberAPI.post(`/api/daily-videos/${video.id}/view`).catch(() => {});
+    }
   };
 
   const handleDateClick = async (date) => {
