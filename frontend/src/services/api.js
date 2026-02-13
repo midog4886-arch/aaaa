@@ -316,6 +316,22 @@ export const advertisementsAPI = {
   getStats: (params = {}) => axios.get(`${API}/advertisements/stats/summary`, { params })
 };
 
+// Daily Videos API - الفيديوهات اليومية
+export const dailyVideosAPI = {
+  getAll: (params = {}) => axios.get(`${API}/daily-videos`, { params }),
+  getById: (id) => axios.get(`${API}/daily-videos/${id}`),
+  create: (data) => axios.post(`${API}/daily-videos`, data),
+  update: (id, data) => axios.put(`${API}/daily-videos/${id}`, data),
+  delete: (id) => axios.delete(`${API}/daily-videos/${id}`),
+  getToday: (params = {}) => axios.get(`${API}/daily-videos/today`, { params }),
+  getWeek: (params = {}) => axios.get(`${API}/daily-videos/week`, { params }),
+  getByDate: (date, params = {}) => axios.get(`${API}/daily-videos/by-date/${date}`, { params }),
+  getCalendar: (year, month, params = {}) => axios.get(`${API}/daily-videos/calendar/${year}/${month}`, { params }),
+  getByActivity: (activityId, limit = 10) => axios.get(`${API}/daily-videos/activity/${activityId}/videos`, { params: { limit } }),
+  recordView: (id) => axios.post(`${API}/daily-videos/${id}/view`),
+  getStats: (params = {}) => axios.get(`${API}/daily-videos/stats/summary`, { params })
+};
+
 export default {
   auth: authAPI,
   activities: activitiesAPI,
