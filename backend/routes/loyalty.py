@@ -182,7 +182,7 @@ async def get_member_points(member_id: str):
     
     if not member_points:
         # Initialize points for new member
-        member = await db.members.find_one({"_id": ObjectId(member_id)})
+        member = await db.members.find_one({"id": member_id}, {"_id": 0})
         if not member:
             raise HTTPException(status_code=404, detail="العضو غير موجود")
         
