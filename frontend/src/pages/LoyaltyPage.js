@@ -50,12 +50,12 @@ const LoyaltyPage = () => {
     try {
       setLoading(true);
       const [statsRes, rewardsRes, redemptionsRes, leaderboardRes, pointsRes, levelsRes] = await Promise.all([
-        api.get('/api/loyalty/stats'),
-        api.get('/api/loyalty/rewards'),
-        api.get('/api/loyalty/redemptions?limit=50'),
-        api.get('/api/loyalty/leaderboard?limit=10'),
-        api.get('/api/loyalty/settings/points'),
-        api.get('/api/loyalty/settings/levels')
+        api.get('/loyalty/stats'),
+        api.get('/loyalty/rewards'),
+        api.get('/loyalty/redemptions?limit=50'),
+        api.get('/loyalty/leaderboard?limit=10'),
+        api.get('/loyalty/settings/points'),
+        api.get('/loyalty/settings/levels')
       ]);
       
       setStats(statsRes.data);
