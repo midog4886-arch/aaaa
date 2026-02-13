@@ -353,6 +353,16 @@ export const SidebarAds = ({ branchId }) => {
                   alt={ad.title_ar}
                   className="w-full h-full object-cover"
                 />
+              ) : ad.ad_type === 'link' && ad.link_url ? (
+                <div className={`w-full h-full flex flex-col items-center justify-center p-4 ${
+                  darkMode ? 'bg-gray-700' : 'bg-gradient-to-br from-orange-500 to-red-600'
+                }`}>
+                  <div className="w-10 h-10 bg-white/20 rounded-full flex items-center justify-center mb-2">
+                    <ExternalLink className="w-5 h-5 text-white" />
+                  </div>
+                  <span className="text-white font-bold text-center">{ad.title_ar}</span>
+                  <span className="text-white/70 text-xs mt-1">اضغط للزيارة</span>
+                </div>
               ) : (
                 <div className={`w-full h-full flex items-center justify-center p-4 ${
                   darkMode ? 'bg-gray-700' : 'bg-gradient-to-br from-orange-500 to-red-600'
