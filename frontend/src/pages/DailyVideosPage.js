@@ -338,8 +338,10 @@ const DailyVideosPage = () => {
               
               {calendarDays.map(day => {
                 const dateStr = format(day, 'yyyy-MM-dd');
-                const videoData = calendarData[dateStr];
+                const dayData = calendarData[dateStr];
                 const isToday = isSameDay(day, today);
+                const videoCount = dayData?.count || 0;
+                const firstVideo = dayData?.videos?.[0];
                 
                 return (
                   <div
@@ -347,26 +349,29 @@ const DailyVideosPage = () => {
                     onClick={() => handleDateClick(day)}
                     className={`h-24 rounded-lg border cursor-pointer transition-all overflow-hidden ${
                       isToday ? 'border-blue-500 border-2' : 'border-gray-200'
-                    } ${videoData ? 'bg-red-50 hover:bg-red-100' : 'bg-white hover:bg-gray-50'}`}
+                    } ${dayData ? 'bg-red-50 hover:bg-red-100' : 'bg-white hover:bg-gray-50'}`}
                   >
-                    <div className="p-1">
+                    <div className="p-1 flex justify-between items-start">
                       <span className={`text-sm font-medium ${isToday ? 'text-blue-600' : 'text-gray-700'}`}>
                         {format(day, 'd')}
                       </span>
+                      {videoCount > 1 && (
+                        <Badge className="text-xs bg-red-600 text-white px-1.5 py-0">{videoCount}</Badge>
+                      )}
                     </div>
                     
-                    {videoData && (
+                    {firstVideo && (
                       <div className="px-1">
                         <img 
-                          src={videoData.thumbnail}
-                          alt={videoData.title_ar}
+                          src={firstVideo.thumbnail}
+                          alt={firstVideo.title_ar}
                           className="w-full h-12 object-cover rounded"
                         />
-                        <p className="text-xs text-gray-700 truncate mt-1">{videoData.title_ar}</p>
+                        <p className="text-xs text-gray-700 truncate mt-1">{firstVideo.title_ar}</p>
                       </div>
                     )}
                     
-                    {!videoData && (
+                    {!dayData && (
                       <div className="flex items-center justify-center h-16 text-gray-300">
                         <Plus className="w-6 h-6" />
                       </div>
