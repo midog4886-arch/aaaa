@@ -32,7 +32,7 @@ from routes.coaches import router as coaches_router
 from routes.member_portal import router as member_portal_router
 from routes.members import router as members_router
 from routes.invoices import router as invoices_router
-from routes.attendance import router as attendance_router
+from routes.attendance import router as attendance_router, set_loyalty_award_function
 from routes.notifications import router as notifications_router
 from routes.bank_reports import router as bank_reports_router
 from routes.advertisements import router as advertisements_router
