@@ -229,6 +229,8 @@ export const notificationsAPI = {
   delete: (id) => axios.delete(`${API}/notifications/${id}`),
   checkRenewals: () => axios.post(`${API}/notifications/check-renewals`),
   getExpiringSubscriptions: (params = {}) => axios.get(`${API}/notifications/expiring-subscriptions`, { params }),
+  checkAdsExpiry: () => axios.post(`${API}/notifications/check-ads-expiry`),
+  getAdsStatus: () => axios.get(`${API}/notifications/ads-status`)
 };
 
 // Internal Expenses (Petty Cash) API
