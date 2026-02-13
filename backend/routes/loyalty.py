@@ -234,7 +234,7 @@ async def adjust_member_points(adjustment: ManualPointsAdjust):
         raise HTTPException(status_code=404, detail="العضو غير موجود")
     
     # Update points
-    result = await db.member_points.update_one(
+    await db.member_points.update_one(
         {"member_id": adjustment.member_id},
         {
             "$inc": {
