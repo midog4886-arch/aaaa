@@ -403,16 +403,18 @@ const MemberLayout = ({ children }) => {
                   <span className="text-2xl">💻</span> الكمبيوتر
                 </h4>
                 <ol className="list-decimal list-inside space-y-2 text-sm text-gray-700">
-                  <li>ابحث عن أيقونة التثبيت <Download className="w-4 h-4 inline" /> في شريط العنوان</li>
-                  <li>أو اضغط على قائمة المتصفح <MoreVertical className="w-4 h-4 inline" /></li>
-                  <li>اختر <strong>"تثبيت التطبيق"</strong></li>
+                  <li>{language === 'ar' ? 'ابحث عن أيقونة التثبيت' : 'Look for install icon'} <Download className="w-4 h-4 inline" /> {language === 'ar' ? 'في شريط العنوان' : 'in address bar'}</li>
+                  <li>{language === 'ar' ? 'أو اضغط على قائمة المتصفح' : 'Or tap browser menu'} <MoreVertical className="w-4 h-4 inline" /></li>
+                  <li>{language === 'ar' ? 'اختر' : 'Choose'} <strong>"{language === 'ar' ? 'تثبيت التطبيق' : 'Install App'}"</strong></li>
                 </ol>
               </div>
             )}
 
             <div className="bg-green-50 p-3 rounded-lg border border-green-200">
               <p className="text-sm text-green-700">
-                ✅ بعد التثبيت، سيظهر التطبيق على شاشتك الرئيسية ويمكنك فتحه مباشرة!
+                ✅ {language === 'ar' 
+                  ? 'بعد التثبيت، سيظهر التطبيق على شاشتك الرئيسية ويمكنك فتحه مباشرة!'
+                  : 'After installation, the app will appear on your home screen!'}
               </p>
             </div>
           </div>
@@ -421,7 +423,7 @@ const MemberLayout = ({ children }) => {
             onClick={() => setShowInstallGuide(false)}
             className="w-full"
           >
-            فهمت
+            {language === 'ar' ? 'فهمت' : 'Got it'}
           </Button>
         </DialogContent>
       </Dialog>
