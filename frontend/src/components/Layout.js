@@ -68,6 +68,7 @@ export const Sidebar = ({ isOpen, onClose }) => {
     { to: '/attendance', icon: ClipboardList, label: 'attendance', permission: 'attendance' },
     { to: '/member-card', icon: QrCode, label: 'member_card', permission: 'attendance' },
     { to: '/coach-ratings', icon: Star, label: 'coach_ratings', permission: 'coach-ratings' },
+    { to: '/advertisements', icon: Megaphone, label: 'advertisements', permission: 'advertisements' },
     { to: '/store', icon: Package, label: 'store', permission: 'store' },
     { to: '/accounting', icon: Calculator, label: 'accounting', permission: 'accounting' },
     { to: '/reports', icon: BarChart3, label: 'reports', permission: 'reports' },
