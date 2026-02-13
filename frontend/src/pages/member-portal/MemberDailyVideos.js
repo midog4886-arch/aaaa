@@ -79,8 +79,14 @@ const MemberDailyVideos = () => {
       ]);
 
       // API now returns array
-      setTodayVideos(Array.isArray(todayRes.data) ? todayRes.data : (todayRes.data ? [todayRes.data] : []));
+      const todayData = Array.isArray(todayRes.data) ? todayRes.data : (todayRes.data ? [todayRes.data] : []);
+      // Sort today videos by created_at (newest first)
+      todayData.sort((a, b) => new Date(b.created_at || b.scheduled_date) - new Date(a.created_at || a.scheduled_date));
+      setTodayVideos(todayData);
+      
       const weekData = weekRes.data || [];
+      // Sort week videos by scheduled_date (newest first)
+      weekData.sort((a, b) => new Date(b.scheduled_date) - new Date(a.scheduled_date));
       setWeekVideos(weekData);
       
       // Set initial all videos for infinite scroll
