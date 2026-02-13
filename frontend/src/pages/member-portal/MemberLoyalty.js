@@ -22,6 +22,9 @@ const MemberLoyalty = () => {
   const [redeemNotes, setRedeemNotes] = useState('');
   const [copiedCode, setCopiedCode] = useState(false);
   const [dataLoaded, setDataLoaded] = useState(false);
+  const [referralCodeInput, setReferralCodeInput] = useState('');
+  const [applyingReferral, setApplyingReferral] = useState(false);
+  const [referralMessage, setReferralMessage] = useState({ type: '', text: '' });
   
   const member = getMemberData();
   const language = getLanguage();
