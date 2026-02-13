@@ -24,6 +24,7 @@ import UnauthorizedPage from './pages/UnauthorizedPage';
 import MemberCardPage from './pages/MemberCardPage';
 import CoachRatingsPage from './pages/CoachRatingsPage';
 import AdvertisementsPage from './pages/AdvertisementsPage';
+import DailyVideosPage from './pages/DailyVideosPage';
 
 // Member Portal Pages
 import MemberLogin from './pages/member-portal/MemberLogin';
