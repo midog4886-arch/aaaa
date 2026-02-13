@@ -583,22 +583,86 @@ const DailyVideosPage = () => {
               </div>
             </div>
 
-            {/* YouTube URL */}
-            <div>
-              <Label>رابط فيديو YouTube *</Label>
-              <Input
-                value={formData.youtube_video_id}
-                onChange={(e) => setFormData(prev => ({ ...prev, youtube_video_id: e.target.value }))}
-                placeholder="https://www.youtube.com/watch?v=VIDEO_ID"
-                dir="ltr"
-              />
-              {formData.youtube_video_id && formData.youtube_video_id.length >= 11 && (
-                <div className="mt-2 relative aspect-video max-w-sm rounded-lg overflow-hidden">
-                  <img 
-                    src={`https://img.youtube.com/vi/${formData.youtube_video_id.slice(-11)}/mqdefault.jpg`}
-                    alt="Preview"
-                    className="w-full h-full object-cover"
-                  />
+            {/* YouTube URL with Smart Extraction */}
+            <div className="space-y-3">
+              <Label className="flex items-center gap-2">
+                <Link2 className="w-4 h-4" />
+                رابط فيديو YouTube *
+              </Label>
+              <div className="relative">
+                <Input
+                  value={youtubeUrlInput || formData.youtube_video_id}
+                  onChange={(e) => handleYouTubeUrlChange(e.target.value)}
+                  placeholder="الصق أي رابط يوتيوب هنا... (watch, youtu.be, embed, shorts)"
+                  dir="ltr"
+                  className={`pe-10 ${
+                    urlValidationStatus === 'valid' ? 'border-green-500 focus:ring-green-500' : 
+                    urlValidationStatus === 'invalid' ? 'border-red-500 focus:ring-red-500' : ''
+                  }`}
+                />
+                {urlValidationStatus === 'valid' && (
+                  <CheckCircle className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-green-500" />
+                )}
+                {urlValidationStatus === 'invalid' && (
+                  <AlertCircle className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-red-500" />
+                )}
+              </div>
+              
+              {/* Supported URL Types */}
+              <div className="text-xs text-gray-500 bg-gray-50 p-2 rounded">
+                <strong>الروابط المدعومة:</strong>
+                <ul className="mt-1 space-y-0.5">
+                  <li>• Standard: youtube.com/watch?v=VIDEO_ID</li>
+                  <li>• Short: youtu.be/VIDEO_ID</li>
+                  <li>• Mobile: m.youtube.com/watch?v=VIDEO_ID</li>
+                  <li>• Shorts: youtube.com/shorts/VIDEO_ID</li>
+                  <li>• Embed: youtube.com/embed/VIDEO_ID</li>
+                </ul>
+              </div>
+
+              {/* Extracted Video ID */}
+              {formData.youtube_video_id && (
+                <div className="p-3 bg-green-50 border border-green-200 rounded-lg">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm text-green-700 font-medium">✅ تم استخراج معرف الفيديو:</p>
+                      <code className="text-green-800 font-mono text-sm">{formData.youtube_video_id}</code>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        const embedUrl = generateYouTubeEmbedUrl(formData.youtube_video_id);
+                        navigator.clipboard.writeText(embedUrl);
+                        toast({ title: 'تم نسخ رابط Embed' });
+                      }}
+                    >
+                      نسخ Embed URL
+                    </Button>
+                  </div>
+                  <p className="text-xs text-green-600 mt-2">
+                    Embed URL: {generateYouTubeEmbedUrl(formData.youtube_video_id)}
+                  </p>
+                </div>
+              )}
+
+              {/* Video Preview */}
+              {formData.youtube_video_id && (
+                <div className="mt-2">
+                  <Label className="text-sm text-gray-600 mb-2 block">معاينة الفيديو:</Label>
+                  <div className="relative aspect-video max-w-md rounded-lg overflow-hidden border">
+                    <img 
+                      src={getYouTubeThumbnail(formData.youtube_video_id, 'hq')}
+                      alt="Preview"
+                      className="w-full h-full object-cover"
+                    />
+                    <div className="absolute inset-0 flex items-center justify-center bg-black/20">
+                      <div className="w-16 h-16 bg-red-600 rounded-full flex items-center justify-center">
+                        <Play className="w-8 h-8 text-white ml-1" fill="white" />
+                      </div>
+                    </div>
+                  </div>
                 </div>
               )}
             </div>
