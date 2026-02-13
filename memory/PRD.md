@@ -2547,12 +2547,118 @@ GET    /api/export/attendance                       - تصدير Excel
 
 ---
 
-## Prioritized Backlog (Updated December 2025)
+## Update - Advertisements System (February 2026)
+
+### نظام الإعلانات الذاتي لبوابة الأعضاء ✅
+
+#### ما تم إنجازه:
+
+##### 1. أنواع الإعلانات المدعومة:
+- **بنرات (صور)** - رفع صور مع معاينة
+- **فيديوهات (YouTube)** - تضمين بـ Video ID مع استخراج تلقائي من الروابط
+- **روابط** - روابط خارجية مع تتبع النقرات
+
+##### 2. مواقع العرض:
+- **hero** - البانر الرئيسي (Carousel مع تنقل تلقائي)
+- **sidebar** - الشريط الجانبي
+- **inline** - بين أقسام المحتوى
+- **popup** - نافذة منبثقة (تظهر مرة واحدة لكل جلسة)
+
+##### 3. إدارة الإعلانات (لوحة التحكم):
+- إضافة/تعديل/حذف الإعلانات
+- رفع صور البنرات
+- استخراج YouTube Video ID تلقائياً من روابط متعددة:
+  - `youtube.com/watch?v=VIDEO_ID`
+  - `youtu.be/VIDEO_ID`
+  - `youtube.com/embed/VIDEO_ID`
+  - `youtube.com/shorts/VIDEO_ID`
+  - أو Video ID مباشرة (11 حرف)
+- تحديد تاريخ البداية والنهاية
+- تفعيل/إيقاف الإعلان
+- ترتيب الأولوية
+- استهداف حسب الفرع
+
+##### 4. الإحصائيات:
+- عدد المشاهدات لكل إعلان
+- عدد النقرات لكل إعلان
+- معدل النقر (CTR)
+- إجمالي الإعلانات (نشطة/غير نشطة)
+- توزيع حسب النوع (بنرات/فيديوهات/روابط)
+
+##### 5. بوابة الأعضاء:
+- `HeroBannerAds` - Carousel للإعلانات الرئيسية
+- `InlineAds` - إعلانات بين المحتوى
+- `SidebarAds` - إعلانات جانبية
+- `PopupAd` - نافذة منبثقة
+- تسجيل تلقائي للمشاهدات والنقرات
+- مشغل فيديو YouTube بدون اقتراحات
+
+#### Backend API Endpoints:
+- `GET /api/advertisements` - جلب الإعلانات (admin)
+- `GET /api/advertisements/public` - جلب الإعلانات النشطة (public)
+- `POST /api/advertisements` - إنشاء إعلان
+- `PUT /api/advertisements/{id}` - تحديث إعلان
+- `DELETE /api/advertisements/{id}` - حذف إعلان
+- `POST /api/advertisements/upload-banner` - رفع صورة بنر
+- `POST /api/advertisements/{id}/view` - تسجيل مشاهدة
+- `POST /api/advertisements/{id}/click` - تسجيل نقرة
+- `PUT /api/advertisements/{id}/toggle` - تبديل حالة الإعلان
+- `GET /api/advertisements/stats/summary` - إحصائيات
+
+#### Database Collection:
+```
+advertisements: {
+  id: str,
+  title: str,
+  title_ar: str,
+  ad_type: str (banner/video/link),
+  position: str (hero/sidebar/inline/popup),
+  link_url: str,
+  youtube_video_id: str,
+  banner_image_url: str,
+  description: str,
+  description_ar: str,
+  start_date: str,
+  end_date: str,
+  priority: int,
+  is_active: bool,
+  branch_id: str,
+  target_audience: str (all/members/guests),
+  views_count: int,
+  clicks_count: int,
+  created_at: datetime,
+  updated_at: datetime
+}
+```
+
+#### الملفات الجديدة:
+- `/app/backend/routes/advertisements.py` - Backend API
+- `/app/frontend/src/pages/AdvertisementsPage.js` - صفحة إدارة الإعلانات
+- `/app/frontend/src/pages/member-portal/MemberAds.js` - مكونات عرض الإعلانات
+
+#### الملفات المُحدثة:
+- `/app/backend/server.py` - إضافة advertisements_router
+- `/app/frontend/src/services/api.js` - إضافة advertisementsAPI
+- `/app/frontend/src/App.js` - إضافة route للإعلانات
+- `/app/frontend/src/components/Layout.js` - إضافة رابط الإعلانات
+- `/app/frontend/src/contexts/LanguageContext.js` - إضافة ترجمة "الإعلانات"
+- `/app/frontend/src/pages/member-portal/MemberDashboard.js` - دمج الإعلانات
+
+#### نتائج الاختبار:
+- ✅ 26/26 اختبار ناجح (100%)
+- ✅ Backend APIs تعمل بشكل صحيح
+- ✅ Frontend Admin تعمل بشكل صحيح
+- ✅ Member Portal Ads تعمل بشكل صحيح
+
+---
+
+## Prioritized Backlog (Updated February 2026)
 
 ### P0 - Critical (Completed)
 - [x] Interactive Levels Page Redesign ✅
 - [x] Backend Refactoring (Members & Invoices) ✅
-- [x] Members Page Activity Form Enhancement ✅ NEW
+- [x] Members Page Activity Form Enhancement ✅
+- [x] Advertisements System ✅ NEW
 
 ### P1 - High Priority (Pending)
 - [ ] Frontend InvoicesPage.js refactoring (large file ~5175 lines)
