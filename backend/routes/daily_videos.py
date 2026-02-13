@@ -19,6 +19,13 @@ def set_loyalty_award_function(func):
     global loyalty_award_points
     loyalty_award_points = func
 
+# Push notification function - will be set from server.py
+push_notify_new_video = None
+
+def set_push_notify_function(func):
+    global push_notify_new_video
+    push_notify_new_video = func
+
 # Database connection
 from motor.motor_asyncio import AsyncIOMotorClient
 mongo_url = os.environ.get('MONGO_URL')
@@ -351,6 +358,18 @@ async def create_daily_video(
             
             if notifications_to_insert:
                 await db.member_notifications.insert_many(notifications_to_insert)
+            
+            # Send Push Notifications to all subscribed members
+            if push_notify_new_video:
+                try:
+                    push_result = await push_notify_new_video(
+                        video_title=video.title_ar,
+                        video_id=video_id,
+                        branch_id=video.branch_id if video.branch_id != "all" else None
+                    )
+                    print(f"Push notifications sent: {push_result}")
+                except Exception as e:
+                    print(f"Failed to send push notifications: {e}")
     
     return video_doc
 
