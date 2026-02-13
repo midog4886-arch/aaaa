@@ -438,6 +438,52 @@ async def pay_invoice(invoice_id: str, current_user: dict = Depends(get_current_
                             upsert=True
                         )
     
+    # Award loyalty points for subscription renewal
+    if member_id and loyalty_award_points:
+        try:
+            # Determine renewal type based on duration
+            activity_items = [i for i in invoice.get("items", []) if not i.get("is_product")]
+            if activity_items:
+                total = invoice.get("total", 0)
+                
+                # Check if this is a renewal (member had previous activity)
+                member = await db.members.find_one({"id": member_id})
+                if member and member.get("activities"):
+                    # Calculate duration from first item
+                    first_item = activity_items[0]
+                    start = first_item.get("start_date", "")
+                    end = first_item.get("end_date", "")
+                    
+                    renewal_type = "monthly_renewal"
+                    description_ar = "مكافأة تجديد اشتراك شهري"
+                    description_en = "Monthly subscription renewal bonus"
+                    
+                    if start and end:
+                        try:
+                            start_date = datetime.strptime(start, '%Y-%m-%d')
+                            end_date = datetime.strptime(end, '%Y-%m-%d')
+                            days = (end_date - start_date).days
+                            
+                            if days >= 330:  # ~yearly
+                                renewal_type = "yearly_renewal"
+                                description_ar = "مكافأة تجديد اشتراك سنوي"
+                                description_en = "Yearly subscription renewal bonus"
+                            elif days >= 80:  # ~quarterly
+                                renewal_type = "quarterly_renewal"
+                                description_ar = "مكافأة تجديد اشتراك ربع سنوي"
+                                description_en = "Quarterly subscription renewal bonus"
+                        except:
+                            pass
+                    
+                    await loyalty_award_points(
+                        member_id,
+                        renewal_type,
+                        description_ar,
+                        description_en
+                    )
+        except Exception as e:
+            print(f"Error awarding loyalty points for renewal: {e}")
+    
     return {"message": "Invoice paid", "status": "paid"}
 
 @router.put("/{invoice_id}/cancel")
