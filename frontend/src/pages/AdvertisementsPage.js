@@ -792,26 +792,74 @@ const AdvertisementsPage = () => {
             )}
 
             {formData.ad_type === 'video' && (
-              <div>
-                <Label>رابط فيديو YouTube</Label>
-                <Input
-                  value={formData.youtube_video_id}
-                  onChange={(e) => setFormData(prev => ({ ...prev, youtube_video_id: e.target.value }))}
-                  placeholder="https://www.youtube.com/watch?v=VIDEO_ID أو VIDEO_ID فقط"
-                  dir="ltr"
-                />
-                <p className="text-xs text-gray-500 mt-1">
-                  يمكنك لصق رابط YouTube الكامل أو معرف الفيديو فقط
-                </p>
+              <div className="space-y-3">
+                <Label className="flex items-center gap-2">
+                  <Link2 className="w-4 h-4" />
+                  رابط فيديو YouTube
+                </Label>
+                <div className="relative">
+                  <Input
+                    value={youtubeUrlInput || formData.youtube_video_id}
+                    onChange={(e) => handleYouTubeUrlChange(e.target.value)}
+                    placeholder="الصق أي رابط يوتيوب هنا... (watch, youtu.be, embed, shorts)"
+                    dir="ltr"
+                    className={`pe-10 ${
+                      urlValidationStatus === 'valid' ? 'border-green-500' : 
+                      urlValidationStatus === 'invalid' ? 'border-red-500' : ''
+                    }`}
+                  />
+                  {urlValidationStatus === 'valid' && (
+                    <CheckCircle className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-green-500" />
+                  )}
+                  {urlValidationStatus === 'invalid' && (
+                    <AlertCircle className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-red-500" />
+                  )}
+                </div>
+                
+                {/* Supported URL Types */}
+                <div className="text-xs text-gray-500 bg-gray-50 p-2 rounded">
+                  <strong>الروابط المدعومة:</strong> youtube.com/watch, youtu.be, youtube.com/shorts, youtube.com/embed
+                </div>
+
+                {/* Extracted Video ID */}
+                {formData.youtube_video_id && (
+                  <div className="p-3 bg-green-50 border border-green-200 rounded-lg">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm text-green-700 font-medium">✅ تم استخراج معرف الفيديو:</p>
+                        <code className="text-green-800 font-mono text-sm">{formData.youtube_video_id}</code>
+                      </div>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          const embedUrl = generateYouTubeEmbedUrl(formData.youtube_video_id);
+                          navigator.clipboard.writeText(embedUrl);
+                          toast({ title: 'تم نسخ رابط Embed' });
+                        }}
+                      >
+                        نسخ Embed URL
+                      </Button>
+                    </div>
+                    <p className="text-xs text-green-600 mt-2 break-all">
+                      Embed URL: {generateYouTubeEmbedUrl(formData.youtube_video_id)}
+                    </p>
+                  </div>
+                )}
+
+                {/* Video Preview */}
                 {formData.youtube_video_id && (
                   <div className="mt-2 relative w-full h-40 rounded-lg overflow-hidden bg-gray-100">
                     <img 
-                      src={`https://img.youtube.com/vi/${formData.youtube_video_id}/mqdefault.jpg`}
+                      src={getYouTubeThumbnail(formData.youtube_video_id, 'hq')}
                       alt="Preview"
                       className="w-full h-full object-cover"
                     />
                     <div className="absolute inset-0 flex items-center justify-center bg-black/30">
-                      <Play className="w-12 h-12 text-white" />
+                      <div className="w-14 h-14 bg-red-600 rounded-full flex items-center justify-center">
+                        <Play className="w-7 h-7 text-white ml-1" fill="white" />
+                      </div>
                     </div>
                   </div>
                 )}
