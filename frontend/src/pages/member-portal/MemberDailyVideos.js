@@ -556,6 +556,9 @@ const MemberDailyVideos = () => {
         {/* Multiple Videos for Date Dialog */}
         <Dialog open={dateDialogOpen} onOpenChange={setDateDialogOpen}>
           <DialogContent className="max-w-2xl" dir="rtl">
+            <VisuallyHidden>
+              <DialogTitle>فيديوهات اليوم</DialogTitle>
+            </VisuallyHidden>
             <button
               onClick={() => setDateDialogOpen(false)}
               className="absolute top-2 left-2 z-10 w-8 h-8 bg-gray-100 hover:bg-gray-200 rounded-full flex items-center justify-center"
