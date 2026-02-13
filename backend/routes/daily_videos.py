@@ -133,11 +133,11 @@ async def get_all_daily_videos(
 
 
 @router.get("/today")
-async def get_today_video(
+async def get_today_videos(
     activity_id: Optional[str] = None,
     branch_id: Optional[str] = None
 ):
-    """Get today's video (public endpoint for member portal)"""
+    """Get today's videos (public endpoint for member portal) - supports multiple videos per day"""
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     
     query = {
@@ -151,16 +151,16 @@ async def get_today_video(
     if branch_id:
         query["$or"] = [{"branch_id": branch_id}, {"branch_id": None}, {"branch_id": ""}]
     
-    video = await db.daily_videos.find_one(query, {"_id": 0})
+    videos = await db.daily_videos.find(query, {"_id": 0}).sort("priority", -1).to_list(50)
     
-    if video:
-        # Record view
+    # Record views for all videos
+    for video in videos:
         await db.daily_videos.update_one(
             {"id": video["id"]},
             {"$inc": {"views_count": 1}}
         )
     
-    return video
+    return videos
 
 
 @router.get("/week")
