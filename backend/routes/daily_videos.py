@@ -276,7 +276,7 @@ async def create_daily_video(
     video: DailyVideoCreate,
     current_user: dict = Depends(get_current_user)
 ):
-    """Create a new daily video"""
+    """Create a new daily video and send notifications to members"""
     video_id = str(uuid.uuid4())
     now = datetime.now(timezone.utc).isoformat()
     
@@ -314,6 +314,28 @@ async def create_daily_video(
     
     await db.daily_videos.insert_one(video_doc)
     video_doc.pop("_id", None)
+    
+    # Create notification for members if video is active and scheduled for today or future
+    if video.is_active:
+        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        if video.scheduled_date >= today:
+            # Build notification message
+            activity_text = f" - {video.activity_name}" if video.activity_name else ""
+            notification_doc = {
+                "id": str(uuid.uuid4()),
+                "title": "🎬 فيديو تدريبي جديد",
+                "message": f"تم إضافة فيديو جديد: {video.title_ar}{activity_text}",
+                "type": "new_video",
+                "video_id": video_id,
+                "link": "/portal/daily-videos",
+                "is_read": False,
+                "branch_id": video.branch_id if video.branch_id != "all" else None,
+                "activity_id": video.activity_id,
+                "for_members": True,
+                "created_at": now
+            }
+            await db.notifications.insert_one(notification_doc)
+    
     return video_doc
 
 
