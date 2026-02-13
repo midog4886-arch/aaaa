@@ -13,13 +13,14 @@ import { useToast } from '../hooks/use-toast';
 import { 
   Trophy, Gift, Users, Star, Settings, Plus, Pencil, Trash2,
   TrendingUp, Award, Crown, Medal, Target, Percent, Package,
-  Clock, CheckCircle, XCircle, Search, RefreshCw, Coins
+  Clock, CheckCircle, XCircle, Search, RefreshCw, Coins, Cake
 } from 'lucide-react';
 import api from '../services/api';
 
 const LoyaltyPage = () => {
   const { toast } = useToast();
   const [activeTab, setActiveTab] = useState('overview');
+  const [processingBirthdays, setProcessingBirthdays] = useState(false);
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState(null);
   const [rewards, setRewards] = useState([]);
