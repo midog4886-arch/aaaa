@@ -12,6 +12,13 @@ import re
 
 router = APIRouter(prefix="/daily-videos", tags=["daily-videos"])
 
+# Loyalty points function - will be set from server.py
+loyalty_award_points = None
+
+def set_loyalty_award_function(func):
+    global loyalty_award_points
+    loyalty_award_points = func
+
 # Database connection
 from motor.motor_asyncio import AsyncIOMotorClient
 mongo_url = os.environ.get('MONGO_URL')
