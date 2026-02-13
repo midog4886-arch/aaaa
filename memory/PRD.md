@@ -2679,6 +2679,77 @@ advertisements: {
 
 ---
 
+## Update - Daily Videos System (February 2026)
+
+### نظام الفيديوهات اليومية ✅
+
+#### ما تم إنجازه:
+
+##### 1. Backend API الكامل (`/api/daily-videos`):
+- `GET /` - جلب جميع الفيديوهات (admin)
+- `GET /today` - فيديو اليوم (public)
+- `GET /week` - فيديوهات الأسبوع (public)
+- `GET /by-date/{date}` - فيديو تاريخ محدد (public)
+- `GET /calendar/{year}/{month}` - بيانات التقويم (public)
+- `POST /` - إنشاء فيديو
+- `PUT /{id}` - تحديث فيديو
+- `DELETE /{id}` - حذف فيديو
+- `POST /{id}/view` - تسجيل مشاهدة
+- `GET /stats/summary` - إحصائيات
+
+##### 2. صفحة إدارة الفيديوهات (لوحة التحكم):
+- عرض التقويم الشهري التفاعلي
+- عرض قائمة مع الفلاتر
+- إضافة/تعديل/حذف الفيديوهات
+- استخراج YouTube Video ID تلقائياً
+- ربط بالأنشطة والفروع
+- إحصائيات (إجمالي، نشطة، مشاهدات، قادمة، سابقة)
+
+##### 3. صفحة الفيديوهات في بوابة الأعضاء:
+- **فيديو اليوم**: عرض كبير مع زر تشغيل
+- **هذا الأسبوع**: شبكة فيديوهات الأسبوع
+- **التقويم**: تقويم شهري تفاعلي
+- مشغل فيديو YouTube مدمج (بدون إعلانات/اقتراحات)
+- فلترة حسب النشاط
+
+##### 4. الميزات:
+- ✅ جدولة الفيديوهات بتاريخ محدد
+- ✅ ربط بالأنشطة الرياضية
+- ✅ تتبع المشاهدات
+- ✅ دعم الـ Dark Mode
+- ✅ واجهة عربية بالكامل
+- ✅ عرض Thumbnail من YouTube
+
+#### Database Collection:
+```
+daily_videos: {
+  id: str,
+  title: str,
+  title_ar: str,
+  youtube_video_id: str,
+  description: str,
+  description_ar: str,
+  scheduled_date: str (YYYY-MM-DD),
+  activity_id: str,
+  activity_name: str,
+  branch_id: str,
+  coach_id: str,
+  coach_name: str,
+  is_active: bool,
+  tags: List[str],
+  views_count: int,
+  created_at: datetime,
+  updated_at: datetime
+}
+```
+
+#### الملفات الجديدة:
+- `/app/backend/routes/daily_videos.py` - Backend API
+- `/app/frontend/src/pages/DailyVideosPage.js` - صفحة إدارة الفيديوهات
+- `/app/frontend/src/pages/member-portal/MemberDailyVideos.js` - صفحة بوابة الأعضاء
+
+---
+
 ## Prioritized Backlog (Updated February 2026)
 
 ### P0 - Critical (Completed)
