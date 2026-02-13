@@ -550,9 +550,16 @@ async def update_redemption_status(redemption_id: str, update: RedemptionStatusU
 
 # ============== Referral Endpoints ==============
 
+class ReferralApply(BaseModel):
+    member_id: str
+    referral_code: str
+
 @router.post("/referral/apply")
-async def apply_referral_code(member_id: str, referral_code: str):
+async def apply_referral_code(data: ReferralApply):
     """Apply referral code for new member"""
+    member_id = data.member_id
+    referral_code = data.referral_code
+    
     # Check if member already has a referrer
     member_points = await db.member_points.find_one({"member_id": member_id})
     if member_points and member_points.get('referred_by'):
