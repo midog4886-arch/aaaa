@@ -323,6 +323,9 @@ const MemberDailyVideos = () => {
     <MemberLayout>
       <PullToRefresh onRefresh={handleRefresh} disabled={refreshing} className="min-h-[calc(100vh-200px)]">
       <div className="space-y-6">
+        {/* Push Notifications Manager */}
+        <PushNotificationManager memberId={member?.id} />
+
         {/* Header */}
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
           <div>
