@@ -21,6 +21,7 @@ const MemberLoyalty = () => {
   const [redeemDialogOpen, setRedeemDialogOpen] = useState(false);
   const [redeemNotes, setRedeemNotes] = useState('');
   const [copiedCode, setCopiedCode] = useState(false);
+  const [dataLoaded, setDataLoaded] = useState(false);
   
   const member = getMemberData();
   const language = getLanguage();
@@ -28,7 +29,7 @@ const MemberLoyalty = () => {
   const t = (ar, en) => language === 'ar' ? ar : en;
 
   const fetchData = useCallback(async () => {
-    if (!member) return;
+    if (!member?.id || dataLoaded) return;
     try {
       setLoading(true);
       const [pointsRes, rewardsRes, historyRes, redemptionsRes] = await Promise.all([
@@ -42,12 +43,13 @@ const MemberLoyalty = () => {
       setRewards(rewardsRes.data);
       setHistory(historyRes.data);
       setRedemptions(redemptionsRes.data);
+      setDataLoaded(true);
     } catch (error) {
       console.error('Error fetching loyalty data:', error);
     } finally {
       setLoading(false);
     }
-  }, [member]);
+  }, [member?.id, dataLoaded]);
 
   useEffect(() => {
     fetchData();
