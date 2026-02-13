@@ -194,7 +194,7 @@ async def notify_new_video(video_title: str, video_id: str, branch_id: Optional[
         title="🎬 فيديو جديد!",
         body=video_title,
         icon="/logo-new.png",
-        url=f"/portal/daily-videos",
+        url="/portal/daily-videos",
         tag=f"video-{video_id}",
         data={"video_id": video_id, "type": "new_video"}
     )
