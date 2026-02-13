@@ -587,13 +587,13 @@ async def apply_referral_code(member_id: str, referral_code: str):
     )
     
     # Notification to referrer
-    new_member = await db.members.find_one({"_id": ObjectId(member_id)})
+    new_member = await db.members.find_one({"id": member_id}, {"_id": 0})
     await db.member_notifications.insert_one({
         "member_id": referrer['member_id'],
         "title_ar": "🎉 عضو جديد استخدم كود الإحالة الخاص بك",
         "title_en": "🎉 New member used your referral code",
-        "message_ar": f"قام {new_member.get('name_ar', 'عضو جديد')} بالتسجيل باستخدام كود الإحالة الخاص بك. تم إضافة نقاط المكافأة لحسابك!",
-        "message_en": f"{new_member.get('name_en', 'A new member')} signed up using your referral code. Bonus points added to your account!",
+        "message_ar": f"قام {new_member.get('name_ar', 'عضو جديد') if new_member else 'عضو جديد'} بالتسجيل باستخدام كود الإحالة الخاص بك. تم إضافة نقاط المكافأة لحسابك!",
+        "message_en": f"{new_member.get('name_en', 'A new member') if new_member else 'A new member'} signed up using your referral code. Bonus points added to your account!",
         "type": "loyalty",
         "is_read": False,
         "created_at": datetime.now(timezone.utc)
