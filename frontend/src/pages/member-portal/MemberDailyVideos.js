@@ -97,7 +97,7 @@ const MemberDailyVideos = () => {
     const dateStr = format(date, 'yyyy-MM-dd');
     const dayData = calendarVideos[dateStr];
     
-    if (dayData && dayData.count > 0) {
+    if (dayData && (dayData.count > 0 || dayData.has_video)) {
       setSelectedDate(date);
       try {
         const res = await memberAPI.get(`/api/daily-videos/by-date/${dateStr}`, {
