@@ -193,6 +193,7 @@ const translations = {
     users: 'Users',
     member_card: 'Member Card',
     coach_ratings: 'Coach Ratings',
+    advertisements: 'Advertisements',
     
     // Dashboard
     total_members: 'Total Members',
