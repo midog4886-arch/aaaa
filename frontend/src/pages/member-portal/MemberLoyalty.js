@@ -83,6 +83,32 @@ const MemberLoyalty = () => {
     }
   };
 
+  const applyReferralCode = async () => {
+    if (!referralCodeInput.trim()) {
+      setReferralMessage({ type: 'error', text: t('الرجاء إدخال كود الإحالة', 'Please enter a referral code') });
+      return;
+    }
+    
+    try {
+      setApplyingReferral(true);
+      setReferralMessage({ type: '', text: '' });
+      
+      await memberAPI.post('/api/loyalty/referral/apply', {
+        member_id: member.id,
+        referral_code: referralCodeInput.trim()
+      });
+      
+      setReferralMessage({ type: 'success', text: t('تم تطبيق كود الإحالة بنجاح! 🎉', 'Referral code applied successfully! 🎉') });
+      setReferralCodeInput('');
+      setDataLoaded(false); // Refresh data
+    } catch (error) {
+      const errorMsg = error.response?.data?.detail || t('كود الإحالة غير صحيح', 'Invalid referral code');
+      setReferralMessage({ type: 'error', text: errorMsg });
+    } finally {
+      setApplyingReferral(false);
+    }
+  };
+
   const getLevelColor = (level) => {
     const colors = {
       bronze: 'from-orange-400 to-orange-600',
