@@ -39,7 +39,7 @@ async def award_attendance_points(member_id: str):
                 elif last_date == today:
                     # Already awarded today
                     return
-            except:
+            except Exception:
                 pass
     
     # Update streak and last attendance date
