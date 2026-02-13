@@ -141,7 +141,33 @@ const DailyVideosPage = () => {
         setFormData(prev => ({ ...prev, scheduled_date: format(date, 'yyyy-MM-dd') }));
       }
     }
+    setYoutubeUrlInput('');
+    setUrlValidationStatus(null);
     setDialogOpen(true);
+  };
+
+  // معالجة رابط YouTube واستخراج VIDEO_ID
+  const handleYouTubeUrlChange = (url) => {
+    setYoutubeUrlInput(url);
+    
+    if (!url.trim()) {
+      setUrlValidationStatus(null);
+      setFormData(prev => ({ ...prev, youtube_video_id: '' }));
+      return;
+    }
+
+    const videoId = extractYouTubeVideoId(url);
+    if (videoId) {
+      setUrlValidationStatus('valid');
+      setFormData(prev => ({ ...prev, youtube_video_id: videoId }));
+      toast({ 
+        title: '✅ تم استخراج معرف الفيديو',
+        description: `VIDEO_ID: ${videoId}`
+      });
+    } else {
+      setUrlValidationStatus('invalid');
+      setFormData(prev => ({ ...prev, youtube_video_id: '' }));
+    }
   };
 
   const handleActivityChange = (activityId) => {
