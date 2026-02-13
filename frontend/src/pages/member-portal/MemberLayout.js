@@ -344,23 +344,25 @@ const MemberLayout = ({ children }) => {
       {/* Footer */}
       <footer className={`border-t py-4 mt-auto ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white'}`}>
         <div className={`max-w-7xl mx-auto px-4 text-center text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-          <p>أكاديمية أداء الأبطال العالمية © {new Date().getFullYear()}</p>
+          <p>{language === 'ar' ? 'أكاديمية أداء الأبطال العالمية' : 'Global Champions Sports Academy'} © {new Date().getFullYear()}</p>
         </div>
       </footer>
 
       {/* Install Guide Dialog */}
       <Dialog open={showInstallGuide} onOpenChange={setShowInstallGuide}>
-        <DialogContent className="max-w-md" dir="rtl">
+        <DialogContent className="max-w-md" dir={language === 'ar' ? 'rtl' : 'ltr'}>
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-xl">
               <Smartphone className="w-6 h-6 text-green-600" />
-              تثبيت التطبيق
+              {language === 'ar' ? 'تثبيت التطبيق' : 'Install App'}
             </DialogTitle>
           </DialogHeader>
           
           <div className="space-y-4 py-4">
             <p className="text-gray-600">
-              يمكنك تثبيت التطبيق على جهازك للوصول السريع والعمل بدون إنترنت.
+              {language === 'ar' 
+                ? 'يمكنك تثبيت التطبيق على جهازك للوصول السريع والعمل بدون إنترنت.'
+                : 'Install the app on your device for quick access and offline use.'}
             </p>
 
             {isIOS && (
@@ -370,11 +372,11 @@ const MemberLayout = ({ children }) => {
                 </h4>
                 <ol className="list-decimal list-inside space-y-2 text-sm text-gray-700">
                   <li className="flex items-start gap-2">
-                    <span>اضغط على زر المشاركة</span>
+                    <span>{language === 'ar' ? 'اضغط على زر المشاركة' : 'Tap the Share button'}</span>
                     <Share className="w-5 h-5 text-blue-500 flex-shrink-0" />
                   </li>
-                  <li>مرر للأسفل واضغط على <strong>"إضافة إلى الشاشة الرئيسية"</strong></li>
-                  <li>اضغط على <strong>"إضافة"</strong> في الأعلى</li>
+                  <li>{language === 'ar' ? 'مرر للأسفل واضغط على' : 'Scroll and tap'} <strong>"{language === 'ar' ? 'إضافة إلى الشاشة الرئيسية' : 'Add to Home Screen'}"</strong></li>
+                  <li>{language === 'ar' ? 'اضغط على' : 'Tap'} <strong>"{language === 'ar' ? 'إضافة' : 'Add'}"</strong></li>
                 </ol>
               </div>
             )}
@@ -386,11 +388,11 @@ const MemberLayout = ({ children }) => {
                 </h4>
                 <ol className="list-decimal list-inside space-y-2 text-sm text-gray-700">
                   <li className="flex items-start gap-2">
-                    <span>اضغط على قائمة المتصفح</span>
+                    <span>{language === 'ar' ? 'اضغط على قائمة المتصفح' : 'Tap browser menu'}</span>
                     <MoreVertical className="w-5 h-5 text-gray-500 flex-shrink-0" />
                   </li>
-                  <li>اضغط على <strong>"تثبيت التطبيق"</strong> أو <strong>"إضافة إلى الشاشة الرئيسية"</strong></li>
-                  <li>اضغط على <strong>"تثبيت"</strong></li>
+                  <li>{language === 'ar' ? 'اضغط على' : 'Tap'} <strong>"{language === 'ar' ? 'تثبيت التطبيق' : 'Install App'}"</strong></li>
+                  <li>{language === 'ar' ? 'اضغط على' : 'Tap'} <strong>"{language === 'ar' ? 'تثبيت' : 'Install'}"</strong></li>
                 </ol>
               </div>
             )}
