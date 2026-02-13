@@ -92,10 +92,10 @@ const LoyaltyPage = () => {
   const handleSaveReward = async () => {
     try {
       if (editingReward) {
-        await api.put(`/api/loyalty/rewards/${editingReward.id}`, rewardForm);
+        await api.put(`/loyalty/rewards/${editingReward.id}`, rewardForm);
         toast({ title: 'تم تحديث المكافأة بنجاح' });
       } else {
-        await api.post('/api/loyalty/rewards', rewardForm);
+        await api.post('/loyalty/rewards', rewardForm);
         toast({ title: 'تم إنشاء المكافأة بنجاح' });
       }
       setRewardDialogOpen(false);
@@ -109,7 +109,7 @@ const LoyaltyPage = () => {
   const handleDeleteReward = async (rewardId) => {
     if (!window.confirm('هل أنت متأكد من حذف هذه المكافأة؟')) return;
     try {
-      await api.delete(`/api/loyalty/rewards/${rewardId}`);
+      await api.delete(`/loyalty/rewards/${rewardId}`);
       toast({ title: 'تم حذف المكافأة' });
       fetchData();
     } catch (error) {
@@ -120,7 +120,7 @@ const LoyaltyPage = () => {
   const handleAdjustPoints = async () => {
     if (!selectedMember) return;
     try {
-      await api.post('/api/loyalty/members/adjust', {
+      await api.post('/loyalty/members/adjust', {
         member_id: selectedMember.id,
         points: parseInt(adjustForm.points),
         reason: adjustForm.reason,
@@ -138,7 +138,7 @@ const LoyaltyPage = () => {
 
   const handleUpdateRedemptionStatus = async (redemptionId, status) => {
     try {
-      await api.put(`/api/loyalty/redemptions/${redemptionId}/status`, { status });
+      await api.put(`/loyalty/redemptions/${redemptionId}/status`, { status });
       toast({ title: 'تم تحديث حالة الطلب' });
       fetchData();
     } catch (error) {
@@ -149,8 +149,8 @@ const LoyaltyPage = () => {
   const handleSaveSettings = async () => {
     try {
       await Promise.all([
-        api.put('/api/loyalty/settings/points', pointsSettings),
-        api.put('/api/loyalty/settings/levels', levelSettings)
+        api.put('/loyalty/settings/points', pointsSettings),
+        api.put('/loyalty/settings/levels', levelSettings)
       ]);
       toast({ title: 'تم حفظ الإعدادات بنجاح' });
       setSettingsDialogOpen(false);
@@ -162,7 +162,7 @@ const LoyaltyPage = () => {
   const handleProcessBirthdays = async () => {
     try {
       setProcessingBirthdays(true);
-      const response = await api.post('/api/loyalty/process-birthdays');
+      const response = await api.post('/loyalty/process-birthdays');
       toast({ 
         title: response.data.message,
         description: `تم معالجة ${response.data.birthdays_processed} عيد ميلاد`
