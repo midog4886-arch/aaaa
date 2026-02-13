@@ -22,6 +22,7 @@ import { extractYouTubeVideoId, generateYouTubeEmbedUrl, getYouTubeThumbnail } f
 
 const AdvertisementsPage = () => {
   const { toast } = useToast();
+  const navigate = useNavigate();
   const [ads, setAds] = useState([]);
   const [branches, setBranches] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -34,6 +35,32 @@ const AdvertisementsPage = () => {
   const [uploading, setUploading] = useState(false);
   const [adsStatus, setAdsStatus] = useState(null);
   const [checkingExpiry, setCheckingExpiry] = useState(false);
+  const [youtubeUrlInput, setYoutubeUrlInput] = useState('');
+  const [urlValidationStatus, setUrlValidationStatus] = useState(null);
+
+  // معالجة رابط YouTube
+  const handleYouTubeUrlChange = (url) => {
+    setYoutubeUrlInput(url);
+    
+    if (!url.trim()) {
+      setUrlValidationStatus(null);
+      setFormData(prev => ({ ...prev, youtube_video_id: '' }));
+      return;
+    }
+
+    const videoId = extractYouTubeVideoId(url);
+    if (videoId) {
+      setUrlValidationStatus('valid');
+      setFormData(prev => ({ ...prev, youtube_video_id: videoId }));
+      toast({ 
+        title: '✅ تم استخراج معرف الفيديو',
+        description: `VIDEO_ID: ${videoId}`
+      });
+    } else {
+      setUrlValidationStatus('invalid');
+      setFormData(prev => ({ ...prev, youtube_video_id: '' }));
+    }
+  };
 
   // Form state
   const [formData, setFormData] = useState({
