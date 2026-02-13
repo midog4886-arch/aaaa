@@ -443,7 +443,7 @@ export const PopupAd = ({ branchId }) => {
               </div>
             ) : ad.banner_image_url ? (
               <img 
-                src={`${BACKEND_URL}${ad.banner_image_url}`}
+                src={getImageUrl(ad.banner_image_url)}
                 alt={ad.title_ar}
                 className="w-full"
               />
