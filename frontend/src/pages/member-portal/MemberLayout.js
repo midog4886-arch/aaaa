@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, Link, useLocation } from 'react-router-dom';
 import { 
-  Trophy, Home, CreditCard, Calendar, Bell, 
+  Trophy, Home, CreditCard, Calendar, Bell, QrCode,
   LogOut, Menu, X, Clock, CheckCircle, AlertTriangle,
   Moon, Sun, Star, Activity, Video, Languages
 } from 'lucide-react';
