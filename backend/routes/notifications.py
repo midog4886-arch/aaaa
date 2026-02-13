@@ -194,16 +194,17 @@ async def get_expiring_subscriptions(
 @router.post("/check-ads-expiry")
 async def check_ads_expiry(current_user: dict = Depends(get_current_user)):
     """Check for expiring and expired advertisements and create notifications"""
+    is_admin = current_user.get("is_admin", False)
     branch_id = current_user.get("branch_id")
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     
     # Date 3 days from now
     three_days_later = (datetime.now(timezone.utc) + timedelta(days=3)).strftime("%Y-%m-%d")
     
-    # Query for active ads
+    # Query for active ads - admin sees all
     query = {"is_active": True}
-    if branch_id:
-        query["branch_id"] = branch_id
+    if not is_admin and branch_id:
+        query["$or"] = [{"branch_id": branch_id}, {"branch_id": None}, {"branch_id": ""}]
     
     ads = await db.advertisements.find(query, {"_id": 0}).to_list(1000)
     
