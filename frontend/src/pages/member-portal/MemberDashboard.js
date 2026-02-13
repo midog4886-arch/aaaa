@@ -1,12 +1,15 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
 import { 
   CreditCard, Calendar, FileText, QrCode, Bell, CheckCircle, 
-  AlertTriangle, Clock, ChevronLeft, Trophy, Loader2
+  AlertTriangle, Clock, ChevronLeft, Trophy, Loader2, RefreshCw
 } from 'lucide-react';
+import { toast } from 'sonner';
+import { motion, AnimatePresence } from 'framer-motion';
 import MemberLayout, { memberAPI, getMemberData, getDarkMode } from './MemberLayout';
 import { HeroBannerAds, InlineAds, PopupAd } from './MemberAds';
+import PullToRefresh from '../../components/PullToRefresh';
 
 // Skeleton Components
 const StatCardSkeleton = ({ darkMode }) => (
@@ -37,6 +40,7 @@ const QuickLinkSkeleton = ({ darkMode }) => (
 
 const MemberDashboard = () => {
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [subscriptions, setSubscriptions] = useState({ active: [], expired: [] });
   const [notifications, setNotifications] = useState({ notifications: [], unread_count: 0 });
   const member = getMemberData();
@@ -46,7 +50,7 @@ const MemberDashboard = () => {
     fetchData();
   }, []);
 
-  const fetchData = async () => {
+  const fetchData = useCallback(async (showToast = false) => {
     try {
       const [subsRes, notifRes] = await Promise.all([
         memberAPI.get('/api/member-portal/subscriptions'),
@@ -54,12 +58,24 @@ const MemberDashboard = () => {
       ]);
       setSubscriptions(subsRes.data);
       setNotifications(notifRes.data);
+      if (showToast) {
+        toast.success('تم تحديث البيانات بنجاح');
+      }
     } catch (error) {
       console.error('Failed to fetch data');
+      if (showToast) {
+        toast.error('فشل في تحديث البيانات');
+      }
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
-  };
+  }, []);
+
+  const handleRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await fetchData(true);
+  }, [fetchData]);
 
   const quickLinks = [
     { to: '/portal/subscriptions', icon: CreditCard, label: 'اشتراكاتي', color: 'bg-blue-500' },
@@ -96,6 +112,7 @@ const MemberDashboard = () => {
 
   return (
     <MemberLayout>
+      <PullToRefresh onRefresh={handleRefresh} disabled={refreshing} className="min-h-[calc(100vh-200px)]">
       <div className="space-y-6">
         {/* Hero Banner Ads */}
         <HeroBannerAds branchId={member?.branch_id} />
@@ -228,8 +245,11 @@ const MemberDashboard = () => {
             <CardContent>
               <div className="space-y-3">
                 {notifications.notifications.slice(0, 3).map((notif, idx) => (
-                  <div 
-                    key={idx} 
+                  <motion.div 
+                    key={idx}
+                    initial={{ opacity: 0, x: -20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: idx * 0.1 }}
                     className={`flex items-start gap-3 p-3 rounded-lg border ${
                       notif.priority === 'danger' ? 'bg-red-50 border-red-200' :
                       notif.priority === 'warning' ? 'bg-orange-50 border-orange-200' :
@@ -249,13 +269,14 @@ const MemberDashboard = () => {
                       <p className="font-medium text-gray-800">{notif.title}</p>
                       <p className="text-sm text-gray-600">{notif.message}</p>
                     </div>
-                  </div>
+                  </motion.div>
                 ))}
               </div>
             </CardContent>
           </Card>
         )}
       </div>
+      </PullToRefresh>
     </MemberLayout>
   );
 };
