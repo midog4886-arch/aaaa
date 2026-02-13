@@ -159,6 +159,22 @@ const LoyaltyPage = () => {
     }
   };
 
+  const handleProcessBirthdays = async () => {
+    try {
+      setProcessingBirthdays(true);
+      const response = await api.post('/api/loyalty/process-birthdays');
+      toast({ 
+        title: response.data.message,
+        description: `تم معالجة ${response.data.birthdays_processed} عيد ميلاد`
+      });
+      fetchData();
+    } catch (error) {
+      toast({ title: 'خطأ في معالجة أعياد الميلاد', variant: 'destructive' });
+    } finally {
+      setProcessingBirthdays(false);
+    }
+  };
+
   const openRewardDialog = (reward = null) => {
     if (reward) {
       setEditingReward(reward);
