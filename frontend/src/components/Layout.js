@@ -32,7 +32,8 @@ import {
   CalendarDays,
   QrCode,
   Star,
-  Megaphone
+  Megaphone,
+  Video
 } from 'lucide-react';
 
 export const Sidebar = ({ isOpen, onClose }) => {
