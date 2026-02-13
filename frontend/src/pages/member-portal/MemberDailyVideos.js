@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import Plyr from 'plyr-react';
+import { Plyr } from 'plyr-react';
 import 'plyr-react/plyr.css';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
 import { Button } from '../../components/ui/button';
