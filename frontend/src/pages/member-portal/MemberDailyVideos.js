@@ -473,7 +473,7 @@ const MemberDailyVideos = () => {
           </Card>
         )}
 
-        {/* Week Videos View */}
+        {/* Week Videos View with Infinite Scroll */}
         {viewMode === 'week' && (
           <Card className={darkMode ? 'bg-gray-800 border-gray-700' : ''}>
             <CardHeader>
@@ -484,53 +484,67 @@ const MemberDailyVideos = () => {
             </CardHeader>
             <CardContent>
               {weekVideos.length > 0 ? (
-                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                  {weekVideos.map((video) => {
-                    const videoDate = parseISO(video.scheduled_date);
-                    const isToday = isSameDay(videoDate, today);
-                    
-                    return (
-                      <Card 
-                        key={video.id} 
-                        className={`overflow-hidden cursor-pointer transition-all hover:shadow-lg ${
-                          darkMode ? 'bg-gray-700 border-gray-600' : ''
-                        } ${isToday ? 'ring-2 ring-blue-500' : ''}`}
-                        onClick={() => handlePlayVideo(video)}
-                      >
-                        <div className="relative aspect-video">
-                          <img 
-                            src={`https://img.youtube.com/vi/${video.youtube_video_id}/mqdefault.jpg`}
-                            alt={video.title_ar}
-                            className="w-full h-full object-cover"
-                          />
-                          <div className="absolute inset-0 bg-black/30 flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity">
-                            <div className="w-12 h-12 bg-red-600 rounded-full flex items-center justify-center">
-                              <Play className="w-6 h-6 text-white mr-[-2px]" fill="white" />
+                <InfiniteScroll
+                  loadMore={loadMoreVideos}
+                  hasMore={hasMore}
+                  isLoading={loadingMore}
+                  loadingText="جاري تحميل المزيد من الفيديوهات..."
+                  endText="لا يوجد المزيد من الفيديوهات"
+                >
+                  <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                    {allVideos.map((video, index) => {
+                      const videoDate = parseISO(video.scheduled_date);
+                      const isToday = isSameDay(videoDate, today);
+                      
+                      return (
+                        <motion.div
+                          key={video.id}
+                          initial={{ opacity: 0, y: 20 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          transition={{ delay: (index % VIDEOS_PER_PAGE) * 0.05 }}
+                        >
+                          <Card 
+                            className={`overflow-hidden cursor-pointer transition-all hover:shadow-lg ${
+                              darkMode ? 'bg-gray-700 border-gray-600' : ''
+                            } ${isToday ? 'ring-2 ring-blue-500' : ''}`}
+                            onClick={() => handlePlayVideo(video)}
+                          >
+                            <div className="relative aspect-video">
+                              <img 
+                                src={`https://img.youtube.com/vi/${video.youtube_video_id}/mqdefault.jpg`}
+                                alt={video.title_ar}
+                                className="w-full h-full object-cover"
+                              />
+                              <div className="absolute inset-0 bg-black/30 flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity">
+                                <div className="w-12 h-12 bg-red-600 rounded-full flex items-center justify-center">
+                                  <Play className="w-6 h-6 text-white mr-[-2px]" fill="white" />
+                                </div>
+                              </div>
+                              {isToday && (
+                                <Badge className="absolute top-2 right-2 bg-blue-600">
+                                  اليوم
+                                </Badge>
+                              )}
                             </div>
-                          </div>
-                          {isToday && (
-                            <Badge className="absolute top-2 right-2 bg-blue-600">
-                              اليوم
-                            </Badge>
-                          )}
-                        </div>
-                        <CardContent className="p-3">
-                          <p className={`text-sm font-medium ${darkMode ? 'text-gray-300' : 'text-gray-500'}`}>
-                            {format(videoDate, 'EEEE d MMMM', { locale: ar })}
-                          </p>
-                          <h3 className={`font-bold mt-1 truncate ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                            {video.title_ar}
-                          </h3>
-                          {video.activity_name && (
-                            <Badge variant="outline" className={`mt-2 ${darkMode ? 'border-gray-600 text-gray-300' : ''}`}>
-                              {video.activity_name}
-                            </Badge>
-                          )}
-                        </CardContent>
-                      </Card>
-                    );
-                  })}
-                </div>
+                            <CardContent className="p-3">
+                              <p className={`text-sm font-medium ${darkMode ? 'text-gray-300' : 'text-gray-500'}`}>
+                                {format(videoDate, 'EEEE d MMMM', { locale: ar })}
+                              </p>
+                              <h3 className={`font-bold mt-1 truncate ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                                {video.title_ar}
+                              </h3>
+                              {video.activity_name && (
+                                <Badge variant="outline" className={`mt-2 ${darkMode ? 'border-gray-600 text-gray-300' : ''}`}>
+                                  {video.activity_name}
+                                </Badge>
+                              )}
+                            </CardContent>
+                          </Card>
+                        </motion.div>
+                      );
+                    })}
+                  </div>
+                </InfiniteScroll>
               ) : (
                 <div className={`text-center py-12 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
                   <Calendar className="w-12 h-12 mx-auto mb-4 opacity-50" />
