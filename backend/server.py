@@ -37,6 +37,7 @@ from routes.notifications import router as notifications_router
 from routes.bank_reports import router as bank_reports_router
 from routes.advertisements import router as advertisements_router
 from routes.daily_videos import router as daily_videos_router
+from routes.loyalty import router as loyalty_router, set_database as set_loyalty_db, award_points as loyalty_award_points
 
 ROOT_DIR = Path(__file__).parent
 UPLOADS_DIR = ROOT_DIR / "uploads"
