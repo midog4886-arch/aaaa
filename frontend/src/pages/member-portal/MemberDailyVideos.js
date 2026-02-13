@@ -497,17 +497,13 @@ const MemberDailyVideos = () => {
 
         {/* Video Player Dialog */}
         <Dialog open={videoDialogOpen} onOpenChange={(open) => {
-          setVideoDialogOpen(open);
           if (!open) {
-            setPlaying(false);
+            handleCloseVideoDialog();
           }
         }}>
           <DialogContent className="max-w-4xl p-0 overflow-hidden" dir="rtl">
             <button
-              onClick={() => {
-                setVideoDialogOpen(false);
-                setPlaying(false);
-              }}
+              onClick={handleCloseVideoDialog}
               className="absolute top-2 left-2 z-20 w-8 h-8 bg-black/50 hover:bg-black/70 rounded-full flex items-center justify-center text-white"
             >
               <X className="w-5 h-5" />
@@ -515,7 +511,7 @@ const MemberDailyVideos = () => {
             
             {selectedVideo && (
               <>
-                <VideoPlayer video={selectedVideo} autoPlay={true} />
+                <VideoPlayer video={selectedVideo} />
                 
                 <div className={`p-4 ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
                   <div className="flex items-start justify-between gap-4">
