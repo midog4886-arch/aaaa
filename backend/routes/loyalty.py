@@ -16,7 +16,7 @@ from bson import ObjectId
 import random
 import string
 
-router = APIRouter(prefix="/api/loyalty", tags=["Loyalty"])
+router = APIRouter(prefix="/loyalty", tags=["Loyalty"])
 
 # Database connection will be set from server.py
 db = None
