@@ -800,6 +800,7 @@ const MemberDailyVideos = () => {
           </DialogContent>
         </Dialog>
       </div>
+      </PullToRefresh>
     </MemberLayout>
   );
 };
