@@ -397,9 +397,16 @@ async def get_member_notifications(member: dict = Depends(get_current_member)):
             "is_read": notif.get("is_read", False)
         })
     
-    # Sort by priority and date
+    # Sort by priority and date (ensure created_at is string)
     priority_order = {"danger": 0, "warning": 1, "info": 2}
-    notifications.sort(key=lambda x: (priority_order.get(x.get("priority"), 3), x.get("created_at", "")), reverse=True)
+    
+    def get_sort_key(x):
+        created_at = x.get("created_at", "")
+        if hasattr(created_at, 'isoformat'):
+            created_at = created_at.isoformat()
+        return (priority_order.get(x.get("priority"), 3), str(created_at))
+    
+    notifications.sort(key=get_sort_key, reverse=True)
     
     return {
         "notifications": notifications,
