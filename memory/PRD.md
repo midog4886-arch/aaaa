@@ -2840,7 +2840,7 @@ SW Status: Service Worker registered: https://sports-academy-sys-1.preview.emerg
 
 ### P0 - Critical (Completed)
 - [x] PWA Implementation ✅ NEW
-- [x] Video Player Bug Fix ✅
+- [x] Video Player Bug Fix ✅ (Fixed "play() interrupted" error by using iframe instead of ReactPlayer)
 - [x] Banner Images Bug Fix ✅
 
 ### P1 - High Priority (Pending)
