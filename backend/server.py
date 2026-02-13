@@ -70,6 +70,7 @@ api_router.include_router(invoices_router)
 api_router.include_router(attendance_router)
 api_router.include_router(notifications_router)
 api_router.include_router(bank_reports_router)
+api_router.include_router(advertisements_router)
 
 # Member Portal router (mounted directly on app, not api_router)
 app.include_router(member_portal_router)
