@@ -229,7 +229,7 @@ async def get_member_points_history(member_id: str, limit: int = 50):
 @router.post("/members/adjust")
 async def adjust_member_points(adjustment: ManualPointsAdjust):
     """Manually adjust member points (admin only)"""
-    member = await db.members.find_one({"_id": ObjectId(adjustment.member_id)})
+    member = await db.members.find_one({"id": adjustment.member_id}, {"_id": 0})
     if not member:
         raise HTTPException(status_code=404, detail="العضو غير موجود")
     
