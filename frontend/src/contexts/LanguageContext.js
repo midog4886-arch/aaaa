@@ -195,6 +195,7 @@ const translations = {
     member_card: 'Member Card',
     coach_ratings: 'Coach Ratings',
     advertisements: 'Advertisements',
+    daily_videos: 'Daily Videos',
     
     // Dashboard
     total_members: 'Total Members',
