@@ -243,8 +243,21 @@ const MemberDailyVideos = () => {
   if (loading) {
     return (
       <MemberLayout>
-        <div className="flex items-center justify-center min-h-[400px]">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+        <div className="space-y-6">
+          {/* Skeleton Header */}
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+            <div>
+              <div className={`h-8 w-48 rounded animate-pulse ${darkMode ? 'bg-gray-700' : 'bg-gray-300'}`} />
+              <div className={`h-4 w-64 rounded mt-2 animate-pulse ${darkMode ? 'bg-gray-700' : 'bg-gray-300'}`} />
+            </div>
+          </div>
+          
+          {/* Skeleton Video Grid */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {[1, 2, 3, 4, 5, 6].map((i) => (
+              <VideoCardSkeleton key={i} darkMode={darkMode} />
+            ))}
+          </div>
         </div>
       </MemberLayout>
     );
