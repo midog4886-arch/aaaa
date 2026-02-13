@@ -228,7 +228,7 @@ const MemberLayout = ({ children }) => {
                   }`}
                 >
                   <item.icon className="w-4 h-4" />
-                  <span className="text-sm">{item.label}</span>
+                  <span className="text-sm">{getText(item.labelKey)}</span>
                   {item.badge > 0 && (
                     <span className="bg-red-500 text-white text-xs px-1.5 py-0.5 rounded-full">
                       {item.badge}
@@ -240,6 +240,18 @@ const MemberLayout = ({ children }) => {
 
             {/* User Menu */}
             <div className="flex items-center gap-2">
+              {/* Language Toggle */}
+              <Button 
+                variant="ghost" 
+                size="sm"
+                onClick={toggleLanguage}
+                className="text-gray-300 hover:text-white hover:bg-white/10 font-bold"
+                title={language === 'ar' ? 'English' : 'العربية'}
+              >
+                <Languages className="w-4 h-4 me-1" />
+                <span className="text-xs">{language === 'ar' ? 'EN' : 'ع'}</span>
+              </Button>
+
               {/* PWA Install Button - Always visible */}
               <Button 
                 variant="ghost" 
@@ -252,10 +264,10 @@ const MemberLayout = ({ children }) => {
                   }
                 }}
                 className="bg-green-500 text-white hover:bg-green-600"
-                title="تثبيت التطبيق"
+                title={language === 'ar' ? 'تثبيت التطبيق' : 'Install App'}
               >
                 <Download className="w-4 h-4 me-1" />
-                <span className="hidden sm:inline">تثبيت</span>
+                <span className="hidden sm:inline">{getText('install')}</span>
               </Button>
 
               {/* Dark Mode Toggle */}
@@ -264,7 +276,7 @@ const MemberLayout = ({ children }) => {
                 size="icon"
                 onClick={toggleDarkMode}
                 className="text-gray-300 hover:text-white hover:bg-white/10"
-                title={darkMode ? 'الوضع الفاتح' : 'الوضع المظلم'}
+                title={darkMode ? getText('lightMode') : getText('darkModeLabel')}
               >
                 {darkMode ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
               </Button>
