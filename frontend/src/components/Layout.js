@@ -354,6 +354,35 @@ export const TopHeader = ({ onMenuClick, title }) => {
       </div>
 
       <div className="flex items-center gap-2">
+        {/* PWA Install Button */}
+        {showInstallButton && (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleInstallClick}
+            className="bg-gradient-to-r from-green-500 to-green-600 text-white border-0 hover:from-green-600 hover:to-green-700"
+            title={language === 'ar' ? 'تثبيت التطبيق' : 'Install App'}
+          >
+            <Download className="w-4 h-4 me-1" />
+            <span className="hidden sm:inline">{language === 'ar' ? 'تثبيت' : 'Install'}</span>
+          </Button>
+        )}
+
+        {/* Quick Link to Member Portal */}
+        <a
+          href="/portal/login"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          <Button
+            variant="outline"
+            size="sm"
+            title={language === 'ar' ? 'بوابة الأعضاء' : 'Member Portal'}
+          >
+            <Smartphone className="w-4 h-4" />
+          </Button>
+        </a>
+
         {/* Check Renewals Button (Admin only) */}
         {isAdmin && (
           <Button
