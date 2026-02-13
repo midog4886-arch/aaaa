@@ -323,26 +323,34 @@ async def create_daily_video(
     await db.daily_videos.insert_one(video_doc)
     video_doc.pop("_id", None)
     
-    # Create notification for members if video is active and scheduled for today or future
+    # Create notification for ALL members if video is active and scheduled for today or future
     if video.is_active:
         today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
         if video.scheduled_date >= today:
-            # Build notification message
+            # Get all members to send individual notifications
+            members = await db.members.find({}, {"_id": 0, "id": 1}).to_list(10000)
+            
             activity_text = f" - {video.activity_name}" if video.activity_name else ""
-            notification_doc = {
-                "id": str(uuid.uuid4()),
-                "title": "🎬 فيديو تدريبي جديد",
-                "message": f"تم إضافة فيديو جديد: {video.title_ar}{activity_text}",
-                "type": "new_video",
-                "video_id": video_id,
-                "link": "/portal/daily-videos",
-                "is_read": False,
-                "branch_id": video.branch_id if video.branch_id != "all" else None,
-                "activity_id": video.activity_id,
-                "for_members": True,
-                "created_at": now
-            }
-            await db.notifications.insert_one(notification_doc)
+            
+            # Create notification for each member
+            notifications_to_insert = []
+            for member in members:
+                notification_doc = {
+                    "member_id": member["id"],
+                    "title_ar": "🎬 فيديو تدريبي جديد",
+                    "title_en": "🎬 New Training Video",
+                    "message_ar": f"تم إضافة فيديو جديد: {video.title_ar}{activity_text}",
+                    "message_en": f"New video added: {video.title or video.title_ar}{activity_text}",
+                    "type": "new_video",
+                    "video_id": video_id,
+                    "link": "/portal/daily-videos",
+                    "is_read": False,
+                    "created_at": now
+                }
+                notifications_to_insert.append(notification_doc)
+            
+            if notifications_to_insert:
+                await db.member_notifications.insert_many(notifications_to_insert)
     
     return video_doc
 
