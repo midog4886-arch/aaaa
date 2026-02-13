@@ -189,12 +189,12 @@ async def get_week_videos(
 
 
 @router.get("/by-date/{date}")
-async def get_video_by_date(
+async def get_videos_by_date(
     date: str,
     activity_id: Optional[str] = None,
     branch_id: Optional[str] = None
 ):
-    """Get video for a specific date (public endpoint)"""
+    """Get videos for a specific date (public endpoint) - supports multiple videos"""
     query = {
         "scheduled_date": date,
         "is_active": True
@@ -206,15 +206,9 @@ async def get_video_by_date(
     if branch_id:
         query["$or"] = [{"branch_id": branch_id}, {"branch_id": None}, {"branch_id": ""}]
     
-    video = await db.daily_videos.find_one(query, {"_id": 0})
+    videos = await db.daily_videos.find(query, {"_id": 0}).sort("priority", -1).to_list(50)
     
-    if video:
-        await db.daily_videos.update_one(
-            {"id": video["id"]},
-            {"$inc": {"views_count": 1}}
-        )
-    
-    return video
+    return videos
 
 
 @router.get("/calendar/{year}/{month}")
@@ -224,7 +218,7 @@ async def get_calendar_videos(
     activity_id: Optional[str] = None,
     branch_id: Optional[str] = None
 ):
-    """Get videos for calendar view - returns dates that have videos"""
+    """Get videos for calendar view - returns dates with video counts"""
     start_date = f"{year}-{month:02d}-01"
     if month == 12:
         end_date = f"{year + 1}-01-01"
@@ -245,19 +239,25 @@ async def get_calendar_videos(
     videos = await db.daily_videos.find(
         query, 
         {"_id": 0, "id": 1, "scheduled_date": 1, "title_ar": 1, "activity_name": 1, "youtube_video_id": 1}
-    ).to_list(31)
+    ).to_list(100)
     
-    # Create a map of date -> video info
+    # Create a map of date -> videos list (supports multiple videos per day)
     calendar_data = {}
     for video in videos:
         date = video.get("scheduled_date")
-        calendar_data[date] = {
+        if date not in calendar_data:
+            calendar_data[date] = {
+                "videos": [],
+                "count": 0,
+                "has_video": True
+            }
+        calendar_data[date]["videos"].append({
             "id": video.get("id"),
             "title_ar": video.get("title_ar"),
             "activity_name": video.get("activity_name"),
-            "has_video": True,
             "thumbnail": f"https://img.youtube.com/vi/{video.get('youtube_video_id')}/mqdefault.jpg"
-        }
+        })
+        calendar_data[date]["count"] += 1
     
     return calendar_data
 
