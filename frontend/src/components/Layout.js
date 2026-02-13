@@ -74,6 +74,7 @@ export const Sidebar = ({ isOpen, onClose }) => {
     { to: '/coach-ratings', icon: Star, label: 'coach_ratings', permission: 'coach-ratings' },
     { to: '/advertisements', icon: Megaphone, label: 'advertisements', permission: 'advertisements' },
     { to: '/daily-videos', icon: Video, label: 'daily_videos', permission: 'daily-videos' },
+    { to: '/loyalty', icon: Trophy, label: 'loyalty', permission: 'loyalty' },
     { to: '/store', icon: Package, label: 'store', permission: 'store' },
     { to: '/accounting', icon: Calculator, label: 'accounting', permission: 'accounting' },
     { to: '/reports', icon: BarChart3, label: 'reports', permission: 'reports' },
