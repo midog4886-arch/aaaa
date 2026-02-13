@@ -171,6 +171,20 @@ export const Sidebar = ({ isOpen, onClose }) => {
 
         {/* Footer */}
         <div className="sidebar-footer space-y-3">
+          {/* Quick Navigation to Member Portal */}
+          <a
+            href="/portal/login"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-2 p-2 bg-gradient-to-r from-orange-500 to-orange-600 text-white rounded-lg hover:from-orange-600 hover:to-orange-700 transition-all"
+          >
+            <Smartphone className="w-5 h-5" />
+            <span className="flex-1 text-sm font-medium">
+              {language === 'ar' ? 'بوابة الأعضاء' : 'Member Portal'}
+            </span>
+            <ExternalLink className="w-4 h-4 opacity-70" />
+          </a>
+
           {user && (
             <div className="flex items-center gap-3 p-2 bg-muted rounded-lg">
               <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center">
