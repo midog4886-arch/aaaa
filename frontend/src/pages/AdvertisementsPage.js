@@ -477,7 +477,9 @@ const AdvertisementsPage = () => {
                     <div className="w-full md:w-48 h-32 rounded-lg overflow-hidden bg-gray-100 flex-shrink-0">
                       {ad.ad_type === 'banner' && ad.banner_image_url ? (
                         <img 
-                          src={`${process.env.REACT_APP_BACKEND_URL}${ad.banner_image_url}`} 
+                          src={ad.banner_image_url.startsWith('/api') 
+                            ? `${process.env.REACT_APP_BACKEND_URL}${ad.banner_image_url}`
+                            : `${process.env.REACT_APP_BACKEND_URL}/api${ad.banner_image_url}`} 
                           alt={ad.title_ar}
                           className="w-full h-full object-cover"
                         />
