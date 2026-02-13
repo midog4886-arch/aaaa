@@ -212,6 +212,8 @@ const MemberLoyalty = () => {
         </Card>
 
         {/* Referral Code */}
+        {/* Referral Code Section - Temporarily Disabled */}
+        {/* 
         {pointsData?.referral_code && (
           <Card>
             <CardContent className="pt-6">
@@ -232,7 +234,6 @@ const MemberLoyalty = () => {
           </Card>
         )}
 
-        {/* Apply Referral Code - Only show if member hasn't used a referral code yet */}
         {!pointsData?.referred_by && (
           <Card className="border-2 border-dashed border-green-300 bg-green-50">
             <CardContent className="pt-6">
@@ -268,7 +269,6 @@ const MemberLoyalty = () => {
           </Card>
         )}
 
-        {/* Already referred badge */}
         {pointsData?.referred_by && (
           <Card className="bg-green-50 border-green-200">
             <CardContent className="pt-4 pb-4">
@@ -279,6 +279,7 @@ const MemberLoyalty = () => {
             </CardContent>
           </Card>
         )}
+        */}
 
         {/* Available Rewards */}
         <Card>
