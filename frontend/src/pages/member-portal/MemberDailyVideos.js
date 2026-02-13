@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import ReactPlayer from 'react-player/youtube';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
 import { Button } from '../../components/ui/button';
 import { Badge } from '../../components/ui/badge';
@@ -9,11 +10,11 @@ import { format, parseISO, startOfMonth, endOfMonth, eachDayOfInterval, isSameDa
 import { ar } from 'date-fns/locale';
 import { 
   Video, Play, Calendar, Clock, Eye, ChevronLeft, ChevronRight, 
-  X, Activity, Star, CheckCircle
+  X, Activity, Star, CheckCircle, Pause, Volume2, VolumeX, Maximize
 } from 'lucide-react';
 
 const MemberDailyVideos = () => {
-  const [todayVideo, setTodayVideo] = useState(null);
+  const [todayVideos, setTodayVideos] = useState([]);
   const [weekVideos, setWeekVideos] = useState([]);
   const [calendarVideos, setCalendarVideos] = useState({});
   const [activities, setActivities] = useState([]);
@@ -22,7 +23,13 @@ const MemberDailyVideos = () => {
   const [videoDialogOpen, setVideoDialogOpen] = useState(false);
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [selectedActivity, setSelectedActivity] = useState('all');
-  const [viewMode, setViewMode] = useState('today'); // 'today', 'week', 'calendar'
+  const [viewMode, setViewMode] = useState('today');
+  const [selectedDateVideos, setSelectedDateVideos] = useState([]);
+  const [dateDialogOpen, setDateDialogOpen] = useState(false);
+  const [selectedDate, setSelectedDate] = useState(null);
+  const [playing, setPlaying] = useState(false);
+  const [muted, setMuted] = useState(false);
+  const playerRef = useRef(null);
   
   const member = getMemberData();
   const darkMode = getDarkMode();
@@ -43,7 +50,8 @@ const MemberDailyVideos = () => {
         memberAPI.get('/api/daily-videos/week', { params })
       ]);
 
-      setTodayVideo(todayRes.data);
+      // API now returns array
+      setTodayVideos(Array.isArray(todayRes.data) ? todayRes.data : (todayRes.data ? [todayRes.data] : []));
       setWeekVideos(weekRes.data || []);
       
       // Extract unique activities from videos
@@ -79,6 +87,7 @@ const MemberDailyVideos = () => {
   const handlePlayVideo = (video) => {
     setSelectedVideo(video);
     setVideoDialogOpen(true);
+    setPlaying(true);
     
     // Record view
     memberAPI.post(`/api/daily-videos/${video.id}/view`).catch(() => {});
@@ -86,18 +95,24 @@ const MemberDailyVideos = () => {
 
   const handleDateClick = async (date) => {
     const dateStr = format(date, 'yyyy-MM-dd');
-    const videoData = calendarVideos[dateStr];
+    const dayData = calendarVideos[dateStr];
     
-    if (videoData) {
+    if (dayData && dayData.count > 0) {
+      setSelectedDate(date);
       try {
         const res = await memberAPI.get(`/api/daily-videos/by-date/${dateStr}`, {
           params: { branch_id: member?.branch_id }
         });
-        if (res.data) {
-          handlePlayVideo(res.data);
+        if (res.data && res.data.length > 0) {
+          if (res.data.length === 1) {
+            handlePlayVideo(res.data[0]);
+          } else {
+            setSelectedDateVideos(res.data);
+            setDateDialogOpen(true);
+          }
         }
       } catch (error) {
-        console.error('Failed to fetch video:', error);
+        console.error('Failed to fetch videos:', error);
       }
     }
   };
@@ -108,6 +123,91 @@ const MemberDailyVideos = () => {
   });
 
   const getDayNames = () => ['الأحد', 'الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'];
+
+  // Professional Video Player Component
+  const VideoPlayer = ({ video, autoPlay = true }) => {
+    if (!video) return null;
+    
+    return (
+      <div className="relative w-full aspect-video bg-black rounded-lg overflow-hidden">
+        <ReactPlayer
+          ref={playerRef}
+          url={`https://www.youtube.com/watch?v=${video.youtube_video_id}`}
+          width="100%"
+          height="100%"
+          playing={playing}
+          muted={muted}
+          controls={false}
+          config={{
+            youtube: {
+              playerVars: {
+                modestbranding: 1,
+                rel: 0,
+                showinfo: 0,
+                iv_load_policy: 3,
+                fs: 0,
+                disablekb: 1,
+                playsinline: 1,
+                origin: window.location.origin
+              }
+            }
+          }}
+          onEnded={() => setPlaying(false)}
+        />
+        
+        {/* Custom Controls Overlay */}
+        <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => setPlaying(!playing)}
+                className="text-white hover:bg-white/20"
+              >
+                {playing ? <Pause className="w-6 h-6" /> : <Play className="w-6 h-6" fill="white" />}
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => setMuted(!muted)}
+                className="text-white hover:bg-white/20"
+              >
+                {muted ? <VolumeX className="w-5 h-5" /> : <Volume2 className="w-5 h-5" />}
+              </Button>
+            </div>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => {
+                if (playerRef.current) {
+                  const iframe = playerRef.current.getInternalPlayer();
+                  if (iframe && iframe.requestFullscreen) {
+                    iframe.requestFullscreen();
+                  }
+                }
+              }}
+              className="text-white hover:bg-white/20"
+            >
+              <Maximize className="w-5 h-5" />
+            </Button>
+          </div>
+        </div>
+        
+        {/* Play button overlay when paused */}
+        {!playing && (
+          <div 
+            className="absolute inset-0 flex items-center justify-center cursor-pointer"
+            onClick={() => setPlaying(true)}
+          >
+            <div className="w-20 h-20 bg-red-600 rounded-full flex items-center justify-center shadow-lg hover:scale-110 transition-transform">
+              <Play className="w-10 h-10 text-white mr-[-4px]" fill="white" />
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
 
   if (loading) {
     return (
@@ -134,7 +234,7 @@ const MemberDailyVideos = () => {
             </p>
           </div>
           
-          <div className="flex items-center gap-2">
+          {activities.length > 0 && (
             <Select value={selectedActivity} onValueChange={setSelectedActivity}>
               <SelectTrigger className={`w-[180px] ${darkMode ? 'bg-gray-800 border-gray-700 text-white' : ''}`}>
                 <SelectValue placeholder="جميع الأنشطة" />
@@ -148,13 +248,13 @@ const MemberDailyVideos = () => {
                 ))}
               </SelectContent>
             </Select>
-          </div>
+          )}
         </div>
 
         {/* View Mode Tabs */}
         <div className="flex gap-2 overflow-x-auto pb-2">
           {[
-            { id: 'today', label: 'فيديو اليوم', icon: Play },
+            { id: 'today', label: `فيديوهات اليوم${todayVideos.length > 0 ? ` (${todayVideos.length})` : ''}`, icon: Play },
             { id: 'week', label: 'هذا الأسبوع', icon: Calendar },
             { id: 'calendar', label: 'التقويم', icon: Calendar }
           ].map((tab) => (
@@ -172,54 +272,100 @@ const MemberDailyVideos = () => {
           ))}
         </div>
 
-        {/* Today's Video View */}
+        {/* Today's Videos View */}
         {viewMode === 'today' && (
           <Card className={darkMode ? 'bg-gray-800 border-gray-700' : ''}>
             <CardHeader>
               <CardTitle className={`flex items-center gap-2 ${darkMode ? 'text-white' : ''}`}>
                 <Play className="w-5 h-5 text-red-600" />
-                فيديو اليوم - {format(today, 'EEEE d MMMM yyyy', { locale: ar })}
+                فيديوهات اليوم - {format(today, 'EEEE d MMMM yyyy', { locale: ar })}
               </CardTitle>
             </CardHeader>
             <CardContent>
-              {todayVideo ? (
-                <div 
-                  className="relative aspect-video rounded-xl overflow-hidden cursor-pointer group"
-                  onClick={() => handlePlayVideo(todayVideo)}
-                >
-                  <img 
-                    src={`https://img.youtube.com/vi/${todayVideo.youtube_video_id}/maxresdefault.jpg`}
-                    alt={todayVideo.title_ar}
-                    className="w-full h-full object-cover"
-                  />
-                  <div className="absolute inset-0 bg-black/40 flex items-center justify-center group-hover:bg-black/50 transition-all">
-                    <div className="w-20 h-20 bg-red-600 rounded-full flex items-center justify-center transform group-hover:scale-110 transition-transform">
-                      <Play className="w-10 h-10 text-white mr-[-4px]" fill="white" />
+              {todayVideos.length > 0 ? (
+                <div className="space-y-6">
+                  {/* Featured Video (first one) */}
+                  <div 
+                    className="relative aspect-video rounded-xl overflow-hidden cursor-pointer group"
+                    onClick={() => handlePlayVideo(todayVideos[0])}
+                  >
+                    <img 
+                      src={`https://img.youtube.com/vi/${todayVideos[0].youtube_video_id}/maxresdefault.jpg`}
+                      alt={todayVideos[0].title_ar}
+                      className="w-full h-full object-cover"
+                    />
+                    <div className="absolute inset-0 bg-black/40 flex items-center justify-center group-hover:bg-black/50 transition-all">
+                      <div className="w-20 h-20 bg-red-600 rounded-full flex items-center justify-center transform group-hover:scale-110 transition-transform">
+                        <Play className="w-10 h-10 text-white mr-[-4px]" fill="white" />
+                      </div>
                     </div>
-                  </div>
-                  <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-6">
-                    <h3 className="text-white text-xl font-bold">{todayVideo.title_ar}</h3>
-                    {todayVideo.description_ar && (
-                      <p className="text-white/80 mt-2 line-clamp-2">{todayVideo.description_ar}</p>
-                    )}
-                    <div className="flex items-center gap-4 mt-3">
-                      {todayVideo.activity_name && (
-                        <Badge className="bg-blue-600">
-                          <Activity className="w-3 h-3 ml-1" />
-                          {todayVideo.activity_name}
-                        </Badge>
+                    <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-6">
+                      <h3 className="text-white text-xl font-bold">{todayVideos[0].title_ar}</h3>
+                      {todayVideos[0].description_ar && (
+                        <p className="text-white/80 mt-2 line-clamp-2">{todayVideos[0].description_ar}</p>
                       )}
-                      <Badge variant="secondary" className="bg-white/20 text-white">
-                        <Eye className="w-3 h-3 ml-1" />
-                        {todayVideo.views_count || 0} مشاهدة
-                      </Badge>
+                      <div className="flex items-center gap-4 mt-3">
+                        {todayVideos[0].activity_name && (
+                          <Badge className="bg-blue-600">
+                            <Activity className="w-3 h-3 ml-1" />
+                            {todayVideos[0].activity_name}
+                          </Badge>
+                        )}
+                        <Badge variant="secondary" className="bg-white/20 text-white">
+                          <Eye className="w-3 h-3 ml-1" />
+                          {todayVideos[0].views_count || 0} مشاهدة
+                        </Badge>
+                      </div>
                     </div>
                   </div>
+
+                  {/* Other Videos */}
+                  {todayVideos.length > 1 && (
+                    <div>
+                      <h4 className={`font-bold mb-3 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                        فيديوهات أخرى اليوم ({todayVideos.length - 1})
+                      </h4>
+                      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                        {todayVideos.slice(1).map((video) => (
+                          <Card 
+                            key={video.id}
+                            className={`overflow-hidden cursor-pointer transition-all hover:shadow-lg ${
+                              darkMode ? 'bg-gray-700 border-gray-600' : ''
+                            }`}
+                            onClick={() => handlePlayVideo(video)}
+                          >
+                            <div className="relative aspect-video">
+                              <img 
+                                src={`https://img.youtube.com/vi/${video.youtube_video_id}/mqdefault.jpg`}
+                                alt={video.title_ar}
+                                className="w-full h-full object-cover"
+                              />
+                              <div className="absolute inset-0 bg-black/30 flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity">
+                                <div className="w-12 h-12 bg-red-600 rounded-full flex items-center justify-center">
+                                  <Play className="w-6 h-6 text-white mr-[-2px]" fill="white" />
+                                </div>
+                              </div>
+                            </div>
+                            <CardContent className="p-3">
+                              <h3 className={`font-bold truncate ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                                {video.title_ar}
+                              </h3>
+                              {video.activity_name && (
+                                <Badge variant="outline" className={`mt-2 ${darkMode ? 'border-gray-600 text-gray-300' : ''}`}>
+                                  {video.activity_name}
+                                </Badge>
+                              )}
+                            </CardContent>
+                          </Card>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               ) : (
                 <div className={`text-center py-16 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
                   <Video className="w-16 h-16 mx-auto mb-4 opacity-50" />
-                  <p className="text-lg">لا يوجد فيديو لهذا اليوم</p>
+                  <p className="text-lg">لا توجد فيديوهات لهذا اليوم</p>
                   <p className="text-sm mt-2">تحقق من الأيام السابقة أو القادمة</p>
                 </div>
               )}
@@ -341,48 +487,46 @@ const MemberDailyVideos = () => {
               <div className="grid grid-cols-7 gap-1">
                 {/* Empty cells */}
                 {Array.from({ length: startOfMonth(currentMonth).getDay() }).map((_, i) => (
-                  <div key={`empty-${i}`} className={`h-20 rounded-lg ${darkMode ? 'bg-gray-700/50' : 'bg-gray-50'}`}></div>
+                  <div key={`empty-${i}`} className={`h-24 rounded-lg ${darkMode ? 'bg-gray-700/50' : 'bg-gray-50'}`}></div>
                 ))}
                 
                 {calendarDays.map(day => {
                   const dateStr = format(day, 'yyyy-MM-dd');
-                  const videoData = calendarVideos[dateStr];
+                  const dayData = calendarVideos[dateStr];
                   const isCurrentDay = isSameDay(day, today);
                   const isPast = day < today;
+                  const videoCount = dayData?.count || 0;
                   
                   return (
                     <div
                       key={dateStr}
-                      onClick={() => videoData && handleDateClick(day)}
-                      className={`h-20 rounded-lg border transition-all overflow-hidden ${
-                        videoData ? 'cursor-pointer' : ''
+                      onClick={() => dayData && handleDateClick(day)}
+                      className={`h-24 rounded-lg border transition-all overflow-hidden ${
+                        dayData ? 'cursor-pointer' : ''
                       } ${isCurrentDay ? 'border-blue-500 border-2' : darkMode ? 'border-gray-700' : 'border-gray-200'} ${
-                        videoData 
+                        dayData 
                           ? (darkMode ? 'bg-red-900/30 hover:bg-red-900/50' : 'bg-red-50 hover:bg-red-100') 
                           : (darkMode ? 'bg-gray-700' : 'bg-white')
-                      } ${isPast && !videoData ? 'opacity-50' : ''}`}
+                      } ${isPast && !dayData ? 'opacity-50' : ''}`}
                     >
-                      <div className="p-1">
+                      <div className="p-1 flex justify-between items-start">
                         <span className={`text-sm font-medium ${
                           isCurrentDay ? 'text-blue-500' : darkMode ? 'text-gray-300' : 'text-gray-700'
                         }`}>
                           {format(day, 'd')}
                         </span>
+                        {videoCount > 1 && (
+                          <Badge className="text-xs bg-red-600">{videoCount}</Badge>
+                        )}
                       </div>
                       
-                      {videoData && (
+                      {dayData && dayData.videos && dayData.videos[0] && (
                         <div className="px-1">
                           <img 
-                            src={videoData.thumbnail}
-                            alt={videoData.title_ar}
+                            src={dayData.videos[0].thumbnail}
+                            alt=""
                             className="w-full h-10 object-cover rounded"
                           />
-                        </div>
-                      )}
-                      
-                      {videoData && (
-                        <div className="absolute bottom-0 left-0 right-0 p-1">
-                          <CheckCircle className="w-4 h-4 text-green-500" />
                         </div>
                       )}
                     </div>
@@ -400,32 +544,36 @@ const MemberDailyVideos = () => {
                   <div className="w-4 h-4 rounded border-2 border-blue-500"></div>
                   <span>اليوم</span>
                 </div>
+                <div className="flex items-center gap-1">
+                  <Badge className="text-xs bg-red-600">2</Badge>
+                  <span>عدة فيديوهات</span>
+                </div>
               </div>
             </CardContent>
           </Card>
         )}
 
         {/* Video Player Dialog */}
-        <Dialog open={videoDialogOpen} onOpenChange={setVideoDialogOpen}>
+        <Dialog open={videoDialogOpen} onOpenChange={(open) => {
+          setVideoDialogOpen(open);
+          if (!open) {
+            setPlaying(false);
+          }
+        }}>
           <DialogContent className="max-w-4xl p-0 overflow-hidden" dir="rtl">
             <button
-              onClick={() => setVideoDialogOpen(false)}
-              className="absolute top-2 left-2 z-10 w-8 h-8 bg-black/50 hover:bg-black/70 rounded-full flex items-center justify-center text-white"
+              onClick={() => {
+                setVideoDialogOpen(false);
+                setPlaying(false);
+              }}
+              className="absolute top-2 left-2 z-20 w-8 h-8 bg-black/50 hover:bg-black/70 rounded-full flex items-center justify-center text-white"
             >
               <X className="w-5 h-5" />
             </button>
             
             {selectedVideo && (
               <>
-                <div className="aspect-video bg-black">
-                  <iframe
-                    src={`https://www.youtube-nocookie.com/embed/${selectedVideo.youtube_video_id}?autoplay=1&rel=0&modestbranding=1`}
-                    className="w-full h-full"
-                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                    allowFullScreen
-                    title={selectedVideo.title_ar}
-                  />
-                </div>
+                <VideoPlayer video={selectedVideo} autoPlay={true} />
                 
                 <div className={`p-4 ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
                   <div className="flex items-start justify-between gap-4">
@@ -463,6 +611,76 @@ const MemberDailyVideos = () => {
                 </div>
               </>
             )}
+          </DialogContent>
+        </Dialog>
+
+        {/* Multiple Videos for Date Dialog */}
+        <Dialog open={dateDialogOpen} onOpenChange={setDateDialogOpen}>
+          <DialogContent className="max-w-2xl" dir="rtl">
+            <button
+              onClick={() => setDateDialogOpen(false)}
+              className="absolute top-2 left-2 z-10 w-8 h-8 bg-gray-100 hover:bg-gray-200 rounded-full flex items-center justify-center"
+            >
+              <X className="w-5 h-5" />
+            </button>
+            
+            <div className="pt-4">
+              <h3 className={`font-bold text-lg mb-4 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                {selectedDate && format(selectedDate, 'EEEE d MMMM yyyy', { locale: ar })}
+                <span className="text-gray-500 font-normal mr-2">({selectedDateVideos.length} فيديوهات)</span>
+              </h3>
+              
+              <div className="grid gap-4 max-h-[60vh] overflow-y-auto">
+                {selectedDateVideos.map((video) => (
+                  <Card 
+                    key={video.id}
+                    className={`overflow-hidden cursor-pointer transition-all hover:shadow-lg ${
+                      darkMode ? 'bg-gray-700 border-gray-600' : ''
+                    }`}
+                    onClick={() => {
+                      setDateDialogOpen(false);
+                      handlePlayVideo(video);
+                    }}
+                  >
+                    <div className="flex gap-4 p-3">
+                      <div className="relative w-40 aspect-video flex-shrink-0 rounded overflow-hidden">
+                        <img 
+                          src={`https://img.youtube.com/vi/${video.youtube_video_id}/mqdefault.jpg`}
+                          alt={video.title_ar}
+                          className="w-full h-full object-cover"
+                        />
+                        <div className="absolute inset-0 bg-black/30 flex items-center justify-center">
+                          <div className="w-10 h-10 bg-red-600 rounded-full flex items-center justify-center">
+                            <Play className="w-5 h-5 text-white mr-[-2px]" fill="white" />
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <h4 className={`font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                          {video.title_ar}
+                        </h4>
+                        {video.description_ar && (
+                          <p className={`text-sm mt-1 line-clamp-2 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                            {video.description_ar}
+                          </p>
+                        )}
+                        <div className="flex items-center gap-2 mt-2">
+                          {video.activity_name && (
+                            <Badge variant="outline" className={darkMode ? 'border-gray-600 text-gray-300' : ''}>
+                              {video.activity_name}
+                            </Badge>
+                          )}
+                          <Badge variant="secondary" className="gap-1">
+                            <Eye className="w-3 h-3" />
+                            {video.views_count || 0}
+                          </Badge>
+                        </div>
+                      </div>
+                    </div>
+                  </Card>
+                ))}
+              </div>
+            </div>
           </DialogContent>
         </Dialog>
       </div>
