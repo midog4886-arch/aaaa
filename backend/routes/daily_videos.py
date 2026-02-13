@@ -396,14 +396,50 @@ async def delete_daily_video(video_id: str, current_user: dict = Depends(get_cur
 
 
 @router.post("/{video_id}/view")
-async def record_video_view(video_id: str):
-    """Record a view for a video (public endpoint)"""
+async def record_video_view(video_id: str, member_id: Optional[str] = None):
+    """Record a view for a video and award loyalty points"""
     result = await db.daily_videos.update_one(
         {"id": video_id},
         {"$inc": {"views_count": 1}}
     )
     if result.matched_count == 0:
         raise HTTPException(status_code=404, detail="Video not found")
+    
+    # Award loyalty points for watching video
+    if member_id and loyalty_award_points:
+        try:
+            # Check if member already watched this video today
+            today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+            existing_view = await db.video_views.find_one({
+                "member_id": member_id,
+                "video_id": video_id,
+                "date": today
+            })
+            
+            if not existing_view:
+                # Record the view
+                await db.video_views.insert_one({
+                    "id": str(uuid.uuid4()),
+                    "member_id": member_id,
+                    "video_id": video_id,
+                    "date": today,
+                    "created_at": datetime.now(timezone.utc).isoformat()
+                })
+                
+                # Get video info
+                video = await db.daily_videos.find_one({"id": video_id}, {"_id": 0})
+                video_title = video.get("title_ar", "فيديو") if video else "فيديو"
+                
+                # Award points
+                await loyalty_award_points(
+                    member_id,
+                    "video_watch",
+                    f"مكافأة مشاهدة فيديو: {video_title}",
+                    f"Video watch bonus: {video.get('title', 'Video') if video else 'Video'}"
+                )
+        except Exception as e:
+            print(f"Error awarding loyalty points for video watch: {e}")
+    
     return {"success": True}
 
 
