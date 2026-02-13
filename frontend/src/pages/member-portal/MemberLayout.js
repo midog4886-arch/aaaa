@@ -174,7 +174,37 @@ const MemberLayout = ({ children }) => {
             </nav>
 
             {/* User Menu */}
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2">
+              {/* PWA Install Button */}
+              {showInstallButton && (
+                <Button 
+                  variant="ghost" 
+                  size="sm"
+                  onClick={handleInstallClick}
+                  className="bg-green-500 text-white hover:bg-green-600"
+                  title="تثبيت التطبيق"
+                >
+                  <Download className="w-4 h-4 me-1" />
+                  <span className="hidden sm:inline">تثبيت</span>
+                </Button>
+              )}
+
+              {/* Quick Link to Admin Dashboard */}
+              <a
+                href="/login"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                <Button 
+                  variant="ghost" 
+                  size="icon"
+                  className="text-gray-300 hover:text-white hover:bg-white/10"
+                  title="لوحة التحكم"
+                >
+                  <LayoutDashboard className="w-5 h-5" />
+                </Button>
+              </a>
+
               {/* Dark Mode Toggle */}
               <Button 
                 variant="ghost" 
