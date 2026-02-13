@@ -279,13 +279,65 @@ const MemberLayout = ({ children }) => {
         )}
       </header>
 
-      {/* Main Content */}
-      <main className="max-w-7xl mx-auto px-4 py-6">
+      {/* Main Content - Add padding for bottom nav */}
+      <main className="max-w-7xl mx-auto px-4 py-6 pb-24">
         {children}
       </main>
 
-      {/* Footer */}
-      <footer className={`border-t py-4 mt-auto ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white'}`}>
+      {/* Bottom Navigation for Mobile */}
+      <nav className={`lg:hidden fixed bottom-0 left-0 right-0 z-50 ${
+        darkMode 
+          ? 'bg-gray-900/95 border-gray-700' 
+          : 'bg-white/95 border-gray-200'
+      } border-t backdrop-blur-lg`}>
+        <div className="flex items-center justify-around h-16 max-w-lg mx-auto px-2">
+          {[
+            { to: '/portal/dashboard', icon: Home, label: getText('home') },
+            { to: '/portal/daily-videos', icon: Video, label: language === 'ar' ? 'الفيديوهات' : 'Videos' },
+            { to: '/portal/loyalty', icon: Trophy, label: language === 'ar' ? 'النقاط' : 'Points' },
+            { to: '/portal/subscriptions', icon: CreditCard, label: language === 'ar' ? 'الاشتراكات' : 'Subs' },
+            { to: '/portal/notifications', icon: Bell, label: getText('notifications'), badge: notifications.unread_count },
+          ].map((item) => {
+            const isActive = location.pathname === item.to;
+            const Icon = item.icon;
+            return (
+              <Link
+                key={item.to}
+                to={item.to}
+                className="relative flex flex-col items-center justify-center flex-1 h-full"
+              >
+                <div className="relative flex flex-col items-center">
+                  {isActive && (
+                    <div className="absolute -top-1 w-12 h-1 bg-gradient-to-r from-blue-500 to-purple-500 rounded-full" />
+                  )}
+                  <div className={`relative p-2 rounded-xl transition-colors ${
+                    isActive 
+                      ? 'text-blue-600' 
+                      : darkMode ? 'text-gray-400' : 'text-gray-500'
+                  }`}>
+                    <Icon className={`w-5 h-5 ${isActive ? 'stroke-[2.5]' : ''}`} />
+                    {item.badge > 0 && (
+                      <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white text-xs font-bold rounded-full flex items-center justify-center">
+                        {item.badge > 9 ? '9+' : item.badge}
+                      </span>
+                    )}
+                  </div>
+                  <span className={`text-[10px] mt-0.5 font-medium ${
+                    isActive 
+                      ? 'text-blue-600' 
+                      : darkMode ? 'text-gray-400' : 'text-gray-500'
+                  }`}>
+                    {item.label}
+                  </span>
+                </div>
+              </Link>
+            );
+          })}
+        </div>
+      </nav>
+
+      {/* Footer - Hidden on mobile due to bottom nav */}
+      <footer className={`hidden lg:block border-t py-4 mt-auto ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white'}`}>
         <div className={`max-w-7xl mx-auto px-4 text-center text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
           <p>{language === 'ar' ? 'أكاديمية أداء الأبطال العالمية' : 'Global Champions Sports Academy'} © {new Date().getFullYear()}</p>
         </div>
