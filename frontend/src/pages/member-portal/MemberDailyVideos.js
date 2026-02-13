@@ -127,26 +127,96 @@ const MemberDailyVideos = () => {
   // Safe close handler - stops video before closing
   const handleCloseVideoDialog = useCallback(() => {
     setPlaying(false);
-    // Small delay to let ReactPlayer stop before unmounting
     setTimeout(() => {
       setVideoDialogOpen(false);
       setSelectedVideo(null);
     }, 100);
   }, []);
 
-  // Professional Video Player Component using iframe for stability
+  // Professional Video Player Component using Plyr.io
   const VideoPlayer = ({ video }) => {
+    const plyrRef = useRef(null);
+    
     if (!video || !video.youtube_video_id) return null;
+
+    // Plyr options for clean, professional look
+    const plyrOptions = {
+      controls: [
+        'play-large',    // زر التشغيل الكبير في الوسط
+        'play',          // زر التشغيل
+        'progress',      // شريط التقدم
+        'current-time',  // الوقت الحالي
+        'duration',      // المدة الكلية
+        'mute',          // كتم الصوت
+        'volume',        // مستوى الصوت
+        'settings',      // الإعدادات
+        'fullscreen'     // ملء الشاشة
+      ],
+      settings: ['quality', 'speed'],
+      speed: { selected: 1, options: [0.5, 0.75, 1, 1.25, 1.5, 2] },
+      youtube: {
+        noCookie: true,           // استخدام YouTube-nocookie للخصوصية
+        rel: 0,                   // لا تعرض فيديوهات مقترحة
+        showinfo: 0,              // إخفاء معلومات الفيديو
+        iv_load_policy: 3,        // إخفاء التعليقات التوضيحية
+        modestbranding: 1,        // إخفاء شعار يوتيوب
+        playsinline: 1,           // تشغيل inline على الموبايل
+        disablekb: 0,             // السماح باختصارات الكيبورد
+        fs: 1,                    // السماح بملء الشاشة
+        origin: window.location.origin
+      },
+      // تخصيص الألوان والمظهر
+      tooltips: { controls: true, seek: true },
+      keyboard: { focused: true, global: false },
+      fullscreen: { enabled: true, fallback: true, iosNative: true }
+    };
+
+    const plyrSource = {
+      type: 'video',
+      sources: [
+        {
+          src: video.youtube_video_id,
+          provider: 'youtube'
+        }
+      ]
+    };
     
     return (
-      <div className="video-player-container relative w-full aspect-video bg-black rounded-lg overflow-hidden">
-        <iframe
-          src={`https://www.youtube-nocookie.com/embed/${video.youtube_video_id}?rel=0&modestbranding=1&playsinline=1`}
-          className="w-full h-full"
-          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-          allowFullScreen
-          title={video.title_ar || 'فيديو'}
+      <div className="plyr-container relative w-full aspect-video bg-black rounded-lg overflow-hidden">
+        <Plyr
+          ref={plyrRef}
+          source={plyrSource}
+          options={plyrOptions}
         />
+        {/* Custom styling to make Plyr look cleaner */}
+        <style>{`
+          .plyr-container .plyr {
+            --plyr-color-main: #3b82f6;
+            --plyr-video-control-color: #ffffff;
+            --plyr-video-control-background-hover: rgba(59, 130, 246, 0.8);
+            --plyr-range-fill-background: #3b82f6;
+            --plyr-badge-background: #3b82f6;
+            --plyr-tooltip-background: #1e293b;
+            --plyr-tooltip-color: #ffffff;
+            --plyr-menu-background: #1e293b;
+            --plyr-menu-color: #ffffff;
+            border-radius: 0.5rem;
+          }
+          .plyr-container .plyr--youtube .plyr__poster {
+            background-size: cover;
+          }
+          .plyr-container .plyr__control--overlaid {
+            background: rgba(59, 130, 246, 0.9);
+            border-radius: 50%;
+            padding: 20px;
+          }
+          .plyr-container .plyr__control--overlaid:hover {
+            background: rgba(59, 130, 246, 1);
+          }
+          .plyr-container .plyr__controls {
+            background: linear-gradient(transparent, rgba(0,0,0,0.7));
+          }
+        `}</style>
       </div>
     );
   };
