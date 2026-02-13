@@ -51,6 +51,7 @@ const MemberLayout = ({ children }) => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [notifications, setNotifications] = useState({ unread_count: 0 });
   const [darkMode, setDarkModeState] = useState(getDarkMode());
+  const [language, setLanguageState] = useState(getLanguage());
   
   // PWA Install prompt
   const [deferredPrompt, setDeferredPrompt] = useState(null);
@@ -60,8 +61,37 @@ const MemberLayout = ({ children }) => {
   // Detect device type for install instructions
   const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
   const isAndroid = /Android/.test(navigator.userAgent);
-  const isChrome = /Chrome/.test(navigator.userAgent) && !/Edge/.test(navigator.userAgent);
-  const isSafari = /Safari/.test(navigator.userAgent) && !/Chrome/.test(navigator.userAgent);
+
+  // Toggle language
+  const toggleLanguage = () => {
+    const newLang = language === 'ar' ? 'en' : 'ar';
+    setLanguageState(newLang);
+    setLanguage(newLang);
+  };
+
+  // Translations
+  const t = (key) => {
+    const translations = {
+      home: { ar: 'الرئيسية', en: 'Home' },
+      dailyVideos: { ar: 'الفيديوهات اليومية', en: 'Daily Videos' },
+      attendance: { ar: 'سجل الحضور', en: 'Attendance' },
+      memberCard: { ar: 'بطاقة العضوية', en: 'Member Card' },
+      rateCoaches: { ar: 'تقييم المدربين', en: 'Rate Coaches' },
+      notifications: { ar: 'الإشعارات', en: 'Notifications' },
+      install: { ar: 'تثبيت', en: 'Install' },
+      logout: { ar: 'تسجيل خروج', en: 'Logout' },
+      lightMode: { ar: 'الوضع الفاتح', en: 'Light Mode' },
+      darkModeLabel: { ar: 'الوضع المظلم', en: 'Dark Mode' },
+      installApp: { ar: 'تثبيت التطبيق', en: 'Install App' },
+      installDescription: { ar: 'يمكنك تثبيت التطبيق على جهازك للوصول السريع والعمل بدون إنترنت.', en: 'You can install the app on your device for quick access and offline use.' },
+      understood: { ar: 'فهمت', en: 'Got it' },
+      computer: { ar: 'الكمبيوتر', en: 'Computer' },
+      afterInstall: { ar: 'بعد التثبيت، سيظهر التطبيق على شاشتك الرئيسية ويمكنك فتحه مباشرة!', en: 'After installation, the app will appear on your home screen!' },
+      allRights: { ar: 'جميع الحقوق محفوظة', en: 'All rights reserved' },
+      academyName: { ar: 'أكاديمية أداء الأبطال العالمية', en: 'Global Champions Sports Academy' }
+    };
+    return translations[key]?.[language] || key;
+  };
 
   useEffect(() => {
     const memberData = getMemberData();
