@@ -38,15 +38,25 @@ const MemberDailyVideos = () => {
         params.activity_id = selectedActivity;
       }
 
-      const [todayRes, weekRes, activitiesRes] = await Promise.all([
+      const [todayRes, weekRes] = await Promise.all([
         memberAPI.get('/api/daily-videos/today', { params }),
-        memberAPI.get('/api/daily-videos/week', { params }),
-        memberAPI.get('/api/activities')
+        memberAPI.get('/api/daily-videos/week', { params })
       ]);
 
       setTodayVideo(todayRes.data);
       setWeekVideos(weekRes.data || []);
-      setActivities(activitiesRes.data || []);
+      
+      // Extract unique activities from videos
+      const allVideos = [...(weekRes.data || [])];
+      const uniqueActivities = [];
+      const seenIds = new Set();
+      allVideos.forEach(v => {
+        if (v.activity_id && !seenIds.has(v.activity_id)) {
+          seenIds.add(v.activity_id);
+          uniqueActivities.push({ id: v.activity_id, name_ar: v.activity_name });
+        }
+      });
+      setActivities(uniqueActivities);
       
       // Fetch calendar data
       const calendarRes = await memberAPI.get(
