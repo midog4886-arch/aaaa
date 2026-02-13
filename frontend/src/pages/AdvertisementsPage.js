@@ -710,7 +710,9 @@ const AdvertisementsPage = () => {
                   {formData.banner_image_url && (
                     <div className="relative w-full h-40 rounded-lg overflow-hidden bg-gray-100">
                       <img 
-                        src={`${process.env.REACT_APP_BACKEND_URL}${formData.banner_image_url}`}
+                        src={formData.banner_image_url.startsWith('/api') 
+                          ? `${process.env.REACT_APP_BACKEND_URL}${formData.banner_image_url}`
+                          : `${process.env.REACT_APP_BACKEND_URL}/api${formData.banner_image_url}`}
                         alt="Preview"
                         className="w-full h-full object-cover"
                       />
