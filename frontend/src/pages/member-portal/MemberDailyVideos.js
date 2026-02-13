@@ -128,8 +128,21 @@ const MemberDailyVideos = () => {
   const VideoPlayer = ({ video, autoPlay = true }) => {
     if (!video) return null;
     
+    const handleFullscreen = () => {
+      const container = document.querySelector('.video-player-container');
+      if (container) {
+        if (container.requestFullscreen) {
+          container.requestFullscreen();
+        } else if (container.webkitRequestFullscreen) {
+          container.webkitRequestFullscreen();
+        } else if (container.msRequestFullscreen) {
+          container.msRequestFullscreen();
+        }
+      }
+    };
+    
     return (
-      <div className="relative w-full aspect-video bg-black rounded-lg overflow-hidden">
+      <div className="video-player-container relative w-full aspect-video bg-black rounded-lg overflow-hidden">
         <ReactPlayer
           ref={playerRef}
           url={`https://www.youtube.com/watch?v=${video.youtube_video_id}`}
@@ -179,14 +192,7 @@ const MemberDailyVideos = () => {
             <Button
               variant="ghost"
               size="icon"
-              onClick={() => {
-                if (playerRef.current) {
-                  const iframe = playerRef.current.getInternalPlayer();
-                  if (iframe && iframe.requestFullscreen) {
-                    iframe.requestFullscreen();
-                  }
-                }
-              }}
+              onClick={handleFullscreen}
               className="text-white hover:bg-white/20"
             >
               <Maximize className="w-5 h-5" />
