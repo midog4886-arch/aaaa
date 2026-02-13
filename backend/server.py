@@ -79,6 +79,8 @@ app.include_router(member_portal_router)
 
 # Mount uploads directory for serving images
 app.mount("/uploads", StaticFiles(directory=str(UPLOADS_DIR)), name="uploads")
+# Also mount under /api for ingress routing
+app.mount("/api/uploads", StaticFiles(directory=str(UPLOADS_DIR)), name="api_uploads")
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
