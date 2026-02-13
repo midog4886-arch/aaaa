@@ -4,9 +4,10 @@ import {
   Trophy, Home, CreditCard, Calendar, FileText, QrCode, Bell, 
   LogOut, Menu, X, User, Clock, CheckCircle, AlertTriangle,
   ChevronLeft, ClipboardList, Moon, Sun, Star, Activity, Video,
-  ExternalLink, Download, LayoutDashboard
+  Download, Smartphone, Share, MoreVertical
 } from 'lucide-react';
 import { Button } from '../../components/ui/button';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../../components/ui/dialog';
 import axios from 'axios';
 
 const API_URL = process.env.REACT_APP_BACKEND_URL;
