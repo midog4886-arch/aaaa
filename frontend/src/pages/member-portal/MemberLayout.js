@@ -87,6 +87,7 @@ const MemberLayout = ({ children }) => {
 
   const navItems = [
     { to: '/portal/dashboard', icon: Home, label: 'الرئيسية' },
+    { to: '/portal/daily-videos', icon: Video, label: 'الفيديوهات اليومية' },
     { to: '/portal/attendance', icon: Activity, label: 'سجل الحضور' },
     { to: '/portal/subscriptions', icon: CreditCard, label: 'اشتراكاتي' },
     { to: '/portal/schedule', icon: Calendar, label: 'جدول التدريبات' },
