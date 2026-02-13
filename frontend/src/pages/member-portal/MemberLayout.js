@@ -278,6 +278,82 @@ const MemberLayout = ({ children }) => {
           <p>أكاديمية أداء الأبطال العالمية © {new Date().getFullYear()}</p>
         </div>
       </footer>
+
+      {/* Install Guide Dialog */}
+      <Dialog open={showInstallGuide} onOpenChange={setShowInstallGuide}>
+        <DialogContent className="max-w-md" dir="rtl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-xl">
+              <Smartphone className="w-6 h-6 text-green-600" />
+              تثبيت التطبيق
+            </DialogTitle>
+          </DialogHeader>
+          
+          <div className="space-y-4 py-4">
+            <p className="text-gray-600">
+              يمكنك تثبيت التطبيق على جهازك للوصول السريع والعمل بدون إنترنت.
+            </p>
+
+            {isIOS && (
+              <div className="bg-gray-50 p-4 rounded-lg space-y-3">
+                <h4 className="font-bold text-gray-900 flex items-center gap-2">
+                  <span className="text-2xl">🍎</span> iPhone / iPad
+                </h4>
+                <ol className="list-decimal list-inside space-y-2 text-sm text-gray-700">
+                  <li className="flex items-start gap-2">
+                    <span>اضغط على زر المشاركة</span>
+                    <Share className="w-5 h-5 text-blue-500 flex-shrink-0" />
+                  </li>
+                  <li>مرر للأسفل واضغط على <strong>"إضافة إلى الشاشة الرئيسية"</strong></li>
+                  <li>اضغط على <strong>"إضافة"</strong> في الأعلى</li>
+                </ol>
+              </div>
+            )}
+
+            {isAndroid && (
+              <div className="bg-gray-50 p-4 rounded-lg space-y-3">
+                <h4 className="font-bold text-gray-900 flex items-center gap-2">
+                  <span className="text-2xl">🤖</span> Android
+                </h4>
+                <ol className="list-decimal list-inside space-y-2 text-sm text-gray-700">
+                  <li className="flex items-start gap-2">
+                    <span>اضغط على قائمة المتصفح</span>
+                    <MoreVertical className="w-5 h-5 text-gray-500 flex-shrink-0" />
+                  </li>
+                  <li>اضغط على <strong>"تثبيت التطبيق"</strong> أو <strong>"إضافة إلى الشاشة الرئيسية"</strong></li>
+                  <li>اضغط على <strong>"تثبيت"</strong></li>
+                </ol>
+              </div>
+            )}
+
+            {!isIOS && !isAndroid && (
+              <div className="bg-gray-50 p-4 rounded-lg space-y-3">
+                <h4 className="font-bold text-gray-900 flex items-center gap-2">
+                  <span className="text-2xl">💻</span> الكمبيوتر
+                </h4>
+                <ol className="list-decimal list-inside space-y-2 text-sm text-gray-700">
+                  <li>ابحث عن أيقونة التثبيت <Download className="w-4 h-4 inline" /> في شريط العنوان</li>
+                  <li>أو اضغط على قائمة المتصفح <MoreVertical className="w-4 h-4 inline" /></li>
+                  <li>اختر <strong>"تثبيت التطبيق"</strong></li>
+                </ol>
+              </div>
+            )}
+
+            <div className="bg-green-50 p-3 rounded-lg border border-green-200">
+              <p className="text-sm text-green-700">
+                ✅ بعد التثبيت، سيظهر التطبيق على شاشتك الرئيسية ويمكنك فتحه مباشرة!
+              </p>
+            </div>
+          </div>
+
+          <Button 
+            onClick={() => setShowInstallGuide(false)}
+            className="w-full"
+          >
+            فهمت
+          </Button>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
