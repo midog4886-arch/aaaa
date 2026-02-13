@@ -1,5 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
-import ReactPlayer from 'react-player';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
 import { Button } from '../../components/ui/button';
 import { Badge } from '../../components/ui/badge';
@@ -9,8 +8,8 @@ import MemberLayout, { memberAPI, getMemberData, getDarkMode } from './MemberLay
 import { format, parseISO, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, addMonths, subMonths } from 'date-fns';
 import { ar } from 'date-fns/locale';
 import { 
-  Video, Play, Calendar, Clock, Eye, ChevronLeft, ChevronRight, 
-  X, Activity, Star, CheckCircle, Pause, Volume2, VolumeX, Maximize
+  Video, Play, Calendar, Eye, ChevronLeft, ChevronRight, 
+  X, Activity
 } from 'lucide-react';
 
 const MemberDailyVideos = () => {
@@ -28,8 +27,6 @@ const MemberDailyVideos = () => {
   const [dateDialogOpen, setDateDialogOpen] = useState(false);
   const [selectedDate, setSelectedDate] = useState(null);
   const [playing, setPlaying] = useState(false);
-  const [muted, setMuted] = useState(false);
-  const playerRef = useRef(null);
   
   const member = getMemberData();
   const darkMode = getDarkMode();
