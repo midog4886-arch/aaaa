@@ -716,8 +716,8 @@ async def process_birthday_points():
                     await award_points(
                         member_id,
                         "birthday",
-                        f"🎂 مكافأة عيد ميلاد سعيد!",
-                        f"🎂 Happy Birthday bonus!"
+                        "🎂 مكافأة عيد ميلاد سعيد!",
+                        "🎂 Happy Birthday bonus!"
                     )
                     
                     # Create notification
