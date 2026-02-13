@@ -35,6 +35,7 @@ import MemberQRCard from './pages/member-portal/MemberQRCard';
 import MemberNotifications from './pages/member-portal/MemberNotifications';
 import MemberAttendance from './pages/member-portal/MemberAttendance';
 import MemberRateCoach from './pages/member-portal/MemberRateCoach';
+import MemberDailyVideos from './pages/member-portal/MemberDailyVideos';
 
 import './App.css';
 
