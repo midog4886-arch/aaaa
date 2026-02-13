@@ -3019,6 +3019,56 @@ SW Status: Service Worker registered: https://championsmgmt.preview.emergentagen
 
 ---
 
+---
+
+## Update - Code Refactoring (February 13, 2026)
+
+### إعادة هيكلة InvoicesPage.js - المرحلة الأولى ✅
+
+#### المكونات الجديدة التي تم إنشاؤها:
+
+##### Hooks:
+- **`useInvoicesData.js`** (118 سطر) - Hook لإدارة البيانات والـ API calls
+  - تحميل الفواتير، الأعضاء، الأنشطة، المنتجات، الفروع
+  - دوال مساعدة: `getBranchName`, `getMemberById`, `getActivityById`
+  
+- **`useInvoiceFilters.js`** (109 سطر) - Hook للفلاتر والبحث
+  - البحث بالنص، الحالة، النشاط، نطاق التاريخ
+  - تصفية الفواتير، استمارات التسجيل، سندات الدائن
+
+##### Components:
+- **`InvoiceFilters.jsx`** (163 سطر) - مكون الفلاتر والبحث المتقدم
+- **`InvoicesTable.jsx`** (227 سطر) - جدول الفواتير مع الإجراءات
+- **`RegistrationFormsTable.jsx`** (141 سطر) - جدول استمارات التسجيل
+- **`CreditNotesTable.jsx`** (94 سطر) - جدول سندات الدائن
+- **`InvoiceSummaryCards.jsx`** (92 سطر) - كروت ملخص الفواتير
+
+#### الهيكل الجديد:
+```
+/app/frontend/src/pages/invoices/
+├── components/
+│   ├── index.js
+│   ├── InvoiceFilters.jsx
+│   ├── InvoicesTable.jsx
+│   ├── RegistrationFormsTable.jsx
+│   ├── CreditNotesTable.jsx
+│   └── InvoiceSummaryCards.jsx
+├── hooks/
+│   ├── index.js
+│   ├── useInvoicesData.js
+│   └── useInvoiceFilters.js
+├── constants.js
+├── printUtils.js
+└── index.js (updated exports)
+```
+
+#### ملاحظات:
+- تم إنشاء **949 سطر** من المكونات القابلة لإعادة الاستخدام
+- الملف الأصلي محفوظ في `InvoicesPage.backup.js`
+- المرحلة التالية: تحديث `InvoicesPage.js` لاستخدام المكونات الجديدة
+
+
+
 ## Update - Push Notifications System (February 13, 2026)
 
 ### نظام إشعارات Push ✅
