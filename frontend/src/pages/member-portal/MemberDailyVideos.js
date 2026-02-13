@@ -500,6 +500,9 @@ const MemberDailyVideos = () => {
           }
         }}>
           <DialogContent className="max-w-4xl p-0 overflow-hidden" dir="rtl">
+            <VisuallyHidden>
+              <DialogTitle>{selectedVideo?.title_ar || 'فيديو'}</DialogTitle>
+            </VisuallyHidden>
             <button
               onClick={handleCloseVideoDialog}
               className="absolute top-2 left-2 z-20 w-8 h-8 bg-black/50 hover:bg-black/70 rounded-full flex items-center justify-center text-white"
