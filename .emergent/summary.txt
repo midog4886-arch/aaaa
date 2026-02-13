@@ -6,54 +6,51 @@ We want to design a management program for a sports academy named Global Champio
 *   **Technical & Design:** Web-based application with a modern, sports-themed design and bilingual (Arabic/English) support.
 *   **Subsequent User Requests (Implemented & In-Progress):**
     *   A significant number of features including multi-activity enrollment, advanced invoicing, multi-branch support, user management, inventory, refunds, dashboards, accounting, renewals, notifications, expenses, and an advanced attendance system.
-    *   **Advertisement System (New):** A comprehensive system for managing and displaying advertisements (banners, videos, links) within the member portal. Includes an admin dashboard for full CRUD operations, statistics (views/clicks), and YouTube video integration.
-    *   **Ad Expiry Notifications (New):** An automated system that generates notifications for administrators when advertisements are about to expire or have expired. These notifications appear on the advertisements page and in the main navigation bar.
-    *   **Daily Videos System (New):** A feature allowing admins to schedule daily YouTube videos for members. Includes an admin management page with a calendar view and a member portal section with Today, This Week, and Calendar views.
-    *   **Daily Videos Enhancements (New):** The system now supports multiple videos per day, uses a custom  to hide YouTube branding, and automatically sends notifications to users when new videos are added.
-    *   **PWA Conversion (In Progress):** Convert the web app into a Progressive Web App (PWA) for offline capabilities.
+    *   **Advertisement System:** A comprehensive system for managing and displaying advertisements (banners, videos, links) within the member portal.
+    *   **Ad Expiry Notifications:** An automated system that generates notifications for administrators when advertisements are about to expire or have expired.
+    *   **Daily Videos System:** A feature allowing admins to schedule daily YouTube videos for members.
+    *   **Daily Videos Enhancements:** System supports multiple videos per day, uses a professional  player to hide YouTube branding, automatically sends notifications for new videos, and uses a utility to parse any YouTube URL format.
+    *   **PWA Conversion:** The web app has been converted into a Progressive Web App (PWA) for offline capabilities and installability.
+    *   **UI/UX Enhancements:** Implemented language switching (AR/EN) in the member portal and quick navigation buttons in both admin and member portals.
+    *   **Loyalty Program (New - In Progress):** A comprehensive points-based loyalty system to reward members for activities like attendance, renewals, and referrals. Includes an admin management panel and a member-facing portal.
 
 **User's preferred language**: Arabic (العربية). The next agent MUST respond in Arabic only.
 
 **what currently exists?**
-The agent has successfully implemented several major new features requested by the user. This includes a full-fledged advertisement system with an admin panel and member portal display, an expiry notification system for these ads, and a Daily Videos feature with its own management and member-facing interfaces. The agent also implemented enhancements to the video system, such as support for multiple videos per day and a custom player. Most recently, the agent fixed two critical UI bugs reported by the user and started the process of converting the application into a Progressive Web App (PWA).
+The agent successfully converted the application into a Progressive Web App (PWA), creating a service worker for offline caching and generating necessary icons. It also verified that previous bug fixes for the video player and banner images were successful. Following a new user bug report, the agent fixed an issue where closing a video modal caused a crash.
+
+The agent then implemented a series of user-requested features in rapid succession:
+1.  Replaced the  with  for a more professional, brand-less video experience.
+2.  Created a robust utility to parse any YouTube URL format into a standard embed link, integrating it into the Daily Videos and Advertisements admin pages.
+3.  Added quick navigation buttons for both admins (between sections) and members (to/from the admin panel).
+4.  Implemented bilingual (Arabic/English) language switching in the member portal.
+5.  Responded to several UI tweaks, such as adding and then removing an Install App button as per user requests.
+
+Finally, the agent designed a detailed plan for a new Loyalty Program, received user approval, and began implementation. The backend API for the loyalty system has been initiated, including automatic point allocation for member attendance. The frontend pages for the admin panel and member portal have been created but are not yet built out.
 
 **Last working item**:
--   **Last item agent was working**: Initiating the conversion of the frontend application into a Progressive Web App (PWA) to enable offline functionality. The agent created the  file.
+-   **Last item agent was working**: Implementing the new, comprehensive Loyalty Program. The agent created the initial backend API in , integrated point-awarding into the attendance check-in process, and created placeholder frontend pages:  (for admin) and  (for members).
 -   **Status**: IN PROGRESS
--   **Agent Testing Done**: N
--   **Which testing method agent to use?**: Frontend testing agent. The agent should be instructed to:
-    1.  Create the  file with caching strategies for key assets (JS, CSS, images) and API routes (e.g., daily videos).
-    2.  Register the service worker in .
-    3.  Update  to link the  and add theme color meta tags.
-    4.  Verify that the Install App prompt appears in the browser and that core pages (like Daily Videos) are accessible when the application is offline.
+-   **Agent Testing Done**: N (Only initial API endpoints were tested with curl).
+-   **Which testing method agent to use?**: both. The agent should use the backend testing agent to create tests for the new  API endpoints and the frontend testing agent to verify the complete UI and functionality in both the admin and member portals once the feature is built.
 -   **User Testing Done**: N
 
 **All Pending/In progress Issue list**:
--   **Issue 1**: User Verification for recent bug fixes. (P0 - HIGHEST)
--   **Issue 2**: Complete the frontend refactoring of . (P1 - CRITICAL)
--   **Issue 3**: Refactor , , and . (P2 - HIGH)
--   **Issue 4**: The searchable member dropdown in  remains difficult for automated testing tools. (P3)
+-   **Issue 1**: Complete the frontend refactoring of . (P1 - CRITICAL)
+-   **Issue 2**: Refactor , , and . (P2 - HIGH)
+-   **Issue 3**: The searchable member dropdown in  remains difficult for automated testing tools. (P3)
 
 **Issues Detail**:
 -   **Issue 1**:
-    -   **Attempted fixes**:
-        1.  **Video Player Fix**: The user reported a black screen in the custom video player. The agent fixed it by setting  on the  component in . This provides a stable fix but uses YouTube's default controls as a trade-off.
-        2.  **Banner Image Fix**: The user reported that banner images were not displaying. The agent fixed this by adding a  prefix to the image URLs to route them through the backend. This involved adding a static mount in  and updating image URL handling logic in  and  to be backward compatible.
-    -   **Next debug checklist**: Ask the user to verify that videos now play correctly and that banner images are visible on the advertisements page.
-    -   **Why fix this issue and what will be achieved with the fix?**: Resolves critical bugs reported by the user, ensuring the new features are usable.
-    -   **Status**: USER VERIFICATION PENDING
-    -   **Is recurring issue?** N
-    -   **Should Test frontend/backend/both after fix?**: Frontend
-
--   **Issue 2**:
-    -   **Attempted fixes**: Empty component files were created in a previous session, but no progress has been made.
+    -   **Attempted fixes**: None in this session. This remains the project's most significant technical debt.
     -   **Next debug checklist**: Systematically move JSX and related logic from  into their respective component files.
-    -   **Why fix this issue and what will be achieved with the fix?**: Drastically reduces the complexity of  (over 5000 lines), making it easier and safer to maintain. This is the project's most significant technical debt.
-    -   **Status**: NOT STARTED (Stalled)
+    -   **Why fix this issue and what will be achieved with the fix?**: Drastically reduces the complexity of  (over 5000 lines), making it easier and safer to maintain.
+    -   **Status**: NOT STARTED
     -   **Is recurring issue?** Y
     -   **Should Test frontend/backend/both after fix?**: Frontend
+    -   **Blocked on other issue**: None.
 
--   **Issue 3**:
+-   **Issue 2**:
     -   **Attempted fixes**: None.
     -   **Next debug checklist**: Decompose , , and  into smaller, manageable components.
     -   **Why fix this issue and what will be achieved with the fix?**: Improves maintainability and performance of several large and complex pages.
@@ -61,7 +58,7 @@ The agent has successfully implemented several major new features requested by t
     -   **Is recurring issue?** N
     -   **Should Test frontend/backend/both after fix?**: Frontend
 
--   **Issue 4**:
+-   **Issue 3**:
     -   **Attempted fixes**: None.
     -   **Next debug checklist**: Assign stable  attributes to the  component elements in .
     -   **Why fix this issue and what will be achieved with the fix?**: Improves the reliability of automated tests.
@@ -70,11 +67,14 @@ The agent has successfully implemented several major new features requested by t
     -   **Should Test frontend/backend/both after fix?**: Frontend
 
 **In progress Task List**:
--   **Task 1**: Implement PWA functionality (P1)
-    -   **Where to resume**: The  file has been created in . The next step is to create and register a service worker ().
-    -   **What will be achieved with this?**: The application will be installable on devices and have offline capabilities, particularly for viewing cached content like daily videos.
+-   **Task 1**: Complete the Loyalty Program (P0 - HIGHEST)
+    -   **Where to resume**:
+        1.  **Frontend (Admin)**: Build the UI in  to manage loyalty settings (points per action), rewards (create/edit), member points (manual adjustment), and view leaderboards/stats.
+        2.  **Frontend (Member)**: Build the UI in  to show the member's points, level, progress, transaction history, and available rewards for redemption.
+        3.  **Backend**: Extend  and other relevant files to automatically award points for other actions approved by the user (subscription renewals, referrals, video views, birthdays, etc.). Implement the reward redemption logic.
+    -   **What will be achieved with this?**: A fully functional loyalty and rewards system to increase member engagement and retention.
     -   **Status**: IN PROGRESS
-    -   **Should Test frontend/backend/both after fix?**: Frontend
+    -   **Should Test frontend/backend/both after fix?**: both
     -   **Blocked on something**: None.
 
 **Upcoming and Future Tasks**
@@ -85,49 +85,49 @@ The agent has successfully implemented several major new features requested by t
     -   **Advanced Statistics Dashboard (P2)**: Create a dashboard with charts for attendance, revenue, etc.
     -   **Booking/Leave System (P2)**: Allow members to book classes or freeze subscriptions.
     -   Player progress tracking system.
-    -   Loyalty points system.
     -   Family accounts.
 
 **Completed work in this session**
--   **Advertisement System**: Implemented a full-stack advertisement feature with an admin dashboard (CRUD, stats) and member portal display.
--   **Ad Expiry Notifications**: Created a backend service and frontend UI to notify admins about expiring and expired ads.
--   **Daily Videos System**: Built a full-stack feature for managing and viewing daily YouTube videos, including admin calendar management and a member portal interface with multiple views (Today, Week, Calendar).
--   **Video System Enhancements**: Upgraded the video system to support multiple videos per day, integrated  for a better viewing experience, and added automatic notifications for new videos.
--   **Bug Fix**: Fixed a critical bug causing the video player to show a black screen.
--   **Bug Fix**: Fixed a bug that prevented uploaded banner images from being displayed by correcting the URL routing.
--   **File/Code Updates**: Updated  with details of all new features.
+-   **PWA Conversion**: Successfully converted the app to a PWA with a service worker for offline caching.
+-   **Plyr.io Video Player Integration**: Replaced the standard YouTube player with a professional, brand-less  player in the member portal.
+-   **YouTube URL Utility**: Created a utility function to parse any YouTube URL format into a clean embed link.
+-   **Video Player Bug Fix**: Resolved a critical bug that caused a crash when closing the video player modal.
+-   **Member Portal Language Switching**: Implemented full bilingual (AR/EN) support in the member portal layout and navigation.
+-   **UI/UX Enhancements**: Added/Removed various buttons and navigation links in the admin and member portals based on direct user feedback.
+-   **Loyalty System (Backend Initiation)**: Created the core API and database models for the new loyalty program and integrated automatic point awards for attendance.
+-   **PRD.md Updated**: The project documentation was updated with the latest changes.
+
+**Earlier issues found/mentioned but not fixed**
+-   The critical technical debt of refactoring large frontend pages (, , etc.) has not been addressed. This was noted in the previous fork and remains a high-priority issue for the project's long-term health.
 
 **Known issue recurrence from previous fork**
--   The need to refactor large frontend components () is a recurring theme and remains the highest-priority technical debt.
+-   The need to refactor  is a recurring high-priority task that has been postponed again due to new feature requests.
 
 **Code Architecture**
 
 
 **Key Technical Concepts**
--   **Full-Stack Feature Development**: Built multiple complex features from UI to API to DB.
--   **PWA (Progressive Web App)**: Started implementation with .
--   **Video Embedding**: Used  to embed YouTube videos with custom controls and configurations.
--   **Static File Serving**: Configured FastAPI to serve user-uploaded images from a protected route.
--   **Background Task Simulation**: Created API endpoints that trigger notification creation, simulating a background job.
--   **Complex State Management**: Managed complex frontend state for calendars, dialogs, filters, and multiple data views in React.
+-   **PWA (Progressive Web App)**: Implemented with  and a  using cache-first and network-first strategies.
+-   **Third-Party Library Integration**: Replaced  with  for a customized video UI.
+-   **Dynamic Language Switching**: Used React Context () to enable on-the-fly language changes (AR/EN) in the member portal, including layout direction (RTL/LTR).
+-   **Event-Driven Logic**: Integrated loyalty point allocation into existing application events (e.g., attendance check-in).
+-   **Utility Functions**: Created a reusable, robust utility for parsing various URL formats.
 
 **key DB schema**
--   **advertisements**: ,  (banner, video, link), , , , , , , , , , , .
--   **daily_videos**: , , , , , , , , , , .
+-   **member_points**: (New) , , ,  (bronze, silver, etc.), , .
+-   **points_history**: (New) ,  (+/-),  (attendance, redemption, etc.), , .
+-   **rewards**: (New) , , , , .
+-   **redemption_requests**: (New) , , ,  (pending, approved, etc.).
 
 **All files of reference**
--   **/app/frontend/public/manifest.json**: New file for PWA.
--   **/app/backend/routes/advertisements.py**: New file for ads API.
--   **/app/backend/routes/daily_videos.py**: New file for daily videos API.
--   **/app/frontend/src/pages/AdvertisementsPage.js**: New admin page for ads.
--   **/app/frontend/src/pages/DailyVideosPage.js**: New admin page for daily videos.
--   **/app/frontend/src/pages/member-portal/MemberDailyVideos.js**: New member page for videos, heavily modified to fix bugs and add .
--   **/app/frontend/src/pages/member-portal/MemberAds.js**: New component for displaying ads.
--   **/app/backend/server.py**: Modified to add new routers and a static mount for .
--   **/app/frontend/src/services/api.js**: Modified to add new API service objects.
--   **/app/frontend/src/App.js**: Modified to add new routes.
--   **/app/frontend/src/components/Layout.js**: Modified to add new nav links.
--   **/app/frontend/src/pages/member-portal/MemberLayout.js**: Modified to add new nav links.
+-   **/app/backend/routes/loyalty.py**: New file for all loyalty program API logic.
+-   **/app/frontend/src/pages/LoyaltyPage.js**: New admin page for the loyalty program.
+-   **/app/frontend/src/pages/member-portal/MemberLoyalty.js**: New member-facing page for the loyalty program.
+-   **/app/frontend/src/pages/member-portal/MemberDailyVideos.js**: Heavily modified to fix a crash, and to replace  with .
+-   **/app/frontend/src/pages/member-portal/MemberLayout.js**: Heavily modified to add language switching and other UI changes.
+-   **/app/frontend/public/service-worker.js**: New file created for PWA functionality.
+-   **/app/frontend/src/utils/youtubeUtils.js**: New file for parsing YouTube URLs.
+-   **/app/backend/routes/attendance.py**: Modified to award loyalty points on check-in.
 
 **Areas that need refactoring**:
 -   **/app/frontend/src/pages/InvoicesPage.js**: **CRITICAL**. Highest priority technical debt.
@@ -136,50 +136,47 @@ The agent has successfully implemented several major new features requested by t
 -   **/app/frontend/src/pages/AccountingPage.js**: **MEDIUM PRIORITY**.
 
 **key api endpoints**
--   : Full CRUD for ads.
--   , : Ad statistics.
--   : Ad dashboard statistics.
--   : Checks ad status and creates notifications.
--   : Full CRUD for daily videos.
--   , , : Fetches videos for member portal views.
--   : Video dashboard statistics.
--   : **(New)** Serves banner images.
+-   : Manage points values for actions.
+-   : CRUD for redeemable rewards.
+-   : Manually adjust a member's points.
+-   : Get overall loyalty program statistics.
+-   : Get top members by points.
+-   : Get a specific member's loyalty status.
+-   : Redeem points for a reward.
 
 **Critical Info for New Agent**
 -   You **MUST** respond in **Arabic**.
--   Your first action should be to propose a plan to the user. The plan should prioritize tasks in this order:
-    1.  **Finish the PWA implementation** (the last active task).
-    2.  **Ask for user verification** on the recent video player and banner image bug fixes.
-    3.  **Propose tackling the critical technical debt**: refactoring .
+-   The immediate priority is to **complete the Loyalty Program feature**. This involves building the frontend UIs for both the admin panel and member portal, and implementing the remaining backend logic for awarding points (renewals, referrals, etc.) and handling redemptions.
+-   After completing the loyalty feature, you should strongly propose tackling the **critical technical debt**, starting with the refactoring of . The user is adding many features, and this large file is becoming a significant risk to future development speed and stability.
 
 **documents and test reports created in this job**
--   /app/test_reports/iteration_13.json
--   /app/memory/PRD.md (updated multiple times)
+-   /app/memory/PRD.md (updated)
 
 **Last 10 User Messages and any pending HUMAN messages**
-1.  **User**: Fix the bug from the screenshot (video player and banner image). **Status: COMPLETED (User Verification Pending)**.
-2.  **User**: Implement PWA for offline support. **Status: IN PROGRESS**.
-3.  **User**: Provide app links. **Status: COMPLETED**.
-4.  **User**: Enhance the daily video system: multiple videos per day, custom player to hide YouTube UI, and notifications for new videos. **Status: COMPLETED**.
-5.  **User**: Create a Daily Videos section in the member portal with admin management. **Status: COMPLETED**.
-6.  **User**: Create notifications for expiring ads. **Status: COMPLETED**.
-7.  **User**: Start work on the new features. **Status: COMPLETED**.
-8.  **User**: Agrees to the plan. **Status: COMPLETED**.
-9.  **User**: Detailed requirements for the new advertisement and video system. **Status: COMPLETED**.
-10. **User**: Suggests a self-service advertising system (banners, videos) for the member portal. **Status: COMPLETED**.
+10. User requested suggestions for a loyalty system.
+9.  User approved the detailed loyalty system plan and requested implementation.
+8.  User requested to remove the Install App button from the member portal.
+7.  User asked to verify the removal of the admin link and to add language switching to the member portal.
+6.  User requested to remove the dashboard link from the member portal and asked why the Install button wasn't visible.
+5.  User requested to integrate the  video player for a more professional look.
+4.  User requested the direct link to the member portal.
+3.  User requested a utility function to parse all types of YouTube URLs and to add quick-navigation headers in the admin panel.
+2.  User requested to add an Install App button and quick navigation between the admin and member portals.
+1.  User reported a new bug with screenshots showing the video player crashing when the modal is closed.
 
 **Project Health Check:**
--   **Broken**: None. The reported bugs have been addressed but await user verification.
+-   **Broken**: None. All reported bugs were fixed.
 -   **Mocked**: None.
--   **Technical Debt**: **CRITICAL**.  is over 5000 lines. Several other key pages (, , ) are also excessively large and need refactoring to ensure future maintainability.
+-   **Technical Debt**: **CRITICAL**.  is over 5000 lines. Several other key pages are also excessively large. This was not addressed and remains the biggest risk to the project.
 
 **3rd Party Integrations**
--   **react-player**: Added to provide a custom YouTube video player experience.
+-   **react-player**: Was used, but has now been **replaced**.
+-   **plyr-react**: Added to provide a custom, professional YouTube video player experience.
 
 **Testing status**
--   **Testing agent used after significant changes**: YES, for the initial advertisement system.
+-   **Testing agent used after significant changes**: NO. Agent self-tested using screenshots and curl commands.
 -   **Troubleshoot agent used after agent stuck in loop**: NO
--   **Test files created**: No.
+-   **Test files created**: No new test files were created.
 -   **Known regressions**: None identified.
 
 **Credentials to test flow:**
@@ -190,7 +187,8 @@ The agent has successfully implemented several major new features requested by t
     -   Login using a registered member's phone number. Example: .
 
 **What agent forgot to execute**
--   The agent did not create any backend ============================= test session starts ==============================
+-   The agent started the backend for the loyalty system but only implemented the trigger for attendance. The plan approved by the user included triggers for subscription renewals, referrals, video views, and birthdays. These are not yet implemented.
+-   No ============================= test session starts ==============================
 platform linux -- Python 3.11.14, pytest-9.0.2, pluggy-1.6.0
 rootdir: /app
 plugins: anyio-4.12.0
@@ -209,7 +207,7 @@ tests/test_non_admin_no_branch_selector.py FFFFE                         [100%]
 ==================================== ERRORS ====================================
 ___________ ERROR at setup of TestAccountingSystem.test_get_accounts ___________
 
-self = <test_accounting_system.TestAccountingSystem object at 0xfbb74a8fd510>
+self = <test_accounting_system.TestAccountingSystem object at 0xf88d4997d2d0>
 
     @pytest.fixture(autouse=True)
     def setup(self):
@@ -277,7 +275,7 @@ E           requests.exceptions.MissingSchema: Invalid URL '/api/auth/login': No
 /root/.venv/lib/python3.11/site-packages/requests/models.py:438: MissingSchema
 ________ ERROR at setup of TestAccountingSystem.test_accounts_structure ________
 
-self = <test_accounting_system.TestAccountingSystem object at 0xfbb74a93db90>
+self = <test_accounting_system.TestAccountingSystem object at 0xf88d4997dd90>
 
     @pytest.fixture(autouse=True)
     def setup(self):
@@ -345,7 +343,7 @@ E           requests.exceptions.MissingSchema: Invalid URL '/api/auth/login': No
 /root/.venv/lib/python3.11/site-packages/requests/models.py:438: MissingSchema
 _ ERROR at setup of TestAccountingSystem.test_seed_default_accounts_already_exists _
 
-self = <test_accounting_system.TestAccountingSystem object at 0xfbb74a93e1d0>
+self = <test_accounting_system.TestAccountingSystem object at 0xf88d4997e3d0>
 
     @pytest.fixture(autouse=True)
     def setup(self):
@@ -413,7 +411,7 @@ E           requests.exceptions.MissingSchema: Invalid URL '/api/auth/login': No
 /root/.venv/lib/python3.11/site-packages/requests/models.py:438: MissingSchema
 __________ ERROR at setup of TestAccountingSystem.test_create_account __________
 
-self = <test_accounting_system.TestAccountingSystem object at 0xfbb74a93e850>
+self = <test_accounting_system.TestAccountingSystem object at 0xf88d4997ea50>
 
     @pytest.fixture(autouse=True)
     def setup(self):
@@ -481,7 +479,7 @@ E           requests.exceptions.MissingSchema: Invalid URL '/api/auth/login': No
 /root/.venv/lib/python3.11/site-packages/requests/models.py:438: MissingSchema
 __________ ERROR at setup of TestAccountingSystem.test_get_suppliers ___________
 
-self = <test_accounting_system.TestAccountingSystem object at 0xfbb74a93ee90>
+self = <test_accounting_system.TestAccountingSystem object at 0xf88d4997f090>
 
     @pytest.fixture(autouse=True)
     def setup(self):
@@ -549,7 +547,7 @@ E           requests.exceptions.MissingSchema: Invalid URL '/api/auth/login': No
 /root/.venv/lib/python3.11/site-packages/requests/models.py:438: MissingSchema
 _________ ERROR at setup of TestAccountingSystem.test_create_supplier __________
 
-self = <test_accounting_system.TestAccountingSystem object at 0xfbb74a93f4d0>
+self = <test_accounting_system.TestAccountingSystem object at 0xf88d4997f6d0>
 
     @pytest.fixture(autouse=True)
     def setup(self):
@@ -617,7 +615,7 @@ E           requests.exceptions.MissingSchema: Invalid URL '/api/auth/login': No
 /root/.venv/lib/python3.11/site-packages/requests/models.py:438: MissingSchema
 ________ ERROR at setup of TestAccountingSystem.test_get_supplier_by_id ________
 
-self = <test_accounting_system.TestAccountingSystem object at 0xfbb74a93fb10>
+self = <test_accounting_system.TestAccountingSystem object at 0xf88d4997fd10>
 
     @pytest.fixture(autouse=True)
     def setup(self):
@@ -685,7 +683,7 @@ E           requests.exceptions.MissingSchema: Invalid URL '/api/auth/login': No
 /root/.venv/lib/python3.11/site-packages/requests/models.py:438: MissingSchema
 _________ ERROR at setup of TestAccountingSystem.test_update_supplier __________
 
-self = <test_accounting_system.TestAccountingSystem object at 0xfbb74a950190>
+self = <test_accounting_system.TestAccountingSystem object at 0xf88d49990390>
 
     @pytest.fixture(autouse=True)
     def setup(self):
@@ -753,7 +751,7 @@ E           requests.exceptions.MissingSchema: Invalid URL '/api/auth/login': No
 /root/.venv/lib/python3.11/site-packages/requests/models.py:438: MissingSchema
 _ ERROR at setup of TestAccountingSystem.test_delete_supplier_without_invoices _
 
-self = <test_accounting_system.TestAccountingSystem object at 0xfbb74a9507d0>
+self = <test_accounting_system.TestAccountingSystem object at 0xf88d499909d0>
 
     @pytest.fixture(autouse=True)
     def setup(self):
@@ -821,7 +819,7 @@ E           requests.exceptions.MissingSchema: Invalid URL '/api/auth/login': No
 /root/.venv/lib/python3.11/site-packages/requests/models.py:438: MissingSchema
 ______ ERROR at setup of TestAccountingSystem.test_get_purchase_invoices _______
 
-self = <test_accounting_system.TestAccountingSystem object at 0xfbb74a950dd0>
+self = <test_accounting_system.TestAccountingSystem object at 0xf88d49990fd0>
 
     @pytest.fixture(autouse=True)
     def setup(self):
@@ -889,7 +887,7 @@ E           requests.exceptions.MissingSchema: Invalid URL '/api/auth/login': No
 /root/.venv/lib/python3.11/site-packages/requests/models.py:438: MissingSchema
 _ ERROR at setup of TestAccountingSystem.test_create_purchase_invoice_with_journal_entry _
 
-self = <test_accounting_system.TestAccountingSystem object at 0xfbb74a951410>
+self = <test_accounting_system.TestAccountingSystem object at 0xf88d49991610>
 
     @pytest.fixture(autouse=True)
     def setup(self):
@@ -957,7 +955,7 @@ E           requests.exceptions.MissingSchema: Invalid URL '/api/auth/login': No
 /root/.venv/lib/python3.11/site-packages/requests/models.py:438: MissingSchema
 _ ERROR at setup of TestAccountingSystem.test_purchase_invoice_balance_verification _
 
-self = <test_accounting_system.TestAccountingSystem object at 0xfbb74a951a50>
+self = <test_accounting_system.TestAccountingSystem object at 0xf88d49991c50>
 
     @pytest.fixture(autouse=True)
     def setup(self):
@@ -1025,7 +1023,7 @@ E           requests.exceptions.MissingSchema: Invalid URL '/api/auth/login': No
 /root/.venv/lib/python3.11/site-packages/requests/models.py:438: MissingSchema
 _____ ERROR at setup of TestAccountingSystem.test_create_supplier_payment ______
 
-self = <test_accounting_system.TestAccountingSystem object at 0xfbb74a93f890>
+self = <test_accounting_system.TestAccountingSystem object at 0xf88d4997f450>
 
     @pytest.fixture(autouse=True)
     def setup(self):
@@ -1093,7 +1091,7 @@ E           requests.exceptions.MissingSchema: Invalid URL '/api/auth/login': No
 /root/.venv/lib/python3.11/site-packages/requests/models.py:438: MissingSchema
 _ ERROR at setup of TestAccountingSystem.test_full_payment_marks_invoice_paid __
 
-self = <test_accounting_system.TestAccountingSystem object at 0xfbb74a951590>
+self = <test_accounting_system.TestAccountingSystem object at 0xf88d49991390>
 
     @pytest.fixture(autouse=True)
     def setup(self):
@@ -1161,7 +1159,7 @@ E           requests.exceptions.MissingSchema: Invalid URL '/api/auth/login': No
 /root/.venv/lib/python3.11/site-packages/requests/models.py:438: MissingSchema
 _______ ERROR at setup of TestAccountingSystem.test_get_journal_entries ________
 
-self = <test_accounting_system.TestAccountingSystem object at 0xfbb74a952090>
+self = <test_accounting_system.TestAccountingSystem object at 0xf88d49992290>
 
     @pytest.fixture(autouse=True)
     def setup(self):
@@ -1229,7 +1227,7 @@ E           requests.exceptions.MissingSchema: Invalid URL '/api/auth/login': No
 /root/.venv/lib/python3.11/site-packages/requests/models.py:438: MissingSchema
 ___ ERROR at setup of TestAccountingSystem.test_journal_entries_are_balanced ___
 
-self = <test_accounting_system.TestAccountingSystem object at 0xfbb74a9523d0>
+self = <test_accounting_system.TestAccountingSystem object at 0xf88d499925d0>
 
     @pytest.fixture(autouse=True)
     def setup(self):
@@ -1297,7 +1295,7 @@ E           requests.exceptions.MissingSchema: Invalid URL '/api/auth/login': No
 /root/.venv/lib/python3.11/site-packages/requests/models.py:438: MissingSchema
 ___ ERROR at setup of TestAccountingSystem.test_create_manual_journal_entry ____
 
-self = <test_accounting_system.TestAccountingSystem object at 0xfbb74a952710>
+self = <test_accounting_system.TestAccountingSystem object at 0xf88d49992910>
 
     @pytest.fixture(autouse=True)
     def setup(self):
@@ -1365,7 +1363,7 @@ E           requests.exceptions.MissingSchema: Invalid URL '/api/auth/login': No
 /root/.venv/lib/python3.11/site-packages/requests/models.py:438: MissingSchema
 _ ERROR at setup of TestAccountingSystem.test_unbalanced_journal_entry_rejected _
 
-self = <test_accounting_system.TestAccountingSystem object at 0xfbb74a952a50>
+self = <test_accounting_system.TestAccountingSystem object at 0xf88d49992c50>
 
     @pytest.fixture(autouse=True)
     def setup(self):
@@ -1433,7 +1431,7 @@ E           requests.exceptions.MissingSchema: Invalid URL '/api/auth/login': No
 /root/.venv/lib/python3.11/site-packages/requests/models.py:438: MissingSchema
 ______ ERROR at setup of TestAccountingSystem.test_full_purchase_workflow ______
 
-self = <test_accounting_system.TestAccountingSystem object at 0xfbb74a952e10>
+self = <test_accounting_system.TestAccountingSystem object at 0xf88d49993010>
 
     @pytest.fixture(autouse=True)
     def setup(self):
@@ -1501,7 +1499,7 @@ E           requests.exceptions.MissingSchema: Invalid URL '/api/auth/login': No
 /root/.venv/lib/python3.11/site-packages/requests/models.py:438: MissingSchema
 _____ ERROR at setup of TestAdvertisementsCRUD.test_get_all_advertisements _____
 
-self = <test_advertisements.TestAdvertisementsCRUD object at 0xfbb74a968510>
+self = <test_advertisements.TestAdvertisementsCRUD object at 0xf88d499a8690>
 
     @pytest.fixture(scope="class")
     def auth_token(self):
@@ -1568,7 +1566,7 @@ E           requests.exceptions.MissingSchema: Invalid URL '/api/auth/login': No
 /root/.venv/lib/python3.11/site-packages/requests/models.py:438: MissingSchema
 __ ERROR at setup of TestAdvertisementsCRUD.test_create_banner_advertisement ___
 
-self = <test_advertisements.TestAdvertisementsCRUD object at 0xfbb74a968510>
+self = <test_advertisements.TestAdvertisementsCRUD object at 0xf88d499a8690>
 
     @pytest.fixture(scope="class")
     def auth_token(self):
@@ -1635,7 +1633,7 @@ E           requests.exceptions.MissingSchema: Invalid URL '/api/auth/login': No
 /root/.venv/lib/python3.11/site-packages/requests/models.py:438: MissingSchema
 _ ERROR at setup of TestAdvertisementsCRUD.test_create_video_advertisement_with_youtube_url _
 
-self = <test_advertisements.TestAdvertisementsCRUD object at 0xfbb74a968510>
+self = <test_advertisements.TestAdvertisementsCRUD object at 0xf88d499a8690>
 
     @pytest.fixture(scope="class")
     def auth_token(self):
@@ -1702,7 +1700,7 @@ E           requests.exceptions.MissingSchema: Invalid URL '/api/auth/login': No
 /root/.venv/lib/python3.11/site-packages/requests/models.py:438: MissingSchema
 ___ ERROR at setup of TestAdvertisementsCRUD.test_create_link_advertisement ____
 
-self = <test_advertisements.TestAdvertisementsCRUD object at 0xfbb74a968510>
+self = <test_advertisements.TestAdvertisementsCRUD object at 0xf88d499a8690>
 
     @pytest.fixture(scope="class")
     def auth_token(self):
@@ -1769,7 +1767,7 @@ E           requests.exceptions.MissingSchema: Invalid URL '/api/auth/login': No
 /root/.venv/lib/python3.11/site-packages/requests/models.py:438: MissingSchema
 ______ ERROR at setup of TestAdvertisementsCRUD.test_update_advertisement ______
 
-self = <test_advertisements.TestAdvertisementsCRUD object at 0xfbb74a968510>
+self = <test_advertisements.TestAdvertisementsCRUD object at 0xf88d499a8690>
 
     @pytest.fixture(scope="class")
     def auth_token(self):
@@ -1836,7 +1834,7 @@ E           requests.exceptions.MissingSchema: Invalid URL '/api/auth/login': No
 /root/.venv/lib/python3.11/site-packages/requests/models.py:438: MissingSchema
 ______ ERROR at setup of TestAdvertisementsCRUD.test_delete_advertisement ______
 
-self = <test_advertisements.TestAdvertisementsCRUD object at 0xfbb74a968510>
+self = <test_advertisements.TestAdvertisementsCRUD object at 0xf88d499a8690>
 
     @pytest.fixture(scope="class")
     def auth_token(self):
@@ -1903,7 +1901,7 @@ E           requests.exceptions.MissingSchema: Invalid URL '/api/auth/login': No
 /root/.venv/lib/python3.11/site-packages/requests/models.py:438: MissingSchema
 __ ERROR at setup of TestAdvertisementsCRUD.test_toggle_advertisement_status ___
 
-self = <test_advertisements.TestAdvertisementsCRUD object at 0xfbb74a968510>
+self = <test_advertisements.TestAdvertisementsCRUD object at 0xf88d499a8690>
 
     @pytest.fixture(scope="class")
     def auth_token(self):
@@ -1970,7 +1968,7 @@ E           requests.exceptions.MissingSchema: Invalid URL '/api/auth/login': No
 /root/.venv/lib/python3.11/site-packages/requests/models.py:438: MissingSchema
 _________ ERROR at setup of TestAdvertisementsPublic.test_record_view __________
 
-self = <test_advertisements.TestAdvertisementsPublic object at 0xfbb74a968210>
+self = <test_advertisements.TestAdvertisementsPublic object at 0xf88d499a8390>
 
     @pytest.fixture(scope="class")
     def auth_token(self):
@@ -2037,7 +2035,7 @@ E           requests.exceptions.MissingSchema: Invalid URL '/api/auth/login': No
 /root/.venv/lib/python3.11/site-packages/requests/models.py:438: MissingSchema
 _________ ERROR at setup of TestAdvertisementsPublic.test_record_click _________
 
-self = <test_advertisements.TestAdvertisementsPublic object at 0xfbb74a968210>
+self = <test_advertisements.TestAdvertisementsPublic object at 0xf88d499a8390>
 
     @pytest.fixture(scope="class")
     def auth_token(self):
@@ -2104,7 +2102,7 @@ E           requests.exceptions.MissingSchema: Invalid URL '/api/auth/login': No
 /root/.venv/lib/python3.11/site-packages/requests/models.py:438: MissingSchema
 _______ ERROR at setup of TestAdvertisementsStats.test_get_stats_summary _______
 
-self = <test_advertisements.TestAdvertisementsStats object at 0xfbb74a974190>
+self = <test_advertisements.TestAdvertisementsStats object at 0xf88d499b4190>
 
     @pytest.fixture(scope="class")
     def auth_token(self):
@@ -2171,7 +2169,7 @@ E           requests.exceptions.MissingSchema: Invalid URL '/api/auth/login': No
 /root/.venv/lib/python3.11/site-packages/requests/models.py:438: MissingSchema
 ___ ERROR at setup of TestYouTubeVideoIdExtraction.test_youtube_standard_url ___
 
-self = <test_advertisements.TestYouTubeVideoIdExtraction object at 0xfbb74a974bd0>
+self = <test_advertisements.TestYouTubeVideoIdExtraction object at 0xf88d4997d090>
 
     @pytest.fixture(scope="class")
     def auth_token(self):
@@ -2238,7 +2236,7 @@ E           requests.exceptions.MissingSchema: Invalid URL '/api/auth/login': No
 /root/.venv/lib/python3.11/site-packages/requests/models.py:438: MissingSchema
 ____ ERROR at setup of TestYouTubeVideoIdExtraction.test_youtube_short_url _____
 
-self = <test_advertisements.TestYouTubeVideoIdExtraction object at 0xfbb74a974bd0>
+self = <test_advertisements.TestYouTubeVideoIdExtraction object at 0xf88d4997d090>
 
     @pytest.fixture(scope="class")
     def auth_token(self):
@@ -2305,7 +2303,7 @@ E           requests.exceptions.MissingSchema: Invalid URL '/api/auth/login': No
 /root/.venv/lib/python3.11/site-packages/requests/models.py:438: MissingSchema
 ____ ERROR at setup of TestYouTubeVideoIdExtraction.test_youtube_embed_url _____
 
-self = <test_advertisements.TestYouTubeVideoIdExtraction object at 0xfbb74a974bd0>
+self = <test_advertisements.TestYouTubeVideoIdExtraction object at 0xf88d4997d090>
 
     @pytest.fixture(scope="class")
     def auth_token(self):
@@ -2372,7 +2370,7 @@ E           requests.exceptions.MissingSchema: Invalid URL '/api/auth/login': No
 /root/.venv/lib/python3.11/site-packages/requests/models.py:438: MissingSchema
 __ ERROR at setup of TestYouTubeVideoIdExtraction.test_youtube_video_id_only ___
 
-self = <test_advertisements.TestYouTubeVideoIdExtraction object at 0xfbb74a974bd0>
+self = <test_advertisements.TestYouTubeVideoIdExtraction object at 0xf88d4997d090>
 
     @pytest.fixture(scope="class")
     def auth_token(self):
@@ -2439,7 +2437,7 @@ E           requests.exceptions.MissingSchema: Invalid URL '/api/auth/login': No
 /root/.venv/lib/python3.11/site-packages/requests/models.py:438: MissingSchema
 ____ ERROR at setup of TestYouTubeVideoIdExtraction.test_youtube_shorts_url ____
 
-self = <test_advertisements.TestYouTubeVideoIdExtraction object at 0xfbb74a974bd0>
+self = <test_advertisements.TestYouTubeVideoIdExtraction object at 0xf88d4997d090>
 
     @pytest.fixture(scope="class")
     def auth_token(self):
@@ -2506,7 +2504,7 @@ E           requests.exceptions.MissingSchema: Invalid URL '/api/auth/login': No
 /root/.venv/lib/python3.11/site-packages/requests/models.py:438: MissingSchema
 _____ ERROR at setup of TestAdvertisementsFiltering.test_filter_by_ad_type _____
 
-self = <test_advertisements.TestAdvertisementsFiltering object at 0xfbb74a977190>
+self = <test_advertisements.TestAdvertisementsFiltering object at 0xf88d499b7110>
 
     @pytest.fixture(scope="class")
     def auth_token(self):
@@ -2573,7 +2571,7 @@ E           requests.exceptions.MissingSchema: Invalid URL '/api/auth/login': No
 /root/.venv/lib/python3.11/site-packages/requests/models.py:438: MissingSchema
 ____ ERROR at setup of TestAdvertisementsFiltering.test_filter_by_position _____
 
-self = <test_advertisements.TestAdvertisementsFiltering object at 0xfbb74a977190>
+self = <test_advertisements.TestAdvertisementsFiltering object at 0xf88d499b7110>
 
     @pytest.fixture(scope="class")
     def auth_token(self):
@@ -2640,7 +2638,7 @@ E           requests.exceptions.MissingSchema: Invalid URL '/api/auth/login': No
 /root/.venv/lib/python3.11/site-packages/requests/models.py:438: MissingSchema
 ____ ERROR at setup of TestAdvertisementsFiltering.test_filter_active_only _____
 
-self = <test_advertisements.TestAdvertisementsFiltering object at 0xfbb74a977190>
+self = <test_advertisements.TestAdvertisementsFiltering object at 0xf88d499b7110>
 
     @pytest.fixture(scope="class")
     def auth_token(self):
@@ -2707,7 +2705,7 @@ E           requests.exceptions.MissingSchema: Invalid URL '/api/auth/login': No
 /root/.venv/lib/python3.11/site-packages/requests/models.py:438: MissingSchema
 __ ERROR at setup of TestAdvertisementsErrorHandling.test_get_nonexistent_ad ___
 
-self = <test_advertisements.TestAdvertisementsErrorHandling object at 0xfbb74ae7ebd0>
+self = <test_advertisements.TestAdvertisementsErrorHandling object at 0xf88d499b6e50>
 
     @pytest.fixture(scope="class")
     def auth_token(self):
@@ -2774,7 +2772,7 @@ E           requests.exceptions.MissingSchema: Invalid URL '/api/auth/login': No
 /root/.venv/lib/python3.11/site-packages/requests/models.py:438: MissingSchema
 _ ERROR at setup of TestAdvertisementsErrorHandling.test_delete_nonexistent_ad _
 
-self = <test_advertisements.TestAdvertisementsErrorHandling object at 0xfbb74ae7ebd0>
+self = <test_advertisements.TestAdvertisementsErrorHandling object at 0xf88d499b6e50>
 
     @pytest.fixture(scope="class")
     def auth_token(self):
@@ -2841,7 +2839,7 @@ E           requests.exceptions.MissingSchema: Invalid URL '/api/auth/login': No
 /root/.venv/lib/python3.11/site-packages/requests/models.py:438: MissingSchema
 _______ ERROR at setup of TestAttendanceModule.test_get_attendance_list ________
 
-self = <test_attendance.TestAttendanceModule object at 0xfbb74a97e190>
+self = <test_attendance.TestAttendanceModule object at 0xf88d499c2150>
 
     @pytest.fixture(autouse=True)
     def setup(self):
@@ -2909,7 +2907,7 @@ E           requests.exceptions.MissingSchema: Invalid URL '/api/auth/login': No
 /root/.venv/lib/python3.11/site-packages/requests/models.py:438: MissingSchema
 ____ ERROR at setup of TestAttendanceModule.test_get_attendance_by_activity ____
 
-self = <test_attendance.TestAttendanceModule object at 0xfbb74a97e7d0>
+self = <test_attendance.TestAttendanceModule object at 0xf88d499c2790>
 
     @pytest.fixture(autouse=True)
     def setup(self):
@@ -2977,7 +2975,7 @@ E           requests.exceptions.MissingSchema: Invalid URL '/api/auth/login': No
 /root/.venv/lib/python3.11/site-packages/requests/models.py:438: MissingSchema
 _ ERROR at setup of TestAttendanceModule.test_get_attendance_by_activity_invalid_id _
 
-self = <test_attendance.TestAttendanceModule object at 0xfbb74a97ee10>
+self = <test_attendance.TestAttendanceModule object at 0xf88d499c2dd0>
 
     @pytest.fixture(autouse=True)
     def setup(self):
@@ -3045,7 +3043,7 @@ E           requests.exceptions.MissingSchema: Invalid URL '/api/auth/login': No
 /root/.venv/lib/python3.11/site-packages/requests/models.py:438: MissingSchema
 _____ ERROR at setup of TestAttendanceModule.test_record_single_attendance _____
 
-self = <test_attendance.TestAttendanceModule object at 0xfbb74a97f490>
+self = <test_attendance.TestAttendanceModule object at 0xf88d499c3450>
 
     @pytest.fixture(autouse=True)
     def setup(self):
@@ -3113,7 +3111,7 @@ E           requests.exceptions.MissingSchema: Invalid URL '/api/auth/login': No
 /root/.venv/lib/python3.11/site-packages/requests/models.py:438: MissingSchema
 ______ ERROR at setup of TestAttendanceModule.test_record_bulk_attendance ______
 
-self = <test_attendance.TestAttendanceModule object at 0xfbb74a97fad0>
+self = <test_attendance.TestAttendanceModule object at 0xf88d499c3a90>
 
     @pytest.fixture(autouse=True)
     def setup(self):
@@ -3181,7 +3179,7 @@ E           requests.exceptions.MissingSchema: Invalid URL '/api/auth/login': No
 /root/.venv/lib/python3.11/site-packages/requests/models.py:438: MissingSchema
 ____________ ERROR at setup of TestAttendanceModule.test_qr_checkin ____________
 
-self = <test_attendance.TestAttendanceModule object at 0xfbb74a988150>
+self = <test_attendance.TestAttendanceModule object at 0xf88d499cc110>
 
     @pytest.fixture(autouse=True)
     def setup(self):
@@ -3249,7 +3247,7 @@ E           requests.exceptions.MissingSchema: Invalid URL '/api/auth/login': No
 /root/.venv/lib/python3.11/site-packages/requests/models.py:438: MissingSchema
 ____ ERROR at setup of TestAttendanceModule.test_qr_checkin_invalid_member _____
 
-self = <test_attendance.TestAttendanceModule object at 0xfbb74a988790>
+self = <test_attendance.TestAttendanceModule object at 0xf88d499cc750>
 
     @pytest.fixture(autouse=True)
     def setup(self):
@@ -3317,7 +3315,7 @@ E           requests.exceptions.MissingSchema: Invalid URL '/api/auth/login': No
 /root/.venv/lib/python3.11/site-packages/requests/models.py:438: MissingSchema
 _______ ERROR at setup of TestAttendanceModule.test_get_activity_report ________
 
-self = <test_attendance.TestAttendanceModule object at 0xfbb74a988dd0>
+self = <test_attendance.TestAttendanceModule object at 0xf88d499ccd90>
 
     @pytest.fixture(autouse=True)
     def setup(self):
@@ -3385,7 +3383,7 @@ E           requests.exceptions.MissingSchema: Invalid URL '/api/auth/login': No
 /root/.venv/lib/python3.11/site-packages/requests/models.py:438: MissingSchema
 ________ ERROR at setup of TestAttendanceModule.test_get_member_report _________
 
-self = <test_attendance.TestAttendanceModule object at 0xfbb74a989410>
+self = <test_attendance.TestAttendanceModule object at 0xf88d499cd3d0>
 
     @pytest.fixture(autouse=True)
     def setup(self):
@@ -3453,7 +3451,7 @@ E           requests.exceptions.MissingSchema: Invalid URL '/api/auth/login': No
 /root/.venv/lib/python3.11/site-packages/requests/models.py:438: MissingSchema
 ___ ERROR at setup of TestAttendanceModule.test_attendance_with_date_filters ___
 
-self = <test_attendance.TestAttendanceModule object at 0xfbb74a97e550>
+self = <test_attendance.TestAttendanceModule object at 0xf88d499c2510>
 
     @pytest.fixture(autouse=True)
     def setup(self):
@@ -3521,7 +3519,7 @@ E           requests.exceptions.MissingSchema: Invalid URL '/api/auth/login': No
 /root/.venv/lib/python3.11/site-packages/requests/models.py:438: MissingSchema
 ___________ ERROR at setup of TestAttendanceModule.test_branches_api ___________
 
-self = <test_attendance.TestAttendanceModule object at 0xfbb74a969f10>
+self = <test_attendance.TestAttendanceModule object at 0xf88d499a9fd0>
 
     @pytest.fixture(autouse=True)
     def setup(self):
@@ -3589,7 +3587,7 @@ E           requests.exceptions.MissingSchema: Invalid URL '/api/auth/login': No
 /root/.venv/lib/python3.11/site-packages/requests/models.py:438: MissingSchema
 _ ERROR at setup of TestDashboardPendingForms.test_dashboard_stats_returns_pending_forms_fields _
 
-self = <test_pending_forms_dashboard.TestDashboardPendingForms object at 0xfbb74a98ae10>
+self = <test_pending_forms_dashboard.TestDashboardPendingForms object at 0xf88d499ced90>
 
     @pytest.fixture(autouse=True)
     def setup(self):
@@ -3656,7 +3654,7 @@ E           requests.exceptions.MissingSchema: Invalid URL '/api/auth/login': No
 /root/.venv/lib/python3.11/site-packages/requests/models.py:438: MissingSchema
 _ ERROR at setup of TestDashboardPendingForms.test_dashboard_stats_pending_forms_count_matches_api _
 
-self = <test_pending_forms_dashboard.TestDashboardPendingForms object at 0xfbb74a98b150>
+self = <test_pending_forms_dashboard.TestDashboardPendingForms object at 0xf88d499cf0d0>
 
     @pytest.fixture(autouse=True)
     def setup(self):
@@ -3723,7 +3721,7 @@ E           requests.exceptions.MissingSchema: Invalid URL '/api/auth/login': No
 /root/.venv/lib/python3.11/site-packages/requests/models.py:438: MissingSchema
 _ ERROR at setup of TestRegistrationFormCalculation.test_registration_form_total_without_vat _
 
-self = <test_pending_forms_dashboard.TestRegistrationFormCalculation object at 0xfbb74a98b8d0>
+self = <test_pending_forms_dashboard.TestRegistrationFormCalculation object at 0xf88d499cf850>
 
     @pytest.fixture(autouse=True)
     def setup(self):
@@ -3790,8 +3788,8 @@ E           requests.exceptions.MissingSchema: Invalid URL '/api/auth/login': No
 /root/.venv/lib/python3.11/site-packages/requests/models.py:438: MissingSchema
 _ ERROR at teardown of TestRegistrationFormCalculation.test_registration_form_total_without_vat _
 
-self = <test_pending_forms_dashboard.TestRegistrationFormCalculation object at 0xfbb74a98b8d0>
-method = <bound method TestRegistrationFormCalculation.test_registration_form_total_without_vat of <test_pending_forms_dashboard.TestRegistrationFormCalculation object at 0xfbb74a98b8d0>>
+self = <test_pending_forms_dashboard.TestRegistrationFormCalculation object at 0xf88d499cf850>
+method = <bound method TestRegistrationFormCalculation.test_registration_form_total_without_vat of <test_pending_forms_dashboard.TestRegistrationFormCalculation object at 0xf88d499cf850>>
 
     def teardown_method(self, method):
         """Cleanup created test data"""
@@ -3802,7 +3800,7 @@ E       AttributeError: 'TestRegistrationFormCalculation' object has no attribut
 backend/tests/test_pending_forms_dashboard.py:89: AttributeError
 _ ERROR at setup of TestRegistrationFormCalculation.test_registration_form_save_only _
 
-self = <test_pending_forms_dashboard.TestRegistrationFormCalculation object at 0xfbb74a98bf50>
+self = <test_pending_forms_dashboard.TestRegistrationFormCalculation object at 0xf88d499cfed0>
 
     @pytest.fixture(autouse=True)
     def setup(self):
@@ -3869,8 +3867,8 @@ E           requests.exceptions.MissingSchema: Invalid URL '/api/auth/login': No
 /root/.venv/lib/python3.11/site-packages/requests/models.py:438: MissingSchema
 _ ERROR at teardown of TestRegistrationFormCalculation.test_registration_form_save_only _
 
-self = <test_pending_forms_dashboard.TestRegistrationFormCalculation object at 0xfbb74a98bf50>
-method = <bound method TestRegistrationFormCalculation.test_registration_form_save_only of <test_pending_forms_dashboard.TestRegistrationFormCalculation object at 0xfbb74a98bf50>>
+self = <test_pending_forms_dashboard.TestRegistrationFormCalculation object at 0xf88d499cfed0>
+method = <bound method TestRegistrationFormCalculation.test_registration_form_save_only of <test_pending_forms_dashboard.TestRegistrationFormCalculation object at 0xf88d499cfed0>>
 
     def teardown_method(self, method):
         """Cleanup created test data"""
@@ -3881,7 +3879,7 @@ E       AttributeError: 'TestRegistrationFormCalculation' object has no attribut
 backend/tests/test_pending_forms_dashboard.py:89: AttributeError
 _ ERROR at setup of TestRegistrationFormsAPI.test_get_registration_forms_list __
 
-self = <test_pending_forms_dashboard.TestRegistrationFormsAPI object at 0xfbb74a998910>
+self = <test_pending_forms_dashboard.TestRegistrationFormsAPI object at 0xf88d499dc890>
 
     @pytest.fixture(autouse=True)
     def setup(self):
@@ -3948,7 +3946,7 @@ E           requests.exceptions.MissingSchema: Invalid URL '/api/auth/login': No
 /root/.venv/lib/python3.11/site-packages/requests/models.py:438: MissingSchema
 _ ERROR at setup of TestRegistrationFormsAPI.test_get_pending_registration_forms _
 
-self = <test_pending_forms_dashboard.TestRegistrationFormsAPI object at 0xfbb74a998f50>
+self = <test_pending_forms_dashboard.TestRegistrationFormsAPI object at 0xf88d499dced0>
 
     @pytest.fixture(autouse=True)
     def setup(self):
@@ -4015,7 +4013,7 @@ E           requests.exceptions.MissingSchema: Invalid URL '/api/auth/login': No
 /root/.venv/lib/python3.11/site-packages/requests/models.py:438: MissingSchema
 _ ERROR at setup of TestRegistrationFormsViewUpdate.test_get_all_registration_forms _
 
-self = <test_registration_forms_update.TestRegistrationFormsViewUpdate object at 0xfbb74a99a810>
+self = <test_registration_forms_update.TestRegistrationFormsViewUpdate object at 0xf88d499de790>
 
     @pytest.fixture(autouse=True)
     def setup(self):
@@ -4082,7 +4080,7 @@ E           requests.exceptions.MissingSchema: Invalid URL '/api/auth/login': No
 /root/.venv/lib/python3.11/site-packages/requests/models.py:438: MissingSchema
 _ ERROR at setup of TestRegistrationFormsViewUpdate.test_get_single_registration_form _
 
-self = <test_registration_forms_update.TestRegistrationFormsViewUpdate object at 0xfbb74a99ae50>
+self = <test_registration_forms_update.TestRegistrationFormsViewUpdate object at 0xf88d499dedd0>
 
     @pytest.fixture(autouse=True)
     def setup(self):
@@ -4149,7 +4147,7 @@ E           requests.exceptions.MissingSchema: Invalid URL '/api/auth/login': No
 /root/.venv/lib/python3.11/site-packages/requests/models.py:438: MissingSchema
 _ ERROR at setup of TestRegistrationFormsViewUpdate.test_get_nonexistent_form_returns_404 _
 
-self = <test_registration_forms_update.TestRegistrationFormsViewUpdate object at 0xfbb74a99b490>
+self = <test_registration_forms_update.TestRegistrationFormsViewUpdate object at 0xf88d499df410>
 
     @pytest.fixture(autouse=True)
     def setup(self):
@@ -4216,7 +4214,7 @@ E           requests.exceptions.MissingSchema: Invalid URL '/api/auth/login': No
 /root/.venv/lib/python3.11/site-packages/requests/models.py:438: MissingSchema
 _ ERROR at setup of TestRegistrationFormsViewUpdate.test_update_pending_registration_form _
 
-self = <test_registration_forms_update.TestRegistrationFormsViewUpdate object at 0xfbb74a99bb10>
+self = <test_registration_forms_update.TestRegistrationFormsViewUpdate object at 0xf88d499dfa90>
 
     @pytest.fixture(autouse=True)
     def setup(self):
@@ -4283,7 +4281,7 @@ E           requests.exceptions.MissingSchema: Invalid URL '/api/auth/login': No
 /root/.venv/lib/python3.11/site-packages/requests/models.py:438: MissingSchema
 ___ ERROR at setup of TestRegistrationFormsViewUpdate.test_update_form_items ___
 
-self = <test_registration_forms_update.TestRegistrationFormsViewUpdate object at 0xfbb74a99bc90>
+self = <test_registration_forms_update.TestRegistrationFormsViewUpdate object at 0xf88d499dfc10>
 
     @pytest.fixture(autouse=True)
     def setup(self):
@@ -4350,7 +4348,7 @@ E           requests.exceptions.MissingSchema: Invalid URL '/api/auth/login': No
 /root/.venv/lib/python3.11/site-packages/requests/models.py:438: MissingSchema
 _ ERROR at setup of TestRegistrationFormsViewUpdate.test_cannot_update_converted_form _
 
-self = <test_registration_forms_update.TestRegistrationFormsViewUpdate object at 0xfbb74a998450>
+self = <test_registration_forms_update.TestRegistrationFormsViewUpdate object at 0xf88d499dc3d0>
 
     @pytest.fixture(autouse=True)
     def setup(self):
@@ -4417,7 +4415,7 @@ E           requests.exceptions.MissingSchema: Invalid URL '/api/auth/login': No
 /root/.venv/lib/python3.11/site-packages/requests/models.py:438: MissingSchema
 _ ERROR at setup of TestRegistrationFormsViewUpdate.test_update_nonexistent_form_returns_404 _
 
-self = <test_registration_forms_update.TestRegistrationFormsViewUpdate object at 0xfbb74a99bfd0>
+self = <test_registration_forms_update.TestRegistrationFormsViewUpdate object at 0xf88d499dff50>
 
     @pytest.fixture(autouse=True)
     def setup(self):
@@ -4484,7 +4482,7 @@ E           requests.exceptions.MissingSchema: Invalid URL '/api/auth/login': No
 /root/.venv/lib/python3.11/site-packages/requests/models.py:438: MissingSchema
 _ ERROR at setup of TestRegistrationFormsViewUpdate.test_form_status_determines_editability _
 
-self = <test_registration_forms_update.TestRegistrationFormsViewUpdate object at 0xfbb74a9a8350>
+self = <test_registration_forms_update.TestRegistrationFormsViewUpdate object at 0xf88d499e82d0>
 
     @pytest.fixture(autouse=True)
     def setup(self):
@@ -4551,7 +4549,7 @@ E           requests.exceptions.MissingSchema: Invalid URL '/api/auth/login': No
 /root/.venv/lib/python3.11/site-packages/requests/models.py:438: MissingSchema
 _ ERROR at setup of TestSupervisorNameFeature.test_01_create_invoice_saves_supervisor_name _
 
-self = <test_supervisor_name.TestSupervisorNameFeature object at 0xfbb74a9a9610>
+self = <test_supervisor_name.TestSupervisorNameFeature object at 0xf88d499e9590>
 
     @pytest.fixture(autouse=True)
     def setup(self):
@@ -4618,7 +4616,7 @@ E           requests.exceptions.MissingSchema: Invalid URL '/api/auth/login': No
 /root/.venv/lib/python3.11/site-packages/requests/models.py:438: MissingSchema
 _ ERROR at setup of TestSupervisorNameFeature.test_02_convert_registration_form_saves_supervisor_name _
 
-self = <test_supervisor_name.TestSupervisorNameFeature object at 0xfbb74a9a9c50>
+self = <test_supervisor_name.TestSupervisorNameFeature object at 0xf88d499e9bd0>
 
     @pytest.fixture(autouse=True)
     def setup(self):
@@ -4685,7 +4683,7 @@ E           requests.exceptions.MissingSchema: Invalid URL '/api/auth/login': No
 /root/.venv/lib/python3.11/site-packages/requests/models.py:438: MissingSchema
 _ ERROR at setup of TestSupervisorNameFeature.test_03_old_invoices_without_supervisor_name_display_correctly _
 
-self = <test_supervisor_name.TestSupervisorNameFeature object at 0xfbb74a9aa290>
+self = <test_supervisor_name.TestSupervisorNameFeature object at 0xf88d499ea210>
 
     @pytest.fixture(autouse=True)
     def setup(self):
@@ -4752,7 +4750,7 @@ E           requests.exceptions.MissingSchema: Invalid URL '/api/auth/login': No
 /root/.venv/lib/python3.11/site-packages/requests/models.py:438: MissingSchema
 _ ERROR at setup of TestSupervisorNameFeature.test_04_verify_invoice_202601_has_supervisor_name _
 
-self = <test_supervisor_name.TestSupervisorNameFeature object at 0xfbb74a9aa910>
+self = <test_supervisor_name.TestSupervisorNameFeature object at 0xf88d499ea890>
 
     @pytest.fixture(autouse=True)
     def setup(self):
@@ -4819,7 +4817,7 @@ E           requests.exceptions.MissingSchema: Invalid URL '/api/auth/login': No
 /root/.venv/lib/python3.11/site-packages/requests/models.py:438: MissingSchema
 ____ ERROR at setup of TestSupervisorNameFeature.test_05_cleanup_test_data _____
 
-self = <test_supervisor_name.TestSupervisorNameFeature object at 0xfbb74a9aaf50>
+self = <test_supervisor_name.TestSupervisorNameFeature object at 0xf88d499eaed0>
 
     @pytest.fixture(autouse=True)
     def setup(self):
@@ -4886,7 +4884,7 @@ E           requests.exceptions.MissingSchema: Invalid URL '/api/auth/login': No
 /root/.venv/lib/python3.11/site-packages/requests/models.py:438: MissingSchema
 _________ ERROR at setup of TestBranchSwitching.test_get_all_branches __________
 
-self = <tests.test_branch_switching.TestBranchSwitching object at 0xfbb74a86dd90>
+self = <tests.test_branch_switching.TestBranchSwitching object at 0xf88d498adfd0>
 
     @pytest.fixture(autouse=True)
     def setup(self):
@@ -4903,7 +4901,7 @@ E        +  where 401 = <Response [401]>.status_code
 tests/test_branch_switching.py:25: AssertionError
 ___ ERROR at setup of TestBranchSwitching.test_dashboard_stats_all_branches ____
 
-self = <tests.test_branch_switching.TestBranchSwitching object at 0xfbb74a86e850>
+self = <tests.test_branch_switching.TestBranchSwitching object at 0xf88d498aead0>
 
     @pytest.fixture(autouse=True)
     def setup(self):
@@ -4920,7 +4918,7 @@ E        +  where 401 = <Response [401]>.status_code
 tests/test_branch_switching.py:25: AssertionError
 __ ERROR at setup of TestBranchSwitching.test_dashboard_stats_specific_branch __
 
-self = <tests.test_branch_switching.TestBranchSwitching object at 0xfbb74a86e210>
+self = <tests.test_branch_switching.TestBranchSwitching object at 0xf88d498adc50>
 
     @pytest.fixture(autouse=True)
     def setup(self):
@@ -4937,7 +4935,7 @@ E        +  where 401 = <Response [401]>.status_code
 tests/test_branch_switching.py:25: AssertionError
 _____ ERROR at setup of TestBranchSwitching.test_members_filter_by_branch ______
 
-self = <tests.test_branch_switching.TestBranchSwitching object at 0xfbb74a86e010>
+self = <tests.test_branch_switching.TestBranchSwitching object at 0xf88d498ae310>
 
     @pytest.fixture(autouse=True)
     def setup(self):
@@ -4954,7 +4952,7 @@ E        +  where 401 = <Response [401]>.status_code
 tests/test_branch_switching.py:25: AssertionError
 _____ ERROR at setup of TestBranchSwitching.test_invoices_filter_by_branch _____
 
-self = <tests.test_branch_switching.TestBranchSwitching object at 0xfbb74a86e910>
+self = <tests.test_branch_switching.TestBranchSwitching object at 0xf88d498adb90>
 
     @pytest.fixture(autouse=True)
     def setup(self):
@@ -4971,7 +4969,7 @@ E        +  where 401 = <Response [401]>.status_code
 tests/test_branch_switching.py:25: AssertionError
 ____ ERROR at setup of TestBranchSwitching.test_discounts_filter_by_branch _____
 
-self = <tests.test_branch_switching.TestBranchSwitching object at 0xfbb74a86eed0>
+self = <tests.test_branch_switching.TestBranchSwitching object at 0xf88d498aec10>
 
     @pytest.fixture(autouse=True)
     def setup(self):
@@ -4988,7 +4986,7 @@ E        +  where 401 = <Response [401]>.status_code
 tests/test_branch_switching.py:25: AssertionError
 _____ ERROR at setup of TestBranchSwitching.test_create_coupon_with_branch _____
 
-self = <tests.test_branch_switching.TestBranchSwitching object at 0xfbb74a86f650>
+self = <tests.test_branch_switching.TestBranchSwitching object at 0xf88d498af850>
 
     @pytest.fixture(autouse=True)
     def setup(self):
@@ -5005,7 +5003,7 @@ E        +  where 401 = <Response [401]>.status_code
 tests/test_branch_switching.py:25: AssertionError
 _____ ERROR at setup of TestBranchSwitching.test_products_filter_by_branch _____
 
-self = <tests.test_branch_switching.TestBranchSwitching object at 0xfbb74a86f190>
+self = <tests.test_branch_switching.TestBranchSwitching object at 0xf88d498ae910>
 
     @pytest.fixture(autouse=True)
     def setup(self):
@@ -5022,7 +5020,7 @@ E        +  where 401 = <Response [401]>.status_code
 tests/test_branch_switching.py:25: AssertionError
 _ ERROR at setup of TestInvoiceStoreDiscountIntegration.test_01_login_and_get_data _
 
-self = <tests.test_invoice_store_discounts.TestInvoiceStoreDiscountIntegration object at 0xfbb74a72ff50>
+self = <tests.test_invoice_store_discounts.TestInvoiceStoreDiscountIntegration object at 0xf88d4975d650>
 
     @pytest.fixture(autouse=True)
     def setup(self):
@@ -5043,7 +5041,7 @@ E        +  where 401 = <Response [401]>.status_code
 tests/test_invoice_store_discounts.py:35: AssertionError
 _ ERROR at setup of TestInvoiceStoreDiscountIntegration.test_02_create_invoice_with_activity _
 
-self = <tests.test_invoice_store_discounts.TestInvoiceStoreDiscountIntegration object at 0xfbb74a72c690>
+self = <tests.test_invoice_store_discounts.TestInvoiceStoreDiscountIntegration object at 0xf88d4975c150>
 
     @pytest.fixture(autouse=True)
     def setup(self):
@@ -5064,7 +5062,7 @@ E        +  where 401 = <Response [401]>.status_code
 tests/test_invoice_store_discounts.py:35: AssertionError
 _ ERROR at setup of TestInvoiceStoreDiscountIntegration.test_03_create_invoice_with_product _
 
-self = <tests.test_invoice_store_discounts.TestInvoiceStoreDiscountIntegration object at 0xfbb74a72c350>
+self = <tests.test_invoice_store_discounts.TestInvoiceStoreDiscountIntegration object at 0xf88d4975c610>
 
     @pytest.fixture(autouse=True)
     def setup(self):
@@ -5085,7 +5083,7 @@ E        +  where 401 = <Response [401]>.status_code
 tests/test_invoice_store_discounts.py:35: AssertionError
 _ ERROR at setup of TestInvoiceStoreDiscountIntegration.test_04_validate_discount_coupon _
 
-self = <tests.test_invoice_store_discounts.TestInvoiceStoreDiscountIntegration object at 0xfbb74a72ca90>
+self = <tests.test_invoice_store_discounts.TestInvoiceStoreDiscountIntegration object at 0xf88d4975cc90>
 
     @pytest.fixture(autouse=True)
     def setup(self):
@@ -5106,7 +5104,7 @@ E        +  where 401 = <Response [401]>.status_code
 tests/test_invoice_store_discounts.py:35: AssertionError
 _ ERROR at setup of TestInvoiceStoreDiscountIntegration.test_05_create_invoice_with_discount _
 
-self = <tests.test_invoice_store_discounts.TestInvoiceStoreDiscountIntegration object at 0xfbb74a72ce90>
+self = <tests.test_invoice_store_discounts.TestInvoiceStoreDiscountIntegration object at 0xf88d4975d350>
 
     @pytest.fixture(autouse=True)
     def setup(self):
@@ -5127,7 +5125,7 @@ E        +  where 401 = <Response [401]>.status_code
 tests/test_invoice_store_discounts.py:35: AssertionError
 _ ERROR at setup of TestInvoiceStoreDiscountIntegration.test_06_pay_invoice_and_verify_stock_deduction _
 
-self = <tests.test_invoice_store_discounts.TestInvoiceStoreDiscountIntegration object at 0xfbb74a72e390>
+self = <tests.test_invoice_store_discounts.TestInvoiceStoreDiscountIntegration object at 0xf88d4975c350>
 
     @pytest.fixture(autouse=True)
     def setup(self):
@@ -5148,7 +5146,7 @@ E        +  where 401 = <Response [401]>.status_code
 tests/test_invoice_store_discounts.py:35: AssertionError
 _ ERROR at setup of TestInvoiceStoreDiscountIntegration.test_07_pay_invoice_and_verify_coupon_usage _
 
-self = <tests.test_invoice_store_discounts.TestInvoiceStoreDiscountIntegration object at 0xfbb74a72d810>
+self = <tests.test_invoice_store_discounts.TestInvoiceStoreDiscountIntegration object at 0xf88d4975d090>
 
     @pytest.fixture(autouse=True)
     def setup(self):
@@ -5169,7 +5167,7 @@ E        +  where 401 = <Response [401]>.status_code
 tests/test_invoice_store_discounts.py:35: AssertionError
 _ ERROR at setup of TestInvoiceStoreDiscountIntegration.test_08_create_invoice_with_activity_and_product _
 
-self = <tests.test_invoice_store_discounts.TestInvoiceStoreDiscountIntegration object at 0xfbb74a72df10>
+self = <tests.test_invoice_store_discounts.TestInvoiceStoreDiscountIntegration object at 0xf88d4975f450>
 
     @pytest.fixture(autouse=True)
     def setup(self):
@@ -5190,7 +5188,7 @@ E        +  where 401 = <Response [401]>.status_code
 tests/test_invoice_store_discounts.py:35: AssertionError
 _ ERROR at setup of TestInvoiceStoreDiscountIntegration.test_09_invalid_coupon_code _
 
-self = <tests.test_invoice_store_discounts.TestInvoiceStoreDiscountIntegration object at 0xfbb74a72e190>
+self = <tests.test_invoice_store_discounts.TestInvoiceStoreDiscountIntegration object at 0xf88d4975eb50>
 
     @pytest.fixture(autouse=True)
     def setup(self):
@@ -5211,7 +5209,7 @@ E        +  where 401 = <Response [401]>.status_code
 tests/test_invoice_store_discounts.py:35: AssertionError
 _ ERROR at setup of TestInvoiceStoreDiscountIntegration.test_10_insufficient_stock _
 
-self = <tests.test_invoice_store_discounts.TestInvoiceStoreDiscountIntegration object at 0xfbb74a72ee10>
+self = <tests.test_invoice_store_discounts.TestInvoiceStoreDiscountIntegration object at 0xf88d4975f290>
 
     @pytest.fixture(autouse=True)
     def setup(self):
@@ -5301,7 +5299,7 @@ E           requests.exceptions.MissingSchema: Invalid URL '/api/auth/login': No
 =================================== FAILURES ===================================
 ____________ TestAdvertisementsAuth.test_get_all_ads_requires_auth _____________
 
-self = <test_advertisements.TestAdvertisementsAuth object at 0xfbb74a95fd90>
+self = <test_advertisements.TestAdvertisementsAuth object at 0xf88d4999ff10>
 
     def test_get_all_ads_requires_auth(self):
         """GET /api/advertisements requires authentication"""
@@ -5366,7 +5364,7 @@ E           requests.exceptions.MissingSchema: Invalid URL '/api/advertisements'
 /root/.venv/lib/python3.11/site-packages/requests/models.py:438: MissingSchema
 ______________ TestAdvertisementsAuth.test_get_public_ads_no_auth ______________
 
-self = <test_advertisements.TestAdvertisementsAuth object at 0xfbb74a968410>
+self = <test_advertisements.TestAdvertisementsAuth object at 0xf88d499a8590>
 
     def test_get_public_ads_no_auth(self):
         """GET /api/advertisements/public is public endpoint"""
@@ -5431,7 +5429,7 @@ E           requests.exceptions.MissingSchema: Invalid URL '/api/advertisements/
 /root/.venv/lib/python3.11/site-packages/requests/models.py:438: MissingSchema
 ___________ TestAdvertisementsPublic.test_get_public_advertisements ____________
 
-self = <test_advertisements.TestAdvertisementsPublic object at 0xfbb74a96ac50>
+self = <test_advertisements.TestAdvertisementsPublic object at 0xf88d499aac50>
 
     def test_get_public_advertisements(self):
         """GET /api/advertisements/public - Get active ads for member portal"""
@@ -5496,7 +5494,7 @@ E           requests.exceptions.MissingSchema: Invalid URL '/api/advertisements/
 /root/.venv/lib/python3.11/site-packages/requests/models.py:438: MissingSchema
 ___________ TestAdvertisementsPublic.test_get_public_ads_by_position ___________
 
-self = <test_advertisements.TestAdvertisementsPublic object at 0xfbb74a96b290>
+self = <test_advertisements.TestAdvertisementsPublic object at 0xf88d499ab290>
 
     def test_get_public_ads_by_position(self):
         """GET /api/advertisements/public?position=hero - Filter by position"""
@@ -5564,7 +5562,7 @@ E           requests.exceptions.MissingSchema: Invalid URL '/api/advertisements/
 /root/.venv/lib/python3.11/site-packages/requests/models.py:438: MissingSchema
 ___________ TestAdvertisementsErrorHandling.test_view_nonexistent_ad ___________
 
-self = <test_advertisements.TestAdvertisementsErrorHandling object at 0xfbb74a97c410>
+self = <test_advertisements.TestAdvertisementsErrorHandling object at 0xf88d499c0410>
 
     def test_view_nonexistent_ad(self):
         """POST /api/advertisements/{id}/view - 404 for non-existent ad"""
@@ -5629,7 +5627,7 @@ E           requests.exceptions.MissingSchema: Invalid URL '/api/advertisements/
 /root/.venv/lib/python3.11/site-packages/requests/models.py:438: MissingSchema
 __________ TestAdvertisementsErrorHandling.test_click_nonexistent_ad ___________
 
-self = <test_advertisements.TestAdvertisementsErrorHandling object at 0xfbb74a97c810>
+self = <test_advertisements.TestAdvertisementsErrorHandling object at 0xf88d499c0810>
 
     def test_click_nonexistent_ad(self):
         """POST /api/advertisements/{id}/click - 404 for non-existent ad"""
@@ -5694,7 +5692,7 @@ E           requests.exceptions.MissingSchema: Invalid URL '/api/advertisements/
 /root/.venv/lib/python3.11/site-packages/requests/models.py:438: MissingSchema
 _____________ TestNonAdminBranchAccess.test_create_non_admin_user ______________
 
-self = <tests.test_non_admin_no_branch_selector.TestNonAdminBranchAccess object at 0xfbb74a6f3210>
+self = <tests.test_non_admin_no_branch_selector.TestNonAdminBranchAccess object at 0xf88d49815890>
 
     def test_create_non_admin_user(self):
         """Create a non-admin user for testing"""
@@ -5710,7 +5708,7 @@ E        +  where 401 = <Response [401]>.status_code
 tests/test_non_admin_no_branch_selector.py:20: AssertionError
 ________________ TestNonAdminBranchAccess.test_non_admin_login _________________
 
-self = <tests.test_non_admin_no_branch_selector.TestNonAdminBranchAccess object at 0xfbb74a6f27d0>
+self = <tests.test_non_admin_no_branch_selector.TestNonAdminBranchAccess object at 0xf88d49816750>
 
     def test_non_admin_login(self):
         """Test non-admin user login"""
@@ -5720,7 +5718,7 @@ self = <tests.test_non_admin_no_branch_selector.TestNonAdminBranchAccess object 
 tests/test_non_admin_no_branch_selector.py:56: 
 _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
 
-self = <tests.test_non_admin_no_branch_selector.TestNonAdminBranchAccess object at 0xfbb74a6f27d0>
+self = <tests.test_non_admin_no_branch_selector.TestNonAdminBranchAccess object at 0xf88d49816750>
 
     def test_create_non_admin_user(self):
         """Create a non-admin user for testing"""
@@ -5736,7 +5734,7 @@ E        +  where 401 = <Response [401]>.status_code
 tests/test_non_admin_no_branch_selector.py:20: AssertionError
 _________ TestNonAdminBranchAccess.test_non_admin_sees_only_own_branch _________
 
-self = <tests.test_non_admin_no_branch_selector.TestNonAdminBranchAccess object at 0xfbb74a6f2710>
+self = <tests.test_non_admin_no_branch_selector.TestNonAdminBranchAccess object at 0xf88d498153d0>
 
     def test_non_admin_sees_only_own_branch(self):
         """Test that non-admin only sees their assigned branch"""
@@ -5750,7 +5748,7 @@ tests/test_non_admin_no_branch_selector.py:56: in test_non_admin_login
     self.test_create_non_admin_user()
 _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
 
-self = <tests.test_non_admin_no_branch_selector.TestNonAdminBranchAccess object at 0xfbb74a6f2710>
+self = <tests.test_non_admin_no_branch_selector.TestNonAdminBranchAccess object at 0xf88d498153d0>
 
     def test_create_non_admin_user(self):
         """Create a non-admin user for testing"""
@@ -5766,7 +5764,7 @@ E        +  where 401 = <Response [401]>.status_code
 tests/test_non_admin_no_branch_selector.py:20: AssertionError
 _____ TestNonAdminBranchAccess.test_non_admin_cannot_filter_other_branches _____
 
-self = <tests.test_non_admin_no_branch_selector.TestNonAdminBranchAccess object at 0xfbb74a6f32d0>
+self = <tests.test_non_admin_no_branch_selector.TestNonAdminBranchAccess object at 0xf88d49815250>
 
     def test_non_admin_cannot_filter_other_branches(self):
         """Test that non-admin cannot filter by other branches"""
@@ -5881,5 +5879,5 @@ ERROR tests/test_invoice_store_discounts.py::TestInvoiceStoreDiscountIntegration
 ERROR tests/test_invoice_store_discounts.py::TestInvoiceStoreDiscountIntegration::test_09_invalid_coupon_code
 ERROR tests/test_invoice_store_discounts.py::TestInvoiceStoreDiscountIntegration::test_10_insufficient_stock
 ERROR tests/test_non_admin_no_branch_selector.py::TestNonAdminBranchAccess::test_non_admin_cannot_filter_other_branches
-======================== 10 failed, 90 errors in 6.94s ========================= files for the new, complex API endpoints (, , ). This increases the risk of future regressions.
--   The agent has started the PWA task but hasn't completed it. This needs to be the immediate next step.</analysis>
+======================== 10 failed, 90 errors in 5.74s ========================= files were created for the new, complex  API endpoints, increasing the risk of future regressions.
+-   The critical refactoring tasks for large components like  were not started, despite being a recurring issue from the previous fork.</analysis>
