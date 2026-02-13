@@ -134,6 +134,9 @@ const MemberDashboard = () => {
           ))}
         </div>
 
+        {/* Inline Ads */}
+        <InlineAds branchId={member?.branch_id} maxAds={2} />
+
         {/* Active Subscriptions */}
         {subscriptions.active.length > 0 && (
           <Card>
