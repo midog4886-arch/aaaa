@@ -16,6 +16,76 @@ def set_loyalty_award_function(func):
     global loyalty_award_points
     loyalty_award_points = func
 
+async def award_attendance_points(member_id: str):
+    """Award points for attendance and check for streaks"""
+    if not loyalty_award_points:
+        return
+    
+    today = datetime.now(timezone.utc).date()
+    yesterday = today - timedelta(days=1)
+    
+    # Get member points record
+    member_points = await db.member_points.find_one({"member_id": member_id})
+    
+    current_streak = 1
+    if member_points:
+        last_date = member_points.get('last_attendance_date')
+        if last_date:
+            try:
+                last_date = datetime.fromisoformat(last_date.replace('Z', '+00:00')).date()
+                if last_date == yesterday:
+                    # Consecutive day, increase streak
+                    current_streak = member_points.get('attendance_streak', 0) + 1
+                elif last_date == today:
+                    # Already awarded today
+                    return
+            except:
+                pass
+    
+    # Update streak and last attendance date
+    await db.member_points.update_one(
+        {"member_id": member_id},
+        {
+            "$set": {
+                "attendance_streak": current_streak,
+                "last_attendance_date": today.isoformat()
+            }
+        },
+        upsert=True
+    )
+    
+    # Award attendance points
+    await loyalty_award_points(
+        member_id,
+        "attendance",
+        "نقاط الحضور اليومي",
+        "Daily attendance points"
+    )
+    
+    # Check for streak bonuses
+    if current_streak == 5:
+        await loyalty_award_points(
+            member_id,
+            "streak_5",
+            "مكافأة 5 أيام حضور متتالية! 🔥",
+            "5-day attendance streak bonus! 🔥"
+        )
+    elif current_streak == 10:
+        await loyalty_award_points(
+            member_id,
+            "streak_10",
+            "مكافأة 10 أيام حضور متتالية! 🔥🔥",
+            "10-day attendance streak bonus! 🔥🔥"
+        )
+    elif current_streak == 20:
+        await loyalty_award_points(
+            member_id,
+            "streak_10",
+            "مكافأة 20 يوم حضور متتالي! 🏆",
+            "20-day attendance streak bonus! 🏆",
+            150  # Custom points for 20 days
+        )
+
 # ============ MODELS ============
 
 class AttendanceCreate(BaseModel):
