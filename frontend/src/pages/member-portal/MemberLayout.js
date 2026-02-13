@@ -323,7 +323,7 @@ const MemberLayout = ({ children }) => {
               >
                 <div className="flex items-center gap-3">
                   <item.icon className="w-5 h-5" />
-                  <span>{item.label}</span>
+                  <span>{getText(item.labelKey)}</span>
                 </div>
                 {item.badge > 0 && (
                   <span className="bg-red-500 text-white text-xs px-2 py-1 rounded-full">
