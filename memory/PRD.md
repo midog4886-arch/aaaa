@@ -2855,8 +2855,109 @@ SW Status: Service Worker registered: https://academysystem-1.preview.emergentag
 ### P3 - Nice to Have
 - [ ] Booking/Leave System
 - [ ] Player Progress Tracking
-- [ ] Loyalty Points System
+- [x] Loyalty Points System ✅ NEW (February 13, 2026)
 - [ ] Family Accounts
+
+---
+
+## Update - Loyalty Points System (February 13, 2026)
+
+### نظام الولاء والمكافآت ✅
+
+#### ما تم إنجازه:
+
+##### 1. Backend APIs ✅
+- **موقع**: `/app/backend/routes/loyalty.py`
+- **الـ Endpoints**:
+  - `GET /api/loyalty/settings/points` - إعدادات النقاط
+  - `PUT /api/loyalty/settings/points` - تحديث إعدادات النقاط
+  - `GET /api/loyalty/settings/levels` - إعدادات المستويات
+  - `PUT /api/loyalty/settings/levels` - تحديث إعدادات المستويات
+  - `GET /api/loyalty/rewards` - قائمة المكافآت
+  - `POST /api/loyalty/rewards` - إنشاء مكافأة
+  - `PUT /api/loyalty/rewards/{id}` - تحديث مكافأة
+  - `DELETE /api/loyalty/rewards/{id}` - حذف مكافأة
+  - `GET /api/loyalty/members/{id}/points` - نقاط العضو
+  - `GET /api/loyalty/members/{id}/history` - سجل النقاط
+  - `POST /api/loyalty/members/adjust` - تعديل النقاط يدوياً
+  - `POST /api/loyalty/referral/apply` - تطبيق كود الإحالة
+  - `GET /api/loyalty/leaderboard` - المتصدرين
+  - `GET /api/loyalty/stats` - الإحصائيات
+  - `POST /api/loyalty/process-birthdays` - نقاط أعياد الميلاد
+  - `GET /api/loyalty/birthdays/today` - أعياد الميلاد اليوم
+  - `GET /api/loyalty/redemptions` - طلبات الاستبدال
+  - `POST /api/loyalty/redeem/{member_id}` - استبدال مكافأة
+  - `PUT /api/loyalty/redemptions/{id}/status` - تحديث حالة الاستبدال
+
+##### 2. نظام منح النقاط التلقائي ✅
+- **الحضور**: 10 نقاط عند تسجيل الحضور
+- **أيام متتالية**: 50 نقاط (5 أيام) / 100 نقاط (10 أيام)
+- **تجديد الاشتراك**:
+  - شهري: 100 نقطة
+  - ربع سنوي: 250 نقطة
+  - سنوي: 500 نقطة
+- **الإحالات**: 200 نقطة عند تسجيل عضو جديد بكود الإحالة
+- **مشاهدة الفيديوهات**: 3 نقاط لكل فيديو
+- **عيد الميلاد**: 100 نقطة سنوياً
+
+##### 3. مستويات العضوية ✅
+| المستوى | النقاط المطلوبة | الخصم الدائم |
+|---------|----------------|--------------|
+| برونزي 🥉 | 0 | 0% |
+| فضي 🥈 | 500 | 3% |
+| ذهبي 🥇 | 1500 | 5% |
+| ماسي 💎 | 3000 | 10% |
+
+##### 4. صفحة إدارة الولاء (Admin) ✅
+- **موقع**: `/app/frontend/src/pages/LoyaltyPage.js`
+- **الميزات**:
+  - عرض الإحصائيات (إجمالي النقاط، المستبدلة، الأعضاء، الطلبات المعلقة)
+  - توزيع المستويات
+  - إدارة المكافآت (إضافة/تعديل/حذف)
+  - إدارة طلبات الاستبدال (موافقة/رفض/تسليم)
+  - قائمة المتصدرين
+  - إعدادات النقاط والمستويات
+  - زر منح نقاط أعياد الميلاد
+
+##### 5. صفحة نقاط الولاء (بوابة الأعضاء) ✅
+- **موقع**: `/app/frontend/src/pages/member-portal/MemberLoyalty.js`
+- **الميزات**:
+  - بطاقة رصيد النقاط مع المستوى الحالي
+  - شريط التقدم للمستوى التالي
+  - إحصائيات (إجمالي المكتسب، أيام متتالية، إحالات)
+  - كود الإحالة مع زر النسخ
+  - قائمة المكافآت المتاحة للاستبدال
+  - سجل النقاط
+  - سجل طلبات الاستبدال
+
+##### 6. التكامل مع الأنظمة الأخرى ✅
+- **الحضور** (`attendance.py`): منح نقاط تلقائياً عند تسجيل الحضور
+- **الفواتير** (`invoices.py`): منح نقاط عند دفع فاتورة تجديد
+- **الفيديوهات** (`daily_videos.py`): منح نقاط عند مشاهدة فيديو
+
+#### Collections الجديدة في MongoDB:
+- `loyalty_settings` - إعدادات النقاط والمستويات
+- `member_points` - رصيد نقاط كل عضو
+- `points_history` - سجل جميع عمليات النقاط
+- `rewards` - المكافآت المتاحة
+- `redemption_requests` - طلبات الاستبدال
+- `video_views` - مشاهدات الفيديوهات (لمنع التكرار)
+
+#### نتائج الاختبارات:
+- ✅ 17/17 اختبارات Backend ناجحة (100%)
+- ✅ جميع مكونات الواجهة تعمل بشكل صحيح
+- ✅ التكامل مع الأنظمة الأخرى (حضور، فواتير، فيديوهات)
+
+#### الملفات الجديدة/المُحدثة:
+- `/app/backend/routes/loyalty.py` - جديد
+- `/app/backend/routes/attendance.py` - محدث (منح نقاط الحضور)
+- `/app/backend/routes/invoices.py` - محدث (منح نقاط التجديد)
+- `/app/backend/routes/daily_videos.py` - محدث (منح نقاط المشاهدة)
+- `/app/backend/server.py` - محدث (ربط دوال منح النقاط)
+- `/app/frontend/src/pages/LoyaltyPage.js` - جديد
+- `/app/frontend/src/pages/member-portal/MemberLoyalty.js` - جديد
+- `/app/frontend/src/pages/member-portal/MemberLayout.js` - محدث (رابط الولاء)
+- `/app/frontend/src/App.js` - محدث (route الولاء)
 
 ---
 
