@@ -660,7 +660,8 @@ async def get_leaderboard(limit: int = 10):
     
     result = []
     for i, mp in enumerate(top_members):
-        member = await db.members.find_one({"_id": ObjectId(mp['member_id'])})
+        # Use 'id' field instead of ObjectId
+        member = await db.members.find_one({"id": mp['member_id']}, {"_id": 0})
         if member:
             level_settings = await db.loyalty_settings.find_one({"type": "levels"})
             if not level_settings:
