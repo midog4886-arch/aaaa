@@ -7,13 +7,17 @@ import { Badge } from '../../components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../components/ui/select';
 import { Dialog, DialogContent, DialogTitle } from '../../components/ui/dialog';
 import { VisuallyHidden } from '@radix-ui/react-visually-hidden';
+import { toast } from 'sonner';
+import { motion, AnimatePresence } from 'framer-motion';
 import MemberLayout, { memberAPI, getMemberData, getDarkMode } from './MemberLayout';
 import { format, parseISO, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, addMonths, subMonths } from 'date-fns';
 import { ar } from 'date-fns/locale';
 import { 
   Video, Play, Calendar, Eye, ChevronLeft, ChevronRight, 
-  X, Activity
+  X, Activity, Loader2
 } from 'lucide-react';
+import PullToRefresh from '../../components/PullToRefresh';
+import InfiniteScroll from '../../components/InfiniteScroll';
 
 // Skeleton Component for Video Cards
 const VideoCardSkeleton = ({ darkMode }) => (
@@ -33,9 +37,11 @@ const VideoCardSkeleton = ({ darkMode }) => (
 const MemberDailyVideos = () => {
   const [todayVideos, setTodayVideos] = useState([]);
   const [weekVideos, setWeekVideos] = useState([]);
+  const [allVideos, setAllVideos] = useState([]);
   const [calendarVideos, setCalendarVideos] = useState({});
   const [activities, setActivities] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [selectedVideo, setSelectedVideo] = useState(null);
   const [videoDialogOpen, setVideoDialogOpen] = useState(false);
   const [currentMonth, setCurrentMonth] = useState(new Date());
@@ -46,11 +52,17 @@ const MemberDailyVideos = () => {
   const [selectedDate, setSelectedDate] = useState(null);
   const [playing, setPlaying] = useState(false);
   
+  // Infinite scroll state
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const VIDEOS_PER_PAGE = 6;
+  
   const member = getMemberData();
   const darkMode = getDarkMode();
   const today = new Date();
 
-  const fetchData = useCallback(async () => {
+  const fetchData = useCallback(async (showToast = false) => {
     try {
       const params = {
         branch_id: member?.branch_id
@@ -67,13 +79,18 @@ const MemberDailyVideos = () => {
 
       // API now returns array
       setTodayVideos(Array.isArray(todayRes.data) ? todayRes.data : (todayRes.data ? [todayRes.data] : []));
-      setWeekVideos(weekRes.data || []);
+      const weekData = weekRes.data || [];
+      setWeekVideos(weekData);
+      
+      // Set initial all videos for infinite scroll
+      setAllVideos(weekData.slice(0, VIDEOS_PER_PAGE));
+      setHasMore(weekData.length > VIDEOS_PER_PAGE);
+      setPage(1);
       
       // Extract unique activities from videos
-      const allVideos = [...(weekRes.data || [])];
       const uniqueActivities = [];
       const seenIds = new Set();
-      allVideos.forEach(v => {
+      weekData.forEach(v => {
         if (v.activity_id && !seenIds.has(v.activity_id)) {
           seenIds.add(v.activity_id);
           uniqueActivities.push({ id: v.activity_id, name_ar: v.activity_name });
@@ -88,12 +105,50 @@ const MemberDailyVideos = () => {
       );
       setCalendarVideos(calendarRes.data || {});
       
+      if (showToast) {
+        toast.success('تم تحديث الفيديوهات بنجاح');
+      }
+      
     } catch (error) {
       console.error('Failed to fetch videos:', error);
+      if (showToast) {
+        toast.error('فشل في تحديث الفيديوهات');
+      }
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   }, [member?.branch_id, currentMonth, selectedActivity]);
+
+  // Load more videos for infinite scroll
+  const loadMoreVideos = useCallback(() => {
+    if (loadingMore || !hasMore) return;
+    
+    setLoadingMore(true);
+    
+    // Simulate loading delay for better UX
+    setTimeout(() => {
+      const nextPage = page + 1;
+      const startIndex = page * VIDEOS_PER_PAGE;
+      const endIndex = startIndex + VIDEOS_PER_PAGE;
+      const newVideos = weekVideos.slice(startIndex, endIndex);
+      
+      if (newVideos.length > 0) {
+        setAllVideos(prev => [...prev, ...newVideos]);
+        setPage(nextPage);
+        setHasMore(endIndex < weekVideos.length);
+      } else {
+        setHasMore(false);
+      }
+      
+      setLoadingMore(false);
+    }, 500);
+  }, [loadingMore, hasMore, page, weekVideos]);
+
+  const handleRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await fetchData(true);
+  }, [fetchData]);
 
   useEffect(() => {
     fetchData();
