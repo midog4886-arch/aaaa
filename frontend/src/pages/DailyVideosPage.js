@@ -67,14 +67,22 @@ const DailyVideosPage = () => {
       setActivities(activitiesRes.data);
       setStats(statsRes.data);
       
-      // Build calendar data
+      // Build calendar data - supports multiple videos per day
       const calData = {};
       videosRes.data.forEach(video => {
-        calData[video.scheduled_date] = {
+        const date = video.scheduled_date;
+        if (!calData[date]) {
+          calData[date] = {
+            videos: [],
+            count: 0,
+            has_video: true
+          };
+        }
+        calData[date].videos.push({
           ...video,
-          has_video: true,
           thumbnail: `https://img.youtube.com/vi/${video.youtube_video_id}/mqdefault.jpg`
-        };
+        });
+        calData[date].count += 1;
       });
       setCalendarData(calData);
     } catch (error) {
