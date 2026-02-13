@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import PullToRefresh from '../../components/PullToRefresh';
 import InfiniteScroll from '../../components/InfiniteScroll';
+import PushNotificationManager from '../../components/PushNotificationManager';
 
 // Skeleton Component for Video Cards
 const VideoCardSkeleton = ({ darkMode }) => (
