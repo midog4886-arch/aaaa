@@ -304,6 +304,14 @@ function AppRoutes() {
           </ProtectedRoute>
         } 
       />
+      <Route 
+        path="/loyalty" 
+        element={
+          <ProtectedRoute permission="loyalty">
+            <LoyaltyPage />
+          </ProtectedRoute>
+        } 
+      />
       
       {/* Smart Default Redirect based on permissions */}
       <Route path="/" element={<SmartRedirect />} />
