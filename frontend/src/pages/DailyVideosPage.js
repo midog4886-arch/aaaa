@@ -25,6 +25,7 @@ import { extractYouTubeVideoId, generateYouTubeEmbedUrl, getYouTubeThumbnail, is
 
 const DailyVideosPage = () => {
   const { toast } = useToast();
+  const navigate = useNavigate();
   const [videos, setVideos] = useState([]);
   const [branches, setBranches] = useState([]);
   const [activities, setActivities] = useState([]);
@@ -38,6 +39,8 @@ const DailyVideosPage = () => {
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [calendarData, setCalendarData] = useState({});
   const [selectedDate, setSelectedDate] = useState(null);
+  const [youtubeUrlInput, setYoutubeUrlInput] = useState('');
+  const [urlValidationStatus, setUrlValidationStatus] = useState(null); // null, 'valid', 'invalid'
 
   // Form state
   const [formData, setFormData] = useState({
