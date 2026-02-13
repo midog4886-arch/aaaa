@@ -37,6 +37,7 @@ const translations = {
     coach_ratings: 'تقييمات المدربين',
     advertisements: 'الإعلانات',
     daily_videos: 'الفيديوهات اليومية',
+    loyalty: 'الولاء',
     accounting: 'المحاسبة',
     reports: 'التقارير',
     messages: 'الرسائل',
