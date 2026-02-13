@@ -76,6 +76,7 @@ api_router.include_router(bank_reports_router)
 api_router.include_router(advertisements_router)
 api_router.include_router(daily_videos_router)
 api_router.include_router(loyalty_router)
+api_router.include_router(push_notifications_router)
 
 # Set database for loyalty router
 set_loyalty_db(db)
@@ -88,6 +89,9 @@ set_invoices_loyalty(loyalty_award_points)
 
 # Set loyalty award function for daily videos router (video watch)
 set_videos_loyalty(loyalty_award_points)
+
+# Set push notification function for daily videos router
+set_push_notify_function(push_notify_new_video)
 
 # Member Portal router (mounted directly on app, not api_router)
 app.include_router(member_portal_router)
