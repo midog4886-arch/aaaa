@@ -163,20 +163,43 @@ const MemberLayout = ({ children }) => {
   };
 
   const navItems = [
-    { to: '/portal/dashboard', icon: Home, label: 'الرئيسية' },
-    { to: '/portal/daily-videos', icon: Video, label: 'الفيديوهات اليومية' },
-    { to: '/portal/attendance', icon: Activity, label: 'سجل الحضور' },
-    { to: '/portal/subscriptions', icon: CreditCard, label: 'اشتراكاتي' },
-    { to: '/portal/schedule', icon: Calendar, label: 'جدول التدريبات' },
-    { to: '/portal/card', icon: QrCode, label: 'بطاقة العضوية' },
-    { to: '/portal/rate-coach', icon: Star, label: 'تقييم المدربين' },
-    { to: '/portal/notifications', icon: Bell, label: 'الإشعارات', badge: notifications.unread_count },
+    { to: '/portal/dashboard', icon: Home, labelKey: 'home' },
+    { to: '/portal/daily-videos', icon: Video, labelKey: 'dailyVideos' },
+    { to: '/portal/attendance', icon: Activity, labelKey: 'attendance' },
+    { to: '/portal/subscriptions', icon: CreditCard, labelKey: 'subscriptions' },
+    { to: '/portal/schedule', icon: Calendar, labelKey: 'schedule' },
+    { to: '/portal/card', icon: QrCode, labelKey: 'memberCard' },
+    { to: '/portal/rate-coach', icon: Star, labelKey: 'rateCoaches' },
+    { to: '/portal/notifications', icon: Bell, labelKey: 'notifications', badge: notifications.unread_count },
   ];
+
+  // Extended translations
+  const getText = (key) => {
+    const texts = {
+      home: { ar: 'الرئيسية', en: 'Home' },
+      dailyVideos: { ar: 'الفيديوهات اليومية', en: 'Daily Videos' },
+      attendance: { ar: 'سجل الحضور', en: 'Attendance' },
+      subscriptions: { ar: 'اشتراكاتي', en: 'My Subscriptions' },
+      schedule: { ar: 'جدول التدريبات', en: 'Schedule' },
+      memberCard: { ar: 'بطاقة العضوية', en: 'Member Card' },
+      rateCoaches: { ar: 'تقييم المدربين', en: 'Rate Coaches' },
+      notifications: { ar: 'الإشعارات', en: 'Notifications' },
+      memberPortal: { ar: 'بوابة الأعضاء', en: 'Member Portal' },
+      academy: { ar: 'أكاديمية أداء الأبطال', en: 'Champions Academy' },
+      ...Object.fromEntries(Object.entries({
+        install: { ar: 'تثبيت', en: 'Install' },
+        logout: { ar: 'خروج', en: 'Logout' },
+        lightMode: { ar: 'الوضع الفاتح', en: 'Light Mode' },
+        darkModeLabel: { ar: 'الوضع المظلم', en: 'Dark Mode' },
+      }).map(([k, v]) => [k, v]))
+    };
+    return texts[key]?.[language] || key;
+  };
 
   if (!member) return null;
 
   return (
-    <div className={`min-h-screen transition-colors duration-300 ${darkMode ? 'bg-gray-900' : 'bg-gray-50'}`} dir="rtl">
+    <div className={`min-h-screen transition-colors duration-300 ${darkMode ? 'bg-gray-900' : 'bg-gray-50'}`} dir={language === 'ar' ? 'rtl' : 'ltr'}>
       {/* Header */}
       <header className={`${darkMode ? 'bg-gray-800' : 'bg-gradient-to-r from-slate-900 via-blue-900 to-slate-900'} text-white sticky top-0 z-50 shadow-lg`}>
         <div className="max-w-7xl mx-auto px-4">
@@ -187,8 +210,8 @@ const MemberLayout = ({ children }) => {
                 <Trophy className="w-5 h-5 text-white" />
               </div>
               <div className="hidden sm:block">
-                <p className="font-bold">بوابة الأعضاء</p>
-                <p className="text-xs text-gray-300">أكاديمية أداء الأبطال</p>
+                <p className="font-bold">{getText('memberPortal')}</p>
+                <p className="text-xs text-gray-300">{getText('academy')}</p>
               </div>
             </div>
 
