@@ -243,6 +243,16 @@ export const InlineAds = ({ branchId, maxAds = 2 }) => {
                   alt={ad.title_ar}
                   className="w-full h-full object-cover"
                 />
+              ) : ad.ad_type === 'link' && ad.link_url ? (
+                <div className={`w-full h-full flex flex-col items-center justify-center ${
+                  darkMode ? 'bg-gray-700' : 'bg-gradient-to-br from-blue-500 to-purple-600'
+                }`}>
+                  <div className="w-12 h-12 bg-white/20 rounded-full flex items-center justify-center mb-2">
+                    <ExternalLink className="w-6 h-6 text-white" />
+                  </div>
+                  <span className="text-white font-bold text-lg">{ad.title_ar}</span>
+                  <span className="text-white/70 text-sm mt-1">اضغط للزيارة</span>
+                </div>
               ) : (
                 <div className={`w-full h-full flex items-center justify-center ${
                   darkMode ? 'bg-gray-700' : 'bg-gradient-to-br from-blue-500 to-purple-600'
