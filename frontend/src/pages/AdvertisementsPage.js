@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
@@ -14,8 +15,10 @@ import {
   Plus, Pencil, Trash2, Eye, MousePointerClick, Image, Video, 
   Link2, Calendar, BarChart3, Upload, ExternalLink, Play,
   ToggleLeft, ToggleRight, Search, Filter, Megaphone, TrendingUp,
-  Bell, AlertTriangle, Clock, RefreshCw, CheckCircle
+  Bell, AlertTriangle, Clock, RefreshCw, CheckCircle, LayoutDashboard,
+  AlertCircle
 } from 'lucide-react';
+import { extractYouTubeVideoId, generateYouTubeEmbedUrl, getYouTubeThumbnail } from '../utils/youtubeUtils';
 
 const AdvertisementsPage = () => {
   const { toast } = useToast();
