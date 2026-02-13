@@ -15,6 +15,21 @@ import {
   X, Activity
 } from 'lucide-react';
 
+// Skeleton Component for Video Cards
+const VideoCardSkeleton = ({ darkMode }) => (
+  <div className={`rounded-xl overflow-hidden ${darkMode ? 'bg-gray-800' : 'bg-white'} shadow-sm`}>
+    <div className="aspect-video bg-gray-300 dark:bg-gray-700 animate-pulse" />
+    <div className="p-4 space-y-3">
+      <div className="h-4 bg-gray-300 dark:bg-gray-700 rounded animate-pulse w-3/4" />
+      <div className="h-3 bg-gray-300 dark:bg-gray-700 rounded animate-pulse w-1/2" />
+      <div className="flex gap-2">
+        <div className="h-6 w-16 bg-gray-300 dark:bg-gray-700 rounded-full animate-pulse" />
+        <div className="h-6 w-20 bg-gray-300 dark:bg-gray-700 rounded-full animate-pulse" />
+      </div>
+    </div>
+  </div>
+);
+
 const MemberDailyVideos = () => {
   const [todayVideos, setTodayVideos] = useState([]);
   const [weekVideos, setWeekVideos] = useState([]);
