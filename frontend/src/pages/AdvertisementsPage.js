@@ -318,6 +318,94 @@ const AdvertisementsPage = () => {
         </div>
       )}
 
+      {/* Ads Expiry Alerts */}
+      {adsStatus && (adsStatus.expired?.length > 0 || adsStatus.expiring_soon?.length > 0) && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {/* Expired Ads Alert */}
+          {adsStatus.expired?.length > 0 && (
+            <Card className="border-red-300 bg-red-50">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-red-700 flex items-center gap-2 text-lg">
+                  <AlertTriangle className="w-5 h-5" />
+                  إعلانات منتهية ({adsStatus.expired.length})
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-2 max-h-40 overflow-y-auto">
+                  {adsStatus.expired.map((ad) => (
+                    <div key={ad.id} className="flex items-center justify-between p-2 bg-white rounded border border-red-200">
+                      <div>
+                        <p className="font-medium text-gray-900 text-sm">{ad.title_ar}</p>
+                        <p className="text-xs text-red-600">انتهى منذ {ad.days_expired} أيام</p>
+                      </div>
+                      <Button 
+                        variant="outline" 
+                        size="sm"
+                        onClick={() => handleOpenDialog(ads.find(a => a.id === ad.id))}
+                        className="text-xs"
+                      >
+                        تعديل
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Expiring Soon Ads Alert */}
+          {adsStatus.expiring_soon?.length > 0 && (
+            <Card className="border-orange-300 bg-orange-50">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-orange-700 flex items-center gap-2 text-lg">
+                  <Clock className="w-5 h-5" />
+                  تنتهي قريباً ({adsStatus.expiring_soon.length})
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-2 max-h-40 overflow-y-auto">
+                  {adsStatus.expiring_soon.map((ad) => (
+                    <div key={ad.id} className="flex items-center justify-between p-2 bg-white rounded border border-orange-200">
+                      <div>
+                        <p className="font-medium text-gray-900 text-sm">{ad.title_ar}</p>
+                        <p className="text-xs text-orange-600">
+                          {ad.days_remaining === 0 ? 'ينتهي اليوم!' : `ينتهي خلال ${ad.days_remaining} أيام`}
+                        </p>
+                      </div>
+                      <Button 
+                        variant="outline" 
+                        size="sm"
+                        onClick={() => handleOpenDialog(ads.find(a => a.id === ad.id))}
+                        className="text-xs"
+                      >
+                        تمديد
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+        </div>
+      )}
+
+      {/* Check Expiry Button */}
+      <div className="flex justify-end">
+        <Button 
+          variant="outline" 
+          onClick={handleCheckExpiry}
+          disabled={checkingExpiry}
+          className="gap-2"
+        >
+          {checkingExpiry ? (
+            <RefreshCw className="w-4 h-4 animate-spin" />
+          ) : (
+            <Bell className="w-4 h-4" />
+          )}
+          فحص الإعلانات المنتهية وإرسال إشعارات
+        </Button>
+      </div>
+
       {/* Filters */}
       <Card>
         <CardContent className="p-4">
