@@ -52,6 +52,12 @@ const MemberDashboard = () => {
   return (
     <MemberLayout>
       <div className="space-y-6">
+        {/* Hero Banner Ads */}
+        <HeroBannerAds branchId={member?.branch_id} />
+        
+        {/* Popup Ad */}
+        <PopupAd branchId={member?.branch_id} />
+        
         {/* Welcome Card */}
         <Card className="bg-gradient-to-r from-slate-900 via-blue-900 to-slate-900 text-white border-0">
           <CardContent className="p-6">
