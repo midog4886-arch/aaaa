@@ -4,13 +4,17 @@ import {
   Trophy, Home, CreditCard, Calendar, FileText, QrCode, Bell, 
   LogOut, Menu, X, User, Clock, CheckCircle, AlertTriangle,
   ChevronLeft, ClipboardList, Moon, Sun, Star, Activity, Video,
-  Download, Smartphone, Share, MoreVertical
+  Download, Smartphone, Share, MoreVertical, Languages
 } from 'lucide-react';
 import { Button } from '../../components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../../components/ui/dialog';
 import axios from 'axios';
 
 const API_URL = process.env.REACT_APP_BACKEND_URL;
+
+// Language helper
+export const getLanguage = () => localStorage.getItem('member_language') || 'ar';
+export const setLanguage = (lang) => localStorage.setItem('member_language', lang);
 
 // Auth helper
 export const getMemberToken = () => localStorage.getItem('member_token');
