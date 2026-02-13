@@ -51,6 +51,13 @@ const MemberLayout = ({ children }) => {
   // PWA Install prompt
   const [deferredPrompt, setDeferredPrompt] = useState(null);
   const [showInstallButton, setShowInstallButton] = useState(false);
+  const [showInstallGuide, setShowInstallGuide] = useState(false);
+
+  // Detect device type for install instructions
+  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+  const isAndroid = /Android/.test(navigator.userAgent);
+  const isChrome = /Chrome/.test(navigator.userAgent) && !/Edge/.test(navigator.userAgent);
+  const isSafari = /Safari/.test(navigator.userAgent) && !/Chrome/.test(navigator.userAgent);
 
   useEffect(() => {
     const memberData = getMemberData();
