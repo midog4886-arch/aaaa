@@ -88,7 +88,7 @@ export const HeroBannerAds = ({ branchId }) => {
           </div>
         ) : currentAd.banner_image_url ? (
           <img 
-            src={`${BACKEND_URL}${currentAd.banner_image_url}`}
+            src={getImageUrl(currentAd.banner_image_url)}
             alt={currentAd.title_ar}
             className="w-full h-full object-cover"
           />
