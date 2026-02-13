@@ -124,60 +124,29 @@ const MemberDailyVideos = () => {
 
   const getDayNames = () => ['الأحد', 'الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'];
 
-  // Professional Video Player Component
-  const VideoPlayer = ({ video, autoPlay = true }) => {
-    if (!video) return null;
-    
-    const handleFullscreen = () => {
-      const container = document.querySelector('.video-player-container');
-      if (container) {
-        if (container.requestFullscreen) {
-          container.requestFullscreen();
-        } else if (container.webkitRequestFullscreen) {
-          container.webkitRequestFullscreen();
-        } else if (container.msRequestFullscreen) {
-          container.msRequestFullscreen();
-        }
-      }
-    };
+  // Safe close handler - stops video before closing
+  const handleCloseVideoDialog = useCallback(() => {
+    setPlaying(false);
+    // Small delay to let ReactPlayer stop before unmounting
+    setTimeout(() => {
+      setVideoDialogOpen(false);
+      setSelectedVideo(null);
+    }, 100);
+  }, []);
+
+  // Professional Video Player Component using iframe for stability
+  const VideoPlayer = ({ video }) => {
+    if (!video || !video.youtube_video_id) return null;
     
     return (
       <div className="video-player-container relative w-full aspect-video bg-black rounded-lg overflow-hidden">
-        <ReactPlayer
-          ref={playerRef}
-          url={`https://www.youtube.com/watch?v=${video.youtube_video_id}`}
-          width="100%"
-          height="100%"
-          playing={playing}
-          muted={muted}
-          controls={true}
-          config={{
-            youtube: {
-              playerVars: {
-                modestbranding: 1,
-                rel: 0,
-                showinfo: 0,
-                iv_load_policy: 3,
-                playsinline: 1
-              }
-            }
-          }}
-          onEnded={() => setPlaying(false)}
-          onReady={() => console.log('Video ready')}
-          onError={(e) => console.error('Video error:', e)}
+        <iframe
+          src={`https://www.youtube-nocookie.com/embed/${video.youtube_video_id}?rel=0&modestbranding=1&playsinline=1`}
+          className="w-full h-full"
+          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+          allowFullScreen
+          title={video.title_ar || 'فيديو'}
         />
-        
-        {/* Play button overlay when paused */}
-        {!playing && (
-          <div 
-            className="absolute inset-0 flex items-center justify-center cursor-pointer z-10"
-            onClick={() => setPlaying(true)}
-          >
-            <div className="w-20 h-20 bg-red-600 rounded-full flex items-center justify-center shadow-lg hover:scale-110 transition-transform">
-              <Play className="w-10 h-10 text-white mr-[-4px]" fill="white" />
-            </div>
-          </div>
-        )}
       </div>
     );
   };
