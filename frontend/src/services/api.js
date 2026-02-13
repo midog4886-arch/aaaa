@@ -297,6 +297,23 @@ export const bankReportsAPI = {
   delete: (id) => axios.delete(`${API}/bank-reports/${id}`)
 };
 
+// Advertisements API - نظام الإعلانات
+export const advertisementsAPI = {
+  getAll: (params = {}) => axios.get(`${API}/advertisements`, { params }),
+  getPublic: (params = {}) => axios.get(`${API}/advertisements/public`, { params }),
+  getById: (id) => axios.get(`${API}/advertisements/${id}`),
+  create: (data) => axios.post(`${API}/advertisements`, data),
+  update: (id, data) => axios.put(`${API}/advertisements/${id}`, data),
+  delete: (id) => axios.delete(`${API}/advertisements/${id}`),
+  uploadBanner: (formData) => axios.post(`${API}/advertisements/upload-banner`, formData, {
+    headers: { 'Content-Type': 'multipart/form-data' }
+  }),
+  recordView: (id) => axios.post(`${API}/advertisements/${id}/view`),
+  recordClick: (id) => axios.post(`${API}/advertisements/${id}/click`),
+  toggle: (id) => axios.put(`${API}/advertisements/${id}/toggle`),
+  getStats: (params = {}) => axios.get(`${API}/advertisements/stats/summary`, { params })
+};
+
 export default {
   auth: authAPI,
   activities: activitiesAPI,
