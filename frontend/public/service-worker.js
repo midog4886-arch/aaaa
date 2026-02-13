@@ -272,25 +272,54 @@ async function syncOfflineData() {
 
 // Push notifications handler
 self.addEventListener('push', (event) => {
-  const options = {
-    body: event.data ? event.data.text() : 'إشعار جديد من أكاديمية أداء الأبطال',
-    icon: '/images/icon-192x192.png',
+  let notificationData = {
+    title: 'أكاديمية أداء الأبطال',
+    body: 'إشعار جديد',
+    icon: '/logo-new.png',
     badge: '/images/icon-72x72.png',
-    vibrate: [100, 50, 100],
+    url: '/portal/dashboard'
+  };
+
+  // Parse push data if available
+  if (event.data) {
+    try {
+      const data = event.data.json();
+      notificationData = {
+        title: data.title || notificationData.title,
+        body: data.body || notificationData.body,
+        icon: data.icon || notificationData.icon,
+        badge: data.badge || notificationData.badge,
+        url: data.url || notificationData.url,
+        tag: data.tag || 'default',
+        data: data.data || {}
+      };
+    } catch (e) {
+      notificationData.body = event.data.text() || notificationData.body;
+    }
+  }
+
+  const options = {
+    body: notificationData.body,
+    icon: notificationData.icon,
+    badge: notificationData.badge,
+    vibrate: [200, 100, 200],
     dir: 'rtl',
     lang: 'ar',
+    tag: notificationData.tag,
+    renotify: true,
+    requireInteraction: false,
     data: {
-      dateOfArrival: Date.now(),
-      primaryKey: 1
+      url: notificationData.url,
+      ...notificationData.data
     },
     actions: [
-      { action: 'open', title: 'فتح التطبيق' },
+      { action: 'open', title: 'فتح', icon: '/images/icon-72x72.png' },
       { action: 'close', title: 'إغلاق' }
     ]
   };
 
   event.waitUntil(
-    self.registration.showNotification('أكاديمية أداء الأبطال', options)
+    self.registration.showNotification(notificationData.title, options)
   );
 });
 
@@ -298,11 +327,29 @@ self.addEventListener('push', (event) => {
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
 
-  if (event.action === 'open' || !event.action) {
-    event.waitUntil(
-      clients.openWindow('/')
-    );
+  const urlToOpen = event.notification.data?.url || '/portal/dashboard';
+
+  if (event.action === 'close') {
+    return;
   }
+
+  // Open or focus the app window
+  event.waitUntil(
+    clients.matchAll({ type: 'window', includeUncontrolled: true })
+      .then((windowClients) => {
+        // Check if there's already a window open
+        for (const client of windowClients) {
+          if (client.url.includes(self.registration.scope) && 'focus' in client) {
+            client.navigate(urlToOpen);
+            return client.focus();
+          }
+        }
+        // If no window is open, open a new one
+        if (clients.openWindow) {
+          return clients.openWindow(urlToOpen);
+        }
+      })
+  );
 });
 
 console.log('[Service Worker] Loaded successfully');
