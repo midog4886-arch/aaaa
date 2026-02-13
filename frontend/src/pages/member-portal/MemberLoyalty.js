@@ -220,13 +220,61 @@ const MemberLoyalty = () => {
                   <p className="text-gray-600 text-sm mb-1">{t('كود الإحالة الخاص بك', 'Your Referral Code')}</p>
                   <p className="text-2xl font-bold font-mono">{pointsData.referral_code}</p>
                   <p className="text-sm text-gray-500 mt-1">
-                    {t('شاركه مع أصدقائك واحصل على نقاط!', 'Share with friends and earn points!')}
+                    {t('شاركه مع أصدقائك واحصل على 200 نقطة لكل إحالة!', 'Share with friends and earn 200 points per referral!')}
                   </p>
                 </div>
                 <Button onClick={copyReferralCode} variant="outline" className="gap-2">
                   {copiedCode ? <CheckCircle className="w-4 h-4 text-green-500" /> : <Copy className="w-4 h-4" />}
                   {copiedCode ? t('تم النسخ', 'Copied') : t('نسخ', 'Copy')}
                 </Button>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Apply Referral Code - Only show if member hasn't used a referral code yet */}
+        {!pointsData?.referred_by && (
+          <Card className="border-2 border-dashed border-green-300 bg-green-50">
+            <CardContent className="pt-6">
+              <div className="flex items-center gap-2 mb-3">
+                <UserPlus className="w-5 h-5 text-green-600" />
+                <p className="font-semibold text-green-800">{t('هل لديك كود إحالة؟', 'Have a referral code?')}</p>
+              </div>
+              <p className="text-sm text-green-700 mb-4">
+                {t('إذا دعاك صديق للانضمام، أدخل كود الإحالة الخاص به هنا', 'If a friend invited you, enter their referral code here')}
+              </p>
+              <div className="flex gap-2">
+                <Input
+                  placeholder={t('أدخل كود الإحالة', 'Enter referral code')}
+                  value={referralCodeInput}
+                  onChange={(e) => setReferralCodeInput(e.target.value)}
+                  className="flex-1"
+                  dir="ltr"
+                />
+                <Button 
+                  onClick={applyReferralCode} 
+                  disabled={applyingReferral || !referralCodeInput.trim()}
+                  className="bg-green-600 hover:bg-green-700"
+                >
+                  {applyingReferral ? t('جاري التطبيق...', 'Applying...') : t('تطبيق', 'Apply')}
+                </Button>
+              </div>
+              {referralMessage.text && (
+                <p className={`mt-3 text-sm ${referralMessage.type === 'success' ? 'text-green-600' : 'text-red-600'}`}>
+                  {referralMessage.text}
+                </p>
+              )}
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Already referred badge */}
+        {pointsData?.referred_by && (
+          <Card className="bg-green-50 border-green-200">
+            <CardContent className="pt-4 pb-4">
+              <div className="flex items-center gap-2 text-green-700">
+                <CheckCircle className="w-5 h-5" />
+                <p className="text-sm">{t('تم تسجيلك عن طريق كود إحالة ✓', 'You registered via a referral code ✓')}</p>
               </div>
             </CardContent>
           </Card>
