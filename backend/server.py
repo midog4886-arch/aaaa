@@ -36,6 +36,7 @@ from routes.attendance import router as attendance_router
 from routes.notifications import router as notifications_router
 from routes.bank_reports import router as bank_reports_router
 from routes.advertisements import router as advertisements_router
+from routes.daily_videos import router as daily_videos_router
 
 ROOT_DIR = Path(__file__).parent
 UPLOADS_DIR = ROOT_DIR / "uploads"
