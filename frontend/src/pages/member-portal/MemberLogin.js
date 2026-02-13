@@ -4,11 +4,14 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
-import { Phone, LogIn, Trophy, Loader2, Star, Sparkles } from 'lucide-react';
+import { Phone, LogIn, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import axios from 'axios';
 
 const API_URL = process.env.REACT_APP_BACKEND_URL;
+
+// Academy Logo URL
+const ACADEMY_LOGO = "https://customer-assets.emergentagent.com/job_academysystem-1/artifacts/so6kr7rz_White%20Orange%20Minimalist%20Frame%20Paper%20Document%20%281024%20x%201024%20%D9%85%D9%84%D9%85%29%20%28500%20x%20500%20%D9%85%D9%84%D9%85%29.png";
 
 // Splash Screen Component
 const SplashScreen = ({ onComplete }) => {
@@ -22,28 +25,33 @@ const SplashScreen = ({ onComplete }) => {
       initial={{ opacity: 1 }}
       exit={{ opacity: 0 }}
       transition={{ duration: 0.5 }}
-      className="fixed inset-0 z-50 flex items-center justify-center bg-gradient-to-br from-blue-600 via-indigo-600 to-purple-700 overflow-hidden"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-gradient-to-br from-sky-400 via-blue-500 to-cyan-600 overflow-hidden"
     >
-      {/* Animated background particles */}
-      <div className="absolute inset-0">
-        {[...Array(30)].map((_, i) => (
+      {/* Animated water waves background */}
+      <div className="absolute inset-0 overflow-hidden">
+        <motion.div
+          animate={{
+            y: [0, -20, 0],
+          }}
+          transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
+          className="absolute bottom-0 left-0 right-0 h-40 bg-gradient-to-t from-blue-600/50 to-transparent"
+        />
+        {[...Array(5)].map((_, i) => (
           <motion.div
             key={i}
-            initial={{ opacity: 0, y: 100 }}
-            animate={{ 
-              opacity: [0, 0.6, 0],
-              y: [-20, -200],
-              x: Math.sin(i) * 50,
+            animate={{
+              x: ['-100%', '100%'],
             }}
             transition={{
-              duration: 3,
-              delay: i * 0.1,
+              duration: 8 + i * 2,
               repeat: Infinity,
+              ease: "linear",
+              delay: i * 0.5,
             }}
-            className="absolute w-2 h-2 bg-white rounded-full"
+            className="absolute h-1 bg-white/20 rounded-full"
             style={{
-              left: `${(i * 3.3) % 100}%`,
-              bottom: '0%',
+              width: `${100 + i * 50}px`,
+              top: `${30 + i * 15}%`,
             }}
           />
         ))}
@@ -52,7 +60,7 @@ const SplashScreen = ({ onComplete }) => {
       <div className="relative text-center z-10">
         {/* Logo with bounce */}
         <motion.div
-          initial={{ scale: 0, rotate: -180 }}
+          initial={{ scale: 0, rotate: -10 }}
           animate={{ scale: 1, rotate: 0 }}
           transition={{
             type: "spring",
@@ -62,7 +70,7 @@ const SplashScreen = ({ onComplete }) => {
           className="relative inline-block"
         >
           <motion.div 
-            className="w-36 h-36 bg-white rounded-3xl shadow-2xl flex items-center justify-center mx-auto"
+            className="w-44 h-44 bg-white rounded-3xl shadow-2xl flex items-center justify-center mx-auto p-4 overflow-hidden"
             animate={{ 
               boxShadow: [
                 "0 0 30px rgba(255,255,255,0.3)",
@@ -72,19 +80,11 @@ const SplashScreen = ({ onComplete }) => {
             }}
             transition={{ duration: 2, repeat: Infinity }}
           >
-            <Trophy className="w-20 h-20 text-yellow-500" />
-          </motion.div>
-          
-          {/* Orbiting stars */}
-          <motion.div
-            animate={{ rotate: 360 }}
-            transition={{ duration: 8, repeat: Infinity, ease: "linear" }}
-            className="absolute inset-[-20px]"
-          >
-            <Star className="absolute top-0 left-1/2 -translate-x-1/2 w-6 h-6 text-yellow-400 fill-yellow-400" />
-            <Star className="absolute bottom-0 left-1/2 -translate-x-1/2 w-5 h-5 text-yellow-300 fill-yellow-300" />
-            <Star className="absolute left-0 top-1/2 -translate-y-1/2 w-4 h-4 text-yellow-200 fill-yellow-200" />
-            <Star className="absolute right-0 top-1/2 -translate-y-1/2 w-5 h-5 text-yellow-300 fill-yellow-300" />
+            <img 
+              src={ACADEMY_LOGO} 
+              alt="Global Champions" 
+              className="w-full h-full object-contain"
+            />
           </motion.div>
         </motion.div>
 
@@ -94,34 +94,34 @@ const SplashScreen = ({ onComplete }) => {
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.5 }}
         >
-          <h1 className="mt-8 text-4xl font-bold text-white drop-shadow-lg">
+          <h1 className="mt-8 text-3xl font-bold text-white drop-shadow-lg">
             أكاديمية أداء الأبطال
           </h1>
-          <p className="mt-3 text-xl text-white/80">
+          <p className="mt-3 text-xl text-white/90 font-medium tracking-wide">
             Global Champions Sports Performance
           </p>
         </motion.div>
 
-        {/* Loading dots */}
+        {/* Loading wave animation */}
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ delay: 1 }}
-          className="mt-10 flex justify-center gap-3"
+          className="mt-10 flex justify-center items-end gap-1"
         >
-          {[0, 1, 2].map((i) => (
+          {[0, 1, 2, 3, 4].map((i) => (
             <motion.div
               key={i}
               animate={{
-                scale: [1, 1.5, 1],
-                opacity: [0.3, 1, 0.3],
+                height: ['12px', '24px', '12px'],
               }}
               transition={{
-                duration: 1,
+                duration: 0.8,
                 repeat: Infinity,
-                delay: i * 0.15,
+                delay: i * 0.1,
               }}
-              className="w-4 h-4 bg-white rounded-full"
+              className="w-2 bg-white rounded-full"
+              style={{ height: '12px' }}
             />
           ))}
         </motion.div>
@@ -183,31 +183,35 @@ const MemberLogin = () => {
 
   return (
     <div className="min-h-screen relative overflow-hidden" dir="rtl">
-      {/* Animated Background */}
-      <div className="absolute inset-0 bg-gradient-to-br from-slate-900 via-blue-900 to-purple-900">
-        {/* Floating orbs */}
+      {/* Animated Background - Water/Swimming theme */}
+      <div className="absolute inset-0 bg-gradient-to-br from-cyan-400 via-blue-500 to-sky-600">
+        {/* Floating bubbles */}
+        {[...Array(15)].map((_, i) => (
+          <motion.div
+            key={i}
+            initial={{ opacity: 0, y: 100, x: Math.random() * 100 }}
+            animate={{ 
+              opacity: [0, 0.4, 0],
+              y: -200,
+            }}
+            transition={{
+              duration: 4 + Math.random() * 3,
+              delay: i * 0.3,
+              repeat: Infinity,
+            }}
+            className="absolute w-4 h-4 bg-white/30 rounded-full"
+            style={{
+              left: `${(i * 7) % 100}%`,
+              bottom: '10%',
+            }}
+          />
+        ))}
+        
+        {/* Wave effect at bottom */}
         <motion.div
-          animate={{
-            x: [0, 100, 0],
-            y: [0, -50, 0],
-          }}
-          transition={{ duration: 20, repeat: Infinity }}
-          className="absolute top-20 right-20 w-72 h-72 bg-blue-500/30 rounded-full blur-3xl"
-        />
-        <motion.div
-          animate={{
-            x: [0, -80, 0],
-            y: [0, 80, 0],
-          }}
-          transition={{ duration: 15, repeat: Infinity }}
-          className="absolute bottom-20 left-20 w-96 h-96 bg-purple-500/30 rounded-full blur-3xl"
-        />
-        <motion.div
-          animate={{
-            scale: [1, 1.2, 1],
-          }}
-          transition={{ duration: 10, repeat: Infinity }}
-          className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] bg-indigo-500/20 rounded-full blur-3xl"
+          animate={{ y: [0, -15, 0] }}
+          transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
+          className="absolute bottom-0 left-0 right-0 h-32 bg-gradient-to-t from-blue-700/40 to-transparent"
         />
       </div>
 
@@ -231,9 +235,9 @@ const MemberLogin = () => {
               className="w-full max-w-md"
             >
               {/* Glassmorphism Card */}
-              <Card className="relative overflow-hidden border-0 bg-white/10 backdrop-blur-xl shadow-2xl">
+              <Card className="relative overflow-hidden border-0 bg-white/15 backdrop-blur-xl shadow-2xl">
                 {/* Gradient border effect */}
-                <div className="absolute inset-0 bg-gradient-to-br from-white/20 to-transparent pointer-events-none" />
+                <div className="absolute inset-0 bg-gradient-to-br from-white/30 to-transparent pointer-events-none rounded-lg" />
                 
                 <CardHeader className="relative text-center pb-2">
                   {/* Logo */}
@@ -243,17 +247,13 @@ const MemberLogin = () => {
                     transition={{ delay: 0.2, type: "spring" }}
                     className="mx-auto relative"
                   >
-                    <div className="w-24 h-24 bg-gradient-to-br from-yellow-400 to-orange-500 rounded-2xl flex items-center justify-center shadow-xl">
-                      <Trophy className="w-12 h-12 text-white" />
+                    <div className="w-28 h-28 bg-white rounded-2xl flex items-center justify-center shadow-xl p-2 overflow-hidden">
+                      <img 
+                        src={ACADEMY_LOGO} 
+                        alt="Global Champions" 
+                        className="w-full h-full object-contain"
+                      />
                     </div>
-                    <motion.div
-                      animate={{ rotate: 360 }}
-                      transition={{ duration: 20, repeat: Infinity, ease: "linear" }}
-                      className="absolute -inset-4"
-                    >
-                      <Sparkles className="absolute top-0 right-0 w-5 h-5 text-yellow-300" />
-                      <Sparkles className="absolute bottom-0 left-0 w-4 h-4 text-yellow-200" />
-                    </motion.div>
                   </motion.div>
                   
                   <motion.div
@@ -264,7 +264,7 @@ const MemberLogin = () => {
                     <CardTitle className="text-2xl font-bold text-white mt-4">
                       بوابة الأعضاء
                     </CardTitle>
-                    <p className="text-white/70 mt-2">أكاديمية أداء الأبطال العالمية</p>
+                    <p className="text-white/80 mt-2 text-sm">Global Champions Sports Performance</p>
                   </motion.div>
                 </CardHeader>
                 
@@ -299,7 +299,7 @@ const MemberLogin = () => {
                     >
                       <Button 
                         type="submit" 
-                        className="w-full h-14 text-lg bg-gradient-to-r from-yellow-500 to-orange-500 hover:from-yellow-400 hover:to-orange-400 text-white font-bold gap-2 shadow-lg shadow-orange-500/30 transition-all hover:shadow-xl hover:shadow-orange-500/40"
+                        className="w-full h-14 text-lg bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white font-bold gap-2 shadow-lg shadow-blue-500/30 transition-all hover:shadow-xl hover:shadow-blue-500/40"
                         disabled={loading}
                         data-testid="member-login-btn"
                       >
@@ -327,9 +327,9 @@ const MemberLogin = () => {
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 transition={{ delay: 0.7 }}
-                className="text-center text-white/40 text-sm mt-6"
+                className="text-center text-white/50 text-sm mt-6"
               >
-                © 2026 أكاديمية أداء الأبطال
+                © 2026 Global Champions Sports Performance
               </motion.p>
             </motion.div>
           </motion.div>
