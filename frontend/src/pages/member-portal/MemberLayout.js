@@ -3,7 +3,8 @@ import { useNavigate, Link, useLocation } from 'react-router-dom';
 import { 
   Trophy, Home, CreditCard, Calendar, FileText, QrCode, Bell, 
   LogOut, Menu, X, User, Clock, CheckCircle, AlertTriangle,
-  ChevronLeft, ClipboardList, Moon, Sun, Star, Activity, Video
+  ChevronLeft, ClipboardList, Moon, Sun, Star, Activity, Video,
+  ExternalLink, Download, LayoutDashboard
 } from 'lucide-react';
 import { Button } from '../../components/ui/button';
 import axios from 'axios';
