@@ -284,6 +284,14 @@ function AppRoutes() {
           </ProtectedRoute>
         } 
       />
+      <Route 
+        path="/advertisements" 
+        element={
+          <ProtectedRoute permission="advertisements">
+            <AdvertisementsPage />
+          </ProtectedRoute>
+        } 
+      />
       
       {/* Smart Default Redirect based on permissions */}
       <Route path="/" element={<SmartRedirect />} />
