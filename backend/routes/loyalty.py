@@ -679,3 +679,88 @@ async def get_leaderboard(limit: int = 10):
             })
     
     return result
+
+# ============== Birthday Points ==============
+
+@router.post("/process-birthdays")
+async def process_birthday_points():
+    """Process birthday points for all members with birthdays today"""
+    today = datetime.now(timezone.utc)
+    today_month_day = today.strftime("%m-%d")
+    
+    # Find members with birthday today (checking birth_date field)
+    members = await db.members.find({}, {"_id": 0, "id": 1, "name_ar": 1, "name_en": 1, "birth_date": 1}).to_list(10000)
+    
+    birthday_count = 0
+    for member in members:
+        birth_date = member.get("birth_date", "")
+        if not birth_date:
+            continue
+        
+        try:
+            # Extract month-day from birth_date (format: YYYY-MM-DD)
+            member_month_day = birth_date[5:10]
+            
+            if member_month_day == today_month_day:
+                member_id = member.get("id")
+                
+                # Check if already awarded today
+                existing_award = await db.points_history.find_one({
+                    "member_id": member_id,
+                    "action_type": "birthday",
+                    "created_at": {"$gte": today.replace(hour=0, minute=0, second=0).isoformat()}
+                })
+                
+                if not existing_award:
+                    # Award birthday points
+                    await award_points(
+                        member_id,
+                        "birthday",
+                        f"🎂 مكافأة عيد ميلاد سعيد!",
+                        f"🎂 Happy Birthday bonus!"
+                    )
+                    
+                    # Create notification
+                    await db.member_notifications.insert_one({
+                        "member_id": member_id,
+                        "title_ar": "🎂 عيد ميلاد سعيد!",
+                        "title_en": "🎂 Happy Birthday!",
+                        "message_ar": "كل عام وأنت بخير! تم إضافة نقاط مكافأة عيد ميلادك لحسابك.",
+                        "message_en": "Happy Birthday! Birthday bonus points have been added to your account.",
+                        "type": "loyalty_birthday",
+                        "is_read": False,
+                        "created_at": datetime.now(timezone.utc).isoformat()
+                    })
+                    
+                    birthday_count += 1
+        except Exception as e:
+            print(f"Error processing birthday for member {member.get('id')}: {e}")
+            continue
+    
+    return {
+        "message": f"تمت معالجة {birthday_count} عيد ميلاد",
+        "birthdays_processed": birthday_count
+    }
+
+@router.get("/birthdays/today")
+async def get_today_birthdays():
+    """Get list of members with birthdays today"""
+    today = datetime.now(timezone.utc)
+    today_month_day = today.strftime("%m-%d")
+    
+    members = await db.members.find({}, {"_id": 0}).to_list(10000)
+    
+    birthday_members = []
+    for member in members:
+        birth_date = member.get("birth_date", "")
+        if birth_date and len(birth_date) >= 10:
+            if birth_date[5:10] == today_month_day:
+                birthday_members.append({
+                    "id": member.get("id"),
+                    "name_ar": member.get("name_ar", ""),
+                    "name_en": member.get("name_en", ""),
+                    "phone": member.get("phone", ""),
+                    "birth_date": birth_date
+                })
+    
+    return birthday_members
