@@ -3017,6 +3017,63 @@ SW Status: Service Worker registered: https://championsmgmt.preview.emergentagen
 - ✅ شريط التنقل السفلي يعمل بشكل صحيح
 - ✅ لا توجد أخطاء في Console
 
+---
+
+## Update - Push Notifications System (February 13, 2026)
+
+### نظام إشعارات Push ✅
+
+#### الميزات:
+
+#### 1. Backend API للإشعارات ✅
+- **الملف الجديد**: `/app/backend/routes/push_notifications.py`
+- **Endpoints**:
+  - `GET /api/push-notifications/vapid-public-key` - الحصول على المفتاح العام
+  - `POST /api/push-notifications/subscribe` - الاشتراك في الإشعارات
+  - `POST /api/push-notifications/unsubscribe` - إلغاء الاشتراك
+  - `GET /api/push-notifications/subscription-status/{member_id}` - حالة الاشتراك
+- **المكتبة**: `pywebpush` للإرسال
+
+#### 2. إرسال تلقائي عند إضافة فيديو جديد ✅
+- **التكامل**: تم ربط `daily_videos.py` بنظام الإشعارات
+- **السلوك**: عند إضافة فيديو جديد، يتم إرسال إشعار Push لجميع المشتركين
+- **الإشعار يتضمن**: عنوان الفيديو، رابط مباشر للفيديوهات
+
+#### 3. مكون إدارة الإشعارات في الواجهة ✅
+- **الملف الجديد**: `/app/frontend/src/components/PushNotificationManager.jsx`
+- **الموقع**: أعلى صفحة الفيديوهات اليومية
+- **الميزات**:
+  - طلب إذن الإشعارات من المستخدم
+  - تفعيل/إيقاف الاشتراك
+  - عرض حالة الاشتراك الحالية
+  - رسائل توضيحية بالعربية
+
+#### 4. تحسين Service Worker ✅
+- **الملف المحدث**: `/app/frontend/public/service-worker.js`
+- **التحسينات**:
+  - معالجة بيانات الإشعار بشكل ديناميكي (JSON)
+  - فتح الصفحة المناسبة عند النقر على الإشعار
+  - دعم أزرار الإجراءات (فتح/إغلاق)
+  - تصميم RTL عربي
+
+### الملفات الجديدة:
+- `/app/backend/routes/push_notifications.py`
+- `/app/frontend/src/components/PushNotificationManager.jsx`
+
+### الملفات المُحدثة:
+- `/app/backend/server.py` - إضافة push_notifications_router
+- `/app/backend/routes/daily_videos.py` - إرسال إشعار عند إضافة فيديو
+- `/app/frontend/src/pages/member-portal/MemberDailyVideos.js` - إضافة PushNotificationManager
+- `/app/frontend/public/service-worker.js` - تحسين معالجة Push
+
+### قاعدة البيانات:
+- **Collection جديد**: `push_subscriptions`
+  - `member_id`: معرف العضو
+  - `endpoint`: رابط الاشتراك
+  - `keys`: مفاتيح التشفير (p256dh, auth)
+  - `is_active`: حالة الاشتراك
+  - `created_at`: تاريخ الإنشاء
+
 
 
 ## Credentials
