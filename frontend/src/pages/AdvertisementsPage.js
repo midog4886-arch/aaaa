@@ -9,11 +9,12 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Switch } from '../components/ui/switch';
 import { Badge } from '../components/ui/badge';
 import { useToast } from '../hooks/use-toast';
-import { advertisementsAPI, branchesAPI } from '../services/api';
+import { advertisementsAPI, branchesAPI, notificationsAPI } from '../services/api';
 import { 
   Plus, Pencil, Trash2, Eye, MousePointerClick, Image, Video, 
   Link2, Calendar, BarChart3, Upload, ExternalLink, Play,
-  ToggleLeft, ToggleRight, Search, Filter, Megaphone, TrendingUp
+  ToggleLeft, ToggleRight, Search, Filter, Megaphone, TrendingUp,
+  Bell, AlertTriangle, Clock, RefreshCw, CheckCircle
 } from 'lucide-react';
 
 const AdvertisementsPage = () => {
@@ -28,6 +29,8 @@ const AdvertisementsPage = () => {
   const [filterType, setFilterType] = useState('all');
   const [filterPosition, setFilterPosition] = useState('all');
   const [uploading, setUploading] = useState(false);
+  const [adsStatus, setAdsStatus] = useState(null);
+  const [checkingExpiry, setCheckingExpiry] = useState(false);
 
   // Form state
   const [formData, setFormData] = useState({
@@ -50,14 +53,16 @@ const AdvertisementsPage = () => {
 
   const fetchData = useCallback(async () => {
     try {
-      const [adsRes, branchesRes, statsRes] = await Promise.all([
+      const [adsRes, branchesRes, statsRes, adsStatusRes] = await Promise.all([
         advertisementsAPI.getAll(),
         branchesAPI.getAll(),
-        advertisementsAPI.getStats()
+        advertisementsAPI.getStats(),
+        notificationsAPI.getAdsStatus()
       ]);
       setAds(adsRes.data);
       setBranches(branchesRes.data);
       setStats(statsRes.data);
+      setAdsStatus(adsStatusRes.data);
     } catch (error) {
       toast({ title: 'خطأ', description: 'فشل في تحميل البيانات', variant: 'destructive' });
     } finally {
@@ -68,6 +73,22 @@ const AdvertisementsPage = () => {
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
+  const handleCheckExpiry = async () => {
+    setCheckingExpiry(true);
+    try {
+      const res = await notificationsAPI.checkAdsExpiry();
+      toast({ 
+        title: 'تم التحقق', 
+        description: res.data.message 
+      });
+      fetchData();
+    } catch (error) {
+      toast({ title: 'خطأ', description: 'فشل في التحقق', variant: 'destructive' });
+    } finally {
+      setCheckingExpiry(false);
+    }
+  };
 
   const resetForm = () => {
     setFormData({
