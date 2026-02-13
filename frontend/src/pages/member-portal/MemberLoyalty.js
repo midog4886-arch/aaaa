@@ -5,10 +5,11 @@ import { Badge } from '../../components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '../../components/ui/dialog';
 import { Progress } from '../../components/ui/progress';
 import { Textarea } from '../../components/ui/textarea';
+import { Input } from '../../components/ui/input';
 import MemberLayout, { memberAPI, getMemberData, getLanguage } from './MemberLayout';
 import { 
   Trophy, Gift, Star, Crown, Medal, Target, Percent, Package,
-  Clock, CheckCircle, Copy, Users, TrendingUp, Coins, History
+  Clock, CheckCircle, Copy, Users, TrendingUp, Coins, History, UserPlus
 } from 'lucide-react';
 
 const MemberLoyalty = () => {
