@@ -368,7 +368,7 @@ async def pay_invoice(invoice_id: str, current_user: dict = Depends(get_current_
                         today_obj = datetime.strptime(today, '%Y-%m-%d')
                         if end_date_obj < today_obj:
                             status = "expired"
-                    except:
+                    except Exception:
                         pass
                 
                 # Check if activity already exists for this member
