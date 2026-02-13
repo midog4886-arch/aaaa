@@ -294,6 +294,14 @@ function AppRoutes() {
           </ProtectedRoute>
         } 
       />
+      <Route 
+        path="/daily-videos" 
+        element={
+          <ProtectedRoute permission="daily-videos">
+            <DailyVideosPage />
+          </ProtectedRoute>
+        } 
+      />
       
       {/* Smart Default Redirect based on permissions */}
       <Route path="/" element={<SmartRedirect />} />
