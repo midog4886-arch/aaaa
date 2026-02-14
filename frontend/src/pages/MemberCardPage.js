@@ -228,15 +228,10 @@ const MemberCardPage = () => {
     img.src = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svgData)));
   };
 
-  // Generate QR data
+  // Generate QR data - Just the member code number for easy scanning
   const getQRData = () => {
     if (!member) return '';
-    return JSON.stringify({
-      type: 'WCPA_MEMBER',
-      id: member.id,
-      code: member.member_code,
-      name: member.name_ar || member.name
-    });
+    return member.member_code.toString();
   };
 
   return (
