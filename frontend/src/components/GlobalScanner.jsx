@@ -316,13 +316,6 @@ const GlobalScanner = ({ enabled = true, language = 'ar' }) => {
     };
   }, [enabled, handleScan]);
 
-  // Close dialog handler
-  const handleCloseDialog = () => {
-    setShowMemberDialog(false);
-    setMemberData(null);
-    setLastResult(null);
-  };
-
   if (!enabled) return null;
 
   return (
