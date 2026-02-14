@@ -98,7 +98,22 @@ const MemberLayout = ({ children }) => {
     }
     setMember(memberData);
     fetchNotifications();
-  }, [navigate]);
+    
+    // Update document title and manifest for member portal PWA
+    document.title = language === 'ar' ? 'بوابة الأعضاء - أكاديمية أداء الأبطال' : 'Member Portal - Champions Academy';
+    
+    // Update manifest link for portal
+    const manifestLink = document.getElementById('pwa-manifest');
+    if (manifestLink) {
+      manifestLink.href = '/manifest-portal.json';
+    }
+    
+    // Update apple-mobile-web-app-title
+    let appleTitleMeta = document.querySelector('meta[name="apple-mobile-web-app-title"]');
+    if (appleTitleMeta) {
+      appleTitleMeta.content = language === 'ar' ? 'بوابة الأعضاء' : 'Member Portal';
+    }
+  }, [navigate, language]);
 
   // PWA Install prompt handler
   useEffect(() => {
