@@ -78,11 +78,17 @@ const GlobalScanner = ({ enabled = true, language = 'ar' }) => {
   const handleScan = useCallback(async (memberCode) => {
     if (!memberCode) return;
     
+    // Close any existing dialog first
+    setShowMemberDialog(false);
+    setMemberData(null);
+    setLastResult(null);
+    
+    // Small delay to ensure dialog closes before reopening
+    await new Promise(resolve => setTimeout(resolve, 100));
+    
     playSound('scan');
     setLoading(true);
     setShowMemberDialog(true);
-    setMemberData(null);
-    setLastResult(null);
     
     try {
       const API_URL = process.env.REACT_APP_BACKEND_URL;
