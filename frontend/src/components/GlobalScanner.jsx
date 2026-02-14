@@ -243,20 +243,20 @@ const GlobalScanner = ({ enabled = true, language = 'ar' }) => {
       <div 
         style={{
           position: 'fixed',
-          bottom: '100px',
-          left: '20px',
+          bottom: '30px',
+          right: '30px',
           zIndex: 99999,
         }}
       >
         <button 
           onClick={() => setSoundEnabled(!soundEnabled)}
           style={{
-            width: '60px',
-            height: '60px',
+            width: '70px',
+            height: '70px',
             borderRadius: '50%',
             background: 'linear-gradient(135deg, #22c55e 0%, #16a34a 100%)',
             border: '4px solid white',
-            boxShadow: '0 4px 20px rgba(34, 197, 94, 0.5), 0 0 0 4px rgba(34, 197, 94, 0.2)',
+            boxShadow: '0 4px 25px rgba(34, 197, 94, 0.6), 0 0 0 4px rgba(34, 197, 94, 0.2)',
             cursor: 'pointer',
             display: 'flex',
             alignItems: 'center',
@@ -265,32 +265,33 @@ const GlobalScanner = ({ enabled = true, language = 'ar' }) => {
           }}
           title={soundEnabled ? t('المسح نشط - اضغط لإيقاف الصوت', 'Scanner Active - Click to mute') : t('المسح نشط - اضغط لتفعيل الصوت', 'Scanner Active - Click to unmute')}
         >
-          <Scan style={{ width: '28px', height: '28px', color: 'white' }} />
+          <Scan style={{ width: '32px', height: '32px', color: 'white' }} />
         </button>
         <div 
           style={{
             position: 'absolute',
-            bottom: '-28px',
+            bottom: '-30px',
             left: '50%',
             transform: 'translateX(-50%)',
             background: '#1f2937',
             color: 'white',
-            fontSize: '11px',
-            padding: '4px 10px',
-            borderRadius: '12px',
+            fontSize: '12px',
+            padding: '6px 12px',
+            borderRadius: '15px',
             whiteSpace: 'nowrap',
-            boxShadow: '0 2px 8px rgba(0,0,0,0.2)',
+            boxShadow: '0 2px 10px rgba(0,0,0,0.3)',
+            fontWeight: 'bold',
           }}
         >
-          {soundEnabled ? '🔊' : '🔇'} {t('مسح QR', 'QR Scan')}
+          {soundEnabled ? '🔊' : '🔇'} {t('ماسح QR', 'QR Scanner')}
         </div>
       </div>
       
       {/* Pulse animation style */}
       <style>{`
         @keyframes pulse {
-          0%, 100% { transform: scale(1); }
-          50% { transform: scale(1.05); }
+          0%, 100% { transform: scale(1); box-shadow: 0 4px 25px rgba(34, 197, 94, 0.6); }
+          50% { transform: scale(1.05); box-shadow: 0 4px 35px rgba(34, 197, 94, 0.8); }
         }
       `}</style>
 
