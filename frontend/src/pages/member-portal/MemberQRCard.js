@@ -249,7 +249,8 @@ const MemberCard = () => {
     );
   }
 
-  const qrData = JSON.stringify(cardData?.qr_data || {});
+  // QR data is just the member code number
+  const qrData = cardData?.member_code?.toString() || '';
 
   return (
     <MemberLayout>
