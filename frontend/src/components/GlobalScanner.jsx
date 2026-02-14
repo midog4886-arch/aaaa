@@ -76,9 +76,6 @@ const GlobalScanner = ({ enabled = true, language = 'ar' }) => {
     }
   }, [soundEnabled]);
 
-  // Ref to track if we're currently processing a scan (more reliable than state for async)
-  const isProcessingRef = useRef(false);
-  
   // Fetch member data and show dialog
   const handleScan = useCallback(async (memberCode) => {
     if (!memberCode) return;
