@@ -396,6 +396,15 @@ const MemberCard = () => {
             </p>
           </CardContent>
         </Card>
+
+        {/* Lost Card Notice */}
+        <Card className="max-w-md mx-auto bg-red-50 border-red-200">
+          <CardContent className="p-4">
+            <p className="text-red-700 text-center font-medium">
+              ⚠️ في حال فقدان كرت العضوية، يتم إصدار كرت جديد برسوم قدرها <span className="font-bold">10 ر.س</span>
+            </p>
+          </CardContent>
+        </Card>
       </div>
     </MemberLayout>
   );
