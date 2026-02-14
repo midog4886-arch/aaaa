@@ -479,6 +479,7 @@ export const TopHeader = ({ onMenuClick, title }) => {
 
 export const Layout = ({ children, title }) => {
   const [sidebarOpen, setSidebarOpen] = React.useState(false);
+  const { language } = useLanguage();
 
   return (
     <div className="app-container">
@@ -489,6 +490,8 @@ export const Layout = ({ children, title }) => {
           {children}
         </main>
       </div>
+      {/* Global QR Scanner - Works on all pages */}
+      <GlobalScanner enabled={true} language={language} />
     </div>
   );
 };
