@@ -137,6 +137,8 @@ const MemberLayout = ({ children }) => {
         const { outcome } = await installPromptRef.current.userChoice;
         if (outcome === 'accepted') {
           setIsAppInstalled(true);
+          setShowInstallReminder(false);
+          localStorage.setItem('pwa_installed', 'true');
         }
         installPromptRef.current = null;
         setInstallPrompt(null);
@@ -147,6 +149,38 @@ const MemberLayout = ({ children }) => {
       // Show manual instructions dialog
       setShowInstallDialog(true);
     }
+  };
+
+  // Install reminder after visits
+  useEffect(() => {
+    // Skip if already installed or reminder dismissed
+    if (isAppInstalled || localStorage.getItem('pwa_installed') === 'true') return;
+    if (localStorage.getItem('install_reminder_dismissed') === 'true') return;
+    
+    // Count visits
+    const visitCount = parseInt(localStorage.getItem('portal_visit_count') || '0') + 1;
+    localStorage.setItem('portal_visit_count', visitCount.toString());
+    
+    // Show reminder after 3 visits
+    if (visitCount >= 3) {
+      // Delay showing the reminder
+      const timer = setTimeout(() => {
+        setShowInstallReminder(true);
+      }, 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [isAppInstalled]);
+
+  // Dismiss install reminder
+  const dismissInstallReminder = () => {
+    setShowInstallReminder(false);
+    localStorage.setItem('install_reminder_dismissed', 'true');
+  };
+
+  // Handle install from reminder
+  const handleInstallFromReminder = () => {
+    setShowInstallReminder(false);
+    handleInstallClick();
   };
 
   useEffect(() => {
