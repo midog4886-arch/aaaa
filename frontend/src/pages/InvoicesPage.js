@@ -1490,14 +1490,8 @@ ${selectedInvoice.discount > 0 ? `🎁 الخصم: ${selectedInvoice.discount} �
     
     const printWindow = window.open('', '_blank', 'width=800,height=600');
     
-    // QR Data for member card
-    const qrData = JSON.stringify({
-      type: 'WCPA_MEMBER',
-      code: regFormCardData.member_code || regFormCardData.form_number,
-      id: regFormCardData.id || '',
-      phone: regFormCardData.phone,
-      name: regFormCardData.name_ar
-    });
+    // QR data is just the member code number
+    const qrData = (regFormCardData.member_code || regFormCardData.form_number).toString();
     
     // Get first activity dates for display under QR
     const firstActivity = regFormCardData?.activities?.[0];
