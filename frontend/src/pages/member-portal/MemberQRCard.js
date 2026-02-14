@@ -35,7 +35,8 @@ const MemberCard = () => {
     setShowPrintDialog(false);
     
     const printWindow = window.open('', '_blank', 'width=800,height=600');
-    const qrData = JSON.stringify(cardData?.qr_data || {});
+    // QR data is just the member code number
+    const qrData = cardData?.member_code?.toString() || '';
     
     // Get first activity dates for display under QR
     const firstActivity = cardData?.active_activities?.[0];
