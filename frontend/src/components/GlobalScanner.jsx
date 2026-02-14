@@ -109,30 +109,45 @@ const GlobalScanner = ({ enabled = true, language = 'ar' }) => {
   const handleScan = useCallback(async (scannedData) => {
     if (!scannedData) return;
     
+    const now = Date.now();
+    
     // Extract member code from scanned data
     const memberCode = extractMemberCode(scannedData);
-    console.log('📱 Scanned data:', scannedData);
-    console.log('📱 Extracted member code:', memberCode);
     
     if (!memberCode) return;
     
-    // Use ref for immediate check (state updates are async)
+    // STRICT LOCK: Block if already processing or if scanned within last 2 seconds
     if (isProcessingRef.current) {
       console.log('🚫 Scan blocked - already processing');
+      bufferRef.current = '';
       return;
     }
     
-    // Lock immediately
-    isProcessingRef.current = true;
-    setIsProcessing(true);
+    // Block rapid successive scans (within 2 seconds)
+    if (now - scanLockTimeRef.current < 2000) {
+      console.log('🚫 Scan blocked - too fast');
+      bufferRef.current = '';
+      return;
+    }
     
-    // Close any existing dialog first
+    // Lock immediately with timestamp
+    isProcessingRef.current = true;
+    scanLockTimeRef.current = now;
+    lastScannedCodeRef.current = memberCode;
+    
+    // Close any existing dialog FIRST and wait
     setShowMemberDialog(false);
     setMemberData(null);
     setLastResult(null);
     
-    // Small delay to ensure dialog closes before reopening
-    await new Promise(resolve => setTimeout(resolve, 100));
+    // Wait for dialog to fully close
+    await new Promise(resolve => setTimeout(resolve, 150));
+    
+    // Double-check lock is still ours
+    if (lastScannedCodeRef.current !== memberCode) {
+      isProcessingRef.current = false;
+      return;
+    }
     
     playSound('scan');
     setLoading(true);
