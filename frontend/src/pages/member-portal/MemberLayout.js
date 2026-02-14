@@ -457,6 +457,69 @@ const MemberLayout = ({ children }) => {
         </div>
       </footer>
 
+      {/* Install Reminder Popup */}
+      {showInstallReminder && !isAppInstalled && (
+        <div 
+          className="fixed bottom-20 left-4 right-4 lg:bottom-6 lg:left-auto lg:right-6 lg:w-96 z-50 animate-in slide-in-from-bottom-5 duration-500"
+          dir={language === 'ar' ? 'rtl' : 'ltr'}
+        >
+          <div className={`rounded-2xl shadow-2xl border overflow-hidden ${
+            darkMode 
+              ? 'bg-gradient-to-br from-gray-800 to-gray-900 border-gray-700' 
+              : 'bg-gradient-to-br from-white to-blue-50 border-blue-200'
+          }`}>
+            {/* Decorative top bar */}
+            <div className="h-1.5 bg-gradient-to-r from-blue-500 via-purple-500 to-pink-500" />
+            
+            <div className="p-4">
+              <div className="flex items-start gap-3">
+                {/* Icon */}
+                <div className="flex-shrink-0 w-12 h-12 rounded-xl bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center shadow-lg">
+                  <Download className="w-6 h-6 text-white" />
+                </div>
+                
+                {/* Content */}
+                <div className="flex-1 min-w-0">
+                  <h3 className={`font-bold text-base ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                    {getText('installReminderTitle')}
+                  </h3>
+                  <p className={`text-sm mt-0.5 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                    {getText('installReminderText')}
+                  </p>
+                </div>
+                
+                {/* Close button */}
+                <button 
+                  onClick={dismissInstallReminder}
+                  className={`flex-shrink-0 p-1 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors`}
+                >
+                  <X className={`w-4 h-4 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`} />
+                </button>
+              </div>
+              
+              {/* Buttons */}
+              <div className="flex gap-2 mt-4">
+                <Button
+                  onClick={handleInstallFromReminder}
+                  className="flex-1 bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white gap-2"
+                  data-testid="install-reminder-btn"
+                >
+                  <Download className="w-4 h-4" />
+                  {getText('installNow')}
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={dismissInstallReminder}
+                  className={`${darkMode ? 'border-gray-600 text-gray-300 hover:bg-gray-700' : ''}`}
+                >
+                  {getText('later')}
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Install Instructions Dialog */}
       <Dialog open={showInstallDialog} onOpenChange={setShowInstallDialog}>
         <DialogContent className={`max-w-md ${darkMode ? 'bg-gray-800 text-white' : ''}`}>
