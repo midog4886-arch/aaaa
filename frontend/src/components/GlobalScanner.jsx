@@ -239,19 +239,23 @@ const GlobalScanner = ({ enabled = true, language = 'ar' }) => {
 
   return (
     <>
-      {/* Scanner Status Indicator - Small dot */}
-      <div className="fixed bottom-20 left-4 z-40">
+      {/* Scanner Status Indicator - Visible indicator */}
+      <div className="fixed bottom-24 left-4 z-[9999]">
         <div 
-          className="w-4 h-4 rounded-full bg-green-500 animate-pulse shadow-lg cursor-pointer"
+          className="w-10 h-10 rounded-full bg-gradient-to-br from-green-400 to-green-600 animate-pulse shadow-xl cursor-pointer flex items-center justify-center border-2 border-white"
           onClick={() => setSoundEnabled(!soundEnabled)}
-          title={soundEnabled ? t('الصوت مفعّل', 'Sound On') : t('الصوت مغلق', 'Sound Off')}
+          title={soundEnabled ? t('المسح نشط - الصوت مفعّل (اضغط لإيقاف الصوت)', 'Scanner Active - Sound On (Click to mute)') : t('المسح نشط - الصوت مغلق (اضغط لتفعيل الصوت)', 'Scanner Active - Sound Off (Click to unmute)')}
         >
+          <Scan className="w-5 h-5 text-white" />
           {!soundEnabled && (
             <div className="absolute inset-0 flex items-center justify-center">
-              <div className="w-full h-0.5 bg-red-500 rotate-45"></div>
+              <div className="w-full h-0.5 bg-red-500 rotate-45 rounded"></div>
             </div>
           )}
         </div>
+        <span className="absolute -bottom-6 left-1/2 -translate-x-1/2 text-xs text-gray-500 whitespace-nowrap bg-white px-1 rounded shadow">
+          {t('مسح QR', 'QR Scan')}
+        </span>
       </div>
 
       {/* Member Dialog */}
