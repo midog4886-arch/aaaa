@@ -29,6 +29,7 @@ const GlobalScanner = ({ enabled = true, language = 'ar' }) => {
   const bufferRef = useRef('');
   const lastKeyTimeRef = useRef(0);
   const timeoutRef = useRef(null);
+  const isProcessingRef = useRef(false); // Ref for immediate check (state is async)
 
   // Load sound setting
   useEffect(() => {
