@@ -83,43 +83,71 @@ const GlobalScanner = ({ enabled = true, language = 'ar' }) => {
     // Clean the data
     let data = scannedData.trim();
     
-    // Try to parse as JSON first
+    console.log('🔍 Raw scanned data:', data);
+    
+    // Method 1: Look for 4-digit number after "code" related patterns
+    // Handles: "code":"2620", code@:@2620, "وخيث":"2620", etc.
+    const codePatterns = [
+      /["']?code["']?\s*[:=]\s*["']?(\d{4})["']?/i,
+      /["']?\w*code\w*["']?\s*[:=]\s*["']?(\d{4})["']?/i,
+      /:\s*["']?(\d{4})["']?\s*[,}]/,  // Any 4-digit after colon
+    ];
+    
+    for (const pattern of codePatterns) {
+      const match = data.match(pattern);
+      if (match) {
+        console.log('✅ Found code with pattern:', match[1]);
+        return match[1];
+      }
+    }
+    
+    // Method 2: If data contains "2620" or similar 4-digit patterns, extract first one
+    // that appears after certain keywords
+    const allFourDigits = data.match(/\b(\d{4})\b/g);
+    if (allFourDigits && allFourDigits.length > 0) {
+      // Filter out years (2020-2030) and return first valid member code
+      const validCode = allFourDigits.find(num => {
+        const n = parseInt(num);
+        return n < 2020 || n > 2030; // Exclude likely years
+      });
+      if (validCode) {
+        console.log('✅ Found 4-digit code:', validCode);
+        return validCode;
+      }
+      // If all are years, just return first one
+      console.log('✅ Using first 4-digit:', allFourDigits[0]);
+      return allFourDigits[0];
+    }
+    
+    // Method 3: Try to parse as JSON
     try {
-      // Fix common QR format issues (replace @:@ with : and @,@ with ,)
       let jsonStr = data
         .replace(/@:@/g, '":"')
-        .replace(/@,@/g, '","')
-        .replace(/\{@ @/g, '')
-        .replace(/@\}#/g, '')
-        .replace(/^[^{]*/, '')
-        .replace(/[^}]*$/, '');
+        .replace(/@,@/g, '","');
       
-      if (jsonStr.startsWith('{')) {
-        const parsed = JSON.parse(jsonStr);
+      // Extract JSON object if embedded in other text
+      const jsonMatch = jsonStr.match(/\{[^}]+\}/);
+      if (jsonMatch) {
+        const parsed = JSON.parse(jsonMatch[0]);
         if (parsed.code) return parsed.code.toString();
         if (parsed.member_code) return parsed.member_code.toString();
       }
     } catch (e) {
-      // Not JSON, continue with other methods
+      // Not JSON
     }
     
-    // Try to extract code from pattern: code@:@XXXX or code":"XXXX
-    const codeMatch = data.match(/code[@":]+[@:]*(\d+)/i);
-    if (codeMatch) return codeMatch[1];
-    
-    // Try to extract member_code pattern
-    const memberCodeMatch = data.match(/member_code[@":]+[@:]*(\d+)/i);
-    if (memberCodeMatch) return memberCodeMatch[1];
-    
-    // If it's just a number, use it directly
+    // Method 4: If it's just a number, use it directly
     if (/^\d+$/.test(data)) return data;
     
-    // Extract any 4-digit number (member codes are usually 4 digits)
-    const fourDigitMatch = data.match(/\b(\d{4})\b/);
-    if (fourDigitMatch) return fourDigitMatch[1];
+    // Method 5: Extract any number sequence
+    const anyNumber = data.match(/(\d{3,6})/);
+    if (anyNumber) {
+      console.log('✅ Found number sequence:', anyNumber[1]);
+      return anyNumber[1];
+    }
     
-    // Return original if nothing else works
-    return data;
+    console.log('❌ Could not extract code from:', data);
+    return null;
   };
 
   // Fetch member data and show dialog
