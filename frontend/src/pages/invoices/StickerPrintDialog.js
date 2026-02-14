@@ -15,16 +15,10 @@ const RIGHT_MARGIN = 15; // mm
 const GAP = 5; // mm
 
 /**
- * Generate QR data for member
+ * Generate QR data for member - Just the member code number
  */
 const generateQRData = (member) => {
-  return JSON.stringify({
-    type: 'WCPA_MEMBER',
-    code: member.member_code,
-    id: member.id,
-    phone: member.phone,
-    name: member.name_ar
-  });
+  return (member?.member_code || '').toString();
 };
 
 /**
