@@ -1,11 +1,12 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, Link, useLocation } from 'react-router-dom';
 import { 
   Trophy, Home, CreditCard, Calendar, Bell, QrCode,
   LogOut, Menu, X, Clock, CheckCircle, AlertTriangle,
-  Moon, Sun, Star, Activity, Video, Languages
+  Moon, Sun, Star, Activity, Video, Languages, Download, Smartphone
 } from 'lucide-react';
 import { Button } from '../../components/ui/button';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../../components/ui/dialog';
 import axios from 'axios';
 
 const API_URL = process.env.REACT_APP_BACKEND_URL;
