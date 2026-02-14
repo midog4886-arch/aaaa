@@ -239,37 +239,60 @@ const GlobalScanner = ({ enabled = true, language = 'ar' }) => {
 
   return (
     <>
-      {/* Scanner Status Indicator - Prominent indicator */}
-      <div className="fixed bottom-6 left-6 z-[9999]">
-        <div 
-          className="relative w-14 h-14 rounded-full bg-gradient-to-br from-green-400 to-emerald-600 shadow-2xl cursor-pointer flex items-center justify-center border-4 border-white hover:scale-110 transition-transform"
+      {/* Scanner Status Indicator - Always visible floating button */}
+      <div 
+        style={{
+          position: 'fixed',
+          bottom: '100px',
+          left: '20px',
+          zIndex: 99999,
+        }}
+      >
+        <button 
           onClick={() => setSoundEnabled(!soundEnabled)}
-          title={soundEnabled ? t('المسح نشط - الصوت مفعّل', 'Scanner Active - Sound On') : t('المسح نشط - الصوت مغلق', 'Scanner Active - Sound Off')}
-          style={{ boxShadow: '0 0 20px rgba(34, 197, 94, 0.5)' }}
+          style={{
+            width: '60px',
+            height: '60px',
+            borderRadius: '50%',
+            background: 'linear-gradient(135deg, #22c55e 0%, #16a34a 100%)',
+            border: '4px solid white',
+            boxShadow: '0 4px 20px rgba(34, 197, 94, 0.5), 0 0 0 4px rgba(34, 197, 94, 0.2)',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            animation: 'pulse 2s infinite',
+          }}
+          title={soundEnabled ? t('المسح نشط - اضغط لإيقاف الصوت', 'Scanner Active - Click to mute') : t('المسح نشط - اضغط لتفعيل الصوت', 'Scanner Active - Click to unmute')}
         >
-          {/* Pulse animation ring */}
-          <div className="absolute inset-0 rounded-full bg-green-400 animate-ping opacity-30"></div>
-          
-          <Scan className="w-7 h-7 text-white relative z-10" />
-          
-          {!soundEnabled && (
-            <div className="absolute top-0 right-0 w-4 h-4 bg-red-500 rounded-full border-2 border-white flex items-center justify-center">
-              <VolumeX className="w-2.5 h-2.5 text-white" />
-            </div>
-          )}
-          
-          {soundEnabled && (
-            <div className="absolute top-0 right-0 w-4 h-4 bg-blue-500 rounded-full border-2 border-white flex items-center justify-center">
-              <Volume2 className="w-2.5 h-2.5 text-white" />
-            </div>
-          )}
-        </div>
-        
-        {/* Label */}
-        <div className="absolute -bottom-7 left-1/2 -translate-x-1/2 bg-gray-800 text-white text-xs px-3 py-1 rounded-full whitespace-nowrap shadow-lg">
-          {t('مسح QR نشط', 'QR Active')}
+          <Scan style={{ width: '28px', height: '28px', color: 'white' }} />
+        </button>
+        <div 
+          style={{
+            position: 'absolute',
+            bottom: '-28px',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            background: '#1f2937',
+            color: 'white',
+            fontSize: '11px',
+            padding: '4px 10px',
+            borderRadius: '12px',
+            whiteSpace: 'nowrap',
+            boxShadow: '0 2px 8px rgba(0,0,0,0.2)',
+          }}
+        >
+          {soundEnabled ? '🔊' : '🔇'} {t('مسح QR', 'QR Scan')}
         </div>
       </div>
+      
+      {/* Pulse animation style */}
+      <style>{`
+        @keyframes pulse {
+          0%, 100% { transform: scale(1); }
+          50% { transform: scale(1.05); }
+        }
+      `}</style>
 
       {/* Member Dialog */}
       <Dialog open={showMemberDialog} onOpenChange={handleCloseDialog}>
