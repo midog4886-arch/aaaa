@@ -541,11 +541,28 @@ const MemberLayout = ({ children }) => {
                 <span className="text-2xl">📱</span>
                 iPhone / iPad
               </h4>
-              <ol className={`text-sm space-y-2 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`} dir={language === 'ar' ? 'rtl' : 'ltr'}>
-                <li>1. {language === 'ar' ? 'اضغط على زر المشاركة' : 'Tap the Share button'} <span className="inline-block px-2 py-0.5 bg-gray-200 dark:bg-gray-600 rounded text-xs">⬆️</span></li>
-                <li>2. {language === 'ar' ? 'اختر "إضافة إلى الشاشة الرئيسية"' : 'Select "Add to Home Screen"'}</li>
-                <li>3. {language === 'ar' ? 'اضغط "إضافة"' : 'Tap "Add"'}</li>
-              </ol>
+              
+              {/* Safari Instructions */}
+              <div className={`mb-3 p-2 rounded-lg ${darkMode ? 'bg-gray-600' : 'bg-blue-100'}`}>
+                <p className="font-semibold text-sm mb-1">Safari:</p>
+                <ol className={`text-sm space-y-1 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`} dir={language === 'ar' ? 'rtl' : 'ltr'}>
+                  <li>1. {language === 'ar' ? 'اضغط على أيقونة المشاركة في الشريط السفلي' : 'Tap share icon in bottom bar'} <span className="inline-block px-2 py-0.5 bg-white dark:bg-gray-500 rounded text-xs">⬆️</span></li>
+                  <li>2. {language === 'ar' ? 'مرر للأسفل واختر "إضافة للشاشة الرئيسية"' : 'Scroll down, tap "Add to Home Screen"'}</li>
+                </ol>
+              </div>
+              
+              {/* Chrome/Other browsers Instructions */}
+              <div className={`p-2 rounded-lg ${darkMode ? 'bg-gray-600' : 'bg-blue-100'}`}>
+                <p className="font-semibold text-sm mb-1">Chrome / {language === 'ar' ? 'متصفحات أخرى' : 'Other browsers'}:</p>
+                <ol className={`text-sm space-y-1 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`} dir={language === 'ar' ? 'rtl' : 'ltr'}>
+                  <li>1. {language === 'ar' ? 'اضغط على الثلاث نقاط أعلى الشاشة' : 'Tap three dots at top'} <span className="inline-block px-2 py-0.5 bg-white dark:bg-gray-500 rounded text-xs">•••</span></li>
+                  <li>2. {language === 'ar' ? 'اختر "إضافة إلى الشاشة الرئيسية"' : 'Select "Add to Home Screen"'}</li>
+                </ol>
+              </div>
+              
+              <p className={`text-xs mt-2 ${darkMode ? 'text-yellow-400' : 'text-amber-600'}`}>
+                💡 {language === 'ar' ? 'للأفضل: استخدم Safari للتثبيت' : 'Best: Use Safari for installation'}
+              </p>
             </div>
             
             {/* Android Instructions */}
