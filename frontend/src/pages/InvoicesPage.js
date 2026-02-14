@@ -5104,12 +5104,7 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
                   style={{ width: '170px', height: '170px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                 >
                   <QRCodeSVG
-                    value={JSON.stringify({
-                      type: 'WCPA_MEMBER',
-                      id: qrCardMember.id,
-                      code: qrCardMember.member_code,
-                      name: qrCardMember.name_ar
-                    })}
+                    value={qrCardMember.member_code.toString()}
                     size={140}
                     level="H"
                     includeMargin={false}
