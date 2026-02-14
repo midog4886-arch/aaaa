@@ -1657,13 +1657,8 @@ ${selectedInvoice.discount > 0 ? `🎁 الخصم: ${selectedInvoice.discount} �
       return; 
     }
     
-    // Generate QR Code image
-    const qrData = JSON.stringify({
-      type: 'WCPA_MEMBER',
-      id: qrCardMember.id,
-      code: qrCardMember.member_code,
-      name: qrCardMember.name_ar
-    });
+    // QR data is just the member code number
+    const qrData = qrCardMember.member_code.toString();
     
     try {
       // Create canvas with QR code and member info
