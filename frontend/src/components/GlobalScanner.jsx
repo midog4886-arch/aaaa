@@ -75,10 +75,21 @@ const GlobalScanner = ({ enabled = true, language = 'ar' }) => {
     }
   }, [soundEnabled]);
 
+  // Ref to track if we're currently processing a scan (more reliable than state for async)
+  const isProcessingRef = useRef(false);
+  
   // Fetch member data and show dialog
   const handleScan = useCallback(async (memberCode) => {
-    if (!memberCode || isProcessing) return;
+    if (!memberCode) return;
     
+    // Use ref for immediate check (state updates are async)
+    if (isProcessingRef.current) {
+      console.log('🚫 Scan blocked - already processing');
+      return;
+    }
+    
+    // Lock immediately
+    isProcessingRef.current = true;
     setIsProcessing(true);
     
     // Close any existing dialog first
@@ -87,7 +98,7 @@ const GlobalScanner = ({ enabled = true, language = 'ar' }) => {
     setLastResult(null);
     
     // Small delay to ensure dialog closes before reopening
-    await new Promise(resolve => setTimeout(resolve, 150));
+    await new Promise(resolve => setTimeout(resolve, 100));
     
     playSound('scan');
     setLoading(true);
@@ -127,6 +138,11 @@ const GlobalScanner = ({ enabled = true, language = 'ar' }) => {
       });
     } finally {
       setLoading(false);
+      // Unlock after a short delay to prevent rapid re-scans
+      setTimeout(() => {
+        isProcessingRef.current = false;
+        setIsProcessing(false);
+      }, 500);
     }
   }, [playSound, t]);
 
