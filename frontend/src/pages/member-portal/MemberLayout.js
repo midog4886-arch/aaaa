@@ -99,6 +99,55 @@ const MemberLayout = ({ children }) => {
     fetchNotifications();
   }, [navigate]);
 
+  // PWA Install prompt handler
+  useEffect(() => {
+    // Check if app is already installed
+    if (window.matchMedia('(display-mode: standalone)').matches) {
+      setIsAppInstalled(true);
+      return;
+    }
+
+    const handleBeforeInstall = (e) => {
+      e.preventDefault();
+      installPromptRef.current = e;
+      setInstallPrompt(e);
+    };
+
+    const handleAppInstalled = () => {
+      setIsAppInstalled(true);
+      setInstallPrompt(null);
+      installPromptRef.current = null;
+    };
+
+    window.addEventListener('beforeinstallprompt', handleBeforeInstall);
+    window.addEventListener('appinstalled', handleAppInstalled);
+
+    return () => {
+      window.removeEventListener('beforeinstallprompt', handleBeforeInstall);
+      window.removeEventListener('appinstalled', handleAppInstalled);
+    };
+  }, []);
+
+  // Handle PWA install
+  const handleInstallClick = async () => {
+    if (installPromptRef.current) {
+      try {
+        await installPromptRef.current.prompt();
+        const { outcome } = await installPromptRef.current.userChoice;
+        if (outcome === 'accepted') {
+          setIsAppInstalled(true);
+        }
+        installPromptRef.current = null;
+        setInstallPrompt(null);
+      } catch (error) {
+        console.error('Install prompt error:', error);
+      }
+    } else {
+      // Show manual instructions dialog
+      setShowInstallDialog(true);
+    }
+  };
+
   useEffect(() => {
     // Apply dark mode class to document
     if (darkMode) {
