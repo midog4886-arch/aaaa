@@ -5,16 +5,10 @@
 import { CARD_WIDTH, CARD_HEIGHT, TOP_MARGIN, RIGHT_MARGIN, GAP, VAT_RATE, COMPANY_INFO, INVOICE_TERMS } from './constants';
 
 /**
- * Generate QR data for member
+ * Generate QR data for member - Just the member code number
  */
 export const generateQRData = (member) => {
-  return JSON.stringify({
-    type: 'WCPA_MEMBER',
-    code: member?.member_code || '',
-    id: member?.id || '',
-    phone: member?.phone || '',
-    name: member?.name_ar || ''
-  });
+  return (member?.member_code || '').toString();
 };
 
 /**
