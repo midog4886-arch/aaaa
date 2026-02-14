@@ -11,7 +11,7 @@ import { toast } from 'sonner';
 import { activitiesAPI, attendanceAPI, branchesAPI, schedulesAPI } from '../services/api';
 import { QRCodeSVG } from 'qrcode.react';
 import { Html5QrcodeScanner } from 'html5-qrcode';
-import { Check, X, Users, Calendar, QrCode, FileSpreadsheet, Search, Clock, UserCheck, UserX, CalendarDays, Zap, Hash, Camera, CameraOff } from 'lucide-react';
+import { Check, X, Users, Calendar, QrCode, FileSpreadsheet, Search, Clock, UserCheck, UserX, CalendarDays, Zap, Hash, Camera, CameraOff, Scan, Volume2, VolumeX } from 'lucide-react';
 
 export default function AttendancePage() {
   const { language } = useLanguage();
@@ -47,6 +47,17 @@ export default function AttendancePage() {
   const [qrMemberData, setQrMemberData] = useState(null); // Member data with activities after QR scan
   const [qrLoading, setQrLoading] = useState(false);
   const scannerRef = useRef(null);
+  
+  // Kiosk Mode (USB Scanner) State
+  const [kioskMode, setKioskMode] = useState(false);
+  const [kioskBuffer, setKioskBuffer] = useState('');
+  const [kioskLastKeyTime, setKioskLastKeyTime] = useState(0);
+  const [kioskActivityId, setKioskActivityId] = useState('');
+  const [kioskLastScan, setKioskLastScan] = useState(null);
+  const [kioskSoundEnabled, setKioskSoundEnabled] = useState(true);
+  const kioskBufferRef = useRef('');
+  const kioskTimeoutRef = useRef(null);
+  
   // Report Dialog
   const [isReportDialogOpen, setIsReportDialogOpen] = useState(false);
   const [reportData, setReportData] = useState(null);
@@ -54,7 +65,7 @@ export default function AttendancePage() {
   const [reportDateRange, setReportDateRange] = useState({ start: '', end: '' });
 
   // Tab state
-  const [activeTab, setActiveTab] = useState('quick'); // quick, record, qr, reports
+  const [activeTab, setActiveTab] = useState('quick'); // quick, record, qr, kiosk, reports
 
   // Day mapping for today's sessions
   const dayMap = {
