@@ -413,6 +413,73 @@ const MemberLayout = ({ children }) => {
           <p>{language === 'ar' ? 'أكاديمية أداء الأبطال العالمية' : 'Global Champions Sports Academy'} © {new Date().getFullYear()}</p>
         </div>
       </footer>
+
+      {/* Install Instructions Dialog */}
+      <Dialog open={showInstallDialog} onOpenChange={setShowInstallDialog}>
+        <DialogContent className={`max-w-md ${darkMode ? 'bg-gray-800 text-white' : ''}`}>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-xl">
+              <Smartphone className="w-6 h-6 text-blue-500" />
+              {getText('installApp')}
+            </DialogTitle>
+          </DialogHeader>
+          
+          <div className="space-y-4 py-4">
+            <p className={`text-sm ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+              {getText('installDescription')}
+            </p>
+            
+            {/* iOS Instructions */}
+            <div className={`p-4 rounded-xl ${darkMode ? 'bg-gray-700' : 'bg-blue-50'}`}>
+              <h4 className="font-bold mb-2 flex items-center gap-2">
+                <span className="text-2xl">📱</span>
+                iPhone / iPad
+              </h4>
+              <ol className={`text-sm space-y-2 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`} dir={language === 'ar' ? 'rtl' : 'ltr'}>
+                <li>1. {language === 'ar' ? 'اضغط على زر المشاركة' : 'Tap the Share button'} <span className="inline-block px-2 py-0.5 bg-gray-200 dark:bg-gray-600 rounded text-xs">⬆️</span></li>
+                <li>2. {language === 'ar' ? 'اختر "إضافة إلى الشاشة الرئيسية"' : 'Select "Add to Home Screen"'}</li>
+                <li>3. {language === 'ar' ? 'اضغط "إضافة"' : 'Tap "Add"'}</li>
+              </ol>
+            </div>
+            
+            {/* Android Instructions */}
+            <div className={`p-4 rounded-xl ${darkMode ? 'bg-gray-700' : 'bg-green-50'}`}>
+              <h4 className="font-bold mb-2 flex items-center gap-2">
+                <span className="text-2xl">🤖</span>
+                Android
+              </h4>
+              <ol className={`text-sm space-y-2 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`} dir={language === 'ar' ? 'rtl' : 'ltr'}>
+                <li>1. {language === 'ar' ? 'اضغط على قائمة المتصفح' : 'Tap browser menu'} <span className="inline-block px-2 py-0.5 bg-gray-200 dark:bg-gray-600 rounded text-xs">⋮</span></li>
+                <li>2. {language === 'ar' ? 'اختر "تثبيت التطبيق" أو "إضافة إلى الشاشة الرئيسية"' : 'Select "Install app" or "Add to Home screen"'}</li>
+                <li>3. {language === 'ar' ? 'اضغط "تثبيت"' : 'Tap "Install"'}</li>
+              </ol>
+            </div>
+
+            {/* Desktop Instructions */}
+            <div className={`p-4 rounded-xl ${darkMode ? 'bg-gray-700' : 'bg-purple-50'}`}>
+              <h4 className="font-bold mb-2 flex items-center gap-2">
+                <span className="text-2xl">💻</span>
+                {getText('computer')}
+              </h4>
+              <ol className={`text-sm space-y-2 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`} dir={language === 'ar' ? 'rtl' : 'ltr'}>
+                <li>1. {language === 'ar' ? 'ابحث عن أيقونة التثبيت في شريط العنوان' : 'Look for install icon in address bar'} <span className="inline-block px-2 py-0.5 bg-gray-200 dark:bg-gray-600 rounded text-xs">⊕</span></li>
+                <li>2. {language === 'ar' ? 'أو اضغط على قائمة المتصفح واختر "تثبيت"' : 'Or click browser menu and select "Install"'}</li>
+              </ol>
+            </div>
+            
+            <p className={`text-center text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+              ✨ {getText('afterInstall')}
+            </p>
+          </div>
+          
+          <Button 
+            onClick={() => setShowInstallDialog(false)}
+            className="w-full bg-gradient-to-r from-blue-500 to-purple-500 hover:from-blue-600 hover:to-purple-600"
+          >
+            {getText('understood')}
+          </Button>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
