@@ -23,13 +23,14 @@ const GlobalScanner = ({ enabled = true, language = 'ar' }) => {
   const [loading, setLoading] = useState(false);
   const [checkingIn, setCheckingIn] = useState(false);
   const [lastResult, setLastResult] = useState(null);
-  const [isProcessing, setIsProcessing] = useState(false);
   
   // Scanner buffer
   const bufferRef = useRef('');
   const lastKeyTimeRef = useRef(0);
   const timeoutRef = useRef(null);
-  const isProcessingRef = useRef(false); // Ref for immediate check (state is async)
+  const isProcessingRef = useRef(false); // Lock to prevent multiple dialogs
+  const lastScannedCodeRef = useRef(''); // Track last scanned code
+  const scanLockTimeRef = useRef(0); // Timestamp lock
 
   // Load sound setting
   useEffect(() => {
