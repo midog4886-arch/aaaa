@@ -16,8 +16,28 @@
         <meta name="msapplication-tap-highlight" content="no" />
         <meta name="format-detection" content="telephone=no" />
         
-        <!-- PWA Manifest -->
-        <link rel="manifest" href="%PUBLIC_URL%/manifest.json" />
+        <!-- PWA Manifest - Dynamic based on path -->
+        <link rel="manifest" id="pwa-manifest" href="%PUBLIC_URL%/manifest.json" />
+        <script>
+            // Dynamic manifest selection based on path
+            (function() {
+                var isPortal = window.location.pathname.startsWith('/portal');
+                var manifestLink = document.getElementById('pwa-manifest');
+                if (isPortal && manifestLink) {
+                    manifestLink.href = '/manifest-portal.json';
+                    // Update apple-mobile-web-app-title for portal
+                    var appleTitleMeta = document.querySelector('meta[name="apple-mobile-web-app-title"]');
+                    if (appleTitleMeta) {
+                        appleTitleMeta.content = 'بوابة الأعضاء';
+                    }
+                    // Update theme color for portal
+                    var themeColorMeta = document.querySelector('meta[name="theme-color"]');
+                    if (themeColorMeta) {
+                        themeColorMeta.content = '#0284c7';
+                    }
+                }
+            })();
+        </script>
         
         <!-- Apple Touch Icons -->
         <link rel="apple-touch-icon" href="%PUBLIC_URL%/images/icon-192x192.png" />
