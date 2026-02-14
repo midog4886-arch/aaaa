@@ -56,6 +56,7 @@ const MemberLayout = ({ children }) => {
   const [installPrompt, setInstallPrompt] = useState(null);
   const [showInstallDialog, setShowInstallDialog] = useState(false);
   const [isAppInstalled, setIsAppInstalled] = useState(false);
+  const [showInstallReminder, setShowInstallReminder] = useState(false);
   const installPromptRef = useRef(null);
 
   // Toggle language
