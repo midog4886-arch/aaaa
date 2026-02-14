@@ -247,6 +247,11 @@ const MemberLayout = ({ children }) => {
       logout: { ar: 'خروج', en: 'Logout' },
       lightMode: { ar: 'الوضع الفاتح', en: 'Light Mode' },
       darkModeLabel: { ar: 'الوضع المظلم', en: 'Dark Mode' },
+      // Install reminder texts
+      installReminderTitle: { ar: '📲 ثبّت التطبيق الآن!', en: '📲 Install the App Now!' },
+      installReminderText: { ar: 'للوصول السريع والإشعارات الفورية', en: 'For quick access and instant notifications' },
+      installNow: { ar: 'تثبيت الآن', en: 'Install Now' },
+      later: { ar: 'لاحقاً', en: 'Later' },
     };
     return texts[key]?.[language] || key;
   };
