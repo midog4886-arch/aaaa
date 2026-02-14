@@ -1,65 +1,44 @@
 /**
  * Global QR Scanner Component
- * مكون المسح العام - يعمل في جميع الصفحات
+ * مكون المسح العام - يعمل تلقائياً في جميع الصفحات
  */
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from './ui/dialog';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { toast } from 'sonner';
 import { 
-  Scan, Check, X, User, Calendar, Clock, Activity, 
-  Volume2, VolumeX, Settings, Loader2 
+  Scan, Check, X, User, Clock, Activity, 
+  Volume2, VolumeX, Loader2, Calendar, Phone
 } from 'lucide-react';
-import { attendanceAPI, activitiesAPI } from '../services/api';
+import { attendanceAPI } from '../services/api';
 
 const GlobalScanner = ({ enabled = true, language = 'ar' }) => {
   const t = (ar, en) => language === 'ar' ? ar : en;
   
   // States
-  const [isActive, setIsActive] = useState(false);
-  const [activities, setActivities] = useState([]);
-  const [selectedActivityId, setSelectedActivityId] = useState('');
   const [soundEnabled, setSoundEnabled] = useState(true);
-  const [showResult, setShowResult] = useState(false);
-  const [scanResult, setScanResult] = useState(null);
+  const [showMemberDialog, setShowMemberDialog] = useState(false);
+  const [memberData, setMemberData] = useState(null);
   const [loading, setLoading] = useState(false);
-  const [showSettings, setShowSettings] = useState(false);
+  const [checkingIn, setCheckingIn] = useState(false);
+  const [lastResult, setLastResult] = useState(null);
   
   // Scanner buffer
   const bufferRef = useRef('');
   const lastKeyTimeRef = useRef(0);
   const timeoutRef = useRef(null);
 
-  // Load activities
+  // Load sound setting
   useEffect(() => {
-    const loadActivities = async () => {
-      try {
-        const res = await activitiesAPI.getAll();
-        setActivities(res.data || []);
-        
-        // Load saved settings
-        const savedActivityId = localStorage.getItem('globalScanner_activityId');
-        const savedSound = localStorage.getItem('globalScanner_sound');
-        const savedActive = localStorage.getItem('globalScanner_active');
-        
-        if (savedActivityId) setSelectedActivityId(savedActivityId);
-        if (savedSound !== null) setSoundEnabled(savedSound === 'true');
-        if (savedActive === 'true') setIsActive(true);
-      } catch (error) {
-        console.error('Failed to load activities');
-      }
-    };
-    loadActivities();
+    const savedSound = localStorage.getItem('globalScanner_sound');
+    if (savedSound !== null) setSoundEnabled(savedSound === 'true');
   }, []);
 
-  // Save settings
+  // Save sound setting
   useEffect(() => {
-    localStorage.setItem('globalScanner_activityId', selectedActivityId);
     localStorage.setItem('globalScanner_sound', soundEnabled.toString());
-    localStorage.setItem('globalScanner_active', isActive.toString());
-  }, [selectedActivityId, soundEnabled, isActive]);
+  }, [soundEnabled]);
 
   // Play sound
   const playSound = useCallback((type) => {
@@ -95,78 +74,121 @@ const GlobalScanner = ({ enabled = true, language = 'ar' }) => {
     }
   }, [soundEnabled]);
 
-  // Handle check-in
-  const handleCheckin = useCallback(async (memberCode) => {
-    if (!memberCode || !selectedActivityId) {
-      playSound('error');
-      setScanResult({
-        success: false,
-        message: t('⚠️ يرجى اختيار النشاط أولاً', '⚠️ Please select an activity first'),
-        memberCode
-      });
-      setShowResult(true);
-      return;
-    }
+  // Fetch member data and show dialog
+  const handleScan = useCallback(async (memberCode) => {
+    if (!memberCode) return;
     
     playSound('scan');
     setLoading(true);
-    setShowResult(true);
-    setScanResult(null);
+    setShowMemberDialog(true);
+    setMemberData(null);
+    setLastResult(null);
     
     try {
-      const res = await attendanceAPI.qrCheckin(memberCode, selectedActivityId);
+      const API_URL = process.env.REACT_APP_BACKEND_URL;
+      const response = await fetch(`${API_URL}/api/public/member-card/${memberCode}`);
       
-      const activityName = activities.find(a => a.id === selectedActivityId)?.name_ar || '';
-      
-      if (res.data.status === 'already_checked_in') {
-        playSound('error');
-        setScanResult({
-          success: false,
-          alreadyCheckedIn: true,
-          memberName: res.data.member?.name || res.data.member_name || memberCode,
-          memberCode: res.data.member?.member_code || memberCode,
-          activityName,
-          message: t('⚠️ مسجل مسبقاً اليوم', '⚠️ Already checked in today'),
-          time: new Date().toLocaleTimeString('ar-SA')
-        });
-      } else {
-        playSound('success');
-        setScanResult({
-          success: true,
-          memberName: res.data.member_name || memberCode,
-          memberCode: res.data.member_code || memberCode,
-          activityName,
-          message: t('✅ تم تسجيل الحضور بنجاح', '✅ Check-in successful'),
-          time: new Date().toLocaleTimeString('ar-SA')
-        });
+      if (!response.ok) {
+        throw new Error('Member not found');
       }
+      
+      const data = await response.json();
+      
+      // Separate active and expired activities
+      const allActivities = data.activities || [];
+      const activeActivities = allActivities.filter(a => a.status === 'active');
+      const expiredActivities = allActivities.filter(a => a.status === 'expired');
+      
+      setMemberData({
+        ...data,
+        activeActivities,
+        expiredActivities
+      });
+      
+      if (activeActivities.length === 0) {
+        playSound('error');
+      }
+      
     } catch (error) {
       playSound('error');
-      const errorMsg = error.response?.data?.detail || t('خطأ في التسجيل', 'Check-in error');
-      setScanResult({
-        success: false,
-        memberCode,
-        message: `❌ ${errorMsg}`,
-        time: new Date().toLocaleTimeString('ar-SA')
+      setMemberData({
+        error: true,
+        message: t('⚠️ رقم العضوية غير موجود', '⚠️ Member ID not found'),
+        memberCode
       });
     } finally {
       setLoading(false);
     }
-  }, [selectedActivityId, activities, playSound, t]);
+  }, [playSound, t]);
 
-  // Keyboard listener for scanner
+  // Handle check-in for specific activity
+  const handleCheckin = useCallback(async (activityId, activityName) => {
+    if (!memberData || !activityId) return;
+    
+    setCheckingIn(true);
+    
+    try {
+      const res = await attendanceAPI.qrCheckin(
+        memberData.member_code || memberData.id, 
+        activityId
+      );
+      
+      if (res.data.status === 'already_checked_in') {
+        playSound('error');
+        setLastResult({
+          success: false,
+          alreadyCheckedIn: true,
+          activityName,
+          message: t('⚠️ مسجل مسبقاً اليوم', '⚠️ Already checked in today')
+        });
+      } else {
+        playSound('success');
+        setLastResult({
+          success: true,
+          activityName,
+          message: t('✅ تم تسجيل الحضور بنجاح', '✅ Check-in successful')
+        });
+        
+        // Update activity status in member data
+        setMemberData(prev => ({
+          ...prev,
+          activeActivities: prev.activeActivities.map(a =>
+            a.activity_id === activityId ? { ...a, recorded_today: true } : a
+          )
+        }));
+      }
+    } catch (error) {
+      playSound('error');
+      const errorMsg = error.response?.data?.detail || t('خطأ في التسجيل', 'Check-in error');
+      setLastResult({
+        success: false,
+        activityName,
+        message: `❌ ${errorMsg}`
+      });
+    } finally {
+      setCheckingIn(false);
+    }
+  }, [memberData, playSound, t]);
+
+  // Keyboard listener - ALWAYS ACTIVE
   useEffect(() => {
-    if (!isActive || !enabled) return;
+    if (!enabled) return;
     
     const handleKeyDown = (e) => {
-      // Ignore if typing in input/textarea
-      if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.isContentEditable) {
+      // Ignore if typing in input/textarea/select
+      const tagName = e.target.tagName;
+      if (tagName === 'INPUT' || tagName === 'TEXTAREA' || tagName === 'SELECT' || e.target.isContentEditable) {
+        return;
+      }
+      
+      // Ignore if dialog is open and pressing Enter (to prevent re-scan)
+      if (showMemberDialog && e.key === 'Enter') {
         return;
       }
       
       const now = Date.now();
       
-      // Reset buffer if too much time passed (manual typing)
+      // Reset buffer if too much time passed (manual typing vs scanner)
       if (now - lastKeyTimeRef.current > 100 && bufferRef.current.length > 0) {
         bufferRef.current = '';
       }
@@ -180,7 +202,7 @@ const GlobalScanner = ({ enabled = true, language = 'ar' }) => {
       if (e.key === 'Enter') {
         const scannedCode = bufferRef.current.trim();
         if (scannedCode.length >= 3) {
-          handleCheckin(scannedCode);
+          handleScan(scannedCode);
         }
         bufferRef.current = '';
         e.preventDefault();
@@ -191,7 +213,7 @@ const GlobalScanner = ({ enabled = true, language = 'ar' }) => {
         timeoutRef.current = setTimeout(() => {
           const code = bufferRef.current.trim();
           if (code.length >= 3) {
-            handleCheckin(code);
+            handleScan(code);
           }
           bufferRef.current = '';
         }, 50);
@@ -204,194 +226,194 @@ const GlobalScanner = ({ enabled = true, language = 'ar' }) => {
       window.removeEventListener('keydown', handleKeyDown);
       if (timeoutRef.current) clearTimeout(timeoutRef.current);
     };
-  }, [isActive, enabled, handleCheckin]);
+  }, [enabled, handleScan, showMemberDialog]);
 
-  // Auto-close result after delay
-  useEffect(() => {
-    if (showResult && scanResult && !loading) {
-      const timer = setTimeout(() => {
-        setShowResult(false);
-        setScanResult(null);
-      }, 4000);
-      return () => clearTimeout(timer);
-    }
-  }, [showResult, scanResult, loading]);
+  // Close dialog handler
+  const handleCloseDialog = () => {
+    setShowMemberDialog(false);
+    setMemberData(null);
+    setLastResult(null);
+  };
 
   if (!enabled) return null;
 
   return (
     <>
-      {/* Scanner Status Indicator - Fixed Position */}
-      <div className="fixed bottom-20 left-4 z-50 flex flex-col gap-2">
-        {/* Settings Button */}
-        <Button
-          size="icon"
-          variant="outline"
-          onClick={() => setShowSettings(true)}
-          className="w-12 h-12 rounded-full shadow-lg bg-white hover:bg-gray-50"
-          title={t('إعدادات المسح', 'Scanner Settings')}
+      {/* Scanner Status Indicator - Small dot */}
+      <div className="fixed bottom-20 left-4 z-40">
+        <div 
+          className="w-4 h-4 rounded-full bg-green-500 animate-pulse shadow-lg cursor-pointer"
+          onClick={() => setSoundEnabled(!soundEnabled)}
+          title={soundEnabled ? t('الصوت مفعّل', 'Sound On') : t('الصوت مغلق', 'Sound Off')}
         >
-          <Settings className="w-5 h-5" />
-        </Button>
-        
-        {/* Scanner Status Button */}
-        <Button
-          size="icon"
-          onClick={() => isActive ? setIsActive(false) : setShowSettings(true)}
-          className={`w-12 h-12 rounded-full shadow-lg transition-all ${
-            isActive 
-              ? 'bg-green-500 hover:bg-green-600 animate-pulse' 
-              : 'bg-gray-400 hover:bg-gray-500'
-          }`}
-          title={isActive ? t('إيقاف المسح', 'Stop Scanner') : t('تفعيل المسح', 'Activate Scanner')}
-        >
-          <Scan className="w-6 h-6 text-white" />
-        </Button>
+          {!soundEnabled && (
+            <div className="absolute inset-0 flex items-center justify-center">
+              <div className="w-full h-0.5 bg-red-500 rotate-45"></div>
+            </div>
+          )}
+        </div>
       </div>
 
-      {/* Settings Dialog */}
-      <Dialog open={showSettings} onOpenChange={setShowSettings}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-xl">
-              <Scan className="w-6 h-6" />
-              {t('إعدادات المسح العام', 'Global Scanner Settings')}
-            </DialogTitle>
-          </DialogHeader>
-          
-          <div className="space-y-6 py-4">
-            {/* Activity Selection */}
-            <div>
-              <label className="block text-sm font-bold text-gray-700 mb-2">
-                {t('النشاط الافتراضي للتسجيل', 'Default Activity for Check-in')}
-              </label>
-              <Select value={selectedActivityId} onValueChange={setSelectedActivityId}>
-                <SelectTrigger>
-                  <SelectValue placeholder={t('اختر النشاط', 'Select Activity')} />
-                </SelectTrigger>
-                <SelectContent>
-                  {activities.map(activity => (
-                    <SelectItem key={activity.id} value={activity.id}>
-                      {activity.name_ar || activity.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            {/* Sound Toggle */}
-            <div className="flex items-center justify-between p-4 bg-gray-50 rounded-xl">
-              <div className="flex items-center gap-3">
-                {soundEnabled ? <Volume2 className="w-5 h-5 text-blue-600" /> : <VolumeX className="w-5 h-5 text-gray-400" />}
-                <span className="font-medium">{t('صوت التنبيه', 'Alert Sound')}</span>
-              </div>
-              <Button
-                variant={soundEnabled ? 'default' : 'outline'}
-                size="sm"
-                onClick={() => setSoundEnabled(!soundEnabled)}
-              >
-                {soundEnabled ? t('مفعّل', 'On') : t('مغلق', 'Off')}
-              </Button>
-            </div>
-
-            {/* Activation */}
-            {!isActive ? (
-              <Button
-                onClick={() => {
-                  if (selectedActivityId) {
-                    setIsActive(true);
-                    setShowSettings(false);
-                    toast.success(t('تم تفعيل المسح العام', 'Global Scanner Activated'));
-                  } else {
-                    toast.error(t('يرجى اختيار النشاط أولاً', 'Please select an activity first'));
-                  }
-                }}
-                disabled={!selectedActivityId}
-                className="w-full py-6 text-lg gap-3 bg-gradient-to-r from-green-500 to-blue-500 hover:from-green-600 hover:to-blue-600"
-              >
-                <Scan className="w-6 h-6" />
-                {t('تفعيل المسح العام', 'Activate Global Scanner')}
-              </Button>
-            ) : (
-              <Button
-                onClick={() => {
-                  setIsActive(false);
-                  setShowSettings(false);
-                  toast.info(t('تم إيقاف المسح العام', 'Global Scanner Deactivated'));
-                }}
-                variant="destructive"
-                className="w-full py-6 text-lg gap-3"
-              >
-                <X className="w-6 h-6" />
-                {t('إيقاف المسح العام', 'Deactivate Global Scanner')}
-              </Button>
-            )}
-
-            {/* Status */}
-            {isActive && (
-              <div className="flex items-center justify-center gap-2 p-3 bg-green-50 text-green-700 rounded-xl">
-                <span className="w-3 h-3 bg-green-500 rounded-full animate-pulse"></span>
-                <span className="font-medium">{t('المسح نشط - جاهز للاستخدام', 'Scanner Active - Ready')}</span>
-              </div>
-            )}
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* Result Dialog */}
-      <Dialog open={showResult} onOpenChange={setShowResult}>
-        <DialogContent className={`max-w-md border-4 ${scanResult?.success ? 'border-green-500' : 'border-red-500'}`}>
+      {/* Member Dialog */}
+      <Dialog open={showMemberDialog} onOpenChange={handleCloseDialog}>
+        <DialogContent className="max-w-lg">
           {loading ? (
             <div className="py-12 text-center">
               <Loader2 className="w-16 h-16 mx-auto animate-spin text-blue-500" />
-              <p className="mt-4 text-lg text-gray-600">{t('جاري التحقق...', 'Checking...')}</p>
+              <p className="mt-4 text-lg text-gray-600">{t('جاري البحث...', 'Searching...')}</p>
             </div>
-          ) : scanResult ? (
-            <div className="py-6">
-              {/* Status Icon */}
-              <div className={`w-24 h-24 mx-auto rounded-full flex items-center justify-center mb-6 ${
-                scanResult.success ? 'bg-green-500' : scanResult.alreadyCheckedIn ? 'bg-orange-500' : 'bg-red-500'
-              }`}>
-                {scanResult.success ? (
-                  <Check className="w-12 h-12 text-white" />
-                ) : (
-                  <X className="w-12 h-12 text-white" />
-                )}
+          ) : memberData?.error ? (
+            // Error State
+            <div className="py-8 text-center">
+              <div className="w-20 h-20 mx-auto rounded-full bg-red-100 flex items-center justify-center mb-4">
+                <X className="w-10 h-10 text-red-500" />
               </div>
-
-              {/* Member Info */}
-              <div className="text-center space-y-3">
-                {scanResult.memberName && (
-                  <h2 className="text-2xl font-bold text-gray-800">
-                    {scanResult.memberName}
-                  </h2>
-                )}
-                
-                {scanResult.memberCode && (
-                  <Badge variant="outline" className="text-lg px-4 py-1">
-                    <User className="w-4 h-4 ml-2" />
-                    #{scanResult.memberCode}
+              <p className="text-xl font-bold text-red-600">{memberData.message}</p>
+              {memberData.memberCode && (
+                <p className="text-gray-500 mt-2">#{memberData.memberCode}</p>
+              )}
+            </div>
+          ) : memberData ? (
+            // Member Found
+            <div className="space-y-6">
+              {/* Member Header */}
+              <div className="text-center border-b pb-4">
+                <div className="w-20 h-20 mx-auto rounded-full bg-gradient-to-br from-blue-500 to-purple-500 flex items-center justify-center mb-3">
+                  <User className="w-10 h-10 text-white" />
+                </div>
+                <h2 className="text-2xl font-bold text-gray-800">{memberData.name_ar || memberData.name}</h2>
+                <div className="flex items-center justify-center gap-4 mt-2 text-sm text-gray-500">
+                  <Badge variant="outline" className="gap-1">
+                    <User className="w-3 h-3" />
+                    #{memberData.member_code}
                   </Badge>
-                )}
-
-                {scanResult.activityName && (
-                  <div className="flex items-center justify-center gap-2 text-gray-600">
-                    <Activity className="w-4 h-4" />
-                    {scanResult.activityName}
-                  </div>
-                )}
-
-                <p className={`text-xl font-bold ${
-                  scanResult.success ? 'text-green-600' : scanResult.alreadyCheckedIn ? 'text-orange-600' : 'text-red-600'
-                }`}>
-                  {scanResult.message}
-                </p>
-
-                <div className="flex items-center justify-center gap-2 text-gray-500 text-sm">
-                  <Clock className="w-4 h-4" />
-                  {scanResult.time}
+                  {memberData.phone && (
+                    <span className="flex items-center gap-1" dir="ltr">
+                      <Phone className="w-3 h-3" />
+                      {memberData.phone}
+                    </span>
+                  )}
                 </div>
               </div>
+
+              {/* Sound Toggle */}
+              <div className="flex items-center justify-between px-4 py-2 bg-gray-50 rounded-lg">
+                <span className="text-sm text-gray-600 flex items-center gap-2">
+                  {soundEnabled ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
+                  {t('الصوت', 'Sound')}
+                </span>
+                <Button
+                  variant={soundEnabled ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => setSoundEnabled(!soundEnabled)}
+                >
+                  {soundEnabled ? t('مفعّل', 'On') : t('مغلق', 'Off')}
+                </Button>
+              </div>
+
+              {/* Last Result */}
+              {lastResult && (
+                <div className={`p-4 rounded-xl border-2 ${
+                  lastResult.success 
+                    ? 'bg-green-50 border-green-300' 
+                    : lastResult.alreadyCheckedIn 
+                      ? 'bg-orange-50 border-orange-300'
+                      : 'bg-red-50 border-red-300'
+                }`}>
+                  <div className="flex items-center gap-3">
+                    {lastResult.success ? (
+                      <Check className="w-8 h-8 text-green-500" />
+                    ) : (
+                      <X className="w-8 h-8 text-red-500" />
+                    )}
+                    <div>
+                      <p className={`font-bold ${
+                        lastResult.success ? 'text-green-700' : 'text-red-700'
+                      }`}>
+                        {lastResult.message}
+                      </p>
+                      <p className="text-sm text-gray-500">{lastResult.activityName}</p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Active Activities */}
+              {memberData.activeActivities?.length > 0 ? (
+                <div>
+                  <h3 className="font-bold text-gray-700 mb-3 flex items-center gap-2">
+                    <Activity className="w-5 h-5 text-green-600" />
+                    {t('الاشتراكات النشطة', 'Active Subscriptions')}
+                  </h3>
+                  <div className="space-y-2">
+                    {memberData.activeActivities.map((act, idx) => (
+                      <div 
+                        key={idx}
+                        className={`p-4 rounded-xl border-2 transition-all ${
+                          act.recorded_today 
+                            ? 'bg-green-50 border-green-300' 
+                            : 'bg-white border-gray-200 hover:border-blue-400 hover:shadow-md'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <p className="font-bold text-lg">{act.activity_name}</p>
+                            <p className="text-sm text-gray-500 flex items-center gap-1">
+                              <Calendar className="w-3 h-3" />
+                              {t('ينتهي:', 'Expires:')} {act.end_date || '-'}
+                            </p>
+                          </div>
+                          {act.recorded_today ? (
+                            <div className="flex items-center gap-2 text-green-600">
+                              <Check className="w-6 h-6" />
+                              <span className="font-bold">{t('مسجل ✓', 'Recorded ✓')}</span>
+                            </div>
+                          ) : (
+                            <Button
+                              onClick={() => handleCheckin(act.activity_id, act.activity_name)}
+                              disabled={checkingIn}
+                              className="bg-gradient-to-r from-green-500 to-blue-500 hover:from-green-600 hover:to-blue-600 gap-2"
+                            >
+                              {checkingIn ? (
+                                <Loader2 className="w-4 h-4 animate-spin" />
+                              ) : (
+                                <Check className="w-4 h-4" />
+                              )}
+                              {t('تسجيل', 'Check-in')}
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : (
+                <div className="text-center py-6 bg-orange-50 rounded-xl">
+                  <X className="w-12 h-12 mx-auto text-orange-500 mb-2" />
+                  <p className="font-bold text-orange-700">
+                    {t('⚠️ لا توجد اشتراكات نشطة', '⚠️ No active subscriptions')}
+                  </p>
+                </div>
+              )}
+
+              {/* Expired Activities */}
+              {memberData.expiredActivities?.length > 0 && (
+                <div>
+                  <h3 className="font-bold text-gray-500 mb-2 text-sm">
+                    {t('اشتراكات منتهية', 'Expired Subscriptions')}
+                  </h3>
+                  <div className="space-y-1">
+                    {memberData.expiredActivities.map((act, idx) => (
+                      <div key={idx} className="p-2 bg-red-50 rounded-lg text-sm flex justify-between items-center">
+                        <span className="text-red-700">{act.activity_name}</span>
+                        <Badge variant="destructive" className="text-xs">
+                          {t('منتهي', 'Expired')}
+                        </Badge>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           ) : null}
         </DialogContent>
