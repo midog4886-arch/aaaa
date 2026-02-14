@@ -551,6 +551,136 @@ export default function AttendancePage() {
     await fetchMemberActivities(memberCode);
   };
 
+  // ============ KIOSK MODE (USB Scanner) ============
+  
+  // Play sound for kiosk mode
+  const playSound = useCallback((type) => {
+    if (!kioskSoundEnabled) return;
+    
+    const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+    const oscillator = audioContext.createOscillator();
+    const gainNode = audioContext.createGain();
+    
+    oscillator.connect(gainNode);
+    gainNode.connect(audioContext.destination);
+    
+    if (type === 'success') {
+      oscillator.frequency.value = 800;
+      gainNode.gain.value = 0.3;
+      oscillator.start();
+      setTimeout(() => {
+        oscillator.frequency.value = 1000;
+      }, 100);
+      setTimeout(() => oscillator.stop(), 200);
+    } else if (type === 'error') {
+      oscillator.frequency.value = 300;
+      gainNode.gain.value = 0.3;
+      oscillator.start();
+      setTimeout(() => oscillator.stop(), 400);
+    } else if (type === 'scan') {
+      oscillator.frequency.value = 600;
+      gainNode.gain.value = 0.2;
+      oscillator.start();
+      setTimeout(() => oscillator.stop(), 100);
+    }
+  }, [kioskSoundEnabled]);
+
+  // Handle kiosk mode check-in
+  const handleKioskCheckin = useCallback(async (memberCode) => {
+    if (!memberCode || !kioskActivityId) return;
+    
+    playSound('scan');
+    
+    try {
+      const res = await attendanceAPI.qrCheckin(memberCode, kioskActivityId);
+      
+      if (res.data.status === 'already_checked_in') {
+        playSound('error');
+        setKioskLastScan({
+          success: false,
+          memberName: res.data.member?.name || memberCode,
+          message: t('⚠️ مسجل مسبقاً اليوم', '⚠️ Already checked in today'),
+          time: new Date().toLocaleTimeString('ar-SA')
+        });
+      } else {
+        playSound('success');
+        setKioskLastScan({
+          success: true,
+          memberName: res.data.member_name || memberCode,
+          message: t('✅ تم تسجيل الحضور', '✅ Check-in successful'),
+          time: new Date().toLocaleTimeString('ar-SA')
+        });
+      }
+    } catch (error) {
+      playSound('error');
+      const errorMsg = error.response?.data?.detail || t('خطأ', 'Error');
+      setKioskLastScan({
+        success: false,
+        memberName: memberCode,
+        message: `❌ ${errorMsg}`,
+        time: new Date().toLocaleTimeString('ar-SA')
+      });
+    }
+    
+    // Clear last scan after 5 seconds
+    setTimeout(() => setKioskLastScan(null), 5000);
+  }, [kioskActivityId, playSound, t]);
+
+  // Kiosk mode keyboard listener
+  useEffect(() => {
+    if (!kioskMode) return;
+    
+    const handleKeyDown = (e) => {
+      const now = Date.now();
+      
+      // If more than 100ms between keys, it's manual typing - reset buffer
+      if (now - kioskLastKeyTime > 100 && kioskBufferRef.current.length > 0) {
+        kioskBufferRef.current = '';
+      }
+      
+      setKioskLastKeyTime(now);
+      
+      // Clear any existing timeout
+      if (kioskTimeoutRef.current) {
+        clearTimeout(kioskTimeoutRef.current);
+      }
+      
+      if (e.key === 'Enter') {
+        // Process the scanned code
+        const scannedCode = kioskBufferRef.current.trim();
+        if (scannedCode.length >= 3) {
+          handleKioskCheckin(scannedCode);
+        }
+        kioskBufferRef.current = '';
+        setKioskBuffer('');
+        e.preventDefault();
+      } else if (e.key.length === 1 && !e.ctrlKey && !e.altKey && !e.metaKey) {
+        // Add character to buffer
+        kioskBufferRef.current += e.key;
+        setKioskBuffer(kioskBufferRef.current);
+        
+        // Auto-process after 50ms of no input (scanner sends Enter, but just in case)
+        kioskTimeoutRef.current = setTimeout(() => {
+          const code = kioskBufferRef.current.trim();
+          if (code.length >= 3) {
+            handleKioskCheckin(code);
+          }
+          kioskBufferRef.current = '';
+          setKioskBuffer('');
+        }, 50);
+      }
+    };
+    
+    window.addEventListener('keydown', handleKeyDown);
+    
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      if (kioskTimeoutRef.current) {
+        clearTimeout(kioskTimeoutRef.current);
+      }
+    };
+  }, [kioskMode, kioskLastKeyTime, handleKioskCheckin]);
+
   // Cleanup scanner on unmount or tab change
   useEffect(() => {
     return () => {
@@ -564,6 +694,10 @@ export default function AttendancePage() {
   useEffect(() => {
     if (activeTab !== 'qr') {
       stopQRScanner();
+    }
+    // Disable kiosk mode when leaving kiosk tab
+    if (activeTab !== 'kiosk') {
+      setKioskMode(false);
     }
   }, [activeTab]);
 
