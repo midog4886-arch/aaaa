@@ -203,12 +203,15 @@ const MemberLayout = ({ children }) => {
       notifications: { ar: 'الإشعارات', en: 'Notifications' },
       memberPortal: { ar: 'بوابة الأعضاء', en: 'Member Portal' },
       academy: { ar: 'أكاديمية أداء الأبطال', en: 'Champions Academy' },
-      ...Object.fromEntries(Object.entries({
-        install: { ar: 'تثبيت', en: 'Install' },
-        logout: { ar: 'خروج', en: 'Logout' },
-        lightMode: { ar: 'الوضع الفاتح', en: 'Light Mode' },
-        darkModeLabel: { ar: 'الوضع المظلم', en: 'Dark Mode' },
-      }).map(([k, v]) => [k, v]))
+      install: { ar: 'تثبيت', en: 'Install' },
+      installApp: { ar: 'تثبيت التطبيق', en: 'Install App' },
+      installDescription: { ar: 'يمكنك تثبيت التطبيق على جهازك للوصول السريع والعمل بدون إنترنت.', en: 'Install the app on your device for quick access and offline use.' },
+      understood: { ar: 'فهمت', en: 'Got it' },
+      computer: { ar: 'الكمبيوتر', en: 'Computer' },
+      afterInstall: { ar: 'بعد التثبيت، سيظهر التطبيق على شاشتك الرئيسية!', en: 'After installation, the app will appear on your home screen!' },
+      logout: { ar: 'خروج', en: 'Logout' },
+      lightMode: { ar: 'الوضع الفاتح', en: 'Light Mode' },
+      darkModeLabel: { ar: 'الوضع المظلم', en: 'Dark Mode' },
     };
     return texts[key]?.[language] || key;
   };
