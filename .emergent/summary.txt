@@ -6,48 +6,51 @@ We want to design a management program for a sports academy named Global Champio
 *   **Technical & Design:** Web-based application with a modern, sports-themed design and bilingual (Arabic/English) support.
 *   **Subsequent User Requests (Implemented & In-Progress):**
     *   A significant number of features including multi-activity enrollment, advanced invoicing, multi-branch support, user management, inventory, refunds, dashboards, accounting, renewals, notifications, expenses, and an advanced attendance system.
-    *   **Advertisement System:** A comprehensive system for managing and displaying advertisements (banners, videos, links) within the member portal.
-    *   **Ad Expiry Notifications:** An automated system that generates notifications for administrators when advertisements are about to expire or have expired.
-    *   **Daily Videos System:** A feature allowing admins to schedule daily YouTube videos for members.
-    *   **Daily Videos Enhancements:** System supports multiple videos per day, uses a professional  player, automatically sends notifications for new videos, and uses a utility to parse any YouTube URL format.
+    *   **Advertisement System:** A comprehensive system for managing and displaying advertisements.
+    *   **Ad Expiry Notifications:** An automated system for notifying admins about ad expiry.
+    *   **Daily Videos System:** A feature for scheduling daily YouTube videos for members, enhanced with multi-video support, a professional player, and automatic notifications.
     *   **PWA Conversion:** The web app has been converted into a Progressive Web App (PWA).
-    *   **Loyalty Program:** A comprehensive points-based loyalty system to reward members for activities like attendance, renewals, and referrals.
-    *   **UI/UX Overhaul (Facebook-style):** A major initiative to enhance the member portal's user experience with native-app-like features, including smooth animations, a bottom navigation bar, skeleton loaders, and modern design principles like Glassmorphism.
+    *   **Loyalty Program:** A comprehensive points-based loyalty system.
+    *   **UI/UX Overhaul (Facebook-style):** A major initiative to enhance the member portal's user experience. Phase 1 (Splash screen, Glassmorphism login, Bottom Nav, Skeleton loaders) is complete. Phase 2 (Pull-to-refresh, in-app notifications, infinite scroll) has also been implemented.
+    *   **Push Notifications:** A system to send web push notifications to members when new daily videos are added.
+    *   **Global QR Scanner:** A system-wide QR code scanner for attendance, allowing admins to check-in members from any page in the admin panel.
 
 **User's preferred language**: Arabic (العربية). The next agent MUST respond in Arabic only.
 
 **what currently exists?**
-The agent has successfully completed and tested a comprehensive Loyalty Program. This included implementing the backend logic for all point-awarding actions (renewals, video views, birthdays, referrals) and creating the frontend interfaces for both the admin panel (settings, rewards management, redemption approvals) and the member portal (viewing points, level, rewards). Several bugs related to this feature were fixed, including an  type mismatch and a rate-limiting issue causing an infinite loop.
+The agent completed Phase 2 of the UI/UX overhaul, implementing pull-to-refresh, infinite scroll, and toast notifications. Following this, a complete web push notification system was built to alert members about new daily videos.
 
-Following this, the agent addressed user feedback regarding the advertisement and notification systems. It fixed a display bug for link-based ads and implemented a system to send notifications to all members when a new daily video is uploaded, fixing several underlying bugs to ensure its functionality.
+Upon user request, the agent began the critical task of refactoring the massive  file. The first phase of this refactor is complete: several smaller, reusable components and hooks have been created in a new  directory.
 
-Finally, based on a detailed user prompt, the agent began a major UI/UX overhaul of the member portal to give it a Facebook-style native app feel. Phase 1 of this overhaul is complete, which includes a new animated splash screen, a Glassmorphism login page, a bottom navigation bar, and skeleton loading screens for a better perceived performance.
+The agent also implemented numerous user-driven features and fixes: sorting videos by newest first, adding a fee notice for lost membership cards, adjusting print margins, and providing detailed explanations of system workflows.
+
+The most recent and significant effort was creating an advanced, system-wide QR code attendance scanner. This Global Scanner allows an admin to scan a member's QR code from any page in the admin panel, which opens a pop-up to record attendance. The agent went through several iterations to improve its usability, including fixing visibility issues and addressing a bug where multiple pop-ups would appear on sequential scans.
 
 **Last working item**:
--   **Last item agent was working**: Fixing the icon on the new Splash Screen and Login Page. The user pointed out that a generic trophy icon was used instead of the academy's actual logo. The agent corrected the image path in  and .
+-   **Last item agent was working**: Fixing a bug where scanning multiple QR codes in quick succession would open multiple pop-up dialogs instead of replacing the existing one. The agent implemented a fix to prevent new scans while a dialog is already open and to ensure only one dialog is visible at a time.
 -   **Status**: USER VERIFICATION PENDING
--   **Agent Testing Done**: Y (Agent took a screenshot after the fix, but the new UI elements should be verified by the user).
--   **Which testing method agent to use?**: screenshot tool (to confirm the logo is correct on both the splash and login screens).
+-   **Agent Testing Done**: Y (Logical fix implemented)
+-   **Which testing method agent to use?**: Manual testing. The agent needs to simulate scanning two different member QR codes quickly to confirm that the first pop-up closes and is replaced by the second, rather than stacking.
 -   **User Testing Done**: N
 
 **All Pending/In progress Issue list**:
--   **Issue 1**: Complete the frontend refactoring of . (P1 - CRITICAL)
--   **Issue 2**: Refactor , , and . (P2 - HIGH)
--   **Issue 3**: The searchable member dropdown in  remains difficult for automated testing tools. (P3)
+-   **Issue 1**: Complete the frontend refactoring of . (P0 - CRITICAL)
+-   **Issue 2**: Refactor other large pages: , , and . (P1 - HIGH)
+-   **Issue 3**: The searchable member dropdown in  remains difficult for automated testing tools. (P2 - MEDIUM)
 
 **Issues Detail**:
 -   **Issue 1**:
-    -   **Attempted fixes**: None in this session. This remains the project's most significant technical debt.
-    -   **Next debug checklist**: Systematically move JSX and related logic from  into their respective component files.
-    -   **Why fix this issue and what will be achieved with the fix?**: Drastically reduces the complexity of  (over 5000 lines), making it easier and safer to maintain.
-    -   **Status**: NOT STARTED
+    -   **Attempted fixes**: The first phase of the fix is complete. The agent created new, reusable components and hooks under . However, the main  file has not yet been updated to use them.
+    -   **Next debug checklist**: Modify  to import and utilize the newly created components (, , , etc.) and hooks (). This will involve removing large blocks of code from the main file and replacing them with the new components.
+    -   **Why fix this issue and what will be achieved with the fix?**: Resolves critical technical debt in the project's largest file (over 5000 lines), making the invoicing system maintainable, scalable, and easier to debug.
+    -   **Status**: IN PROGRESS
     -   **Is recurring issue?** Y
     -   **Should Test frontend/backend/both after fix?**: Frontend
     -   **Blocked on other issue**: None.
 
 -   **Issue 2**:
     -   **Attempted fixes**: None.
-    -   **Next debug checklist**: Decompose , , and  into smaller, manageable components.
+    -   **Next debug checklist**: As per the previous fork, decompose , , and  into smaller, manageable components.
     -   **Why fix this issue and what will be achieved with the fix?**: Improves maintainability and performance of several large and complex pages.
     -   **Status**: NOT STARTED
     -   **Is recurring issue?** N
@@ -62,120 +65,123 @@ Finally, based on a detailed user prompt, the agent began a major UI/UX overhaul
     -   **Should Test frontend/backend/both after fix?**: Frontend
 
 **In progress Task List**:
--   **Task 1**: Complete UI/UX Overhaul (Facebook-style) (P0 - HIGHEST)
-    -   **Where to resume**: Phase 1 is complete. The next step is to implement Phase 2 based on the user's original detailed prompt. This includes:
-        1.  **Pull-to-Refresh & Gestures**: Implement pull-to-refresh functionality on pages with dynamic content (like Daily Videos and Dashboard) using .
-        2.  **In-app Animated Notifications**: Create a system for displaying toast or snackbar notifications that slide in from the top of the screen when a new event occurs (e.g., new video added), then disappear automatically. Use a library like .
-        3.  **Infinity Scroll**: Implement infinite scrolling on the  page to load more videos as the user scrolls down, instead of using pagination.
-    -   **What will be achieved with this?**: A more fluid, modern, and native-app-like user experience in the member portal.
+-   **Task 1**: Complete  Refactor (Phase 2) (P0 - HIGHEST)
+    -   **Where to resume**: The necessary components and hooks have been created in . The next step is to refactor the main file, , to use these new modules, replacing the existing monolithic code.
+    -   **What will be achieved with this?**: Completes a critical technical debt task, simplifying the largest file in the codebase.
     -   **Status**: IN PROGRESS
     -   **Should Test frontend/backend/both after fix?**: Frontend
     -   **Blocked on something**: None.
 
 **Upcoming and Future Tasks**
 -   **Upcoming Tasks**:
-    -   **WhatsApp Business API Integration (P1)**: Integrate WhatsApp for notifications.
-    -   **Online Payments (P1)**: Implement online payment for subscription renewals in the member portal.
+    -   WhatsApp Business API Integration (P1)
+    -   Online Payments for subscription renewals (P1)
 -   **Future Tasks**:
-    -   **Advanced Statistics Dashboard (P2)**: Create a dashboard with charts for attendance, revenue, etc.
-    -   **Booking/Leave System (P2)**: Allow members to book classes or freeze subscriptions.
-    -   Player progress tracking system.
-    -   Family accounts.
+    -   Advanced Statistics Dashboard (P2)
+    -   Booking/Leave System for members (P2)
+    -   Player progress tracking system
+    -   Family accounts
 
 **Completed work in this session**
--   **Loyalty Program Implementation (Complete)**:
-    -   **Backend**: Added logic to automatically award points for subscription renewals, video views, and birthdays. Created endpoints to initialize the program for all members and to apply referral codes.
-    -   **Frontend**: Built the complete admin  (settings, rewards CRUD, redemptions) and member  (points, level, history, redemption).
-    -   **Fixes**: Corrected multiple backend bugs ( vs. string , database connection issues) and a frontend infinite loop bug.
--   **Referral System Enhancement**: Added a field in the member loyalty page for new members to enter a referral code. Later temporarily hidden at the user's request.
--   **Notification System for Daily Videos**: Implemented logic to automatically send an in-app notification to all members when a new daily video is added. Fixed bugs preventing notifications from being created and displayed.
--   **Advertisement Display Fix**: Improved the display of link-based ads without images to show an icon and a clear call-to-action button, fixing the issue across all ad placement types (hero, sidebar, etc.).
--   **UI/UX Overhaul (Phase 1)**:
-    -   Installed  for animations.
-    -   Created a new animated Splash Screen ().
-    -   Redesigned the Member Login page () with a Glassmorphism UI and animations.
-    -   Implemented a new Bottom Navigation bar () for the member portal.
-    -   Added Skeleton Loading screens () to the member dashboard and daily videos pages.
-    -   Corrected the logo on the splash and login screens to use the academy's official logo.
--   **PRD.md Updated**: The project documentation was updated with the latest changes.
+-   **UI/UX Overhaul (Phase 2 Complete)**:
+    -   Implemented Pull-to-Refresh () and Infinite Scroll () in the member portal.
+    -   Integrated  for toast notifications in the main layout.
+-   **Push Notifications System (Complete)**:
+    -   Built backend endpoints () to manage subscriptions using .
+    -   Updated the daily video creation process to trigger push notifications.
+    -   Created a frontend component () and updated the service worker () to handle push events.
+-   **Global QR Scanner for Attendance (Complete)**:
+    -   Created a Kiosk Mode in the  that listens for scanner input.
+    -   Evolved this into a Global Scanner () that works on any page in the admin panel.
+    -   Fixed UI/UX issues, including the visibility of the status indicator and a bug that opened multiple pop-up windows.
+-   ** Refactor (Phase 1 Complete)**:
+    -   Created a new directory structure under .
+    -   Extracted logic into reusable components (, , , ) and hooks (, ).
+-   **Miscellaneous Fixes & Features**:
+    -   Daily videos are now sorted from newest to oldest.
+    -   Added a fee notice for lost membership cards to the member QR card page () and printed forms.
+    -   Adjusted the top print margin in  styles for member cards.
+-   **Documentation**:
+    -   Updated .
+    -   Provided the user with detailed workflow explanations and hardware recommendations.
 
 **Earlier issues found/mentioned but not fixed**
--   The critical technical debt of refactoring large frontend pages (, , etc.) has not been addressed. This was noted in previous forks and remains a high-priority issue for the project's long-term health.
+-   The critical technical debt of refactoring large frontend pages (, , etc.) is the main issue. While  has been started, it is not yet complete, and the others have not been touched.
 
 **Known issue recurrence from previous fork**
--   The need to refactor  is a recurring high-priority task that has been postponed again due to new feature requests.
+-   The need to refactor  is a recurring high-priority task. Progress was made in this session, but the task is not finished.
 
 **Code Architecture**
 
 
 **Key Technical Concepts**
--   **Full-Stack Feature Development**: Implemented the loyalty system end-to-end (DB schema, API, Admin UI, Member UI).
--   **Bug Investigation**: Diagnosed and fixed complex issues including  vs.  mismatch, frontend infinite loops (429 rate limit), and incorrect API URL prefixes ().
--   **Modern Frontend UX/UI**:
-    -   **Animation**: Used  for page/component transitions.
-    -   **Glassmorphism**: Implemented a blurred, transparent card effect for the login page.
-    -   **Skeleton Loading**: Provided visual placeholders while data is being fetched to improve perceived performance.
-    -   **Componentization**: Created new reusable components for the splash screen, bottom navigation, and skeleton loaders.
+-   **PWA - Push Notifications**: Implemented end-to-end using VAPID keys,  on the backend, and the Push API with a Service Worker on the frontend.
+-   **Advanced Event Handling**: Created a global keyboard event listener to detect input from a USB QR scanner anywhere in the application, distinguishing it from normal user typing.
+-   **Frontend Refactoring**: Employed a component-based strategy to break down a monolithic page () into smaller, manageable React components and hooks.
+-   **UI/UX Enhancements**: Used  to implement pull-to-refresh and custom logic for infinite scrolling to improve user experience in the member portal.
+-   **CSS for Print**: Modified  rules to adjust margins and add content specifically for printed documents.
 
 **key DB schema**
--   No changes to the DB schema in this session. The schemas defined in the previous fork (, , , ) were used and populated.
+-   ****: A new collection was implicitly created by  to store push subscription objects from users' browsers.
+    -   : 
+    -   :  (or )
+    -   :  (contains ,  like  and )
 
 **All files of reference**
--   **/app/frontend/src/pages/member-portal/MemberLogin.js**: Rewritten with a new animated, Glassmorphism design.
--   **/app/frontend/src/pages/member-portal/MemberLayout.js**: Heavily modified to remove the old header/sidebar navigation and implement the new  component.
--   **/app/frontend/src/components/BottomNavigation.jsx**: New file for the main member portal navigation.
--   **/app/frontend/src/components/SplashScreen.jsx**: New file for the initial app loading animation.
--   **/app/frontend/src/components/ui/skeleton-loader.jsx**: New file for the reusable loading component.
--   **/app/backend/routes/loyalty.py**: Heavily modified to add backend logic for all point-awarding triggers and member initialization.
--   **/app/frontend/src/pages/LoyaltyPage.js**: Modified to fix a critical bug with API endpoints having a double  prefix.
--   **/app/backend/routes/daily_videos.py**: Modified to create and send notifications to all members upon new video creation.
+-   **/app/frontend/src/components/GlobalScanner.jsx**: The core of the new system-wide QR attendance feature. Listens for scanner input globally.
+-   **/app/frontend/src/pages/invoices/**: This new directory contains all the created components and hooks for the  refactor. It's the starting point for completing the refactoring task.
+-   **/app/frontend/src/pages/InvoicesPage.js**: The file that needs to be refactored using the components from the directory above. A backup exists.
+-   **/app/backend/routes/push_notifications.py**: The new backend service for handling web push notifications.
+-   **/app/frontend/public/service-worker.js**: Modified to handle incoming push events and display notifications.
+-   **/app/frontend/src/pages/member-portal/MemberDailyVideos.js**: Major changes including infinite scroll, pull-to-refresh, and sorting.
+-   **/app/frontend/src/components/Layout.js**: The main admin panel layout, modified to include the  component.
 
 **Areas that need refactoring**:
--   **/app/frontend/src/pages/InvoicesPage.js**: **CRITICAL**. Highest priority technical debt.
+-   **/app/frontend/src/pages/InvoicesPage.js**: **CRITICAL**. Phase 1 (component creation) is done. Phase 2 (integration) must be completed.
 -   **/app/frontend/src/pages/MembersPage.js**: **HIGH PRIORITY**.
 -   **/app/frontend/src/pages/LevelsPage.js**: **HIGH PRIORITY**.
 -   **/app/frontend/src/pages/AccountingPage.js**: **MEDIUM PRIORITY**.
 
 **key api endpoints**
--   : Manually trigger awarding points for member birthdays.
--   : Create loyalty profiles for all existing members who don't have one.
--   : Apply a referral code for a new member.
--   : (Modified) Now also triggers notifications to all members.
+-   : Saves a user's browser push subscription object to the database.
+-   : Provides the VAPID public key to the frontend for subscribing.
+-   : Used by the Global Scanner to fetch member data from a scanned QR code.
 
 **Critical Info for New Agent**
 -   You **MUST** respond in **Arabic**.
--   The user has approved a multi-phase UI/UX overhaul to mimic a native app experience. **Phase 1 is complete**. Your immediate priority is to get user confirmation on the implemented changes (new login, bottom nav, etc.) and then proceed to **Phase 2** of the plan: implementing **Pull-to-Refresh**, **In-app Animated Notifications**, and **Infinity Scroll**.
--   Be prepared to propose a plan for tackling the **critical technical debt** (refactoring ) once the current UI/UX task is complete.
+-   The immediate priority is to verify the latest fix for the **Global QR Scanner**. The user reported that scanning multiple codes opened multiple pop-up windows. Test this behavior to ensure only one window is active at a time.
+-   The most important task is to continue the **refactoring of **. The previous agent already created all the necessary components in . Your job is to modify  to use these new components, effectively completing the refactor. The user explicitly asked to start this work.
 
 **documents and test reports created in this job**
 -   /app/memory/PRD.md (updated)
--   /app/test_reports/iteration_14.json
 
 **Last 10 User Messages and any pending HUMAN messages**
-10. User provided a detailed, multi-point prompt to overhaul the member portal's UI/UX to feel like a native app (Facebook-style).
-9.  User approved starting with Phase 1 of the UI/UX overhaul.
-8.  Agent completed Phase 1 (Splash screen, Glassmorphism login, Bottom Nav, Skeleton loaders).
-7.  User provided feedback: the icon on the splash screen is a trophy, but it should be the academy's logo.
-6.  Agent fixed the icon on the splash screen and login page.
-5.  User asks for an explanation of how the referral code works, specifically where a new member enters it.
-4.  Agent adds a section to the member loyalty page for new members to enter a referral code.
-3.  User asks for a visual explanation (with screenshots) of the referral process.
-2.  User asks for a visual explanation (with screenshots) of the reward redemption process.
-1.  User requests to temporarily disable/hide the referral code functionality.
+10. User requested to make the Global QR Scanner work automatically without any setup steps. (Completed)
+9.  User asks for recommendations on QR scanner hardware. (Completed)
+8.  User reports that the green status dot for the Global QR Scanner is not visible. (Completed)
+7.  User still cannot see the icon after the first fix. (Completed, icon made larger and more prominent)
+6.  User asks for a note about a 10 SAR fee for lost membership cards to be added. (Completed)
+5.  User provides an image showing where the fee note should be placed on the printed card. (Completed)
+4.  User asks to change the top print margin to 1cm. (Completed)
+3.  User reports they cannot see the QR scanner icon again. (Completed, moved to bottom-right)
+2.  User reports a bug: scanning multiple codes opens multiple pop-up windows. (Fix implemented, pending verification)
+1.  User provided the fee notice text again with an image, which was already implemented. The agent correctly identified the previous implementation and confirmed it was done.
 
 **Project Health Check:**
--   **Broken**: None. All identified bugs were fixed.
+-   **Broken**: None.
 -   **Mocked**: None.
--   **Technical Debt**: **CRITICAL**.  and other large pages have not been refactored, posing a significant risk to future development.
+-   **Technical Debt**: **CRITICAL**. The  refactor is in progress but not complete. Other large pages also need refactoring.
 
 **3rd Party Integrations**
 -   **plyr-react**: Used for the custom video player.
--   **framer-motion**: Newly installed for UI animations and transitions.
+-   **framer-motion**: Used for UI animations and transitions.
+-   **sonner**: Used for toast notifications.
+-   **pywebpush**: Newly installed for sending backend push notifications.
 
 **Testing status**
--   **Testing agent used after significant changes**: YES. The agent ran the testing agent after completing the loyalty program, and all tests passed.
+-   **Testing agent used after significant changes**: NO (Agent self-tested using screenshots and manual verification).
 -   **Troubleshoot agent used after agent stuck in loop**: NO
--   **Test files created**: No new test files were created.
+-   **Test files created**: No.
 -   **Known regressions**: None identified.
 
 **Credentials to test flow:**
@@ -186,7 +192,4 @@ Finally, based on a detailed user prompt, the agent began a major UI/UX overhaul
     -   Login using a registered member's phone number. Example: .
 
 **What agent forgot to execute**
--   The agent successfully completed Phase 1 of the user's UI/UX overhaul request. However, the subsequent phases from the same request are pending. The agent should have explicitly mentioned these as the next steps in the final plan. These include:
-    -   Pull-to-Refresh functionality.
-    -   In-app animated notifications (toasts/snackbars).
-    -   Infinity Scroll for the daily videos page.</analysis>
+-   The agent successfully created the reusable components for the  refactor but did not complete the task by integrating them into the main  file. The task was left halfway finished, and this should be the next immediate priority after verifying the last bug fix.</analysis>
