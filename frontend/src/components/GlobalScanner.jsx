@@ -76,89 +76,31 @@ const GlobalScanner = ({ enabled = true, language = 'ar' }) => {
     }
   }, [soundEnabled]);
 
-  // Extract member code from QR data (handles various formats)
+  // Extract member code from QR data
+  // Now QR codes contain just the member code number (e.g., "2620")
   const extractMemberCode = (scannedData) => {
     if (!scannedData) return null;
     
-    // Clean the data
     let data = scannedData.trim();
     
-    console.log('🔍 Raw scanned data:', data);
-    console.log('🔍 Data length:', data.length);
-    
-    // Method 1: Try to parse as proper JSON first
-    try {
-      const parsed = JSON.parse(data);
-      if (parsed.code) {
-        console.log('✅ Parsed JSON, found code:', parsed.code);
-        return parsed.code.toString();
-      }
-      if (parsed.member_code) return parsed.member_code.toString();
-    } catch (e) {
-      // Not valid JSON, continue
-    }
-    
-    // Method 2: Look for "code" followed by number in various formats
-    // The QR format is: {"type":"WCPA_MEMBER","id":"...","code":"2620","name":"..."}
-    const codePatterns = [
-      /"code"\s*:\s*"?(\d+)"?/i,           // "code":"2620" or "code":2620
-      /'code'\s*:\s*'?(\d+)'?/i,           // 'code':'2620'
-      /code[@:="']+(\d+)/i,                 // code@:@2620 or code=2620
-      /["']code["']\s*[,:]\s*["']?(\d+)/i, // Various quote combinations
-    ];
-    
-    for (const pattern of codePatterns) {
-      const match = data.match(pattern);
-      if (match) {
-        console.log('✅ Found code with pattern:', match[1]);
-        return match[1];
-      }
-    }
-    
-    // Method 3: Extract all 4-digit numbers and find the member code
-    // Member codes are typically 4 digits like 2620, 2605, etc.
-    const allFourDigits = [...data.matchAll(/(\d{4})/g)].map(m => m[1]);
-    console.log('🔍 All 4-digit numbers found:', allFourDigits);
-    
-    if (allFourDigits.length > 0) {
-      // Look for 4-digit number that's likely a member code (26XX pattern common)
-      const memberCodePattern = allFourDigits.find(num => {
-        const n = parseInt(num);
-        // Member codes seem to be in 2600+ range based on the screenshots
-        return n >= 2600 && n <= 2700;
-      });
-      
-      if (memberCodePattern) {
-        console.log('✅ Found likely member code:', memberCodePattern);
-        return memberCodePattern;
-      }
-      
-      // Otherwise return first 4-digit that's not a year
-      const nonYear = allFourDigits.find(num => {
-        const n = parseInt(num);
-        return n < 2020 || n > 2030;
-      });
-      
-      if (nonYear) {
-        console.log('✅ Using non-year 4-digit:', nonYear);
-        return nonYear;
-      }
-    }
-    
-    // Method 4: If it's just a number, use it directly
+    // If it's just a number, return it directly
     if (/^\d+$/.test(data)) {
-      console.log('✅ Data is pure number:', data);
       return data;
     }
     
-    // Method 5: Extract any number sequence (3-6 digits)
-    const anyNumber = data.match(/(\d{3,6})/);
-    if (anyNumber) {
-      console.log('✅ Found number sequence:', anyNumber[1]);
-      return anyNumber[1];
+    // Legacy support: Try to extract from old JSON format
+    try {
+      const parsed = JSON.parse(data);
+      if (parsed.code) return parsed.code.toString();
+      if (parsed.member_code) return parsed.member_code.toString();
+    } catch (e) {
+      // Not JSON
     }
     
-    console.log('❌ Could not extract code from:', data.substring(0, 100));
+    // Extract any number sequence
+    const numberMatch = data.match(/(\d{3,6})/);
+    if (numberMatch) return numberMatch[1];
+    
     return null;
   };
 
