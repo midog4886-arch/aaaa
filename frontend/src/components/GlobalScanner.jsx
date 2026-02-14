@@ -23,6 +23,7 @@ const GlobalScanner = ({ enabled = true, language = 'ar' }) => {
   const [loading, setLoading] = useState(false);
   const [checkingIn, setCheckingIn] = useState(false);
   const [lastResult, setLastResult] = useState(null);
+  const [isProcessing, setIsProcessing] = useState(false);
   
   // Scanner buffer
   const bufferRef = useRef('');
