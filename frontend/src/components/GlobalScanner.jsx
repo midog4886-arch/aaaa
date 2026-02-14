@@ -76,8 +76,61 @@ const GlobalScanner = ({ enabled = true, language = 'ar' }) => {
     }
   }, [soundEnabled]);
 
+  // Extract member code from QR data (handles various formats)
+  const extractMemberCode = (scannedData) => {
+    if (!scannedData) return null;
+    
+    // Clean the data
+    let data = scannedData.trim();
+    
+    // Try to parse as JSON first
+    try {
+      // Fix common QR format issues (replace @:@ with : and @,@ with ,)
+      let jsonStr = data
+        .replace(/@:@/g, '":"')
+        .replace(/@,@/g, '","')
+        .replace(/\{@ @/g, '')
+        .replace(/@\}#/g, '')
+        .replace(/^[^{]*/, '')
+        .replace(/[^}]*$/, '');
+      
+      if (jsonStr.startsWith('{')) {
+        const parsed = JSON.parse(jsonStr);
+        if (parsed.code) return parsed.code.toString();
+        if (parsed.member_code) return parsed.member_code.toString();
+      }
+    } catch (e) {
+      // Not JSON, continue with other methods
+    }
+    
+    // Try to extract code from pattern: code@:@XXXX or code":"XXXX
+    const codeMatch = data.match(/code[@":]+[@:]*(\d+)/i);
+    if (codeMatch) return codeMatch[1];
+    
+    // Try to extract member_code pattern
+    const memberCodeMatch = data.match(/member_code[@":]+[@:]*(\d+)/i);
+    if (memberCodeMatch) return memberCodeMatch[1];
+    
+    // If it's just a number, use it directly
+    if (/^\d+$/.test(data)) return data;
+    
+    // Extract any 4-digit number (member codes are usually 4 digits)
+    const fourDigitMatch = data.match(/\b(\d{4})\b/);
+    if (fourDigitMatch) return fourDigitMatch[1];
+    
+    // Return original if nothing else works
+    return data;
+  };
+
   // Fetch member data and show dialog
-  const handleScan = useCallback(async (memberCode) => {
+  const handleScan = useCallback(async (scannedData) => {
+    if (!scannedData) return;
+    
+    // Extract member code from scanned data
+    const memberCode = extractMemberCode(scannedData);
+    console.log('📱 Scanned data:', scannedData);
+    console.log('📱 Extracted member code:', memberCode);
+    
     if (!memberCode) return;
     
     // Use ref for immediate check (state updates are async)
