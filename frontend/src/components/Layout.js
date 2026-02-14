@@ -5,6 +5,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { Button } from './ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { branchesAPI, notificationsAPI } from '../services/api';
+import GlobalScanner from './GlobalScanner';
 import { 
   LayoutDashboard, 
   Users, 
