@@ -195,7 +195,8 @@ const MemberCard = () => {
   };
 
   const handleDownload = async () => {
-    const qrData = JSON.stringify(cardData?.qr_data || {});
+    // QR data is just the member code number
+    const qrData = cardData?.member_code?.toString() || '';
     
     // Create canvas
     const canvas = document.createElement('canvas');
