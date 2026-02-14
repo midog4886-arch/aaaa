@@ -77,7 +77,9 @@ const GlobalScanner = ({ enabled = true, language = 'ar' }) => {
 
   // Fetch member data and show dialog
   const handleScan = useCallback(async (memberCode) => {
-    if (!memberCode) return;
+    if (!memberCode || isProcessing) return;
+    
+    setIsProcessing(true);
     
     // Close any existing dialog first
     setShowMemberDialog(false);
@@ -85,7 +87,7 @@ const GlobalScanner = ({ enabled = true, language = 'ar' }) => {
     setLastResult(null);
     
     // Small delay to ensure dialog closes before reopening
-    await new Promise(resolve => setTimeout(resolve, 100));
+    await new Promise(resolve => setTimeout(resolve, 150));
     
     playSound('scan');
     setLoading(true);
