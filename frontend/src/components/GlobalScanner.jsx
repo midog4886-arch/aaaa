@@ -239,23 +239,36 @@ const GlobalScanner = ({ enabled = true, language = 'ar' }) => {
 
   return (
     <>
-      {/* Scanner Status Indicator - Visible indicator */}
-      <div className="fixed bottom-24 left-4 z-[9999]">
+      {/* Scanner Status Indicator - Prominent indicator */}
+      <div className="fixed bottom-6 left-6 z-[9999]">
         <div 
-          className="w-10 h-10 rounded-full bg-gradient-to-br from-green-400 to-green-600 animate-pulse shadow-xl cursor-pointer flex items-center justify-center border-2 border-white"
+          className="relative w-14 h-14 rounded-full bg-gradient-to-br from-green-400 to-emerald-600 shadow-2xl cursor-pointer flex items-center justify-center border-4 border-white hover:scale-110 transition-transform"
           onClick={() => setSoundEnabled(!soundEnabled)}
-          title={soundEnabled ? t('المسح نشط - الصوت مفعّل (اضغط لإيقاف الصوت)', 'Scanner Active - Sound On (Click to mute)') : t('المسح نشط - الصوت مغلق (اضغط لتفعيل الصوت)', 'Scanner Active - Sound Off (Click to unmute)')}
+          title={soundEnabled ? t('المسح نشط - الصوت مفعّل', 'Scanner Active - Sound On') : t('المسح نشط - الصوت مغلق', 'Scanner Active - Sound Off')}
+          style={{ boxShadow: '0 0 20px rgba(34, 197, 94, 0.5)' }}
         >
-          <Scan className="w-5 h-5 text-white" />
+          {/* Pulse animation ring */}
+          <div className="absolute inset-0 rounded-full bg-green-400 animate-ping opacity-30"></div>
+          
+          <Scan className="w-7 h-7 text-white relative z-10" />
+          
           {!soundEnabled && (
-            <div className="absolute inset-0 flex items-center justify-center">
-              <div className="w-full h-0.5 bg-red-500 rotate-45 rounded"></div>
+            <div className="absolute top-0 right-0 w-4 h-4 bg-red-500 rounded-full border-2 border-white flex items-center justify-center">
+              <VolumeX className="w-2.5 h-2.5 text-white" />
+            </div>
+          )}
+          
+          {soundEnabled && (
+            <div className="absolute top-0 right-0 w-4 h-4 bg-blue-500 rounded-full border-2 border-white flex items-center justify-center">
+              <Volume2 className="w-2.5 h-2.5 text-white" />
             </div>
           )}
         </div>
-        <span className="absolute -bottom-6 left-1/2 -translate-x-1/2 text-xs text-gray-500 whitespace-nowrap bg-white px-1 rounded shadow">
-          {t('مسح QR', 'QR Scan')}
-        </span>
+        
+        {/* Label */}
+        <div className="absolute -bottom-7 left-1/2 -translate-x-1/2 bg-gray-800 text-white text-xs px-3 py-1 rounded-full whitespace-nowrap shadow-lg">
+          {t('مسح QR نشط', 'QR Active')}
+        </div>
       </div>
 
       {/* Member Dialog */}
