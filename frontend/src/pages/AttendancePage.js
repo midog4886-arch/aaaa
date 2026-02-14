@@ -1419,6 +1419,143 @@ export default function AttendancePage() {
           </div>
         )}
 
+        {/* Kiosk Mode Tab - USB Scanner */}
+        {activeTab === 'kiosk' && (
+          <div className="max-w-2xl mx-auto">
+            <div className={`rounded-2xl border-4 transition-all ${kioskMode ? 'border-green-500 bg-gradient-to-br from-green-50 to-blue-50' : 'border-gray-200 bg-white'} p-8 shadow-lg`}>
+              {/* Header */}
+              <div className="text-center mb-8">
+                <div className={`w-20 h-20 mx-auto rounded-full flex items-center justify-center mb-4 ${kioskMode ? 'bg-green-500 animate-pulse' : 'bg-gray-200'}`}>
+                  <Scan className={`w-10 h-10 ${kioskMode ? 'text-white' : 'text-gray-500'}`} />
+                </div>
+                <h2 className="text-2xl font-bold text-gray-800">
+                  {t('وضع جهاز المسح', 'Scanner Device Mode')}
+                </h2>
+                <p className="text-gray-500 mt-2">
+                  {t('تسجيل الحضور باستخدام جهاز QR Scanner خارجي', 'Check-in using external QR Scanner device')}
+                </p>
+              </div>
+
+              {/* Activity Selection */}
+              <div className="mb-6">
+                <label className="block text-sm font-bold text-gray-700 mb-2">
+                  {t('اختر النشاط للتسجيل', 'Select Activity for Check-in')}
+                </label>
+                <select
+                  value={kioskActivityId}
+                  onChange={(e) => setKioskActivityId(e.target.value)}
+                  className="w-full border-2 rounded-xl p-4 text-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
+                  disabled={kioskMode}
+                >
+                  <option value="">{t('-- اختر النشاط --', '-- Select Activity --')}</option>
+                  {filteredActivities.map(activity => (
+                    <option key={activity.id} value={activity.id}>
+                      {activity.name_ar || activity.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Sound Toggle */}
+              <div className="flex items-center justify-between mb-6 p-4 bg-gray-50 rounded-xl">
+                <div className="flex items-center gap-3">
+                  {kioskSoundEnabled ? <Volume2 className="w-5 h-5 text-blue-600" /> : <VolumeX className="w-5 h-5 text-gray-400" />}
+                  <span className="font-medium">{t('الصوت', 'Sound')}</span>
+                </div>
+                <Button
+                  variant={kioskSoundEnabled ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => setKioskSoundEnabled(!kioskSoundEnabled)}
+                >
+                  {kioskSoundEnabled ? t('مفعّل', 'On') : t('مغلق', 'Off')}
+                </Button>
+              </div>
+
+              {/* Activate Button */}
+              {!kioskMode ? (
+                <Button
+                  onClick={() => setKioskMode(true)}
+                  disabled={!kioskActivityId}
+                  className="w-full py-6 text-xl gap-3 bg-gradient-to-r from-green-500 to-blue-500 hover:from-green-600 hover:to-blue-600"
+                >
+                  <Scan className="w-6 h-6" />
+                  {t('تفعيل وضع المسح', 'Activate Scanner Mode')}
+                </Button>
+              ) : (
+                <Button
+                  onClick={() => setKioskMode(false)}
+                  variant="destructive"
+                  className="w-full py-6 text-xl gap-3"
+                >
+                  <X className="w-6 h-6" />
+                  {t('إيقاف وضع المسح', 'Stop Scanner Mode')}
+                </Button>
+              )}
+
+              {/* Active Status */}
+              {kioskMode && (
+                <div className="mt-8 text-center">
+                  <div className="inline-flex items-center gap-2 px-6 py-3 bg-green-100 text-green-700 rounded-full font-bold animate-pulse">
+                    <span className="w-3 h-3 bg-green-500 rounded-full"></span>
+                    {t('جاهز للمسح - امسح QR Code العضو', 'Ready - Scan Member QR Code')}
+                  </div>
+                  
+                  {/* Buffer display */}
+                  {kioskBuffer && (
+                    <div className="mt-4 p-4 bg-blue-50 rounded-xl">
+                      <p className="text-sm text-gray-500 mb-1">{t('جاري القراءة...', 'Reading...')}</p>
+                      <p className="text-2xl font-mono font-bold text-blue-600">{kioskBuffer}</p>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Last Scan Result */}
+              {kioskLastScan && (
+                <div className={`mt-6 p-6 rounded-2xl border-2 ${kioskLastScan.success ? 'bg-green-50 border-green-300' : 'bg-red-50 border-red-300'}`}>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className={`text-2xl font-bold ${kioskLastScan.success ? 'text-green-700' : 'text-red-700'}`}>
+                        {kioskLastScan.memberName}
+                      </p>
+                      <p className={`text-lg ${kioskLastScan.success ? 'text-green-600' : 'text-red-600'}`}>
+                        {kioskLastScan.message}
+                      </p>
+                    </div>
+                    <div className={`w-16 h-16 rounded-full flex items-center justify-center ${kioskLastScan.success ? 'bg-green-500' : 'bg-red-500'}`}>
+                      {kioskLastScan.success ? <Check className="w-8 h-8 text-white" /> : <X className="w-8 h-8 text-white" />}
+                    </div>
+                  </div>
+                  <p className="text-sm text-gray-500 mt-2">{kioskLastScan.time}</p>
+                </div>
+              )}
+
+              {/* Instructions */}
+              <div className="mt-8 p-4 bg-gray-50 rounded-xl">
+                <h3 className="font-bold text-gray-700 mb-3">{t('تعليمات الاستخدام:', 'Instructions:')}</h3>
+                <ul className="space-y-2 text-sm text-gray-600">
+                  <li className="flex items-center gap-2">
+                    <span className="w-6 h-6 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center text-xs font-bold">1</span>
+                    {t('اختر النشاط المراد تسجيل الحضور له', 'Select the activity for check-in')}
+                  </li>
+                  <li className="flex items-center gap-2">
+                    <span className="w-6 h-6 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center text-xs font-bold">2</span>
+                    {t('اضغط "تفعيل وضع المسح"', 'Click "Activate Scanner Mode"')}
+                  </li>
+                  <li className="flex items-center gap-2">
+                    <span className="w-6 h-6 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center text-xs font-bold">3</span>
+                    {t('امسح QR Code العضو بجهاز المسح', 'Scan member QR Code with scanner device')}
+                  </li>
+                  <li className="flex items-center gap-2">
+                    <span className="w-6 h-6 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center text-xs font-bold">4</span>
+                    {t('سيتم تسجيل الحضور تلقائياً', 'Attendance will be recorded automatically')}
+                  </li>
+                </ul>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Reports Tab */}
         {activeTab === 'reports' && (
           <div className="space-y-4">
