@@ -206,8 +206,10 @@ const GlobalScanner = ({ enabled = true, language = 'ar' }) => {
         return;
       }
       
-      // Ignore if dialog is open and pressing Enter (to prevent re-scan)
-      if (showMemberDialog && e.key === 'Enter') {
+      // Block scanning if already processing (prevents multiple dialogs)
+      if (isProcessingRef.current) {
+        e.preventDefault();
+        bufferRef.current = '';
         return;
       }
       
@@ -236,9 +238,12 @@ const GlobalScanner = ({ enabled = true, language = 'ar' }) => {
         
         // Auto-process after brief pause
         timeoutRef.current = setTimeout(() => {
-          const code = bufferRef.current.trim();
-          if (code.length >= 3) {
-            handleScan(code);
+          // Double-check we're not processing before auto-scan
+          if (!isProcessingRef.current) {
+            const code = bufferRef.current.trim();
+            if (code.length >= 3) {
+              handleScan(code);
+            }
           }
           bufferRef.current = '';
         }, 50);
@@ -251,7 +256,7 @@ const GlobalScanner = ({ enabled = true, language = 'ar' }) => {
       window.removeEventListener('keydown', handleKeyDown);
       if (timeoutRef.current) clearTimeout(timeoutRef.current);
     };
-  }, [enabled, handleScan, showMemberDialog]);
+  }, [enabled, handleScan]);
 
   // Close dialog handler
   const handleCloseDialog = () => {
