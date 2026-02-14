@@ -187,13 +187,22 @@ const GlobalScanner = ({ enabled = true, language = 'ar' }) => {
       });
     } finally {
       setLoading(false);
-      // Unlock after a short delay to prevent rapid re-scans
-      setTimeout(() => {
-        isProcessingRef.current = false;
-        setIsProcessing(false);
-      }, 500);
+      // Keep lock active while dialog is open - unlock only when dialog closes
     }
   }, [playSound, t]);
+
+  // Close dialog handler - UNLOCK here
+  const handleCloseDialog = useCallback(() => {
+    setShowMemberDialog(false);
+    setMemberData(null);
+    setLastResult(null);
+    
+    // Unlock after dialog closes with delay to prevent immediate re-scan
+    setTimeout(() => {
+      isProcessingRef.current = false;
+      lastScannedCodeRef.current = '';
+    }, 300);
+  }, []);
 
   // Handle check-in for specific activity
   const handleCheckin = useCallback(async (activityId, activityName) => {
