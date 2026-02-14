@@ -51,6 +51,12 @@ const MemberLayout = ({ children }) => {
   const [notifications, setNotifications] = useState({ unread_count: 0 });
   const [darkMode, setDarkModeState] = useState(getDarkMode());
   const [language, setLanguageState] = useState(getLanguage());
+  
+  // PWA Install states
+  const [installPrompt, setInstallPrompt] = useState(null);
+  const [showInstallDialog, setShowInstallDialog] = useState(false);
+  const [isAppInstalled, setIsAppInstalled] = useState(false);
+  const installPromptRef = useRef(null);
 
   // Toggle language
   const toggleLanguage = () => {
