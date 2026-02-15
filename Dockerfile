@@ -1,28 +1,30 @@
-FROM python:3.11-slim
+FROM node:18-alpine AS frontend-builder
+WORKDIR /app/frontend
+COPY frontend/package*.json ./
+RUN npm install
+COPY frontend/ ./
+# تعيين REACT_APP_BACKEND_URL لسلسلة فارغة للنشر بنفس الأصل
+ENV REACT_APP_BACKEND_URL=""
+RUN npm run build
 
+FROM python:3.11-slim
 WORKDIR /app
 
-RUN apt-get update && apt-get install -y curl && \
-    curl -fsSL https://deb.nodesource.com/setup_18.x | bash - && \
-    apt-get install -y nodejs && \
-    rm -rf /var/lib/apt/lists/*
+# تثبيت التبعيات
+COPY backend/requirements.txt ./
+RUN pip install --no-cache-dir -r requirements.txt
 
-COPY . .
+# نسخ الخلفية
+COPY backend/ ./
 
-RUN pip install --no-cache-dir -r backend/requirements.txt
+# نسخ بناء الواجهة الأمامية
+COPY --from=frontend-builder /app/frontend/build ./static
 
-# Force rebuild - change this number to force new build
-ARG CACHE_BUST=2
+# إنشاء مجلد التحميلات
+RUN mkdir -p uploads
 
-RUN cd frontend && rm -rf node_modules package-lock.json && \
-    npm install --legacy-peer-deps --force && \
-    npm install ajv@8.12.0 ajv-keywords@5.1.0 --legacy-peer-deps --force && \
-    npm run build
-
-RUN mkdir -p backend/static && cp -r frontend/build/* backend/static/
-
-WORKDIR /app/backend
-
+# فتح المنفذ
 EXPOSE 8000
 
-CMD uvicorn server:app --host 0.0.0.0 --port ${PORT:-8000}
+# بدء الخادم
+CMD ["uvicorn", "server:app", "--host", "0.0.0.0", "--port", "8000"]
