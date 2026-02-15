@@ -1,7 +1,6 @@
 FROM node:16-alpine AS frontend-builder
 WORKDIR /app/frontend
 
-# Install yarn
 RUN npm install -g yarn
 
 COPY frontend/package.json ./
@@ -18,6 +17,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 COPY backend/requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir qrcode Pillow pywebpush
 
 COPY backend/ ./
 
