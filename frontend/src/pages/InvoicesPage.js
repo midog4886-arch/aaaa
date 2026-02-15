@@ -1774,8 +1774,8 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
 📌 *الحالة:* ${invoice.status === 'paid' ? '✅ مدفوعة' : '⏳ غير مدفوعة'}
 ━━━━━━━━━━━━━━
 ⚠️ *شروط وأحكام:*
-• ${INVOICE_TERMS.ar[0]}
-• ${INVOICE_TERMS.ar[1]}
+• ${INVOICE_TERMS?.ar?.[0] || 'الاشتراك محدد البداية والنهاية'}
+• ${INVOICE_TERMS?.ar?.[1] || 'المبلغ المدفوع لا يسترد بعد مرور أسبوع'}
 ━━━━━━━━━━━━━━
 🏛️ الرقم الضريبي: ${COMPANY_INFO.tax_number}
 📋 السجل التجاري: ${COMPANY_INFO.commercial_reg}`;
