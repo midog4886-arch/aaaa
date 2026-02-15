@@ -6328,25 +6328,22 @@ async def create_default_admin():
     try:
         users_count = await db.users.count_documents({})
         if users_count == 0:
-            # Create default admin user
-            hashed_password = bcrypt.hashpw("242456".encode('utf-8'), bcrypt.gensalt())
+            hashed_password = bcrypt.hashpw("123456".encode('utf-8'), bcrypt.gensalt())
             admin_user = {
                 "id": str(uuid.uuid4()),
-                "username": "242456",
+                "username": "admin",
                 "password": hashed_password.decode('utf-8'),
                 "name": "مدير النظام",
-                "name_en": "System Admin",
+                "name_en": "System Admin", 
                 "role": "admin",
                 "is_admin": True,
                 "branch_id": None,
                 "created_at": datetime.now(timezone.utc).isoformat()
             }
             await db.users.insert_one(admin_user)
-            logger.info("✅ Default admin user created: 242456")
-        else:
-            logger.info(f"ℹ️ Users exist ({users_count}), skipping admin creation")
+            print("✅ Admin created: admin / 123456")
     except Exception as e:
-        logger.error(f"❌ Error creating default admin: {str(e)}")
+        print(f"Error: {str(e)}")
 @app.on_event("shutdown")
 async def shutdown_db_client():
     client.close()
