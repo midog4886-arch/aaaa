@@ -105,7 +105,7 @@ const GlobalScanner = ({ enabled = true, language = 'ar' }) => {
     return null;
   };
 
-  // Fetch member data and show dialog
+  // Fetch member data and show dialog - AUTO CHECK-IN if subscription is active
   const handleScan = useCallback(async (scannedData) => {
     if (!scannedData) return;
     
@@ -168,13 +168,76 @@ const GlobalScanner = ({ enabled = true, language = 'ar' }) => {
       const activeActivities = allActivities.filter(a => a.status === 'active');
       const expiredActivities = allActivities.filter(a => a.status === 'expired');
       
-      setMemberData({
+      // Update member data first
+      const updatedMemberData = {
         ...data,
         activeActivities,
         expiredActivities
-      });
+      };
+      setMemberData(updatedMemberData);
+      setLoading(false);
       
-      if (activeActivities.length === 0) {
+      // AUTO CHECK-IN: If member has active subscriptions, auto check-in
+      if (activeActivities.length > 0) {
+        // Find first activity that is not already recorded today
+        const activityToCheckin = activeActivities.find(a => !a.recorded_today);
+        
+        if (activityToCheckin) {
+          // Auto check-in for the first unrecorded active activity
+          setCheckingIn(true);
+          try {
+            const checkinRes = await attendanceAPI.qrCheckin(
+              data.member_code || data.id, 
+              activityToCheckin.activity_id
+            );
+            
+            if (checkinRes.data.status === 'already_checked_in') {
+              playSound('error');
+              setLastResult({
+                success: false,
+                alreadyCheckedIn: true,
+                activityName: activityToCheckin.activity_name,
+                message: t('⚠️ مسجل مسبقاً اليوم', '⚠️ Already checked in today')
+              });
+            } else {
+              playSound('success');
+              setLastResult({
+                success: true,
+                activityName: activityToCheckin.activity_name,
+                message: t('✅ تم تسجيل الحضور تلقائياً', '✅ Auto check-in successful')
+              });
+              
+              // Update activity status in member data
+              setMemberData(prev => ({
+                ...prev,
+                activeActivities: prev.activeActivities.map(a =>
+                  a.activity_id === activityToCheckin.activity_id ? { ...a, recorded_today: true } : a
+                )
+              }));
+            }
+          } catch (error) {
+            playSound('error');
+            const errorMsg = error.response?.data?.detail || t('خطأ في التسجيل التلقائي', 'Auto check-in error');
+            setLastResult({
+              success: false,
+              activityName: activityToCheckin.activity_name,
+              message: `❌ ${errorMsg}`
+            });
+          } finally {
+            setCheckingIn(false);
+          }
+        } else {
+          // All activities already recorded today
+          playSound('success');
+          setLastResult({
+            success: true,
+            alreadyCheckedIn: true,
+            activityName: activeActivities[0]?.activity_name,
+            message: t('✅ جميع الأنشطة مسجلة اليوم', '✅ All activities recorded today')
+          });
+        }
+      } else {
+        // No active subscriptions
         playSound('error');
       }
       
@@ -185,9 +248,7 @@ const GlobalScanner = ({ enabled = true, language = 'ar' }) => {
         message: t('⚠️ رقم العضوية غير موجود', '⚠️ Member ID not found'),
         memberCode
       });
-    } finally {
       setLoading(false);
-      // Keep lock active while dialog is open - unlock only when dialog closes
     }
   }, [playSound, t]);
 
