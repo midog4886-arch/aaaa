@@ -291,7 +291,7 @@ export const activityNotesAPI = {
   delete: (noteId) => axios.delete(`${API}/activity-notes/${noteId}`)
 };
 
-// Bank Reports API - Monthly bank account reports
+// Bank Reports API
 export const bankReportsAPI = {
   getAll: (params = {}) => axios.get(`${API}/bank-reports`, { params }),
   getByMonth: (month, year, branchId) => axios.get(`${API}/bank-reports/${month}/${year}`, { params: { branch_id: branchId } }),
@@ -299,7 +299,7 @@ export const bankReportsAPI = {
   delete: (id) => axios.delete(`${API}/bank-reports/${id}`)
 };
 
-// Advertisements API - نظام الإعلانات
+// Advertisements API
 export const advertisementsAPI = {
   getAll: (params = {}) => axios.get(`${API}/advertisements`, { params }),
   getPublic: (params = {}) => axios.get(`${API}/advertisements/public`, { params }),
@@ -316,7 +316,7 @@ export const advertisementsAPI = {
   getStats: (params = {}) => axios.get(`${API}/advertisements/stats/summary`, { params })
 };
 
-// Daily Videos API - الفيديوهات اليومية
+// Daily Videos API
 export const dailyVideosAPI = {
   getAll: (params = {}) => axios.get(`${API}/daily-videos`, { params }),
   getById: (id) => axios.get(`${API}/daily-videos/${id}`),
