@@ -3320,7 +3320,7 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
                     📋 {language === 'ar' ? `أنشطة ${selectedMember.name_ar || selectedMember.name} الحالية` : `${selectedMember.name_ar || selectedMember.name}'s Current Activities`}
                   </h4>
                   <div className="space-y-2">
-                    {selectedMember.activities.map((act, idx) => {
+                    {(selectedMember.activities || []).map((act, idx) => {
                       const isAlreadyAdded = invoiceItems.some(item => 
                         item.activity_id === act.activity_id && 
                         item.start_date === act.start_date && 
