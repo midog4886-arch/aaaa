@@ -6228,6 +6228,33 @@ if STATIC_DIR.exists():
         # Return index.html for all other routes (React Router)
         return FileResponse(STATIC_DIR / "index.html")
 
+# ============ AUTO CREATE ADMIN USER ON STARTUP ============
+@app.on_event("startup")
+async def create_default_admin():
+    """Create default admin user if no users exist"""
+    try:
+        users_count = await db.users.count_documents({})
+        if users_count == 0:
+            # Create default admin user
+            hashed_password = bcrypt.hashpw("242456".encode('utf-8'), bcrypt.gensalt())
+            admin_user = {
+                "id": str(uuid.uuid4()),
+                "username": "242456",
+                "password": hashed_password.decode('utf-8'),
+                "name": "مدير النظام",
+                "name_en": "System Admin",
+                "role": "admin",
+                "is_admin": True,
+                "branch_id": None,
+                "created_at": datetime.now(timezone.utc).isoformat()
+            }
+            await db.users.insert_one(admin_user)
+            logger.info("✅ Default admin user created: 242456")
+        else:
+            logger.info(f"ℹ️ Users exist ({users_count}), skipping admin creation")
+    except Exception as e:
+        logger.error(f"❌ Error creating default admin: {str(e)}")
+
 @app.on_event("shutdown")
 async def shutdown_db_client():
     client.close()
