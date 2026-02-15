@@ -3,7 +3,10 @@ WORKDIR /app/frontend
 
 COPY frontend/package.json ./
 RUN npm install --legacy-peer-deps --force
+RUN npm install ajv@8.12.0 ajv-keywords@5.1.0 --legacy-peer-deps --force
 COPY frontend/ ./
+ENV SKIP_PREFLIGHT_CHECK=true
+ENV DISABLE_ESLINT_PLUGIN=true
 RUN npm run build
 
 FROM python:3.11-slim
@@ -15,7 +18,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 COPY backend/requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
-RUN pip install --no-cache-dir qrcode Pillow pywebpush
 
 COPY backend/ ./
 
