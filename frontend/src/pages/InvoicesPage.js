@@ -656,7 +656,7 @@ export const InvoicesPage = () => {
     setIsEditMode(true);
     setEditingInvoiceId(invoice.id);
     setSelectedMember(members.find(m => m.id === invoice.member_id) || null);
-    setInvoiceItems(invoice.items.map(item => ({
+    setInvoiceItems((invoice.items || []).map(item => ({
       activity_id: item.activity_id,
       activity_name: item.activity_name,
       fee: item.fee,
