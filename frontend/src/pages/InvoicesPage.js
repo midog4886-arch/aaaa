@@ -27,9 +27,7 @@ import { printMemberCard } from './invoices/printUtils';
 // Import refactored components
 import { 
   AddMemberDialog, 
-  RefundDialog, 
-  MemberQRDialog, 
-  CreditNoteViewDialog 
+  RefundDialog
 } from './invoices/components';
 
 export const InvoicesPage = () => {
