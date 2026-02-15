@@ -1,6 +1,3 @@
-🔧 الحل: أنشئ Dockerfile جديد صحيح
-اذهب إلى GitHub → Dockerfile
-احذف كل المحتوى واستبدله بهذا:
 FROM python:3.11-slim
 
 WORKDIR /app
