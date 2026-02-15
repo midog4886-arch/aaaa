@@ -3998,7 +3998,7 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
                 <div className="mt-4 p-3 bg-amber-50 border border-amber-200 rounded-lg">
                   <p className="text-xs font-bold text-amber-800 mb-2">{language === 'ar' ? '⚠️ شروط وأحكام:' : '⚠️ Terms & Conditions:'}</p>
                   <ul className="text-xs text-amber-700 space-y-1 list-disc list-inside">
-                    {(language === 'ar' ? INVOICE_TERMS.ar : INVOICE_TERMS.en).map((term, idx) => (
+                    {(language === 'ar' ? (INVOICE_TERMS?.ar || []) : (INVOICE_TERMS?.en || [])).map((term, idx) => (
                       <li key={idx}>{term}</li>
                     ))}
                   </ul>
