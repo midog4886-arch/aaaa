@@ -4,7 +4,7 @@ nixPkgs = ["python311", "nodejs-18_x"]
 [phases.install]
 cmds = [
   "cd backend && pip install -r requirements.txt",
-  "cd frontend && npm install"
+  "cd frontend && npm install --legacy-peer-deps --force"
 ]
 
 [phases.build]
