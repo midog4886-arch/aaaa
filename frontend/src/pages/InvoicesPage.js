@@ -1009,6 +1009,7 @@ ${selectedInvoice.discount > 0 ? `🎁 الخصم: ${selectedInvoice.discount} �
   };
 
   const handleViewInvoice = async (invoice) => {
+    console.log('[DEBUG] handleViewInvoice called with:', invoice?.id);
     setSelectedInvoice(invoice);
     setIsViewDialogOpen(true);
     loadQRCode(invoice.id, invoice.status);
