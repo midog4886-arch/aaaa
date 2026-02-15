@@ -11,7 +11,11 @@ COPY . .
 
 RUN pip install --no-cache-dir -r backend/requirements.txt
 
-RUN cd frontend && npm install --legacy-peer-deps --force && \
+# Force rebuild - change this number to force new build
+ARG CACHE_BUST=2
+
+RUN cd frontend && rm -rf node_modules package-lock.json && \
+    npm install --legacy-peer-deps --force && \
     npm install ajv@8.12.0 ajv-keywords@5.1.0 --legacy-peer-deps --force && \
     npm run build
 
