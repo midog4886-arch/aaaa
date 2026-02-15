@@ -2079,8 +2079,8 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
         <div class="terms-section">
           <h4>الشروط والأحكام:</h4>
           <ul>
-            <li>${INVOICE_TERMS.ar[0]}</li>
-            <li>${INVOICE_TERMS.ar[1]}</li>
+            <li>${INVOICE_TERMS?.ar?.[0] || 'الاشتراك محدد البداية والنهاية'}</li>
+            <li>${INVOICE_TERMS?.ar?.[1] || 'المبلغ المدفوع لا يسترد بعد مرور أسبوع'}</li>
           </ul>
         </div>
         
