@@ -1,7 +1,3 @@
-3️⃣ ابحث عن هذا السطر واحذفه:
-emergentintegrations==0.1.0
-4️⃣ اضغط Commit changes
-5️⃣ عدّل Dockerfile أيضاً:
 FROM node:18-alpine AS frontend-builder
 WORKDIR /app/frontend
 COPY frontend/package*.json ./
