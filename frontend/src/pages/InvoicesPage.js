@@ -2873,6 +2873,18 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
 
   const { subtotal, totalDiscount, vatAmount, total } = calculateTotals();
 
+  // Debug: Check for any undefined arrays
+  console.log('[InvoicesPage Debug]', {
+    invoices: Array.isArray(invoices),
+    members: Array.isArray(members),
+    activities: Array.isArray(activities),
+    products: Array.isArray(products),
+    levels: Array.isArray(levels),
+    registrationForms: Array.isArray(registrationForms),
+    creditNotes: Array.isArray(creditNotes),
+    filteredInvoices: Array.isArray(filteredInvoices)
+  });
+
   if (loading) return <Layout title={t('invoices')}><div className="flex items-center justify-center h-64"><div className="spinner" /></div></Layout>;
 
   return (
