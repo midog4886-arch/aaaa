@@ -1,7 +1,9 @@
 import axios from 'axios';
 
 // Use relative URL if REACT_APP_BACKEND_URL is not defined (for same-origin deployments)
-const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || '';
+/ Use relative URL for same-origin deployment
+const BACKEND_URL = '';
+const API = `${BACKEND_URL}/api`;
 const API = `${BACKEND_URL}/api`;
 
 // Set up axios interceptor to add token
