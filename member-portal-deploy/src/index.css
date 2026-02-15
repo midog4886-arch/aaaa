@@ -1,0 +1,252 @@
+@import url('https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;800&family=Barlow+Condensed:wght@500;700;900&family=Inter:wght@400;500;600&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: 'Tajawal', sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+
+[dir="rtl"] body,
+[dir="rtl"] * {
+    font-family: 'Tajawal', sans-serif;
+}
+
+.font-heading {
+    font-family: 'Barlow Condensed', sans-serif;
+}
+
+[dir="rtl"] .font-heading {
+    font-family: 'Tajawal', sans-serif;
+}
+
+code {
+    font-family: source-code-pro, Menlo, Monaco, Consolas, "Courier New", monospace;
+}
+
+@layer base {
+    :root {
+        --background: 210 40% 98%;
+        --foreground: 222 47% 11%;
+        --card: 0 0% 100%;
+        --card-foreground: 222 47% 11%;
+        --popover: 0 0% 100%;
+        --popover-foreground: 222 47% 11%;
+        --primary: 24 95% 53%;
+        --primary-foreground: 0 0% 100%;
+        --secondary: 222 47% 17%;
+        --secondary-foreground: 0 0% 100%;
+        --muted: 210 40% 96%;
+        --muted-foreground: 215 16% 47%;
+        --accent: 210 40% 96%;
+        --accent-foreground: 222 47% 11%;
+        --destructive: 0 84% 60%;
+        --destructive-foreground: 0 0% 100%;
+        --border: 214 32% 91%;
+        --input: 214 32% 91%;
+        --ring: 24 95% 53%;
+        --radius: 0.5rem;
+        
+        /* Activity Colors */
+        --swimming: 199 89% 48%;
+        --football: 142 71% 45%;
+        --karate: 0 84% 60%;
+        --gymnastics: 258 90% 66%;
+        
+        /* Status Colors */
+        --status-active: 142 71% 45%;
+        --status-expired: 0 84% 60%;
+        --status-pending: 38 92% 50%;
+        --status-frozen: 199 89% 48%;
+        
+        /* Chart colors */
+        --chart-1: 24 95% 53%;
+        --chart-2: 142 71% 45%;
+        --chart-3: 199 89% 48%;
+        --chart-4: 258 90% 66%;
+        --chart-5: 0 84% 60%;
+    }
+    
+    :root.dark, .dark {
+        --background: 222 47% 6%;
+        --foreground: 210 40% 98%;
+        --card: 222 47% 11%;
+        --card-foreground: 210 40% 98%;
+        --popover: 222 47% 11%;
+        --popover-foreground: 210 40% 98%;
+        --primary: 24 95% 53%;
+        --primary-foreground: 0 0% 100%;
+        --secondary: 215 28% 17%;
+        --secondary-foreground: 210 40% 98%;
+        --muted: 215 28% 17%;
+        --muted-foreground: 215 20% 65%;
+        --accent: 215 28% 17%;
+        --accent-foreground: 210 40% 98%;
+        --destructive: 0 62% 30%;
+        --destructive-foreground: 210 40% 98%;
+        --border: 215 28% 17%;
+        --input: 215 28% 17%;
+        --ring: 24 95% 53%;
+    }
+    
+    * {
+        @apply border-border;
+    }
+    body {
+        @apply bg-background text-foreground;
+    }
+}
+
+/* RTL Support */
+[dir="rtl"] {
+    text-align: right;
+}
+
+[dir="ltr"] {
+    text-align: left;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background: hsl(var(--muted));
+    border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb {
+    background: hsl(var(--muted-foreground) / 0.3);
+    border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: hsl(var(--muted-foreground) / 0.5);
+}
+
+/* Glassmorphism utilities */
+.glass {
+    background: rgba(255, 255, 255, 0.8);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.dark .glass {
+    background: rgba(15, 23, 42, 0.8);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+/* Activity badges */
+.activity-swimming {
+    background-color: hsl(var(--swimming) / 0.15);
+    color: hsl(var(--swimming));
+    border-color: hsl(var(--swimming) / 0.3);
+}
+
+.activity-football {
+    background-color: hsl(var(--football) / 0.15);
+    color: hsl(var(--football));
+    border-color: hsl(var(--football) / 0.3);
+}
+
+.activity-karate {
+    background-color: hsl(var(--karate) / 0.15);
+    color: hsl(var(--karate));
+    border-color: hsl(var(--karate) / 0.3);
+}
+
+.activity-gymnastics {
+    background-color: hsl(var(--gymnastics) / 0.15);
+    color: hsl(var(--gymnastics));
+    border-color: hsl(var(--gymnastics) / 0.3);
+}
+
+/* Status badges */
+.status-active {
+    background-color: hsl(var(--status-active) / 0.15);
+    color: hsl(var(--status-active));
+}
+
+.status-expired {
+    background-color: hsl(var(--status-expired) / 0.15);
+    color: hsl(var(--status-expired));
+}
+
+.status-pending {
+    background-color: hsl(var(--status-pending) / 0.15);
+    color: hsl(var(--status-pending));
+}
+
+.status-frozen {
+    background-color: hsl(var(--status-frozen) / 0.15);
+    color: hsl(var(--status-frozen));
+}
+
+/* Print styles */
+@media print {
+    .no-print {
+        display: none !important;
+    }
+    
+    body {
+        background: white !important;
+        color: black !important;
+    }
+    
+    .print-invoice {
+        padding: 20px;
+        max-width: 100%;
+    }
+}
+
+/* Animation utilities */
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.animate-fade-in {
+    animation: fadeIn 0.3s ease-out forwards;
+}
+
+@keyframes slideIn {
+    from { opacity: 0; transform: translateX(20px); }
+    to { opacity: 1; transform: translateX(0); }
+}
+
+[dir="rtl"] @keyframes slideIn {
+    from { opacity: 0; transform: translateX(-20px); }
+    to { opacity: 1; transform: translateX(0); }
+}
+
+.animate-slide-in {
+    animation: slideIn 0.3s ease-out forwards;
+}
+
+/* Hover scale effect */
+.hover-scale {
+    transition: transform 0.2s ease;
+}
+
+.hover-scale:hover {
+    transform: scale(1.02);
+}
+
+/* Debug wrapper fix */
+@layer base {
+    [data-debug-wrapper="true"] {
+        display: contents !important;
+    }
+}
