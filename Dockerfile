@@ -3,6 +3,8 @@ WORKDIR /app/frontend
 COPY frontend/package*.json ./
 RUN npm install
 COPY frontend/ ./
+# Set REACT_APP_BACKEND_URL to empty string for same-origin deployment
+ENV REACT_APP_BACKEND_URL=""
 RUN npm run build
 
 FROM python:3.11-slim
