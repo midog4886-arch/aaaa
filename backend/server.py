@@ -1291,15 +1291,6 @@ async def get_payment_status(session_id: str, current_user: dict = Depends(get_c
 @api_router.post("/webhook/stripe")
 async def stripe_webhook(request: Request):
     raise HTTPException(status_code=503, detail="Online payments are disabled in this deployment")
-                await db.payment_transactions.update_one(
-                    {"session_id": webhook_response.session_id},
-                    {"$set": {"status": "complete", "payment_status": "paid"}}
-                )
-        
-        return {"received": True}
-    except Exception as e:
-        logger.error(f"Webhook error: {str(e)}")
-        return {"received": True}
 
 # ============ REPORTS ROUTES ============
 
