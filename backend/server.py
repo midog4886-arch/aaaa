@@ -6321,10 +6321,6 @@ if STATIC_DIR.exists():
             return FileResponse(file_path)
         # Return index.html for all other routes (React Router)
         return FileResponse(STATIC_DIR / "index.html")
-
-@app.on_event("shutdown")
-async def shutdown_db_client():
-    client.close()
 # ============ AUTO CREATE ADMIN USER ON STARTUP ============
 @app.on_event("startup")
 async def create_default_admin():
@@ -6351,3 +6347,6 @@ async def create_default_admin():
             logger.info(f"ℹ️ Users exist ({users_count}), skipping admin creation")
     except Exception as e:
         logger.error(f"❌ Error creating default admin: {str(e)}")
+@app.on_event("shutdown")
+async def shutdown_db_client():
+    client.close()
