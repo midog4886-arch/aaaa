@@ -65,12 +65,20 @@ export const DAYS_OF_WEEK = [
 ];
 
 // Invoice terms
-export const INVOICE_TERMS = [
-  "الاشتراك محدد البداية والنهاية ولا يتم تعويض حصص غياب المشترك",
-  "المبلغ المدفوع لا يسترد بعد مرور أسبوع من الاشتراك",
-  "يجب إحضار بطاقة العضوية عند كل زيارة",
-  "الالتزام بمواعيد الحصص المحددة"
-];
+export const INVOICE_TERMS = {
+  ar: [
+    "الاشتراك محدد البداية والنهاية ولا يتم تعويض حصص غياب المشترك",
+    "المبلغ المدفوع لا يسترد بعد مرور أسبوع من الاشتراك",
+    "يجب إحضار بطاقة العضوية عند كل زيارة",
+    "الالتزام بمواعيد الحصص المحددة"
+  ],
+  en: [
+    "Subscription has fixed start and end dates, missed sessions are not compensated",
+    "Amount paid is non-refundable after one week from subscription",
+    "Membership card must be presented at each visit",
+    "Adherence to scheduled session times is required"
+  ]
+};
 
 /**
  * Get status information (color, label)
