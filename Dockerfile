@@ -11,7 +11,9 @@ COPY . .
 
 RUN pip install --no-cache-dir -r backend/requirements.txt
 
-RUN cd frontend && npm install --legacy-peer-deps --force && npm run build
+RUN cd frontend && npm install --legacy-peer-deps --force && \
+    npm install ajv@8.12.0 ajv-keywords@5.1.0 --legacy-peer-deps --force && \
+    npm run build
 
 RUN mkdir -p backend/static && cp -r frontend/build/* backend/static/
 
