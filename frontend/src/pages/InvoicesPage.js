@@ -24,6 +24,14 @@ import { COMPANY_INFO, INVOICE_TERMS, getStatusInfo, getPaymentMethodLabel, form
 import StickerPrintDialog from './invoices/StickerPrintDialog';
 import { printMemberCard } from './invoices/printUtils';
 
+// Import refactored components
+import { 
+  AddMemberDialog, 
+  RefundDialog, 
+  MemberQRDialog, 
+  CreditNoteViewDialog 
+} from './invoices/components';
+
 export const InvoicesPage = () => {
   const { t, language } = useLanguage();
   const { user, selectedBranchId } = useAuth();
