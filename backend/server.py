@@ -1274,6 +1274,7 @@ async def migrate_registration_forms_member_codes(current_user: dict = Depends(g
     return {"message": f"Updated {updated_count} registration forms with member codes"}
 
 # ============ STRIPE PAYMENT ROUTES ============
+# Disabled for external deployment - requires emergentintegrations
 
 @api_router.post("/payments/checkout")
 async def create_checkout_session(
@@ -1281,103 +1282,15 @@ async def create_checkout_session(
     invoice_id: str,
     current_user: dict = Depends(get_current_user)
 ):
-    invoice = await db.invoices.find_one({"id": invoice_id}, {"_id": 0})
-    if not invoice:
-        raise HTTPException(status_code=404, detail="Invoice not found")
-    
-    if invoice["status"] == "paid":
-        raise HTTPException(status_code=400, detail="Invoice already paid")
-    
-    host_url = str(request.base_url).rstrip('/')
-    webhook_url = f"{host_url}/api/webhook/stripe"
-    
-    stripe_checkout = StripeCheckout(api_key=STRIPE_API_KEY, webhook_url=webhook_url)
-    
-    frontend_url = request.headers.get("origin", host_url)
-    success_url = f"{frontend_url}/invoices?session_id={{CHECKOUT_SESSION_ID}}&invoice_id={invoice_id}"
-    cancel_url = f"{frontend_url}/invoices"
-    
-    checkout_request = CheckoutSessionRequest(
-        amount=float(invoice["total"]),
-        currency="sar",
-        success_url=success_url,
-        cancel_url=cancel_url,
-        metadata={
-            "invoice_id": invoice_id,
-            "member_id": invoice["member_id"]
-        }
-    )
-    
-    session = await stripe_checkout.create_checkout_session(checkout_request)
-    
-    # Create payment transaction record
-    transaction_doc = {
-        "id": str(uuid.uuid4()),
-        "session_id": session.session_id,
-        "invoice_id": invoice_id,
-        "amount": invoice["total"],
-        "currency": "SAR",
-        "status": "pending",
-        "payment_status": "initiated",
-        "created_at": datetime.now(timezone.utc).isoformat()
-    }
-    await db.payment_transactions.insert_one(transaction_doc)
-    
-    return {"url": session.url, "session_id": session.session_id}
+    raise HTTPException(status_code=503, detail="Online payments are disabled in this deployment")
 
 @api_router.get("/payments/status/{session_id}")
 async def get_payment_status(session_id: str, current_user: dict = Depends(get_current_user)):
-    transaction = await db.payment_transactions.find_one({"session_id": session_id}, {"_id": 0})
-    if not transaction:
-        raise HTTPException(status_code=404, detail="Transaction not found")
-    
-    host_url = os.environ.get("REACT_APP_BACKEND_URL", "http://localhost:8001")
-    webhook_url = f"{host_url}/api/webhook/stripe"
-    stripe_checkout = StripeCheckout(api_key=STRIPE_API_KEY, webhook_url=webhook_url)
-    
-    checkout_status = await stripe_checkout.get_checkout_status(session_id)
-    
-    # Update transaction status
-    await db.payment_transactions.update_one(
-        {"session_id": session_id},
-        {"$set": {
-            "status": checkout_status.status,
-            "payment_status": checkout_status.payment_status
-        }}
-    )
-    
-    # If payment is successful, update invoice
-    if checkout_status.payment_status == "paid":
-        await db.invoices.update_one(
-            {"id": transaction["invoice_id"]},
-            {"$set": {"status": "paid", "paid_at": datetime.now(timezone.utc).isoformat(), "payment_method": "stripe"}}
-        )
-    
-    return {
-        "status": checkout_status.status,
-        "payment_status": checkout_status.payment_status,
-        "invoice_id": transaction["invoice_id"]
-    }
+    raise HTTPException(status_code=503, detail="Online payments are disabled in this deployment")
 
 @api_router.post("/webhook/stripe")
 async def stripe_webhook(request: Request):
-    body = await request.body()
-    signature = request.headers.get("Stripe-Signature")
-    
-    host_url = str(request.base_url).rstrip('/')
-    webhook_url = f"{host_url}/api/webhook/stripe"
-    stripe_checkout = StripeCheckout(api_key=STRIPE_API_KEY, webhook_url=webhook_url)
-    
-    try:
-        webhook_response = await stripe_checkout.handle_webhook(body, signature)
-        
-        if webhook_response.payment_status == "paid":
-            invoice_id = webhook_response.metadata.get("invoice_id")
-            if invoice_id:
-                await db.invoices.update_one(
-                    {"id": invoice_id},
-                    {"$set": {"status": "paid", "paid_at": datetime.now(timezone.utc).isoformat(), "payment_method": "stripe"}}
-                )
+    raise HTTPException(status_code=503, detail="Online payments are disabled in this deployment")
                 await db.payment_transactions.update_one(
                     {"session_id": webhook_response.session_id},
                     {"$set": {"status": "complete", "payment_status": "paid"}}
