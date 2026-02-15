@@ -21,8 +21,7 @@ import uuid
 from datetime import datetime, timezone, timedelta
 import jwt
 import bcrypt
-from emergentintegrations.payments.stripe.checkout import StripeCheckout, CheckoutSessionRequest
-
+# from emergentintegrations.payments.stripe.checkout import StripeCheckout, CheckoutSessionRequest
 # Import routers from routes package
 from routes.users import router as users_router
 from routes.levels import router as levels_router
