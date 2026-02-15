@@ -1,12 +1,10 @@
 FROM node:16-alpine AS frontend-builder
 WORKDIR /app/frontend
 
-RUN npm install -g yarn
-
 COPY frontend/package.json ./
-RUN yarn install --ignore-engines
+RUN npm install --legacy-peer-deps --force
 COPY frontend/ ./
-RUN yarn build
+RUN npm run build
 
 FROM python:3.11-slim
 WORKDIR /app
