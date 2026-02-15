@@ -509,7 +509,8 @@ export const InvoicesPage = () => {
 
   const calculateTotals = () => {
     const subtotal = invoiceItems.reduce((sum, item) => sum + item.fee, 0);
-    const vatAmount = Math.round(subtotal * (COMPANY_INFO.vat_rate / 100) * 100) / 100;
+    // VAT_RATE is already 0.15 (15%), no need to divide by 100
+    const vatAmount = Math.round(subtotal * COMPANY_INFO.vat_rate * 100) / 100;
     const totalBeforeDiscount = Math.round((subtotal + vatAmount) * 100) / 100;
     const totalDiscount = couponDiscount;
     const total = Math.max(Math.round((totalBeforeDiscount - totalDiscount) * 100) / 100, 0);
