@@ -24,11 +24,11 @@ import { COMPANY_INFO, INVOICE_TERMS, getStatusInfo, getPaymentMethodLabel, form
 import StickerPrintDialog from './invoices/StickerPrintDialog';
 import { printMemberCard } from './invoices/printUtils';
 
-// Import refactored components
-import { 
-  AddMemberDialog, 
-  RefundDialog
-} from './invoices/components';
+// Import refactored components - temporarily disabled to debug
+// import { 
+//   AddMemberDialog, 
+//   RefundDialog
+// } from './invoices/components';
 
 export const InvoicesPage = () => {
   const { t, language } = useLanguage();
