@@ -1476,17 +1476,22 @@ ${selectedInvoice.discount > 0 ? `🎁 الخصم: ${selectedInvoice.discount} �
         activity_name: item.activity_name,
         start_date: startDate,
         end_date: endDate,
+        schedule: item.schedule || item.days || '',
         status: isActive ? 'active' : 'expired',
         level_name: item.level_name || ''
       };
     }) || [];
+    
+    // Combine all schedules for display
+    const allSchedules = activities.map(a => a.schedule).filter(Boolean).join(' | ');
     
     if (member) {
       setRegFormCardData({
         ...member,
         form_number: form.form_number,
         member_code: form.member_code || member.member_code,
-        activities: activities
+        activities: activities,
+        schedule: allSchedules
       });
     } else {
       // Use form data with member_code from form
@@ -1494,7 +1499,8 @@ ${selectedInvoice.discount > 0 ? `🎁 الخصم: ${selectedInvoice.discount} �
         name_ar: form.customer_name,
         phone: form.customer_phone,
         member_code: form.member_code || form.form_number,
-        activities: activities
+        activities: activities,
+        schedule: allSchedules
       });
     }
     setShowRegFormCardPrintDialog(true);
@@ -1514,8 +1520,8 @@ ${selectedInvoice.discount > 0 ? `🎁 الخصم: ${selectedInvoice.discount} �
     const startDate = firstActivity?.start_date || '';
     const endDate = firstActivity?.end_date || '';
     
-    // Get schedule info
-    const schedule = firstActivity?.schedule || '';
+    // Get schedule info - use combined schedule or first activity's schedule
+    const schedule = regFormCardData?.schedule || firstActivity?.schedule || '';
     
     // Generate activities HTML
     const activitiesHtml = regFormCardData?.activities?.map(act => {
