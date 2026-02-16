@@ -157,6 +157,56 @@ const MemberLoyalty = () => {
   return (
     <MemberLayout>
       <div className="space-y-6" dir={language === 'ar' ? 'rtl' : 'ltr'}>
+        {/* Frozen Points Warning */}
+        {pointsData?.is_frozen && (
+          <Card className="border-2 border-blue-400 bg-gradient-to-r from-blue-50 to-cyan-50">
+            <CardContent className="pt-6">
+              <div className="flex items-start gap-4">
+                <div className="w-14 h-14 rounded-full bg-blue-100 flex items-center justify-center flex-shrink-0">
+                  <span className="text-3xl">❄️</span>
+                </div>
+                <div className="flex-1">
+                  <h3 className="text-lg font-bold text-blue-800 mb-2">
+                    {t('نقاطك مجمّدة', 'Your Points are Frozen')}
+                  </h3>
+                  <p className="text-blue-700 mb-3">
+                    {t(
+                      `تم تجميد ${pointsData?.frozen_points?.toLocaleString()} نقطة بسبب انتهاء اشتراكك.`,
+                      `${pointsData?.frozen_points?.toLocaleString()} points frozen due to subscription expiry.`
+                    )}
+                  </p>
+                  <div className="bg-white/70 rounded-lg p-3 space-y-2">
+                    <p className="text-sm text-blue-600">
+                      <strong>{t('كيفية استعادة نقاطك:', 'How to restore your points:')}</strong>
+                    </p>
+                    <p className="text-sm text-gray-700">
+                      {t(
+                        '• قم بتجديد اشتراكك وستُستعاد نقاطك تلقائياً',
+                        '• Renew your subscription and your points will be automatically restored'
+                      )}
+                    </p>
+                    {pointsData?.days_until_expiry !== null && (
+                      <div className="flex items-center gap-2 mt-2 p-2 bg-orange-100 rounded-lg">
+                        <Clock className="w-4 h-4 text-orange-600" />
+                        <span className="text-sm font-bold text-orange-700">
+                          {pointsData?.days_until_expiry > 0 ? (
+                            t(
+                              `متبقي ${pointsData?.days_until_expiry} يوم قبل إلغاء النقاط`,
+                              `${pointsData?.days_until_expiry} days remaining before points expire`
+                            )
+                          ) : (
+                            t('النقاط معرضة للإلغاء في أي وقت!', 'Points may be cancelled at any time!')
+                          )}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
         {/* Points Overview Card */}
         <Card className={`overflow-hidden bg-gradient-to-br ${getLevelColor(pointsData?.level)}`}>
           <CardContent className="pt-6 text-white">
