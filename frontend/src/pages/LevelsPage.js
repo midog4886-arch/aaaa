@@ -1071,8 +1071,8 @@ export const LevelsPage = () => {
               );
             })}
 
-            {/* Other Activities Card */}
-            {groupedLevels['other'] && Object.keys(groupedLevels['other']).length > 0 && (
+            {/* Other Activities Card - HIDDEN */}
+            {/* {groupedLevels['other'] && Object.keys(groupedLevels['other']).length > 0 && (
               <Card 
                 className="overflow-hidden cursor-pointer hover:shadow-xl transition-all duration-300"
                 onClick={() => navigateToTimes('other')}
@@ -1102,7 +1102,7 @@ export const LevelsPage = () => {
                   </div>
                 </CardContent>
               </Card>
-            )}
+            )} */}
           </div>
         )}
 
