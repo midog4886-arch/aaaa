@@ -119,8 +119,34 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Static assets - Cache first, then network
-  if (url.pathname.match(/\.(js|css|png|jpg|jpeg|gif|svg|ico|woff|woff2)$/)) {
+  // Static assets - Network first for JS/CSS, Cache first for images
+  if (url.pathname.match(/\.(js|css)$/)) {
+    // JS and CSS files - Network first to ensure fresh code
+    event.respondWith(
+      fetch(request)
+        .then((response) => {
+          if (response.ok) {
+            const responseClone = response.clone();
+            caches.open(CACHE_NAME).then((cache) => {
+              cache.put(request, responseClone);
+            });
+          }
+          return response;
+        })
+        .catch(() => {
+          return caches.match(request).then((cachedResponse) => {
+            if (cachedResponse) {
+              return cachedResponse;
+            }
+            return new Response('', { status: 503 });
+          });
+        })
+    );
+    return;
+  }
+
+  // Image and font assets - Cache first, then network
+  if (url.pathname.match(/\.(png|jpg|jpeg|gif|svg|ico|woff|woff2)$/)) {
     event.respondWith(
       caches.match(request).then((cachedResponse) => {
         if (cachedResponse) {
