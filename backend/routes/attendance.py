@@ -235,7 +235,7 @@ async def qr_checkin(
             activity_name = active_activities[0].get("activity_name", "")
     
     if not target_activity_id:
-        raise HTTPException(status_code=400, detail="No active activity found for member")
+        raise HTTPException(status_code=400, detail="لا يوجد اشتراك نشط لهذا العضو")
     
     # Get activity name if not already set
     if not activity_name:
