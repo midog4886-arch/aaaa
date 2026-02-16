@@ -1596,7 +1596,7 @@ ${selectedInvoice.discount > 0 ? `🎁 الخصم: ${selectedInvoice.discount} �
                     <div class="info-label">الاسم</div>
                     <div class="member-name">${regFormCardData?.name_ar || ''}</div>
                     <div class="info-row"><span class="info-label">رقم العضوية:</span><span class="member-code">#${regFormCardData?.member_code || regFormCardData?.form_number || ''}</span></div>
-                    <div class="info-row"><span class="info-label">رقم الجوال:</span><span>${regFormCardData?.phone || '-'}</span></div>
+                    <div class="info-row"><span class="info-label">المواعيد:</span><span>${schedule || '-'}</span></div>
                     ${activitiesHtml ? `<div class="activities"><div class="activities-label">الأنشطة المسجلة</div>${activitiesHtml}</div>` : ''}
                   </div>
                 </div>
