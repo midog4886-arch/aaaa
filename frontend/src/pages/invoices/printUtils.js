@@ -154,6 +154,7 @@ export const printMemberCard = (member) => {
           ${cardHTML}
           <div class="logo-card">
             <img src="${window.location.origin}/images/academy-logo.png" alt="شعار الأكاديمية" />
+            <div class="lost-card-notice">⚠️ في حال فقدان كرت العضوية،<br/>يتم إصدار كرت جديد برسوم 10 ر.س</div>
           </div>
         </div>
       </body>
