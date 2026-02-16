@@ -9,10 +9,15 @@ from .common import db, get_current_user
 
 # Loyalty points function - will be set from server.py
 loyalty_award_points = None
+loyalty_unfreeze_points = None
 
 def set_loyalty_award_function(func):
     global loyalty_award_points
     loyalty_award_points = func
+
+def set_loyalty_unfreeze_function(func):
+    global loyalty_unfreeze_points
+    loyalty_unfreeze_points = func
 
 router = APIRouter(prefix="/invoices", tags=["invoices"])
 
