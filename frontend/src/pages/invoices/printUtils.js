@@ -164,55 +164,251 @@ export const printMemberCard = (member) => {
 };
 
 /**
- * Get invoice print styles
+ * Get invoice print styles - Modern style matching the app design
  */
 export const getInvoicePrintStyles = () => `
   @import url('https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700&display=swap');
   @page { size: A4; margin: 10mm; }
   * { margin: 0; padding: 0; box-sizing: border-box; }
-  body { font-family: 'Tajawal', Arial, sans-serif; direction: rtl; font-size: 12pt; }
-  .invoice { max-width: 210mm; margin: 0 auto; padding: 15mm; }
-  .invoice-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px; border-bottom: 2px solid #F97316; padding-bottom: 15px; }
-  .company-info h1 { color: #F97316; font-size: 18pt; margin-bottom: 5px; }
-  .company-info p { color: #666; font-size: 10pt; }
-  .invoice-number { text-align: left; }
-  .invoice-number h2 { color: #333; font-size: 14pt; }
-  .invoice-number p { color: #666; font-size: 10pt; }
-  .customer-info { background: #f9fafb; padding: 15px; border-radius: 8px; margin-bottom: 20px; }
-  .customer-info h3 { color: #333; margin-bottom: 10px; font-size: 12pt; }
-  .customer-info p { color: #666; font-size: 10pt; margin-bottom: 5px; }
-  .items-table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
-  .items-table th { background: #F97316; color: white; padding: 10px; text-align: right; font-size: 10pt; }
-  .items-table td { padding: 10px; border-bottom: 1px solid #eee; font-size: 10pt; }
-  .items-table tr:nth-child(even) { background: #f9fafb; }
-  .totals { text-align: left; margin-top: 20px; }
-  .totals p { font-size: 11pt; margin-bottom: 5px; }
-  .totals .total { font-size: 14pt; font-weight: bold; color: #F97316; }
-  .terms { margin-top: 30px; padding-top: 15px; border-top: 1px dashed #ccc; }
-  .terms h4 { color: #333; margin-bottom: 10px; font-size: 11pt; }
-  .terms ul { color: #666; font-size: 9pt; padding-right: 20px; }
-  .terms li { margin-bottom: 5px; }
-  .qr-section { text-align: center; margin-top: 20px; }
-  .qr-section img { width: 100px; height: 100px; }
-  .footer { text-align: center; margin-top: 30px; color: #999; font-size: 9pt; }
+  body { font-family: 'Tajawal', Arial, sans-serif; direction: rtl; font-size: 12pt; background: #fff; }
+  
+  .invoice { max-width: 210mm; margin: 0 auto; padding: 20mm; background: white; }
+  
+  /* Header Section */
+  .invoice-header { 
+    display: flex; 
+    justify-content: space-between; 
+    align-items: flex-start; 
+    margin-bottom: 25px; 
+    padding-bottom: 20px;
+    border-bottom: 3px solid #0ea5e9;
+  }
+  
+  .company-info { text-align: right; }
+  .company-info h1 { 
+    color: #0ea5e9; 
+    font-size: 22pt; 
+    font-weight: 700;
+    margin-bottom: 8px; 
+  }
+  .company-info .tax-info { 
+    color: #6b7280; 
+    font-size: 10pt; 
+    line-height: 1.6;
+  }
+  
+  .invoice-meta { text-align: left; }
+  .invoice-meta .invoice-number-label {
+    color: #0ea5e9;
+    font-size: 11pt;
+    font-weight: 600;
+    margin-bottom: 5px;
+  }
+  .invoice-meta .invoice-number-value {
+    color: #1f2937;
+    font-size: 14pt;
+    font-weight: 700;
+    margin-bottom: 10px;
+  }
+  .invoice-meta .invoice-date {
+    color: #6b7280;
+    font-size: 10pt;
+    margin-bottom: 8px;
+  }
+  
+  .status-badge {
+    display: inline-block;
+    padding: 5px 15px;
+    border-radius: 20px;
+    font-size: 10pt;
+    font-weight: 600;
+  }
+  .status-paid { background: #dcfce7; color: #16a34a; border: 1px solid #86efac; }
+  .status-pending { background: #fef3c7; color: #d97706; border: 1px solid #fcd34d; }
+  .status-cancelled { background: #fee2e2; color: #dc2626; border: 1px solid #fca5a5; }
+  
+  .branch-info {
+    margin-top: 15px;
+    padding: 10px 15px;
+    background: #fef3c7;
+    border-radius: 8px;
+    color: #92400e;
+    font-size: 11pt;
+    font-weight: 600;
+    display: inline-block;
+  }
+  
+  /* Customer Section */
+  .customer-section {
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    padding: 20px;
+    margin-bottom: 25px;
+  }
+  .customer-section h3 {
+    color: #0ea5e9;
+    font-size: 14pt;
+    font-weight: 700;
+    margin-bottom: 15px;
+    text-align: right;
+  }
+  .customer-details {
+    display: flex;
+    justify-content: space-between;
+    gap: 20px;
+  }
+  .customer-details .detail-item {
+    font-size: 11pt;
+    color: #374151;
+  }
+  .customer-details .detail-label {
+    color: #6b7280;
+    margin-left: 5px;
+  }
+  .customer-details .member-code {
+    color: #0ea5e9;
+    font-weight: 700;
+  }
+  
+  /* Items Table */
+  .items-table { 
+    width: 100%; 
+    border-collapse: collapse; 
+    margin-bottom: 25px;
+    border-radius: 12px;
+    overflow: hidden;
+    border: 1px solid #e2e8f0;
+  }
+  .items-table th { 
+    background: #f1f5f9; 
+    color: #1e293b; 
+    padding: 15px; 
+    text-align: center; 
+    font-size: 11pt;
+    font-weight: 700;
+    border-bottom: 2px solid #e2e8f0;
+  }
+  .items-table td { 
+    padding: 15px; 
+    text-align: center;
+    font-size: 11pt;
+    color: #374151;
+    border-bottom: 1px solid #e2e8f0;
+  }
+  .items-table td.activity-name {
+    text-align: right;
+    font-weight: 600;
+    color: #1f2937;
+  }
+  .items-table td.amount {
+    font-weight: 600;
+    color: #1f2937;
+  }
+  .items-table tr:last-child td {
+    border-bottom: none;
+  }
+  
+  /* Totals Section */
+  .totals-section {
+    margin-bottom: 25px;
+  }
+  .totals-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 12px 0;
+    border-bottom: 1px solid #e2e8f0;
+    font-size: 12pt;
+  }
+  .totals-row .label { color: #374151; }
+  .totals-row .value { color: #1f2937; font-weight: 600; }
+  
+  .totals-row.vat .label { color: #16a34a; font-weight: 600; }
+  .totals-row.vat .value { color: #16a34a; }
+  
+  .totals-row.total {
+    border-bottom: none;
+    border-top: 3px solid #0ea5e9;
+    margin-top: 10px;
+    padding-top: 15px;
+  }
+  .totals-row.total .label { 
+    color: #0ea5e9; 
+    font-size: 16pt; 
+    font-weight: 700; 
+  }
+  .totals-row.total .value { 
+    color: #0ea5e9; 
+    font-size: 18pt; 
+    font-weight: 700; 
+  }
+  
+  /* Footer Section */
+  .footer-section {
+    background: #f8fafc;
+    border-radius: 12px;
+    padding: 15px 20px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 20px;
+  }
+  .footer-item {
+    font-size: 11pt;
+  }
+  .footer-item .label {
+    color: #6b7280;
+    margin-left: 8px;
+  }
+  .footer-item .value {
+    color: #1f2937;
+    font-weight: 600;
+  }
+  .footer-item .status-icon {
+    color: #16a34a;
+    margin-left: 5px;
+  }
+  
+  @media print {
+    body { background: white; }
+    .invoice { padding: 10mm; }
+  }
 `;
 
 /**
- * Print invoice
+ * Print invoice - Modern style matching the app design
  */
 export const printInvoice = (invoice, items) => {
   if (!invoice) return;
   
-  const printWindow = window.open('', '_blank', 'width=800,height=600');
+  const printWindow = window.open('', '_blank', 'width=900,height=700');
   
-  const itemsHTML = items.map((item, idx) => `
+  const getStatusBadge = (status) => {
+    switch(status) {
+      case 'paid': return '<span class="status-badge status-paid">✓ مدفوعة</span>';
+      case 'pending': return '<span class="status-badge status-pending">⏳ معلقة</span>';
+      case 'cancelled': return '<span class="status-badge status-cancelled">✗ ملغاة</span>';
+      default: return '<span class="status-badge status-pending">معلقة</span>';
+    }
+  };
+
+  const getPaymentMethodText = (method) => {
+    switch(method) {
+      case 'cash': return 'نقدي';
+      case 'card': return 'بطاقة';
+      case 'bank_transfer': return 'تحويل بنكي';
+      case 'tabby': return 'تابي';
+      case 'tamara': return 'تمارا';
+      default: return method || 'نقدي';
+    }
+  };
+  
+  const itemsHTML = items.map((item) => `
     <tr>
-      <td>${idx + 1}</td>
-      <td>${item.activity_name || item.name || ''}</td>
-      <td>${item.period || '-'}</td>
-      <td>${item.fee?.toFixed(2) || '0.00'} ر.س</td>
-      <td>${item.quantity || 1}</td>
-      <td>${((item.fee || 0) * (item.quantity || 1)).toFixed(2)} ر.س</td>
+      <td class="activity-name">${item.activity_name || item.name || ''}</td>
+      <td>${item.start_date || ''} - ${item.end_date || ''}</td>
+      <td>${item.schedule || '-'}</td>
+      <td class="amount">${(item.fee || 0).toFixed(0)} ر.س</td>
     </tr>
   `).join('');
   
@@ -224,7 +420,7 @@ export const printInvoice = (invoice, items) => {
   
   printWindow.document.write(`
     <!DOCTYPE html>
-    <html>
+    <html dir="rtl" lang="ar">
       <head>
         <meta charset="UTF-8">
         <title>فاتورة رقم ${invoice.invoice_number}</title>
@@ -232,37 +428,49 @@ export const printInvoice = (invoice, items) => {
       </head>
       <body>
         <div class="invoice">
+          <!-- Header -->
           <div class="invoice-header">
             <div class="company-info">
-              <h1>🏆 ${COMPANY_INFO.name_ar}</h1>
-              <p>${COMPANY_INFO.name_en}</p>
-              <p>الرقم الضريبي: ${COMPANY_INFO.tax_number}</p>
-              <p>السجل التجاري: ${COMPANY_INFO.commercial_reg}</p>
+              <h1>${COMPANY_INFO.name_ar}</h1>
+              <div class="tax-info">
+                الرقم الضريبي: ${COMPANY_INFO.tax_number}<br/>
+                السجل التجاري: ${COMPANY_INFO.commercial_reg}
+              </div>
+              ${invoice.branch_name ? `<div class="branch-info">🏢 الفرع: ${invoice.branch_name}</div>` : ''}
             </div>
-            <div class="invoice-number">
-              <h2>فاتورة ضريبية</h2>
-              <p>رقم الفاتورة: ${invoice.invoice_number}</p>
-              <p>التاريخ: ${new Date(invoice.created_at).toLocaleDateString('ar-SA')}</p>
-              <p>الحالة: ${invoice.status === 'paid' ? 'مدفوع' : 'معلق'}</p>
+            <div class="invoice-meta">
+              <div class="invoice-number-label">💰 رقم الفاتورة:</div>
+              <div class="invoice-number-value">#${invoice.invoice_number || invoice.id?.slice(0, 8)}</div>
+              <div class="invoice-date">رقم الفاتورة: #${invoice.invoice_number || ''}</div>
+              <div class="invoice-date">تاريخ الفاتورة: ${new Date(invoice.created_at).toLocaleDateString('ar-SA')}</div>
+              ${getStatusBadge(invoice.status)}
             </div>
           </div>
           
-          <div class="customer-info">
+          <!-- Customer Info -->
+          <div class="customer-section">
             <h3>بيانات العميل</h3>
-            <p><strong>الاسم:</strong> ${invoice.customer_name_ar || invoice.member_name || '-'}</p>
-            <p><strong>رقم العضوية:</strong> ${invoice.member_code || '-'}</p>
-            <p><strong>الجوال:</strong> ${invoice.customer_phone || '-'}</p>
+            <div class="customer-details">
+              <div class="detail-item">
+                <span class="detail-label">الاسم:</span>
+                ${invoice.customer_name_ar || invoice.member_name || '-'}
+                ${invoice.member_code ? `<span class="member-code">(#${invoice.member_code})</span>` : ''}
+              </div>
+              <div class="detail-item">
+                <span class="detail-label">رقم الجوال:</span>
+                ${invoice.customer_phone || '-'}
+              </div>
+            </div>
           </div>
           
+          <!-- Items Table -->
           <table class="items-table">
             <thead>
               <tr>
-                <th>#</th>
-                <th>البند</th>
-                <th>المدة</th>
-                <th>السعر</th>
-                <th>الكمية</th>
-                <th>الإجمالي</th>
+                <th>اسم النشاط</th>
+                <th>الفترة</th>
+                <th>المواعيد</th>
+                <th>المبلغ</th>
               </tr>
             </thead>
             <tbody>
@@ -270,25 +478,49 @@ export const printInvoice = (invoice, items) => {
             </tbody>
           </table>
           
-          <div class="totals">
-            <p>المجموع الفرعي: ${subtotal.toFixed(2)} ر.س</p>
-            ${discount > 0 ? `<p>الخصم: -${discount.toFixed(2)} ر.س</p>` : ''}
-            <p>ضريبة القيمة المضافة (15%): ${vatAmount.toFixed(2)} ر.س</p>
-            <p class="total">الإجمالي: ${total.toFixed(2)} ر.س</p>
+          <!-- Totals -->
+          <div class="totals-section">
+            <div class="totals-row">
+              <span class="label">المجموع الفرعي:</span>
+              <span class="value">${subtotal.toFixed(0)} ر.س</span>
+            </div>
+            ${discount > 0 ? `
+            <div class="totals-row">
+              <span class="label">الخصم:</span>
+              <span class="value">-${discount.toFixed(0)} ر.س</span>
+            </div>
+            ` : ''}
+            <div class="totals-row vat">
+              <span class="label">ضريبة القيمة المضافة (15%):</span>
+              <span class="value">${vatAmount.toFixed(0)} ر.س</span>
+            </div>
+            <div class="totals-row total">
+              <span class="label">الإجمالي:</span>
+              <span class="value">${total.toFixed(0)} ر.س</span>
+            </div>
           </div>
           
-          <div class="terms">
-            <h4>الشروط والأحكام:</h4>
-            <ul>
-              ${INVOICE_TERMS.map(term => `<li>${term}</li>`).join('')}
-            </ul>
-          </div>
-          
-          <div class="footer">
-            <p>شكراً لاختياركم ${COMPANY_INFO.name_ar}</p>
+          <!-- Footer -->
+          <div class="footer-section">
+            <div class="footer-item">
+              <span class="label">طريقة الدفع:</span>
+              <span class="value">${getPaymentMethodText(invoice.payment_method)}</span>
+            </div>
+            <div class="footer-item">
+              <span class="label">الحالة:</span>
+              <span class="value">
+                ${invoice.status === 'paid' ? '<span class="status-icon">✓</span> مدفوعة' : 
+                  invoice.status === 'pending' ? '⏳ معلقة' : '✗ ملغاة'}
+              </span>
+            </div>
           </div>
         </div>
-        <script>window.onload = function() { window.print(); }</script>
+        
+        <script>
+          window.onload = function() { 
+            setTimeout(function() { window.print(); }, 500);
+          }
+        </script>
       </body>
     </html>
   `);
