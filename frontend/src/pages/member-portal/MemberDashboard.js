@@ -114,7 +114,10 @@ const MemberDashboard = () => {
     <MemberLayout>
       <PullToRefresh onRefresh={handleRefresh} disabled={refreshing} className="min-h-[calc(100vh-200px)]">
       <div className="space-y-6">
-        {/* Hero Banner Ads */}
+        {/* Stories Ads - Instagram Style */}
+        <StoriesAds branchId={member?.branch_id} />
+        
+        {/* Hero Banner Carousel */}
         <HeroBannerAds branchId={member?.branch_id} />
         
         {/* Popup Ad */}
