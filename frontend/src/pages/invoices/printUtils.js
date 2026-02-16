@@ -63,8 +63,9 @@ export const getCardPrintStyles = () => `
   .activity-item.expired .activity-status { color: #DC2626; }
   .card-footer { text-align: right; padding: 1.5mm 2mm; background: #f9fafb; font-size: 5pt; color: #374151; border-top: 1px dashed #e5e7eb; line-height: 1.4; }
   .card-footer .terms-title { font-weight: 700; color: #1f2937; font-size: 6pt; margin-bottom: 0.5mm; }
-  .logo-card { width: ${CARD_WIDTH}mm; height: ${CARD_HEIGHT}mm; background: white; border-radius: 4mm; overflow: hidden; box-shadow: 0 4px 15px rgba(0,0,0,0.1); display: flex; align-items: center; justify-content: center; padding: 5mm; }
-  .logo-card img { max-width: 100%; max-height: 100%; object-fit: contain; }
+  .logo-card { width: ${CARD_WIDTH}mm; height: ${CARD_HEIGHT}mm; background: white; border-radius: 4mm; overflow: hidden; box-shadow: 0 4px 15px rgba(0,0,0,0.1); display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 5mm; }
+  .logo-card img { max-width: 100%; max-height: 80%; object-fit: contain; }
+  .logo-card .lost-card-notice { font-size: 7pt; color: #DC2626; text-align: center; margin-top: 3mm; font-weight: 600; line-height: 1.4; }
   .print-btn { margin-top: 20px; padding: 12px 30px; background: linear-gradient(135deg, #F97316, #EA580C); color: white; border: none; border-radius: 10px; cursor: pointer; font-family: 'Tajawal', Arial, sans-serif; font-size: 16px; font-weight: bold; }
   .position-labels { display: flex; gap: 15px; justify-content: center; margin-top: 10px; }
   .position-label { padding: 8px 16px; background: #FEF3C7; border-radius: 8px; color: #92400E; font-size: 12px; }
