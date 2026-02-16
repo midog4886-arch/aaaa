@@ -745,6 +745,7 @@ const AdvertisementsPage = () => {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="hero">البانر الرئيسي (أعلى الصفحة)</SelectItem>
+                    <SelectItem value="story">📱 ستوري (قصص مثل انستقرام)</SelectItem>
                     <SelectItem value="sidebar">الشريط الجانبي</SelectItem>
                     <SelectItem value="inline">بين المحتوى</SelectItem>
                     <SelectItem value="popup">نافذة منبثقة</SelectItem>
@@ -752,6 +753,16 @@ const AdvertisementsPage = () => {
                 </Select>
               </div>
             </div>
+
+            {/* Story position hint */}
+            {formData.position === 'story' && (
+              <div className="p-3 bg-purple-50 border border-purple-200 rounded-lg">
+                <p className="text-sm text-purple-700">
+                  📱 <strong>ستوري:</strong> ستظهر كدوائر في أعلى بوابة الأعضاء مثل قصص انستقرام. 
+                  يُنصح باستخدام صور مربعة أو فيديو يوتيوب قصير.
+                </p>
+              </div>
+            )}
 
             {/* Content based on type */}
             {formData.ad_type === 'banner' && (
