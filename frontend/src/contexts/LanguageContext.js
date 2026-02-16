@@ -199,6 +199,7 @@ const translations = {
     advertisements: 'Advertisements',
     daily_videos: 'Daily Videos',
     loyalty: 'Loyalty',
+    renewals: 'Renewals',
     levels: 'Levels',
     store: 'Store',
     schedule: 'Schedule',
