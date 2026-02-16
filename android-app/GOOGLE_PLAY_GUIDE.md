@@ -26,7 +26,7 @@
 
 2. **أدخل رابط التطبيق**
    ```
-   https://academy-hub-62.preview.emergentagent.com/portal
+   https://academy-manager-30.preview.emergentagent.com/portal
    ```
 
 3. **اضغط "Start"**
@@ -57,7 +57,7 @@ npx @nicolo-ribaudo/chialab-pwa-asset-generator
 
 ### إنشاء المشروع:
 ```bash
-npx @nicolo-ribaudo/chialab-pwa-asset-generator init --manifest https://academy-hub-62.preview.emergentagent.com/manifest.json
+npx @nicolo-ribaudo/chialab-pwa-asset-generator init --manifest https://academy-manager-30.preview.emergentagent.com/manifest.json
 ```
 
 ---
@@ -144,8 +144,8 @@ Everyone / للجميع
 ```
 البريد الإلكتروني: support@gcsp-academy.com
 الهاتف: +966566238384
-الموقع: https://academy-hub-62.preview.emergentagent.com
-سياسة الخصوصية: https://academy-hub-62.preview.emergentagent.com/privacy
+الموقع: https://academy-manager-30.preview.emergentagent.com
+سياسة الخصوصية: https://academy-manager-30.preview.emergentagent.com/privacy
 ```
 
 ---

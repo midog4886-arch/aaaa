@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 // Backend API URL - Points to Emergent backend
-const API_URL = 'https://academy-hub-62.preview.emergentagent.com';
+const API_URL = 'https://academy-manager-30.preview.emergentagent.com';
 
 const api = axios.create({
   baseURL: API_URL,

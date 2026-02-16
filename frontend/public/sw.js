@@ -67,6 +67,32 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
+  // Handle navigation requests (HTML pages) - Network first with offline fallback
+  if (request.mode === 'navigate') {
+    event.respondWith(
+      fetch(request)
+        .then((response) => {
+          if (response.ok) {
+            const responseClone = response.clone();
+            caches.open(CACHE_NAME).then((cache) => {
+              cache.put(request, responseClone);
+            });
+          }
+          return response;
+        })
+        .catch(() => {
+          return caches.match(request).then((cachedResponse) => {
+            if (cachedResponse) {
+              return cachedResponse;
+            }
+            // Always return offline page for failed navigation
+            return caches.match(OFFLINE_URL);
+          });
+        })
+    );
+    return;
+  }
+
   // Skip cross-origin requests
   if (url.origin !== location.origin) {
     // Cache YouTube thumbnails
@@ -180,7 +206,7 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // HTML pages - Network first, then cache, then offline page
+  // Default: Network first with cache fallback
   event.respondWith(
     fetch(request)
       .then((response) => {
@@ -196,10 +222,6 @@ self.addEventListener('fetch', (event) => {
         return caches.match(request).then((cachedResponse) => {
           if (cachedResponse) {
             return cachedResponse;
-          }
-          // Return offline page for navigation requests
-          if (request.mode === 'navigate') {
-            return caches.match(OFFLINE_URL);
           }
           return new Response('Offline', { status: 503 });
         });
