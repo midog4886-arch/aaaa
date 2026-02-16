@@ -451,35 +451,34 @@ export const HeroBannerAds = ({ branchId }) => {
                 </div>
               </motion.div>
             </div>
-          </div>
-        ) : (
-          <div className={`w-full h-full flex items-center justify-center ${darkMode ? 'bg-gray-700' : 'bg-gradient-to-br from-blue-600 to-purple-700'}`}>
-            <div className="text-center text-white p-6">
-              <h3 className="text-2xl font-bold">{currentAd.title_ar}</h3>
+          ) : (
+            <div className={`w-full h-full flex items-center justify-center ${darkMode ? 'bg-gray-700' : 'bg-gradient-to-br from-blue-600 to-purple-700'}`}>
+              <div className="text-center text-white p-6">
+                <h3 className="text-2xl font-bold">{currentAd.title_ar}</h3>
+                {currentAd.description_ar && (
+                  <p className="mt-2 opacity-90">{currentAd.description_ar}</p>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Overlay with title */}
+          {(currentAd.banner_image_url || currentAd.youtube_video_id) && currentAd.title_ar && (
+            <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-4">
+              <h3 className="text-white font-bold text-lg">{currentAd.title_ar}</h3>
               {currentAd.description_ar && (
-                <p className="mt-2 opacity-90">{currentAd.description_ar}</p>
+                <p className="text-white/80 text-sm mt-1 line-clamp-1">{currentAd.description_ar}</p>
               )}
             </div>
-          </div>
-        )}
+          )}
 
-        {/* Overlay with title */}
-        {(currentAd.banner_image_url || currentAd.youtube_video_id) && currentAd.title_ar && (
-          <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-4">
-            <h3 className="text-white font-bold text-lg">{currentAd.title_ar}</h3>
-            {currentAd.description_ar && (
-              <p className="text-white/80 text-sm mt-1 line-clamp-1">{currentAd.description_ar}</p>
-            )}
-          </div>
-        )}
-
-        {/* Link indicator */}
-        {currentAd.link_url && (
-          <div className="absolute top-4 left-4 bg-white/90 rounded-full p-2">
-            <ExternalLink className="w-4 h-4 text-gray-700" />
-          </div>
-        )}
-      </div>
+          {/* Link indicator */}
+          {currentAd.link_url && (
+            <div className="absolute top-4 left-4 bg-white/90 rounded-full p-2">
+              <ExternalLink className="w-4 h-4 text-gray-700" />
+            </div>
+          )}
+        </motion.div>
 
       {/* Navigation Arrows */}
       {ads.length > 1 && (
