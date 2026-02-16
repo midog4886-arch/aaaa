@@ -298,6 +298,7 @@ export const HeroBannerAds = ({ branchId }) => {
   const [ads, setAds] = useState([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [direction, setDirection] = useState(0);
   const intervalRef = useRef(null);
   const darkMode = getDarkMode();
 
@@ -326,6 +327,7 @@ export const HeroBannerAds = ({ branchId }) => {
   useEffect(() => {
     if (ads.length > 1) {
       intervalRef.current = setInterval(() => {
+        setDirection(1);
         setCurrentIndex(prev => (prev + 1) % ads.length);
       }, 5000);
     }
@@ -339,45 +341,107 @@ export const HeroBannerAds = ({ branchId }) => {
     }
   };
 
-  const nextSlide = () => setCurrentIndex(prev => (prev + 1) % ads.length);
-  const prevSlide = () => setCurrentIndex(prev => (prev - 1 + ads.length) % ads.length);
+  const nextSlide = () => {
+    setDirection(1);
+    setCurrentIndex(prev => (prev + 1) % ads.length);
+  };
+  
+  const prevSlide = () => {
+    setDirection(-1);
+    setCurrentIndex(prev => (prev - 1 + ads.length) % ads.length);
+  };
 
   if (loading || ads.length === 0) return null;
 
   const currentAd = ads[currentIndex];
 
+  // Animation variants for slide effect
+  const slideVariants = {
+    enter: (direction) => ({
+      x: direction > 0 ? '100%' : '-100%',
+      opacity: 0
+    }),
+    center: {
+      zIndex: 1,
+      x: 0,
+      opacity: 1
+    },
+    exit: (direction) => ({
+      zIndex: 0,
+      x: direction < 0 ? '100%' : '-100%',
+      opacity: 0
+    })
+  };
+
   return (
-    <div className="relative w-full overflow-hidden rounded-xl mb-6">
-      <div 
-        className="relative w-full h-48 md:h-64 lg:h-80 cursor-pointer group"
-        onClick={() => handleClick(currentAd)}
-      >
-        {currentAd.ad_type === 'video' && currentAd.youtube_video_id ? (
-          <div className="relative w-full h-full">
+    <div className="relative w-full overflow-hidden rounded-2xl mb-6 shadow-xl">
+      {/* Progress Bar */}
+      {ads.length > 1 && (
+        <div className="absolute top-0 left-0 right-0 z-20 h-1 bg-white/20">
+          <motion.div 
+            className="h-full bg-gradient-to-r from-orange-500 to-pink-500"
+            initial={{ width: '0%' }}
+            animate={{ width: '100%' }}
+            transition={{ duration: 5, ease: 'linear' }}
+            key={currentIndex}
+          />
+        </div>
+      )}
+
+      <AnimatePresence initial={false} custom={direction}>
+        <motion.div 
+          key={currentIndex}
+          custom={direction}
+          variants={slideVariants}
+          initial="enter"
+          animate="center"
+          exit="exit"
+          transition={{
+            x: { type: "spring", stiffness: 300, damping: 30 },
+            opacity: { duration: 0.2 }
+          }}
+          className="relative w-full h-52 md:h-72 lg:h-96 cursor-pointer group"
+          onClick={() => handleClick(currentAd)}
+        >
+          {currentAd.ad_type === 'video' && currentAd.youtube_video_id ? (
+            <div className="relative w-full h-full">
+              <img 
+                src={`https://img.youtube.com/vi/${currentAd.youtube_video_id}/maxresdefault.jpg`}
+                alt={currentAd.title_ar}
+                className="w-full h-full object-cover"
+              />
+              <div className="absolute inset-0 bg-black/30 flex items-center justify-center group-hover:bg-black/40 transition-all">
+                <motion.div 
+                  className="w-20 h-20 bg-red-600 rounded-full flex items-center justify-center shadow-lg"
+                  whileHover={{ scale: 1.1 }}
+                  whileTap={{ scale: 0.9 }}
+                >
+                  <Play className="w-10 h-10 text-white mr-[-4px]" fill="white" />
+                </motion.div>
+              </div>
+            </div>
+          ) : currentAd.banner_image_url ? (
             <img 
-              src={`https://img.youtube.com/vi/${currentAd.youtube_video_id}/maxresdefault.jpg`}
+              src={getImageUrl(currentAd.banner_image_url)}
               alt={currentAd.title_ar}
               className="w-full h-full object-cover"
             />
-            <div className="absolute inset-0 bg-black/30 flex items-center justify-center group-hover:bg-black/40 transition-all">
-              <div className="w-16 h-16 bg-red-600 rounded-full flex items-center justify-center">
-                <Play className="w-8 h-8 text-white mr-[-2px]" fill="white" />
-              </div>
-            </div>
-          </div>
-        ) : currentAd.banner_image_url ? (
-          <img 
-            src={getImageUrl(currentAd.banner_image_url)}
-            alt={currentAd.title_ar}
-            className="w-full h-full object-cover"
-          />
-        ) : currentAd.ad_type === 'link' && currentAd.link_url ? (
-          <div className={`w-full h-full flex flex-col items-center justify-center ${darkMode ? 'bg-gray-700' : 'bg-gradient-to-br from-blue-600 to-purple-700'}`}>
-            <div className="text-center text-white p-6">
-              <div className="w-20 h-20 bg-white/20 rounded-full flex items-center justify-center mx-auto mb-4">
-                <ExternalLink className="w-10 h-10 text-white" />
-              </div>
-              <h3 className="text-2xl font-bold">{currentAd.title_ar}</h3>
+          ) : currentAd.ad_type === 'link' && currentAd.link_url ? (
+            <div className={`w-full h-full flex flex-col items-center justify-center ${darkMode ? 'bg-gray-700' : 'bg-gradient-to-br from-blue-600 via-purple-600 to-pink-500'}`}>
+              <motion.div 
+                className="text-center text-white p-6"
+                initial={{ scale: 0.8, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                transition={{ delay: 0.2 }}
+              >
+                <motion.div 
+                  className="w-24 h-24 bg-white/20 rounded-full flex items-center justify-center mx-auto mb-4 backdrop-blur-sm"
+                  animate={{ y: [0, -10, 0] }}
+                  transition={{ repeat: Infinity, duration: 2 }}
+                >
+                  <ExternalLink className="w-12 h-12 text-white" />
+                </motion.div>
+                <h3 className="text-3xl font-bold">{currentAd.title_ar}</h3>
               {currentAd.description_ar && (
                 <p className="mt-2 opacity-90">{currentAd.description_ar}</p>
               )}
