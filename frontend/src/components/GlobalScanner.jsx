@@ -190,10 +190,13 @@ const GlobalScanner = ({ enabled = true, language = 'ar' }) => {
           // Auto check-in for the first unrecorded active activity
           setCheckingIn(true);
           try {
-            const checkinRes = await attendanceAPI.qrCheckin(
-              data.member_code || data.id, 
-              activityToCheckin.activity_id
-            );
+            // Ensure we're sending string values
+            const memberCode = String(data.member_code || data.id);
+            const activityId = String(activityToCheckin.activity_id || '');
+            
+            console.log('QR Check-in:', { memberCode, activityId });
+            
+            const checkinRes = await attendanceAPI.qrCheckin(memberCode, activityId);
             
             if (checkinRes.data.status === 'already_checked_in') {
               playSound('error');
