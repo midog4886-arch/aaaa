@@ -1390,7 +1390,7 @@ ${selectedInvoice.discount > 0 ? `🎁 الخصم: ${selectedInvoice.discount} �
                     <div class="info-label">الاسم</div>
                     <div class="member-name">${cardPrintMember?.name_ar || ''}</div>
                     <div class="info-row"><span class="info-label">رقم العضوية:</span><span class="member-code">#${cardPrintMember?.member_code || ''}</span></div>
-                    <div class="info-row"><span class="info-label">رقم الجوال:</span><span>${cardPrintMember?.phone || '-'}</span></div>
+                    <div class="info-row"><span class="info-label">المواعيد:</span><span>${schedule || '-'}</span></div>
                     ${activitiesHtml ? `<div class="activities"><div class="activities-label">الأنشطة المسجلة</div>${activitiesHtml}</div>` : ''}
                   </div>
                 </div>
