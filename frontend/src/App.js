@@ -161,6 +161,8 @@ function AppRoutes() {
       <Route path="/portal/daily-videos" element={<MemberDailyVideos />} />
       <Route path="/portal/loyalty" element={<MemberLoyalty />} />
       <Route path="/portal/support" element={<MemberSupport />} />
+      <Route path="/portal/privacy" element={<PrivacyPolicy />} />
+      <Route path="/privacy" element={<PrivacyPolicy />} />
       <Route path="/portal" element={<Navigate to="/portal/login" replace />} />
       <Route path="/member-portal" element={<Navigate to="/portal/login" replace />} />
       <Route path="/member-portal/*" element={<Navigate to="/portal/login" replace />} />
