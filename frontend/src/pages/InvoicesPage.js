@@ -1308,8 +1308,8 @@ ${selectedInvoice.discount > 0 ? `🎁 الخصم: ${selectedInvoice.discount} �
     const startDate = firstActivity?.start_date || '';
     const endDate = firstActivity?.end_date || '';
     
-    // Get schedule info
-    const schedule = firstActivity?.schedule || '';
+    // Get schedule info - use combined schedule or first activity's schedule
+    const schedule = cardPrintMember?.schedule || firstActivity?.schedule || '';
     
     // Generate activities HTML
     const activitiesHtml = cardPrintMember?.activities?.map(act => {
