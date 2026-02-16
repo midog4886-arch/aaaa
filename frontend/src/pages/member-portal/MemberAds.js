@@ -479,6 +479,7 @@ export const HeroBannerAds = ({ branchId }) => {
             </div>
           )}
         </motion.div>
+      </AnimatePresence>
 
       {/* Navigation Arrows */}
       {ads.length > 1 && (
