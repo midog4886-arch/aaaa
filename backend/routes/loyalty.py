@@ -519,6 +519,67 @@ async def adjust_member_points(adjustment: ManualPointsAdjust):
     
     return {"message": "تم تعديل النقاط بنجاح", "points_adjusted": adjustment.points}
 
+# ============== Points Freeze Management Endpoints ==============
+
+@router.post("/members/{member_id}/freeze")
+async def freeze_points_endpoint(member_id: str):
+    """Manually freeze member's points (admin only)"""
+    result = await freeze_member_points(member_id, "تجميد يدوي من الإدارة")
+    if result:
+        return {"message": "تم تجميد النقاط بنجاح"}
+    raise HTTPException(status_code=400, detail="فشل في تجميد النقاط")
+
+@router.post("/members/{member_id}/unfreeze")
+async def unfreeze_points_endpoint(member_id: str):
+    """Manually unfreeze member's points (admin only)"""
+    result = await unfreeze_member_points(member_id, "إلغاء تجميد يدوي من الإدارة")
+    if result:
+        return {"message": "تم إلغاء تجميد النقاط بنجاح"}
+    raise HTTPException(status_code=400, detail="فشل في إلغاء تجميد النقاط")
+
+@router.post("/process-frozen-points")
+async def process_frozen_points_endpoint():
+    """Process all expired frozen points (admin/cron job)"""
+    result = await check_and_process_frozen_points()
+    return {
+        "message": "تم معالجة النقاط المجمدة",
+        "processed": result["processed"],
+        "cancelled": result["cancelled"]
+    }
+
+@router.get("/frozen-members")
+async def get_frozen_members():
+    """Get all members with frozen points"""
+    frozen = await db.member_points.find({
+        "is_frozen": True,
+        "frozen_points": {"$gt": 0}
+    }).to_list(None)
+    
+    result = []
+    for mp in frozen:
+        member = await db.members.find_one({"id": mp.get('member_id')}, {"_id": 0})
+        if member:
+            from datetime import timedelta
+            settings = await db.loyalty_settings.find_one({"type": "points"})
+            freeze_days = settings.get('points_freeze_days', 60) if settings else 60
+            frozen_at = mp.get('frozen_at')
+            days_remaining = None
+            if frozen_at and isinstance(frozen_at, datetime):
+                expiry_date = frozen_at + timedelta(days=freeze_days)
+                days_remaining = (expiry_date - datetime.now(timezone.utc)).days
+                
+            result.append({
+                "member_id": mp.get('member_id'),
+                "member_name": member.get('name_ar', member.get('name', '')),
+                "member_code": member.get('member_code', ''),
+                "phone": member.get('phone', ''),
+                "frozen_points": mp.get('frozen_points', 0),
+                "frozen_at": frozen_at.isoformat() if frozen_at else None,
+                "days_remaining": days_remaining
+            })
+    
+    return result
+
 # ============== Award Points (Internal) ==============
 
 async def award_points(member_id: str, action_type: str, description_ar: str, description_en: str, custom_points: int = None):
