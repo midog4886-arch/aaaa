@@ -1263,16 +1263,21 @@ ${selectedInvoice.discount > 0 ? `🎁 الخصم: ${selectedInvoice.discount} �
         activity_name: item.activity_name,
         start_date: startDate,
         end_date: endDate,
+        schedule: item.schedule || item.days || '',
         status: isActive ? 'active' : 'expired'
       };
     }) || [];
+    
+    // Combine all schedules for display
+    const allSchedules = activitiesWithDates.map(a => a.schedule).filter(Boolean).join(' | ');
     
     // Find member data
     const member = members.find(m => m.id === invoice.member_id);
     if (member) {
       setCardPrintMember({
         ...member,
-        activities: activitiesWithDates
+        activities: activitiesWithDates,
+        schedule: allSchedules
       });
       setShowCardPrintDialog(true);
     } else if (invoice.customer_name_ar || invoice.customer_phone) {
@@ -1281,7 +1286,8 @@ ${selectedInvoice.discount > 0 ? `🎁 الخصم: ${selectedInvoice.discount} �
         name_ar: invoice.customer_name_ar,
         phone: invoice.customer_phone,
         member_code: invoice.invoice_number,
-        activities: activitiesWithDates
+        activities: activitiesWithDates,
+        schedule: allSchedules
       });
       setShowCardPrintDialog(true);
     }
