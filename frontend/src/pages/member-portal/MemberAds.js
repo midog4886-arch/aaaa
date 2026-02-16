@@ -2,8 +2,9 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Card, CardContent } from '../../components/ui/card';
 import { Button } from '../../components/ui/button';
 import { Dialog, DialogContent } from '../../components/ui/dialog';
-import { X, ChevronLeft, ChevronRight, Play, ExternalLink, Volume2, VolumeX } from 'lucide-react';
+import { X, ChevronLeft, ChevronRight, Play, ExternalLink, Volume2, VolumeX, Plus } from 'lucide-react';
 import { memberAPI, getDarkMode } from './MemberLayout';
+import { motion, AnimatePresence } from 'framer-motion';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 
@@ -14,7 +15,285 @@ const getImageUrl = (url) => {
   return `${BACKEND_URL}/api${url}`;
 };
 
-// Hero Banner Carousel Component
+// ==========================================
+// 📱 STORIES ADS COMPONENT (Instagram Style)
+// ==========================================
+export const StoriesAds = ({ branchId }) => {
+  const [stories, setStories] = useState([]);
+  const [selectedStory, setSelectedStory] = useState(null);
+  const [currentStoryIndex, setCurrentStoryIndex] = useState(0);
+  const [progress, setProgress] = useState(0);
+  const [isPaused, setIsPaused] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const progressRef = useRef(null);
+  const darkMode = getDarkMode();
+  const STORY_DURATION = 5000; // 5 seconds per story
+
+  useEffect(() => {
+    fetchStories();
+  }, [branchId]);
+
+  const fetchStories = async () => {
+    try {
+      const res = await memberAPI.get('/api/advertisements/public', {
+        params: { position: 'story', branch_id: branchId }
+      });
+      setStories(res.data);
+    } catch (error) {
+      console.error('Failed to fetch stories');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Auto-advance story
+  useEffect(() => {
+    if (!selectedStory || isPaused) return;
+
+    const startTime = Date.now();
+    const animate = () => {
+      const elapsed = Date.now() - startTime;
+      const newProgress = Math.min((elapsed / STORY_DURATION) * 100, 100);
+      setProgress(newProgress);
+
+      if (newProgress >= 100) {
+        handleNextStory();
+      } else {
+        progressRef.current = requestAnimationFrame(animate);
+      }
+    };
+
+    progressRef.current = requestAnimationFrame(animate);
+
+    return () => {
+      if (progressRef.current) {
+        cancelAnimationFrame(progressRef.current);
+      }
+    };
+  }, [selectedStory, currentStoryIndex, isPaused]);
+
+  const handleOpenStory = async (story, index) => {
+    setSelectedStory(story);
+    setCurrentStoryIndex(index);
+    setProgress(0);
+    // Record view
+    await memberAPI.post(`/api/advertisements/${story.id}/view`).catch(() => {});
+  };
+
+  const handleNextStory = () => {
+    if (currentStoryIndex < stories.length - 1) {
+      const nextIndex = currentStoryIndex + 1;
+      setCurrentStoryIndex(nextIndex);
+      setSelectedStory(stories[nextIndex]);
+      setProgress(0);
+      memberAPI.post(`/api/advertisements/${stories[nextIndex].id}/view`).catch(() => {});
+    } else {
+      handleCloseStory();
+    }
+  };
+
+  const handlePrevStory = () => {
+    if (currentStoryIndex > 0) {
+      const prevIndex = currentStoryIndex - 1;
+      setCurrentStoryIndex(prevIndex);
+      setSelectedStory(stories[prevIndex]);
+      setProgress(0);
+    }
+  };
+
+  const handleCloseStory = () => {
+    setSelectedStory(null);
+    setProgress(0);
+    setIsPaused(false);
+  };
+
+  const handleStoryClick = async () => {
+    if (selectedStory?.link_url) {
+      await memberAPI.post(`/api/advertisements/${selectedStory.id}/click`).catch(() => {});
+      window.open(selectedStory.link_url, '_blank');
+    }
+  };
+
+  if (loading || stories.length === 0) return null;
+
+  return (
+    <>
+      {/* Stories Circles */}
+      <div className="mb-6">
+        <div className="flex gap-4 overflow-x-auto pb-2 scrollbar-hide px-1">
+          {stories.map((story, index) => {
+            const hasImage = story.banner_image_url || story.youtube_video_id;
+            const thumbnailUrl = story.youtube_video_id 
+              ? `https://img.youtube.com/vi/${story.youtube_video_id}/mqdefault.jpg`
+              : story.banner_image_url ? getImageUrl(story.banner_image_url) : null;
+
+            return (
+              <motion.button
+                key={story.id}
+                onClick={() => handleOpenStory(story, index)}
+                className="flex flex-col items-center gap-2 flex-shrink-0"
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+              >
+                {/* Story Circle with Gradient Ring */}
+                <div className="relative">
+                  <div className="w-20 h-20 rounded-full p-[3px] bg-gradient-to-tr from-yellow-400 via-pink-500 to-purple-600">
+                    <div className={`w-full h-full rounded-full p-[2px] ${darkMode ? 'bg-gray-900' : 'bg-white'}`}>
+                      {thumbnailUrl ? (
+                        <img 
+                          src={thumbnailUrl}
+                          alt={story.title_ar}
+                          className="w-full h-full rounded-full object-cover"
+                        />
+                      ) : (
+                        <div className="w-full h-full rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center">
+                          <span className="text-white text-2xl font-bold">
+                            {story.title_ar?.charAt(0) || '📢'}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  {/* Play icon for videos */}
+                  {story.youtube_video_id && (
+                    <div className="absolute bottom-0 right-0 w-6 h-6 bg-red-500 rounded-full flex items-center justify-center border-2 border-white">
+                      <Play className="w-3 h-3 text-white" fill="white" />
+                    </div>
+                  )}
+                </div>
+                {/* Story Title */}
+                <span className={`text-xs font-medium text-center w-20 line-clamp-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                  {story.title_ar || 'عرض'}
+                </span>
+              </motion.button>
+            );
+          })}
+          
+          {/* Add Story Placeholder */}
+          <div className="flex flex-col items-center gap-2 flex-shrink-0 opacity-50">
+            <div className={`w-20 h-20 rounded-full border-2 border-dashed ${darkMode ? 'border-gray-600' : 'border-gray-300'} flex items-center justify-center`}>
+              <Plus className={`w-8 h-8 ${darkMode ? 'text-gray-600' : 'text-gray-400'}`} />
+            </div>
+            <span className={`text-xs ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>قريباً</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Fullscreen Story Viewer */}
+      <AnimatePresence>
+        {selectedStory && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 bg-black"
+            onClick={handleStoryClick}
+            onMouseDown={() => setIsPaused(true)}
+            onMouseUp={() => setIsPaused(false)}
+            onTouchStart={() => setIsPaused(true)}
+            onTouchEnd={() => setIsPaused(false)}
+          >
+            {/* Progress Bars */}
+            <div className="absolute top-0 left-0 right-0 z-10 flex gap-1 p-2">
+              {stories.map((_, idx) => (
+                <div key={idx} className="flex-1 h-1 bg-white/30 rounded-full overflow-hidden">
+                  <div 
+                    className="h-full bg-white rounded-full transition-all"
+                    style={{ 
+                      width: idx < currentStoryIndex ? '100%' : 
+                             idx === currentStoryIndex ? `${progress}%` : '0%' 
+                    }}
+                  />
+                </div>
+              ))}
+            </div>
+
+            {/* Header */}
+            <div className="absolute top-6 left-0 right-0 z-10 flex items-center justify-between px-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-full bg-gradient-to-br from-orange-500 to-pink-500 flex items-center justify-center">
+                  <span className="text-white font-bold">🏆</span>
+                </div>
+                <div>
+                  <p className="text-white font-semibold text-sm">{selectedStory.title_ar}</p>
+                  <p className="text-white/60 text-xs">أكاديمية أداء الأبطال</p>
+                </div>
+              </div>
+              <button 
+                onClick={(e) => { e.stopPropagation(); handleCloseStory(); }}
+                className="w-10 h-10 flex items-center justify-center"
+              >
+                <X className="w-6 h-6 text-white" />
+              </button>
+            </div>
+
+            {/* Story Content */}
+            <div className="absolute inset-0 flex items-center justify-center">
+              {selectedStory.youtube_video_id ? (
+                <iframe
+                  src={`https://www.youtube.com/embed/${selectedStory.youtube_video_id}?autoplay=1&mute=1`}
+                  className="w-full h-full"
+                  allow="autoplay; encrypted-media"
+                  allowFullScreen
+                />
+              ) : selectedStory.banner_image_url ? (
+                <img 
+                  src={getImageUrl(selectedStory.banner_image_url)}
+                  alt={selectedStory.title_ar}
+                  className="w-full h-full object-contain"
+                />
+              ) : (
+                <div className="text-center text-white p-8">
+                  <h2 className="text-3xl font-bold mb-4">{selectedStory.title_ar}</h2>
+                  {selectedStory.description_ar && (
+                    <p className="text-xl opacity-90">{selectedStory.description_ar}</p>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Navigation Areas */}
+            <div className="absolute inset-0 flex z-5">
+              <div className="w-1/3 h-full" onClick={(e) => { e.stopPropagation(); handlePrevStory(); }} />
+              <div className="w-1/3 h-full" />
+              <div className="w-1/3 h-full" onClick={(e) => { e.stopPropagation(); handleNextStory(); }} />
+            </div>
+
+            {/* Bottom Info */}
+            {selectedStory.description_ar && (
+              <div className="absolute bottom-0 left-0 right-0 p-6 bg-gradient-to-t from-black/80 to-transparent">
+                <p className="text-white text-lg">{selectedStory.description_ar}</p>
+                {selectedStory.link_url && (
+                  <div className="mt-4 flex justify-center">
+                    <button className="bg-white text-black px-6 py-2 rounded-full font-semibold flex items-center gap-2">
+                      <span>عرض المزيد</span>
+                      <ChevronLeft className="w-4 h-4" />
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Swipe Up Indicator */}
+            {selectedStory.link_url && (
+              <motion.div 
+                className="absolute bottom-20 left-1/2 -translate-x-1/2"
+                animate={{ y: [0, -10, 0] }}
+                transition={{ repeat: Infinity, duration: 1.5 }}
+              >
+                <ChevronLeft className="w-8 h-8 text-white rotate-90" />
+              </motion.div>
+            )}
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </>
+  );
+};
+
+// ==========================================
+// 🎠 ENHANCED CAROUSEL COMPONENT
+// ==========================================
 export const HeroBannerAds = ({ branchId }) => {
   const [ads, setAds] = useState([]);
   const [currentIndex, setCurrentIndex] = useState(0);
