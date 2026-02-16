@@ -442,13 +442,14 @@ export const HeroBannerAds = ({ branchId }) => {
                   <ExternalLink className="w-12 h-12 text-white" />
                 </motion.div>
                 <h3 className="text-3xl font-bold">{currentAd.title_ar}</h3>
-              {currentAd.description_ar && (
-                <p className="mt-2 opacity-90">{currentAd.description_ar}</p>
-              )}
-              <div className="mt-4 inline-flex items-center gap-2 bg-white/20 hover:bg-white/30 px-6 py-3 rounded-full transition-all">
-                <span className="font-medium">اضغط للزيارة</span>
-                <ExternalLink className="w-5 h-5" />
-              </div>
+                {currentAd.description_ar && (
+                  <p className="mt-2 opacity-90">{currentAd.description_ar}</p>
+                )}
+                <div className="mt-4 inline-flex items-center gap-2 bg-white/20 hover:bg-white/30 px-6 py-3 rounded-full transition-all">
+                  <span className="font-medium">اضغط للزيارة</span>
+                  <ExternalLink className="w-5 h-5" />
+                </div>
+              </motion.div>
             </div>
           </div>
         ) : (
