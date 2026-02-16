@@ -8,7 +8,7 @@ import {
 import { toast } from 'sonner';
 import { motion, AnimatePresence } from 'framer-motion';
 import MemberLayout, { memberAPI, getMemberData, getDarkMode } from './MemberLayout';
-import { HeroBannerAds, InlineAds, PopupAd } from './MemberAds';
+import { HeroBannerAds, InlineAds, PopupAd, StoriesAds } from './MemberAds';
 import PullToRefresh from '../../components/PullToRefresh';
 
 // Skeleton Components
