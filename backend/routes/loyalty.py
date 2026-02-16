@@ -133,6 +133,234 @@ def serialize_doc(doc):
     doc['id'] = str(doc.pop('_id'))
     return doc
 
+# ============== Points Freeze/Unfreeze Functions ==============
+
+async def freeze_member_points(member_id: str, reason: str = "انتهاء الاشتراك"):
+    """
+    تجميد نقاط العضو عند انتهاء الاشتراك
+    Freeze member's points when subscription expires
+    """
+    member_points = await db.member_points.find_one({"member_id": member_id})
+    
+    if not member_points:
+        return False
+    
+    # Check if already frozen
+    if member_points.get('is_frozen', False):
+        return True
+    
+    available_points = member_points.get('available_points', 0)
+    
+    if available_points <= 0:
+        return True
+    
+    # Freeze the points
+    await db.member_points.update_one(
+        {"member_id": member_id},
+        {
+            "$set": {
+                "is_frozen": True,
+                "frozen_points": available_points,
+                "frozen_at": datetime.now(timezone.utc),
+                "available_points": 0  # Points cannot be used while frozen
+            }
+        }
+    )
+    
+    # Log the freeze action
+    await db.points_history.insert_one({
+        "member_id": member_id,
+        "points": -available_points,
+        "action_type": "points_frozen",
+        "description_ar": f"تم تجميد {available_points} نقطة بسبب: {reason}",
+        "description_en": f"Frozen {available_points} points due to: {reason}",
+        "created_at": datetime.now(timezone.utc)
+    })
+    
+    # Notify member
+    await db.member_notifications.insert_one({
+        "member_id": member_id,
+        "title_ar": "تم تجميد نقاطك ❄️",
+        "title_en": "Points Frozen ❄️",
+        "message_ar": f"تم تجميد {available_points} نقطة بسبب انتهاء اشتراكك. قم بتجديد اشتراكك خلال 60 يوم لاستعادة نقاطك.",
+        "message_en": f"{available_points} points frozen due to subscription expiry. Renew within 60 days to restore your points.",
+        "type": "loyalty",
+        "is_read": False,
+        "created_at": datetime.now(timezone.utc)
+    })
+    
+    return True
+
+async def unfreeze_member_points(member_id: str, reason: str = "تجديد الاشتراك"):
+    """
+    إعادة تفعيل نقاط العضو عند تجديد الاشتراك
+    Unfreeze member's points when subscription is renewed
+    """
+    member_points = await db.member_points.find_one({"member_id": member_id})
+    
+    if not member_points:
+        return False
+    
+    # Check if frozen
+    if not member_points.get('is_frozen', False):
+        return True
+    
+    frozen_points = member_points.get('frozen_points', 0)
+    
+    if frozen_points <= 0:
+        # Just unfreeze without restoring points
+        await db.member_points.update_one(
+            {"member_id": member_id},
+            {
+                "$set": {
+                    "is_frozen": False,
+                    "frozen_points": 0,
+                    "frozen_at": None
+                }
+            }
+        )
+        return True
+    
+    # Restore the frozen points
+    await db.member_points.update_one(
+        {"member_id": member_id},
+        {
+            "$set": {
+                "is_frozen": False,
+                "frozen_points": 0,
+                "frozen_at": None
+            },
+            "$inc": {
+                "available_points": frozen_points
+            }
+        }
+    )
+    
+    # Log the unfreeze action
+    await db.points_history.insert_one({
+        "member_id": member_id,
+        "points": frozen_points,
+        "action_type": "points_unfrozen",
+        "description_ar": f"تم استعادة {frozen_points} نقطة مجمدة بسبب: {reason}",
+        "description_en": f"Restored {frozen_points} frozen points due to: {reason}",
+        "created_at": datetime.now(timezone.utc)
+    })
+    
+    # Notify member
+    await db.member_notifications.insert_one({
+        "member_id": member_id,
+        "title_ar": "تم استعادة نقاطك! 🎉",
+        "title_en": "Points Restored! 🎉",
+        "message_ar": f"تم استعادة {frozen_points} نقطة مجمدة. شكراً لتجديد اشتراكك!",
+        "message_en": f"{frozen_points} frozen points restored. Thank you for renewing!",
+        "type": "loyalty",
+        "is_read": False,
+        "created_at": datetime.now(timezone.utc)
+    })
+    
+    return True
+
+async def cancel_frozen_points(member_id: str):
+    """
+    إلغاء النقاط المجمدة بعد انتهاء المهلة (60 يوم)
+    Cancel frozen points after grace period (60 days)
+    """
+    member_points = await db.member_points.find_one({"member_id": member_id})
+    
+    if not member_points:
+        return False
+    
+    if not member_points.get('is_frozen', False):
+        return True
+    
+    frozen_points = member_points.get('frozen_points', 0)
+    
+    if frozen_points <= 0:
+        return True
+    
+    # Cancel the frozen points
+    await db.member_points.update_one(
+        {"member_id": member_id},
+        {
+            "$set": {
+                "is_frozen": False,
+                "frozen_points": 0,
+                "frozen_at": None
+            },
+            "$inc": {
+                "total_points": -frozen_points  # Reduce total points
+            }
+        }
+    )
+    
+    # Log the cancellation
+    await db.points_history.insert_one({
+        "member_id": member_id,
+        "points": -frozen_points,
+        "action_type": "points_cancelled",
+        "description_ar": f"تم إلغاء {frozen_points} نقطة مجمدة بسبب عدم تجديد الاشتراك خلال 60 يوم",
+        "description_en": f"Cancelled {frozen_points} frozen points due to no renewal within 60 days",
+        "created_at": datetime.now(timezone.utc)
+    })
+    
+    # Notify member
+    await db.member_notifications.insert_one({
+        "member_id": member_id,
+        "title_ar": "تم إلغاء نقاطك المجمدة ❌",
+        "title_en": "Frozen Points Cancelled ❌",
+        "message_ar": f"للأسف تم إلغاء {frozen_points} نقطة مجمدة بسبب عدم تجديد الاشتراك خلال المهلة المحددة.",
+        "message_en": f"Unfortunately {frozen_points} frozen points were cancelled due to no renewal within the grace period.",
+        "type": "loyalty",
+        "is_read": False,
+        "created_at": datetime.now(timezone.utc)
+    })
+    
+    return True
+
+async def check_and_process_frozen_points():
+    """
+    فحص ومعالجة النقاط المجمدة المنتهية
+    Check and process expired frozen points - Run daily
+    """
+    # Get points settings for freeze days
+    settings = await db.loyalty_settings.find_one({"type": "points"})
+    freeze_days = settings.get('points_freeze_days', 60) if settings else 60
+    
+    # Calculate cutoff date
+    from datetime import timedelta
+    cutoff_date = datetime.now(timezone.utc) - timedelta(days=freeze_days)
+    
+    # Find members with frozen points older than cutoff
+    frozen_members = await db.member_points.find({
+        "is_frozen": True,
+        "frozen_points": {"$gt": 0},
+        "frozen_at": {"$lt": cutoff_date}
+    }).to_list(None)
+    
+    cancelled_count = 0
+    for member_points in frozen_members:
+        member_id = member_points.get('member_id')
+        
+        # Check if member has any active subscription now
+        member = await db.members.find_one({"id": member_id}, {"_id": 0})
+        if member:
+            activities = member.get('activities', [])
+            today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+            has_active = any(
+                a.get('status') == 'active' and a.get('end_date', '') >= today
+                for a in activities
+            )
+            
+            if has_active:
+                # Member renewed - unfreeze instead
+                await unfreeze_member_points(member_id, "تجديد الاشتراك")
+            else:
+                # No renewal - cancel points
+                await cancel_frozen_points(member_id)
+                cancelled_count += 1
+    
+    return {"processed": len(frozen_members), "cancelled": cancelled_count}
+
 # ============== Settings Endpoints ==============
 
 @router.get("/settings/points")
