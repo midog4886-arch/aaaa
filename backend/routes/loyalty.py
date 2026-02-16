@@ -425,6 +425,9 @@ async def get_member_points(member_id: str):
             "referral_count": 0,
             "attendance_streak": 0,
             "last_attendance_date": None,
+            "is_frozen": False,
+            "frozen_points": 0,
+            "frozen_at": None,
             "created_at": datetime.now(timezone.utc)
         }
         await db.member_points.insert_one(member_points)
@@ -436,6 +439,19 @@ async def get_member_points(member_id: str):
     
     level_info = calculate_level(member_points.get('total_points', 0), level_settings)
     
+    # Calculate days until frozen points expire
+    days_until_expiry = None
+    if member_points.get('is_frozen') and member_points.get('frozen_at'):
+        from datetime import timedelta
+        settings = await db.loyalty_settings.find_one({"type": "points"})
+        freeze_days = settings.get('points_freeze_days', 60) if settings else 60
+        frozen_at = member_points.get('frozen_at')
+        if isinstance(frozen_at, datetime):
+            expiry_date = frozen_at + timedelta(days=freeze_days)
+            days_until_expiry = (expiry_date - datetime.now(timezone.utc)).days
+            if days_until_expiry < 0:
+                days_until_expiry = 0
+    
     return {
         "member_id": member_id,
         "total_points": member_points.get('total_points', 0),
@@ -443,6 +459,10 @@ async def get_member_points(member_id: str):
         "referral_code": member_points.get('referral_code', ''),
         "referral_count": member_points.get('referral_count', 0),
         "attendance_streak": member_points.get('attendance_streak', 0),
+        "is_frozen": member_points.get('is_frozen', False),
+        "frozen_points": member_points.get('frozen_points', 0),
+        "frozen_at": member_points.get('frozen_at').isoformat() if member_points.get('frozen_at') else None,
+        "days_until_expiry": days_until_expiry,
         **level_info
     }
 
