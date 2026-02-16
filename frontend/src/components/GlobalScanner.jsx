@@ -680,7 +680,11 @@ const GlobalScanner = ({ enabled = true, language = 'ar' }) => {
                       <p className={`font-bold ${
                         lastResult.success ? 'text-green-700' : 'text-red-700'
                       }`}>
-                        {lastResult.message}
+                        {typeof lastResult.message === 'string' 
+                          ? lastResult.message 
+                          : lastResult.success 
+                            ? t('✅ تم التسجيل بنجاح', '✅ Success') 
+                            : t('❌ فشل التسجيل', '❌ Failed')}
                       </p>
                       <p className="text-sm text-gray-500">{lastResult.activityName}</p>
                     </div>
