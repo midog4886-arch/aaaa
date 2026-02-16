@@ -295,10 +295,13 @@ const GlobalScanner = ({ enabled = true, language = 'ar' }) => {
     setCheckingIn(true);
     
     try {
-      const res = await attendanceAPI.qrCheckin(
-        memberData.member_code || memberData.id, 
-        activityId
-      );
+      // Ensure we're sending string values
+      const memberCode = String(memberData.member_code || memberData.id);
+      const actId = String(activityId);
+      
+      console.log('Manual Check-in:', { memberCode, actId });
+      
+      const res = await attendanceAPI.qrCheckin(memberCode, actId);
       
       if (res.data.status === 'already_checked_in') {
         playSound('error');
