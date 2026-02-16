@@ -14,7 +14,7 @@ import { toast } from 'sonner';
 import { 
   Plus, Edit, Trash2, Loader2, Layers, Users, Dumbbell, UserPlus, UserMinus, Search,
   ChevronDown, ChevronUp, ChevronRight, Clock, AlertTriangle, ArrowRight, ArrowLeft, Home,
-  GripVertical, Move
+  GripVertical, Move, X
 } from 'lucide-react';
 
 // Main activity types with Arabic names
