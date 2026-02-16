@@ -31,7 +31,7 @@ class AdvertisementBase(BaseModel):
     title: str
     title_ar: str
     ad_type: str  # banner, video, link
-    position: str  # hero, sidebar, inline, popup
+    position: str  # hero, sidebar, inline, popup, story
     link_url: Optional[str] = ""
     youtube_video_id: Optional[str] = ""
     banner_image_url: Optional[str] = ""
