@@ -38,6 +38,7 @@ const translations = {
     advertisements: 'الإعلانات',
     daily_videos: 'الفيديوهات اليومية',
     loyalty: 'الولاء',
+    renewals: 'التجديدات',
     accounting: 'المحاسبة',
     reports: 'التقارير',
     messages: 'الرسائل',
