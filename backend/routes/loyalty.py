@@ -568,6 +568,9 @@ async def get_frozen_members():
             frozen_at = mp.get('frozen_at')
             days_remaining = None
             if frozen_at and isinstance(frozen_at, datetime):
+                # Make frozen_at timezone aware if it's not
+                if frozen_at.tzinfo is None:
+                    frozen_at = frozen_at.replace(tzinfo=timezone.utc)
                 expiry_date = frozen_at + timedelta(days=freeze_days)
                 days_remaining = (expiry_date - datetime.now(timezone.utc)).days
                 
