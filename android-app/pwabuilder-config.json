@@ -1,0 +1,65 @@
+{
+  "packageId": "com.gcsp.academy.portal",
+  "host": "academy-hub-62.preview.emergentagent.com",
+  "name": "أكاديمية أداء الأبطال",
+  "launcherName": "GCSP Academy",
+  "display": "standalone",
+  "themeColor": "#F97316",
+  "navigationColor": "#F97316",
+  "navigationColorDark": "#F97316",
+  "navigationDividerColor": "#F97316",
+  "navigationDividerColorDark": "#F97316",
+  "backgroundColor": "#ffffff",
+  "enableNotifications": true,
+  "startUrl": "/portal/login",
+  "iconUrl": "/images/icon-512x512.png",
+  "maskableIconUrl": "/images/icon-512x512.png",
+  "splashScreenFadeOutDuration": 300,
+  "signing": {
+    "file": "./signing.keystore",
+    "alias": "gcsp-academy"
+  },
+  "appVersionCode": 1,
+  "appVersionName": "1.0.0",
+  "shortcuts": [
+    {
+      "name": "الاشتراكات",
+      "short_name": "اشتراكاتي",
+      "url": "/portal/subscriptions",
+      "icons": [
+        {
+          "src": "/images/icon-96x96.png",
+          "sizes": "96x96"
+        }
+      ]
+    },
+    {
+      "name": "بطاقة العضوية",
+      "short_name": "البطاقة",
+      "url": "/portal/card",
+      "icons": [
+        {
+          "src": "/images/icon-96x96.png",
+          "sizes": "96x96"
+        }
+      ]
+    }
+  ],
+  "generatorApp": "PWABuilder",
+  "webManifestUrl": "/manifest.json",
+  "fallbackType": "customtabs",
+  "features": {
+    "locationDelegation": {
+      "enabled": false
+    },
+    "playBilling": {
+      "enabled": false
+    }
+  },
+  "enableSiteSettingsShortcut": false,
+  "isChromeOSOnly": false,
+  "isMetaQuest": false,
+  "includeSourceCode": false,
+  "signingMode": "new",
+  "pwaUrl": "https://academy-hub-62.preview.emergentagent.com/portal"
+}
