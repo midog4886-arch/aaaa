@@ -320,6 +320,15 @@ function AppRoutes() {
         } 
       />
       
+      <Route 
+        path="/renewals" 
+        element={
+          <ProtectedRoute permission="members">
+            <RenewalsPage />
+          </ProtectedRoute>
+        } 
+      />
+      
       {/* Smart Default Redirect based on permissions */}
       <Route path="/" element={<SmartRedirect />} />
       <Route path="*" element={<SmartRedirect />} />
