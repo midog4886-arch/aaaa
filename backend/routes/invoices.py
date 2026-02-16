@@ -484,6 +484,13 @@ async def pay_invoice(invoice_id: str, current_user: dict = Depends(get_current_
                         description_ar,
                         description_en
                     )
+                    
+                    # Unfreeze points if they were frozen (subscription renewal)
+                    if loyalty_unfreeze_points:
+                        try:
+                            await loyalty_unfreeze_points(member_id, "تجديد الاشتراك")
+                        except Exception as uf_error:
+                            print(f"Error unfreezing loyalty points: {uf_error}")
         except Exception as e:
             print(f"Error awarding loyalty points for renewal: {e}")
     
