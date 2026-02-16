@@ -88,6 +88,9 @@ set_loyalty_award_function(loyalty_award_points)
 # Set loyalty award function for invoices router (subscription renewals)
 set_invoices_loyalty(loyalty_award_points)
 
+# Set loyalty unfreeze function for invoices router (subscription renewals)
+set_invoices_unfreeze(loyalty_unfreeze_points)
+
 # Set loyalty award function for daily videos router (video watch)
 set_videos_loyalty(loyalty_award_points)
 
