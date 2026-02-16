@@ -38,6 +38,7 @@ class PointsSettings(BaseModel):
     coach_rating_points: int = 5
     video_watch_points: int = 3
     birthday_points: int = 100
+    points_freeze_days: int = 60  # Days before frozen points are cancelled
 
 class LevelSettings(BaseModel):
     bronze_min: int = 0
