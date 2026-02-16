@@ -389,10 +389,116 @@ const GlobalScanner = ({ enabled = true, language = 'ar' }) => {
     };
   }, [enabled, handleScan]);
 
+  // Start camera scanner
+  const startCameraScanner = useCallback(async () => {
+    setCameraError(null);
+    setShowCameraScanner(true);
+    
+    // Wait for DOM element to be ready
+    setTimeout(async () => {
+      try {
+        const html5QrCode = new Html5Qrcode("qr-reader");
+        html5QrCodeRef.current = html5QrCode;
+        
+        await html5QrCode.start(
+          { facingMode: "environment" },
+          {
+            fps: 10,
+            qrbox: { width: 250, height: 250 },
+            aspectRatio: 1.0
+          },
+          (decodedText) => {
+            // Success - process the scanned code
+            console.log('📷 Camera scanned:', decodedText);
+            stopCameraScanner();
+            handleScan(decodedText);
+          },
+          (errorMessage) => {
+            // Ignore scan errors (no QR found)
+          }
+        );
+      } catch (err) {
+        console.error('Camera error:', err);
+        setCameraError(t('تعذر الوصول للكاميرا. تأكد من إعطاء صلاحية الكاميرا.', 'Could not access camera. Please grant camera permission.'));
+      }
+    }, 100);
+  }, [handleScan, t]);
+
+  // Stop camera scanner
+  const stopCameraScanner = useCallback(() => {
+    if (html5QrCodeRef.current) {
+      html5QrCodeRef.current.stop().then(() => {
+        html5QrCodeRef.current.clear();
+        html5QrCodeRef.current = null;
+      }).catch(err => {
+        console.log('Scanner stop error:', err);
+      });
+    }
+    setShowCameraScanner(false);
+  }, []);
+
+  // Cleanup camera on unmount
+  useEffect(() => {
+    return () => {
+      if (html5QrCodeRef.current) {
+        html5QrCodeRef.current.stop().catch(() => {});
+      }
+    };
+  }, []);
+
   if (!enabled) return null;
 
   return (
     <>
+      {/* Camera Scanner Dialog */}
+      <Dialog open={showCameraScanner} onOpenChange={(open) => !open && stopCameraScanner()}>
+        <DialogContent className="max-w-md" dir="rtl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-lg">
+              <Camera className="w-5 h-5 text-green-600" />
+              {t('مسح QR بالكاميرا', 'Scan QR with Camera')}
+            </DialogTitle>
+          </DialogHeader>
+          
+          <div className="space-y-4">
+            {cameraError ? (
+              <div className="p-4 bg-red-50 border border-red-200 rounded-lg text-center">
+                <CameraOff className="w-12 h-12 text-red-400 mx-auto mb-2" />
+                <p className="text-red-600">{cameraError}</p>
+                <Button 
+                  onClick={startCameraScanner} 
+                  className="mt-3"
+                  variant="outline"
+                >
+                  {t('إعادة المحاولة', 'Retry')}
+                </Button>
+              </div>
+            ) : (
+              <>
+                <div 
+                  id="qr-reader" 
+                  style={{ 
+                    width: '100%', 
+                    borderRadius: '12px', 
+                    overflow: 'hidden',
+                    background: '#000'
+                  }} 
+                />
+                <p className="text-center text-gray-500 text-sm">
+                  {t('وجّه الكاميرا نحو كود QR', 'Point camera at QR code')}
+                </p>
+              </>
+            )}
+          </div>
+          
+          <div className="flex justify-end gap-2 mt-4">
+            <Button variant="outline" onClick={stopCameraScanner}>
+              {t('إغلاق', 'Close')}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       {/* Scanner Status Indicator - Always visible floating button */}
       <div 
         style={{
@@ -400,8 +506,33 @@ const GlobalScanner = ({ enabled = true, language = 'ar' }) => {
           bottom: '30px',
           right: '30px',
           zIndex: 99999,
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '10px',
+          alignItems: 'center'
         }}
       >
+        {/* Camera Button */}
+        <button 
+          onClick={startCameraScanner}
+          style={{
+            width: '50px',
+            height: '50px',
+            borderRadius: '50%',
+            background: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)',
+            border: '3px solid white',
+            boxShadow: '0 4px 15px rgba(59, 130, 246, 0.5)',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+          title={t('مسح بالكاميرا', 'Scan with Camera')}
+        >
+          <Camera style={{ width: '24px', height: '24px', color: 'white' }} />
+        </button>
+        
+        {/* Sound Toggle Button */}
         <button 
           onClick={() => setSoundEnabled(!soundEnabled)}
           style={{
