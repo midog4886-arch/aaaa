@@ -256,6 +256,7 @@ const AdvertisementsPage = () => {
       case 'sidebar': return 'الشريط الجانبي';
       case 'inline': return 'بين المحتوى';
       case 'popup': return 'نافذة منبثقة';
+      case 'story': return 'ستوري (قصص)';
       default: return position;
     }
   };
