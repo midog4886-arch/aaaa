@@ -1,6 +1,6 @@
 // Service Worker for GCSP Academy PWA
-// Updated: Force cache refresh - Dec 2025
-const CACHE_NAME = 'gcsp-academy-v2';
+// Updated: Force cache refresh - Dec 2025 v3
+const CACHE_NAME = 'gcsp-academy-v3';
 const OFFLINE_URL = '/offline.html';
 
 // Assets to cache immediately on install
