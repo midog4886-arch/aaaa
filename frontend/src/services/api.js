@@ -330,6 +330,21 @@ export const dailyVideosAPI = {
   getStats: (params = {}) => axios.get(`${API}/daily-videos/stats/summary`, { params })
 };
 
+// Loyalty API
+export const loyaltyAPI = {
+  getMemberPoints: (memberId) => axios.get(`${API}/loyalty/members/${memberId}/points`),
+  getPointsHistory: (memberId) => axios.get(`${API}/loyalty/members/${memberId}/history`),
+  getPointsSettings: () => axios.get(`${API}/loyalty/settings/points`),
+  getLevelSettings: () => axios.get(`${API}/loyalty/settings/levels`),
+  getLeaderboard: (limit = 10) => axios.get(`${API}/loyalty/leaderboard`, { params: { limit } }),
+  freezePoints: (memberId) => axios.post(`${API}/loyalty/members/${memberId}/freeze`),
+  unfreezePoints: (memberId) => axios.post(`${API}/loyalty/members/${memberId}/unfreeze`),
+  getFrozenMembers: () => axios.get(`${API}/loyalty/frozen-members`),
+  processFrozenPoints: () => axios.post(`${API}/loyalty/process-frozen-points`),
+  redeemPoints: (memberId, data) => axios.post(`${API}/loyalty/members/${memberId}/redeem`, data),
+  useReferralCode: (memberId, code) => axios.post(`${API}/loyalty/members/${memberId}/use-referral`, { referral_code: code })
+};
+
 export default {
   auth: authAPI,
   activities: activitiesAPI,
