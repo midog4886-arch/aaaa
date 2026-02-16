@@ -259,11 +259,8 @@ export const attendanceAPI = {
   quickSearch: (searchTerm) => axios.get(`${API}/attendance/quick-search/${encodeURIComponent(searchTerm)}`),
   quickSearchMulti: (searchTerm) => axios.get(`${API}/attendance/quick-search-multi/${encodeURIComponent(searchTerm)}`),
   quickAttendance: (memberCode, activityId) => axios.post(`${API}/attendance/quick?member_code=${memberCode}&activity_id=${activityId}`),
-  qrCheckin: (memberId, activityId) => {
-    const formData = new FormData();
-    formData.append('member_id', memberId);
-    formData.append('activity_id', activityId);
-    return axios.post(`${API}/attendance/qr-checkin`, formData);
+  qrCheckin: (memberCode, activityId) => {
+    return axios.post(`${API}/attendance/qr-checkin?member_code=${encodeURIComponent(memberCode)}${activityId ? `&activity_id=${encodeURIComponent(activityId)}` : ''}`);
   },
   getMemberReport: (memberId, params = {}) => axios.get(`${API}/attendance/member/${memberId}/report`, { params }),
   getActivityReport: (activityId, params = {}) => axios.get(`${API}/attendance/activity/${activityId}/report`, { params }),
