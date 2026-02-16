@@ -81,6 +81,7 @@ const MemberDashboard = () => {
     { to: '/portal/subscriptions', icon: CreditCard, label: 'اشتراكاتي', color: 'bg-blue-500' },
     { to: '/portal/schedule', icon: Calendar, label: 'جدول التدريبات', color: 'bg-green-500' },
     { to: '/portal/card', icon: QrCode, label: 'بطاقة العضوية', color: 'bg-orange-500' },
+    { to: '/portal/support', icon: Headphones, label: 'خدمة العملاء', color: 'bg-purple-500' },
   ];
 
   if (loading) {
