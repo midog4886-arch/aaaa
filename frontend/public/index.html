@@ -86,6 +86,20 @@
     <body>
         <noscript>You need to enable JavaScript to run this app.</noscript>
         <div id="root"></div>
+        <!-- Service Worker Registration for PWA -->
+        <script>
+            if ('serviceWorker' in navigator) {
+                window.addEventListener('load', function() {
+                    navigator.serviceWorker.register('/sw.js', { scope: '/' })
+                        .then(function(registration) {
+                            console.log('ServiceWorker registered: ', registration.scope);
+                        })
+                        .catch(function(error) {
+                            console.log('ServiceWorker registration failed: ', error);
+                        });
+                });
+            }
+        </script>
         <!--
       This HTML file is a template.
       If you open it directly in the browser, you will see an empty page.
