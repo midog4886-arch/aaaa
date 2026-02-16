@@ -311,15 +311,27 @@ const GlobalScanner = ({ enabled = true, language = 'ar' }) => {
       }
     } catch (error) {
       playSound('error');
-      let errorMsg = error.response?.data?.detail || t('خطأ في التسجيل', 'Check-in error');
-      // Ensure errorMsg is a string
-      if (typeof errorMsg === 'object') {
-        errorMsg = errorMsg.msg || errorMsg.message || JSON.stringify(errorMsg);
+      // Extract error message safely
+      let errorMsg = t('خطأ في التسجيل', 'Check-in error');
+      
+      if (error.response?.data) {
+        const detail = error.response.data.detail;
+        if (typeof detail === 'string') {
+          errorMsg = detail;
+        } else if (Array.isArray(detail)) {
+          // Pydantic validation errors
+          errorMsg = detail.map(e => e.msg || e.message || String(e)).join(', ');
+        } else if (typeof detail === 'object' && detail !== null) {
+          errorMsg = detail.msg || detail.message || detail.error || JSON.stringify(detail);
+        }
+      } else if (error.message) {
+        errorMsg = error.message;
       }
+      
       setLastResult({
         success: false,
         activityName,
-        message: `❌ ${String(errorMsg)}`
+        message: `❌ ${errorMsg}`
       });
     } finally {
       setCheckingIn(false);
