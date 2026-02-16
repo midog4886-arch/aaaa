@@ -38,6 +38,7 @@ import MemberAttendance from './pages/member-portal/MemberAttendance';
 import MemberRateCoach from './pages/member-portal/MemberRateCoach';
 import MemberDailyVideos from './pages/member-portal/MemberDailyVideos';
 import MemberLoyalty from './pages/member-portal/MemberLoyalty';
+import MemberSupport from './pages/member-portal/MemberSupport';
 
 import './App.css';
 
