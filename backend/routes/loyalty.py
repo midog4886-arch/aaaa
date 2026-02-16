@@ -447,6 +447,9 @@ async def get_member_points(member_id: str):
         freeze_days = settings.get('points_freeze_days', 60) if settings else 60
         frozen_at = member_points.get('frozen_at')
         if isinstance(frozen_at, datetime):
+            # Make frozen_at timezone aware if it's not
+            if frozen_at.tzinfo is None:
+                frozen_at = frozen_at.replace(tzinfo=timezone.utc)
             expiry_date = frozen_at + timedelta(days=freeze_days)
             days_until_expiry = (expiry_date - datetime.now(timezone.utc)).days
             if days_until_expiry < 0:
