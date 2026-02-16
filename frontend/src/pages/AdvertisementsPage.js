@@ -499,6 +499,7 @@ const AdvertisementsPage = () => {
               <SelectContent>
                 <SelectItem value="all">جميع المواقع</SelectItem>
                 <SelectItem value="hero">البانر الرئيسي</SelectItem>
+                <SelectItem value="story">ستوري (قصص)</SelectItem>
                 <SelectItem value="sidebar">الشريط الجانبي</SelectItem>
                 <SelectItem value="inline">بين المحتوى</SelectItem>
                 <SelectItem value="popup">نافذة منبثقة</SelectItem>
