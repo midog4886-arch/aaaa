@@ -103,8 +103,8 @@ const MemberDashboard = () => {
           </div>
           
           {/* Quick Links Skeleton */}
-          <div className="grid grid-cols-3 gap-4">
-            {[1, 2, 3].map(i => <QuickLinkSkeleton key={i} darkMode={darkMode} />)}
+          <div className="grid grid-cols-4 gap-4">
+            {[1, 2, 3, 4].map(i => <QuickLinkSkeleton key={i} darkMode={darkMode} />)}
           </div>
         </div>
       </MemberLayout>
