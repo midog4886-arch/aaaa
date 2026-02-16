@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
 import { 
   CreditCard, Calendar, FileText, QrCode, Bell, CheckCircle, 
-  AlertTriangle, Clock, ChevronLeft, Trophy, Loader2, RefreshCw
+  AlertTriangle, Clock, ChevronLeft, Trophy, Loader2, RefreshCw, Headphones
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { motion, AnimatePresence } from 'framer-motion';
