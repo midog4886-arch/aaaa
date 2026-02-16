@@ -3071,6 +3071,7 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
                             {invoice.member_code && (
                               <button className="action-button text-purple-600" onClick={() => handleOpenQRCard(invoice)} title={language === 'ar' ? 'بطاقة QR' : 'QR Card'}><QrCode className="w-4 h-4" /></button>
                             )}
+                            <button className="action-button text-orange-600" onClick={() => handleOpenCardPrint(invoice)} title={language === 'ar' ? 'طباعة كرت العضوية' : 'Print Member Card'}><CreditCard className="w-4 h-4" /></button>
                             <button className="action-button text-green-600" onClick={() => handleSendWhatsApp(invoice)} title={language === 'ar' ? 'واتساب' : 'WhatsApp'}><MessageSquare className="w-4 h-4" /></button>
                             {invoice.status === 'pending' && (<>
                               <button className="action-button text-blue-600" onClick={() => openEditDialog(invoice)} title={language === 'ar' ? 'تعديل' : 'Edit'}><Edit className="w-4 h-4" /></button>
