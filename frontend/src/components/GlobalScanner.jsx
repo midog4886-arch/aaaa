@@ -9,9 +9,10 @@ import { Badge } from './ui/badge';
 import { toast } from 'sonner';
 import { 
   Scan, Check, X, User, Clock, Activity, 
-  Volume2, VolumeX, Loader2, Calendar, Phone
+  Volume2, VolumeX, Loader2, Calendar, Phone, Camera, CameraOff
 } from 'lucide-react';
 import { attendanceAPI } from '../services/api';
+import { Html5Qrcode } from 'html5-qrcode';
 
 const GlobalScanner = ({ enabled = true, language = 'ar' }) => {
   const t = (ar, en) => language === 'ar' ? ar : en;
@@ -23,6 +24,8 @@ const GlobalScanner = ({ enabled = true, language = 'ar' }) => {
   const [loading, setLoading] = useState(false);
   const [checkingIn, setCheckingIn] = useState(false);
   const [lastResult, setLastResult] = useState(null);
+  const [showCameraScanner, setShowCameraScanner] = useState(false);
+  const [cameraError, setCameraError] = useState(null);
   
   // Scanner buffer
   const bufferRef = useRef('');
@@ -31,6 +34,7 @@ const GlobalScanner = ({ enabled = true, language = 'ar' }) => {
   const isProcessingRef = useRef(false); // Lock to prevent multiple dialogs
   const lastScannedCodeRef = useRef(''); // Track last scanned code
   const scanLockTimeRef = useRef(0); // Timestamp lock
+  const html5QrCodeRef = useRef(null);
 
   // Load sound setting
   useEffect(() => {
