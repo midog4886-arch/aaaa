@@ -217,11 +217,15 @@ const GlobalScanner = ({ enabled = true, language = 'ar' }) => {
             }
           } catch (error) {
             playSound('error');
-            const errorMsg = error.response?.data?.detail || t('خطأ في التسجيل التلقائي', 'Auto check-in error');
+            let errorMsg = error.response?.data?.detail || t('خطأ في التسجيل التلقائي', 'Auto check-in error');
+            // Ensure errorMsg is a string
+            if (typeof errorMsg === 'object') {
+              errorMsg = errorMsg.msg || errorMsg.message || JSON.stringify(errorMsg);
+            }
             setLastResult({
               success: false,
               activityName: activityToCheckin.activity_name,
-              message: `❌ ${errorMsg}`
+              message: `❌ ${String(errorMsg)}`
             });
           } finally {
             setCheckingIn(false);
