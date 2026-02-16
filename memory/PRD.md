@@ -2822,7 +2822,7 @@ daily_videos: {
 
 #### اختبار الـ PWA:
 ```
-SW Status: Service Worker registered: https://champions-sports.preview.emergentagent.com/
+SW Status: Service Worker registered: https://academy-hub-62.preview.emergentagent.com/
 ```
 
 #### الملفات الجديدة:
