@@ -865,7 +865,7 @@ export const LevelsPage = () => {
                     draggable
                     onDragStart={(e) => handleDragStart(e, member, level)}
                     onDragEnd={handleDragEnd}
-                    className={`flex items-center gap-2 p-2 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors cursor-grab active:cursor-grabbing
+                    className={`flex items-center gap-2 p-2 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors cursor-grab active:cursor-grabbing group
                       ${draggedMember?.id === member.id ? 'opacity-50 scale-95' : ''}`}
                   >
                     <GripVertical className="w-4 h-4 text-gray-400 shrink-0" />
@@ -878,6 +878,17 @@ export const LevelsPage = () => {
                     <Badge variant="outline" className="text-[10px] px-1.5">
                       #{member.member_code}
                     </Badge>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSelectedLevel(level);
+                        handleRemoveMember(member.id);
+                      }}
+                      className="opacity-0 group-hover:opacity-100 p-1 rounded-full hover:bg-red-100 text-red-500 transition-opacity"
+                      title={t('حذف من المستوى', 'Remove from level')}
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
                   </div>
                 ))}
                 {levelMembers.length > 5 && (
