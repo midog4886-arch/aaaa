@@ -1,0 +1,23 @@
+version: '3.8'
+
+services:
+  academy-app:
+    build: .
+    container_name: gcsp-academy
+    restart: always
+    ports:
+      - "80:8000"
+      - "443:8000"
+    environment:
+      - MONGO_URL=${MONGO_URL}
+      - DB_NAME=${DB_NAME}
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY}
+      - PORT=8000
+    volumes:
+      - ./uploads:/app/uploads
+    networks:
+      - academy-network
+
+networks:
+  academy-network:
+    driver: bridge
