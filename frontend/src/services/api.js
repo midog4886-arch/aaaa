@@ -1,6 +1,27 @@
 import axios from 'axios';
 
-const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
+// Dynamically determine API URL at runtime
+const getBackendUrl = () => {
+  const envUrl = process.env.REACT_APP_BACKEND_URL;
+  
+  // If env variable is set and valid, use it
+  if (envUrl && envUrl !== 'undefined' && envUrl !== '' && !envUrl.includes('undefined')) {
+    return envUrl;
+  }
+  
+  // For production (Railway, etc.), use current origin
+  if (typeof window !== 'undefined' && window.location.origin) {
+    // If we're on a deployed site, use the same origin
+    if (!window.location.origin.includes('localhost')) {
+      return window.location.origin;
+    }
+  }
+  
+  // Default: use relative URL (empty string)
+  return '';
+};
+
+const BACKEND_URL = getBackendUrl();
 const API = `${BACKEND_URL}/api`;
 
 // Set up axios interceptor to add token
@@ -258,11 +279,8 @@ export const attendanceAPI = {
   quickSearch: (searchTerm) => axios.get(`${API}/attendance/quick-search/${encodeURIComponent(searchTerm)}`),
   quickSearchMulti: (searchTerm) => axios.get(`${API}/attendance/quick-search-multi/${encodeURIComponent(searchTerm)}`),
   quickAttendance: (memberCode, activityId) => axios.post(`${API}/attendance/quick?member_code=${memberCode}&activity_id=${activityId}`),
-  qrCheckin: (memberId, activityId) => {
-    const formData = new FormData();
-    formData.append('member_id', memberId);
-    formData.append('activity_id', activityId);
-    return axios.post(`${API}/attendance/qr-checkin`, formData);
+  qrCheckin: (memberCode, activityId) => {
+    return axios.post(`${API}/attendance/qr-checkin?member_code=${encodeURIComponent(memberCode)}${activityId ? `&activity_id=${encodeURIComponent(activityId)}` : ''}`);
   },
   getMemberReport: (memberId, params = {}) => axios.get(`${API}/attendance/member/${memberId}/report`, { params }),
   getActivityReport: (activityId, params = {}) => axios.get(`${API}/attendance/activity/${activityId}/report`, { params }),
@@ -299,7 +317,7 @@ export const bankReportsAPI = {
   delete: (id) => axios.delete(`${API}/bank-reports/${id}`)
 };
 
-// Advertisements API - نظام الإعلانات
+// Advertisements API
 export const advertisementsAPI = {
   getAll: (params = {}) => axios.get(`${API}/advertisements`, { params }),
   getPublic: (params = {}) => axios.get(`${API}/advertisements/public`, { params }),
@@ -316,7 +334,7 @@ export const advertisementsAPI = {
   getStats: (params = {}) => axios.get(`${API}/advertisements/stats/summary`, { params })
 };
 
-// Daily Videos API - الفيديوهات اليومية
+// Daily Videos API
 export const dailyVideosAPI = {
   getAll: (params = {}) => axios.get(`${API}/daily-videos`, { params }),
   getById: (id) => axios.get(`${API}/daily-videos/${id}`),
@@ -330,6 +348,21 @@ export const dailyVideosAPI = {
   getByActivity: (activityId, limit = 10) => axios.get(`${API}/daily-videos/activity/${activityId}/videos`, { params: { limit } }),
   recordView: (id) => axios.post(`${API}/daily-videos/${id}/view`),
   getStats: (params = {}) => axios.get(`${API}/daily-videos/stats/summary`, { params })
+};
+
+// Loyalty API
+export const loyaltyAPI = {
+  getMemberPoints: (memberId) => axios.get(`${API}/loyalty/members/${memberId}/points`),
+  getPointsHistory: (memberId) => axios.get(`${API}/loyalty/members/${memberId}/history`),
+  getPointsSettings: () => axios.get(`${API}/loyalty/settings/points`),
+  getLevelSettings: () => axios.get(`${API}/loyalty/settings/levels`),
+  getLeaderboard: (limit = 10) => axios.get(`${API}/loyalty/leaderboard`, { params: { limit } }),
+  freezePoints: (memberId) => axios.post(`${API}/loyalty/members/${memberId}/freeze`),
+  unfreezePoints: (memberId) => axios.post(`${API}/loyalty/members/${memberId}/unfreeze`),
+  getFrozenMembers: () => axios.get(`${API}/loyalty/frozen-members`),
+  processFrozenPoints: () => axios.post(`${API}/loyalty/process-frozen-points`),
+  redeemPoints: (memberId, data) => axios.post(`${API}/loyalty/members/${memberId}/redeem`, data),
+  useReferralCode: (memberId, code) => axios.post(`${API}/loyalty/members/${memberId}/use-referral`, { referral_code: code })
 };
 
 export default {
