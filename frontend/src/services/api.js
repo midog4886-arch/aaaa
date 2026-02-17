@@ -32,23 +32,6 @@ export const authAPI = {
   register: (data) => axios.post(`${API}/auth/register`, data),
   getMe: () => axios.get(`${API}/auth/me`),
 };
-  
-  // Default: use relative URL
-  return '';
-};
-
-const BACKEND_URL = getBackendUrl();
-const API = `${BACKEND_URL}/api`;
-  }
-  return config;
-});
-
-// Auth API
-export const authAPI = {
-  login: (username, password) => axios.post(`${API}/auth/login`, { username, password }),
-  register: (data) => axios.post(`${API}/auth/register`, data),
-  getMe: () => axios.get(`${API}/auth/me`),
-};
 
 // Activities API
 export const activitiesAPI = {
