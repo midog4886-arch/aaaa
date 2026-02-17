@@ -5,3 +5,9 @@ expertMode = true
 [nix]
 channel = "stable-25_05"
 packages = ["cargo", "freetype", "glibcLocales", "lcms2", "libiconv", "libimagequant", "libjpeg", "libtiff", "libwebp", "libxcrypt", "openjpeg", "openssl", "pkg-config", "rustc", "tcl", "tk", "zlib"]
+
+[userenv]
+
+[userenv.shared]
+DB_NAME = "champions_academy"
+JWT_SECRET_KEY = "champions-academy-jwt-secret-2024"

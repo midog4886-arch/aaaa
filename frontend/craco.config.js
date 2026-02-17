@@ -78,6 +78,17 @@ if (config.enableVisualEdits && babelMetadataPlugin) {
 }
 
 webpackConfig.devServer = (devServerConfig) => {
+  devServerConfig.port = 5000;
+  devServerConfig.host = '0.0.0.0';
+  devServerConfig.allowedHosts = 'all';
+  devServerConfig.proxy = [
+    {
+      context: ['/api', '/uploads', '/health'],
+      target: 'http://localhost:8001',
+      changeOrigin: true,
+    }
+  ];
+
   // Apply visual edits dev server setup only if enabled
   if (config.enableVisualEdits && setupDevServer) {
     devServerConfig = setupDevServer(devServerConfig);
