@@ -1,30 +1,27 @@
+# Build Frontend
 FROM node:18-alpine AS frontend-builder
 WORKDIR /app/frontend
 COPY frontend/package*.json ./
 RUN npm install
 COPY frontend/ ./
-# تعيين REACT_APP_BACKEND_URL لسلسلة فارغة للنشر بنفس الأصل
-ENV REACT_APP_BACKEND_URL=""
 RUN npm run build
 
+# Build Backend
 FROM python:3.11-slim
 WORKDIR /app
 
-# تثبيت التبعيات
+# Install Python dependencies
 COPY backend/requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 
-# نسخ الخلفية
+# Copy backend code
 COPY backend/ ./
 
-# نسخ بناء الواجهة الأمامية
+# Copy frontend build to static folder
 COPY --from=frontend-builder /app/frontend/build ./static
 
-# إنشاء مجلد التحميلات
-RUN mkdir -p uploads
-
-# فتح المنفذ
+# Expose port
 EXPOSE 8000
 
-# بدء الخادم
+# Start server
 CMD ["uvicorn", "server:app", "--host", "0.0.0.0", "--port", "8000"]
