@@ -1,8 +1,27 @@
 import axios from 'axios';
 
-// Use relative URL if REACT_APP_BACKEND_URL is not defined (for same-origin deployments)
-const envUrl = process.env.REACT_APP_BACKEND_URL;
-const BACKEND_URL = (envUrl && envUrl !== 'undefined' && envUrl !== '') ? envUrl : '';
+// Dynamically determine API URL at runtime
+const getBackendUrl = () => {
+  const envUrl = process.env.REACT_APP_BACKEND_URL;
+  
+  // If env variable is set and valid, use it
+  if (envUrl && envUrl !== 'undefined' && envUrl !== '' && !envUrl.includes('undefined')) {
+    return envUrl;
+  }
+  
+  // For production (Railway, etc.), use current origin
+  if (typeof window !== 'undefined' && window.location.origin) {
+    // If we're on a deployed site, use the same origin
+    if (!window.location.origin.includes('localhost')) {
+      return window.location.origin;
+    }
+  }
+  
+  // Default: use relative URL (empty string)
+  return '';
+};
+
+const BACKEND_URL = getBackendUrl();
 const API = `${BACKEND_URL}/api`;
 
 // Set up axios interceptor to add token
