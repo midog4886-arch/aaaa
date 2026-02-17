@@ -1,34 +1,24 @@
+# Build Frontend
 FROM node:18-alpine AS frontend-builder
 WORKDIR /app/frontend
-
-# Cache bust - change this number to force rebuild
-ARG CACHEBUST=3
-
 COPY frontend/package*.json ./
 RUN npm install
 COPY frontend/ ./
+RUN npm run build
 
-# Set REACT_APP_BACKEND_URL to empty string for same-origin deployment
-ENV REACT_APP_BACKEND_URL=""
-
-# Force rebuild by echoing cache bust
-RUN echo "Cache bust: $CACHEBUST" && npm run build
-
+# Build Backend
 FROM python:3.11-slim
 WORKDIR /app
 
-# Install dependencies
+# Install Python dependencies
 COPY backend/requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy backend
+# Copy backend code
 COPY backend/ ./
 
-# Copy frontend build
+# Copy frontend build to static folder
 COPY --from=frontend-builder /app/frontend/build ./static
-
-# Create uploads directory
-RUN mkdir -p uploads
 
 # Expose port
 EXPOSE 8000
