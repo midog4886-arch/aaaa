@@ -16,17 +16,22 @@ const getBackendUrl = () => {
 
 const BACKEND_URL = getBackendUrl();
 const API = `${BACKEND_URL}/api`;
-  // If env variable is set and valid, use it
-  if (envUrl && envUrl !== 'undefined' && envUrl !== '' && !envUrl.includes('undefined')) {
-    return envUrl;
+
+// Set up axios interceptor to add token
+axios.interceptors.request.use((config) => {
+  const token = localStorage.getItem('token');
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
   }
-  
-  // For production (Railway, etc.), use current origin
-  if (typeof window !== 'undefined' && window.location.origin) {
-    if (!window.location.origin.includes('localhost')) {
-      return window.location.origin;
-    }
-  }
+  return config;
+});
+
+// Auth API
+export const authAPI = {
+  login: (username, password) => axios.post(`${API}/auth/login`, { username, password }),
+  register: (data) => axios.post(`${API}/auth/register`, data),
+  getMe: () => axios.get(`${API}/auth/me`),
+};
   
   // Default: use relative URL
   return '';
