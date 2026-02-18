@@ -7,6 +7,7 @@ import {
   Trophy, 
   CreditCard, 
   Bell,
+  QrCode,
   User
 } from 'lucide-react';
 
@@ -23,6 +24,11 @@ const BottomNavigation = ({ darkMode, unreadCount = 0, language = 'ar' }) => {
       to: '/videos', 
       icon: Video, 
       label: language === 'ar' ? 'الفيديوهات' : 'Videos' 
+    },
+    { 
+      to: '/card', 
+      icon: QrCode, 
+      label: language === 'ar' ? 'البطاقة' : 'Card' 
     },
     { 
       to: '/loyalty-points', 

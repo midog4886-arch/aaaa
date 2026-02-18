@@ -426,6 +426,7 @@ const MemberLayout = ({ children }) => {
           {[
             { to: '/', icon: Home, label: getText('home') },
             { to: '/videos', icon: Video, label: language === 'ar' ? 'الفيديوهات' : 'Videos' },
+            { to: '/card', icon: QrCode, label: language === 'ar' ? 'البطاقة' : 'Card' },
             { to: '/loyalty-points', icon: Trophy, label: language === 'ar' ? 'النقاط' : 'Points' },
             { to: '/subscriptions', icon: CreditCard, label: language === 'ar' ? 'الاشتراكات' : 'Subs' },
             { to: '/notifications', icon: Bell, label: getText('notifications'), badge: notifications.unread_count },
