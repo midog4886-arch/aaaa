@@ -104,8 +104,8 @@ export const generateCardHTML = (member, qrData, schedule) => {
       </div>
       <div class="card-footer">
         <div class="terms-title">شروط وأحكام:</div>
-        <div>• ${INVOICE_TERMS[0]}</div>
-        <div>• ${INVOICE_TERMS[1]}</div>
+        <div>• ${INVOICE_TERMS.ar[0]}</div>
+        <div>• ${INVOICE_TERMS.ar[1]}</div>
       </div>
     </div>
   `;
@@ -216,7 +216,7 @@ export const printInvoice = (invoice, items) => {
   const subtotal = items.reduce((sum, item) => sum + (item.fee || 0) * (item.quantity || 1), 0);
   const discount = invoice.discount || 0;
   const taxableAmount = subtotal - discount;
-  const vatAmount = taxableAmount * VAT_RATE;
+  const vatAmount = taxableAmount * (VAT_RATE / 100);
   const total = taxableAmount + vatAmount;
   
   printWindow.document.write(`
@@ -277,7 +277,7 @@ export const printInvoice = (invoice, items) => {
           <div class="terms">
             <h4>الشروط والأحكام:</h4>
             <ul>
-              ${INVOICE_TERMS.map(term => `<li>${term}</li>`).join('')}
+              ${INVOICE_TERMS.ar.map(term => `<li>${term}</li>`).join('')}
             </ul>
           </div>
           

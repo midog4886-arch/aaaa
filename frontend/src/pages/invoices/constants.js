@@ -12,7 +12,7 @@ export const GAP = 5; // mm
 // Company info
 export const COMPANY_TAX_NUMBER = "312655637900003";
 export const COMPANY_COMMERCIAL_REG = "7043630230";
-export const VAT_RATE = 0.15; // 15%
+export const VAT_RATE = 15; // 15%
 
 // Company info object
 export const COMPANY_INFO = {
@@ -65,12 +65,20 @@ export const DAYS_OF_WEEK = [
 ];
 
 // Invoice terms
-export const INVOICE_TERMS = [
-  "الاشتراك محدد البداية والنهاية ولا يتم تعويض حصص غياب المشترك",
-  "المبلغ المدفوع لا يسترد بعد مرور أسبوع من الاشتراك",
-  "يجب إحضار بطاقة العضوية عند كل زيارة",
-  "الالتزام بمواعيد الحصص المحددة"
-];
+export const INVOICE_TERMS = {
+  ar: [
+    "الاشتراك محدد البداية والنهاية ولا يتم تعويض حصص غياب المشترك",
+    "المبلغ المدفوع لا يسترد بعد مرور أسبوع من الاشتراك",
+    "يجب إحضار بطاقة العضوية عند كل زيارة",
+    "الالتزام بمواعيد الحصص المحددة"
+  ],
+  en: [
+    "Subscription has a fixed start and end date. Missed sessions will not be compensated",
+    "Paid amount is non-refundable after one week from subscription",
+    "Membership card must be presented at each visit",
+    "Commitment to scheduled session times is required"
+  ]
+};
 
 /**
  * Get status information (color, label)

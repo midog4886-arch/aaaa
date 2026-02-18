@@ -120,7 +120,7 @@ const InvoiceForm = ({
   // Calculate totals
   const subtotal = items.reduce((sum, item) => sum + (item.fee || 0) * (item.quantity || 1), 0);
   const taxableAmount = subtotal - discount;
-  const vatAmount = taxableAmount * VAT_RATE;
+  const vatAmount = taxableAmount * (VAT_RATE / 100);
   const total = taxableAmount + vatAmount;
 
   // Handle save
