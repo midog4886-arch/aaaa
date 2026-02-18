@@ -154,11 +154,6 @@ export const SettingsPage = () => {
                 ? 'نظام إدارة شركة اداء الابطال العالمية للرياضة - نسخة 1.0'
                 : 'Champions Performance Academy Management System - Version 1.0'}
             </p>
-            <p className="text-sm text-muted-foreground">
-              {language === 'ar' 
-                ? 'تم التطوير بواسطة Emergent'
-                : 'Developed by Emergent'}
-            </p>
           </CardContent>
         </Card>
       </div>
