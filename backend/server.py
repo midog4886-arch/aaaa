@@ -120,6 +120,19 @@ async def root():
     """Root endpoint"""
     return {"message": "Champions Academy API", "status": "running"}
 
+# Download backup endpoint
+@app.get("/api/download-backup")
+async def download_backup():
+    """Download backup file"""
+    backup_path = UPLOADS_DIR / "gcsp-academy-backup.zip"
+    if backup_path.exists():
+        return FileResponse(
+            path=str(backup_path),
+            filename="gcsp-academy-backup.zip",
+            media_type="application/zip"
+        )
+    raise HTTPException(status_code=404, detail="Backup file not found")
+
 # ============ PUBLIC API - Member Card ============
 
 @api_router.get("/public/member-card/{search_term}")
