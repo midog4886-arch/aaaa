@@ -23,6 +23,10 @@ export const SettingsPage = () => {
   const [darkMode, setDarkMode] = React.useState(() => {
     return document.documentElement.classList.contains('dark');
   });
+  const [backupLoading, setBackupLoading] = React.useState({
+    code: false,
+    database: false
+  });
 
   const toggleDarkMode = () => {
     document.documentElement.classList.toggle('dark');
@@ -37,6 +41,56 @@ export const SettingsPage = () => {
       setDarkMode(true);
     }
   }, []);
+
+  const API_URL = process.env.REACT_APP_BACKEND_URL || '';
+
+  const downloadCodeBackup = async () => {
+    setBackupLoading(prev => ({ ...prev, code: true }));
+    try {
+      const response = await fetch(`${API_URL}/api/backup/code`);
+      if (!response.ok) throw new Error('Failed to download backup');
+      
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `gcsp-academy-code-backup-${new Date().toISOString().split('T')[0]}.zip`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      a.remove();
+      
+      toast.success(language === 'ar' ? 'تم تحميل النسخة الاحتياطية للكود' : 'Code backup downloaded successfully');
+    } catch (error) {
+      toast.error(language === 'ar' ? 'فشل تحميل النسخة الاحتياطية' : 'Failed to download backup');
+    } finally {
+      setBackupLoading(prev => ({ ...prev, code: false }));
+    }
+  };
+
+  const downloadDatabaseBackup = async () => {
+    setBackupLoading(prev => ({ ...prev, database: true }));
+    try {
+      const response = await fetch(`${API_URL}/api/backup/database`);
+      if (!response.ok) throw new Error('Failed to download backup');
+      
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `gcsp-academy-database-backup-${new Date().toISOString().split('T')[0]}.zip`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      a.remove();
+      
+      toast.success(language === 'ar' ? 'تم تحميل النسخة الاحتياطية لقاعدة البيانات' : 'Database backup downloaded successfully');
+    } catch (error) {
+      toast.error(language === 'ar' ? 'فشل تحميل النسخة الاحتياطية' : 'Failed to download backup');
+    } finally {
+      setBackupLoading(prev => ({ ...prev, database: false }));
+    }
+  };
 
   return (
     <Layout title={t('settings')}>
