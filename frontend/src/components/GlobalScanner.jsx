@@ -242,7 +242,8 @@ const GlobalScanner = ({ enabled = true, language = 'ar' }) => {
       }
     } catch (error) {
       playSound('error');
-      const errorMsg = error.response?.data?.detail || t('خطأ في التسجيل', 'Check-in error');
+      const rawErr = error.response?.data?.detail;
+      const errorMsg = typeof rawErr === 'string' ? rawErr : (rawErr?.msg || rawErr?.message || t('خطأ في التسجيل', 'Check-in error'));
       setLastResult({
         success: false,
         activityName,
