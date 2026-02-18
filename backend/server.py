@@ -12,6 +12,8 @@ import csv
 import base64
 import qrcode
 import shutil
+import subprocess
+import zipfile
 from openpyxl import Workbook
 from openpyxl.styles import Font, Alignment, Border, Side, PatternFill
 from pathlib import Path
