@@ -73,6 +73,7 @@ frontend/
 - Added Push Notification system: service worker push/click handlers, PushNotificationManager component on member dashboard + daily videos, admin broadcast page (/admin/push-notifications)
 - Backend push notification routes: subscribe, unsubscribe, subscription-status, broadcast, subscribers-count
 - Mobile UI improvements: safe-area padding, responsive touch targets, smooth transitions
+- QR Attendance Schedule Validation: auto-checks member's scheduled days before recording attendance. Correct day → auto check-in with success. Wrong day → warning with scheduled days shown + manual override button. Uses Saudi timezone (UTC+3) for day comparison. Schedule parsed from invoice items.
 
 ## Known Issues
 - MongoDB Atlas SSL handshake may fail with `TLSV1_ALERT_INTERNAL_ERROR` - this is typically caused by the Replit IP not being whitelisted in MongoDB Atlas Network Access settings. The user needs to add `0.0.0.0/0` (allow all) in MongoDB Atlas Network Access.

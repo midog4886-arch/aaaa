@@ -168,14 +168,69 @@ const GlobalScanner = ({ enabled = true, language = 'ar' }) => {
       const activeActivities = allActivities.filter(a => a.status === 'active');
       const expiredActivities = allActivities.filter(a => a.status === 'expired');
       
-      setMemberData({
+      const mData = {
         ...data,
         activeActivities,
         expiredActivities
-      });
+      };
+      setMemberData(mData);
       
       if (activeActivities.length === 0) {
         playSound('error');
+      } else {
+        const unrecorded = activeActivities.filter(a => !a.recorded_today);
+        if (unrecorded.length > 0) {
+          const act = unrecorded[0];
+          setCheckingIn(true);
+          try {
+            const token = localStorage.getItem('token');
+            const memberCode2 = data.member_code || data.id;
+            const checkinUrl = `/api/attendance/qr-checkin?member_code=${encodeURIComponent(memberCode2)}&activity_id=${encodeURIComponent(act.activity_id)}`;
+            const checkinRes = await fetch(checkinUrl, {
+              method: 'POST',
+              headers: { 'Authorization': `Bearer ${token}` }
+            });
+            const checkinData = await checkinRes.json();
+            
+            if (checkinData.status === 'success') {
+              playSound('success');
+              setLastResult({
+                success: true,
+                activityName: act.activity_name,
+                message: t('✅ تم تسجيل الحضور بنجاح', '✅ Check-in successful')
+              });
+              setMemberData(prev => ({
+                ...prev,
+                activeActivities: prev.activeActivities.map(a =>
+                  a.activity_id === act.activity_id ? { ...a, recorded_today: true } : a
+                )
+              }));
+            } else if (checkinData.status === 'wrong_day') {
+              playSound('error');
+              setLastResult({
+                success: false,
+                wrongDay: true,
+                activityId: act.activity_id,
+                activityName: act.activity_name,
+                scheduleDays: checkinData.schedule_days || [],
+                today: checkinData.today,
+                message: checkinData.message || t('هذا ليس موعدك اليوم!', 'This is not your scheduled day!')
+              });
+            } else if (checkinData.status === 'already_checked_in') {
+              playSound('error');
+              setLastResult({
+                success: false,
+                alreadyCheckedIn: true,
+                activityName: act.activity_name,
+                message: t('⚠️ مسجل مسبقاً اليوم', '⚠️ Already checked in today')
+              });
+            }
+          } catch (e) {
+            console.log('Auto check-in failed:', e);
+          } finally {
+            setCheckingIn(false);
+          }
+        }
       }
       
     } catch (error) {
@@ -204,8 +259,7 @@ const GlobalScanner = ({ enabled = true, language = 'ar' }) => {
     }, 300);
   }, []);
 
-  // Handle check-in for specific activity
-  const handleCheckin = useCallback(async (activityId, activityName) => {
+  const handleCheckin = useCallback(async (activityId, activityName, force = false) => {
     if (!memberData || !activityId) return;
     
     setCheckingIn(true);
@@ -213,7 +267,8 @@ const GlobalScanner = ({ enabled = true, language = 'ar' }) => {
     try {
       const res = await attendanceAPI.qrCheckin(
         memberData.member_code || memberData.id, 
-        activityId
+        activityId,
+        force
       );
       
       if (res.data.status === 'already_checked_in') {
@@ -224,6 +279,18 @@ const GlobalScanner = ({ enabled = true, language = 'ar' }) => {
           activityName,
           message: t('⚠️ مسجل مسبقاً اليوم', '⚠️ Already checked in today')
         });
+      } else if (res.data.status === 'wrong_day') {
+        playSound('error');
+        const scheduleDays = res.data.schedule_days || [];
+        setLastResult({
+          success: false,
+          wrongDay: true,
+          activityId,
+          activityName,
+          scheduleDays,
+          today: res.data.today,
+          message: res.data.message || t('هذا ليس موعدك اليوم!', 'This is not your scheduled day!')
+        });
       } else {
         playSound('success');
         setLastResult({
@@ -232,7 +299,6 @@ const GlobalScanner = ({ enabled = true, language = 'ar' }) => {
           message: t('✅ تم تسجيل الحضور بنجاح', '✅ Check-in successful')
         });
         
-        // Update activity status in member data
         setMemberData(prev => ({
           ...prev,
           activeActivities: prev.activeActivities.map(a =>
@@ -434,30 +500,55 @@ const GlobalScanner = ({ enabled = true, language = 'ar' }) => {
                 </Button>
               </div>
 
-              {/* Last Result */}
               {lastResult && (
                 <div className={`p-4 rounded-xl border-2 ${
                   lastResult.success 
                     ? 'bg-green-50 border-green-300' 
-                    : lastResult.alreadyCheckedIn 
-                      ? 'bg-orange-50 border-orange-300'
-                      : 'bg-red-50 border-red-300'
+                    : lastResult.wrongDay
+                      ? 'bg-yellow-50 border-yellow-400'
+                      : lastResult.alreadyCheckedIn 
+                        ? 'bg-orange-50 border-orange-300'
+                        : 'bg-red-50 border-red-300'
                 }`}>
                   <div className="flex items-center gap-3">
                     {lastResult.success ? (
                       <Check className="w-8 h-8 text-green-500" />
+                    ) : lastResult.wrongDay ? (
+                      <Clock className="w-8 h-8 text-yellow-500" />
                     ) : (
                       <X className="w-8 h-8 text-red-500" />
                     )}
-                    <div>
+                    <div className="flex-1">
                       <p className={`font-bold ${
-                        lastResult.success ? 'text-green-700' : 'text-red-700'
+                        lastResult.success ? 'text-green-700' 
+                          : lastResult.wrongDay ? 'text-yellow-700'
+                          : 'text-red-700'
                       }`}>
-                        {lastResult.message}
+                        {lastResult.wrongDay ? `⚠️ ${lastResult.message}` : lastResult.message}
                       </p>
                       <p className="text-sm text-gray-500">{lastResult.activityName}</p>
                     </div>
                   </div>
+                  {lastResult.wrongDay && (
+                    <div className="mt-3 pt-3 border-t border-yellow-300">
+                      <p className="text-sm text-yellow-800 mb-2 font-medium">
+                        {t('مواعيدك:', 'Your days:')} {lastResult.scheduleDays?.join(' - ')}
+                      </p>
+                      <Button
+                        onClick={() => handleCheckin(lastResult.activityId, lastResult.activityName, true)}
+                        disabled={checkingIn}
+                        variant="outline"
+                        className="w-full border-yellow-400 text-yellow-800 hover:bg-yellow-100 gap-2"
+                      >
+                        {checkingIn ? (
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                        ) : (
+                          <Check className="w-4 h-4" />
+                        )}
+                        {t('تسجيل حضور رغم ذلك', 'Check-in anyway')}
+                      </Button>
+                    </div>
+                  )}
                 </div>
               )}
 

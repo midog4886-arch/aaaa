@@ -201,17 +201,77 @@ async def create_attendance(
     
     return {"message": "Attendance recorded", "record": {k: v for k, v in record.items() if k != "_id"}}
 
+ARABIC_DAY_MAP = {
+    "الأحد": "sunday", "الاحد": "sunday", "أحد": "sunday", "احد": "sunday",
+    "الإثنين": "monday", "الاثنين": "monday", "إثنين": "monday", "اثنين": "monday",
+    "الثلاثاء": "tuesday", "ثلاثاء": "tuesday",
+    "الأربعاء": "wednesday", "الاربعاء": "wednesday", "أربعاء": "wednesday", "اربعاء": "wednesday",
+    "الخميس": "thursday", "خميس": "thursday",
+    "الجمعة": "friday", "جمعة": "friday",
+    "السبت": "saturday", "سبت": "saturday"
+}
+
+ENGLISH_TO_ARABIC_DAY = {
+    "sunday": "الأحد",
+    "monday": "الإثنين",
+    "tuesday": "الثلاثاء",
+    "wednesday": "الأربعاء",
+    "thursday": "الخميس",
+    "friday": "الجمعة",
+    "saturday": "السبت"
+}
+
+import re
+
+def parse_schedule_days(schedule_text: str) -> list:
+    if not schedule_text:
+        return []
+    days_found = []
+    text = schedule_text.strip()
+    for arabic, english in ARABIC_DAY_MAP.items():
+        if arabic in text:
+            if english not in days_found:
+                days_found.append(english)
+    eng_days = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"]
+    for d in eng_days:
+        if re.search(r'\b' + d + r'\b', text, re.IGNORECASE):
+            if d not in days_found:
+                days_found.append(d)
+    return days_found
+
+async def get_member_schedule_days(member_id: str, activity_id: str) -> list:
+    invoices = await db.invoices.find(
+        {"member_id": member_id, "status": {"$in": ["paid", "partial"]}},
+        {"_id": 0}
+    ).to_list(100)
+    
+    all_days = []
+    today_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    
+    for inv in invoices:
+        for item in inv.get("items", []):
+            if item.get("activity_id") == activity_id:
+                end_date = item.get("end_date", "")
+                if end_date and end_date < today_str:
+                    continue
+                schedule_text = item.get("schedule", "")
+                days = parse_schedule_days(schedule_text)
+                for d in days:
+                    if d not in all_days:
+                        all_days.append(d)
+    return all_days
+
 @router.post("/qr-checkin")
 async def qr_checkin(
     member_code: str,
     activity_id: Optional[str] = None,
+    force: bool = False,
     current_user: dict = Depends(get_current_user)
 ):
-    """Quick check-in via QR code scan"""
+    """Quick check-in via QR code scan with schedule validation"""
     branch_id = current_user.get("branch_id")
     user_name = current_user.get("name", current_user.get("username", ""))
     
-    # Find member by code or phone
     member = await db.members.find_one(
         {"$or": [{"member_code": member_code}, {"phone": member_code}]},
         {"_id": 0}
@@ -222,12 +282,10 @@ async def qr_checkin(
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     check_in_time = datetime.now(timezone.utc).strftime("%H:%M")
     
-    # Determine which activity to check in for
     target_activity_id = activity_id
     activity_name = ""
     
     if not target_activity_id:
-        # Use first active activity
         activities = member.get("activities", [])
         active_activities = [a for a in activities if a.get("status") == "active"]
         if active_activities:
@@ -237,12 +295,10 @@ async def qr_checkin(
     if not target_activity_id:
         raise HTTPException(status_code=400, detail="No active activity found for member")
     
-    # Get activity name if not already set
     if not activity_name:
         activity = await db.activities.find_one({"id": target_activity_id}, {"_id": 0})
         activity_name = activity.get("name_ar", "") if activity else ""
     
-    # Check if already checked in today
     existing = await db.attendance.find_one({
         "member_id": member["id"],
         "activity_id": target_activity_id,
@@ -259,7 +315,31 @@ async def qr_checkin(
             }
         }
     
-    # Create attendance record
+    schedule_days = await get_member_schedule_days(member["id"], target_activity_id)
+    
+    saudi_tz = timezone(timedelta(hours=3))
+    today_day_name = datetime.now(saudi_tz).strftime("%A").lower()
+    
+    is_scheduled_day = True
+    schedule_days_arabic = []
+    
+    if schedule_days:
+        is_scheduled_day = today_day_name in schedule_days
+        schedule_days_arabic = [ENGLISH_TO_ARABIC_DAY.get(d, d) for d in schedule_days]
+    
+    if not is_scheduled_day and not force:
+        return {
+            "message": f"هذا ليس موعدك اليوم! مواعيدك: {' - '.join(schedule_days_arabic)}",
+            "status": "wrong_day",
+            "schedule_days": schedule_days_arabic,
+            "today": ENGLISH_TO_ARABIC_DAY.get(today_day_name, today_day_name),
+            "member": {
+                "name": member.get("name_ar", member.get("name", "")),
+                "member_code": member.get("member_code", ""),
+                "activity": activity_name
+            }
+        }
+    
     record_id = str(uuid.uuid4())
     record = {
         "id": record_id,
@@ -271,7 +351,7 @@ async def qr_checkin(
         "activity_name": activity_name,
         "date": today,
         "check_in_time": check_in_time,
-        "notes": "QR Check-in",
+        "notes": "QR Check-in (خارج الموعد)" if (schedule_days and not is_scheduled_day) else "QR Check-in",
         "branch_id": branch_id,
         "recorded_by": user_name,
         "created_at": datetime.now(timezone.utc).isoformat()
@@ -279,7 +359,6 @@ async def qr_checkin(
     
     await db.attendance.insert_one(record)
     
-    # Award loyalty points for attendance
     if loyalty_award_points:
         try:
             await award_attendance_points(member["id"])
