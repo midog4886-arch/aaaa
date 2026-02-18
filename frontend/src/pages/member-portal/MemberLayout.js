@@ -3,7 +3,7 @@ import { useNavigate, Link, useLocation } from 'react-router-dom';
 import { 
   Trophy, Home, CreditCard, Calendar, Bell, QrCode,
   LogOut, Menu, X, Clock, CheckCircle, AlertTriangle,
-  Moon, Sun, Star, Activity, Video, Languages, Download, Smartphone
+  Moon, Sun, Star, Activity, Video, Languages, Download, Smartphone, Phone
 } from 'lucide-react';
 import { Button } from '../../components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../../components/ui/dialog';
@@ -237,6 +237,7 @@ const MemberLayout = ({ children }) => {
     { to: '/card', icon: QrCode, labelKey: 'memberCard' },
     { to: '/rate-coach', icon: Star, labelKey: 'rateCoaches' },
     { to: '/notifications', icon: Bell, labelKey: 'notifications', badge: notifications.unread_count },
+    { to: '/support', icon: Phone, labelKey: 'support' },
   ];
 
   // Extended translations
@@ -251,6 +252,7 @@ const MemberLayout = ({ children }) => {
       memberCard: { ar: 'بطاقة العضوية', en: 'Member Card' },
       rateCoaches: { ar: 'تقييم المدربين', en: 'Rate Coaches' },
       notifications: { ar: 'الإشعارات', en: 'Notifications' },
+      support: { ar: 'خدمة العملاء', en: 'Support' },
       memberPortal: { ar: 'بوابة الأعضاء', en: 'Member Portal' },
       academy: { ar: 'أكاديمية أداء الأبطال', en: 'Champions Academy' },
       install: { ar: 'تثبيت', en: 'Install' },

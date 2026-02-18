@@ -41,6 +41,7 @@ import MemberAttendance from './pages/member-portal/MemberAttendance';
 import MemberRateCoach from './pages/member-portal/MemberRateCoach';
 import MemberDailyVideos from './pages/member-portal/MemberDailyVideos';
 import MemberLoyalty from './pages/member-portal/MemberLoyalty';
+import MemberSupport from './pages/member-portal/MemberSupport';
 
 import './App.css';
 
@@ -156,6 +157,7 @@ function AppRoutes() {
       <Route path="/rate-coach" element={<MemberRateCoach />} />
       <Route path="/videos" element={<MemberDailyVideos />} />
       <Route path="/loyalty-points" element={<MemberLoyalty />} />
+      <Route path="/support" element={<MemberSupport />} />
       
       {/* Admin Protected Routes - under /admin prefix */}
       <Route 
