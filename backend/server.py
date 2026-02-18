@@ -73,16 +73,19 @@ security = HTTPBearer()
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import Response
 
-class NoCacheMiddleware(BaseHTTPMiddleware):
+class FixPathMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request, call_next):
+        path = request.scope.get("path", "")
+        if path.startswith("/undefined/"):
+            request.scope["path"] = path.replace("/undefined", "", 1)
         response = await call_next(request)
-        if request.url.path.endswith('.html') or request.url.path == '/' or not '.' in request.url.path.split('/')[-1]:
+        if path.endswith('.html') or path == '/' or '.' not in path.split('/')[-1]:
             response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
             response.headers["Pragma"] = "no-cache"
             response.headers["Expires"] = "0"
         return response
 
-app.add_middleware(NoCacheMiddleware)
+app.add_middleware(FixPathMiddleware)
 
 # Include routers
 api_router.include_router(users_router)
