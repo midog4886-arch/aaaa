@@ -202,6 +202,44 @@ async def notify_new_video(video_title: str, video_id: str, branch_id: Optional[
     return await send_notification_to_all_members(payload, branch_id)
 
 
-# Export function for use in daily_videos.py
 def get_notify_new_video_function():
     return notify_new_video
+
+
+class BroadcastPayload(BaseModel):
+    title: str
+    body: str
+    url: Optional[str] = "/"
+    branch_id: Optional[str] = None
+    member_ids: Optional[List[str]] = None
+
+
+@router.post("/broadcast")
+async def broadcast_notification(data: BroadcastPayload):
+    payload = NotificationPayload(
+        title=data.title,
+        body=data.body,
+        url=data.url or "/",
+        tag=f"broadcast-{uuid.uuid4()}"
+    )
+
+    if data.member_ids:
+        query = {"is_active": True, "member_id": {"$in": data.member_ids}}
+        subscriptions = await db.push_subscriptions.find(query, {"_id": 0}).to_list(10000)
+        success_count = 0
+        fail_count = 0
+        for sub in subscriptions:
+            result = await send_push_notification(sub, payload)
+            if result:
+                success_count += 1
+            else:
+                fail_count += 1
+        return {"total": len(subscriptions), "success": success_count, "failed": fail_count}
+    else:
+        return await send_notification_to_all_members(payload, data.branch_id)
+
+
+@router.get("/subscribers-count")
+async def get_subscribers_count():
+    count = await db.push_subscriptions.count_documents({"is_active": True})
+    return {"count": count}

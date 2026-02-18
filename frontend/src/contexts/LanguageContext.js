@@ -44,6 +44,7 @@ const translations = {
     messages: 'الرسائل',
     settings: 'الإعدادات',
     backup: 'النسخ الاحتياطي',
+    push_notifications: 'إشعارات Push',
     branches: 'الفروع',
     users: 'المستخدمين',
     
@@ -195,6 +196,7 @@ const translations = {
     messages: 'Messages',
     settings: 'Settings',
     backup: 'Backup',
+    push_notifications: 'Push Notifications',
     branches: 'Branches',
     users: 'Users',
     member_card: 'Member Card',

@@ -4,10 +4,14 @@ import "@/index.css";
 import App from "@/App";
 
 if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.getRegistrations().then(function(registrations) {
-    registrations.forEach(function(registration) {
-      registration.unregister();
-    });
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js')
+      .then((registration) => {
+        console.log('[App] Service Worker registered:', registration.scope);
+      })
+      .catch((error) => {
+        console.error('[App] Service Worker registration failed:', error);
+      });
   });
 }
 

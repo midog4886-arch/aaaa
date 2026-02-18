@@ -342,6 +342,11 @@ export const dailyVideosAPI = {
   getStats: (params = {}) => axios.get(`${API}/daily-videos/stats/summary`, { params })
 };
 
+export const pushNotificationsAPI = {
+  getSubscribersCount: () => axios.get(`${API}/push-notifications/subscribers-count`),
+  broadcast: (data) => axios.post(`${API}/push-notifications/broadcast`, data),
+};
+
 export default {
   auth: authAPI,
   activities: activitiesAPI,

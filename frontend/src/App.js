@@ -28,6 +28,7 @@ import DailyVideosPage from './pages/DailyVideosPage';
 import LoyaltyPage from './pages/LoyaltyPage';
 import RenewalsPage from './pages/RenewalsPage';
 import BackupPage from './pages/BackupPage';
+import PushNotificationsPage from './pages/PushNotificationsPage';
 import PrivacyPolicyPage from './pages/PrivacyPolicyPage';
 
 // Member Portal Pages
@@ -332,6 +333,14 @@ function AppRoutes() {
         element={
           <ProtectedRoute permission="settings">
             <BackupPage />
+          </ProtectedRoute>
+        } 
+      />
+      <Route 
+        path="/admin/push-notifications" 
+        element={
+          <ProtectedRoute permission="settings">
+            <PushNotificationsPage />
           </ProtectedRoute>
         } 
       />

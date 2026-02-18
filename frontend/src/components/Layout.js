@@ -88,6 +88,7 @@ export const Sidebar = ({ isOpen, onClose }) => {
     ...(isAdmin ? [{ to: '/admin/users', icon: Users, label: 'users', permission: 'users' }] : []),
     { to: '/admin/settings', icon: Settings, label: 'settings', permission: 'settings' },
     ...(isAdmin ? [{ to: '/admin/backup', icon: HardDrive, label: 'backup', permission: 'settings' }] : []),
+    ...(isAdmin ? [{ to: '/admin/push-notifications', icon: Bell, label: 'push_notifications', permission: 'settings' }] : []),
   ];
 
   // Filter nav items based on user permissions

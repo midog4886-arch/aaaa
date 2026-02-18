@@ -69,7 +69,10 @@ frontend/
 - Added Database Backup page (/admin/backup) - create, list, download, restore, delete backups
 - Added PDF & Excel export for Members and Invoices pages
 - Fixed MongoDB SSL connection parameters
-- Removed Service Worker for cache management
+- Re-enabled Service Worker registration for PWA + Push Notifications support
+- Added Push Notification system: service worker push/click handlers, PushNotificationManager component on member dashboard + daily videos, admin broadcast page (/admin/push-notifications)
+- Backend push notification routes: subscribe, unsubscribe, subscription-status, broadcast, subscribers-count
+- Mobile UI improvements: safe-area padding, responsive touch targets, smooth transitions
 
 ## Known Issues
 - MongoDB Atlas SSL handshake may fail with `TLSV1_ALERT_INTERNAL_ERROR` - this is typically caused by the Replit IP not being whitelisted in MongoDB Atlas Network Access settings. The user needs to add `0.0.0.0/0` (allow all) in MongoDB Atlas Network Access.

@@ -12,6 +12,7 @@ import { HeroBannerAds, InlineAds, PopupAd } from './MemberAds';
 import PullToRefresh from '../../components/PullToRefresh';
 import TrainingReminder from '../../components/TrainingReminder';
 import AttendanceToast from '../../components/AttendanceToast';
+import PushNotificationManager from '../../components/PushNotificationManager';
 
 // Skeleton Components
 const StatCardSkeleton = ({ darkMode }) => (
@@ -128,6 +129,9 @@ const MemberDashboard = () => {
         
         {/* Training Reminders */}
         <TrainingReminder language={language} />
+        
+        {/* Push Notification Subscription */}
+        <PushNotificationManager memberId={member?.id} />
         
         {/* Welcome Card */}
         <Card className="bg-gradient-to-r from-slate-900 via-blue-900 to-slate-900 text-white border-0">
