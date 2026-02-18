@@ -4776,6 +4776,24 @@ async def record_attendance(
     }
     await db.attendance.insert_one(record_doc)
     del record_doc["_id"]
+    
+    try:
+        attendance_notif = {
+            "id": str(uuid.uuid4()),
+            "member_id": record.member_id,
+            "type": "attendance_recorded",
+            "title_ar": "تم تسجيل حضورك",
+            "title": "Attendance Recorded",
+            "message_ar": f"تم تسجيل حضورك في {activity['name']} بنجاح - {record.date}",
+            "message": f"Your attendance for {activity.get('name', '')} has been recorded - {record.date}",
+            "link": "/member-attendance",
+            "is_read": False,
+            "created_at": now
+        }
+        await db.member_notifications.insert_one(attendance_notif)
+    except Exception:
+        pass
+    
     return record_doc
 
 @api_router.post("/attendance/bulk")
@@ -4830,6 +4848,24 @@ async def record_bulk_attendance(
                 "created_at": now
             }
             await db.attendance.insert_one(record_doc)
+        
+        try:
+            attendance_notif = {
+                "id": str(uuid.uuid4()),
+                "member_id": rec["member_id"],
+                "type": "attendance_recorded",
+                "title_ar": "تم تسجيل حضورك",
+                "title": "Attendance Recorded",
+                "message_ar": f"تم تسجيل حضورك في {activity['name']} بنجاح - {request.date}",
+                "message": f"Your attendance for {activity.get('name', '')} has been recorded - {request.date}",
+                "link": "/member-attendance",
+                "is_read": False,
+                "created_at": now
+            }
+            await db.member_notifications.insert_one(attendance_notif)
+        except Exception:
+            pass
+        
         recorded_count += 1
     
     return {"message": f"تم تسجيل حضور {recorded_count} عضو", "count": recorded_count}
@@ -4889,6 +4925,23 @@ async def qr_checkin(
         "created_at": now
     }
     await db.attendance.insert_one(record_doc)
+    
+    try:
+        attendance_notif = {
+            "id": str(uuid.uuid4()),
+            "member_id": member_id,
+            "type": "attendance_recorded",
+            "title_ar": "تم تسجيل حضورك",
+            "title": "Attendance Recorded",
+            "message_ar": f"تم تسجيل حضورك في {activity['name']} بنجاح - {today}",
+            "message": f"Your attendance for {activity.get('name', '')} has been recorded - {today}",
+            "link": "/member-attendance",
+            "is_read": False,
+            "created_at": now
+        }
+        await db.member_notifications.insert_one(attendance_notif)
+    except Exception:
+        pass
     
     return {
         "message": "تم تسجيل الحضور بنجاح",

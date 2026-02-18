@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
 import { Bell, AlertTriangle, Clock, Info, Loader2, CheckCircle } from 'lucide-react';
-import MemberLayout, { memberAPI } from './MemberLayout';
+import MemberLayout, { memberAPI, getLanguage } from './MemberLayout';
 
 const MemberNotifications = () => {
   const [loading, setLoading] = useState(true);
   const [notifications, setNotifications] = useState({ notifications: [], unread_count: 0 });
+  const language = getLanguage();
+  const t = (ar, en) => language === 'ar' ? ar : en;
 
   useEffect(() => {
     fetchNotifications();
@@ -69,7 +71,8 @@ const MemberNotifications = () => {
   // Group notifications by type
   const expiringNotifications = notifications.notifications.filter(n => n.type === 'expiring_soon');
   const expiredNotifications = notifications.notifications.filter(n => n.type === 'expired');
-  const otherNotifications = notifications.notifications.filter(n => !['expiring_soon', 'expired'].includes(n.type));
+  const attendanceNotifications = notifications.notifications.filter(n => n.type === 'attendance_recorded');
+  const otherNotifications = notifications.notifications.filter(n => !['expiring_soon', 'expired', 'attendance_recorded'].includes(n.type));
 
   return (
     <MemberLayout>
@@ -144,6 +147,33 @@ const MemberNotifications = () => {
                     </div>
                   );
                 })}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Attendance Notifications */}
+        {attendanceNotifications.length > 0 && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg flex items-center gap-2 text-green-700">
+                <CheckCircle className="w-5 h-5" />
+                {t('سجل الحضور', 'Attendance Records')}
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-3">
+                {attendanceNotifications.slice(0, 10).map((notif, idx) => (
+                  <div key={idx} className="flex items-start gap-3 p-4 rounded-lg border bg-green-50 border-green-200">
+                    <div className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 bg-green-500">
+                      <CheckCircle className="w-5 h-5 text-white" />
+                    </div>
+                    <div>
+                      <p className="font-bold text-green-800">{language === 'ar' ? (notif.title_ar || notif.title) : (notif.title_en || notif.title)}</p>
+                      <p className="text-gray-600 mt-1">{language === 'ar' ? (notif.message_ar || notif.message) : (notif.message_en || notif.message)}</p>
+                    </div>
+                  </div>
+                ))}
               </div>
             </CardContent>
           </Card>

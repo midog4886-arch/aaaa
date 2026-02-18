@@ -7,9 +7,11 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { motion, AnimatePresence } from 'framer-motion';
-import MemberLayout, { memberAPI, getMemberData, getDarkMode } from './MemberLayout';
+import MemberLayout, { memberAPI, getMemberData, getDarkMode, getLanguage } from './MemberLayout';
 import { HeroBannerAds, InlineAds, PopupAd } from './MemberAds';
 import PullToRefresh from '../../components/PullToRefresh';
+import TrainingReminder from '../../components/TrainingReminder';
+import AttendanceToast from '../../components/AttendanceToast';
 
 // Skeleton Components
 const StatCardSkeleton = ({ darkMode }) => (
@@ -45,6 +47,7 @@ const MemberDashboard = () => {
   const [notifications, setNotifications] = useState({ notifications: [], unread_count: 0 });
   const member = getMemberData();
   const darkMode = getDarkMode();
+  const language = getLanguage();
 
   useEffect(() => {
     fetchData();
@@ -114,11 +117,17 @@ const MemberDashboard = () => {
     <MemberLayout>
       <PullToRefresh onRefresh={handleRefresh} disabled={refreshing} className="min-h-[calc(100vh-200px)]">
       <div className="space-y-6">
+        {/* Attendance Toast - Real-time notification */}
+        <AttendanceToast language={language} />
+        
         {/* Hero Banner Ads */}
         <HeroBannerAds branchId={member?.branch_id} />
         
         {/* Popup Ad */}
         <PopupAd branchId={member?.branch_id} />
+        
+        {/* Training Reminders */}
+        <TrainingReminder language={language} />
         
         {/* Welcome Card */}
         <Card className="bg-gradient-to-r from-slate-900 via-blue-900 to-slate-900 text-white border-0">

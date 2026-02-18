@@ -387,10 +387,14 @@ async def get_member_notifications(member: dict = Depends(get_current_member)):
     
     for notif in member_notifs:
         notifications.append({
-            "id": str(notif.get("_id", "")),
+            "id": notif.get("id", str(notif.get("_id", ""))),
             "type": notif.get("type", "info"),
             "title": notif.get("title_ar", notif.get("title", "")),
+            "title_ar": notif.get("title_ar", notif.get("title", "")),
+            "title_en": notif.get("title", notif.get("title_en", "")),
             "message": notif.get("message_ar", notif.get("message", "")),
+            "message_ar": notif.get("message_ar", notif.get("message", "")),
+            "message_en": notif.get("message", notif.get("message_en", "")),
             "priority": "info",
             "link": notif.get("link"),
             "created_at": notif.get("created_at"),
@@ -411,6 +415,175 @@ async def get_member_notifications(member: dict = Depends(get_current_member)):
     return {
         "notifications": notifications,
         "unread_count": len([n for n in notifications if n.get("priority") in ["danger", "warning"]])
+    }
+
+
+# ============ TRAINING REMINDERS ============
+
+@router.get("/training-reminders")
+async def get_training_reminders(member: dict = Depends(get_current_member)):
+    """Get today's training reminders based on active subscriptions and schedules"""
+    today = datetime.now(timezone.utc).strftime('%Y-%m-%d')
+    now = datetime.now(timezone.utc)
+    
+    day_names_ar = {
+        0: 'الاثنين', 1: 'الثلاثاء', 2: 'الأربعاء',
+        3: 'الخميس', 4: 'الجمعة', 5: 'السبت', 6: 'الأحد'
+    }
+    day_names_en = {
+        0: 'Monday', 1: 'Tuesday', 2: 'Wednesday',
+        3: 'Thursday', 4: 'Friday', 5: 'Saturday', 6: 'Sunday'
+    }
+    today_day_num = now.weekday()
+    today_day_ar = day_names_ar.get(today_day_num, '')
+    today_day_en = day_names_en.get(today_day_num, '')
+    
+    reminders = []
+    seen_activities = set()
+    
+    member_activities = member.get("activities", [])
+    for act in member_activities:
+        activity_id = act.get("activity_id")
+        if not activity_id or activity_id in seen_activities:
+            continue
+        end_date = act.get("end_date", "")
+        if not end_date:
+            continue
+        try:
+            if isinstance(end_date, str):
+                end_date_parsed = datetime.strptime(end_date[:10], '%Y-%m-%d').date()
+            elif isinstance(end_date, datetime):
+                end_date_parsed = end_date.date()
+            else:
+                continue
+            if end_date_parsed < now.date():
+                continue
+        except (ValueError, TypeError):
+            continue
+        seen_activities.add(activity_id)
+        
+        schedule_text = act.get("schedule", "")
+        activity_data = await db.activities.find_one(
+            {"id": activity_id}, {"_id": 0, "schedule": 1, "name": 1, "name_ar": 1}
+        )
+        if not schedule_text and activity_data:
+            schedule_text = activity_data.get("schedule", "")
+        
+        is_today = False
+        if schedule_text:
+            schedule_lower = schedule_text.lower()
+            if today_day_ar in schedule_text or today_day_en.lower() in schedule_lower:
+                is_today = True
+            for day_ar in day_names_ar.values():
+                if day_ar in schedule_text:
+                    break
+            else:
+                if schedule_text.strip():
+                    is_today = True
+        
+        if is_today:
+            import re
+            time_patterns = re.findall(r'(\d{1,2}:\d{2}\s*(?:AM|PM|am|pm|ص|م)?)', schedule_text)
+            reminders.append({
+                "id": str(uuid.uuid4()),
+                "activity_id": activity_id,
+                "activity_name": act.get("activity_name", ""),
+                "schedule": schedule_text,
+                "time": time_patterns[0] if time_patterns else "",
+                "end_date": str(end_date),
+                "type": "training_reminder"
+            })
+    
+    invoices = await db.invoices.find(
+        {"member_id": member["id"], "status": {"$in": ["paid", "partial"]}},
+        {"_id": 0}
+    ).to_list(100)
+    
+    for inv in invoices:
+        for item in inv.get("items", []):
+            if not item.get("activity_id"):
+                continue
+            
+            activity_id = item.get("activity_id")
+            if activity_id in seen_activities:
+                continue
+                
+            end_date = item.get("end_date", "")
+            if not end_date and item.get("period"):
+                period = item.get("period", "")
+                if " - " in period:
+                    parts = period.split(" - ")
+                    if len(parts) == 2:
+                        end_date = parts[1].strip()
+            
+            if not end_date:
+                continue
+            try:
+                if isinstance(end_date, str):
+                    end_date_parsed = datetime.strptime(end_date[:10], '%Y-%m-%d').date()
+                elif isinstance(end_date, datetime):
+                    end_date_parsed = end_date.date()
+                else:
+                    continue
+                if end_date_parsed < now.date():
+                    continue
+            except (ValueError, TypeError):
+                continue
+            
+            seen_activities.add(activity_id)
+            
+            schedule_text = item.get("schedule", "")
+            activity_data = await db.activities.find_one(
+                {"id": activity_id}, {"_id": 0, "schedule": 1, "name": 1, "name_ar": 1}
+            )
+            if not schedule_text and activity_data:
+                schedule_text = activity_data.get("schedule", "")
+            
+            is_today = False
+            if schedule_text:
+                schedule_lower = schedule_text.lower()
+                if today_day_ar in schedule_text or today_day_en.lower() in schedule_lower:
+                    is_today = True
+                for day_ar in day_names_ar.values():
+                    if day_ar in schedule_text:
+                        break
+                else:
+                    if schedule_text.strip():
+                        is_today = True
+            
+            if is_today:
+                time_match = ""
+                import re
+                time_patterns = re.findall(r'(\d{1,2}:\d{2}\s*(?:AM|PM|am|pm|ص|م)?)', schedule_text)
+                if time_patterns:
+                    time_match = time_patterns[0]
+                
+                reminders.append({
+                    "id": str(uuid.uuid4()),
+                    "activity_id": activity_id,
+                    "activity_name": item.get("activity_name", ""),
+                    "schedule": schedule_text,
+                    "time": time_match,
+                    "end_date": end_date,
+                    "type": "training_reminder"
+                })
+    
+    today_attendance = await db.attendance.find(
+        {"member_id": member["id"], "date": today},
+        {"_id": 0}
+    ).to_list(10)
+    
+    attended_activities = {a.get("activity_id") for a in today_attendance}
+    
+    for reminder in reminders:
+        reminder["already_attended"] = reminder["activity_id"] in attended_activities
+    
+    return {
+        "reminders": reminders,
+        "today": today,
+        "day_name_ar": today_day_ar,
+        "day_name_en": today_day_en,
+        "total": len(reminders)
     }
 
 
