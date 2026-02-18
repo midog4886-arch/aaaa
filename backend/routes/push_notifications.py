@@ -264,9 +264,10 @@ async def get_subscribers_list():
     for sub in subscriptions:
         mid = sub.get("member_id", "")
         member = members_map.get(mid, {})
+        name = member.get("name", "") or member.get("phone", "") or mid
         result.append({
             "member_id": mid,
-            "name": member.get("name", mid),
+            "name": name,
             "phone": member.get("phone", ""),
             "branch_id": member.get("branch_id", ""),
             "subscribed_at": sub.get("updated_at") or sub.get("created_at", "")

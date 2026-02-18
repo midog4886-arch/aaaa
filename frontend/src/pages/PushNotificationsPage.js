@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/AuthContext';
 import { Layout } from '../components/Layout';
@@ -23,6 +24,7 @@ import {
 const PushNotificationsPage = () => {
   const { language } = useLanguage();
   const { selectedBranchId } = useAuth();
+  const navigate = useNavigate();
   const isAr = language === 'ar';
 
   const [subscribersCount, setSubscribersCount] = useState(0);
@@ -167,14 +169,18 @@ const PushNotificationsPage = () => {
                   {subscribers.map((sub, idx) => (
                     <div
                       key={idx}
-                      className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border"
+                      className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border hover:bg-blue-50 cursor-pointer transition-colors"
+                      onClick={() => {
+                        setShowSubscribers(false);
+                        navigate(`/admin/members?search=${encodeURIComponent(sub.phone || sub.name)}`);
+                      }}
                     >
                       <div className="flex items-center gap-3 min-w-0">
                         <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center flex-shrink-0">
                           <Users className="w-4 h-4 text-blue-600" />
                         </div>
                         <div className="min-w-0">
-                          <p className="font-medium text-sm truncate">{sub.name}</p>
+                          <p className="font-medium text-sm truncate text-blue-700">{sub.name}</p>
                           {sub.phone && (
                             <p className="text-xs text-gray-500 flex items-center gap-1" dir="ltr">
                               <Phone className="w-3 h-3" />

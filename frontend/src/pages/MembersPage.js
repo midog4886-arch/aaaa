@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/AuthContext';
 import { Layout } from '../components/Layout';
@@ -39,11 +40,12 @@ import {
 export const MembersPage = () => {
   const { t, language } = useLanguage();
   const { selectedBranchId } = useAuth();
+  const [searchParams] = useSearchParams();
   const [members, setMembers] = useState([]);
   const [activities, setActivities] = useState([]);
   const [coaches, setCoaches] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [searchTerm, setSearchTerm] = useState('');
+  const [searchTerm, setSearchTerm] = useState(searchParams.get('search') || '');
   const [filterActivity, setFilterActivity] = useState('all');
   const [filterStatus, setFilterStatus] = useState('all');
   
