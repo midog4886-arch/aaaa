@@ -146,9 +146,12 @@ function AppRoutes() {
       {/* Privacy Policy - Public page */}
       <Route path="/privacy" element={<PrivacyPolicyPage />} />
       
-      {/* Member Portal Routes - at root level */}
+      {/* Root redirects to admin login */}
+      <Route path="/" element={<Navigate to="/login" replace />} />
+
+      {/* Member Portal Routes */}
       <Route path="/member-login" element={<MemberLogin />} />
-      <Route path="/" element={<MemberDashboard />} />
+      <Route path="/member-dashboard" element={<MemberDashboard />} />
       <Route path="/subscriptions" element={<MemberSubscriptions />} />
       <Route path="/member-schedule" element={<MemberSchedule />} />
       <Route path="/card" element={<MemberQRCard />} />
