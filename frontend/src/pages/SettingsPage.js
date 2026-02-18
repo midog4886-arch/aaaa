@@ -5,12 +5,17 @@ import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import { Button } from '../components/ui/button';
 import { Switch } from '../components/ui/switch';
 import { Label } from '../components/ui/label';
+import { toast } from 'sonner';
 import { 
   Languages, 
   Moon,
   Sun,
   Trophy,
-  Info
+  Info,
+  Download,
+  Database,
+  FolderArchive,
+  Loader2
 } from 'lucide-react';
 
 export const SettingsPage = () => {
