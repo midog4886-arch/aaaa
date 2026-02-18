@@ -613,7 +613,7 @@ export const InvoicesPage = () => {
         
         // Show QR Card after creating invoice (if member exists)
         if (selectedMember) {
-          const subscriptionItems = invoiceItems.map(item => ({
+          const subscriptionItems = (invoiceItems || []).map(item => ({
             activity_name: item.activity_name,
             start_date: item.start_date,
             end_date: item.end_date,
@@ -648,7 +648,7 @@ export const InvoicesPage = () => {
     setIsEditMode(true);
     setEditingInvoiceId(invoice.id);
     setSelectedMember(members.find(m => m.id === invoice.member_id) || null);
-    setInvoiceItems(invoice.items.map(item => ({
+    setInvoiceItems((invoice.items || []).map(item => ({
       activity_id: item.activity_id,
       activity_name: item.activity_name,
       fee: item.fee,
@@ -2121,7 +2121,7 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
     const formTotal = formSubtotal - totalDiscountAmount; // NO VAT for registration form
     
     // Build items table rows
-    const itemsRows = regFormItems.map((item, idx) => `
+    const itemsRows = (regFormItems || []).map((item, idx) => `
       <tr>
         <td>${idx + 1}</td>
         <td>${item.activity_name || ''}${item.is_product ? ' (منتج)' : ''}</td>
@@ -3013,7 +3013,7 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
                 <div className="space-y-2"><Label>{t('activity_name')}</Label>
                   <Select value={filterActivity} onValueChange={setFilterActivity}><SelectTrigger className="w-[180px]"><SelectValue /></SelectTrigger>
                     <SelectContent><SelectItem value="all">{language === 'ar' ? 'الكل' : 'All'}</SelectItem>
-                      {activities.map(a => <SelectItem key={a.id} value={a.id}>{language === 'ar' ? a.name_ar : a.name}</SelectItem>)}
+                      {(activities || []).map(a => <SelectItem key={a.id} value={a.id}>{language === 'ar' ? a.name_ar : a.name}</SelectItem>)}
                     </SelectContent></Select></div>
                 <div className="space-y-2"><Label className="font-medium">{t('from')}</Label><Input type="date" value={filterStartDate} onChange={(e) => setFilterStartDate(e.target.value)} className="h-14 text-lg w-48" /></div>
                 <div className="space-y-2"><Label className="font-medium">{t('to')}</Label><Input type="date" value={filterEndDate} onChange={(e) => setFilterEndDate(e.target.value)} className="h-14 text-lg w-48" /></div>
@@ -3054,7 +3054,7 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
                 </tr></thead>
                 <tbody>
                   {filteredInvoices.length === 0 ? <tr><td colSpan={7} className="text-center py-8 text-muted-foreground">{t('no_data')}</td></tr> :
-                    filteredInvoices.map(invoice => (
+                    (filteredInvoices || []).map(invoice => (
                       <tr key={invoice.id}>
                         <td className="font-mono text-sm font-bold">#{invoice.invoice_number || invoice.id.slice(0, 8)}</td>
                         <td className="font-medium">
@@ -3116,7 +3116,7 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
                       {language === 'ar' ? 'لا توجد استمارات تسجيل' : 'No registration forms'}
                     </td></tr>
                   ) : (
-                    registrationForms.map(form => (
+                    (registrationForms || []).map(form => (
                       <tr key={form.id}>
                         <td className="font-mono text-sm font-bold">#{form.form_number}</td>
                         <td className="font-mono text-sm font-bold text-orange-600">{form.member_code ? `#${form.member_code}` : '-'}</td>
@@ -3214,7 +3214,7 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
                       {language === 'ar' ? 'لا توجد إشعارات دائن' : 'No credit notes'}
                     </td></tr>
                   ) : (
-                    creditNotes.map(cn => (
+                    (creditNotes || []).map(cn => (
                       <tr key={cn.id}>
                         <td className="font-mono text-sm font-bold text-red-600">#{cn.credit_note_number}</td>
                         <td>
@@ -3275,7 +3275,7 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
                   <SelectContent>
                     <SelectItem value="none">{language === 'ar' ? '-- بدون عضو --' : '-- No member --'}</SelectItem>
                     <SelectItem value="new" className="text-primary font-medium"><UserPlus className="w-4 h-4 inline me-2" />{language === 'ar' ? 'إضافة عضو جديد' : 'Add new member'}</SelectItem>
-                    {members.map(m => <SelectItem key={m.id} value={m.id}>{language === 'ar' ? m.name_ar : m.name} - {m.phone}</SelectItem>)}
+                    {(members || []).map(m => <SelectItem key={m.id} value={m.id}>{language === 'ar' ? m.name_ar : m.name} - {m.phone}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>
@@ -3378,7 +3378,7 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
                       <SelectValue placeholder={language === 'ar' ? '+ اختر نشاط لإضافته' : '+ Select activity to add'} />
                     </SelectTrigger>
                     <SelectContent>
-                      {activities.map(a => (
+                      {(activities || []).map(a => (
                         <SelectItem key={a.id} value={a.id}>
                           <div className="flex items-center justify-between w-full gap-4">
                             <span>{language === 'ar' ? a.name_ar : a.name}</span>
@@ -3438,7 +3438,7 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
                 <div className="space-y-2">
                   <Label>{language === 'ar' ? 'عناصر الفاتورة' : 'Invoice Items'}</Label>
                   <div className="space-y-2 p-4 bg-muted/50 rounded-lg">
-                    {invoiceItems.map((item, idx) => (
+                    {(invoiceItems || []).map((item, idx) => (
                       <div key={idx} className={`p-3 bg-background rounded-lg border space-y-2 ${item.is_product ? 'border-green-300 bg-green-50/50' : ''}`}>
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-2">
@@ -4153,7 +4153,7 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
                             {language === 'ar' ? '+ إضافة عضو جديد' : '+ Add New Member'}
                           </span>
                         </SelectItem>
-                        {members.map(m => (
+                        {(members || []).map(m => (
                           <SelectItem key={m.id} value={m.id}>
                             {m.name_ar || m.name} - {m.phone}
                           </SelectItem>
@@ -4202,7 +4202,7 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
                   }}>
                     <SelectTrigger><SelectValue placeholder={language === 'ar' ? 'اختر نشاط...' : 'Select activity...'} /></SelectTrigger>
                     <SelectContent>
-                      {activities.map(a => (
+                      {(activities || []).map(a => (
                         <SelectItem key={a.id} value={a.id}>
                           {language === 'ar' ? a.name_ar : a.name} - {a.monthly_fee} {t('sar')}
                         </SelectItem>
@@ -4236,7 +4236,7 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
               {regFormItems.length > 0 && (
                 <div className="border rounded-lg p-3 space-y-3">
                   <Label>{language === 'ar' ? 'العناصر المختارة' : 'Selected Items'}</Label>
-                  {regFormItems.map((item, idx) => (
+                  {(regFormItems || []).map((item, idx) => (
                     <div key={idx} className="bg-muted/50 p-3 rounded-lg space-y-2">
                       {/* Row 1: Name and Delete */}
                       <div className="flex items-center justify-between">
@@ -4915,8 +4915,8 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
                   <SelectTrigger><SelectValue placeholder={language === 'ar' ? 'اختر...' : 'Select...'} /></SelectTrigger>
                   <SelectContent>
                     {regFormItemType === 'activity' ? 
-                      activities.map(a => <SelectItem key={a.id} value={a.id}>{a.name_ar || a.name} - {a.monthly_fee} {t('sar')}</SelectItem>) :
-                      products.map(p => <SelectItem key={p.id} value={p.id}>{p.name_ar || p.name} - {p.price} {t('sar')}</SelectItem>)
+                      (activities || []).map(a => <SelectItem key={a.id} value={a.id}>{a.name_ar || a.name} - {a.monthly_fee} {t('sar')}</SelectItem>) :
+                      (products || []).map(p => <SelectItem key={p.id} value={p.id}>{p.name_ar || p.name} - {p.price} {t('sar')}</SelectItem>)
                     }
                   </SelectContent>
                 </Select>
@@ -4925,7 +4925,7 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
               {/* Items List */}
               {regFormItems.length > 0 && (
                 <div className="space-y-2 max-h-[200px] overflow-y-auto border rounded-lg p-2">
-                  {regFormItems.map((item, idx) => (
+                  {(regFormItems || []).map((item, idx) => (
                     <div key={idx} className="flex items-center gap-2 p-2 bg-muted/50 rounded border">
                       <span className="flex-1 font-medium text-sm">{item.activity_name}</span>
                       <Input 
@@ -5131,7 +5131,7 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
                       <CheckCircle className="w-4 h-4" />
                       {language === 'ar' ? 'تفاصيل الاشتراك' : 'Subscription Details'}
                     </p>
-                    {qrCardSubscription.map((item, idx) => (
+                    {(qrCardSubscription || []).map((item, idx) => (
                       <div key={idx} className="text-sm border-t border-green-100 pt-2 mt-2 first:border-0 first:pt-0 first:mt-0">
                         <p className="font-bold text-gray-700">{item.activity_name}</p>
                         <div className="flex justify-between text-gray-600 text-xs mt-1">
