@@ -141,9 +141,10 @@ export default function SchedulePage() {
       if (selectedBranchId) params.branch_id = selectedBranchId;
       const branchParams = selectedBranchId ? { branch_filter: selectedBranchId } : {};
       
+      if (selectedDate) params.date = selectedDate;
       const [activitiesRes, activitiesListRes] = await Promise.all([
         schedulesAPI.getActivitiesWithMembers(params),
-        activitiesAPI.getAll(branchParams), // Fetch activities from Activities page
+        activitiesAPI.getAll(branchParams),
         fetchLevels()
       ]);
       // API returns array directly
@@ -162,7 +163,7 @@ export default function SchedulePage() {
 
   useEffect(() => {
     fetchActivities();
-  }, [selectedBranchId]);
+  }, [selectedBranchId, selectedDate]);
 
   // Navigate to attendance
   const goToAttendance = (activityId) => {

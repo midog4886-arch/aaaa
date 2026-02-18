@@ -4071,11 +4071,17 @@ async def get_weekly_schedule(
 async def get_activities_schedule_with_members(
     branch_id: str = None,
     day: str = None,
+    date: str = None,
     current_user: dict = Depends(get_current_user)
 ):
-    """Get activities organized by activity -> time -> members for the schedule view"""
+    """Get activities organized by activity -> time -> members for the schedule view.
+    When date is provided, only returns members whose:
+    1. Subscription is active on that date (start_date <= date <= end_date)
+    2. Schedule includes the day of week matching the given date
+    """
     
-    # Arabic day names mapping
+    import re
+    
     day_keywords = {
         "الأحد": "sunday", "الاحد": "sunday", "أحد": "sunday", "احد": "sunday",
         "الإثنين": "monday", "الاثنين": "monday", "إثنين": "monday", "اثنين": "monday",
@@ -4086,7 +4092,19 @@ async def get_activities_schedule_with_members(
         "السبت": "saturday", "سبت": "saturday"
     }
     
-    # Build query
+    reverse_day_keywords = {}
+    for ar_day, en_day in day_keywords.items():
+        if en_day not in reverse_day_keywords:
+            reverse_day_keywords[en_day] = []
+        reverse_day_keywords[en_day].append(ar_day)
+    
+    target_date = date or datetime.now(timezone.utc).strftime('%Y-%m-%d')
+    
+    target_day_index = datetime.strptime(target_date, '%Y-%m-%d').weekday()
+    day_keys = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']
+    target_day_en = day_keys[target_day_index]
+    target_day_ar_variants = reverse_day_keywords.get(target_day_en, [])
+    
     invoice_query = {"status": {"$in": ["paid", "partial"]}}
     if branch_id:
         invoice_query["branch_id"] = branch_id
@@ -4095,13 +4113,7 @@ async def get_activities_schedule_with_members(
     
     invoices = await db.invoices.find(invoice_query, {"_id": 0}).sort("created_at", -1).to_list(1000)
     
-    # Structure: { activity_id: { name, times: { time: { day: [members] } } } }
     activities_data = {}
-    
-    import re
-    
-    # Get today's date for subscription status check
-    today = datetime.now(timezone.utc).strftime('%Y-%m-%d')
     
     for inv in invoices:
         member_id = inv.get("member_id", "")
@@ -4119,13 +4131,30 @@ async def get_activities_schedule_with_members(
             if not activity_id:
                 continue
             
-            # Check if subscription is still active (end_date >= today)
             end_date = item.get("end_date", "")
-            if end_date and end_date < today:
-                # Subscription expired, skip this member for this activity
+            start_date = item.get("start_date", "")
+            
+            if end_date and end_date < target_date:
                 continue
             
-            # Initialize activity if not exists
+            if start_date and start_date > target_date:
+                continue
+            
+            schedule_matches_day = False
+            for ar_variant in target_day_ar_variants:
+                if ar_variant in schedule_text:
+                    schedule_matches_day = True
+                    break
+            
+            if not schedule_matches_day:
+                has_any_day = False
+                for ar_day_name in day_keywords.keys():
+                    if ar_day_name in schedule_text:
+                        has_any_day = True
+                        break
+                if has_any_day:
+                    continue
+            
             if activity_id not in activities_data:
                 activities_data[activity_id] = {
                     "activity_id": activity_id,
@@ -4133,32 +4162,25 @@ async def get_activities_schedule_with_members(
                     "times": {}
                 }
             
-            # Extract time
             time_match = re.search(r'الساع[ةه]\s*(\d+(?::\d+)?)', schedule_text)
             time_str = time_match.group(1) if time_match else "غير محدد"
             if time_str != "غير محدد" and ":" not in time_str:
                 time_str = f"{time_str}:00"
             
-            # Initialize time slot if not exists
             if time_str not in activities_data[activity_id]["times"]:
                 activities_data[activity_id]["times"][time_str] = {
                     "sunday": [], "monday": [], "tuesday": [], "wednesday": [],
                     "thursday": [], "friday": [], "saturday": []
                 }
             
-            # Find which days and add member
-            for ar_day, en_day in day_keywords.items():
-                if ar_day in schedule_text:
-                    # Check if member already added for this day/time
-                    existing_members = [m["member_id"] for m in activities_data[activity_id]["times"][time_str][en_day]]
-                    if member_id not in existing_members:
-                        activities_data[activity_id]["times"][time_str][en_day].append({
-                            "member_id": member_id,
-                            "member_name": member_name,
-                            "phone": member_phone
-                        })
+            existing_members = [m["member_id"] for m in activities_data[activity_id]["times"][time_str][target_day_en]]
+            if member_id not in existing_members:
+                activities_data[activity_id]["times"][time_str][target_day_en].append({
+                    "member_id": member_id,
+                    "member_name": member_name,
+                    "phone": member_phone
+                })
     
-    # Convert to list and sort
     result = list(activities_data.values())
     result.sort(key=lambda x: x["activity_name"])
     
