@@ -1,0 +1,1 @@
+{"indexes":[{"v":{"$numberInt":"2"},"key":{"_id":{"$numberInt":"1"}},"name":"_id_"}],"uuid":"f643980a858646389f8e3d78e0fd3bfb","collectionName":"coach_ratings","type":"collection"}
