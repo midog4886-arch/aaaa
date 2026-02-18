@@ -27,6 +27,7 @@ import AdvertisementsPage from './pages/AdvertisementsPage';
 import DailyVideosPage from './pages/DailyVideosPage';
 import LoyaltyPage from './pages/LoyaltyPage';
 import RenewalsPage from './pages/RenewalsPage';
+import BackupPage from './pages/BackupPage';
 import PrivacyPolicyPage from './pages/PrivacyPolicyPage';
 
 // Member Portal Pages
@@ -314,6 +315,14 @@ function AppRoutes() {
         element={
           <ProtectedRoute permission="members">
             <RenewalsPage />
+          </ProtectedRoute>
+        } 
+      />
+      <Route 
+        path="/admin/backup" 
+        element={
+          <ProtectedRoute permission="settings">
+            <BackupPage />
           </ProtectedRoute>
         } 
       />

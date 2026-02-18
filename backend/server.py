@@ -12,6 +12,14 @@ import csv
 import base64
 import qrcode
 import shutil
+import json
+from reportlab.lib import colors
+from reportlab.lib.pagesizes import A4, landscape
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.units import mm
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
 from openpyxl import Workbook
 from openpyxl.styles import Font, Alignment, Border, Side, PatternFill
 from pathlib import Path
@@ -2224,6 +2232,363 @@ async def export_invoices(
             media_type="text/csv; charset=utf-8",
             headers={"Content-Disposition": f"attachment; filename=invoices_{datetime.now().strftime('%Y%m%d')}.csv"}
         )
+
+
+@api_router.get("/export/members-pdf")
+async def export_members_pdf(
+    activity_id: Optional[str] = None,
+    status: Optional[str] = None,
+    token: Optional[str] = None
+):
+    if not token:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    try:
+        jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+    except:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+    query = {}
+    if activity_id:
+        query["activities.activity_id"] = activity_id
+    if status:
+        query["activities.status"] = status
+
+    members = await db.members.find(query, {"_id": 0}).to_list(10000)
+
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=landscape(A4), topMargin=20*mm, bottomMargin=20*mm, leftMargin=15*mm, rightMargin=15*mm)
+
+    styles = getSampleStyleSheet()
+    try:
+        font_paths = [
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+            "/usr/share/fonts/TTF/DejaVuSans.ttf",
+            "/nix/store/dejavu-fonts/share/fonts/truetype/DejaVuSans.ttf",
+        ]
+        font_registered = False
+        for fp in font_paths:
+            if Path(fp).exists():
+                pdfmetrics.registerFont(TTFont('ArabicFont', fp))
+                font_registered = True
+                break
+        if not font_registered:
+            import subprocess
+            result = subprocess.run(['find', '/nix/store', '-name', 'DejaVuSans.ttf', '-type', 'f'], capture_output=True, text=True, timeout=5)
+            if result.stdout.strip():
+                found_path = result.stdout.strip().split('\n')[0]
+                pdfmetrics.registerFont(TTFont('ArabicFont', found_path))
+                font_registered = True
+    except:
+        font_registered = False
+
+    cell_font = 'ArabicFont' if font_registered else 'Helvetica'
+
+    title_style = ParagraphStyle('Title', parent=styles['Title'], fontName=cell_font, fontSize=16)
+    cell_style = ParagraphStyle('Cell', fontName=cell_font, fontSize=8, leading=10)
+    header_style = ParagraphStyle('Header', fontName=cell_font, fontSize=9, leading=11, textColor=colors.white)
+
+    elements = []
+    elements.append(Paragraph("Champions Academy - Members Report", title_style))
+    elements.append(Spacer(1, 10*mm))
+
+    headers = ["#", "Name", "Phone", "Activities", "Status", "Start Date", "End Date"]
+    header_row = [Paragraph(h, header_style) for h in headers]
+
+    data = [header_row]
+    for idx, member in enumerate(members, 1):
+        activities = member.get("activities", [])
+        activities_names = ", ".join([a.get("activity_name", "") for a in activities])
+        statuses = ", ".join(["Active" if a.get("status") == "active" else "Expired" for a in activities])
+        start_dates = ", ".join([a.get("start_date", "") for a in activities])
+        end_dates = ", ".join([a.get("end_date", "") for a in activities])
+
+        row = [
+            Paragraph(str(idx), cell_style),
+            Paragraph(member.get("name_ar", member.get("name", "")), cell_style),
+            Paragraph(member.get("phone", ""), cell_style),
+            Paragraph(activities_names, cell_style),
+            Paragraph(statuses, cell_style),
+            Paragraph(start_dates, cell_style),
+            Paragraph(end_dates, cell_style),
+        ]
+        data.append(row)
+
+    col_widths = [30, 120, 80, 150, 80, 80, 80]
+    table = Table(data, colWidths=col_widths, repeatRows=1)
+    table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#F97316')),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#FFF7ED')]),
+        ('FONTSIZE', (0, 0), (-1, -1), 8),
+    ]))
+    elements.append(table)
+
+    doc.build(elements)
+    buffer.seek(0)
+
+    return StreamingResponse(
+        buffer,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f"attachment; filename=members_{datetime.now().strftime('%Y%m%d')}.pdf"}
+    )
+
+
+@api_router.get("/export/invoices-pdf")
+async def export_invoices_pdf(
+    status: Optional[str] = None,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    token: Optional[str] = None
+):
+    if not token:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    try:
+        jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+    except:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+    query = {}
+    if status:
+        query["status"] = status
+    if start_date:
+        query["created_at"] = {"$gte": start_date}
+    if end_date:
+        if "created_at" in query:
+            query["created_at"]["$lte"] = end_date
+        else:
+            query["created_at"] = {"$lte": end_date}
+
+    invoices = await db.invoices.find(query, {"_id": 0}).sort("created_at", -1).to_list(10000)
+
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=landscape(A4), topMargin=20*mm, bottomMargin=20*mm, leftMargin=15*mm, rightMargin=15*mm)
+
+    styles = getSampleStyleSheet()
+    try:
+        font_paths = [
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+            "/usr/share/fonts/TTF/DejaVuSans.ttf",
+        ]
+        font_registered = False
+        for fp in font_paths:
+            if Path(fp).exists():
+                if 'ArabicFont' not in pdfmetrics.getRegisteredFontNames():
+                    pdfmetrics.registerFont(TTFont('ArabicFont', fp))
+                font_registered = True
+                break
+        if not font_registered and 'ArabicFont' in pdfmetrics.getRegisteredFontNames():
+            font_registered = True
+        if not font_registered:
+            import subprocess
+            result = subprocess.run(['find', '/nix/store', '-name', 'DejaVuSans.ttf', '-type', 'f'], capture_output=True, text=True, timeout=5)
+            if result.stdout.strip():
+                found_path = result.stdout.strip().split('\n')[0]
+                if 'ArabicFont' not in pdfmetrics.getRegisteredFontNames():
+                    pdfmetrics.registerFont(TTFont('ArabicFont', found_path))
+                font_registered = True
+    except:
+        font_registered = False
+        if 'ArabicFont' in pdfmetrics.getRegisteredFontNames():
+            font_registered = True
+
+    cell_font = 'ArabicFont' if font_registered else 'Helvetica'
+
+    title_style = ParagraphStyle('InvTitle', parent=styles['Title'], fontName=cell_font, fontSize=16)
+    cell_style = ParagraphStyle('InvCell', fontName=cell_font, fontSize=8, leading=10)
+    header_style = ParagraphStyle('InvHeader', fontName=cell_font, fontSize=9, leading=11, textColor=colors.white)
+
+    elements = []
+    elements.append(Paragraph("Champions Academy - Invoices Report", title_style))
+    elements.append(Spacer(1, 10*mm))
+
+    headers = ["#", "Invoice No", "Customer", "Phone", "Items", "Subtotal", "VAT", "Total", "Status", "Date"]
+    header_row = [Paragraph(h, header_style) for h in headers]
+
+    data = [header_row]
+    for idx, invoice in enumerate(invoices, 1):
+        items_text = ", ".join([f"{item.get('activity_name', '')} ({item.get('fee', 0)})" for item in invoice.get("items", [])])
+        status_text = {"paid": "Paid", "pending": "Pending", "cancelled": "Cancelled"}.get(invoice.get("status", ""), invoice.get("status", ""))
+
+        row = [
+            Paragraph(str(idx), cell_style),
+            Paragraph(str(invoice.get("invoice_number", invoice.get("id", "")[:8])), cell_style),
+            Paragraph(invoice.get("customer_name_ar", invoice.get("member_name", "")), cell_style),
+            Paragraph(invoice.get("customer_phone", ""), cell_style),
+            Paragraph(items_text, cell_style),
+            Paragraph(str(invoice.get("subtotal", 0)), cell_style),
+            Paragraph(str(invoice.get("vat_amount", 0)), cell_style),
+            Paragraph(str(invoice.get("total", 0)), cell_style),
+            Paragraph(status_text, cell_style),
+            Paragraph(invoice.get("created_at", "")[:10], cell_style),
+        ]
+        data.append(row)
+
+    col_widths = [25, 60, 100, 70, 150, 55, 45, 55, 55, 65]
+    table = Table(data, colWidths=col_widths, repeatRows=1)
+    table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#F97316')),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#FFF7ED')]),
+        ('FONTSIZE', (0, 0), (-1, -1), 8),
+    ]))
+    elements.append(table)
+
+    doc.build(elements)
+    buffer.seek(0)
+
+    return StreamingResponse(
+        buffer,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f"attachment; filename=invoices_{datetime.now().strftime('%Y%m%d')}.pdf"}
+    )
+
+
+BACKUPS_DIR = ROOT_DIR / "backups"
+BACKUPS_DIR.mkdir(exist_ok=True)
+
+
+@api_router.post("/backup/create")
+async def create_backup(token: Optional[str] = None):
+    if not token:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    try:
+        jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+    except:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    filename = f"backup_{timestamp}.json"
+    filepath = BACKUPS_DIR / filename
+
+    backup_data = {
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "collections": {}
+    }
+
+    collection_names = await db.list_collection_names()
+    for col_name in collection_names:
+        collection = db[col_name]
+        documents = await collection.find({}, {"_id": 0}).to_list(100000)
+        backup_data["collections"][col_name] = documents
+
+    with open(filepath, 'w', encoding='utf-8') as f:
+        json.dump(backup_data, f, ensure_ascii=False, default=str)
+
+    file_size = filepath.stat().st_size
+
+    return {
+        "success": True,
+        "filename": filename,
+        "size": file_size,
+        "size_mb": round(file_size / (1024 * 1024), 2),
+        "collections_count": len(collection_names),
+        "collections": collection_names,
+        "timestamp": backup_data["timestamp"]
+    }
+
+
+@api_router.get("/backup/list")
+async def list_backups(token: Optional[str] = None):
+    if not token:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    try:
+        jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+    except:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+    backups = []
+    if BACKUPS_DIR.exists():
+        for f in sorted(BACKUPS_DIR.glob("backup_*.json"), reverse=True):
+            stat = f.stat()
+            backups.append({
+                "filename": f.name,
+                "size": stat.st_size,
+                "size_mb": round(stat.st_size / (1024 * 1024), 2),
+                "created_at": datetime.fromtimestamp(stat.st_mtime).isoformat()
+            })
+
+    return {"backups": backups, "count": len(backups)}
+
+
+@api_router.get("/backup/download/{filename}")
+async def download_backup(filename: str, token: Optional[str] = None):
+    if not token:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    try:
+        jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+    except:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+    filepath = BACKUPS_DIR / filename
+    if not filepath.exists() or not filepath.is_file():
+        raise HTTPException(status_code=404, detail="Backup file not found")
+
+    return FileResponse(
+        path=str(filepath),
+        filename=filename,
+        media_type="application/json",
+        headers={"Content-Disposition": f"attachment; filename={filename}"}
+    )
+
+
+@api_router.post("/backup/restore/{filename}")
+async def restore_backup(filename: str, token: Optional[str] = None):
+    if not token:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    try:
+        jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+    except:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+    filepath = BACKUPS_DIR / filename
+    if not filepath.exists() or not filepath.is_file():
+        raise HTTPException(status_code=404, detail="Backup file not found")
+
+    with open(filepath, 'r', encoding='utf-8') as f:
+        backup_data = json.load(f)
+
+    collections = backup_data.get("collections", {})
+    restored = {}
+
+    for col_name, documents in collections.items():
+        collection = db[col_name]
+        await collection.delete_many({})
+        if documents:
+            await collection.insert_many(documents)
+        restored[col_name] = len(documents)
+
+    return {
+        "success": True,
+        "message": "Backup restored successfully",
+        "restored_collections": restored,
+        "total_collections": len(restored),
+        "backup_timestamp": backup_data.get("timestamp", "")
+    }
+
+
+@api_router.delete("/backup/{filename}")
+async def delete_backup(filename: str, token: Optional[str] = None):
+    if not token:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    try:
+        jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+    except:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+    filepath = BACKUPS_DIR / filename
+    if not filepath.exists() or not filepath.is_file():
+        raise HTTPException(status_code=404, detail="Backup file not found")
+
+    filepath.unlink()
+
+    return {"success": True, "message": f"Backup {filename} deleted successfully"}
+
 
 @api_router.get("/export/reports")
 async def export_financial_report(

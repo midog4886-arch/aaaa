@@ -2990,7 +2990,14 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
             </div>
             <div className="flex gap-2 flex-wrap">
               <Button variant="outline" onClick={handleExportAllData} data-testid="export-all-btn">
-                <FileSpreadsheet className="w-4 h-4 me-2" />{language === 'ar' ? 'تصدير Excel' : 'Export All'}
+                <FileSpreadsheet className="w-4 h-4 me-2" />{language === 'ar' ? 'تصدير Excel' : 'Export Excel'}
+              </Button>
+              <Button variant="outline" onClick={() => {
+                const token = localStorage.getItem('token');
+                const url = exportAPI.invoicesPdf() + `&token=${token}`;
+                window.open(url, '_blank');
+              }}>
+                <FileSpreadsheet className="w-4 h-4 me-2" />{language === 'ar' ? 'تصدير PDF' : 'Export PDF'}
               </Button>
               <Button variant="outline" onClick={() => setIsRegistrationFormDialogOpen(true)} className="bg-gray-800 text-white hover:bg-gray-900" data-testid="create-registration-form-btn">
                 <FileText className="w-4 h-4 me-2" />{language === 'ar' ? 'استمارة تسجيل' : 'Registration Form'}

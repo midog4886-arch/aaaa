@@ -43,6 +43,7 @@ const translations = {
     reports: 'التقارير',
     messages: 'الرسائل',
     settings: 'الإعدادات',
+    backup: 'النسخ الاحتياطي',
     branches: 'الفروع',
     users: 'المستخدمين',
     
@@ -193,6 +194,7 @@ const translations = {
     reports: 'Reports',
     messages: 'Messages',
     settings: 'Settings',
+    backup: 'Backup',
     branches: 'Branches',
     users: 'Users',
     member_card: 'Member Card',

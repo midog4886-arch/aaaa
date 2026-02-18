@@ -783,7 +783,19 @@ export const MembersPage = () => {
               data-testid="export-members-btn"
             >
               <Download className="w-4 h-4 me-2" />
-              {language === 'ar' ? 'تصدير' : 'Export'}
+              {language === 'ar' ? 'Excel' : 'Excel'}
+            </Button>
+            <Button 
+              variant="outline" 
+              onClick={() => {
+                const token = localStorage.getItem('token');
+                const params = filterActivity !== 'all' ? { activity_id: filterActivity } : {};
+                const url = exportAPI.membersPdf(params) + `&token=${token}`;
+                window.open(url, '_blank');
+              }}
+            >
+              <Download className="w-4 h-4 me-2" />
+              PDF
             </Button>
             <Button 
               variant="outline"

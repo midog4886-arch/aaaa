@@ -63,6 +63,8 @@ frontend/
 - Added Privacy Policy page at /privacy (bilingual Arabic/English)
 - Added Capacitor for Android mobile build
 - Added Renewals management page (/admin/renewals)
+- Added Database Backup page (/admin/backup) - create, list, download, restore, delete backups
+- Added PDF & Excel export for Members and Invoices pages
 - Fixed MongoDB SSL connection parameters
 - Removed Service Worker for cache management
 

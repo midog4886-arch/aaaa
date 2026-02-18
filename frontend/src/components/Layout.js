@@ -26,6 +26,7 @@ import {
   Calculator,
   Bell,
   RefreshCcw,
+  HardDrive,
   CheckCheck,
   Clock,
   AlertTriangle,
@@ -84,6 +85,7 @@ export const Sidebar = ({ isOpen, onClose }) => {
     ...(isAdmin ? [{ to: '/admin/branches', icon: Building2, label: 'branches', permission: 'branches' }] : []),
     ...(isAdmin ? [{ to: '/admin/users', icon: Users, label: 'users', permission: 'users' }] : []),
     { to: '/admin/settings', icon: Settings, label: 'settings', permission: 'settings' },
+    ...(isAdmin ? [{ to: '/admin/backup', icon: HardDrive, label: 'backup', permission: 'settings' }] : []),
   ];
 
   // Filter nav items based on user permissions

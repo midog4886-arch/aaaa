@@ -154,9 +154,20 @@ export const branchesAPI = {
 // Export API
 export const exportAPI = {
   members: (params = {}) => `${API}/export/members?format=xlsx&${new URLSearchParams(params).toString()}`,
+  membersPdf: (params = {}) => `${API}/export/members-pdf?${new URLSearchParams(params).toString()}`,
   invoices: (params = {}) => `${API}/export/invoices?format=xlsx&${new URLSearchParams(params).toString()}`,
+  invoicesPdf: (params = {}) => `${API}/export/invoices-pdf?${new URLSearchParams(params).toString()}`,
   reports: (params = {}) => `${API}/export/reports?format=xlsx&${new URLSearchParams(params).toString()}`,
   allData: () => `${API}/export/all-data`,
+};
+
+// Backup API
+export const backupAPI = {
+  create: () => axios.post(`${API}/backup/create?token=${localStorage.getItem('token')}`),
+  list: () => axios.get(`${API}/backup/list?token=${localStorage.getItem('token')}`),
+  download: (filename) => `${API}/backup/download/${filename}?token=${localStorage.getItem('token')}`,
+  restore: (filename) => axios.post(`${API}/backup/restore/${filename}?token=${localStorage.getItem('token')}`),
+  delete: (filename) => axios.delete(`${API}/backup/${filename}?token=${localStorage.getItem('token')}`),
 };
 
 // Chart of Accounts API
