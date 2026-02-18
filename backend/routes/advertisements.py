@@ -10,7 +10,9 @@ import uuid
 import os
 import shutil
 import re
+import io
 from pathlib import Path
+from PIL import Image as PILImage
 
 router = APIRouter(prefix="/advertisements", tags=["advertisements"])
 
@@ -229,28 +231,77 @@ async def create_advertisement(
     return ad_doc
 
 
+BANNER_SIZES = {
+    "hero": (1200, 675),
+    "inline": (800, 450),
+    "popup": (600, 600),
+    "sidebar": (400, 400),
+}
+
+def resize_image_to_fit(image: PILImage.Image, target_width: int, target_height: int) -> PILImage.Image:
+    img_ratio = image.width / image.height
+    target_ratio = target_width / target_height
+
+    if img_ratio > target_ratio:
+        new_height = target_height
+        new_width = int(target_height * img_ratio)
+    else:
+        new_width = target_width
+        new_height = int(target_width / img_ratio)
+
+    image = image.resize((new_width, new_height), PILImage.LANCZOS)
+
+    left = (new_width - target_width) // 2
+    top = (new_height - target_height) // 2
+    right = left + target_width
+    bottom = top + target_height
+    image = image.crop((left, top, right, bottom))
+
+    return image
+
+
 @router.post("/upload-banner")
 async def upload_banner_image(
     file: UploadFile = File(...),
+    position: str = Form("hero"),
     current_user: dict = Depends(get_current_user)
 ):
-    """Upload a banner image"""
-    # Validate file type
+    """Upload a banner image with auto-resize to fit required dimensions"""
     allowed_types = ["image/jpeg", "image/png", "image/gif", "image/webp"]
     if file.content_type not in allowed_types:
         raise HTTPException(status_code=400, detail="نوع الملف غير مدعوم. يرجى رفع صورة (JPG, PNG, GIF, WEBP)")
-    
-    # Generate unique filename
-    file_ext = file.filename.split(".")[-1] if "." in file.filename else "jpg"
-    filename = f"{uuid.uuid4()}.{file_ext}"
-    file_path = UPLOADS_DIR / filename
-    
-    # Save file
-    with open(file_path, "wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
-    
-    # Return URL with /api prefix for proper routing through ingress
-    return {"url": f"/api/uploads/ads/{filename}", "filename": filename}
+
+    target_size = BANNER_SIZES.get(position, BANNER_SIZES["hero"])
+
+    file_content = await file.read()
+    try:
+        img = PILImage.open(io.BytesIO(file_content))
+        if img.mode in ('RGBA', 'LA', 'P'):
+            img = img.convert('RGB')
+
+        original_size = f"{img.width}x{img.height}"
+        img = resize_image_to_fit(img, target_size[0], target_size[1])
+
+        filename = f"{uuid.uuid4()}.jpg"
+        file_path = UPLOADS_DIR / filename
+        img.save(file_path, "JPEG", quality=85, optimize=True)
+
+        return {
+            "url": f"/uploads/ads/{filename}",
+            "filename": filename,
+            "original_size": original_size,
+            "resized_to": f"{target_size[0]}x{target_size[1]}",
+            "position": position
+        }
+    except Exception as e:
+        file_ext = file.filename.split(".")[-1].lower() if "." in (file.filename or "") else "jpg"
+        if file_ext not in ("jpg", "jpeg", "png", "gif", "webp"):
+            file_ext = "jpg"
+        filename = f"{uuid.uuid4()}.{file_ext}"
+        file_path = UPLOADS_DIR / filename
+        with open(file_path, "wb") as buffer:
+            buffer.write(file_content)
+        return {"url": f"/uploads/ads/{filename}", "filename": filename}
 
 
 @router.put("/{ad_id}", response_model=Advertisement)

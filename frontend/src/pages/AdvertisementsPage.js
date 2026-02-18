@@ -175,9 +175,11 @@ const AdvertisementsPage = () => {
     try {
       const formDataUpload = new FormData();
       formDataUpload.append('file', file);
+      formDataUpload.append('position', formData.position || 'hero');
       const res = await advertisementsAPI.uploadBanner(formDataUpload);
       setFormData(prev => ({ ...prev, banner_image_url: res.data.url }));
-      toast({ title: 'تم رفع الصورة بنجاح' });
+      const sizeInfo = res.data.resized_to ? ` (${res.data.resized_to})` : '';
+      toast({ title: `تم رفع الصورة وضبط المقاس تلقائياً${sizeInfo}` });
     } catch (error) {
       toast({ title: 'خطأ', description: 'فشل في رفع الصورة', variant: 'destructive' });
     } finally {
@@ -755,6 +757,13 @@ const AdvertisementsPage = () => {
             {formData.ad_type === 'banner' && (
               <div>
                 <Label>صورة البنر</Label>
+                <p className="text-xs text-gray-500 mt-1">
+                  سيتم ضبط الصورة تلقائياً على المقاس المطلوب حسب الموضع:
+                  {formData.position === 'hero' && ' 1200×675 (بانر رئيسي)'}
+                  {formData.position === 'inline' && ' 800×450 (داخل الصفحة)'}
+                  {formData.position === 'popup' && ' 600×600 (منبثق)'}
+                  {formData.position === 'sidebar' && ' 400×400 (جانبي)'}
+                </p>
                 <div className="mt-2 space-y-2">
                   <div className="flex items-center gap-2">
                     <Input
