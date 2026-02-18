@@ -1,7 +1,7 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources>
-    <string name="app_name">Champions Academy</string>
-    <string name="title_activity_main">Champions Academy</string>
+    <string name="app_name">أكاديمية الأبطال</string>
+    <string name="title_activity_main">أكاديمية الأبطال</string>
     <string name="package_name">com.championsacademy.app</string>
     <string name="custom_url_scheme">com.championsacademy.app</string>
 </resources>

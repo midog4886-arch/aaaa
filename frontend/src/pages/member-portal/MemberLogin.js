@@ -7,8 +7,7 @@ import { Input } from '../../components/ui/input';
 import { Phone, LogIn, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import axios from 'axios';
-
-const API_URL = '';
+import API_URL from '../../config/api';
 
 // Academy Logo URL
 const ACADEMY_LOGO = "/logo-new.png";

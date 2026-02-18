@@ -1,5 +1,21 @@
 {
   "appId": "com.championsacademy.app",
-  "appName": "Champions Academy",
-  "webDir": "build"
+  "appName": "أكاديمية الأبطال",
+  "webDir": "build",
+  "server": {
+    "androidScheme": "https",
+    "allowNavigation": ["*"]
+  },
+  "plugins": {
+    "SplashScreen": {
+      "launchShowDuration": 2000,
+      "backgroundColor": "#F97316",
+      "showSpinner": false,
+      "androidScaleType": "CENTER_CROP"
+    }
+  },
+  "android": {
+    "allowMixedContent": true,
+    "backgroundColor": "#F97316"
+  }
 }
