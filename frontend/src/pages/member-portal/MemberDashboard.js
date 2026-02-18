@@ -78,9 +78,9 @@ const MemberDashboard = () => {
   }, [fetchData]);
 
   const quickLinks = [
-    { to: '/portal/subscriptions', icon: CreditCard, label: 'اشتراكاتي', color: 'bg-blue-500' },
-    { to: '/portal/schedule', icon: Calendar, label: 'جدول التدريبات', color: 'bg-green-500' },
-    { to: '/portal/card', icon: QrCode, label: 'بطاقة العضوية', color: 'bg-orange-500' },
+    { to: '/subscriptions', icon: CreditCard, label: 'اشتراكاتي', color: 'bg-blue-500' },
+    { to: '/member-schedule', icon: Calendar, label: 'جدول التدريبات', color: 'bg-green-500' },
+    { to: '/card', icon: QrCode, label: 'بطاقة العضوية', color: 'bg-orange-500' },
   ];
 
   if (loading) {
@@ -207,7 +207,7 @@ const MemberDashboard = () => {
                 <CheckCircle className="w-5 h-5 text-green-600" />
                 الاشتراكات السارية
               </CardTitle>
-              <Link to="/portal/subscriptions" className="text-blue-600 text-sm flex items-center gap-1">
+              <Link to="/subscriptions" className="text-blue-600 text-sm flex items-center gap-1">
                 عرض الكل <ChevronLeft className="w-4 h-4" />
               </Link>
             </CardHeader>
@@ -238,7 +238,7 @@ const MemberDashboard = () => {
                 <Bell className="w-5 h-5 text-orange-600" />
                 آخر الإشعارات
               </CardTitle>
-              <Link to="/portal/notifications" className="text-blue-600 text-sm flex items-center gap-1">
+              <Link to="/notifications" className="text-blue-600 text-sm flex items-center gap-1">
                 عرض الكل <ChevronLeft className="w-4 h-4" />
               </Link>
             </CardHeader>

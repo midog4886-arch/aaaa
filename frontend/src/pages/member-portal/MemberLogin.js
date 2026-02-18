@@ -141,7 +141,7 @@ const MemberLogin = () => {
     // Check if already logged in
     const token = localStorage.getItem('member_token');
     if (token) {
-      navigate('/portal/dashboard');
+      navigate('/');
     }
   }, [navigate]);
 
@@ -169,7 +169,7 @@ const MemberLogin = () => {
       localStorage.setItem('member_data', JSON.stringify(response.data.member));
       
       toast.success(`مرحباً ${response.data.member.name_ar}`);
-      navigate('/portal/dashboard');
+      navigate('/');
     } catch (error) {
       if (error.response?.status === 404) {
         toast.error('رقم الجوال غير مسجل في النظام');

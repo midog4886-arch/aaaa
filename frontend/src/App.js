@@ -27,6 +27,7 @@ import AdvertisementsPage from './pages/AdvertisementsPage';
 import DailyVideosPage from './pages/DailyVideosPage';
 import LoyaltyPage from './pages/LoyaltyPage';
 import RenewalsPage from './pages/RenewalsPage';
+import PrivacyPolicyPage from './pages/PrivacyPolicyPage';
 
 // Member Portal Pages
 import MemberLogin from './pages/member-portal/MemberLogin';
@@ -62,8 +63,7 @@ const ProtectedRoute = ({ children, permission }) => {
   if (permission && !isAdmin) {
     const userPermissions = user?.permissions || [];
     if (!userPermissions.includes(permission)) {
-      // Redirect to unauthorized page
-      return <Navigate to="/unauthorized" replace />;
+      return <Navigate to="/admin/unauthorized" replace />;
     }
   }
   
@@ -75,10 +75,10 @@ const getFirstAllowedRoute = (permissions) => {
   const routeOrder = ['schedule', 'attendance', 'dashboard', 'members', 'activities', 'levels', 'invoices', 'store', 'accounting', 'reports', 'messages', 'settings'];
   for (const route of routeOrder) {
     if (permissions.includes(route)) {
-      return `/${route}`;
+      return `/admin/${route}`;
     }
   }
-  return '/schedule'; // fallback
+  return '/admin/schedule';
 };
 
 // Smart Redirect Component - redirects to appropriate page based on permissions
@@ -94,15 +94,13 @@ const SmartRedirect = () => {
   }
   
   if (!isAuthenticated) {
-    return <Navigate to="/login" replace />;
+    return <Navigate to="/member-login" replace />;
   }
   
-  // Admin goes to dashboard
   if (isAdmin) {
-    return <Navigate to="/dashboard" replace />;
+    return <Navigate to="/admin/dashboard" replace />;
   }
   
-  // Non-admin goes to first allowed page
   const userPermissions = user?.permissions || [];
   return <Navigate to={getFirstAllowedRoute(userPermissions)} replace />;
 };
@@ -120,9 +118,8 @@ const PublicRoute = ({ children }) => {
   }
   
   if (isAuthenticated) {
-    // Admin goes to dashboard, others go to first allowed page
     if (isAdmin) {
-      return <Navigate to="/dashboard" replace />;
+      return <Navigate to="/admin/dashboard" replace />;
     }
     const userPermissions = user?.permissions || [];
     return <Navigate to={getFirstAllowedRoute(userPermissions)} replace />;
@@ -144,35 +141,32 @@ function AppRoutes() {
         } 
       />
       
-      {/* Member Card - Public page for members to view their QR */}
-      <Route path="/member-card" element={<MemberCardPage />} />
+      {/* Privacy Policy - Public page */}
+      <Route path="/privacy" element={<PrivacyPolicyPage />} />
       
-      {/* Member Portal Routes - Public */}
-      <Route path="/portal/login" element={<MemberLogin />} />
-      <Route path="/portal/dashboard" element={<MemberDashboard />} />
-      <Route path="/portal/subscriptions" element={<MemberSubscriptions />} />
-      <Route path="/portal/schedule" element={<MemberSchedule />} />
-      <Route path="/portal/card" element={<MemberQRCard />} />
-      <Route path="/portal/notifications" element={<MemberNotifications />} />
-      <Route path="/portal/attendance" element={<MemberAttendance />} />
-      <Route path="/portal/rate-coach" element={<MemberRateCoach />} />
-      <Route path="/portal/daily-videos" element={<MemberDailyVideos />} />
-      <Route path="/portal/loyalty" element={<MemberLoyalty />} />
-      <Route path="/portal" element={<Navigate to="/portal/login" replace />} />
+      {/* Member Portal Routes - at root level */}
+      <Route path="/member-login" element={<MemberLogin />} />
+      <Route path="/" element={<MemberDashboard />} />
+      <Route path="/subscriptions" element={<MemberSubscriptions />} />
+      <Route path="/member-schedule" element={<MemberSchedule />} />
+      <Route path="/card" element={<MemberQRCard />} />
+      <Route path="/notifications" element={<MemberNotifications />} />
+      <Route path="/member-attendance" element={<MemberAttendance />} />
+      <Route path="/rate-coach" element={<MemberRateCoach />} />
+      <Route path="/videos" element={<MemberDailyVideos />} />
+      <Route path="/loyalty-points" element={<MemberLoyalty />} />
       
-      {/* Unauthorized Page */}
+      {/* Admin Protected Routes - under /admin prefix */}
       <Route 
-        path="/unauthorized" 
+        path="/admin/unauthorized" 
         element={
           <ProtectedRoute>
             <UnauthorizedPage />
           </ProtectedRoute>
         } 
       />
-      
-      {/* Protected Routes with permissions */}
       <Route 
-        path="/dashboard" 
+        path="/admin/dashboard" 
         element={
           <ProtectedRoute permission="dashboard">
             <DashboardPage />
@@ -180,7 +174,7 @@ function AppRoutes() {
         } 
       />
       <Route 
-        path="/members" 
+        path="/admin/members" 
         element={
           <ProtectedRoute permission="members">
             <MembersPage />
@@ -188,7 +182,7 @@ function AppRoutes() {
         } 
       />
       <Route 
-        path="/activities" 
+        path="/admin/activities" 
         element={
           <ProtectedRoute permission="activities">
             <ActivitiesPage />
@@ -196,7 +190,7 @@ function AppRoutes() {
         } 
       />
       <Route 
-        path="/levels" 
+        path="/admin/levels" 
         element={
           <ProtectedRoute permission="levels">
             <LevelsPage />
@@ -204,7 +198,7 @@ function AppRoutes() {
         } 
       />
       <Route 
-        path="/invoices" 
+        path="/admin/invoices" 
         element={
           <ProtectedRoute permission="invoices">
             <InvoicesPage />
@@ -212,7 +206,7 @@ function AppRoutes() {
         } 
       />
       <Route 
-        path="/reports" 
+        path="/admin/reports" 
         element={
           <ProtectedRoute permission="reports">
             <ReportsPage />
@@ -220,7 +214,7 @@ function AppRoutes() {
         } 
       />
       <Route 
-        path="/messages" 
+        path="/admin/messages" 
         element={
           <ProtectedRoute permission="messages">
             <MessagesPage />
@@ -228,7 +222,7 @@ function AppRoutes() {
         } 
       />
       <Route 
-        path="/settings" 
+        path="/admin/settings" 
         element={
           <ProtectedRoute permission="settings">
             <SettingsPage />
@@ -236,7 +230,7 @@ function AppRoutes() {
         } 
       />
       <Route 
-        path="/branches" 
+        path="/admin/branches" 
         element={
           <ProtectedRoute permission="branches">
             <BranchesPage />
@@ -244,7 +238,7 @@ function AppRoutes() {
         } 
       />
       <Route 
-        path="/users" 
+        path="/admin/users" 
         element={
           <ProtectedRoute permission="users">
             <UsersPage />
@@ -252,7 +246,7 @@ function AppRoutes() {
         } 
       />
       <Route 
-        path="/store" 
+        path="/admin/store" 
         element={
           <ProtectedRoute permission="store">
             <StorePage />
@@ -260,7 +254,7 @@ function AppRoutes() {
         } 
       />
       <Route 
-        path="/accounting" 
+        path="/admin/accounting" 
         element={
           <ProtectedRoute permission="accounting">
             <AccountingPage />
@@ -268,7 +262,7 @@ function AppRoutes() {
         } 
       />
       <Route 
-        path="/attendance" 
+        path="/admin/attendance" 
         element={
           <ProtectedRoute permission="attendance">
             <AttendancePage />
@@ -276,7 +270,7 @@ function AppRoutes() {
         } 
       />
       <Route 
-        path="/schedule" 
+        path="/admin/schedule" 
         element={
           <ProtectedRoute permission="schedule">
             <SchedulePage />
@@ -284,7 +278,7 @@ function AppRoutes() {
         } 
       />
       <Route 
-        path="/coach-ratings" 
+        path="/admin/coach-ratings" 
         element={
           <ProtectedRoute permission="coach-ratings">
             <CoachRatingsPage />
@@ -292,7 +286,7 @@ function AppRoutes() {
         } 
       />
       <Route 
-        path="/advertisements" 
+        path="/admin/advertisements" 
         element={
           <ProtectedRoute permission="advertisements">
             <AdvertisementsPage />
@@ -300,7 +294,7 @@ function AppRoutes() {
         } 
       />
       <Route 
-        path="/daily-videos" 
+        path="/admin/daily-videos" 
         element={
           <ProtectedRoute permission="daily-videos">
             <DailyVideosPage />
@@ -308,7 +302,7 @@ function AppRoutes() {
         } 
       />
       <Route 
-        path="/loyalty" 
+        path="/admin/loyalty" 
         element={
           <ProtectedRoute permission="loyalty">
             <LoyaltyPage />
@@ -316,17 +310,24 @@ function AppRoutes() {
         } 
       />
       <Route 
-        path="/renewals" 
+        path="/admin/renewals" 
         element={
           <ProtectedRoute permission="members">
             <RenewalsPage />
           </ProtectedRoute>
         } 
       />
+      <Route 
+        path="/admin/member-card" 
+        element={
+          <ProtectedRoute permission="attendance">
+            <MemberCardPage />
+          </ProtectedRoute>
+        } 
+      />
       
-      {/* Smart Default Redirect based on permissions */}
-      <Route path="/" element={<SmartRedirect />} />
-      <Route path="*" element={<SmartRedirect />} />
+      {/* Catch-all redirect to member login */}
+      <Route path="*" element={<Navigate to="/member-login" replace />} />
     </Routes>
   );
 }

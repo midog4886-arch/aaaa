@@ -15,27 +15,27 @@ const BottomNavigation = ({ darkMode, unreadCount = 0, language = 'ar' }) => {
   
   const navItems = [
     { 
-      to: '/portal/dashboard', 
+      to: '/', 
       icon: Home, 
       label: language === 'ar' ? 'الرئيسية' : 'Home' 
     },
     { 
-      to: '/portal/daily-videos', 
+      to: '/videos', 
       icon: Video, 
       label: language === 'ar' ? 'الفيديوهات' : 'Videos' 
     },
     { 
-      to: '/portal/loyalty', 
+      to: '/loyalty-points', 
       icon: Trophy, 
       label: language === 'ar' ? 'النقاط' : 'Points' 
     },
     { 
-      to: '/portal/subscriptions', 
+      to: '/subscriptions', 
       icon: CreditCard, 
       label: language === 'ar' ? 'الاشتراكات' : 'Subscriptions' 
     },
     { 
-      to: '/portal/notifications', 
+      to: '/notifications', 
       icon: Bell, 
       label: language === 'ar' ? 'الإشعارات' : 'Notifications',
       badge: unreadCount

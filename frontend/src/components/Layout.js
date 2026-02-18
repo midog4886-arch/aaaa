@@ -64,26 +64,26 @@ export const Sidebar = ({ isOpen, onClose }) => {
   };
 
   const navItems = [
-    { to: '/dashboard', icon: LayoutDashboard, label: 'dashboard', permission: 'dashboard' },
-    { to: '/invoices', icon: Receipt, label: 'invoices', permission: 'invoices' },
-    { to: '/members', icon: Users, label: 'members', permission: 'members' },
-    { to: '/renewals', icon: RefreshCcw, label: 'renewals', permission: 'members' },
-    { to: '/activities', icon: Dumbbell, label: 'activities', permission: 'activities' },
-    { to: '/levels', icon: Layers, label: 'levels', permission: 'levels' },
-    { to: '/schedule', icon: CalendarDays, label: 'schedule', permission: 'schedule' },
-    { to: '/attendance', icon: ClipboardList, label: 'attendance', permission: 'attendance' },
-    { to: '/member-card', icon: QrCode, label: 'member_card', permission: 'attendance' },
-    { to: '/coach-ratings', icon: Star, label: 'coach_ratings', permission: 'coach-ratings' },
-    { to: '/advertisements', icon: Megaphone, label: 'advertisements', permission: 'advertisements' },
-    { to: '/daily-videos', icon: Video, label: 'daily_videos', permission: 'daily-videos' },
-    { to: '/loyalty', icon: Trophy, label: 'loyalty', permission: 'loyalty' },
-    { to: '/store', icon: Package, label: 'store', permission: 'store' },
-    { to: '/accounting', icon: Calculator, label: 'accounting', permission: 'accounting' },
-    { to: '/reports', icon: BarChart3, label: 'reports', permission: 'reports' },
-    { to: '/messages', icon: MessageSquare, label: 'messages', permission: 'messages' },
-    ...(isAdmin ? [{ to: '/branches', icon: Building2, label: 'branches', permission: 'branches' }] : []),
-    ...(isAdmin ? [{ to: '/users', icon: Users, label: 'users', permission: 'users' }] : []),
-    { to: '/settings', icon: Settings, label: 'settings', permission: 'settings' },
+    { to: '/admin/dashboard', icon: LayoutDashboard, label: 'dashboard', permission: 'dashboard' },
+    { to: '/admin/invoices', icon: Receipt, label: 'invoices', permission: 'invoices' },
+    { to: '/admin/members', icon: Users, label: 'members', permission: 'members' },
+    { to: '/admin/renewals', icon: RefreshCcw, label: 'renewals', permission: 'members' },
+    { to: '/admin/activities', icon: Dumbbell, label: 'activities', permission: 'activities' },
+    { to: '/admin/levels', icon: Layers, label: 'levels', permission: 'levels' },
+    { to: '/admin/schedule', icon: CalendarDays, label: 'schedule', permission: 'schedule' },
+    { to: '/admin/attendance', icon: ClipboardList, label: 'attendance', permission: 'attendance' },
+    { to: '/admin/member-card', icon: QrCode, label: 'member_card', permission: 'attendance' },
+    { to: '/admin/coach-ratings', icon: Star, label: 'coach_ratings', permission: 'coach-ratings' },
+    { to: '/admin/advertisements', icon: Megaphone, label: 'advertisements', permission: 'advertisements' },
+    { to: '/admin/daily-videos', icon: Video, label: 'daily_videos', permission: 'daily-videos' },
+    { to: '/admin/loyalty', icon: Trophy, label: 'loyalty', permission: 'loyalty' },
+    { to: '/admin/store', icon: Package, label: 'store', permission: 'store' },
+    { to: '/admin/accounting', icon: Calculator, label: 'accounting', permission: 'accounting' },
+    { to: '/admin/reports', icon: BarChart3, label: 'reports', permission: 'reports' },
+    { to: '/admin/messages', icon: MessageSquare, label: 'messages', permission: 'messages' },
+    ...(isAdmin ? [{ to: '/admin/branches', icon: Building2, label: 'branches', permission: 'branches' }] : []),
+    ...(isAdmin ? [{ to: '/admin/users', icon: Users, label: 'users', permission: 'users' }] : []),
+    { to: '/admin/settings', icon: Settings, label: 'settings', permission: 'settings' },
   ];
 
   // Filter nav items based on user permissions
@@ -176,7 +176,7 @@ export const Sidebar = ({ isOpen, onClose }) => {
         <div className="sidebar-footer space-y-3">
           {/* Quick Navigation to Member Portal */}
           <a
-            href="/portal/login"
+            href="/member-login"
             target="_blank"
             rel="noopener noreferrer"
             className="flex items-center gap-2 p-2 bg-gradient-to-r from-orange-500 to-orange-600 text-white rounded-lg hover:from-orange-600 hover:to-orange-700 transition-all"
@@ -373,7 +373,7 @@ export const TopHeader = ({ onMenuClick, title }) => {
 
         {/* Quick Link to Member Portal */}
         <a
-          href="/portal/login"
+          href="/member-login"
           target="_blank"
           rel="noopener noreferrer"
         >

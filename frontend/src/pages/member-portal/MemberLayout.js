@@ -93,7 +93,7 @@ const MemberLayout = ({ children }) => {
   useEffect(() => {
     const memberData = getMemberData();
     if (!memberData) {
-      navigate('/portal/login');
+      navigate('/member-login');
       return;
     }
     setMember(memberData);
@@ -224,19 +224,19 @@ const MemberLayout = ({ children }) => {
 
   const handleLogout = () => {
     memberLogout();
-    navigate('/portal/login');
+    navigate('/member-login');
   };
 
   const navItems = [
-    { to: '/portal/dashboard', icon: Home, labelKey: 'home' },
-    { to: '/portal/daily-videos', icon: Video, labelKey: 'dailyVideos' },
-    { to: '/portal/attendance', icon: Activity, labelKey: 'attendance' },
-    { to: '/portal/subscriptions', icon: CreditCard, labelKey: 'subscriptions' },
-    { to: '/portal/schedule', icon: Calendar, labelKey: 'schedule' },
-    { to: '/portal/loyalty', icon: Trophy, labelKey: 'loyalty' },
-    { to: '/portal/card', icon: QrCode, labelKey: 'memberCard' },
-    { to: '/portal/rate-coach', icon: Star, labelKey: 'rateCoaches' },
-    { to: '/portal/notifications', icon: Bell, labelKey: 'notifications', badge: notifications.unread_count },
+    { to: '/', icon: Home, labelKey: 'home' },
+    { to: '/videos', icon: Video, labelKey: 'dailyVideos' },
+    { to: '/member-attendance', icon: Activity, labelKey: 'attendance' },
+    { to: '/subscriptions', icon: CreditCard, labelKey: 'subscriptions' },
+    { to: '/member-schedule', icon: Calendar, labelKey: 'schedule' },
+    { to: '/loyalty-points', icon: Trophy, labelKey: 'loyalty' },
+    { to: '/card', icon: QrCode, labelKey: 'memberCard' },
+    { to: '/rate-coach', icon: Star, labelKey: 'rateCoaches' },
+    { to: '/notifications', icon: Bell, labelKey: 'notifications', badge: notifications.unread_count },
   ];
 
   // Extended translations
@@ -421,11 +421,11 @@ const MemberLayout = ({ children }) => {
       } border-t backdrop-blur-lg`}>
         <div className="flex items-center justify-around h-16 max-w-lg mx-auto px-2">
           {[
-            { to: '/portal/dashboard', icon: Home, label: getText('home') },
-            { to: '/portal/daily-videos', icon: Video, label: language === 'ar' ? 'الفيديوهات' : 'Videos' },
-            { to: '/portal/loyalty', icon: Trophy, label: language === 'ar' ? 'النقاط' : 'Points' },
-            { to: '/portal/subscriptions', icon: CreditCard, label: language === 'ar' ? 'الاشتراكات' : 'Subs' },
-            { to: '/portal/notifications', icon: Bell, label: getText('notifications'), badge: notifications.unread_count },
+            { to: '/', icon: Home, label: getText('home') },
+            { to: '/videos', icon: Video, label: language === 'ar' ? 'الفيديوهات' : 'Videos' },
+            { to: '/loyalty-points', icon: Trophy, label: language === 'ar' ? 'النقاط' : 'Points' },
+            { to: '/subscriptions', icon: CreditCard, label: language === 'ar' ? 'الاشتراكات' : 'Subs' },
+            { to: '/notifications', icon: Bell, label: getText('notifications'), badge: notifications.unread_count },
           ].map((item) => {
             const isActive = location.pathname === item.to;
             const Icon = item.icon;
