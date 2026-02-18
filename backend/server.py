@@ -4499,6 +4499,13 @@ async def quick_search_member(
         {"_id": 0}
     ).to_list(10)
     
+    # Get product IDs to filter them out from attendance activities
+    product_ids = set()
+    products_cursor = db.products.find({}, {"_id": 0, "id": 1})
+    async for p in products_cursor:
+        if p.get("id"):
+            product_ids.add(p["id"])
+    
     # Get activities from invoices
     activities_from_invoices = []
     invoices = await db.invoices.find({
@@ -4508,7 +4515,7 @@ async def quick_search_member(
     
     for inv in invoices:
         for item in inv.get("items", []):
-            if item.get("activity_id"):
+            if item.get("activity_id") and item.get("activity_id") not in product_ids:
                 end_date = item.get("end_date", "")
                 is_active = end_date >= today if end_date else False
                 activities_from_invoices.append({
@@ -4532,11 +4539,12 @@ async def quick_search_member(
     
     for form in reg_forms:
         for item in form.get("items", []):
-            if item.get("activity_id") or item.get("activity_name"):
+            act_id = item.get("activity_id", "")
+            if (act_id or item.get("activity_name")) and act_id not in product_ids:
                 end_date = item.get("end_date", "")
                 is_active = end_date >= today if end_date else False
                 activities_from_reg_forms.append({
-                    "activity_id": item.get("activity_id", ""),
+                    "activity_id": act_id,
                     "activity_name": item.get("activity_name"),
                     "start_date": item.get("start_date", ""),
                     "end_date": end_date,
@@ -4585,6 +4593,12 @@ async def quick_search_members_multi(
     # Get today's date
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     
+    product_ids = set()
+    products_cursor = db.products.find({}, {"_id": 0, "id": 1})
+    async for p in products_cursor:
+        if p.get("id"):
+            product_ids.add(p["id"])
+    
     results = []
     for member in members:
         # Check if already recorded today
@@ -4593,13 +4607,18 @@ async def quick_search_members_multi(
             {"_id": 0}
         ).to_list(10)
         
+        member_activities = [
+            a for a in member.get("activities", [])
+            if a.get("activity_id") not in product_ids
+        ]
+        
         results.append({
             "member_id": member["id"],
             "member_code": member.get("member_code", ""),
             "name": member.get("name", ""),
             "name_ar": member.get("name_ar", ""),
             "phone": member.get("phone", ""),
-            "activities": member.get("activities", []),
+            "activities": member_activities,
             "today_attendance": today_records
         })
     
