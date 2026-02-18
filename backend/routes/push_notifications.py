@@ -243,3 +243,33 @@ async def broadcast_notification(data: BroadcastPayload):
 async def get_subscribers_count():
     count = await db.push_subscriptions.count_documents({"is_active": True})
     return {"count": count}
+
+
+@router.get("/subscribers-list")
+async def get_subscribers_list():
+    subscriptions = await db.push_subscriptions.find(
+        {"is_active": True},
+        {"_id": 0, "member_id": 1, "created_at": 1, "updated_at": 1}
+    ).to_list(10000)
+
+    member_ids = list(set(s["member_id"] for s in subscriptions if s.get("member_id")))
+
+    members = await db.members.find(
+        {"id": {"$in": member_ids}},
+        {"_id": 0, "id": 1, "name": 1, "phone": 1, "branch_id": 1}
+    ).to_list(10000)
+    members_map = {m["id"]: m for m in members}
+
+    result = []
+    for sub in subscriptions:
+        mid = sub.get("member_id", "")
+        member = members_map.get(mid, {})
+        result.append({
+            "member_id": mid,
+            "name": member.get("name", mid),
+            "phone": member.get("phone", ""),
+            "branch_id": member.get("branch_id", ""),
+            "subscribed_at": sub.get("updated_at") or sub.get("created_at", "")
+        })
+
+    return {"subscribers": result}

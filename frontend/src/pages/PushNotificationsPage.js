@@ -8,13 +8,16 @@ import { Input } from '../components/ui/input';
 import { Textarea } from '../components/ui/textarea';
 import { pushNotificationsAPI, membersAPI, branchesAPI } from '../services/api';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../components/ui/dialog';
 import { toast } from 'sonner';
 import {
   Bell,
   Send,
   Users,
   Loader2,
-  CheckCircle
+  CheckCircle,
+  Phone,
+  X
 } from 'lucide-react';
 
 const PushNotificationsPage = () => {
@@ -27,6 +30,9 @@ const PushNotificationsPage = () => {
   const [sending, setSending] = useState(false);
   const [branches, setBranches] = useState([]);
   const [result, setResult] = useState(null);
+  const [showSubscribers, setShowSubscribers] = useState(false);
+  const [subscribers, setSubscribers] = useState([]);
+  const [loadingSubscribers, setLoadingSubscribers] = useState(false);
 
   const [form, setForm] = useState({
     title: '',
@@ -52,6 +58,25 @@ const PushNotificationsPage = () => {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleShowSubscribers = async () => {
+    setShowSubscribers(true);
+    setLoadingSubscribers(true);
+    try {
+      const res = await pushNotificationsAPI.getSubscribersList();
+      setSubscribers(res.data.subscribers || []);
+    } catch (error) {
+      console.error('Failed to load subscribers:', error);
+      toast.error(isAr ? 'فشل في تحميل المشتركين' : 'Failed to load subscribers');
+    } finally {
+      setLoadingSubscribers(false);
+    }
+  };
+
+  const getBranchName = (branchId) => {
+    const branch = branches.find(b => b.id === branchId);
+    return branch ? branch.name : '';
   };
 
   const handleSend = async (e) => {
@@ -107,14 +132,69 @@ const PushNotificationsPage = () => {
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <Card className="bg-blue-50 border-blue-200">
+          <Card
+            className="bg-blue-50 border-blue-200 cursor-pointer hover:bg-blue-100 hover:shadow-md transition-all"
+            onClick={handleShowSubscribers}
+          >
             <CardContent className="p-4 text-center">
               <Users className="w-8 h-8 text-blue-600 mx-auto mb-2" />
               <p className="text-2xl font-bold text-blue-700">{subscribersCount}</p>
               <p className="text-sm text-blue-600">{isAr ? 'مشترك في الإشعارات' : 'Active Subscribers'}</p>
+              <p className="text-xs text-blue-400 mt-1">{isAr ? 'اضغط لعرض القائمة' : 'Click to view list'}</p>
             </CardContent>
           </Card>
         </div>
+
+        <Dialog open={showSubscribers} onOpenChange={setShowSubscribers}>
+          <DialogContent className="max-w-lg max-h-[80vh] overflow-hidden flex flex-col">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <Users className="w-5 h-5 text-blue-600" />
+                {isAr ? `المشتركون في الإشعارات (${subscribers.length})` : `Notification Subscribers (${subscribers.length})`}
+              </DialogTitle>
+            </DialogHeader>
+            <div className="overflow-y-auto flex-1 -mx-2 px-2">
+              {loadingSubscribers ? (
+                <div className="flex items-center justify-center py-12">
+                  <Loader2 className="w-6 h-6 animate-spin text-blue-600" />
+                </div>
+              ) : subscribers.length === 0 ? (
+                <div className="text-center py-12 text-gray-500">
+                  {isAr ? 'لا يوجد مشتركين' : 'No subscribers'}
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {subscribers.map((sub, idx) => (
+                    <div
+                      key={idx}
+                      className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border"
+                    >
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center flex-shrink-0">
+                          <Users className="w-4 h-4 text-blue-600" />
+                        </div>
+                        <div className="min-w-0">
+                          <p className="font-medium text-sm truncate">{sub.name}</p>
+                          {sub.phone && (
+                            <p className="text-xs text-gray-500 flex items-center gap-1" dir="ltr">
+                              <Phone className="w-3 h-3" />
+                              {sub.phone}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                      {sub.branch_id && getBranchName(sub.branch_id) && (
+                        <span className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded-full flex-shrink-0 mr-2">
+                          {getBranchName(sub.branch_id)}
+                        </span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </DialogContent>
+        </Dialog>
 
         <Card>
           <CardHeader>
