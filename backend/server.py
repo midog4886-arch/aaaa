@@ -124,7 +124,7 @@ async def root():
     """Root endpoint - serve React app if available, otherwise API info"""
     static_index = ROOT_DIR / "static" / "index.html"
     if static_index.exists():
-        return FileResponse(static_index, headers={"Cache-Control": "no-cache"})
+        return FileResponse(static_index, headers={"Cache-Control": "no-cache, no-store, must-revalidate"})
     return {"message": "Champions Academy API", "status": "running"}
 
 # ============ PUBLIC API - Member Card ============
@@ -6327,12 +6327,10 @@ if STATIC_DIR.exists():
     @app.get("/{full_path:path}")
     async def serve_react_app(full_path: str):
         """Serve React app for all non-API routes"""
-        # Check if it's a file request
         file_path = STATIC_DIR / full_path
         if file_path.exists() and file_path.is_file():
-            return FileResponse(file_path)
-        # Return index.html for all other routes (React Router)
-        return FileResponse(STATIC_DIR / "index.html")
+            return FileResponse(file_path, headers={"Cache-Control": "no-cache, no-store, must-revalidate"})
+        return FileResponse(STATIC_DIR / "index.html", headers={"Cache-Control": "no-cache, no-store, must-revalidate"})
 # ============ AUTO CREATE ADMIN USER ON STARTUP ============
 @app.on_event("startup")
 async def create_default_admin():
