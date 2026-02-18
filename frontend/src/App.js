@@ -146,8 +146,12 @@ function AppRoutes() {
       {/* Privacy Policy - Public page */}
       <Route path="/privacy" element={<PrivacyPolicyPage />} />
       
-      {/* Root redirects to admin login */}
-      <Route path="/" element={<Navigate to="/login" replace />} />
+      {/* Root shows admin login */}
+      <Route path="/" element={
+        <PublicRoute>
+          <LoginPage />
+        </PublicRoute>
+      } />
 
       {/* Member Portal Routes */}
       <Route path="/member-login" element={<MemberLogin />} />
