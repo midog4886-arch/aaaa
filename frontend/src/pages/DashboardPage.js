@@ -758,27 +758,6 @@ export const DashboardPage = () => {
           </CardContent>
         </Card>
 
-        {/* Quick Stats */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-          <Card className="p-4 text-center">
-            <div className="text-2xl font-bold text-primary">{stats?.activities_count || 0}</div>
-            <div className="text-sm text-muted-foreground">{t('activities')}</div>
-          </Card>
-          <Card className="p-4 text-center">
-            <div className="text-2xl font-bold text-green-500">{stats?.coaches_count || 0}</div>
-            <div className="text-sm text-muted-foreground">{t('coaches')}</div>
-          </Card>
-          <Card className="p-4 text-center">
-            <div className="text-2xl font-bold text-blue-500">4</div>
-            <div className="text-sm text-muted-foreground">{t('activities')}</div>
-          </Card>
-          <Card className="p-4 text-center">
-            <div className="text-2xl font-bold text-purple-500">
-              {formatCurrency(stats?.month_revenue || 0)}
-            </div>
-            <div className="text-sm text-muted-foreground">{t('monthly_revenue')}</div>
-          </Card>
-        </div>
       </div>
     </Layout>
   );
