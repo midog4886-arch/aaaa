@@ -277,9 +277,9 @@ const MemberLayout = ({ children }) => {
   return (
     <div className={`min-h-screen transition-colors duration-300 ${darkMode ? 'bg-gray-900' : 'bg-gray-50'}`} dir={language === 'ar' ? 'rtl' : 'ltr'}>
       {/* Header */}
-      <header className={`${darkMode ? 'bg-gray-800' : 'bg-gradient-to-r from-slate-900 via-blue-900 to-slate-900'} text-white sticky top-0 z-50 shadow-lg`}>
+      <header className={`${darkMode ? 'bg-gray-800' : 'bg-gradient-to-r from-slate-900 via-blue-900 to-slate-900'} text-white sticky top-0 z-50 shadow-lg safe-area-top`}>
         <div className="max-w-7xl mx-auto px-4">
-          <div className="flex items-center justify-between h-16">
+          <div className="flex items-center justify-between h-14 sm:h-16">
             {/* Logo */}
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 bg-gradient-to-br from-orange-500 to-amber-500 rounded-full flex items-center justify-center">
@@ -410,8 +410,10 @@ const MemberLayout = ({ children }) => {
       </header>
 
       {/* Main Content - Add padding for bottom nav */}
-      <main className="max-w-7xl mx-auto px-4 py-6 pb-24">
-        {children}
+      <main className="max-w-7xl mx-auto px-4 py-6 pb-20 mobile-scroll">
+        <div className="page-enter">
+          {children}
+        </div>
       </main>
 
       {/* Bottom Navigation for Mobile */}
@@ -419,8 +421,8 @@ const MemberLayout = ({ children }) => {
         darkMode 
           ? 'bg-gray-900/95 border-gray-700' 
           : 'bg-white/95 border-gray-200'
-      } border-t backdrop-blur-lg`}>
-        <div className="flex items-center justify-around h-16 max-w-lg mx-auto px-2">
+      } border-t backdrop-blur-lg safe-area-bottom`}>
+        <div className="flex items-center justify-around h-14 max-w-lg mx-auto px-2">
           {[
             { to: '/', icon: Home, label: getText('home') },
             { to: '/videos', icon: Video, label: language === 'ar' ? 'الفيديوهات' : 'Videos' },
@@ -434,7 +436,7 @@ const MemberLayout = ({ children }) => {
               <Link
                 key={item.to}
                 to={item.to}
-                className="relative flex flex-col items-center justify-center flex-1 h-full"
+                className="relative flex flex-col items-center justify-center flex-1 h-full tap-highlight"
               >
                 <div className="relative flex flex-col items-center">
                   {isActive && (
@@ -445,7 +447,7 @@ const MemberLayout = ({ children }) => {
                       ? 'text-blue-600' 
                       : darkMode ? 'text-gray-400' : 'text-gray-500'
                   }`}>
-                    <Icon className={`w-5 h-5 ${isActive ? 'stroke-[2.5]' : ''}`} />
+                    <Icon className={`w-6 h-6 ${isActive ? 'stroke-[2.5]' : ''}`} />
                     {item.badge > 0 && (
                       <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white text-xs font-bold rounded-full flex items-center justify-center">
                         {item.badge > 9 ? '9+' : item.badge}

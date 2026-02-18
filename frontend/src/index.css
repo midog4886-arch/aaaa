@@ -250,3 +250,37 @@ code {
         display: contents !important;
     }
 }
+
+/* Mobile Safe Area Support */
+.safe-area-top {
+  padding-top: env(safe-area-inset-top, 0px);
+}
+.safe-area-bottom {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+@supports (padding: max(0px)) {
+  .mobile-touch-target {
+    min-height: max(44px, env(safe-area-inset-bottom, 44px));
+  }
+}
+
+/* Improved mobile scrolling */
+.mobile-scroll {
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: contain;
+}
+
+/* Haptic feedback simulation */
+.tap-highlight {
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+
+/* Smooth page transitions */
+.page-enter {
+  animation: pageSlideIn 0.25s ease-out;
+}
+@keyframes pageSlideIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}

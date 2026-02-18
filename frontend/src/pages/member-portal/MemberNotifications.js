@@ -76,9 +76,9 @@ const MemberNotifications = () => {
 
   return (
     <MemberLayout>
-      <div className="space-y-6">
+      <div className="space-y-6 page-enter">
         <div className="flex items-center justify-between">
-          <h1 className="text-2xl font-bold text-gray-800">الإشعارات</h1>
+          <h1 className="text-xl sm:text-2xl font-bold text-gray-800">الإشعارات</h1>
           {notifications.unread_count > 0 && (
             <span className="px-3 py-1 bg-red-500 text-white rounded-full text-sm">
               {notifications.unread_count} جديد
@@ -100,7 +100,7 @@ const MemberNotifications = () => {
                 {expiringNotifications.map((notif, idx) => {
                   const style = getNotificationStyle(notif.priority);
                   return (
-                    <div key={idx} className={`flex items-start gap-3 p-4 rounded-lg border ${style.bg}`}>
+                    <div key={idx} className={`flex items-start gap-3 p-4 rounded-lg border tap-highlight ${style.bg}`}>
                       <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${style.icon}`}>
                         {getNotificationIcon(notif.priority)}
                       </div>
@@ -133,7 +133,7 @@ const MemberNotifications = () => {
                 {expiredNotifications.map((notif, idx) => {
                   const style = getNotificationStyle(notif.priority);
                   return (
-                    <div key={idx} className={`flex items-start gap-3 p-4 rounded-lg border ${style.bg}`}>
+                    <div key={idx} className={`flex items-start gap-3 p-4 rounded-lg border tap-highlight ${style.bg}`}>
                       <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${style.icon}`}>
                         {getNotificationIcon(notif.priority)}
                       </div>
@@ -164,7 +164,7 @@ const MemberNotifications = () => {
             <CardContent>
               <div className="space-y-3">
                 {attendanceNotifications.slice(0, 10).map((notif, idx) => (
-                  <div key={idx} className="flex items-start gap-3 p-4 rounded-lg border bg-green-50 border-green-200">
+                  <div key={idx} className="flex items-start gap-3 p-4 rounded-lg border bg-green-50 border-green-200 tap-highlight">
                     <div className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 bg-green-500">
                       <CheckCircle className="w-5 h-5 text-white" />
                     </div>
@@ -193,7 +193,7 @@ const MemberNotifications = () => {
                 {otherNotifications.map((notif, idx) => {
                   const style = getNotificationStyle(notif.priority);
                   return (
-                    <div key={idx} className={`flex items-start gap-3 p-4 rounded-lg border ${style.bg}`}>
+                    <div key={idx} className={`flex items-start gap-3 p-4 rounded-lg border tap-highlight ${style.bg}`}>
                       <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${style.icon}`}>
                         {getNotificationIcon(notif.priority)}
                       </div>

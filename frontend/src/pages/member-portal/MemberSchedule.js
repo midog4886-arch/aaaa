@@ -37,8 +37,8 @@ const MemberSchedule = () => {
 
   return (
     <MemberLayout>
-      <div className="space-y-6">
-        <h1 className="text-2xl font-bold text-gray-800">جدول التدريبات</h1>
+      <div className="space-y-6 page-enter">
+        <h1 className="text-xl sm:text-2xl font-bold text-gray-800">جدول التدريبات</h1>
 
         {/* Stats */}
         <div className="grid grid-cols-2 gap-4">

@@ -133,11 +133,11 @@ const MemberDashboard = () => {
         <Card className="bg-gradient-to-r from-slate-900 via-blue-900 to-slate-900 text-white border-0">
           <CardContent className="p-6">
             <div className="flex items-center gap-4">
-              <div className="w-16 h-16 bg-gradient-to-br from-orange-500 to-amber-500 rounded-full flex items-center justify-center">
-                <Trophy className="w-8 h-8 text-white" />
+              <div className="w-12 h-12 sm:w-16 sm:h-16 bg-gradient-to-br from-orange-500 to-amber-500 rounded-full flex items-center justify-center">
+                <Trophy className="w-6 h-6 sm:w-8 sm:h-8 text-white" />
               </div>
               <div>
-                <h1 className="text-2xl font-bold">مرحباً {member?.name_ar}</h1>
+                <h1 className="text-xl sm:text-2xl font-bold">مرحباً {member?.name_ar}</h1>
                 <p className="text-gray-300">رقم العضوية: #{member?.member_code}</p>
               </div>
             </div>
@@ -190,13 +190,13 @@ const MemberDashboard = () => {
         </div>
 
         {/* Quick Links */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-3 gap-4">
           {quickLinks.map((link) => (
             <Link key={link.to} to={link.to}>
               <Card className="hover:shadow-lg transition-shadow cursor-pointer h-full">
-                <CardContent className="p-6 text-center">
-                  <div className={`w-14 h-14 ${link.color} rounded-full flex items-center justify-center mx-auto mb-3`}>
-                    <link.icon className="w-7 h-7 text-white" />
+                <CardContent className="p-4 text-center">
+                  <div className={`w-12 h-12 ${link.color} rounded-full flex items-center justify-center mx-auto mb-3`}>
+                    <link.icon className="w-6 h-6 text-white" />
                   </div>
                   <p className="font-medium text-gray-800">{link.label}</p>
                 </CardContent>
@@ -223,7 +223,7 @@ const MemberDashboard = () => {
             <CardContent>
               <div className="space-y-3">
                 {subscriptions.active.slice(0, 3).map((sub, idx) => (
-                  <div key={idx} className="flex items-center justify-between p-3 bg-green-50 rounded-lg border border-green-200">
+                  <div key={idx} className="flex items-center justify-between p-3 sm:p-4 bg-green-50 rounded-lg border border-green-200 tap-highlight">
                     <div>
                       <p className="font-bold text-gray-800">{sub.activity_name}</p>
                       <p className="text-sm text-gray-500">

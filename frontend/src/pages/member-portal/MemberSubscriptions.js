@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
 import { CheckCircle, XCircle, Clock, Calendar, Loader2 } from 'lucide-react';
-import MemberLayout, { memberAPI } from './MemberLayout';
+import MemberLayout, { memberAPI, getDarkMode } from './MemberLayout';
 
 const MemberSubscriptions = () => {
   const [loading, setLoading] = useState(true);
   const [subscriptions, setSubscriptions] = useState({ active: [], expired: [] });
+  const darkMode = getDarkMode();
 
   useEffect(() => {
     fetchSubscriptions();
@@ -34,8 +35,8 @@ const MemberSubscriptions = () => {
 
   return (
     <MemberLayout>
-      <div className="space-y-6">
-        <h1 className="text-2xl font-bold text-gray-800">اشتراكاتي</h1>
+      <div className="space-y-6 page-enter">
+        <h1 className={`text-xl sm:text-2xl font-bold ${darkMode ? 'text-gray-100' : 'text-gray-800'}`}>اشتراكاتي</h1>
 
         {/* Active Subscriptions */}
         <Card>

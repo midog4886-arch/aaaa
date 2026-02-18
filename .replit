@@ -11,6 +11,8 @@ packages = ["cacert", "cargo", "freetype", "glibcLocales", "lcms2", "libiconv", 
 [userenv.shared]
 DB_NAME = "champions_academy"
 JWT_SECRET_KEY = "champions-academy-jwt-secret-2024"
+VAPID_PUBLIC_KEY = "BD1x3FoYU6NwF4SQJs_z2W5ib6nA7v9oRZkzILE2FTjUmo9OYv4eOhwZBcf7oU7pZFik7Ou33Bp0mmuCyX-I2cM"
+VAPID_PRIVATE_KEY = "JkK8NjsSbbCtkh1PkPylXfAjvXZFeS9XPb2oYGjYEU0"
 
 [workflows]
 runButton = "Project"
