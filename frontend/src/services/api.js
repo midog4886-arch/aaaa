@@ -1,21 +1,6 @@
 import axios from 'axios';
 
-// Dynamically determine API URL at runtime
-const getBackendUrl = () => {
-  const envUrl = process.env.REACT_APP_BACKEND_URL;
-  if (envUrl && envUrl !== 'undefined' && envUrl !== '' && !envUrl.includes('undefined')) {
-    return envUrl;
-  }
-  if (typeof window !== 'undefined' && window.location.origin) {
-    if (!window.location.origin.includes('localhost')) {
-      return window.location.origin;
-    }
-  }
-  return '';
-};
-
-const BACKEND_URL = getBackendUrl();
-const API = `${BACKEND_URL}/api`;
+const API = '/api';
 
 // Set up axios interceptor to add token
 axios.interceptors.request.use((config) => {
