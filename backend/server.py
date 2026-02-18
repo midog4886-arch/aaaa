@@ -70,6 +70,20 @@ app = FastAPI(title="Champions Academy API")
 api_router = APIRouter(prefix="/api")
 security = HTTPBearer()
 
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.responses import Response
+
+class NoCacheMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request, call_next):
+        response = await call_next(request)
+        if request.url.path.endswith('.html') or request.url.path == '/' or not '.' in request.url.path.split('/')[-1]:
+            response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+            response.headers["Pragma"] = "no-cache"
+            response.headers["Expires"] = "0"
+        return response
+
+app.add_middleware(NoCacheMiddleware)
+
 # Include routers
 api_router.include_router(users_router)
 api_router.include_router(levels_router)
