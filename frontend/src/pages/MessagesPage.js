@@ -85,7 +85,7 @@ export const MessagesPage = () => {
   const loadPortalNotifications = async () => {
     try {
       const token = localStorage.getItem('token');
-      const API_URL = process.env.REACT_APP_BACKEND_URL;
+      const API_URL = '';
       const res = await fetch(`${API_URL}/api/member-notifications`, {
         headers: { Authorization: `Bearer ${token}` }
       });
@@ -111,7 +111,7 @@ export const MessagesPage = () => {
     setSendingNotif(true);
     try {
       const token = localStorage.getItem('token');
-      const API_URL = process.env.REACT_APP_BACKEND_URL;
+      const API_URL = '';
       const res = await fetch(`${API_URL}/api/member-notifications`, {
         method: 'POST',
         headers: { 
@@ -147,7 +147,7 @@ export const MessagesPage = () => {
   const handleDeletePortalNotification = async (notifId) => {
     try {
       const token = localStorage.getItem('token');
-      const API_URL = process.env.REACT_APP_BACKEND_URL;
+      const API_URL = '';
       const res = await fetch(`${API_URL}/api/member-notifications/${notifId}`, {
         method: 'DELETE',
         headers: { Authorization: `Bearer ${token}` }

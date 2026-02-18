@@ -539,8 +539,8 @@ const AdvertisementsPage = () => {
                       {ad.ad_type === 'banner' && ad.banner_image_url ? (
                         <img 
                           src={ad.banner_image_url.startsWith('/api') 
-                            ? `${process.env.REACT_APP_BACKEND_URL}${ad.banner_image_url}`
-                            : `${process.env.REACT_APP_BACKEND_URL}/api${ad.banner_image_url}`} 
+                            ? ad.banner_image_url
+                            : `/api${ad.banner_image_url}`} 
                           alt={ad.title_ar}
                           className="w-full h-full object-cover"
                         />
@@ -772,8 +772,8 @@ const AdvertisementsPage = () => {
                     <div className="relative w-full h-40 rounded-lg overflow-hidden bg-gray-100">
                       <img 
                         src={formData.banner_image_url.startsWith('/api') 
-                          ? `${process.env.REACT_APP_BACKEND_URL}${formData.banner_image_url}`
-                          : `${process.env.REACT_APP_BACKEND_URL}/api${formData.banner_image_url}`}
+                          ? formData.banner_image_url
+                          : `/api${formData.banner_image_url}`}
                         alt="Preview"
                         className="w-full h-full object-cover"
                       />

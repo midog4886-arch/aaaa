@@ -5,13 +5,13 @@ import { Dialog, DialogContent } from '../../components/ui/dialog';
 import { X, ChevronLeft, ChevronRight, Play, ExternalLink, Volume2, VolumeX } from 'lucide-react';
 import { memberAPI, getDarkMode } from './MemberLayout';
 
-const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
+const BACKEND_URL = '';
 
 // Helper function to get proper image URL
 const getImageUrl = (url) => {
   if (!url) return '';
-  if (url.startsWith('/api')) return `${BACKEND_URL}${url}`;
-  return `${BACKEND_URL}/api${url}`;
+  if (url.startsWith('/api')) return url;
+  return `/api${url}`;
 };
 
 // Hero Banner Carousel Component

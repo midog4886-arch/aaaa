@@ -7,7 +7,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../components/
 import { User, CreditCard, Phone, Download, Printer, CheckCircle, XCircle } from 'lucide-react';
 import axios from 'axios';
 
-const API_URL = process.env.REACT_APP_BACKEND_URL;
+const API_URL = '';
 
 const MemberCardPage = () => {
   const [searchQuery, setSearchQuery] = useState('');

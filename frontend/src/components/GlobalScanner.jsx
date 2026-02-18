@@ -154,7 +154,7 @@ const GlobalScanner = ({ enabled = true, language = 'ar' }) => {
     setShowMemberDialog(true);
     
     try {
-      const API_URL = process.env.REACT_APP_BACKEND_URL;
+      const API_URL = '';
       const response = await fetch(`${API_URL}/api/public/member-card/${memberCode}`);
       
       if (!response.ok) {

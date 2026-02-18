@@ -8,7 +8,7 @@ import { Phone, LogIn, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import axios from 'axios';
 
-const API_URL = process.env.REACT_APP_BACKEND_URL;
+const API_URL = '';
 
 // Academy Logo URL
 const ACADEMY_LOGO = "/logo-new.png";

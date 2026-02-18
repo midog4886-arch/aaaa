@@ -12,7 +12,7 @@ import { toast } from 'sonner';
 import Layout from '../components/Layout';
 import axios from 'axios';
 
-const API_URL = process.env.REACT_APP_BACKEND_URL;
+const API_URL = '';
 
 const CoachRatingsPage = () => {
   const [ratings, setRatings] = useState([]);
