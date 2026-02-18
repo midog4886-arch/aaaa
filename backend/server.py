@@ -1,6 +1,6 @@
 from fastapi import FastAPI, APIRouter, HTTPException, Depends, status, Request, UploadFile, File, Form
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from fastapi.responses import StreamingResponse, FileResponse
+from fastapi.responses import StreamingResponse, FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
@@ -150,7 +150,7 @@ async def root():
     static_index = ROOT_DIR / "static" / "index.html"
     if static_index.exists():
         return FileResponse(static_index, headers={"Cache-Control": "no-cache, no-store, must-revalidate"})
-    return {"message": "Champions Academy API", "status": "running"}
+    return JSONResponse(content={"message": "Champions Academy API", "status": "running"}, status_code=200)
 
 # ============ PUBLIC API - Member Card ============
 
