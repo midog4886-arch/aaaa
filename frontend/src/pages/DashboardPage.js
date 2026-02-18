@@ -25,7 +25,11 @@ import {
   Tag,
   ClipboardList,
   StickyNote,
-  ExternalLink
+  ExternalLink,
+  Lock,
+  Unlock,
+  Eye,
+  EyeOff
 } from 'lucide-react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from 'recharts';
 
@@ -38,6 +42,11 @@ export const DashboardPage = () => {
   const [recentNotes, setRecentNotes] = useState([]);
   const [loading, setLoading] = useState(true);
   
+  const [statsUnlocked, setStatsUnlocked] = useState(false);
+  const [showPasswordInput, setShowPasswordInput] = useState(false);
+  const [passwordInput, setPasswordInput] = useState('');
+  const STATS_PASSWORD = '242456';
+
   // Detail view states
   const [activeDetail, setActiveDetail] = useState(null); // 'members', 'subscriptions', 'revenue', 'expiring', 'coupons'
   const [detailData, setDetailData] = useState(null);
@@ -72,6 +81,10 @@ export const DashboardPage = () => {
   };
   
   const toggleDetail = async (type) => {
+    if (!statsUnlocked) {
+      setShowPasswordInput(true);
+      return;
+    }
     if (activeDetail === type) {
       setActiveDetail(null);
       setDetailData(null);
@@ -144,6 +157,26 @@ export const DashboardPage = () => {
     toast.success(language === 'ar' ? `جاري إرسال ${expiring.length} تنبيهات` : `Sending ${expiring.length} reminders`);
   };
 
+  const handlePasswordSubmit = () => {
+    if (passwordInput === STATS_PASSWORD) {
+      setStatsUnlocked(true);
+      setShowPasswordInput(false);
+      setPasswordInput('');
+      toast.success(language === 'ar' ? 'تم فتح الإحصائيات' : 'Statistics unlocked');
+    } else {
+      toast.error(language === 'ar' ? 'كلمة السر غير صحيحة' : 'Incorrect password');
+      setPasswordInput('');
+    }
+  };
+
+  const handleLockStats = () => {
+    setStatsUnlocked(false);
+    setActiveDetail(null);
+    setDetailData(null);
+  };
+
+  const hiddenValue = '••••';
+
   const activityColors = {
     'السباحة': '#0EA5E9',
     'Swimming': '#0EA5E9',
@@ -168,6 +201,42 @@ export const DashboardPage = () => {
   return (
     <Layout title={t('dashboard')}>
       <div className="space-y-6 animate-fade-in" data-testid="dashboard-page">
+        {/* Stats Unlock Controls */}
+        <div className="flex items-center justify-end gap-2">
+          {!statsUnlocked ? (
+            showPasswordInput ? (
+              <div className="flex items-center gap-2 bg-white border rounded-lg px-3 py-2 shadow-sm">
+                <Lock className="w-4 h-4 text-muted-foreground" />
+                <input
+                  type="password"
+                  value={passwordInput}
+                  onChange={(e) => setPasswordInput(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && handlePasswordSubmit()}
+                  placeholder={language === 'ar' ? 'أدخل كلمة السر' : 'Enter password'}
+                  className="border rounded px-2 py-1 text-sm w-36 outline-none focus:ring-2 focus:ring-primary/30"
+                  autoFocus
+                />
+                <Button size="sm" onClick={handlePasswordSubmit}>
+                  {language === 'ar' ? 'دخول' : 'Unlock'}
+                </Button>
+                <Button size="sm" variant="ghost" onClick={() => { setShowPasswordInput(false); setPasswordInput(''); }}>
+                  <X className="w-4 h-4" />
+                </Button>
+              </div>
+            ) : (
+              <Button variant="outline" size="sm" onClick={() => setShowPasswordInput(true)} className="gap-2">
+                <Eye className="w-4 h-4" />
+                {language === 'ar' ? 'عرض الأرقام' : 'Show Numbers'}
+              </Button>
+            )
+          ) : (
+            <Button variant="outline" size="sm" onClick={handleLockStats} className="gap-2">
+              <EyeOff className="w-4 h-4" />
+              {language === 'ar' ? 'إخفاء الأرقام' : 'Hide Numbers'}
+            </Button>
+          )}
+        </div>
+
         {/* Stats Grid */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <Card 
@@ -179,7 +248,7 @@ export const DashboardPage = () => {
               <Users className="w-6 h-6 text-primary" />
             </div>
             <div className="stat-card-value text-primary">
-              {stats?.members_count || 0}
+              {statsUnlocked ? (stats?.members_count || 0) : hiddenValue}
             </div>
             <div className="stat-card-label">{t('total_members')}</div>
             <div className="text-xs text-muted-foreground mt-1">{language === 'ar' ? 'اضغط للتفاصيل' : 'Click for details'}</div>
@@ -194,7 +263,7 @@ export const DashboardPage = () => {
               <Activity className="w-6 h-6 text-green-500" />
             </div>
             <div className="stat-card-value text-green-500">
-              {stats?.active_subscriptions || 0}
+              {statsUnlocked ? (stats?.active_subscriptions || 0) : hiddenValue}
             </div>
             <div className="stat-card-label">{t('active_subscriptions')}</div>
             <div className="text-xs text-muted-foreground mt-1">{language === 'ar' ? 'اضغط للتفاصيل' : 'Click for details'}</div>
@@ -209,7 +278,7 @@ export const DashboardPage = () => {
               <Banknote className="w-6 h-6 text-blue-500" />
             </div>
             <div className="stat-card-value text-blue-500">
-              {formatCurrency(stats?.month_revenue)}
+              {statsUnlocked ? formatCurrency(stats?.month_revenue) : hiddenValue}
             </div>
             <div className="stat-card-label">{t('monthly_revenue')}</div>
             <div className="text-xs text-muted-foreground mt-1">{language === 'ar' ? 'اضغط للتفاصيل' : 'Click for details'}</div>
@@ -224,7 +293,7 @@ export const DashboardPage = () => {
               <AlertTriangle className="w-6 h-6 text-amber-500" />
             </div>
             <div className="stat-card-value text-amber-500">
-              {stats?.expiring_count || 0}
+              {statsUnlocked ? (stats?.expiring_count || 0) : hiddenValue}
             </div>
             <div className="stat-card-label">{t('expiring_soon')}</div>
             <div className="text-xs text-muted-foreground mt-1">{language === 'ar' ? 'اضغط للتفاصيل' : 'Click for details'}</div>
@@ -239,7 +308,7 @@ export const DashboardPage = () => {
               <Tag className="w-6 h-6 text-purple-500" />
             </div>
             <div className="stat-card-value text-purple-500">
-              {discounts.filter(d => d.is_active).length}
+              {statsUnlocked ? discounts.filter(d => d.is_active).length : hiddenValue}
             </div>
             <div className="stat-card-label">{language === 'ar' ? 'كوبونات الخصم' : 'Discount Coupons'}</div>
             <div className="text-xs text-muted-foreground mt-1">{language === 'ar' ? 'اضغط للتفاصيل' : 'Click for details'}</div>
@@ -254,11 +323,11 @@ export const DashboardPage = () => {
               <ClipboardList className="w-6 h-6 text-teal-500" />
             </div>
             <div className="stat-card-value text-teal-500">
-              {formatCurrency(stats?.pending_forms_total)}
+              {statsUnlocked ? formatCurrency(stats?.pending_forms_total) : hiddenValue}
             </div>
             <div className="stat-card-label">{language === 'ar' ? 'استمارات غير مفوترة' : 'Pending Forms'}</div>
             <div className="text-xs text-muted-foreground mt-1">
-              {stats?.pending_forms_count || 0} {language === 'ar' ? 'استمارة' : 'forms'}
+              {statsUnlocked ? `${stats?.pending_forms_count || 0} ${language === 'ar' ? 'استمارة' : 'forms'}` : ''}
             </div>
           </Card>
         </div>
