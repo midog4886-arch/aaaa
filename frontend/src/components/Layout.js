@@ -67,6 +67,7 @@ export const Sidebar = ({ isOpen, onClose }) => {
     { to: '/dashboard', icon: LayoutDashboard, label: 'dashboard', permission: 'dashboard' },
     { to: '/invoices', icon: Receipt, label: 'invoices', permission: 'invoices' },
     { to: '/members', icon: Users, label: 'members', permission: 'members' },
+    { to: '/renewals', icon: RefreshCcw, label: 'renewals', permission: 'members' },
     { to: '/activities', icon: Dumbbell, label: 'activities', permission: 'activities' },
     { to: '/levels', icon: Layers, label: 'levels', permission: 'levels' },
     { to: '/schedule', icon: CalendarDays, label: 'schedule', permission: 'schedule' },

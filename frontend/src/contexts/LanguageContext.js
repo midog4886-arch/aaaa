@@ -26,6 +26,7 @@ const translations = {
     // Navigation
     dashboard: 'لوحة التحكم',
     members: 'الأعضاء',
+    renewals: 'التجديدات',
     activities: 'الأنشطة',
     levels: 'المستويات',
     coaches: 'المدربين',
@@ -185,6 +186,7 @@ const translations = {
     // Navigation
     dashboard: 'Dashboard',
     members: 'Members',
+    renewals: 'Renewals',
     activities: 'Activities',
     coaches: 'Coaches',
     invoices: 'Invoices',

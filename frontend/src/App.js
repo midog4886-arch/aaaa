@@ -26,6 +26,7 @@ import CoachRatingsPage from './pages/CoachRatingsPage';
 import AdvertisementsPage from './pages/AdvertisementsPage';
 import DailyVideosPage from './pages/DailyVideosPage';
 import LoyaltyPage from './pages/LoyaltyPage';
+import RenewalsPage from './pages/RenewalsPage';
 
 // Member Portal Pages
 import MemberLogin from './pages/member-portal/MemberLogin';
@@ -311,6 +312,14 @@ function AppRoutes() {
         element={
           <ProtectedRoute permission="loyalty">
             <LoyaltyPage />
+          </ProtectedRoute>
+        } 
+      />
+      <Route 
+        path="/renewals" 
+        element={
+          <ProtectedRoute permission="members">
+            <RenewalsPage />
           </ProtectedRoute>
         } 
       />
