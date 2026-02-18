@@ -220,6 +220,100 @@ export const SettingsPage = () => {
             </p>
           </CardContent>
         </Card>
+
+        {/* Backup Section */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <FolderArchive className="w-5 h-5 text-primary" />
+              {language === 'ar' ? 'النسخ الاحتياطي' : 'Backup'}
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              {language === 'ar' 
+                ? 'قم بتحميل نسخة احتياطية من الكود أو قاعدة البيانات'
+                : 'Download a backup of the code or database'}
+            </p>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* Code Backup */}
+              <div className="p-4 border rounded-lg space-y-3">
+                <div className="flex items-center gap-2">
+                  <Download className="w-5 h-5 text-blue-500" />
+                  <h4 className="font-medium">
+                    {language === 'ar' ? 'نسخة الكود' : 'Code Backup'}
+                  </h4>
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  {language === 'ar' 
+                    ? 'تحميل نسخة من ملفات التطبيق (Frontend + Backend)'
+                    : 'Download application files (Frontend + Backend)'}
+                </p>
+                <Button 
+                  onClick={downloadCodeBackup}
+                  disabled={backupLoading.code}
+                  className="w-full"
+                  data-testid="download-code-backup"
+                >
+                  {backupLoading.code ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      {language === 'ar' ? 'جاري التحميل...' : 'Downloading...'}
+                    </>
+                  ) : (
+                    <>
+                      <Download className="w-4 h-4 mr-2" />
+                      {language === 'ar' ? 'تحميل الكود' : 'Download Code'}
+                    </>
+                  )}
+                </Button>
+              </div>
+
+              {/* Database Backup */}
+              <div className="p-4 border rounded-lg space-y-3">
+                <div className="flex items-center gap-2">
+                  <Database className="w-5 h-5 text-green-500" />
+                  <h4 className="font-medium">
+                    {language === 'ar' ? 'نسخة قاعدة البيانات' : 'Database Backup'}
+                  </h4>
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  {language === 'ar' 
+                    ? 'تحميل نسخة من جميع البيانات (MongoDB)'
+                    : 'Download all data (MongoDB)'}
+                </p>
+                <Button 
+                  onClick={downloadDatabaseBackup}
+                  disabled={backupLoading.database}
+                  variant="outline"
+                  className="w-full"
+                  data-testid="download-database-backup"
+                >
+                  {backupLoading.database ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      {language === 'ar' ? 'جاري التحميل...' : 'Downloading...'}
+                    </>
+                  ) : (
+                    <>
+                      <Database className="w-4 h-4 mr-2" />
+                      {language === 'ar' ? 'تحميل قاعدة البيانات' : 'Download Database'}
+                    </>
+                  )}
+                </Button>
+              </div>
+            </div>
+
+            <div className="p-3 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg border border-yellow-200 dark:border-yellow-800">
+              <p className="text-sm text-yellow-800 dark:text-yellow-200">
+                {language === 'ar' 
+                  ? '⚠️ احتفظ بالنسخ الاحتياطية في مكان آمن. يُنصح بعمل نسخة احتياطية بشكل دوري.'
+                  : '⚠️ Keep backups in a safe place. Regular backups are recommended.'}
+              </p>
+            </div>
+          </CardContent>
+        </Card>
       </div>
     </Layout>
   );
