@@ -72,7 +72,7 @@ const BackupPage = () => {
     setLoading(true);
     try {
       const res = await backupAPI.list();
-      setBackups(res.data || []);
+      setBackups(res.data?.backups || []);
     } catch (error) {
       console.error('Failed to load backups:', error);
       toast.error(isAr ? 'فشل في تحميل النسخ الاحتياطية' : 'Failed to load backups');
