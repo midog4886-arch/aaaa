@@ -6,6 +6,7 @@ import { Button } from './ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { branchesAPI, notificationsAPI } from '../services/api';
 import GlobalScanner from './GlobalScanner';
+import CameraQRScanner from './CameraQRScanner';
 import { 
   LayoutDashboard, 
   Users, 
@@ -38,7 +39,8 @@ import {
   Video,
   ExternalLink,
   Download,
-  Smartphone
+  Smartphone,
+  Camera
 } from 'lucide-react';
 
 export const Sidebar = ({ isOpen, onClose }) => {
@@ -225,6 +227,7 @@ export const TopHeader = ({ onMenuClick, title }) => {
   const [unreadCount, setUnreadCount] = useState(0);
   const [showNotifications, setShowNotifications] = useState(false);
   const [checkingRenewals, setCheckingRenewals] = useState(false);
+  const [showCameraScanner, setShowCameraScanner] = useState(false);
 
   const isAdmin = user?.is_admin;
 
@@ -334,6 +337,7 @@ export const TopHeader = ({ onMenuClick, title }) => {
   };
   
   return (
+    <>
     <header className="top-header">
       <div className="flex items-center gap-4">
         <button 
@@ -360,6 +364,19 @@ export const TopHeader = ({ onMenuClick, title }) => {
           </Button>
         )}
 
+
+        {/* Camera QR Scanner Button */}
+        {isAdmin && (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setShowCameraScanner(true)}
+            title={language === 'ar' ? 'مسح QR بالكاميرا' : 'Camera QR Scanner'}
+            className="bg-blue-500 text-white border-0 hover:bg-blue-600"
+          >
+            <Camera className="w-4 h-4" />
+          </Button>
+        )}
 
         {/* Check Renewals Button (Admin only) */}
         {isAdmin && (
@@ -450,6 +467,13 @@ export const TopHeader = ({ onMenuClick, title }) => {
         </div>
       </div>
     </header>
+
+    <CameraQRScanner
+      open={showCameraScanner}
+      onClose={() => setShowCameraScanner(false)}
+      language={language}
+    />
+  </>
   );
 };
 
