@@ -627,49 +627,6 @@ export const DashboardPage = () => {
 
         {/* Charts and Lists */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Members by Activity Chart */}
-          <Card data-testid="chart-activities">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <TrendingUp className="w-5 h-5 text-primary" />
-                {t('members_by_activity')}
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              {stats?.members_by_activity?.length > 0 ? (
-                <ResponsiveContainer width="100%" height={250}>
-                  <PieChart>
-                    <Pie
-                      data={stats.members_by_activity}
-                      cx="50%"
-                      cy="50%"
-                      innerRadius={60}
-                      outerRadius={90}
-                      paddingAngle={5}
-                      dataKey="count"
-                      nameKey="name"
-                      label={({ name, count }) => `${name}: ${count}`}
-                    >
-                      {stats.members_by_activity.map((entry, index) => (
-                        <Cell 
-                          key={`cell-${index}`} 
-                          fill={activityColors[entry.name] || '#64748b'} 
-                        />
-                      ))}
-                    </Pie>
-                    <Tooltip />
-                    <Legend />
-                  </PieChart>
-                </ResponsiveContainer>
-              ) : (
-                <div className="empty-state">
-                  <Activity className="empty-state-icon" />
-                  <p>{t('no_data')}</p>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
           {/* Expiring Subscriptions */}
           <Card data-testid="expiring-subscriptions">
             <CardHeader>
