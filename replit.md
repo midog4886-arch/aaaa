@@ -58,6 +58,9 @@ frontend/
 - `JWT_SECRET_KEY` - JWT signing secret
 
 ## Recent Changes
+- Added Training Schedule Reminders - TrainingReminder component on member dashboard shows today's sessions with attendance status, backend parses schedule text for day/time matching (sources: member.activities + invoices)
+- Added Instant Attendance Notifications - AttendanceToast component polls for new attendance notifications every 30 seconds, backend creates notifications in member_notifications collection on all attendance recording operations (single/bulk/QR)
+- Added attendance notification section to MemberNotifications page with bilingual support
 - Restructured routing: admin pages under /admin/*, member portal at root /
 - Added role-based redirect (admin -> /admin/dashboard, member -> /)
 - Added Privacy Policy page at /privacy (bilingual Arabic/English)
