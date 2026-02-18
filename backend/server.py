@@ -122,7 +122,7 @@ async def root():
     """Root endpoint"""
     return {"message": "Champions Academy API", "status": "running"}
 
-# Download backup endpoint
+# Download backup endpoint (legacy)
 @app.get("/api/download-backup")
 async def download_backup():
     """Download backup file"""
@@ -134,6 +134,118 @@ async def download_backup():
             media_type="application/zip"
         )
     raise HTTPException(status_code=404, detail="Backup file not found")
+
+# ============ BACKUP API ============
+
+@api_router.get("/backup/code")
+async def download_code_backup():
+    """Download code backup (Frontend + Backend)"""
+    try:
+        # Create backup directory
+        backup_dir = Path("/tmp/code-backup")
+        if backup_dir.exists():
+            shutil.rmtree(backup_dir)
+        backup_dir.mkdir(parents=True)
+        
+        # Copy frontend (exclude node_modules and build)
+        frontend_src = Path(__file__).parent.parent / "frontend"
+        frontend_dst = backup_dir / "frontend"
+        if frontend_src.exists():
+            shutil.copytree(
+                frontend_src, 
+                frontend_dst,
+                ignore=shutil.ignore_patterns('node_modules', 'build', '.git', '__pycache__')
+            )
+        
+        # Copy backend (exclude __pycache__)
+        backend_src = Path(__file__).parent
+        backend_dst = backup_dir / "backend"
+        shutil.copytree(
+            backend_src, 
+            backend_dst,
+            ignore=shutil.ignore_patterns('__pycache__', '.git', 'uploads')
+        )
+        
+        # Copy Docker files if they exist
+        docker_files = ['Dockerfile', 'docker-compose.yml', 'railway.json']
+        for f in docker_files:
+            src = Path(__file__).parent.parent / f
+            if src.exists():
+                shutil.copy(src, backup_dir / f)
+        
+        # Create zip file
+        zip_path = Path("/tmp/gcsp-academy-code-backup.zip")
+        if zip_path.exists():
+            zip_path.unlink()
+            
+        shutil.make_archive(
+            str(zip_path).replace('.zip', ''),
+            'zip',
+            backup_dir
+        )
+        
+        # Clean up
+        shutil.rmtree(backup_dir)
+        
+        return FileResponse(
+            path=str(zip_path),
+            filename=f"gcsp-academy-code-backup-{datetime.now().strftime('%Y%m%d')}.zip",
+            media_type="application/zip"
+        )
+    except Exception as e:
+        logger.error(f"Code backup error: {e}")
+        raise HTTPException(status_code=500, detail=f"Backup failed: {str(e)}")
+
+@api_router.get("/backup/database")
+async def download_database_backup():
+    """Download MongoDB database backup"""
+    try:
+        # Get MongoDB connection info
+        mongo_url = os.environ.get('MONGO_URL')
+        db_name = os.environ.get('DB_NAME', 'champions_academy')
+        
+        # Create backup directory
+        backup_dir = Path("/tmp/mongodb-backup")
+        if backup_dir.exists():
+            shutil.rmtree(backup_dir)
+        backup_dir.mkdir(parents=True)
+        
+        # Run mongodump
+        result = subprocess.run(
+            ['mongodump', '--uri', mongo_url, '--db', db_name, '--out', str(backup_dir)],
+            capture_output=True,
+            text=True,
+            timeout=120
+        )
+        
+        if result.returncode != 0:
+            logger.error(f"mongodump error: {result.stderr}")
+            raise HTTPException(status_code=500, detail="Database backup failed")
+        
+        # Create zip file
+        zip_path = Path("/tmp/gcsp-academy-database-backup.zip")
+        if zip_path.exists():
+            zip_path.unlink()
+            
+        shutil.make_archive(
+            str(zip_path).replace('.zip', ''),
+            'zip',
+            backup_dir
+        )
+        
+        # Clean up
+        shutil.rmtree(backup_dir)
+        
+        return FileResponse(
+            path=str(zip_path),
+            filename=f"gcsp-academy-database-backup-{datetime.now().strftime('%Y%m%d')}.zip",
+            media_type="application/zip"
+        )
+    except subprocess.TimeoutExpired:
+        raise HTTPException(status_code=500, detail="Database backup timed out")
+    except Exception as e:
+        logger.error(f"Database backup error: {e}")
+        raise HTTPException(status_code=500, detail=f"Backup failed: {str(e)}")
 
 # ============ PUBLIC API - Member Card ============
 
