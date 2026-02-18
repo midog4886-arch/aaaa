@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { Layout } from '../components/Layout';
 import { QRCodeSVG } from 'qrcode.react';
 import { Card, CardContent } from '../components/ui/card';
 import { Button } from '../components/ui/button';
@@ -235,7 +236,8 @@ const MemberCardPage = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-orange-50 to-amber-50 p-4 md:p-8">
+    <Layout>
+    <div className="bg-gradient-to-br from-orange-50 to-amber-50 p-4 md:p-8 min-h-[80vh]">
       <div className="max-w-2xl mx-auto">
         {/* Header */}
         <div className="text-center mb-8">
@@ -476,6 +478,7 @@ const MemberCardPage = () => {
         }
       `}</style>
     </div>
+    </Layout>
   );
 };
 
