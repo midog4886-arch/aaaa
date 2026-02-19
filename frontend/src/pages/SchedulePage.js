@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
@@ -6,10 +6,12 @@ import Layout from '../components/Layout';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Textarea } from '../components/ui/textarea';
+import { Badge } from '../components/ui/badge';
+import { Card, CardContent } from '../components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../components/ui/dialog';
 import { toast } from 'sonner';
 import { schedulesAPI, branchesAPI, attendanceAPI, levelsAPI, activityNotesAPI, activitiesAPI } from '../services/api';
-import { Calendar, Clock, Users, Check, X, UserCheck, ChevronLeft, ChevronRight, Printer, Layers, MessageSquarePlus, StickyNote, Trash2 } from 'lucide-react';
+import { Calendar, Clock, Users, Check, X, UserCheck, ChevronLeft, ChevronRight, Printer, Layers, MessageSquarePlus, StickyNote, Trash2, BarChart3, UserX, TrendingUp } from 'lucide-react';
 
 export default function SchedulePage() {
   const { language } = useLanguage();
@@ -36,6 +38,9 @@ export default function SchedulePage() {
     activity: null,
     saving: false
   });
+
+  // Today's attendance records
+  const [todayAttendance, setTodayAttendance] = useState([]);
 
   // Notes dialog state
   const [notesDialog, setNotesDialog] = useState({
@@ -142,15 +147,16 @@ export default function SchedulePage() {
       const branchParams = selectedBranchId ? { branch_filter: selectedBranchId } : {};
       
       if (selectedDate) params.date = selectedDate;
-      const [activitiesRes, activitiesListRes] = await Promise.all([
+      const [activitiesRes, activitiesListRes, attendanceRes] = await Promise.all([
         schedulesAPI.getActivitiesWithMembers(params),
         activitiesAPI.getAll(branchParams),
+        attendanceAPI.getAll({ date: selectedDate }).catch(() => ({ data: [] })),
         fetchLevels()
       ]);
-      // API returns array directly
       const data = Array.isArray(activitiesRes.data) ? activitiesRes.data : [];
       setActivitiesData(data);
-      setActivitiesList(activitiesListRes.data || []); // Store activities list
+      setActivitiesList(activitiesListRes.data || []);
+      setTodayAttendance(Array.isArray(attendanceRes.data) ? attendanceRes.data : []);
     } catch (error) {
       console.error('Error fetching activities:', error);
       toast.error(t('خطأ في جلب البيانات', 'Error fetching data'));
@@ -200,6 +206,11 @@ export default function SchedulePage() {
           ? t('تم تسجيل الحضور ✓', 'Attendance recorded ✓')
           : t('تم تسجيل الغياب ✗', 'Absence recorded ✗')
       );
+
+      setTodayAttendance(prev => {
+        const filtered = prev.filter(a => a.member_id !== member.member_id || a.activity_id !== activity.activity_id);
+        return [...filtered, { member_id: member.member_id, activity_id: activity.activity_id, status, date: selectedDate }];
+      });
 
       setAttendanceDialog({ open: false, member: null, activity: null, saving: false });
     } catch (error) {
@@ -305,6 +316,30 @@ export default function SchedulePage() {
       toast.error(t('خطأ في حذف الملاحظة', 'Error deleting note'));
     }
   };
+
+  // Get member attendance status for today
+  const getMemberAttendanceStatus = (memberId) => {
+    const record = todayAttendance.find(a => a.member_id === memberId);
+    return record ? record.status : null;
+  };
+
+  // Attendance stats for today
+  const attendanceStats = useMemo(() => {
+    const totalMembers = activitiesData.reduce((sum, a) => sum + getTotalMembersCount(a), 0);
+    const present = todayAttendance.filter(a => a.status === 'present').length;
+    const absent = todayAttendance.filter(a => a.status === 'absent').length;
+    const rate = totalMembers > 0 ? Math.round((present / totalMembers) * 100) : 0;
+    return { totalMembers, present, absent, rate };
+  }, [activitiesData, todayAttendance, selectedDay]);
+
+  function getTotalMembersCount(activity) {
+    const uniqueMembers = new Set();
+    Object.values(activity.times).forEach(timeData => {
+      const dayMembers = timeData[selectedDay] || [];
+      dayMembers.forEach(m => uniqueMembers.add(m.member_id));
+    });
+    return uniqueMembers.size;
+  }
 
   // Get total members for an activity for selected day
   const getTotalMembers = (activity) => {
@@ -879,73 +914,128 @@ export default function SchedulePage() {
   return (
     <Layout title={t('الجدول', 'Schedule')}>
       <div className="p-4 md:p-6 max-w-6xl mx-auto" data-testid="schedule-page">
-        {/* Header */}
-        <div className="flex justify-between items-center mb-4 flex-wrap gap-4">
-          <div>
-            <h1 className="text-xl md:text-2xl font-bold text-gray-800 flex items-center gap-2">
-              <Calendar className="w-6 h-6 text-primary" />
-              {t('جدول الأنشطة والمواعيد', 'Activity Schedule')}
-            </h1>
-            <p className="text-gray-500 text-sm mt-1">
-              {t('انقر على اسم العضو لتسجيل الحضور', 'Click member name to record attendance')}
-            </p>
+        {/* Prominent Date & Day Header */}
+        <div className="bg-gradient-to-r from-primary to-orange-500 text-white rounded-xl p-5 mb-5 shadow-lg">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="flex items-center gap-4">
+              <div className="bg-white/20 backdrop-blur-sm rounded-xl p-3">
+                <Calendar className="w-8 h-8" />
+              </div>
+              <div>
+                <h1 className="text-2xl md:text-3xl font-bold">
+                  {language === 'ar' ? dayLabels[selectedDay]?.ar : dayLabels[selectedDay]?.en}
+                </h1>
+                <p className="text-sm opacity-90 mt-0.5">
+                  {formatDateDisplay(selectedDate)}
+                </p>
+                <p className="text-xs opacity-75 mt-0.5">
+                  {new Date(selectedDate).toLocaleDateString('ar-SA-u-ca-islamic', { year: 'numeric', month: 'long', day: 'numeric' })}
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="flex gap-1 items-center bg-white/15 rounded-lg p-1">
+                <Button variant="ghost" size="icon" onClick={() => changeDate(-1)} className="h-8 w-8 text-white hover:bg-white/20">
+                  <ChevronRight className="w-4 h-4" />
+                </Button>
+                <Input type="date" value={selectedDate} onChange={e => setSelectedDate(e.target.value)} className="w-36 bg-white/20 border-0 text-white text-sm h-8 [color-scheme:dark]" />
+                <Button variant="ghost" size="icon" onClick={() => changeDate(1)} className="h-8 w-8 text-white hover:bg-white/20">
+                  <ChevronLeft className="w-4 h-4" />
+                </Button>
+              </div>
+              <Button variant="secondary" onClick={goToToday} className="h-8 px-3 text-xs">{t('اليوم', 'Today')}</Button>
+              <Button variant="secondary" onClick={handlePrint} className="h-8 px-3 gap-1 text-xs">
+                <Printer className="w-3.5 h-3.5" />{t('طباعة', 'Print')}
+              </Button>
+            </div>
           </div>
-          <Button
-            onClick={handlePrint}
-            variant="outline"
-            className="gap-2"
+        </div>
+
+        {/* Attendance Stats Cards */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5">
+          <Card className="border-0 shadow-sm bg-gradient-to-br from-blue-50 to-blue-100">
+            <CardContent className="p-3 text-center">
+              <Users className="w-5 h-5 mx-auto mb-1 text-blue-600" />
+              <p className="text-2xl font-bold text-blue-700">{attendanceStats.totalMembers}</p>
+              <p className="text-[10px] text-blue-600">{t('إجمالي المشتركين', 'Total Members')}</p>
+            </CardContent>
+          </Card>
+          <Card className="border-0 shadow-sm bg-gradient-to-br from-green-50 to-green-100">
+            <CardContent className="p-3 text-center">
+              <UserCheck className="w-5 h-5 mx-auto mb-1 text-green-600" />
+              <p className="text-2xl font-bold text-green-700">{attendanceStats.present}</p>
+              <p className="text-[10px] text-green-600">{t('حاضرين', 'Present')}</p>
+            </CardContent>
+          </Card>
+          <Card className="border-0 shadow-sm bg-gradient-to-br from-red-50 to-red-100">
+            <CardContent className="p-3 text-center">
+              <UserX className="w-5 h-5 mx-auto mb-1 text-red-600" />
+              <p className="text-2xl font-bold text-red-700">{attendanceStats.absent}</p>
+              <p className="text-[10px] text-red-600">{t('غائبين', 'Absent')}</p>
+            </CardContent>
+          </Card>
+          <Card className="border-0 shadow-sm bg-gradient-to-br from-purple-50 to-purple-100">
+            <CardContent className="p-3 text-center">
+              <TrendingUp className="w-5 h-5 mx-auto mb-1 text-purple-600" />
+              <p className="text-2xl font-bold text-purple-700">{attendanceStats.rate}%</p>
+              <p className="text-[10px] text-purple-600">{t('نسبة الحضور', 'Attendance Rate')}</p>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Quick Activity Filter Buttons */}
+        <div className="flex flex-wrap gap-2 mb-4">
+          <button
+            onClick={() => setSelectedActivityType('all')}
+            className={`px-4 py-2 rounded-full text-sm font-medium transition-all ${
+              selectedActivityType === 'all' 
+                ? 'bg-gray-800 text-white shadow-md scale-105' 
+                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+            }`}
           >
-            <Printer className="w-4 h-4" />
-            {t('طباعة', 'Print')}
-          </Button>
+            {t('الكل', 'All')}
+          </button>
+          {[
+            { key: 'swimming', icon: '🏊', ar: 'السباحة', en: 'Swimming', color: 'bg-blue-500' },
+            { key: 'football', icon: '⚽', ar: 'كرة القدم', en: 'Football', color: 'bg-green-500' },
+            { key: 'karate', icon: '🥋', ar: 'الكاراتيه', en: 'Karate', color: 'bg-red-500' },
+            { key: 'gymnastics', icon: '🤸', ar: 'الجمباز', en: 'Gymnastics', color: 'bg-purple-500' },
+          ].map(type => {
+            const count = activitiesData.filter(a => {
+              const n = (a.activity_name || '').toLowerCase();
+              switch(type.key) {
+                case 'swimming': return n.includes('سباح') || n.includes('swim');
+                case 'football': return n.includes('قدم') || n.includes('football');
+                case 'karate': return n.includes('كارات') || n.includes('karate');
+                case 'gymnastics': return n.includes('جمباز') || n.includes('gym');
+                default: return false;
+              }
+            }).filter(a => getTotalMembers(a) > 0).length;
+            if (count === 0) return null;
+            return (
+              <button
+                key={type.key}
+                onClick={() => setSelectedActivityType(selectedActivityType === type.key ? 'all' : type.key)}
+                className={`px-4 py-2 rounded-full text-sm font-medium transition-all flex items-center gap-1.5 ${
+                  selectedActivityType === type.key 
+                    ? `${type.color} text-white shadow-md scale-105` 
+                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                }`}
+              >
+                <span>{type.icon}</span>
+                {language === 'ar' ? type.ar : type.en}
+                <Badge variant={selectedActivityType === type.key ? "secondary" : "outline"} className="text-[10px] px-1.5 h-5">{count}</Badge>
+              </button>
+            );
+          })}
         </div>
 
         {/* Filters Row */}
-        <div className="bg-white rounded-lg border p-4 mb-4 shadow-sm">
-          <div className="flex flex-wrap items-end gap-4">
-            {/* Date Filter */}
-            <div>
-              <label className="text-sm font-medium text-gray-600 block mb-1">
-                📅 {t('التاريخ', 'Date')}
-              </label>
-              <div className="flex gap-1 items-center">
-                <Button 
-                  variant="outline" 
-                  size="icon"
-                  onClick={() => changeDate(-1)}
-                  className="h-9 w-9"
-                  title={t('اليوم السابق', 'Previous Day')}
-                >
-                  <ChevronRight className="w-4 h-4" />
-                </Button>
-                <Input
-                  type="date"
-                  value={selectedDate}
-                  onChange={e => setSelectedDate(e.target.value)}
-                  className="w-40"
-                />
-                <Button 
-                  variant="outline" 
-                  size="icon"
-                  onClick={() => changeDate(1)}
-                  className="h-9 w-9"
-                  title={t('اليوم التالي', 'Next Day')}
-                >
-                  <ChevronLeft className="w-4 h-4" />
-                </Button>
-                <Button 
-                  variant="outline"
-                  onClick={goToToday}
-                  className="h-9 px-3 text-sm"
-                >
-                  {t('اليوم', 'Today')}
-                </Button>
-              </div>
-            </div>
-
+        <div className="bg-white rounded-lg border p-3 mb-4 shadow-sm">
+          <div className="flex flex-wrap items-end gap-3">
             {/* Time Filter */}
             <div>
-              <label className="text-sm font-medium text-gray-600 block mb-1">
+              <label className="text-xs font-medium text-gray-500 block mb-1">
                 🕐 {t('الموعد', 'Time')}
               </label>
               <select
@@ -962,83 +1052,9 @@ export default function SchedulePage() {
               </select>
             </div>
 
-            {/* Activity Type Filter - Grouped by main activity type */}
-            <div>
-              <label className="text-sm font-medium text-gray-600 block mb-1">
-                🏃 {t('النشاط', 'Activity')}
-              </label>
-              <select
-                value={selectedActivityType}
-                onChange={e => setSelectedActivityType(e.target.value)}
-                className="border rounded-lg p-2 text-sm w-44"
-              >
-                <option value="all">{t('كل الأنشطة', 'All Activities')}</option>
-                
-                {/* Swimming Group */}
-                <optgroup label={t('🏊 السباحة', '🏊 Swimming')}>
-                  <option value="swimming">{t('كل السباحة', 'All Swimming')}</option>
-                  {activitiesList
-                    .filter(a => (a.name_ar || a.name || '').toLowerCase().includes('سباح') || (a.name || '').toLowerCase().includes('swim'))
-                    .map(activity => (
-                      <option key={activity.id} value={`activity_${activity.id}`}>
-                        {language === 'ar' ? activity.name_ar : activity.name}
-                      </option>
-                    ))
-                  }
-                </optgroup>
-                
-                {/* Football Group */}
-                <optgroup label={t('⚽ كرة القدم', '⚽ Football')}>
-                  <option value="football">{t('كل كرة القدم', 'All Football')}</option>
-                  {activitiesList
-                    .filter(a => (a.name_ar || a.name || '').toLowerCase().includes('قدم') || (a.name || '').toLowerCase().includes('football'))
-                    .map(activity => (
-                      <option key={activity.id} value={`activity_${activity.id}`}>
-                        {language === 'ar' ? activity.name_ar : activity.name}
-                      </option>
-                    ))
-                  }
-                </optgroup>
-                
-                {/* Karate Group */}
-                <optgroup label={t('🥋 الكاراتيه', '🥋 Karate')}>
-                  <option value="karate">{t('كل الكاراتيه', 'All Karate')}</option>
-                  {activitiesList
-                    .filter(a => (a.name_ar || a.name || '').toLowerCase().includes('كارات') || (a.name || '').toLowerCase().includes('karate'))
-                    .map(activity => (
-                      <option key={activity.id} value={`activity_${activity.id}`}>
-                        {language === 'ar' ? activity.name_ar : activity.name}
-                      </option>
-                    ))
-                  }
-                </optgroup>
-                
-                {/* Other Activities */}
-                <optgroup label={t('📋 أنشطة أخرى', '📋 Other Activities')}>
-                  <option value="gymnastics">{t('الجمباز', 'Gymnastics')}</option>
-                  <option value="basketball">{t('كرة السلة', 'Basketball')}</option>
-                  <option value="tennis">{t('التنس', 'Tennis')}</option>
-                  <option value="other">{t('أخرى', 'Other')}</option>
-                  {activitiesList
-                    .filter(a => {
-                      const name = (a.name_ar || a.name || '').toLowerCase();
-                      return !name.includes('سباح') && !name.includes('swim') &&
-                             !name.includes('قدم') && !name.includes('football') &&
-                             !name.includes('كارات') && !name.includes('karate');
-                    })
-                    .map(activity => (
-                      <option key={activity.id} value={`activity_${activity.id}`}>
-                        {language === 'ar' ? activity.name_ar : activity.name}
-                      </option>
-                    ))
-                  }
-                </optgroup>
-              </select>
-            </div>
-
             {/* Level Filter */}
             <div>
-              <label className="text-sm font-medium text-gray-600 block mb-1">
+              <label className="text-xs font-medium text-gray-500 block mb-1">
                 🎯 {t('المستوى', 'Level')}
               </label>
               <select
@@ -1058,7 +1074,7 @@ export default function SchedulePage() {
 
             {/* Branch Filter */}
             <div>
-              <label className="text-sm font-medium text-gray-600 block mb-1">
+              <label className="text-xs font-medium text-gray-500 block mb-1">
                 🏢 {t('الفرع', 'Branch')}
               </label>
               <select
@@ -1071,20 +1087,6 @@ export default function SchedulePage() {
                   <option key={b.id} value={b.id}>{b.name}</option>
                 ))}
               </select>
-            </div>
-
-            {/* Stats */}
-            <div className="flex gap-3 ms-auto">
-              <div className="bg-primary/10 px-4 py-2 rounded-lg text-center">
-                <div className="text-xl font-bold text-primary">{activitiesData.filter(a => getTotalMembers(a) > 0).length}</div>
-                <div className="text-xs text-gray-500">{t('نشاط', 'Activities')}</div>
-              </div>
-              <div className="bg-green-100 px-4 py-2 rounded-lg text-center">
-                <div className="text-xl font-bold text-green-600">
-                  {activitiesData.reduce((sum, a) => sum + getTotalMembers(a), 0)}
-                </div>
-                <div className="text-xs text-gray-500">{t('مشترك', 'Members')}</div>
-              </div>
             </div>
           </div>
         </div>
@@ -1142,6 +1144,10 @@ export default function SchedulePage() {
                     className={`rounded-xl border-2 ${style.border} overflow-hidden shadow-sm`}
                   >
                     {/* Activity Header */}
+                    {(() => {
+                      const actPresent = todayAttendance.filter(a => a.activity_id === activity.activity_id && a.status === 'present').length;
+                      const actRate = totalMembers > 0 ? Math.round((actPresent / totalMembers) * 100) : 0;
+                      return (
                     <div className={`${style.bg} text-white p-3 flex items-center justify-between`}>
                       <div className="flex items-center gap-2">
                         <span className="text-2xl">{style.icon}</span>
@@ -1150,9 +1156,13 @@ export default function SchedulePage() {
                           <div className="flex items-center gap-2 text-sm opacity-90">
                             <Users className="w-4 h-4" />
                             <span>{totalMembers} {t('مشترك', 'members')}</span>
-                            <span className="opacity-60">•</span>
-                            <Clock className="w-4 h-4" />
-                            <span>{timesWithMembers.length} {t('أوقات', 'times')}</span>
+                            {actPresent > 0 && (
+                              <>
+                                <span className="opacity-60">•</span>
+                                <UserCheck className="w-4 h-4" />
+                                <span>{actPresent} {t('حاضر', 'present')} ({actRate}%)</span>
+                              </>
+                            )}
                           </div>
                         </div>
                       </div>
@@ -1182,6 +1192,8 @@ export default function SchedulePage() {
                         </Button>
                       </div>
                     </div>
+                      );
+                    })()}
 
                     {/* Time Slots */}
                     <div className={`${style.light} p-4`}>
@@ -1207,13 +1219,32 @@ export default function SchedulePage() {
                           return (
                             <div key={time} className="bg-white rounded-lg border shadow-sm overflow-hidden">
                               {/* Time Header */}
-                              <div className={`${style.bg} bg-opacity-20 px-3 py-2 border-b flex items-center gap-2`}>
-                                <Clock className={`w-4 h-4 ${style.text}`} />
-                                <span className={`font-bold ${style.text}`}>
-                                  {time === 'غير محدد' ? t('بدون وقت محدد', 'No time') : time}
-                                </span>
-                                <span className="text-gray-500 text-sm">({members.length})</span>
-                              </div>
+                              {(() => {
+                                const presentInSlot = members.filter(m => getMemberAttendanceStatus(m.member_id) === 'present').length;
+                                const slotRate = members.length > 0 ? Math.round((presentInSlot / members.length) * 100) : 0;
+                                return (
+                                <div className={`${style.bg} bg-opacity-20 px-3 py-2 border-b`}>
+                                  <div className="flex items-center gap-2">
+                                    <Clock className={`w-4 h-4 ${style.text}`} />
+                                    <span className={`font-bold ${style.text}`}>
+                                      {time === 'غير محدد' ? t('بدون وقت محدد', 'No time') : time}
+                                    </span>
+                                    <span className="text-gray-500 text-sm">({members.length})</span>
+                                    {presentInSlot > 0 && (
+                                      <Badge className="ms-auto bg-green-100 text-green-700 text-[10px] border-green-200">
+                                        ✓ {presentInSlot}/{members.length}
+                                      </Badge>
+                                    )}
+                                  </div>
+                                  {todayAttendance.length > 0 && (
+                                    <div className="w-full bg-gray-200 rounded-full h-1.5 mt-1.5">
+                                      <div className={`h-1.5 rounded-full transition-all ${slotRate >= 80 ? 'bg-green-500' : slotRate >= 50 ? 'bg-yellow-500' : 'bg-gray-400'}`}
+                                        style={{ width: `${slotRate}%` }} />
+                                    </div>
+                                  )}
+                                </div>
+                                );
+                              })()}
                               
                               {/* Members grouped by Level */}
                               <div className="p-2 space-y-3">
@@ -1233,24 +1264,41 @@ export default function SchedulePage() {
                                       </div>
                                       {/* Level Members */}
                                       <div className="p-1.5 space-y-1">
-                                        {group.members.map((member, idx) => (
+                                        {group.members.map((member, idx) => {
+                                          const attStatus = getMemberAttendanceStatus(member.member_id);
+                                          return (
                                           <div 
                                             key={idx}
                                             onClick={() => openAttendanceDialog(member, activity)}
-                                            className="flex items-center gap-2 p-1.5 rounded bg-white hover:bg-blue-50 cursor-pointer transition-all group"
+                                            className={`flex items-center gap-2 p-1.5 rounded cursor-pointer transition-all group ${
+                                              attStatus === 'present' ? 'bg-green-50 border border-green-200' :
+                                              attStatus === 'absent' ? 'bg-red-50 border border-red-200' :
+                                              'bg-white hover:bg-blue-50'
+                                            }`}
                                             title={t('انقر لتسجيل الحضور', 'Click to record attendance')}
                                           >
-                                            <div className={`w-6 h-6 rounded-full ${levelColor.bg} text-white flex items-center justify-center text-xs font-bold group-hover:scale-110 transition-transform`}>
-                                              {(member.member_name || '?').charAt(0)}
+                                            <div className={`w-6 h-6 rounded-full ${
+                                              attStatus === 'present' ? 'bg-green-500' :
+                                              attStatus === 'absent' ? 'bg-red-500' :
+                                              levelColor.bg
+                                            } text-white flex items-center justify-center text-xs font-bold group-hover:scale-110 transition-transform`}>
+                                              {attStatus === 'present' ? '✓' : attStatus === 'absent' ? '✗' : (member.member_name || '?').charAt(0)}
                                             </div>
                                             <div className="flex-1 min-w-0">
-                                              <div className="font-medium text-xs truncate group-hover:text-blue-600">
+                                              <div className={`font-medium text-xs truncate ${
+                                                attStatus === 'present' ? 'text-green-700' :
+                                                attStatus === 'absent' ? 'text-red-600 line-through' :
+                                                'group-hover:text-blue-600'
+                                              }`}>
                                                 {member.member_name}
                                               </div>
                                             </div>
-                                            <UserCheck className="w-3 h-3 text-green-500 opacity-0 group-hover:opacity-100 transition-opacity" />
+                                            {attStatus === 'present' && <Badge className="bg-green-500 text-white text-[9px] px-1 h-4">{t('حاضر', 'P')}</Badge>}
+                                            {attStatus === 'absent' && <Badge className="bg-red-500 text-white text-[9px] px-1 h-4">{t('غائب', 'A')}</Badge>}
+                                            {!attStatus && <UserCheck className="w-3 h-3 text-green-500 opacity-0 group-hover:opacity-100 transition-opacity" />}
                                           </div>
-                                        ))}
+                                          );
+                                        })}
                                       </div>
                                     </div>
                                   );
@@ -1267,24 +1315,41 @@ export default function SchedulePage() {
                                       </span>
                                     </div>
                                     <div className="p-1.5 space-y-1">
-                                      {noLevel.map((member, idx) => (
+                                      {noLevel.map((member, idx) => {
+                                        const attStatus = getMemberAttendanceStatus(member.member_id);
+                                        return (
                                         <div 
                                           key={idx}
                                           onClick={() => openAttendanceDialog(member, activity)}
-                                          className="flex items-center gap-2 p-1.5 rounded bg-white hover:bg-blue-50 cursor-pointer transition-all group"
+                                          className={`flex items-center gap-2 p-1.5 rounded cursor-pointer transition-all group ${
+                                            attStatus === 'present' ? 'bg-green-50 border border-green-200' :
+                                            attStatus === 'absent' ? 'bg-red-50 border border-red-200' :
+                                            'bg-white hover:bg-blue-50'
+                                          }`}
                                           title={t('انقر لتسجيل الحضور', 'Click to record attendance')}
                                         >
-                                          <div className="w-6 h-6 rounded-full bg-gray-400 text-white flex items-center justify-center text-xs font-bold group-hover:scale-110 transition-transform">
-                                            {(member.member_name || '?').charAt(0)}
+                                          <div className={`w-6 h-6 rounded-full ${
+                                            attStatus === 'present' ? 'bg-green-500' :
+                                            attStatus === 'absent' ? 'bg-red-500' :
+                                            'bg-gray-400'
+                                          } text-white flex items-center justify-center text-xs font-bold group-hover:scale-110 transition-transform`}>
+                                            {attStatus === 'present' ? '✓' : attStatus === 'absent' ? '✗' : (member.member_name || '?').charAt(0)}
                                           </div>
                                           <div className="flex-1 min-w-0">
-                                            <div className="font-medium text-xs truncate group-hover:text-blue-600">
+                                            <div className={`font-medium text-xs truncate ${
+                                              attStatus === 'present' ? 'text-green-700' :
+                                              attStatus === 'absent' ? 'text-red-600 line-through' :
+                                              'group-hover:text-blue-600'
+                                            }`}>
                                               {member.member_name}
                                             </div>
                                           </div>
-                                          <UserCheck className="w-3 h-3 text-green-500 opacity-0 group-hover:opacity-100 transition-opacity" />
+                                          {attStatus === 'present' && <Badge className="bg-green-500 text-white text-[9px] px-1 h-4">{t('حاضر', 'P')}</Badge>}
+                                          {attStatus === 'absent' && <Badge className="bg-red-500 text-white text-[9px] px-1 h-4">{t('غائب', 'A')}</Badge>}
+                                          {!attStatus && <UserCheck className="w-3 h-3 text-green-500 opacity-0 group-hover:opacity-100 transition-opacity" />}
                                         </div>
-                                      ))}
+                                        );
+                                      })}
                                     </div>
                                   </div>
                                 )}
