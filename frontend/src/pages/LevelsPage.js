@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/AuthContext';
 import { Layout } from '../components/Layout';
@@ -14,7 +14,7 @@ import { toast } from 'sonner';
 import { 
   Plus, Edit, Trash2, Loader2, Layers, Users, Dumbbell, UserPlus, UserMinus, Search,
   ChevronDown, ChevronUp, ChevronRight, Clock, AlertTriangle, ArrowRight, ArrowLeft, Home,
-  GripVertical, Move
+  GripVertical, Move, ArrowUpDown, SlidersHorizontal, TrendingUp, BarChart3
 } from 'lucide-react';
 
 // Main activity types with Arabic names
@@ -77,6 +77,11 @@ export const LevelsPage = () => {
   const [isAddTimeSlotDialogOpen, setIsAddTimeSlotDialogOpen] = useState(false);
   const [newTimeSlotName, setNewTimeSlotName] = useState('');
   
+  // Search, filter, sort for main activities view
+  const [levelSearchTerm, setLevelSearchTerm] = useState('');
+  const [filterActivityType, setFilterActivityType] = useState('all');
+  const [sortLevelsBy, setSortLevelsBy] = useState('name');
+
   // Expanded states for accordion (fallback)
   const [expandedActivities, setExpandedActivities] = useState({});
   const [expandedTimeSlots, setExpandedTimeSlots] = useState({});
@@ -1010,101 +1015,231 @@ export const LevelsPage = () => {
         </div>
 
         {/* VIEW: Activities (Main View) */}
-        {currentView === 'activities' && (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4" data-testid="activities-view">
-            {MAIN_ACTIVITIES.map(baseActivity => {
+        {currentView === 'activities' && (() => {
+          const allActivityCards = [
+            ...MAIN_ACTIVITIES.map(baseActivity => {
               const activity = getMainActivityInfo(baseActivity.id);
               const activityLevels = groupedLevels[baseActivity.id] || {};
               const timeSlots = Object.keys(activityLevels);
               const totalLevels = timeSlots.reduce((sum, slot) => sum + activityLevels[slot].length, 0);
-              const totalMembers = timeSlots.reduce((sum, slot) => 
+              const totalMembers = timeSlots.reduce((sum, slot) =>
                 sum + activityLevels[slot].reduce((s, l) => s + (l.members || []).length, 0), 0);
-              
-              return (
-                <Card 
-                  key={baseActivity.id} 
-                  className={`overflow-hidden cursor-pointer hover:shadow-xl transition-all duration-300 transform hover:scale-[1.02] border-2 border-transparent hover:border-${baseActivity.color.replace('bg-', '')}`}
-                  onClick={() => navigateToTimes(baseActivity.id)}
-                  data-testid={`activity-card-${baseActivity.id}`}
-                >
-                  <div className={`${baseActivity.color} text-white p-6`}>
-                    <div className="flex items-center justify-between">
-                      <span className="text-5xl">{activity.icon}</span>
-                      <div className="flex items-center gap-1">
-                        <Button
-                          size="icon"
-                          variant="ghost"
-                          className="h-9 w-9 text-white hover:bg-white/20"
-                          onClick={(e) => handleEditActivity(e, baseActivity.id)}
-                          data-testid={`edit-activity-${baseActivity.id}`}
-                        >
-                          <Edit className="w-5 h-5" />
-                        </Button>
-                      </div>
-                    </div>
-                    <h2 className="font-bold text-2xl mt-4">
-                      {language === 'ar' ? activity.name_ar : activity.name_en}
-                    </h2>
-                    {baseActivity.id === 'swimming' && (
-                      <Badge className="bg-white/20 text-white border-0 mt-2">
-                        {t('الحد الأقصى 6 لاعبين', 'Max 6 players')}
-                      </Badge>
-                    )}
-                  </div>
-                  <CardContent className="p-4 bg-white">
-                    <div className="grid grid-cols-3 gap-2 text-center">
-                      <div className="p-2 bg-gray-50 rounded-lg">
-                        <p className="text-2xl font-bold text-gray-800">{timeSlots.length}</p>
-                        <p className="text-xs text-gray-500">{t('أوقات', 'Times')}</p>
-                      </div>
-                      <div className="p-2 bg-gray-50 rounded-lg">
-                        <p className="text-2xl font-bold text-gray-800">{totalLevels}</p>
-                        <p className="text-xs text-gray-500">{t('مستويات', 'Levels')}</p>
-                      </div>
-                      <div className="p-2 bg-gray-50 rounded-lg">
-                        <p className="text-2xl font-bold text-gray-800">{totalMembers}</p>
-                        <p className="text-xs text-gray-500">{t('لاعب', 'Players')}</p>
-                      </div>
-                    </div>
+              const totalCapacity = timeSlots.reduce((sum, slot) =>
+                sum + activityLevels[slot].reduce((s, l) => s + (baseActivity.id === 'swimming' ? 6 : (l.capacity || 10)), 0), 0);
+              const fillPct = totalCapacity > 0 ? Math.round((totalMembers / totalCapacity) * 100) : 0;
+              return { ...baseActivity, activity, timeSlots, totalLevels, totalMembers, totalCapacity, fillPct, type: 'main' };
+            }),
+            ...(groupedLevels['other'] && Object.keys(groupedLevels['other']).length > 0 ? [{
+              id: 'other', type: 'other',
+              activity: { name_ar: 'أخرى', name_en: 'Other', icon: '📋' },
+              color: 'bg-gray-500',
+              timeSlots: Object.keys(groupedLevels['other']),
+              totalLevels: Object.values(groupedLevels['other']).flat().length,
+              totalMembers: Object.values(groupedLevels['other']).flat().reduce((s, l) => s + (l.members || []).length, 0),
+              totalCapacity: Object.values(groupedLevels['other']).flat().reduce((s, l) => s + (l.capacity || 10), 0),
+              get fillPct() { return this.totalCapacity > 0 ? Math.round((this.totalMembers / this.totalCapacity) * 100) : 0; }
+            }] : [])
+          ];
+
+          const globalTotalLevels = allActivityCards.reduce((s, a) => s + a.totalLevels, 0);
+          const globalTotalMembers = allActivityCards.reduce((s, a) => s + a.totalMembers, 0);
+          const globalTotalCapacity = allActivityCards.reduce((s, a) => s + a.totalCapacity, 0);
+          const globalTotalTimes = allActivityCards.reduce((s, a) => s + a.timeSlots.length, 0);
+          const globalFillPct = globalTotalCapacity > 0 ? Math.round((globalTotalMembers / globalTotalCapacity) * 100) : 0;
+
+          let filtered = [...allActivityCards];
+          if (levelSearchTerm) {
+            const term = levelSearchTerm.toLowerCase();
+            filtered = filtered.filter(a =>
+              (a.activity.name_ar || '').toLowerCase().includes(term) ||
+              (a.activity.name_en || '').toLowerCase().includes(term)
+            );
+          }
+          if (filterActivityType !== 'all') {
+            filtered = filtered.filter(a => a.id === filterActivityType);
+          }
+          filtered.sort((a, b) => {
+            switch (sortLevelsBy) {
+              case 'members': return b.totalMembers - a.totalMembers;
+              case 'times': return b.timeSlots.length - a.timeSlots.length;
+              case 'fill': return b.fillPct - a.fillPct;
+              case 'name':
+              default:
+                return (a.activity.name_ar || '').localeCompare(b.activity.name_ar || '', 'ar');
+            }
+          });
+
+          return (
+            <div className="space-y-5" data-testid="activities-view">
+              {/* Stats Cards */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                <Card className="border-0 shadow-sm bg-gradient-to-br from-blue-50 to-blue-100">
+                  <CardContent className="p-4 text-center">
+                    <Layers className="w-6 h-6 mx-auto mb-1 text-blue-600" />
+                    <p className="text-2xl font-bold text-blue-700">{globalTotalLevels}</p>
+                    <p className="text-xs text-blue-600">{language === 'ar' ? 'إجمالي المستويات' : 'Total Levels'}</p>
                   </CardContent>
                 </Card>
-              );
-            })}
+                <Card className="border-0 shadow-sm bg-gradient-to-br from-green-50 to-green-100">
+                  <CardContent className="p-4 text-center">
+                    <Users className="w-6 h-6 mx-auto mb-1 text-green-600" />
+                    <p className="text-2xl font-bold text-green-700">{globalTotalMembers}</p>
+                    <p className="text-xs text-green-600">{language === 'ar' ? 'إجمالي اللاعبين' : 'Total Players'}</p>
+                  </CardContent>
+                </Card>
+                <Card className="border-0 shadow-sm bg-gradient-to-br from-orange-50 to-orange-100">
+                  <CardContent className="p-4 text-center">
+                    <Clock className="w-6 h-6 mx-auto mb-1 text-orange-600" />
+                    <p className="text-2xl font-bold text-orange-700">{globalTotalTimes}</p>
+                    <p className="text-xs text-orange-600">{language === 'ar' ? 'إجمالي الأوقات' : 'Total Time Slots'}</p>
+                  </CardContent>
+                </Card>
+                <Card className="border-0 shadow-sm bg-gradient-to-br from-purple-50 to-purple-100">
+                  <CardContent className="p-4 text-center">
+                    <BarChart3 className="w-6 h-6 mx-auto mb-1 text-purple-600" />
+                    <p className="text-2xl font-bold text-purple-700">{globalFillPct}%</p>
+                    <p className="text-xs text-purple-600">{language === 'ar' ? 'نسبة الامتلاء' : 'Fill Rate'}</p>
+                  </CardContent>
+                </Card>
+              </div>
 
-            {/* Other Activities Card */}
-            {groupedLevels['other'] && Object.keys(groupedLevels['other']).length > 0 && (
-              <Card 
-                className="overflow-hidden cursor-pointer hover:shadow-xl transition-all duration-300"
-                onClick={() => navigateToTimes('other')}
-                data-testid="activity-card-other"
-              >
-                <div className="bg-gray-500 text-white p-6">
-                  <div className="flex items-center justify-between">
-                    <span className="text-5xl">📋</span>
-                    <div className="p-2 rounded-full bg-white/20">
-                      {language === 'ar' ? <ArrowLeft className="w-6 h-6" /> : <ArrowRight className="w-6 h-6" />}
-                    </div>
-                  </div>
-                  <h2 className="font-bold text-2xl mt-4">{t('أخرى', 'Other')}</h2>
+              {/* Search + Filter + Sort */}
+              <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center">
+                <div className="relative flex-1 min-w-[180px]">
+                  <Search className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none rtl:right-3 ltr:left-3 ltr:right-auto" />
+                  <Input
+                    placeholder={language === 'ar' ? 'بحث في الأنشطة...' : 'Search activities...'}
+                    value={levelSearchTerm}
+                    onChange={e => setLevelSearchTerm(e.target.value)}
+                    className="ps-10"
+                  />
                 </div>
-                <CardContent className="p-4 bg-white">
-                  <div className="grid grid-cols-2 gap-2 text-center">
-                    <div className="p-2 bg-gray-50 rounded-lg">
-                      <p className="text-2xl font-bold text-gray-800">{Object.keys(groupedLevels['other']).length}</p>
-                      <p className="text-xs text-gray-500">{t('مستويات', 'Levels')}</p>
-                    </div>
-                    <div className="p-2 bg-gray-50 rounded-lg">
-                      <p className="text-2xl font-bold text-gray-800">
-                        {Object.values(groupedLevels['other']).flat().reduce((s, l) => s + (l.members || []).length, 0)}
-                      </p>
-                      <p className="text-xs text-gray-500">{t('لاعب', 'Players')}</p>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            )}
-          </div>
-        )}
+                <Select value={filterActivityType} onValueChange={setFilterActivityType}>
+                  <SelectTrigger className="w-[150px]">
+                    <SlidersHorizontal className="w-4 h-4 me-1 opacity-50" />
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">{language === 'ar' ? 'كل الأنشطة' : 'All Activities'}</SelectItem>
+                    {MAIN_ACTIVITIES.map(a => (
+                      <SelectItem key={a.id} value={a.id}>{a.icon} {language === 'ar' ? a.name_ar : a.name_en}</SelectItem>
+                    ))}
+                    {groupedLevels['other'] && <SelectItem value="other">📋 {language === 'ar' ? 'أخرى' : 'Other'}</SelectItem>}
+                  </SelectContent>
+                </Select>
+                <Select value={sortLevelsBy} onValueChange={setSortLevelsBy}>
+                  <SelectTrigger className="w-[150px]">
+                    <ArrowUpDown className="w-4 h-4 me-1 opacity-50" />
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="name">{language === 'ar' ? 'الاسم' : 'Name'}</SelectItem>
+                    <SelectItem value="members">{language === 'ar' ? 'اللاعبين' : 'Players'}</SelectItem>
+                    <SelectItem value="times">{language === 'ar' ? 'الأوقات' : 'Time Slots'}</SelectItem>
+                    <SelectItem value="fill">{language === 'ar' ? 'نسبة الامتلاء' : 'Fill Rate'}</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Activity Cards Grid */}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {filtered.map(card => {
+                  const isOther = card.type === 'other';
+                  return (
+                    <Card
+                      key={card.id}
+                      className="overflow-hidden cursor-pointer hover:shadow-xl transition-all duration-300 transform hover:scale-[1.02] hover:-translate-y-1 group"
+                      onClick={() => navigateToTimes(card.id)}
+                      data-testid={`activity-card-${card.id}`}
+                    >
+                      <div className={`${card.color} text-white p-6 relative`}>
+                        <div className="flex items-center justify-between">
+                          <span className="text-5xl transition-transform group-hover:scale-110">{card.activity.icon}</span>
+                          {!isOther && (
+                            <div className="flex items-center gap-1">
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                className="h-9 w-9 text-white hover:bg-white/20 opacity-0 group-hover:opacity-100 transition-opacity"
+                                onClick={(e) => handleEditActivity(e, card.id)}
+                                data-testid={`edit-activity-${card.id}`}
+                              >
+                                <Edit className="w-5 h-5" />
+                              </Button>
+                            </div>
+                          )}
+                        </div>
+                        <h2 className="font-bold text-2xl mt-4">
+                          {language === 'ar' ? card.activity.name_ar : card.activity.name_en}
+                        </h2>
+                        {card.id === 'swimming' && (
+                          <Badge className="bg-white/20 text-white border-0 mt-2">
+                            {t('الحد الأقصى 6 لاعبين', 'Max 6 players')}
+                          </Badge>
+                        )}
+                        {/* Fill Percentage Badge */}
+                        {card.totalCapacity > 0 && (
+                          <div className="absolute top-3 left-3 rtl:left-auto rtl:right-3">
+                            <Badge className={`text-xs font-bold border-0 ${
+                              card.fillPct >= 90 ? 'bg-red-600 text-white' :
+                              card.fillPct >= 70 ? 'bg-yellow-500 text-white' :
+                              'bg-white/25 text-white'
+                            }`}>
+                              {card.fillPct}% {language === 'ar' ? 'ممتلئ' : 'full'}
+                            </Badge>
+                          </div>
+                        )}
+                      </div>
+                      <CardContent className="p-4 bg-white">
+                        {/* Fill Progress Bar */}
+                        {card.totalCapacity > 0 && (
+                          <div className="mb-3">
+                            <div className="w-full bg-gray-200 rounded-full h-2">
+                              <div
+                                className={`h-2 rounded-full transition-all duration-500 ${
+                                  card.fillPct >= 90 ? 'bg-red-500' :
+                                  card.fillPct >= 70 ? 'bg-yellow-500' :
+                                  'bg-green-500'
+                                }`}
+                                style={{ width: `${card.fillPct}%` }}
+                              />
+                            </div>
+                            <p className="text-[10px] text-gray-400 mt-1 text-center">
+                              {card.totalMembers} / {card.totalCapacity} {language === 'ar' ? 'لاعب' : 'players'}
+                            </p>
+                          </div>
+                        )}
+                        <div className={`grid ${isOther ? 'grid-cols-2' : 'grid-cols-3'} gap-2 text-center`}>
+                          {!isOther && (
+                            <div className="p-2 bg-gray-50 rounded-lg">
+                              <p className="text-2xl font-bold text-gray-800">{card.timeSlots.length}</p>
+                              <p className="text-xs text-gray-500">{t('أوقات', 'Times')}</p>
+                            </div>
+                          )}
+                          <div className="p-2 bg-gray-50 rounded-lg">
+                            <p className="text-2xl font-bold text-gray-800">{card.totalLevels}</p>
+                            <p className="text-xs text-gray-500">{t('مستويات', 'Levels')}</p>
+                          </div>
+                          <div className="p-2 bg-gray-50 rounded-lg">
+                            <p className="text-2xl font-bold text-gray-800">{card.totalMembers}</p>
+                            <p className="text-xs text-gray-500">{t('لاعب', 'Players')}</p>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  );
+                })}
+              </div>
+
+              {filtered.length === 0 && (
+                <div className="text-center py-12">
+                  <Search className="w-12 h-12 mx-auto mb-3 text-gray-300" />
+                  <p className="text-gray-500">{language === 'ar' ? 'لا توجد نتائج' : 'No results found'}</p>
+                </div>
+              )}
+            </div>
+          );
+        })()}
 
         {/* VIEW: Time Slots */}
         {currentView === 'times' && selectedActivityId && (
