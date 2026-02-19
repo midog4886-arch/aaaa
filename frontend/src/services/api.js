@@ -348,6 +348,16 @@ export const pushNotificationsAPI = {
   broadcast: (data) => axios.post(`${API}/push-notifications/broadcast`, data),
 };
 
+export const messagesAPI = {
+  send: (data) => axios.post(`${API}/messages`, data),
+  getAll: (params = {}) => axios.get(`${API}/messages`, { params }),
+  getConversations: () => axios.get(`${API}/messages/conversations`),
+  getThread: (memberId) => axios.get(`${API}/messages/thread/${memberId}`),
+  reply: (memberId, data) => axios.post(`${API}/messages/thread/${memberId}/reply`, data),
+  getUnreadCount: () => axios.get(`${API}/messages/unread-count`),
+  delete: (id) => axios.delete(`${API}/messages/${id}`),
+};
+
 export default {
   auth: authAPI,
   activities: activitiesAPI,
@@ -368,6 +378,7 @@ export default {
   accountingReports: accountingReportsAPI,
   exportAccounting: exportAccountingAPI,
   notifications: notificationsAPI,
+  messages: messagesAPI,
   get: (url) => axios.get(`${API}${url}`),
   post: (url, data) => axios.post(`${API}${url}`, data),
   put: (url, data) => axios.put(`${API}${url}`, data),

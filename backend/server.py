@@ -46,6 +46,7 @@ from routes.advertisements import router as advertisements_router
 from routes.daily_videos import router as daily_videos_router, set_loyalty_award_function as set_videos_loyalty, set_push_notify_function
 from routes.loyalty import router as loyalty_router, set_database as set_loyalty_db, award_points as loyalty_award_points
 from routes.push_notifications import router as push_notifications_router, notify_new_video as push_notify_new_video
+from routes.messages import router as messages_router
 
 ROOT_DIR = Path(__file__).parent
 UPLOADS_DIR = ROOT_DIR / "uploads"
@@ -110,6 +111,7 @@ api_router.include_router(advertisements_router)
 api_router.include_router(daily_videos_router)
 api_router.include_router(loyalty_router)
 api_router.include_router(push_notifications_router)
+api_router.include_router(messages_router)
 
 # Set database for loyalty router
 set_loyalty_db(db)

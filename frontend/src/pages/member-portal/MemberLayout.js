@@ -3,7 +3,7 @@ import { useNavigate, Link, useLocation } from 'react-router-dom';
 import { 
   Trophy, Home, CreditCard, Calendar, Bell, QrCode,
   LogOut, Menu, X, Clock, CheckCircle, AlertTriangle,
-  Moon, Sun, Star, Activity, Video, Languages, Download, Smartphone, Phone
+  Moon, Sun, Star, Activity, Video, Languages, Download, Smartphone, Phone, Mail
 } from 'lucide-react';
 import { Button } from '../../components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../../components/ui/dialog';
@@ -48,6 +48,7 @@ const MemberLayout = ({ children }) => {
   const [member, setMember] = useState(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [notifications, setNotifications] = useState({ unread_count: 0 });
+  const [msgUnreadCount, setMsgUnreadCount] = useState(0);
   const [darkMode, setDarkModeState] = useState(getDarkMode());
   const [language, setLanguageState] = useState(getLanguage());
   
@@ -97,6 +98,7 @@ const MemberLayout = ({ children }) => {
     }
     setMember(memberData);
     fetchNotifications();
+    fetchMsgUnread();
     
     // Update document title and manifest for member portal PWA
     document.title = language === 'ar' ? 'بوابة الأعضاء - أكاديمية أداء الأبطال' : 'Member Portal - Champions Academy';
@@ -221,6 +223,15 @@ const MemberLayout = ({ children }) => {
     }
   };
 
+  const fetchMsgUnread = async () => {
+    try {
+      const res = await memberAPI.get('/api/member-portal/member/messages/unread-count');
+      setMsgUnreadCount(res.data.unread_count || 0);
+    } catch (error) {
+      console.error('Failed to fetch message unread count');
+    }
+  };
+
   const handleLogout = () => {
     memberLogout();
     navigate('/member-login');
@@ -235,6 +246,7 @@ const MemberLayout = ({ children }) => {
     { to: '/loyalty-points', icon: Trophy, labelKey: 'loyalty' },
     { to: '/card', icon: QrCode, labelKey: 'memberCard' },
     { to: '/rate-coach', icon: Star, labelKey: 'rateCoaches' },
+    { to: '/member-messages', icon: Mail, labelKey: 'messages', badge: msgUnreadCount },
     { to: '/notifications', icon: Bell, labelKey: 'notifications', badge: notifications.unread_count },
     { to: '/support', icon: Phone, labelKey: 'support' },
   ];
@@ -250,6 +262,7 @@ const MemberLayout = ({ children }) => {
       loyalty: { ar: 'نقاط الولاء', en: 'Loyalty Points' },
       memberCard: { ar: 'بطاقة العضوية', en: 'Member Card' },
       rateCoaches: { ar: 'تقييم المدربين', en: 'Rate Coaches' },
+      messages: { ar: 'الرسائل', en: 'Messages' },
       notifications: { ar: 'الإشعارات', en: 'Notifications' },
       support: { ar: 'خدمة العملاء', en: 'Support' },
       memberPortal: { ar: 'بوابة الأعضاء', en: 'Member Portal' },

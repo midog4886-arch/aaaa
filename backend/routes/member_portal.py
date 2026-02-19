@@ -977,3 +977,63 @@ async def get_member_full_schedule(member: dict = Depends(get_current_member)):
         "expired_count": len([s for s in schedules if s.get("status") == "expired"])
     }
 
+
+class MemberMessageReply(BaseModel):
+    body: str
+
+
+@router.get("/member/messages")
+async def get_member_messages(member: dict = Depends(get_current_member)):
+    messages = await db.messages.find(
+        {"recipient_member_id": member["id"]},
+        {"_id": 0}
+    ).sort("created_at", -1).to_list(500)
+
+    await db.messages.update_many(
+        {"recipient_member_id": member["id"], "sender_type": "admin", "read_by_member": False},
+        {"$set": {"read_by_member": True}}
+    )
+
+    return {"messages": messages}
+
+
+@router.post("/member/messages/reply")
+async def member_reply(data: MemberMessageReply, member: dict = Depends(get_current_member)):
+    import uuid
+
+    last_msg = await db.messages.find_one(
+        {"recipient_member_id": member["id"]},
+        {"_id": 0, "subject": 1},
+        sort=[("created_at", -1)]
+    )
+
+    msg_id = str(uuid.uuid4())
+    message = {
+        "id": msg_id,
+        "thread_id": member["id"],
+        "sender_type": "member",
+        "sender_id": member["id"],
+        "sender_name": member.get("name_ar", member.get("name", "")),
+        "recipient_member_id": member["id"],
+        "recipient_name": "الإدارة",
+        "subject": last_msg.get("subject", "رسالة من عضو") if last_msg else "رسالة من عضو",
+        "body": data.body,
+        "is_broadcast": False,
+        "read_by_member": True,
+        "read_by_admin": False,
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+
+    await db.messages.insert_one(message)
+    return {"message": "تم إرسال الرسالة", "id": msg_id}
+
+
+@router.get("/member/messages/unread-count")
+async def get_member_unread_count(member: dict = Depends(get_current_member)):
+    count = await db.messages.count_documents({
+        "recipient_member_id": member["id"],
+        "sender_type": "admin",
+        "read_by_member": False
+    })
+    return {"unread_count": count}
+
