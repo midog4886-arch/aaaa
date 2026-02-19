@@ -78,5 +78,7 @@ frontend/
 - Global Search: Unified search bar in admin header (Ctrl+K shortcut) searches across members, invoices, and activities simultaneously. Backend endpoint /api/global-search with regex matching. Results shown in categorized dropdown with navigation links. Component: frontend/src/components/GlobalSearch.js
 - Customizable Dashboard: Admin can show/hide and reorder dashboard widgets (Statistics Cards, Detail View, Expiring Subscriptions, Recent Notes). Settings saved per-user in MongoDB dashboard_settings collection. Customize button opens panel with up/down arrows and visibility toggles. Backend endpoints: GET/PUT /api/dashboard/settings
 
+- Grouped Sidebar Navigation: Admin sidebar reorganized from 20+ flat items into 7 collapsible groups (Main, Members, Activities & Training, Finance, Communication, More, Administration) with smooth CSS accordion animations. Active page auto-expands its group. Permission filtering preserved per group.
+
 ## Known Issues
 - MongoDB Atlas SSL handshake may fail with `TLSV1_ALERT_INTERNAL_ERROR` - this is typically caused by the Replit IP not being whitelisted in MongoDB Atlas Network Access settings. The user needs to add `0.0.0.0/0` (allow all) in MongoDB Atlas Network Access.
