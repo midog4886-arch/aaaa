@@ -871,8 +871,7 @@ export const MembersPage = () => {
                 <thead>
                   <tr>
                     <th>{language === 'ar' ? 'رقم العضوية' : 'Member ID'}</th>
-                    <th>{t('member_name')}</th>
-                    <th>{t('guardian_name')}</th>
+                    <th>{language === 'ar' ? 'اسم العضو / ولي الأمر' : 'Member / Guardian'}</th>
                     <th>{t('phone')}</th>
                     <th>{language === 'ar' ? 'الأنشطة وحالتها' : 'Activities & Status'}</th>
                     <th>{language === 'ar' ? 'تاريخ الانتهاء' : 'Expiry Date'}</th>
@@ -883,7 +882,7 @@ export const MembersPage = () => {
                 <tbody>
                   {filteredMembers.length === 0 ? (
                     <tr>
-                      <td colSpan={8} className="text-center py-8 text-muted-foreground">
+                      <td colSpan={7} className="text-center py-8 text-muted-foreground">
                         {t('no_data')}
                       </td>
                     </tr>
@@ -894,10 +893,12 @@ export const MembersPage = () => {
                         <td className="font-mono text-primary font-bold">
                           {member.member_code || '-'}
                         </td>
-                        <td className="font-medium">
-                          {language === 'ar' ? member.name_ar : member.name}
+                        <td>
+                          <div className="font-medium">{language === 'ar' ? member.name_ar : member.name}</div>
+                          {(member.guardian_name_ar || member.guardian_name) && (
+                            <div className="text-xs text-gray-500">{language === 'ar' ? member.guardian_name_ar : member.guardian_name}</div>
+                          )}
                         </td>
-                        <td>{language === 'ar' ? member.guardian_name_ar : member.guardian_name}</td>
                         <td dir="ltr" className="text-start">
                           <div className="flex items-center gap-1">
                             <span>{member.phone}</span>
