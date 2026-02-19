@@ -284,37 +284,6 @@ const AdvertisementsPage = () => {
   return (
     <Layout>
     <div className="space-y-6" dir="rtl">
-      {/* Quick Navigation Bar */}
-      <div className="flex items-center gap-2 p-3 bg-gradient-to-r from-blue-50 to-purple-50 rounded-lg border">
-        <span className="text-sm text-gray-600 font-medium">التنقل السريع:</span>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => navigate('/admin/members')}
-          className="bg-white"
-        >
-          <Users className="w-4 h-4 me-1" />
-          الأعضاء
-        </Button>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => navigate('/admin/daily-videos')}
-          className="bg-white"
-        >
-          <Video className="w-4 h-4 me-1" />
-          الفيديوهات اليومية
-        </Button>
-        <Button
-          variant="default"
-          size="sm"
-          className="bg-blue-600 hover:bg-blue-700"
-        >
-          <Megaphone className="w-4 h-4 me-1" />
-          الإعلانات
-        </Button>
-      </div>
-
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div>
