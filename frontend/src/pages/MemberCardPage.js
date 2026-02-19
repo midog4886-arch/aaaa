@@ -78,7 +78,7 @@ const MemberCardPage = () => {
             * { margin: 0; padding: 0; box-sizing: border-box; }
             body { font-family: 'Tajawal', Arial, sans-serif; background: #f3f4f6; direction: rtl; }
             .screen-only { padding: 20px; text-align: center; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; }
-            @media print { .screen-only { display: none !important; } .print-area { display: flex !important; position: absolute; top: 10mm; right: 15mm; gap: 5mm; } }
+            @media print { .screen-only { display: none !important; } .print-area { display: flex !important; position: absolute; top: 10mm; right: 10mm; gap: 5mm; } }
             @media screen { .print-area { display: none; } }
             .sticker-preview { display: flex; gap: 15px; justify-content: center; margin-bottom: 20px; }
             .card { width: 90mm; height: 60mm; background: white; border-radius: 4mm; overflow: hidden; box-shadow: 0 4px 15px rgba(0,0,0,0.1); display: flex; flex-direction: column; }
@@ -422,6 +422,10 @@ const MemberCardPage = () => {
                 </div>
               </CardContent>
             </Card>
+
+            <div className="text-center p-3 bg-red-50 border border-red-200 rounded-lg">
+              <p className="text-red-600 font-semibold text-sm">⚠️ في حال فقدان كرت العضوية، يتم إصدار كرت جديد برسوم 10 ر.س</p>
+            </div>
 
             {/* Action Buttons - Hidden when printing */}
             <div className="flex gap-3 justify-center print:hidden">
