@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { NavLink, useNavigate } from 'react-router-dom';
+import { NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/AuthContext';
 import { Button } from './ui/button';
@@ -41,7 +41,11 @@ import {
   ExternalLink,
   Download,
   Smartphone,
-  Camera
+  Camera,
+  ChevronDown,
+  Wallet,
+  Radio,
+  ShieldCheck
 } from 'lucide-react';
 
 export const Sidebar = ({ isOpen, onClose }) => {
@@ -67,39 +71,108 @@ export const Sidebar = ({ isOpen, onClose }) => {
     }
   };
 
-  const navItems = [
-    { to: '/admin/dashboard', icon: LayoutDashboard, label: 'dashboard', permission: 'dashboard' },
-    { to: '/admin/invoices', icon: Receipt, label: 'invoices', permission: 'invoices' },
-    { to: '/admin/members', icon: Users, label: 'members', permission: 'members' },
-    { to: '/admin/renewals', icon: RefreshCcw, label: 'renewals', permission: 'members' },
-    { to: '/admin/activities', icon: Dumbbell, label: 'activities', permission: 'activities' },
-    { to: '/admin/levels', icon: Layers, label: 'levels', permission: 'levels' },
-    { to: '/admin/schedule', icon: CalendarDays, label: 'schedule', permission: 'schedule' },
-    { to: '/admin/attendance', icon: ClipboardList, label: 'attendance', permission: 'attendance' },
-    { to: '/admin/member-card', icon: QrCode, label: 'member_card', permission: 'attendance' },
-    { to: '/admin/coach-ratings', icon: Star, label: 'coach_ratings', permission: 'coach-ratings' },
-    { to: '/admin/advertisements', icon: Megaphone, label: 'advertisements', permission: 'advertisements' },
-    { to: '/admin/daily-videos', icon: Video, label: 'daily_videos', permission: 'daily-videos' },
-    { to: '/admin/loyalty', icon: Trophy, label: 'loyalty', permission: 'loyalty' },
-    { to: '/admin/store', icon: Package, label: 'store', permission: 'store' },
-    { to: '/admin/accounting', icon: Calculator, label: 'accounting', permission: 'accounting' },
-    { to: '/admin/reports', icon: BarChart3, label: 'reports', permission: 'reports' },
-    { to: '/admin/messages', icon: MessageSquare, label: 'messages', permission: 'messages' },
-    ...(isAdmin ? [{ to: '/admin/branches', icon: Building2, label: 'branches', permission: 'branches' }] : []),
-    ...(isAdmin ? [{ to: '/admin/users', icon: Users, label: 'users', permission: 'users' }] : []),
-    { to: '/admin/settings', icon: Settings, label: 'settings', permission: 'settings' },
-    ...(isAdmin ? [{ to: '/admin/backup', icon: HardDrive, label: 'backup', permission: 'settings' }] : []),
-    ...(isAdmin ? [{ to: '/admin/push-notifications', icon: Bell, label: 'push_notifications', permission: 'settings' }] : []),
+  const location = useLocation();
+  const [openGroups, setOpenGroups] = useState({});
+
+  const navGroups = [
+    {
+      id: 'main',
+      label_ar: 'الرئيسية',
+      label_en: 'Main',
+      icon: LayoutDashboard,
+      single: true,
+      items: [
+        { to: '/admin/dashboard', icon: LayoutDashboard, label: 'dashboard', permission: 'dashboard' },
+      ]
+    },
+    {
+      id: 'members',
+      label_ar: 'الأعضاء',
+      label_en: 'Members',
+      icon: Users,
+      items: [
+        { to: '/admin/members', icon: Users, label: 'members', permission: 'members' },
+        { to: '/admin/renewals', icon: RefreshCcw, label: 'renewals', permission: 'members' },
+        { to: '/admin/member-card', icon: QrCode, label: 'member_card', permission: 'attendance' },
+        { to: '/admin/attendance', icon: ClipboardList, label: 'attendance', permission: 'attendance' },
+      ]
+    },
+    {
+      id: 'activities',
+      label_ar: 'الأنشطة والتدريب',
+      label_en: 'Activities & Training',
+      icon: Dumbbell,
+      items: [
+        { to: '/admin/activities', icon: Dumbbell, label: 'activities', permission: 'activities' },
+        { to: '/admin/levels', icon: Layers, label: 'levels', permission: 'levels' },
+        { to: '/admin/schedule', icon: CalendarDays, label: 'schedule', permission: 'schedule' },
+        { to: '/admin/coach-ratings', icon: Star, label: 'coach_ratings', permission: 'coach-ratings' },
+      ]
+    },
+    {
+      id: 'finance',
+      label_ar: 'المالية',
+      label_en: 'Finance',
+      icon: Wallet,
+      items: [
+        { to: '/admin/invoices', icon: Receipt, label: 'invoices', permission: 'invoices' },
+        { to: '/admin/accounting', icon: Calculator, label: 'accounting', permission: 'accounting' },
+        { to: '/admin/store', icon: Package, label: 'store', permission: 'store' },
+      ]
+    },
+    {
+      id: 'communication',
+      label_ar: 'التواصل',
+      label_en: 'Communication',
+      icon: Radio,
+      items: [
+        { to: '/admin/messages', icon: MessageSquare, label: 'messages', permission: 'messages' },
+        { to: '/admin/advertisements', icon: Megaphone, label: 'advertisements', permission: 'advertisements' },
+        { to: '/admin/daily-videos', icon: Video, label: 'daily_videos', permission: 'daily-videos' },
+        ...(isAdmin ? [{ to: '/admin/push-notifications', icon: Bell, label: 'push_notifications', permission: 'settings' }] : []),
+      ]
+    },
+    {
+      id: 'extras',
+      label_ar: 'المزيد',
+      label_en: 'More',
+      icon: Trophy,
+      items: [
+        { to: '/admin/loyalty', icon: Trophy, label: 'loyalty', permission: 'loyalty' },
+        { to: '/admin/reports', icon: BarChart3, label: 'reports', permission: 'reports' },
+      ]
+    },
+    {
+      id: 'admin',
+      label_ar: 'الإدارة',
+      label_en: 'Administration',
+      icon: ShieldCheck,
+      items: [
+        { to: '/admin/settings', icon: Settings, label: 'settings', permission: 'settings' },
+        ...(isAdmin ? [{ to: '/admin/branches', icon: Building2, label: 'branches', permission: 'branches' }] : []),
+        ...(isAdmin ? [{ to: '/admin/users', icon: Users, label: 'users', permission: 'users' }] : []),
+        ...(isAdmin ? [{ to: '/admin/backup', icon: HardDrive, label: 'backup', permission: 'settings' }] : []),
+      ]
+    },
   ];
 
-  // Filter nav items based on user permissions
   const userPermissions = user?.permissions || [];
-  const filteredNavItems = navItems.filter(item => {
-    // Admin has all permissions
-    if (isAdmin) return true;
-    // Check if user has permission for this page
-    return userPermissions.includes(item.permission);
-  });
+  const filteredGroups = navGroups.map(group => ({
+    ...group,
+    items: group.items.filter(item => isAdmin || userPermissions.includes(item.permission))
+  })).filter(group => group.items.length > 0);
+
+  useEffect(() => {
+    const currentPath = location.pathname;
+    const activeGroup = filteredGroups.find(g => g.items.some(item => currentPath.startsWith(item.to)));
+    if (activeGroup && !activeGroup.single) {
+      setOpenGroups(prev => ({ ...prev, [activeGroup.id]: true }));
+    }
+  }, [location.pathname]);
+
+  const toggleGroup = (groupId) => {
+    setOpenGroups(prev => ({ ...prev, [groupId]: !prev[groupId] }));
+  };
 
   const handleLogout = () => {
     logout();
@@ -140,17 +213,56 @@ export const Sidebar = ({ isOpen, onClose }) => {
 
         {/* Navigation */}
         <nav className="sidebar-nav">
-          {filteredNavItems.map((item) => (
-            <NavLink
-              key={item.to}
-              to={item.to}
-              className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
-              onClick={onClose}
-            >
-              <item.icon className="nav-item-icon" />
-              <span>{t(item.label)}</span>
-            </NavLink>
-          ))}
+          {filteredGroups.map((group) => {
+            if (group.single) {
+              const item = group.items[0];
+              return (
+                <NavLink
+                  key={item.to}
+                  to={item.to}
+                  className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
+                  onClick={onClose}
+                >
+                  <item.icon className="nav-item-icon" />
+                  <span>{t(item.label)}</span>
+                </NavLink>
+              );
+            }
+
+            const isOpen = openGroups[group.id] || false;
+            const hasActiveChild = group.items.some(item => location.pathname.startsWith(item.to));
+
+            return (
+              <div key={group.id} className="nav-group">
+                <button
+                  className={`nav-group-header ${hasActiveChild ? 'has-active' : ''}`}
+                  onClick={() => toggleGroup(group.id)}
+                >
+                  <group.icon className="nav-item-icon" />
+                  <span className="flex-1 text-start">{language === 'ar' ? group.label_ar : group.label_en}</span>
+                  <ChevronDown className={`nav-group-chevron ${isOpen ? 'rotated' : ''}`} />
+                </button>
+                <div
+                  className="nav-group-content"
+                  style={{
+                    maxHeight: isOpen ? `${(group.items.length * 44) + 8}px` : '0px',
+                  }}
+                >
+                  {group.items.map((item) => (
+                    <NavLink
+                      key={item.to}
+                      to={item.to}
+                      className={({ isActive }) => `nav-item nav-item-child ${isActive ? 'active' : ''}`}
+                      onClick={onClose}
+                    >
+                      <item.icon className="nav-item-icon" />
+                      <span>{t(item.label)}</span>
+                    </NavLink>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
         </nav>
 
         {/* Branch Selector for Admin */}

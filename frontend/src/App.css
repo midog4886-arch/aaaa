@@ -91,22 +91,78 @@
     max-width: 1400px;
 }
 
+/* Nav Group */
+.nav-group {
+    margin: 2px 0;
+}
+
+.nav-group-header {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.7rem 1.5rem;
+    width: 100%;
+    border: none;
+    background: none;
+    color: hsl(var(--foreground));
+    font-size: 0.875rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+.nav-group-header:hover {
+    background: hsl(var(--accent));
+}
+
+.nav-group-header.has-active {
+    color: hsl(var(--primary));
+}
+
+.nav-group-chevron {
+    width: 16px;
+    height: 16px;
+    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    opacity: 0.5;
+}
+
+.nav-group-chevron.rotated {
+    transform: rotate(180deg);
+}
+
+.nav-group-content {
+    overflow: hidden;
+    transition: max-height 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    padding: 0 0.5rem;
+}
+
 /* Nav Item */
 .nav-item {
     display: flex;
     align-items: center;
     gap: 0.75rem;
-    padding: 0.75rem 1.5rem;
+    padding: 0.65rem 1.5rem;
     color: hsl(var(--muted-foreground));
     text-decoration: none;
     transition: background-color 0.2s ease, color 0.2s ease;
     border-radius: 0;
-    margin: 0.25rem 0;
+    margin: 1px 0;
+    font-size: 0.875rem;
+}
+
+.nav-item.nav-item-child {
+    padding: 0.55rem 1rem 0.55rem 1.25rem;
+    border-radius: 0.5rem;
+    font-size: 0.8125rem;
 }
 
 .nav-item:hover {
     background: hsl(var(--accent));
     color: hsl(var(--accent-foreground));
+}
+
+.nav-item.nav-item-child:hover {
+    border-radius: 0.5rem;
 }
 
 .nav-item.active {
@@ -115,14 +171,25 @@
     border-right: 3px solid hsl(var(--primary));
 }
 
+.nav-item.nav-item-child.active {
+    border-right: none;
+    border-inline-start: 3px solid hsl(var(--primary));
+    border-radius: 0.5rem;
+}
+
 [dir="ltr"] .nav-item.active {
     border-right: none;
     border-left: 3px solid hsl(var(--primary));
 }
 
+[dir="ltr"] .nav-item.nav-item-child.active {
+    border-left: 3px solid hsl(var(--primary));
+    border-right: none;
+}
+
 .nav-item-icon {
-    width: 20px;
-    height: 20px;
+    width: 18px;
+    height: 18px;
     flex-shrink: 0;
 }
 
