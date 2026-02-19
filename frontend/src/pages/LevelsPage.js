@@ -1029,16 +1029,6 @@ export const LevelsPage = () => {
               const fillPct = totalCapacity > 0 ? Math.round((totalMembers / totalCapacity) * 100) : 0;
               return { ...baseActivity, activity, timeSlots, totalLevels, totalMembers, totalCapacity, fillPct, type: 'main' };
             }),
-            ...(groupedLevels['other'] && Object.keys(groupedLevels['other']).length > 0 ? [{
-              id: 'other', type: 'other',
-              activity: { name_ar: 'أخرى', name_en: 'Other', icon: '📋' },
-              color: 'bg-gray-500',
-              timeSlots: Object.keys(groupedLevels['other']),
-              totalLevels: Object.values(groupedLevels['other']).flat().length,
-              totalMembers: Object.values(groupedLevels['other']).flat().reduce((s, l) => s + (l.members || []).length, 0),
-              totalCapacity: Object.values(groupedLevels['other']).flat().reduce((s, l) => s + (l.capacity || 10), 0),
-              get fillPct() { return this.totalCapacity > 0 ? Math.round((this.totalMembers / this.totalCapacity) * 100) : 0; }
-            }] : [])
           ];
 
           const globalTotalLevels = allActivityCards.reduce((s, a) => s + a.totalLevels, 0);
@@ -1124,7 +1114,6 @@ export const LevelsPage = () => {
                     {MAIN_ACTIVITIES.map(a => (
                       <SelectItem key={a.id} value={a.id}>{a.icon} {language === 'ar' ? a.name_ar : a.name_en}</SelectItem>
                     ))}
-                    {groupedLevels['other'] && <SelectItem value="other">📋 {language === 'ar' ? 'أخرى' : 'Other'}</SelectItem>}
                   </SelectContent>
                 </Select>
                 <Select value={sortLevelsBy} onValueChange={setSortLevelsBy}>
