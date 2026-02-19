@@ -152,7 +152,7 @@ export const openStickerPrint = (member) => {
             ${cardHTML}
             <div class="logo-card">
               <img src="${window.location.origin}/images/academy-logo.png" alt="شعار الأكاديمية" />
-              <div class="contact-info">📞 0546218384</div>
+              <div class="contact-info">📞 0566238384</div>
               <div class="lost-card-notice">⚠️ في حال فقدان كرت العضوية،<br/>يتم إصدار كرت جديد برسوم 10 ر.س</div>
             </div>
           </div>
@@ -167,7 +167,7 @@ export const openStickerPrint = (member) => {
           ${cardHTML}
           <div class="logo-card">
             <img src="${window.location.origin}/images/academy-logo.png" alt="شعار الأكاديمية" />
-            <div class="contact-info">📞 0546218384</div>
+            <div class="contact-info">📞 0566238384</div>
             <div class="lost-card-notice">⚠️ في حال فقدان كرت العضوية،<br/>يتم إصدار كرت جديد برسوم 10 ر.س</div>
           </div>
         </div>
