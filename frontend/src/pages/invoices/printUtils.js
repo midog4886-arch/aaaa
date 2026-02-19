@@ -36,10 +36,11 @@ export const getCardPrintStyles = () => `
   @media screen { .print-area { display: none; } }
   .sticker-preview { display: flex; gap: 15px; justify-content: center; margin-bottom: 20px; }
   .card { width: ${CARD_WIDTH}mm; height: ${CARD_HEIGHT}mm; background: white; border-radius: 4mm; overflow: hidden; box-shadow: 0 4px 15px rgba(0,0,0,0.1); display: flex; flex-direction: column; }
-  .card-header { background: linear-gradient(135deg, #F97316, #F59E0B); padding: 2mm; display: flex; justify-content: space-between; align-items: center; color: white; }
-  .header-text h2 { font-size: 9pt; font-weight: 700; margin: 0; }
-  .header-text p { font-size: 6pt; opacity: 0.9; margin: 0; }
-  .trophy { font-size: 16pt; }
+  .card-header { background: linear-gradient(135deg, #F97316, #F59E0B); padding: 1.5mm 2mm; display: flex; justify-content: space-between; align-items: center; color: white; }
+  .header-text h2 { font-size: 7pt; font-weight: 700; margin: 0; line-height: 1.3; }
+  .header-text p { font-size: 5.5pt; opacity: 0.9; margin: 0; }
+  .header-logo { width: 10mm; height: 10mm; border-radius: 50%; background: white; padding: 0.5mm; display: flex; align-items: center; justify-content: center; }
+  .header-logo img { width: 100%; height: 100%; object-fit: contain; border-radius: 50%; }
   .card-body { padding: 2mm; display: flex; gap: 2mm; flex: 1; }
   .info-section { flex: 1; text-align: right; overflow: hidden; }
   .qr-container { display: flex; flex-direction: column; align-items: center; }
@@ -63,8 +64,10 @@ export const getCardPrintStyles = () => `
   .activity-item.expired .activity-status { color: #DC2626; }
   .card-footer { text-align: right; padding: 1.5mm 2mm; background: #f9fafb; font-size: 5pt; color: #374151; border-top: 1px dashed #e5e7eb; line-height: 1.4; }
   .card-footer .terms-title { font-weight: 700; color: #1f2937; font-size: 6pt; margin-bottom: 0.5mm; }
-  .logo-card { width: ${CARD_WIDTH}mm; height: ${CARD_HEIGHT}mm; background: white; border-radius: 4mm; overflow: hidden; box-shadow: 0 4px 15px rgba(0,0,0,0.1); display: flex; align-items: center; justify-content: center; padding: 5mm; }
-  .logo-card img { max-width: 100%; max-height: 100%; object-fit: contain; }
+  .logo-card { width: ${CARD_WIDTH}mm; height: ${CARD_HEIGHT}mm; background: white; border-radius: 4mm; overflow: hidden; box-shadow: 0 4px 15px rgba(0,0,0,0.1); display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 3mm; }
+  .logo-card img { max-width: 100%; max-height: 55%; object-fit: contain; }
+  .logo-card .contact-info { font-size: 7pt; color: #374151; text-align: center; margin-top: 2mm; font-weight: 600; line-height: 1.6; }
+  .logo-card .lost-card-notice { font-size: 7pt; color: #DC2626; text-align: center; margin-top: 2mm; font-weight: 700; line-height: 1.5; background: #FEF2F2; padding: 2mm 3mm; border-radius: 2mm; border: 1.5px solid #EF4444; }
   .print-btn { margin-top: 20px; padding: 12px 30px; background: linear-gradient(135deg, #F97316, #EA580C); color: white; border: none; border-radius: 10px; cursor: pointer; font-family: 'Tajawal', Arial, sans-serif; font-size: 16px; font-weight: bold; }
   .position-labels { display: flex; gap: 15px; justify-content: center; margin-top: 10px; }
   .position-label { padding: 8px 16px; background: #FEF3C7; border-radius: 8px; color: #92400E; font-size: 12px; }
@@ -83,7 +86,7 @@ export const generateCardHTML = (member, qrData, schedule) => {
     <div class="card">
       <div class="card-header">
         <div class="header-text"><h2>${COMPANY_INFO.name_ar}</h2><p>${COMPANY_INFO.name_en}</p></div>
-        <div class="trophy">🏆</div>
+        <div class="header-logo"><img src="${window.location.origin}/images/academy-logo.png" alt="logo" /></div>
       </div>
       <div class="card-body">
         <div class="qr-container">
@@ -139,6 +142,8 @@ export const printMemberCard = (member) => {
             ${cardHTML}
             <div class="logo-card">
               <img src="${window.location.origin}/images/academy-logo.png" alt="شعار الأكاديمية" />
+              <div class="contact-info">📞 0546218384</div>
+              <div class="lost-card-notice">⚠️ في حال فقدان كرت العضوية،<br/>يتم إصدار كرت جديد برسوم 10 ر.س</div>
             </div>
           </div>
           <div class="position-labels">
@@ -152,6 +157,8 @@ export const printMemberCard = (member) => {
           ${cardHTML}
           <div class="logo-card">
             <img src="${window.location.origin}/images/academy-logo.png" alt="شعار الأكاديمية" />
+            <div class="contact-info">📞 0546218384</div>
+            <div class="lost-card-notice">⚠️ في حال فقدان كرت العضوية،<br/>يتم إصدار كرت جديد برسوم 10 ر.س</div>
           </div>
         </div>
       </body>
