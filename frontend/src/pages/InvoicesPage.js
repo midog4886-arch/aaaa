@@ -1321,7 +1321,7 @@ ${selectedInvoice.discount > 0 ? `🎁 الخصم: ${selectedInvoice.discount} �
             * { margin: 0; padding: 0; box-sizing: border-box; }
             body { font-family: 'Tajawal', Arial, sans-serif; background: #f3f4f6; direction: rtl; }
             .screen-only { padding: 20px; text-align: center; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; }
-            @media print { .screen-only { display: none !important; } .print-area { display: flex !important; position: absolute; top: 30mm; right: 15mm; gap: 5mm; } }
+            @media print { .screen-only { display: none !important; } .print-area { display: flex !important; position: absolute; top: 10mm; right: 10mm; gap: 5mm; } }
             @media screen { .print-area { display: none; } }
             .sticker-preview { display: flex; gap: 15px; justify-content: center; margin-bottom: 20px; }
             .card { width: 90mm; height: 60mm; background: white; border-radius: 4mm; overflow: hidden; box-shadow: 0 4px 15px rgba(0,0,0,0.1); display: flex; flex-direction: column; }
@@ -1352,8 +1352,9 @@ ${selectedInvoice.discount > 0 ? `🎁 الخصم: ${selectedInvoice.discount} �
             .activity-item.expired .activity-status { color: #DC2626; }
             .card-footer { text-align: right; padding: 1.5mm 2mm; background: #f9fafb; font-size: 5pt; color: #374151; border-top: 1px dashed #e5e7eb; line-height: 1.4; }
             .card-footer .terms-title { font-weight: 700; color: #1f2937; font-size: 6pt; margin-bottom: 0.5mm; }
-            .logo-card { width: 90mm; height: 60mm; background: white; border-radius: 4mm; overflow: hidden; box-shadow: 0 4px 15px rgba(0,0,0,0.1); display: flex; align-items: center; justify-content: center; padding: 5mm; }
-            .logo-card img { max-width: 100%; max-height: 100%; object-fit: contain; }
+            .logo-card { width: 90mm; height: 60mm; background: white; border-radius: 4mm; overflow: hidden; box-shadow: 0 4px 15px rgba(0,0,0,0.1); display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 3mm; }
+            .logo-card img { max-width: 100%; max-height: 70%; object-fit: contain; }
+            .logo-card .lost-card-notice { font-size: 7pt; color: #DC2626; text-align: center; margin-top: 3mm; font-weight: 700; line-height: 1.5; background: #FEF2F2; padding: 2mm 3mm; border-radius: 2mm; border: 0.5px solid #FECACA; }
             .print-btn { margin-top: 20px; padding: 12px 30px; background: linear-gradient(135deg, #F97316, #EA580C); color: white; border: none; border-radius: 10px; cursor: pointer; font-family: 'Tajawal', Arial, sans-serif; font-size: 16px; font-weight: bold; }
             .position-labels { display: flex; gap: 15px; justify-content: center; margin-top: 10px; }
             .position-label { padding: 8px 16px; background: #FEF3C7; border-radius: 8px; color: #92400E; font-size: 12px; }
@@ -1395,6 +1396,7 @@ ${selectedInvoice.discount > 0 ? `🎁 الخصم: ${selectedInvoice.discount} �
               <!-- Logo Card - Position 2 -->
               <div class="logo-card">
                 <img src="${window.location.origin}/images/academy-logo.png" alt="شعار الأكاديمية" />
+                <div class="lost-card-notice">⚠️ في حال فقدان كرت العضوية،<br/>يتم إصدار كرت جديد برسوم 10 ر.س</div>
               </div>
             </div>
             <div class="position-labels">
@@ -1436,6 +1438,7 @@ ${selectedInvoice.discount > 0 ? `🎁 الخصم: ${selectedInvoice.discount} �
             <!-- Logo Card - Position 2 -->
             <div class="logo-card">
               <img src="${window.location.origin}/images/academy-logo.png" alt="شعار الأكاديمية" />
+              <div class="lost-card-notice">⚠️ في حال فقدان كرت العضوية،<br/>يتم إصدار كرت جديد برسوم 10 ر.س</div>
             </div>
           </div>
         </body>
@@ -1524,7 +1527,7 @@ ${selectedInvoice.discount > 0 ? `🎁 الخصم: ${selectedInvoice.discount} �
             * { margin: 0; padding: 0; box-sizing: border-box; }
             body { font-family: 'Tajawal', Arial, sans-serif; background: #f3f4f6; direction: rtl; }
             .screen-only { padding: 20px; text-align: center; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; }
-            @media print { .screen-only { display: none !important; } .print-area { display: flex !important; position: absolute; top: 30mm; right: 15mm; gap: 5mm; } }
+            @media print { .screen-only { display: none !important; } .print-area { display: flex !important; position: absolute; top: 10mm; right: 10mm; gap: 5mm; } }
             @media screen { .print-area { display: none; } }
             .sticker-preview { display: flex; gap: 15px; justify-content: center; margin-bottom: 20px; }
             .card { width: 90mm; height: 60mm; background: white; border-radius: 4mm; overflow: hidden; box-shadow: 0 4px 15px rgba(0,0,0,0.1); display: flex; flex-direction: column; }
@@ -1555,8 +1558,9 @@ ${selectedInvoice.discount > 0 ? `🎁 الخصم: ${selectedInvoice.discount} �
             .activity-item.expired .activity-status { color: #DC2626; }
             .card-footer { text-align: right; padding: 1.5mm 2mm; background: #f9fafb; font-size: 5pt; color: #374151; border-top: 1px dashed #e5e7eb; line-height: 1.4; }
             .card-footer .terms-title { font-weight: 700; color: #1f2937; font-size: 6pt; margin-bottom: 0.5mm; }
-            .logo-card { width: 90mm; height: 60mm; background: white; border-radius: 4mm; overflow: hidden; box-shadow: 0 4px 15px rgba(0,0,0,0.1); display: flex; align-items: center; justify-content: center; padding: 5mm; }
-            .logo-card img { max-width: 100%; max-height: 100%; object-fit: contain; }
+            .logo-card { width: 90mm; height: 60mm; background: white; border-radius: 4mm; overflow: hidden; box-shadow: 0 4px 15px rgba(0,0,0,0.1); display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 3mm; }
+            .logo-card img { max-width: 100%; max-height: 70%; object-fit: contain; }
+            .logo-card .lost-card-notice { font-size: 7pt; color: #DC2626; text-align: center; margin-top: 3mm; font-weight: 700; line-height: 1.5; background: #FEF2F2; padding: 2mm 3mm; border-radius: 2mm; border: 0.5px solid #FECACA; }
             .print-btn { margin-top: 20px; padding: 12px 30px; background: linear-gradient(135deg, #9333EA, #7C3AED); color: white; border: none; border-radius: 10px; cursor: pointer; font-family: 'Tajawal', Arial, sans-serif; font-size: 16px; font-weight: bold; }
             .position-labels { display: flex; gap: 15px; justify-content: center; margin-top: 10px; }
             .position-label { padding: 8px 16px; background: #F3E8FF; border-radius: 8px; color: #7C3AED; font-size: 12px; }
@@ -1598,6 +1602,7 @@ ${selectedInvoice.discount > 0 ? `🎁 الخصم: ${selectedInvoice.discount} �
               <!-- Logo Card - Position 2 -->
               <div class="logo-card">
                 <img src="${window.location.origin}/images/academy-logo.png" alt="شعار الأكاديمية" />
+                <div class="lost-card-notice">⚠️ في حال فقدان كرت العضوية،<br/>يتم إصدار كرت جديد برسوم 10 ر.س</div>
               </div>
             </div>
             <div class="position-labels">
@@ -1639,6 +1644,7 @@ ${selectedInvoice.discount > 0 ? `🎁 الخصم: ${selectedInvoice.discount} �
             <!-- Logo Card - Position 2 -->
             <div class="logo-card">
               <img src="${window.location.origin}/images/academy-logo.png" alt="شعار الأكاديمية" />
+              <div class="lost-card-notice">⚠️ في حال فقدان كرت العضوية،<br/>يتم إصدار كرت جديد برسوم 10 ر.س</div>
             </div>
           </div>
         </body>
