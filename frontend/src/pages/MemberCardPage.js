@@ -124,7 +124,7 @@ const MemberCardPage = () => {
               <!-- Member Card - Position 1 -->
               <div class="card">
                 <div class="card-header">
-                  <div class="header-text"><h2>أكاديمية أداء الأبطال</h2><p>Global Champions Sports Performance</p></div>
+                  <div class="header-text"><h2>شركة اداء الابطال العالمية للرياضة</h2><p>Global Champions Sports Performance</p></div>
                   <div class="trophy">🏆</div>
                 </div>
                 <div class="card-body">
@@ -167,7 +167,7 @@ const MemberCardPage = () => {
             <!-- Member Card - Position 1 -->
             <div class="card">
               <div class="card-header">
-                <div class="header-text"><h2>أكاديمية أداء الأبطال</h2><p>Global Champions Sports Performance</p></div>
+                <div class="header-text"><h2>شركة اداء الابطال العالمية للرياضة</h2><p>Global Champions Sports Performance</p></div>
                 <div class="trophy">🏆</div>
               </div>
               <div class="card-body">
@@ -242,7 +242,7 @@ const MemberCardPage = () => {
         {/* Header */}
         <div className="text-center mb-8">
           <h1 className="text-3xl font-bold text-gray-800 mb-2">🏆 بطاقة العضوية</h1>
-          <p className="text-gray-600">أكاديمية أداء الأبطال العالمية</p>
+          <p className="text-gray-600">شركة اداء الابطال العالمية للرياضة العالمية</p>
         </div>
 
         {/* Search */}
@@ -330,7 +330,7 @@ const MemberCardPage = () => {
               <div className="bg-gradient-to-r from-orange-500 to-amber-500 p-4 text-white">
                 <div className="flex items-center justify-between">
                   <div>
-                    <h2 className="text-xl font-bold">أكاديمية أداء الأبطال</h2>
+                    <h2 className="text-xl font-bold">شركة اداء الابطال العالمية للرياضة</h2>
                     <p className="text-orange-100 text-sm">Global Champions Sports Performance</p>
                   </div>
                   <div className="text-4xl">🏆</div>

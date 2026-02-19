@@ -16,7 +16,7 @@ export const VAT_RATE = 15; // 15%
 
 // Company info object
 export const COMPANY_INFO = {
-  name_ar: "أكاديمية أداء الأبطال",
+  name_ar: "شركة اداء الابطال العالمية للرياضة",
   name_en: "Global Champions Sports Performance",
   tax_number: COMPANY_TAX_NUMBER,
   commercial_reg: COMPANY_COMMERCIAL_REG,

@@ -1464,7 +1464,7 @@ export default function AccountingPage() {
                   <body>
                     <div class="header">
                       <h1>🏦 الحساب البنكي</h1>
-                      <p style="margin: 5px 0; color: #666;">أكاديمية أداء الأبطال</p>
+                      <p style="margin: 5px 0; color: #666;">شركة اداء الابطال العالمية للرياضة</p>
                     </div>
                     <div class="date">
                       📅 ${ARABIC_MONTHS[bankReportMonth]} ${bankReportYear}

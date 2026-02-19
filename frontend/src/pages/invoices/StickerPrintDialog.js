@@ -92,7 +92,7 @@ const generateCardHTML = (member, qrData, schedule) => {
   return `
     <div class="card">
       <div class="card-header">
-        <div class="header-text"><h2>أكاديمية أداء الأبطال</h2><p>Global Champions Sports Performance</p></div>
+        <div class="header-text"><h2>شركة اداء الابطال العالمية للرياضة</h2><p>Global Champions Sports Performance</p></div>
         <div class="trophy">🏆</div>
       </div>
       <div class="card-body">

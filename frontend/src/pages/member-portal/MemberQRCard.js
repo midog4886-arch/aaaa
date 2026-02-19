@@ -113,7 +113,7 @@ const MemberCard = () => {
               <!-- Member Card - Position 1 -->
               <div class="card">
                 <div class="card-header">
-                  <div class="header-text"><h2>أكاديمية أداء الأبطال</h2><p>Global Champions Sports Performance</p></div>
+                  <div class="header-text"><h2>شركة اداء الابطال العالمية للرياضة</h2><p>Global Champions Sports Performance</p></div>
                   <div class="trophy">🏆</div>
                 </div>
                 <div class="card-body">
@@ -157,7 +157,7 @@ const MemberCard = () => {
             <!-- Member Card - Position 1 -->
             <div class="card">
               <div class="card-header">
-                <div class="header-text"><h2>أكاديمية أداء الأبطال</h2><p>Global Champions Sports Performance</p></div>
+                <div class="header-text"><h2>شركة اداء الابطال العالمية للرياضة</h2><p>Global Champions Sports Performance</p></div>
                 <div class="trophy">🏆</div>
               </div>
               <div class="card-body">
@@ -212,7 +212,7 @@ const MemberCard = () => {
     ctx.fillStyle = '#F97316';
     ctx.font = 'bold 18px Tajawal, sans-serif';
     ctx.textAlign = 'center';
-    ctx.fillText('🏆 أكاديمية أداء الأبطال', 200, 35);
+    ctx.fillText('🏆 شركة اداء الابطال العالمية للرياضة', 200, 35);
     
     // QR Code
     const qrImg = new Image();
@@ -313,7 +313,7 @@ const MemberCard = () => {
             <div className="text-center space-y-4">
               {/* Card Preview */}
               <div className="bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900 p-6 rounded-xl text-white">
-                <p className="text-orange-400 font-bold mb-4">🏆 أكاديمية أداء الأبطال</p>
+                <p className="text-orange-400 font-bold mb-4">🏆 شركة اداء الابطال العالمية للرياضة</p>
                 
                 <div className="bg-white p-4 rounded-lg inline-block">
                   <QRCodeSVG

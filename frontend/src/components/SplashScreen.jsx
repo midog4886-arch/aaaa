@@ -90,7 +90,7 @@ const SplashScreen = ({ onComplete }) => {
               transition={{ delay: 0.5, duration: 0.5 }}
               className="mt-8 text-3xl font-bold text-white"
             >
-              أكاديمية أداء الأبطال
+              شركة اداء الابطال العالمية للرياضة
             </motion.h1>
 
             <motion.p

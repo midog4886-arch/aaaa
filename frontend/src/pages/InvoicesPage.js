@@ -1207,7 +1207,7 @@ ${selectedInvoice.discount > 0 ? `🎁 الخصم: ${selectedInvoice.discount} �
             
             <div class="card-wrapper">
               <div class="card">
-                <div class="logo">🏆 أكاديمية أداء الأبطال</div>
+                <div class="logo">🏆 شركة اداء الابطال العالمية للرياضة</div>
                 <img src="${qrImageUrl}" class="qr-img" alt="QR Code" />
                 <div class="name">${qrCardMember.name_ar || ''}</div>
                 <div class="code">#${qrCardMember.member_code || ''}</div>
@@ -1221,7 +1221,7 @@ ${selectedInvoice.discount > 0 ? `🎁 الخصم: ${selectedInvoice.discount} �
           <!-- Print Only - Top of page -->
           <div class="print-area">
             <div class="print-card">
-              <div class="logo">🏆 أكاديمية أداء الأبطال</div>
+              <div class="logo">🏆 شركة اداء الابطال العالمية للرياضة</div>
               <img src="${qrImageUrl}" class="qr-img" alt="QR Code" />
               <div class="name">${qrCardMember.name_ar || ''}</div>
               <div class="code">#${qrCardMember.member_code || ''}</div>
@@ -1367,7 +1367,7 @@ ${selectedInvoice.discount > 0 ? `🎁 الخصم: ${selectedInvoice.discount} �
               <!-- Member Card - Position 1 -->
               <div class="card">
                 <div class="card-header">
-                  <div class="header-text"><h2>أكاديمية أداء الأبطال</h2><p>Global Champions Sports Performance</p></div>
+                  <div class="header-text"><h2>شركة اداء الابطال العالمية للرياضة</h2><p>Global Champions Sports Performance</p></div>
                   <div class="trophy">🏆</div>
                 </div>
                 <div class="card-body">
@@ -1410,7 +1410,7 @@ ${selectedInvoice.discount > 0 ? `🎁 الخصم: ${selectedInvoice.discount} �
             <!-- Member Card - Position 1 -->
             <div class="card">
               <div class="card-header">
-                <div class="header-text"><h2>أكاديمية أداء الأبطال</h2><p>Global Champions Sports Performance</p></div>
+                <div class="header-text"><h2>شركة اداء الابطال العالمية للرياضة</h2><p>Global Champions Sports Performance</p></div>
                 <div class="trophy">🏆</div>
               </div>
               <div class="card-body">
@@ -1573,7 +1573,7 @@ ${selectedInvoice.discount > 0 ? `🎁 الخصم: ${selectedInvoice.discount} �
               <!-- Member Card - Position 1 -->
               <div class="card">
                 <div class="card-header">
-                  <div class="header-text"><h2>أكاديمية أداء الأبطال</h2><p>Global Champions Sports Performance</p></div>
+                  <div class="header-text"><h2>شركة اداء الابطال العالمية للرياضة</h2><p>Global Champions Sports Performance</p></div>
                   <div class="trophy">🏆</div>
                 </div>
                 <div class="card-body">
@@ -1616,7 +1616,7 @@ ${selectedInvoice.discount > 0 ? `🎁 الخصم: ${selectedInvoice.discount} �
             <!-- Member Card - Position 1 -->
             <div class="card">
               <div class="card-header">
-                <div class="header-text"><h2>أكاديمية أداء الأبطال</h2><p>Global Champions Sports Performance</p></div>
+                <div class="header-text"><h2>شركة اداء الابطال العالمية للرياضة</h2><p>Global Champions Sports Performance</p></div>
                 <div class="trophy">🏆</div>
               </div>
               <div class="card-body">
@@ -1681,7 +1681,7 @@ ${selectedInvoice.discount > 0 ? `🎁 الخصم: ${selectedInvoice.discount} �
       ctx.fillStyle = '#F97316';
       ctx.font = 'bold 18px Tajawal, sans-serif';
       ctx.textAlign = 'center';
-      ctx.fillText('🏆 أكاديمية أداء الأبطال', 200, 35);
+      ctx.fillText('🏆 شركة اداء الابطال العالمية للرياضة', 200, 35);
       
       // Generate QR code
       const QRCode = await import('qrcode');
@@ -1718,7 +1718,7 @@ ${selectedInvoice.discount > 0 ? `🎁 الخصم: ${selectedInvoice.discount} �
           URL.revokeObjectURL(url);
           
           // Open WhatsApp with message
-          const message = `🏆 *أكاديمية أداء الأبطال*
+          const message = `🏆 *شركة اداء الابطال العالمية للرياضة*
 ━━━━━━━━━━━━━━
 🎫 *بطاقة العضوية*
 
@@ -5233,7 +5233,7 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
             {qrCardMember && (
               <div className="text-center space-y-4">
                 {/* Academy Logo */}
-                <div className="text-orange-500 font-bold">🏆 أكاديمية أداء الأبطال</div>
+                <div className="text-orange-500 font-bold">🏆 شركة اداء الابطال العالمية للرياضة</div>
                 
                 {/* QR Code - 6cm x 6cm preview */}
                 <div 

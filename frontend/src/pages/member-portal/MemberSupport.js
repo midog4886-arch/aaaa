@@ -70,7 +70,7 @@ const MemberSupport = () => {
 
         <div className="text-center pb-6">
           <p className="text-gray-400 text-xs">
-            {t('أكاديمية أداء الأبطال', 'Champions Academy')}
+            {t('شركة اداء الابطال العالمية للرياضة', 'Champions Academy')}
           </p>
         </div>
       </div>

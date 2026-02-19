@@ -211,7 +211,7 @@ const MemberInvoices = () => {
         </head>
         <body>
           <div class="header">
-            <div class="logo">🏆 أكاديمية أداء الأبطال العالمية</div>
+            <div class="logo">🏆 شركة اداء الابطال العالمية للرياضة</div>
             <div class="form-number">استمارة تسجيل رقم: ${form.form_number}</div>
             <div style="font-size: 12px; color: #999; margin-top: 5px;">
               تاريخ: ${new Date(form.created_at).toLocaleDateString('ar-SA')}
@@ -283,7 +283,7 @@ const MemberInvoices = () => {
           </div>
 
           <div class="footer">
-            <p>شكراً لاختياركم أكاديمية أداء الأبطال العالمية</p>
+            <p>شكراً لاختياركم شركة اداء الابطال العالمية للرياضة</p>
             <p style="margin-top: 5px;">📞 +966 56 623 8384</p>
           </div>
 

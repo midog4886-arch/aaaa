@@ -94,7 +94,7 @@ const SplashScreen = ({ onComplete }) => {
           transition={{ delay: 0.5 }}
         >
           <h1 className="mt-8 text-3xl font-bold text-white drop-shadow-lg">
-            أكاديمية أداء الأبطال
+            شركة اداء الابطال العالمية للرياضة
           </h1>
           <p className="mt-3 text-xl text-white/90 font-medium tracking-wide">
             Global Champions Sports Performance

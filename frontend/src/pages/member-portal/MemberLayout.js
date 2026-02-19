@@ -85,7 +85,7 @@ const MemberLayout = ({ children }) => {
       computer: { ar: 'الكمبيوتر', en: 'Computer' },
       afterInstall: { ar: 'بعد التثبيت، سيظهر التطبيق على شاشتك الرئيسية ويمكنك فتحه مباشرة!', en: 'After installation, the app will appear on your home screen!' },
       allRights: { ar: 'جميع الحقوق محفوظة', en: 'All rights reserved' },
-      academyName: { ar: 'أكاديمية أداء الأبطال العالمية', en: 'Global Champions Sports Academy' }
+      academyName: { ar: 'شركة اداء الابطال العالمية للرياضة', en: 'Global Champions Sports Academy' }
     };
     return translations[key]?.[language] || key;
   };
@@ -101,7 +101,7 @@ const MemberLayout = ({ children }) => {
     fetchMsgUnread();
     
     // Update document title and manifest for member portal PWA
-    document.title = language === 'ar' ? 'بوابة الأعضاء - أكاديمية أداء الأبطال' : 'Member Portal - Champions Academy';
+    document.title = language === 'ar' ? 'بوابة الأعضاء - شركة اداء الابطال العالمية للرياضة' : 'Member Portal - Champions Academy';
     
     // Update manifest link for portal
     const manifestLink = document.getElementById('pwa-manifest');
@@ -266,7 +266,7 @@ const MemberLayout = ({ children }) => {
       notifications: { ar: 'الإشعارات', en: 'Notifications' },
       support: { ar: 'خدمة العملاء', en: 'Support' },
       memberPortal: { ar: 'بوابة الأعضاء', en: 'Member Portal' },
-      academy: { ar: 'أكاديمية أداء الأبطال', en: 'Champions Academy' },
+      academy: { ar: 'شركة اداء الابطال العالمية للرياضة', en: 'Champions Academy' },
       install: { ar: 'تثبيت', en: 'Install' },
       installApp: { ar: 'تثبيت التطبيق', en: 'Install App' },
       installDescription: { ar: 'يمكنك تثبيت التطبيق على جهازك للوصول السريع والعمل بدون إنترنت.', en: 'Install the app on your device for quick access and offline use.' },
@@ -485,7 +485,7 @@ const MemberLayout = ({ children }) => {
       {/* Footer - Hidden on mobile due to bottom nav */}
       <footer className={`hidden lg:block border-t py-4 mt-auto ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white'}`}>
         <div className={`max-w-7xl mx-auto px-4 text-center text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-          <p>{language === 'ar' ? 'أكاديمية أداء الأبطال العالمية' : 'Global Champions Sports Academy'} © {new Date().getFullYear()}</p>
+          <p>{language === 'ar' ? 'شركة اداء الابطال العالمية للرياضة' : 'Global Champions Sports Academy'} © {new Date().getFullYear()}</p>
         </div>
       </footer>
 

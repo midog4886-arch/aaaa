@@ -2052,7 +2052,7 @@ export const MembersPage = () => {
                     <div className="bg-gradient-to-r from-orange-500 to-amber-500 p-3 text-white">
                       <div className="flex items-center justify-between">
                         <div>
-                          <h3 className="text-base font-bold">أكاديمية أداء الأبطال</h3>
+                          <h3 className="text-base font-bold">شركة اداء الابطال العالمية للرياضة</h3>
                           <p className="text-orange-100 text-xs">Global Champions Sports Performance</p>
                         </div>
                         <div className="text-3xl">🏆</div>
