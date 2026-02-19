@@ -21,6 +21,7 @@ export const authAPI = {
 // Activities API
 export const activitiesAPI = {
   getAll: (params = {}) => axios.get(`${API}/activities`, { params }),
+  getMemberCounts: () => axios.get(`${API}/activities/member-counts`),
   create: (data) => axios.post(`${API}/activities`, data),
   update: (id, data) => axios.put(`${API}/activities/${id}`, data),
   delete: (id) => axios.delete(`${API}/activities/${id}`),

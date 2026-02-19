@@ -91,6 +91,22 @@ async def update_activity(activity_id: str, activity: ActivityCreate, current_us
     return Activity(**{k: v for k, v in result.items() if k != "_id"})
 
 
+@router.get("/member-counts")
+async def get_activity_member_counts(current_user: dict = Depends(get_current_user)):
+    activities = await db.activities.find({}, {"_id": 0, "id": 1, "name": 1, "name_ar": 1}).to_list(100)
+    counts = {}
+    for act in activities:
+        name = act.get("name_ar") or act.get("name", "")
+        count = await db.members.count_documents({
+            "$or": [
+                {"activities.activity_name": name},
+                {"activities.activity_name": act.get("name", "")},
+            ]
+        })
+        counts[act["id"]] = count
+    return counts
+
+
 @router.delete("/{activity_id}")
 async def delete_activity(activity_id: str, current_user: dict = Depends(get_current_user)):
     result = await db.activities.delete_one({"id": activity_id})
