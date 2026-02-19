@@ -16,7 +16,7 @@ const BottomNavigation = ({ darkMode, unreadCount = 0, language = 'ar' }) => {
   
   const navItems = [
     { 
-      to: '/', 
+      to: '/member-dashboard', 
       icon: Home, 
       label: language === 'ar' ? 'الرئيسية' : 'Home' 
     },

@@ -227,7 +227,7 @@ const MemberLayout = ({ children }) => {
   };
 
   const navItems = [
-    { to: '/', icon: Home, labelKey: 'home' },
+    { to: '/member-dashboard', icon: Home, labelKey: 'home' },
     { to: '/videos', icon: Video, labelKey: 'dailyVideos' },
     { to: '/member-attendance', icon: Activity, labelKey: 'attendance' },
     { to: '/subscriptions', icon: CreditCard, labelKey: 'subscriptions' },
