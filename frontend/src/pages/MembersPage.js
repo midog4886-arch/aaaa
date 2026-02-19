@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/AuthContext';
@@ -11,6 +11,7 @@ import { Label } from '../components/ui/label';
 import { Badge } from '../components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '../components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
+import { Popover, PopoverContent, PopoverTrigger } from '../components/ui/popover';
 import { Textarea } from '../components/ui/textarea';
 import { membersAPI, activitiesAPI, coachesAPI, exportAPI, invoicesAPI, attendanceAPI, levelsAPI } from '../services/api';
 import { toast } from 'sonner';
@@ -34,7 +35,10 @@ import {
   History,
   Clock,
   CreditCard,
-  QrCode
+  QrCode,
+  ChevronDown,
+  Check,
+  Filter
 } from 'lucide-react';
 
 export const MembersPage = () => {
@@ -48,6 +52,8 @@ export const MembersPage = () => {
   const [searchTerm, setSearchTerm] = useState(searchParams.get('search') || '');
   const [filterActivity, setFilterActivity] = useState('all');
   const [filterStatus, setFilterStatus] = useState('all');
+  const [activityFilterOpen, setActivityFilterOpen] = useState(false);
+  const [activityFilterSearch, setActivityFilterSearch] = useState('');
   
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [isViewDialogOpen, setIsViewDialogOpen] = useState(false);
@@ -702,6 +708,94 @@ export const MembersPage = () => {
       .sort((a, b) => new Date(b.start_date) - new Date(a.start_date));
   };
 
+  const ACTIVITY_ICON_MAP = {
+    'سباح': '🏊', 'swim': '🏊',
+    'كرة': '⚽', 'football': '⚽', 'كرة قدم': '⚽',
+    'كارات': '🥋', 'karate': '🥋',
+    'جمباز': '🤸', 'gymnast': '🤸',
+    'تنس': '🎾', 'tennis': '🎾',
+    'سلة': '🏀', 'basket': '🏀',
+    'طائرة': '🏐', 'volley': '🏐',
+    'ملاكمة': '🥊', 'box': '🥊',
+    'تايكوندو': '🥋', 'taekwondo': '🥋',
+    'جودو': '🥋', 'judo': '🥋',
+  };
+
+  const getActivityIcon = (name) => {
+    if (!name) return '🏅';
+    const lower = name.toLowerCase();
+    for (const [key, icon] of Object.entries(ACTIVITY_ICON_MAP)) {
+      if (lower.includes(key)) return icon;
+    }
+    return '🏅';
+  };
+
+  const getActivityGroupKey = (name) => {
+    if (!name) return 'other';
+    const lower = name.toLowerCase();
+    if (lower.includes('سباح') || lower.includes('swim')) return 'swimming';
+    if (lower.includes('كرة') || lower.includes('football') || lower.includes('كرة قدم')) return 'football';
+    if (lower.includes('كارات') || lower.includes('karate')) return 'karate';
+    if (lower.includes('جمباز') || lower.includes('gymnast')) return 'gymnastics';
+    return 'other';
+  };
+
+  const GROUP_INFO = {
+    swimming: { label_ar: '🏊 السباحة', label_en: '🏊 Swimming', order: 1 },
+    football: { label_ar: '⚽ كرة القدم', label_en: '⚽ Football', order: 2 },
+    karate: { label_ar: '🥋 الكاراتيه', label_en: '🥋 Karate', order: 3 },
+    gymnastics: { label_ar: '🤸 الجمباز', label_en: '🤸 Gymnastics', order: 4 },
+    other: { label_ar: '🏅 أخرى', label_en: '🏅 Other', order: 5 },
+  };
+
+  const groupedActivities = useMemo(() => {
+    const groups = {};
+    const memberSets = {};
+    members.forEach(m => {
+      const seen = new Set();
+      (m.activities || []).forEach(a => {
+        if (a.activity_id && !seen.has(a.activity_id)) {
+          seen.add(a.activity_id);
+          if (!memberSets[a.activity_id]) memberSets[a.activity_id] = 0;
+          memberSets[a.activity_id]++;
+        }
+      });
+    });
+
+    activities.forEach(act => {
+      const name = act.name_ar || act.name || '';
+      const groupKey = getActivityGroupKey(name);
+      if (!groups[groupKey]) groups[groupKey] = [];
+      groups[groupKey].push({
+        ...act,
+        icon: getActivityIcon(name),
+        memberCount: memberSets[act.id] || 0
+      });
+    });
+
+    return Object.entries(groups)
+      .sort(([a], [b]) => (GROUP_INFO[a]?.order || 99) - (GROUP_INFO[b]?.order || 99))
+      .map(([key, items]) => ({
+        key,
+        label: language === 'ar' ? GROUP_INFO[key]?.label_ar : GROUP_INFO[key]?.label_en,
+        items: items.filter(item => {
+          if (!activityFilterSearch) return true;
+          const s = activityFilterSearch.toLowerCase();
+          return (item.name_ar || '').toLowerCase().includes(s) || (item.name || '').toLowerCase().includes(s);
+        })
+      }))
+      .filter(g => g.items.length > 0);
+  }, [activities, members, language, activityFilterSearch]);
+
+  const selectedActivityLabel = useMemo(() => {
+    if (filterActivity === 'all') return language === 'ar' ? 'الأنشطة' : 'Activities';
+    const act = activities.find(a => a.id === filterActivity);
+    if (!act) return language === 'ar' ? 'الأنشطة' : 'Activities';
+    const name = language === 'ar' ? (act.name_ar || act.name) : (act.name || act.name_ar);
+    const icon = getActivityIcon(act.name_ar || act.name || '');
+    return `${icon} ${name}`;
+  }, [filterActivity, activities, language]);
+
   const getActivityColor = (activityName) => {
     const colorMap = {
       'السباحة': 'activity-swimming',
@@ -761,19 +855,70 @@ export const MembersPage = () => {
                 data-testid="search-members-input"
               />
             </div>
-            <Select value={filterActivity} onValueChange={setFilterActivity}>
-              <SelectTrigger className="w-[150px]" data-testid="filter-activity-select">
-                <SelectValue placeholder={t('activities')} />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">{t('activities')}</SelectItem>
-                {activities.map(activity => (
-                  <SelectItem key={activity.id} value={activity.id}>
-                    {language === 'ar' ? activity.name_ar : activity.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <Popover open={activityFilterOpen} onOpenChange={(open) => { setActivityFilterOpen(open); if (!open) setActivityFilterSearch(''); }}>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="outline"
+                  className="w-[200px] justify-between text-sm font-normal"
+                  data-testid="filter-activity-select"
+                >
+                  <span className="truncate">{selectedActivityLabel}</span>
+                  <ChevronDown className={`w-4 h-4 ms-1 shrink-0 opacity-50 transition-transform ${activityFilterOpen ? 'rotate-180' : ''}`} />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-[280px] p-0" align="start">
+                <div className="p-2 border-b">
+                  <div className="relative">
+                    <Search className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none rtl:right-2.5 ltr:left-2.5 ltr:right-auto" />
+                    <Input
+                      placeholder={language === 'ar' ? 'بحث في الأنشطة...' : 'Search activities...'}
+                      value={activityFilterSearch}
+                      onChange={e => setActivityFilterSearch(e.target.value)}
+                      className="h-8 ps-8 text-sm"
+                      autoFocus
+                    />
+                  </div>
+                </div>
+                <div className="max-h-[300px] overflow-y-auto">
+                  <button
+                    className={`w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-gray-50 transition-colors ${filterActivity === 'all' ? 'bg-primary/5 text-primary font-medium' : ''}`}
+                    onClick={() => { setFilterActivity('all'); setActivityFilterOpen(false); setActivityFilterSearch(''); }}
+                  >
+                    {filterActivity === 'all' && <Check className="w-4 h-4 text-primary shrink-0" />}
+                    <Filter className={`w-4 h-4 shrink-0 ${filterActivity === 'all' ? '' : 'ms-6'} opacity-50`} />
+                    <span>{language === 'ar' ? 'كل الأنشطة' : 'All Activities'}</span>
+                    <Badge variant="secondary" className="ms-auto text-[10px] px-1.5">{activities.length}</Badge>
+                  </button>
+                  <div className="border-t" />
+                  {groupedActivities.map(group => (
+                    <div key={group.key}>
+                      <div className="px-3 py-1.5 bg-gray-50 text-xs font-bold text-gray-500 sticky top-0">
+                        {group.label}
+                      </div>
+                      {group.items.map(act => (
+                        <button
+                          key={act.id}
+                          className={`w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-gray-50 transition-colors ${filterActivity === act.id ? 'bg-primary/5 text-primary font-medium' : ''}`}
+                          onClick={() => { setFilterActivity(act.id); setActivityFilterOpen(false); setActivityFilterSearch(''); }}
+                        >
+                          {filterActivity === act.id && <Check className="w-4 h-4 text-primary shrink-0" />}
+                          <span className={`text-base ${filterActivity === act.id ? '' : 'ms-6'}`}>{act.icon}</span>
+                          <span className="flex-1 text-start truncate">{language === 'ar' ? (act.name_ar || act.name) : (act.name || act.name_ar)}</span>
+                          <Badge variant="outline" className="text-[10px] px-1.5 shrink-0">
+                            {act.memberCount}
+                          </Badge>
+                        </button>
+                      ))}
+                    </div>
+                  ))}
+                  {groupedActivities.length === 0 && activityFilterSearch && (
+                    <div className="p-4 text-center text-sm text-gray-400">
+                      {language === 'ar' ? 'لا توجد نتائج' : 'No results'}
+                    </div>
+                  )}
+                </div>
+              </PopoverContent>
+            </Popover>
             <div className="flex gap-1 items-center border rounded-lg p-1">
               <button
                 onClick={() => setFilterStatus('all')}
