@@ -75,6 +75,8 @@ frontend/
 - Mobile UI improvements: safe-area padding, responsive touch targets, smooth transitions
 - QR Attendance Schedule Validation: auto-checks member's scheduled days before recording attendance. Correct day → auto check-in with success. Wrong day → warning with scheduled days shown + manual override button. Uses Saudi timezone (UTC+3) for day comparison. Schedule parsed from invoice items.
 - Internal Messaging System: Admin-member direct messaging within the app. Admin can send to individual members or broadcast to all. Members can view and reply from /member-messages. Unread badges in navigation. Backend routes in backend/routes/messages.py + member_portal.py. Frontend: "Internal Messages" tab in MessagesPage + MemberMessages page. MongoDB collection: messages.
+- Global Search: Unified search bar in admin header (Ctrl+K shortcut) searches across members, invoices, and activities simultaneously. Backend endpoint /api/global-search with regex matching. Results shown in categorized dropdown with navigation links. Component: frontend/src/components/GlobalSearch.js
+- Customizable Dashboard: Admin can show/hide and reorder dashboard widgets (Statistics Cards, Detail View, Expiring Subscriptions, Recent Notes). Settings saved per-user in MongoDB dashboard_settings collection. Customize button opens panel with up/down arrows and visibility toggles. Backend endpoints: GET/PUT /api/dashboard/settings
 
 ## Known Issues
 - MongoDB Atlas SSL handshake may fail with `TLSV1_ALERT_INTERNAL_ERROR` - this is typically caused by the Replit IP not being whitelisted in MongoDB Atlas Network Access settings. The user needs to add `0.0.0.0/0` (allow all) in MongoDB Atlas Network Access.

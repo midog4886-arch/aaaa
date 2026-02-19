@@ -1867,6 +1867,92 @@ async def get_company_info():
         "currency": "SAR"
     }
 
+@api_router.get("/global-search")
+async def global_search(
+    q: str = "",
+    current_user: dict = Depends(get_current_user)
+):
+    if not q or len(q.strip()) < 2:
+        return {"members": [], "invoices": [], "activities": []}
+    
+    query = q.strip()
+    regex_pattern = {"$regex": query, "$options": "i"}
+    
+    members_query = {"$or": [
+        {"name": regex_pattern},
+        {"name_ar": regex_pattern},
+        {"phone": regex_pattern},
+        {"guardian_name": regex_pattern},
+        {"guardian_name_ar": regex_pattern},
+        {"guardian_phone": regex_pattern},
+        {"member_id": regex_pattern},
+    ]}
+    members_cursor = db.members.find(members_query, {"_id": 0}).limit(10)
+    members = await members_cursor.to_list(10)
+    members_results = [{
+        "id": m.get("id", ""),
+        "name": m.get("name_ar") or m.get("name", ""),
+        "phone": m.get("phone", ""),
+        "member_id": m.get("member_id", ""),
+        "activities_count": len(m.get("activities", [])),
+    } for m in members]
+    
+    invoices_query = {"$or": [
+        {"invoice_number": regex_pattern},
+        {"member_name": regex_pattern},
+        {"member_phone": regex_pattern},
+    ]}
+    invoices_cursor = db.invoices.find(invoices_query, {"_id": 0}).sort("created_at", -1).limit(10)
+    invoices = await invoices_cursor.to_list(10)
+    invoices_results = [{
+        "id": inv.get("id", ""),
+        "invoice_number": inv.get("invoice_number", ""),
+        "member_name": inv.get("member_name", ""),
+        "total": inv.get("total", 0),
+        "status": inv.get("status", ""),
+        "created_at": inv.get("created_at", ""),
+    } for inv in invoices]
+    
+    activities_query = {"$or": [
+        {"name": regex_pattern},
+        {"name_ar": regex_pattern},
+    ]}
+    activities_cursor = db.activities.find(activities_query, {"_id": 0}).limit(10)
+    activities = await activities_cursor.to_list(10)
+    activities_results = [{
+        "id": a.get("id", ""),
+        "name": a.get("name_ar") or a.get("name", ""),
+        "monthly_fee": a.get("monthly_fee", 0),
+    } for a in activities]
+    
+    return {
+        "members": members_results,
+        "invoices": invoices_results,
+        "activities": activities_results,
+    }
+
+@api_router.get("/dashboard/settings")
+async def get_dashboard_settings(current_user: dict = Depends(get_current_user)):
+    user_id = current_user.get("id", "")
+    settings = await db.dashboard_settings.find_one({"user_id": user_id}, {"_id": 0})
+    if not settings:
+        return {"widgets": [], "user_id": user_id}
+    return settings
+
+@api_router.put("/dashboard/settings")
+async def save_dashboard_settings(
+    data: dict,
+    current_user: dict = Depends(get_current_user)
+):
+    user_id = current_user.get("id", "")
+    data["user_id"] = user_id
+    await db.dashboard_settings.update_one(
+        {"user_id": user_id},
+        {"$set": data},
+        upsert=True
+    )
+    return {"message": "Settings saved"}
+
 @api_router.get("/dashboard/stats")
 async def get_dashboard_stats(
     branch_filter: Optional[str] = None,

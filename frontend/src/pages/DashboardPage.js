@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/AuthContext';
 import { Layout } from '../components/Layout';
@@ -29,9 +29,28 @@ import {
   Lock,
   Unlock,
   Eye,
-  EyeOff
+  EyeOff,
+  Settings2,
+  GripVertical,
+  ChevronUp,
+  ChevronDown,
+  EyeIcon
 } from 'lucide-react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from 'recharts';
+
+const DEFAULT_WIDGETS = [
+  { id: 'stats', visible: true },
+  { id: 'details', visible: true },
+  { id: 'expiring', visible: true },
+  { id: 'notes', visible: true },
+];
+
+const WIDGET_LABELS = {
+  stats: { ar: 'بطاقات الإحصائيات', en: 'Statistics Cards' },
+  details: { ar: 'عرض التفاصيل', en: 'Detail View' },
+  expiring: { ar: 'الاشتراكات المنتهية', en: 'Expiring Subscriptions' },
+  notes: { ar: 'آخر الملاحظات', en: 'Recent Notes' },
+};
 
 export const DashboardPage = () => {
   const { t, language } = useLanguage();
@@ -47,14 +66,59 @@ export const DashboardPage = () => {
   const [passwordInput, setPasswordInput] = useState('');
   const STATS_PASSWORD = '242456';
 
+  const [widgets, setWidgets] = useState(DEFAULT_WIDGETS);
+  const [showCustomize, setShowCustomize] = useState(false);
+
   // Detail view states
   const [activeDetail, setActiveDetail] = useState(null); // 'members', 'subscriptions', 'revenue', 'expiring', 'coupons'
   const [detailData, setDetailData] = useState(null);
   const [detailLoading, setDetailLoading] = useState(false);
 
   useEffect(() => {
+    loadDashboardSettings();
+  }, []);
+
+  useEffect(() => {
     loadData();
   }, [selectedBranchId]);
+
+  const loadDashboardSettings = async () => {
+    try {
+      const res = await dashboardAPI.getSettings();
+      if (res.data?.widgets?.length > 0) {
+        setWidgets(res.data.widgets);
+      }
+    } catch (err) {
+      console.error('Failed to load dashboard settings:', err);
+    }
+  };
+
+  const saveDashboardSettings = async (newWidgets) => {
+    setWidgets(newWidgets);
+    try {
+      await dashboardAPI.saveSettings({ widgets: newWidgets });
+    } catch (err) {
+      console.error('Failed to save dashboard settings:', err);
+    }
+  };
+
+  const toggleWidgetVisibility = (widgetId) => {
+    const updated = widgets.map(w => w.id === widgetId ? { ...w, visible: !w.visible } : w);
+    saveDashboardSettings(updated);
+  };
+
+  const moveWidget = (index, direction) => {
+    const newIndex = index + direction;
+    if (newIndex < 0 || newIndex >= widgets.length) return;
+    const updated = [...widgets];
+    [updated[index], updated[newIndex]] = [updated[newIndex], updated[index]];
+    saveDashboardSettings(updated);
+  };
+
+  const isWidgetVisible = (widgetId) => {
+    const w = widgets.find(w => w.id === widgetId);
+    return w ? w.visible : true;
+  };
 
   const loadData = async () => {
     try {
@@ -201,8 +265,18 @@ export const DashboardPage = () => {
   return (
     <Layout title={t('dashboard')}>
       <div className="space-y-6 animate-fade-in" data-testid="dashboard-page">
-        {/* Stats Unlock Controls */}
-        <div className="flex items-center justify-end gap-2">
+        {/* Dashboard Controls */}
+        <div className="flex items-center justify-between gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setShowCustomize(!showCustomize)}
+            className="gap-2"
+          >
+            <Settings2 className="w-4 h-4" />
+            {language === 'ar' ? 'تخصيص' : 'Customize'}
+          </Button>
+          <div className="flex items-center gap-2">
           {!statsUnlocked ? (
             showPasswordInput ? (
               <div className="flex items-center gap-2 bg-white border rounded-lg px-3 py-2 shadow-sm">
@@ -235,106 +309,114 @@ export const DashboardPage = () => {
               {language === 'ar' ? 'إخفاء الأرقام' : 'Hide Numbers'}
             </Button>
           )}
+          </div>
         </div>
+
+        {/* Customization Panel */}
+        {showCustomize && (
+          <Card className="border-dashed border-2 border-primary/30 bg-primary/5">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm flex items-center gap-2">
+                <Settings2 className="w-4 h-4" />
+                {language === 'ar' ? 'تخصيص لوحة التحكم' : 'Customize Dashboard'}
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-2">
+                {widgets.map((widget, index) => (
+                  <div key={widget.id} className="flex items-center gap-3 p-2 bg-white rounded-lg border">
+                    <GripVertical className="w-4 h-4 text-muted-foreground" />
+                    <span className="flex-1 text-sm font-medium">
+                      {WIDGET_LABELS[widget.id]?.[language] || widget.id}
+                    </span>
+                    <div className="flex items-center gap-1">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => moveWidget(index, -1)}
+                        disabled={index === 0}
+                        className="h-7 w-7 p-0"
+                      >
+                        <ChevronUp className="w-4 h-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => moveWidget(index, 1)}
+                        disabled={index === widgets.length - 1}
+                        className="h-7 w-7 p-0"
+                      >
+                        <ChevronDown className="w-4 h-4" />
+                      </Button>
+                      <Button
+                        variant={widget.visible ? "default" : "outline"}
+                        size="sm"
+                        onClick={() => toggleWidgetVisibility(widget.id)}
+                        className="h-7 px-2 text-xs"
+                      >
+                        {widget.visible ? (
+                          <>{language === 'ar' ? 'ظاهر' : 'Visible'}</>
+                        ) : (
+                          <>{language === 'ar' ? 'مخفي' : 'Hidden'}</>
+                        )}
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <p className="text-xs text-muted-foreground mt-3">
+                {language === 'ar' ? 'استخدم الأسهم لتغيير الترتيب، والزر لإظهار/إخفاء العناصر. التغييرات تُحفظ تلقائياً.' : 'Use arrows to reorder, button to show/hide. Changes save automatically.'}
+              </p>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Stats Grid */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          <Card 
-            className={`stat-card hover-scale cursor-pointer transition-all ${activeDetail === 'members' ? 'ring-2 ring-primary' : ''}`} 
-            data-testid="stat-members"
-            onClick={() => toggleDetail('members')}
-          >
-            <div className="stat-card-icon bg-primary/10">
-              <Users className="w-6 h-6 text-primary" />
+        {/* Render widgets in saved order */}
+        {widgets.filter(w => w.visible).map((widget) => {
+          if (widget.id === 'stats') return (
+            <div key="stats" className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              <Card className={`stat-card hover-scale cursor-pointer transition-all ${activeDetail === 'members' ? 'ring-2 ring-primary' : ''}`} data-testid="stat-members" onClick={() => toggleDetail('members')}>
+                <div className="stat-card-icon bg-primary/10"><Users className="w-6 h-6 text-primary" /></div>
+                <div className="stat-card-value text-primary">{statsUnlocked ? (stats?.members_count || 0) : hiddenValue}</div>
+                <div className="stat-card-label">{t('total_members')}</div>
+                <div className="text-xs text-muted-foreground mt-1">{language === 'ar' ? 'اضغط للتفاصيل' : 'Click for details'}</div>
+              </Card>
+              <Card className={`stat-card hover-scale cursor-pointer transition-all ${activeDetail === 'subscriptions' ? 'ring-2 ring-green-500' : ''}`} data-testid="stat-subscriptions" onClick={() => toggleDetail('subscriptions')}>
+                <div className="stat-card-icon bg-green-500/10"><Activity className="w-6 h-6 text-green-500" /></div>
+                <div className="stat-card-value text-green-500">{statsUnlocked ? (stats?.active_subscriptions || 0) : hiddenValue}</div>
+                <div className="stat-card-label">{t('active_subscriptions')}</div>
+                <div className="text-xs text-muted-foreground mt-1">{language === 'ar' ? 'اضغط للتفاصيل' : 'Click for details'}</div>
+              </Card>
+              <Card className={`stat-card hover-scale cursor-pointer transition-all ${activeDetail === 'revenue' ? 'ring-2 ring-blue-500' : ''}`} data-testid="stat-revenue" onClick={() => toggleDetail('revenue')}>
+                <div className="stat-card-icon bg-blue-500/10"><Banknote className="w-6 h-6 text-blue-500" /></div>
+                <div className="stat-card-value text-blue-500">{statsUnlocked ? formatCurrency(stats?.month_revenue) : hiddenValue}</div>
+                <div className="stat-card-label">{t('monthly_revenue')}</div>
+                <div className="text-xs text-muted-foreground mt-1">{language === 'ar' ? 'اضغط للتفاصيل' : 'Click for details'}</div>
+              </Card>
+              <Card className={`stat-card hover-scale cursor-pointer transition-all ${activeDetail === 'expiring' ? 'ring-2 ring-amber-500' : ''}`} data-testid="stat-expiring" onClick={() => toggleDetail('expiring')}>
+                <div className="stat-card-icon bg-amber-500/10"><AlertTriangle className="w-6 h-6 text-amber-500" /></div>
+                <div className="stat-card-value text-amber-500">{statsUnlocked ? (stats?.expiring_count || 0) : hiddenValue}</div>
+                <div className="stat-card-label">{t('expiring_soon')}</div>
+                <div className="text-xs text-muted-foreground mt-1">{language === 'ar' ? 'اضغط للتفاصيل' : 'Click for details'}</div>
+              </Card>
+              <Card className={`stat-card hover-scale cursor-pointer transition-all ${activeDetail === 'coupons' ? 'ring-2 ring-purple-500' : ''}`} data-testid="stat-coupons" onClick={() => toggleDetail('coupons')}>
+                <div className="stat-card-icon bg-purple-500/10"><Tag className="w-6 h-6 text-purple-500" /></div>
+                <div className="stat-card-value text-purple-500">{statsUnlocked ? discounts.filter(d => d.is_active).length : hiddenValue}</div>
+                <div className="stat-card-label">{language === 'ar' ? 'كوبونات الخصم' : 'Discount Coupons'}</div>
+                <div className="text-xs text-muted-foreground mt-1">{language === 'ar' ? 'اضغط للتفاصيل' : 'Click for details'}</div>
+              </Card>
+              <Card className={`stat-card hover-scale cursor-pointer transition-all ${activeDetail === 'pendingForms' ? 'ring-2 ring-teal-500' : ''}`} data-testid="stat-pending-forms" onClick={() => toggleDetail('pendingForms')}>
+                <div className="stat-card-icon bg-teal-500/10"><ClipboardList className="w-6 h-6 text-teal-500" /></div>
+                <div className="stat-card-value text-teal-500">{statsUnlocked ? formatCurrency(stats?.pending_forms_total) : hiddenValue}</div>
+                <div className="stat-card-label">{language === 'ar' ? 'استمارات غير مفوترة' : 'Pending Forms'}</div>
+                <div className="text-xs text-muted-foreground mt-1">{statsUnlocked ? `${stats?.pending_forms_count || 0} ${language === 'ar' ? 'استمارة' : 'forms'}` : ''}</div>
+              </Card>
             </div>
-            <div className="stat-card-value text-primary">
-              {statsUnlocked ? (stats?.members_count || 0) : hiddenValue}
-            </div>
-            <div className="stat-card-label">{t('total_members')}</div>
-            <div className="text-xs text-muted-foreground mt-1">{language === 'ar' ? 'اضغط للتفاصيل' : 'Click for details'}</div>
-          </Card>
+          );
 
-          <Card 
-            className={`stat-card hover-scale cursor-pointer transition-all ${activeDetail === 'subscriptions' ? 'ring-2 ring-green-500' : ''}`} 
-            data-testid="stat-subscriptions"
-            onClick={() => toggleDetail('subscriptions')}
-          >
-            <div className="stat-card-icon bg-green-500/10">
-              <Activity className="w-6 h-6 text-green-500" />
-            </div>
-            <div className="stat-card-value text-green-500">
-              {statsUnlocked ? (stats?.active_subscriptions || 0) : hiddenValue}
-            </div>
-            <div className="stat-card-label">{t('active_subscriptions')}</div>
-            <div className="text-xs text-muted-foreground mt-1">{language === 'ar' ? 'اضغط للتفاصيل' : 'Click for details'}</div>
-          </Card>
-
-          <Card 
-            className={`stat-card hover-scale cursor-pointer transition-all ${activeDetail === 'revenue' ? 'ring-2 ring-blue-500' : ''}`} 
-            data-testid="stat-revenue"
-            onClick={() => toggleDetail('revenue')}
-          >
-            <div className="stat-card-icon bg-blue-500/10">
-              <Banknote className="w-6 h-6 text-blue-500" />
-            </div>
-            <div className="stat-card-value text-blue-500">
-              {statsUnlocked ? formatCurrency(stats?.month_revenue) : hiddenValue}
-            </div>
-            <div className="stat-card-label">{t('monthly_revenue')}</div>
-            <div className="text-xs text-muted-foreground mt-1">{language === 'ar' ? 'اضغط للتفاصيل' : 'Click for details'}</div>
-          </Card>
-
-          <Card 
-            className={`stat-card hover-scale cursor-pointer transition-all ${activeDetail === 'expiring' ? 'ring-2 ring-amber-500' : ''}`} 
-            data-testid="stat-expiring"
-            onClick={() => toggleDetail('expiring')}
-          >
-            <div className="stat-card-icon bg-amber-500/10">
-              <AlertTriangle className="w-6 h-6 text-amber-500" />
-            </div>
-            <div className="stat-card-value text-amber-500">
-              {statsUnlocked ? (stats?.expiring_count || 0) : hiddenValue}
-            </div>
-            <div className="stat-card-label">{t('expiring_soon')}</div>
-            <div className="text-xs text-muted-foreground mt-1">{language === 'ar' ? 'اضغط للتفاصيل' : 'Click for details'}</div>
-          </Card>
-
-          <Card 
-            className={`stat-card hover-scale cursor-pointer transition-all ${activeDetail === 'coupons' ? 'ring-2 ring-purple-500' : ''}`} 
-            data-testid="stat-coupons"
-            onClick={() => toggleDetail('coupons')}
-          >
-            <div className="stat-card-icon bg-purple-500/10">
-              <Tag className="w-6 h-6 text-purple-500" />
-            </div>
-            <div className="stat-card-value text-purple-500">
-              {statsUnlocked ? discounts.filter(d => d.is_active).length : hiddenValue}
-            </div>
-            <div className="stat-card-label">{language === 'ar' ? 'كوبونات الخصم' : 'Discount Coupons'}</div>
-            <div className="text-xs text-muted-foreground mt-1">{language === 'ar' ? 'اضغط للتفاصيل' : 'Click for details'}</div>
-          </Card>
-
-          <Card 
-            className={`stat-card hover-scale cursor-pointer transition-all ${activeDetail === 'pendingForms' ? 'ring-2 ring-teal-500' : ''}`} 
-            data-testid="stat-pending-forms"
-            onClick={() => toggleDetail('pendingForms')}
-          >
-            <div className="stat-card-icon bg-teal-500/10">
-              <ClipboardList className="w-6 h-6 text-teal-500" />
-            </div>
-            <div className="stat-card-value text-teal-500">
-              {statsUnlocked ? formatCurrency(stats?.pending_forms_total) : hiddenValue}
-            </div>
-            <div className="stat-card-label">{language === 'ar' ? 'استمارات غير مفوترة' : 'Pending Forms'}</div>
-            <div className="text-xs text-muted-foreground mt-1">
-              {statsUnlocked ? `${stats?.pending_forms_count || 0} ${language === 'ar' ? 'استمارة' : 'forms'}` : ''}
-            </div>
-          </Card>
-        </div>
-
-        {/* Detail Sections */}
-        {activeDetail && (
-          <Card className={`animate-in slide-in-from-top-2 ${
+          if (widget.id === 'details' && activeDetail) return (
+          <Card key="details" className={`animate-in slide-in-from-top-2 ${
             activeDetail === 'members' ? 'border-primary/30 bg-primary/5' :
             activeDetail === 'subscriptions' ? 'border-green-500/30 bg-green-50/30' :
             activeDetail === 'revenue' ? 'border-blue-500/30 bg-blue-50/30' :
@@ -623,140 +705,110 @@ export const DashboardPage = () => {
               )}
             </CardContent>
           </Card>
-        )}
+          );
 
-        {/* Charts and Lists */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Expiring Subscriptions */}
-          <Card data-testid="expiring-subscriptions">
+          if (widget.id === 'expiring') return (
+          <div key="expiring" className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <Card data-testid="expiring-subscriptions">
+              <CardHeader>
+                <CardTitle className="flex items-center justify-between">
+                  <span className="flex items-center gap-2">
+                    <AlertTriangle className="w-5 h-5 text-amber-500" />
+                    {t('expiring_subscriptions')}
+                  </span>
+                  {expiring.length > 0 && (
+                    <Button size="sm" variant="outline" onClick={sendAllReminders} className="text-amber-600 border-amber-500/30 hover:bg-amber-500/10" data-testid="send-all-reminders-btn">
+                      <Send className="w-4 h-4 me-1" />
+                      {language === 'ar' ? 'إرسال تنبيهات' : 'Send All'}
+                    </Button>
+                  )}
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {expiring.length > 0 ? (
+                  <div className="space-y-3 max-h-[250px] overflow-y-auto">
+                    {expiring.slice(0, 5).map((item, index) => (
+                      <div key={index} className="flex items-center justify-between p-3 bg-muted/50 rounded-lg animate-slide-in" style={{ animationDelay: `${index * 0.05}s` }}>
+                        <div className="flex-1 min-w-0">
+                          <p className="font-medium truncate">{item.member_name}</p>
+                          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                            <span>{item.activity_name}</span>
+                            <span>-</span>
+                            <div className="flex items-center gap-1">
+                              <Phone className="w-3 h-3" />
+                              <span dir="ltr">{item.phone}</span>
+                            </div>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <button onClick={() => sendWhatsAppReminder(item)} className="p-2 rounded-full hover:bg-green-500/10 text-green-600 transition-colors" title={language === 'ar' ? 'إرسال تنبيه واتساب' : 'Send WhatsApp reminder'} data-testid={`send-reminder-${index}`}>
+                            <MessageSquare className="w-4 h-4" />
+                          </button>
+                          <Badge variant="outline" className={`${item.days_remaining <= 3 ? 'bg-red-500/10 text-red-500 border-red-500/30' : 'bg-amber-500/10 text-amber-500 border-amber-500/30'}`}>
+                            <Calendar className="w-3 h-3 me-1" />
+                            {item.days_remaining} {t('days')}
+                          </Badge>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="empty-state">
+                    <Bell className="empty-state-icon" />
+                    <p>{language === 'ar' ? 'لا توجد اشتراكات تنتهي قريباً' : 'No expiring subscriptions'}</p>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+          );
+
+          if (widget.id === 'notes') return (
+          <Card key="notes" data-testid="recent-notes">
             <CardHeader>
               <CardTitle className="flex items-center justify-between">
                 <span className="flex items-center gap-2">
-                  <AlertTriangle className="w-5 h-5 text-amber-500" />
-                  {t('expiring_subscriptions')}
+                  <StickyNote className="w-5 h-5 text-orange-500" />
+                  {language === 'ar' ? 'آخر الملاحظات' : 'Recent Notes'}
                 </span>
-                {expiring.length > 0 && (
-                  <Button 
-                    size="sm" 
-                    variant="outline" 
-                    onClick={sendAllReminders}
-                    className="text-amber-600 border-amber-500/30 hover:bg-amber-500/10"
-                    data-testid="send-all-reminders-btn"
-                  >
-                    <Send className="w-4 h-4 me-1" />
-                    {language === 'ar' ? 'إرسال تنبيهات' : 'Send All'}
-                  </Button>
-                )}
+                <Button size="sm" variant="outline" onClick={() => window.location.href = '/schedule'} className="text-orange-600 border-orange-500/30 hover:bg-orange-500/10">
+                  <ExternalLink className="w-4 h-4 me-1" />
+                  {language === 'ar' ? 'عرض الجدول' : 'View Schedule'}
+                </Button>
               </CardTitle>
             </CardHeader>
             <CardContent>
-              {expiring.length > 0 ? (
-                <div className="space-y-3 max-h-[250px] overflow-y-auto">
-                  {expiring.slice(0, 5).map((item, index) => (
-                    <div 
-                      key={index}
-                      className="flex items-center justify-between p-3 bg-muted/50 rounded-lg animate-slide-in"
-                      style={{ animationDelay: `${index * 0.05}s` }}
-                    >
-                      <div className="flex-1 min-w-0">
-                        <p className="font-medium truncate">{item.member_name}</p>
-                        <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                          <span>{item.activity_name}</span>
-                          <span>•</span>
-                          <div className="flex items-center gap-1">
-                            <Phone className="w-3 h-3" />
-                            <span dir="ltr">{item.phone}</span>
+              {recentNotes.length > 0 ? (
+                <div className="space-y-3 max-h-[300px] overflow-y-auto">
+                  {recentNotes.map((note, index) => (
+                    <div key={note.id} className="p-3 bg-orange-50 border border-orange-200 rounded-lg animate-slide-in" style={{ animationDelay: `${index * 0.05}s` }}>
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex-1 min-w-0">
+                          <p className="text-gray-800 whitespace-pre-wrap text-sm">{note.note_text}</p>
+                          <div className="flex items-center gap-2 mt-2 text-xs text-gray-500">
+                            <Badge variant="outline" className="bg-orange-100 border-orange-300">{note.activity_name}</Badge>
+                            <span>-</span>
+                            <Calendar className="w-3 h-3" />
+                            <span>{note.date}</span>
+                            {note.created_by_name && (<><span>-</span><span>{note.created_by_name}</span></>)}
                           </div>
                         </div>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={() => sendWhatsAppReminder(item)}
-                          className="p-2 rounded-full hover:bg-green-500/10 text-green-600 transition-colors"
-                          title={language === 'ar' ? 'إرسال تنبيه واتساب' : 'Send WhatsApp reminder'}
-                          data-testid={`send-reminder-${index}`}
-                        >
-                          <MessageSquare className="w-4 h-4" />
-                        </button>
-                        <Badge 
-                          variant="outline" 
-                          className={`${item.days_remaining <= 3 ? 'bg-red-500/10 text-red-500 border-red-500/30' : 'bg-amber-500/10 text-amber-500 border-amber-500/30'}`}
-                        >
-                          <Calendar className="w-3 h-3 me-1" />
-                          {item.days_remaining} {t('days')}
-                        </Badge>
                       </div>
                     </div>
                   ))}
                 </div>
               ) : (
                 <div className="empty-state">
-                  <Bell className="empty-state-icon" />
-                  <p>{language === 'ar' ? 'لا توجد اشتراكات تنتهي قريباً' : 'No expiring subscriptions'}</p>
+                  <StickyNote className="empty-state-icon" />
+                  <p>{language === 'ar' ? 'لا توجد ملاحظات' : 'No notes yet'}</p>
                 </div>
               )}
             </CardContent>
           </Card>
-        </div>
+          );
 
-        {/* Recent Activity Notes Card */}
-        <Card data-testid="recent-notes">
-          <CardHeader>
-            <CardTitle className="flex items-center justify-between">
-              <span className="flex items-center gap-2">
-                <StickyNote className="w-5 h-5 text-orange-500" />
-                {language === 'ar' ? 'آخر الملاحظات' : 'Recent Notes'}
-              </span>
-              <Button 
-                size="sm" 
-                variant="outline" 
-                onClick={() => window.location.href = '/schedule'}
-                className="text-orange-600 border-orange-500/30 hover:bg-orange-500/10"
-              >
-                <ExternalLink className="w-4 h-4 me-1" />
-                {language === 'ar' ? 'عرض الجدول' : 'View Schedule'}
-              </Button>
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {recentNotes.length > 0 ? (
-              <div className="space-y-3 max-h-[300px] overflow-y-auto">
-                {recentNotes.map((note, index) => (
-                  <div 
-                    key={note.id}
-                    className="p-3 bg-orange-50 border border-orange-200 rounded-lg animate-slide-in"
-                    style={{ animationDelay: `${index * 0.05}s` }}
-                  >
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="flex-1 min-w-0">
-                        <p className="text-gray-800 whitespace-pre-wrap text-sm">{note.note_text}</p>
-                        <div className="flex items-center gap-2 mt-2 text-xs text-gray-500">
-                          <Badge variant="outline" className="bg-orange-100 border-orange-300">
-                            {note.activity_name}
-                          </Badge>
-                          <span>•</span>
-                          <Calendar className="w-3 h-3" />
-                          <span>{note.date}</span>
-                          {note.created_by_name && (
-                            <>
-                              <span>•</span>
-                              <span>{note.created_by_name}</span>
-                            </>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="empty-state">
-                <StickyNote className="empty-state-icon" />
-                <p>{language === 'ar' ? 'لا توجد ملاحظات' : 'No notes yet'}</p>
-              </div>
-            )}
-          </CardContent>
-        </Card>
+          return null;
+        })}
 
       </div>
     </Layout>

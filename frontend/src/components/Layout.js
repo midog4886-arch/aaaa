@@ -7,6 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { branchesAPI, notificationsAPI } from '../services/api';
 import GlobalScanner from './GlobalScanner';
 import CameraQRScanner from './CameraQRScanner';
+import GlobalSearch from './GlobalSearch';
 import { 
   LayoutDashboard, 
   Users, 
@@ -340,14 +341,15 @@ export const TopHeader = ({ onMenuClick, title }) => {
   return (
     <>
     <header className="top-header">
-      <div className="flex items-center gap-4">
+      <div className="flex items-center gap-3 flex-1">
         <button 
           className="lg:hidden p-2 hover:bg-accent rounded-md"
           onClick={onMenuClick}
         >
           <Menu className="w-5 h-5" />
         </button>
-        <h2 className="text-xl font-bold">{title || t('dashboard')}</h2>
+        <h2 className="text-lg font-bold hidden sm:block whitespace-nowrap">{title || t('dashboard')}</h2>
+        <GlobalSearch />
       </div>
 
       <div className="flex items-center gap-2">

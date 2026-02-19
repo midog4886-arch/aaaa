@@ -135,6 +135,13 @@ export const reportsAPI = {
 // Dashboard API
 export const dashboardAPI = {
   getStats: (params = {}) => axios.get(`${API}/dashboard/stats`, { params }),
+  getSettings: () => axios.get(`${API}/dashboard/settings`),
+  saveSettings: (data) => axios.put(`${API}/dashboard/settings`, data),
+};
+
+// Global Search API
+export const globalSearchAPI = {
+  search: (q) => axios.get(`${API}/global-search`, { params: { q } }),
 };
 
 // Seed API
