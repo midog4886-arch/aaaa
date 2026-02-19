@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { Layout } from '../components/Layout';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
@@ -253,14 +254,17 @@ const DailyVideosPage = () => {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-[400px]">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
-      </div>
+      <Layout>
+        <div className="flex items-center justify-center min-h-[400px]">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+        </div>
+      </Layout>
     );
   }
 
   return (
-    <div className="space-y-6 p-6" dir="rtl">
+    <Layout>
+    <div className="space-y-6" dir="rtl">
       {/* Quick Navigation Bar */}
       <div className="flex items-center gap-2 p-3 bg-gradient-to-r from-blue-50 to-purple-50 rounded-lg border">
         <span className="text-sm text-gray-600 font-medium">التنقل السريع:</span>
@@ -763,6 +767,7 @@ const DailyVideosPage = () => {
         </DialogContent>
       </Dialog>
     </div>
+    </Layout>
   );
 };
 
