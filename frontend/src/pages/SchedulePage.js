@@ -983,59 +983,82 @@ export default function SchedulePage() {
           </Card>
         </div>
 
-        {/* Quick Activity Filter Buttons */}
-        <div className="flex flex-wrap gap-2 mb-4">
-          <button
-            onClick={() => setSelectedActivityType('all')}
-            className={`px-4 py-2 rounded-full text-sm font-medium transition-all ${
-              selectedActivityType === 'all' 
-                ? 'bg-gray-800 text-white shadow-md scale-105' 
-                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-            }`}
-          >
-            {t('الكل', 'All')}
-          </button>
-          {[
-            { key: 'swimming', icon: '🏊', ar: 'السباحة', en: 'Swimming', color: 'bg-blue-500' },
-            { key: 'football', icon: '⚽', ar: 'كرة القدم', en: 'Football', color: 'bg-green-500' },
-            { key: 'karate', icon: '🥋', ar: 'الكاراتيه', en: 'Karate', color: 'bg-red-500' },
-            { key: 'gymnastics', icon: '🤸', ar: 'الجمباز', en: 'Gymnastics', color: 'bg-purple-500' },
-          ].map(type => {
-            const count = activitiesData.filter(a => {
-              const n = (a.activity_name || '').toLowerCase();
-              switch(type.key) {
-                case 'swimming': return n.includes('سباح') || n.includes('swim');
-                case 'football': return n.includes('قدم') || n.includes('football');
-                case 'karate': return n.includes('كارات') || n.includes('karate');
-                case 'gymnastics': return n.includes('جمباز') || n.includes('gym');
-                default: return false;
-              }
-            }).filter(a => getTotalMembers(a) > 0).length;
-            if (count === 0) return null;
-            return (
-              <button
-                key={type.key}
-                onClick={() => setSelectedActivityType(selectedActivityType === type.key ? 'all' : type.key)}
-                className={`px-4 py-2 rounded-full text-sm font-medium transition-all flex items-center gap-1.5 ${
-                  selectedActivityType === type.key 
-                    ? `${type.color} text-white shadow-md scale-105` 
-                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                }`}
-              >
-                <span>{type.icon}</span>
-                {language === 'ar' ? type.ar : type.en}
-                <Badge variant={selectedActivityType === type.key ? "secondary" : "outline"} className="text-[10px] px-1.5 h-5">{count}</Badge>
-              </button>
-            );
-          })}
-        </div>
-
         {/* Filters Row */}
-        <div className="bg-white rounded-lg border p-3 mb-4 shadow-sm">
-          <div className="flex flex-wrap items-end gap-3">
+        <div className="bg-white rounded-lg border p-4 mb-4 shadow-sm">
+          <div className="flex flex-wrap items-end gap-4">
+            {/* Activity Type Filter - Grouped by main activity type */}
+            <div>
+              <label className="text-sm font-medium text-gray-600 block mb-1">
+                🏃 {t('النشاط', 'Activity')}
+              </label>
+              <select
+                value={selectedActivityType}
+                onChange={e => setSelectedActivityType(e.target.value)}
+                className="border rounded-lg p-2 text-sm w-44"
+              >
+                <option value="all">{t('كل الأنشطة', 'All Activities')}</option>
+                
+                {/* Swimming Group */}
+                <optgroup label={t('🏊 السباحة', '🏊 Swimming')}>
+                  <option value="swimming">{t('كل السباحة', 'All Swimming')}</option>
+                  {activitiesList
+                    .filter(a => (a.name_ar || a.name || '').toLowerCase().includes('سباح') || (a.name || '').toLowerCase().includes('swim'))
+                    .map(activity => (
+                      <option key={activity.id} value={`activity_${activity.id}`}>
+                        {language === 'ar' ? activity.name_ar : activity.name}
+                      </option>
+                    ))
+                  }
+                </optgroup>
+                
+                {/* Football Group */}
+                <optgroup label={t('⚽ كرة القدم', '⚽ Football')}>
+                  <option value="football">{t('كل كرة القدم', 'All Football')}</option>
+                  {activitiesList
+                    .filter(a => (a.name_ar || a.name || '').toLowerCase().includes('قدم') || (a.name || '').toLowerCase().includes('football'))
+                    .map(activity => (
+                      <option key={activity.id} value={`activity_${activity.id}`}>
+                        {language === 'ar' ? activity.name_ar : activity.name}
+                      </option>
+                    ))
+                  }
+                </optgroup>
+                
+                {/* Karate Group */}
+                <optgroup label={t('🥋 الكاراتيه', '🥋 Karate')}>
+                  <option value="karate">{t('كل الكاراتيه', 'All Karate')}</option>
+                  {activitiesList
+                    .filter(a => (a.name_ar || a.name || '').toLowerCase().includes('كارات') || (a.name || '').toLowerCase().includes('karate'))
+                    .map(activity => (
+                      <option key={activity.id} value={`activity_${activity.id}`}>
+                        {language === 'ar' ? activity.name_ar : activity.name}
+                      </option>
+                    ))
+                  }
+                </optgroup>
+                
+                {/* Other Activities */}
+                <optgroup label={t('📋 أنشطة أخرى', '📋 Other Activities')}>
+                  {activitiesList
+                    .filter(a => {
+                      const name = (a.name_ar || a.name || '').toLowerCase();
+                      return !name.includes('سباح') && !name.includes('swim') &&
+                             !name.includes('قدم') && !name.includes('football') &&
+                             !name.includes('كارات') && !name.includes('karate');
+                    })
+                    .map(activity => (
+                      <option key={activity.id} value={`activity_${activity.id}`}>
+                        {language === 'ar' ? activity.name_ar : activity.name}
+                      </option>
+                    ))
+                  }
+                </optgroup>
+              </select>
+            </div>
+
             {/* Time Filter */}
             <div>
-              <label className="text-xs font-medium text-gray-500 block mb-1">
+              <label className="text-sm font-medium text-gray-600 block mb-1">
                 🕐 {t('الموعد', 'Time')}
               </label>
               <select
@@ -1054,7 +1077,7 @@ export default function SchedulePage() {
 
             {/* Level Filter */}
             <div>
-              <label className="text-xs font-medium text-gray-500 block mb-1">
+              <label className="text-sm font-medium text-gray-600 block mb-1">
                 🎯 {t('المستوى', 'Level')}
               </label>
               <select
@@ -1074,7 +1097,7 @@ export default function SchedulePage() {
 
             {/* Branch Filter */}
             <div>
-              <label className="text-xs font-medium text-gray-500 block mb-1">
+              <label className="text-sm font-medium text-gray-600 block mb-1">
                 🏢 {t('الفرع', 'Branch')}
               </label>
               <select
@@ -1087,6 +1110,20 @@ export default function SchedulePage() {
                   <option key={b.id} value={b.id}>{b.name}</option>
                 ))}
               </select>
+            </div>
+
+            {/* Stats */}
+            <div className="flex gap-3 ms-auto">
+              <div className="bg-primary/10 px-4 py-2 rounded-lg text-center">
+                <div className="text-xl font-bold text-primary">{activitiesData.filter(a => getTotalMembers(a) > 0).length}</div>
+                <div className="text-xs text-gray-500">{t('نشاط', 'Activities')}</div>
+              </div>
+              <div className="bg-green-100 px-4 py-2 rounded-lg text-center">
+                <div className="text-xl font-bold text-green-600">
+                  {activitiesData.reduce((sum, a) => sum + getTotalMembers(a), 0)}
+                </div>
+                <div className="text-xs text-gray-500">{t('مشترك', 'Members')}</div>
+              </div>
             </div>
           </div>
         </div>
