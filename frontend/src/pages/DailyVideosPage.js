@@ -271,11 +271,11 @@ const DailyVideosPage = () => {
         <Button
           variant="outline"
           size="sm"
-          onClick={() => navigate('/dashboard')}
+          onClick={() => navigate('/admin/members')}
           className="bg-white"
         >
-          <LayoutDashboard className="w-4 h-4 me-1" />
-          لوحة التحكم
+          <Users className="w-4 h-4 me-1" />
+          الأعضاء
         </Button>
         <Button
           variant="default"
@@ -288,7 +288,7 @@ const DailyVideosPage = () => {
         <Button
           variant="outline"
           size="sm"
-          onClick={() => navigate('/advertisements')}
+          onClick={() => navigate('/admin/advertisements')}
           className="bg-white"
         >
           <Megaphone className="w-4 h-4 me-1" />

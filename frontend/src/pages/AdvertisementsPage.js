@@ -17,7 +17,7 @@ import {
   Link2, Calendar, BarChart3, Upload, ExternalLink, Play,
   ToggleLeft, ToggleRight, Search, Filter, Megaphone, TrendingUp,
   Bell, AlertTriangle, Clock, RefreshCw, CheckCircle, LayoutDashboard,
-  AlertCircle
+  AlertCircle, Users
 } from 'lucide-react';
 import { extractYouTubeVideoId, generateYouTubeEmbedUrl, getYouTubeThumbnail } from '../utils/youtubeUtils';
 
@@ -290,16 +290,16 @@ const AdvertisementsPage = () => {
         <Button
           variant="outline"
           size="sm"
-          onClick={() => navigate('/dashboard')}
+          onClick={() => navigate('/admin/members')}
           className="bg-white"
         >
-          <LayoutDashboard className="w-4 h-4 me-1" />
-          لوحة التحكم
+          <Users className="w-4 h-4 me-1" />
+          الأعضاء
         </Button>
         <Button
           variant="outline"
           size="sm"
-          onClick={() => navigate('/daily-videos')}
+          onClick={() => navigate('/admin/daily-videos')}
           className="bg-white"
         >
           <Video className="w-4 h-4 me-1" />
