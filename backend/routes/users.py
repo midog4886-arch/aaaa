@@ -31,10 +31,10 @@ class UserUpdateAdmin(BaseModel):
     password: Optional[str] = None
     permissions: Optional[List[str]] = None
 
-# All available permissions
 ALL_PERMISSIONS = [
-    'dashboard', 'members', 'activities', 'levels', 'schedule', 'attendance',
-    'invoices', 'store', 'accounting', 'reports', 'messages', 'branches', 'users', 'settings'
+    'dashboard', 'members', 'invoices', 'activities', 'levels', 'schedule', 'attendance',
+    'coach-ratings', 'advertisements', 'daily-videos', 'loyalty',
+    'store', 'accounting', 'reports', 'messages', 'branches', 'users', 'settings'
 ]
 
 # ============ ROUTES ============
