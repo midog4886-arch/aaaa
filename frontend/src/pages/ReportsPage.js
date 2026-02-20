@@ -626,78 +626,7 @@ export const ReportsPage = () => {
 
         {/* Refunds Summary - Old Section Removed, now interactive above */}
 
-        {/* Charts */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Revenue by Activity Bar Chart */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <BarChart3 className="w-5 h-5 text-primary" />
-                {t('by_activity')}
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              {report?.revenue_by_activity?.length > 0 ? (
-                <ResponsiveContainer width="100%" height={300}>
-                  <BarChart data={report.revenue_by_activity} layout="vertical">
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis type="number" />
-                    <YAxis dataKey="name" type="category" width={100} />
-                    <Tooltip 
-                      formatter={(value) => [`${value} ${t('sar')}`, t('total_revenue')]}
-                    />
-                    <Bar dataKey="total" fill="#F97316" radius={[0, 4, 4, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
-              ) : (
-                <div className="empty-state">
-                  <BarChart3 className="empty-state-icon" />
-                  <p>{t('no_data')}</p>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* Revenue Distribution Pie Chart */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <TrendingUp className="w-5 h-5 text-primary" />
-                {language === 'ar' ? 'توزيع الإيرادات' : 'Revenue Distribution'}
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              {report?.revenue_by_activity?.length > 0 ? (
-                <ResponsiveContainer width="100%" height={300}>
-                  <PieChart>
-                    <Pie
-                      data={report.revenue_by_activity}
-                      cx="50%"
-                      cy="50%"
-                      innerRadius={60}
-                      outerRadius={100}
-                      paddingAngle={5}
-                      dataKey="total"
-                      nameKey="name"
-                      label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
-                    >
-                      {report.revenue_by_activity.map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={activityColors[index % activityColors.length]} />
-                      ))}
-                    </Pie>
-                    <Tooltip formatter={(value) => [`${value} ${t('sar')}`, t('total_revenue')]} />
-                    <Legend />
-                  </PieChart>
-                </ResponsiveContainer>
-              ) : (
-                <div className="empty-state">
-                  <TrendingUp className="empty-state-icon" />
-                  <p>{t('no_data')}</p>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </div>
+        {/* Charts removed */}
 
         {/* Recent Invoices Table */}
         <Card>
