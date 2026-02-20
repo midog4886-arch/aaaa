@@ -4,18 +4,33 @@
   "webDir": "build",
   "server": {
     "androidScheme": "https",
-    "allowNavigation": ["*"]
+    "allowNavigation": ["*"],
+    "url": "https://2ddefb56-04e5-4119-9ddf-9a5677354f57-00-2ojc1h8ytbsj0.pike.replit.dev",
+    "cleartext": true
   },
   "plugins": {
     "SplashScreen": {
       "launchShowDuration": 2000,
       "backgroundColor": "#F97316",
-      "showSpinner": false,
-      "androidScaleType": "CENTER_CROP"
+      "showSpinner": true,
+      "spinnerColor": "#FFFFFF",
+      "androidScaleType": "CENTER_CROP",
+      "splashFullScreen": true,
+      "splashImmersive": true
+    },
+    "StatusBar": {
+      "style": "DARK",
+      "backgroundColor": "#F97316"
+    },
+    "Keyboard": {
+      "resize": "body",
+      "resizeOnFullScreen": true
     }
   },
   "android": {
     "allowMixedContent": true,
-    "backgroundColor": "#F97316"
+    "backgroundColor": "#F97316",
+    "captureInput": true,
+    "webContentsDebuggingEnabled": false
   }
 }
