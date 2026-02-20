@@ -86,6 +86,16 @@ export const Sidebar = ({ isOpen, onClose }) => {
       ]
     },
     {
+      id: 'invoices_quick',
+      label_ar: 'الفواتير',
+      label_en: 'Invoices',
+      icon: Receipt,
+      single: true,
+      items: [
+        { to: '/admin/invoices', icon: Receipt, label: 'invoices', permission: 'invoices' },
+      ]
+    },
+    {
       id: 'members',
       label_ar: 'الأعضاء',
       label_en: 'Members',
