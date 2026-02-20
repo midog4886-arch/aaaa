@@ -21,7 +21,9 @@ import {
   DollarSign,
   ArrowDownCircle,
   Wallet,
-  Search
+  Search,
+  Lock,
+  Unlock
 } from 'lucide-react';
 import { 
   BarChart, 
@@ -50,6 +52,29 @@ export const ReportsPage = () => {
     activity_id: 'all'
   });
   
+  const [statsUnlocked, setStatsUnlocked] = useState(false);
+  const [showPasswordInput, setShowPasswordInput] = useState(false);
+  const [passwordInput, setPasswordInput] = useState('');
+  const STATS_PASSWORD = '242456';
+
+  const hiddenValue = '••••••';
+
+  const handleUnlockStats = () => {
+    if (passwordInput === STATS_PASSWORD) {
+      setStatsUnlocked(true);
+      setShowPasswordInput(false);
+      setPasswordInput('');
+    } else {
+      setPasswordInput('');
+    }
+  };
+
+  const handleLockStats = () => {
+    setStatsUnlocked(false);
+    setShowPasswordInput(false);
+    setPasswordInput('');
+  };
+
   // Detail view states
   const [activeDetail, setActiveDetail] = useState(null); // 'revenue', 'refunds', 'net', 'invoices'
 
@@ -360,55 +385,89 @@ export const ReportsPage = () => {
           </div>
         )}
 
+        {/* Lock/Unlock Controls */}
+        <div className="flex items-center justify-end gap-2">
+          {!statsUnlocked ? (
+            showPasswordInput ? (
+              <div className="flex items-center gap-2">
+                <Lock className="w-4 h-4 text-muted-foreground" />
+                <input
+                  type="password"
+                  value={passwordInput}
+                  onChange={(e) => setPasswordInput(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && handleUnlockStats()}
+                  placeholder={language === 'ar' ? 'كلمة المرور' : 'Password'}
+                  className="border rounded px-2 py-1 text-sm w-32"
+                  autoFocus
+                />
+                <Button size="sm" onClick={handleUnlockStats}>
+                  {language === 'ar' ? 'دخول' : 'Unlock'}
+                </Button>
+                <Button size="sm" variant="ghost" onClick={() => { setShowPasswordInput(false); setPasswordInput(''); }}>✕</Button>
+              </div>
+            ) : (
+              <Button variant="outline" size="sm" onClick={() => setShowPasswordInput(true)} className="gap-2">
+                <Lock className="w-4 h-4" />
+                {language === 'ar' ? 'عرض الأرقام' : 'Show Numbers'}
+              </Button>
+            )
+          ) : (
+            <Button variant="outline" size="sm" onClick={handleLockStats} className="gap-2">
+              <Unlock className="w-4 h-4" />
+              {language === 'ar' ? 'إخفاء الأرقام' : 'Hide Numbers'}
+            </Button>
+          )}
+        </div>
+
         {/* Summary Cards */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          <Card className={`stat-card cursor-pointer hover:shadow-lg transition-shadow ${activeDetail === 'revenue' ? 'ring-2 ring-primary' : ''}`} data-testid="total-revenue-card" onClick={() => toggleDetail('revenue')}>
+          <Card className={`stat-card cursor-pointer hover:shadow-lg transition-shadow ${activeDetail === 'revenue' ? 'ring-2 ring-primary' : ''}`} data-testid="total-revenue-card" onClick={() => statsUnlocked && toggleDetail('revenue')}>
             <div className="stat-card-icon bg-primary/10">
               <TrendingUp className="w-6 h-6 text-primary" />
             </div>
             <div className="stat-card-value text-primary">
-              {formatCurrency(report?.total_revenue)}
+              {statsUnlocked ? formatCurrency(report?.total_revenue) : hiddenValue}
             </div>
             <div className="stat-card-label">{language === 'ar' ? 'إجمالي الإيرادات' : 'Total Revenue'}</div>
-            <div className="text-xs text-muted-foreground mt-1">{language === 'ar' ? 'اضغط للتفاصيل' : 'Click for details'}</div>
+            <div className="text-xs text-muted-foreground mt-1">{statsUnlocked ? (language === 'ar' ? 'اضغط للتفاصيل' : 'Click for details') : ''}</div>
           </Card>
 
-          <Card className={`stat-card cursor-pointer hover:shadow-lg transition-shadow ${activeDetail === 'refunds' ? 'ring-2 ring-purple-500' : ''}`} data-testid="total-refunds-card" onClick={() => toggleDetail('refunds')}>
+          <Card className={`stat-card cursor-pointer hover:shadow-lg transition-shadow ${activeDetail === 'refunds' ? 'ring-2 ring-purple-500' : ''}`} data-testid="total-refunds-card" onClick={() => statsUnlocked && toggleDetail('refunds')}>
             <div className="stat-card-icon bg-purple-500/10">
               <RefreshCcw className="w-6 h-6 text-purple-500" />
             </div>
             <div className="stat-card-value text-purple-500">
-              {formatCurrency(report?.total_refunds)}
+              {statsUnlocked ? formatCurrency(report?.total_refunds) : hiddenValue}
             </div>
             <div className="stat-card-label">{language === 'ar' ? 'إجمالي المسترجع' : 'Total Refunds'}</div>
-            <div className="text-xs text-muted-foreground mt-1">{language === 'ar' ? 'اضغط للتفاصيل' : 'Click for details'}</div>
+            <div className="text-xs text-muted-foreground mt-1">{statsUnlocked ? (language === 'ar' ? 'اضغط للتفاصيل' : 'Click for details') : ''}</div>
           </Card>
 
-          <Card className={`stat-card cursor-pointer hover:shadow-lg transition-shadow ${activeDetail === 'net' ? 'ring-2 ring-green-500' : ''}`} data-testid="net-revenue-card" onClick={() => toggleDetail('net')}>
+          <Card className={`stat-card cursor-pointer hover:shadow-lg transition-shadow ${activeDetail === 'net' ? 'ring-2 ring-green-500' : ''}`} data-testid="net-revenue-card" onClick={() => statsUnlocked && toggleDetail('net')}>
             <div className="stat-card-icon bg-green-500/10">
               <Wallet className="w-6 h-6 text-green-500" />
             </div>
             <div className="stat-card-value text-green-500">
-              {formatCurrency(report?.net_revenue)}
+              {statsUnlocked ? formatCurrency(report?.net_revenue) : hiddenValue}
             </div>
             <div className="stat-card-label">{language === 'ar' ? 'صافي الإيرادات' : 'Net Revenue'}</div>
-            <div className="text-xs text-muted-foreground mt-1">{language === 'ar' ? 'اضغط للتفاصيل' : 'Click for details'}</div>
+            <div className="text-xs text-muted-foreground mt-1">{statsUnlocked ? (language === 'ar' ? 'اضغط للتفاصيل' : 'Click for details') : ''}</div>
           </Card>
 
-          <Card className={`stat-card cursor-pointer hover:shadow-lg transition-shadow ${activeDetail === 'invoices' ? 'ring-2 ring-blue-500' : ''}`} data-testid="invoice-count-card" onClick={() => toggleDetail('invoices')}>
+          <Card className={`stat-card cursor-pointer hover:shadow-lg transition-shadow ${activeDetail === 'invoices' ? 'ring-2 ring-blue-500' : ''}`} data-testid="invoice-count-card" onClick={() => statsUnlocked && toggleDetail('invoices')}>
             <div className="stat-card-icon bg-blue-500/10">
               <Receipt className="w-6 h-6 text-blue-500" />
             </div>
             <div className="stat-card-value text-blue-500">
-              {report?.invoice_count || 0}
+              {statsUnlocked ? (report?.invoice_count || 0) : hiddenValue}
             </div>
             <div className="stat-card-label">{t('invoices')}</div>
-            <div className="text-xs text-muted-foreground mt-1">{language === 'ar' ? 'اضغط للتفاصيل' : 'Click for details'}</div>
+            <div className="text-xs text-muted-foreground mt-1">{statsUnlocked ? (language === 'ar' ? 'اضغط للتفاصيل' : 'Click for details') : ''}</div>
           </Card>
         </div>
 
         {/* Revenue Details */}
-        {activeDetail === 'revenue' && (
+        {statsUnlocked && activeDetail === 'revenue' && (
           <Card className="border-primary/30 bg-primary/5 animate-in slide-in-from-top-2">
             <CardHeader className="flex flex-row items-center justify-between">
               <CardTitle className="flex items-center gap-2 text-primary">
@@ -456,7 +515,7 @@ export const ReportsPage = () => {
         )}
 
         {/* Refunds Details */}
-        {activeDetail === 'refunds' && (
+        {statsUnlocked && activeDetail === 'refunds' && (
           <Card className="border-purple-200 bg-purple-50/30 animate-in slide-in-from-top-2">
             <CardHeader className="flex flex-row items-center justify-between">
               <CardTitle className="flex items-center gap-2 text-purple-700">
@@ -517,7 +576,7 @@ export const ReportsPage = () => {
         )}
 
         {/* Net Revenue Details */}
-        {activeDetail === 'net' && (
+        {statsUnlocked && activeDetail === 'net' && (
           <Card className="border-green-200 bg-green-50/30 animate-in slide-in-from-top-2">
             <CardHeader className="flex flex-row items-center justify-between">
               <CardTitle className="flex items-center gap-2 text-green-700">
@@ -558,7 +617,7 @@ export const ReportsPage = () => {
         )}
 
         {/* Invoices Details */}
-        {activeDetail === 'invoices' && (
+        {statsUnlocked && activeDetail === 'invoices' && (
           <Card className="border-blue-200 bg-blue-50/30 animate-in slide-in-from-top-2">
             <CardHeader className="flex flex-row items-center justify-between">
               <CardTitle className="flex items-center gap-2 text-blue-700">
@@ -653,7 +712,7 @@ export const ReportsPage = () => {
                       <tr key={invoice.id}>
                         <td className="font-mono text-sm">#{invoice.id.slice(0, 8)}</td>
                         <td>{invoice.member_name}</td>
-                        <td className="font-bold text-primary">{invoice.total} {t('sar')}</td>
+                        <td className="font-bold text-primary">{statsUnlocked ? `${invoice.total} ${t('sar')}` : hiddenValue}</td>
                         <td className="text-sm text-muted-foreground">
                           {new Date(invoice.paid_at || invoice.created_at).toLocaleDateString(language === 'ar' ? 'ar-SA' : 'en-US')}
                         </td>
