@@ -349,6 +349,7 @@ export const TopHeader = ({ onMenuClick, title }) => {
   const { t, language } = useLanguage();
   const { user } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const [notifications, setNotifications] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [showNotifications, setShowNotifications] = useState(false);
@@ -356,6 +357,7 @@ export const TopHeader = ({ onMenuClick, title }) => {
   const [showCameraScanner, setShowCameraScanner] = useState(false);
 
   const isAdmin = user?.is_admin;
+  const isDailyLedger = location.pathname === '/admin/daily-ledger';
 
   useEffect(() => {
     loadNotifications();
@@ -493,7 +495,7 @@ export const TopHeader = ({ onMenuClick, title }) => {
 
 
         {/* Camera QR Scanner Button */}
-        {isAdmin && (
+        {isAdmin && !isDailyLedger && (
           <Button
             variant="outline"
             size="sm"
