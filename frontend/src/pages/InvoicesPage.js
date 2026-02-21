@@ -17,7 +17,7 @@ import html2canvas from 'html2canvas';
 import html2pdf from 'html2pdf.js';
 import { 
   Plus, Search, Eye, Printer, Loader2, Receipt, CheckCircle, XCircle, Clock,
-  Filter, MessageSquare, X, UserPlus, Trash2, RotateCcw, FileSpreadsheet, Image, Share2, RefreshCcw, Edit, FileText, Package, Percent, Tag, Lock, ClipboardList, ArrowRightCircle, CreditCard, QrCode
+  Filter, MessageSquare, X, UserPlus, Users, Trash2, RotateCcw, FileSpreadsheet, Image, Share2, RefreshCcw, Edit, FileText, Package, Percent, Tag, Lock, ClipboardList, ArrowRightCircle, CreditCard, QrCode
 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { COMPANY_INFO, INVOICE_TERMS, getStatusInfo, getPaymentMethodLabel, formatSchedule } from './invoices/constants';
@@ -113,6 +113,8 @@ export const InvoicesPage = () => {
   const [customerNameAr, setCustomerNameAr] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
   const [customerAddress, setCustomerAddress] = useState('');
+
+  const [additionalMembers, setAdditionalMembers] = useState([]);
   
   const [newMemberData, setNewMemberData] = useState({
     name_ar: '', name: '', age: '', guardian_name_ar: '', guardian_name: '', phone: ''
@@ -502,7 +504,9 @@ export const InvoicesPage = () => {
   const removeItem = (index) => setInvoiceItems(invoiceItems.filter((_, i) => i !== index));
 
   const calculateTotals = () => {
-    const subtotal = invoiceItems.reduce((sum, item) => sum + item.fee, 0);
+    const primarySubtotal = invoiceItems.reduce((sum, item) => sum + item.fee, 0);
+    const additionalSubtotal = additionalMembers.reduce((sum, am) => sum + am.items.reduce((s, item) => s + item.fee, 0), 0);
+    const subtotal = primarySubtotal + additionalSubtotal;
     const vatAmount = Math.round(subtotal * (COMPANY_INFO.vat_rate / 100) * 100) / 100;
     const totalBeforeDiscount = Math.round((subtotal + vatAmount) * 100) / 100;
     const totalDiscount = couponDiscount;
@@ -600,18 +604,26 @@ export const InvoicesPage = () => {
         });
         toast.success(language === 'ar' ? 'تم تحديث الفاتورة' : 'Invoice updated');
       } else {
-        const response = await invoicesAPI.create({
+        const createPayload = {
           member_id: selectedMember?.id || null,
           items: invoiceItems,
           discount: totalDiscount,
           discount_code: appliedCoupon?.code || null,
           notes, payment_method: paymentMethod,
           customer_name_ar: customerNameAr, customer_phone: customerPhone, customer_address: customerAddress,
-          branch_id: selectedBranchId  // Send selected branch for admin
-        });
+          branch_id: selectedBranchId
+        };
+        if (additionalMembers.length > 0) {
+          createPayload.additional_members = additionalMembers.map(am => ({
+            member_id: am.member.id,
+            member_name: am.member.name_ar || am.member.name,
+            member_code: am.member.member_code || '',
+            items: am.items
+          }));
+        }
+        const response = await invoicesAPI.create(createPayload);
         toast.success(t('success'));
         
-        // Show QR Card after creating invoice (if member exists)
         if (selectedMember) {
           const subscriptionItems = (invoiceItems || []).map(item => ({
             activity_name: item.activity_name,
@@ -2979,10 +2991,10 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
     setDiscount(0); setNotes(''); setPaymentMethod('cash');
     setCustomerNameAr(''); setCustomerPhone(''); setCustomerAddress('');
     setIsEditMode(false); setEditingInvoiceId(null);
-    // Reset coupon state
     setCouponCode(''); setAppliedCoupon(null); setCouponDiscount(0);
     setItemType('activity');
     setFeeEditUnlocked(false);
+    setAdditionalMembers([]);
   };
 
   const getStatusBadge = (status) => {
@@ -3946,6 +3958,138 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
                 </div>
               )}
 
+              {/* Additional Members Section */}
+              {!isEditMode && (
+                <Card className="p-4 border-blue-200 bg-blue-50/30">
+                  <div className="flex items-center justify-between mb-3">
+                    <h4 className="font-semibold text-blue-800 flex items-center gap-2">
+                      <Users className="w-4 h-4" />
+                      {language === 'ar' ? 'أعضاء إضافيين (إخوة)' : 'Additional Members (Siblings)'}
+                    </h4>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="border-blue-400 text-blue-700 hover:bg-blue-100"
+                      onClick={() => setAdditionalMembers([...additionalMembers, { member: null, items: [] }])}
+                    >
+                      <UserPlus className="w-4 h-4 me-1" />
+                      {language === 'ar' ? 'إضافة عضو آخر' : 'Add Another Member'}
+                    </Button>
+                  </div>
+                  {additionalMembers.length > 0 && (
+                    <div className="space-y-4">
+                      {additionalMembers.map((am, amIdx) => (
+                        <div key={amIdx} className="p-3 bg-white rounded-lg border border-blue-200">
+                          <div className="flex items-center justify-between mb-2">
+                            <span className="text-sm font-bold text-blue-700">
+                              {language === 'ar' ? `العضو ${amIdx + 2}` : `Member ${amIdx + 2}`}
+                              {am.member && ` - ${am.member.name_ar || am.member.name}`}
+                            </span>
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="ghost"
+                              className="text-red-500 h-7 w-7 p-0"
+                              onClick={() => setAdditionalMembers(additionalMembers.filter((_, i) => i !== amIdx))}
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </Button>
+                          </div>
+                          <Select
+                            value={am.member?.id || 'none'}
+                            onValueChange={(val) => {
+                              if (val === 'none') return;
+                              const member = members.find(m => m.id === val);
+                              const updated = [...additionalMembers];
+                              updated[amIdx] = { ...updated[amIdx], member };
+                              setAdditionalMembers(updated);
+                            }}
+                          >
+                            <SelectTrigger className="mb-2">
+                              <SelectValue placeholder={language === 'ar' ? 'اختر العضو...' : 'Select member...'} />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="none">{language === 'ar' ? '-- اختر --' : '-- Select --'}</SelectItem>
+                              {(members || []).filter(m => m.id !== selectedMember?.id && !additionalMembers.some((a, i) => i !== amIdx && a.member?.id === m.id))
+                                .map(m => <SelectItem key={m.id} value={m.id}>{language === 'ar' ? m.name_ar : m.name} - {m.phone}</SelectItem>)}
+                            </SelectContent>
+                          </Select>
+                          {am.member && (
+                            <>
+                              <Select
+                                value=""
+                                onValueChange={(actId) => {
+                                  const activity = activities.find(a => a.id === actId);
+                                  if (!activity) return;
+                                  const today = new Date().toISOString().split('T')[0];
+                                  const endDate = new Date(new Date().setMonth(new Date().getMonth() + 1)).toISOString().split('T')[0];
+                                  const newItem = {
+                                    activity_id: activity.id,
+                                    activity_name: activity.name_ar || activity.name,
+                                    fee: activity.monthly_fee || 0,
+                                    period: `${today} - ${endDate}`,
+                                    schedule: activity.schedule || '',
+                                    start_date: today,
+                                    end_date: endDate,
+                                    is_product: false
+                                  };
+                                  const updated = [...additionalMembers];
+                                  updated[amIdx] = { ...updated[amIdx], items: [...updated[amIdx].items, newItem] };
+                                  setAdditionalMembers(updated);
+                                }}
+                              >
+                                <SelectTrigger className="mb-2">
+                                  <SelectValue placeholder={language === 'ar' ? '+ اختر نشاط...' : '+ Select activity...'} />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {(activities || []).map(a => <SelectItem key={a.id} value={a.id}>{a.name_ar || a.name} - {a.monthly_fee} {language === 'ar' ? 'ر.س' : 'SAR'}</SelectItem>)}
+                                </SelectContent>
+                              </Select>
+                              {am.items.length > 0 && (
+                                <div className="space-y-1">
+                                  {am.items.map((item, itemIdx) => (
+                                    <div key={itemIdx} className="flex items-center justify-between p-2 bg-blue-50 rounded text-sm">
+                                      <span>{item.activity_name}</span>
+                                      <div className="flex items-center gap-2">
+                                        <Input
+                                          type="number"
+                                          value={item.fee}
+                                          onChange={(e) => {
+                                            const updated = [...additionalMembers];
+                                            updated[amIdx].items[itemIdx].fee = parseFloat(e.target.value) || 0;
+                                            setAdditionalMembers(updated);
+                                          }}
+                                          className="w-20 h-7 text-sm text-center"
+                                        />
+                                        <span className="text-xs text-muted-foreground">{language === 'ar' ? 'ر.س' : 'SAR'}</span>
+                                        <Button
+                                          type="button"
+                                          size="sm"
+                                          variant="ghost"
+                                          className="h-6 w-6 p-0 text-red-500"
+                                          onClick={() => {
+                                            const updated = [...additionalMembers];
+                                            updated[amIdx].items = updated[amIdx].items.filter((_, i) => i !== itemIdx);
+                                            setAdditionalMembers(updated);
+                                          }}
+                                        >
+                                          <X className="w-3 h-3" />
+                                        </Button>
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                            </>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </Card>
+              )}
+
               <div className="space-y-2">
                 <Label>{t('payment_method')}</Label>
                 <Select value={paymentMethod} onValueChange={setPaymentMethod}>
@@ -4014,8 +4158,22 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
 
               <div className="space-y-2"><Label>{t('notes')}</Label><Textarea value={notes} onChange={(e) => setNotes(e.target.value)} /></div>
 
-              {invoiceItems.length > 0 && (
+              {(invoiceItems.length > 0 || additionalMembers.some(am => am.items.length > 0)) && (
                 <div className="p-4 bg-primary/5 rounded-lg border border-primary/20">
+                  {additionalMembers.some(am => am.items.length > 0) && (
+                    <div className="mb-2 pb-2 border-b border-primary/10">
+                      <div className="flex justify-between text-xs text-muted-foreground mb-1">
+                        <span>{language === 'ar' ? 'العضو الأساسي' : 'Primary member'}</span>
+                        <span>{invoiceItems.reduce((s, i) => s + i.fee, 0).toFixed(2)} {t('sar')}</span>
+                      </div>
+                      {additionalMembers.filter(am => am.member && am.items.length > 0).map((am, i) => (
+                        <div key={i} className="flex justify-between text-xs text-muted-foreground mb-1">
+                          <span>{am.member.name_ar || am.member.name}</span>
+                          <span>{am.items.reduce((s, item) => s + item.fee, 0).toFixed(2)} {t('sar')}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                   <div className="flex justify-between text-sm mb-2"><span>{t('subtotal')}</span><span>{subtotal.toFixed(2)} {t('sar')}</span></div>
                   <div className="flex justify-between text-sm mb-2 text-green-600"><span>{language === 'ar' ? `ضريبة القيمة المضافة (${COMPANY_INFO.vat_rate}%)` : `VAT (${COMPANY_INFO.vat_rate}%)`}</span><span>{vatAmount.toFixed(2)} {t('sar')}</span></div>
                   {couponDiscount > 0 && (
@@ -4093,8 +4251,12 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
                 </div>
 
                 <table className="w-full border-collapse mb-4">
-                  <thead><tr className="bg-muted"><th className="border p-2 text-start">{t('activity_name')}</th><th className="border p-2 text-start">{language === 'ar' ? 'الفترة' : 'Period'}</th><th className="border p-2 text-start">{language === 'ar' ? 'المواعيد' : 'Schedule'}</th><th className="border p-2 text-start">{language === 'ar' ? 'المبلغ' : 'Amount'}</th></tr></thead>
-                  <tbody>{(selectedInvoice.items || []).map((item, idx) => <tr key={idx}><td className="border p-2">{item.activity_name}</td><td className="border p-2 text-sm">{item.period}</td><td className="border p-2 text-sm text-blue-700 schedule-cell font-medium">{item.schedule || '-'}</td><td className="border p-2">{item.fee} {t('sar')}</td></tr>)}</tbody>
+                  <thead><tr className="bg-muted">
+                    {selectedInvoice.additional_members?.length > 0 && <th className="border p-2 text-start">{language === 'ar' ? 'العضو' : 'Member'}</th>}
+                    <th className="border p-2 text-start">{t('activity_name')}</th><th className="border p-2 text-start">{language === 'ar' ? 'الفترة' : 'Period'}</th><th className="border p-2 text-start">{language === 'ar' ? 'المواعيد' : 'Schedule'}</th><th className="border p-2 text-start">{language === 'ar' ? 'المبلغ' : 'Amount'}</th></tr></thead>
+                  <tbody>{(selectedInvoice.items || []).map((item, idx) => <tr key={idx}>
+                    {selectedInvoice.additional_members?.length > 0 && <td className="border p-2 text-xs text-blue-700 font-medium">{item.member_name || selectedInvoice.customer_name_ar || '-'}</td>}
+                    <td className="border p-2">{item.activity_name}</td><td className="border p-2 text-sm">{item.period}</td><td className="border p-2 text-sm text-blue-700 schedule-cell font-medium">{item.schedule || '-'}</td><td className="border p-2">{item.fee} {t('sar')}</td></tr>)}</tbody>
                 </table>
 
                 <div className="space-y-2 text-sm">

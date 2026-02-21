@@ -36,10 +36,19 @@ class InvoiceItem(BaseModel):
     is_product: Optional[bool] = False
     product_id: Optional[str] = None
     quantity: Optional[int] = 1
+    member_id: Optional[str] = None
+    member_name: Optional[str] = None
+
+class AdditionalMember(BaseModel):
+    member_id: str
+    member_name: Optional[str] = ""
+    member_code: Optional[str] = ""
+    items: List[InvoiceItem]
 
 class InvoiceCreate(BaseModel):
     member_id: Optional[str] = None
     items: List[InvoiceItem]
+    additional_members: Optional[List[AdditionalMember]] = None
     discount: float = 0
     discount_code: Optional[str] = None
     notes: Optional[str] = ""
@@ -243,20 +252,51 @@ async def create_invoice(invoice: InvoiceCreate, current_user: dict = Depends(ge
             if not customer_phone:
                 customer_phone = member.get("phone", "")
     
-    # Calculate totals
-    subtotal = sum(item.fee * (item.quantity or 1) for item in invoice.items)
+    # Merge all items: tag primary member items + additional members items
+    all_items = []
+    for item in invoice.items:
+        item_dict = item.model_dump()
+        if invoice.member_id and not item_dict.get("member_id"):
+            item_dict["member_id"] = invoice.member_id
+            item_dict["member_name"] = member_name
+        all_items.append(item_dict)
+
+    additional_members_info = []
+    if invoice.additional_members:
+        for am in invoice.additional_members:
+            am_member = await db.members.find_one({"id": am.member_id}, {"_id": 0})
+            am_name = am.member_name or (am_member.get("name_ar", am_member.get("name", "")) if am_member else "")
+            am_code = am.member_code or (am_member.get("member_code", "") if am_member else "")
+            additional_members_info.append({"member_id": am.member_id, "member_name": am_name, "member_code": am_code})
+            for item in am.items:
+                item_dict = item.model_dump()
+                item_dict["member_id"] = am.member_id
+                item_dict["member_name"] = am_name
+                all_items.append(item_dict)
+
+    # Calculate totals from all items
+    subtotal = sum(item.get("fee", 0) * (item.get("quantity") or 1) for item in all_items)
     discount = invoice.discount
     taxable_amount = subtotal - discount
     vat_amount = round(taxable_amount * VAT_RATE, 2)
     total = round(taxable_amount + vat_amount, 2)
-    
+
+    # Build member names for multi-member display
+    all_member_names = []
+    if customer_name:
+        all_member_names.append(customer_name)
+    for am_info in additional_members_info:
+        if am_info["member_name"] and am_info["member_name"] not in all_member_names:
+            all_member_names.append(am_info["member_name"])
+    display_name = " & ".join(all_member_names) if all_member_names else customer_name
+
     invoice_doc = {
         "id": invoice_id,
         "invoice_number": str(next_number),
         "member_id": invoice.member_id,
-        "member_name": customer_name,
+        "member_name": display_name,
         "member_code": member_code,
-        "items": [item.model_dump() for item in invoice.items],
+        "items": all_items,
         "subtotal": subtotal,
         "discount": discount,
         "discount_code": invoice.discount_code,
@@ -268,33 +308,38 @@ async def create_invoice(invoice: InvoiceCreate, current_user: dict = Depends(ge
         "branch_id": branch_id,
         "created_at": datetime.now(timezone.utc).isoformat(),
         "paid_at": None,
-        "customer_name_ar": customer_name,
+        "customer_name_ar": display_name,
         "customer_phone": customer_phone,
         "customer_address": invoice.customer_address,
         "supervisor_name": supervisor_name,
         "tax_number": COMPANY_TAX_NUMBER,
-        "commercial_reg": COMPANY_COMMERCIAL_REG
+        "commercial_reg": COMPANY_COMMERCIAL_REG,
+        "additional_members": additional_members_info if additional_members_info else None
     }
     
     await db.invoices.insert_one(invoice_doc)
     
-    # Add member to levels if specified in invoice items
-    if invoice.member_id:
-        for item in invoice.items:
-            level_id = item.level_id
+    # Add members to levels if specified in invoice items
+    async def process_member_levels(mid, items_list):
+        for item in items_list:
+            level_id = item.get("level_id") if isinstance(item, dict) else item.level_id
             if level_id:
-                await db.levels.update_one(
-                    {"id": level_id},
-                    {"$addToSet": {"members": invoice.member_id}}
-                )
-                if item.end_date:
+                await db.levels.update_one({"id": level_id}, {"$addToSet": {"members": mid}})
+                end_date = item.get("end_date") if isinstance(item, dict) else item.end_date
+                if end_date:
                     await db.level_subscriptions.update_one(
-                        {"member_id": invoice.member_id, "level_id": level_id},
-                        {"$set": {"end_date": item.end_date, "member_id": invoice.member_id, "level_id": level_id}},
+                        {"member_id": mid, "level_id": level_id},
+                        {"$set": {"end_date": end_date, "member_id": mid, "level_id": level_id}},
                         upsert=True
                     )
+
+    if invoice.member_id:
+        await process_member_levels(invoice.member_id, invoice.items)
+    if invoice.additional_members:
+        for am in invoice.additional_members:
+            await process_member_levels(am.member_id, am.items)
     
-    return Invoice(**{k: v for k, v in invoice_doc.items() if k != "_id"})
+    return Invoice(**{k: v for k, v in invoice_doc.items() if k != "_id" and k != "additional_members"})
 
 @router.put("/{invoice_id}/pay")
 async def pay_invoice(invoice_id: str, current_user: dict = Depends(get_current_user)):
@@ -336,109 +381,113 @@ async def pay_invoice(invoice_id: str, current_user: dict = Depends(get_current_
         }}
     )
     
-    # Update member activities and levels if member_id exists
-    member_id = invoice.get("member_id")
-    if member_id:
-        member = await db.members.find_one({"id": member_id})
-        if member:
-            today = datetime.now(timezone.utc).strftime('%Y-%m-%d')
-            existing_activities = member.get("activities", [])
+    # Group items by member_id for multi-member invoice support
+    items_by_member = {}
+    primary_member_id = invoice.get("member_id")
+    for item in invoice.get("items", []):
+        mid = item.get("member_id") or primary_member_id
+        if mid:
+            if mid not in items_by_member:
+                items_by_member[mid] = []
+            items_by_member[mid].append(item)
+
+    # If no member_id in items, fall back to primary member
+    if not items_by_member and primary_member_id:
+        items_by_member[primary_member_id] = invoice.get("items", [])
+
+    # Process each member's activities and levels
+    today = datetime.now(timezone.utc).strftime('%Y-%m-%d')
+    for mid, member_items in items_by_member.items():
+        member = await db.members.find_one({"id": mid})
+        if not member:
+            continue
+        existing_activities = member.get("activities", [])
+        
+        for item in member_items:
+            if item.get("is_product"):
+                continue
             
-            for item in invoice.get("items", []):
-                # Skip product items
-                if item.get("is_product"):
-                    continue
-                
-                # Parse dates from period or use item dates
-                start_date = item.get("start_date", today)
-                end_date = item.get("end_date", "")
-                
-                # If period exists, try to parse it
-                if item.get("period") and " - " in item.get("period", ""):
-                    period_parts = item["period"].split(" - ")
-                    if len(period_parts) == 2:
-                        start_date = period_parts[0].strip()
-                        end_date = period_parts[1].strip()
-                
-                # Determine status based on end_date
-                status = "active"
-                if end_date:
-                    try:
-                        end_date_obj = datetime.strptime(end_date, '%Y-%m-%d')
-                        today_obj = datetime.strptime(today, '%Y-%m-%d')
-                        if end_date_obj < today_obj:
-                            status = "expired"
-                    except Exception:
-                        pass
-                
-                # Check if activity already exists for this member
-                activity_exists = False
-                for idx, existing_act in enumerate(existing_activities):
-                    if existing_act.get("activity_id") == item.get("activity_id"):
-                        # Update existing activity with new dates
-                        existing_activities[idx] = {
-                            "activity_id": item.get("activity_id"),
-                            "activity_name": item.get("activity_name", ""),
-                            "start_date": start_date,
-                            "end_date": end_date,
-                            "fee": item.get("fee", 0),
-                            "status": status,
-                            "coach_id": existing_act.get("coach_id", ""),
-                            "level_id": item.get("level_id", ""),
-                            "schedule": item.get("schedule", ""),
-                            "source": "invoice",
-                            "source_id": invoice_id
-                        }
-                        activity_exists = True
-                        break
-                
-                if not activity_exists:
-                    # Add new activity
-                    existing_activities.append({
+            start_date = item.get("start_date", today)
+            end_date = item.get("end_date", "")
+            
+            if item.get("period") and " - " in item.get("period", ""):
+                period_parts = item["period"].split(" - ")
+                if len(period_parts) == 2:
+                    start_date = period_parts[0].strip()
+                    end_date = period_parts[1].strip()
+            
+            status = "active"
+            if end_date:
+                try:
+                    end_date_obj = datetime.strptime(end_date, '%Y-%m-%d')
+                    today_obj = datetime.strptime(today, '%Y-%m-%d')
+                    if end_date_obj < today_obj:
+                        status = "expired"
+                except Exception:
+                    pass
+            
+            activity_exists = False
+            for idx, existing_act in enumerate(existing_activities):
+                if existing_act.get("activity_id") == item.get("activity_id"):
+                    existing_activities[idx] = {
                         "activity_id": item.get("activity_id"),
                         "activity_name": item.get("activity_name", ""),
                         "start_date": start_date,
                         "end_date": end_date,
                         "fee": item.get("fee", 0),
                         "status": status,
-                        "coach_id": "",
+                        "coach_id": existing_act.get("coach_id", ""),
                         "level_id": item.get("level_id", ""),
                         "schedule": item.get("schedule", ""),
                         "source": "invoice",
                         "source_id": invoice_id
-                    })
+                    }
+                    activity_exists = True
+                    break
             
-            # Update member with new activities
-            await db.members.update_one(
-                {"id": member_id},
-                {"$set": {"activities": existing_activities}}
-            )
-            
-            # Add member to levels if specified in invoice items
-            for item in invoice.get("items", []):
-                level_id = item.get("level_id")
-                if level_id:
-                    # Add member to level if not already there
-                    await db.levels.update_one(
-                        {"id": level_id},
-                        {"$addToSet": {"members": member_id}}
+            if not activity_exists:
+                existing_activities.append({
+                    "activity_id": item.get("activity_id"),
+                    "activity_name": item.get("activity_name", ""),
+                    "start_date": start_date,
+                    "end_date": end_date,
+                    "fee": item.get("fee", 0),
+                    "status": status,
+                    "coach_id": "",
+                    "level_id": item.get("level_id", ""),
+                    "schedule": item.get("schedule", ""),
+                    "source": "invoice",
+                    "source_id": invoice_id
+                })
+        
+        await db.members.update_one(
+            {"id": mid},
+            {"$set": {"activities": existing_activities}}
+        )
+        
+        for item in member_items:
+            level_id = item.get("level_id")
+            if level_id:
+                await db.levels.update_one(
+                    {"id": level_id},
+                    {"$addToSet": {"members": mid}}
+                )
+                end_date = item.get("end_date", "")
+                if end_date:
+                    await db.level_subscriptions.update_one(
+                        {"member_id": mid, "level_id": level_id},
+                        {"$set": {
+                            "member_id": mid,
+                            "level_id": level_id,
+                            "start_date": item.get("start_date", ""),
+                            "end_date": end_date,
+                            "invoice_id": invoice_id
+                        }},
+                        upsert=True
                     )
-                    # Create subscription record
-                    end_date = item.get("end_date", "")
-                    if end_date:
-                        await db.level_subscriptions.update_one(
-                            {"member_id": member_id, "level_id": level_id},
-                            {"$set": {
-                                "member_id": member_id,
-                                "level_id": level_id,
-                                "start_date": item.get("start_date", ""),
-                                "end_date": end_date,
-                                "invoice_id": invoice_id
-                            }},
-                            upsert=True
-                        )
     
     # Award loyalty points for subscription renewal
+    member_id = primary_member_id
     if member_id and loyalty_award_points:
         try:
             # Determine renewal type based on duration
