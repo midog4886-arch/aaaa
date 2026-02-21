@@ -4025,27 +4025,17 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
                           {additionalMemberNewForm.show && additionalMemberNewForm.index === amIdx && (
                             <div className="p-3 mb-2 bg-green-50 border border-green-300 rounded-lg space-y-2">
                               <h5 className="text-sm font-bold text-green-800">{language === 'ar' ? 'إضافة عضو جديد' : 'Add New Member'}</h5>
-                              <div className="grid grid-cols-2 gap-2">
-                                <Input placeholder={language === 'ar' ? 'الاسم بالعربي *' : 'Name (Arabic) *'} value={additionalMemberNewForm.data.name_ar} onChange={(e) => setAdditionalMemberNewForm(prev => ({ ...prev, data: { ...prev.data, name_ar: e.target.value } }))} />
-                                <Input placeholder={language === 'ar' ? 'الاسم بالإنجليزي' : 'Name (English)'} value={additionalMemberNewForm.data.name} onChange={(e) => setAdditionalMemberNewForm(prev => ({ ...prev, data: { ...prev.data, name: e.target.value } }))} />
-                                <Input placeholder={language === 'ar' ? 'العمر' : 'Age'} type="number" value={additionalMemberNewForm.data.age} onChange={(e) => setAdditionalMemberNewForm(prev => ({ ...prev, data: { ...prev.data, age: e.target.value } }))} />
-                                <Input placeholder={language === 'ar' ? 'رقم الجوال *' : 'Phone *'} value={additionalMemberNewForm.data.phone} onChange={(e) => setAdditionalMemberNewForm(prev => ({ ...prev, data: { ...prev.data, phone: e.target.value } }))} />
-                                <Input placeholder={language === 'ar' ? 'اسم ولي الأمر (عربي)' : 'Guardian (Arabic)'} value={additionalMemberNewForm.data.guardian_name_ar} onChange={(e) => setAdditionalMemberNewForm(prev => ({ ...prev, data: { ...prev.data, guardian_name_ar: e.target.value } }))} />
-                                <Input placeholder={language === 'ar' ? 'اسم ولي الأمر (إنجليزي)' : 'Guardian (English)'} value={additionalMemberNewForm.data.guardian_name} onChange={(e) => setAdditionalMemberNewForm(prev => ({ ...prev, data: { ...prev.data, guardian_name: e.target.value } }))} />
-                              </div>
+                              <Input placeholder={language === 'ar' ? 'اسم العميل *' : 'Customer name *'} value={additionalMemberNewForm.data.name_ar} onChange={(e) => setAdditionalMemberNewForm(prev => ({ ...prev, data: { ...prev.data, name_ar: e.target.value } }))} />
                               <div className="flex gap-2 justify-end">
                                 <Button type="button" size="sm" variant="outline" onClick={() => setAdditionalMemberNewForm({ show: false, index: -1, data: { name_ar: '', name: '', age: '', guardian_name_ar: '', guardian_name: '', phone: '' } })}>
                                   {language === 'ar' ? 'إلغاء' : 'Cancel'}
                                 </Button>
-                                <Button type="button" size="sm" className="bg-green-600 hover:bg-green-700" disabled={!additionalMemberNewForm.data.name_ar || !additionalMemberNewForm.data.phone} onClick={async () => {
+                                <Button type="button" size="sm" className="bg-green-600 hover:bg-green-700" disabled={!additionalMemberNewForm.data.name_ar} onClick={async () => {
                                   try {
                                     const res = await membersAPI.create({
                                       name_ar: additionalMemberNewForm.data.name_ar,
-                                      name: additionalMemberNewForm.data.name || additionalMemberNewForm.data.name_ar,
-                                      age: additionalMemberNewForm.data.age ? parseInt(additionalMemberNewForm.data.age) : 0,
-                                      guardian_name_ar: additionalMemberNewForm.data.guardian_name_ar,
-                                      guardian_name: additionalMemberNewForm.data.guardian_name,
-                                      phone: additionalMemberNewForm.data.phone,
+                                      name: additionalMemberNewForm.data.name_ar,
+                                      phone: '',
                                       status: 'active'
                                     });
                                     const newMember = res.data;
@@ -4060,7 +4050,7 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
                                   }
                                 }}>
                                   <UserPlus className="w-4 h-4 me-1" />
-                                  {language === 'ar' ? 'حفظ العضو' : 'Save Member'}
+                                  {language === 'ar' ? 'حفظ' : 'Save'}
                                 </Button>
                               </div>
                             </div>
