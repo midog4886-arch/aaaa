@@ -115,6 +115,7 @@ export const InvoicesPage = () => {
   const [customerAddress, setCustomerAddress] = useState('');
 
   const [additionalMembers, setAdditionalMembers] = useState([]);
+  const [additionalMemberNewForm, setAdditionalMemberNewForm] = useState({ show: false, index: -1, data: { name_ar: '', name: '', age: '', guardian_name_ar: '', guardian_name: '', phone: '' } });
   
   const [newMemberData, setNewMemberData] = useState({
     name_ar: '', name: '', age: '', guardian_name_ar: '', guardian_name: '', phone: ''
@@ -2995,6 +2996,7 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
     setItemType('activity');
     setFeeEditUnlocked(false);
     setAdditionalMembers([]);
+    setAdditionalMemberNewForm({ show: false, index: -1, data: { name_ar: '', name: '', age: '', guardian_name_ar: '', guardian_name: '', phone: '' } });
   };
 
   const getStatusBadge = (status) => {
@@ -4000,6 +4002,10 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
                             value={am.member?.id || 'none'}
                             onValueChange={(val) => {
                               if (val === 'none') return;
+                              if (val === 'new_member') {
+                                setAdditionalMemberNewForm({ show: true, index: amIdx, data: { name_ar: '', name: '', age: '', guardian_name_ar: '', guardian_name: '', phone: '' } });
+                                return;
+                              }
                               const member = members.find(m => m.id === val);
                               const updated = [...additionalMembers];
                               updated[amIdx] = { ...updated[amIdx], member };
@@ -4011,10 +4017,54 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
                             </SelectTrigger>
                             <SelectContent>
                               <SelectItem value="none">{language === 'ar' ? '-- اختر --' : '-- Select --'}</SelectItem>
+                              <SelectItem value="new_member" className="text-primary font-medium"><UserPlus className="w-4 h-4 inline me-2" />{language === 'ar' ? 'إضافة عضو جديد' : 'Add new member'}</SelectItem>
                               {(members || []).filter(m => m.id !== selectedMember?.id && !additionalMembers.some((a, i) => i !== amIdx && a.member?.id === m.id))
                                 .map(m => <SelectItem key={m.id} value={m.id}>{language === 'ar' ? m.name_ar : m.name} - {m.phone}</SelectItem>)}
                             </SelectContent>
                           </Select>
+                          {additionalMemberNewForm.show && additionalMemberNewForm.index === amIdx && (
+                            <div className="p-3 mb-2 bg-green-50 border border-green-300 rounded-lg space-y-2">
+                              <h5 className="text-sm font-bold text-green-800">{language === 'ar' ? 'إضافة عضو جديد' : 'Add New Member'}</h5>
+                              <div className="grid grid-cols-2 gap-2">
+                                <Input placeholder={language === 'ar' ? 'الاسم بالعربي *' : 'Name (Arabic) *'} value={additionalMemberNewForm.data.name_ar} onChange={(e) => setAdditionalMemberNewForm(prev => ({ ...prev, data: { ...prev.data, name_ar: e.target.value } }))} />
+                                <Input placeholder={language === 'ar' ? 'الاسم بالإنجليزي' : 'Name (English)'} value={additionalMemberNewForm.data.name} onChange={(e) => setAdditionalMemberNewForm(prev => ({ ...prev, data: { ...prev.data, name: e.target.value } }))} />
+                                <Input placeholder={language === 'ar' ? 'العمر' : 'Age'} type="number" value={additionalMemberNewForm.data.age} onChange={(e) => setAdditionalMemberNewForm(prev => ({ ...prev, data: { ...prev.data, age: e.target.value } }))} />
+                                <Input placeholder={language === 'ar' ? 'رقم الجوال *' : 'Phone *'} value={additionalMemberNewForm.data.phone} onChange={(e) => setAdditionalMemberNewForm(prev => ({ ...prev, data: { ...prev.data, phone: e.target.value } }))} />
+                                <Input placeholder={language === 'ar' ? 'اسم ولي الأمر (عربي)' : 'Guardian (Arabic)'} value={additionalMemberNewForm.data.guardian_name_ar} onChange={(e) => setAdditionalMemberNewForm(prev => ({ ...prev, data: { ...prev.data, guardian_name_ar: e.target.value } }))} />
+                                <Input placeholder={language === 'ar' ? 'اسم ولي الأمر (إنجليزي)' : 'Guardian (English)'} value={additionalMemberNewForm.data.guardian_name} onChange={(e) => setAdditionalMemberNewForm(prev => ({ ...prev, data: { ...prev.data, guardian_name: e.target.value } }))} />
+                              </div>
+                              <div className="flex gap-2 justify-end">
+                                <Button type="button" size="sm" variant="outline" onClick={() => setAdditionalMemberNewForm({ show: false, index: -1, data: { name_ar: '', name: '', age: '', guardian_name_ar: '', guardian_name: '', phone: '' } })}>
+                                  {language === 'ar' ? 'إلغاء' : 'Cancel'}
+                                </Button>
+                                <Button type="button" size="sm" className="bg-green-600 hover:bg-green-700" disabled={!additionalMemberNewForm.data.name_ar || !additionalMemberNewForm.data.phone} onClick={async () => {
+                                  try {
+                                    const res = await membersAPI.create({
+                                      name_ar: additionalMemberNewForm.data.name_ar,
+                                      name: additionalMemberNewForm.data.name || additionalMemberNewForm.data.name_ar,
+                                      age: additionalMemberNewForm.data.age ? parseInt(additionalMemberNewForm.data.age) : 0,
+                                      guardian_name_ar: additionalMemberNewForm.data.guardian_name_ar,
+                                      guardian_name: additionalMemberNewForm.data.guardian_name,
+                                      phone: additionalMemberNewForm.data.phone,
+                                      status: 'active'
+                                    });
+                                    const newMember = res.data;
+                                    setMembers(prev => [...prev, newMember]);
+                                    const updated = [...additionalMembers];
+                                    updated[amIdx] = { ...updated[amIdx], member: newMember };
+                                    setAdditionalMembers(updated);
+                                    setAdditionalMemberNewForm({ show: false, index: -1, data: { name_ar: '', name: '', age: '', guardian_name_ar: '', guardian_name: '', phone: '' } });
+                                    toast.success(language === 'ar' ? 'تم إضافة العضو بنجاح' : 'Member added successfully');
+                                  } catch (error) {
+                                    toast.error(language === 'ar' ? 'خطأ في إضافة العضو' : 'Error adding member');
+                                  }
+                                }}>
+                                  <UserPlus className="w-4 h-4 me-1" />
+                                  {language === 'ar' ? 'حفظ العضو' : 'Save Member'}
+                                </Button>
+                              </div>
+                            </div>
+                          )}
                           {am.member && (
                             <>
                               <Select
