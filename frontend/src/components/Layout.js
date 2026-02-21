@@ -45,7 +45,8 @@ import {
   ChevronDown,
   Wallet,
   Radio,
-  ShieldCheck
+  ShieldCheck,
+  BookOpen
 } from 'lucide-react';
 
 export const Sidebar = ({ isOpen, onClose }) => {
@@ -126,6 +127,7 @@ export const Sidebar = ({ isOpen, onClose }) => {
       icon: Wallet,
       items: [
         { to: '/admin/invoices', icon: Receipt, label: 'invoices', permission: 'invoices' },
+        { to: '/admin/daily-ledger', icon: BookOpen, label: 'daily_ledger', permission: 'reports' },
         { to: '/admin/accounting', icon: Calculator, label: 'accounting', permission: 'accounting' },
         { to: '/admin/store', icon: Package, label: 'store', permission: 'store' },
       ]

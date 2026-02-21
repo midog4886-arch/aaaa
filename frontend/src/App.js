@@ -30,6 +30,7 @@ import RenewalsPage from './pages/RenewalsPage';
 import BackupPage from './pages/BackupPage';
 import PushNotificationsPage from './pages/PushNotificationsPage';
 import PrivacyPolicyPage from './pages/PrivacyPolicyPage';
+import DailyLedgerPage from './pages/DailyLedgerPage';
 
 // Member Portal Pages
 import MemberLogin from './pages/member-portal/MemberLogin';
@@ -223,6 +224,14 @@ function AppRoutes() {
         element={
           <ProtectedRoute permission="reports">
             <ReportsPage />
+          </ProtectedRoute>
+        } 
+      />
+      <Route 
+        path="/admin/daily-ledger" 
+        element={
+          <ProtectedRoute permission="reports">
+            <DailyLedgerPage />
           </ProtectedRoute>
         } 
       />

@@ -80,5 +80,7 @@ frontend/
 
 - Grouped Sidebar Navigation: Admin sidebar reorganized from 20+ flat items into 7 collapsible groups (Main, Members, Activities & Training, Finance, Communication, More, Administration) with smooth CSS accordion animations. Active page auto-expands its group. Permission filtering preserved per group.
 
+- Daily Financial Ledger (اليومية المالية): Full daily financial tracking at /admin/daily-ledger. Features: daily summary (income/expenses/refunds/net profit), manual expense CRUD with categories (rent, salaries, maintenance, purchases, utilities, marketing, equipment, transportation, other), monthly calendar view with daily financial summaries, daily comparison (today vs yesterday vs same day last week), income by payment method breakdown, expenses by category breakdown, transaction search/filter, CSV/PDF export, password protection (242456). Backend: routes/daily_ledger.py with MongoDB expenses collection. Sidebar: under Finance group.
+
 ## Known Issues
 - MongoDB Atlas SSL handshake may fail with `TLSV1_ALERT_INTERNAL_ERROR` - this is typically caused by the Replit IP not being whitelisted in MongoDB Atlas Network Access settings. The user needs to add `0.0.0.0/0` (allow all) in MongoDB Atlas Network Access.
