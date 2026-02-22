@@ -116,10 +116,13 @@ async def apply_extension(data: ExtensionApply, user=Depends(get_current_user)):
 
     members = await db.members.find(query).to_list(10000)
     extended_count = 0
+    extended_members = []
 
     for member in members:
         activities = member.get("activities", [])
         updated = False
+        old_end_dates = {}
+        new_end_dates = {}
         for act in activities:
             if act.get("status") != "active" or not act.get("end_date"):
                 continue
@@ -128,9 +131,12 @@ async def apply_extension(data: ExtensionApply, user=Depends(get_current_user)):
                     continue
             try:
                 end_date = datetime.strptime(act["end_date"], '%Y-%m-%d')
+                act_name = act.get("activity_name", act.get("name", ""))
+                old_end_dates[act_name] = act["end_date"]
                 days_to_add = int(ext_days) if isinstance(ext_days, float) and ext_days == int(ext_days) else ext_days
                 new_end = end_date + timedelta(days=int(round(days_to_add)))
                 act["end_date"] = new_end.strftime('%Y-%m-%d')
+                new_end_dates[act_name] = act["end_date"]
                 if act.get("period") and " - " in act["period"]:
                     parts = act["period"].split(" - ")
                     act["period"] = f"{parts[0]} - {new_end.strftime('%Y-%m-%d')}"
@@ -161,6 +167,20 @@ async def apply_extension(data: ExtensionApply, user=Depends(get_current_user)):
                         pass
 
             extended_count += 1
+            member_info = {
+                "name": member.get("name_ar", member.get("name", "")),
+                "phone": member.get("phone", ""),
+                "member_id": member.get("id", ""),
+            }
+            details = []
+            for act_name in new_end_dates:
+                details.append({
+                    "activity": act_name,
+                    "old_end": old_end_dates.get(act_name, ""),
+                    "new_end": new_end_dates.get(act_name, "")
+                })
+            member_info["details"] = details
+            extended_members.append(member_info)
 
     await db.closures.update_one(
         {"id": data.closure_id},
@@ -191,7 +211,8 @@ async def apply_extension(data: ExtensionApply, user=Depends(get_current_user)):
 
     return {
         "message": f"Extended {extended_count} members by {data.days} days",
-        "extended_count": extended_count
+        "extended_count": extended_count,
+        "extended_members": extended_members
     }
 
 @router.post("/manual")

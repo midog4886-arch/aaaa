@@ -50,6 +50,8 @@ export default function DayExtensionsPage() {
   const [newClosure, setNewClosure] = useState({ ...defaultClosure });
   const [manualExt, setManualExt] = useState({ member_id: '', days: 1, reason: '', activity_id: '' });
   const [applyBranch, setApplyBranch] = useState('all');
+  const [showResultDialog, setShowResultDialog] = useState(false);
+  const [applyResult, setApplyResult] = useState(null);
 
   const loadData = useCallback(async () => {
     try {
@@ -130,10 +132,14 @@ export default function DayExtensionsPage() {
         days: days,
         branch_id: applyBranch
       });
-      toast.success(t(
-        `تم ترحيل ${days} يوم لـ ${res.data?.extended_count || 0} مشترك`,
-        `Extended ${res.data?.extended_count || 0} members by ${days} days`
-      ));
+      const result = res.data || res;
+      setApplyResult({
+        days: days,
+        closureTitle: closure.title_ar || closure.title_en || '',
+        extended_count: result.extended_count || 0,
+        extended_members: result.extended_members || []
+      });
+      setShowResultDialog(true);
       loadData();
     } catch (error) {
       toast.error(t('خطأ في الترحيل', 'Error applying extension'));
@@ -583,6 +589,93 @@ export default function DayExtensionsPage() {
                 <Button onClick={handleManualExtension} disabled={saving} className="bg-green-600 hover:bg-green-700">
                   {saving && <Loader2 className="w-4 h-4 me-2 animate-spin" />}
                   {t('ترحيل', 'Extend')}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        )}
+
+        {showResultDialog && applyResult && (
+          <Dialog open={showResultDialog} onOpenChange={setShowResultDialog}>
+            <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+              <DialogHeader>
+                <DialogTitle className="text-center">
+                  <CheckCircle className="w-12 h-12 text-green-500 mx-auto mb-2" />
+                  <div className="text-xl">{t('تم الترحيل بنجاح', 'Extension Applied Successfully')}</div>
+                </DialogTitle>
+              </DialogHeader>
+              <div className="space-y-4">
+                <div className="p-4 bg-green-50 border border-green-200 rounded-lg text-center">
+                  <p className="text-lg font-bold text-green-800">
+                    {t(`${applyResult.closureTitle}`, applyResult.closureTitle)}
+                  </p>
+                  <p className="text-green-700 mt-1">
+                    {t(
+                      `تم ترحيل ${applyResult.days} يوم لـ ${applyResult.extended_count} مشترك`,
+                      `Extended ${applyResult.extended_count} members by ${applyResult.days} days`
+                    )}
+                  </p>
+                </div>
+
+                {applyResult.extended_members.length > 0 && (
+                  <div>
+                    <h3 className="font-bold mb-2 text-base">
+                      <Users className="w-5 h-5 inline me-1" />
+                      {t('المشتركين المتأثرين', 'Affected Members')} ({applyResult.extended_count})
+                    </h3>
+                    <div className="border rounded-lg overflow-hidden">
+                      <table className="w-full text-sm">
+                        <thead className="bg-gray-50">
+                          <tr>
+                            <th className="p-2 text-right">#</th>
+                            <th className="p-2 text-right">{t('الاسم', 'Name')}</th>
+                            <th className="p-2 text-right">{t('النشاط', 'Activity')}</th>
+                            <th className="p-2 text-right">{t('قبل', 'Before')}</th>
+                            <th className="p-2 text-right">{t('بعد', 'After')}</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {applyResult.extended_members.map((m, idx) => (
+                            m.details && m.details.length > 0 ? m.details.map((d, dIdx) => (
+                              <tr key={`${idx}-${dIdx}`} className={idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                                {dIdx === 0 && (
+                                  <>
+                                    <td className="p-2 border-t" rowSpan={m.details.length}>{idx + 1}</td>
+                                    <td className="p-2 border-t font-medium" rowSpan={m.details.length}>
+                                      {m.name}
+                                      {m.phone && <div className="text-xs text-gray-500">{m.phone}</div>}
+                                    </td>
+                                  </>
+                                )}
+                                <td className="p-2 border-t text-xs">{d.activity || '-'}</td>
+                                <td className="p-2 border-t text-red-600 text-xs">{d.old_end}</td>
+                                <td className="p-2 border-t text-green-600 text-xs font-medium">{d.new_end}</td>
+                              </tr>
+                            )) : (
+                              <tr key={idx} className={idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                                <td className="p-2 border-t">{idx + 1}</td>
+                                <td className="p-2 border-t font-medium">{m.name}</td>
+                                <td className="p-2 border-t">-</td>
+                                <td className="p-2 border-t">-</td>
+                                <td className="p-2 border-t">-</td>
+                              </tr>
+                            )
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+
+                {applyResult.extended_count === 0 && (
+                  <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg text-center">
+                    <p className="text-yellow-800">{t('لم يتأثر أي مشترك بهذا الترحيل', 'No members were affected by this extension')}</p>
+                  </div>
+                )}
+              </div>
+              <DialogFooter>
+                <Button onClick={() => setShowResultDialog(false)} className="bg-orange-500 hover:bg-orange-600">
+                  {t('إغلاق', 'Close')}
                 </Button>
               </DialogFooter>
             </DialogContent>
