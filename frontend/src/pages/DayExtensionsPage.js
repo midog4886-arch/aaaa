@@ -504,17 +504,35 @@ export default function DayExtensionsPage() {
                         placeholder={t('مثال: 3', 'e.g. 3')}
                       />
                       <div className="flex flex-wrap gap-1 mt-2">
-                        {[3, 4, 5, 6, 7, 8, 9, 10].map(h => (
-                          <button
-                            key={h}
-                            type="button"
-                            onClick={() => setNewClosure({ ...newClosure, stop_hours: h })}
-                            className={`px-2 py-1 text-xs rounded border ${newClosure.stop_hours === h ? 'bg-blue-500 text-white border-blue-500' : 'bg-white hover:bg-slate-50 border-gray-300'}`}
-                          >
-                            {h} {t('ساعة', 'hr')}
-                          </button>
-                        ))}
+                        {[3, 4, 5, 6, 7, 8, 9, 10].map(h => {
+                          const selected = (newClosure.selected_hours || []).includes(h);
+                          return (
+                            <button
+                              key={h}
+                              type="button"
+                              onClick={() => {
+                                const current = [...(newClosure.selected_hours || [])];
+                                if (selected) {
+                                  const idx = current.indexOf(h);
+                                  current.splice(idx, 1);
+                                } else {
+                                  current.push(h);
+                                }
+                                const total = current.reduce((s, v) => s + v, 0);
+                                setNewClosure({ ...newClosure, selected_hours: current, stop_hours: total });
+                              }}
+                              className={`px-2 py-1 text-xs rounded border ${selected ? 'bg-blue-500 text-white border-blue-500' : 'bg-white hover:bg-slate-50 border-gray-300'}`}
+                            >
+                              {h} {t('ساعة', 'hr')}
+                            </button>
+                          );
+                        })}
                       </div>
+                      {(newClosure.selected_hours || []).length > 1 && (
+                        <p className="text-xs text-blue-600 mt-1 font-medium">
+                          {t(`المجموع: ${newClosure.stop_hours} ساعة`, `Total: ${newClosure.stop_hours} hours`)}
+                        </p>
+                      )}
                       <p className="text-xs text-muted-foreground mt-1">
                         {t('سيتم حساب أيام الترحيل نسبياً حسب ساعات التوقف', 'Extension days calculated proportionally')}
                       </p>
