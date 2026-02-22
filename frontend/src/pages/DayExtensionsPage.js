@@ -52,25 +52,23 @@ export default function DayExtensionsPage() {
   const [applyBranch, setApplyBranch] = useState('all');
   const [showResultDialog, setShowResultDialog] = useState(false);
   const [applyResult, setApplyResult] = useState(null);
-  const [availableTimes, setAvailableTimes] = useState([]);
+  const fixedTimes = [3, 4, 5, 6, 7, 8, 9, 10];
 
   const loadData = useCallback(async () => {
     try {
       setLoading(true);
-      const [closuresRes, logsRes, membersRes, branchesRes, activitiesRes, timesRes] = await Promise.all([
+      const [closuresRes, logsRes, membersRes, branchesRes, activitiesRes] = await Promise.all([
         api.dayExtensions.getClosures(),
         api.dayExtensions.getLogs(),
         membersAPI.getAll(),
         branchesAPI.getAll(),
-        activitiesAPI.getAll(),
-        api.dayExtensions.getAvailableTimes()
+        activitiesAPI.getAll()
       ]);
       setClosures(Array.isArray(closuresRes.data) ? closuresRes.data : []);
       setLogs(Array.isArray(logsRes.data) ? logsRes.data : []);
       setMembers(Array.isArray(membersRes.data) ? membersRes.data : []);
       setBranches(Array.isArray(branchesRes.data) ? branchesRes.data : []);
       setActivities(Array.isArray(activitiesRes.data) ? activitiesRes.data : []);
-      setAvailableTimes(Array.isArray(timesRes.data) ? timesRes.data : []);
     } catch (error) {
       console.error('DayExtensions loadData error:', error);
       toast.error(t('خطأ في تحميل البيانات', 'Error loading data'));
@@ -507,36 +505,30 @@ export default function DayExtensionsPage() {
                   </div>
                   {newClosure.stop_type === 'specific_times' && (
                     <div>
-                      <Label className="text-xs">{t('اختر المواعيد المتأثرة بالتوقف * (من الفواتير)', 'Select affected session times * (from invoices)')}</Label>
+                      <Label className="text-xs">{t('اختر المواعيد المتأثرة بالتوقف *', 'Select affected session times *')}</Label>
                       <div className="flex flex-wrap gap-2 mt-2">
-                        {availableTimes.map(item => {
-                          const isSelected = (newClosure.affected_times || []).includes(item.time);
+                        {fixedTimes.map(time => {
+                          const isSelected = (newClosure.affected_times || []).includes(time);
                           return (
                             <button
-                              key={item.time}
+                              key={time}
                               type="button"
                               onClick={() => {
                                 const current = [...(newClosure.affected_times || [])];
                                 if (isSelected) {
-                                  const idx = current.indexOf(item.time);
+                                  const idx = current.indexOf(time);
                                   current.splice(idx, 1);
                                 } else {
-                                  current.push(item.time);
+                                  current.push(time);
                                 }
                                 setNewClosure({ ...newClosure, affected_times: current });
                               }}
                               className={`px-3 py-2 text-sm rounded-lg border-2 transition-all ${isSelected ? 'bg-blue-500 text-white border-blue-500 shadow-md' : 'bg-white hover:bg-slate-50 border-gray-200'}`}
                             >
-                              <div className="font-bold">{t(`الساعة ${item.time}`, `${item.time}:00`)}</div>
-                              <div className={`text-xs ${isSelected ? 'text-blue-100' : 'text-gray-400'}`}>
-                                {item.count} {t('مشترك', 'members')}
-                              </div>
+                              <div className="font-bold">{t(`الساعة ${time}`, `${time}:00`)}</div>
                             </button>
                           );
                         })}
-                        {availableTimes.length === 0 && (
-                          <p className="text-xs text-muted-foreground">{t('لا توجد مواعيد في الفواتير', 'No times found in invoices')}</p>
-                        )}
                       </div>
                       {(newClosure.affected_times || []).length > 0 && (
                         <p className="text-xs text-blue-600 mt-2 font-medium">
