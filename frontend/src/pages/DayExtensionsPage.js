@@ -504,7 +504,7 @@ export default function DayExtensionsPage() {
                         placeholder={t('مثال: 3', 'e.g. 3')}
                       />
                       <div className="flex flex-wrap gap-1 mt-2">
-                        {[1, 2, 3, 4, 5, 6, 8, 10, 12].map(h => (
+                        {[3, 4, 5, 6, 7, 8, 9, 10].map(h => (
                           <button
                             key={h}
                             type="button"
