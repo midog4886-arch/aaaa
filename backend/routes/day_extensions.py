@@ -7,7 +7,7 @@ from datetime import datetime, timezone, timedelta
 
 from .common import db, get_current_user
 
-router = APIRouter(prefix="/api/day-extensions", tags=["day-extensions"])
+router = APIRouter(prefix="/day-extensions", tags=["day-extensions"])
 
 def require_admin(user: dict):
     if not user.get("is_admin", False):
