@@ -46,7 +46,8 @@ import {
   Wallet,
   Radio,
   ShieldCheck,
-  BookOpen
+  BookOpen,
+  CalendarOff
 } from 'lucide-react';
 
 export const Sidebar = ({ isOpen, onClose }) => {
@@ -128,6 +129,7 @@ export const Sidebar = ({ isOpen, onClose }) => {
       items: [
         { to: '/admin/invoices', icon: Receipt, label: 'invoices', permission: 'invoices' },
         { to: '/admin/daily-ledger', icon: BookOpen, label: 'daily_ledger', permission: 'reports' },
+        { to: '/admin/day-extensions', icon: CalendarOff, label: 'day_extensions', permission: 'reports' },
         { to: '/admin/accounting', icon: Calculator, label: 'accounting', permission: 'accounting' },
         { to: '/admin/store', icon: Package, label: 'store', permission: 'store' },
       ]

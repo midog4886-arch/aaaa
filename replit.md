@@ -82,5 +82,7 @@ frontend/
 
 - Daily Financial Ledger (اليومية المالية): Full daily financial tracking at /admin/daily-ledger. Features: daily summary (income/expenses/refunds/net profit), manual expense CRUD with categories (rent, salaries, maintenance, purchases, utilities, marketing, equipment, transportation, other), monthly calendar view with daily financial summaries, daily comparison (today vs yesterday vs same day last week), income by payment method breakdown, expenses by category breakdown, transaction search/filter, CSV/PDF export, password protection (242456). Backend: routes/daily_ledger.py with MongoDB expenses collection. Sidebar: under Finance group.
 
+- Day Extensions (ترحيل الأيام): Manage closures (holidays/maintenance/emergencies) and extend member subscriptions at /admin/day-extensions. Features: create closure periods with date ranges and reason types, bulk apply extensions to all active members (with optional branch filter), manual individual member extensions, extension activity log tracking all operations. Backend: routes/day_extensions.py with MongoDB closures and extension_logs collections. Admin-only access with input validation. Sidebar: under Finance group.
+
 ## Known Issues
 - MongoDB Atlas SSL handshake may fail with `TLSV1_ALERT_INTERNAL_ERROR` - this is typically caused by the Replit IP not being whitelisted in MongoDB Atlas Network Access settings. The user needs to add `0.0.0.0/0` (allow all) in MongoDB Atlas Network Access.

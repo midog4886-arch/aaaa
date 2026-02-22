@@ -31,6 +31,7 @@ import BackupPage from './pages/BackupPage';
 import PushNotificationsPage from './pages/PushNotificationsPage';
 import PrivacyPolicyPage from './pages/PrivacyPolicyPage';
 import DailyLedgerPage from './pages/DailyLedgerPage';
+import DayExtensionsPage from './pages/DayExtensionsPage';
 
 // Member Portal Pages
 import MemberLogin from './pages/member-portal/MemberLogin';
@@ -232,6 +233,14 @@ function AppRoutes() {
         element={
           <ProtectedRoute permission="reports">
             <DailyLedgerPage />
+          </ProtectedRoute>
+        } 
+      />
+      <Route 
+        path="/admin/day-extensions" 
+        element={
+          <ProtectedRoute permission="reports">
+            <DayExtensionsPage />
           </ProtectedRoute>
         } 
       />
