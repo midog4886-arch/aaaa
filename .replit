@@ -39,6 +39,10 @@ args = "cd /home/runner/workspace/backend && python -m uvicorn server:app --host
 waitForPort = 5000
 
 [[ports]]
+localPort = 3001
+externalPort = 3001
+
+[[ports]]
 localPort = 5000
 externalPort = 80
 

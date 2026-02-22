@@ -4,6 +4,33 @@ import { LanguageProvider } from './contexts/LanguageContext';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { Toaster } from './components/ui/sonner';
 
+class ErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error };
+  }
+  componentDidCatch(error, errorInfo) {
+    console.error('ErrorBoundary caught:', error, errorInfo);
+  }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div style={{ padding: 40, direction: 'rtl', textAlign: 'center' }}>
+          <h2 style={{ color: 'red' }}>حدث خطأ في تحميل الصفحة</h2>
+          <p style={{ color: '#666', marginTop: 10 }}>{this.state.error?.message || 'Unknown error'}</p>
+          <button onClick={() => { this.setState({ hasError: false }); window.location.reload(); }} style={{ marginTop: 20, padding: '10px 20px', background: '#f97316', color: 'white', border: 'none', borderRadius: 8, cursor: 'pointer' }}>
+            إعادة تحميل
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 // Pages
 import LoginPage from './pages/LoginPage';
 import DashboardPage from './pages/DashboardPage';
@@ -384,7 +411,9 @@ function App() {
     <LanguageProvider>
       <AuthProvider>
         <BrowserRouter>
-          <AppRoutes />
+          <ErrorBoundary>
+            <AppRoutes />
+          </ErrorBoundary>
           <Toaster position="top-center" richColors closeButton />
         </BrowserRouter>
       </AuthProvider>

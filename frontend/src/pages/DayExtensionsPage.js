@@ -1,19 +1,18 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { Layout } from '../components/Layout';
-import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
+import { Card } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
-import { Textarea } from '../components/ui/textarea';
 import { Badge } from '../components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '../components/ui/dialog';
 import api, { membersAPI, branchesAPI, activitiesAPI } from '../services/api';
 import { toast } from 'sonner';
 import {
   CalendarOff, Plus, Trash2, Play, Clock, User, Users,
-  CalendarDays, CheckCircle, AlertTriangle, History, Loader2, Dumbbell
+  CalendarDays, CheckCircle, History, Loader2
 } from 'lucide-react';
 
 const REASON_LABELS = {
@@ -39,7 +38,6 @@ export default function DayExtensionsPage() {
   const [activities, setActivities] = useState([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('closures');
-
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [showManualDialog, setShowManualDialog] = useState(false);
   const [applying, setApplying] = useState(false);
@@ -50,12 +48,12 @@ export default function DayExtensionsPage() {
     scope: 'all', activity_id: '', activity_name: '', stop_type: 'full_day', stop_hours: 0
   };
   const [newClosure, setNewClosure] = useState({ ...defaultClosure });
-
   const [manualExt, setManualExt] = useState({ member_id: '', days: 1, reason: '', activity_id: '' });
   const [applyBranch, setApplyBranch] = useState('all');
 
   const loadData = useCallback(async () => {
     try {
+      setLoading(true);
       const [closuresRes, logsRes, membersRes, branchesRes, activitiesRes] = await Promise.all([
         api.dayExtensions.getClosures(),
         api.dayExtensions.getLogs(),
@@ -63,12 +61,13 @@ export default function DayExtensionsPage() {
         branchesAPI.getAll(),
         activitiesAPI.getAll()
       ]);
-      setClosures(closuresRes.data || []);
-      setLogs(logsRes.data || []);
-      setMembers(membersRes.data || []);
-      setBranches(branchesRes.data || []);
-      setActivities(activitiesRes.data || []);
+      setClosures(Array.isArray(closuresRes.data) ? closuresRes.data : []);
+      setLogs(Array.isArray(logsRes.data) ? logsRes.data : []);
+      setMembers(Array.isArray(membersRes.data) ? membersRes.data : []);
+      setBranches(Array.isArray(branchesRes.data) ? branchesRes.data : []);
+      setActivities(Array.isArray(activitiesRes.data) ? activitiesRes.data : []);
     } catch (error) {
+      console.error('DayExtensions loadData error:', error);
       toast.error(t('خطأ في تحميل البيانات', 'Error loading data'));
     } finally {
       setLoading(false);
@@ -117,12 +116,12 @@ export default function DayExtensionsPage() {
 
   const handleApplyExtension = async (closure) => {
     const days = closure.days;
-    const scopeText = closure.scope === 'specific' 
-      ? ` (${closure.activity_name || t('نشاط محدد', 'specific activity')})` 
+    const scopeText = closure.scope === 'specific'
+      ? ` (${closure.activity_name || t('نشاط محدد', 'specific activity')})`
       : '';
     if (!window.confirm(t(
-      `هل تريد ترحيل ${days} يوم لجميع المشتركين النشطين${scopeText}؟ هذا الإجراء لا يمكن التراجع عنه.`,
-      `Extend all active members by ${days} days${scopeText}? This action cannot be undone.`
+      `هل تريد ترحيل ${days} يوم لجميع المشتركين النشطين${scopeText}؟`,
+      `Extend all active members by ${days} days${scopeText}?`
     ))) return;
     setApplying(true);
     try {
@@ -132,8 +131,8 @@ export default function DayExtensionsPage() {
         branch_id: applyBranch
       });
       toast.success(t(
-        `تم ترحيل ${days} يوم لـ ${res.data.extended_count} مشترك`,
-        `Extended ${res.data.extended_count} members by ${days} days`
+        `تم ترحيل ${days} يوم لـ ${res.data?.extended_count || 0} مشترك`,
+        `Extended ${res.data?.extended_count || 0} members by ${days} days`
       ));
       loadData();
     } catch (error) {
@@ -179,7 +178,15 @@ export default function DayExtensionsPage() {
     return totalDays;
   };
 
-  if (loading) return <Layout><div className="flex items-center justify-center h-64"><Loader2 className="w-8 h-8 animate-spin" /></div></Layout>;
+  if (loading) {
+    return (
+      <Layout>
+        <div className="flex items-center justify-center h-64">
+          <Loader2 className="w-8 h-8 animate-spin text-primary" />
+        </div>
+      </Layout>
+    );
+  }
 
   return (
     <Layout>
@@ -222,13 +229,16 @@ export default function DayExtensionsPage() {
             {branches.length > 1 && (
               <div className="flex items-center gap-2">
                 <Label className="text-sm">{t('الفرع:', 'Branch:')}</Label>
-                <Select value={applyBranch} onValueChange={setApplyBranch}>
-                  <SelectTrigger className="w-48"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">{t('جميع الفروع', 'All Branches')}</SelectItem>
-                    {branches.map(b => <SelectItem key={b.id} value={b.id}>{b.name_ar || b.name}</SelectItem>)}
-                  </SelectContent>
-                </Select>
+                <select
+                  className="border rounded-md px-3 py-2 text-sm bg-white"
+                  value={applyBranch}
+                  onChange={(e) => setApplyBranch(e.target.value)}
+                >
+                  <option value="all">{t('جميع الفروع', 'All Branches')}</option>
+                  {branches.map(b => (
+                    <option key={b.id || b._id} value={b.id || b._id}>{b.name_ar || b.name || ''}</option>
+                  ))}
+                </select>
               </div>
             )}
 
@@ -244,13 +254,12 @@ export default function DayExtensionsPage() {
                     <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
                       <div className="flex-1">
                         <div className="flex items-center gap-2 mb-2 flex-wrap">
-                          <h3 className="font-bold text-lg">{closure.title_ar}</h3>
+                          <h3 className="font-bold text-lg">{closure.title_ar || ''}</h3>
                           <Badge className={REASON_COLORS[closure.reason] || REASON_COLORS.other}>
-                            {(language === 'ar' ? REASON_LABELS.ar : REASON_LABELS.en)[closure.reason] || closure.reason}
+                            {(language === 'ar' ? REASON_LABELS.ar : REASON_LABELS.en)[closure.reason] || closure.reason || ''}
                           </Badge>
                           {closure.scope === 'specific' && closure.activity_name && (
                             <Badge className="bg-purple-100 text-purple-800">
-                              <Dumbbell className="w-3 h-3 me-1" />
                               {closure.activity_name}
                             </Badge>
                           )}
@@ -271,9 +280,6 @@ export default function DayExtensionsPage() {
                           <span className="flex items-center gap-1">
                             <CalendarDays className="w-4 h-4" />
                             {closure.start_date} → {closure.end_date}
-                            {closure.total_days_count && closure.total_days_count !== closure.days && (
-                              <span className="text-xs">({closure.total_days_count} {t('يوم', 'days')})</span>
-                            )}
                           </span>
                           <span className="flex items-center gap-1 font-medium text-primary">
                             <Clock className="w-4 h-4" />
@@ -282,7 +288,7 @@ export default function DayExtensionsPage() {
                           {closure.applied && (
                             <span className="flex items-center gap-1 text-green-700">
                               <Users className="w-4 h-4" />
-                              {closure.applied_count} {t('مشترك', 'members')}
+                              {closure.applied_count || 0} {t('مشترك', 'members')}
                             </span>
                           )}
                         </div>
@@ -318,7 +324,7 @@ export default function DayExtensionsPage() {
               </Card>
             ) : (
               logs.map(log => (
-                <Card key={log.id} className="p-4">
+                <Card key={log.id || Math.random()} className="p-4">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
                       {log.type === 'closure' ? (
@@ -333,7 +339,7 @@ export default function DayExtensionsPage() {
                       <div>
                         {log.type === 'closure' ? (
                           <p className="font-medium">
-                            {t('ترحيل جماعي', 'Bulk Extension')} - {log.closure_title}
+                            {t('ترحيل جماعي', 'Bulk Extension')} - {log.closure_title || ''}
                             <span className="text-green-600 font-bold ms-2">+{log.days} {t('يوم', 'days')}</span>
                             {log.activity_name && (
                               <Badge className="bg-purple-100 text-purple-800 ms-2 text-xs">
@@ -348,14 +354,14 @@ export default function DayExtensionsPage() {
                           </p>
                         ) : (
                           <p className="font-medium">
-                            {t('ترحيل يدوي', 'Manual')} - {log.member_name}
+                            {t('ترحيل يدوي', 'Manual')} - {log.member_name || ''}
                             <span className="text-green-600 font-bold ms-2">+{log.days} {t('يوم', 'days')}</span>
                           </p>
                         )}
                         <p className="text-xs text-muted-foreground">
-                          {log.type === 'closure' && `${log.members_count} ${t('مشترك', 'members')} | `}
-                          {log.type === 'manual' && `${log.reason} | `}
-                          {t('بواسطة', 'by')} {log.applied_by} | {new Date(log.created_at).toLocaleDateString(language === 'ar' ? 'ar-SA' : 'en-US')}
+                          {log.type === 'closure' && log.members_count ? `${log.members_count} ${t('مشترك', 'members')} | ` : ''}
+                          {log.type === 'manual' && log.reason ? `${log.reason} | ` : ''}
+                          {t('بواسطة', 'by')} {log.applied_by || ''} | {log.created_at ? new Date(log.created_at).toLocaleDateString(language === 'ar' ? 'ar-SA' : 'en-US') : ''}
                         </p>
                       </div>
                     </div>
@@ -366,214 +372,222 @@ export default function DayExtensionsPage() {
           </div>
         )}
 
-        {/* Create Closure Dialog */}
-        <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
-          <DialogContent className="max-w-lg">
-            <DialogHeader>
-              <DialogTitle className="flex items-center gap-2">
-                <CalendarOff className="w-5 h-5" />
-                {t('إضافة فترة إغلاق / توقف', 'Add Closure / Stoppage')}
-              </DialogTitle>
-            </DialogHeader>
-            <div className="space-y-4 max-h-[70vh] overflow-y-auto pe-2">
-              <div>
-                <Label>{t('العنوان *', 'Title *')}</Label>
-                <Input value={newClosure.title_ar} onChange={(e) => setNewClosure({ ...newClosure, title_ar: e.target.value })} placeholder={t('مثال: إجازة عيد الفطر / صيانة المسبح', 'e.g. Eid Holiday / Pool Maintenance')} />
-              </div>
-              <div>
-                <Label>{t('السبب', 'Reason')}</Label>
-                <Select value={newClosure.reason} onValueChange={(val) => setNewClosure({ ...newClosure, reason: val })}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="holiday">{t('إجازة رسمية', 'Official Holiday')}</SelectItem>
-                    <SelectItem value="maintenance">{t('صيانة', 'Maintenance')}</SelectItem>
-                    <SelectItem value="emergency">{t('طارئ', 'Emergency')}</SelectItem>
-                    <SelectItem value="other">{t('أخرى', 'Other')}</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="p-3 bg-slate-50 rounded-lg space-y-3 border">
-                <Label className="font-bold text-sm">{t('نطاق التوقف', 'Scope')}</Label>
-                <div className="flex gap-3">
-                  <Button
-                    type="button" size="sm"
-                    variant={newClosure.scope === 'all' ? 'default' : 'outline'}
-                    onClick={() => setNewClosure({ ...newClosure, scope: 'all', activity_id: '', activity_name: '' })}
-                  >
-                    <Users className="w-4 h-4 me-1" />
-                    {t('جميع الأنشطة', 'All Activities')}
-                  </Button>
-                  <Button
-                    type="button" size="sm"
-                    variant={newClosure.scope === 'specific' ? 'default' : 'outline'}
-                    onClick={() => setNewClosure({ ...newClosure, scope: 'specific' })}
-                  >
-                    <Dumbbell className="w-4 h-4 me-1" />
-                    {t('نشاط محدد', 'Specific Activity')}
-                  </Button>
+        {showCreateDialog && (
+          <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
+            <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2">
+                  <CalendarOff className="w-5 h-5" />
+                  {t('إضافة فترة إغلاق / توقف', 'Add Closure / Stoppage')}
+                </DialogTitle>
+              </DialogHeader>
+              <div className="space-y-4">
+                <div>
+                  <Label>{t('العنوان *', 'Title *')}</Label>
+                  <Input value={newClosure.title_ar} onChange={(e) => setNewClosure({ ...newClosure, title_ar: e.target.value })} placeholder={t('مثال: إجازة عيد الفطر', 'e.g. Eid Holiday')} />
                 </div>
-                {newClosure.scope === 'specific' && (
-                  <div>
-                    <Label className="text-xs">{t('اختر النشاط *', 'Select Activity *')}</Label>
-                    <Select
-                      value={newClosure.activity_id || 'none'}
-                      onValueChange={(val) => {
-                        if (val !== 'none') {
-                          const act = activities.find(a => a.id === val);
-                          setNewClosure({ ...newClosure, activity_id: val, activity_name: act?.name_ar || act?.name || '' });
-                        }
-                      }}
+                <div>
+                  <Label>{t('السبب', 'Reason')}</Label>
+                  <select
+                    className="w-full border rounded-md px-3 py-2 text-sm bg-white"
+                    value={newClosure.reason}
+                    onChange={(e) => setNewClosure({ ...newClosure, reason: e.target.value })}
+                  >
+                    <option value="holiday">{t('إجازة رسمية', 'Official Holiday')}</option>
+                    <option value="maintenance">{t('صيانة', 'Maintenance')}</option>
+                    <option value="emergency">{t('طارئ', 'Emergency')}</option>
+                    <option value="other">{t('أخرى', 'Other')}</option>
+                  </select>
+                </div>
+
+                <div className="p-3 bg-slate-50 rounded-lg space-y-3 border">
+                  <Label className="font-bold text-sm">{t('نطاق التوقف', 'Scope')}</Label>
+                  <div className="flex gap-3">
+                    <Button
+                      type="button" size="sm"
+                      variant={newClosure.scope === 'all' ? 'default' : 'outline'}
+                      onClick={() => setNewClosure({ ...newClosure, scope: 'all', activity_id: '', activity_name: '' })}
                     >
-                      <SelectTrigger><SelectValue placeholder={t('اختر النشاط...', 'Select activity...')} /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="none">{t('-- اختر --', '-- Select --')}</SelectItem>
-                        {activities.map(a => <SelectItem key={a.id} value={a.id}>{a.name_ar || a.name}</SelectItem>)}
-                      </SelectContent>
-                    </Select>
+                      <Users className="w-4 h-4 me-1" />
+                      {t('جميع الأنشطة', 'All Activities')}
+                    </Button>
+                    <Button
+                      type="button" size="sm"
+                      variant={newClosure.scope === 'specific' ? 'default' : 'outline'}
+                      onClick={() => setNewClosure({ ...newClosure, scope: 'specific' })}
+                    >
+                      {t('نشاط محدد', 'Specific Activity')}
+                    </Button>
+                  </div>
+                  {newClosure.scope === 'specific' && (
+                    <div>
+                      <Label className="text-xs">{t('اختر النشاط *', 'Select Activity *')}</Label>
+                      <select
+                        className="w-full border rounded-md px-3 py-2 text-sm bg-white"
+                        value={newClosure.activity_id || ''}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          const act = activities.find(a => (a.id || a._id) === val);
+                          setNewClosure({ ...newClosure, activity_id: val, activity_name: act?.name_ar || act?.name || '' });
+                        }}
+                      >
+                        <option value="">{t('-- اختر --', '-- Select --')}</option>
+                        {activities.map(a => (
+                          <option key={a.id || a._id} value={a.id || a._id}>{a.name_ar || a.name || ''}</option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+                </div>
+
+                <div className="p-3 bg-slate-50 rounded-lg space-y-3 border">
+                  <Label className="font-bold text-sm">{t('نوع التوقف', 'Stop Type')}</Label>
+                  <div className="flex gap-3">
+                    <Button
+                      type="button" size="sm"
+                      variant={newClosure.stop_type === 'full_day' ? 'default' : 'outline'}
+                      onClick={() => setNewClosure({ ...newClosure, stop_type: 'full_day', stop_hours: 0 })}
+                    >
+                      <CalendarDays className="w-4 h-4 me-1" />
+                      {t('يوم كامل', 'Full Day')}
+                    </Button>
+                    <Button
+                      type="button" size="sm"
+                      variant={newClosure.stop_type === 'partial' ? 'default' : 'outline'}
+                      onClick={() => setNewClosure({ ...newClosure, stop_type: 'partial' })}
+                    >
+                      <Clock className="w-4 h-4 me-1" />
+                      {t('ساعات محددة', 'Specific Hours')}
+                    </Button>
+                  </div>
+                  {newClosure.stop_type === 'partial' && (
+                    <div>
+                      <Label className="text-xs">{t('عدد ساعات التوقف في اليوم *', 'Stop hours per day *')}</Label>
+                      <Input
+                        type="number" min="0.5" max="23" step="0.5"
+                        value={newClosure.stop_hours}
+                        onChange={(e) => setNewClosure({ ...newClosure, stop_hours: parseFloat(e.target.value) || 0 })}
+                        placeholder={t('مثال: 3', 'e.g. 3')}
+                      />
+                      <p className="text-xs text-muted-foreground mt-1">
+                        {t('سيتم حساب أيام الترحيل نسبياً حسب ساعات التوقف', 'Extension days calculated proportionally')}
+                      </p>
+                    </div>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <Label>{t('من تاريخ *', 'From *')}</Label>
+                    <Input type="date" value={newClosure.start_date} onChange={(e) => setNewClosure({ ...newClosure, start_date: e.target.value })} />
+                  </div>
+                  <div>
+                    <Label>{t('إلى تاريخ *', 'To *')}</Label>
+                    <Input type="date" value={newClosure.end_date} onChange={(e) => setNewClosure({ ...newClosure, end_date: e.target.value })} />
+                  </div>
+                </div>
+                {newClosure.start_date && newClosure.end_date && (
+                  <div className="p-3 bg-blue-50 rounded-lg text-center space-y-1">
+                    <div className="text-sm text-muted-foreground">
+                      {t('فترة التوقف:', 'Stop period:')} {calcDays(newClosure.start_date, newClosure.end_date)} {t('يوم', 'days')}
+                      {newClosure.stop_type === 'partial' && newClosure.stop_hours > 0 && (
+                        <span className="ms-1">× {newClosure.stop_hours} {t('ساعات/يوم', 'hrs/day')}</span>
+                      )}
+                    </div>
+                    <div>
+                      <span className="text-2xl font-bold text-blue-700">{calcExtensionDays()}</span>
+                      <span className="text-sm text-blue-600 ms-2">{t('يوم ترحيل', 'extension days')}</span>
+                    </div>
                   </div>
                 )}
-              </div>
-
-              <div className="p-3 bg-slate-50 rounded-lg space-y-3 border">
-                <Label className="font-bold text-sm">{t('نوع التوقف', 'Stop Type')}</Label>
-                <div className="flex gap-3">
-                  <Button
-                    type="button" size="sm"
-                    variant={newClosure.stop_type === 'full_day' ? 'default' : 'outline'}
-                    onClick={() => setNewClosure({ ...newClosure, stop_type: 'full_day', stop_hours: 0 })}
-                  >
-                    <CalendarDays className="w-4 h-4 me-1" />
-                    {t('يوم كامل', 'Full Day')}
-                  </Button>
-                  <Button
-                    type="button" size="sm"
-                    variant={newClosure.stop_type === 'partial' ? 'default' : 'outline'}
-                    onClick={() => setNewClosure({ ...newClosure, stop_type: 'partial' })}
-                  >
-                    <Clock className="w-4 h-4 me-1" />
-                    {t('ساعات محددة', 'Specific Hours')}
-                  </Button>
+                <div>
+                  <Label>{t('ملاحظات', 'Notes')}</Label>
+                  <textarea
+                    className="w-full min-h-[60px] border rounded-md px-3 py-2 text-sm bg-white"
+                    value={newClosure.notes}
+                    onChange={(e) => setNewClosure({ ...newClosure, notes: e.target.value })}
+                  />
                 </div>
-                {newClosure.stop_type === 'partial' && (
-                  <div>
-                    <Label className="text-xs">{t('عدد ساعات التوقف في اليوم *', 'Stop hours per day *')}</Label>
-                    <Input
-                      type="number" min="0.5" max="23" step="0.5"
-                      value={newClosure.stop_hours}
-                      onChange={(e) => setNewClosure({ ...newClosure, stop_hours: parseFloat(e.target.value) || 0 })}
-                      placeholder={t('مثال: 3', 'e.g. 3')}
-                    />
-                    <p className="text-xs text-muted-foreground mt-1">
-                      {t('سيتم حساب أيام الترحيل نسبياً حسب ساعات التوقف', 'Extension days will be calculated proportionally based on stop hours')}
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setShowCreateDialog(false)}>{t('إلغاء', 'Cancel')}</Button>
+                <Button onClick={handleCreateClosure} disabled={saving}>
+                  {saving && <Loader2 className="w-4 h-4 me-2 animate-spin" />}
+                  {t('حفظ', 'Save')}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        )}
+
+        {showManualDialog && (
+          <Dialog open={showManualDialog} onOpenChange={setShowManualDialog}>
+            <DialogContent className="max-w-md">
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2">
+                  <User className="w-5 h-5" />
+                  {t('ترحيل يدوي لعضو', 'Manual Extension for Member')}
+                </DialogTitle>
+              </DialogHeader>
+              <div className="space-y-4">
+                <div>
+                  <Label>{t('اختر العضو *', 'Select Member *')}</Label>
+                  <select
+                    className="w-full border rounded-md px-3 py-2 text-sm bg-white"
+                    value={manualExt.member_id || ''}
+                    onChange={(e) => setManualExt({ ...manualExt, member_id: e.target.value })}
+                  >
+                    <option value="">{t('-- اختر --', '-- Select --')}</option>
+                    {members.filter(m => m.status === 'active').map(m => (
+                      <option key={m.id || m._id} value={m.id || m._id}>{m.name_ar || m.name || ''} - {m.phone || ''}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <Label>{t('النشاط (اختياري)', 'Activity (optional)')}</Label>
+                  <select
+                    className="w-full border rounded-md px-3 py-2 text-sm bg-white"
+                    value={manualExt.activity_id || 'all'}
+                    onChange={(e) => setManualExt({ ...manualExt, activity_id: e.target.value === 'all' ? '' : e.target.value })}
+                  >
+                    <option value="all">{t('جميع الأنشطة', 'All Activities')}</option>
+                    {activities.map(a => (
+                      <option key={a.id || a._id} value={a.id || a._id}>{a.name_ar || a.name || ''}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <Label>{t('عدد الأيام *', 'Number of Days *')}</Label>
+                  <Input type="number" min="1" value={manualExt.days} onChange={(e) => setManualExt({ ...manualExt, days: parseInt(e.target.value) || 1 })} />
+                </div>
+                <div>
+                  <Label>{t('السبب *', 'Reason *')}</Label>
+                  <Input value={manualExt.reason} onChange={(e) => setManualExt({ ...manualExt, reason: e.target.value })} placeholder={t('مثال: إصابة / سفر', 'e.g. Injury / Travel')} />
+                </div>
+                {manualExt.member_id && manualExt.days > 0 && (
+                  <div className="p-3 bg-green-50 border border-green-200 rounded-lg">
+                    <p className="text-sm text-green-800">
+                      {manualExt.activity_id ? t(
+                        `سيتم تمديد اشتراك النشاط المحدد بـ ${manualExt.days} أيام`,
+                        `Selected activity subscription extended by ${manualExt.days} days`
+                      ) : t(
+                        `سيتم تمديد جميع الاشتراكات النشطة بـ ${manualExt.days} أيام`,
+                        `All active subscriptions extended by ${manualExt.days} days`
+                      )}
                     </p>
                   </div>
                 )}
               </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <Label>{t('من تاريخ *', 'From *')}</Label>
-                  <Input type="date" value={newClosure.start_date} onChange={(e) => setNewClosure({ ...newClosure, start_date: e.target.value })} />
-                </div>
-                <div>
-                  <Label>{t('إلى تاريخ *', 'To *')}</Label>
-                  <Input type="date" value={newClosure.end_date} onChange={(e) => setNewClosure({ ...newClosure, end_date: e.target.value })} />
-                </div>
-              </div>
-              {newClosure.start_date && newClosure.end_date && (
-                <div className="p-3 bg-blue-50 rounded-lg text-center space-y-1">
-                  <div className="text-sm text-muted-foreground">
-                    {t('فترة التوقف:', 'Stop period:')} {calcDays(newClosure.start_date, newClosure.end_date)} {t('يوم', 'days')}
-                    {newClosure.stop_type === 'partial' && newClosure.stop_hours > 0 && (
-                      <span className="ms-1">× {newClosure.stop_hours} {t('ساعات/يوم', 'hrs/day')}</span>
-                    )}
-                  </div>
-                  <div>
-                    <span className="text-2xl font-bold text-blue-700">{calcExtensionDays()}</span>
-                    <span className="text-sm text-blue-600 ms-2">{t('يوم ترحيل', 'extension days')}</span>
-                  </div>
-                </div>
-              )}
-              <div>
-                <Label>{t('ملاحظات', 'Notes')}</Label>
-                <Textarea value={newClosure.notes} onChange={(e) => setNewClosure({ ...newClosure, notes: e.target.value })} />
-              </div>
-            </div>
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setShowCreateDialog(false)}>{t('إلغاء', 'Cancel')}</Button>
-              <Button onClick={handleCreateClosure} disabled={saving}>
-                {saving && <Loader2 className="w-4 h-4 me-2 animate-spin" />}
-                {t('حفظ', 'Save')}
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-
-        {/* Manual Extension Dialog */}
-        <Dialog open={showManualDialog} onOpenChange={setShowManualDialog}>
-          <DialogContent className="max-w-md">
-            <DialogHeader>
-              <DialogTitle className="flex items-center gap-2">
-                <User className="w-5 h-5" />
-                {t('ترحيل يدوي لعضو', 'Manual Extension for Member')}
-              </DialogTitle>
-            </DialogHeader>
-            <div className="space-y-4">
-              <div>
-                <Label>{t('اختر العضو *', 'Select Member *')}</Label>
-                <Select value={manualExt.member_id || 'none'} onValueChange={(val) => val !== 'none' && setManualExt({ ...manualExt, member_id: val })}>
-                  <SelectTrigger><SelectValue placeholder={t('اختر العضو...', 'Select member...')} /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">{t('-- اختر --', '-- Select --')}</SelectItem>
-                    {members.filter(m => m.status === 'active').map(m => (
-                      <SelectItem key={m.id} value={m.id}>{m.name_ar || m.name} - {m.phone}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <Label>{t('النشاط (اختياري)', 'Activity (optional)')}</Label>
-                <Select value={manualExt.activity_id || 'all'} onValueChange={(val) => setManualExt({ ...manualExt, activity_id: val === 'all' ? '' : val })}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">{t('جميع الأنشطة', 'All Activities')}</SelectItem>
-                    {activities.map(a => <SelectItem key={a.id} value={a.id}>{a.name_ar || a.name}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <Label>{t('عدد الأيام *', 'Number of Days *')}</Label>
-                <Input type="number" min="1" value={manualExt.days} onChange={(e) => setManualExt({ ...manualExt, days: parseInt(e.target.value) || 1 })} />
-              </div>
-              <div>
-                <Label>{t('السبب *', 'Reason *')}</Label>
-                <Input value={manualExt.reason} onChange={(e) => setManualExt({ ...manualExt, reason: e.target.value })} placeholder={t('مثال: إصابة / سفر / ظرف خاص', 'e.g. Injury / Travel / Special circumstance')} />
-              </div>
-              {manualExt.member_id && manualExt.days > 0 && (
-                <div className="p-3 bg-green-50 border border-green-200 rounded-lg">
-                  <p className="text-sm text-green-800">
-                    <AlertTriangle className="w-4 h-4 inline me-1" />
-                    {manualExt.activity_id ? t(
-                      `سيتم تمديد اشتراك النشاط المحدد لهذا العضو بـ ${manualExt.days} أيام`,
-                      `The selected activity subscription will be extended by ${manualExt.days} days`
-                    ) : t(
-                      `سيتم تمديد جميع الاشتراكات النشطة لهذا العضو بـ ${manualExt.days} أيام`,
-                      `All active subscriptions for this member will be extended by ${manualExt.days} days`
-                    )}
-                  </p>
-                </div>
-              )}
-            </div>
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setShowManualDialog(false)}>{t('إلغاء', 'Cancel')}</Button>
-              <Button onClick={handleManualExtension} disabled={saving} className="bg-green-600 hover:bg-green-700">
-                {saving && <Loader2 className="w-4 h-4 me-2 animate-spin" />}
-                {t('ترحيل', 'Extend')}
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setShowManualDialog(false)}>{t('إلغاء', 'Cancel')}</Button>
+                <Button onClick={handleManualExtension} disabled={saving} className="bg-green-600 hover:bg-green-700">
+                  {saving && <Loader2 className="w-4 h-4 me-2 animate-spin" />}
+                  {t('ترحيل', 'Extend')}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        )}
       </div>
     </Layout>
   );
