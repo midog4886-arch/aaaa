@@ -110,7 +110,7 @@ async def apply_extension(data: ExtensionApply, user=Depends(get_current_user)):
     activity_id = closure.get("activity_id")
     ext_days = int(data.days) if data.days == int(data.days) else data.days
 
-    query = {"status": "active"}
+    query = {"activities": {"$elemMatch": {"status": "active", "end_date": {"$exists": True, "$ne": ""}}}}
     if data.branch_id and data.branch_id != "all":
         query["branch_id"] = data.branch_id
 
