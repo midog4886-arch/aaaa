@@ -32,6 +32,47 @@ ARABIC_DAY_NAMES = {
 DAY_ORDER = ["الأحد", "الاثنين", "الثلاثاء", "الأربعاء", "الخميس", "الجمعة", "السبت"]
 DAY_ORDER_NUM = [6, 0, 1, 2, 3, 4, 5]
 
+def parse_schedule_time(schedule_text):
+    if not schedule_text:
+        return None
+    schedule_text = schedule_text.strip()
+    time_patterns = [
+        r'الساع[ةه]\s*[٠-٩\d]+',
+        r'الاساع[ةه]\s*[٠-٩\d]+',
+        r'[٠-٩\d]+\s*مساء',
+        r'[٠-٩\d]+\s*صباح',
+        r'(\d+)\s*-\s*(\d+)\s*مساء',
+    ]
+    arabic_nums = {'٠':'0','١':'1','٢':'2','٣':'3','٤':'4','٥':'5','٦':'6','٧':'7','٨':'8','٩':'9'}
+    def convert_arabic_num(s):
+        for a, e in arabic_nums.items():
+            s = s.replace(a, e)
+        return s
+
+    nums = re.findall(r'الساع[ةه]\s*([٠-٩\d]+)|الاساع[ةه]\s*([٠-٩\d]+)|([٠-٩\d]+)\s*مساء|(\d+)\s*-\s*\d+\s*مساء', schedule_text)
+    for match in nums:
+        for g in match:
+            if g:
+                g = convert_arabic_num(g)
+                try:
+                    t = int(g)
+                    if 1 <= t <= 12:
+                        return t
+                except:
+                    pass
+    all_nums = re.findall(r'[٠-٩\d]+', schedule_text)
+    for n in all_nums:
+        n = convert_arabic_num(n)
+        try:
+            t = int(n)
+            if 1 <= t <= 12:
+                day_words = sum(1 for d_aliases in ARABIC_DAY_MAP.values() for a in d_aliases if a in schedule_text)
+                if day_words > 0:
+                    return t
+        except:
+            pass
+    return None
+
 def parse_schedule_days(schedule_text):
     if not schedule_text:
         return set()
@@ -123,6 +164,7 @@ class ClosureCreate(BaseModel):
     activity_names: Optional[List[str]] = None
     stop_type: Optional[str] = "full_day"
     stop_hours: Optional[float] = 0
+    affected_times: Optional[List[int]] = None
 
 class ExtensionApply(BaseModel):
     closure_id: str
@@ -188,6 +230,7 @@ async def create_closure(data: ClosureCreate, user=Depends(get_current_user)):
         "activity_names": act_names,
         "stop_type": data.stop_type or "full_day",
         "stop_hours": data.stop_hours or 0,
+        "affected_times": data.affected_times or [],
         "applied": False,
         "applied_count": 0,
         "created_by": user.get("username", ""),
@@ -222,6 +265,7 @@ async def apply_extension(data: ExtensionApply, user=Depends(get_current_user)):
     activity_ids = closure.get("activity_ids", [])
     if not activity_ids and activity_id:
         activity_ids = [activity_id]
+    affected_times = closure.get("affected_times", [])
     closure_start = datetime.strptime(closure["start_date"], '%Y-%m-%d')
     closure_end = datetime.strptime(closure["end_date"], '%Y-%m-%d')
     closure_weekdays = get_closure_weekdays(closure_start, closure_end)
@@ -275,6 +319,29 @@ async def apply_extension(data: ExtensionApply, user=Depends(get_current_user)):
             gen_key = f"{m_id}_general"
             schedule_text = member_schedules.get(schedule_key, member_schedules.get(gen_key, ""))
             member_training_days = parse_schedule_days(schedule_text)
+            member_time = parse_schedule_time(schedule_text)
+
+            if affected_times and len(affected_times) > 0 and closure.get("stop_type") == "specific_times":
+                if member_time is None:
+                    missed_info[act_name] = {
+                        "missed_sessions": 0,
+                        "training_days": ", ".join([ARABIC_DAY_NAMES.get(d, "") for d in sorted(member_training_days)]) if member_training_days else "غير محدد",
+                        "schedule": schedule_text,
+                        "member_time": None,
+                        "skipped": True,
+                        "skip_reason": "لا يوجد موعد محدد في الجدول"
+                    }
+                    continue
+                if member_time not in affected_times:
+                    missed_info[act_name] = {
+                        "missed_sessions": 0,
+                        "training_days": ", ".join([ARABIC_DAY_NAMES.get(d, "") for d in sorted(member_training_days)]) if member_training_days else "غير محدد",
+                        "schedule": schedule_text,
+                        "member_time": member_time,
+                        "skipped": True,
+                        "skip_reason": f"الموعد {member_time} غير متأثر"
+                    }
+                    continue
 
             try:
                 end_date = datetime.strptime(act["end_date"], '%Y-%m-%d')
@@ -376,10 +443,14 @@ async def apply_extension(data: ExtensionApply, user=Depends(get_current_user)):
         else:
             skipped_acts = [a for a, info in missed_info.items() if info.get("skipped")]
             if skipped_acts:
+                skip_info = missed_info[skipped_acts[0]]
+                skip_reason = skip_info.get("skip_reason", "لا يوجد تقاطع مع أيام الإغلاق")
+                member_t = skip_info.get("member_time")
                 skipped_members.append({
                     "name": member.get("name_ar", member.get("name", "")),
-                    "training_days": missed_info[skipped_acts[0]].get("training_days", ""),
-                    "reason": "لا يوجد تقاطع مع أيام الإغلاق"
+                    "training_days": skip_info.get("training_days", ""),
+                    "member_time": f"الساعة {member_t}" if member_t else "",
+                    "reason": skip_reason
                 })
 
     await db.closures.update_one(
@@ -480,6 +551,23 @@ async def manual_extension(data: ManualExtension, user=Depends(get_current_user)
     await db.extension_logs.insert_one(log_entry)
 
     return {"message": f"Extended {member.get('name_ar', '')} by {data.days} days"}
+
+@router.get("/available-times")
+async def get_available_times(user=Depends(get_current_user)):
+    require_admin(user)
+    invoices = await db.invoices.find(
+        {"items.schedule": {"$exists": True, "$ne": ""}}
+    ).to_list(50000)
+    time_counts = {}
+    for inv in invoices:
+        for item in (inv.get("items") or []):
+            schedule = item.get("schedule", "")
+            if schedule:
+                t = parse_schedule_time(schedule)
+                if t is not None:
+                    time_counts[t] = time_counts.get(t, 0) + 1
+    times = [{"time": t, "count": c} for t, c in sorted(time_counts.items())]
+    return times
 
 @router.get("/logs")
 async def get_extension_logs(user=Depends(get_current_user)):

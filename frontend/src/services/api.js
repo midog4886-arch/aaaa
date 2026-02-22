@@ -404,6 +404,7 @@ export default {
     applyExtension: (data) => axios.post(`${API}/day-extensions/apply`, data),
     manualExtension: (data) => axios.post(`${API}/day-extensions/manual`, data),
     getLogs: () => axios.get(`${API}/day-extensions/logs`),
+    getAvailableTimes: () => axios.get(`${API}/day-extensions/available-times`),
   },
   get: (url) => axios.get(`${API}${url}`),
   post: (url, data) => axios.post(`${API}${url}`, data),

@@ -45,29 +45,32 @@ export default function DayExtensionsPage() {
 
   const defaultClosure = {
     title_ar: '', title_en: '', reason: 'holiday', start_date: '', end_date: '', notes: '',
-    scope: 'all', activity_ids: [], activity_names: [], stop_type: 'full_day', stop_hours: 0
+    scope: 'all', activity_ids: [], activity_names: [], stop_type: 'full_day', stop_hours: 0, affected_times: []
   };
   const [newClosure, setNewClosure] = useState({ ...defaultClosure });
   const [manualExt, setManualExt] = useState({ member_id: '', days: 1, reason: '', activity_id: '' });
   const [applyBranch, setApplyBranch] = useState('all');
   const [showResultDialog, setShowResultDialog] = useState(false);
   const [applyResult, setApplyResult] = useState(null);
+  const [availableTimes, setAvailableTimes] = useState([]);
 
   const loadData = useCallback(async () => {
     try {
       setLoading(true);
-      const [closuresRes, logsRes, membersRes, branchesRes, activitiesRes] = await Promise.all([
+      const [closuresRes, logsRes, membersRes, branchesRes, activitiesRes, timesRes] = await Promise.all([
         api.dayExtensions.getClosures(),
         api.dayExtensions.getLogs(),
         membersAPI.getAll(),
         branchesAPI.getAll(),
-        activitiesAPI.getAll()
+        activitiesAPI.getAll(),
+        api.dayExtensions.getAvailableTimes()
       ]);
       setClosures(Array.isArray(closuresRes.data) ? closuresRes.data : []);
       setLogs(Array.isArray(logsRes.data) ? logsRes.data : []);
       setMembers(Array.isArray(membersRes.data) ? membersRes.data : []);
       setBranches(Array.isArray(branchesRes.data) ? branchesRes.data : []);
       setActivities(Array.isArray(activitiesRes.data) ? activitiesRes.data : []);
+      setAvailableTimes(Array.isArray(timesRes.data) ? timesRes.data : []);
     } catch (error) {
       console.error('DayExtensions loadData error:', error);
       toast.error(t('خطأ في تحميل البيانات', 'Error loading data'));
@@ -87,8 +90,8 @@ export default function DayExtensionsPage() {
       toast.error(t('اختر نشاط واحد على الأقل', 'Select at least one activity'));
       return;
     }
-    if (newClosure.stop_type === 'partial' && (!newClosure.stop_hours || newClosure.stop_hours <= 0)) {
-      toast.error(t('حدد عدد ساعات التوقف', 'Specify stop hours'));
+    if (newClosure.stop_type === 'specific_times' && (!newClosure.affected_times || newClosure.affected_times.length === 0)) {
+      toast.error(t('اختر موعد واحد على الأقل', 'Select at least one time'));
       return;
     }
     setSaving(true);
@@ -275,6 +278,14 @@ export default function DayExtensionsPage() {
                                 </Badge>
                               ))}
                             </>
+                          )}
+                          {closure.stop_type === 'specific_times' && closure.affected_times?.length > 0 && (
+                            closure.affected_times.sort((a,b)=>a-b).map((time, idx) => (
+                              <Badge key={idx} className="bg-yellow-100 text-yellow-800">
+                                <Clock className="w-3 h-3 me-1" />
+                                {t(`الساعة ${time}`, `${time}:00`)}
+                              </Badge>
+                            ))
                           )}
                           {closure.stop_type === 'partial' && (
                             <Badge className="bg-yellow-100 text-yellow-800">
@@ -476,65 +487,67 @@ export default function DayExtensionsPage() {
 
                 <div className="p-3 bg-slate-50 rounded-lg space-y-3 border">
                   <Label className="font-bold text-sm">{t('نوع التوقف', 'Stop Type')}</Label>
-                  <div className="flex gap-3">
+                  <div className="flex gap-3 flex-wrap">
                     <Button
                       type="button" size="sm"
                       variant={newClosure.stop_type === 'full_day' ? 'default' : 'outline'}
-                      onClick={() => setNewClosure({ ...newClosure, stop_type: 'full_day', stop_hours: 0 })}
+                      onClick={() => setNewClosure({ ...newClosure, stop_type: 'full_day', stop_hours: 0, affected_times: [] })}
                     >
                       <CalendarDays className="w-4 h-4 me-1" />
                       {t('يوم كامل', 'Full Day')}
                     </Button>
                     <Button
                       type="button" size="sm"
-                      variant={newClosure.stop_type === 'partial' ? 'default' : 'outline'}
-                      onClick={() => setNewClosure({ ...newClosure, stop_type: 'partial' })}
+                      variant={newClosure.stop_type === 'specific_times' ? 'default' : 'outline'}
+                      onClick={() => setNewClosure({ ...newClosure, stop_type: 'specific_times', stop_hours: 0 })}
                     >
                       <Clock className="w-4 h-4 me-1" />
-                      {t('ساعات محددة', 'Specific Hours')}
+                      {t('مواعيد محددة', 'Specific Times')}
                     </Button>
                   </div>
-                  {newClosure.stop_type === 'partial' && (
+                  {newClosure.stop_type === 'specific_times' && (
                     <div>
-                      <Label className="text-xs">{t('عدد ساعات التوقف في اليوم *', 'Stop hours per day *')}</Label>
-                      <Input
-                        type="number" min="0.5" max="24" step="0.5"
-                        value={newClosure.stop_hours}
-                        onChange={(e) => setNewClosure({ ...newClosure, stop_hours: parseFloat(e.target.value) || 0 })}
-                        placeholder={t('مثال: 3', 'e.g. 3')}
-                      />
-                      <div className="flex flex-wrap gap-1 mt-2">
-                        {[3, 4, 5, 6, 7, 8, 9, 10].map(h => {
-                          const selected = (newClosure.selected_hours || []).includes(h);
+                      <Label className="text-xs">{t('اختر المواعيد المتأثرة بالتوقف * (من الفواتير)', 'Select affected session times * (from invoices)')}</Label>
+                      <div className="flex flex-wrap gap-2 mt-2">
+                        {availableTimes.map(item => {
+                          const isSelected = (newClosure.affected_times || []).includes(item.time);
                           return (
                             <button
-                              key={h}
+                              key={item.time}
                               type="button"
                               onClick={() => {
-                                const current = [...(newClosure.selected_hours || [])];
-                                if (selected) {
-                                  const idx = current.indexOf(h);
+                                const current = [...(newClosure.affected_times || [])];
+                                if (isSelected) {
+                                  const idx = current.indexOf(item.time);
                                   current.splice(idx, 1);
                                 } else {
-                                  current.push(h);
+                                  current.push(item.time);
                                 }
-                                const total = current.reduce((s, v) => s + v, 0);
-                                setNewClosure({ ...newClosure, selected_hours: current, stop_hours: total });
+                                setNewClosure({ ...newClosure, affected_times: current });
                               }}
-                              className={`px-2 py-1 text-xs rounded border ${selected ? 'bg-blue-500 text-white border-blue-500' : 'bg-white hover:bg-slate-50 border-gray-300'}`}
+                              className={`px-3 py-2 text-sm rounded-lg border-2 transition-all ${isSelected ? 'bg-blue-500 text-white border-blue-500 shadow-md' : 'bg-white hover:bg-slate-50 border-gray-200'}`}
                             >
-                              {h} {t('ساعة', 'hr')}
+                              <div className="font-bold">{t(`الساعة ${item.time}`, `${item.time}:00`)}</div>
+                              <div className={`text-xs ${isSelected ? 'text-blue-100' : 'text-gray-400'}`}>
+                                {item.count} {t('مشترك', 'members')}
+                              </div>
                             </button>
                           );
                         })}
+                        {availableTimes.length === 0 && (
+                          <p className="text-xs text-muted-foreground">{t('لا توجد مواعيد في الفواتير', 'No times found in invoices')}</p>
+                        )}
                       </div>
-                      {(newClosure.selected_hours || []).length > 1 && (
-                        <p className="text-xs text-blue-600 mt-1 font-medium">
-                          {t(`المجموع: ${newClosure.stop_hours} ساعة`, `Total: ${newClosure.stop_hours} hours`)}
+                      {(newClosure.affected_times || []).length > 0 && (
+                        <p className="text-xs text-blue-600 mt-2 font-medium">
+                          {t(
+                            `تم اختيار ${newClosure.affected_times.length} موعد: ${newClosure.affected_times.sort((a,b)=>a-b).map(t => `الساعة ${t}`).join('، ')}`,
+                            `${newClosure.affected_times.length} times selected: ${newClosure.affected_times.sort((a,b)=>a-b).map(t => `${t}:00`).join(', ')}`
+                          )}
                         </p>
                       )}
                       <p className="text-xs text-muted-foreground mt-1">
-                        {t('سيتم حساب أيام الترحيل نسبياً حسب ساعات التوقف', 'Extension days calculated proportionally')}
+                        {t('سيتم ترحيل فقط المشتركين الذين مواعيدهم في الأوقات المختارة', 'Only members with sessions at selected times will be extended')}
                       </p>
                     </div>
                   )}
@@ -740,7 +753,7 @@ export default function DayExtensionsPage() {
                     <div className="flex flex-wrap gap-1">
                       {applyResult.skipped_members.map((s, i) => (
                         <span key={i} className="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded">
-                          {s.name} ({s.training_days})
+                          {s.name} {s.member_time ? `(${s.member_time})` : s.training_days ? `(${s.training_days})` : ''}
                         </span>
                       ))}
                     </div>
