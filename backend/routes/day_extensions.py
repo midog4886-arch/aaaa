@@ -36,18 +36,16 @@ def parse_schedule_time(schedule_text):
     if not schedule_text:
         return None
     schedule_text = schedule_text.strip()
-    time_patterns = [
-        r'الساع[ةه]\s*[٠-٩\d]+',
-        r'الاساع[ةه]\s*[٠-٩\d]+',
-        r'[٠-٩\d]+\s*مساء',
-        r'[٠-٩\d]+\s*صباح',
-        r'(\d+)\s*-\s*(\d+)\s*مساء',
-    ]
     arabic_nums = {'٠':'0','١':'1','٢':'2','٣':'3','٤':'4','٥':'5','٦':'6','٧':'7','٨':'8','٩':'9'}
     def convert_arabic_num(s):
         for a, e in arabic_nums.items():
             s = s.replace(a, e)
         return s
+
+    if " - " in schedule_text:
+        parts = schedule_text.split(" - ")
+        time_part = parts[1].strip() if len(parts) > 1 else parts[0].strip()
+        return time_part
 
     nums = re.findall(r'الساع[ةه]\s*([٠-٩\d]+)|الاساع[ةه]\s*([٠-٩\d]+)|([٠-٩\d]+)\s*مساء|(\d+)\s*-\s*\d+\s*مساء', schedule_text)
     for match in nums:
@@ -57,7 +55,7 @@ def parse_schedule_time(schedule_text):
                 try:
                     t = int(g)
                     if 1 <= t <= 12:
-                        return t
+                        return f"الساعة {t}"
                 except:
                     pass
     all_nums = re.findall(r'[٠-٩\d]+', schedule_text)
@@ -68,7 +66,7 @@ def parse_schedule_time(schedule_text):
             if 1 <= t <= 12:
                 day_words = sum(1 for d_aliases in ARABIC_DAY_MAP.values() for a in d_aliases if a in schedule_text)
                 if day_words > 0:
-                    return t
+                    return f"الساعة {t}"
         except:
             pass
     return None
@@ -164,7 +162,7 @@ class ClosureCreate(BaseModel):
     activity_names: Optional[List[str]] = None
     stop_type: Optional[str] = "full_day"
     stop_hours: Optional[float] = 0
-    affected_times: Optional[List[int]] = None
+    affected_times: Optional[List[str]] = None
 
 class ExtensionApply(BaseModel):
     closure_id: str
@@ -555,18 +553,33 @@ async def manual_extension(data: ManualExtension, user=Depends(get_current_user)
 @router.get("/available-times")
 async def get_available_times(user=Depends(get_current_user)):
     require_admin(user)
-    invoices = await db.invoices.find(
-        {"items.schedule": {"$exists": True, "$ne": ""}}
-    ).to_list(50000)
-    time_counts = {}
-    for inv in invoices:
-        for item in (inv.get("items") or []):
-            schedule = item.get("schedule", "")
-            if schedule:
-                t = parse_schedule_time(schedule)
-                if t is not None:
-                    time_counts[t] = time_counts.get(t, 0) + 1
-    times = [{"time": t, "count": c} for t, c in sorted(time_counts.items())]
+    levels = await db.levels.find({}, {"_id": 0, "activity_name": 1, "members": 1}).to_list(5000)
+    time_slots = {}
+    for level in levels:
+        activity_name = level.get("activity_name", "")
+        if not activity_name:
+            continue
+        slot_name = ""
+        if " - " in activity_name:
+            parts = activity_name.split(" - ")
+            slot_name = parts[1].strip() if len(parts) > 1 else parts[0].strip()
+        else:
+            time_match = re.search(r'الساع[ةه]\s*(\d+)', activity_name)
+            if time_match:
+                slot_name = f"الساعة {time_match.group(1)}"
+            else:
+                continue
+        if slot_name:
+            member_count = len(level.get("members", []))
+            if slot_name in time_slots:
+                time_slots[slot_name]["count"] += member_count
+            else:
+                num_match = re.search(r'(\d+)', slot_name)
+                sort_key = int(num_match.group(1)) if num_match else 999
+                time_slots[slot_name] = {"time": slot_name, "count": member_count, "sort_key": sort_key}
+    times = sorted(time_slots.values(), key=lambda x: x.get("sort_key", 999))
+    for t in times:
+        t.pop("sort_key", None)
     return times
 
 @router.get("/logs")

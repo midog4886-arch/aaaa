@@ -52,23 +52,25 @@ export default function DayExtensionsPage() {
   const [applyBranch, setApplyBranch] = useState('all');
   const [showResultDialog, setShowResultDialog] = useState(false);
   const [applyResult, setApplyResult] = useState(null);
-  const fixedTimes = [3, 4, 5, 6, 7, 8, 9, 10];
+  const [availableTimes, setAvailableTimes] = useState([]);
 
   const loadData = useCallback(async () => {
     try {
       setLoading(true);
-      const [closuresRes, logsRes, membersRes, branchesRes, activitiesRes] = await Promise.all([
+      const [closuresRes, logsRes, membersRes, branchesRes, activitiesRes, timesRes] = await Promise.all([
         api.dayExtensions.getClosures(),
         api.dayExtensions.getLogs(),
         membersAPI.getAll(),
         branchesAPI.getAll(),
-        activitiesAPI.getAll()
+        activitiesAPI.getAll(),
+        api.dayExtensions.getAvailableTimes()
       ]);
       setClosures(Array.isArray(closuresRes.data) ? closuresRes.data : []);
       setLogs(Array.isArray(logsRes.data) ? logsRes.data : []);
       setMembers(Array.isArray(membersRes.data) ? membersRes.data : []);
       setBranches(Array.isArray(branchesRes.data) ? branchesRes.data : []);
       setActivities(Array.isArray(activitiesRes.data) ? activitiesRes.data : []);
+      setAvailableTimes(Array.isArray(timesRes.data) ? timesRes.data : []);
     } catch (error) {
       console.error('DayExtensions loadData error:', error);
       toast.error(t('خطأ في تحميل البيانات', 'Error loading data'));
@@ -278,10 +280,10 @@ export default function DayExtensionsPage() {
                             </>
                           )}
                           {closure.stop_type === 'specific_times' && closure.affected_times?.length > 0 && (
-                            closure.affected_times.sort((a,b)=>a-b).map((time, idx) => (
+                            closure.affected_times.map((time, idx) => (
                               <Badge key={idx} className="bg-yellow-100 text-yellow-800">
                                 <Clock className="w-3 h-3 me-1" />
-                                {t(`الساعة ${time}`, `${time}:00`)}
+                                {time}
                               </Badge>
                             ))
                           )}
@@ -505,36 +507,42 @@ export default function DayExtensionsPage() {
                   </div>
                   {newClosure.stop_type === 'specific_times' && (
                     <div>
-                      <Label className="text-xs">{t('اختر المواعيد المتأثرة بالتوقف *', 'Select affected session times *')}</Label>
+                      <Label className="text-xs">{t('اختر المواعيد المتأثرة بالتوقف * (من المستويات)', 'Select affected session times * (from levels)')}</Label>
                       <div className="flex flex-wrap gap-2 mt-2">
-                        {fixedTimes.map(time => {
-                          const isSelected = (newClosure.affected_times || []).includes(time);
+                        {availableTimes.map(item => {
+                          const isSelected = (newClosure.affected_times || []).includes(item.time);
                           return (
                             <button
-                              key={time}
+                              key={item.time}
                               type="button"
                               onClick={() => {
                                 const current = [...(newClosure.affected_times || [])];
                                 if (isSelected) {
-                                  const idx = current.indexOf(time);
+                                  const idx = current.indexOf(item.time);
                                   current.splice(idx, 1);
                                 } else {
-                                  current.push(time);
+                                  current.push(item.time);
                                 }
                                 setNewClosure({ ...newClosure, affected_times: current });
                               }}
                               className={`px-3 py-2 text-sm rounded-lg border-2 transition-all ${isSelected ? 'bg-blue-500 text-white border-blue-500 shadow-md' : 'bg-white hover:bg-slate-50 border-gray-200'}`}
                             >
-                              <div className="font-bold">{t(`الساعة ${time}`, `${time}:00`)}</div>
+                              <div className="font-bold">{item.time}</div>
+                              <div className={`text-xs ${isSelected ? 'text-blue-100' : 'text-gray-400'}`}>
+                                {item.count} {t('لاعب', 'players')}
+                              </div>
                             </button>
                           );
                         })}
+                        {availableTimes.length === 0 && (
+                          <p className="text-xs text-muted-foreground">{t('لا توجد مواعيد في المستويات', 'No times found in levels')}</p>
+                        )}
                       </div>
                       {(newClosure.affected_times || []).length > 0 && (
                         <p className="text-xs text-blue-600 mt-2 font-medium">
                           {t(
-                            `تم اختيار ${newClosure.affected_times.length} موعد: ${newClosure.affected_times.sort((a,b)=>a-b).map(t => `الساعة ${t}`).join('، ')}`,
-                            `${newClosure.affected_times.length} times selected: ${newClosure.affected_times.sort((a,b)=>a-b).map(t => `${t}:00`).join(', ')}`
+                            `تم اختيار ${newClosure.affected_times.length} موعد: ${newClosure.affected_times.join('، ')}`,
+                            `${newClosure.affected_times.length} times selected: ${newClosure.affected_times.join(', ')}`
                           )}
                         </p>
                       )}
