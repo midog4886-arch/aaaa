@@ -119,6 +119,8 @@ class ClosureCreate(BaseModel):
     scope: Optional[str] = "all"
     activity_id: Optional[str] = None
     activity_name: Optional[str] = None
+    activity_ids: Optional[List[str]] = None
+    activity_names: Optional[List[str]] = None
     stop_type: Optional[str] = "full_day"
     stop_hours: Optional[float] = 0
 
@@ -160,6 +162,13 @@ async def create_closure(data: ClosureCreate, user=Depends(get_current_user)):
     else:
         extension_days = total_days_count
 
+    act_ids = data.activity_ids or ([data.activity_id] if data.activity_id else [])
+    act_names = data.activity_names or ([data.activity_name] if data.activity_name else [])
+    if len(act_names) != len(act_ids):
+        all_acts = await db.activities.find({"id": {"$in": act_ids}}).to_list(100)
+        act_map = {a["id"]: a.get("name_ar", a.get("name", "")) for a in all_acts}
+        act_names = [act_map.get(aid, "") for aid in act_ids]
+
     closure = {
         "id": str(uuid.uuid4()),
         "title_ar": data.title_ar,
@@ -175,6 +184,8 @@ async def create_closure(data: ClosureCreate, user=Depends(get_current_user)):
         "scope": data.scope or "all",
         "activity_id": data.activity_id,
         "activity_name": data.activity_name,
+        "activity_ids": act_ids,
+        "activity_names": act_names,
         "stop_type": data.stop_type or "full_day",
         "stop_hours": data.stop_hours or 0,
         "applied": False,
@@ -208,6 +219,9 @@ async def apply_extension(data: ExtensionApply, user=Depends(get_current_user)):
 
     scope = closure.get("scope", "all")
     activity_id = closure.get("activity_id")
+    activity_ids = closure.get("activity_ids", [])
+    if not activity_ids and activity_id:
+        activity_ids = [activity_id]
     closure_start = datetime.strptime(closure["start_date"], '%Y-%m-%d')
     closure_end = datetime.strptime(closure["end_date"], '%Y-%m-%d')
     closure_weekdays = get_closure_weekdays(closure_start, closure_end)
@@ -249,8 +263,8 @@ async def apply_extension(data: ExtensionApply, user=Depends(get_current_user)):
         for act in activities:
             if act.get("status") != "active" or not act.get("end_date"):
                 continue
-            if scope == "specific" and activity_id:
-                if act.get("activity_id") != activity_id:
+            if scope == "specific" and activity_ids:
+                if act.get("activity_id") not in activity_ids:
                     continue
 
             act_id = act.get("activity_id", "")
@@ -313,8 +327,8 @@ async def apply_extension(data: ExtensionApply, user=Depends(get_current_user)):
             )
 
             sub_query = {"member_id": member["id"]}
-            if scope == "specific" and activity_id:
-                sub_query["activity_id"] = activity_id
+            if scope == "specific" and activity_ids:
+                sub_query["activity_id"] = {"$in": activity_ids}
             subs = await db.level_subscriptions.find(sub_query).to_list(100)
             for sub in subs:
                 if sub.get("end_date"):
@@ -387,7 +401,7 @@ async def apply_extension(data: ExtensionApply, user=Depends(get_current_user)):
         "members_count": extended_count,
         "branch_id": data.branch_id,
         "scope": scope,
-        "activity_name": closure.get("activity_name", ""),
+        "activity_name": ", ".join(closure.get("activity_names", [])) or closure.get("activity_name", ""),
         "stop_type": closure.get("stop_type", "full_day"),
         "stop_hours": closure.get("stop_hours", 0),
         "applied_by": user.get("username", ""),

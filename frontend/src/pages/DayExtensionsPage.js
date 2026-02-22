@@ -45,7 +45,7 @@ export default function DayExtensionsPage() {
 
   const defaultClosure = {
     title_ar: '', title_en: '', reason: 'holiday', start_date: '', end_date: '', notes: '',
-    scope: 'all', activity_id: '', activity_name: '', stop_type: 'full_day', stop_hours: 0
+    scope: 'all', activity_ids: [], activity_names: [], stop_type: 'full_day', stop_hours: 0
   };
   const [newClosure, setNewClosure] = useState({ ...defaultClosure });
   const [manualExt, setManualExt] = useState({ member_id: '', days: 1, reason: '', activity_id: '' });
@@ -83,8 +83,8 @@ export default function DayExtensionsPage() {
       toast.error(t('أكمل جميع الحقول المطلوبة', 'Fill all required fields'));
       return;
     }
-    if (newClosure.scope === 'specific' && !newClosure.activity_id) {
-      toast.error(t('اختر النشاط', 'Select an activity'));
+    if (newClosure.scope === 'specific' && (!newClosure.activity_ids || newClosure.activity_ids.length === 0)) {
+      toast.error(t('اختر نشاط واحد على الأقل', 'Select at least one activity'));
       return;
     }
     if (newClosure.stop_type === 'partial' && (!newClosure.stop_hours || newClosure.stop_hours <= 0)) {
@@ -118,8 +118,9 @@ export default function DayExtensionsPage() {
 
   const handleApplyExtension = async (closure) => {
     const days = closure.days;
+    const actNames = (closure.activity_names || []).filter(Boolean);
     const scopeText = closure.scope === 'specific'
-      ? ` (${closure.activity_name || t('نشاط محدد', 'specific activity')})`
+      ? ` (${actNames.length > 0 ? actNames.join('، ') : closure.activity_name || t('أنشطة محددة', 'specific activities')})`
       : '';
     if (!window.confirm(t(
       `هل تريد ترحيل ${days} يوم لجميع المشتركين النشطين${scopeText}؟`,
@@ -266,10 +267,14 @@ export default function DayExtensionsPage() {
                           <Badge className={REASON_COLORS[closure.reason] || REASON_COLORS.other}>
                             {(language === 'ar' ? REASON_LABELS.ar : REASON_LABELS.en)[closure.reason] || closure.reason || ''}
                           </Badge>
-                          {closure.scope === 'specific' && closure.activity_name && (
-                            <Badge className="bg-purple-100 text-purple-800">
-                              {closure.activity_name}
-                            </Badge>
+                          {closure.scope === 'specific' && (closure.activity_names?.length > 0 || closure.activity_name) && (
+                            <>
+                              {(closure.activity_names || [closure.activity_name]).filter(Boolean).map((name, idx) => (
+                                <Badge key={idx} className="bg-purple-100 text-purple-800">
+                                  {name}
+                                </Badge>
+                              ))}
+                            </>
                           )}
                           {closure.stop_type === 'partial' && (
                             <Badge className="bg-yellow-100 text-yellow-800">
@@ -414,7 +419,7 @@ export default function DayExtensionsPage() {
                     <Button
                       type="button" size="sm"
                       variant={newClosure.scope === 'all' ? 'default' : 'outline'}
-                      onClick={() => setNewClosure({ ...newClosure, scope: 'all', activity_id: '', activity_name: '' })}
+                      onClick={() => setNewClosure({ ...newClosure, scope: 'all', activity_ids: [], activity_names: [] })}
                     >
                       <Users className="w-4 h-4 me-1" />
                       {t('جميع الأنشطة', 'All Activities')}
@@ -424,26 +429,47 @@ export default function DayExtensionsPage() {
                       variant={newClosure.scope === 'specific' ? 'default' : 'outline'}
                       onClick={() => setNewClosure({ ...newClosure, scope: 'specific' })}
                     >
-                      {t('نشاط محدد', 'Specific Activity')}
+                      {t('أنشطة محددة', 'Specific Activities')}
                     </Button>
                   </div>
                   {newClosure.scope === 'specific' && (
                     <div>
-                      <Label className="text-xs">{t('اختر النشاط *', 'Select Activity *')}</Label>
-                      <select
-                        className="w-full border rounded-md px-3 py-2 text-sm bg-white"
-                        value={newClosure.activity_id || ''}
-                        onChange={(e) => {
-                          const val = e.target.value;
-                          const act = activities.find(a => (a.id || a._id) === val);
-                          setNewClosure({ ...newClosure, activity_id: val, activity_name: act?.name_ar || act?.name || '' });
-                        }}
-                      >
-                        <option value="">{t('-- اختر --', '-- Select --')}</option>
-                        {activities.map(a => (
-                          <option key={a.id || a._id} value={a.id || a._id}>{a.name_ar || a.name || ''}</option>
-                        ))}
-                      </select>
+                      <Label className="text-xs">{t('اختر الأنشطة * (يمكن اختيار أكثر من نشاط)', 'Select Activities * (multiple allowed)')}</Label>
+                      <div className="mt-2 max-h-48 overflow-y-auto border rounded-md p-2 bg-white space-y-1">
+                        {activities.map(a => {
+                          const aId = a.id || a._id;
+                          const aName = a.name_ar || a.name || '';
+                          const isSelected = (newClosure.activity_ids || []).includes(aId);
+                          return (
+                            <label key={aId} className={`flex items-center gap-2 p-2 rounded cursor-pointer hover:bg-slate-50 ${isSelected ? 'bg-blue-50 border border-blue-200' : ''}`}>
+                              <input
+                                type="checkbox"
+                                checked={isSelected}
+                                onChange={() => {
+                                  const ids = [...(newClosure.activity_ids || [])];
+                                  const names = [...(newClosure.activity_names || [])];
+                                  if (isSelected) {
+                                    const idx = ids.indexOf(aId);
+                                    ids.splice(idx, 1);
+                                    names.splice(idx, 1);
+                                  } else {
+                                    ids.push(aId);
+                                    names.push(aName);
+                                  }
+                                  setNewClosure({ ...newClosure, activity_ids: ids, activity_names: names });
+                                }}
+                                className="w-4 h-4 text-blue-600 rounded"
+                              />
+                              <span className="text-sm">{aName}</span>
+                            </label>
+                          );
+                        })}
+                      </div>
+                      {(newClosure.activity_ids || []).length > 0 && (
+                        <p className="text-xs text-blue-600 mt-1">
+                          {t(`تم اختيار ${newClosure.activity_ids.length} نشاط`, `${newClosure.activity_ids.length} activities selected`)}
+                        </p>
+                      )}
                     </div>
                   )}
                 </div>
@@ -472,11 +498,23 @@ export default function DayExtensionsPage() {
                     <div>
                       <Label className="text-xs">{t('عدد ساعات التوقف في اليوم *', 'Stop hours per day *')}</Label>
                       <Input
-                        type="number" min="0.5" max="23" step="0.5"
+                        type="number" min="0.5" max="24" step="0.5"
                         value={newClosure.stop_hours}
                         onChange={(e) => setNewClosure({ ...newClosure, stop_hours: parseFloat(e.target.value) || 0 })}
                         placeholder={t('مثال: 3', 'e.g. 3')}
                       />
+                      <div className="flex flex-wrap gap-1 mt-2">
+                        {[1, 2, 3, 4, 5, 6, 8, 10, 12].map(h => (
+                          <button
+                            key={h}
+                            type="button"
+                            onClick={() => setNewClosure({ ...newClosure, stop_hours: h })}
+                            className={`px-2 py-1 text-xs rounded border ${newClosure.stop_hours === h ? 'bg-blue-500 text-white border-blue-500' : 'bg-white hover:bg-slate-50 border-gray-300'}`}
+                          >
+                            {h} {t('ساعة', 'hr')}
+                          </button>
+                        ))}
+                      </div>
                       <p className="text-xs text-muted-foreground mt-1">
                         {t('سيتم حساب أيام الترحيل نسبياً حسب ساعات التوقف', 'Extension days calculated proportionally')}
                       </p>
