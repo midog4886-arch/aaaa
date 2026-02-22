@@ -137,7 +137,9 @@ export default function DayExtensionsPage() {
         days: days,
         closureTitle: closure.title_ar || closure.title_en || '',
         extended_count: result.extended_count || 0,
-        extended_members: result.extended_members || []
+        extended_members: result.extended_members || [],
+        skipped_count: result.skipped_count || 0,
+        skipped_members: result.skipped_members || []
       });
       setShowResultDialog(true);
       loadData();
@@ -630,6 +632,8 @@ export default function DayExtensionsPage() {
                             <th className="p-2 text-right">#</th>
                             <th className="p-2 text-right">{t('الاسم', 'Name')}</th>
                             <th className="p-2 text-right">{t('النشاط', 'Activity')}</th>
+                            <th className="p-2 text-right">{t('أيام التدريب', 'Training Days')}</th>
+                            <th className="p-2 text-right">{t('حصص فائتة', 'Missed')}</th>
                             <th className="p-2 text-right">{t('قبل', 'Before')}</th>
                             <th className="p-2 text-right">{t('بعد', 'After')}</th>
                           </tr>
@@ -648,6 +652,8 @@ export default function DayExtensionsPage() {
                                   </>
                                 )}
                                 <td className="p-2 border-t text-xs">{d.activity || '-'}</td>
+                                <td className="p-2 border-t text-xs text-blue-600">{d.training_days || '-'}</td>
+                                <td className="p-2 border-t text-xs font-bold text-orange-600">{d.missed_sessions || 0}</td>
                                 <td className="p-2 border-t text-red-600 text-xs">{d.old_end}</td>
                                 <td className="p-2 border-t text-green-600 text-xs font-medium">{d.new_end}</td>
                               </tr>
@@ -655,6 +661,8 @@ export default function DayExtensionsPage() {
                               <tr key={idx} className={idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
                                 <td className="p-2 border-t">{idx + 1}</td>
                                 <td className="p-2 border-t font-medium">{m.name}</td>
+                                <td className="p-2 border-t">-</td>
+                                <td className="p-2 border-t">-</td>
                                 <td className="p-2 border-t">-</td>
                                 <td className="p-2 border-t">-</td>
                                 <td className="p-2 border-t">-</td>
@@ -667,7 +675,23 @@ export default function DayExtensionsPage() {
                   </div>
                 )}
 
-                {applyResult.extended_count === 0 && (
+                {applyResult.skipped_members && applyResult.skipped_members.length > 0 && (
+                  <div>
+                    <h3 className="font-bold mb-2 text-sm text-gray-600">
+                      {t(`مشتركين لم يتأثروا (${applyResult.skipped_count}) - أيام تدريبهم لا تتقاطع مع الإغلاق`,
+                         `Unaffected members (${applyResult.skipped_count}) - training days don't overlap with closure`)}
+                    </h3>
+                    <div className="flex flex-wrap gap-1">
+                      {applyResult.skipped_members.map((s, i) => (
+                        <span key={i} className="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded">
+                          {s.name} ({s.training_days})
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {applyResult.extended_count === 0 && (!applyResult.skipped_members || applyResult.skipped_members.length === 0) && (
                   <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg text-center">
                     <p className="text-yellow-800">{t('لم يتأثر أي مشترك بهذا الترحيل', 'No members were affected by this extension')}</p>
                   </div>
