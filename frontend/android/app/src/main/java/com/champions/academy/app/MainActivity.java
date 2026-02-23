@@ -1,4 +1,4 @@
-package com.globalchampions.app;
+package com.champions.academy.app;
 
 import com.getcapacitor.BridgeActivity;
 
