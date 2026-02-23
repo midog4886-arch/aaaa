@@ -41,7 +41,7 @@ if (System.getenv("CAP_PUBLISH") == "true") {
 
 android {
     namespace = "com.getcapacitor.android"
-    compileSdk = project.hasProperty('compileSdkVersion') ? rootProject.ext.compileSdkVersion : 35
+    compileSdk = project.hasProperty('compileSdkVersion') ? rootProject.ext.compileSdkVersion : 36
     defaultConfig {
         minSdkVersion project.hasProperty('minSdkVersion') ? rootProject.ext.minSdkVersion : 24
         targetSdkVersion project.hasProperty('targetSdkVersion') ? rootProject.ext.targetSdkVersion : 36
@@ -88,7 +88,7 @@ dependencies {
     androidTestImplementation "androidx.test.ext:junit:$androidxJunitVersion"
     androidTestImplementation "androidx.test.espresso:espresso-core:$androidxEspressoCoreVersion"
     implementation "org.apache.cordova:framework:$cordovaAndroidVersion"
-    testImplementation 'org.json:json:20231013'
-    testImplementation 'org.mockito:mockito-core:5.8.0'
+    testImplementation 'org.json:json:20250517'
+    testImplementation 'org.mockito:mockito-core:5.20.0'
 }
 
