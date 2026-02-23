@@ -24,7 +24,7 @@ const SplashScreen = ({ onComplete }) => {
       initial={{ opacity: 1 }}
       exit={{ opacity: 0 }}
       transition={{ duration: 0.5 }}
-      className="fixed inset-0 z-50 flex items-center justify-center bg-gradient-to-br from-sky-400 via-blue-500 to-cyan-600 overflow-hidden"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-gradient-to-br from-gray-900 via-yellow-900 to-gray-900 overflow-hidden"
     >
       {/* Animated water waves background */}
       <div className="absolute inset-0 overflow-hidden">
@@ -33,7 +33,7 @@ const SplashScreen = ({ onComplete }) => {
             y: [0, -20, 0],
           }}
           transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
-          className="absolute bottom-0 left-0 right-0 h-40 bg-gradient-to-t from-blue-600/50 to-transparent"
+          className="absolute bottom-0 left-0 right-0 h-40 bg-gradient-to-t from-yellow-700/30 to-transparent"
         />
         {[...Array(5)].map((_, i) => (
           <motion.div
@@ -47,7 +47,7 @@ const SplashScreen = ({ onComplete }) => {
               ease: "linear",
               delay: i * 0.5,
             }}
-            className="absolute h-1 bg-white/20 rounded-full"
+            className="absolute h-1 bg-amber-400/20 rounded-full"
             style={{
               width: `${100 + i * 50}px`,
               top: `${30 + i * 15}%`,
@@ -183,14 +183,14 @@ const MemberLogin = () => {
   return (
     <div className="min-h-screen relative overflow-hidden" dir="rtl">
       {/* Animated Background - Water/Swimming theme */}
-      <div className="absolute inset-0 bg-gradient-to-br from-cyan-400 via-blue-500 to-sky-600">
-        {/* Floating bubbles */}
+      <div className="absolute inset-0 bg-gradient-to-br from-gray-950 via-gray-900 to-gray-950">
+        {/* Golden particles */}
         {[...Array(15)].map((_, i) => (
           <motion.div
             key={i}
             initial={{ opacity: 0, y: 100, x: Math.random() * 100 }}
             animate={{ 
-              opacity: [0, 0.4, 0],
+              opacity: [0, 0.5, 0],
               y: -200,
             }}
             transition={{
@@ -198,7 +198,7 @@ const MemberLogin = () => {
               delay: i * 0.3,
               repeat: Infinity,
             }}
-            className="absolute w-4 h-4 bg-white/30 rounded-full"
+            className="absolute w-2 h-2 bg-amber-400/40 rounded-full"
             style={{
               left: `${(i * 7) % 100}%`,
               bottom: '10%',
@@ -206,12 +206,13 @@ const MemberLogin = () => {
           />
         ))}
         
-        {/* Wave effect at bottom */}
+        {/* Golden glow at bottom */}
         <motion.div
           animate={{ y: [0, -15, 0] }}
           transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
-          className="absolute bottom-0 left-0 right-0 h-32 bg-gradient-to-t from-blue-700/40 to-transparent"
+          className="absolute bottom-0 left-0 right-0 h-32 bg-gradient-to-t from-amber-700/20 to-transparent"
         />
+        <div className="absolute top-1/4 left-1/2 -translate-x-1/2 w-[500px] h-[500px] bg-amber-500/5 rounded-full blur-3xl" />
       </div>
 
       {/* Splash Screen */}
@@ -234,9 +235,9 @@ const MemberLogin = () => {
               className="w-full max-w-md"
             >
               {/* Glassmorphism Card */}
-              <Card className="relative overflow-hidden border-0 bg-white/15 backdrop-blur-xl shadow-2xl">
+              <Card className="relative overflow-hidden border-0 bg-white/10 backdrop-blur-xl shadow-2xl border border-amber-500/20">
                 {/* Gradient border effect */}
-                <div className="absolute inset-0 bg-gradient-to-br from-white/30 to-transparent pointer-events-none rounded-lg" />
+                <div className="absolute inset-0 bg-gradient-to-br from-amber-500/10 to-transparent pointer-events-none rounded-lg" />
                 
                 <CardHeader className="relative text-center pb-2">
                   {/* Logo */}
@@ -298,7 +299,7 @@ const MemberLogin = () => {
                     >
                       <Button 
                         type="submit" 
-                        className="w-full h-14 text-lg bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white font-bold gap-2 shadow-lg shadow-blue-500/30 transition-all hover:shadow-xl hover:shadow-blue-500/40"
+                        className="w-full h-14 text-lg bg-gradient-to-r from-amber-500 to-yellow-600 hover:from-amber-400 hover:to-yellow-500 text-gray-900 font-bold gap-2 shadow-lg shadow-amber-500/30 transition-all hover:shadow-xl hover:shadow-amber-500/40"
                         disabled={loading}
                         data-testid="member-login-btn"
                       >

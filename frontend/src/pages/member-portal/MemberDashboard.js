@@ -82,9 +82,9 @@ const MemberDashboard = () => {
   }, [fetchData]);
 
   const quickLinks = [
-    { to: '/subscriptions', icon: CreditCard, label: 'اشتراكاتي', color: 'bg-blue-500' },
-    { to: '/member-schedule', icon: Calendar, label: 'جدول التدريبات', color: 'bg-green-500' },
-    { to: '/card', icon: QrCode, label: 'بطاقة العضوية', color: 'bg-orange-500' },
+    { to: '/subscriptions', icon: CreditCard, label: 'اشتراكاتي', color: 'bg-gray-900' },
+    { to: '/member-schedule', icon: Calendar, label: 'جدول التدريبات', color: 'bg-amber-600' },
+    { to: '/card', icon: QrCode, label: 'بطاقة العضوية', color: 'bg-yellow-600' },
   ];
 
   if (loading) {
@@ -92,9 +92,9 @@ const MemberDashboard = () => {
       <MemberLayout>
         <div className="space-y-6">
           {/* Welcome Skeleton */}
-          <div className={`rounded-xl p-6 ${darkMode ? 'bg-gray-800' : 'bg-gradient-to-r from-blue-600 to-indigo-600'}`}>
-            <div className={`h-8 w-48 rounded animate-pulse mb-2 ${darkMode ? 'bg-gray-700' : 'bg-white/30'}`} />
-            <div className={`h-4 w-32 rounded animate-pulse ${darkMode ? 'bg-gray-700' : 'bg-white/30'}`} />
+          <div className={`rounded-xl p-6 ${darkMode ? 'bg-gray-800' : 'bg-gradient-to-r from-gray-950 via-gray-900 to-gray-950'}`}>
+            <div className={`h-8 w-48 rounded animate-pulse mb-2 ${darkMode ? 'bg-gray-700' : 'bg-amber-500/30'}`} />
+            <div className={`h-4 w-32 rounded animate-pulse ${darkMode ? 'bg-gray-700' : 'bg-amber-500/20'}`} />
           </div>
           
           {/* Banner Skeleton */}
@@ -134,11 +134,11 @@ const MemberDashboard = () => {
         <PushNotificationManager memberId={member?.id} />
         
         {/* Welcome Card */}
-        <Card className="bg-gradient-to-r from-slate-900 via-blue-900 to-slate-900 text-white border-0">
+        <Card className="bg-gradient-to-r from-gray-950 via-gray-900 to-gray-950 text-white border-0 border border-amber-500/10">
           <CardContent className="p-6">
             <div className="flex items-center gap-4">
-              <div className="w-12 h-12 sm:w-16 sm:h-16 bg-gradient-to-br from-orange-500 to-amber-500 rounded-full flex items-center justify-center">
-                <Trophy className="w-6 h-6 sm:w-8 sm:h-8 text-white" />
+              <div className="w-12 h-12 sm:w-16 sm:h-16 bg-gradient-to-br from-amber-500 to-yellow-600 rounded-full flex items-center justify-center">
+                <Trophy className="w-6 h-6 sm:w-8 sm:h-8 text-gray-900" />
               </div>
               <div>
                 <h1 className="text-xl sm:text-2xl font-bold">مرحباً {member?.name_ar}</h1>
@@ -147,7 +147,7 @@ const MemberDashboard = () => {
             </div>
             
             {/* Terms Notice */}
-            <div className="mt-4 p-3 bg-amber-500/20 border border-amber-400/50 rounded-lg">
+            <div className="mt-4 p-3 bg-amber-500/15 border border-amber-500/30 rounded-lg">
               <p className="text-amber-200 text-sm flex items-start gap-2">
                 <span className="text-amber-400">⚠️</span>
                 <span>
@@ -184,11 +184,11 @@ const MemberDashboard = () => {
             </CardContent>
           </Card>
           
-          <Card className="bg-blue-50 border-blue-200">
+          <Card className="bg-amber-50 border-amber-200">
             <CardContent className="p-4 text-center">
-              <QrCode className="w-8 h-8 text-blue-600 mx-auto mb-2" />
-              <p className="text-2xl font-bold text-blue-700">#{member?.member_code}</p>
-              <p className="text-sm text-blue-600">رقم العضوية</p>
+              <QrCode className="w-8 h-8 text-amber-600 mx-auto mb-2" />
+              <p className="text-2xl font-bold text-amber-700">#{member?.member_code}</p>
+              <p className="text-sm text-amber-600">رقم العضوية</p>
             </CardContent>
           </Card>
         </div>
@@ -220,7 +220,7 @@ const MemberDashboard = () => {
                 <CheckCircle className="w-5 h-5 text-green-600" />
                 الاشتراكات السارية
               </CardTitle>
-              <Link to="/subscriptions" className="text-blue-600 text-sm flex items-center gap-1">
+              <Link to="/subscriptions" className="text-amber-600 text-sm flex items-center gap-1">
                 عرض الكل <ChevronLeft className="w-4 h-4" />
               </Link>
             </CardHeader>
@@ -251,7 +251,7 @@ const MemberDashboard = () => {
                 <Bell className="w-5 h-5 text-orange-600" />
                 آخر الإشعارات
               </CardTitle>
-              <Link to="/notifications" className="text-blue-600 text-sm flex items-center gap-1">
+              <Link to="/notifications" className="text-amber-600 text-sm flex items-center gap-1">
                 عرض الكل <ChevronLeft className="w-4 h-4" />
               </Link>
             </CardHeader>

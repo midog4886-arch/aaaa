@@ -288,15 +288,15 @@ const MemberLayout = ({ children }) => {
   if (!member) return null;
 
   return (
-    <div className={`min-h-screen transition-colors duration-300 ${darkMode ? 'bg-gray-900' : 'bg-gray-50'}`} dir={language === 'ar' ? 'rtl' : 'ltr'}>
+    <div className={`min-h-screen transition-colors duration-300 ${darkMode ? 'bg-gray-900' : 'bg-stone-50'}`} dir={language === 'ar' ? 'rtl' : 'ltr'}>
       {/* Header */}
-      <header className={`${darkMode ? 'bg-gray-800' : 'bg-gradient-to-r from-slate-900 via-blue-900 to-slate-900'} text-white sticky top-0 z-50 shadow-lg safe-area-top`}>
+      <header className={`${darkMode ? 'bg-gray-800' : 'bg-gradient-to-r from-gray-950 via-gray-900 to-gray-950'} text-white sticky top-0 z-50 shadow-lg safe-area-top`}>
         <div className="max-w-7xl mx-auto px-4">
           <div className="flex items-center justify-between h-14 sm:h-16">
             {/* Logo */}
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-gradient-to-br from-orange-500 to-amber-500 rounded-full flex items-center justify-center">
-                <Trophy className="w-5 h-5 text-white" />
+              <div className="w-10 h-10 bg-gradient-to-br from-amber-500 to-yellow-600 rounded-full flex items-center justify-center">
+                <Trophy className="w-5 h-5 text-gray-900" />
               </div>
               <div className="hidden sm:block">
                 <p className="font-bold">{getText('memberPortal')}</p>
@@ -395,7 +395,7 @@ const MemberLayout = ({ children }) => {
 
         {/* Mobile Nav */}
         {mobileMenuOpen && (
-          <nav className={`lg:hidden ${darkMode ? 'bg-gray-700' : 'bg-slate-800'} border-t border-slate-700 px-4 py-3 space-y-1`}>
+          <nav className={`lg:hidden ${darkMode ? 'bg-gray-700' : 'bg-gray-900'} border-t border-gray-800 px-4 py-3 space-y-1`}>
             {navItems.map((item) => (
               <Link
                 key={item.to}
@@ -454,11 +454,11 @@ const MemberLayout = ({ children }) => {
               >
                 <div className="relative flex flex-col items-center">
                   {isActive && (
-                    <div className="absolute -top-1 w-12 h-1 bg-gradient-to-r from-blue-500 to-purple-500 rounded-full" />
+                    <div className="absolute -top-1 w-12 h-1 bg-gradient-to-r from-amber-500 to-yellow-500 rounded-full" />
                   )}
                   <div className={`relative p-2 rounded-xl transition-colors ${
                     isActive 
-                      ? 'text-blue-600' 
+                      ? 'text-amber-600' 
                       : darkMode ? 'text-gray-400' : 'text-gray-500'
                   }`}>
                     <Icon className={`w-6 h-6 ${isActive ? 'stroke-[2.5]' : ''}`} />
@@ -470,7 +470,7 @@ const MemberLayout = ({ children }) => {
                   </div>
                   <span className={`text-[10px] mt-0.5 font-medium ${
                     isActive 
-                      ? 'text-blue-600' 
+                      ? 'text-amber-600' 
                       : darkMode ? 'text-gray-400' : 'text-gray-500'
                   }`}>
                     {item.label}
