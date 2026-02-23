@@ -3040,6 +3040,7 @@ class ProductInvoiceItem(BaseModel):
 class ProductInvoiceCreate(BaseModel):
     customer_name: str
     customer_phone: Optional[str] = ""
+    member_id: Optional[str] = None
     payment_method: str = "cash"
     items: List[ProductInvoiceItem]
     status: str = "draft"  # draft or paid
@@ -3050,6 +3051,7 @@ class ProductInvoice(BaseModel):
     invoice_number: str
     customer_name: str
     customer_phone: Optional[str] = ""
+    member_id: Optional[str] = None
     payment_method: str
     items: List[ProductInvoiceItem]
     subtotal: float
@@ -3065,6 +3067,7 @@ class ProductInvoice(BaseModel):
 @api_router.get("/product-invoices")
 async def get_product_invoices(
     branch_filter: Optional[str] = None,
+    member_id: Optional[str] = None,
     current_user: dict = Depends(get_current_user)
 ):
     """Get all product invoices"""
@@ -3072,6 +3075,8 @@ async def get_product_invoices(
     branch_id = current_user.get("branch_id")
     
     query = {}
+    if member_id:
+        query["member_id"] = member_id
     # Admin can filter by any branch
     if is_admin and branch_filter and branch_filter != "all":
         query["branch_id"] = branch_filter
@@ -3108,6 +3113,7 @@ async def create_product_invoice(invoice: ProductInvoiceCreate, current_user: di
         "invoice_number": f"P{next_num}",
         "customer_name": invoice.customer_name,
         "customer_phone": invoice.customer_phone,
+        "member_id": invoice.member_id,
         "payment_method": invoice.payment_method,
         "items": [item.model_dump() for item in invoice.items],
         "subtotal": subtotal,
@@ -3151,6 +3157,7 @@ async def update_product_invoice(invoice_id: str, invoice: ProductInvoiceCreate,
     update_data = {
         "customer_name": invoice.customer_name,
         "customer_phone": invoice.customer_phone,
+        "member_id": invoice.member_id,
         "payment_method": invoice.payment_method,
         "items": [item.model_dump() for item in invoice.items],
         "subtotal": subtotal,

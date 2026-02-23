@@ -10,14 +10,14 @@ import { Badge } from '../components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '../components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Textarea } from '../components/ui/textarea';
-import { productsAPI, discountsAPI, productInvoicesAPI, branchesAPI } from '../services/api';
+import { productsAPI, discountsAPI, productInvoicesAPI, branchesAPI, membersAPI } from '../services/api';
 import { toast } from 'sonner';
 import { QRCodeSVG } from 'qrcode.react';
 import html2pdf from 'html2pdf.js';
 import { 
   Package, Plus, Search, Edit, Trash2, AlertTriangle, 
   ShoppingBag, TrendingUp, TrendingDown, Loader2, BarChart3, X, Percent, Tag,
-  Receipt, Printer, FileText, CheckCircle, Eye, Building2, MessageSquare
+  Receipt, Printer, FileText, CheckCircle, Eye, Building2, MessageSquare, Users
 } from 'lucide-react';
 
 const CATEGORIES = {
@@ -61,6 +61,9 @@ export const StorePage = () => {
   const [invoiceItems, setInvoiceItems] = useState([]);
   const [customerName, setCustomerName] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
+  const [selectedMemberId, setSelectedMemberId] = useState('');
+  const [allMembers, setAllMembers] = useState([]);
+  const [memberSearchTerm, setMemberSearchTerm] = useState('');
   const [paymentMethod, setPaymentMethod] = useState('cash');
   const [currentInvoice, setCurrentInvoice] = useState(null);
   const [productInvoices, setProductInvoices] = useState([]);
@@ -83,16 +86,18 @@ export const StorePage = () => {
   const loadData = async () => {
     try {
       const branchParams = selectedBranchId && selectedBranchId !== 'all' ? { branch_filter: selectedBranchId } : {};
-      const [productsRes, discountsRes, invoicesRes, branchesRes] = await Promise.all([
+      const [productsRes, discountsRes, invoicesRes, branchesRes, membersRes] = await Promise.all([
         productsAPI.getAll(branchParams),
         discountsAPI.getAll(branchParams),
         productInvoicesAPI.getAll(branchParams),
-        isAdmin ? branchesAPI.getAll() : Promise.resolve({ data: [] })
+        isAdmin ? branchesAPI.getAll() : Promise.resolve({ data: [] }),
+        membersAPI.getAll()
       ]);
       setProducts(productsRes.data);
       setDiscounts(discountsRes.data);
       setProductInvoices(invoicesRes.data || []);
       setBranches(branchesRes.data || []);
+      setAllMembers(Array.isArray(membersRes.data) ? membersRes.data : []);
     } catch (error) {
       toast.error(language === 'ar' ? 'خطأ في تحميل البيانات' : 'Failed to load data');
     } finally {
@@ -264,22 +269,23 @@ export const StorePage = () => {
   // ============ Product Invoice Functions ============
   const openInvoiceDialog = (invoice = null) => {
     if (invoice) {
-      // Edit existing invoice
       setEditingInvoice(invoice);
       setInvoiceItems(invoice.items || []);
       setCustomerName(invoice.customer_name || '');
       setCustomerPhone(invoice.customer_phone || '');
+      setSelectedMemberId(invoice.member_id || '');
       setPaymentMethod(invoice.payment_method || 'cash');
       setInvoiceStatus(invoice.status || 'draft');
     } else {
-      // New invoice
       setEditingInvoice(null);
       setInvoiceItems([]);
       setCustomerName('');
       setCustomerPhone('');
+      setSelectedMemberId('');
       setPaymentMethod('cash');
       setInvoiceStatus('draft');
     }
+    setMemberSearchTerm('');
     setIsInvoiceDialogOpen(true);
   };
 
@@ -365,6 +371,7 @@ export const StorePage = () => {
       const invoiceData = {
         customer_name: customerName,
         customer_phone: customerPhone,
+        member_id: selectedMemberId || null,
         payment_method: paymentMethod,
         items: invoiceItems.map(item => ({
           product_id: item.product_id,
@@ -1132,6 +1139,69 @@ ${items}
               {/* Customer Info */}
               <Card className="p-4 bg-blue-50 border-blue-200">
                 <h4 className="font-semibold mb-3">{language === 'ar' ? 'بيانات العميل' : 'Customer Info'}</h4>
+                <div className="mb-3">
+                  <Label>{language === 'ar' ? 'ربط بعضو (اختياري)' : 'Link to Member (optional)'}</Label>
+                  <div className="relative">
+                    <Input
+                      placeholder={language === 'ar' ? 'ابحث عن عضو بالاسم أو الجوال...' : 'Search member by name or phone...'}
+                      value={memberSearchTerm}
+                      onChange={(e) => setMemberSearchTerm(e.target.value)}
+                      className="mt-1"
+                    />
+                    {memberSearchTerm && !selectedMemberId && (
+                      <div className="absolute z-50 w-full mt-1 bg-white border rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                        {allMembers
+                          .filter(m => {
+                            const term = memberSearchTerm.toLowerCase();
+                            return (m.name_ar || '').toLowerCase().includes(term) ||
+                                   (m.name || '').toLowerCase().includes(term) ||
+                                   (m.phone || '').includes(term);
+                          })
+                          .slice(0, 10)
+                          .map(m => (
+                            <button
+                              key={m.id}
+                              type="button"
+                              onClick={() => {
+                                setSelectedMemberId(m.id);
+                                setCustomerName(m.name_ar || m.name || '');
+                                setCustomerPhone(m.phone || '');
+                                setMemberSearchTerm(m.name_ar || m.name || '');
+                              }}
+                              className="w-full text-start px-3 py-2 hover:bg-blue-50 flex items-center gap-2 border-b last:border-0"
+                            >
+                              <Users className="w-4 h-4 text-blue-500 flex-shrink-0" />
+                              <div>
+                                <p className="text-sm font-medium">{m.name_ar || m.name}</p>
+                                <p className="text-xs text-muted-foreground">{m.phone}</p>
+                              </div>
+                            </button>
+                          ))}
+                        {allMembers.filter(m => {
+                          const term = memberSearchTerm.toLowerCase();
+                          return (m.name_ar || '').toLowerCase().includes(term) || (m.name || '').toLowerCase().includes(term) || (m.phone || '').includes(term);
+                        }).length === 0 && (
+                          <p className="px-3 py-2 text-sm text-muted-foreground">{language === 'ar' ? 'لا توجد نتائج' : 'No results'}</p>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                  {selectedMemberId && (
+                    <div className="mt-2 flex items-center gap-2">
+                      <Badge className="bg-blue-100 text-blue-800">
+                        <Users className="w-3 h-3 me-1" />
+                        {allMembers.find(m => m.id === selectedMemberId)?.name_ar || customerName}
+                      </Badge>
+                      <button
+                        type="button"
+                        onClick={() => { setSelectedMemberId(''); setMemberSearchTerm(''); }}
+                        className="text-red-500 hover:text-red-700 text-xs"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </div>
+                  )}
+                </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <Label>{language === 'ar' ? 'اسم العميل *' : 'Customer Name *'}</Label>

@@ -13,7 +13,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Popover, PopoverContent, PopoverTrigger } from '../components/ui/popover';
 import { Textarea } from '../components/ui/textarea';
-import { membersAPI, activitiesAPI, coachesAPI, exportAPI, invoicesAPI, attendanceAPI, levelsAPI } from '../services/api';
+import { membersAPI, activitiesAPI, coachesAPI, exportAPI, invoicesAPI, attendanceAPI, levelsAPI, productInvoicesAPI } from '../services/api';
 import { toast } from 'sonner';
 import { 
   Plus, 
@@ -38,7 +38,9 @@ import {
   QrCode,
   ChevronDown,
   Check,
-  Filter
+  Filter,
+  ShoppingBag,
+  Package
 } from 'lucide-react';
 
 export const MembersPage = () => {
@@ -64,6 +66,7 @@ export const MembersPage = () => {
   const [selectedMember, setSelectedMember] = useState(null);
   const [saving, setSaving] = useState(false);
   const [memberInvoices, setMemberInvoices] = useState([]);
+  const [memberProductPurchases, setMemberProductPurchases] = useState([]);
   const [memberAttendance, setMemberAttendance] = useState(null);
   const [viewTab, setViewTab] = useState('info'); // info, activities, invoices, history, attendance
   const [renewalActivity, setRenewalActivity] = useState(null);
@@ -500,18 +503,21 @@ export const MembersPage = () => {
     setViewTab('info');
     setIsViewDialogOpen(true);
     setMemberAttendance(null);
-    // Load member invoices and attendance
+    setMemberProductPurchases([]);
     try {
-      const [invoicesRes, attendanceRes] = await Promise.all([
+      const [invoicesRes, attendanceRes, productInvRes] = await Promise.all([
         invoicesAPI.getAll({ member_id: member.id }),
-        attendanceAPI.getMemberReport(member.id)
+        attendanceAPI.getMemberReport(member.id),
+        productInvoicesAPI.getAll({ member_id: member.id })
       ]);
       setMemberInvoices(invoicesRes.data);
       setMemberAttendance(attendanceRes.data);
+      setMemberProductPurchases(Array.isArray(productInvRes.data) ? productInvRes.data : []);
     } catch (error) {
       console.error('Failed to load member data:', error);
       setMemberInvoices([]);
       setMemberAttendance(null);
+      setMemberProductPurchases([]);
     }
   };
 
@@ -1652,6 +1658,22 @@ export const MembersPage = () => {
                       </span>
                     )}
                   </button>
+                  <button
+                    onClick={() => setViewTab('purchases')}
+                    className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+                      viewTab === 'purchases' 
+                        ? 'border-primary text-primary' 
+                        : 'border-transparent text-muted-foreground hover:text-foreground'
+                    }`}
+                  >
+                    <ShoppingBag className="w-4 h-4 inline me-1" />
+                    {language === 'ar' ? 'المشتريات' : 'Purchases'}
+                    {memberProductPurchases.length > 0 && (
+                      <span className="ms-1 text-xs bg-green-100 text-green-700 px-1.5 py-0.5 rounded">
+                        {memberProductPurchases.length}
+                      </span>
+                    )}
+                  </button>
                 </div>
 
                 {/* Tab Content: Info */}
@@ -2026,6 +2048,85 @@ export const MembersPage = () => {
                       <div className="text-center py-8 text-muted-foreground">
                         <Calendar className="w-12 h-12 mx-auto mb-3 opacity-30" />
                         {language === 'ar' ? 'جاري تحميل بيانات الحضور...' : 'Loading attendance data...'}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {viewTab === 'purchases' && (
+                  <div>
+                    <h3 className="font-semibold flex items-center gap-2 mb-4">
+                      <ShoppingBag className="w-5 h-5 text-green-600" />
+                      {language === 'ar' ? 'مشتريات المنتجات' : 'Product Purchases'}
+                    </h3>
+
+                    {memberProductPurchases.length > 0 ? (
+                      <div className="space-y-3">
+                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-4">
+                          <div className="bg-green-50 p-3 rounded-lg text-center">
+                            <div className="text-2xl font-bold text-green-600">
+                              {memberProductPurchases.length}
+                            </div>
+                            <div className="text-xs text-gray-600">
+                              {language === 'ar' ? 'عدد الفواتير' : 'Total Invoices'}
+                            </div>
+                          </div>
+                          <div className="bg-blue-50 p-3 rounded-lg text-center">
+                            <div className="text-2xl font-bold text-blue-600">
+                              {memberProductPurchases.reduce((sum, inv) => sum + (inv.items || []).reduce((s, i) => s + (i.quantity || 0), 0), 0)}
+                            </div>
+                            <div className="text-xs text-gray-600">
+                              {language === 'ar' ? 'عدد المنتجات' : 'Total Items'}
+                            </div>
+                          </div>
+                          <div className="bg-purple-50 p-3 rounded-lg text-center">
+                            <div className="text-2xl font-bold text-purple-600">
+                              {memberProductPurchases.filter(i => i.status === 'paid').reduce((sum, inv) => sum + (inv.total || 0), 0).toFixed(2)}
+                            </div>
+                            <div className="text-xs text-gray-600">
+                              {language === 'ar' ? 'إجمالي المدفوع (ر.س)' : 'Total Paid (SAR)'}
+                            </div>
+                          </div>
+                        </div>
+
+                        {memberProductPurchases.map((invoice) => (
+                          <Card key={invoice.id} className="p-3">
+                            <div className="flex items-center justify-between mb-2">
+                              <div className="flex items-center gap-2">
+                                <Receipt className="w-4 h-4 text-green-600" />
+                                <span className="font-mono text-sm">{invoice.invoice_number || `#${(invoice.id || '').slice(0, 8)}`}</span>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <Badge className={invoice.status === 'paid' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}>
+                                  {invoice.status === 'paid' ? (language === 'ar' ? 'مدفوعة' : 'Paid') : (language === 'ar' ? 'مسودة' : 'Draft')}
+                                </Badge>
+                              </div>
+                            </div>
+                            <div className="space-y-1">
+                              {(invoice.items || []).map((item, idx) => (
+                                <div key={idx} className="flex items-center justify-between text-sm bg-gray-50 p-2 rounded">
+                                  <div className="flex items-center gap-2">
+                                    <Package className="w-3 h-3 text-gray-400" />
+                                    <span>{item.name}</span>
+                                    <span className="text-muted-foreground">x{item.quantity}</span>
+                                  </div>
+                                  <span className="font-medium">{item.total} {language === 'ar' ? 'ر.س' : 'SAR'}</span>
+                                </div>
+                              ))}
+                            </div>
+                            <div className="flex items-center justify-between mt-2 pt-2 border-t">
+                              <span className="text-xs text-muted-foreground">
+                                {new Date(invoice.created_at).toLocaleDateString(language === 'ar' ? 'ar-SA' : 'en-US')}
+                              </span>
+                              <span className="font-bold text-green-700">{invoice.total} {language === 'ar' ? 'ر.س' : 'SAR'}</span>
+                            </div>
+                          </Card>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="text-center py-8 text-muted-foreground">
+                        <ShoppingBag className="w-12 h-12 mx-auto mb-3 opacity-30" />
+                        {language === 'ar' ? 'لا توجد مشتريات منتجات لهذا العضو' : 'No product purchases for this member'}
                       </div>
                     )}
                   </div>
