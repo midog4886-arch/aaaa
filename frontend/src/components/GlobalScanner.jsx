@@ -9,7 +9,7 @@ import { Badge } from './ui/badge';
 import { toast } from 'sonner';
 import { 
   Scan, Check, X, User, Clock, Activity, 
-  Volume2, VolumeX, Loader2, Calendar, Phone
+  Volume2, VolumeX, Loader2, Calendar, Phone, AlertTriangle
 } from 'lucide-react';
 import { attendanceAPI } from '../services/api';
 
@@ -193,11 +193,13 @@ const GlobalScanner = ({ enabled = true, language = 'ar' }) => {
             const checkinData = await checkinRes.json();
             
             if (checkinData.status === 'success') {
-              playSound('success');
+              playSound(checkinData.session_quota_warning ? 'error' : 'success');
+              const quotaWarn = checkinData.session_quota_warning;
               setLastResult({
                 success: true,
                 activityName: act.activity_name,
-                message: t('✅ تم تسجيل الحضور بنجاح', '✅ Check-in successful')
+                message: t('✅ تم تسجيل الحضور بنجاح', '✅ Check-in successful'),
+                sessionQuotaWarning: quotaWarn || null
               });
               setMemberData(prev => ({
                 ...prev,
@@ -292,11 +294,13 @@ const GlobalScanner = ({ enabled = true, language = 'ar' }) => {
           message: res.data.message || t('هذا ليس موعدك اليوم!', 'This is not your scheduled day!')
         });
       } else {
-        playSound('success');
+        const quotaWarn = res.data.session_quota_warning;
+        playSound(quotaWarn ? 'error' : 'success');
         setLastResult({
           success: true,
           activityName,
-          message: t('✅ تم تسجيل الحضور بنجاح', '✅ Check-in successful')
+          message: t('✅ تم تسجيل الحضور بنجاح', '✅ Check-in successful'),
+          sessionQuotaWarning: quotaWarn || null
         });
         
         setMemberData(prev => ({
@@ -502,7 +506,9 @@ const GlobalScanner = ({ enabled = true, language = 'ar' }) => {
 
               {lastResult && (
                 <div className={`p-4 rounded-xl border-2 ${
-                  lastResult.success 
+                  lastResult.success && lastResult.sessionQuotaWarning
+                    ? 'bg-amber-50 border-amber-400'
+                    : lastResult.success 
                     ? 'bg-green-50 border-green-300' 
                     : lastResult.wrongDay
                       ? 'bg-yellow-50 border-yellow-400'
@@ -511,7 +517,9 @@ const GlobalScanner = ({ enabled = true, language = 'ar' }) => {
                         : 'bg-red-50 border-red-300'
                 }`}>
                   <div className="flex items-center gap-3">
-                    {lastResult.success ? (
+                    {lastResult.success && lastResult.sessionQuotaWarning ? (
+                      <AlertTriangle className="w-8 h-8 text-amber-500" />
+                    ) : lastResult.success ? (
                       <Check className="w-8 h-8 text-green-500" />
                     ) : lastResult.wrongDay ? (
                       <Clock className="w-8 h-8 text-yellow-500" />
@@ -520,7 +528,8 @@ const GlobalScanner = ({ enabled = true, language = 'ar' }) => {
                     )}
                     <div className="flex-1">
                       <p className={`font-bold ${
-                        lastResult.success ? 'text-green-700' 
+                        lastResult.success && lastResult.sessionQuotaWarning ? 'text-amber-700'
+                          : lastResult.success ? 'text-green-700' 
                           : lastResult.wrongDay ? 'text-yellow-700'
                           : 'text-red-700'
                       }`}>
@@ -529,6 +538,22 @@ const GlobalScanner = ({ enabled = true, language = 'ar' }) => {
                       <p className="text-sm text-gray-500">{lastResult.activityName}</p>
                     </div>
                   </div>
+                  {lastResult.sessionQuotaWarning && (
+                    <div className="mt-3 pt-3 border-t border-amber-300">
+                      <div className="bg-amber-100 p-3 rounded-lg">
+                        <p className="text-amber-800 font-bold text-sm mb-1">
+                          {lastResult.sessionQuotaWarning.message}
+                        </p>
+                        <div className="flex items-center gap-4 text-xs text-amber-700">
+                          <span>{t('الحصص المستخدمة:', 'Used:')} {lastResult.sessionQuotaWarning.used}</span>
+                          <span>{t('الإجمالي:', 'Total:')} {lastResult.sessionQuotaWarning.total}</span>
+                          {lastResult.sessionQuotaWarning.remaining !== undefined && (
+                            <span>{t('المتبقي:', 'Remaining:')} {lastResult.sessionQuotaWarning.remaining}</span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  )}
                   {lastResult.wrongDay && (
                     <div className="mt-3 pt-3 border-t border-yellow-300">
                       <p className="text-sm text-yellow-800 mb-2 font-medium">

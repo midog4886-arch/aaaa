@@ -68,6 +68,7 @@ export const MembersPage = () => {
   const [memberInvoices, setMemberInvoices] = useState([]);
   const [memberProductPurchases, setMemberProductPurchases] = useState([]);
   const [memberAttendance, setMemberAttendance] = useState(null);
+  const [memberSessionQuota, setMemberSessionQuota] = useState([]);
   const [viewTab, setViewTab] = useState('info'); // info, activities, invoices, history, attendance
   const [renewalActivity, setRenewalActivity] = useState(null);
   const [renewalForm, setRenewalForm] = useState({
@@ -504,20 +505,24 @@ export const MembersPage = () => {
     setIsViewDialogOpen(true);
     setMemberAttendance(null);
     setMemberProductPurchases([]);
+    setMemberSessionQuota([]);
     try {
-      const [invoicesRes, attendanceRes, productInvRes] = await Promise.all([
+      const [invoicesRes, attendanceRes, productInvRes, quotaRes] = await Promise.all([
         invoicesAPI.getAll({ member_id: member.id }),
         attendanceAPI.getMemberReport(member.id),
-        productInvoicesAPI.getAll({ member_id: member.id })
+        productInvoicesAPI.getAll({ member_id: member.id }),
+        attendanceAPI.getSessionQuota(member.id)
       ]);
       setMemberInvoices(invoicesRes.data);
       setMemberAttendance(attendanceRes.data);
       setMemberProductPurchases(Array.isArray(productInvRes.data) ? productInvRes.data : []);
+      setMemberSessionQuota(Array.isArray(quotaRes.data) ? quotaRes.data : []);
     } catch (error) {
       console.error('Failed to load member data:', error);
       setMemberInvoices([]);
       setMemberAttendance(null);
       setMemberProductPurchases([]);
+      setMemberSessionQuota([]);
     }
   };
 
@@ -1958,6 +1963,35 @@ export const MembersPage = () => {
                       {language === 'ar' ? 'سجل الحضور' : 'Attendance Record'}
                     </h3>
                     
+                    {memberSessionQuota.length > 0 && (
+                      <div className="mb-4">
+                        <h4 className="font-medium text-sm text-gray-600 mb-2 flex items-center gap-1">
+                          <AlertTriangle className="w-4 h-4 text-amber-500" />
+                          {language === 'ar' ? 'حصص الاشتراك' : 'Session Quota'}
+                        </h4>
+                        <div className="space-y-2">
+                          {memberSessionQuota.map((q, idx) => (
+                            <div key={idx} className={`p-3 rounded-lg border ${q.exceeded ? 'bg-red-50 border-red-300' : q.remaining <= 2 ? 'bg-amber-50 border-amber-300' : 'bg-green-50 border-green-300'}`}>
+                              <div className="flex items-center justify-between mb-1">
+                                <span className="font-medium text-sm">{q.activity_name}</span>
+                                <Badge className={q.exceeded ? 'bg-red-100 text-red-700' : q.remaining <= 2 ? 'bg-amber-100 text-amber-700' : 'bg-green-100 text-green-700'}>
+                                  {q.exceeded ? (language === 'ar' ? 'استنفدت' : 'Exceeded') : `${q.remaining} ${language === 'ar' ? 'متبقي' : 'left'}`}
+                                </Badge>
+                              </div>
+                              <div className="flex items-center gap-3 text-xs text-gray-600">
+                                <span>{language === 'ar' ? `${q.days_per_week} أيام/أسبوع` : `${q.days_per_week} days/week`}</span>
+                                <span>{language === 'ar' ? `${q.used_sessions}/${q.total_allowed} حصة` : `${q.used_sessions}/${q.total_allowed} sessions`}</span>
+                                <span>{q.schedule_days?.join(' - ')}</span>
+                              </div>
+                              <div className="mt-2 w-full bg-gray-200 rounded-full h-2">
+                                <div className={`h-2 rounded-full ${q.exceeded ? 'bg-red-500' : q.remaining <= 2 ? 'bg-amber-500' : 'bg-green-500'}`} style={{ width: `${Math.min(100, (q.used_sessions / q.total_allowed) * 100)}%` }}></div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
                     {memberAttendance ? (
                       <div className="space-y-4">
                         {/* Summary Cards */}

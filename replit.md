@@ -84,5 +84,7 @@ frontend/
 
 - Day Extensions (ترحيل الأيام): Manage closures (holidays/maintenance/emergencies) and extend member subscriptions at /admin/day-extensions. Features: create closure periods with date ranges and reason types, bulk apply extensions to all active members (with optional branch filter), manual individual member extensions, extension activity log tracking all operations. Backend: routes/day_extensions.py with MongoDB closures and extension_logs collections. Admin-only access with input validation. Sidebar: under Finance group.
 
+- Session Quota Monitoring (مراقبة الحصص): Tracks member session usage vs allowed quota based on subscription days per week from invoice schedule. Calculates total allowed sessions = weeks × days_per_week. Backend: check_member_session_quota() in attendance.py, endpoints GET /api/attendance/session-quota/{member_id} and GET /api/attendance/session-quota-alerts. QR check-in shows warning when member has ≤2 sessions remaining or has exceeded quota (amber alert with used/total/remaining counts). Member detail dialog shows session quota progress bars in attendance tab. Product-member linkage: product invoices support optional member_id, Store page has member search in invoice form, Members page has Purchases tab.
+
 ## Known Issues
 - MongoDB Atlas SSL handshake may fail with `TLSV1_ALERT_INTERNAL_ERROR` - this is typically caused by the Replit IP not being whitelisted in MongoDB Atlas Network Access settings. The user needs to add `0.0.0.0/0` (allow all) in MongoDB Atlas Network Access.

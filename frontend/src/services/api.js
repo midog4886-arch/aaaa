@@ -284,6 +284,12 @@ export const attendanceAPI = {
   },
   getMemberReport: (memberId, params = {}) => axios.get(`${API}/attendance/member/${memberId}/report`, { params }),
   getActivityReport: (activityId, params = {}) => axios.get(`${API}/attendance/activity/${activityId}/report`, { params }),
+  getSessionQuota: (memberId, activityId) => {
+    let url = `${API}/attendance/session-quota/${memberId}`;
+    if (activityId) url += `?activity_id=${encodeURIComponent(activityId)}`;
+    return axios.get(url);
+  },
+  getSessionQuotaAlerts: (branchFilter) => axios.get(`${API}/attendance/session-quota-alerts`, { params: { branch_filter: branchFilter } }),
   delete: (id) => axios.delete(`${API}/attendance/${id}`),
   export: (params = {}) => {
     const token = localStorage.getItem('token');

@@ -3,6 +3,7 @@ from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 from typing import List, Optional
 import uuid
+import math
 from datetime import datetime, timezone, timedelta
 
 from .common import db, get_current_user
@@ -261,6 +262,125 @@ async def get_member_schedule_days(member_id: str, activity_id: str) -> list:
                         all_days.append(d)
     return all_days
 
+async def check_member_session_quota(member_id: str, activity_id: str = None):
+    """Check if member has used all their allowed sessions based on subscription days per week"""
+    saudi_tz = timezone(timedelta(hours=3))
+    today_str = datetime.now(saudi_tz).strftime("%Y-%m-%d")
+    
+    invoices = await db.invoices.find(
+        {"member_id": member_id, "status": {"$in": ["paid", "partial"]}},
+        {"_id": 0}
+    ).to_list(100)
+    
+    results = []
+    
+    for inv in invoices:
+        for item in inv.get("items", []):
+            if item.get("is_product"):
+                continue
+            item_activity_id = item.get("activity_id", "")
+            if activity_id and item_activity_id != activity_id:
+                continue
+            
+            start_date = item.get("start_date", "")
+            end_date = item.get("end_date", "")
+            schedule_text = item.get("schedule", "")
+            
+            if not end_date or not schedule_text:
+                continue
+            if end_date < today_str:
+                continue
+            
+            days = parse_schedule_days(schedule_text)
+            days_per_week = len(days)
+            if days_per_week == 0:
+                continue
+            
+            if not start_date:
+                start_date = inv.get("created_at", "")[:10]
+            
+            try:
+                start_dt = datetime.strptime(start_date, "%Y-%m-%d")
+                end_dt = datetime.strptime(end_date, "%Y-%m-%d")
+                total_weeks = max(1, math.ceil((end_dt - start_dt).days / 7))
+                total_allowed_sessions = total_weeks * days_per_week
+            except Exception:
+                continue
+            
+            attendance_count = await db.attendance.count_documents({
+                "member_id": member_id,
+                "activity_id": item_activity_id,
+                "date": {"$gte": start_date, "$lte": end_date}
+            })
+            
+            results.append({
+                "activity_id": item_activity_id,
+                "activity_name": item.get("activity_name", ""),
+                "days_per_week": days_per_week,
+                "schedule_days": [ENGLISH_TO_ARABIC_DAY.get(d, d) for d in days],
+                "total_allowed": total_allowed_sessions,
+                "used_sessions": attendance_count,
+                "remaining": max(0, total_allowed_sessions - attendance_count),
+                "exceeded": attendance_count >= total_allowed_sessions,
+                "start_date": start_date,
+                "end_date": end_date,
+                "invoice_number": inv.get("invoice_number", "")
+            })
+    
+    return results
+
+
+@router.get("/session-quota/{member_id}")
+async def get_member_session_quota(
+    member_id: str,
+    activity_id: Optional[str] = None,
+    current_user: dict = Depends(get_current_user)
+):
+    results = await check_member_session_quota(member_id, activity_id)
+    return results
+
+
+@router.get("/session-quota-alerts")
+async def get_session_quota_alerts(
+    branch_filter: Optional[str] = None,
+    current_user: dict = Depends(get_current_user)
+):
+    """Get all members who have used up their session quota"""
+    is_admin = current_user.get("is_admin", False)
+    branch_id = current_user.get("branch_id")
+    
+    query = {}
+    if is_admin and branch_filter and branch_filter != "all":
+        query["branch_id"] = branch_filter
+    elif not is_admin and branch_id:
+        query["branch_id"] = branch_id
+    
+    members = await db.members.find(query, {"_id": 0}).to_list(5000)
+    
+    alerts = []
+    for member in members:
+        mid = member.get("id")
+        activities = member.get("activities", [])
+        active_activities = [a for a in activities if a.get("status") == "active"]
+        
+        for act in active_activities:
+            act_id = act.get("activity_id", "")
+            if not act_id:
+                continue
+            quotas = await check_member_session_quota(mid, act_id)
+            for q in quotas:
+                if q["exceeded"]:
+                    alerts.append({
+                        "member_id": mid,
+                        "member_name": member.get("name_ar", member.get("name", "")),
+                        "member_code": member.get("member_code", ""),
+                        "phone": member.get("phone", ""),
+                        **q
+                    })
+    
+    return alerts
+
+
 @router.post("/qr-checkin")
 async def qr_checkin(
     member_code: str,
@@ -365,7 +485,31 @@ async def qr_checkin(
         except Exception as e:
             print(f"Error awarding loyalty points: {e}")
     
-    return {
+    session_quota_warning = None
+    try:
+        quotas = await check_member_session_quota(member["id"], target_activity_id)
+        for q in quotas:
+            if q["exceeded"]:
+                session_quota_warning = {
+                    "message": f"⚠️ استنفد حصصه! ({q['used_sessions']}/{q['total_allowed']})",
+                    "used": q["used_sessions"],
+                    "total": q["total_allowed"],
+                    "activity": q["activity_name"]
+                }
+                break
+            elif q["remaining"] <= 2:
+                session_quota_warning = {
+                    "message": f"⚠️ متبقي {q['remaining']} حصص فقط ({q['used_sessions']}/{q['total_allowed']})",
+                    "used": q["used_sessions"],
+                    "total": q["total_allowed"],
+                    "remaining": q["remaining"],
+                    "activity": q["activity_name"]
+                }
+                break
+    except Exception as e:
+        print(f"Error checking session quota: {e}")
+    
+    response = {
         "message": "Check-in successful",
         "status": "success",
         "member": {
@@ -374,6 +518,10 @@ async def qr_checkin(
             "activity": activity_name
         }
     }
+    if session_quota_warning:
+        response["session_quota_warning"] = session_quota_warning
+    
+    return response
 
 @router.delete("/{record_id}")
 async def delete_attendance(
