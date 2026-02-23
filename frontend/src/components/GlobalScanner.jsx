@@ -449,39 +449,47 @@ const GlobalScanner = ({ enabled = true, language = 'ar' }) => {
 
       {/* Member Dialog */}
       <Dialog open={showMemberDialog} onOpenChange={handleCloseDialog}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className="max-w-md p-0 overflow-hidden rounded-2xl">
           {loading ? (
-            <div className="py-12 text-center">
-              <Loader2 className="w-16 h-16 mx-auto animate-spin text-blue-500" />
-              <p className="mt-4 text-lg text-gray-600">{t('جاري البحث...', 'Searching...')}</p>
+            <div className="py-16 text-center">
+              <div className="relative w-20 h-20 mx-auto mb-4">
+                <div className="absolute inset-0 rounded-full border-4 border-blue-100"></div>
+                <Loader2 className="w-20 h-20 animate-spin text-blue-500" />
+              </div>
+              <p className="text-lg font-medium text-gray-500">{t('جاري البحث...', 'Searching...')}</p>
             </div>
           ) : memberData?.error ? (
-            // Error State
-            <div className="py-8 text-center">
-              <div className="w-20 h-20 mx-auto rounded-full bg-red-100 flex items-center justify-center mb-4">
-                <X className="w-10 h-10 text-red-500" />
+            <div className="py-10 text-center px-6">
+              <div className="w-24 h-24 mx-auto rounded-full bg-gradient-to-br from-red-100 to-red-200 flex items-center justify-center mb-4 shadow-inner">
+                <X className="w-12 h-12 text-red-500" />
               </div>
-              <p className="text-xl font-bold text-red-600">{memberData.message}</p>
+              <p className="text-xl font-bold text-red-600 mb-1">{memberData.message}</p>
               {memberData.memberCode && (
-                <p className="text-gray-500 mt-2">#{memberData.memberCode}</p>
+                <p className="text-gray-400 text-sm font-mono">#{memberData.memberCode}</p>
               )}
             </div>
           ) : memberData ? (
-            // Member Found
-            <div className="space-y-6">
-              {/* Member Header */}
-              <div className="text-center border-b pb-4">
-                <div className="w-20 h-20 mx-auto rounded-full bg-gradient-to-br from-blue-500 to-purple-500 flex items-center justify-center mb-3">
+            <div>
+              {/* Member Header - Gradient Banner */}
+              <div className="relative bg-gradient-to-br from-blue-600 via-blue-700 to-indigo-800 px-6 pt-6 pb-10 text-center">
+                <button
+                  onClick={() => setSoundEnabled(!soundEnabled)}
+                  className="absolute top-3 left-3 w-8 h-8 rounded-full bg-white/20 hover:bg-white/30 flex items-center justify-center text-white transition-colors"
+                  title={soundEnabled ? t('إيقاف الصوت', 'Mute') : t('تفعيل الصوت', 'Unmute')}
+                >
+                  {soundEnabled ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
+                </button>
+                <div className="w-20 h-20 mx-auto rounded-full bg-white/20 backdrop-blur-sm border-3 border-white/40 flex items-center justify-center mb-3 shadow-lg">
                   <User className="w-10 h-10 text-white" />
                 </div>
-                <h2 className="text-2xl font-bold text-gray-800">{memberData.name_ar || memberData.name}</h2>
-                <div className="flex items-center justify-center gap-4 mt-2 text-sm text-gray-500">
-                  <Badge variant="outline" className="gap-1">
+                <h2 className="text-2xl font-bold text-white mb-2">{memberData.name_ar || memberData.name}</h2>
+                <div className="flex items-center justify-center gap-3 flex-wrap">
+                  <span className="inline-flex items-center gap-1 bg-white/15 text-white/90 text-xs px-3 py-1 rounded-full backdrop-blur-sm">
                     <User className="w-3 h-3" />
                     #{memberData.member_code}
-                  </Badge>
+                  </span>
                   {memberData.phone && (
-                    <span className="flex items-center gap-1" dir="ltr">
+                    <span className="inline-flex items-center gap-1 bg-white/15 text-white/90 text-xs px-3 py-1 rounded-full backdrop-blur-sm" dir="ltr">
                       <Phone className="w-3 h-3" />
                       {memberData.phone}
                     </span>
@@ -489,170 +497,182 @@ const GlobalScanner = ({ enabled = true, language = 'ar' }) => {
                 </div>
               </div>
 
-              {/* Sound Toggle */}
-              <div className="flex items-center justify-between px-4 py-2 bg-gray-50 rounded-lg">
-                <span className="text-sm text-gray-600 flex items-center gap-2">
-                  {soundEnabled ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
-                  {t('الصوت', 'Sound')}
-                </span>
-                <Button
-                  variant={soundEnabled ? 'default' : 'outline'}
-                  size="sm"
-                  onClick={() => setSoundEnabled(!soundEnabled)}
-                >
-                  {soundEnabled ? t('مفعّل', 'On') : t('مغلق', 'Off')}
-                </Button>
-              </div>
-
-              {lastResult && (
-                <div className={`p-4 rounded-xl border-2 ${
-                  lastResult.success && lastResult.sessionQuotaWarning
-                    ? 'bg-amber-50 border-amber-400'
-                    : lastResult.success 
-                    ? 'bg-green-50 border-green-300' 
-                    : lastResult.wrongDay
-                      ? 'bg-yellow-50 border-yellow-400'
-                      : lastResult.alreadyCheckedIn 
-                        ? 'bg-orange-50 border-orange-300'
-                        : 'bg-red-50 border-red-300'
-                }`}>
-                  <div className="flex items-center gap-3">
-                    {lastResult.success && lastResult.sessionQuotaWarning ? (
-                      <AlertTriangle className="w-8 h-8 text-amber-500" />
-                    ) : lastResult.success ? (
-                      <Check className="w-8 h-8 text-green-500" />
-                    ) : lastResult.wrongDay ? (
-                      <Clock className="w-8 h-8 text-yellow-500" />
-                    ) : (
-                      <X className="w-8 h-8 text-red-500" />
-                    )}
-                    <div className="flex-1">
-                      <p className={`font-bold ${
-                        lastResult.success && lastResult.sessionQuotaWarning ? 'text-amber-700'
-                          : lastResult.success ? 'text-green-700' 
-                          : lastResult.wrongDay ? 'text-yellow-700'
-                          : 'text-red-700'
-                      }`}>
-                        {lastResult.wrongDay ? `⚠️ ${lastResult.message}` : lastResult.message}
-                      </p>
-                      <p className="text-sm text-gray-500">{lastResult.activityName}</p>
-                    </div>
-                  </div>
-                  {lastResult.sessionQuotaWarning && (
-                    <div className="mt-3 pt-3 border-t border-amber-300">
-                      <div className="bg-amber-100 p-3 rounded-lg">
-                        <p className="text-amber-800 font-bold text-sm mb-1">
-                          {lastResult.sessionQuotaWarning.message}
-                        </p>
-                        <div className="flex items-center gap-4 text-xs text-amber-700">
-                          <span>{t('الحصص المستخدمة:', 'Used:')} {lastResult.sessionQuotaWarning.used}</span>
-                          <span>{t('الإجمالي:', 'Total:')} {lastResult.sessionQuotaWarning.total}</span>
-                          {lastResult.sessionQuotaWarning.remaining !== undefined && (
-                            <span>{t('المتبقي:', 'Remaining:')} {lastResult.sessionQuotaWarning.remaining}</span>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                  {lastResult.wrongDay && (
-                    <div className="mt-3 pt-3 border-t border-yellow-300">
-                      <p className="text-sm text-yellow-800 mb-2 font-medium">
-                        {t('مواعيدك:', 'Your days:')} {lastResult.scheduleDays?.join(' - ')}
-                      </p>
-                      <Button
-                        onClick={() => handleCheckin(lastResult.activityId, lastResult.activityName, true)}
-                        disabled={checkingIn}
-                        variant="outline"
-                        className="w-full border-yellow-400 text-yellow-800 hover:bg-yellow-100 gap-2"
-                      >
-                        {checkingIn ? (
-                          <Loader2 className="w-4 h-4 animate-spin" />
-                        ) : (
-                          <Check className="w-4 h-4" />
-                        )}
-                        {t('تسجيل حضور رغم ذلك', 'Check-in anyway')}
-                      </Button>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* Active Activities */}
-              {memberData.activeActivities?.length > 0 ? (
-                <div>
-                  <h3 className="font-bold text-gray-700 mb-3 flex items-center gap-2">
-                    <Activity className="w-5 h-5 text-green-600" />
-                    {t('الاشتراكات النشطة', 'Active Subscriptions')}
-                  </h3>
-                  <div className="space-y-2">
-                    {memberData.activeActivities.map((act, idx) => (
-                      <div 
-                        key={idx}
-                        className={`p-4 rounded-xl border-2 transition-all ${
-                          act.recorded_today 
-                            ? 'bg-green-50 border-green-300' 
-                            : 'bg-white border-gray-200 hover:border-blue-400 hover:shadow-md'
-                        }`}
-                      >
-                        <div className="flex items-center justify-between">
-                          <div>
-                            <p className="font-bold text-lg">{act.activity_name}</p>
-                            <p className="text-sm text-gray-500 flex items-center gap-1">
-                              <Calendar className="w-3 h-3" />
-                              {t('ينتهي:', 'Expires:')} {act.end_date || '-'}
-                            </p>
-                          </div>
-                          {act.recorded_today ? (
-                            <div className="flex items-center gap-2 text-green-600">
-                              <Check className="w-6 h-6" />
-                              <span className="font-bold">{t('مسجل ✓', 'Recorded ✓')}</span>
-                            </div>
+              {/* Content Area */}
+              <div className="px-5 pb-5 -mt-5 space-y-4">
+                {/* Result Banner */}
+                {lastResult && (
+                  <div className={`rounded-xl shadow-md overflow-hidden ${
+                    lastResult.success && lastResult.sessionQuotaWarning
+                      ? 'bg-amber-50 ring-2 ring-amber-300'
+                      : lastResult.success 
+                      ? 'bg-green-50 ring-2 ring-green-300' 
+                      : lastResult.wrongDay
+                        ? 'bg-yellow-50 ring-2 ring-yellow-300'
+                        : lastResult.alreadyCheckedIn 
+                          ? 'bg-orange-50 ring-2 ring-orange-300'
+                          : 'bg-red-50 ring-2 ring-red-300'
+                  }`}>
+                    <div className="p-4">
+                      <div className="flex items-center gap-3">
+                        <div className={`w-12 h-12 rounded-full flex items-center justify-center flex-shrink-0 ${
+                          lastResult.success && lastResult.sessionQuotaWarning ? 'bg-amber-200'
+                            : lastResult.success ? 'bg-green-200' 
+                            : lastResult.wrongDay ? 'bg-yellow-200'
+                            : 'bg-red-200'
+                        }`}>
+                          {lastResult.success && lastResult.sessionQuotaWarning ? (
+                            <AlertTriangle className="w-6 h-6 text-amber-600" />
+                          ) : lastResult.success ? (
+                            <Check className="w-6 h-6 text-green-600" />
+                          ) : lastResult.wrongDay ? (
+                            <Clock className="w-6 h-6 text-yellow-600" />
                           ) : (
-                            <Button
-                              onClick={() => handleCheckin(act.activity_id, act.activity_name)}
-                              disabled={checkingIn}
-                              className="bg-gradient-to-r from-green-500 to-blue-500 hover:from-green-600 hover:to-blue-600 gap-2"
-                            >
-                              {checkingIn ? (
-                                <Loader2 className="w-4 h-4 animate-spin" />
-                              ) : (
-                                <Check className="w-4 h-4" />
-                              )}
-                              {t('تسجيل', 'Check-in')}
-                            </Button>
+                            <X className="w-6 h-6 text-red-600" />
                           )}
                         </div>
+                        <div className="flex-1 min-w-0">
+                          <p className={`font-bold text-base ${
+                            lastResult.success && lastResult.sessionQuotaWarning ? 'text-amber-800'
+                              : lastResult.success ? 'text-green-800' 
+                              : lastResult.wrongDay ? 'text-yellow-800'
+                              : 'text-red-800'
+                          }`}>
+                            {lastResult.wrongDay ? lastResult.message : lastResult.message}
+                          </p>
+                          <p className="text-sm text-gray-500 truncate">{lastResult.activityName}</p>
+                        </div>
                       </div>
-                    ))}
+                    </div>
+                    {lastResult.sessionQuotaWarning && (
+                      <div className="px-4 pb-4">
+                        <div className="bg-amber-100/80 p-3 rounded-lg border border-amber-200">
+                          <p className="text-amber-900 font-bold text-sm mb-2">
+                            {lastResult.sessionQuotaWarning.message}
+                          </p>
+                          <div className="grid grid-cols-3 gap-2 text-center">
+                            <div className="bg-white/60 rounded-md p-1.5">
+                              <p className="text-lg font-bold text-amber-700">{lastResult.sessionQuotaWarning.used}</p>
+                              <p className="text-[10px] text-amber-600">{t('مستخدم', 'Used')}</p>
+                            </div>
+                            <div className="bg-white/60 rounded-md p-1.5">
+                              <p className="text-lg font-bold text-amber-700">{lastResult.sessionQuotaWarning.total}</p>
+                              <p className="text-[10px] text-amber-600">{t('الإجمالي', 'Total')}</p>
+                            </div>
+                            <div className="bg-white/60 rounded-md p-1.5">
+                              <p className="text-lg font-bold text-amber-700">{lastResult.sessionQuotaWarning.remaining ?? 0}</p>
+                              <p className="text-[10px] text-amber-600">{t('متبقي', 'Left')}</p>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                    {lastResult.wrongDay && (
+                      <div className="px-4 pb-4">
+                        <div className="bg-yellow-100/80 p-3 rounded-lg border border-yellow-200 mb-3">
+                          <p className="text-sm text-yellow-800 font-medium">
+                            {t('مواعيدك:', 'Your days:')} {lastResult.scheduleDays?.join(' - ')}
+                          </p>
+                        </div>
+                        <Button
+                          onClick={() => handleCheckin(lastResult.activityId, lastResult.activityName, true)}
+                          disabled={checkingIn}
+                          variant="outline"
+                          className="w-full border-yellow-400 text-yellow-800 hover:bg-yellow-100 gap-2 h-11 rounded-lg"
+                        >
+                          {checkingIn ? (
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                          ) : (
+                            <Check className="w-4 h-4" />
+                          )}
+                          {t('تسجيل حضور رغم ذلك', 'Check-in anyway')}
+                        </Button>
+                      </div>
+                    )}
                   </div>
-                </div>
-              ) : (
-                <div className="text-center py-6 bg-orange-50 rounded-xl">
-                  <X className="w-12 h-12 mx-auto text-orange-500 mb-2" />
-                  <p className="font-bold text-orange-700">
-                    {t('⚠️ لا توجد اشتراكات نشطة', '⚠️ No active subscriptions')}
-                  </p>
-                </div>
-              )}
+                )}
 
-              {/* Expired Activities */}
-              {memberData.expiredActivities?.length > 0 && (
-                <div>
-                  <h3 className="font-bold text-gray-500 mb-2 text-sm">
-                    {t('اشتراكات منتهية', 'Expired Subscriptions')}
-                  </h3>
-                  <div className="space-y-1">
-                    {memberData.expiredActivities.map((act, idx) => (
-                      <div key={idx} className="p-2 bg-red-50 rounded-lg text-sm flex justify-between items-center">
-                        <span className="text-red-700">{act.activity_name}</span>
-                        <Badge variant="destructive" className="text-xs">
-                          {t('منتهي', 'Expired')}
-                        </Badge>
-                      </div>
-                    ))}
+                {/* Active Activities */}
+                {memberData.activeActivities?.length > 0 ? (
+                  <div>
+                    <h3 className="font-bold text-gray-700 mb-2.5 text-sm flex items-center gap-2">
+                      <Activity className="w-4 h-4 text-green-600" />
+                      {t('الاشتراكات النشطة', 'Active Subscriptions')}
+                      <span className="bg-green-100 text-green-700 text-xs px-2 py-0.5 rounded-full">{memberData.activeActivities.length}</span>
+                    </h3>
+                    <div className="space-y-2">
+                      {memberData.activeActivities.map((act, idx) => (
+                        <div 
+                          key={idx}
+                          className={`p-3.5 rounded-xl border-2 transition-all ${
+                            act.recorded_today 
+                              ? 'bg-green-50 border-green-200' 
+                              : 'bg-white border-gray-100 hover:border-blue-300 hover:shadow-sm'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between gap-3">
+                            <div className="min-w-0 flex-1">
+                              <p className="font-bold text-base truncate">{act.activity_name}</p>
+                              <div className="flex items-center gap-2 mt-1">
+                                <span className="text-xs text-gray-400 flex items-center gap-1">
+                                  <Calendar className="w-3 h-3" />
+                                  {act.end_date || '-'}
+                                </span>
+                              </div>
+                            </div>
+                            {act.recorded_today ? (
+                              <div className="flex items-center gap-1.5 bg-green-100 text-green-700 px-3 py-1.5 rounded-full flex-shrink-0">
+                                <Check className="w-4 h-4" />
+                                <span className="font-bold text-sm">{t('تم', 'Done')}</span>
+                              </div>
+                            ) : (
+                              <Button
+                                onClick={() => handleCheckin(act.activity_id, act.activity_name)}
+                                disabled={checkingIn}
+                                size="sm"
+                                className="bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 gap-1.5 rounded-full px-5 shadow-sm flex-shrink-0"
+                              >
+                                {checkingIn ? (
+                                  <Loader2 className="w-4 h-4 animate-spin" />
+                                ) : (
+                                  <Check className="w-4 h-4" />
+                                )}
+                                {t('تسجيل', 'Check-in')}
+                              </Button>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
                   </div>
-                </div>
-              )}
+                ) : (
+                  <div className="text-center py-6 bg-orange-50 rounded-xl border border-orange-100">
+                    <AlertTriangle className="w-10 h-10 mx-auto text-orange-400 mb-2" />
+                    <p className="font-bold text-orange-700 text-sm">
+                      {t('لا توجد اشتراكات نشطة', 'No active subscriptions')}
+                    </p>
+                  </div>
+                )}
+
+                {/* Expired Activities */}
+                {memberData.expiredActivities?.length > 0 && (
+                  <div>
+                    <h3 className="font-medium text-gray-400 mb-2 text-xs flex items-center gap-1.5">
+                      <Clock className="w-3.5 h-3.5" />
+                      {t('اشتراكات منتهية', 'Expired Subscriptions')}
+                    </h3>
+                    <div className="space-y-1.5">
+                      {memberData.expiredActivities.map((act, idx) => (
+                        <div key={idx} className="p-2.5 bg-gray-50 rounded-lg text-sm flex justify-between items-center border border-gray-100">
+                          <span className="text-gray-500 truncate">{act.activity_name}</span>
+                          <Badge className="bg-red-50 text-red-500 border-red-100 text-[10px] px-2 flex-shrink-0">
+                            {t('منتهي', 'Expired')}
+                          </Badge>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
           ) : null}
         </DialogContent>
