@@ -310,13 +310,26 @@ export const LevelsPage = () => {
     
     setSaving(true);
     try {
-      // Get all levels with this time slot and update their activity_name
       const levelsToUpdate = getLevelsForTimeSlot(editingTimeSlot.activityId, editingTimeSlot.oldName);
       
       for (const level of levelsToUpdate) {
+        let newActivityName = editingTimeSlot.newName.trim();
+        if (level.activity_name && level.activity_name.includes(' - ')) {
+          const prefix = level.activity_name.split(' - ')[0];
+          newActivityName = `${prefix} - ${newActivityName}`;
+        } else {
+          const actId = editingTimeSlot.activityId;
+          if (actId === 'swimming') {
+            newActivityName = `سباحة - ${newActivityName}`;
+          } else if (actId === 'football') {
+            newActivityName = `كرة قدم - ${newActivityName}`;
+          } else if (actId === 'karate') {
+            newActivityName = `كاراتيه - ${newActivityName}`;
+          }
+        }
         await levelsAPI.update(level.id, {
           ...level,
-          activity_name: editingTimeSlot.newName
+          activity_name: newActivityName
         });
       }
       
