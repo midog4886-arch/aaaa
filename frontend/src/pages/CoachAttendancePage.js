@@ -3,7 +3,7 @@ import Layout from '../components/Layout';
 import { 
   Clock, LogIn, LogOut, UserX, Calendar, ChevronLeft, ChevronRight,
   FileText, Download, Edit2, Trash2, Save, X, AlertCircle, CheckCircle,
-  Users, Timer, CalendarDays
+  Users, Timer, CalendarDays, UserPlus, Phone, Mail
 } from 'lucide-react';
 import axios from 'axios';
 
@@ -21,6 +21,9 @@ const CoachAttendancePage = () => {
   const [absentReason, setAbsentReason] = useState('');
   const [absentStatus, setAbsentStatus] = useState('absent');
   const [toast, setToast] = useState(null);
+  const [showAddCoach, setShowAddCoach] = useState(false);
+  const [addCoachForm, setAddCoachForm] = useState({ name: '', phone: '', email: '', specialization: '', name_en: '' });
+  const [addingCoach, setAddingCoach] = useState(false);
   const branchFilter = localStorage.getItem('selectedBranch') || 'all';
 
   const showToast = (message, type = 'success') => {
@@ -157,6 +160,39 @@ const CoachAttendancePage = () => {
     return `${days[d.getDay()]} ${d.toLocaleDateString('ar-SA')}`;
   };
 
+  const handleAddCoach = async () => {
+    if (!addCoachForm.name.trim()) {
+      showToast('يرجى إدخال اسم المدرب', 'error');
+      return;
+    }
+    if (!addCoachForm.phone.trim()) {
+      showToast('يرجى إدخال رقم الجوال', 'error');
+      return;
+    }
+    setAddingCoach(true);
+    try {
+      const token = localStorage.getItem('token');
+      const branchId = branchFilter !== 'all' ? branchFilter : null;
+      await axios.post('/api/coaches', {
+        name: addCoachForm.name_en.trim() || addCoachForm.name.trim(),
+        name_ar: addCoachForm.name.trim(),
+        phone: addCoachForm.phone.trim(),
+        email: addCoachForm.email.trim(),
+        activities: addCoachForm.specialization ? [addCoachForm.specialization.trim()] : [],
+        notes: '',
+        branch_id: branchId
+      }, { headers: { Authorization: `Bearer ${token}` } });
+      showToast('تم إضافة المدرب بنجاح');
+      setShowAddCoach(false);
+      setAddCoachForm({ name: '', phone: '', email: '', specialization: '', name_en: '' });
+      fetchData();
+    } catch (error) {
+      showToast(error.response?.data?.detail || 'حدث خطأ أثناء إضافة المدرب', 'error');
+    } finally {
+      setAddingCoach(false);
+    }
+  };
+
   const exportCSV = () => {
     if (!monthlyReport) return;
     const rows = [['المدرب', 'أيام الحضور', 'أيام الغياب', 'أيام الإجازة', 'إجمالي الساعات']];
@@ -184,11 +220,118 @@ const CoachAttendancePage = () => {
           </div>
         )}
 
+        {showAddCoach && (
+          <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setShowAddCoach(false)}>
+            <div className="bg-white rounded-xl shadow-2xl w-full max-w-md" onClick={e => e.stopPropagation()}>
+              <div className="flex items-center justify-between p-5 border-b">
+                <h2 className="text-lg font-bold text-gray-800 flex items-center gap-2">
+                  <UserPlus className="w-5 h-5 text-orange-500" />
+                  إضافة مدرب جديد
+                </h2>
+                <button onClick={() => setShowAddCoach(false)} className="text-gray-400 hover:text-gray-600">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+              <div className="p-5 space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">اسم المدرب (عربي) *</label>
+                  <input
+                    type="text"
+                    value={addCoachForm.name}
+                    onChange={e => setAddCoachForm({...addCoachForm, name: e.target.value})}
+                    className="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+                    placeholder="مثال: أحمد محمد"
+                    autoFocus
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">اسم المدرب (إنجليزي)</label>
+                  <input
+                    type="text"
+                    value={addCoachForm.name_en}
+                    onChange={e => setAddCoachForm({...addCoachForm, name_en: e.target.value})}
+                    className="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+                    placeholder="مثال: Ahmed Mohammed"
+                    dir="ltr"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    <Phone className="w-4 h-4 inline ml-1" />
+                    رقم الجوال *
+                  </label>
+                  <input
+                    type="tel"
+                    value={addCoachForm.phone}
+                    onChange={e => setAddCoachForm({...addCoachForm, phone: e.target.value})}
+                    className="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+                    placeholder="05XXXXXXXX"
+                    dir="ltr"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    <Mail className="w-4 h-4 inline ml-1" />
+                    البريد الإلكتروني
+                  </label>
+                  <input
+                    type="email"
+                    value={addCoachForm.email}
+                    onChange={e => setAddCoachForm({...addCoachForm, email: e.target.value})}
+                    className="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+                    placeholder="coach@example.com"
+                    dir="ltr"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">التخصص</label>
+                  <input
+                    type="text"
+                    value={addCoachForm.specialization}
+                    onChange={e => setAddCoachForm({...addCoachForm, specialization: e.target.value})}
+                    className="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+                    placeholder="مثال: كرة قدم، سباحة، لياقة بدنية"
+                  />
+                </div>
+              </div>
+              <div className="flex gap-3 p-5 border-t bg-gray-50 rounded-b-xl">
+                <button
+                  onClick={handleAddCoach}
+                  disabled={addingCoach}
+                  className="flex-1 bg-orange-500 text-white py-2.5 rounded-lg font-medium hover:bg-orange-600 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+                >
+                  {addingCoach ? (
+                    <span className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  ) : (
+                    <UserPlus className="w-5 h-5" />
+                  )}
+                  {addingCoach ? 'جاري الإضافة...' : 'إضافة المدرب'}
+                </button>
+                <button
+                  onClick={() => setShowAddCoach(false)}
+                  className="px-6 py-2.5 bg-gray-200 text-gray-700 rounded-lg font-medium hover:bg-gray-300 transition-colors"
+                >
+                  إلغاء
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
-          <h1 className="text-2xl font-bold text-gray-800 flex items-center gap-2">
-            <Clock className="w-7 h-7 text-orange-500" />
-            حضور المدربين
-          </h1>
+          <div className="flex items-center gap-3">
+            <h1 className="text-2xl font-bold text-gray-800 flex items-center gap-2">
+              <Clock className="w-7 h-7 text-orange-500" />
+              حضور المدربين
+            </h1>
+            <button
+              onClick={() => setShowAddCoach(true)}
+              className="bg-green-500 text-white px-3 py-1.5 rounded-lg text-sm font-medium hover:bg-green-600 transition-colors flex items-center gap-1"
+            >
+              <UserPlus className="w-4 h-4" />
+              إضافة مدرب
+            </button>
+          </div>
           <div className="flex gap-2">
             <button
               onClick={() => setView('daily')}
