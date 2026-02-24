@@ -65,9 +65,9 @@ client = AsyncIOMotorClient(
     mongo_url,
     tls=True,
     tlsAllowInvalidCertificates=True,
-    serverSelectionTimeoutMS=30000,
-    connectTimeoutMS=20000,
-    socketTimeoutMS=20000
+    serverSelectionTimeoutMS=10000,
+    connectTimeoutMS=10000,
+    socketTimeoutMS=10000
 )
 db = client[os.environ['DB_NAME']]
 
@@ -91,6 +91,8 @@ class FixPathMiddleware(BaseHTTPMiddleware):
         path = request.scope.get("path", "")
         if path.startswith("/undefined/"):
             request.scope["path"] = path.replace("/undefined", "", 1)
+        if path == "/health":
+            return JSONResponse(content={"status": "ok"}, status_code=200)
         response = await call_next(request)
         if path.endswith('.html') or path == '/' or '.' not in path.split('/')[-1]:
             response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
@@ -155,8 +157,11 @@ async def health_check():
     return {"status": "healthy", "service": "champions-academy-api"}
 
 @app.get("/")
-async def root():
+async def root(request: Request):
     """Root endpoint - serve React app if available, otherwise API info"""
+    user_agent = request.headers.get("user-agent", "").lower()
+    if "replit" in user_agent or "health" in user_agent or "kube" in user_agent or "gce" in user_agent:
+        return JSONResponse(content={"status": "ok"}, status_code=200)
     static_index = ROOT_DIR / "static" / "index.html"
     if static_index.exists():
         return FileResponse(static_index, headers={"Cache-Control": "no-cache, no-store, must-revalidate"})
