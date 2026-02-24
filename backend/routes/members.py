@@ -55,11 +55,11 @@ class MemberUpdate(BaseModel):
     notes: Optional[str] = None
 
 class Member(BaseModel):
-    id: str
+    id: str = ""
     member_code: Optional[str] = ""
     name: str = ""
-    name_ar: str
-    phone: str
+    name_ar: str = ""
+    phone: str = ""
     email: Optional[str] = ""
     date_of_birth: Optional[str] = ""
     age: Optional[int] = 0
@@ -72,7 +72,7 @@ class Member(BaseModel):
     notes: Optional[str] = ""
     status: str = "active"
     branch_id: Optional[str] = None
-    created_at: str
+    created_at: str = ""
 
 # ============ ROUTES ============
 
