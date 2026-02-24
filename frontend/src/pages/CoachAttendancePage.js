@@ -5,7 +5,7 @@ import {
   FileText, Download, Edit2, Trash2, Save, X, AlertCircle, CheckCircle,
   Users, Timer, CalendarDays
 } from 'lucide-react';
-import api from '../services/api';
+import axios from 'axios';
 
 const CoachAttendancePage = () => {
   const [coaches, setCoaches] = useState([]);
@@ -32,8 +32,8 @@ const CoachAttendancePage = () => {
     setLoading(true);
     try {
       const [coachesRes, recordsRes] = await Promise.all([
-        api.get('/api/coaches', { params: { branch_filter: branchFilter } }),
-        api.get('/api/coach-attendance', { params: { date: selectedDate, branch_filter: branchFilter } })
+        axios.get('/api/coaches', { params: { branch_filter: branchFilter } }),
+        axios.get('/api/coach-attendance', { params: { date: selectedDate, branch_filter: branchFilter } })
       ]);
       setCoaches(coachesRes.data);
       setRecords(recordsRes.data);
@@ -46,7 +46,7 @@ const CoachAttendancePage = () => {
   const fetchMonthlyReport = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await api.get('/api/coach-attendance/monthly-report', {
+      const res = await axios.get('/api/coach-attendance/monthly-report', {
         params: { month: selectedMonth, branch_filter: branchFilter }
       });
       setMonthlyReport(res.data);
@@ -63,7 +63,7 @@ const CoachAttendancePage = () => {
 
   const handleCheckIn = async (coachId) => {
     try {
-      await api.post('/api/coach-attendance/check-in', {
+      await axios.post('/api/coach-attendance/check-in', {
         coach_id: coachId,
         date: selectedDate
       });
@@ -76,7 +76,7 @@ const CoachAttendancePage = () => {
 
   const handleCheckOut = async (recordId) => {
     try {
-      await api.post(`/api/coach-attendance/${recordId}/check-out`, {});
+      await axios.post(`/api/coach-attendance/${recordId}/check-out`, {});
       showToast('تم تسجيل الانصراف بنجاح');
       fetchData();
     } catch (err) {
@@ -87,7 +87,7 @@ const CoachAttendancePage = () => {
   const handleMarkAbsent = async () => {
     if (!showAbsentModal) return;
     try {
-      await api.post('/api/coach-attendance/mark-absent', {
+      await axios.post('/api/coach-attendance/mark-absent', {
         coach_id: showAbsentModal,
         date: selectedDate,
         status: absentStatus,
@@ -105,7 +105,7 @@ const CoachAttendancePage = () => {
 
   const handleUpdateRecord = async (recordId) => {
     try {
-      await api.put(`/api/coach-attendance/${recordId}`, editForm);
+      await axios.put(`/api/coach-attendance/${recordId}`, editForm);
       showToast('تم التحديث بنجاح');
       setEditingRecord(null);
       setEditForm({});
@@ -118,7 +118,7 @@ const CoachAttendancePage = () => {
   const handleDeleteRecord = async (recordId) => {
     if (!window.confirm('هل أنت متأكد من حذف هذا السجل؟')) return;
     try {
-      await api.delete(`/api/coach-attendance/${recordId}`);
+      await axios.delete(`/api/coach-attendance/${recordId}`);
       showToast('تم الحذف بنجاح');
       fetchData();
     } catch (err) {
