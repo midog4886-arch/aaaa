@@ -1,6 +1,8 @@
 frontend/
 node_modules/
 attached_assets/
+.cache/
+.pythonlibs/
 *.aab
 *.apk
 *.jks
