@@ -88,5 +88,7 @@ frontend/
 
 - Member Freeze/Suspension (تجميد العضوية): Admins can temporarily freeze member subscriptions from the Members page. Features: freeze with date range and reason (travel/medical/personal/other), auto-extend subscription end dates by freeze duration, block attendance check-in during freeze, cancel freeze with rollback, 30-day annual limit per member, freeze stats (days used/remaining), freeze history log. Backend: routes/freezes.py with MongoDB member_freezes collection. Endpoints: POST /api/freezes, POST /api/freezes/{id}/cancel, GET /api/freezes/member/{id}, GET /api/freezes/active, GET /api/freezes/member/{id}/stats. Frontend: Snowflake button per member + freeze tab in member detail dialog. Notifications sent to member on freeze/unfreeze.
 
+- Coach Attendance (حضور المدربين): Track coach check-in/check-out times at /admin/coach-attendance. Features: daily attendance view with check-in/check-out buttons, mark absent/leave with reason, auto-calculate work hours, edit records manually, monthly report with attendance summary per coach, CSV export. Backend: routes/coach_attendance.py with MongoDB coach_attendance collection. Sidebar: under Activities & Training group. Uses Saudi timezone (UTC+3).
+
 ## Known Issues
 - MongoDB Atlas SSL handshake may fail with `TLSV1_ALERT_INTERNAL_ERROR` - this is typically caused by the Replit IP not being whitelisted in MongoDB Atlas Network Access settings. The user needs to add `0.0.0.0/0` (allow all) in MongoDB Atlas Network Access.

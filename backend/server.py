@@ -50,6 +50,7 @@ from routes.messages import router as messages_router
 from routes.daily_ledger import router as daily_ledger_router
 from routes.day_extensions import router as day_extensions_router
 from routes.freezes import router as freezes_router
+from routes.coach_attendance import router as coach_attendance_router
 
 ROOT_DIR = Path(__file__).parent
 UPLOADS_DIR = ROOT_DIR / "uploads"
@@ -118,6 +119,7 @@ api_router.include_router(messages_router)
 api_router.include_router(daily_ledger_router)
 api_router.include_router(day_extensions_router)
 api_router.include_router(freezes_router)
+api_router.include_router(coach_attendance_router)
 
 # Set database for loyalty router
 set_loyalty_db(db)

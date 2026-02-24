@@ -50,6 +50,7 @@ import SchedulePage from './pages/SchedulePage';
 import UnauthorizedPage from './pages/UnauthorizedPage';
 import MemberCardPage from './pages/MemberCardPage';
 import CoachRatingsPage from './pages/CoachRatingsPage';
+import CoachAttendancePage from './pages/CoachAttendancePage';
 import AdvertisementsPage from './pages/AdvertisementsPage';
 import DailyVideosPage from './pages/DailyVideosPage';
 import LoyaltyPage from './pages/LoyaltyPage';
@@ -336,6 +337,14 @@ function AppRoutes() {
         element={
           <ProtectedRoute permission="coach-ratings">
             <CoachRatingsPage />
+          </ProtectedRoute>
+        } 
+      />
+      <Route 
+        path="/admin/coach-attendance" 
+        element={
+          <ProtectedRoute permission="coach-attendance">
+            <CoachAttendancePage />
           </ProtectedRoute>
         } 
       />

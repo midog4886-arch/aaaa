@@ -119,6 +119,7 @@ export const Sidebar = ({ isOpen, onClose }) => {
         { to: '/admin/levels', icon: Layers, label: 'levels', permission: 'levels' },
         { to: '/admin/schedule', icon: CalendarDays, label: 'schedule', permission: 'schedule' },
         { to: '/admin/coach-ratings', icon: Star, label: 'coach_ratings', permission: 'coach-ratings' },
+        { to: '/admin/coach-attendance', icon: Clock, label: 'coach_attendance', permission: 'coach-attendance' },
       ]
     },
     {
