@@ -1,10 +1,5 @@
-frontend/node_modules/
-frontend/android/
-frontend/build/
-frontend/src/
-frontend/public/
-frontend/.gradle/
-frontend/google-play-assets/
+frontend/
+node_modules/
 attached_assets/
 *.aab
 *.apk
@@ -12,4 +7,4 @@ attached_assets/
 *.keystore
 __pycache__/
 *.pyc
-*.md
+.git/
