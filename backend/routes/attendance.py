@@ -157,6 +157,17 @@ async def create_attendance(
     if not member:
         raise HTTPException(status_code=404, detail="Member not found")
     
+    # Check if member has active freeze
+    record_date_check = attendance.date or datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    active_freeze = await db.member_freezes.find_one({
+        "member_id": attendance.member_id,
+        "status": "active",
+        "start_date": {"$lte": record_date_check},
+        "end_date": {"$gte": record_date_check}
+    })
+    if active_freeze:
+        raise HTTPException(status_code=400, detail=f"عضوية مجمّدة حتى {active_freeze['end_date']} - لا يمكن تسجيل الحضور")
+    
     # Get activity info
     activity = await db.activities.find_one({"id": attendance.activity_id}, {"_id": 0})
     activity_name = activity.get("name_ar", "") if activity else ""
@@ -401,6 +412,25 @@ async def qr_checkin(
     
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     check_in_time = datetime.now(timezone.utc).strftime("%H:%M")
+    
+    # Check if member has active freeze
+    active_freeze = await db.member_freezes.find_one({
+        "member_id": member["id"],
+        "status": "active",
+        "start_date": {"$lte": today},
+        "end_date": {"$gte": today}
+    })
+    if active_freeze:
+        return {
+            "status": "frozen",
+            "message": f"عضوية مجمّدة حتى {active_freeze['end_date']}",
+            "member": {
+                "name": member.get("name_ar", member.get("name", "")),
+                "member_code": member.get("member_code", ""),
+                "phone": member.get("phone", "")
+            },
+            "freeze_end_date": active_freeze["end_date"]
+        }
     
     target_activity_id = activity_id
     activity_name = ""

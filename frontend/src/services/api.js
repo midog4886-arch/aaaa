@@ -417,3 +417,11 @@ export default {
   put: (url, data) => axios.put(`${API}${url}`, data),
   delete: (url) => axios.delete(`${API}${url}`),
 };
+
+export const freezesAPI = {
+  create: (data) => axios.post(`${API}/freezes`, data),
+  cancel: (freezeId) => axios.post(`${API}/freezes/${freezeId}/cancel`),
+  getMemberFreezes: (memberId) => axios.get(`${API}/freezes/member/${memberId}`),
+  getActiveFreezes: () => axios.get(`${API}/freezes/active`),
+  getMemberStats: (memberId) => axios.get(`${API}/freezes/member/${memberId}/stats`),
+};

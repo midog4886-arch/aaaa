@@ -13,7 +13,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Popover, PopoverContent, PopoverTrigger } from '../components/ui/popover';
 import { Textarea } from '../components/ui/textarea';
-import { membersAPI, activitiesAPI, coachesAPI, exportAPI, invoicesAPI, attendanceAPI, levelsAPI, productInvoicesAPI } from '../services/api';
+import { membersAPI, activitiesAPI, coachesAPI, exportAPI, invoicesAPI, attendanceAPI, levelsAPI, productInvoicesAPI, freezesAPI } from '../services/api';
 import { toast } from 'sonner';
 import { 
   Plus, 
@@ -40,7 +40,9 @@ import {
   Check,
   Filter,
   ShoppingBag,
-  Package
+  Package,
+  Snowflake,
+  PlayCircle
 } from 'lucide-react';
 
 export const MembersPage = () => {
@@ -70,6 +72,11 @@ export const MembersPage = () => {
   const [memberAttendance, setMemberAttendance] = useState(null);
   const [memberSessionQuota, setMemberSessionQuota] = useState([]);
   const [viewTab, setViewTab] = useState('info'); // info, activities, invoices, history, attendance
+  const [isFreezeDialogOpen, setIsFreezeDialogOpen] = useState(false);
+  const [freezeForm, setFreezeForm] = useState({ start_date: '', end_date: '', reason: 'personal' });
+  const [memberFreezes, setMemberFreezes] = useState([]);
+  const [memberFreezeStats, setMemberFreezeStats] = useState(null);
+  const [freezeLoading, setFreezeLoading] = useState(false);
   const [renewalActivity, setRenewalActivity] = useState(null);
   const [renewalForm, setRenewalForm] = useState({
     start_date: '',
@@ -524,6 +531,14 @@ export const MembersPage = () => {
       setMemberProductPurchases([]);
       setMemberSessionQuota([]);
     }
+    try {
+      const [freezesRes, statsRes] = await Promise.all([
+        freezesAPI.getMemberFreezes(member.id),
+        freezesAPI.getMemberStats(member.id)
+      ]);
+      setMemberFreezes(freezesRes.data);
+      setMemberFreezeStats(statsRes.data);
+    } catch (e) {}
   };
 
   const closeDialog = () => {
@@ -540,6 +555,78 @@ export const MembersPage = () => {
       notes: '',
       activities: []
     });
+  };
+
+  const openFreezeDialog = async (member) => {
+    setSelectedMember(member);
+    setFreezeForm({ start_date: new Date().toISOString().split('T')[0], end_date: '', reason: 'personal' });
+    setIsFreezeDialogOpen(true);
+    try {
+      const [freezesRes, statsRes] = await Promise.all([
+        freezesAPI.getMemberFreezes(member.id),
+        freezesAPI.getMemberStats(member.id)
+      ]);
+      setMemberFreezes(freezesRes.data);
+      setMemberFreezeStats(statsRes.data);
+    } catch (err) {
+      console.error('Failed to load freeze data:', err);
+    }
+  };
+
+  const handleCreateFreeze = async () => {
+    if (!selectedMember || !freezeForm.start_date || !freezeForm.end_date) {
+      toast.error(language === 'ar' ? 'يرجى تعبئة جميع الحقول' : 'Please fill all fields');
+      return;
+    }
+    setFreezeLoading(true);
+    try {
+      await freezesAPI.create({
+        member_id: selectedMember.id,
+        start_date: freezeForm.start_date,
+        end_date: freezeForm.end_date,
+        reason: freezeForm.reason
+      });
+      toast.success(language === 'ar' ? 'تم تجميد العضوية بنجاح' : 'Membership frozen successfully');
+      const [freezesRes, statsRes] = await Promise.all([
+        freezesAPI.getMemberFreezes(selectedMember.id),
+        freezesAPI.getMemberStats(selectedMember.id)
+      ]);
+      setMemberFreezes(freezesRes.data);
+      setMemberFreezeStats(statsRes.data);
+      loadData();
+    } catch (err) {
+      toast.error(err.response?.data?.detail || (language === 'ar' ? 'فشل في تجميد العضوية' : 'Failed to freeze membership'));
+    } finally {
+      setFreezeLoading(false);
+    }
+  };
+
+  const handleCancelFreeze = async (freezeId) => {
+    try {
+      await freezesAPI.cancel(freezeId);
+      toast.success(language === 'ar' ? 'تم إلغاء التجميد' : 'Freeze cancelled');
+      if (selectedMember) {
+        const [freezesRes, statsRes] = await Promise.all([
+          freezesAPI.getMemberFreezes(selectedMember.id),
+          freezesAPI.getMemberStats(selectedMember.id)
+        ]);
+        setMemberFreezes(freezesRes.data);
+        setMemberFreezeStats(statsRes.data);
+      }
+      loadData();
+    } catch (err) {
+      toast.error(err.response?.data?.detail || (language === 'ar' ? 'فشل في إلغاء التجميد' : 'Failed to cancel freeze'));
+    }
+  };
+
+  const getReasonLabel = (reason) => {
+    const reasons = {
+      travel: language === 'ar' ? 'سفر' : 'Travel',
+      medical: language === 'ar' ? 'ظرف صحي' : 'Medical',
+      personal: language === 'ar' ? 'ظرف شخصي' : 'Personal',
+      other: language === 'ar' ? 'أخرى' : 'Other'
+    };
+    return reasons[reason] || reason;
   };
 
   const getStatusBadge = (status) => {
@@ -1164,6 +1251,13 @@ export const MembersPage = () => {
                               <Edit className="w-4 h-4" />
                             </button>
                             <button 
+                              className="action-button"
+                              onClick={() => openFreezeDialog(member)}
+                              title={language === 'ar' ? 'تجميد' : 'Freeze'}
+                            >
+                              <Snowflake className="w-4 h-4 text-blue-500" />
+                            </button>
+                            <button 
                               className="action-button danger"
                               onClick={() => handleDelete(member.id)}
                               data-testid={`delete-member-${member.id}`}
@@ -1679,6 +1773,23 @@ export const MembersPage = () => {
                       </span>
                     )}
                   </button>
+                  <button
+                    onClick={() => {
+                      setViewTab('freeze');
+                      if (selectedMember) {
+                        freezesAPI.getMemberFreezes(selectedMember.id).then(r => setMemberFreezes(r.data));
+                        freezesAPI.getMemberStats(selectedMember.id).then(r => setMemberFreezeStats(r.data));
+                      }
+                    }}
+                    className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+                      viewTab === 'freeze' 
+                        ? 'border-primary text-primary' 
+                        : 'border-transparent text-muted-foreground hover:text-foreground'
+                    }`}
+                  >
+                    <Snowflake className="w-4 h-4 inline me-1" />
+                    {language === 'ar' ? 'التجميد' : 'Freeze'}
+                  </button>
                 </div>
 
                 {/* Tab Content: Info */}
@@ -2163,6 +2274,109 @@ export const MembersPage = () => {
                         {language === 'ar' ? 'لا توجد مشتريات منتجات لهذا العضو' : 'No product purchases for this member'}
                       </div>
                     )}
+                  </div>
+                )}
+
+                {viewTab === 'freeze' && (
+                  <div className="space-y-4">
+                    {memberFreezeStats && (
+                      <div className="grid grid-cols-3 gap-3">
+                        <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-3 text-center">
+                          <div className="text-2xl font-bold text-blue-600">{memberFreezeStats.total_days_frozen}</div>
+                          <div className="text-xs text-muted-foreground">{language === 'ar' ? 'أيام مستخدمة' : 'Days Used'}</div>
+                        </div>
+                        <div className="bg-green-50 dark:bg-green-900/20 rounded-lg p-3 text-center">
+                          <div className="text-2xl font-bold text-green-600">{memberFreezeStats.remaining_days}</div>
+                          <div className="text-xs text-muted-foreground">{language === 'ar' ? 'أيام متبقية' : 'Days Left'}</div>
+                        </div>
+                        <div className="bg-amber-50 dark:bg-amber-900/20 rounded-lg p-3 text-center">
+                          <div className="text-2xl font-bold text-amber-600">{memberFreezeStats.freezes_count}</div>
+                          <div className="text-xs text-muted-foreground">{language === 'ar' ? 'عدد التجميدات' : 'Freezes'}</div>
+                        </div>
+                      </div>
+                    )}
+
+                    {memberFreezeStats?.active_freeze && (
+                      <div className="bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <div className="font-semibold text-blue-700 dark:text-blue-300 flex items-center gap-2">
+                              <Snowflake className="w-4 h-4" />
+                              {language === 'ar' ? 'تجميد نشط حالياً' : 'Currently Frozen'}
+                            </div>
+                            <div className="text-sm text-blue-600 dark:text-blue-400 mt-1">
+                              {memberFreezeStats.active_freeze.start_date} → {memberFreezeStats.active_freeze.end_date} ({memberFreezeStats.active_freeze.duration_days} {language === 'ar' ? 'يوم' : 'days'})
+                            </div>
+                          </div>
+                          <Button variant="outline" size="sm" className="text-red-600 border-red-300" onClick={() => handleCancelFreeze(memberFreezeStats.active_freeze.id)}>
+                            <PlayCircle className="w-4 h-4 me-1" />
+                            {language === 'ar' ? 'إلغاء التجميد' : 'Unfreeze'}
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+
+                    {!memberFreezeStats?.active_freeze && memberFreezeStats?.remaining_days > 0 && (
+                      <div className="border rounded-lg p-4 space-y-3">
+                        <h4 className="font-semibold">{language === 'ar' ? 'تجميد جديد' : 'New Freeze'}</h4>
+                        <div className="grid grid-cols-2 gap-3">
+                          <div>
+                            <Label>{language === 'ar' ? 'تاريخ البداية' : 'Start Date'}</Label>
+                            <Input type="date" value={freezeForm.start_date} onChange={(e) => setFreezeForm({...freezeForm, start_date: e.target.value})} />
+                          </div>
+                          <div>
+                            <Label>{language === 'ar' ? 'تاريخ النهاية' : 'End Date'}</Label>
+                            <Input type="date" value={freezeForm.end_date} onChange={(e) => setFreezeForm({...freezeForm, end_date: e.target.value})} />
+                          </div>
+                        </div>
+                        <div>
+                          <Label>{language === 'ar' ? 'السبب' : 'Reason'}</Label>
+                          <select className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm" value={freezeForm.reason} onChange={(e) => setFreezeForm({...freezeForm, reason: e.target.value})}>
+                            <option value="travel">{language === 'ar' ? 'سفر' : 'Travel'}</option>
+                            <option value="medical">{language === 'ar' ? 'ظرف صحي' : 'Medical'}</option>
+                            <option value="personal">{language === 'ar' ? 'ظرف شخصي' : 'Personal'}</option>
+                            <option value="other">{language === 'ar' ? 'أخرى' : 'Other'}</option>
+                          </select>
+                        </div>
+                        <Button onClick={handleCreateFreeze} disabled={freezeLoading} className="w-full">
+                          {freezeLoading ? <Loader2 className="w-4 h-4 animate-spin me-2" /> : <Snowflake className="w-4 h-4 me-2" />}
+                          {language === 'ar' ? 'تجميد العضوية' : 'Freeze Membership'}
+                        </Button>
+                      </div>
+                    )}
+
+                    <div>
+                      <h4 className="font-semibold mb-2">{language === 'ar' ? 'سجل التجميد' : 'Freeze History'}</h4>
+                      {memberFreezes.length === 0 ? (
+                        <p className="text-sm text-muted-foreground text-center py-4">{language === 'ar' ? 'لا يوجد سجل تجميد' : 'No freeze history'}</p>
+                      ) : (
+                        <div className="space-y-2">
+                          {memberFreezes.map((f) => (
+                            <div key={f.id} className={`border rounded-lg p-3 ${f.status === 'active' ? 'border-blue-300 bg-blue-50/50 dark:bg-blue-900/10' : 'border-gray-200'}`}>
+                              <div className="flex items-center justify-between">
+                                <div>
+                                  <span className="text-sm font-medium">{f.start_date} → {f.end_date}</span>
+                                  <span className="text-xs text-muted-foreground ms-2">({f.duration_days} {language === 'ar' ? 'يوم' : 'days'})</span>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <Badge className={f.status === 'active' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}>
+                                    {f.status === 'active' ? (language === 'ar' ? 'نشط' : 'Active') : (language === 'ar' ? 'ملغي' : 'Cancelled')}
+                                  </Badge>
+                                  {f.status === 'active' && (
+                                    <Button variant="ghost" size="sm" className="text-red-500 h-7 px-2" onClick={() => handleCancelFreeze(f.id)}>
+                                      <X className="w-3 h-3" />
+                                    </Button>
+                                  )}
+                                </div>
+                              </div>
+                              <div className="text-xs text-muted-foreground mt-1">
+                                {getReasonLabel(f.reason)} • {language === 'ar' ? 'بواسطة' : 'by'} {f.created_by}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
                   </div>
                 )}
               </div>
