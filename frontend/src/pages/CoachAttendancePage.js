@@ -24,6 +24,10 @@ const CoachAttendancePage = () => {
   const [showAddCoach, setShowAddCoach] = useState(false);
   const [addCoachForm, setAddCoachForm] = useState({ name: '', phone: '', email: '', specialization: '', name_en: '' });
   const [addingCoach, setAddingCoach] = useState(false);
+  const [editingCoach, setEditingCoach] = useState(null);
+  const [editCoachForm, setEditCoachForm] = useState({ name: '', phone: '', email: '', specialization: '', name_en: '' });
+  const [savingCoach, setSavingCoach] = useState(false);
+  const [deleteConfirm, setDeleteConfirm] = useState(null);
   const branchFilter = localStorage.getItem('selectedBranch') || 'all';
 
   const showToast = (message, type = 'success') => {
@@ -190,6 +194,56 @@ const CoachAttendancePage = () => {
       showToast(error.response?.data?.detail || 'حدث خطأ أثناء إضافة المدرب', 'error');
     } finally {
       setAddingCoach(false);
+    }
+  };
+
+  const openEditCoach = (coach) => {
+    setEditingCoach(coach);
+    setEditCoachForm({
+      name: coach.name_ar || coach.name || '',
+      name_en: coach.name || '',
+      phone: coach.phone || '',
+      email: coach.email || '',
+      specialization: (coach.activities || []).join(', ')
+    });
+  };
+
+  const handleEditCoach = async () => {
+    if (!editCoachForm.name.trim()) {
+      showToast('يرجى إدخال اسم المدرب', 'error');
+      return;
+    }
+    setSavingCoach(true);
+    try {
+      const token = localStorage.getItem('token');
+      await axios.put(`/api/coaches/${editingCoach.id}`, {
+        name: editCoachForm.name_en.trim() || editCoachForm.name.trim(),
+        name_ar: editCoachForm.name.trim(),
+        phone: editCoachForm.phone.trim(),
+        email: editCoachForm.email.trim(),
+        activities: editCoachForm.specialization ? editCoachForm.specialization.split(',').map(s => s.trim()).filter(Boolean) : [],
+        notes: editingCoach.notes || '',
+        branch_id: editingCoach.branch_id || null
+      }, { headers: { Authorization: `Bearer ${token}` } });
+      showToast('تم تعديل بيانات المدرب بنجاح');
+      setEditingCoach(null);
+      fetchData();
+    } catch (error) {
+      showToast(error.response?.data?.detail || 'حدث خطأ أثناء تعديل المدرب', 'error');
+    } finally {
+      setSavingCoach(false);
+    }
+  };
+
+  const handleDeleteCoach = async (coachId) => {
+    try {
+      const token = localStorage.getItem('token');
+      await axios.delete(`/api/coaches/${coachId}`, { headers: { Authorization: `Bearer ${token}` } });
+      showToast('تم حذف المدرب بنجاح');
+      setDeleteConfirm(null);
+      fetchData();
+    } catch (error) {
+      showToast(error.response?.data?.detail || 'حدث خطأ أثناء حذف المدرب', 'error');
     }
   };
 
