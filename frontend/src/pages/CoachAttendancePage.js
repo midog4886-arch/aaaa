@@ -372,6 +372,125 @@ const CoachAttendancePage = () => {
           </div>
         )}
 
+        {editingCoach && (
+          <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setEditingCoach(null)}>
+            <div className="bg-white rounded-xl shadow-2xl w-full max-w-md" onClick={e => e.stopPropagation()}>
+              <div className="flex items-center justify-between p-5 border-b">
+                <h2 className="text-lg font-bold text-gray-800 flex items-center gap-2">
+                  <Edit2 className="w-5 h-5 text-blue-500" />
+                  تعديل بيانات المدرب
+                </h2>
+                <button onClick={() => setEditingCoach(null)} className="text-gray-400 hover:text-gray-600">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+              <div className="p-5 space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">اسم المدرب (عربي) *</label>
+                  <input
+                    type="text"
+                    value={editCoachForm.name}
+                    onChange={e => setEditCoachForm({...editCoachForm, name: e.target.value})}
+                    className="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    autoFocus
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">اسم المدرب (إنجليزي)</label>
+                  <input
+                    type="text"
+                    value={editCoachForm.name_en}
+                    onChange={e => setEditCoachForm({...editCoachForm, name_en: e.target.value})}
+                    className="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    dir="ltr"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">رقم الجوال *</label>
+                  <input
+                    type="tel"
+                    value={editCoachForm.phone}
+                    onChange={e => setEditCoachForm({...editCoachForm, phone: e.target.value})}
+                    className="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    dir="ltr"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">البريد الإلكتروني</label>
+                  <input
+                    type="email"
+                    value={editCoachForm.email}
+                    onChange={e => setEditCoachForm({...editCoachForm, email: e.target.value})}
+                    className="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    dir="ltr"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">التخصص</label>
+                  <input
+                    type="text"
+                    value={editCoachForm.specialization}
+                    onChange={e => setEditCoachForm({...editCoachForm, specialization: e.target.value})}
+                    className="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    placeholder="مثال: كرة قدم, سباحة"
+                  />
+                </div>
+              </div>
+              <div className="flex gap-3 p-5 border-t bg-gray-50 rounded-b-xl">
+                <button
+                  onClick={handleEditCoach}
+                  disabled={savingCoach}
+                  className="flex-1 bg-blue-500 text-white py-2.5 rounded-lg font-medium hover:bg-blue-600 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+                >
+                  {savingCoach ? (
+                    <span className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  ) : (
+                    <Save className="w-5 h-5" />
+                  )}
+                  {savingCoach ? 'جاري الحفظ...' : 'حفظ التعديلات'}
+                </button>
+                <button
+                  onClick={() => setEditingCoach(null)}
+                  className="px-6 py-2.5 bg-gray-200 text-gray-700 rounded-lg font-medium hover:bg-gray-300 transition-colors"
+                >
+                  إلغاء
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {deleteConfirm && (
+          <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setDeleteConfirm(null)}>
+            <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm" onClick={e => e.stopPropagation()}>
+              <div className="p-6 text-center">
+                <div className="w-14 h-14 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <Trash2 className="w-7 h-7 text-red-500" />
+                </div>
+                <h3 className="text-lg font-bold text-gray-800 mb-2">حذف المدرب</h3>
+                <p className="text-gray-500 text-sm mb-1">هل أنت متأكد من حذف المدرب:</p>
+                <p className="font-bold text-gray-800 mb-4">{deleteConfirm.name_ar || deleteConfirm.name}؟</p>
+                <p className="text-xs text-red-500 mb-4">سيتم حذف المدرب نهائياً ولن يمكن استرجاعه</p>
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => handleDeleteCoach(deleteConfirm.id)}
+                    className="flex-1 bg-red-500 text-white py-2.5 rounded-lg font-medium hover:bg-red-600 transition-colors flex items-center justify-center gap-2"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                    نعم، احذف
+                  </button>
+                  <button
+                    onClick={() => setDeleteConfirm(null)}
+                    className="flex-1 bg-gray-200 text-gray-700 py-2.5 rounded-lg font-medium hover:bg-gray-300 transition-colors"
+                  >
+                    إلغاء
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
           <div className="flex items-center gap-3">
             <h1 className="text-2xl font-bold text-gray-800 flex items-center gap-2">
@@ -483,6 +602,22 @@ const CoachAttendancePage = () => {
                             <div>
                               <p className="font-bold text-gray-800">{coach.name_ar || coach.name}</p>
                               <p className="text-xs text-gray-400">{coach.phone}</p>
+                            </div>
+                            <div className="flex items-center gap-1 mr-2">
+                              <button
+                                onClick={() => openEditCoach(coach)}
+                                className="p-1 text-gray-400 hover:text-blue-500 rounded hover:bg-blue-50"
+                                title="تعديل المدرب"
+                              >
+                                <Edit2 className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                onClick={() => setDeleteConfirm(coach)}
+                                className="p-1 text-gray-400 hover:text-red-500 rounded hover:bg-red-50"
+                                title="حذف المدرب"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
                             </div>
                           </div>
                         </div>
