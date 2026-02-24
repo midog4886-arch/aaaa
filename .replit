@@ -49,4 +49,4 @@ externalPort = 80
 [deployment]
 deploymentTarget = "autoscale"
 run = ["bash", "-c", "cd backend && python -m uvicorn server:app --host 0.0.0.0 --port 5000"]
-build = ["bash", "-c", "cd backend && pip install -r requirements.txt"]
+build = ["pip", "install", "-r", "backend/requirements.txt"]
