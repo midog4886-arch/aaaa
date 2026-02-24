@@ -104,8 +104,8 @@ export const Sidebar = ({ isOpen, onClose }) => {
       icon: Users,
       items: [
         { to: '/admin/members', icon: Users, label: 'members', permission: 'members' },
-        { to: '/admin/renewals', icon: RefreshCcw, label: 'renewals', permission: 'members' },
-        { to: '/admin/member-card', icon: QrCode, label: 'member_card', permission: 'attendance' },
+        { to: '/admin/renewals', icon: RefreshCcw, label: 'renewals', permission: 'renewals' },
+        { to: '/admin/member-card', icon: QrCode, label: 'member_card', permission: 'member-card' },
         { to: '/admin/attendance', icon: ClipboardList, label: 'attendance', permission: 'attendance' },
       ]
     },
@@ -129,8 +129,8 @@ export const Sidebar = ({ isOpen, onClose }) => {
       icon: Wallet,
       items: [
         { to: '/admin/invoices', icon: Receipt, label: 'invoices', permission: 'invoices' },
-        { to: '/admin/daily-ledger', icon: BookOpen, label: 'daily_ledger', permission: 'reports' },
-        { to: '/admin/day-extensions', icon: CalendarOff, label: 'day_extensions', permission: 'reports' },
+        { to: '/admin/daily-ledger', icon: BookOpen, label: 'daily_ledger', permission: 'daily-ledger' },
+        { to: '/admin/day-extensions', icon: CalendarOff, label: 'day_extensions', permission: 'day-extensions' },
         { to: '/admin/accounting', icon: Calculator, label: 'accounting', permission: 'accounting' },
         { to: '/admin/store', icon: Package, label: 'store', permission: 'store' },
       ]
@@ -144,7 +144,7 @@ export const Sidebar = ({ isOpen, onClose }) => {
         { to: '/admin/messages', icon: MessageSquare, label: 'messages', permission: 'messages' },
         { to: '/admin/advertisements', icon: Megaphone, label: 'advertisements', permission: 'advertisements' },
         { to: '/admin/daily-videos', icon: Video, label: 'daily_videos', permission: 'daily-videos' },
-        ...(isAdmin ? [{ to: '/admin/push-notifications', icon: Bell, label: 'push_notifications', permission: 'settings' }] : []),
+        ...(isAdmin ? [{ to: '/admin/push-notifications', icon: Bell, label: 'push_notifications', permission: 'push-notifications' }] : []),
       ]
     },
     {
@@ -166,7 +166,7 @@ export const Sidebar = ({ isOpen, onClose }) => {
         { to: '/admin/settings', icon: Settings, label: 'settings', permission: 'settings' },
         ...(isAdmin ? [{ to: '/admin/branches', icon: Building2, label: 'branches', permission: 'branches' }] : []),
         ...(isAdmin ? [{ to: '/admin/users', icon: Users, label: 'users', permission: 'users' }] : []),
-        ...(isAdmin ? [{ to: '/admin/backup', icon: HardDrive, label: 'backup', permission: 'settings' }] : []),
+        ...(isAdmin ? [{ to: '/admin/backup', icon: HardDrive, label: 'backup', permission: 'backup' }] : []),
       ]
     },
   ];

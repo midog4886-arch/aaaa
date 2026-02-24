@@ -255,7 +255,7 @@ function AppRoutes() {
       <Route 
         path="/admin/daily-ledger" 
         element={
-          <ProtectedRoute permission="reports">
+          <ProtectedRoute permission="daily-ledger">
             <DailyLedgerPage />
           </ProtectedRoute>
         } 
@@ -263,7 +263,7 @@ function AppRoutes() {
       <Route 
         path="/admin/day-extensions" 
         element={
-          <ProtectedRoute permission="reports">
+          <ProtectedRoute permission="day-extensions">
             <DayExtensionsPage />
           </ProtectedRoute>
         } 
@@ -375,7 +375,7 @@ function AppRoutes() {
       <Route 
         path="/admin/renewals" 
         element={
-          <ProtectedRoute permission="members">
+          <ProtectedRoute permission="renewals">
             <RenewalsPage />
           </ProtectedRoute>
         } 
@@ -383,7 +383,7 @@ function AppRoutes() {
       <Route 
         path="/admin/backup" 
         element={
-          <ProtectedRoute permission="settings">
+          <ProtectedRoute permission="backup">
             <BackupPage />
           </ProtectedRoute>
         } 
@@ -391,7 +391,7 @@ function AppRoutes() {
       <Route 
         path="/admin/push-notifications" 
         element={
-          <ProtectedRoute permission="settings">
+          <ProtectedRoute permission="push-notifications">
             <PushNotificationsPage />
           </ProtectedRoute>
         } 
@@ -399,7 +399,7 @@ function AppRoutes() {
       <Route 
         path="/admin/member-card" 
         element={
-          <ProtectedRoute permission="attendance">
+          <ProtectedRoute permission="member-card">
             <MemberCardPage />
           </ProtectedRoute>
         } 

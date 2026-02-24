@@ -34,6 +34,7 @@ const ALL_PERMISSIONS = [
   { key: 'schedule', label_ar: 'الجدول', label_en: 'Schedule' },
   { key: 'attendance', label_ar: 'الحضور', label_en: 'Attendance' },
   { key: 'coach-ratings', label_ar: 'تقييم المدربين', label_en: 'Coach Ratings' },
+  { key: 'coach-attendance', label_ar: 'حضور المدربين', label_en: 'Coach Attendance' },
   { key: 'advertisements', label_ar: 'الإعلانات', label_en: 'Advertisements' },
   { key: 'daily-videos', label_ar: 'الفيديوهات', label_en: 'Daily Videos' },
   { key: 'loyalty', label_ar: 'نقاط الولاء', label_en: 'Loyalty' },
@@ -44,6 +45,12 @@ const ALL_PERMISSIONS = [
   { key: 'branches', label_ar: 'الفروع', label_en: 'Branches' },
   { key: 'users', label_ar: 'المستخدمين', label_en: 'Users' },
   { key: 'settings', label_ar: 'الإعدادات', label_en: 'Settings' },
+  { key: 'renewals', label_ar: 'التجديدات', label_en: 'Renewals' },
+  { key: 'daily-ledger', label_ar: 'اليومية المالية', label_en: 'Daily Ledger' },
+  { key: 'day-extensions', label_ar: 'ترحيل الأيام', label_en: 'Day Extensions' },
+  { key: 'backup', label_ar: 'النسخ الاحتياطي', label_en: 'Backup' },
+  { key: 'push-notifications', label_ar: 'الإشعارات', label_en: 'Push Notifications' },
+  { key: 'member-card', label_ar: 'بطاقة العضو', label_en: 'Member Card' },
 ];
 
 const UsersPage = () => {
