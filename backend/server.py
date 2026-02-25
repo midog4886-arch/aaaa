@@ -160,6 +160,9 @@ async def health_check():
 
 @app.get("/")
 async def root():
+    index_file = ROOT_DIR / "static" / "index.html"
+    if index_file.exists():
+        return FileResponse(str(index_file), headers={"Cache-Control": "no-cache, no-store, must-revalidate"})
     return JSONResponse(content={"status": "ok"}, status_code=200)
 
 # ============ PUBLIC API - Member Card ============
