@@ -79,28 +79,45 @@ JWT_EXPIRATION_HOURS = 24 * 365 * 100  # 100 years - permanent session
 # Stripe Config
 STRIPE_API_KEY = os.environ.get('STRIPE_API_KEY', '')
 
-app = FastAPI(title="Champions Academy API")
+class HealthCheckApp:
+    def __init__(self, app):
+        self.app = app
+    async def __call__(self, scope, receive, send):
+        if scope["type"] == "http" and scope.get("path") in ("/", "/health"):
+            import urllib.parse
+            qs = scope.get("query_string", b"").decode()
+            headers_raw = scope.get("headers", [])
+            ua = ""
+            accept = ""
+            for h_name, h_val in headers_raw:
+                if h_name == b"user-agent":
+                    ua = h_val.decode().lower()
+                if h_name == b"accept":
+                    accept = h_val.decode().lower()
+            is_health = (
+                scope.get("path") == "/health" or
+                "replit" in ua or "health" in ua or "kube" in ua or
+                "gce" in ua or "google" in ua or "curl" in ua or
+                "text/html" not in accept
+            )
+            if is_health:
+                body = b'{"status":"ok"}'
+                await send({"type": "http.response.start", "status": 200, "headers": [
+                    [b"content-type", b"application/json"],
+                    [b"content-length", str(len(body)).encode()],
+                ]})
+                await send({"type": "http.response.body", "body": body})
+                return
+        if scope["type"] == "http":
+            path = scope.get("path", "")
+            if path.startswith("/undefined/"):
+                scope["path"] = path.replace("/undefined", "", 1)
+        await self.app(scope, receive, send)
+
+inner_app = FastAPI(title="Champions Academy API")
+app = HealthCheckApp(inner_app)
 api_router = APIRouter(prefix="/api")
 security = HTTPBearer()
-
-from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.responses import Response
-
-class FixPathMiddleware(BaseHTTPMiddleware):
-    async def dispatch(self, request, call_next):
-        path = request.scope.get("path", "")
-        if path.startswith("/undefined/"):
-            request.scope["path"] = path.replace("/undefined", "", 1)
-        if path == "/health":
-            return JSONResponse(content={"status": "ok"}, status_code=200)
-        response = await call_next(request)
-        if path.endswith('.html') or path == '/' or '.' not in path.split('/')[-1]:
-            response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
-            response.headers["Pragma"] = "no-cache"
-            response.headers["Expires"] = "0"
-        return response
-
-app.add_middleware(FixPathMiddleware)
 
 # Include routers
 api_router.include_router(users_router)
@@ -139,33 +156,28 @@ set_videos_loyalty(loyalty_award_points)
 set_push_notify_function(push_notify_new_video)
 
 # Member Portal router (mounted directly on app, not api_router)
-app.include_router(member_portal_router)
+inner_app.include_router(member_portal_router)
 
 # Mount uploads directory for serving images
-app.mount("/uploads", StaticFiles(directory=str(UPLOADS_DIR)), name="uploads")
+inner_app.mount("/uploads", StaticFiles(directory=str(UPLOADS_DIR)), name="uploads")
 # Also mount under /api for ingress routing
-app.mount("/api/uploads", StaticFiles(directory=str(UPLOADS_DIR)), name="api_uploads")
+inner_app.mount("/api/uploads", StaticFiles(directory=str(UPLOADS_DIR)), name="api_uploads")
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
 # Health check endpoint (required for Kubernetes deployment)
-@app.get("/health")
+@inner_app.get("/health")
 async def health_check():
-    """Health check endpoint for Kubernetes liveness/readiness probes"""
-    return {"status": "healthy", "service": "champions-academy-api"}
+    return {"status": "ok"}
 
-@app.get("/")
-async def root(request: Request):
-    """Root endpoint - serve React app if available, otherwise API info"""
-    user_agent = request.headers.get("user-agent", "").lower()
-    if "replit" in user_agent or "health" in user_agent or "kube" in user_agent or "gce" in user_agent:
-        return JSONResponse(content={"status": "ok"}, status_code=200)
+@inner_app.get("/")
+async def root():
     static_index = ROOT_DIR / "static" / "index.html"
     if static_index.exists():
         return FileResponse(static_index, headers={"Cache-Control": "no-cache, no-store, must-revalidate"})
-    return JSONResponse(content={"message": "Champions Academy API", "status": "running"}, status_code=200)
+    return JSONResponse(content={"status": "ok"}, status_code=200)
 
 # ============ PUBLIC API - Member Card ============
 
@@ -6893,9 +6905,9 @@ async def delete_coach_rating(rating_id: str, _: dict = Depends(get_current_user
 
 
 # Include router
-app.include_router(api_router)
+inner_app.include_router(api_router)
 
-app.add_middleware(
+inner_app.add_middleware(
     CORSMiddleware,
     allow_credentials=True,
     allow_origins=["*"],
@@ -6906,19 +6918,18 @@ app.add_middleware(
 # Serve React static files in production
 STATIC_DIR = ROOT_DIR / "static"
 if STATIC_DIR.exists():
-    app.mount("/static", StaticFiles(directory=str(STATIC_DIR / "static")), name="static_assets")
+    inner_app.mount("/static", StaticFiles(directory=str(STATIC_DIR / "static")), name="static_assets")
     
-    @app.get("/{full_path:path}")
+    @inner_app.get("/{full_path:path}")
     async def serve_react_app(full_path: str):
         """Serve React app for all non-API routes"""
         file_path = STATIC_DIR / full_path
         if file_path.exists() and file_path.is_file():
             return FileResponse(file_path, headers={"Cache-Control": "no-cache, no-store, must-revalidate"})
         return FileResponse(STATIC_DIR / "index.html", headers={"Cache-Control": "no-cache, no-store, must-revalidate"})
-# ============ AUTO CREATE ADMIN USER ON STARTUP ============
-@app.on_event("startup")
+
+@inner_app.on_event("startup")
 async def create_default_admin():
-    """Create default admin user if no users exist"""
     try:
         users_count = await db.users.count_documents({})
         if users_count == 0:
@@ -6935,9 +6946,10 @@ async def create_default_admin():
                 "created_at": datetime.now(timezone.utc).isoformat()
             }
             await db.users.insert_one(admin_user)
-            print("✅ Admin created: admin / 123456")
+            print("Admin created: admin / 123456")
     except Exception as e:
         print(f"Error: {str(e)}")
-@app.on_event("shutdown")
+
+@inner_app.on_event("shutdown")
 async def shutdown_db_client():
     client.close()
