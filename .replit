@@ -48,5 +48,5 @@ externalPort = 80
 
 [deployment]
 deploymentTarget = "vm"
-run = ["python", "-m", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "5000", "--app-dir", "/home/runner/workspace/backend"]
+run = ["bash", "/home/runner/workspace/backend/start.sh"]
 build = ["pip", "install", "-r", "/home/runner/workspace/backend/requirements.txt"]
