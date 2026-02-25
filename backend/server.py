@@ -10,18 +10,41 @@ import logging
 import io
 import csv
 import base64
-import qrcode
 import shutil
 import json
-from reportlab.lib import colors
-from reportlab.lib.pagesizes import A4, landscape
-from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
-from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.lib.units import mm
-from reportlab.pdfbase import pdfmetrics
-from reportlab.pdfbase.ttfonts import TTFont
-from openpyxl import Workbook
-from openpyxl.styles import Font, Alignment, Border, Side, PatternFill
+
+
+def _get_reportlab():
+    from reportlab.lib import colors
+    from reportlab.lib.pagesizes import A4, landscape
+    from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.lib.units import mm
+    from reportlab.pdfbase import pdfmetrics
+    from reportlab.pdfbase.ttfonts import TTFont
+    return type('RL', (), {
+        'colors': colors, 'A4': A4, 'landscape': landscape,
+        'SimpleDocTemplate': SimpleDocTemplate, 'Table': Table,
+        'TableStyle': TableStyle, 'Paragraph': Paragraph, 'Spacer': Spacer,
+        'getSampleStyleSheet': getSampleStyleSheet, 'ParagraphStyle': ParagraphStyle,
+        'mm': mm, 'pdfmetrics': pdfmetrics, 'TTFont': TTFont,
+    })()
+
+
+def _get_openpyxl():
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, Alignment, Border, Side, PatternFill
+    return type('XL', (), {
+        'Workbook': Workbook, 'Font': Font, 'Alignment': Alignment,
+        'Border': Border, 'Side': Side, 'PatternFill': PatternFill,
+    })()
+
+
+def _get_qrcode():
+    import qrcode
+    return qrcode
+
+
 from pathlib import Path
 from pydantic import BaseModel, Field
 from typing import List, Optional, Dict, Any
@@ -2936,6 +2959,7 @@ async def get_invoice_qr(invoice_id: str, current_user: dict = Depends(get_curre
     qr_data = base64.b64encode(tlv_data).decode('utf-8')
     
     # Generate QR code
+    qrcode = _get_qrcode()
     qr = qrcode.QRCode(version=1, error_correction=qrcode.constants.ERROR_CORRECT_L, box_size=10, border=4)
     qr.add_data(qr_data)
     qr.make(fit=True)
@@ -2989,6 +3013,7 @@ async def get_credit_note_qr(credit_note_id: str, current_user: dict = Depends(g
     qr_data = base64.b64encode(tlv_data).decode('utf-8')
     
     # Generate QR code with red color for credit note
+    qrcode = _get_qrcode()
     qr = qrcode.QRCode(version=1, error_correction=qrcode.constants.ERROR_CORRECT_L, box_size=10, border=4)
     qr.add_data(qr_data)
     qr.make(fit=True)
