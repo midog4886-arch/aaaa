@@ -15,21 +15,20 @@ sock.listen(128)
 sock.setblocking(False)
 print("Port 5000 bound", flush=True)
 
+HTTP_200 = (
+    b"HTTP/1.1 200 OK\r\n"
+    b"Content-Type: application/json\r\n"
+    b"Content-Length: 15\r\n"
+    b"Connection: close\r\n"
+    b"\r\n"
+    b'{"status":"ok"}'
+)
+
 
 async def health_handler(reader, writer):
     try:
-        await asyncio.wait_for(reader.read(4096), timeout=5)
-    except Exception:
-        pass
-    try:
-        writer.write(
-            b"HTTP/1.1 200 OK\r\n"
-            b"Content-Type: application/json\r\n"
-            b"Content-Length: 15\r\n"
-            b"Connection: close\r\n"
-            b"\r\n"
-            b'{"status":"ok"}'
-        )
+        await asyncio.wait_for(reader.readline(), timeout=2)
+        writer.write(HTTP_200)
         await writer.drain()
     except Exception:
         pass
@@ -40,18 +39,12 @@ async def health_handler(reader, writer):
             pass
 
 
-_real_app = None
-_uvicorn_mod = None
-
-
 def _load_all():
-    global _real_app, _uvicorn_mod
     print("Loading full application...", flush=True)
     import uvicorn as uvi
-    _uvicorn_mod = uvi
     from server import app as real
-    _real_app = real
     print("Full application loaded!", flush=True)
+    return uvi, real
 
 
 async def main():
@@ -61,19 +54,18 @@ async def main():
     print("Health check server ready", flush=True)
 
     loop = asyncio.get_running_loop()
-    await loop.run_in_executor(None, _load_all)
+    uvi_mod, real_app = await loop.run_in_executor(None, _load_all)
 
     health_server.close()
     await health_server.wait_closed()
-    print("Switching to uvicorn...", flush=True)
 
-    config = _uvicorn_mod.Config(_real_app, host="0.0.0.0", port=5000, log_level="info")
-    uvi_server = _uvicorn_mod.Server(config)
+    config = uvi_mod.Config(real_app, host="0.0.0.0", port=5000, log_level="info")
+    server = uvi_mod.Server(config)
     config.load()
-    uvi_server.lifespan = config.lifespan_class(config)
-    await uvi_server.startup(sockets=[sock])
-    await uvi_server.main_loop()
-    await uvi_server.shutdown(sockets=[sock])
+    server.lifespan = config.lifespan_class(config)
+    await server.startup(sockets=[sock])
+    await server.main_loop()
+    await server.shutdown(sockets=[sock])
 
 
 if __name__ == "__main__":
