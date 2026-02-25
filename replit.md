@@ -4,11 +4,14 @@
 A full-stack management system for Champions Academy (شركة اداء الابطال العالمية للرياضة) - a sports academy. The system handles member management, invoicing, attendance tracking, coaching, activities, loyalty programs, and more.
 
 ## Architecture
-- **Backend**: FastAPI (Python) serving both API and frontend static files
+- **Backend**: FastAPI (Python) served via Gunicorn + UvicornWorker
 - **Frontend**: React (CRA with craco) + TailwindCSS, built to production and served from `backend/static/`
 - **Database**: MongoDB Atlas (external)
 - **Mobile**: Capacitor (Android) - web assets bundled for Android APK
 - **Port**: 5000 (backend serves everything)
+- **Production Server**: Gunicorn with uvicorn.workers.UvicornWorker (binds port immediately for health checks)
+- **Entry Point**: backend/main.py imports server:app, Gunicorn wraps it
+- **Heavy imports** (reportlab, openpyxl, qrcode) are lazy-loaded via helper functions to speed up startup
 
 ## Dual-Interface Routing
 - **Admin Dashboard**: `/admin/*` - accessible only by admin users
