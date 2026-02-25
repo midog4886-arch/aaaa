@@ -1,3 +1,4 @@
+import socket
 import asyncio
 import os
 import sys
@@ -7,8 +8,12 @@ os.chdir(backend_dir)
 if backend_dir not in sys.path:
     sys.path.insert(0, backend_dir)
 
-PORT = 5000
-HOST = "0.0.0.0"
+sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+sock.bind(("0.0.0.0", 5000))
+sock.listen(128)
+sock.setblocking(False)
+print("Port 5000 bound", flush=True)
 
 
 async def health_handler(reader, writer):
@@ -35,43 +40,40 @@ async def health_handler(reader, writer):
             pass
 
 
-def _load_app():
+_real_app = None
+_uvicorn_mod = None
+
+
+def _load_all():
+    global _real_app, _uvicorn_mod
     print("Loading full application...", flush=True)
-    try:
-        from server import app as loaded_app
-        print("Full application loaded!", flush=True)
-        return loaded_app
-    except Exception:
-        import traceback
-        traceback.print_exc()
-        from fastapi import FastAPI
-        from fastapi.responses import JSONResponse
-        fallback = FastAPI()
-        @fallback.get("/")
-        @fallback.get("/health")
-        async def fb():
-            return JSONResponse({"status": "ok"})
-        return fallback
+    import uvicorn as uvi
+    _uvicorn_mod = uvi
+    from server import app as real
+    _real_app = real
+    print("Full application loaded!", flush=True)
 
 
 async def main():
-    health_server = await asyncio.start_server(
-        health_handler, HOST, PORT, reuse_address=True
-    )
-    print(f"Health check server ready on port {PORT}", flush=True)
+    health_sock = socket.socket(fileno=os.dup(sock.fileno()))
+    health_sock.setblocking(False)
+    health_server = await asyncio.start_server(health_handler, sock=health_sock)
+    print("Health check server ready", flush=True)
 
     loop = asyncio.get_running_loop()
-    real_app = await loop.run_in_executor(None, _load_app)
+    await loop.run_in_executor(None, _load_all)
 
     health_server.close()
     await health_server.wait_closed()
-    await asyncio.sleep(0.2)
+    print("Switching to uvicorn...", flush=True)
 
-    print("Starting uvicorn...", flush=True)
-    import uvicorn
-    config = uvicorn.Config(real_app, host=HOST, port=PORT, log_level="info")
-    uvi_server = uvicorn.Server(config)
-    await uvi_server.serve()
+    config = _uvicorn_mod.Config(_real_app, host="0.0.0.0", port=5000, log_level="info")
+    uvi_server = _uvicorn_mod.Server(config)
+    config.load()
+    uvi_server.lifespan = config.lifespan_class(config)
+    await uvi_server.startup(sockets=[sock])
+    await uvi_server.main_loop()
+    await uvi_server.shutdown(sockets=[sock])
 
 
 if __name__ == "__main__":
