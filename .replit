@@ -35,7 +35,7 @@ outputType = "webview"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "cd /home/runner/workspace/backend && python -m uvicorn main:app --host 0.0.0.0 --port 5000"
+args = "cd /home/runner/workspace/backend && python -m uvicorn server:app --host 0.0.0.0 --port 5000"
 waitForPort = 5000
 
 [[ports]]
@@ -48,5 +48,5 @@ externalPort = 80
 
 [deployment]
 deploymentTarget = "vm"
-run = ["bash", "/home/runner/workspace/backend/start.sh"]
+run = ["bash", "-c", "cd /home/runner/workspace/backend && exec python -m uvicorn server:app --host 0.0.0.0 --port 5000"]
 build = ["pip", "install", "-r", "/home/runner/workspace/backend/requirements.txt"]
