@@ -35,7 +35,7 @@ outputType = "webview"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "cd /home/runner/workspace/backend && gunicorn main:app --bind 0.0.0.0:5000 --worker-class uvicorn.workers.UvicornWorker --workers 1 --timeout 120"
+args = "cd /home/runner/workspace/backend && python main.py"
 waitForPort = 5000
 
 [[ports]]
@@ -46,11 +46,7 @@ externalPort = 3001
 localPort = 5000
 externalPort = 80
 
-[[ports]]
-localPort = 5001
-externalPort = 3000
-
 [deployment]
 deploymentTarget = "vm"
-run = ["gunicorn", "--bind=0.0.0.0:5000", "--worker-class", "uvicorn.workers.UvicornWorker", "--workers", "1", "--timeout", "120", "--chdir", "/home/runner/workspace/backend", "main:app"]
+run = ["python", "/home/runner/workspace/backend/main.py"]
 build = ["pip", "install", "-r", "/home/runner/workspace/backend/requirements.txt"]
