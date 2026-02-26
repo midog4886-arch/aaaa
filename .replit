@@ -51,6 +51,6 @@ localPort = 5001
 externalPort = 3000
 
 [deployment]
-deploymentTarget = "vm"
-run = ["gunicorn", "--bind=0.0.0.0:5000", "--worker-class", "uvicorn.workers.UvicornWorker", "--workers", "1", "--timeout", "120", "--chdir", "/home/runner/workspace/backend", "main:app"]
+deploymentTarget = "autoscale"
+run = ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "5000", "--app-dir", "/home/runner/workspace/backend"]
 build = ["pip", "install", "-r", "/home/runner/workspace/backend/requirements.txt"]
