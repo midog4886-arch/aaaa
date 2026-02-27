@@ -3,6 +3,7 @@ import sys
 import asyncio
 import logging
 import urllib.request
+import threading
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("main")
@@ -13,7 +14,7 @@ if backend_dir not in sys.path:
     sys.path.insert(0, backend_dir)
 
 _real_app = None
-_loading = False
+_app_ready = threading.Event()
 _index_html = b"<html><body>Loading...</body></html>"
 _index_len = str(len(_index_html)).encode()
 _index_ct = b"text/html; charset=utf-8"
@@ -30,22 +31,25 @@ if os.path.exists(_static_index):
 logger.info("Lightweight wrapper ready")
 
 
-def _load_real_app():
-    global _real_app, _loading
+def _load_real_app_sync():
+    global _real_app
     if _real_app is not None:
-        return _real_app
-    if _loading:
-        return None
-    _loading = True
+        return
     try:
+        logger.info("Loading full application...")
         from server import app as real
         _real_app = real
+        _app_ready.set()
         logger.info("Full application loaded successfully!")
-        return _real_app
     except Exception as e:
         logger.error(f"Failed to load app: {e}")
-        _loading = False
-        return None
+        _app_ready.set()
+
+
+async def _wait_for_app():
+    loop = asyncio.get_running_loop()
+    await loop.run_in_executor(None, lambda: _app_ready.wait(timeout=30))
+    return _real_app
 
 
 async def _keep_alive_loop():
@@ -64,48 +68,14 @@ async def _keep_alive_loop():
         await asyncio.sleep(KEEP_ALIVE_INTERVAL)
 
 
-async def _send_200_html(receive, send):
+async def _send_response(receive, send, status, content_type, body):
     await receive()
     await send({
         "type": "http.response.start",
-        "status": 200,
+        "status": status,
         "headers": [
-            [b"content-type", _index_ct],
-            [b"content-length", _index_len],
-        ],
-    })
-    await send({
-        "type": "http.response.body",
-        "body": _index_html,
-    })
-
-
-async def _send_200_json(receive, send):
-    await receive()
-    await send({
-        "type": "http.response.start",
-        "status": 200,
-        "headers": [
-            [b"content-type", b"application/json"],
-            [b"content-length", b"15"],
-        ],
-    })
-    await send({
-        "type": "http.response.body",
-        "body": b'{"status":"ok"}',
-    })
-
-
-async def _send_503(receive, send):
-    await receive()
-    body = b'{"detail":"Loading, please retry"}'
-    await send({
-        "type": "http.response.start",
-        "status": 503,
-        "headers": [
-            [b"content-type", b"application/json"],
+            [b"content-type", content_type],
             [b"content-length", str(len(body)).encode()],
-            [b"retry-after", b"2"],
         ],
     })
     await send({
@@ -120,8 +90,8 @@ async def app(scope, receive, send):
             msg = await receive()
             if msg["type"] == "lifespan.startup":
                 await send({"type": "lifespan.startup.complete"})
-                loop = asyncio.get_running_loop()
-                loop.run_in_executor(None, _load_real_app)
+                t = threading.Thread(target=_load_real_app_sync, daemon=True)
+                t.start()
                 asyncio.ensure_future(_keep_alive_loop())
             elif msg["type"] == "lifespan.shutdown":
                 await send({"type": "lifespan.shutdown.complete"})
@@ -138,18 +108,19 @@ async def app(scope, receive, send):
         return
 
     if path == "/":
-        await _send_200_html(receive, send)
+        await _send_response(receive, send, 200, _index_ct, _index_html)
         return
 
     if path == "/health":
-        await _send_200_json(receive, send)
+        await _send_response(receive, send, 200, b"application/json", b'{"status":"ok"}')
         return
 
-    real = _load_real_app()
-    if real is not None:
-        await real(scope, receive, send)
+    await _wait_for_app()
+
+    if _real_app is not None:
+        await _real_app(scope, receive, send)
     else:
-        await _send_503(receive, send)
+        await _send_response(receive, send, 503, b"application/json", b'{"detail":"Service unavailable"}')
 
 
 if __name__ == "__main__":
