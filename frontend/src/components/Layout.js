@@ -432,40 +432,6 @@ export const TopHeader = ({ onMenuClick, title }) => {
     return <Clock className="w-4 h-4 text-yellow-500" />;
   };
 
-  // PWA Install prompt
-  const [deferredPrompt, setDeferredPrompt] = useState(null);
-  const [showInstallButton, setShowInstallButton] = useState(false);
-
-  useEffect(() => {
-    const handleBeforeInstallPrompt = (e) => {
-      e.preventDefault();
-      setDeferredPrompt(e);
-      setShowInstallButton(true);
-    };
-
-    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
-    
-    // Check if already installed
-    if (window.matchMedia('(display-mode: standalone)').matches) {
-      setShowInstallButton(false);
-    }
-
-    return () => {
-      window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
-    };
-  }, []);
-
-  const handleInstallClick = async () => {
-    if (!deferredPrompt) return;
-    
-    deferredPrompt.prompt();
-    const { outcome } = await deferredPrompt.userChoice;
-    
-    if (outcome === 'accepted') {
-      setShowInstallButton(false);
-    }
-    setDeferredPrompt(null);
-  };
   
   return (
     <>
