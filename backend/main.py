@@ -2,6 +2,7 @@ import os
 import sys
 import asyncio
 import logging
+import urllib.request
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("main")
@@ -16,6 +17,9 @@ _loading = False
 _index_html = b"<html><body>Loading...</body></html>"
 _index_len = str(len(_index_html)).encode()
 _index_ct = b"text/html; charset=utf-8"
+
+KEEP_ALIVE_URL = "https://adaa-alabtal.replit.app/health"
+KEEP_ALIVE_INTERVAL = 240
 
 _static_index = os.path.join(backend_dir, "static", "index.html")
 if os.path.exists(_static_index):
@@ -42,6 +46,22 @@ def _load_real_app():
         logger.error(f"Failed to load app: {e}")
         _loading = False
         return None
+
+
+async def _keep_alive_loop():
+    await asyncio.sleep(30)
+    logger.info(f"Keep-alive started: pinging {KEEP_ALIVE_URL} every {KEEP_ALIVE_INTERVAL}s")
+    while True:
+        try:
+            loop = asyncio.get_running_loop()
+            await loop.run_in_executor(
+                None,
+                lambda: urllib.request.urlopen(KEEP_ALIVE_URL, timeout=10).read()
+            )
+            logger.info("Keep-alive ping OK")
+        except Exception as e:
+            logger.warning(f"Keep-alive ping failed: {e}")
+        await asyncio.sleep(KEEP_ALIVE_INTERVAL)
 
 
 async def _send_200_html(receive, send):
@@ -102,6 +122,7 @@ async def app(scope, receive, send):
                 await send({"type": "lifespan.startup.complete"})
                 loop = asyncio.get_running_loop()
                 loop.run_in_executor(None, _load_real_app)
+                asyncio.ensure_future(_keep_alive_loop())
             elif msg["type"] == "lifespan.shutdown":
                 await send({"type": "lifespan.shutdown.complete"})
                 return

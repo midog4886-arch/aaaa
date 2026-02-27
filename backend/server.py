@@ -6939,24 +6939,6 @@ async def create_default_admin():
         except Exception as e:
             print(f"Startup DB check: {str(e)}")
     asyncio.create_task(_init())
-    asyncio.create_task(_keep_alive_loop())
-
-
-async def _keep_alive_loop():
-    import asyncio
-    import urllib.request
-    app_url = os.environ.get("REPLIT_DEV_DOMAIN", "")
-    if not app_url:
-        app_url = os.environ.get("REPL_SLUG", "")
-    prod_url = "https://adaa-alabtal.replit.app/health"
-    await asyncio.sleep(30)
-    while True:
-        try:
-            loop = asyncio.get_running_loop()
-            await loop.run_in_executor(None, lambda: urllib.request.urlopen(prod_url, timeout=10).read())
-        except Exception:
-            pass
-        await asyncio.sleep(240)
 
 @app.on_event("shutdown")
 async def shutdown_db_client():
