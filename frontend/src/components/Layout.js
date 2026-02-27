@@ -432,7 +432,37 @@ export const TopHeader = ({ onMenuClick, title }) => {
     return <Clock className="w-4 h-4 text-yellow-500" />;
   };
 
-  
+  const [deferredPrompt, setDeferredPrompt] = useState(null);
+  const [showInstallButton, setShowInstallButton] = useState(false);
+
+  useEffect(() => {
+    const handleBeforeInstallPrompt = (e) => {
+      e.preventDefault();
+      setDeferredPrompt(e);
+      setShowInstallButton(true);
+    };
+
+    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+
+    if (window.matchMedia('(display-mode: standalone)').matches) {
+      setShowInstallButton(false);
+    }
+
+    return () => {
+      window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+    };
+  }, []);
+
+  const handleInstallClick = async () => {
+    if (!deferredPrompt) return;
+    deferredPrompt.prompt();
+    const { outcome } = await deferredPrompt.userChoice;
+    if (outcome === 'accepted') {
+      setShowInstallButton(false);
+    }
+    setDeferredPrompt(null);
+  };
+
   return (
     <>
     <header className="top-header">
@@ -448,17 +478,16 @@ export const TopHeader = ({ onMenuClick, title }) => {
       </div>
 
       <div className="flex items-center gap-2">
-        {/* PWA Install Button */}
         {showInstallButton && (
           <Button
             variant="outline"
             size="sm"
             onClick={handleInstallClick}
             className="bg-gradient-to-r from-green-500 to-green-600 text-white border-0 hover:from-green-600 hover:to-green-700"
-            title={language === 'ar' ? 'تثبيت التطبيق' : 'Install App'}
+            title={language === 'ar' ? 'تثبيت لوحة التحكم' : 'Install Dashboard'}
           >
             <Download className="w-4 h-4 me-1" />
-            <span className="hidden sm:inline">{language === 'ar' ? 'تثبيت' : 'Install'}</span>
+            <span className="hidden sm:inline">{language === 'ar' ? 'تثبيت لوحة التحكم' : 'Install Dashboard'}</span>
           </Button>
         )}
 
