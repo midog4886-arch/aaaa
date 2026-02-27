@@ -106,7 +106,7 @@ const ProtectedRoute = ({ children, permission }) => {
 
 // Get first allowed route based on user permissions
 const getFirstAllowedRoute = (permissions) => {
-  const routeOrder = ['schedule', 'attendance', 'dashboard', 'members', 'activities', 'levels', 'invoices', 'store', 'accounting', 'reports', 'messages', 'settings'];
+  const routeOrder = ['dashboard', 'schedule', 'attendance', 'coach-attendance', 'members', 'activities', 'levels', 'invoices', 'store', 'accounting', 'reports', 'messages', 'settings'];
   for (const route of routeOrder) {
     if (permissions.includes(route)) {
       return `/admin/${route}`;
