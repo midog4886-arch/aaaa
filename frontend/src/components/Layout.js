@@ -433,7 +433,8 @@ export const TopHeader = ({ onMenuClick, title }) => {
   };
 
   const [deferredPrompt, setDeferredPrompt] = useState(null);
-  const [showInstallButton, setShowInstallButton] = useState(false);
+  const [showInstallButton, setShowInstallButton] = useState(true);
+  const [showInstallGuide, setShowInstallGuide] = useState(false);
 
   useEffect(() => {
     const handleBeforeInstallPrompt = (e) => {
@@ -454,13 +455,16 @@ export const TopHeader = ({ onMenuClick, title }) => {
   }, []);
 
   const handleInstallClick = async () => {
-    if (!deferredPrompt) return;
-    deferredPrompt.prompt();
-    const { outcome } = await deferredPrompt.userChoice;
-    if (outcome === 'accepted') {
-      setShowInstallButton(false);
+    if (deferredPrompt) {
+      deferredPrompt.prompt();
+      const { outcome } = await deferredPrompt.userChoice;
+      if (outcome === 'accepted') {
+        setShowInstallButton(false);
+      }
+      setDeferredPrompt(null);
+    } else {
+      setShowInstallGuide(true);
     }
-    setDeferredPrompt(null);
   };
 
   return (
@@ -600,6 +604,49 @@ export const TopHeader = ({ onMenuClick, title }) => {
       onClose={() => setShowCameraScanner(false)}
       language={language}
     />
+
+    {showInstallGuide && (
+      <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setShowInstallGuide(false)}>
+        <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 max-w-md w-full shadow-2xl" onClick={e => e.stopPropagation()}>
+          <div className="text-center mb-4">
+            <div className="w-16 h-16 bg-green-100 dark:bg-green-900 rounded-full flex items-center justify-center mx-auto mb-3">
+              <Download className="w-8 h-8 text-green-600" />
+            </div>
+            <h3 className="text-xl font-bold">{language === 'ar' ? 'تثبيت لوحة التحكم' : 'Install Dashboard'}</h3>
+          </div>
+          <div className="space-y-4 text-sm" dir={language === 'ar' ? 'rtl' : 'ltr'}>
+            <div className="bg-blue-50 dark:bg-blue-900/30 p-3 rounded-lg">
+              <p className="font-bold text-blue-700 dark:text-blue-300 mb-2">Chrome / Edge:</p>
+              <ol className="list-decimal list-inside space-y-1 text-gray-700 dark:text-gray-300">
+                <li>{language === 'ar' ? 'اضغط على ⋮ (القائمة) أعلى المتصفح' : 'Tap ⋮ (menu) at top of browser'}</li>
+                <li>{language === 'ar' ? 'اختر "تثبيت التطبيق" أو "إضافة إلى الشاشة الرئيسية"' : 'Select "Install app" or "Add to Home screen"'}</li>
+                <li>{language === 'ar' ? 'اضغط "تثبيت"' : 'Tap "Install"'}</li>
+              </ol>
+            </div>
+            <div className="bg-purple-50 dark:bg-purple-900/30 p-3 rounded-lg">
+              <p className="font-bold text-purple-700 dark:text-purple-300 mb-2">Samsung Internet:</p>
+              <ol className="list-decimal list-inside space-y-1 text-gray-700 dark:text-gray-300">
+                <li>{language === 'ar' ? 'اضغط على ≡ (القائمة) أسفل المتصفح' : 'Tap ≡ (menu) at bottom of browser'}</li>
+                <li>{language === 'ar' ? 'اختر "إضافة الصفحة إلى" ثم "الشاشة الرئيسية"' : 'Select "Add page to" then "Home screen"'}</li>
+              </ol>
+            </div>
+            <div className="bg-gray-50 dark:bg-gray-700 p-3 rounded-lg">
+              <p className="font-bold text-gray-700 dark:text-gray-300 mb-2">Safari (iOS):</p>
+              <ol className="list-decimal list-inside space-y-1 text-gray-700 dark:text-gray-300">
+                <li>{language === 'ar' ? 'اضغط على زر المشاركة ⬆' : 'Tap the share button ⬆'}</li>
+                <li>{language === 'ar' ? 'اختر "إضافة إلى الشاشة الرئيسية"' : 'Select "Add to Home Screen"'}</li>
+              </ol>
+            </div>
+          </div>
+          <button
+            onClick={() => setShowInstallGuide(false)}
+            className="w-full mt-4 py-3 bg-gradient-to-r from-green-500 to-green-600 text-white rounded-xl font-bold hover:from-green-600 hover:to-green-700"
+          >
+            {language === 'ar' ? 'فهمت' : 'Got it'}
+          </button>
+        </div>
+      </div>
+    )}
   </>
   );
 };
