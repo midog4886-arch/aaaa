@@ -6912,6 +6912,8 @@ if STATIC_DIR.exists():
     async def serve_react_app(full_path: str):
         file_path = STATIC_DIR / full_path
         if file_path.exists() and file_path.is_file():
+            if full_path.endswith('.zip'):
+                return FileResponse(file_path, media_type="application/zip", filename=file_path.name)
             return FileResponse(file_path, headers={"Cache-Control": "no-cache, no-store, must-revalidate"})
         return FileResponse(STATIC_DIR / "index.html", headers={"Cache-Control": "no-cache, no-store, must-revalidate"})
 
