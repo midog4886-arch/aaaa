@@ -1,2 +1,2 @@
-include ':capacitor-android'
-project(':capacitor-android').projectDir = new File('./capacitor-android/')
+// capacitor-android loaded from Maven Central (com.capacitorjs:core:6.2.1)
+// No local module needed
