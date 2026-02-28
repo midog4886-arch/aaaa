@@ -1,1 +1,2 @@
-// Capacitor android is loaded from Maven
+include ':capacitor-android'
+project(':capacitor-android').projectDir = new File('./capacitor-android/')
