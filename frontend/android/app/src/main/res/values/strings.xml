@@ -2,6 +2,6 @@
 <resources>
     <string name="app_name">أكاديمية الأبطال</string>
     <string name="title_activity_main">أكاديمية الأبطال</string>
-    <string name="package_name">com.globalchampions.app</string>
-    <string name="custom_url_scheme">com.globalchampions.app</string>
+    <string name="package_name">com.champions.academy.member</string>
+    <string name="custom_url_scheme">com.champions.academy.member</string>
 </resources>
