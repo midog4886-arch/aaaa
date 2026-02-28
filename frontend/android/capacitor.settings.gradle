@@ -1,2 +1,1 @@
-include ':capacitor-android'
-project(':capacitor-android').projectDir = new File('./capacitor-android/')
+// Capacitor is loaded from Maven - no local project needed
