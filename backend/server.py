@@ -6907,7 +6907,19 @@ app.add_middleware(
 STATIC_DIR = ROOT_DIR / "static"
 if STATIC_DIR.exists():
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR / "static")), name="static_assets")
-    
+
+    @app.get("/api/download-apk")
+    async def download_android_project():
+        zip_path = STATIC_DIR / "android-project.zip"
+        if zip_path.exists():
+            return FileResponse(
+                str(zip_path),
+                media_type="application/zip",
+                filename="android-project.zip",
+                headers={"Content-Disposition": "attachment; filename=android-project.zip"}
+            )
+        return {"error": "File not found"}
+
     @app.get("/{full_path:path}")
     async def serve_react_app(full_path: str):
         file_path = STATIC_DIR / full_path
