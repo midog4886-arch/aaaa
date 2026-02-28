@@ -8,10 +8,10 @@ android {
     compileSdk rootProject.ext.compileSdkVersion
     signingConfigs {
         release {
-            storeFile file("C:\\AndroidProjects\\android\\mykey.jks")
-            storePassword "123456"
-            keyAlias "mykey"
-            keyPassword "123456"
+            storeFile file("C:\\AndroidProjects\\android\\champions.jks")
+            storePassword "champions123"
+            keyAlias "champions"
+            keyPassword "champions123"
         }
     }
     defaultConfig {
