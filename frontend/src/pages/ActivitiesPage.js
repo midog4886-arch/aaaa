@@ -31,7 +31,11 @@ import {
   Trophy,
   Bike,
   Target,
-  Flame
+  Flame,
+  Filter,
+  X,
+  CheckCircle2,
+  XCircle
 } from 'lucide-react';
 
 export const ActivitiesPage = () => {
@@ -47,7 +51,11 @@ export const ActivitiesPage = () => {
   const [saving, setSaving] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterBranch, setFilterBranch] = useState('all');
+  const [filterCategory, setFilterCategory] = useState('all');
+  const [filterStatus, setFilterStatus] = useState('all');
+  const [filterPriceRange, setFilterPriceRange] = useState('all');
   const [sortBy, setSortBy] = useState('name');
+  const [showFilters, setShowFilters] = useState(true);
 
   const [formData, setFormData] = useState({
     name: '',
@@ -66,6 +74,38 @@ export const ActivitiesPage = () => {
     { value: '#8B5CF6', label: language === 'ar' ? 'بنفسجي' : 'Purple' },
     { value: '#F97316', label: language === 'ar' ? 'برتقالي' : 'Orange' },
     { value: '#EC4899', label: language === 'ar' ? 'وردي' : 'Pink' },
+  ];
+
+  const activityCategories = [
+    { id: 'swimming', name_ar: 'السباحة', name_en: 'Swimming', icon: '🏊', keywords: ['سباح', 'swim'] },
+    { id: 'football', name_ar: 'كرة القدم', name_en: 'Football', icon: '⚽', keywords: ['قدم', 'كرة', 'foot', 'soccer'] },
+    { id: 'karate', name_ar: 'الكاراتيه', name_en: 'Karate', icon: '🥋', keywords: ['كارات', 'karat'] },
+    { id: 'gymnastics', name_ar: 'الجمباز', name_en: 'Gymnastics', icon: '🤸', keywords: ['جمباز', 'gymnast'] },
+    { id: 'cycling', name_ar: 'الدراجات', name_en: 'Cycling', icon: '🚴', keywords: ['دراج', 'cycl', 'bike'] },
+    { id: 'other', name_ar: 'أخرى', name_en: 'Other', icon: '🏋️', keywords: [] },
+  ];
+
+  const getActivityCategory = (activity) => {
+    const name = ((activity.name_ar || '') + ' ' + (activity.name || '')).toLowerCase();
+    for (const cat of activityCategories) {
+      if (cat.id === 'other') continue;
+      if (cat.keywords.some(kw => name.includes(kw))) return cat.id;
+    }
+    return 'other';
+  };
+
+  const availableCategories = useMemo(() => {
+    const categoriesInUse = new Set();
+    activities.forEach(a => categoriesInUse.add(getActivityCategory(a)));
+    return activityCategories.filter(c => categoriesInUse.has(c.id));
+  }, [activities]);
+
+  const priceRanges = [
+    { id: 'all', label_ar: 'كل الأسعار', label_en: 'All Prices' },
+    { id: '0-100', label_ar: '0 - 100 ريال', label_en: '0 - 100 SAR', min: 0, max: 100 },
+    { id: '100-300', label_ar: '100 - 300 ريال', label_en: '100 - 300 SAR', min: 100, max: 300 },
+    { id: '300-500', label_ar: '300 - 500 ريال', label_en: '300 - 500 SAR', min: 300, max: 500 },
+    { id: '500+', label_ar: '500+ ريال', label_en: '500+ SAR', min: 500, max: Infinity },
   ];
 
   useEffect(() => {
@@ -180,6 +220,16 @@ export const ActivitiesPage = () => {
     return Dumbbell;
   };
 
+  const activeFiltersCount = [filterBranch, filterCategory, filterStatus, filterPriceRange].filter(f => f !== 'all').length;
+
+  const clearAllFilters = () => {
+    setFilterBranch('all');
+    setFilterCategory('all');
+    setFilterStatus('all');
+    setFilterPriceRange('all');
+    setSearchTerm('');
+  };
+
   const filteredActivities = useMemo(() => {
     let filtered = [...activities];
 
@@ -201,6 +251,28 @@ export const ActivitiesPage = () => {
       }
     }
 
+    if (filterCategory !== 'all') {
+      filtered = filtered.filter(a => getActivityCategory(a) === filterCategory);
+    }
+
+    if (filterStatus !== 'all') {
+      if (filterStatus === 'active') {
+        filtered = filtered.filter(a => (memberCounts[a.id] || 0) > 0);
+      } else {
+        filtered = filtered.filter(a => (memberCounts[a.id] || 0) === 0);
+      }
+    }
+
+    if (filterPriceRange !== 'all') {
+      const range = priceRanges.find(r => r.id === filterPriceRange);
+      if (range) {
+        filtered = filtered.filter(a => {
+          const fee = a.monthly_fee || 0;
+          return fee >= range.min && fee < range.max;
+        });
+      }
+    }
+
     filtered.sort((a, b) => {
       switch (sortBy) {
         case 'name':
@@ -217,7 +289,7 @@ export const ActivitiesPage = () => {
     });
 
     return filtered;
-  }, [activities, searchTerm, filterBranch, sortBy, memberCounts, language]);
+  }, [activities, searchTerm, filterBranch, filterCategory, filterStatus, filterPriceRange, sortBy, memberCounts, language]);
 
   const stats = useMemo(() => {
     const totalMembers = Object.values(memberCounts).reduce((s, c) => s + c, 0);
@@ -277,60 +349,173 @@ export const ActivitiesPage = () => {
           </Card>
         </div>
 
-        {/* Header + Search/Filter/Sort */}
-        <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between">
-          <div className="flex flex-1 gap-2 items-center flex-wrap w-full sm:w-auto">
-            <div className="relative flex-1 min-w-[200px]">
-              <Search className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none rtl:right-3 ltr:left-3 ltr:right-auto" />
-              <Input
-                placeholder={language === 'ar' ? 'بحث في الأنشطة...' : 'Search activities...'}
-                value={searchTerm}
-                onChange={e => setSearchTerm(e.target.value)}
-                className="ps-10"
-              />
+        {/* Category Quick Filters */}
+        <div className="flex flex-wrap gap-2 items-center">
+          <span className="text-sm font-medium text-muted-foreground">
+            {language === 'ar' ? 'تصفية سريعة:' : 'Quick filter:'}
+          </span>
+          <button
+            onClick={() => setFilterCategory('all')}
+            className={`px-3 py-1.5 rounded-full text-sm font-medium transition-all ${
+              filterCategory === 'all'
+                ? 'bg-primary text-primary-foreground shadow-sm'
+                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+            }`}
+          >
+            {language === 'ar' ? 'الكل' : 'All'}
+          </button>
+          {availableCategories.map(cat => {
+            const count = activities.filter(a => getActivityCategory(a) === cat.id).length;
+            return (
+              <button
+                key={cat.id}
+                onClick={() => setFilterCategory(filterCategory === cat.id ? 'all' : cat.id)}
+                className={`px-3 py-1.5 rounded-full text-sm font-medium transition-all flex items-center gap-1 ${
+                  filterCategory === cat.id
+                    ? 'bg-primary text-primary-foreground shadow-sm'
+                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                }`}
+              >
+                <span>{cat.icon}</span>
+                <span>{language === 'ar' ? cat.name_ar : cat.name_en}</span>
+                <span className={`text-xs px-1.5 py-0.5 rounded-full ${
+                  filterCategory === cat.id ? 'bg-white/20' : 'bg-gray-200'
+                }`}>{count}</span>
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Filters Bar */}
+        <Card className="border shadow-sm">
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <Filter className="w-4 h-4 text-primary" />
+                <span className="font-medium text-sm">
+                  {language === 'ar' ? 'الفلاتر' : 'Filters'}
+                </span>
+                {activeFiltersCount > 0 && (
+                  <Badge variant="default" className="text-xs px-2 py-0.5 bg-primary">
+                    {activeFiltersCount}
+                  </Badge>
+                )}
+              </div>
+              <div className="flex items-center gap-2">
+                {activeFiltersCount > 0 && (
+                  <Button variant="ghost" size="sm" onClick={clearAllFilters} className="text-xs h-7">
+                    <X className="w-3 h-3 me-1" />
+                    {language === 'ar' ? 'مسح الفلاتر' : 'Clear All'}
+                  </Button>
+                )}
+                <Button 
+                  variant="ghost" 
+                  size="sm" 
+                  onClick={() => setShowFilters(!showFilters)}
+                  className="text-xs h-7"
+                >
+                  <SlidersHorizontal className="w-3 h-3 me-1" />
+                  {showFilters 
+                    ? (language === 'ar' ? 'إخفاء' : 'Hide')
+                    : (language === 'ar' ? 'إظهار' : 'Show')}
+                </Button>
+              </div>
             </div>
 
-            {isAdmin && branches.length > 0 && (
-              <Select value={filterBranch} onValueChange={setFilterBranch}>
-                <SelectTrigger className="w-[160px]">
-                  <SlidersHorizontal className="w-4 h-4 me-1 opacity-50" />
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">{language === 'ar' ? 'كل الفروع' : 'All Branches'}</SelectItem>
-                  <SelectItem value="global">{language === 'ar' ? 'عام' : 'Global'}</SelectItem>
-                  {branches.map(b => (
-                    <SelectItem key={b.id} value={b.id}>{b.name_ar || b.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+            {showFilters && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+                {/* Search */}
+                <div className="relative lg:col-span-1">
+                  <Search className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none rtl:right-3 ltr:left-3 ltr:right-auto" />
+                  <Input
+                    placeholder={language === 'ar' ? 'بحث في الأنشطة...' : 'Search activities...'}
+                    value={searchTerm}
+                    onChange={e => setSearchTerm(e.target.value)}
+                    className="ps-10 h-9 text-sm"
+                  />
+                </div>
+
+                {/* Branch Filter */}
+                {isAdmin && branches.length > 0 && (
+                  <Select value={filterBranch} onValueChange={setFilterBranch}>
+                    <SelectTrigger className="h-9 text-sm">
+                      <Building2 className="w-4 h-4 me-1 opacity-50" />
+                      <SelectValue placeholder={language === 'ar' ? 'الفرع' : 'Branch'} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">{language === 'ar' ? 'كل الفروع' : 'All Branches'}</SelectItem>
+                      <SelectItem value="global">{language === 'ar' ? 'عام' : 'Global'}</SelectItem>
+                      {branches.map(b => (
+                        <SelectItem key={b.id} value={b.id}>{b.name_ar || b.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+
+                {/* Status Filter */}
+                <Select value={filterStatus} onValueChange={setFilterStatus}>
+                  <SelectTrigger className="h-9 text-sm">
+                    {filterStatus === 'active' ? (
+                      <CheckCircle2 className="w-4 h-4 me-1 text-green-500" />
+                    ) : filterStatus === 'inactive' ? (
+                      <XCircle className="w-4 h-4 me-1 text-gray-400" />
+                    ) : (
+                      <SlidersHorizontal className="w-4 h-4 me-1 opacity-50" />
+                    )}
+                    <SelectValue placeholder={language === 'ar' ? 'الحالة' : 'Status'} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">{language === 'ar' ? 'كل الحالات' : 'All Status'}</SelectItem>
+                    <SelectItem value="active">{language === 'ar' ? 'نشط (فيه مشتركين)' : 'Active (has members)'}</SelectItem>
+                    <SelectItem value="inactive">{language === 'ar' ? 'غير نشط' : 'Inactive'}</SelectItem>
+                  </SelectContent>
+                </Select>
+
+                {/* Price Range Filter */}
+                <Select value={filterPriceRange} onValueChange={setFilterPriceRange}>
+                  <SelectTrigger className="h-9 text-sm">
+                    <CircleDollarSign className="w-4 h-4 me-1 opacity-50" />
+                    <SelectValue placeholder={language === 'ar' ? 'السعر' : 'Price'} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {priceRanges.map(r => (
+                      <SelectItem key={r.id} value={r.id}>
+                        {language === 'ar' ? r.label_ar : r.label_en}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+
+                {/* Sort */}
+                <Select value={sortBy} onValueChange={setSortBy}>
+                  <SelectTrigger className="h-9 text-sm">
+                    <ArrowUpDown className="w-4 h-4 me-1 opacity-50" />
+                    <SelectValue placeholder={language === 'ar' ? 'ترتيب' : 'Sort'} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="name">{language === 'ar' ? 'الاسم' : 'Name'}</SelectItem>
+                    <SelectItem value="price_asc">{language === 'ar' ? 'السعر تصاعدي' : 'Price Asc'}</SelectItem>
+                    <SelectItem value="price_desc">{language === 'ar' ? 'السعر تنازلي' : 'Price Desc'}</SelectItem>
+                    <SelectItem value="members">{language === 'ar' ? 'المشتركين' : 'Subscribers'}</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
             )}
+          </CardContent>
+        </Card>
 
-            <Select value={sortBy} onValueChange={setSortBy}>
-              <SelectTrigger className="w-[160px]">
-                <ArrowUpDown className="w-4 h-4 me-1 opacity-50" />
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="name">{language === 'ar' ? 'الاسم' : 'Name'}</SelectItem>
-                <SelectItem value="price_asc">{language === 'ar' ? 'السعر ↑' : 'Price ↑'}</SelectItem>
-                <SelectItem value="price_desc">{language === 'ar' ? 'السعر ↓' : 'Price ↓'}</SelectItem>
-                <SelectItem value="members">{language === 'ar' ? 'المشتركين' : 'Subscribers'}</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
+        {/* Results Count + Add Button */}
+        <div className="flex items-center justify-between">
+          <p className="text-sm text-muted-foreground">
+            {language === 'ar'
+              ? `عرض ${filteredActivities.length} من ${activities.length} نشاط`
+              : `Showing ${filteredActivities.length} of ${activities.length} activities`}
+          </p>
           <Button onClick={() => setIsDialogOpen(true)} data-testid="add-activity-btn">
             <Plus className="w-4 h-4 me-2" />
             {t('add_activity')}
           </Button>
         </div>
-
-        <p className="text-sm text-muted-foreground">
-          {language === 'ar'
-            ? `عرض ${filteredActivities.length} من ${activities.length} نشاط`
-            : `Showing ${filteredActivities.length} of ${activities.length} activities`}
-        </p>
 
         {/* Activities Grid */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
@@ -425,7 +610,15 @@ export const ActivitiesPage = () => {
         {filteredActivities.length === 0 && (
           <div className="empty-state">
             <Dumbbell className="empty-state-icon" />
-            <p>{searchTerm ? (language === 'ar' ? 'لا توجد نتائج للبحث' : 'No search results') : t('no_data')}</p>
+            <p>{searchTerm || activeFiltersCount > 0
+              ? (language === 'ar' ? 'لا توجد نتائج مطابقة للفلاتر' : 'No matching results')
+              : t('no_data')}</p>
+            {activeFiltersCount > 0 && (
+              <Button variant="outline" size="sm" className="mt-2" onClick={clearAllFilters}>
+                <X className="w-3 h-3 me-1" />
+                {language === 'ar' ? 'مسح الفلاتر' : 'Clear Filters'}
+              </Button>
+            )}
           </div>
         )}
 
@@ -522,7 +715,7 @@ export const ActivitiesPage = () => {
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="all">
-                        {language === 'ar' ? '🏢 جميع الفروع (نشاط عام)' : '🏢 All Branches (Global)'}
+                        {language === 'ar' ? 'جميع الفروع (نشاط عام)' : 'All Branches (Global)'}
                       </SelectItem>
                       {branches.map(branch => (
                         <SelectItem key={branch.id} value={branch.id}>
