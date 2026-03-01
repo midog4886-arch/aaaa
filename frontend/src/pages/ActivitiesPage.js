@@ -349,43 +349,6 @@ export const ActivitiesPage = () => {
           </Card>
         </div>
 
-        {/* Category Quick Filters */}
-        <div className="flex flex-wrap gap-2 items-center">
-          <span className="text-sm font-medium text-muted-foreground">
-            {language === 'ar' ? 'تصفية سريعة:' : 'Quick filter:'}
-          </span>
-          <button
-            onClick={() => setFilterCategory('all')}
-            className={`px-3 py-1.5 rounded-full text-sm font-medium transition-all ${
-              filterCategory === 'all'
-                ? 'bg-primary text-primary-foreground shadow-sm'
-                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-            }`}
-          >
-            {language === 'ar' ? 'الكل' : 'All'}
-          </button>
-          {availableCategories.map(cat => {
-            const count = activities.filter(a => getActivityCategory(a) === cat.id).length;
-            return (
-              <button
-                key={cat.id}
-                onClick={() => setFilterCategory(filterCategory === cat.id ? 'all' : cat.id)}
-                className={`px-3 py-1.5 rounded-full text-sm font-medium transition-all flex items-center gap-1 ${
-                  filterCategory === cat.id
-                    ? 'bg-primary text-primary-foreground shadow-sm'
-                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                }`}
-              >
-                <span>{cat.icon}</span>
-                <span>{language === 'ar' ? cat.name_ar : cat.name_en}</span>
-                <span className={`text-xs px-1.5 py-0.5 rounded-full ${
-                  filterCategory === cat.id ? 'bg-white/20' : 'bg-gray-200'
-                }`}>{count}</span>
-              </button>
-            );
-          })}
-        </div>
-
         {/* Filters Bar */}
         <Card className="border shadow-sm">
           <CardContent className="p-4">
@@ -408,85 +371,89 @@ export const ActivitiesPage = () => {
                     {language === 'ar' ? 'مسح الفلاتر' : 'Clear All'}
                   </Button>
                 )}
-                <Button 
-                  variant="ghost" 
-                  size="sm" 
-                  onClick={() => setShowFilters(!showFilters)}
-                  className="text-xs h-7"
-                >
-                  <SlidersHorizontal className="w-3 h-3 me-1" />
-                  {showFilters 
-                    ? (language === 'ar' ? 'إخفاء' : 'Hide')
-                    : (language === 'ar' ? 'إظهار' : 'Show')}
-                </Button>
               </div>
             </div>
 
-            {showFilters && (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
-                {/* Search */}
-                <div className="relative lg:col-span-1">
-                  <Search className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none rtl:right-3 ltr:left-3 ltr:right-auto" />
-                  <Input
-                    placeholder={language === 'ar' ? 'بحث في الأنشطة...' : 'Search activities...'}
-                    value={searchTerm}
-                    onChange={e => setSearchTerm(e.target.value)}
-                    className="ps-10 h-9 text-sm"
-                  />
-                </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-3">
+              {/* Search */}
+              <div className="relative lg:col-span-1">
+                <Search className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none rtl:right-3 ltr:left-3 ltr:right-auto" />
+                <Input
+                  placeholder={language === 'ar' ? 'بحث في الأنشطة...' : 'Search activities...'}
+                  value={searchTerm}
+                  onChange={e => setSearchTerm(e.target.value)}
+                  className="ps-10 h-9 text-sm"
+                />
+              </div>
 
-                {/* Branch Filter */}
-                {isAdmin && branches.length > 0 && (
-                  <Select value={filterBranch} onValueChange={setFilterBranch}>
-                    <SelectTrigger className="h-9 text-sm">
-                      <Building2 className="w-4 h-4 me-1 opacity-50" />
-                      <SelectValue placeholder={language === 'ar' ? 'الفرع' : 'Branch'} />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">{language === 'ar' ? 'كل الفروع' : 'All Branches'}</SelectItem>
-                      <SelectItem value="global">{language === 'ar' ? 'عام' : 'Global'}</SelectItem>
-                      {branches.map(b => (
-                        <SelectItem key={b.id} value={b.id}>{b.name_ar || b.name}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                )}
+              {/* Activity/Category Filter - like attendance page */}
+              <Select value={filterCategory} onValueChange={setFilterCategory}>
+                <SelectTrigger className="h-9 text-sm">
+                  <Dumbbell className="w-4 h-4 me-1 opacity-50" />
+                  <SelectValue placeholder={language === 'ar' ? 'اختر النشاط' : 'Select Activity'} />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">{language === 'ar' ? 'اختر النشاط' : 'Select Activity'}</SelectItem>
+                  {availableCategories.map(cat => (
+                    <SelectItem key={cat.id} value={cat.id}>
+                      {cat.icon} {language === 'ar' ? cat.name_ar : cat.name_en}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
 
-                {/* Status Filter */}
-                <Select value={filterStatus} onValueChange={setFilterStatus}>
+              {/* Branch Filter */}
+              {isAdmin && branches.length > 0 && (
+                <Select value={filterBranch} onValueChange={setFilterBranch}>
                   <SelectTrigger className="h-9 text-sm">
-                    {filterStatus === 'active' ? (
-                      <CheckCircle2 className="w-4 h-4 me-1 text-green-500" />
-                    ) : filterStatus === 'inactive' ? (
-                      <XCircle className="w-4 h-4 me-1 text-gray-400" />
-                    ) : (
-                      <SlidersHorizontal className="w-4 h-4 me-1 opacity-50" />
-                    )}
-                    <SelectValue placeholder={language === 'ar' ? 'الحالة' : 'Status'} />
+                    <Building2 className="w-4 h-4 me-1 opacity-50" />
+                    <SelectValue placeholder={language === 'ar' ? 'الفرع' : 'Branch'} />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="all">{language === 'ar' ? 'كل الحالات' : 'All Status'}</SelectItem>
-                    <SelectItem value="active">{language === 'ar' ? 'نشط (فيه مشتركين)' : 'Active (has members)'}</SelectItem>
-                    <SelectItem value="inactive">{language === 'ar' ? 'غير نشط' : 'Inactive'}</SelectItem>
-                  </SelectContent>
-                </Select>
-
-                {/* Price Range Filter */}
-                <Select value={filterPriceRange} onValueChange={setFilterPriceRange}>
-                  <SelectTrigger className="h-9 text-sm">
-                    <CircleDollarSign className="w-4 h-4 me-1 opacity-50" />
-                    <SelectValue placeholder={language === 'ar' ? 'السعر' : 'Price'} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {priceRanges.map(r => (
-                      <SelectItem key={r.id} value={r.id}>
-                        {language === 'ar' ? r.label_ar : r.label_en}
-                      </SelectItem>
+                    <SelectItem value="all">{language === 'ar' ? 'كل الفروع' : 'All Branches'}</SelectItem>
+                    <SelectItem value="global">{language === 'ar' ? 'عام' : 'Global'}</SelectItem>
+                    {branches.map(b => (
+                      <SelectItem key={b.id} value={b.id}>{b.name_ar || b.name}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
+              )}
 
-                {/* Sort */}
+              {/* Status Filter */}
+              <Select value={filterStatus} onValueChange={setFilterStatus}>
+                <SelectTrigger className="h-9 text-sm">
+                  {filterStatus === 'active' ? (
+                    <CheckCircle2 className="w-4 h-4 me-1 text-green-500" />
+                  ) : filterStatus === 'inactive' ? (
+                    <XCircle className="w-4 h-4 me-1 text-gray-400" />
+                  ) : (
+                    <SlidersHorizontal className="w-4 h-4 me-1 opacity-50" />
+                  )}
+                  <SelectValue placeholder={language === 'ar' ? 'الحالة' : 'Status'} />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">{language === 'ar' ? 'كل الحالات' : 'All Status'}</SelectItem>
+                  <SelectItem value="active">{language === 'ar' ? 'نشط (فيه مشتركين)' : 'Active (has members)'}</SelectItem>
+                  <SelectItem value="inactive">{language === 'ar' ? 'غير نشط' : 'Inactive'}</SelectItem>
+                </SelectContent>
+              </Select>
+
+              {/* Price Range Filter */}
+              <Select value={filterPriceRange} onValueChange={setFilterPriceRange}>
+                <SelectTrigger className="h-9 text-sm">
+                  <CircleDollarSign className="w-4 h-4 me-1 opacity-50" />
+                  <SelectValue placeholder={language === 'ar' ? 'السعر' : 'Price'} />
+                </SelectTrigger>
+                <SelectContent>
+                  {priceRanges.map(r => (
+                    <SelectItem key={r.id} value={r.id}>
+                      {language === 'ar' ? r.label_ar : r.label_en}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+
+              {/* Sort */}
                 <Select value={sortBy} onValueChange={setSortBy}>
                   <SelectTrigger className="h-9 text-sm">
                     <ArrowUpDown className="w-4 h-4 me-1 opacity-50" />
