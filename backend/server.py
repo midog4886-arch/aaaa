@@ -4532,8 +4532,14 @@ async def get_attendance_by_activity(
     if not activity:
         raise HTTPException(status_code=404, detail="النشاط غير موجود")
     
-    # Get all members enrolled in this activity with active subscription
-    members_query = {"activities.activity_id": activity_id}
+    members_query = {
+        "activities": {
+            "$elemMatch": {
+                "activity_id": activity_id,
+                "status": "active"
+            }
+        }
+    }
     if current_user.get("role") != "admin" and current_user.get("branch_id"):
         members_query["branch_id"] = current_user["branch_id"]
     
