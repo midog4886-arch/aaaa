@@ -97,17 +97,20 @@ async def get_members(
     elif not is_admin and branch_id:
         query["branch_id"] = branch_id
     
-    # Activity filter
+    # Activity filter - only show members with active (non-expired) subscriptions
     if activity_id:
-        query["activities.activity_id"] = activity_id
+        from datetime import datetime, timezone
+        today_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        elem_match = {"activity_id": activity_id, "end_date": {"$gte": today_str}}
+        if status:
+            elem_match["status"] = status
+        query["activities"] = {"$elemMatch": elem_match}
+    elif status:
+        query["activities.status"] = status
     
     # Coach filter
     if coach_id:
         query["activities.coach_id"] = coach_id
-    
-    # Status filter
-    if status:
-        query["activities.status"] = status
     
     # Search filter
     if search:

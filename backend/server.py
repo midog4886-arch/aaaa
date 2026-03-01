@@ -2120,8 +2120,12 @@ async def export_members(
     
     query = {}
     if activity_id:
-        query["activities.activity_id"] = activity_id
-    if status:
+        today_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        elem_match = {"activity_id": activity_id, "end_date": {"$gte": today_str}}
+        if status:
+            elem_match["status"] = status
+        query["activities"] = {"$elemMatch": elem_match}
+    elif status:
         query["activities.status"] = status
     
     members = await db.members.find(query, {"_id": 0}).to_list(10000)
@@ -2348,8 +2352,12 @@ async def export_members_pdf(
 
     query = {}
     if activity_id:
-        query["activities.activity_id"] = activity_id
-    if status:
+        today_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        elem_match = {"activity_id": activity_id, "end_date": {"$gte": today_str}}
+        if status:
+            elem_match["status"] = status
+        query["activities"] = {"$elemMatch": elem_match}
+    elif status:
         query["activities.status"] = status
 
     members = await db.members.find(query, {"_id": 0}).to_list(10000)
