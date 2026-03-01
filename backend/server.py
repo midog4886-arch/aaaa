@@ -4532,11 +4532,13 @@ async def get_attendance_by_activity(
     if not activity:
         raise HTTPException(status_code=404, detail="النشاط غير موجود")
     
+    today_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     members_query = {
         "activities": {
             "$elemMatch": {
                 "activity_id": activity_id,
-                "status": "active"
+                "status": "active",
+                "end_date": {"$gte": today_str}
             }
         }
     }
