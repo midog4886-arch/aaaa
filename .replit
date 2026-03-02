@@ -52,5 +52,5 @@ externalPort = 3000
 
 [deployment]
 deploymentTarget = "autoscale"
-run = ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "5000", "--app-dir", "/home/runner/workspace/backend"]
+run = ["python", "backend/main.py"]
 build = ["pip", "install", "-r", "backend/requirements.txt"]
