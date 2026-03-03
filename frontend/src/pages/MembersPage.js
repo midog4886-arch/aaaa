@@ -952,9 +952,9 @@ export const MembersPage = () => {
     <Layout title={t('members')}>
       <div className="space-y-6" data-testid="members-page">
         {/* Header */}
-        <div className="flex flex-col sm:flex-row gap-4 justify-between items-start sm:items-center">
-          <div className="flex flex-1 gap-3 w-full sm:w-auto">
-            <div className="relative flex-1 sm:max-w-xs">
+        <div className="flex flex-col gap-3">
+          <div className="flex flex-col sm:flex-row gap-3 w-full">
+            <div className="relative flex-1">
               <Search className="absolute start-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
               <Input
                 placeholder={t('search')}
@@ -968,7 +968,7 @@ export const MembersPage = () => {
               <PopoverTrigger asChild>
                 <Button
                   variant="outline"
-                  className="w-[200px] justify-between text-sm font-normal"
+                  className="w-full sm:w-[200px] justify-between text-sm font-normal"
                   data-testid="filter-activity-select"
                 >
                   <span className="truncate">{selectedActivityLabel}</span>
@@ -1058,9 +1058,10 @@ export const MembersPage = () => {
             </div>
           </div>
           
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <Button 
-              variant="outline" 
+              variant="outline"
+              size="sm"
               onClick={() => {
                 const token = localStorage.getItem('token');
                 const params = filterActivity !== 'all' ? { activity_id: filterActivity } : {};
@@ -1069,11 +1070,12 @@ export const MembersPage = () => {
               }}
               data-testid="export-members-btn"
             >
-              <Download className="w-4 h-4 me-2" />
-              {language === 'ar' ? 'Excel' : 'Excel'}
+              <Download className="w-4 h-4 me-1" />
+              Excel
             </Button>
             <Button 
-              variant="outline" 
+              variant="outline"
+              size="sm"
               onClick={() => {
                 const token = localStorage.getItem('token');
                 const params = filterActivity !== 'all' ? { activity_id: filterActivity } : {};
@@ -1081,11 +1083,12 @@ export const MembersPage = () => {
                 window.open(url, '_blank');
               }}
             >
-              <Download className="w-4 h-4 me-2" />
+              <Download className="w-4 h-4 me-1" />
               PDF
             </Button>
             <Button 
               variant="outline"
+              size="sm"
               onClick={() => {
                 const printWindow = window.open('', '', 'width=900,height=700');
                 const rows = filteredMembers.map((m, i) => `<tr><td>${i+1}</td><td>${m.name_ar || m.name}</td><td>${m.age || '-'}</td><td>${m.guardian_name_ar || '-'}</td><td dir="ltr">${m.phone || '-'}</td><td>${m.activities?.map(a => a.activity_name).join(', ') || '-'}</td><td>${m.activities?.map(a => a.status === 'active' ? 'ساري' : 'منتهي').join(', ') || '-'}</td></tr>`).join('');
@@ -1095,11 +1098,11 @@ export const MembersPage = () => {
               }}
               data-testid="print-members-btn"
             >
-              <Printer className="w-4 h-4 me-2" />
+              <Printer className="w-4 h-4 me-1" />
               {language === 'ar' ? 'طباعة' : 'Print'}
             </Button>
-            <Button onClick={() => setIsAddDialogOpen(true)} data-testid="add-member-btn">
-              <Plus className="w-4 h-4 me-2" />
+            <Button size="sm" onClick={() => setIsAddDialogOpen(true)} data-testid="add-member-btn">
+              <Plus className="w-4 h-4 me-1" />
               {t('add_member')}
             </Button>
           </div>
@@ -1132,12 +1135,12 @@ export const MembersPage = () => {
               <table className="data-table">
                 <thead>
                   <tr>
-                    <th>{language === 'ar' ? 'رقم العضوية' : 'Member ID'}</th>
+                    <th className="hidden sm:table-cell">{language === 'ar' ? 'رقم العضوية' : 'Member ID'}</th>
                     <th>{language === 'ar' ? 'اسم العضو / ولي الأمر' : 'Member / Guardian'}</th>
                     <th>{t('phone')}</th>
-                    <th>{language === 'ar' ? 'الأنشطة وحالتها' : 'Activities & Status'}</th>
-                    <th>{language === 'ar' ? 'تاريخ الانتهاء' : 'Expiry Date'}</th>
-                    <th>{language === 'ar' ? 'ملاحظات' : 'Notes'}</th>
+                    <th className="hidden md:table-cell">{language === 'ar' ? 'الأنشطة وحالتها' : 'Activities & Status'}</th>
+                    <th className="hidden lg:table-cell">{language === 'ar' ? 'تاريخ الانتهاء' : 'Expiry Date'}</th>
+                    <th className="hidden lg:table-cell">{language === 'ar' ? 'ملاحظات' : 'Notes'}</th>
                     <th></th>
                   </tr>
                 </thead>
@@ -1152,7 +1155,7 @@ export const MembersPage = () => {
                     filteredMembers.map(member => {
                       return (
                       <tr key={member.id} data-testid={`member-row-${member.id}`} className={member.activities?.some(a => { const d = getDaysRemaining(a.end_date); const s = getActivityStatusFromDate(a); return s === 'active' && d !== null && d <= 7 && d >= 0; }) ? 'bg-amber-50' : member.activities?.every(a => getActivityStatusFromDate(a) === 'expired') && member.activities?.length > 0 ? 'bg-red-50/50' : ''}>
-                        <td className="font-mono text-primary font-bold">
+                        <td className="font-mono text-primary font-bold hidden sm:table-cell">
                           {member.member_code || '-'}
                         </td>
                         <td>
@@ -1177,7 +1180,7 @@ export const MembersPage = () => {
                             )}
                           </div>
                         </td>
-                        <td>
+                        <td className="hidden md:table-cell">
                           <div className="flex flex-col gap-1">
                             {member.activities?.map((activity, idx) => {
                               const actStatus = getActivityStatusFromDate(activity);
@@ -1215,7 +1218,7 @@ export const MembersPage = () => {
                             )}
                           </div>
                         </td>
-                        <td>
+                        <td className="hidden lg:table-cell">
                           {member.activities?.length > 0 ? (
                             <div className="flex flex-col gap-1">
                               {member.activities.map((activity, idx) => {
@@ -1234,7 +1237,7 @@ export const MembersPage = () => {
                             </div>
                           ) : '-'}
                         </td>
-                        <td className="max-w-[150px]">
+                        <td className="max-w-[150px] hidden lg:table-cell">
                           {member.notes ? (
                             <span className="text-sm text-gray-600 truncate block" title={member.notes}>
                               {member.notes.length > 30 ? member.notes.substring(0, 30) + '...' : member.notes}
