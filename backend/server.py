@@ -4250,7 +4250,7 @@ async def get_activities_schedule_with_members(
             end_date = item.get("end_date", "")
             start_date = item.get("start_date", "")
             
-            if end_date and end_date < target_date:
+            if not end_date or end_date < target_date:
                 continue
             
             if start_date and start_date > target_date:
