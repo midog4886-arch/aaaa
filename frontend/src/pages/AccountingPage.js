@@ -107,6 +107,7 @@ export default function AccountingPage() {
   const [journalTypeFilter, setJournalTypeFilter] = useState('');
   const [expenseStatusFilter, setExpenseStatusFilter] = useState('');
   const [expenseTypeFilter, setExpenseTypeFilter] = useState('');
+  const [expenseSearchQuery, setExpenseSearchQuery] = useState('');
   
   // Bank Report Month/Year filter
   const currentDate = new Date();
@@ -2013,10 +2014,19 @@ export default function AccountingPage() {
 
   // Internal Expenses Tab
   const renderInternalExpensesTab = () => {
-    const totalExpenses = internalExpenses.reduce((sum, e) => sum + (e.amount || 0), 0);
-    const pendingCount = internalExpenses.filter(e => e.status === 'pending').length;
-    const approvedCount = internalExpenses.filter(e => e.status === 'approved').length;
-    const approvedTotal = internalExpenses.filter(e => e.status === 'approved').reduce((sum, e) => sum + (e.amount || 0), 0);
+    const filteredExpenses = expenseSearchQuery
+      ? internalExpenses.filter(e =>
+          (e.description || '').toLowerCase().includes(expenseSearchQuery.toLowerCase()) ||
+          (e.expense_number || '').toLowerCase().includes(expenseSearchQuery.toLowerCase()) ||
+          (e.notes || '').toLowerCase().includes(expenseSearchQuery.toLowerCase()) ||
+          (e.vendor_name || '').toLowerCase().includes(expenseSearchQuery.toLowerCase()) ||
+          (EXPENSE_TYPE_LABELS[e.expense_type] || '').includes(expenseSearchQuery)
+        )
+      : internalExpenses;
+    const totalExpenses = filteredExpenses.reduce((sum, e) => sum + (e.amount || 0), 0);
+    const pendingCount = filteredExpenses.filter(e => e.status === 'pending').length;
+    const approvedCount = filteredExpenses.filter(e => e.status === 'approved').length;
+    const approvedTotal = filteredExpenses.filter(e => e.status === 'approved').reduce((sum, e) => sum + (e.amount || 0), 0);
 
     return (
       <div className="space-y-4">
@@ -2038,7 +2048,16 @@ export default function AccountingPage() {
         </div>
 
         {/* Filters */}
-        <div className="flex gap-4 flex-wrap p-4 bg-gray-50 rounded-lg">
+        <div className="flex gap-4 flex-wrap p-4 bg-gray-50 rounded-lg items-end">
+          <div className="flex-1 min-w-[200px]">
+            <label className="text-sm text-gray-600">🔍 بحث</label>
+            <Input
+              type="text"
+              placeholder="بحث بالوصف، الرقم، المورد..."
+              value={expenseSearchQuery}
+              onChange={e => setExpenseSearchQuery(e.target.value)}
+            />
+          </div>
           <div>
             <label className="text-sm text-gray-600">من تاريخ</label>
             <Input type="date" value={dateFilter.start} onChange={e => setDateFilter(prev => ({ ...prev, start: e.target.value }))} className="w-40" />
@@ -2066,7 +2085,7 @@ export default function AccountingPage() {
               <option value="posted">مرحل</option>
             </select>
           </div>
-          <Button variant="outline" onClick={() => { setDateFilter({ start: '', end: '' }); setExpenseTypeFilter(''); setExpenseStatusFilter(''); }}>
+          <Button variant="outline" onClick={() => { setDateFilter({ start: '', end: '' }); setExpenseTypeFilter(''); setExpenseStatusFilter(''); setExpenseSearchQuery(''); }}>
             مسح الفلاتر
           </Button>
         </div>
