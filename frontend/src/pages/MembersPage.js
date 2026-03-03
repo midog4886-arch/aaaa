@@ -887,6 +887,11 @@ export const MembersPage = () => {
 
   const selectedActivityLabel = useMemo(() => {
     if (filterActivity === 'all') return language === 'ar' ? 'الأنشطة' : 'Activities';
+    if (filterActivity.startsWith('group:')) {
+      const groupKey = filterActivity.replace('group:', '');
+      const info = GROUP_INFO[groupKey];
+      return info ? (language === 'ar' ? info.label_ar : info.label_en) : filterActivity;
+    }
     const act = activities.find(a => a.id === filterActivity);
     if (!act) return language === 'ar' ? 'الأنشطة' : 'Activities';
     const name = language === 'ar' ? (act.name_ar || act.name) : (act.name || act.name_ar);
@@ -916,7 +921,13 @@ export const MembersPage = () => {
       member.phone?.includes(searchTerm);
     
     const matchesActivity = filterActivity === 'all' || 
-      member.activities?.some(a => a.activity_id === filterActivity);
+      (filterActivity.startsWith('group:') ? 
+        member.activities?.some(a => {
+          const act = activities.find(ac => ac.id === a.activity_id);
+          if (!act) return false;
+          return getActivityGroupKey(act.name_ar || act.name || '') === filterActivity.replace('group:', '');
+        }) :
+        member.activities?.some(a => a.activity_id === filterActivity));
     
     const matchesStatus = filterStatus === 'all' ||
       member.activities?.some(a => {
@@ -988,11 +999,19 @@ export const MembersPage = () => {
                     <Badge variant="secondary" className="ms-auto text-[10px] px-1.5">{activities.length}</Badge>
                   </button>
                   <div className="border-t" />
-                  {groupedActivities.map(group => (
+                  {groupedActivities.map(group => {
+                    const groupTotal = group.items.reduce((sum, a) => sum + (a.memberCount || 0), 0);
+                    const isGroupSelected = filterActivity === `group:${group.key}`;
+                    return (
                     <div key={group.key}>
-                      <div className="px-3 py-1.5 bg-gray-50 text-xs font-bold text-gray-500 sticky top-0">
-                        {group.label}
-                      </div>
+                      <button
+                        className={`w-full flex items-center gap-2 px-3 py-2 text-sm font-bold hover:bg-blue-50 transition-colors sticky top-0 ${isGroupSelected ? 'bg-primary/10 text-primary' : 'bg-gray-50 text-gray-700'}`}
+                        onClick={() => { setFilterActivity(`group:${group.key}`); setActivityFilterOpen(false); setActivityFilterSearch(''); }}
+                      >
+                        {isGroupSelected && <Check className="w-4 h-4 text-primary shrink-0" />}
+                        <span className={isGroupSelected ? '' : 'ms-6'}>{group.label}</span>
+                        <Badge variant="secondary" className="ms-auto text-[10px] px-1.5">{groupTotal}</Badge>
+                      </button>
                       {group.items.map(act => (
                         <button
                           key={act.id}
@@ -1008,7 +1027,7 @@ export const MembersPage = () => {
                         </button>
                       ))}
                     </div>
-                  ))}
+                  );})}
                   {groupedActivities.length === 0 && activityFilterSearch && (
                     <div className="p-4 text-center text-sm text-gray-400">
                       {language === 'ar' ? 'لا توجد نتائج' : 'No results'}
