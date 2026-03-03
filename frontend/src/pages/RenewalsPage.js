@@ -86,13 +86,37 @@ const RenewalsPage = () => {
       );
     }
     if (filterActivity !== 'all') {
-      filtered = filtered.filter(item => item.activity_name === filterActivity);
+      filtered = filtered.filter(item => {
+        const name = (item.activity_name || '').toLowerCase();
+        const filter = filterActivity.toLowerCase();
+        if (filter === 'سباحة') return name.includes('سباح') || name.includes('swimming');
+        if (filter === 'كرة قدم') return name.includes('كرة') || name.includes('قدم') || name.includes('football');
+        if (filter === 'كاراتيه') return name.includes('كارات') || name.includes('karate');
+        return name === filter;
+      });
     }
     filtered.sort((a, b) => a.days_remaining - b.days_remaining);
     return filtered;
   };
 
+  const ACTIVITY_CATEGORIES = [
+    { value: 'كرة قدم', label: '⚽ كرة القدم', icon: '⚽' },
+    { value: 'سباحة', label: '🏊 السباحة', icon: '🏊' },
+    { value: 'كاراتيه', label: '🥋 كاراتيه', icon: '🥋' },
+  ];
+
   const allActivities = [...new Set([...expiringList, ...expiredList].map(i => i.activity_name).filter(Boolean))];
+
+  const getActivityCategory = (name) => {
+    if (!name) return null;
+    const n = name.toLowerCase();
+    if (n.includes('سباح') || n.includes('swimming')) return 'سباحة';
+    if (n.includes('كرة') || n.includes('قدم') || n.includes('football')) return 'كرة قدم';
+    if (n.includes('كارات') || n.includes('karate')) return 'كاراتيه';
+    return null;
+  };
+
+  const uncategorizedActivities = allActivities.filter(a => !getActivityCategory(a));
 
   const getActivityBreakdown = (items) => {
     const counts = {};
@@ -282,13 +306,16 @@ const RenewalsPage = () => {
             </SelectContent>
           </Select>
           <Select value={filterActivity} onValueChange={setFilterActivity}>
-            <SelectTrigger className="w-[160px]">
+            <SelectTrigger className="w-[180px]">
               <Filter className="w-3.5 h-3.5 me-1" />
               <SelectValue placeholder={language === 'ar' ? 'كل الأنشطة' : 'All Activities'} />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">{language === 'ar' ? 'كل الأنشطة' : 'All Activities'}</SelectItem>
-              {allActivities.map(act => (
+              {ACTIVITY_CATEGORIES.map(cat => (
+                <SelectItem key={cat.value} value={cat.value}>{cat.label}</SelectItem>
+              ))}
+              {uncategorizedActivities.map(act => (
                 <SelectItem key={act} value={act}>{act}</SelectItem>
               ))}
             </SelectContent>
