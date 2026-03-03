@@ -178,8 +178,8 @@ function AppRoutes() {
       {/* Privacy Policy - Public page */}
       <Route path="/privacy" element={<PrivacyPolicyPage />} />
       
-      {/* Root redirects to member login for mobile app */}
-      <Route path="/" element={<Navigate to="/member-login" replace />} />
+      {/* Root - smart redirect based on user role */}
+      <Route path="/" element={<SmartRedirect />} />
 
       {/* Member Portal Routes */}
       <Route path="/member-login" element={<MemberLogin />} />
