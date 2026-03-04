@@ -45,7 +45,8 @@ export default function DayExtensionsPage() {
 
   const defaultClosure = {
     title_ar: '', title_en: '', reason: 'holiday', start_date: '', end_date: '', notes: '',
-    scope: 'all', activity_ids: [], activity_names: [], stop_type: 'full_day', stop_hours: 0, affected_times: []
+    scope: 'all', activity_ids: [], activity_names: [], stop_type: 'full_day', stop_hours: 0, affected_times: [],
+    branch_id: 'all'
   };
   const [newClosure, setNewClosure] = useState({ ...defaultClosure });
   const [manualExt, setManualExt] = useState({ member_id: '', days: 1, reason: '', activity_id: '' });
@@ -421,6 +422,20 @@ export default function DayExtensionsPage() {
                     <option value="maintenance">{t('صيانة', 'Maintenance')}</option>
                     <option value="emergency">{t('طارئ', 'Emergency')}</option>
                     <option value="other">{t('أخرى', 'Other')}</option>
+                  </select>
+                </div>
+
+                <div>
+                  <Label>{t('الفرع', 'Branch')}</Label>
+                  <select
+                    className="w-full border rounded-md px-3 py-2 text-sm bg-white"
+                    value={newClosure.branch_id}
+                    onChange={(e) => setNewClosure({ ...newClosure, branch_id: e.target.value })}
+                  >
+                    <option value="all">{t('جميع الفروع', 'All Branches')}</option>
+                    {branches.map(b => (
+                      <option key={b.id} value={b.id}>{language === 'ar' ? b.name_ar : b.name}</option>
+                    ))}
                   </select>
                 </div>
 

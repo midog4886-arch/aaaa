@@ -163,6 +163,7 @@ class ClosureCreate(BaseModel):
     stop_type: Optional[str] = "full_day"
     stop_hours: Optional[float] = 0
     affected_times: Optional[List[str]] = None
+    branch_id: Optional[str] = "all"
 
 class ExtensionApply(BaseModel):
     closure_id: str
@@ -229,6 +230,7 @@ async def create_closure(data: ClosureCreate, user=Depends(get_current_user)):
         "stop_type": data.stop_type or "full_day",
         "stop_hours": data.stop_hours or 0,
         "affected_times": data.affected_times or [],
+        "branch_id": data.branch_id or "all",
         "applied": False,
         "applied_count": 0,
         "created_by": user.get("username", ""),
@@ -271,8 +273,9 @@ async def apply_extension(data: ExtensionApply, user=Depends(get_current_user)):
 
     today_str = datetime.now().strftime('%Y-%m-%d')
     query = {"activities": {"$elemMatch": {"end_date": {"$gte": today_str}}}}
-    if data.branch_id and data.branch_id != "all":
-        query["branch_id"] = data.branch_id
+    apply_branch = data.branch_id or closure.get("branch_id", "all")
+    if apply_branch and apply_branch != "all":
+        query["branch_id"] = apply_branch
 
     members = await db.members.find(query).to_list(10000)
     extended_count = 0
