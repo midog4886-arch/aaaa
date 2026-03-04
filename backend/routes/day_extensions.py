@@ -269,7 +269,8 @@ async def apply_extension(data: ExtensionApply, user=Depends(get_current_user)):
     closure_weekdays = get_closure_weekdays(closure_start, closure_end)
     fallback_days = data.days
 
-    query = {"activities": {"$elemMatch": {"status": "active", "end_date": {"$exists": True, "$ne": ""}}}}
+    today_str = datetime.now().strftime('%Y-%m-%d')
+    query = {"activities": {"$elemMatch": {"end_date": {"$gte": today_str}}}}
     if data.branch_id and data.branch_id != "all":
         query["branch_id"] = data.branch_id
 
@@ -303,7 +304,8 @@ async def apply_extension(data: ExtensionApply, user=Depends(get_current_user)):
         missed_info = {}
 
         for act in activities:
-            if act.get("status") != "active" or not act.get("end_date"):
+            act_end = act.get("end_date", "")
+            if not act_end or act_end < today_str:
                 continue
             if scope == "specific" and activity_ids:
                 if act.get("activity_id") not in activity_ids:
