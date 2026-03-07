@@ -765,40 +765,63 @@ export const InvoicesPage = () => {
   };
   
   // Share to WhatsApp directly (without PDF)
-  const handleShareWhatsApp = () => {
-    if (!selectedInvoice) return;
+  const [sharingWhatsApp, setSharingWhatsApp] = useState(false);
+
+  const handleShareWhatsApp = async () => {
+    if (!selectedInvoice || !printRef.current) return;
     
-    const invoiceNum = selectedInvoice.invoice_number || selectedInvoice.id.slice(0,8);
-    const branchName = getBranchName(selectedInvoice.branch_id);
-    const phone = selectedInvoice.customer_phone?.replace(/^0/, '966') || '';
-    
-    const items = selectedInvoice.items?.map(item => 
-      `• ${item.activity_name}: ${item.fee} ر.س`
-    ).join('\n') || '';
-    
-    const message = `السلام عليكم،
-
-📄 *فاتورة رقم #${invoiceNum}*
-
-${items}
-
-💰 المجموع الفرعي: ${selectedInvoice.subtotal} ر.س
-${selectedInvoice.discount > 0 ? `🎁 الخصم: ${selectedInvoice.discount} ر.س\n` : ''}📊 ضريبة القيمة المضافة (15%): ${selectedInvoice.vat_amount} ر.س
-✅ *الإجمالي: ${selectedInvoice.total} ر.س*
-
-🏢 الفرع: ${branchName}
-📅 التاريخ: ${new Date(selectedInvoice.created_at).toLocaleDateString('ar-SA')}
-
-شكراً لكم،
-شركة اداء الابطال العالمية للرياضة`;
-
-    if (phone) {
-      window.open(`https://wa.me/${phone}?text=${encodeURIComponent(message)}`, '_blank');
-    } else {
-      // Copy message to clipboard and open WhatsApp
-      navigator.clipboard.writeText(message);
-      toast.success(language === 'ar' ? 'تم نسخ الرسالة! يمكنك لصقها في الواتساب' : 'Message copied! Paste it in WhatsApp');
-      window.open('https://wa.me/', '_blank');
+    setSharingWhatsApp(true);
+    try {
+      const canvas = await html2canvas(printRef.current, {
+        scale: 2,
+        useCORS: true,
+        backgroundColor: '#ffffff',
+        logging: false,
+      });
+      
+      const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+      const invoiceNum = selectedInvoice.invoice_number || selectedInvoice.id.slice(0,8);
+      const fileName = `فاتورة_${invoiceNum}.png`;
+      const file = new File([blob], fileName, { type: 'image/png' });
+      
+      const message = `📄 فاتورة رقم #${invoiceNum} - الإجمالي: ${selectedInvoice.total} ر.س\nشركة اداء الابطال العالمية للرياضة`;
+      
+      if (navigator.canShare && navigator.canShare({ files: [file] })) {
+        await navigator.share({
+          text: message,
+          files: [file],
+        });
+        toast.success(language === 'ar' ? 'تمت المشاركة بنجاح' : 'Shared successfully');
+      } else {
+        const link = document.createElement('a');
+        link.href = canvas.toDataURL('image/png');
+        link.download = fileName;
+        link.click();
+        
+        const phone = selectedInvoice.customer_phone?.replace(/^0/, '966') || '';
+        const whatsappMsg = encodeURIComponent(message);
+        if (phone) {
+          window.open(`https://wa.me/${phone}?text=${whatsappMsg}`, '_blank');
+        } else {
+          window.open(`https://wa.me/?text=${whatsappMsg}`, '_blank');
+        }
+        toast.success(language === 'ar' ? 'تم تحميل صورة الفاتورة! أرفقها في الواتساب' : 'Invoice image downloaded! Attach it in WhatsApp');
+      }
+    } catch (error) {
+      if (error.name !== 'AbortError') {
+        const phone = selectedInvoice.customer_phone?.replace(/^0/, '966') || '';
+        const invoiceNum = selectedInvoice.invoice_number || selectedInvoice.id.slice(0,8);
+        const items = selectedInvoice.items?.map(item => `• ${item.activity_name}: ${item.fee} ر.س`).join('\n') || '';
+        const message = `السلام عليكم،\n\n📄 *فاتورة رقم #${invoiceNum}*\n\n${items}\n\n✅ *الإجمالي: ${selectedInvoice.total} ر.س*\n\nشكراً لكم،\nشركة اداء الابطال العالمية للرياضة`;
+        if (phone) {
+          window.open(`https://wa.me/${phone}?text=${encodeURIComponent(message)}`, '_blank');
+        } else {
+          navigator.clipboard?.writeText(message);
+          toast.info(language === 'ar' ? 'تم نسخ الرسالة' : 'Message copied');
+        }
+      }
+    } finally {
+      setSharingWhatsApp(false);
     }
   };
 
@@ -4353,8 +4376,8 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
             <DialogFooter className="flex flex-col gap-3 sm:flex-col">
               <div className="flex flex-wrap gap-2 justify-center border-b pb-3">
                 <Button variant="outline" onClick={handlePrint} size="sm"><Printer className="w-4 h-4 me-1" />{t('print')}</Button>
-                <Button variant="outline" onClick={handleShareWhatsApp} size="sm" className="bg-green-50 border-green-400 text-green-700 hover:bg-green-100">
-                  <MessageSquare className="w-4 h-4 me-1" />
+                <Button variant="outline" onClick={handleShareWhatsApp} disabled={sharingWhatsApp} size="sm" className="bg-green-50 border-green-400 text-green-700 hover:bg-green-100">
+                  {sharingWhatsApp ? <Loader2 className="w-4 h-4 me-1 animate-spin" /> : <MessageSquare className="w-4 h-4 me-1" />}
                   {language === 'ar' ? 'واتساب' : 'WhatsApp'}
                 </Button>
                 <Button variant="outline" onClick={handleSaveAsPdfOnly} disabled={savingPdf} size="sm" className="bg-blue-50 border-blue-400 text-blue-700 hover:bg-blue-100">
