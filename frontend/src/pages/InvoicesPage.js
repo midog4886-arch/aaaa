@@ -4350,30 +4350,34 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
                 </div>
               </div>
             )}
-            <DialogFooter className="flex-wrap gap-2">
-              <Button variant="outline" onClick={() => setIsViewDialogOpen(false)}>{t('close')}</Button>
-              <Button variant="outline" onClick={handleShareWhatsApp} className="bg-green-50 border-green-400 text-green-700 hover:bg-green-100">
-                <MessageSquare className="w-4 h-4 me-2" />
-                {language === 'ar' ? 'مشاركة واتساب' : 'Share WhatsApp'}
-              </Button>
-              <Button variant="outline" onClick={handleSaveAsPdfOnly} disabled={savingPdf} className="bg-blue-50 border-blue-400 text-blue-700 hover:bg-blue-100">
-                {savingPdf ? <Loader2 className="w-4 h-4 me-2 animate-spin" /> : <FileText className="w-4 h-4 me-2" />}
-                {language === 'ar' ? 'حفظ PDF' : 'Save PDF'}
-              </Button>
-              <Button variant="outline" onClick={handleSaveAsPdf} disabled={savingPdf} className="bg-red-50 border-red-400 text-red-700 hover:bg-red-100">
-                {savingPdf ? <Loader2 className="w-4 h-4 me-2 animate-spin" /> : <FileText className="w-4 h-4 me-2" />}
-                {language === 'ar' ? 'PDF + واتساب' : 'PDF + WhatsApp'}
-              </Button>
-              <Button variant="outline" onClick={handlePrintRegistrationForm} className="bg-gray-800 border-gray-700 text-white hover:bg-gray-900">
-                <FileText className="w-4 h-4 me-2" />
-                {language === 'ar' ? 'استمارة تسجيل' : 'Registration Form'}
-              </Button>
-              <Button variant="outline" onClick={handlePrint}><Printer className="w-4 h-4 me-2" />{t('print')}</Button>
-              {selectedInvoice?.status === 'pending' && <Button variant="outline" className="text-blue-600 border-blue-300" onClick={() => openEditDialog(selectedInvoice)}><Edit className="w-4 h-4 me-2" />{language === 'ar' ? 'تعديل' : 'Edit'}</Button>}
-              {selectedInvoice?.status === 'cancelled' && <Button variant="outline" onClick={() => handleRestoreInvoice(selectedInvoice.id)}><RotateCcw className="w-4 h-4 me-2" />{language === 'ar' ? 'استرجاع الفاتورة' : 'Restore'}</Button>}
-              {selectedInvoice?.status === 'paid' && <Button variant="outline" className="text-purple-600 border-purple-300" onClick={() => { setIsViewDialogOpen(false); openRefundDialog(selectedInvoice); }}><RefreshCcw className="w-4 h-4 me-2" />{language === 'ar' ? 'استرجاع مبلغ' : 'Refund'}</Button>}
-              {selectedInvoice?.status === 'pending' && <Button onClick={() => handleMarkPaid(selectedInvoice.id)}><CheckCircle className="w-4 h-4 me-2" />{language === 'ar' ? 'تم الدفع' : 'Mark Paid'}</Button>}
-              {isAdmin && <Button variant="destructive" onClick={() => handleDeleteInvoice(selectedInvoice?.id, selectedInvoice?.status)}><Trash2 className="w-4 h-4 me-2" />{language === 'ar' ? 'حذف' : 'Delete'}</Button>}
+            <DialogFooter className="flex flex-col gap-3 sm:flex-col">
+              <div className="flex flex-wrap gap-2 justify-center border-b pb-3">
+                <Button variant="outline" onClick={handlePrint} size="sm"><Printer className="w-4 h-4 me-1" />{t('print')}</Button>
+                <Button variant="outline" onClick={handleShareWhatsApp} size="sm" className="bg-green-50 border-green-400 text-green-700 hover:bg-green-100">
+                  <MessageSquare className="w-4 h-4 me-1" />
+                  {language === 'ar' ? 'واتساب' : 'WhatsApp'}
+                </Button>
+                <Button variant="outline" onClick={handleSaveAsPdfOnly} disabled={savingPdf} size="sm" className="bg-blue-50 border-blue-400 text-blue-700 hover:bg-blue-100">
+                  {savingPdf ? <Loader2 className="w-4 h-4 me-1 animate-spin" /> : <FileText className="w-4 h-4 me-1" />}
+                  PDF
+                </Button>
+                <Button variant="outline" onClick={handleSaveAsPdf} disabled={savingPdf} size="sm" className="bg-emerald-50 border-emerald-400 text-emerald-700 hover:bg-emerald-100">
+                  {savingPdf ? <Loader2 className="w-4 h-4 me-1 animate-spin" /> : <MessageSquare className="w-4 h-4 me-1" />}
+                  PDF + {language === 'ar' ? 'واتساب' : 'WA'}
+                </Button>
+              </div>
+              <div className="flex flex-wrap gap-2 justify-center">
+                <Button variant="outline" onClick={handlePrintRegistrationForm} size="sm" className="bg-gray-800 border-gray-700 text-white hover:bg-gray-900">
+                  <FileText className="w-4 h-4 me-1" />
+                  {language === 'ar' ? 'استمارة تسجيل' : 'Registration Form'}
+                </Button>
+                {selectedInvoice?.status === 'pending' && <Button variant="outline" size="sm" className="text-blue-600 border-blue-300" onClick={() => openEditDialog(selectedInvoice)}><Edit className="w-4 h-4 me-1" />{language === 'ar' ? 'تعديل' : 'Edit'}</Button>}
+                {selectedInvoice?.status === 'pending' && <Button size="sm" onClick={() => handleMarkPaid(selectedInvoice.id)}><CheckCircle className="w-4 h-4 me-1" />{language === 'ar' ? 'تم الدفع' : 'Mark Paid'}</Button>}
+                {selectedInvoice?.status === 'cancelled' && <Button variant="outline" size="sm" onClick={() => handleRestoreInvoice(selectedInvoice.id)}><RotateCcw className="w-4 h-4 me-1" />{language === 'ar' ? 'استرجاع' : 'Restore'}</Button>}
+                {selectedInvoice?.status === 'paid' && <Button variant="outline" size="sm" className="text-purple-600 border-purple-300" onClick={() => { setIsViewDialogOpen(false); openRefundDialog(selectedInvoice); }}><RefreshCcw className="w-4 h-4 me-1" />{language === 'ar' ? 'استرجاع مبلغ' : 'Refund'}</Button>}
+                {isAdmin && <Button variant="destructive" size="sm" onClick={() => handleDeleteInvoice(selectedInvoice?.id, selectedInvoice?.status)}><Trash2 className="w-4 h-4 me-1" />{language === 'ar' ? 'حذف' : 'Delete'}</Button>}
+                <Button variant="outline" size="sm" onClick={() => setIsViewDialogOpen(false)}>{t('close')}</Button>
+              </div>
             </DialogFooter>
           </DialogContent>
         </Dialog>
