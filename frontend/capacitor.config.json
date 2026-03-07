@@ -1,6 +1,6 @@
 {
   "appId": "com.champions.academy.member",
-  "appName": "أكاديمية الأبطال",
+  "appName": "أكاديمية أداء الأبطال العالمية للرياضة",
   "webDir": "build",
   "server": {
     "androidScheme": "https",
