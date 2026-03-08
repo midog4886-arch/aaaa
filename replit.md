@@ -59,6 +59,7 @@ frontend/
 - `MONGO_URL` - MongoDB Atlas connection string (secret)
 - `DB_NAME` - MongoDB database name
 - `JWT_SECRET_KEY` - JWT signing secret
+- `FIREBASE_SERVICE_ACCOUNT` - Firebase Admin SDK service account JSON (for FCM push notifications)
 
 ## Recent Changes
 - Added Training Schedule Reminders - TrainingReminder component on member dashboard shows today's sessions with attendance status, backend parses schedule text for day/time matching (sources: member.activities + invoices)
@@ -92,6 +93,10 @@ frontend/
 - Member Freeze/Suspension (تجميد العضوية): Admins can temporarily freeze member subscriptions from the Members page. Features: freeze with date range and reason (travel/medical/personal/other), auto-extend subscription end dates by freeze duration, block attendance check-in during freeze, cancel freeze with rollback, 30-day annual limit per member, freeze stats (days used/remaining), freeze history log. Backend: routes/freezes.py with MongoDB member_freezes collection. Endpoints: POST /api/freezes, POST /api/freezes/{id}/cancel, GET /api/freezes/member/{id}, GET /api/freezes/active, GET /api/freezes/member/{id}/stats. Frontend: Snowflake button per member + freeze tab in member detail dialog. Notifications sent to member on freeze/unfreeze.
 
 - Coach Attendance (حضور المدربين): Track coach check-in/check-out times at /admin/coach-attendance. Features: daily attendance view with check-in/check-out buttons, mark absent/leave with reason, auto-calculate work hours, edit records manually, monthly report with attendance summary per coach, CSV export. Backend: routes/coach_attendance.py with MongoDB coach_attendance collection. Sidebar: under Activities & Training group. Uses Saudi timezone (UTC+3).
+
+- Native Android Push Notifications (إشعارات أندرويد): Firebase Cloud Messaging (FCM) integration for native Android push notifications via Capacitor. Hybrid system: Web Push (VAPID) for browser users + FCM for Android app users. Firebase project: champions-academy-229ce. Backend detects subscription platform (web/android) and sends via appropriate channel. PushNotificationManager component auto-detects native vs web environment. Files: google-services.json in android/app/, firebase-admin SDK on backend, @capacitor/push-notifications on frontend.
+
+- WhatsApp Invoice Image Sharing: WhatsApp share button captures invoice as PNG image using html2canvas, shares via Web Share API on mobile or downloads image + opens WhatsApp on desktop. Fallback to text-only message on error.
 
 ## Known Issues
 - MongoDB Atlas SSL handshake may fail with `TLSV1_ALERT_INTERNAL_ERROR` - this is typically caused by the Replit IP not being whitelisted in MongoDB Atlas Network Access settings. The user needs to add `0.0.0.0/0` (allow all) in MongoDB Atlas Network Access.
