@@ -46,6 +46,8 @@ const LoyaltyPage = () => {
   });
   const [adjustForm, setAdjustForm] = useState({ points: 0, reason: '', admin_notes: '' });
   const [memberSearch, setMemberSearch] = useState('');
+  const [newPointItemDialog, setNewPointItemDialog] = useState(false);
+  const [newPointItem, setNewPointItem] = useState({ key: '', label: '', value: 10 });
 
   const fetchData = useCallback(async () => {
     try {
@@ -507,10 +509,13 @@ const LoyaltyPage = () => {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {/* Points Settings */}
             <Card>
-              <CardHeader>
+              <CardHeader className="flex flex-row items-center justify-between">
                 <CardTitle>إعدادات النقاط</CardTitle>
+                <Button size="sm" onClick={() => { setNewPointItem({ key: '', label: '', value: 10 }); setNewPointItemDialog(true); }}>
+                  <Plus className="w-4 h-4 me-1" /> إضافة
+                </Button>
               </CardHeader>
-              <CardContent className="space-y-4">
+              <CardContent className="space-y-3">
                 {pointsSettings && Object.entries(pointsSettings).map(([key, value]) => {
                   if (key === 'id' || key === 'type') return null;
                   const labels = {
@@ -525,15 +530,26 @@ const LoyaltyPage = () => {
                     video_watch_points: 'نقاط مشاهدة فيديو',
                     birthday_points: 'نقاط عيد الميلاد'
                   };
+                  const defaultKeys = ['attendance_points', 'streak_5_days_bonus', 'streak_10_days_bonus', 'monthly_renewal_points', 'quarterly_renewal_points', 'yearly_renewal_points', 'referral_points', 'coach_rating_points', 'video_watch_points', 'birthday_points'];
+                  const isCustom = !defaultKeys.includes(key);
                   return (
-                    <div key={key} className="flex items-center justify-between">
-                      <Label>{labels[key] || key}</Label>
+                    <div key={key} className="flex items-center justify-between gap-2 p-2 rounded-lg hover:bg-gray-50 border">
+                      <Label className="flex-1 text-sm">{labels[key] || key}</Label>
                       <Input
                         type="number"
                         value={value}
-                        onChange={(e) => setPointsSettings({...pointsSettings, [key]: parseInt(e.target.value)})}
-                        className="w-24 text-center"
+                        onChange={(e) => setPointsSettings({...pointsSettings, [key]: parseInt(e.target.value) || 0})}
+                        className="w-20 text-center"
                       />
+                      {isCustom && (
+                        <Button variant="ghost" size="icon" className="text-red-500 hover:text-red-700 h-8 w-8" onClick={() => {
+                          const updated = {...pointsSettings};
+                          delete updated[key];
+                          setPointsSettings(updated);
+                        }}>
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
+                      )}
                     </div>
                   );
                 })}
@@ -731,6 +747,59 @@ const LoyaltyPage = () => {
             <Button variant="outline" onClick={() => setAdjustPointsDialogOpen(false)}>إلغاء</Button>
             <Button onClick={handleAdjustPoints} disabled={!selectedMember || !adjustForm.reason}>
               تأكيد التعديل
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={newPointItemDialog} onOpenChange={setNewPointItemDialog}>
+        <DialogContent className="max-w-md" dir="rtl">
+          <DialogHeader>
+            <DialogTitle>إضافة عنصر نقاط جديد</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label>اسم العنصر (عربي)</Label>
+              <Input
+                value={newPointItem.label}
+                onChange={(e) => setNewPointItem({...newPointItem, label: e.target.value})}
+                placeholder="مثال: نقاط المشاركة في البطولة"
+              />
+            </div>
+            <div>
+              <Label>المعرّف (بالإنجليزي)</Label>
+              <Input
+                value={newPointItem.key}
+                onChange={(e) => setNewPointItem({...newPointItem, key: e.target.value.replace(/\s/g, '_').toLowerCase()})}
+                placeholder="مثال: tournament_points"
+                dir="ltr"
+              />
+            </div>
+            <div>
+              <Label>عدد النقاط</Label>
+              <Input
+                type="number"
+                value={newPointItem.value}
+                onChange={(e) => setNewPointItem({...newPointItem, value: parseInt(e.target.value) || 0})}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setNewPointItemDialog(false)}>إلغاء</Button>
+            <Button onClick={() => {
+              if (!newPointItem.key || !newPointItem.label) {
+                toast({ title: 'يرجى تعبئة جميع الحقول', variant: 'destructive' });
+                return;
+              }
+              if (pointsSettings && pointsSettings[newPointItem.key] !== undefined) {
+                toast({ title: 'هذا المعرّف موجود مسبقاً', variant: 'destructive' });
+                return;
+              }
+              setPointsSettings({...pointsSettings, [newPointItem.key]: newPointItem.value});
+              setNewPointItemDialog(false);
+              toast({ title: `تم إضافة "${newPointItem.label}" - اضغط حفظ لتأكيد التغييرات` });
+            }} disabled={!newPointItem.key || !newPointItem.label}>
+              إضافة
             </Button>
           </DialogFooter>
         </DialogContent>
