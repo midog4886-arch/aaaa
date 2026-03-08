@@ -1,6 +1,6 @@
 """
 Push Notifications API - نظام إشعارات Push
-Web Push Notifications for member portal
+Web Push + Firebase Cloud Messaging for Android
 """
 from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
@@ -13,26 +13,54 @@ from pywebpush import webpush, WebPushException
 
 router = APIRouter(prefix="/push-notifications", tags=["push-notifications"])
 
-# Database connection
 from motor.motor_asyncio import AsyncIOMotorClient
 mongo_url = os.environ.get('MONGO_URL')
 client = AsyncIOMotorClient(mongo_url)
 db = client[os.environ.get('DB_NAME')]
 
-# VAPID keys for Web Push
-# Generate keys: vapid --gen
 VAPID_PUBLIC_KEY = os.environ.get('VAPID_PUBLIC_KEY', 'BLBx-hf2WrL2qEa0qKb-aCJbcxEvyn62GDTyyP9KTS5K7ZL0K7TfmOKSPqp8vQF0DaG8hgSFYHdBYq_VuaJSbxQ')
 VAPID_PRIVATE_KEY = os.environ.get('VAPID_PRIVATE_KEY', 'BQv3sSRJtUCFQiEZ6z9IXPKHFuJ6E9d0cL0pFQxXVgM')
 VAPID_CLAIMS = {
     "sub": "mailto:admin@globalchampions.sa"
 }
 
+_firebase_initialized = False
 
-# ============ MODELS ============
+def _init_firebase():
+    global _firebase_initialized
+    if _firebase_initialized:
+        return True
+    try:
+        import firebase_admin
+        from firebase_admin import credentials
+        
+        firebase_creds = os.environ.get('FIREBASE_SERVICE_ACCOUNT')
+        if firebase_creds:
+            cred_dict = json.loads(firebase_creds)
+            cred = credentials.Certificate(cred_dict)
+            firebase_admin.initialize_app(cred)
+            _firebase_initialized = True
+            print("Firebase Admin SDK initialized successfully")
+            return True
+        
+        cred_path = os.path.join(os.path.dirname(__file__), '..', 'firebase-service-account.json')
+        if os.path.exists(cred_path):
+            cred = credentials.Certificate(cred_path)
+            firebase_admin.initialize_app(cred)
+            _firebase_initialized = True
+            print("Firebase Admin SDK initialized from file")
+            return True
+            
+        print("Firebase credentials not found - FCM notifications disabled")
+        return False
+    except Exception as e:
+        print(f"Firebase initialization error: {e}")
+        return False
+
 
 class PushSubscription(BaseModel):
     endpoint: str
-    keys: dict  # Contains p256dh and auth keys
+    keys: dict
 
 
 class SubscriptionCreate(BaseModel):
@@ -50,36 +78,46 @@ class NotificationPayload(BaseModel):
     data: Optional[dict] = None
 
 
-# ============ ROUTES ============
-
 @router.get("/vapid-public-key")
 async def get_vapid_public_key():
-    """Get VAPID public key for client subscription"""
     return {"publicKey": VAPID_PUBLIC_KEY}
 
 
 @router.post("/subscribe")
 async def subscribe_to_push(data: SubscriptionCreate):
-    """Subscribe a member to push notifications"""
     try:
+        is_fcm = data.subscription.endpoint.startswith('fcm://')
+        platform = data.subscription.keys.get('platform', 'web')
+        
         subscription_data = {
             "id": str(uuid.uuid4()),
             "member_id": data.member_id,
             "endpoint": data.subscription.endpoint,
             "keys": data.subscription.keys,
+            "platform": platform if is_fcm else "web",
             "created_at": datetime.now(timezone.utc).isoformat(),
             "is_active": True
         }
         
-        # Check if subscription already exists for this endpoint
-        existing = await db.push_subscriptions.find_one({"endpoint": data.subscription.endpoint})
+        if is_fcm:
+            fcm_token = data.subscription.keys.get('fcm_token', '')
+            existing = await db.push_subscriptions.find_one({
+                "$or": [
+                    {"endpoint": data.subscription.endpoint},
+                    {"keys.fcm_token": fcm_token, "platform": {"$in": ["android", "ios"]}}
+                ]
+            })
+        else:
+            existing = await db.push_subscriptions.find_one({"endpoint": data.subscription.endpoint})
+        
         if existing:
-            # Update existing subscription
             await db.push_subscriptions.update_one(
-                {"endpoint": data.subscription.endpoint},
+                {"_id": existing["_id"]},
                 {"$set": {
                     "member_id": data.member_id,
+                    "endpoint": data.subscription.endpoint,
                     "keys": data.subscription.keys,
+                    "platform": platform if is_fcm else "web",
                     "updated_at": datetime.now(timezone.utc).isoformat(),
                     "is_active": True
                 }}
@@ -95,7 +133,6 @@ async def subscribe_to_push(data: SubscriptionCreate):
 
 @router.post("/unsubscribe")
 async def unsubscribe_from_push(endpoint: str):
-    """Unsubscribe from push notifications"""
     result = await db.push_subscriptions.update_one(
         {"endpoint": endpoint},
         {"$set": {"is_active": False}}
@@ -109,7 +146,6 @@ async def unsubscribe_from_push(endpoint: str):
 
 @router.get("/subscription-status/{member_id}")
 async def get_subscription_status(member_id: str):
-    """Check if member has an active push subscription"""
     subscription = await db.push_subscriptions.find_one({
         "member_id": member_id,
         "is_active": True
@@ -117,12 +153,65 @@ async def get_subscription_status(member_id: str):
     
     return {
         "subscribed": subscription is not None,
-        "endpoint": subscription.get("endpoint") if subscription else None
+        "endpoint": subscription.get("endpoint") if subscription else None,
+        "platform": subscription.get("platform", "web") if subscription else None
     }
 
 
+async def send_fcm_notification(token: str, payload: NotificationPayload):
+    try:
+        if not _init_firebase():
+            print("Firebase not initialized, skipping FCM notification")
+            return False
+            
+        from firebase_admin import messaging
+        
+        message = messaging.Message(
+            notification=messaging.Notification(
+                title=payload.title,
+                body=payload.body,
+            ),
+            data={
+                "url": payload.url or "/",
+                "tag": payload.tag or "",
+                "type": (payload.data or {}).get("type", "general"),
+            },
+            token=token,
+            android=messaging.AndroidConfig(
+                priority="high",
+                notification=messaging.AndroidNotification(
+                    icon="ic_launcher",
+                    color="#1e40af",
+                    sound="default",
+                    click_action="FCM_PLUGIN_ACTIVITY",
+                    channel_id="champions_notifications",
+                ),
+            ),
+        )
+        
+        messaging.send(message)
+        return True
+        
+    except Exception as e:
+        error_str = str(e)
+        print(f"FCM notification failed: {error_str}")
+        if 'NOT_FOUND' in error_str or 'UNREGISTERED' in error_str or 'INVALID_ARGUMENT' in error_str:
+            await db.push_subscriptions.update_one(
+                {"keys.fcm_token": token},
+                {"$set": {"is_active": False}}
+            )
+        return False
+
+
 async def send_push_notification(subscription: dict, payload: NotificationPayload):
-    """Send a push notification to a single subscription"""
+    platform = subscription.get("platform", "web")
+    
+    if platform in ["android", "ios"]:
+        fcm_token = subscription.get("keys", {}).get("fcm_token")
+        if fcm_token:
+            return await send_fcm_notification(fcm_token, payload)
+        return False
+    
     try:
         notification_data = {
             "title": payload.title,
@@ -147,7 +236,6 @@ async def send_push_notification(subscription: dict, payload: NotificationPayloa
         
     except WebPushException as e:
         print(f"Push notification failed: {e}")
-        # If subscription is invalid, mark it as inactive
         if e.response and e.response.status_code in [404, 410]:
             await db.push_subscriptions.update_one(
                 {"endpoint": subscription["endpoint"]},
@@ -157,10 +245,8 @@ async def send_push_notification(subscription: dict, payload: NotificationPayloa
 
 
 async def send_notification_to_all_members(payload: NotificationPayload, branch_id: Optional[str] = None):
-    """Send push notification to all subscribed members"""
     query = {"is_active": True}
     
-    # If branch_id specified, get members of that branch and filter subscriptions
     if branch_id:
         members = await db.members.find(
             {"branch_id": branch_id}, 
@@ -189,7 +275,6 @@ async def send_notification_to_all_members(payload: NotificationPayload, branch_
 
 
 async def notify_new_video(video_title: str, video_id: str, branch_id: Optional[str] = None):
-    """Send notification about a new daily video"""
     payload = NotificationPayload(
         title="🎬 فيديو جديد!",
         body=video_title,
@@ -241,15 +326,17 @@ async def broadcast_notification(data: BroadcastPayload):
 
 @router.get("/subscribers-count")
 async def get_subscribers_count():
-    count = await db.push_subscriptions.count_documents({"is_active": True})
-    return {"count": count}
+    total = await db.push_subscriptions.count_documents({"is_active": True})
+    web_count = await db.push_subscriptions.count_documents({"is_active": True, "platform": "web"})
+    android_count = await db.push_subscriptions.count_documents({"is_active": True, "platform": "android"})
+    return {"count": total, "web": web_count, "android": android_count}
 
 
 @router.get("/subscribers-list")
 async def get_subscribers_list():
     subscriptions = await db.push_subscriptions.find(
         {"is_active": True},
-        {"_id": 0, "member_id": 1, "created_at": 1, "updated_at": 1}
+        {"_id": 0, "member_id": 1, "created_at": 1, "updated_at": 1, "platform": 1}
     ).to_list(10000)
 
     member_ids = list(set(s["member_id"] for s in subscriptions if s.get("member_id")))
@@ -270,6 +357,7 @@ async def get_subscribers_list():
             "name": name,
             "phone": member.get("phone", ""),
             "branch_id": member.get("branch_id", ""),
+            "platform": sub.get("platform", "web"),
             "subscribed_at": sub.get("updated_at") or sub.get("created_at", "")
         })
 

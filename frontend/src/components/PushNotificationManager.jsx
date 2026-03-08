@@ -7,33 +7,33 @@ import axios from 'axios';
 
 const API_URL = '';
 
-/**
- * Push Notification Manager Component
- * مكون إدارة إشعارات Push
- */
+const isNativeApp = () => {
+  return window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform();
+};
+
 const PushNotificationManager = ({ memberId, compact = false }) => {
   const [isSupported, setIsSupported] = useState(false);
   const [isSubscribed, setIsSubscribed] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [permission, setPermission] = useState('default');
 
-  // Check if push notifications are supported
   useEffect(() => {
     const checkSupport = () => {
-      const supported = 'serviceWorker' in navigator && 
-                       'PushManager' in window && 
-                       'Notification' in window;
-      setIsSupported(supported);
-      
-      if (supported) {
-        setPermission(Notification.permission);
+      if (isNativeApp()) {
+        setIsSupported(true);
+      } else {
+        const supported = 'serviceWorker' in navigator && 
+                         'PushManager' in window && 
+                         'Notification' in window;
+        setIsSupported(supported);
+        if (supported) {
+          setPermission(Notification.permission);
+        }
       }
     };
-    
     checkSupport();
   }, []);
 
-  // Check subscription status
   useEffect(() => {
     const checkSubscription = async () => {
       if (!isSupported || !memberId) {
@@ -42,17 +42,15 @@ const PushNotificationManager = ({ memberId, compact = false }) => {
       }
 
       try {
-        // Check with backend
         const response = await axios.get(`${API_URL}/api/push-notifications/subscription-status/${memberId}`);
         setIsSubscribed(response.data.subscribed);
         
-        // Also verify with service worker
-        const registration = await navigator.serviceWorker.ready;
-        const subscription = await registration.pushManager.getSubscription();
-        
-        if (!subscription && response.data.subscribed) {
-          // Backend thinks we're subscribed but we're not
-          setIsSubscribed(false);
+        if (!isNativeApp()) {
+          const registration = await navigator.serviceWorker.ready;
+          const subscription = await registration.pushManager.getSubscription();
+          if (!subscription && response.data.subscribed) {
+            setIsSubscribed(false);
+          }
         }
       } catch (error) {
         console.error('Failed to check subscription:', error);
@@ -64,7 +62,6 @@ const PushNotificationManager = ({ memberId, compact = false }) => {
     checkSubscription();
   }, [isSupported, memberId]);
 
-  // Convert VAPID key from base64 to Uint8Array
   const urlBase64ToUint8Array = (base64String) => {
     const padding = '='.repeat((4 - base64String.length % 4) % 4);
     const base64 = (base64String + padding)
@@ -80,37 +77,93 @@ const PushNotificationManager = ({ memberId, compact = false }) => {
     return outputArray;
   };
 
-  // Subscribe to push notifications
-  const subscribe = useCallback(async () => {
-    if (!isSupported || !memberId) return;
-
-    setIsLoading(true);
-
+  const subscribeNative = useCallback(async () => {
     try {
-      // Request permission
+      const { PushNotifications } = await import('@capacitor/push-notifications');
+      
+      let permResult = await PushNotifications.checkPermissions();
+      if (permResult.receive === 'prompt') {
+        permResult = await PushNotifications.requestPermissions();
+      }
+      
+      if (permResult.receive !== 'granted') {
+        toast.error('يجب السماح بالإشعارات من إعدادات الجهاز');
+        setPermission('denied');
+        return false;
+      }
+      
+      setPermission('granted');
+
+      return new Promise((resolve) => {
+        PushNotifications.addListener('registration', async (token) => {
+          try {
+            await axios.post(`${API_URL}/api/push-notifications/subscribe`, {
+              member_id: memberId,
+              subscription: {
+                endpoint: `fcm://${token.value}`,
+                keys: {
+                  fcm_token: token.value,
+                  platform: 'android'
+                }
+              }
+            });
+            setIsSubscribed(true);
+            toast.success('تم تفعيل الإشعارات بنجاح! 🔔');
+            resolve(true);
+          } catch (error) {
+            console.error('Failed to save FCM token:', error);
+            toast.error('فشل في حفظ التسجيل');
+            resolve(false);
+          }
+        });
+
+        PushNotifications.addListener('registrationError', (err) => {
+          console.error('Registration error:', err);
+          toast.error('فشل في التسجيل للإشعارات');
+          resolve(false);
+        });
+
+        PushNotifications.addListener('pushNotificationReceived', (notification) => {
+          toast.info(notification.title || 'إشعار جديد', {
+            description: notification.body,
+          });
+        });
+
+        PushNotifications.addListener('pushNotificationActionPerformed', (notification) => {
+          const url = notification.notification?.data?.url;
+          if (url) {
+            window.location.href = url;
+          }
+        });
+
+        PushNotifications.register();
+      });
+    } catch (error) {
+      console.error('Native push registration failed:', error);
+      toast.error('فشل في تفعيل الإشعارات');
+      return false;
+    }
+  }, [memberId]);
+
+  const subscribeWeb = useCallback(async () => {
+    try {
       const permissionResult = await Notification.requestPermission();
       setPermission(permissionResult);
 
       if (permissionResult !== 'granted') {
         toast.error('يجب السماح بالإشعارات للاشتراك');
-        setIsLoading(false);
-        return;
+        return false;
       }
 
-      // Get VAPID public key
       const vapidResponse = await axios.get(`${API_URL}/api/push-notifications/vapid-public-key`);
       const vapidPublicKey = vapidResponse.data.publicKey;
 
-      // Get service worker registration
       const registration = await navigator.serviceWorker.ready;
-
-      // Subscribe to push
       const subscription = await registration.pushManager.subscribe({
         userVisibleOnly: true,
         applicationServerKey: urlBase64ToUint8Array(vapidPublicKey)
       });
 
-      // Send subscription to backend
       await axios.post(`${API_URL}/api/push-notifications/subscribe`, {
         member_id: memberId,
         subscription: {
@@ -124,51 +177,69 @@ const PushNotificationManager = ({ memberId, compact = false }) => {
 
       setIsSubscribed(true);
       toast.success('تم تفعيل الإشعارات بنجاح! 🔔');
-
+      return true;
     } catch (error) {
-      console.error('Failed to subscribe:', error);
+      console.error('Web push subscription failed:', error);
       toast.error('فشل في تفعيل الإشعارات');
+      return false;
+    }
+  }, [memberId]);
+
+  const subscribe = useCallback(async () => {
+    if (!isSupported || !memberId) return;
+    setIsLoading(true);
+    try {
+      if (isNativeApp()) {
+        await subscribeNative();
+      } else {
+        await subscribeWeb();
+      }
     } finally {
       setIsLoading(false);
     }
-  }, [isSupported, memberId]);
+  }, [isSupported, memberId, subscribeNative, subscribeWeb]);
 
-  // Unsubscribe from push notifications
   const unsubscribe = useCallback(async () => {
     if (!isSupported) return;
-
     setIsLoading(true);
 
     try {
-      const registration = await navigator.serviceWorker.ready;
-      const subscription = await registration.pushManager.getSubscription();
-
-      if (subscription) {
-        await subscription.unsubscribe();
+      if (isNativeApp()) {
+        const { PushNotifications } = await import('@capacitor/push-notifications');
+        await PushNotifications.removeAllListeners();
         
-        // Notify backend
-        await axios.post(`${API_URL}/api/push-notifications/unsubscribe`, null, {
-          params: { endpoint: subscription.endpoint }
-        });
+        const response = await axios.get(`${API_URL}/api/push-notifications/subscription-status/${memberId}`);
+        if (response.data.endpoint) {
+          await axios.post(`${API_URL}/api/push-notifications/unsubscribe`, null, {
+            params: { endpoint: response.data.endpoint }
+          });
+        }
+      } else {
+        const registration = await navigator.serviceWorker.ready;
+        const subscription = await registration.pushManager.getSubscription();
+
+        if (subscription) {
+          await subscription.unsubscribe();
+          await axios.post(`${API_URL}/api/push-notifications/unsubscribe`, null, {
+            params: { endpoint: subscription.endpoint }
+          });
+        }
       }
 
       setIsSubscribed(false);
       toast.success('تم إلغاء الإشعارات');
-
     } catch (error) {
       console.error('Failed to unsubscribe:', error);
       toast.error('فشل في إلغاء الإشعارات');
     } finally {
       setIsLoading(false);
     }
-  }, [isSupported]);
+  }, [isSupported, memberId]);
 
-  // Don't render if not supported
   if (!isSupported) {
     return null;
   }
 
-  // Compact version (just an icon button)
   if (compact) {
     return (
       <Button
@@ -193,7 +264,6 @@ const PushNotificationManager = ({ memberId, compact = false }) => {
     );
   }
 
-  // Full version
   return (
     <motion.div
       initial={{ opacity: 0, y: 10 }}
@@ -212,12 +282,14 @@ const PushNotificationManager = ({ memberId, compact = false }) => {
             )}
           </div>
           <div>
-            <h3 className="font-bold text-gray-800">إشعارات الفيديوهات الجديدة</h3>
+            <h3 className="font-bold text-gray-800">
+              {isNativeApp() ? 'إشعارات التطبيق' : 'إشعارات الفيديوهات الجديدة'}
+            </h3>
             <p className="text-sm text-gray-500">
               {permission === 'denied' 
-                ? 'تم حظر الإشعارات من إعدادات المتصفح'
+                ? 'تم حظر الإشعارات من إعدادات الجهاز'
                 : isSubscribed 
-                  ? 'سيتم إشعارك عند إضافة فيديو جديد'
+                  ? 'سيتم إشعارك عند إضافة فيديو جديد أو أي تحديث'
                   : 'فعّل الإشعارات لتصلك التحديثات فوراً'
               }
             </p>
@@ -250,7 +322,6 @@ const PushNotificationManager = ({ memberId, compact = false }) => {
         </Button>
       </div>
 
-      {/* Status indicator */}
       <AnimatePresence>
         {isSubscribed && (
           <motion.div
@@ -261,7 +332,7 @@ const PushNotificationManager = ({ memberId, compact = false }) => {
           >
             <div className="flex items-center gap-2 text-sm text-green-600">
               <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
-              الإشعارات مفعّلة - ستصلك تنبيهات الفيديوهات الجديدة
+              الإشعارات مفعّلة - ستصلك تنبيهات الفيديوهات والتحديثات
             </div>
           </motion.div>
         )}
