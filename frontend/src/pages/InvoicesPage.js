@@ -4366,9 +4366,9 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
                   </ul>
                 </div>
 
-                <div className="mt-4 p-3 bg-gradient-to-r from-purple-50 to-blue-50 border border-purple-200 rounded-lg">
-                  <p className="text-xs font-bold text-purple-800 mb-2">🏆 {language === 'ar' ? 'برنامج نقاط الولاء' : 'Loyalty Points Program'}</p>
-                  <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-purple-700">
+                <div className="mt-4 p-3 border-2 border-purple-400 rounded-lg" style={{WebkitPrintColorAdjust: 'exact', printColorAdjust: 'exact'}}>
+                  <p className="text-xs font-bold text-purple-800 mb-2" style={{color: '#6b21a8'}}>🏆 {language === 'ar' ? 'برنامج نقاط الولاء' : 'Loyalty Points Program'}</p>
+                  <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs" style={{color: '#7e22ce'}}>
                     <span>✅ {language === 'ar' ? 'كل حضور: 10 نقاط' : 'Each attendance: 10 pts'}</span>
                     <span>🔥 {language === 'ar' ? 'سلسلة 5 أيام: 50 نقطة' : '5-day streak: 50 pts'}</span>
                     <span>📺 {language === 'ar' ? 'مشاهدة فيديو: 3 نقاط' : 'Watch video: 3 pts'}</span>
@@ -4376,9 +4376,9 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
                     <span>🔄 {language === 'ar' ? 'تجديد شهري: 100 نقطة' : 'Monthly renewal: 100 pts'}</span>
                     <span>🎂 {language === 'ar' ? 'عيد ميلاد: 100 نقطة' : 'Birthday: 100 pts'}</span>
                   </div>
-                  <div className="mt-2 pt-2 border-t border-purple-200">
-                    <p className="text-xs font-bold text-purple-800 mb-1">{language === 'ar' ? 'المستويات والمزايا:' : 'Levels & Benefits:'}</p>
-                    <div className="flex justify-between text-xs text-purple-700">
+                  <div className="mt-2 pt-2 border-t border-purple-400">
+                    <p className="text-xs font-bold mb-1" style={{color: '#6b21a8'}}>{language === 'ar' ? 'المستويات والمزايا:' : 'Levels & Benefits:'}</p>
+                    <div className="flex justify-between text-xs" style={{color: '#7e22ce'}}>
                       <span>🥉 {language === 'ar' ? 'برونزي: 0+' : 'Bronze: 0+'}</span>
                       <span>🥈 {language === 'ar' ? 'فضي: 500+ (خصم 3%)' : 'Silver: 500+ (3% off)'}</span>
                       <span>🥇 {language === 'ar' ? 'ذهبي: 1500+ (خصم 5%)' : 'Gold: 1500+ (5% off)'}</span>
