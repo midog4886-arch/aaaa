@@ -46,11 +46,13 @@ const PushNotificationManager = ({ memberId, compact = false }) => {
         setIsSubscribed(response.data.subscribed);
         
         if (!isNativeApp()) {
-          const registration = await navigator.serviceWorker.ready;
-          const subscription = await registration.pushManager.getSubscription();
-          if (!subscription && response.data.subscribed) {
-            setIsSubscribed(false);
-          }
+          try {
+            const registration = await navigator.serviceWorker.ready;
+            const subscription = await registration.pushManager.getSubscription();
+            if (!subscription && response.data.subscribed) {
+              setIsSubscribed(false);
+            }
+          } catch (e) {}
         }
       } catch (error) {
         console.error('Failed to check subscription:', error);
@@ -79,74 +81,83 @@ const PushNotificationManager = ({ memberId, compact = false }) => {
 
   const subscribeNative = useCallback(async () => {
     try {
-      const { PushNotifications } = await import('@capacitor/push-notifications');
-      
-      let permResult = await PushNotifications.checkPermissions();
-      if (permResult.receive === 'prompt') {
-        permResult = await PushNotifications.requestPermissions();
-      }
-      
-      if (permResult.receive !== 'granted') {
-        toast.error('يجب السماح بالإشعارات من إعدادات الجهاز');
-        setPermission('denied');
-        return false;
-      }
-      
-      setPermission('granted');
+      if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.PushNotifications) {
+        const PushNotifications = window.Capacitor.Plugins.PushNotifications;
+        
+        let permResult = await PushNotifications.checkPermissions();
+        if (permResult.receive === 'prompt') {
+          permResult = await PushNotifications.requestPermissions();
+        }
+        
+        if (permResult.receive !== 'granted') {
+          toast.error('يجب السماح بالإشعارات من إعدادات الجهاز');
+          setPermission('denied');
+          return false;
+        }
+        
+        setPermission('granted');
 
-      return new Promise((resolve) => {
-        PushNotifications.addListener('registration', async (token) => {
-          try {
-            await axios.post(`${API_URL}/api/push-notifications/subscribe`, {
-              member_id: memberId,
-              subscription: {
-                endpoint: `fcm://${token.value}`,
-                keys: {
-                  fcm_token: token.value,
-                  platform: 'android'
+        return new Promise((resolve) => {
+          PushNotifications.addListener('registration', async (token) => {
+            try {
+              await axios.post(`${API_URL}/api/push-notifications/subscribe`, {
+                member_id: memberId,
+                subscription: {
+                  endpoint: `fcm://${token.value}`,
+                  keys: {
+                    fcm_token: token.value,
+                    platform: 'android'
+                  }
                 }
-              }
-            });
-            setIsSubscribed(true);
-            toast.success('تم تفعيل الإشعارات بنجاح! 🔔');
-            resolve(true);
-          } catch (error) {
-            console.error('Failed to save FCM token:', error);
-            toast.error('فشل في حفظ التسجيل');
-            resolve(false);
-          }
-        });
-
-        PushNotifications.addListener('registrationError', (err) => {
-          console.error('Registration error:', err);
-          toast.error('فشل في التسجيل للإشعارات');
-          resolve(false);
-        });
-
-        PushNotifications.addListener('pushNotificationReceived', (notification) => {
-          toast.info(notification.title || 'إشعار جديد', {
-            description: notification.body,
+              });
+              setIsSubscribed(true);
+              toast.success('تم تفعيل الإشعارات بنجاح! 🔔');
+              resolve(true);
+            } catch (error) {
+              console.error('Failed to save FCM token:', error);
+              toast.error('فشل في حفظ التسجيل');
+              resolve(false);
+            }
           });
-        });
 
-        PushNotifications.addListener('pushNotificationActionPerformed', (notification) => {
-          const url = notification.notification?.data?.url;
-          if (url) {
-            window.location.href = url;
-          }
-        });
+          PushNotifications.addListener('registrationError', (err) => {
+            console.error('Registration error:', err);
+            toast.error('فشل في التسجيل للإشعارات');
+            resolve(false);
+          });
 
-        PushNotifications.register();
-      });
+          PushNotifications.addListener('pushNotificationReceived', (notification) => {
+            toast.info(notification.title || 'إشعار جديد', {
+              description: notification.body,
+            });
+          });
+
+          PushNotifications.addListener('pushNotificationActionPerformed', (notification) => {
+            const url = notification.notification?.data?.url;
+            if (url) {
+              window.location.href = url;
+            }
+          });
+
+          PushNotifications.register();
+        });
+      } else {
+        console.log('Native PushNotifications plugin not available, falling back to web push');
+        return await subscribeWeb();
+      }
     } catch (error) {
       console.error('Native push registration failed:', error);
-      toast.error('فشل في تفعيل الإشعارات');
-      return false;
+      return await subscribeWeb();
     }
   }, [memberId]);
 
   const subscribeWeb = useCallback(async () => {
     try {
+      if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+        toast.error('الإشعارات غير مدعومة في هذا المتصفح');
+        return false;
+      }
+
       const permissionResult = await Notification.requestPermission();
       setPermission(permissionResult);
 
@@ -204,26 +215,26 @@ const PushNotificationManager = ({ memberId, compact = false }) => {
     setIsLoading(true);
 
     try {
-      if (isNativeApp()) {
-        const { PushNotifications } = await import('@capacitor/push-notifications');
+      if (isNativeApp() && window.Capacitor?.Plugins?.PushNotifications) {
+        const PushNotifications = window.Capacitor.Plugins.PushNotifications;
         await PushNotifications.removeAllListeners();
-        
-        const response = await axios.get(`${API_URL}/api/push-notifications/subscription-status/${memberId}`);
-        if (response.data.endpoint) {
-          await axios.post(`${API_URL}/api/push-notifications/unsubscribe`, null, {
-            params: { endpoint: response.data.endpoint }
-          });
-        }
-      } else {
-        const registration = await navigator.serviceWorker.ready;
-        const subscription = await registration.pushManager.getSubscription();
-
-        if (subscription) {
-          await subscription.unsubscribe();
-          await axios.post(`${API_URL}/api/push-notifications/unsubscribe`, null, {
-            params: { endpoint: subscription.endpoint }
-          });
-        }
+      }
+      
+      const response = await axios.get(`${API_URL}/api/push-notifications/subscription-status/${memberId}`);
+      if (response.data.endpoint) {
+        await axios.post(`${API_URL}/api/push-notifications/unsubscribe`, null, {
+          params: { endpoint: response.data.endpoint }
+        });
+      }
+      
+      if (!isNativeApp()) {
+        try {
+          const registration = await navigator.serviceWorker.ready;
+          const subscription = await registration.pushManager.getSubscription();
+          if (subscription) {
+            await subscription.unsubscribe();
+          }
+        } catch (e) {}
       }
 
       setIsSubscribed(false);
@@ -282,9 +293,7 @@ const PushNotificationManager = ({ memberId, compact = false }) => {
             )}
           </div>
           <div>
-            <h3 className="font-bold text-gray-800">
-              {isNativeApp() ? 'إشعارات التطبيق' : 'إشعارات الفيديوهات الجديدة'}
-            </h3>
+            <h3 className="font-bold text-gray-800">إشعارات التطبيق</h3>
             <p className="text-sm text-gray-500">
               {permission === 'denied' 
                 ? 'تم حظر الإشعارات من إعدادات الجهاز'

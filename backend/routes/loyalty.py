@@ -145,13 +145,27 @@ async def get_points_settings():
     return serialize_doc(settings)
 
 @router.put("/settings/points")
-async def update_points_settings(settings: PointsSettings):
-    """Update points earning settings"""
-    await db.loyalty_settings.update_one(
-        {"type": "points"},
-        {"$set": {**settings.model_dump(), "type": "points", "updated_at": datetime.now(timezone.utc)}},
-        upsert=True
-    )
+async def update_points_settings(request: dict):
+    """Update points earning settings (supports dynamic custom keys)"""
+    data = {k: v for k, v in request.items() if k not in ("id", "_id", "type", "updated_at")}
+    data["type"] = "points"
+    data["updated_at"] = datetime.now(timezone.utc)
+    existing = await db.loyalty_settings.find_one({"type": "points"})
+    if existing:
+        old_keys = {k for k in existing if k not in ("_id", "type", "updated_at")}
+        new_keys = {k for k in data if k not in ("type", "updated_at")}
+        removed_keys = old_keys - new_keys
+        unset_dict = {k: "" for k in removed_keys}
+        update_ops = {"$set": data}
+        if unset_dict:
+            update_ops["$unset"] = unset_dict
+        await db.loyalty_settings.update_one({"type": "points"}, update_ops)
+    else:
+        await db.loyalty_settings.update_one(
+            {"type": "points"},
+            {"$set": data},
+            upsert=True
+        )
     return {"message": "تم تحديث إعدادات النقاط بنجاح"}
 
 @router.get("/settings/levels")
