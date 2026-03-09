@@ -171,6 +171,30 @@ export const LevelsPage = () => {
     return parseActivityName(activityName).mainActivity;
   };
 
+  const DAY_ARABIC_MAP = {
+    'saturday': ['السبت', 'سبت'],
+    'sunday': ['الأحد', 'الاحد', 'أحد', 'احد'],
+    'monday': ['الاثنين', 'الإثنين', 'اثنين', 'إثنين'],
+    'tuesday': ['الثلاثاء', 'ثلاثاء'],
+    'wednesday': ['الأربعاء', 'الاربعاء', 'أربعاء', 'اربعاء'],
+    'thursday': ['الخميس', 'خميس'],
+    'friday': ['الجمعة', 'جمعة'],
+  };
+
+  const memberMatchesDay = (memberDetail, dayId) => {
+    if (!dayId || !memberDetail?.schedule) return true;
+    const schedule = memberDetail.schedule;
+    const dayNames = DAY_ARABIC_MAP[dayId] || [];
+    return dayNames.some(name => schedule.includes(name));
+  };
+
+  const getFilteredLevelForDay = (level) => {
+    if (!selectedDay) return level;
+    const filteredDetails = (level.members_details || []).filter(m => memberMatchesDay(m, selectedDay));
+    const filteredMembers = filteredDetails.map(m => m.member_id);
+    return { ...level, members: filteredMembers, members_details: filteredDetails };
+  };
+
   // Group levels hierarchically: Main Activity -> Time Slot -> Levels
   const groupedLevels = levels.reduce((acc, level) => {
     const { mainActivity, timeSlot } = parseActivityName(level.activity_name);
@@ -808,23 +832,27 @@ export const LevelsPage = () => {
   }
 
   // Render a level card component with drag & drop support
-  const renderLevelCard = (level, activityId) => {
+  const renderLevelCard = (originalLevel, activityId) => {
+    const level = getFilteredLevelForDay(originalLevel);
     const memberCount = (level.members || []).length;
-    const maxCapacity = activityId === 'swimming' ? 6 : (level.capacity || 10);
+    const maxCapacity = activityId === 'swimming' ? 6 : (originalLevel.capacity || 10);
     const isFull = memberCount >= maxCapacity;
-    const levelMembers = getLevelMembers(level);
-    const isDropTarget = dropTargetLevel === level.id;
+    const levelMembers = (level.members_details || []).map(md => {
+      const fullMember = members.find(m => m.id === md.member_id);
+      return fullMember || { id: md.member_id, name_ar: md.member_name, phone: md.phone };
+    });
+    const isDropTarget = dropTargetLevel === originalLevel.id;
     
     return (
       <div 
-        key={level.id}
+        key={originalLevel.id}
         className={`border rounded-xl overflow-hidden shadow-sm hover:shadow-lg transition-all duration-300 
           ${isFull ? 'border-red-300 bg-red-50/30' : 'bg-white'}
           ${isDropTarget ? 'ring-2 ring-primary ring-offset-2 scale-[1.02]' : ''}`}
-        data-testid={`level-card-${level.id}`}
-        onDragOver={(e) => handleDragOver(e, level)}
+        data-testid={`level-card-${originalLevel.id}`}
+        onDragOver={(e) => handleDragOver(e, originalLevel)}
         onDragLeave={handleDragLeave}
-        onDrop={(e) => handleDrop(e, level)}
+        onDrop={(e) => handleDrop(e, originalLevel)}
       >
         {/* Level Header */}
         <div className={`${getLevelColor(level.level_number)} text-white p-3 flex items-center justify-between`}>
@@ -842,8 +870,8 @@ export const LevelsPage = () => {
               size="icon"
               variant="ghost"
               className="h-8 w-8 text-white hover:bg-white/20"
-              onClick={() => handleEdit(level)}
-              data-testid={`edit-level-${level.id}`}
+              onClick={() => handleEdit(originalLevel)}
+              data-testid={`edit-level-${originalLevel.id}`}
             >
               <Edit className="w-4 h-4" />
             </Button>
@@ -851,8 +879,8 @@ export const LevelsPage = () => {
               size="icon"
               variant="ghost"
               className="h-8 w-8 text-white hover:bg-white/20"
-              onClick={() => handleDelete(level)}
-              data-testid={`delete-level-${level.id}`}
+              onClick={() => handleDelete(originalLevel)}
+              data-testid={`delete-level-${originalLevel.id}`}
             >
               <Trash2 className="w-4 h-4" />
             </Button>
@@ -1108,21 +1136,28 @@ export const LevelsPage = () => {
 
             {/* Weekday Cards */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-              {WEEKDAYS.map((day) => (
-                <Card
-                  key={day.id}
-                  className="cursor-pointer hover:shadow-lg transition-all duration-300 hover:scale-[1.02] overflow-hidden group"
-                  onClick={() => navigateToActivities(day.id)}
-                >
-                  <div className={`bg-gradient-to-br ${day.color} p-6 text-white text-center`}>
-                    <div className="text-4xl mb-3 group-hover:scale-110 transition-transform">{day.icon}</div>
-                    <h3 className="text-xl font-bold">{language === 'ar' ? day.name_ar : day.name_en}</h3>
-                  </div>
-                  <CardContent className="p-3 text-center">
-                    <p className="text-sm text-gray-500">{t('اضغط لعرض الأنشطة', 'Click to view activities')}</p>
-                  </CardContent>
-                </Card>
-              ))}
+              {WEEKDAYS.map((day) => {
+                const dayMembers = levels.reduce((sum, l) => {
+                  const filtered = (l.members_details || []).filter(m => memberMatchesDay(m, day.id));
+                  return sum + filtered.length;
+                }, 0);
+                return (
+                  <Card
+                    key={day.id}
+                    className="cursor-pointer hover:shadow-lg transition-all duration-300 hover:scale-[1.02] overflow-hidden group"
+                    onClick={() => navigateToActivities(day.id)}
+                  >
+                    <div className={`bg-gradient-to-br ${day.color} p-6 text-white text-center`}>
+                      <div className="text-4xl mb-3 group-hover:scale-110 transition-transform">{day.icon}</div>
+                      <h3 className="text-xl font-bold">{language === 'ar' ? day.name_ar : day.name_en}</h3>
+                    </div>
+                    <CardContent className="p-3 text-center">
+                      <p className="text-sm font-bold text-primary">{dayMembers} {t('لاعب', 'player')}</p>
+                      <p className="text-xs text-gray-500">{t('اضغط لعرض الأنشطة', 'Click to view activities')}</p>
+                    </CardContent>
+                  </Card>
+                );
+              })}
             </div>
           </div>
         )}
@@ -1136,7 +1171,7 @@ export const LevelsPage = () => {
               const timeSlots = Object.keys(activityLevels);
               const totalLevels = timeSlots.reduce((sum, slot) => sum + activityLevels[slot].length, 0);
               const totalMembers = timeSlots.reduce((sum, slot) =>
-                sum + activityLevels[slot].reduce((s, l) => s + (l.members || []).length, 0), 0);
+                sum + activityLevels[slot].reduce((s, l) => s + getFilteredLevelForDay(l).members.length, 0), 0);
               const totalCapacity = timeSlots.reduce((sum, slot) =>
                 sum + activityLevels[slot].reduce((s, l) => s + (baseActivity.id === 'swimming' ? 6 : (l.capacity || 10)), 0), 0);
               const fillPct = totalCapacity > 0 ? Math.round((totalMembers / totalCapacity) * 100) : 0;
@@ -1374,7 +1409,7 @@ export const LevelsPage = () => {
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
                   {timeSlots.map(timeSlot => {
                     const slotLevels = getLevelsForTimeSlot(selectedActivityId, timeSlot);
-                    const slotMembers = slotLevels.reduce((sum, l) => sum + (l.members || []).length, 0);
+                    const slotMembers = slotLevels.reduce((sum, l) => sum + getFilteredLevelForDay(l).members.length, 0);
                     const maxCapacity = slotLevels.reduce((sum, l) => sum + (selectedActivityId === 'swimming' ? 6 : (l.capacity || 10)), 0);
                     const fillPercentage = maxCapacity > 0 ? Math.round((slotMembers / maxCapacity) * 100) : 0;
                     
@@ -1517,7 +1552,7 @@ export const LevelsPage = () => {
                             {language === 'ar' ? activity.name_ar : activity.name_en} - {selectedTimeSlotKey}
                           </h3>
                           <p className="text-sm opacity-90">
-                            {slotLevels.length} {t('مستويات', 'levels')} • {slotLevels.reduce((s, l) => s + (l.members || []).length, 0)} {t('لاعب', 'players')}
+                            {slotLevels.length} {t('مستويات', 'levels')} • {slotLevels.reduce((s, l) => s + getFilteredLevelForDay(l).members.length, 0)} {t('لاعب', 'players')}
                           </p>
                         </div>
                       </div>

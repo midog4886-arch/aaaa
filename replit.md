@@ -98,5 +98,9 @@ frontend/
 
 - WhatsApp Invoice Image Sharing: WhatsApp share button captures invoice as PNG image using html2canvas, shares via Web Share API on mobile or downloads image + opens WhatsApp on desktop. Fallback to text-only message on error.
 
+- Levels Day-Based Navigation: Levels page (/admin/levels) now starts with a weekday selection screen (Saturday-Friday). After selecting a day, activities/times/levels are shown with members filtered by their invoice schedule. Backend returns member schedule info from member activities or latest paid invoice. Frontend filters members using Arabic day name matching against schedule strings. Stats (player counts, fill percentages) update per selected day.
+
+- Loyalty Points Settings CRUD: Admin can add custom point items, edit values, and delete any point setting from the Settings tab in /admin/loyalty. Backend accepts dynamic keys (not fixed schema) and handles deletion via $unset. Custom labels stored as key-value pairs in MongoDB loyalty_settings collection.
+
 ## Known Issues
 - MongoDB Atlas SSL handshake may fail with `TLSV1_ALERT_INTERNAL_ERROR` - this is typically caused by the Replit IP not being whitelisted in MongoDB Atlas Network Access settings. The user needs to add `0.0.0.0/0` (allow all) in MongoDB Atlas Network Access.

@@ -76,17 +76,36 @@ async def get_levels(
     
     levels = await db.levels.find(query, {"_id": 0}).sort("level_number", 1).to_list(100)
     
-    # Populate members details
+    # Populate members details with schedule info
     for level in levels:
         if level.get("members"):
             members_details = []
             for member_id in level["members"]:
-                member = await db.members.find_one({"id": member_id}, {"_id": 0, "id": 1, "name_ar": 1, "name": 1, "phone": 1})
+                member = await db.members.find_one({"id": member_id}, {"_id": 0, "id": 1, "name_ar": 1, "name": 1, "phone": 1, "activities": 1})
                 if member:
+                    schedule = ""
+                    member_activities = member.get("activities", [])
+                    if member_activities:
+                        for act in member_activities:
+                            if act.get("schedule"):
+                                schedule = act["schedule"]
+                                break
+                    if not schedule:
+                        invoice = await db.invoices.find_one(
+                            {"member_id": member_id, "status": "paid"},
+                            {"_id": 0, "items": 1},
+                            sort=[("created_at", -1)]
+                        )
+                        if invoice and invoice.get("items"):
+                            for item in invoice["items"]:
+                                if item.get("schedule"):
+                                    schedule = item["schedule"]
+                                    break
                     members_details.append({
                         "member_id": member["id"],
                         "member_name": member.get("name_ar") or member.get("name", ""),
-                        "phone": member.get("phone", "")
+                        "phone": member.get("phone", ""),
+                        "schedule": schedule
                     })
             level["members_details"] = members_details
     
