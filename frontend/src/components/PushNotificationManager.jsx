@@ -21,6 +21,16 @@ const PushNotificationManager = ({ memberId, compact = false }) => {
     const checkSupport = () => {
       if (isNativeApp()) {
         setIsSupported(true);
+        const hasPushPlugin = !!(window.Capacitor?.Plugins?.PushNotifications);
+        if (!hasPushPlugin) {
+          console.log('Native app detected but PushNotifications plugin not yet available');
+          setTimeout(() => {
+            const retryPlugin = !!(window.Capacitor?.Plugins?.PushNotifications);
+            if (!retryPlugin) {
+              console.log('PushNotifications plugin still not available after retry');
+            }
+          }, 2000);
+        }
       } else {
         const supported = 'serviceWorker' in navigator && 
                          'PushManager' in window && 
@@ -81,73 +91,93 @@ const PushNotificationManager = ({ memberId, compact = false }) => {
 
   const subscribeNative = useCallback(async () => {
     try {
-      if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.PushNotifications) {
-        const PushNotifications = window.Capacitor.Plugins.PushNotifications;
-        
-        let permResult = await PushNotifications.checkPermissions();
+      const Plugins = window.Capacitor?.Plugins;
+      const PushNotifications = Plugins?.PushNotifications;
+      
+      if (!PushNotifications) {
+        console.log('Native PushNotifications plugin not available');
+        toast.error('مكتبة الإشعارات غير متوفرة، يرجى تحديث التطبيق');
+        return false;
+      }
+
+      await PushNotifications.removeAllListeners();
+      
+      let permResult;
+      try {
+        permResult = await PushNotifications.checkPermissions();
         if (permResult.receive === 'prompt') {
           permResult = await PushNotifications.requestPermissions();
         }
-        
-        if (permResult.receive !== 'granted') {
-          toast.error('يجب السماح بالإشعارات من إعدادات الجهاز');
-          setPermission('denied');
-          return false;
-        }
-        
-        setPermission('granted');
-
-        return new Promise((resolve) => {
-          PushNotifications.addListener('registration', async (token) => {
-            try {
-              await axios.post(`${API_URL}/api/push-notifications/subscribe`, {
-                member_id: memberId,
-                subscription: {
-                  endpoint: `fcm://${token.value}`,
-                  keys: {
-                    fcm_token: token.value,
-                    platform: 'android'
-                  }
-                }
-              });
-              setIsSubscribed(true);
-              toast.success('تم تفعيل الإشعارات بنجاح! 🔔');
-              resolve(true);
-            } catch (error) {
-              console.error('Failed to save FCM token:', error);
-              toast.error('فشل في حفظ التسجيل');
-              resolve(false);
-            }
-          });
-
-          PushNotifications.addListener('registrationError', (err) => {
-            console.error('Registration error:', err);
-            toast.error('فشل في التسجيل للإشعارات');
-            resolve(false);
-          });
-
-          PushNotifications.addListener('pushNotificationReceived', (notification) => {
-            toast.info(notification.title || 'إشعار جديد', {
-              description: notification.body,
-            });
-          });
-
-          PushNotifications.addListener('pushNotificationActionPerformed', (notification) => {
-            const url = notification.notification?.data?.url;
-            if (url) {
-              window.location.href = url;
-            }
-          });
-
-          PushNotifications.register();
-        });
-      } else {
-        console.log('Native PushNotifications plugin not available, falling back to web push');
-        return await subscribeWeb();
+      } catch (permError) {
+        console.error('Permission check failed:', permError);
+        toast.error('فشل في التحقق من صلاحيات الإشعارات');
+        return false;
       }
+      
+      if (permResult.receive !== 'granted') {
+        toast.error('يجب السماح بالإشعارات من إعدادات الجهاز');
+        setPermission('denied');
+        return false;
+      }
+      
+      setPermission('granted');
+
+      return new Promise((resolve) => {
+        const timeout = setTimeout(() => {
+          console.error('FCM registration timeout');
+          toast.error('انتهت مهلة التسجيل، حاول مرة أخرى');
+          resolve(false);
+        }, 15000);
+
+        PushNotifications.addListener('registration', async (token) => {
+          clearTimeout(timeout);
+          try {
+            await axios.post(`${API_URL}/api/push-notifications/subscribe`, {
+              member_id: memberId,
+              subscription: {
+                endpoint: `fcm://${token.value}`,
+                keys: {
+                  fcm_token: token.value,
+                  platform: 'android'
+                }
+              }
+            });
+            setIsSubscribed(true);
+            toast.success('تم تفعيل الإشعارات بنجاح!');
+            resolve(true);
+          } catch (error) {
+            console.error('Failed to save FCM token:', error);
+            toast.error('فشل في حفظ التسجيل');
+            resolve(false);
+          }
+        });
+
+        PushNotifications.addListener('registrationError', (err) => {
+          clearTimeout(timeout);
+          console.error('FCM Registration error:', err);
+          toast.error('فشل في التسجيل للإشعارات، تأكد من اتصال الإنترنت');
+          resolve(false);
+        });
+
+        PushNotifications.addListener('pushNotificationReceived', (notification) => {
+          toast.info(notification.title || 'إشعار جديد', {
+            description: notification.body,
+          });
+        });
+
+        PushNotifications.addListener('pushNotificationActionPerformed', (notification) => {
+          const url = notification.notification?.data?.url;
+          if (url) {
+            window.location.href = url;
+          }
+        });
+
+        PushNotifications.register();
+      });
     } catch (error) {
       console.error('Native push registration failed:', error);
-      return await subscribeWeb();
+      toast.error('فشل في تفعيل الإشعارات، حاول مرة أخرى');
+      return false;
     }
   }, [memberId]);
 
@@ -201,10 +231,15 @@ const PushNotificationManager = ({ memberId, compact = false }) => {
     setIsLoading(true);
     try {
       if (isNativeApp()) {
-        await subscribeNative();
+        const result = await subscribeNative();
+        if (!result) {
+          console.log('Native push subscription returned false');
+        }
       } else {
         await subscribeWeb();
       }
+    } catch (err) {
+      console.error('Subscribe error:', err);
     } finally {
       setIsLoading(false);
     }
