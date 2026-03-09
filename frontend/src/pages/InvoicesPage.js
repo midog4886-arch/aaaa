@@ -1946,6 +1946,27 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
 
       ${qrImg}
 
+      <div style="margin-top:12px;padding:10px;border:2px solid #9333EA;border-radius:8px">
+        <p style="font-size:11px;font-weight:700;color:#6b21a8;margin-bottom:6px">🏆 برنامج نقاط الولاء</p>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px 16px;font-size:10px;color:#7e22ce">
+          <span>✅ كل حضور: 10 نقاط</span>
+          <span>🔥 سلسلة 5 أيام: 50 نقطة</span>
+          <span>📺 مشاهدة فيديو: 3 نقاط</span>
+          <span>👥 إحالة صديق: 200 نقطة</span>
+          <span>🔄 تجديد شهري: 100 نقطة</span>
+          <span>🎂 عيد ميلاد: 100 نقطة</span>
+        </div>
+        <div style="margin-top:6px;padding-top:6px;border-top:1px solid #9333EA">
+          <p style="font-size:10px;font-weight:700;color:#6b21a8;margin-bottom:4px">المستويات والمزايا:</p>
+          <div style="display:flex;justify-content:space-between;font-size:9px;color:#7e22ce">
+            <span>🥉 برونزي: 0+</span>
+            <span>🥈 فضي: 500+ (خصم 3%)</span>
+            <span>🥇 ذهبي: 1500+ (خصم 5%)</span>
+            <span>💎 ماسي: 3000+ (خصم 10%)</span>
+          </div>
+        </div>
+      </div>
+
       <div class="footer">
         <p class="company">${COMPANY_INFO.name_ar} | ${COMPANY_INFO.name_en}</p>
         <p>🏢 ${branchName}</p>
