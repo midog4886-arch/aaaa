@@ -7011,6 +7011,14 @@ if STATIC_DIR.exists():
             )
         return {"error": "File not found"}
 
+    @app.get("/download/android.zip")
+    async def download_android_zip():
+        zip_path = STATIC_DIR / "android.zip"
+        if zip_path.exists():
+            return FileResponse(zip_path, media_type="application/zip", filename="android.zip",
+                              headers={"Content-Disposition": "attachment; filename=android.zip"})
+        return {"error": "File not found"}
+
     @app.get("/{full_path:path}")
     async def serve_react_app(full_path: str):
         file_path = STATIC_DIR / full_path
