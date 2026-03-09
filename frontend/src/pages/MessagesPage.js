@@ -529,7 +529,7 @@ export const MessagesPage = () => {
                         <SelectValue placeholder={language === 'ar' ? 'اختر عضو...' : 'Select member...'} />
                       </SelectTrigger>
                       <SelectContent>
-                        {members.map(m => (
+                        {members.filter(m => m.id).map(m => (
                           <SelectItem key={m.id} value={m.id}>
                             {m.name_ar || m.name} - #{m.member_code}
                           </SelectItem>
@@ -648,7 +648,7 @@ export const MessagesPage = () => {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">{language === 'ar' ? 'جميع الأنشطة' : 'All Activities'}</SelectItem>
-                    {activities.map(activity => (
+                    {activities.filter(a => a.id).map(activity => (
                       <SelectItem key={activity.id} value={activity.id}>
                         {language === 'ar' ? activity.name_ar : activity.name}
                       </SelectItem>
@@ -664,7 +664,7 @@ export const MessagesPage = () => {
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="all">{language === 'ar' ? 'جميع الفروع' : 'All Branches'}</SelectItem>
-                      {branches.map(branch => (
+                      {branches.filter(b => b.id).map(branch => (
                         <SelectItem key={branch.id} value={branch.id}>
                           {branch.name_ar || branch.name}
                         </SelectItem>
@@ -930,7 +930,7 @@ export const MessagesPage = () => {
                           <SelectValue placeholder={language === 'ar' ? 'اختر عضو...' : 'Select member...'} />
                         </SelectTrigger>
                         <SelectContent>
-                          {members.map(m => (
+                          {members.filter(m => m.id).map(m => (
                             <SelectItem key={m.id} value={m.id}>
                               {m.name_ar || m.name} - #{m.member_code}
                             </SelectItem>

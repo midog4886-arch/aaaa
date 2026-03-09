@@ -351,7 +351,7 @@ const MemberDailyVideos = () => {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">جميع الأنشطة</SelectItem>
-                {activities.map((activity) => (
+                {activities.filter(a => a.id).map((activity) => (
                   <SelectItem key={activity.id} value={activity.id}>
                     {activity.name_ar || activity.name}
                   </SelectItem>
