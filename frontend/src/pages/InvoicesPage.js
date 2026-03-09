@@ -3229,7 +3229,7 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
                 <div className="space-y-2"><Label>{t('activity_name')}</Label>
                   <Select value={filterActivity} onValueChange={setFilterActivity}><SelectTrigger className="w-[180px]"><SelectValue /></SelectTrigger>
                     <SelectContent><SelectItem value="all">{language === 'ar' ? 'الكل' : 'All'}</SelectItem>
-                      {(activities || []).map(a => <SelectItem key={a.id} value={a.id}>{language === 'ar' ? a.name_ar : a.name}</SelectItem>)}
+                      {(activities || []).filter(a => a.id).map(a => <SelectItem key={a.id} value={a.id}>{language === 'ar' ? a.name_ar : a.name}</SelectItem>)}
                     </SelectContent></Select></div>
                 <div className="space-y-2"><Label className="font-medium">{t('from')}</Label><Input type="date" value={filterStartDate} onChange={(e) => setFilterStartDate(e.target.value)} className="h-14 text-lg w-48" /></div>
                 <div className="space-y-2"><Label className="font-medium">{t('to')}</Label><Input type="date" value={filterEndDate} onChange={(e) => setFilterEndDate(e.target.value)} className="h-14 text-lg w-48" /></div>
@@ -3491,7 +3491,7 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
                   <SelectContent>
                     <SelectItem value="none">{language === 'ar' ? '-- بدون عضو --' : '-- No member --'}</SelectItem>
                     <SelectItem value="new" className="text-primary font-medium"><UserPlus className="w-4 h-4 inline me-2" />{language === 'ar' ? 'إضافة عضو جديد' : 'Add new member'}</SelectItem>
-                    {(members || []).map(m => <SelectItem key={m.id} value={m.id}>{language === 'ar' ? m.name_ar : m.name} - {m.phone}</SelectItem>)}
+                    {(members || []).filter(m => m.id).map(m => <SelectItem key={m.id} value={m.id}>{language === 'ar' ? m.name_ar : m.name} - {m.phone}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>
@@ -3594,7 +3594,7 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
                       <SelectValue placeholder={language === 'ar' ? '+ اختر نشاط لإضافته' : '+ Select activity to add'} />
                     </SelectTrigger>
                     <SelectContent>
-                      {(activities || []).map(a => (
+                      {(activities || []).filter(a => a.id).map(a => (
                         <SelectItem key={a.id} value={a.id}>
                           <div className="flex items-center justify-between w-full gap-4">
                             <span>{language === 'ar' ? a.name_ar : a.name}</span>
@@ -3623,7 +3623,7 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
                       <SelectValue placeholder={language === 'ar' ? '+ اختر منتج لإضافته' : '+ Select product to add'} />
                     </SelectTrigger>
                     <SelectContent>
-                      {products.filter(p => p.quantity > 0).map(p => (
+                      {products.filter(p => p.id && p.quantity > 0).map(p => (
                         <SelectItem key={p.id} value={p.id}>
                           <div className="flex items-center gap-2">
                             <Package className="w-4 h-4 text-green-600" />
@@ -4147,7 +4147,7 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
                                   <SelectValue placeholder={language === 'ar' ? '+ اختر نشاط...' : '+ Select activity...'} />
                                 </SelectTrigger>
                                 <SelectContent>
-                                  {(activities || []).map(a => <SelectItem key={a.id} value={a.id}>{a.name_ar || a.name} - {a.monthly_fee} {language === 'ar' ? 'ر.س' : 'SAR'}</SelectItem>)}
+                                  {(activities || []).filter(a => a.id).map(a => <SelectItem key={a.id} value={a.id}>{a.name_ar || a.name} - {a.monthly_fee} {language === 'ar' ? 'ر.س' : 'SAR'}</SelectItem>)}
                                 </SelectContent>
                               </Select>
                               {am.items.length > 0 && (
@@ -4286,7 +4286,7 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
                                                 </SelectTrigger>
                                                 <SelectContent>
                                                   <SelectItem value="none">{language === 'ar' ? '-- بدون --' : '-- None --'}</SelectItem>
-                                                  {(levels || []).filter(l => l.activity_name === item.activity_name || !l.activity_name).map(l => (
+                                                  {(levels || []).filter(l => l.id && (l.activity_name === item.activity_name || !l.activity_name)).map(l => (
                                                     <SelectItem key={l.id} value={l.id}>{l.activity_name} - {language === 'ar' ? 'مستوى' : 'Level'} {l.level_number}</SelectItem>
                                                   ))}
                                                 </SelectContent>
@@ -4765,7 +4765,7 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
                   }}>
                     <SelectTrigger><SelectValue placeholder={language === 'ar' ? 'اختر منتج...' : 'Select product...'} /></SelectTrigger>
                     <SelectContent>
-                      {products.filter(p => p.quantity > 0).map(p => (
+                      {products.filter(p => p.id && p.quantity > 0).map(p => (
                         <SelectItem key={p.id} value={p.id}>
                           {p.name} - {p.price} {t('sar')} ({language === 'ar' ? `متوفر: ${p.quantity}` : `Stock: ${p.quantity}`})
                         </SelectItem>
@@ -5341,7 +5341,7 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
                                 <SelectValue placeholder={language === 'ar' ? '+ اختر نشاط...' : '+ Select activity...'} />
                               </SelectTrigger>
                               <SelectContent>
-                                {(activities || []).map(a => <SelectItem key={a.id} value={a.id}>{a.name_ar || a.name} - {a.monthly_fee} {language === 'ar' ? 'ر.س' : 'SAR'}</SelectItem>)}
+                                {(activities || []).filter(a => a.id).map(a => <SelectItem key={a.id} value={a.id}>{a.name_ar || a.name} - {a.monthly_fee} {language === 'ar' ? 'ر.س' : 'SAR'}</SelectItem>)}
                               </SelectContent>
                             </Select>
                             {am.items.length > 0 && (
@@ -5480,7 +5480,7 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
                                               </SelectTrigger>
                                               <SelectContent>
                                                 <SelectItem value="none">{language === 'ar' ? '-- بدون --' : '-- None --'}</SelectItem>
-                                                {(levels || []).filter(l => l.activity_name === item.activity_name || !l.activity_name).map(l => (
+                                                {(levels || []).filter(l => l.id && (l.activity_name === item.activity_name || !l.activity_name)).map(l => (
                                                   <SelectItem key={l.id} value={l.id}>{l.activity_name} - {language === 'ar' ? 'مستوى' : 'Level'} {l.level_number}</SelectItem>
                                                 ))}
                                               </SelectContent>
@@ -5745,8 +5745,8 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
                   <SelectTrigger><SelectValue placeholder={language === 'ar' ? 'اختر...' : 'Select...'} /></SelectTrigger>
                   <SelectContent>
                     {regFormItemType === 'activity' ? 
-                      (activities || []).map(a => <SelectItem key={a.id} value={a.id}>{a.name_ar || a.name} - {a.monthly_fee} {t('sar')}</SelectItem>) :
-                      (products || []).map(p => <SelectItem key={p.id} value={p.id}>{p.name_ar || p.name} - {p.price} {t('sar')}</SelectItem>)
+                      (activities || []).filter(a => a.id).map(a => <SelectItem key={a.id} value={a.id}>{a.name_ar || a.name} - {a.monthly_fee} {t('sar')}</SelectItem>) :
+                      (products || []).filter(p => p.id).map(p => <SelectItem key={p.id} value={p.id}>{p.name_ar || p.name} - {p.price} {t('sar')}</SelectItem>)
                     }
                   </SelectContent>
                 </Select>
