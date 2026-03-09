@@ -243,21 +243,20 @@ def resize_image_to_fit(image: PILImage.Image, target_width: int, target_height:
     target_ratio = target_width / target_height
 
     if img_ratio > target_ratio:
-        new_height = target_height
-        new_width = int(target_height * img_ratio)
-    else:
         new_width = target_width
         new_height = int(target_width / img_ratio)
+    else:
+        new_height = target_height
+        new_width = int(target_height * img_ratio)
 
     image = image.resize((new_width, new_height), PILImage.LANCZOS)
 
-    left = (new_width - target_width) // 2
-    top = (new_height - target_height) // 2
-    right = left + target_width
-    bottom = top + target_height
-    image = image.crop((left, top, right, bottom))
+    result = PILImage.new('RGB', (target_width, target_height), (255, 255, 255))
+    x_offset = (target_width - new_width) // 2
+    y_offset = (target_height - new_height) // 2
+    result.paste(image, (x_offset, y_offset))
 
-    return image
+    return result
 
 
 @router.post("/upload-banner")
