@@ -48,6 +48,8 @@ const LoyaltyPage = () => {
   const [memberSearch, setMemberSearch] = useState('');
   const [newPointItemDialog, setNewPointItemDialog] = useState(false);
   const [newPointItem, setNewPointItem] = useState({ key: '', label: '', value: 10 });
+  const [editPointItemDialog, setEditPointItemDialog] = useState(false);
+  const [editPointItem, setEditPointItem] = useState({ key: '', label: '', value: 0 });
 
   const fetchData = useCallback(async () => {
     try {
@@ -517,7 +519,7 @@ const LoyaltyPage = () => {
               </CardHeader>
               <CardContent className="space-y-3">
                 {pointsSettings && Object.entries(pointsSettings).map(([key, value]) => {
-                  if (key === 'id' || key === 'type') return null;
+                  if (key === 'id' || key === 'type' || key === 'updated_at') return null;
                   const labels = {
                     attendance_points: 'نقاط الحضور',
                     streak_5_days_bonus: 'مكافأة 5 أيام متتالية',
@@ -530,26 +532,26 @@ const LoyaltyPage = () => {
                     video_watch_points: 'نقاط مشاهدة فيديو',
                     birthday_points: 'نقاط عيد الميلاد'
                   };
-                  const defaultKeys = ['attendance_points', 'streak_5_days_bonus', 'streak_10_days_bonus', 'monthly_renewal_points', 'quarterly_renewal_points', 'yearly_renewal_points', 'referral_points', 'coach_rating_points', 'video_watch_points', 'birthday_points'];
-                  const isCustom = !defaultKeys.includes(key);
                   return (
                     <div key={key} className="flex items-center justify-between gap-2 p-2 rounded-lg hover:bg-gray-50 border">
                       <Label className="flex-1 text-sm">{labels[key] || key}</Label>
-                      <Input
-                        type="number"
-                        value={value}
-                        onChange={(e) => setPointsSettings({...pointsSettings, [key]: parseInt(e.target.value) || 0})}
-                        className="w-20 text-center"
-                      />
-                      {isCustom && (
+                      <span className="text-sm font-bold text-orange-600 w-16 text-center">{value}</span>
+                      <div className="flex gap-1">
+                        <Button variant="ghost" size="icon" className="text-blue-500 hover:text-blue-700 h-8 w-8" onClick={() => {
+                          setEditPointItem({ key, label: labels[key] || key, value: value });
+                          setEditPointItemDialog(true);
+                        }}>
+                          <Pencil className="w-4 h-4" />
+                        </Button>
                         <Button variant="ghost" size="icon" className="text-red-500 hover:text-red-700 h-8 w-8" onClick={() => {
                           const updated = {...pointsSettings};
                           delete updated[key];
                           setPointsSettings(updated);
+                          toast({ title: `تم حذف "${labels[key] || key}" - اضغط حفظ لتأكيد` });
                         }}>
                           <Trash2 className="w-4 h-4" />
                         </Button>
-                      )}
+                      </div>
                     </div>
                   );
                 })}
@@ -800,6 +802,43 @@ const LoyaltyPage = () => {
               toast({ title: `تم إضافة "${newPointItem.label}" - اضغط حفظ لتأكيد التغييرات` });
             }} disabled={!newPointItem.key || !newPointItem.label}>
               إضافة
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={editPointItemDialog} onOpenChange={setEditPointItemDialog}>
+        <DialogContent className="max-w-md" dir="rtl">
+          <DialogHeader>
+            <DialogTitle>تعديل: {editPointItem.label}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label>اسم العنصر</Label>
+              <Input value={editPointItem.label} disabled className="bg-gray-100" />
+            </div>
+            <div>
+              <Label>المعرّف</Label>
+              <Input value={editPointItem.key} disabled dir="ltr" className="bg-gray-100" />
+            </div>
+            <div>
+              <Label>عدد النقاط</Label>
+              <Input
+                type="number"
+                value={editPointItem.value}
+                onChange={(e) => setEditPointItem({...editPointItem, value: parseInt(e.target.value) || 0})}
+                autoFocus
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditPointItemDialog(false)}>إلغاء</Button>
+            <Button onClick={() => {
+              setPointsSettings({...pointsSettings, [editPointItem.key]: editPointItem.value});
+              setEditPointItemDialog(false);
+              toast({ title: `تم تعديل "${editPointItem.label}" - اضغط حفظ لتأكيد التغييرات` });
+            }}>
+              حفظ التعديل
             </Button>
           </DialogFooter>
         </DialogContent>
