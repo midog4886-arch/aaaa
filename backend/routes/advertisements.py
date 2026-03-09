@@ -228,6 +228,24 @@ async def create_advertisement(
     
     await db.advertisements.insert_one(ad_doc)
     ad_doc.pop("_id", None)
+
+    if ad.is_active:
+        try:
+            from routes.push_notifications import send_notification_to_all_members, NotificationPayload
+            notif_title = ad.title_ar or ad.title or "إعلان جديد"
+            notif_body = ad.description_ar or ad.description or "تم إضافة إعلان جديد في بوابة الأعضاء"
+            payload = NotificationPayload(
+                title=f"📢 {notif_title}",
+                body=notif_body,
+                url="/",
+                tag=f"ad-{ad_id}",
+                data={"type": "new_ad", "ad_id": ad_id}
+            )
+            result = await send_notification_to_all_members(payload, ad.branch_id if ad.branch_id != "all" else None)
+            print(f"Ad notification sent: {result}")
+        except Exception as e:
+            print(f"Failed to send ad notification: {e}")
+
     return ad_doc
 
 
