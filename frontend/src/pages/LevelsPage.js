@@ -50,7 +50,8 @@ export const LevelsPage = () => {
   const [searchQuery, setSearchQuery] = useState('');
   
   // Navigation states for drill-down view
-  const [currentView, setCurrentView] = useState('activities'); // 'activities' | 'times' | 'levels'
+  const [currentView, setCurrentView] = useState('days'); // 'days' | 'activities' | 'times' | 'levels'
+  const [selectedDay, setSelectedDay] = useState(null);
   const [selectedActivityId, setSelectedActivityId] = useState(null);
   const [selectedTimeSlotKey, setSelectedTimeSlotKey] = useState(null);
   
@@ -244,6 +245,22 @@ export const LevelsPage = () => {
     }));
   };
 
+  const WEEKDAYS = [
+    { id: 'saturday', name_ar: 'السبت', name_en: 'Saturday', icon: '📅', color: 'from-blue-500 to-blue-600' },
+    { id: 'sunday', name_ar: 'الأحد', name_en: 'Sunday', icon: '📅', color: 'from-green-500 to-green-600' },
+    { id: 'monday', name_ar: 'الاثنين', name_en: 'Monday', icon: '📅', color: 'from-purple-500 to-purple-600' },
+    { id: 'tuesday', name_ar: 'الثلاثاء', name_en: 'Tuesday', icon: '📅', color: 'from-orange-500 to-orange-600' },
+    { id: 'wednesday', name_ar: 'الأربعاء', name_en: 'Wednesday', icon: '📅', color: 'from-red-500 to-red-600' },
+    { id: 'thursday', name_ar: 'الخميس', name_en: 'Thursday', icon: '📅', color: 'from-teal-500 to-teal-600' },
+    { id: 'friday', name_ar: 'الجمعة', name_en: 'Friday', icon: '📅', color: 'from-amber-500 to-amber-600' },
+  ];
+
+  // Navigate to activities view (after selecting day)
+  const navigateToActivities = (day) => {
+    setSelectedDay(day);
+    setCurrentView('activities');
+  };
+
   // Navigate to time slots view
   const navigateToTimes = (activityId) => {
     setSelectedActivityId(activityId);
@@ -265,12 +282,16 @@ export const LevelsPage = () => {
     } else if (currentView === 'times') {
       setCurrentView('activities');
       setSelectedActivityId(null);
+    } else if (currentView === 'activities') {
+      setCurrentView('days');
+      setSelectedDay(null);
     }
   };
 
-  // Go to home (activities view)
+  // Go to home (days view)
   const goHome = () => {
-    setCurrentView('activities');
+    setCurrentView('days');
+    setSelectedDay(null);
     setSelectedActivityId(null);
     setSelectedTimeSlotKey(null);
   };
@@ -928,8 +949,8 @@ export const LevelsPage = () => {
         {/* Header with Breadcrumb */}
         <div className="mb-6">
           {/* Breadcrumb Navigation */}
-          {currentView !== 'activities' && (
-            <div className="flex items-center gap-2 mb-4 text-sm">
+          {currentView !== 'days' && (
+            <div className="flex items-center gap-2 mb-4 text-sm flex-wrap">
               <Button
                 variant="ghost"
                 size="sm"
@@ -938,11 +959,24 @@ export const LevelsPage = () => {
                 data-testid="breadcrumb-home"
               >
                 <Home className="w-4 h-4" />
-                {t('الأنشطة', 'Activities')}
+                {t('الأيام', 'Days')}
               </Button>
               
+              {currentView === 'activities' && selectedDay && (
+                <>
+                  <ChevronRight className="w-4 h-4 text-gray-400 rtl:rotate-180" />
+                  <span className="font-medium text-primary">
+                    {language === 'ar' ? WEEKDAYS.find(d => d.id === selectedDay)?.name_ar : WEEKDAYS.find(d => d.id === selectedDay)?.name_en}
+                  </span>
+                </>
+              )}
+
               {currentView === 'times' && selectedActivityId && (
                 <>
+                  <ChevronRight className="w-4 h-4 text-gray-400 rtl:rotate-180" />
+                  <Button variant="ghost" size="sm" onClick={() => { setCurrentView('activities'); setSelectedActivityId(null); }} className="gap-1 text-gray-600 hover:text-primary">
+                    {language === 'ar' ? WEEKDAYS.find(d => d.id === selectedDay)?.name_ar : WEEKDAYS.find(d => d.id === selectedDay)?.name_en}
+                  </Button>
                   <ChevronRight className="w-4 h-4 text-gray-400 rtl:rotate-180" />
                   <span className="font-medium text-primary flex items-center gap-1">
                     <span>{getCurrentActivity().icon}</span>
@@ -953,6 +987,10 @@ export const LevelsPage = () => {
               
               {currentView === 'levels' && selectedActivityId && (
                 <>
+                  <ChevronRight className="w-4 h-4 text-gray-400 rtl:rotate-180" />
+                  <Button variant="ghost" size="sm" onClick={() => { setCurrentView('activities'); setSelectedActivityId(null); setSelectedTimeSlotKey(null); }} className="gap-1 text-gray-600 hover:text-primary">
+                    {language === 'ar' ? WEEKDAYS.find(d => d.id === selectedDay)?.name_ar : WEEKDAYS.find(d => d.id === selectedDay)?.name_en}
+                  </Button>
                   <ChevronRight className="w-4 h-4 text-gray-400 rtl:rotate-180" />
                   <Button
                     variant="ghost"
@@ -977,7 +1015,7 @@ export const LevelsPage = () => {
           {/* Main Header */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div className="flex items-center gap-3">
-              {currentView !== 'activities' && (
+              {currentView !== 'days' && (
                 <Button
                   variant="outline"
                   size="icon"
@@ -991,7 +1029,8 @@ export const LevelsPage = () => {
               <div>
                 <h1 className="text-xl md:text-2xl font-bold text-gray-800 flex items-center gap-2">
                   <Layers className="w-6 h-6 text-primary" />
-                  {currentView === 'activities' && t('المستويات', 'Levels')}
+                  {currentView === 'days' && t('المستويات', 'Levels')}
+                  {currentView === 'activities' && selectedDay && (language === 'ar' ? WEEKDAYS.find(d => d.id === selectedDay)?.name_ar : WEEKDAYS.find(d => d.id === selectedDay)?.name_en)}
                   {currentView === 'times' && (
                     <>
                       <span>{getCurrentActivity().icon}</span>
@@ -1001,33 +1040,94 @@ export const LevelsPage = () => {
                   {currentView === 'levels' && selectedTimeSlotKey}
                 </h1>
                 <p className="text-gray-500 text-sm mt-1">
+                  {currentView === 'days' && t('اختر اليوم لعرض الأنشطة والمستويات', 'Select a day to view activities and levels')}
                   {currentView === 'activities' && t('اختر النشاط لعرض الأوقات والمستويات', 'Select an activity to view times and levels')}
                   {currentView === 'times' && t('اختر الوقت لعرض المستويات', 'Select a time to view levels')}
                   {currentView === 'levels' && t('إدارة اللاعبين في كل مستوى', 'Manage players in each level')}
                 </p>
               </div>
             </div>
-            <Button 
-              onClick={() => { 
-                if (currentView === 'levels' && selectedActivityId && selectedTimeSlotKey) {
-                  handleAddNewLevel(selectedActivityId, selectedTimeSlotKey);
-                } else if (currentView === 'times' && selectedActivityId) {
-                  handleAddNewLevel(selectedActivityId, '');
-                } else {
-                  resetForm(); 
-                  setIsDialogOpen(true);
-                }
-              }} 
-              className="gap-2"
-              data-testid="add-level-btn"
-            >
-              <Plus className="w-4 h-4" />
-              {t('إضافة مستوى', 'Add Level')}
-            </Button>
+            {currentView !== 'days' && (
+              <Button 
+                onClick={() => { 
+                  if (currentView === 'levels' && selectedActivityId && selectedTimeSlotKey) {
+                    handleAddNewLevel(selectedActivityId, selectedTimeSlotKey);
+                  } else if (currentView === 'times' && selectedActivityId) {
+                    handleAddNewLevel(selectedActivityId, '');
+                  } else {
+                    resetForm(); 
+                    setIsDialogOpen(true);
+                  }
+                }} 
+                className="gap-2"
+                data-testid="add-level-btn"
+              >
+                <Plus className="w-4 h-4" />
+                {t('إضافة مستوى', 'Add Level')}
+              </Button>
+            )}
           </div>
         </div>
 
-        {/* VIEW: Activities (Main View) */}
+        {/* VIEW: Days Selection */}
+        {currentView === 'days' && (
+          <div>
+            {/* Stats Cards */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+              <Card className="bg-gradient-to-br from-orange-50 to-orange-100 border-orange-200">
+                <CardContent className="p-4 text-center">
+                  <Layers className="w-8 h-8 text-orange-600 mx-auto mb-2" />
+                  <div className="text-2xl font-bold text-orange-700">{levels.length}</div>
+                  <div className="text-xs text-orange-600">{t('إجمالي المستويات', 'Total Levels')}</div>
+                </CardContent>
+              </Card>
+              <Card className="bg-gradient-to-br from-green-50 to-green-100 border-green-200">
+                <CardContent className="p-4 text-center">
+                  <Users className="w-8 h-8 text-green-600 mx-auto mb-2" />
+                  <div className="text-2xl font-bold text-green-700">{levels.reduce((sum, l) => sum + (l.members || []).length, 0)}</div>
+                  <div className="text-xs text-green-600">{t('إجمالي اللاعبين', 'Total Players')}</div>
+                </CardContent>
+              </Card>
+              <Card className="bg-gradient-to-br from-blue-50 to-blue-100 border-blue-200">
+                <CardContent className="p-4 text-center">
+                  <Clock className="w-8 h-8 text-blue-600 mx-auto mb-2" />
+                  <div className="text-2xl font-bold text-blue-700">{[...new Set(levels.map(l => l.time_slot))].length}</div>
+                  <div className="text-xs text-blue-600">{t('إجمالي الأوقات', 'Total Time Slots')}</div>
+                </CardContent>
+              </Card>
+              <Card className="bg-gradient-to-br from-purple-50 to-purple-100 border-purple-200">
+                <CardContent className="p-4 text-center">
+                  <BarChart3 className="w-8 h-8 text-purple-600 mx-auto mb-2" />
+                  <div className="text-2xl font-bold text-purple-700">
+                    {levels.length > 0 ? Math.round(levels.reduce((sum, l) => sum + ((l.members || []).length / (l.capacity || 1)) * 100, 0) / levels.length) : 0}%
+                  </div>
+                  <div className="text-xs text-purple-600">{t('نسبة الامتلاء', 'Occupancy Rate')}</div>
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* Weekday Cards */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+              {WEEKDAYS.map((day) => (
+                <Card
+                  key={day.id}
+                  className="cursor-pointer hover:shadow-lg transition-all duration-300 hover:scale-[1.02] overflow-hidden group"
+                  onClick={() => navigateToActivities(day.id)}
+                >
+                  <div className={`bg-gradient-to-br ${day.color} p-6 text-white text-center`}>
+                    <div className="text-4xl mb-3 group-hover:scale-110 transition-transform">{day.icon}</div>
+                    <h3 className="text-xl font-bold">{language === 'ar' ? day.name_ar : day.name_en}</h3>
+                  </div>
+                  <CardContent className="p-3 text-center">
+                    <p className="text-sm text-gray-500">{t('اضغط لعرض الأنشطة', 'Click to view activities')}</p>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* VIEW: Activities */}
         {currentView === 'activities' && (() => {
           const allActivityCards = [
             ...MAIN_ACTIVITIES.map(baseActivity => {
