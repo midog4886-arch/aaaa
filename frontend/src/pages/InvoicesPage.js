@@ -4131,36 +4131,150 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
                                 </SelectContent>
                               </Select>
                               {am.items.length > 0 && (
-                                <div className="space-y-1">
+                                <div className="space-y-2">
                                   {am.items.map((item, itemIdx) => (
-                                    <div key={itemIdx} className="flex items-center justify-between p-2 bg-blue-50 rounded text-sm">
-                                      <span>{item.activity_name}</span>
-                                      <div className="flex items-center gap-2">
-                                        <Input
-                                          type="number"
-                                          value={item.fee}
-                                          onChange={(e) => {
-                                            const updated = [...additionalMembers];
-                                            updated[amIdx].items[itemIdx].fee = parseFloat(e.target.value) || 0;
-                                            setAdditionalMembers(updated);
-                                          }}
-                                          className="w-20 h-7 text-sm text-center"
-                                        />
-                                        <span className="text-xs text-muted-foreground">{language === 'ar' ? 'ر.س' : 'SAR'}</span>
-                                        <Button
-                                          type="button"
-                                          size="sm"
-                                          variant="ghost"
-                                          className="h-6 w-6 p-0 text-red-500"
-                                          onClick={() => {
-                                            const updated = [...additionalMembers];
-                                            updated[amIdx].items = updated[amIdx].items.filter((_, i) => i !== itemIdx);
-                                            setAdditionalMembers(updated);
-                                          }}
-                                        >
-                                          <X className="w-3 h-3" />
-                                        </Button>
+                                    <div key={itemIdx} className="p-2 bg-blue-50 rounded text-sm space-y-2">
+                                      <div className="flex items-center justify-between">
+                                        <span className="font-medium">{item.activity_name}</span>
+                                        <div className="flex items-center gap-2">
+                                          <Input
+                                            type="number"
+                                            value={item.fee}
+                                            onChange={(e) => {
+                                              const updated = [...additionalMembers];
+                                              updated[amIdx].items[itemIdx].fee = parseFloat(e.target.value) || 0;
+                                              setAdditionalMembers(updated);
+                                            }}
+                                            className="w-20 h-7 text-sm text-center"
+                                          />
+                                          <span className="text-xs text-muted-foreground">{language === 'ar' ? 'ر.س' : 'SAR'}</span>
+                                          <Button
+                                            type="button"
+                                            size="sm"
+                                            variant="ghost"
+                                            className="h-6 w-6 p-0 text-red-500"
+                                            onClick={() => {
+                                              const updated = [...additionalMembers];
+                                              updated[amIdx].items = updated[amIdx].items.filter((_, i) => i !== itemIdx);
+                                              setAdditionalMembers(updated);
+                                            }}
+                                          >
+                                            <X className="w-3 h-3" />
+                                          </Button>
+                                        </div>
                                       </div>
+                                      {!item.is_product && (
+                                        <div className="space-y-2">
+                                          <div className="space-y-1">
+                                            <Label className="text-xs">{language === 'ar' ? 'أيام التدريب' : 'Training Days'}</Label>
+                                            <div className="flex flex-wrap gap-1">
+                                              {['الأحد', 'الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'].map((day) => (
+                                                <button
+                                                  key={day}
+                                                  type="button"
+                                                  onClick={() => {
+                                                    const currentDays = item.training_days || [];
+                                                    const newDays = currentDays.includes(day)
+                                                      ? currentDays.filter(d => d !== day)
+                                                      : [...currentDays, day];
+                                                    const updated = [...additionalMembers];
+                                                    updated[amIdx].items[itemIdx].training_days = newDays;
+                                                    const formatSchedule = (days, time) => {
+                                                      if (days.length === 0) return time || '';
+                                                      const dayOrder = ['الأحد', 'الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'];
+                                                      const sortedDays = [...days].sort((a, b) => dayOrder.indexOf(a) - dayOrder.indexOf(b));
+                                                      let daysStr;
+                                                      if (sortedDays.length === 1) {
+                                                        daysStr = sortedDays[0];
+                                                      } else {
+                                                        const lastDay = sortedDays.pop();
+                                                        daysStr = sortedDays.join('، ') + ' و ' + lastDay;
+                                                      }
+                                                      return time ? `${daysStr} - ${time}` : daysStr;
+                                                    };
+                                                    updated[amIdx].items[itemIdx].schedule = formatSchedule(newDays, item.training_time);
+                                                    setAdditionalMembers(updated);
+                                                  }}
+                                                  className={`px-2 py-1 text-xs rounded border transition-colors ${
+                                                    (item.training_days || []).includes(day)
+                                                      ? 'bg-blue-500 text-white border-blue-500'
+                                                      : 'bg-white text-gray-700 border-gray-300 hover:border-blue-400'
+                                                  }`}
+                                                >
+                                                  {day}
+                                                </button>
+                                              ))}
+                                            </div>
+                                          </div>
+                                          <div className="grid grid-cols-2 gap-2">
+                                            <div className="space-y-1">
+                                              <Label className="text-xs">{language === 'ar' ? 'الساعة' : 'Time'}</Label>
+                                              <Input
+                                                type="number"
+                                                min="1"
+                                                max="12"
+                                                placeholder={language === 'ar' ? 'مثال: 4' : 'e.g., 4'}
+                                                value={item.training_time_hour || ''}
+                                                onChange={(e) => {
+                                                  const hour = e.target.value;
+                                                  const updated = [...additionalMembers];
+                                                  updated[amIdx].items[itemIdx].training_time_hour = hour;
+                                                  const timeStr = hour ? `${hour}:00 م` : '';
+                                                  updated[amIdx].items[itemIdx].training_time = timeStr;
+                                                  const formatSchedule = (days, time) => {
+                                                    if (!days || days.length === 0) return time || '';
+                                                    const dayOrder = ['الأحد', 'الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'];
+                                                    const sortedDays = [...days].sort((a, b) => dayOrder.indexOf(a) - dayOrder.indexOf(b));
+                                                    let daysStr;
+                                                    if (sortedDays.length === 1) {
+                                                      daysStr = sortedDays[0];
+                                                    } else {
+                                                      const lastDay = sortedDays.pop();
+                                                      daysStr = sortedDays.join('، ') + ' و ' + lastDay;
+                                                    }
+                                                    return time ? `${daysStr} - ${time}` : daysStr;
+                                                  };
+                                                  updated[amIdx].items[itemIdx].schedule = formatSchedule(updated[amIdx].items[itemIdx].training_days, timeStr);
+                                                  setAdditionalMembers(updated);
+                                                }}
+                                                className="h-7 text-sm"
+                                              />
+                                              {item.training_time && (
+                                                <p className="text-xs text-muted-foreground mt-1">{item.training_time}</p>
+                                              )}
+                                            </div>
+                                            <div className="space-y-1">
+                                              <Label className="text-xs">{language === 'ar' ? 'المستوى' : 'Level'}</Label>
+                                              <Select
+                                                value={item.level_id || 'none'}
+                                                onValueChange={(val) => {
+                                                  const updated = [...additionalMembers];
+                                                  if (val === 'none') {
+                                                    updated[amIdx].items[itemIdx].level_id = '';
+                                                    updated[amIdx].items[itemIdx].level_name = '';
+                                                  } else {
+                                                    const level = levels.find(l => l.id === val);
+                                                    const levelLabel = level ? `${level.activity_name || ''} - ${language === 'ar' ? 'مستوى' : 'Level'} ${level.level_number}` : '';
+                                                    updated[amIdx].items[itemIdx].level_id = val;
+                                                    updated[amIdx].items[itemIdx].level_name = levelLabel;
+                                                  }
+                                                  setAdditionalMembers(updated);
+                                                }}
+                                              >
+                                                <SelectTrigger className="h-7 text-sm">
+                                                  <SelectValue placeholder={language === 'ar' ? 'اختياري' : 'Optional'} />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                  <SelectItem value="none">{language === 'ar' ? '-- بدون --' : '-- None --'}</SelectItem>
+                                                  {(levels || []).filter(l => l.activity_name === item.activity_name || !l.activity_name).map(l => (
+                                                    <SelectItem key={l.id} value={l.id}>{l.activity_name} - {language === 'ar' ? 'مستوى' : 'Level'} {l.level_number}</SelectItem>
+                                                  ))}
+                                                </SelectContent>
+                                              </Select>
+                                            </div>
+                                          </div>
+                                        </div>
+                                      )}
                                     </div>
                                   ))}
                                 </div>
