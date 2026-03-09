@@ -610,6 +610,12 @@ class RegistrationFormItem(BaseModel):
     is_product: bool = False
     quantity: int = 1
 
+class RegFormAdditionalMember(BaseModel):
+    member_id: str
+    member_name: Optional[str] = ""
+    member_code: Optional[str] = ""
+    items: List[RegistrationFormItem]
+
 class RegistrationFormCreate(BaseModel):
     customer_name: str
     customer_phone: str
@@ -622,6 +628,7 @@ class RegistrationFormCreate(BaseModel):
     payment_method: str = "cash"
     notes: Optional[str] = ""
     branch_id: Optional[str] = None
+    additional_members: Optional[List[RegFormAdditionalMember]] = None
 
 class RegistrationForm(BaseModel):
     id: str
@@ -1172,6 +1179,74 @@ async def create_registration_form(
                 {"id": member_id},
                 {"$push": {"activities": {"$each": activities_to_add}}}
             )
+    
+    # Process additional members (siblings)
+    if form.additional_members:
+        additional_members_data = []
+        for am in form.additional_members:
+            am_member = await db.members.find_one({"id": am.member_id}, {"_id": 0})
+            if not am_member:
+                continue
+            
+            am_name = am.member_name or am_member.get("name_ar", am_member.get("name", ""))
+            am_code = am.member_code or am_member.get("member_code", "")
+            additional_members_data.append({
+                "member_id": am.member_id,
+                "member_name": am_name,
+                "member_code": am_code,
+                "items": [item.dict() for item in am.items]
+            })
+            
+            am_activities_to_add = []
+            for item in am.items:
+                item_dict = item.dict() if hasattr(item, 'dict') else item
+                activity_id = item_dict.get("activity_id")
+                level_id = item_dict.get("level_id")
+                start_date = item_dict.get("start_date", "")
+                end_date = item_dict.get("end_date", "")
+                schedule = item_dict.get("schedule", "")
+                fee = item_dict.get("fee", 0)
+                
+                if activity_id:
+                    activity = await db.activities.find_one({"id": activity_id}, {"_id": 0, "name_ar": 1, "name": 1})
+                    if activity:
+                        am_activities_to_add.append({
+                            "activity_id": activity_id,
+                            "activity_name": activity.get("name_ar") or activity.get("name", ""),
+                            "level_id": level_id,
+                            "start_date": start_date,
+                            "end_date": end_date,
+                            "fee": fee,
+                            "schedule": schedule,
+                            "status": "active",
+                            "source": "registration_form",
+                            "source_id": form_doc["id"]
+                        })
+                
+                if level_id:
+                    await db.levels.update_one(
+                        {"id": level_id},
+                        {"$addToSet": {"members": am.member_id}}
+                    )
+                    if end_date:
+                        await db.level_subscriptions.update_one(
+                            {"member_id": am.member_id, "level_id": level_id},
+                            {"$set": {"end_date": end_date, "member_id": am.member_id, "level_id": level_id}},
+                            upsert=True
+                        )
+            
+            if am_activities_to_add:
+                await db.members.update_one(
+                    {"id": am.member_id},
+                    {"$push": {"activities": {"$each": am_activities_to_add}}}
+                )
+        
+        if additional_members_data:
+            await db.registration_forms.update_one(
+                {"id": form_doc["id"]},
+                {"$set": {"additional_members": additional_members_data}}
+            )
+            form_doc["additional_members"] = additional_members_data
     
     # Add member_id to form response
     if "_id" in form_doc:
