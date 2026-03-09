@@ -20,16 +20,21 @@ const PushNotificationManager = ({ memberId, compact = false }) => {
   useEffect(() => {
     const checkSupport = () => {
       if (isNativeApp()) {
-        setIsSupported(true);
         const hasPushPlugin = !!(window.Capacitor?.Plugins?.PushNotifications);
-        if (!hasPushPlugin) {
-          console.log('Native app detected but PushNotifications plugin not yet available');
+        if (hasPushPlugin) {
+          setIsSupported(true);
+        } else {
+          console.log('Native app detected but PushNotifications plugin not yet available, retrying...');
           setTimeout(() => {
             const retryPlugin = !!(window.Capacitor?.Plugins?.PushNotifications);
-            if (!retryPlugin) {
-              console.log('PushNotifications plugin still not available after retry');
+            if (retryPlugin) {
+              setIsSupported(true);
+            } else {
+              console.log('PushNotifications plugin not available - notification UI will be hidden');
+              setIsSupported(false);
+              setIsLoading(false);
             }
-          }, 2000);
+          }, 3000);
         }
       } else {
         const supported = 'serviceWorker' in navigator && 
