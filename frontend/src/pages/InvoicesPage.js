@@ -1294,6 +1294,7 @@ export const InvoicesPage = () => {
         activity_name: item.activity_name,
         start_date: startDate,
         end_date: endDate,
+        schedule: item.schedule || '',
         status: isActive ? 'active' : 'expired'
       };
     }) || [];
@@ -1336,11 +1337,11 @@ export const InvoicesPage = () => {
     // Get schedule info
     const schedule = firstActivity?.schedule || '';
     
-    // Generate activities HTML
     const activitiesHtml = cardPrintMember?.activities?.map(act => {
       return `
         <div class="activity-item ${act.status}">
           <div class="activity-name">${act.status === 'active' ? '✓' : '✗'} ${act.activity_name}</div>
+          ${act.schedule ? `<div style="font-size:5.5pt;color:#2563EB;margin-top:0.3mm;">📅 ${act.schedule}</div>` : ''}
           <div class="activity-status">${act.status === 'active' ? 'ساري' : 'منتهي'}</div>
         </div>
       `;
@@ -1461,6 +1462,7 @@ export const InvoicesPage = () => {
                     <span>من: ${startDate || '----'}</span>
                     <span>إلى: ${endDate || '----'}</span>
                   </div>
+                  ${schedule ? `<div class="schedule-info">📅 ${schedule}</div>` : ''}
                 </div>
                 <div class="info-section">
                   <div class="info-label">الاسم</div>
@@ -1505,6 +1507,7 @@ export const InvoicesPage = () => {
         activity_name: item.activity_name,
         start_date: startDate,
         end_date: endDate,
+        schedule: item.schedule || '',
         status: isActive ? 'active' : 'expired',
         level_name: item.level_name || ''
       };
@@ -1546,11 +1549,11 @@ export const InvoicesPage = () => {
     // Get schedule info
     const schedule = firstActivity?.schedule || '';
     
-    // Generate activities HTML
     const activitiesHtml = regFormCardData?.activities?.map(act => {
       return `
         <div class="activity-item ${act.status}">
           <div class="activity-name">${act.status === 'active' ? '✓' : '✗'} ${act.activity_name}</div>
+          ${act.schedule ? `<div style="font-size:5.5pt;color:#2563EB;margin-top:0.3mm;">📅 ${act.schedule}</div>` : ''}
           <div class="activity-status">${act.status === 'active' ? 'ساري' : 'منتهي'}</div>
         </div>
       `;
@@ -1671,6 +1674,7 @@ export const InvoicesPage = () => {
                     <span>من: ${startDate || '----'}</span>
                     <span>إلى: ${endDate || '----'}</span>
                   </div>
+                  ${schedule ? `<div class="schedule-info">📅 ${schedule}</div>` : ''}
                 </div>
                 <div class="info-section">
                   <div class="info-label">الاسم</div>
