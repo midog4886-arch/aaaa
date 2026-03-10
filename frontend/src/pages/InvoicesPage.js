@@ -3323,7 +3323,7 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
                               <button className="action-button text-red-600" onClick={() => handleDeleteInvoice(invoice.id, invoice.status)} title={language === 'ar' ? 'حذف' : 'Delete'}><Trash2 className="w-4 h-4" /></button>
                             )}
                             <button 
-                              className={`action-button ${checkedInvoices[invoice.id] ? 'text-green-600' : 'text-gray-400'}`}
+                              className={`action-button ${checkedInvoices[invoice.id] ? 'text-blue-600' : 'text-gray-400'}`}
                               onClick={() => setCheckedInvoices(prev => ({ ...prev, [invoice.id]: !prev[invoice.id] }))}
                               title={language === 'ar' ? 'تم' : 'Done'}
                             >
@@ -3428,7 +3428,7 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
                               <Trash2 className="w-4 h-4" />
                             </button>
                             <button 
-                              className={`action-button ${checkedRegForms[form.id] ? 'text-green-600' : 'text-gray-400'}`}
+                              className={`action-button ${checkedRegForms[form.id] ? 'text-blue-600' : 'text-gray-400'}`}
                               onClick={() => setCheckedRegForms(prev => ({ ...prev, [form.id]: !prev[form.id] }))}
                               title={language === 'ar' ? 'تم' : 'Done'}
                             >
