@@ -2423,46 +2423,46 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
         <title>استمارة تسجيل</title>
         <style>
           @import url('https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700&display=swap');
-          @page { size: A4; margin: 10mm; }
+          @page { size: A4; margin: 6mm; }
           * { margin: 0; padding: 0; box-sizing: border-box; }
-          body { font-family: 'Tajawal', Arial, sans-serif; direction: rtl; padding: 20px; max-width: 800px; margin: 0 auto; color: #000; font-size: 12px; }
-          .header-banner { background: linear-gradient(135deg, #1e3a8a 0%, #1e40af 100%); color: white; padding: 12px; text-align: center; margin: -20px -20px 15px -20px; }
-          .header-banner .company-name { font-size: 16px; font-weight: bold; margin-bottom: 3px; }
-          .header-banner .branch-name { font-size: 11px; margin-top: 5px; background: rgba(255,255,255,0.2); display: inline-block; padding: 3px 12px; border-radius: 15px; }
-          .header-banner .company-info { font-size: 9px; opacity: 0.9; margin-top: 5px; }
-          .form-title { font-size: 20px; font-weight: bold; text-align: center; margin: 20px 0; padding: 12px; background: #f8fafc; border: 2px solid #1e3a8a; border-radius: 8px; color: #1e3a8a; }
-          .info-section { margin-bottom: 15px; padding: 15px; border: 1px solid #e2e8f0; border-radius: 8px; background: #f8fafc; }
-          .info-section h4 { font-size: 14px; font-weight: bold; margin-bottom: 10px; color: #1e3a8a; border-bottom: 2px solid #1e3a8a; padding-bottom: 5px; }
-          .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-          .info-row { display: flex; gap: 8px; padding: 5px 0; }
-          .info-label { font-weight: bold; min-width: 90px; color: #374151; }
-          table { width: 100%; border-collapse: collapse; margin: 10px 0; }
-          th, td { padding: 10px; border: 1px solid #d1d5db; text-align: right; font-size: 11px; }
+          body { font-family: 'Tajawal', Arial, sans-serif; direction: rtl; padding: 10px; max-width: 800px; margin: 0 auto; color: #000; font-size: 10px; }
+          .header-banner { background: linear-gradient(135deg, #1e3a8a 0%, #1e40af 100%); color: white; padding: 8px; text-align: center; margin: -10px -10px 8px -10px; }
+          .header-banner .company-name { font-size: 13px; font-weight: bold; margin-bottom: 2px; }
+          .header-banner .branch-name { font-size: 9px; margin-top: 3px; background: rgba(255,255,255,0.2); display: inline-block; padding: 2px 8px; border-radius: 10px; }
+          .header-banner .company-info { font-size: 8px; opacity: 0.9; margin-top: 3px; }
+          .form-title { font-size: 15px; font-weight: bold; text-align: center; margin: 8px 0; padding: 6px; background: #f8fafc; border: 2px solid #1e3a8a; border-radius: 6px; color: #1e3a8a; }
+          .info-section { margin-bottom: 8px; padding: 8px; border: 1px solid #e2e8f0; border-radius: 6px; background: #f8fafc; }
+          .info-section h4 { font-size: 11px; font-weight: bold; margin-bottom: 5px; color: #1e3a8a; border-bottom: 1px solid #1e3a8a; padding-bottom: 3px; }
+          .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
+          .info-row { display: flex; gap: 5px; padding: 2px 0; font-size: 10px; }
+          .info-label { font-weight: bold; min-width: 70px; color: #374151; }
+          table { width: 100%; border-collapse: collapse; margin: 5px 0; }
+          th, td { padding: 5px; border: 1px solid #d1d5db; text-align: right; font-size: 9px; }
           th { background: #1e3a8a; color: white; font-weight: bold; }
           tr:nth-child(even) { background: #f8fafc; }
-          .totals-section { margin-top: 15px; border: 2px solid #1e3a8a; padding: 15px; border-radius: 8px; background: #eff6ff; }
-          .totals-row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #bfdbfe; }
+          .totals-section { margin-top: 8px; border: 2px solid #1e3a8a; padding: 8px; border-radius: 6px; background: #eff6ff; }
+          .totals-row { display: flex; justify-content: space-between; padding: 4px 0; border-bottom: 1px solid #bfdbfe; }
           .totals-row.discount { color: #dc2626; font-weight: 500; }
-          .totals-row.total { font-size: 18px; font-weight: bold; border-top: 2px solid #1e3a8a; border-bottom: none; margin-top: 8px; padding-top: 12px; color: #1e3a8a; }
-          .totals-note { text-align: center; font-size: 10px; color: #6b7280; margin-top: 8px; }
-          .payment-section { margin-top: 15px; padding: 12px; border: 1px solid #e2e8f0; border-radius: 8px; background: #fefce8; }
-          .notes-section { margin-top: 15px; padding: 12px; border: 1px solid #e2e8f0; border-radius: 8px; background: #f0fdf4; font-size: 11px; }
-          .terms-section { margin-top: 20px; padding: 15px; border: 2px solid #f59e0b; border-radius: 8px; background: #fffbeb; }
-          .terms-section h4 { font-weight: bold; margin-bottom: 10px; color: #92400e; }
-          .terms-section ul { padding-right: 20px; font-size: 11px; color: #78350f; }
-          .terms-section li { margin-bottom: 5px; }
-          .signature-section { margin-top: 25px; display: grid; grid-template-columns: 1fr 1fr; gap: 30px; }
-          .signature-box { border: 2px solid #d1d5db; padding: 15px; text-align: center; border-radius: 8px; background: white; }
-          .signature-box p { margin-bottom: 40px; font-weight: bold; color: #374151; }
-          .signature-line { border-top: 1px solid #000; margin-top: 40px; padding-top: 8px; font-size: 10px; }
-          .loyalty-section { margin-top: 15px; padding: 12px; border: 2px solid #9333EA; border-radius: 8px; background: #faf5ff; }
-          .loyalty-section h4 { font-weight: bold; margin-bottom: 8px; color: #9333EA; font-size: 14px; text-align: center; }
-          .loyalty-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 5px; font-size: 10px; margin-bottom: 8px; }
-          .loyalty-item { padding: 3px 5px; }
-          .loyalty-levels { border-top: 1px solid #e9d5ff; padding-top: 8px; margin-top: 5px; }
-          .loyalty-levels h5 { font-weight: bold; font-size: 11px; margin-bottom: 5px; color: #7c3aed; }
-          .levels-grid { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 5px; font-size: 9px; }
-          .footer { margin-top: 20px; text-align: center; font-size: 10px; color: #6b7280; border-top: 2px solid #e2e8f0; padding-top: 15px; }
+          .totals-row.total { font-size: 13px; font-weight: bold; border-top: 2px solid #1e3a8a; border-bottom: none; margin-top: 4px; padding-top: 6px; color: #1e3a8a; }
+          .totals-note { text-align: center; font-size: 8px; color: #6b7280; margin-top: 4px; }
+          .payment-section { margin-top: 8px; padding: 6px; border: 1px solid #e2e8f0; border-radius: 6px; background: #fefce8; font-size: 10px; }
+          .notes-section { margin-top: 8px; padding: 6px; border: 1px solid #e2e8f0; border-radius: 6px; background: #f0fdf4; font-size: 9px; }
+          .terms-section { margin-top: 8px; padding: 8px; border: 2px solid #f59e0b; border-radius: 6px; background: #fffbeb; }
+          .terms-section h4 { font-weight: bold; margin-bottom: 4px; color: #92400e; font-size: 10px; }
+          .terms-section ul { padding-right: 15px; font-size: 9px; color: #78350f; }
+          .terms-section li { margin-bottom: 2px; }
+          .signature-section { margin-top: 10px; display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
+          .signature-box { border: 1px solid #d1d5db; padding: 8px; text-align: center; border-radius: 6px; background: white; }
+          .signature-box p { margin-bottom: 20px; font-weight: bold; color: #374151; font-size: 10px; }
+          .signature-line { border-top: 1px solid #000; margin-top: 20px; padding-top: 4px; font-size: 8px; }
+          .loyalty-section { margin-top: 8px; padding: 8px; border: 2px solid #9333EA; border-radius: 6px; background: #faf5ff; }
+          .loyalty-section h4 { font-weight: bold; margin-bottom: 4px; color: #9333EA; font-size: 11px; text-align: center; }
+          .loyalty-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 2px; font-size: 8px; margin-bottom: 4px; }
+          .loyalty-item { padding: 1px 3px; }
+          .loyalty-levels { border-top: 1px solid #e9d5ff; padding-top: 4px; margin-top: 3px; }
+          .loyalty-levels h5 { font-weight: bold; font-size: 9px; margin-bottom: 3px; color: #7c3aed; }
+          .levels-grid { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 3px; font-size: 8px; }
+          .footer { margin-top: 8px; text-align: center; font-size: 8px; color: #6b7280; border-top: 1px solid #e2e8f0; padding-top: 6px; }
         </style>
       </head>
       <body>
@@ -2762,45 +2762,45 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
         <style>
           @import url('https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700&display=swap');
           * { margin: 0; padding: 0; box-sizing: border-box; }
-          body { font-family: 'Tajawal', Arial, sans-serif; direction: rtl; padding: 20px; max-width: 800px; margin: 0 auto; }
+          body { font-family: 'Tajawal', Arial, sans-serif; direction: rtl; padding: 10px; max-width: 800px; margin: 0 auto; font-size: 10px; }
           @media print {
-            body { padding: 10px; }
-            @page { size: A4; margin: 10mm; }
+            body { padding: 5px; }
+            @page { size: A4; margin: 6mm; }
           }
-          .header { background: linear-gradient(135deg, #1e3a8a 0%, #1e40af 100%); color: white; padding: 12px; text-align: center; margin-bottom: 15px; border-radius: 8px; }
-          .company-name { font-size: 16px; font-weight: bold; margin-bottom: 3px; }
-          .branch-name { font-size: 11px; margin-top: 5px; background: rgba(255,255,255,0.2); display: inline-block; padding: 3px 12px; border-radius: 15px; }
-          .tax-info { font-size: 9px; opacity: 0.9; margin-top: 5px; }
-          .form-title { font-size: 20px; font-weight: bold; text-align: center; margin: 20px 0; padding: 12px; background: #f8fafc; border: 2px solid #1e3a8a; border-radius: 8px; color: #1e3a8a; }
-          .section { margin-bottom: 15px; padding: 15px; border: 1px solid #e2e8f0; border-radius: 8px; background: #f8fafc; }
-          .section-title { font-size: 14px; font-weight: bold; margin-bottom: 10px; color: #1e3a8a; border-bottom: 2px solid #1e3a8a; padding-bottom: 5px; }
-          .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-          .info-item { display: flex; gap: 8px; padding: 5px 0; }
-          .info-label { font-weight: bold; min-width: 90px; color: #374151; }
-          table { width: 100%; border-collapse: collapse; margin: 10px 0; }
+          .header { background: linear-gradient(135deg, #1e3a8a 0%, #1e40af 100%); color: white; padding: 8px; text-align: center; margin-bottom: 8px; border-radius: 6px; }
+          .company-name { font-size: 13px; font-weight: bold; margin-bottom: 2px; }
+          .branch-name { font-size: 9px; margin-top: 3px; background: rgba(255,255,255,0.2); display: inline-block; padding: 2px 8px; border-radius: 10px; }
+          .tax-info { font-size: 8px; opacity: 0.9; margin-top: 3px; }
+          .form-title { font-size: 15px; font-weight: bold; text-align: center; margin: 8px 0; padding: 6px; background: #f8fafc; border: 2px solid #1e3a8a; border-radius: 6px; color: #1e3a8a; }
+          .section { margin-bottom: 8px; padding: 8px; border: 1px solid #e2e8f0; border-radius: 6px; background: #f8fafc; }
+          .section-title { font-size: 11px; font-weight: bold; margin-bottom: 5px; color: #1e3a8a; border-bottom: 1px solid #1e3a8a; padding-bottom: 3px; }
+          .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
+          .info-item { display: flex; gap: 5px; padding: 2px 0; font-size: 10px; }
+          .info-label { font-weight: bold; min-width: 70px; color: #374151; }
+          table { width: 100%; border-collapse: collapse; margin: 5px 0; }
           thead tr { background: #1e3a8a; color: white; }
-          th, td { padding: 10px; text-align: right; }
-          .totals { margin-top: 15px; border: 2px solid #1e3a8a; padding: 15px; border-radius: 8px; background: #eff6ff; }
-          .total-row { display: flex; justify-content: space-between; padding: 8px 0; }
-          .total-main { font-size: 18px; font-weight: bold; padding-top: 12px; color: #1e3a8a; border-top: 1px solid #bfdbfe; }
-          .payment-box { margin-top: 15px; padding: 12px; border: 1px solid #e2e8f0; border-radius: 8px; background: #fefce8; }
-          .notes-box { margin-top: 15px; padding: 12px; border: 1px solid #e2e8f0; border-radius: 8px; background: #f0fdf4; }
-          .terms { margin-top: 20px; padding: 15px; border: 2px solid #f59e0b; border-radius: 8px; background: #fffbeb; }
-          .terms-title { font-weight: bold; margin-bottom: 10px; color: #92400e; }
-          .terms-list { padding-right: 20px; font-size: 11px; color: #78350f; }
-          .terms-list li { margin-bottom: 5px; }
-          .loyalty-section { margin-top: 15px; padding: 12px; border: 2px solid #9333EA; border-radius: 8px; background: #faf5ff; }
-          .loyalty-section h4 { font-weight: bold; margin-bottom: 8px; color: #9333EA; font-size: 14px; text-align: center; }
-          .loyalty-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 5px; font-size: 10px; margin-bottom: 8px; }
-          .loyalty-item { padding: 3px 5px; }
-          .loyalty-levels { border-top: 1px solid #e9d5ff; padding-top: 8px; margin-top: 5px; }
-          .loyalty-levels h5 { font-weight: bold; font-size: 11px; margin-bottom: 5px; color: #7c3aed; }
-          .levels-grid { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 5px; font-size: 9px; }
-          .signatures { margin-top: 25px; display: grid; grid-template-columns: 1fr 1fr; gap: 30px; }
-          .signature-box { border: 2px solid #d1d5db; padding: 15px; text-align: center; border-radius: 8px; background: white; }
-          .signature-label { margin-bottom: 40px; font-weight: bold; color: #374151; }
-          .signature-line { border-top: 1px solid #000; margin-top: 40px; padding-top: 8px; font-size: 10px; }
-          .footer { margin-top: 20px; text-align: center; font-size: 10px; color: #6b7280; border-top: 2px solid #e2e8f0; padding-top: 15px; }
+          th, td { padding: 5px; text-align: right; font-size: 9px; }
+          .totals { margin-top: 8px; border: 2px solid #1e3a8a; padding: 8px; border-radius: 6px; background: #eff6ff; }
+          .total-row { display: flex; justify-content: space-between; padding: 4px 0; }
+          .total-main { font-size: 13px; font-weight: bold; padding-top: 6px; color: #1e3a8a; border-top: 1px solid #bfdbfe; }
+          .payment-box { margin-top: 8px; padding: 6px; border: 1px solid #e2e8f0; border-radius: 6px; background: #fefce8; font-size: 10px; }
+          .notes-box { margin-top: 8px; padding: 6px; border: 1px solid #e2e8f0; border-radius: 6px; background: #f0fdf4; font-size: 9px; }
+          .terms { margin-top: 8px; padding: 8px; border: 2px solid #f59e0b; border-radius: 6px; background: #fffbeb; }
+          .terms-title { font-weight: bold; margin-bottom: 4px; color: #92400e; font-size: 10px; }
+          .terms-list { padding-right: 15px; font-size: 9px; color: #78350f; }
+          .terms-list li { margin-bottom: 2px; }
+          .loyalty-section { margin-top: 8px; padding: 8px; border: 2px solid #9333EA; border-radius: 6px; background: #faf5ff; }
+          .loyalty-section h4 { font-weight: bold; margin-bottom: 4px; color: #9333EA; font-size: 11px; text-align: center; }
+          .loyalty-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 2px; font-size: 8px; margin-bottom: 4px; }
+          .loyalty-item { padding: 1px 3px; }
+          .loyalty-levels { border-top: 1px solid #e9d5ff; padding-top: 4px; margin-top: 3px; }
+          .loyalty-levels h5 { font-weight: bold; font-size: 9px; margin-bottom: 3px; color: #7c3aed; }
+          .levels-grid { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 3px; font-size: 8px; }
+          .signatures { margin-top: 10px; display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
+          .signature-box { border: 1px solid #d1d5db; padding: 8px; text-align: center; border-radius: 6px; background: white; }
+          .signature-label { margin-bottom: 20px; font-weight: bold; color: #374151; font-size: 10px; }
+          .signature-line { border-top: 1px solid #000; margin-top: 20px; padding-top: 4px; font-size: 8px; }
+          .footer { margin-top: 8px; text-align: center; font-size: 8px; color: #6b7280; border-top: 1px solid #e2e8f0; padding-top: 6px; }
         </style>
       </head>
       <body>
