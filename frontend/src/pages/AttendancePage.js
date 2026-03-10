@@ -122,6 +122,8 @@ export default function AttendancePage() {
   }, [searchParams, activities]);
 
   // Fetch attendance for selected category and date
+  const [closureInfo, setClosureInfo] = useState(null);
+
   const fetchAttendance = useCallback(async () => {
     if (!selectedCategory || !selectedDate) return;
     
@@ -129,17 +131,20 @@ export default function AttendancePage() {
     if (activityIds.length === 0) return;
     
     setLoading(true);
+    setClosureInfo(null);
     try {
-      // Fetch attendance for all activities in the category
       const allMembers = [];
       const categoryName = activityCategories.find(c => c.id === selectedCategory)?.name || '';
+      let foundClosure = null;
       
       for (const activityId of activityIds) {
         try {
           const res = await attendanceAPI.getByActivity(activityId, selectedDate);
+          if (res.data?.closure) {
+            foundClosure = res.data.closure;
+          }
           if (res.data?.members) {
             res.data.members.forEach(m => {
-              // Check if member already added (avoid duplicates)
               if (!allMembers.find(existing => existing.member_id === m.member_id)) {
                 allMembers.push({
                   ...m,
@@ -153,6 +158,10 @@ export default function AttendancePage() {
         }
       }
       
+      if (foundClosure) {
+        setClosureInfo(foundClosure);
+      }
+      
       setAttendanceData({
         activity: { name: categoryName, name_ar: categoryName },
         members: allMembers,
@@ -161,7 +170,6 @@ export default function AttendancePage() {
         absent_count: allMembers.filter(m => m.status === 'absent').length
       });
       
-      // Initialize local state for attendance records
       const initialRecords = {};
       allMembers.forEach(m => {
         initialRecords[m.member_id] = {
@@ -1079,6 +1087,26 @@ export default function AttendancePage() {
               <div className="text-center py-10">
                 <div className="spinner mx-auto"></div>
                 <p className="mt-2 text-gray-500">{t('جاري التحميل...', 'Loading...')}</p>
+              </div>
+            ) : closureInfo ? (
+              <div className="bg-white rounded-lg border shadow-sm">
+                <div className="p-8 text-center">
+                  <div className="text-6xl mb-4">🚫</div>
+                  <h2 className="text-xl font-bold text-red-600 mb-2">
+                    {closureInfo.title || t('توقف', 'Closure')}
+                  </h2>
+                  <p className="text-gray-600 mb-2">
+                    {t('هذا التاريخ يقع ضمن فترة توقف', 'This date falls within a closure period')}
+                  </p>
+                  <p className="text-sm text-gray-500">
+                    {closureInfo.start_date} → {closureInfo.end_date}
+                  </p>
+                  {closureInfo.reason && (
+                    <p className="mt-2 text-sm text-gray-500">
+                      {t('السبب:', 'Reason:')} {closureInfo.reason}
+                    </p>
+                  )}
+                </div>
               </div>
             ) : attendanceData ? (
               <div className="bg-white rounded-lg border shadow-sm">

@@ -4609,11 +4609,45 @@ async def get_attendance_by_activity(
     date: str,
     current_user: dict = Depends(get_current_user)
 ):
-    """Get attendance for a specific activity on a specific date - filtered by schedule day"""
+    """Get attendance for a specific activity on a specific date - filtered by schedule day and closures"""
     # Get activity details
     activity = await db.activities.find_one({"id": activity_id}, {"_id": 0})
     if not activity:
         raise HTTPException(status_code=404, detail="النشاط غير موجود")
+    
+    # Check if this date falls within a closure period for this activity
+    closures = await db.closures.find({
+        "start_date": {"$lte": date},
+        "end_date": {"$gte": date}
+    }, {"_id": 0}).to_list(100)
+    
+    for closure in closures:
+        closure_scope = closure.get("scope", "all")
+        closure_activity_ids = closure.get("activity_ids", [])
+        closure_activity_id = closure.get("activity_id", "")
+        closure_stop_type = closure.get("stop_type", "full_day")
+        
+        is_activity_affected = (
+            closure_scope == "all" or
+            activity_id in closure_activity_ids or
+            activity_id == closure_activity_id
+        )
+        
+        if is_activity_affected and closure_stop_type == "full_day":
+            return {
+                "activity": activity,
+                "date": date,
+                "members": [],
+                "total_members": 0,
+                "present_count": 0,
+                "absent_count": 0,
+                "closure": {
+                    "title": closure.get("title_ar", "توقف"),
+                    "reason": closure.get("reason", ""),
+                    "start_date": closure.get("start_date"),
+                    "end_date": closure.get("end_date")
+                }
+            }
     
     today_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     
