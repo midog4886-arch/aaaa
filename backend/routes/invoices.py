@@ -82,6 +82,7 @@ class Invoice(BaseModel):
     tax_number: str = COMPANY_TAX_NUMBER
     commercial_reg: str = COMPANY_COMMERCIAL_REG
     registration_form_id: Optional[str] = None
+    is_checked: Optional[bool] = False
 
 # ============ ROUTES ============
 

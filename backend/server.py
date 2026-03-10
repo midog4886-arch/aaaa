@@ -646,6 +646,7 @@ class RegistrationForm(BaseModel):
     branch_id: Optional[str] = None
     created_at: str
     status: str = "pending"  # pending, converted, cancelled
+    is_checked: Optional[bool] = False
 
 # ============ LEVELS MODELS ============
 

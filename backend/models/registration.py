@@ -42,3 +42,4 @@ class RegistrationForm(BaseModel):
     branch_id: Optional[str] = None
     created_at: str
     status: str = "pending"
+    is_checked: Optional[bool] = False
