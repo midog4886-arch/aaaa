@@ -1342,7 +1342,7 @@ export const InvoicesPage = () => {
         <div class="activity-item ${act.status}">
           <div class="activity-name">${act.status === 'active' ? '✓' : '✗'} ${act.activity_name}</div>
           ${act.schedule ? `<div style="font-size:5.5pt;color:#2563EB;margin-top:0.3mm;">📅 ${act.schedule}</div>` : ''}
-          <div class="activity-status">${act.status === 'active' ? 'ساري' : 'منتهي'}</div>
+          
         </div>
       `;
     }).join('') || '';
@@ -1560,7 +1560,7 @@ export const InvoicesPage = () => {
         <div class="activity-item ${act.status}">
           <div class="activity-name">${act.status === 'active' ? '✓' : '✗'} ${act.activity_name}</div>
           ${act.schedule ? `<div style="font-size:5.5pt;color:#2563EB;margin-top:0.3mm;">📅 ${act.schedule}</div>` : ''}
-          <div class="activity-status">${act.status === 'active' ? 'ساري' : 'منتهي'}</div>
+          
         </div>
       `;
     }).join('') || '';

@@ -50,7 +50,6 @@ const MemberCard = () => {
       <div class="activity-item active">
         <div class="activity-name">✓ ${act.activity_name}</div>
         ${act.schedule ? `<div style="font-size:5.5pt;color:#2563EB;margin-top:0.3mm;">📅 ${act.schedule}</div>` : ''}
-        <div class="activity-status">ساري</div>
       </div>
     `).join('') || '';
     
