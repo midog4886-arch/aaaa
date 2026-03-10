@@ -17,7 +17,7 @@ import html2canvas from 'html2canvas';
 import html2pdf from 'html2pdf.js';
 import { 
   Plus, Search, Eye, Printer, Loader2, Receipt, CheckCircle, XCircle, Clock,
-  Filter, MessageSquare, X, UserPlus, Users, Trash2, RotateCcw, FileSpreadsheet, Image, Share2, RefreshCcw, Edit, FileText, Package, Percent, Tag, Lock, ClipboardList, ArrowRightCircle, CreditCard, QrCode, Check
+  Filter, MessageSquare, X, UserPlus, Users, Trash2, RotateCcw, FileSpreadsheet, Image, Share2, RefreshCcw, Edit, FileText, Package, Percent, Tag, Lock, ClipboardList, ArrowRightCircle, CreditCard, QrCode, Check, Circle
 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { COMPANY_INFO, INVOICE_TERMS, getStatusInfo, getPaymentMethodLabel, formatSchedule } from './invoices/constants';
@@ -3327,7 +3327,7 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
                               onClick={() => setCheckedInvoices(prev => ({ ...prev, [invoice.id]: !prev[invoice.id] }))}
                               title={language === 'ar' ? 'تم' : 'Done'}
                             >
-                              {checkedInvoices[invoice.id] ? <Check className="w-5 h-5 stroke-[3]" /> : <Check className="w-4 h-4" />}
+                              {checkedInvoices[invoice.id] ? <CheckCircle className="w-5 h-5" /> : <Circle className="w-4 h-4" />}
                             </button>
                           </div>
                         </td>
@@ -3432,7 +3432,7 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
                               onClick={() => setCheckedRegForms(prev => ({ ...prev, [form.id]: !prev[form.id] }))}
                               title={language === 'ar' ? 'تم' : 'Done'}
                             >
-                              {checkedRegForms[form.id] ? <Check className="w-5 h-5 stroke-[3]" /> : <Check className="w-4 h-4" />}
+                              {checkedRegForms[form.id] ? <CheckCircle className="w-5 h-5" /> : <Circle className="w-4 h-4" />}
                             </button>
                           </div>
                         </td>
