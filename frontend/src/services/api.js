@@ -70,6 +70,7 @@ export const invoicesAPI = {
   delete: (id) => axios.delete(`${API}/invoices/${id}`),
   search: (params = {}) => axios.get(`${API}/invoices/search`, { params }),
   getQR: (id) => axios.get(`${API}/invoices/${id}/qr`),
+  toggleCheck: (id) => axios.post(`${API}/invoices/${id}/toggle-check`),
 };
 
 // Products/Inventory API
@@ -107,6 +108,7 @@ export const registrationFormsAPI = {
   update: (id, data) => axios.put(`${API}/registration-forms/${id}`, data),
   convert: (id) => axios.put(`${API}/registration-forms/${id}/convert`),
   delete: (id) => axios.delete(`${API}/registration-forms/${id}`),
+  toggleCheck: (id) => axios.post(`${API}/registration-forms/${id}/toggle-check`),
 };
 
 // Credit Notes (Refund Invoices) API

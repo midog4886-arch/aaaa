@@ -838,6 +838,26 @@ async def update_invoice_branch(invoice_id: str, branch_id: str, current_user: d
     )
     return {"message": "Invoice branch updated", "branch_id": branch_id}
 
+# ============ INVOICE/REG FORM CHECK TOGGLE ============
+
+@api_router.post("/invoices/{invoice_id}/toggle-check")
+async def toggle_invoice_check(invoice_id: str, current_user: dict = Depends(get_current_user)):
+    invoice = await db.invoices.find_one({"id": invoice_id})
+    if not invoice:
+        raise HTTPException(status_code=404, detail="Invoice not found")
+    new_val = not invoice.get("is_checked", False)
+    await db.invoices.update_one({"id": invoice_id}, {"$set": {"is_checked": new_val}})
+    return {"is_checked": new_val}
+
+@api_router.post("/registration-forms/{form_id}/toggle-check")
+async def toggle_reg_form_check(form_id: str, current_user: dict = Depends(get_current_user)):
+    form = await db.registration_forms.find_one({"id": form_id})
+    if not form:
+        raise HTTPException(status_code=404, detail="Form not found")
+    new_val = not form.get("is_checked", False)
+    await db.registration_forms.update_one({"id": form_id}, {"$set": {"is_checked": new_val}})
+    return {"is_checked": new_val}
+
 # ============ CREDIT NOTES (REFUND INVOICES) ROUTES ============
 
 class RefundRequest(BaseModel):

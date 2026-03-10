@@ -52,8 +52,18 @@ export const InvoicesPage = () => {
   const [showRegFormCardPrintDialog, setShowRegFormCardPrintDialog] = useState(false);
   const [regFormCardData, setRegFormCardData] = useState(null);
   
-  const [checkedInvoices, setCheckedInvoices] = useState({});
-  const [checkedRegForms, setCheckedRegForms] = useState({});
+  const handleToggleInvoiceCheck = async (invoiceId) => {
+    try {
+      const res = await invoicesAPI.toggleCheck(invoiceId);
+      setInvoices(prev => prev.map(inv => inv.id === invoiceId ? { ...inv, is_checked: res.data.is_checked } : inv));
+    } catch (err) { console.error(err); }
+  };
+  const handleToggleRegFormCheck = async (formId) => {
+    try {
+      const res = await registrationFormsAPI.toggleCheck(formId);
+      setRegistrationForms(prev => prev.map(f => f.id === formId ? { ...f, is_checked: res.data.is_checked } : f));
+    } catch (err) { console.error(err); }
+  };
 
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [isViewDialogOpen, setIsViewDialogOpen] = useState(false);
@@ -3438,11 +3448,11 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
                               <button className="action-button text-red-600" onClick={() => handleDeleteInvoice(invoice.id, invoice.status)} title={language === 'ar' ? 'حذف' : 'Delete'}><Trash2 className="w-4 h-4" /></button>
                             )}
                             <button 
-                              className={`action-button ${checkedInvoices[invoice.id] ? 'text-red-600' : 'text-gray-400'}`}
-                              onClick={() => setCheckedInvoices(prev => ({ ...prev, [invoice.id]: !prev[invoice.id] }))}
+                              className={`action-button ${invoice.is_checked ? 'text-red-600' : 'text-gray-400'}`}
+                              onClick={() => handleToggleInvoiceCheck(invoice.id)}
                               title={language === 'ar' ? 'تم' : 'Done'}
                             >
-                              {checkedInvoices[invoice.id] ? <CheckCircle className="w-5 h-5" /> : <Circle className="w-4 h-4" />}
+                              {invoice.is_checked ? <CheckCircle className="w-5 h-5" /> : <Circle className="w-4 h-4" />}
                             </button>
                           </div>
                         </td>
@@ -3543,11 +3553,11 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
                               <Trash2 className="w-4 h-4" />
                             </button>
                             <button 
-                              className={`action-button ${checkedRegForms[form.id] ? 'text-red-600' : 'text-gray-400'}`}
-                              onClick={() => setCheckedRegForms(prev => ({ ...prev, [form.id]: !prev[form.id] }))}
+                              className={`action-button ${form.is_checked ? 'text-red-600' : 'text-gray-400'}`}
+                              onClick={() => handleToggleRegFormCheck(form.id)}
                               title={language === 'ar' ? 'تم' : 'Done'}
                             >
-                              {checkedRegForms[form.id] ? <CheckCircle className="w-5 h-5" /> : <Circle className="w-4 h-4" />}
+                              {form.is_checked ? <CheckCircle className="w-5 h-5" /> : <Circle className="w-4 h-4" />}
                             </button>
                           </div>
                         </td>
