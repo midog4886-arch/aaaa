@@ -170,6 +170,7 @@ const MemberCard = () => {
                     <span>من: ${startDate || '----'}</span>
                     <span>إلى: ${endDate || '----'}</span>
                   </div>
+                  ${schedule ? `<div class="schedule-info">📅 ${schedule}</div>` : ''}
                 </div>
                 <div class="info-section">
                   <div class="info-label">الاسم</div>
