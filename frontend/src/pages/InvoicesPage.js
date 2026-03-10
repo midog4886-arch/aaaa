@@ -2455,6 +2455,13 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
           .signature-box { border: 2px solid #d1d5db; padding: 15px; text-align: center; border-radius: 8px; background: white; }
           .signature-box p { margin-bottom: 40px; font-weight: bold; color: #374151; }
           .signature-line { border-top: 1px solid #000; margin-top: 40px; padding-top: 8px; font-size: 10px; }
+          .loyalty-section { margin-top: 15px; padding: 12px; border: 2px solid #9333EA; border-radius: 8px; background: #faf5ff; }
+          .loyalty-section h4 { font-weight: bold; margin-bottom: 8px; color: #9333EA; font-size: 14px; text-align: center; }
+          .loyalty-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 5px; font-size: 10px; margin-bottom: 8px; }
+          .loyalty-item { padding: 3px 5px; }
+          .loyalty-levels { border-top: 1px solid #e9d5ff; padding-top: 8px; margin-top: 5px; }
+          .loyalty-levels h5 { font-weight: bold; font-size: 11px; margin-bottom: 5px; color: #7c3aed; }
+          .levels-grid { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 5px; font-size: 9px; }
           .footer { margin-top: 20px; text-align: center; font-size: 10px; color: #6b7280; border-top: 2px solid #e2e8f0; padding-top: 15px; }
         </style>
       </head>
@@ -2494,6 +2501,26 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
             <li>الاشتراك محدد البداية والنهاية ولا يتم تعويض حصص غياب المشترك</li>
             <li>المبلغ المدفوع لا يسترد بعد مرور أسبوع من الاشتراك</li>
           </ul>
+        </div>
+        <div class="loyalty-section">
+          <h4>🏆 برنامج نقاط الولاء</h4>
+          <div class="loyalty-grid">
+            <div class="loyalty-item">✅ كل حضور: 10 نقاط</div>
+            <div class="loyalty-item">🔥 سلسلة 5 أيام: 50 نقطة</div>
+            <div class="loyalty-item">🎬 مشاهدة فيديو: 3 نقاط</div>
+            <div class="loyalty-item">👥 إحالة صديق: 200 نقطة</div>
+            <div class="loyalty-item">🔄 تجديد شهري: 100 نقطة</div>
+            <div class="loyalty-item">🎂 عيد ميلاد: 100 نقطة</div>
+          </div>
+          <div class="loyalty-levels">
+            <h5>المستويات والمزايا:</h5>
+            <div class="levels-grid">
+              <div>🥉 برونزي: 0+</div>
+              <div>🥈 فضي: 500+ (خصم 3%)</div>
+              <div>🥇 ذهبي: 1500+ (خصم 5%)</div>
+              <div>💎 ماسي: 3000+ (خصم 10%)</div>
+            </div>
+          </div>
         </div>
         <div class="signature-section">
           <div class="signature-box"><p>✍️ توقيع المشترك / ولي الأمر</p><div class="signature-line">التاريخ: _______________</div></div>
@@ -2762,6 +2789,13 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
           .terms-title { font-weight: bold; margin-bottom: 10px; color: #92400e; }
           .terms-list { padding-right: 20px; font-size: 11px; color: #78350f; }
           .terms-list li { margin-bottom: 5px; }
+          .loyalty-section { margin-top: 15px; padding: 12px; border: 2px solid #9333EA; border-radius: 8px; background: #faf5ff; }
+          .loyalty-section h4 { font-weight: bold; margin-bottom: 8px; color: #9333EA; font-size: 14px; text-align: center; }
+          .loyalty-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 5px; font-size: 10px; margin-bottom: 8px; }
+          .loyalty-item { padding: 3px 5px; }
+          .loyalty-levels { border-top: 1px solid #e9d5ff; padding-top: 8px; margin-top: 5px; }
+          .loyalty-levels h5 { font-weight: bold; font-size: 11px; margin-bottom: 5px; color: #7c3aed; }
+          .levels-grid { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 5px; font-size: 9px; }
           .signatures { margin-top: 25px; display: grid; grid-template-columns: 1fr 1fr; gap: 30px; }
           .signature-box { border: 2px solid #d1d5db; padding: 15px; text-align: center; border-radius: 8px; background: white; }
           .signature-label { margin-bottom: 40px; font-weight: bold; color: #374151; }
@@ -2822,6 +2856,27 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
             <li>الاشتراك محدد البداية والنهاية ولا يتم تعويض حصص غياب المشترك</li>
             <li>المبلغ المدفوع لا يسترد بعد مرور أسبوع من الاشتراك</li>
           </ul>
+        </div>
+
+        <div class="loyalty-section">
+          <h4>🏆 برنامج نقاط الولاء</h4>
+          <div class="loyalty-grid">
+            <div class="loyalty-item">✅ كل حضور: 10 نقاط</div>
+            <div class="loyalty-item">🔥 سلسلة 5 أيام: 50 نقطة</div>
+            <div class="loyalty-item">🎬 مشاهدة فيديو: 3 نقاط</div>
+            <div class="loyalty-item">👥 إحالة صديق: 200 نقطة</div>
+            <div class="loyalty-item">🔄 تجديد شهري: 100 نقطة</div>
+            <div class="loyalty-item">🎂 عيد ميلاد: 100 نقطة</div>
+          </div>
+          <div class="loyalty-levels">
+            <h5>المستويات والمزايا:</h5>
+            <div class="levels-grid">
+              <div>🥉 برونزي: 0+</div>
+              <div>🥈 فضي: 500+ (خصم 3%)</div>
+              <div>🥇 ذهبي: 1500+ (خصم 5%)</div>
+              <div>💎 ماسي: 3000+ (خصم 10%)</div>
+            </div>
+          </div>
         </div>
         
         <div class="signatures">
