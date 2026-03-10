@@ -277,17 +277,21 @@ async def get_qr_card_data(member: dict = Depends(get_current_member)):
         for item in inv.get("items", []):
             if item.get("activity_id"):
                 end_date = item.get("end_date", "")
+                start_date = item.get("start_date", "")
                 if not end_date and item.get("period"):
                     period = item.get("period", "")
                     if " - " in period:
                         parts = period.split(" - ")
                         if len(parts) == 2:
+                            start_date = start_date or parts[0].strip()
                             end_date = parts[1].strip()
                 
                 if end_date and end_date >= today:
                     active_activities.append({
                         "activity_name": item.get("activity_name"),
-                        "end_date": end_date
+                        "start_date": start_date,
+                        "end_date": end_date,
+                        "schedule": item.get("schedule", "")
                     })
     
     return {

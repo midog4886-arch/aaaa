@@ -46,10 +46,10 @@ const MemberCard = () => {
     // Get schedule info
     const schedule = firstActivity?.schedule || '';
     
-    // Generate activities HTML
     const activitiesHtml = cardData?.active_activities?.map(act => `
       <div class="activity-item active">
         <div class="activity-name">✓ ${act.activity_name}</div>
+        ${act.schedule ? `<div style="font-size:5.5pt;color:#2563EB;margin-top:0.3mm;">📅 ${act.schedule}</div>` : ''}
         <div class="activity-status">ساري</div>
       </div>
     `).join('') || '';
@@ -335,6 +335,22 @@ const MemberCard = () => {
                 {cardData?.phone && (
                   <p className="text-sm text-gray-300 mt-2" dir="ltr">{cardData.phone}</p>
                 )}
+
+                {cardData?.active_activities?.length > 0 && (
+                  <div className="mt-4 space-y-2">
+                    {cardData.active_activities.map((act, idx) => (
+                      <div key={idx} className="bg-white/10 rounded-lg p-2 text-sm">
+                        <p className="font-bold text-orange-300">{act.activity_name}</p>
+                        {act.schedule && (
+                          <p className="text-blue-200 text-xs mt-1">📅 {act.schedule}</p>
+                        )}
+                        <p className="text-gray-300 text-xs mt-1">
+                          من {act.start_date || '----'} إلى {act.end_date || '----'}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
               
               {/* Action Buttons */}
@@ -390,9 +406,14 @@ const MemberCard = () => {
             <CardContent>
               <div className="space-y-2">
                 {cardData.active_activities.map((act, idx) => (
-                  <div key={idx} className="flex justify-between items-center p-3 bg-green-50 rounded-lg">
-                    <span className="font-medium">{act.activity_name}</span>
-                    <span className="text-sm text-gray-500">حتى {act.end_date}</span>
+                  <div key={idx} className="p-3 bg-green-50 rounded-lg">
+                    <div className="flex justify-between items-center">
+                      <span className="font-medium">{act.activity_name}</span>
+                      <span className="text-sm text-gray-500">حتى {act.end_date}</span>
+                    </div>
+                    {act.schedule && (
+                      <p className="text-xs text-blue-600 mt-1">📅 {act.schedule}</p>
+                    )}
                   </div>
                 ))}
               </div>
