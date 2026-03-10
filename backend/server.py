@@ -4609,13 +4609,32 @@ async def get_attendance_by_activity(
     date: str,
     current_user: dict = Depends(get_current_user)
 ):
-    """Get attendance for a specific activity on a specific date"""
+    """Get attendance for a specific activity on a specific date - filtered by schedule day"""
     # Get activity details
     activity = await db.activities.find_one({"id": activity_id}, {"_id": 0})
     if not activity:
         raise HTTPException(status_code=404, detail="النشاط غير موجود")
     
     today_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    
+    # Determine the day of week for the requested date
+    try:
+        req_date = datetime.strptime(date, "%Y-%m-%d")
+    except Exception:
+        req_date = datetime.now(timezone(timedelta(hours=3)))
+    
+    english_to_arabic_days = {
+        "saturday": ["السبت", "سبت"],
+        "sunday": ["الأحد", "الاحد", "أحد", "احد"],
+        "monday": ["الإثنين", "الاثنين", "إثنين", "اثنين"],
+        "tuesday": ["الثلاثاء", "ثلاثاء"],
+        "wednesday": ["الأربعاء", "الاربعاء", "أربعاء", "اربعاء"],
+        "thursday": ["الخميس", "خميس"],
+        "friday": ["الجمعة", "جمعة"]
+    }
+    req_day_en = req_date.strftime("%A").lower()
+    req_day_arabic_variants = english_to_arabic_days.get(req_day_en, [])
+    
     members_query = {
         "activities": {
             "$elemMatch": {
@@ -4630,6 +4649,44 @@ async def get_attendance_by_activity(
     
     members = await db.members.find(members_query, {"_id": 0}).to_list(500)
     
+    # Get latest paid invoices for these members to check schedule
+    member_ids = [m["id"] for m in members]
+    invoices = await db.invoices.find({
+        "member_id": {"$in": member_ids},
+        "status": {"$in": ["paid", "partial"]},
+        "items": {"$elemMatch": {"activity_id": activity_id}}
+    }, {"_id": 0, "member_id": 1, "items": 1, "created_at": 1}).sort("created_at", -1).to_list(2000)
+    
+    # Build schedule map: member_id -> schedule text for this activity
+    member_schedule_map = {}
+    for inv in invoices:
+        mid = inv.get("member_id")
+        if mid in member_schedule_map:
+            continue
+        for item in inv.get("items", []):
+            if item.get("activity_id") == activity_id and item.get("schedule"):
+                member_schedule_map[mid] = item["schedule"]
+                break
+    
+    def member_has_schedule_on_day(member):
+        member_id = member["id"]
+        # Check schedule from member activities first
+        member_activity = next((a for a in member.get("activities", []) if a["activity_id"] == activity_id), None)
+        schedule_text = ""
+        if member_activity:
+            schedule_text = member_activity.get("schedule", "")
+        # Fallback to invoice schedule
+        if not schedule_text:
+            schedule_text = member_schedule_map.get(member_id, "")
+        # If no schedule info at all, include the member (don't filter out)
+        if not schedule_text:
+            return True
+        # Check if any Arabic variant of the requested day is in the schedule
+        for day_variant in req_day_arabic_variants:
+            if day_variant in schedule_text:
+                return True
+        return False
+    
     # Get existing attendance records for this date
     existing_records = await db.attendance.find({
         "activity_id": activity_id,
@@ -4643,6 +4700,12 @@ async def get_attendance_by_activity(
     for member in members:
         member_activity = next((a for a in member.get("activities", []) if a["activity_id"] == activity_id), None)
         if member_activity:
+            # Filter by scheduled day
+            if not member_has_schedule_on_day(member):
+                # Exception: if already has attendance record for this date, still show
+                if member["id"] not in existing_map:
+                    continue
+            
             attendance_record = existing_map.get(member["id"])
             result.append({
                 "member_id": member["id"],
