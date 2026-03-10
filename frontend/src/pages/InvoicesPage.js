@@ -2149,6 +2149,45 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
           .terms-section li { 
             margin-bottom: 3px; 
           }
+          .loyalty-section {
+            margin-top: 15px;
+            padding: 10px;
+            border: 2px solid #9333EA;
+            border-radius: 8px;
+          }
+          .loyalty-section h4 {
+            font-weight: bold;
+            margin-bottom: 8px;
+            color: #9333EA;
+            font-size: 14px;
+            text-align: center;
+          }
+          .loyalty-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 5px;
+            font-size: 10px;
+            margin-bottom: 8px;
+          }
+          .loyalty-item {
+            padding: 3px 5px;
+          }
+          .loyalty-levels {
+            border-top: 1px solid #e5e7eb;
+            padding-top: 8px;
+            margin-top: 5px;
+          }
+          .loyalty-levels h5 {
+            font-weight: bold;
+            font-size: 11px;
+            margin-bottom: 5px;
+          }
+          .levels-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr 1fr;
+            gap: 5px;
+            font-size: 9px;
+          }
           .signature-section { 
             margin-top: 20px; 
             display: grid; 
@@ -2291,6 +2330,27 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
             <li>${INVOICE_TERMS.ar[0]}</li>
             <li>${INVOICE_TERMS.ar[1]}</li>
           </ul>
+        </div>
+
+        <div class="loyalty-section">
+          <h4>🏆 برنامج نقاط الولاء</h4>
+          <div class="loyalty-grid">
+            <div class="loyalty-item">✅ كل حضور: 10 نقاط</div>
+            <div class="loyalty-item">🔥 سلسلة 5 أيام: 50 نقطة</div>
+            <div class="loyalty-item">🎬 مشاهدة فيديو: 3 نقاط</div>
+            <div class="loyalty-item">👥 إحالة صديق: 200 نقطة</div>
+            <div class="loyalty-item">🔄 تجديد شهري: 100 نقطة</div>
+            <div class="loyalty-item">🎂 عيد ميلاد: 100 نقطة</div>
+          </div>
+          <div class="loyalty-levels">
+            <h5>المستويات والمزايا:</h5>
+            <div class="levels-grid">
+              <div>🥉 برونزي: 0+</div>
+              <div>🥈 فضي: 500+ (خصم 3%)</div>
+              <div>🥇 ذهبي: 1500+ (خصم 5%)</div>
+              <div>💎 ماسي: 3000+ (خصم 10%)</div>
+            </div>
+          </div>
         </div>
         
         <div class="signature-section">
