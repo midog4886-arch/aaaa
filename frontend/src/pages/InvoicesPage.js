@@ -1395,7 +1395,8 @@ export const InvoicesPage = () => {
             .logo-card { width: 90mm; height: 60mm; background: white; border-radius: 4mm; overflow: hidden; box-shadow: 0 4px 15px rgba(0,0,0,0.1); display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 3mm; }
             .logo-card img { max-width: 100%; max-height: 55%; object-fit: contain; }
             .logo-card .contact-info { font-size: 7pt; color: #374151; text-align: center; margin-top: 2mm; font-weight: 600; line-height: 1.6; }
-            .logo-card .lost-card-notice { font-size: 7pt; color: #DC2626; text-align: center; margin-top: 2mm; font-weight: 700; line-height: 1.5; background: #FEF2F2; padding: 2mm 3mm; border-radius: 2mm; border: 1.5px solid #EF4444; }
+            .logo-card .terms { text-align: right; font-size: 5.5pt; color: #374151; margin-top: 2mm; line-height: 1.6; padding: 0 2mm; }
+            .logo-card .terms .terms-title { font-weight: 700; color: #1f2937; font-size: 6.5pt; margin-bottom: 1mm; text-align: center; }
             .print-btn { margin-top: 20px; padding: 12px 30px; background: linear-gradient(135deg, #F97316, #EA580C); color: white; border: none; border-radius: 10px; cursor: pointer; font-family: 'Tajawal', Arial, sans-serif; font-size: 16px; font-weight: bold; }
             .position-labels { display: flex; gap: 15px; justify-content: center; margin-top: 10px; }
             .position-label { padding: 8px 16px; background: #FEF3C7; border-radius: 8px; color: #92400E; font-size: 12px; }
@@ -1438,7 +1439,12 @@ export const InvoicesPage = () => {
               <div class="logo-card">
                 <img src="${window.location.origin}/images/academy-logo.png" alt="شعار الأكاديمية" />
                 <div class="contact-info">📞 0566238384</div>
-                <div class="lost-card-notice">⚠️ في حال فقدان كرت العضوية،<br/>يتم إصدار كرت جديد برسوم 10 ر.س</div>
+                <div class="terms">
+                  <div class="terms-title">شروط وأحكام</div>
+                  <div>• الاشتراك محدد البداية والنهاية ولا يتم تعويض حصص غياب المشترك</div>
+                  <div>• المبلغ المدفوع لا يسترد بعد مرور أسبوع من الاشتراك</div>
+                  <div>• في حال فقدان كرت العضوية، يتم إصدار كرت جديد برسوم 10 ر.س</div>
+                </div>
               </div>
             </div>
             <div class="position-labels">
@@ -1472,17 +1478,17 @@ export const InvoicesPage = () => {
                   ${activitiesHtml ? `<div class="activities"><div class="activities-label">الأنشطة المسجلة</div>${activitiesHtml}</div>` : ''}
                 </div>
               </div>
-              <div class="card-footer">
-                <div class="terms-title">شروط وأحكام:</div>
-                <div>• الاشتراك محدد البداية والنهاية ولا يتم تعويض حصص غياب المشترك</div>
-                <div>• المبلغ المدفوع لا يسترد بعد مرور أسبوع من الاشتراك</div>
-              </div>
             </div>
             <!-- Logo Card - Position 2 -->
             <div class="logo-card">
               <img src="${window.location.origin}/images/academy-logo.png" alt="شعار الأكاديمية" />
               <div class="contact-info">📞 0566238384</div>
-              <div class="lost-card-notice">⚠️ في حال فقدان كرت العضوية،<br/>يتم إصدار كرت جديد برسوم 10 ر.س</div>
+              <div class="terms">
+                <div class="terms-title">شروط وأحكام</div>
+                <div>• الاشتراك محدد البداية والنهاية ولا يتم تعويض حصص غياب المشترك</div>
+                <div>• المبلغ المدفوع لا يسترد بعد مرور أسبوع من الاشتراك</div>
+                <div>• في حال فقدان كرت العضوية، يتم إصدار كرت جديد برسوم 10 ر.س</div>
+              </div>
             </div>
           </div>
         </body>
@@ -1607,7 +1613,8 @@ export const InvoicesPage = () => {
             .logo-card { width: 90mm; height: 60mm; background: white; border-radius: 4mm; overflow: hidden; box-shadow: 0 4px 15px rgba(0,0,0,0.1); display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 3mm; }
             .logo-card img { max-width: 100%; max-height: 55%; object-fit: contain; }
             .logo-card .contact-info { font-size: 7pt; color: #374151; text-align: center; margin-top: 2mm; font-weight: 600; line-height: 1.6; }
-            .logo-card .lost-card-notice { font-size: 7pt; color: #DC2626; text-align: center; margin-top: 2mm; font-weight: 700; line-height: 1.5; background: #FEF2F2; padding: 2mm 3mm; border-radius: 2mm; border: 1.5px solid #EF4444; }
+            .logo-card .terms { text-align: right; font-size: 5.5pt; color: #374151; margin-top: 2mm; line-height: 1.6; padding: 0 2mm; }
+            .logo-card .terms .terms-title { font-weight: 700; color: #1f2937; font-size: 6.5pt; margin-bottom: 1mm; text-align: center; }
             .print-btn { margin-top: 20px; padding: 12px 30px; background: linear-gradient(135deg, #9333EA, #7C3AED); color: white; border: none; border-radius: 10px; cursor: pointer; font-family: 'Tajawal', Arial, sans-serif; font-size: 16px; font-weight: bold; }
             .position-labels { display: flex; gap: 15px; justify-content: center; margin-top: 10px; }
             .position-label { padding: 8px 16px; background: #F3E8FF; border-radius: 8px; color: #7C3AED; font-size: 12px; }
@@ -1650,7 +1657,12 @@ export const InvoicesPage = () => {
               <div class="logo-card">
                 <img src="${window.location.origin}/images/academy-logo.png" alt="شعار الأكاديمية" />
                 <div class="contact-info">📞 0566238384</div>
-                <div class="lost-card-notice">⚠️ في حال فقدان كرت العضوية،<br/>يتم إصدار كرت جديد برسوم 10 ر.س</div>
+                <div class="terms">
+                  <div class="terms-title">شروط وأحكام</div>
+                  <div>• الاشتراك محدد البداية والنهاية ولا يتم تعويض حصص غياب المشترك</div>
+                  <div>• المبلغ المدفوع لا يسترد بعد مرور أسبوع من الاشتراك</div>
+                  <div>• في حال فقدان كرت العضوية، يتم إصدار كرت جديد برسوم 10 ر.س</div>
+                </div>
               </div>
             </div>
             <div class="position-labels">
@@ -1684,17 +1696,17 @@ export const InvoicesPage = () => {
                   ${activitiesHtml ? `<div class="activities"><div class="activities-label">الأنشطة المسجلة</div>${activitiesHtml}</div>` : ''}
                 </div>
               </div>
-              <div class="card-footer">
-                <div class="terms-title">شروط وأحكام:</div>
-                <div>• الاشتراك محدد البداية والنهاية ولا يتم تعويض حصص غياب المشترك</div>
-                <div>• المبلغ المدفوع لا يسترد بعد مرور أسبوع من الاشتراك</div>
-              </div>
             </div>
             <!-- Logo Card - Position 2 -->
             <div class="logo-card">
               <img src="${window.location.origin}/images/academy-logo.png" alt="شعار الأكاديمية" />
               <div class="contact-info">📞 0566238384</div>
-              <div class="lost-card-notice">⚠️ في حال فقدان كرت العضوية،<br/>يتم إصدار كرت جديد برسوم 10 ر.س</div>
+              <div class="terms">
+                <div class="terms-title">شروط وأحكام</div>
+                <div>• الاشتراك محدد البداية والنهاية ولا يتم تعويض حصص غياب المشترك</div>
+                <div>• المبلغ المدفوع لا يسترد بعد مرور أسبوع من الاشتراك</div>
+                <div>• في حال فقدان كرت العضوية، يتم إصدار كرت جديد برسوم 10 ر.س</div>
+              </div>
             </div>
           </div>
         </body>
