@@ -17,7 +17,7 @@ import html2canvas from 'html2canvas';
 import html2pdf from 'html2pdf.js';
 import { 
   Plus, Search, Eye, Printer, Loader2, Receipt, CheckCircle, XCircle, Clock,
-  Filter, MessageSquare, X, UserPlus, Users, Trash2, RotateCcw, FileSpreadsheet, Image, Share2, RefreshCcw, Edit, FileText, Package, Percent, Tag, Lock, ClipboardList, ArrowRightCircle, CreditCard, QrCode
+  Filter, MessageSquare, X, UserPlus, Users, Trash2, RotateCcw, FileSpreadsheet, Image, Share2, RefreshCcw, Edit, FileText, Package, Percent, Tag, Lock, ClipboardList, ArrowRightCircle, CreditCard, QrCode, Check
 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { COMPANY_INFO, INVOICE_TERMS, getStatusInfo, getPaymentMethodLabel, formatSchedule } from './invoices/constants';
@@ -52,6 +52,9 @@ export const InvoicesPage = () => {
   const [showRegFormCardPrintDialog, setShowRegFormCardPrintDialog] = useState(false);
   const [regFormCardData, setRegFormCardData] = useState(null);
   
+  const [checkedInvoices, setCheckedInvoices] = useState({});
+  const [checkedRegForms, setCheckedRegForms] = useState({});
+
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [isViewDialogOpen, setIsViewDialogOpen] = useState(false);
   const [isAddMemberDialogOpen, setIsAddMemberDialogOpen] = useState(false);
@@ -3319,6 +3322,13 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
                             {isAdmin && (
                               <button className="action-button text-red-600" onClick={() => handleDeleteInvoice(invoice.id, invoice.status)} title={language === 'ar' ? 'حذف' : 'Delete'}><Trash2 className="w-4 h-4" /></button>
                             )}
+                            <button 
+                              className={`action-button ${checkedInvoices[invoice.id] ? 'text-green-600' : 'text-gray-400'}`}
+                              onClick={() => setCheckedInvoices(prev => ({ ...prev, [invoice.id]: !prev[invoice.id] }))}
+                              title={language === 'ar' ? 'تم' : 'Done'}
+                            >
+                              {checkedInvoices[invoice.id] ? <Check className="w-5 h-5 stroke-[3]" /> : <Check className="w-4 h-4" />}
+                            </button>
                           </div>
                         </td>
                       </tr>
@@ -3416,6 +3426,13 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
                               title={language === 'ar' ? 'حذف' : 'Delete'}
                             >
                               <Trash2 className="w-4 h-4" />
+                            </button>
+                            <button 
+                              className={`action-button ${checkedRegForms[form.id] ? 'text-green-600' : 'text-gray-400'}`}
+                              onClick={() => setCheckedRegForms(prev => ({ ...prev, [form.id]: !prev[form.id] }))}
+                              title={language === 'ar' ? 'تم' : 'Done'}
+                            >
+                              {checkedRegForms[form.id] ? <Check className="w-5 h-5 stroke-[3]" /> : <Check className="w-4 h-4" />}
                             </button>
                           </div>
                         </td>
