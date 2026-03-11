@@ -9,12 +9,12 @@ import { Label } from '../components/ui/label';
 import { Badge } from '../components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '../components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
-import { levelsAPI, membersAPI, branchesAPI, activitiesAPI } from '../services/api';
+import { levelsAPI, membersAPI, branchesAPI, activitiesAPI, attendanceAPI } from '../services/api';
 import { toast } from 'sonner';
 import { 
   Plus, Edit, Trash2, Loader2, Layers, Users, Dumbbell, UserPlus, UserMinus, Search,
   ChevronDown, ChevronUp, ChevronRight, Clock, AlertTriangle, ArrowRight, ArrowLeft, Home,
-  GripVertical, Move, ArrowUpDown, SlidersHorizontal, TrendingUp, BarChart3
+  GripVertical, Move, ArrowUpDown, SlidersHorizontal, TrendingUp, BarChart3, CheckCircle, Circle, UserCheck
 } from 'lucide-react';
 
 // Main activity types with Arabic names
@@ -68,6 +68,9 @@ export const LevelsPage = () => {
   const [isActivityEditDialogOpen, setIsActivityEditDialogOpen] = useState(false);
   const [editingActivity, setEditingActivity] = useState({ id: '', name_ar: '', name_en: '', icon: '', color: '' });
   
+  const [attendanceMap, setAttendanceMap] = useState({});
+  const [attendanceLoading, setAttendanceLoading] = useState({});
+
   // Custom activities (user-defined names)
   const [customActivityNames, setCustomActivityNames] = useState(() => {
     const saved = localStorage.getItem('customActivityNames');
@@ -111,16 +114,30 @@ export const LevelsPage = () => {
   const loadData = async () => {
     try {
       const branchParams = selectedBranchId && selectedBranchId !== 'all' ? { branch_filter: selectedBranchId } : {};
-      const [levelsRes, membersRes, branchesRes, activitiesRes] = await Promise.all([
+      const today = new Date().toISOString().split('T')[0];
+      const [levelsRes, membersRes, branchesRes, activitiesRes, attendanceRes] = await Promise.all([
         levelsAPI.getAll(branchParams),
         membersAPI.getAll(branchParams),
         isAdmin ? branchesAPI.getAll() : Promise.resolve({ data: [] }),
-        activitiesAPI.getAll()
+        activitiesAPI.getAll(),
+        attendanceAPI.getAll({ date: today }).catch(() => ({ data: [] }))
       ]);
       setLevels(levelsRes.data);
       setMembers(membersRes.data);
       setBranches(branchesRes.data || []);
       setActivities(activitiesRes.data || []);
+      
+      const todayRecords = attendanceRes.data || [];
+      const attMap = {};
+      const allLevels = levelsRes.data || [];
+      todayRecords.forEach(rec => {
+        allLevels.forEach(lvl => {
+          if ((lvl.members || []).some(m => m.member_id === rec.member_id)) {
+            attMap[`${rec.member_id}_${lvl.id}`] = true;
+          }
+        });
+      });
+      setAttendanceMap(attMap);
       
       // Auto expand first activity
       if (levelsRes.data.length > 0) {
@@ -831,6 +848,85 @@ export const LevelsPage = () => {
     );
   }
 
+  const resolveActivityId = (level) => {
+    const actName = level.activity_name || '';
+    for (const a of activities) {
+      if (actName.includes(a.name_ar) || actName.includes(a.name)) return a.id;
+    }
+    const normalized = actName.replace(/^ال/, '');
+    for (const a of activities) {
+      const aNorm = (a.name_ar || '').replace(/^ال/, '');
+      if (normalized.includes(aNorm) || aNorm.includes(normalized.split(' - ')[0]?.trim())) return a.id;
+    }
+    return '';
+  };
+
+  const handleMemberAttendance = async (member, level) => {
+    const key = `${member.id}_${level.id}`;
+    if (attendanceMap[key] || attendanceLoading[key]) return;
+    
+    setAttendanceLoading(prev => ({ ...prev, [key]: true }));
+    try {
+      await attendanceAPI.record({
+        member_id: member.id,
+        activity_id: resolveActivityId(level)
+      });
+      
+      setAttendanceMap(prev => ({ ...prev, [key]: true }));
+      toast.success(t(`تم تحضير ${member.name_ar || member.name}`, `${member.name_ar || member.name} marked present`));
+    } catch (error) {
+      const msg = error.response?.data?.detail || '';
+      if (msg?.includes('already') || msg?.includes('سبق') || msg?.includes('مسجل')) {
+        setAttendanceMap(prev => ({ ...prev, [key]: true }));
+        toast.info(t('تم تسجيل الحضور مسبقاً', 'Already recorded'));
+      } else {
+        toast.error(msg || t('فشل تسجيل الحضور', 'Failed to record attendance'));
+      }
+    } finally {
+      setAttendanceLoading(prev => ({ ...prev, [key]: false }));
+    }
+  };
+
+  const handleBulkAttendance = async (levelMembers, level) => {
+    if (levelMembers.length === 0) return;
+    let success = 0;
+    let alreadyDone = 0;
+    let failed = 0;
+    let lastError = '';
+    const actId = resolveActivityId(level);
+    
+    for (const member of levelMembers) {
+      const key = `${member.id}_${level.id}`;
+      if (attendanceMap[key]) { alreadyDone++; continue; }
+      
+      setAttendanceLoading(prev => ({ ...prev, [key]: true }));
+      try {
+        await attendanceAPI.record({
+          member_id: member.id,
+          activity_id: actId
+        });
+        
+        setAttendanceMap(prev => ({ ...prev, [key]: true }));
+        success++;
+      } catch (error) {
+        const msg = error.response?.data?.detail || '';
+        if (msg?.includes('already') || msg?.includes('سبق') || msg?.includes('مسجل')) {
+          setAttendanceMap(prev => ({ ...prev, [key]: true }));
+          alreadyDone++;
+        } else {
+          failed++;
+          lastError = msg;
+        }
+      } finally {
+        setAttendanceLoading(prev => ({ ...prev, [key]: false }));
+      }
+    }
+    
+    if (success > 0) toast.success(t(`تم تحضير ${success} لاعب`, `${success} players marked present`));
+    if (alreadyDone > 0) toast.info(t(`${alreadyDone} تم تحضيرهم مسبقاً`, `${alreadyDone} already recorded`));
+    if (failed > 0) toast.error(t(`فشل تحضير ${failed} لاعب: ${lastError}`, `${failed} failed: ${lastError}`));
+  };
+
   // Render a level card component with drag & drop support
   const renderLevelCard = (originalLevel, activityId) => {
     const level = getFilteredLevelForDay(originalLevel);
@@ -926,16 +1022,28 @@ export const LevelsPage = () => {
               </p>
             ) : (
               <>
-                {levelMembers.slice(0, 5).map(member => (
+                {levelMembers.slice(0, 5).map(member => {
+                  const attKey = `${member.id}_${level.id}`;
+                  const isPresent = attendanceMap[attKey];
+                  const isAttLoading = attendanceLoading[attKey];
+                  return (
                   <div 
                     key={member.id}
                     draggable
                     onDragStart={(e) => handleDragStart(e, member, level)}
                     onDragEnd={handleDragEnd}
-                    className={`flex items-center gap-2 p-2 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors cursor-grab active:cursor-grabbing
+                    className={`flex items-center gap-2 p-2 rounded-lg transition-colors cursor-grab active:cursor-grabbing
+                      ${isPresent ? 'bg-green-50 border border-green-200' : 'bg-gray-50 hover:bg-gray-100'}
                       ${draggedMember?.id === member.id ? 'opacity-50 scale-95' : ''}`}
                   >
-                    <GripVertical className="w-4 h-4 text-gray-400 shrink-0" />
+                    <button
+                      onClick={(e) => { e.stopPropagation(); handleMemberAttendance(member, level); }}
+                      disabled={isPresent || isAttLoading}
+                      className={`shrink-0 transition-colors ${isPresent ? 'text-green-600' : 'text-gray-400 hover:text-green-500'}`}
+                      title={isPresent ? t('حاضر', 'Present') : t('تحضير', 'Mark present')}
+                    >
+                      {isAttLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : isPresent ? <CheckCircle className="w-5 h-5" /> : <Circle className="w-5 h-5" />}
+                    </button>
                     <div className={`w-7 h-7 rounded-full ${getLevelColor(level.level_number)} text-white flex items-center justify-center text-xs font-bold shadow-sm`}>
                       {(member.name_ar || member.name || '?').charAt(0)}
                     </div>
@@ -946,7 +1054,8 @@ export const LevelsPage = () => {
                       #{member.member_code}
                     </Badge>
                   </div>
-                ))}
+                  );
+                })}
                 {levelMembers.length > 5 && (
                   <p className="text-center text-gray-500 text-xs py-1 bg-gray-50 rounded-lg">
                     +{levelMembers.length - 5} {t('آخرين', 'more')}
@@ -956,16 +1065,28 @@ export const LevelsPage = () => {
             )}
           </div>
           
-          {/* Manage Button */}
-          <Button
-            variant="outline"
-            onClick={() => openMembersDialog(level)}
-            className="w-full gap-2 h-9"
-            data-testid={`manage-members-${level.id}`}
-          >
-            <UserPlus className="w-4 h-4" />
-            {t('إدارة الأعضاء', 'Manage Members')}
-          </Button>
+          {/* Attendance & Manage Buttons */}
+          <div className="flex gap-2">
+            {levelMembers.length > 0 && (
+              <Button
+                variant="outline"
+                onClick={() => handleBulkAttendance(levelMembers, level)}
+                className="flex-1 gap-1 h-9 text-green-700 border-green-300 hover:bg-green-50"
+              >
+                <UserCheck className="w-4 h-4" />
+                {t('تحضير الكل', 'All Present')}
+              </Button>
+            )}
+            <Button
+              variant="outline"
+              onClick={() => openMembersDialog(level)}
+              className={`gap-2 h-9 ${levelMembers.length > 0 ? '' : 'w-full'}`}
+              data-testid={`manage-members-${level.id}`}
+            >
+              <UserPlus className="w-4 h-4" />
+              {t('إدارة الأعضاء', 'Manage Members')}
+            </Button>
+          </div>
         </div>
       </div>
     );
