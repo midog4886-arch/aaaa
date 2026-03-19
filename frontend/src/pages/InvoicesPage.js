@@ -247,14 +247,20 @@ export const InvoicesPage = () => {
     setCouponCode('');
   };
 
+  const calcEndDate = (startDate, weeks) => {
+    if (!startDate || !weeks) return '';
+    const d = new Date(startDate);
+    d.setDate(d.getDate() + (parseInt(weeks, 10) * 7));
+    return d.toISOString().split('T')[0];
+  };
+
   const addActivityToInvoice = (activityId) => {
     const activity = activities.find(a => a.id === activityId);
     if (!activity) return;
     
     const today = new Date().toISOString().split('T')[0];
-    const nextMonth = new Date();
-    nextMonth.setMonth(nextMonth.getMonth() + 1);
-    const endDate = nextMonth.toISOString().split('T')[0];
+    const defaultWeeks = 4;
+    const endDate = calcEndDate(today, defaultWeeks);
     
     // Generate unique key for duplicate activities
     const existingCount = invoiceItems.filter(item => item.activity_id === activityId).length;
@@ -266,6 +272,7 @@ export const InvoicesPage = () => {
       period: `${today} - ${endDate}`,
       start_date: today,
       end_date: endDate,
+      weeks: defaultWeeks,
       schedule: '', // جدول المواعيد
       level_id: '', // المستوى
       level_name: '',
@@ -513,7 +520,20 @@ export const InvoicesPage = () => {
   const updateItemDate = (index, field, value) => {
     const updated = [...invoiceItems];
     updated[index][field] = value;
+    if (field === 'start_date' && updated[index].weeks) {
+      updated[index].end_date = calcEndDate(value, updated[index].weeks);
+    }
     updated[index].period = `${updated[index].start_date} - ${updated[index].end_date}`;
+    setInvoiceItems(updated);
+  };
+
+  const updateItemWeeks = (index, weeks) => {
+    const updated = [...invoiceItems];
+    updated[index].weeks = parseInt(weeks, 10) || 4;
+    if (updated[index].start_date) {
+      updated[index].end_date = calcEndDate(updated[index].start_date, updated[index].weeks);
+      updated[index].period = `${updated[index].start_date} - ${updated[index].end_date}`;
+    }
     setInvoiceItems(updated);
   };
 
@@ -2977,13 +2997,15 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
   // Add activity to registration form
   const addActivityToRegForm = (activity) => {
     const today = new Date().toISOString().split('T')[0];
-    const endDate = new Date(Date.now() + 30*24*60*60*1000).toISOString().split('T')[0];
+    const defaultWeeks = 4;
+    const endDate = calcEndDate(today, defaultWeeks);
     setRegFormItems([...regFormItems, {
       activity_id: activity.id,
       activity_name: language === 'ar' ? activity.name_ar : activity.name,
       fee: activity.monthly_fee || activity.fee || 0,
       start_date: today,
       end_date: endDate,
+      weeks: defaultWeeks,
       period: `${today} - ${endDate}`,
       schedule: '',
       level_id: '',
@@ -3878,7 +3900,21 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
                               />
                             </div>
                             <div className="space-y-2">
-                              <Label className="text-sm font-medium">{language === 'ar' ? 'تاريخ النهاية' : 'End Date'}</Label>
+                              <Label className="text-sm font-medium flex items-center gap-2">
+                                {language === 'ar' ? 'تاريخ النهاية' : 'End Date'}
+                                <span className="flex items-center gap-1 bg-blue-50 border border-blue-200 rounded px-1.5 py-0.5">
+                                  <input
+                                    type="number"
+                                    min="1"
+                                    max="52"
+                                    value={item.weeks || 4}
+                                    onChange={(e) => updateItemWeeks(idx, e.target.value)}
+                                    className="w-8 text-xs text-center bg-transparent outline-none font-semibold text-blue-700"
+                                    title={language === 'ar' ? 'عدد الأسابيع' : 'Weeks'}
+                                  />
+                                  <span className="text-xs text-blue-600">{language === 'ar' ? 'أسبوع' : 'wks'}</span>
+                                </span>
+                              </Label>
                               <Input 
                                 type="date" 
                                 value={item.end_date} 
@@ -3913,6 +3949,11 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
                                         : [...currentDays, day];
                                       const updated = [...invoiceItems];
                                       updated[idx].training_days = newDays;
+                                      // Auto recalculate end_date when days change
+                                      if (updated[idx].start_date && updated[idx].weeks) {
+                                        updated[idx].end_date = calcEndDate(updated[idx].start_date, updated[idx].weeks);
+                                        updated[idx].period = `${updated[idx].start_date} - ${updated[idx].end_date}`;
+                                      }
                                       // Format schedule: "الأحد، الإثنين، الثلاثاء و الأربعاء - 04:00 م"
                                       const formatSchedule = (days, time) => {
                                         if (days.length === 0) return time || '';
@@ -4997,7 +5038,9 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
                                 onChange={(e) => {
                                   const updated = [...regFormItems];
                                   updated[idx].start_date = e.target.value;
-                                  // Update period
+                                  if (updated[idx].weeks) {
+                                    updated[idx].end_date = calcEndDate(e.target.value, updated[idx].weeks);
+                                  }
                                   if (updated[idx].end_date) {
                                     updated[idx].period = `${e.target.value} - ${updated[idx].end_date}`;
                                   }
@@ -5007,7 +5050,29 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
                               />
                             </div>
                             <div className="space-y-2">
-                              <Label className="text-sm font-medium">{language === 'ar' ? 'تاريخ النهاية' : 'End Date'}</Label>
+                              <Label className="text-sm font-medium flex items-center gap-2">
+                                {language === 'ar' ? 'تاريخ النهاية' : 'End Date'}
+                                <span className="flex items-center gap-1 bg-blue-50 border border-blue-200 rounded px-1.5 py-0.5">
+                                  <input
+                                    type="number"
+                                    min="1"
+                                    max="52"
+                                    value={item.weeks || 4}
+                                    onChange={(e) => {
+                                      const updated = [...regFormItems];
+                                      updated[idx].weeks = parseInt(e.target.value, 10) || 4;
+                                      if (updated[idx].start_date) {
+                                        updated[idx].end_date = calcEndDate(updated[idx].start_date, updated[idx].weeks);
+                                        updated[idx].period = `${updated[idx].start_date} - ${updated[idx].end_date}`;
+                                      }
+                                      setRegFormItems(updated);
+                                    }}
+                                    className="w-8 text-xs text-center bg-transparent outline-none font-semibold text-blue-700"
+                                    title={language === 'ar' ? 'عدد الأسابيع' : 'Weeks'}
+                                  />
+                                  <span className="text-xs text-blue-600">{language === 'ar' ? 'أسبوع' : 'wks'}</span>
+                                </span>
+                              </Label>
                               <Input 
                                 type="date"
                                 value={item.end_date || ''}
@@ -5057,6 +5122,11 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
                                       : [...currentDays, day];
                                     const updated = [...regFormItems];
                                     updated[idx].training_days = newDays;
+                                    // Auto recalculate end_date when days change
+                                    if (updated[idx].start_date && updated[idx].weeks) {
+                                      updated[idx].end_date = calcEndDate(updated[idx].start_date, updated[idx].weeks);
+                                      updated[idx].period = `${updated[idx].start_date} - ${updated[idx].end_date}`;
+                                    }
                                     // Format schedule: "الأحد، الإثنين، الثلاثاء و الأربعاء - 04:00 م"
                                     const formatSchedule = (days, time) => {
                                       if (days.length === 0) return time || '';
