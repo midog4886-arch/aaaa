@@ -4326,7 +4326,8 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
                                   const activity = activities.find(a => a.id === actId);
                                   if (!activity) return;
                                   const today = new Date().toISOString().split('T')[0];
-                                  const endDate = new Date(new Date().setMonth(new Date().getMonth() + 1)).toISOString().split('T')[0];
+                                  const defaultWeeks = 4;
+                                  const endDate = calcEndDate(today, defaultWeeks);
                                   const newItem = {
                                     activity_id: activity.id,
                                     activity_name: activity.name_ar || activity.name,
@@ -4335,6 +4336,9 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
                                     schedule: activity.schedule || '',
                                     start_date: today,
                                     end_date: endDate,
+                                    weeks: defaultWeeks,
+                                    training_days: [],
+                                    training_time: '',
                                     is_product: false
                                   };
                                   const updated = [...additionalMembers];
@@ -4384,6 +4388,60 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
                                       </div>
                                       {!item.is_product && (
                                         <div className="space-y-2">
+                                          <div className="grid grid-cols-2 gap-2">
+                                            <div className="space-y-1">
+                                              <Label className="text-xs">{language === 'ar' ? 'تاريخ البداية' : 'Start Date'}</Label>
+                                              <Input
+                                                type="date"
+                                                value={item.start_date || ''}
+                                                onChange={(e) => {
+                                                  const updated = [...additionalMembers];
+                                                  updated[amIdx].items[itemIdx].start_date = e.target.value;
+                                                  if (updated[amIdx].items[itemIdx].weeks) {
+                                                    updated[amIdx].items[itemIdx].end_date = calcEndDate(e.target.value, updated[amIdx].items[itemIdx].weeks);
+                                                  }
+                                                  updated[amIdx].items[itemIdx].period = `${e.target.value} - ${updated[amIdx].items[itemIdx].end_date}`;
+                                                  setAdditionalMembers(updated);
+                                                }}
+                                                className="h-7 text-xs"
+                                              />
+                                            </div>
+                                            <div className="space-y-1">
+                                              <Label className="text-xs flex items-center gap-1">
+                                                {language === 'ar' ? 'تاريخ النهاية' : 'End Date'}
+                                                <span className="flex items-center gap-0.5 bg-blue-50 border border-blue-200 rounded px-1 py-0.5">
+                                                  <input
+                                                    type="number"
+                                                    min="1"
+                                                    max="52"
+                                                    value={item.weeks || 4}
+                                                    onChange={(e) => {
+                                                      const updated = [...additionalMembers];
+                                                      updated[amIdx].items[itemIdx].weeks = parseInt(e.target.value, 10) || 4;
+                                                      if (updated[amIdx].items[itemIdx].start_date) {
+                                                        updated[amIdx].items[itemIdx].end_date = calcEndDate(updated[amIdx].items[itemIdx].start_date, updated[amIdx].items[itemIdx].weeks);
+                                                        updated[amIdx].items[itemIdx].period = `${updated[amIdx].items[itemIdx].start_date} - ${updated[amIdx].items[itemIdx].end_date}`;
+                                                      }
+                                                      setAdditionalMembers(updated);
+                                                    }}
+                                                    className="w-7 text-xs text-center bg-transparent outline-none font-semibold text-blue-700"
+                                                  />
+                                                  <span className="text-xs text-blue-600">{language === 'ar' ? 'أ' : 'w'}</span>
+                                                </span>
+                                              </Label>
+                                              <Input
+                                                type="date"
+                                                value={item.end_date || ''}
+                                                onChange={(e) => {
+                                                  const updated = [...additionalMembers];
+                                                  updated[amIdx].items[itemIdx].end_date = e.target.value;
+                                                  updated[amIdx].items[itemIdx].period = `${updated[amIdx].items[itemIdx].start_date} - ${e.target.value}`;
+                                                  setAdditionalMembers(updated);
+                                                }}
+                                                className="h-7 text-xs"
+                                              />
+                                            </div>
+                                          </div>
                                           <div className="space-y-1">
                                             <Label className="text-xs">{language === 'ar' ? 'أيام التدريب' : 'Training Days'}</Label>
                                             <div className="flex flex-wrap gap-1">
@@ -4398,6 +4456,10 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
                                                       : [...currentDays, day];
                                                     const updated = [...additionalMembers];
                                                     updated[amIdx].items[itemIdx].training_days = newDays;
+                                                    if (updated[amIdx].items[itemIdx].start_date && updated[amIdx].items[itemIdx].weeks) {
+                                                      updated[amIdx].items[itemIdx].end_date = calcEndDate(updated[amIdx].items[itemIdx].start_date, updated[amIdx].items[itemIdx].weeks);
+                                                      updated[amIdx].items[itemIdx].period = `${updated[amIdx].items[itemIdx].start_date} - ${updated[amIdx].items[itemIdx].end_date}`;
+                                                    }
                                                     const formatSchedule = (days, time) => {
                                                       if (days.length === 0) return time || '';
                                                       const dayOrder = ['الأحد', 'الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'];
@@ -5544,7 +5606,8 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
                                 const activity = activities.find(a => a.id === actId);
                                 if (!activity) return;
                                 const today = new Date().toISOString().split('T')[0];
-                                const endDate = new Date(new Date().setMonth(new Date().getMonth() + 1)).toISOString().split('T')[0];
+                                const defaultWeeks = 4;
+                                const endDate = calcEndDate(today, defaultWeeks);
                                 const newItem = {
                                   activity_id: activity.id,
                                   activity_name: activity.name_ar || activity.name,
@@ -5553,6 +5616,7 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
                                   schedule: activity.schedule || '',
                                   start_date: today,
                                   end_date: endDate,
+                                  weeks: defaultWeeks,
                                   is_product: false,
                                   training_days: [],
                                   training_time: '',
