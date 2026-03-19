@@ -247,11 +247,27 @@ export const InvoicesPage = () => {
     setCouponCode('');
   };
 
-  const calcEndDate = (startDate, weeks) => {
+  const calcEndDate = (startDate, weeks, trainingDays = []) => {
     if (!startDate || !weeks) return '';
-    const d = new Date(startDate);
-    d.setDate(d.getDate() + (parseInt(weeks, 10) * 7));
-    return d.toISOString().split('T')[0];
+    const dayMap = { 'الأحد': 0, 'الإثنين': 1, 'الثلاثاء': 2, 'الأربعاء': 3, 'الخميس': 4, 'الجمعة': 5, 'السبت': 6 };
+    const validDays = (trainingDays || []).filter(d => dayMap[d] !== undefined);
+    if (validDays.length === 0) {
+      const d = new Date(startDate);
+      d.setDate(d.getDate() + parseInt(weeks, 10) * 7);
+      return d.toISOString().split('T')[0];
+    }
+    const targetDayNums = validDays.map(d => dayMap[d]);
+    const totalSessions = parseInt(weeks, 10) * validDays.length;
+    const current = new Date(startDate);
+    let sessionsFound = 0;
+    while (true) {
+      if (targetDayNums.includes(current.getDay())) {
+        sessionsFound++;
+        if (sessionsFound === totalSessions) break;
+      }
+      current.setDate(current.getDate() + 1);
+    }
+    return current.toISOString().split('T')[0];
   };
 
   const addActivityToInvoice = (activityId) => {
@@ -520,8 +536,9 @@ export const InvoicesPage = () => {
   const updateItemDate = (index, field, value) => {
     const updated = [...invoiceItems];
     updated[index][field] = value;
-    if (field === 'start_date' && updated[index].weeks) {
-      updated[index].end_date = calcEndDate(value, updated[index].weeks);
+    if (field === 'start_date') {
+      const w = updated[index].weeks ?? 4;
+      updated[index].end_date = calcEndDate(value, w, updated[index].training_days);
     }
     updated[index].period = `${updated[index].start_date} - ${updated[index].end_date}`;
     setInvoiceItems(updated);
@@ -531,11 +548,13 @@ export const InvoicesPage = () => {
     const updated = [...invoiceItems];
     updated[index].weeks = parseInt(weeks, 10) || 4;
     if (updated[index].start_date) {
-      updated[index].end_date = calcEndDate(updated[index].start_date, updated[index].weeks);
+      updated[index].end_date = calcEndDate(updated[index].start_date, updated[index].weeks, updated[index].training_days);
       updated[index].period = `${updated[index].start_date} - ${updated[index].end_date}`;
     }
     setInvoiceItems(updated);
   };
+
+  const stripTransient = (item) => { const { weeks, ...rest } = item; return rest; };
 
   const removeItem = (index) => setInvoiceItems(invoiceItems.filter((_, i) => i !== index));
 
@@ -632,7 +651,7 @@ export const InvoicesPage = () => {
       if (isEditMode && editingInvoiceId) {
         await invoicesAPI.update(editingInvoiceId, {
           member_id: selectedMember?.id || null,
-          items: invoiceItems,
+          items: invoiceItems.map(stripTransient),
           discount: totalDiscount,
           discount_code: appliedCoupon?.code || null,
           notes, payment_method: paymentMethod,
@@ -642,7 +661,7 @@ export const InvoicesPage = () => {
       } else {
         const createPayload = {
           member_id: selectedMember?.id || null,
-          items: invoiceItems,
+          items: invoiceItems.map(stripTransient),
           discount: totalDiscount,
           discount_code: appliedCoupon?.code || null,
           notes, payment_method: paymentMethod,
@@ -654,7 +673,7 @@ export const InvoicesPage = () => {
             member_id: am.member.id,
             member_name: am.member.name_ar || am.member.name,
             member_code: am.member.member_code || '',
-            items: am.items
+            items: am.items.map(stripTransient)
           }));
         }
         const response = await invoicesAPI.create(createPayload);
@@ -701,7 +720,15 @@ export const InvoicesPage = () => {
       activity_name: item.activity_name,
       fee: item.fee,
       period: item.period,
-      schedule: item.schedule || ''
+      schedule: item.schedule || '',
+      start_date: item.start_date || (item.period || '').split(' - ')[0] || '',
+      end_date: item.end_date || (item.period || '').split(' - ')[1] || '',
+      training_days: item.training_days || [],
+      training_time: item.training_time || '',
+      training_time_hour: item.training_time_hour || '',
+      level_id: item.level_id || '',
+      level_name: item.level_name || '',
+      weeks: item.weeks ?? 4
     })));
     setDiscount(invoice.discount || 0);
     setNotes(invoice.notes || '');
@@ -2569,7 +2596,7 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
       const formData = {
         customer_name: regFormData.customer_name,
         customer_phone: regFormData.customer_phone,
-        items: regFormItems,
+        items: regFormItems.map(stripTransient),
         subtotal: formSubtotal,
         discount: totalDiscountAmount,
         discount_code: regFormAppliedCoupon?.code || '',
@@ -2584,7 +2611,7 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
           member_id: am.member.id,
           member_name: am.member.name_ar || am.member.name,
           member_code: am.member.member_code || '',
-          items: am.items
+          items: am.items.map(stripTransient)
         }));
       }
       await registrationFormsAPI.create(formData);
@@ -2619,7 +2646,7 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
       const formData = {
         customer_name: regFormData.customer_name,
         customer_phone: regFormData.customer_phone,
-        items: regFormItems,
+        items: regFormItems.map(stripTransient),
         subtotal: formSubtotal,
         discount: totalDiscountAmount,
         discount_code: regFormAppliedCoupon?.code || '',
@@ -2634,7 +2661,7 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
           member_id: am.member.id,
           member_name: am.member.name_ar || am.member.name,
           member_code: am.member.member_code || '',
-          items: am.items
+          items: am.items.map(stripTransient)
         }));
       }
       await registrationFormsAPI.create(formData);
@@ -2940,7 +2967,7 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
       customer_name: form.customer_name || '',
       customer_phone: form.customer_phone || ''
     });
-    setRegFormItems(form.items || []);
+    setRegFormItems((form.items || []).map(item => ({ ...item, weeks: item.weeks ?? 4 })));
     setRegFormDiscount(form.discount || 0);
     setRegFormNotes(form.notes || '');
     setRegFormPaymentMethod(form.payment_method || 'cash');
@@ -2960,7 +2987,7 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
       const formData = {
         customer_name: regFormData.customer_name,
         customer_phone: regFormData.customer_phone,
-        items: regFormItems,
+        items: regFormItems.map(stripTransient),
         subtotal: formSubtotal,
         discount: totalDiscountAmount,
         discount_code: regFormAppliedCoupon?.code || '',
@@ -3950,8 +3977,9 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
                                       const updated = [...invoiceItems];
                                       updated[idx].training_days = newDays;
                                       // Auto recalculate end_date when days change
-                                      if (updated[idx].start_date && updated[idx].weeks) {
-                                        updated[idx].end_date = calcEndDate(updated[idx].start_date, updated[idx].weeks);
+                                      if (updated[idx].start_date) {
+                                        const w = updated[idx].weeks ?? 4;
+                                        updated[idx].end_date = calcEndDate(updated[idx].start_date, w, newDays);
                                         updated[idx].period = `${updated[idx].start_date} - ${updated[idx].end_date}`;
                                       }
                                       // Format schedule: "الأحد، الإثنين، الثلاثاء و الأربعاء - 04:00 م"
@@ -4397,8 +4425,9 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
                                                 onChange={(e) => {
                                                   const updated = [...additionalMembers];
                                                   updated[amIdx].items[itemIdx].start_date = e.target.value;
-                                                  if (updated[amIdx].items[itemIdx].weeks) {
-                                                    updated[amIdx].items[itemIdx].end_date = calcEndDate(e.target.value, updated[amIdx].items[itemIdx].weeks);
+                                                  {
+                                                    const w = updated[amIdx].items[itemIdx].weeks ?? 4;
+                                                    updated[amIdx].items[itemIdx].end_date = calcEndDate(e.target.value, w, updated[amIdx].items[itemIdx].training_days);
                                                   }
                                                   updated[amIdx].items[itemIdx].period = `${e.target.value} - ${updated[amIdx].items[itemIdx].end_date}`;
                                                   setAdditionalMembers(updated);
@@ -4419,7 +4448,7 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
                                                       const updated = [...additionalMembers];
                                                       updated[amIdx].items[itemIdx].weeks = parseInt(e.target.value, 10) || 4;
                                                       if (updated[amIdx].items[itemIdx].start_date) {
-                                                        updated[amIdx].items[itemIdx].end_date = calcEndDate(updated[amIdx].items[itemIdx].start_date, updated[amIdx].items[itemIdx].weeks);
+                                                        updated[amIdx].items[itemIdx].end_date = calcEndDate(updated[amIdx].items[itemIdx].start_date, updated[amIdx].items[itemIdx].weeks, updated[amIdx].items[itemIdx].training_days);
                                                         updated[amIdx].items[itemIdx].period = `${updated[amIdx].items[itemIdx].start_date} - ${updated[amIdx].items[itemIdx].end_date}`;
                                                       }
                                                       setAdditionalMembers(updated);
@@ -4456,8 +4485,9 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
                                                       : [...currentDays, day];
                                                     const updated = [...additionalMembers];
                                                     updated[amIdx].items[itemIdx].training_days = newDays;
-                                                    if (updated[amIdx].items[itemIdx].start_date && updated[amIdx].items[itemIdx].weeks) {
-                                                      updated[amIdx].items[itemIdx].end_date = calcEndDate(updated[amIdx].items[itemIdx].start_date, updated[amIdx].items[itemIdx].weeks);
+                                                    if (updated[amIdx].items[itemIdx].start_date) {
+                                                      const w = updated[amIdx].items[itemIdx].weeks ?? 4;
+                                                      updated[amIdx].items[itemIdx].end_date = calcEndDate(updated[amIdx].items[itemIdx].start_date, w, newDays);
                                                       updated[amIdx].items[itemIdx].period = `${updated[amIdx].items[itemIdx].start_date} - ${updated[amIdx].items[itemIdx].end_date}`;
                                                     }
                                                     const formatSchedule = (days, time) => {
@@ -5100,10 +5130,9 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
                                 onChange={(e) => {
                                   const updated = [...regFormItems];
                                   updated[idx].start_date = e.target.value;
-                                  if (updated[idx].weeks) {
-                                    updated[idx].end_date = calcEndDate(e.target.value, updated[idx].weeks);
-                                  }
-                                  if (updated[idx].end_date) {
+                                  {
+                                    const w = updated[idx].weeks ?? 4;
+                                    updated[idx].end_date = calcEndDate(e.target.value, w, updated[idx].training_days);
                                     updated[idx].period = `${e.target.value} - ${updated[idx].end_date}`;
                                   }
                                   setRegFormItems(updated);
@@ -5124,7 +5153,7 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
                                       const updated = [...regFormItems];
                                       updated[idx].weeks = parseInt(e.target.value, 10) || 4;
                                       if (updated[idx].start_date) {
-                                        updated[idx].end_date = calcEndDate(updated[idx].start_date, updated[idx].weeks);
+                                        updated[idx].end_date = calcEndDate(updated[idx].start_date, updated[idx].weeks, updated[idx].training_days);
                                         updated[idx].period = `${updated[idx].start_date} - ${updated[idx].end_date}`;
                                       }
                                       setRegFormItems(updated);
@@ -5185,8 +5214,9 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
                                     const updated = [...regFormItems];
                                     updated[idx].training_days = newDays;
                                     // Auto recalculate end_date when days change
-                                    if (updated[idx].start_date && updated[idx].weeks) {
-                                      updated[idx].end_date = calcEndDate(updated[idx].start_date, updated[idx].weeks);
+                                    if (updated[idx].start_date) {
+                                      const w = updated[idx].weeks ?? 4;
+                                      updated[idx].end_date = calcEndDate(updated[idx].start_date, w, newDays);
                                       updated[idx].period = `${updated[idx].start_date} - ${updated[idx].end_date}`;
                                     }
                                     // Format schedule: "الأحد، الإثنين، الثلاثاء و الأربعاء - 04:00 م"
@@ -5671,6 +5701,59 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
                                     </div>
                                     {!item.is_product && (
                                       <div className="space-y-2">
+                                        <div className="grid grid-cols-2 gap-2">
+                                          <div className="space-y-1">
+                                            <Label className="text-xs">{language === 'ar' ? 'تاريخ البداية' : 'Start Date'}</Label>
+                                            <Input
+                                              type="date"
+                                              value={item.start_date || ''}
+                                              onChange={(e) => {
+                                                const updated = [...regFormAdditionalMembers];
+                                                updated[amIdx].items[itemIdx].start_date = e.target.value;
+                                                const w = updated[amIdx].items[itemIdx].weeks ?? 4;
+                                                updated[amIdx].items[itemIdx].end_date = calcEndDate(e.target.value, w, updated[amIdx].items[itemIdx].training_days);
+                                                updated[amIdx].items[itemIdx].period = `${e.target.value} - ${updated[amIdx].items[itemIdx].end_date}`;
+                                                setRegFormAdditionalMembers(updated);
+                                              }}
+                                              className="h-7 text-xs"
+                                            />
+                                          </div>
+                                          <div className="space-y-1">
+                                            <Label className="text-xs flex items-center gap-1">
+                                              {language === 'ar' ? 'تاريخ النهاية' : 'End Date'}
+                                              <span className="flex items-center gap-0.5 bg-blue-50 border border-blue-200 rounded px-1 py-0.5">
+                                                <input
+                                                  type="number"
+                                                  min="1"
+                                                  max="52"
+                                                  value={item.weeks ?? 4}
+                                                  onChange={(e) => {
+                                                    const updated = [...regFormAdditionalMembers];
+                                                    updated[amIdx].items[itemIdx].weeks = parseInt(e.target.value, 10) || 4;
+                                                    if (updated[amIdx].items[itemIdx].start_date) {
+                                                      updated[amIdx].items[itemIdx].end_date = calcEndDate(updated[amIdx].items[itemIdx].start_date, updated[amIdx].items[itemIdx].weeks, updated[amIdx].items[itemIdx].training_days);
+                                                      updated[amIdx].items[itemIdx].period = `${updated[amIdx].items[itemIdx].start_date} - ${updated[amIdx].items[itemIdx].end_date}`;
+                                                    }
+                                                    setRegFormAdditionalMembers(updated);
+                                                  }}
+                                                  className="w-7 text-xs text-center bg-transparent outline-none font-semibold text-blue-700"
+                                                />
+                                                <span className="text-xs text-blue-600">{language === 'ar' ? 'أ' : 'w'}</span>
+                                              </span>
+                                            </Label>
+                                            <Input
+                                              type="date"
+                                              value={item.end_date || ''}
+                                              onChange={(e) => {
+                                                const updated = [...regFormAdditionalMembers];
+                                                updated[amIdx].items[itemIdx].end_date = e.target.value;
+                                                updated[amIdx].items[itemIdx].period = `${updated[amIdx].items[itemIdx].start_date} - ${e.target.value}`;
+                                                setRegFormAdditionalMembers(updated);
+                                              }}
+                                              className="h-7 text-xs"
+                                            />
+                                          </div>
+                                        </div>
                                         <div className="space-y-1">
                                           <Label className="text-xs">{language === 'ar' ? 'أيام التدريب' : 'Training Days'}</Label>
                                           <div className="flex flex-wrap gap-1">
@@ -5685,6 +5768,11 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
                                                     : [...currentDays, day];
                                                   const updated = [...regFormAdditionalMembers];
                                                   updated[amIdx].items[itemIdx].training_days = newDays;
+                                                  if (updated[amIdx].items[itemIdx].start_date) {
+                                                    const w = updated[amIdx].items[itemIdx].weeks ?? 4;
+                                                    updated[amIdx].items[itemIdx].end_date = calcEndDate(updated[amIdx].items[itemIdx].start_date, w, newDays);
+                                                    updated[amIdx].items[itemIdx].period = `${updated[amIdx].items[itemIdx].start_date} - ${updated[amIdx].items[itemIdx].end_date}`;
+                                                  }
                                                   const formatSchedule = (days, time) => {
                                                     if (days.length === 0) return time || '';
                                                     const dayOrder = ['الأحد', 'الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'];
