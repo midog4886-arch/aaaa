@@ -1,1 +1,6 @@
-// Using Maven dependencies instead of local node_modules references
+// Local copies of capacitor modules (bundled with project, no node_modules needed)
+include ':capacitor-android'
+project(':capacitor-android').projectDir = new File('./capacitor-android')
+
+include ':capacitor-push-notifications'
+project(':capacitor-push-notifications').projectDir = new File('./capacitor-push-notifications')
