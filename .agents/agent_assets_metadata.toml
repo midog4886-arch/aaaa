@@ -1,0 +1,8 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "jMHMyBDkS8RUDoIiDrcOq"
+uri = "file://frontend/android-v2.zip"
+type = "unspecified"
+title = "android-v2.zip - مشروع Android جاهز"
