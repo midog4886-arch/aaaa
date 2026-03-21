@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Card, CardContent } from '../../components/ui/card';
 import { Button } from '../../components/ui/button';
 import { Dialog, DialogContent } from '../../components/ui/dialog';
-import { X, ChevronLeft, ChevronRight, Play, ExternalLink, Volume2, VolumeX } from 'lucide-react';
+import { X, ChevronLeft, ChevronRight, Play, ExternalLink, Volume2, VolumeX, ZoomIn } from 'lucide-react';
 import { memberAPI, getDarkMode } from './MemberLayout';
 
 const BACKEND_URL = '';
@@ -19,6 +19,8 @@ export const HeroBannerAds = ({ branchId }) => {
   const [ads, setAds] = useState([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [lightboxOpen, setLightboxOpen] = useState(false);
+  const [lightboxAd, setLightboxAd] = useState(null);
   const intervalRef = useRef(null);
   const darkMode = getDarkMode();
 
@@ -55,7 +57,12 @@ export const HeroBannerAds = ({ branchId }) => {
 
   const handleClick = async (ad) => {
     await memberAPI.post(`/api/advertisements/${ad.id}/click`).catch(() => {});
-    if (ad.link_url) {
+    if (ad.ad_type === 'video' && ad.youtube_video_id) {
+      window.open(`https://www.youtube.com/watch?v=${ad.youtube_video_id}`, '_blank');
+    } else if (ad.banner_image_url) {
+      setLightboxAd(ad);
+      setLightboxOpen(true);
+    } else if (ad.link_url) {
       window.open(ad.link_url, '_blank');
     }
   };
@@ -169,6 +176,22 @@ export const HeroBannerAds = ({ branchId }) => {
           ))}
         </div>
       )}
+
+      {/* Zoom hint for image ads */}
+      {currentAd.banner_image_url && (
+        <div className="absolute top-3 right-3 bg-black/40 rounded-full p-1.5 pointer-events-none">
+          <ZoomIn className="w-4 h-4 text-white" />
+        </div>
+      )}
+
+      <ImageLightbox
+        open={lightboxOpen}
+        onClose={() => setLightboxOpen(false)}
+        imageUrl={lightboxAd ? getImageUrl(lightboxAd.banner_image_url) : ''}
+        title={lightboxAd?.title_ar}
+        description={lightboxAd?.description_ar}
+        linkUrl={lightboxAd?.link_url}
+      />
     </div>
   );
 };
@@ -178,6 +201,8 @@ export const InlineAds = ({ branchId, maxAds = 2 }) => {
   const [ads, setAds] = useState([]);
   const [videoDialogOpen, setVideoDialogOpen] = useState(false);
   const [selectedVideo, setSelectedVideo] = useState(null);
+  const [lightboxOpen, setLightboxOpen] = useState(false);
+  const [lightboxAd, setLightboxAd] = useState(null);
   const darkMode = getDarkMode();
 
   useEffect(() => {
@@ -205,6 +230,9 @@ export const InlineAds = ({ branchId, maxAds = 2 }) => {
     if (ad.ad_type === 'video' && ad.youtube_video_id) {
       setSelectedVideo(ad);
       setVideoDialogOpen(true);
+    } else if (ad.banner_image_url) {
+      setLightboxAd(ad);
+      setLightboxOpen(true);
     } else if (ad.link_url) {
       window.open(ad.link_url, '_blank');
     }
@@ -273,11 +301,18 @@ export const InlineAds = ({ branchId, maxAds = 2 }) => {
         ))}
       </div>
 
-      {/* Video Dialog */}
       <VideoPlayerDialog 
         open={videoDialogOpen}
         onClose={() => setVideoDialogOpen(false)}
         video={selectedVideo}
+      />
+      <ImageLightbox
+        open={lightboxOpen}
+        onClose={() => setLightboxOpen(false)}
+        imageUrl={lightboxAd ? getImageUrl(lightboxAd.banner_image_url) : ''}
+        title={lightboxAd?.title_ar}
+        description={lightboxAd?.description_ar}
+        linkUrl={lightboxAd?.link_url}
       />
     </>
   );
@@ -288,6 +323,8 @@ export const SidebarAds = ({ branchId }) => {
   const [ads, setAds] = useState([]);
   const [videoDialogOpen, setVideoDialogOpen] = useState(false);
   const [selectedVideo, setSelectedVideo] = useState(null);
+  const [lightboxOpen, setLightboxOpen] = useState(false);
+  const [lightboxAd, setLightboxAd] = useState(null);
   const darkMode = getDarkMode();
 
   useEffect(() => {
@@ -315,6 +352,9 @@ export const SidebarAds = ({ branchId }) => {
     if (ad.ad_type === 'video' && ad.youtube_video_id) {
       setSelectedVideo(ad);
       setVideoDialogOpen(true);
+    } else if (ad.banner_image_url) {
+      setLightboxAd(ad);
+      setLightboxOpen(true);
     } else if (ad.link_url) {
       window.open(ad.link_url, '_blank');
     }
@@ -385,6 +425,14 @@ export const SidebarAds = ({ branchId }) => {
         onClose={() => setVideoDialogOpen(false)}
         video={selectedVideo}
       />
+      <ImageLightbox
+        open={lightboxOpen}
+        onClose={() => setLightboxOpen(false)}
+        imageUrl={lightboxAd ? getImageUrl(lightboxAd.banner_image_url) : ''}
+        title={lightboxAd?.title_ar}
+        description={lightboxAd?.description_ar}
+        linkUrl={lightboxAd?.link_url}
+      />
     </>
   );
 };
@@ -394,6 +442,7 @@ export const PopupAd = ({ branchId }) => {
   const [ad, setAd] = useState(null);
   const [show, setShow] = useState(false);
   const [videoPlaying, setVideoPlaying] = useState(false);
+  const [lightboxOpen, setLightboxOpen] = useState(false);
 
   useEffect(() => {
     // Check if popup was shown in this session
@@ -431,6 +480,9 @@ export const PopupAd = ({ branchId }) => {
         setVideoPlaying(true);
       } else if (ad.link_url) {
         window.open(ad.link_url, '_blank');
+      } else if (ad.banner_image_url) {
+        setShow(false);
+        setLightboxOpen(true);
       }
     }
   };
@@ -440,9 +492,21 @@ export const PopupAd = ({ branchId }) => {
     setVideoPlaying(false);
   };
 
-  if (!show || !ad) return null;
+  if (!show && !lightboxOpen) return null;
 
   return (
+    <>
+    {lightboxOpen && ad && (
+      <ImageLightbox
+        open={lightboxOpen}
+        onClose={() => setLightboxOpen(false)}
+        imageUrl={getImageUrl(ad.banner_image_url)}
+        title={ad.title_ar}
+        description={ad.description_ar}
+        linkUrl={ad.link_url}
+      />
+    )}
+    {show && ad && (
     <Dialog open={show} onOpenChange={setShow}>
       <DialogContent className="max-w-2xl p-0 overflow-hidden" dir="rtl">
         <button
@@ -523,6 +587,45 @@ export const PopupAd = ({ branchId }) => {
                   </Button>
                 )}
               </div>
+            )}
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
+    )}
+    </>
+  );
+};
+
+// Image Lightbox Component
+const ImageLightbox = ({ open, onClose, imageUrl, title, description, linkUrl }) => {
+  if (!imageUrl) return null;
+  return (
+    <Dialog open={open} onOpenChange={onClose}>
+      <DialogContent className="max-w-3xl p-0 overflow-hidden bg-black border-0" dir="rtl">
+        <button
+          onClick={onClose}
+          className="absolute top-2 left-2 z-20 w-9 h-9 bg-black/60 hover:bg-black/80 rounded-full flex items-center justify-center text-white"
+        >
+          <X className="w-5 h-5" />
+        </button>
+        <img
+          src={imageUrl}
+          alt={title || ''}
+          className="w-full h-auto max-h-[80vh] object-contain"
+        />
+        {(title || description || linkUrl) && (
+          <div className="p-4 bg-white">
+            {title && <h3 className="font-bold text-lg text-gray-900">{title}</h3>}
+            {description && <p className="text-gray-600 mt-1 text-sm">{description}</p>}
+            {linkUrl && (
+              <Button
+                className="mt-3 gap-2"
+                onClick={() => { window.open(linkUrl, '_blank'); onClose(); }}
+              >
+                <ExternalLink className="w-4 h-4" />
+                المزيد من التفاصيل
+              </Button>
             )}
           </div>
         )}
