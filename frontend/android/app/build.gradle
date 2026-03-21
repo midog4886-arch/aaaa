@@ -8,7 +8,7 @@ android {
     compileSdk rootProject.ext.compileSdkVersion
     signingConfigs {
         release {
-            storeFile file("C:\\AndroidProjects\\android\\newkey.jks")
+            storeFile file("../champions.jks")
             storePassword "123456"
             keyAlias "upload"
             keyPassword "123456"
