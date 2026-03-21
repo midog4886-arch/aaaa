@@ -9,9 +9,9 @@ android {
     signingConfigs {
         release {
             storeFile file("../champions.jks")
-            storePassword "123456"
-            keyAlias "upload"
-            keyPassword "123456"
+            storePassword "champions123"
+            keyAlias "champions"
+            keyPassword "champions123"
         }
     }
     defaultConfig {
