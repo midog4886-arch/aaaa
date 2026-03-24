@@ -111,8 +111,9 @@ export const MembersPage = () => {
     schedule: ''
   });
 
-  // Levels state
+  // Levels state (lazy-loaded when dialog opens)
   const [levels, setLevels] = useState([]);
+  const [levelsLoaded, setLevelsLoaded] = useState(false);
   
   // State for cascading level selector
   const [memberLevelSelectorState, setMemberLevelSelectorState] = useState(null);
@@ -159,21 +160,30 @@ export const MembersPage = () => {
   const loadData = async () => {
     try {
       const branchParams = selectedBranchId && selectedBranchId !== 'all' ? { branch_filter: selectedBranchId } : {};
-      const [membersRes, activitiesRes, coachesRes, levelsRes] = await Promise.all([
+      const [membersRes, activitiesRes, coachesRes] = await Promise.all([
         membersAPI.getAll(branchParams),
         activitiesAPI.getAll(),
-        coachesAPI.getAll(),
-        levelsAPI.getAll()
+        coachesAPI.getAll()
       ]);
       setMembers(membersRes.data);
       setActivities(activitiesRes.data);
       setCoaches(coachesRes.data);
-      setLevels(levelsRes.data);
     } catch (error) {
       console.error('Failed to load data:', error);
       toast.error(t('error'));
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadLevels = async () => {
+    if (levelsLoaded) return;
+    try {
+      const levelsRes = await levelsAPI.getAll();
+      setLevels(levelsRes.data);
+      setLevelsLoaded(true);
+    } catch (error) {
+      console.error('Failed to load levels:', error);
     }
   };
 
@@ -504,6 +514,7 @@ export const MembersPage = () => {
       activities: member.activities || []
     });
     setIsAddDialogOpen(true);
+    loadLevels();
   };
 
   const openViewDialog = async (member) => {
@@ -1101,7 +1112,7 @@ export const MembersPage = () => {
               <Printer className="w-4 h-4 me-1" />
               {language === 'ar' ? 'طباعة' : 'Print'}
             </Button>
-            <Button size="sm" onClick={() => setIsAddDialogOpen(true)} data-testid="add-member-btn">
+            <Button size="sm" onClick={() => { setIsAddDialogOpen(true); loadLevels(); }} data-testid="add-member-btn">
               <Plus className="w-4 h-4 me-1" />
               {t('add_member')}
             </Button>

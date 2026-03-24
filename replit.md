@@ -102,5 +102,7 @@ frontend/
 
 - Loyalty Points Settings CRUD: Admin can add custom point items, edit values, and delete any point setting from the Settings tab in /admin/loyalty. Backend accepts dynamic keys (not fixed schema) and handles deletion via $unset. Custom labels stored as key-value pairs in MongoDB loyalty_settings collection.
 
+- Performance Optimizations: `/api/levels` batch queries (2.23s → 0.17s, 13× faster), MembersPage lazy-loads levels data only when add/edit dialog opens (initial page load no longer waits for levels), auto-cleanup of expired level subscriptions removed from GET request to avoid slowdown. Post-merge setup script at `scripts/post-merge.sh` auto-rebuilds frontend only when `frontend/src` changes.
+
 ## Known Issues
 - MongoDB Atlas SSL handshake may fail with `TLSV1_ALERT_INTERNAL_ERROR` - this is typically caused by the Replit IP not being whitelisted in MongoDB Atlas Network Access settings. The user needs to add `0.0.0.0/0` (allow all) in MongoDB Atlas Network Access.
