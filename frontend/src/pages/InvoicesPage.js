@@ -2687,7 +2687,29 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
 
   // Delete registration form
   const handleDeleteRegForm = async (formId) => {
-    if (!window.confirm(language === 'ar' ? 'هل أنت متأكد من حذف هذه الاستمارة؟' : 'Are you sure you want to delete this form?')) return;
+    const form = registrationForms.find(f => f.id === formId);
+    let warningMsg = language === 'ar'
+      ? 'هل أنت متأكد من حذف هذه الاستمارة؟'
+      : 'Are you sure you want to delete this form?';
+
+    if (form) {
+      const lines = [warningMsg, ''];
+      if (form.status === 'converted') {
+        lines.push(language === 'ar'
+          ? '⚠️ هذه الاستمارة تم تحويلها إلى فاتورة — الفاتورة لن تُحذف.'
+          : '⚠️ This form was converted to an invoice — the invoice will NOT be deleted.');
+      }
+      if (form.member_id || form.member_code) {
+        lines.push(language === 'ar'
+          ? `⚠️ العضو المرتبط (${form.member_code || ''} - ${form.customer_name || ''}) لن يُحذف وسيبقى في النظام.`
+          : `⚠️ The linked member (${form.member_code || ''} - ${form.customer_name || ''}) will NOT be deleted and will remain in the system.`);
+      }
+      lines.push('');
+      lines.push(language === 'ar' ? 'هل تريد المتابعة؟' : 'Do you want to continue?');
+      warningMsg = lines.join('\n');
+    }
+
+    if (!window.confirm(warningMsg)) return;
     try {
       await registrationFormsAPI.delete(formId);
       toast.success(language === 'ar' ? 'تم حذف الاستمارة' : 'Form deleted');
