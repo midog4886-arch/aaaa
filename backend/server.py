@@ -5343,8 +5343,8 @@ async def get_member_attendance_report(
     
     records = await db.attendance.find(query, {"_id": 0}).sort("date", -1).to_list(1000)
     
-    present_count = sum(1 for r in records if r["status"] == "present")
-    absent_count = sum(1 for r in records if r["status"] == "absent")
+    present_count = sum(1 for r in records if r.get("status") == "present")
+    absent_count = sum(1 for r in records if r.get("status") == "absent")
     total = len(records)
     
     return {

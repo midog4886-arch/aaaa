@@ -500,6 +500,7 @@ async def qr_checkin(
         "activity_id": target_activity_id,
         "activity_name": activity_name,
         "date": today,
+        "status": "present",
         "check_in_time": check_in_time,
         "notes": "QR Check-in (خارج الموعد)" if (schedule_days and not is_scheduled_day) else "QR Check-in",
         "branch_id": branch_id,
