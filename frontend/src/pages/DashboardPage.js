@@ -171,7 +171,11 @@ export const DashboardPage = () => {
           data = activitiesRes.data;
           break;
         case 'revenue':
-          const revenueRes = await reportsAPI.getFinancial();
+          const now = new Date();
+          const monthStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
+          const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+          const monthEndStr = `${monthEnd.getFullYear()}-${String(monthEnd.getMonth() + 1).padStart(2, '0')}-${String(monthEnd.getDate()).padStart(2, '0')}`;
+          const revenueRes = await reportsAPI.getFinancial({ start_date: monthStart, end_date: monthEndStr, ...branchParams });
           data = revenueRes.data;
           break;
         case 'expiring':
@@ -435,7 +439,7 @@ export const DashboardPage = () => {
               }`}>
                 {activeDetail === 'members' && <><Users className="w-5 h-5" />{language === 'ar' ? 'تفاصيل الأعضاء' : 'Members Details'}</>}
                 {activeDetail === 'subscriptions' && <><Activity className="w-5 h-5" />{language === 'ar' ? 'تفاصيل الاشتراكات' : 'Subscriptions Details'}</>}
-                {activeDetail === 'revenue' && <><Banknote className="w-5 h-5" />{language === 'ar' ? 'تفاصيل الإيرادات' : 'Revenue Details'}</>}
+                {activeDetail === 'revenue' && <><Banknote className="w-5 h-5" />{language === 'ar' ? `تفاصيل إيرادات ${new Date().toLocaleString('ar-SA', { month: 'long', year: 'numeric' })}` : `Revenue Details - ${new Date().toLocaleString('en', { month: 'long', year: 'numeric' })}`}</>}
                 {activeDetail === 'expiring' && <><AlertTriangle className="w-5 h-5" />{language === 'ar' ? 'الاشتراكات المنتهية قريباً' : 'Expiring Subscriptions'}</>}
                 {activeDetail === 'coupons' && <><Tag className="w-5 h-5" />{language === 'ar' ? 'كوبونات الخصم' : 'Discount Coupons'}</>}
                 {activeDetail === 'pendingForms' && <><ClipboardList className="w-5 h-5" />{language === 'ar' ? 'استمارات التسجيل الغير مفوترة' : 'Pending Registration Forms'}</>}
