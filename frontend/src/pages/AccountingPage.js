@@ -965,7 +965,7 @@ export default function AccountingPage() {
         </div>
         
         {/* Filters */}
-        <div className="flex gap-4 flex-wrap p-4 bg-gray-50 rounded-lg">
+        <div className="flex gap-4 flex-wrap p-4 bg-gray-50 rounded-lg items-end">
           <div>
             <label className="text-sm text-gray-600">من تاريخ</label>
             <Input type="date" value={dateFilter.start} onChange={e => setDateFilter(prev => ({ ...prev, start: e.target.value }))} className="w-40" />
@@ -981,7 +981,10 @@ export default function AccountingPage() {
               {suppliers.map(s => <option key={s.id} value={s.id}>{s.name_ar}</option>)}
             </select>
           </div>
-          <Button variant="outline" onClick={() => { setDateFilter({ start: '', end: '' }); setSupplierFilter(''); }}>
+          <Button onClick={() => fetchPurchaseInvoices()} className="bg-blue-600 hover:bg-blue-700">
+            🔍 بحث
+          </Button>
+          <Button variant="outline" onClick={() => { setDateFilter({ start: '', end: '' }); setSupplierFilter(''); setTimeout(() => fetchPurchaseInvoices(), 100); }}>
             مسح الفلاتر
           </Button>
         </div>
