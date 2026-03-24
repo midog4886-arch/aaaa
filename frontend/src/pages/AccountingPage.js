@@ -1730,11 +1730,19 @@ export default function AccountingPage() {
   // VAT Report Tab
   const renderVatTab = () => (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
+      <div className="flex justify-between items-center flex-wrap gap-3">
         <h2 className="text-xl font-bold">🧾 إقرار ضريبة القيمة المضافة (VAT)</h2>
-        <Button onClick={() => handleExportExcel('vat')} className="bg-purple-600 hover:bg-purple-700">
-          📥 Export Excel
-        </Button>
+        <div className="flex gap-2 flex-wrap">
+          <Button onClick={() => handleExportExcel('sales')} className="bg-green-600 hover:bg-green-700">
+            📥 تصدير فواتير المبيعات
+          </Button>
+          <Button onClick={() => handleExportExcel('purchases')} className="bg-blue-600 hover:bg-blue-700">
+            📥 تصدير فواتير المشتريات
+          </Button>
+          <Button onClick={() => handleExportExcel('vat')} className="bg-purple-600 hover:bg-purple-700">
+            📥 تصدير الإقرار الضريبي
+          </Button>
+        </div>
       </div>
       
       {/* Date Filters */}
