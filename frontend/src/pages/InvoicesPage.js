@@ -249,25 +249,9 @@ export const InvoicesPage = () => {
 
   const calcEndDate = (startDate, weeks, trainingDays = []) => {
     if (!startDate || !weeks) return '';
-    const dayMap = { 'الأحد': 0, 'الإثنين': 1, 'الثلاثاء': 2, 'الأربعاء': 3, 'الخميس': 4, 'الجمعة': 5, 'السبت': 6 };
-    const validDays = (trainingDays || []).filter(d => dayMap[d] !== undefined);
-    if (validDays.length === 0) {
-      const d = new Date(startDate);
-      d.setDate(d.getDate() + parseInt(weeks, 10) * 7);
-      return d.toISOString().split('T')[0];
-    }
-    const targetDayNums = validDays.map(d => dayMap[d]);
-    const totalSessions = parseInt(weeks, 10) * validDays.length;
-    const current = new Date(startDate);
-    let sessionsFound = 0;
-    while (true) {
-      if (targetDayNums.includes(current.getDay())) {
-        sessionsFound++;
-        if (sessionsFound === totalSessions) break;
-      }
-      current.setDate(current.getDate() + 1);
-    }
-    return current.toISOString().split('T')[0];
+    const d = new Date(startDate);
+    d.setDate(d.getDate() + parseInt(weeks, 10) * 7);
+    return d.toISOString().split('T')[0];
   };
 
   const addActivityToInvoice = (activityId) => {
