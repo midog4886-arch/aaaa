@@ -6,7 +6,7 @@ import { Badge } from './ui/badge';
 import { toast } from 'sonner';
 import {
   Camera, Check, X, User, Clock, Activity,
-  Loader2, Calendar, Phone, SwitchCamera
+  Loader2, Calendar, Phone, SwitchCamera, AlertTriangle
 } from 'lucide-react';
 import { attendanceAPI } from '../services/api';
 
@@ -16,8 +16,8 @@ const CameraQRScanner = ({ open, onClose, language = 'ar' }) => {
   const [scanning, setScanning] = useState(false);
   const [memberData, setMemberData] = useState(null);
   const [loading, setLoading] = useState(false);
-  const [checkingIn, setCheckingIn] = useState(false);
-  const [lastResult, setLastResult] = useState(null);
+  // Per-activity states: { [activityId]: { status, scheduleDays, message, sessionQuotaWarning } }
+  const [activityStates, setActivityStates] = useState({});
   const [facingMode, setFacingMode] = useState('environment');
   const scannerRef = useRef(null);
   const containerRef = useRef(null);
@@ -65,6 +65,13 @@ const CameraQRScanner = ({ open, onClose, language = 'ar' }) => {
       const activeActivities = allActivities.filter(a => a.status === 'active');
       const expiredActivities = allActivities.filter(a => a.status === 'expired');
 
+      // Initialize per-activity states
+      const initStates = {};
+      activeActivities.forEach(a => {
+        initStates[a.activity_id] = { status: a.recorded_today ? 'recorded' : 'idle' };
+      });
+      setActivityStates(initStates);
+
       setMemberData({ ...data, activeActivities, expiredActivities });
     } catch (error) {
       setMemberData({
@@ -79,7 +86,7 @@ const CameraQRScanner = ({ open, onClose, language = 'ar' }) => {
 
   const startScanner = useCallback(async () => {
     setMemberData(null);
-    setLastResult(null);
+    setActivityStates({});
     setLoading(false);
 
     await stopScanner();
@@ -122,14 +129,14 @@ const CameraQRScanner = ({ open, onClose, language = 'ar' }) => {
     } else {
       stopScanner();
       setMemberData(null);
-      setLastResult(null);
+      setActivityStates({});
     }
   }, [open]);
 
   const handleClose = useCallback(() => {
     stopScanner();
     setMemberData(null);
-    setLastResult(null);
+    setActivityStates({});
     onClose();
   }, [stopScanner, onClose]);
 
@@ -142,7 +149,11 @@ const CameraQRScanner = ({ open, onClose, language = 'ar' }) => {
 
   const handleCheckin = useCallback(async (activityId, activityName, force = false) => {
     if (!memberData || !activityId) return;
-    setCheckingIn(true);
+
+    setActivityStates(prev => ({
+      ...prev,
+      [activityId]: { ...prev[activityId], status: 'loading' }
+    }));
 
     try {
       const res = await attendanceAPI.qrCheckin(
@@ -152,29 +163,37 @@ const CameraQRScanner = ({ open, onClose, language = 'ar' }) => {
       );
 
       if (res.data.status === 'already_checked_in') {
-        setLastResult({
-          success: false,
-          alreadyCheckedIn: true,
-          activityName,
-          message: t('مسجل مسبقاً اليوم', 'Already checked in today')
-        });
+        setActivityStates(prev => ({
+          ...prev,
+          [activityId]: { status: 'recorded', message: t('مسجل مسبقاً اليوم ✓', 'Already checked in today ✓') }
+        }));
+        setMemberData(prev => ({
+          ...prev,
+          activeActivities: prev.activeActivities.map(a =>
+            a.activity_id === activityId ? { ...a, recorded_today: true } : a
+          )
+        }));
       } else if (res.data.status === 'wrong_day') {
         const scheduleDays = res.data.schedule_days || [];
-        setLastResult({
-          success: false,
-          wrongDay: true,
-          activityId,
-          activityName,
-          scheduleDays,
-          today: res.data.today,
-          message: res.data.message || t('هذا ليس موعدك اليوم!', 'This is not your scheduled day!')
-        });
+        setActivityStates(prev => ({
+          ...prev,
+          [activityId]: {
+            status: 'wrong_day',
+            scheduleDays,
+            today: res.data.today,
+            message: res.data.message || t('هذا ليس موعدك اليوم!', 'This is not your scheduled day!')
+          }
+        }));
       } else {
-        setLastResult({
-          success: true,
-          activityName,
-          message: t('تم تسجيل الحضور بنجاح', 'Check-in successful')
-        });
+        const quotaWarn = res.data.session_quota_warning;
+        setActivityStates(prev => ({
+          ...prev,
+          [activityId]: {
+            status: 'recorded',
+            sessionQuotaWarning: quotaWarn || null,
+            message: t('✅ تم تسجيل الحضور', '✅ Checked in')
+          }
+        }));
         setMemberData(prev => ({
           ...prev,
           activeActivities: prev.activeActivities.map(a =>
@@ -185,19 +204,16 @@ const CameraQRScanner = ({ open, onClose, language = 'ar' }) => {
     } catch (error) {
       const rawErr = error.response?.data?.detail;
       const errorMsg = typeof rawErr === 'string' ? rawErr : (rawErr?.msg || rawErr?.message || t('خطأ في التسجيل', 'Check-in error'));
-      setLastResult({
-        success: false,
-        activityName,
-        message: errorMsg
-      });
-    } finally {
-      setCheckingIn(false);
+      setActivityStates(prev => ({
+        ...prev,
+        [activityId]: { status: 'error', message: `❌ ${errorMsg}` }
+      }));
     }
   }, [memberData, t]);
 
   const handleScanAgain = useCallback(() => {
     setMemberData(null);
-    setLastResult(null);
+    setActivityStates({});
     startScanner();
   }, [startScanner]);
 
@@ -255,6 +271,7 @@ const CameraQRScanner = ({ open, onClose, language = 'ar' }) => {
 
         {memberData && !memberData.error && (
           <div className="space-y-4">
+            {/* Member Info */}
             <div className="text-center border-b pb-4">
               <div className="w-16 h-16 mx-auto rounded-full bg-gradient-to-br from-blue-500 to-purple-500 flex items-center justify-center mb-3">
                 <User className="w-8 h-8 text-white" />
@@ -274,117 +291,150 @@ const CameraQRScanner = ({ open, onClose, language = 'ar' }) => {
               </div>
             </div>
 
-            {lastResult && (
-              <div className={`p-3 rounded-xl border-2 ${
-                lastResult.success
-                  ? 'bg-green-50 border-green-300'
-                  : lastResult.wrongDay
-                    ? 'bg-yellow-50 border-yellow-400'
-                    : lastResult.alreadyCheckedIn
-                      ? 'bg-orange-50 border-orange-300'
-                      : 'bg-red-50 border-red-300'
-              }`}>
-                <div className="flex items-center gap-3">
-                  {lastResult.success ? (
-                    <Check className="w-6 h-6 text-green-500" />
-                  ) : lastResult.wrongDay ? (
-                    <Clock className="w-6 h-6 text-yellow-500" />
-                  ) : (
-                    <X className="w-6 h-6 text-red-500" />
-                  )}
-                  <div className="flex-1">
-                    <p className={`font-bold text-sm ${
-                      lastResult.success ? 'text-green-700'
-                        : lastResult.wrongDay ? 'text-yellow-700'
-                        : 'text-red-700'
-                    }`}>
-                      {lastResult.wrongDay ? `⚠️ ${lastResult.message}` : lastResult.message}
-                    </p>
-                    <p className="text-xs text-gray-500">{lastResult.activityName}</p>
-                  </div>
-                </div>
-                {lastResult.wrongDay && (
-                  <div className="mt-2 pt-2 border-t border-yellow-300">
-                    <p className="text-xs text-yellow-800 mb-2 font-medium">
-                      {t('مواعيدك:', 'Your days:')} {lastResult.scheduleDays?.join(' - ')}
-                    </p>
-                    <Button
-                      onClick={() => handleCheckin(lastResult.activityId, lastResult.activityName, true)}
-                      disabled={checkingIn}
-                      variant="outline"
-                      size="sm"
-                      className="w-full border-yellow-400 text-yellow-800 hover:bg-yellow-100 gap-2"
-                    >
-                      {checkingIn ? (
-                        <Loader2 className="w-3 h-3 animate-spin" />
-                      ) : (
-                        <Check className="w-3 h-3" />
-                      )}
-                      {t('تسجيل حضور رغم ذلك', 'Check-in anyway')}
-                    </Button>
-                  </div>
-                )}
-              </div>
-            )}
-
+            {/* Active Activities - each with independent check-in */}
             {memberData.activeActivities?.length > 0 ? (
               <div>
                 <h3 className="font-bold text-sm text-gray-700 mb-2 flex items-center gap-2">
                   <Activity className="w-4 h-4 text-green-600" />
                   {t('الاشتراكات النشطة', 'Active Subscriptions')}
+                  <span className="bg-green-100 text-green-700 text-xs px-2 py-0.5 rounded-full">{memberData.activeActivities.length}</span>
                 </h3>
-                <div className="space-y-2">
-                  {memberData.activeActivities.map((act, idx) => (
-                    <div
-                      key={idx}
-                      className={`p-3 rounded-xl border-2 ${
-                        act.recorded_today
-                          ? 'bg-green-50 border-green-300'
-                          : 'bg-white border-gray-200'
-                      }`}
-                    >
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <p className="font-bold">{act.activity_name}</p>
-                          <p className="text-xs text-gray-500 flex items-center gap-1">
-                            <Calendar className="w-3 h-3" />
-                            {t('ينتهي:', 'Expires:')} {act.end_date || '-'}
-                          </p>
-                        </div>
-                        {act.recorded_today ? (
-                          <Badge className="bg-green-100 text-green-700 gap-1">
-                            <Check className="w-3 h-3" />
-                            {t('مسجل', 'Done')}
-                          </Badge>
-                        ) : (
-                          <Button
-                            size="sm"
-                            onClick={() => handleCheckin(act.activity_id, act.activity_name)}
-                            disabled={checkingIn}
-                            className="bg-gradient-to-r from-green-500 to-blue-500 gap-1"
-                          >
-                            {checkingIn ? (
-                              <Loader2 className="w-3 h-3 animate-spin" />
-                            ) : (
+                <div className="space-y-3">
+                  {memberData.activeActivities.map((act, idx) => {
+                    const state = activityStates[act.activity_id] || { status: 'idle' };
+                    const isRecorded = state.status === 'recorded' || act.recorded_today;
+                    const isLoading = state.status === 'loading';
+                    const isWrongDay = state.status === 'wrong_day';
+                    const isError = state.status === 'error';
+
+                    return (
+                      <div
+                        key={idx}
+                        className={`rounded-xl border-2 overflow-hidden transition-all ${
+                          isRecorded
+                            ? 'bg-green-50 border-green-300'
+                            : isWrongDay
+                            ? 'bg-yellow-50 border-yellow-400'
+                            : isError
+                            ? 'bg-red-50 border-red-300'
+                            : 'bg-white border-gray-200'
+                        }`}
+                      >
+                        <div className="p-3 flex items-center justify-between gap-2">
+                          <div className="min-w-0 flex-1">
+                            <p className="font-bold">{act.activity_name}</p>
+                            <p className="text-xs text-gray-500 flex items-center gap-1">
+                              <Calendar className="w-3 h-3" />
+                              {t('ينتهي:', 'Expires:')} {act.end_date || '-'}
+                            </p>
+                          </div>
+                          {isRecorded ? (
+                            <Badge className="bg-green-100 text-green-700 gap-1 flex-shrink-0">
                               <Check className="w-3 h-3" />
-                            )}
-                            {t('تسجيل', 'Check-in')}
-                          </Button>
+                              {t('مسجل', 'Done')}
+                            </Badge>
+                          ) : isWrongDay ? (
+                            <Badge className="bg-yellow-100 text-yellow-700 gap-1 flex-shrink-0 border-yellow-300">
+                              <Clock className="w-3 h-3" />
+                              {t('يوم خاطئ', 'Wrong day')}
+                            </Badge>
+                          ) : (
+                            <Button
+                              size="sm"
+                              onClick={() => handleCheckin(act.activity_id, act.activity_name)}
+                              disabled={isLoading}
+                              className="bg-gradient-to-r from-green-500 to-blue-500 gap-1 flex-shrink-0"
+                            >
+                              {isLoading ? (
+                                <Loader2 className="w-3 h-3 animate-spin" />
+                              ) : (
+                                <Check className="w-3 h-3" />
+                              )}
+                              {t('تسجيل', 'Check-in')}
+                            </Button>
+                          )}
+                        </div>
+
+                        {/* Wrong Day Inline Warning */}
+                        {isWrongDay && (
+                          <div className="px-3 pb-3 space-y-2">
+                            <div className="bg-yellow-100 p-2.5 rounded-lg border border-yellow-200">
+                              <p className="text-yellow-800 font-bold text-xs mb-1">⚠️ {state.message}</p>
+                              <p className="text-xs text-yellow-700">
+                                {t('مواعيدك:', 'Your days:')} <span className="font-semibold">{state.scheduleDays?.join(' - ')}</span>
+                              </p>
+                            </div>
+                            <Button
+                              onClick={() => handleCheckin(act.activity_id, act.activity_name, true)}
+                              disabled={isLoading}
+                              variant="outline"
+                              size="sm"
+                              className="w-full border-yellow-400 text-yellow-800 hover:bg-yellow-100 gap-2"
+                            >
+                              {isLoading ? (
+                                <Loader2 className="w-3 h-3 animate-spin" />
+                              ) : (
+                                <Check className="w-3 h-3" />
+                              )}
+                              {t('تسجيل حضور رغم ذلك', 'Check-in anyway')}
+                            </Button>
+                          </div>
+                        )}
+
+                        {/* Error message */}
+                        {isError && (
+                          <div className="px-3 pb-3">
+                            <p className="text-xs text-red-600 bg-red-50 px-3 py-2 rounded-lg">{state.message}</p>
+                            <Button
+                              onClick={() => handleCheckin(act.activity_id, act.activity_name)}
+                              size="sm"
+                              variant="outline"
+                              className="w-full mt-2 border-red-300 text-red-600 hover:bg-red-50 gap-1"
+                            >
+                              {t('إعادة المحاولة', 'Retry')}
+                            </Button>
+                          </div>
+                        )}
+
+                        {/* Session Quota Warning */}
+                        {isRecorded && state.sessionQuotaWarning && (
+                          <div className="px-3 pb-3">
+                            <div className="bg-amber-100/80 p-2.5 rounded-lg border border-amber-200">
+                              <p className="text-amber-900 font-bold text-xs mb-2">
+                                {state.sessionQuotaWarning.message}
+                              </p>
+                              <div className="grid grid-cols-3 gap-1.5 text-center">
+                                <div className="bg-white/60 rounded-md p-1">
+                                  <p className="text-base font-bold text-amber-700">{state.sessionQuotaWarning.used}</p>
+                                  <p className="text-[9px] text-amber-600">{t('مستخدم', 'Used')}</p>
+                                </div>
+                                <div className="bg-white/60 rounded-md p-1">
+                                  <p className="text-base font-bold text-amber-700">{state.sessionQuotaWarning.total}</p>
+                                  <p className="text-[9px] text-amber-600">{t('الإجمالي', 'Total')}</p>
+                                </div>
+                                <div className="bg-white/60 rounded-md p-1">
+                                  <p className="text-base font-bold text-amber-700">{state.sessionQuotaWarning.remaining ?? 0}</p>
+                                  <p className="text-[9px] text-amber-600">{t('متبقي', 'Left')}</p>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
                         )}
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             ) : (
               <div className="text-center py-4 bg-orange-50 rounded-xl">
-                <X className="w-10 h-10 mx-auto text-orange-500 mb-1" />
+                <AlertTriangle className="w-10 h-10 mx-auto text-orange-500 mb-1" />
                 <p className="font-bold text-orange-700 text-sm">
                   {t('لا توجد اشتراكات نشطة', 'No active subscriptions')}
                 </p>
               </div>
             )}
 
+            {/* Expired Subscriptions */}
             {memberData.expiredActivities?.length > 0 && (
               <div>
                 <h3 className="font-bold text-gray-500 mb-1 text-xs">

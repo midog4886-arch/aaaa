@@ -21,16 +21,16 @@ const GlobalScanner = ({ enabled = true, language = 'ar' }) => {
   const [showMemberDialog, setShowMemberDialog] = useState(false);
   const [memberData, setMemberData] = useState(null);
   const [loading, setLoading] = useState(false);
-  const [checkingIn, setCheckingIn] = useState(false);
-  const [lastResult, setLastResult] = useState(null);
+  // Per-activity states: { [activityId]: { status: 'idle'|'loading'|'wrong_day'|'recorded'|'error', scheduleDays, message } }
+  const [activityStates, setActivityStates] = useState({});
   
   // Scanner buffer
   const bufferRef = useRef('');
   const lastKeyTimeRef = useRef(0);
   const timeoutRef = useRef(null);
-  const isProcessingRef = useRef(false); // Lock to prevent multiple dialogs
-  const lastScannedCodeRef = useRef(''); // Track last scanned code
-  const scanLockTimeRef = useRef(0); // Timestamp lock
+  const isProcessingRef = useRef(false);
+  const lastScannedCodeRef = useRef('');
+  const scanLockTimeRef = useRef(0);
 
   // Load sound setting
   useEffect(() => {
@@ -78,72 +78,56 @@ const GlobalScanner = ({ enabled = true, language = 'ar' }) => {
   }, [soundEnabled]);
 
   // Extract member code from QR data
-  // Now QR codes contain just the member code number (e.g., "2620")
   const extractMemberCode = (scannedData) => {
     if (!scannedData) return null;
     
     let data = scannedData.trim();
     
-    // If it's just a number, return it directly
     if (/^\d+$/.test(data)) {
       return data;
     }
     
-    // Legacy support: Try to extract from old JSON format
     try {
       const parsed = JSON.parse(data);
       if (parsed.code) return parsed.code.toString();
       if (parsed.member_code) return parsed.member_code.toString();
-    } catch (e) {
-      // Not JSON
-    }
+    } catch (e) {}
     
-    // Extract any number sequence
     const numberMatch = data.match(/(\d{3,6})/);
     if (numberMatch) return numberMatch[1];
     
     return null;
   };
 
-  // Fetch member data and show dialog
+  // Fetch member data and show dialog - NO auto check-in
   const handleScan = useCallback(async (scannedData) => {
     if (!scannedData) return;
     
     const now = Date.now();
-    
-    // Extract member code from scanned data
     const memberCode = extractMemberCode(scannedData);
     
     if (!memberCode) return;
     
-    // STRICT LOCK: Block if already processing or if scanned within last 2 seconds
     if (isProcessingRef.current) {
-      console.log('🚫 Scan blocked - already processing');
       bufferRef.current = '';
       return;
     }
     
-    // Block rapid successive scans (within 2 seconds)
     if (now - scanLockTimeRef.current < 2000) {
-      console.log('🚫 Scan blocked - too fast');
       bufferRef.current = '';
       return;
     }
     
-    // Lock immediately with timestamp
     isProcessingRef.current = true;
     scanLockTimeRef.current = now;
     lastScannedCodeRef.current = memberCode;
     
-    // Close any existing dialog FIRST and wait
     setShowMemberDialog(false);
     setMemberData(null);
-    setLastResult(null);
+    setActivityStates({});
     
-    // Wait for dialog to fully close
     await new Promise(resolve => setTimeout(resolve, 150));
     
-    // Double-check lock is still ours
     if (lastScannedCodeRef.current !== memberCode) {
       isProcessingRef.current = false;
       return;
@@ -163,76 +147,24 @@ const GlobalScanner = ({ enabled = true, language = 'ar' }) => {
       
       const data = await response.json();
       
-      // Separate active and expired activities
       const allActivities = data.activities || [];
       const activeActivities = allActivities.filter(a => a.status === 'active');
       const expiredActivities = allActivities.filter(a => a.status === 'expired');
       
-      const mData = {
-        ...data,
-        activeActivities,
-        expiredActivities
-      };
+      // Initialize activity states
+      const initStates = {};
+      activeActivities.forEach(a => {
+        initStates[a.activity_id] = { status: a.recorded_today ? 'recorded' : 'idle' };
+      });
+      setActivityStates(initStates);
+      
+      const mData = { ...data, activeActivities, expiredActivities };
       setMemberData(mData);
       
       if (activeActivities.length === 0) {
         playSound('error');
       } else {
-        const unrecorded = activeActivities.filter(a => !a.recorded_today);
-        if (unrecorded.length > 0) {
-          const act = unrecorded[0];
-          setCheckingIn(true);
-          try {
-            const token = localStorage.getItem('token');
-            const memberCode2 = data.member_code || data.id;
-            const checkinUrl = `/api/attendance/qr-checkin?member_code=${encodeURIComponent(memberCode2)}&activity_id=${encodeURIComponent(act.activity_id)}`;
-            const checkinRes = await fetch(checkinUrl, {
-              method: 'POST',
-              headers: { 'Authorization': `Bearer ${token}` }
-            });
-            const checkinData = await checkinRes.json();
-            
-            if (checkinData.status === 'success') {
-              playSound(checkinData.session_quota_warning ? 'error' : 'success');
-              const quotaWarn = checkinData.session_quota_warning;
-              setLastResult({
-                success: true,
-                activityName: act.activity_name,
-                message: t('✅ تم تسجيل الحضور بنجاح', '✅ Check-in successful'),
-                sessionQuotaWarning: quotaWarn || null
-              });
-              setMemberData(prev => ({
-                ...prev,
-                activeActivities: prev.activeActivities.map(a =>
-                  a.activity_id === act.activity_id ? { ...a, recorded_today: true } : a
-                )
-              }));
-            } else if (checkinData.status === 'wrong_day') {
-              playSound('error');
-              setLastResult({
-                success: false,
-                wrongDay: true,
-                activityId: act.activity_id,
-                activityName: act.activity_name,
-                scheduleDays: checkinData.schedule_days || [],
-                today: checkinData.today,
-                message: checkinData.message || t('هذا ليس موعدك اليوم!', 'This is not your scheduled day!')
-              });
-            } else if (checkinData.status === 'already_checked_in') {
-              playSound('error');
-              setLastResult({
-                success: false,
-                alreadyCheckedIn: true,
-                activityName: act.activity_name,
-                message: t('⚠️ مسجل مسبقاً اليوم', '⚠️ Already checked in today')
-              });
-            }
-          } catch (e) {
-            console.log('Auto check-in failed:', e);
-          } finally {
-            setCheckingIn(false);
-          }
-        }
+        playSound('scan');
       }
       
     } catch (error) {
@@ -244,27 +176,29 @@ const GlobalScanner = ({ enabled = true, language = 'ar' }) => {
       });
     } finally {
       setLoading(false);
-      // Keep lock active while dialog is open - unlock only when dialog closes
     }
   }, [playSound, t]);
 
-  // Close dialog handler - UNLOCK here
+  // Close dialog handler
   const handleCloseDialog = useCallback(() => {
     setShowMemberDialog(false);
     setMemberData(null);
-    setLastResult(null);
+    setActivityStates({});
     
-    // Unlock after dialog closes with delay to prevent immediate re-scan
     setTimeout(() => {
       isProcessingRef.current = false;
       lastScannedCodeRef.current = '';
     }, 300);
   }, []);
 
+  // Handle check-in for a specific activity (with optional force override)
   const handleCheckin = useCallback(async (activityId, activityName, force = false) => {
     if (!memberData || !activityId) return;
     
-    setCheckingIn(true);
+    setActivityStates(prev => ({
+      ...prev,
+      [activityId]: { ...prev[activityId], status: 'loading' }
+    }));
     
     try {
       const res = await attendanceAPI.qrCheckin(
@@ -275,34 +209,40 @@ const GlobalScanner = ({ enabled = true, language = 'ar' }) => {
       
       if (res.data.status === 'already_checked_in') {
         playSound('error');
-        setLastResult({
-          success: false,
-          alreadyCheckedIn: true,
-          activityName,
-          message: t('⚠️ مسجل مسبقاً اليوم', '⚠️ Already checked in today')
-        });
+        setActivityStates(prev => ({
+          ...prev,
+          [activityId]: { status: 'recorded', message: t('مسجل مسبقاً اليوم ✓', 'Already checked in today ✓') }
+        }));
+        // Also mark in memberData
+        setMemberData(prev => ({
+          ...prev,
+          activeActivities: prev.activeActivities.map(a =>
+            a.activity_id === activityId ? { ...a, recorded_today: true } : a
+          )
+        }));
       } else if (res.data.status === 'wrong_day') {
         playSound('error');
         const scheduleDays = res.data.schedule_days || [];
-        setLastResult({
-          success: false,
-          wrongDay: true,
-          activityId,
-          activityName,
-          scheduleDays,
-          today: res.data.today,
-          message: res.data.message || t('هذا ليس موعدك اليوم!', 'This is not your scheduled day!')
-        });
+        setActivityStates(prev => ({
+          ...prev,
+          [activityId]: {
+            status: 'wrong_day',
+            scheduleDays,
+            today: res.data.today,
+            message: res.data.message || t('هذا ليس موعدك اليوم!', 'This is not your scheduled day!')
+          }
+        }));
       } else {
         const quotaWarn = res.data.session_quota_warning;
         playSound(quotaWarn ? 'error' : 'success');
-        setLastResult({
-          success: true,
-          activityName,
-          message: t('✅ تم تسجيل الحضور بنجاح', '✅ Check-in successful'),
-          sessionQuotaWarning: quotaWarn || null
-        });
-        
+        setActivityStates(prev => ({
+          ...prev,
+          [activityId]: {
+            status: 'recorded',
+            sessionQuotaWarning: quotaWarn || null,
+            message: t('✅ تم تسجيل الحضور', '✅ Checked in')
+          }
+        }));
         setMemberData(prev => ({
           ...prev,
           activeActivities: prev.activeActivities.map(a =>
@@ -314,13 +254,10 @@ const GlobalScanner = ({ enabled = true, language = 'ar' }) => {
       playSound('error');
       const rawErr = error.response?.data?.detail;
       const errorMsg = typeof rawErr === 'string' ? rawErr : (rawErr?.msg || rawErr?.message || t('خطأ في التسجيل', 'Check-in error'));
-      setLastResult({
-        success: false,
-        activityName,
-        message: `❌ ${errorMsg}`
-      });
-    } finally {
-      setCheckingIn(false);
+      setActivityStates(prev => ({
+        ...prev,
+        [activityId]: { status: 'error', message: `❌ ${errorMsg}` }
+      }));
     }
   }, [memberData, playSound, t]);
 
@@ -329,13 +266,11 @@ const GlobalScanner = ({ enabled = true, language = 'ar' }) => {
     if (!enabled) return;
     
     const handleKeyDown = (e) => {
-      // Ignore if typing in input/textarea/select
       const tagName = e.target.tagName;
       if (tagName === 'INPUT' || tagName === 'TEXTAREA' || tagName === 'SELECT' || e.target.isContentEditable) {
         return;
       }
       
-      // Block scanning if already processing (prevents multiple dialogs)
       if (isProcessingRef.current) {
         e.preventDefault();
         bufferRef.current = '';
@@ -344,7 +279,6 @@ const GlobalScanner = ({ enabled = true, language = 'ar' }) => {
       
       const now = Date.now();
       
-      // Reset buffer if too much time passed (manual typing vs scanner)
       if (now - lastKeyTimeRef.current > 100 && bufferRef.current.length > 0) {
         bufferRef.current = '';
       }
@@ -365,9 +299,7 @@ const GlobalScanner = ({ enabled = true, language = 'ar' }) => {
       } else if (e.key.length === 1 && !e.ctrlKey && !e.altKey && !e.metaKey) {
         bufferRef.current += e.key;
         
-        // Auto-process after brief pause
         timeoutRef.current = setTimeout(() => {
-          // Double-check we're not processing before auto-scan
           if (!isProcessingRef.current) {
             const code = bufferRef.current.trim();
             if (code.length >= 3) {
@@ -391,7 +323,7 @@ const GlobalScanner = ({ enabled = true, language = 'ar' }) => {
 
   return (
     <>
-      {/* Scanner Status Indicator - Always visible floating button */}
+      {/* Scanner Status Indicator */}
       <div 
         style={{
           position: 'fixed',
@@ -439,7 +371,6 @@ const GlobalScanner = ({ enabled = true, language = 'ar' }) => {
         </div>
       </div>
       
-      {/* Pulse animation style */}
       <style>{`
         @keyframes pulse {
           0%, 100% { transform: scale(1); box-shadow: 0 4px 25px rgba(34, 197, 94, 0.6); }
@@ -470,7 +401,7 @@ const GlobalScanner = ({ enabled = true, language = 'ar' }) => {
             </div>
           ) : memberData ? (
             <div>
-              {/* Member Header - Gradient Banner */}
+              {/* Member Header */}
               <div className="relative bg-gradient-to-br from-blue-600 via-blue-700 to-indigo-800 px-6 pt-6 pb-10 text-center">
                 <button
                   onClick={() => setSoundEnabled(!soundEnabled)}
@@ -499,97 +430,6 @@ const GlobalScanner = ({ enabled = true, language = 'ar' }) => {
 
               {/* Content Area */}
               <div className="px-5 pb-5 -mt-5 space-y-4">
-                {/* Result Banner */}
-                {lastResult && (
-                  <div className={`rounded-xl shadow-md overflow-hidden ${
-                    lastResult.success && lastResult.sessionQuotaWarning
-                      ? 'bg-amber-50 ring-2 ring-amber-300'
-                      : lastResult.success 
-                      ? 'bg-green-50 ring-2 ring-green-300' 
-                      : lastResult.wrongDay
-                        ? 'bg-yellow-50 ring-2 ring-yellow-300'
-                        : lastResult.alreadyCheckedIn 
-                          ? 'bg-orange-50 ring-2 ring-orange-300'
-                          : 'bg-red-50 ring-2 ring-red-300'
-                  }`}>
-                    <div className="p-4">
-                      <div className="flex items-center gap-3">
-                        <div className={`w-12 h-12 rounded-full flex items-center justify-center flex-shrink-0 ${
-                          lastResult.success && lastResult.sessionQuotaWarning ? 'bg-amber-200'
-                            : lastResult.success ? 'bg-green-200' 
-                            : lastResult.wrongDay ? 'bg-yellow-200'
-                            : 'bg-red-200'
-                        }`}>
-                          {lastResult.success && lastResult.sessionQuotaWarning ? (
-                            <AlertTriangle className="w-6 h-6 text-amber-600" />
-                          ) : lastResult.success ? (
-                            <Check className="w-6 h-6 text-green-600" />
-                          ) : lastResult.wrongDay ? (
-                            <Clock className="w-6 h-6 text-yellow-600" />
-                          ) : (
-                            <X className="w-6 h-6 text-red-600" />
-                          )}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className={`font-bold text-base ${
-                            lastResult.success && lastResult.sessionQuotaWarning ? 'text-amber-800'
-                              : lastResult.success ? 'text-green-800' 
-                              : lastResult.wrongDay ? 'text-yellow-800'
-                              : 'text-red-800'
-                          }`}>
-                            {lastResult.wrongDay ? lastResult.message : lastResult.message}
-                          </p>
-                          <p className="text-sm text-gray-500 truncate">{lastResult.activityName}</p>
-                        </div>
-                      </div>
-                    </div>
-                    {lastResult.sessionQuotaWarning && (
-                      <div className="px-4 pb-4">
-                        <div className="bg-amber-100/80 p-3 rounded-lg border border-amber-200">
-                          <p className="text-amber-900 font-bold text-sm mb-2">
-                            {lastResult.sessionQuotaWarning.message}
-                          </p>
-                          <div className="grid grid-cols-3 gap-2 text-center">
-                            <div className="bg-white/60 rounded-md p-1.5">
-                              <p className="text-lg font-bold text-amber-700">{lastResult.sessionQuotaWarning.used}</p>
-                              <p className="text-[10px] text-amber-600">{t('مستخدم', 'Used')}</p>
-                            </div>
-                            <div className="bg-white/60 rounded-md p-1.5">
-                              <p className="text-lg font-bold text-amber-700">{lastResult.sessionQuotaWarning.total}</p>
-                              <p className="text-[10px] text-amber-600">{t('الإجمالي', 'Total')}</p>
-                            </div>
-                            <div className="bg-white/60 rounded-md p-1.5">
-                              <p className="text-lg font-bold text-amber-700">{lastResult.sessionQuotaWarning.remaining ?? 0}</p>
-                              <p className="text-[10px] text-amber-600">{t('متبقي', 'Left')}</p>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    )}
-                    {lastResult.wrongDay && (
-                      <div className="px-4 pb-4">
-                        <div className="bg-yellow-100/80 p-3 rounded-lg border border-yellow-200 mb-3">
-                          <p className="text-sm text-yellow-800 font-medium">
-                            {t('مواعيدك:', 'Your days:')} {lastResult.scheduleDays?.join(' - ')}
-                          </p>
-                        </div>
-                        <Button
-                          onClick={() => handleCheckin(lastResult.activityId, lastResult.activityName, true)}
-                          disabled={checkingIn}
-                          variant="outline"
-                          className="w-full border-yellow-400 text-yellow-800 hover:bg-yellow-100 gap-2 h-11 rounded-lg"
-                        >
-                          {checkingIn ? (
-                            <Loader2 className="w-4 h-4 animate-spin" />
-                          ) : (
-                            <Check className="w-4 h-4" />
-                          )}
-                          {t('تسجيل حضور رغم ذلك', 'Check-in anyway')}
-                        </Button>
-                      </div>
-                    )}
-                  </div>
-                )}
 
                 {/* Active Activities */}
                 {memberData.activeActivities?.length > 0 ? (
@@ -599,49 +439,139 @@ const GlobalScanner = ({ enabled = true, language = 'ar' }) => {
                       {t('الاشتراكات النشطة', 'Active Subscriptions')}
                       <span className="bg-green-100 text-green-700 text-xs px-2 py-0.5 rounded-full">{memberData.activeActivities.length}</span>
                     </h3>
-                    <div className="space-y-2">
-                      {memberData.activeActivities.map((act, idx) => (
-                        <div 
-                          key={idx}
-                          className={`p-3.5 rounded-xl border-2 transition-all ${
-                            act.recorded_today 
-                              ? 'bg-green-50 border-green-200' 
-                              : 'bg-white border-gray-100 hover:border-blue-300 hover:shadow-sm'
-                          }`}
-                        >
-                          <div className="flex items-center justify-between gap-3">
-                            <div className="min-w-0 flex-1">
-                              <p className="font-bold text-base truncate">{act.activity_name}</p>
-                              <div className="flex items-center gap-2 mt-1">
-                                <span className="text-xs text-gray-400 flex items-center gap-1">
-                                  <Calendar className="w-3 h-3" />
-                                  {act.end_date || '-'}
-                                </span>
+                    <div className="space-y-3">
+                      {memberData.activeActivities.map((act, idx) => {
+                        const state = activityStates[act.activity_id] || { status: 'idle' };
+                        const isRecorded = state.status === 'recorded' || act.recorded_today;
+                        const isLoading = state.status === 'loading';
+                        const isWrongDay = state.status === 'wrong_day';
+                        const isError = state.status === 'error';
+
+                        return (
+                          <div
+                            key={idx}
+                            className={`rounded-xl border-2 overflow-hidden transition-all ${
+                              isRecorded
+                                ? 'bg-green-50 border-green-200'
+                                : isWrongDay
+                                ? 'bg-yellow-50 border-yellow-300'
+                                : isError
+                                ? 'bg-red-50 border-red-200'
+                                : 'bg-white border-gray-100 hover:border-blue-300 hover:shadow-sm'
+                            }`}
+                          >
+                            <div className="p-3.5 flex items-center justify-between gap-3">
+                              <div className="min-w-0 flex-1">
+                                <p className="font-bold text-base truncate">{act.activity_name}</p>
+                                <div className="flex items-center gap-2 mt-1">
+                                  <span className="text-xs text-gray-400 flex items-center gap-1">
+                                    <Calendar className="w-3 h-3" />
+                                    {act.end_date || '-'}
+                                  </span>
+                                </div>
                               </div>
+                              {isRecorded ? (
+                                <div className="flex flex-col items-end gap-1">
+                                  <div className="flex items-center gap-1.5 bg-green-100 text-green-700 px-3 py-1.5 rounded-full flex-shrink-0">
+                                    <Check className="w-4 h-4" />
+                                    <span className="font-bold text-sm">{t('تم', 'Done')}</span>
+                                  </div>
+                                  {state.message && (
+                                    <span className="text-xs text-green-600">{state.message}</span>
+                                  )}
+                                </div>
+                              ) : isWrongDay ? (
+                                <div className="flex items-center gap-1.5 bg-yellow-100 text-yellow-700 px-3 py-1.5 rounded-full flex-shrink-0">
+                                  <Clock className="w-4 h-4" />
+                                  <span className="font-bold text-sm">{t('يوم خاطئ', 'Wrong day')}</span>
+                                </div>
+                              ) : isError ? (
+                                <Button
+                                  onClick={() => handleCheckin(act.activity_id, act.activity_name)}
+                                  size="sm"
+                                  variant="outline"
+                                  className="border-red-300 text-red-600 hover:bg-red-50 gap-1.5 rounded-full px-4 flex-shrink-0"
+                                >
+                                  {t('إعادة', 'Retry')}
+                                </Button>
+                              ) : (
+                                <Button
+                                  onClick={() => handleCheckin(act.activity_id, act.activity_name)}
+                                  disabled={isLoading}
+                                  size="sm"
+                                  className="bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 gap-1.5 rounded-full px-5 shadow-sm flex-shrink-0"
+                                >
+                                  {isLoading ? (
+                                    <Loader2 className="w-4 h-4 animate-spin" />
+                                  ) : (
+                                    <Check className="w-4 h-4" />
+                                  )}
+                                  {t('تسجيل', 'Check-in')}
+                                </Button>
+                              )}
                             </div>
-                            {act.recorded_today ? (
-                              <div className="flex items-center gap-1.5 bg-green-100 text-green-700 px-3 py-1.5 rounded-full flex-shrink-0">
-                                <Check className="w-4 h-4" />
-                                <span className="font-bold text-sm">{t('تم', 'Done')}</span>
+
+                            {/* Wrong Day Inline Warning */}
+                            {isWrongDay && (
+                              <div className="px-3.5 pb-3.5 space-y-2">
+                                <div className="bg-yellow-100/80 p-3 rounded-lg border border-yellow-200">
+                                  <p className="text-yellow-800 font-bold text-sm mb-1">
+                                    ⚠️ {state.message}
+                                  </p>
+                                  <p className="text-xs text-yellow-700">
+                                    {t('مواعيدك:', 'Your days:')} <span className="font-semibold">{state.scheduleDays?.join(' - ')}</span>
+                                  </p>
+                                </div>
+                                <Button
+                                  onClick={() => handleCheckin(act.activity_id, act.activity_name, true)}
+                                  disabled={isLoading}
+                                  variant="outline"
+                                  className="w-full border-yellow-400 text-yellow-800 hover:bg-yellow-100 gap-2 h-10 rounded-lg"
+                                >
+                                  {isLoading ? (
+                                    <Loader2 className="w-4 h-4 animate-spin" />
+                                  ) : (
+                                    <Check className="w-4 h-4" />
+                                  )}
+                                  {t('تسجيل حضور رغم ذلك', 'Check-in anyway')}
+                                </Button>
                               </div>
-                            ) : (
-                              <Button
-                                onClick={() => handleCheckin(act.activity_id, act.activity_name)}
-                                disabled={checkingIn}
-                                size="sm"
-                                className="bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 gap-1.5 rounded-full px-5 shadow-sm flex-shrink-0"
-                              >
-                                {checkingIn ? (
-                                  <Loader2 className="w-4 h-4 animate-spin" />
-                                ) : (
-                                  <Check className="w-4 h-4" />
-                                )}
-                                {t('تسجيل', 'Check-in')}
-                              </Button>
+                            )}
+
+                            {/* Error message */}
+                            {isError && (
+                              <div className="px-3.5 pb-3.5">
+                                <p className="text-xs text-red-600 bg-red-50 px-3 py-2 rounded-lg">{state.message}</p>
+                              </div>
+                            )}
+
+                            {/* Session Quota Warning */}
+                            {isRecorded && state.sessionQuotaWarning && (
+                              <div className="px-3.5 pb-3.5">
+                                <div className="bg-amber-100/80 p-3 rounded-lg border border-amber-200">
+                                  <p className="text-amber-900 font-bold text-sm mb-2">
+                                    {state.sessionQuotaWarning.message}
+                                  </p>
+                                  <div className="grid grid-cols-3 gap-2 text-center">
+                                    <div className="bg-white/60 rounded-md p-1.5">
+                                      <p className="text-lg font-bold text-amber-700">{state.sessionQuotaWarning.used}</p>
+                                      <p className="text-[10px] text-amber-600">{t('مستخدم', 'Used')}</p>
+                                    </div>
+                                    <div className="bg-white/60 rounded-md p-1.5">
+                                      <p className="text-lg font-bold text-amber-700">{state.sessionQuotaWarning.total}</p>
+                                      <p className="text-[10px] text-amber-600">{t('الإجمالي', 'Total')}</p>
+                                    </div>
+                                    <div className="bg-white/60 rounded-md p-1.5">
+                                      <p className="text-lg font-bold text-amber-700">{state.sessionQuotaWarning.remaining ?? 0}</p>
+                                      <p className="text-[10px] text-amber-600">{t('متبقي', 'Left')}</p>
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
                             )}
                           </div>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   </div>
                 ) : (
