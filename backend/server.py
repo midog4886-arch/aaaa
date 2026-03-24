@@ -2228,6 +2228,8 @@ async def export_members(
     
     if format == "xlsx":
         # Create Excel file
+        xl = _get_openpyxl()
+        Workbook = xl.Workbook; Font = xl.Font; PatternFill = xl.PatternFill; Border = xl.Border; Side = xl.Side; Alignment = xl.Alignment
         wb = Workbook()
         ws = wb.active
         ws.title = "الأعضاء"
@@ -2347,6 +2349,8 @@ async def export_invoices(
     
     if format == "xlsx":
         # Create Excel file
+        xl = _get_openpyxl()
+        Workbook = xl.Workbook; Font = xl.Font; PatternFill = xl.PatternFill; Border = xl.Border; Side = xl.Side; Alignment = xl.Alignment
         wb = Workbook()
         ws = wb.active
         ws.title = "الفواتير"
@@ -2834,6 +2838,8 @@ async def export_financial_report(
             revenue_by_activity[act_name] = revenue_by_activity.get(act_name, 0) + item.get("fee", 0)
     
     if format == "xlsx":
+        xl = _get_openpyxl()
+        Workbook = xl.Workbook; Font = xl.Font; PatternFill = xl.PatternFill; Border = xl.Border; Side = xl.Side; Alignment = xl.Alignment
         wb = Workbook()
         
         # Summary Sheet
@@ -2936,6 +2942,8 @@ async def export_all_data(token: Optional[str] = None):
     coaches = await db.coaches.find({}, {"_id": 0}).to_list(100)
     
     # Create workbook
+    xl = _get_openpyxl()
+    Workbook = xl.Workbook; Font = xl.Font; PatternFill = xl.PatternFill; Border = xl.Border; Side = xl.Side; Alignment = xl.Alignment
     wb = Workbook()
     
     # Style definitions
@@ -5465,6 +5473,8 @@ async def export_attendance_excel(
     
     records = await db.attendance.find(query, {"_id": 0}).sort("date", -1).to_list(10000)
     
+    xl = _get_openpyxl()
+    Workbook = xl.Workbook; Font = xl.Font; PatternFill = xl.PatternFill; Border = xl.Border; Side = xl.Side; Alignment = xl.Alignment
     wb = Workbook()
     ws = wb.active
     ws.title = "سجل الحضور"
@@ -5940,6 +5950,8 @@ async def export_internal_expenses(
     expenses = await db.internal_expenses.find(query, {"_id": 0}).sort("expense_date", -1).to_list(10000)
     
     # Create Excel workbook
+    xl = _get_openpyxl()
+    Workbook = xl.Workbook; Font = xl.Font; PatternFill = xl.PatternFill; Border = xl.Border; Side = xl.Side; Alignment = xl.Alignment
     wb = Workbook()
     ws = wb.active
     ws.title = "المصروفات الداخلية"
@@ -6719,6 +6731,8 @@ async def export_sales_report(
     
     invoices = await db.invoices.find(query, {"_id": 0}).sort("paid_at", -1).to_list(10000)
     
+    xl = _get_openpyxl()
+    Workbook = xl.Workbook; Font = xl.Font; PatternFill = xl.PatternFill; Border = xl.Border; Side = xl.Side; Alignment = xl.Alignment
     wb = Workbook()
     ws = wb.active
     ws.title = "تقرير المبيعات"
@@ -6818,6 +6832,8 @@ async def export_purchases_report(
     
     invoices = await db.purchase_invoices.find(query, {"_id": 0}).sort("invoice_date", -1).to_list(10000)
     
+    xl = _get_openpyxl()
+    Workbook = xl.Workbook; Font = xl.Font; PatternFill = xl.PatternFill; Border = xl.Border; Side = xl.Side; Alignment = xl.Alignment
     wb = Workbook()
     ws = wb.active
     ws.title = "تقرير المشتريات"
@@ -6936,6 +6952,8 @@ async def export_vat_report(
     input_vat = sum(inv.get("tax_amount", 0) for inv in purchase_invoices)
     net_vat = output_vat - input_vat
     
+    xl = _get_openpyxl()
+    Workbook = xl.Workbook; Font = xl.Font; PatternFill = xl.PatternFill; Border = xl.Border; Side = xl.Side; Alignment = xl.Alignment
     wb = Workbook()
     ws = wb.active
     ws.title = "إقرار الضريبة"
