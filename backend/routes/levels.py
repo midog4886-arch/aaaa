@@ -45,70 +45,86 @@ async def get_levels(
     activity_id: Optional[str] = None,
     current_user: dict = Depends(get_current_user)
 ):
+    import asyncio
     is_admin = current_user.get("is_admin", False)
     branch_id = current_user.get("branch_id")
-    
-    # Auto-cleanup expired subscriptions
-    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-    expired = await db.level_subscriptions.find({
-        "end_date": {"$lt": today}
-    }).to_list(1000)
-    
-    for sub in expired:
-        member_id = sub.get("member_id")
-        level_id = sub.get("level_id")
-        if member_id and level_id:
-            await db.levels.update_one(
-                {"id": level_id},
-                {"$pull": {"members": member_id}}
-            )
-            await db.level_subscriptions.delete_one({"_id": sub["_id"]})
-    
+
     query = {}
     if is_admin:
         if branch_filter and branch_filter != "all":
             query["$or"] = [{"branch_id": branch_filter}, {"branch_id": None}, {"branch_id": {"$exists": False}}]
     else:
         query["$or"] = [{"branch_id": branch_id}, {"branch_id": None}, {"branch_id": {"$exists": False}}]
-    
+
     if activity_id:
         query["activity_id"] = activity_id
-    
+
     levels = await db.levels.find(query, {"_id": 0}).sort("level_number", 1).to_list(100)
-    
-    # Populate members details with schedule info
-    for level in levels:
-        if level.get("members"):
-            members_details = []
-            for member_id in level["members"]:
-                member = await db.members.find_one({"id": member_id}, {"_id": 0, "id": 1, "name_ar": 1, "name": 1, "phone": 1, "activities": 1})
-                if member:
-                    schedule = ""
-                    member_activities = member.get("activities", [])
-                    if member_activities:
-                        for act in member_activities:
+
+    # Collect all unique member IDs across all levels in one shot
+    all_member_ids = list({mid for level in levels for mid in level.get("members", [])})
+
+    if all_member_ids:
+        # Single batch query for all members
+        members_cursor = db.members.find(
+            {"id": {"$in": all_member_ids}},
+            {"_id": 0, "id": 1, "name_ar": 1, "name": 1, "phone": 1, "activities": 1}
+        )
+        members_list = await members_cursor.to_list(len(all_member_ids) + 10)
+        members_map = {m["id"]: m for m in members_list}
+
+        # Find member IDs that need an invoice lookup (no schedule in activities)
+        needs_invoice = []
+        for mid in all_member_ids:
+            m = members_map.get(mid)
+            if m:
+                has_schedule = any(a.get("schedule") for a in m.get("activities", []))
+                if not has_schedule:
+                    needs_invoice.append(mid)
+
+        # Single batch query for invoices (latest paid per member)
+        invoice_schedules = {}
+        if needs_invoice:
+            # Fetch recent paid invoices for all members that need them
+            invoices_cursor = db.invoices.find(
+                {"member_id": {"$in": needs_invoice}, "status": "paid"},
+                {"_id": 0, "member_id": 1, "items": 1, "created_at": 1}
+            ).sort("created_at", -1)
+            invoices_list = await invoices_cursor.to_list(len(needs_invoice) * 5)
+            # For each member, pick schedule from latest invoice
+            for inv in invoices_list:
+                mid = inv.get("member_id")
+                if mid and mid not in invoice_schedules:
+                    for item in inv.get("items", []):
+                        if item.get("schedule"):
+                            invoice_schedules[mid] = item["schedule"]
+                            break
+
+        # Build members_details for each level using the pre-fetched data
+        for level in levels:
+            if level.get("members"):
+                members_details = []
+                for mid in level["members"]:
+                    member = members_map.get(mid)
+                    if member:
+                        schedule = ""
+                        for act in member.get("activities", []):
                             if act.get("schedule"):
                                 schedule = act["schedule"]
                                 break
-                    if not schedule:
-                        invoice = await db.invoices.find_one(
-                            {"member_id": member_id, "status": "paid"},
-                            {"_id": 0, "items": 1},
-                            sort=[("created_at", -1)]
-                        )
-                        if invoice and invoice.get("items"):
-                            for item in invoice["items"]:
-                                if item.get("schedule"):
-                                    schedule = item["schedule"]
-                                    break
-                    members_details.append({
-                        "member_id": member["id"],
-                        "member_name": member.get("name_ar") or member.get("name", ""),
-                        "phone": member.get("phone", ""),
-                        "schedule": schedule
-                    })
-            level["members_details"] = members_details
-    
+                        if not schedule:
+                            schedule = invoice_schedules.get(mid, "")
+                        members_details.append({
+                            "member_id": member["id"],
+                            "member_name": member.get("name_ar") or member.get("name", ""),
+                            "phone": member.get("phone", ""),
+                            "schedule": schedule
+                        })
+                level["members_details"] = members_details
+    else:
+        for level in levels:
+            level["members_details"] = []
+
     return levels
 
 
