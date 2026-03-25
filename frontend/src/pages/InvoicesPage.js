@@ -813,7 +813,7 @@ ${pdfTerms}
 🏛️ الرقم الضريبي: ${COMPANY_INFO.tax_number}
 📋 السجل التجاري: ${COMPANY_INFO.commercial_reg}
 ━━━━━━━━━━━━━━
-📱 *حمّل تطبيقنا:*
+📲 *لتحميل أيقونة تطبيق الأعضاء اضغط على الرابط:*
 https://play.google.com/store/apps/details?id=com.champions.academy.member
 👥 *انضم لمجموعتنا على الواتساب:*
 https://chat.whatsapp.com/JDf5d5mwAcxBy6nXA9gvhs`;
@@ -1909,7 +1909,7 @@ ${termsText}
 🏛️ الرقم الضريبي: ${COMPANY_INFO.tax_number}
 📋 السجل التجاري: ${COMPANY_INFO.commercial_reg}
 ━━━━━━━━━━━━━━
-📱 *حمّل تطبيقنا:*
+📲 *لتحميل أيقونة تطبيق الأعضاء اضغط على الرابط:*
 https://play.google.com/store/apps/details?id=com.champions.academy.member
 👥 *انضم لمجموعتنا على الواتساب:*
 https://chat.whatsapp.com/JDf5d5mwAcxBy6nXA9gvhs`;
