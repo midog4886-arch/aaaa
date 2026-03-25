@@ -11,11 +11,13 @@ router = APIRouter(prefix="/messages", tags=["messages"])
 
 
 async def send_message_push(member_id: str, subject: str, body: str):
-    """Send push notification to member when they receive a message"""
+    """Send push notification to ALL member subscriptions (web + android)"""
     try:
         from .push_notifications import send_push_notification, NotificationPayload
-        sub = await db.push_subscriptions.find_one({"member_id": member_id, "is_active": True})
-        if not sub:
+        subs = await db.push_subscriptions.find(
+            {"member_id": member_id, "is_active": True}, {"_id": 0}
+        ).to_list(10)
+        if not subs:
             return
         payload = NotificationPayload(
             title=f"✉️ رسالة جديدة: {subject}",
@@ -24,7 +26,11 @@ async def send_message_push(member_id: str, subject: str, body: str):
             tag=f"message-{member_id}",
             data={"type": "message"}
         )
-        await send_push_notification(sub, payload)
+        for sub in subs:
+            try:
+                await send_push_notification(sub, payload)
+            except Exception as e:
+                print(f"send_message_push sub error: {e}")
     except Exception as e:
         print(f"send_message_push error: {e}")
 

@@ -10,11 +10,13 @@ from .common import db, get_current_user
 
 
 async def send_attendance_push(member_id: str, member_name: str, activity_name: str, check_in_time: str):
-    """Send push notification to member when attendance is recorded"""
+    """Send push notification to ALL member subscriptions (web + android)"""
     try:
         from .push_notifications import send_push_notification, NotificationPayload
-        sub = await db.push_subscriptions.find_one({"member_id": member_id, "is_active": True})
-        if not sub:
+        subs = await db.push_subscriptions.find(
+            {"member_id": member_id, "is_active": True}, {"_id": 0}
+        ).to_list(10)
+        if not subs:
             return
         title = "✅ تم تسجيل حضورك"
         body = f"{activity_name} - {check_in_time}" if activity_name else f"وقت الدخول: {check_in_time}"
@@ -25,7 +27,11 @@ async def send_attendance_push(member_id: str, member_name: str, activity_name: 
             tag=f"attendance-{member_id}",
             data={"type": "attendance"}
         )
-        await send_push_notification(sub, payload)
+        for sub in subs:
+            try:
+                await send_push_notification(sub, payload)
+            except Exception as e:
+                print(f"send_attendance_push sub error: {e}")
     except Exception as e:
         print(f"send_attendance_push error: {e}")
 
