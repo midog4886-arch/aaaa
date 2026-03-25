@@ -673,13 +673,22 @@ const DailyVideosPage = () => {
                 <div className="mt-2">
                   <Label className="text-sm text-gray-600 mb-2 block">معاينة الفيديو:</Label>
                   {formData.video_platform === 'tiktok' ? (
-                    <div className="relative max-w-xs rounded-lg overflow-hidden border bg-black aspect-[9/16]">
-                      <iframe
-                        src={`https://www.tiktok.com/embed/v2/${formData.youtube_video_id}`}
-                        className="w-full h-full"
-                        allowFullScreen
-                        title="TikTok Preview"
-                      />
+                    <div className="flex items-center gap-3 p-3 bg-gray-900 rounded-lg max-w-md">
+                      <div className="w-12 h-12 bg-black rounded-lg flex items-center justify-center flex-shrink-0">
+                        <span className="text-white font-bold text-lg">♪</span>
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-white text-sm font-medium">فيديو TikTok</p>
+                        <p className="text-gray-400 text-xs truncate">ID: {formData.youtube_video_id}</p>
+                      </div>
+                      <a
+                        href={`https://www.tiktok.com/video/${formData.youtube_video_id}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-xs bg-white text-black px-2 py-1 rounded font-medium flex-shrink-0"
+                      >
+                        فتح
+                      </a>
                     </div>
                   ) : (
                     <div className="relative aspect-video max-w-md rounded-lg overflow-hidden border">
