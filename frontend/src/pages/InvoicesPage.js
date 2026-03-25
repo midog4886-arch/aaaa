@@ -815,6 +815,8 @@ ${pdfTerms}
 ━━━━━━━━━━━━━━
 📲 *لتحميل أيقونة تطبيق الأعضاء اضغط على الرابط:*
 https://play.google.com/store/apps/details?id=com.champions.academy.member
+🍎 *لتحميل الأيفون اضغط على الرابط:*
+https://adaa-alabtal.replit.app/member-login
 👥 *انضم لمجموعتنا على الواتساب:*
 https://chat.whatsapp.com/JDf5d5mwAcxBy6nXA9gvhs`;
         
@@ -1911,6 +1913,8 @@ ${termsText}
 ━━━━━━━━━━━━━━
 📲 *لتحميل أيقونة تطبيق الأعضاء اضغط على الرابط:*
 https://play.google.com/store/apps/details?id=com.champions.academy.member
+🍎 *لتحميل الأيفون اضغط على الرابط:*
+https://adaa-alabtal.replit.app/member-login
 👥 *انضم لمجموعتنا على الواتساب:*
 https://chat.whatsapp.com/JDf5d5mwAcxBy6nXA9gvhs`;
     window.open(`https://wa.me/${formattedPhone}?text=${encodeURIComponent(message)}`, '_blank');
