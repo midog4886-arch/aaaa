@@ -214,11 +214,39 @@ const MemberDailyVideos = () => {
     }, 100);
   }, []);
 
+  // Helper: get video thumbnail based on platform
+  const getVideoThumb = (video, quality = 'mqdefault') => {
+    if (!video) return '/logo-new.png';
+    if (video.video_platform === 'tiktok') return '/logo-new.png';
+    return `https://img.youtube.com/vi/${video.youtube_video_id}/${quality}.jpg`;
+  };
+
+  // TikTok Video Player
+  const TikTokPlayer = ({ video }) => {
+    return (
+      <div className="relative w-full flex justify-center bg-black rounded-lg overflow-hidden" style={{ minHeight: '500px' }}>
+        <iframe
+          src={`https://www.tiktok.com/embed/v2/${video.youtube_video_id}`}
+          className="w-full max-w-sm"
+          style={{ minHeight: '500px', border: 'none' }}
+          allowFullScreen
+          title={video.title_ar}
+          allow="encrypted-media"
+        />
+      </div>
+    );
+  };
+
   // Professional Video Player Component using Plyr.io
   const VideoPlayer = ({ video }) => {
     const plyrRef = useRef(null);
     
     if (!video || !video.youtube_video_id) return null;
+
+    // TikTok videos use iframe embed
+    if (video.video_platform === 'tiktok') {
+      return <TikTokPlayer video={video} />;
+    }
 
     // Plyr options for clean, professional look
     const plyrOptions = {
@@ -400,7 +428,7 @@ const MemberDailyVideos = () => {
                     onClick={() => handlePlayVideo(todayVideos[0])}
                   >
                     <img 
-                      src={`https://img.youtube.com/vi/${todayVideos[0].youtube_video_id}/maxresdefault.jpg`}
+                      src={getVideoThumb(todayVideos[0], 'maxresdefault')}
                       alt={todayVideos[0].title_ar}
                       className="w-full h-full object-cover"
                     />
@@ -446,7 +474,7 @@ const MemberDailyVideos = () => {
                           >
                             <div className="relative aspect-video">
                               <img 
-                                src={`https://img.youtube.com/vi/${video.youtube_video_id}/mqdefault.jpg`}
+                                src={getVideoThumb(video)}
                                 alt={video.title_ar}
                                 className="w-full h-full object-cover"
                               />
@@ -521,7 +549,7 @@ const MemberDailyVideos = () => {
                           >
                             <div className="relative aspect-video">
                               <img 
-                                src={`https://img.youtube.com/vi/${video.youtube_video_id}/mqdefault.jpg`}
+                                src={getVideoThumb(video)}
                                 alt={video.title_ar}
                                 className="w-full h-full object-cover"
                               />

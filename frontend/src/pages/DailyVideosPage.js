@@ -48,6 +48,7 @@ const DailyVideosPage = () => {
     title: '',
     title_ar: '',
     youtube_video_id: '',
+    video_platform: 'youtube',
     description: '',
     description_ar: '',
     scheduled_date: format(new Date(), 'yyyy-MM-dd'),
@@ -103,11 +104,33 @@ const DailyVideosPage = () => {
     fetchData();
   }, [fetchData]);
 
+  // TikTok ID extraction
+  const extractTikTokVideoId = (url) => {
+    if (!url) return null;
+    if (/^\d+$/.test(url)) return url;
+    const match = url.match(/tiktok\.com\/@[^/]+\/video\/(\d+)/) ||
+                  url.match(/tiktok\.com\/t\/(\w+)/) ||
+                  url.match(/vm\.tiktok\.com\/(\w+)/);
+    return match ? match[1] : null;
+  };
+
+  const detectPlatform = (url) => {
+    if (!url) return 'youtube';
+    if (url.includes('tiktok.com') || url.includes('vm.tiktok.com')) return 'tiktok';
+    return 'youtube';
+  };
+
+  const getVideoThumbnail = (video) => {
+    if (video.video_platform === 'tiktok') return '/logo-new.png';
+    return `https://img.youtube.com/vi/${video.youtube_video_id}/mqdefault.jpg`;
+  };
+
   const resetForm = () => {
     setFormData({
       title: '',
       title_ar: '',
       youtube_video_id: '',
+      video_platform: 'youtube',
       description: '',
       description_ar: '',
       scheduled_date: selectedDate ? format(selectedDate, 'yyyy-MM-dd') : format(new Date(), 'yyyy-MM-dd'),
@@ -127,6 +150,7 @@ const DailyVideosPage = () => {
         title: video.title || '',
         title_ar: video.title_ar || '',
         youtube_video_id: video.youtube_video_id || '',
+        video_platform: video.video_platform || 'youtube',
         description: video.description || '',
         description_ar: video.description_ar || '',
         scheduled_date: video.scheduled_date || format(new Date(), 'yyyy-MM-dd'),
@@ -147,27 +171,38 @@ const DailyVideosPage = () => {
     setDialogOpen(true);
   };
 
-  // معالجة رابط YouTube واستخراج VIDEO_ID
+  // معالجة رابط YouTube/TikTok واستخراج VIDEO_ID
   const handleYouTubeUrlChange = (url) => {
     setYoutubeUrlInput(url);
     
     if (!url.trim()) {
       setUrlValidationStatus(null);
-      setFormData(prev => ({ ...prev, youtube_video_id: '' }));
+      setFormData(prev => ({ ...prev, youtube_video_id: '', video_platform: 'youtube' }));
       return;
     }
 
-    const videoId = extractYouTubeVideoId(url);
-    if (videoId) {
-      setUrlValidationStatus('valid');
-      setFormData(prev => ({ ...prev, youtube_video_id: videoId }));
-      toast({ 
-        title: '✅ تم استخراج معرف الفيديو',
-        description: `VIDEO_ID: ${videoId}`
-      });
+    const platform = detectPlatform(url);
+
+    if (platform === 'tiktok') {
+      const videoId = extractTikTokVideoId(url);
+      if (videoId) {
+        setUrlValidationStatus('valid');
+        setFormData(prev => ({ ...prev, youtube_video_id: videoId, video_platform: 'tiktok' }));
+        toast({ title: '✅ تم استخراج معرف TikTok', description: `VIDEO_ID: ${videoId}` });
+      } else {
+        setUrlValidationStatus('invalid');
+        setFormData(prev => ({ ...prev, youtube_video_id: '', video_platform: 'tiktok' }));
+      }
     } else {
-      setUrlValidationStatus('invalid');
-      setFormData(prev => ({ ...prev, youtube_video_id: '' }));
+      const videoId = extractYouTubeVideoId(url);
+      if (videoId) {
+        setUrlValidationStatus('valid');
+        setFormData(prev => ({ ...prev, youtube_video_id: videoId, video_platform: 'youtube' }));
+        toast({ title: '✅ تم استخراج معرف الفيديو', description: `VIDEO_ID: ${videoId}` });
+      } else {
+        setUrlValidationStatus('invalid');
+        setFormData(prev => ({ ...prev, youtube_video_id: '', video_platform: 'youtube' }));
+      }
     }
   };
 
@@ -482,10 +517,13 @@ const DailyVideosPage = () => {
                     <Card key={video.id} className={`overflow-hidden ${!video.is_active && 'opacity-60'}`}>
                       <div className="relative aspect-video group cursor-pointer" onClick={() => handleOpenDialog(video)}>
                         <img 
-                          src={`https://img.youtube.com/vi/${video.youtube_video_id}/mqdefault.jpg`}
+                          src={getVideoThumbnail(video)}
                           alt={video.title_ar}
                           className="w-full h-full object-cover"
                         />
+                        {video.video_platform === 'tiktok' && (
+                          <div className="absolute top-2 left-2 bg-black text-white text-xs px-2 py-0.5 rounded font-bold">TikTok</div>
+                        )}
                         <div className="absolute inset-0 bg-black/30 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
                           <Play className="w-12 h-12 text-white" fill="white" />
                         </div>
@@ -556,17 +594,17 @@ const DailyVideosPage = () => {
               </div>
             </div>
 
-            {/* YouTube URL with Smart Extraction */}
+            {/* Video URL with Smart Extraction */}
             <div className="space-y-3">
               <Label className="flex items-center gap-2">
                 <Link2 className="w-4 h-4" />
-                رابط فيديو YouTube *
+                رابط فيديو YouTube أو TikTok *
               </Label>
               <div className="relative">
                 <Input
                   value={youtubeUrlInput || formData.youtube_video_id}
                   onChange={(e) => handleYouTubeUrlChange(e.target.value)}
-                  placeholder="الصق أي رابط يوتيوب هنا... (watch, youtu.be, embed, shorts)"
+                  placeholder="الصق رابط يوتيوب أو تيك توك هنا..."
                   dir="ltr"
                   className={`pe-10 ${
                     urlValidationStatus === 'valid' ? 'border-green-500 focus:ring-green-500' : 
@@ -585,11 +623,10 @@ const DailyVideosPage = () => {
               <div className="text-xs text-gray-500 bg-gray-50 p-2 rounded">
                 <strong>الروابط المدعومة:</strong>
                 <ul className="mt-1 space-y-0.5">
-                  <li>• Standard: youtube.com/watch?v=VIDEO_ID</li>
-                  <li>• Short: youtu.be/VIDEO_ID</li>
-                  <li>• Mobile: m.youtube.com/watch?v=VIDEO_ID</li>
-                  <li>• Shorts: youtube.com/shorts/VIDEO_ID</li>
-                  <li>• Embed: youtube.com/embed/VIDEO_ID</li>
+                  <li>• YouTube: youtube.com/watch?v=VIDEO_ID</li>
+                  <li>• YouTube Short: youtu.be/VIDEO_ID</li>
+                  <li>• YouTube Shorts: youtube.com/shorts/VIDEO_ID</li>
+                  <li>• TikTok: tiktok.com/@username/video/VIDEO_ID</li>
                 </ul>
               </div>
 
@@ -598,25 +635,36 @@ const DailyVideosPage = () => {
                 <div className="p-3 bg-green-50 border border-green-200 rounded-lg">
                   <div className="flex items-center justify-between">
                     <div>
-                      <p className="text-sm text-green-700 font-medium">✅ تم استخراج معرف الفيديو:</p>
+                      <p className="text-sm text-green-700 font-medium">
+                        ✅ {formData.video_platform === 'tiktok' ? '🎵 TikTok' : '▶️ YouTube'} - معرف الفيديو:
+                      </p>
                       <code className="text-green-800 font-mono text-sm">{formData.youtube_video_id}</code>
                     </div>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => {
-                        const embedUrl = generateYouTubeEmbedUrl(formData.youtube_video_id);
-                        navigator.clipboard.writeText(embedUrl);
-                        toast({ title: 'تم نسخ رابط Embed' });
-                      }}
-                    >
-                      نسخ Embed URL
-                    </Button>
+                    {formData.video_platform === 'youtube' && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          const embedUrl = generateYouTubeEmbedUrl(formData.youtube_video_id);
+                          navigator.clipboard.writeText(embedUrl);
+                          toast({ title: 'تم نسخ رابط Embed' });
+                        }}
+                      >
+                        نسخ Embed URL
+                      </Button>
+                    )}
                   </div>
-                  <p className="text-xs text-green-600 mt-2">
-                    Embed URL: {generateYouTubeEmbedUrl(formData.youtube_video_id)}
-                  </p>
+                  {formData.video_platform === 'youtube' && (
+                    <p className="text-xs text-green-600 mt-2">
+                      Embed URL: {generateYouTubeEmbedUrl(formData.youtube_video_id)}
+                    </p>
+                  )}
+                  {formData.video_platform === 'tiktok' && (
+                    <p className="text-xs text-green-600 mt-2">
+                      Embed: https://www.tiktok.com/embed/v2/{formData.youtube_video_id}
+                    </p>
+                  )}
                 </div>
               )}
 
@@ -624,18 +672,29 @@ const DailyVideosPage = () => {
               {formData.youtube_video_id && (
                 <div className="mt-2">
                   <Label className="text-sm text-gray-600 mb-2 block">معاينة الفيديو:</Label>
-                  <div className="relative aspect-video max-w-md rounded-lg overflow-hidden border">
-                    <img 
-                      src={getYouTubeThumbnail(formData.youtube_video_id, 'hq')}
-                      alt="Preview"
-                      className="w-full h-full object-cover"
-                    />
-                    <div className="absolute inset-0 flex items-center justify-center bg-black/20">
-                      <div className="w-16 h-16 bg-red-600 rounded-full flex items-center justify-center">
-                        <Play className="w-8 h-8 text-white ml-1" fill="white" />
+                  {formData.video_platform === 'tiktok' ? (
+                    <div className="relative max-w-xs rounded-lg overflow-hidden border bg-black aspect-[9/16]">
+                      <iframe
+                        src={`https://www.tiktok.com/embed/v2/${formData.youtube_video_id}`}
+                        className="w-full h-full"
+                        allowFullScreen
+                        title="TikTok Preview"
+                      />
+                    </div>
+                  ) : (
+                    <div className="relative aspect-video max-w-md rounded-lg overflow-hidden border">
+                      <img 
+                        src={getYouTubeThumbnail(formData.youtube_video_id, 'hq')}
+                        alt="Preview"
+                        className="w-full h-full object-cover"
+                      />
+                      <div className="absolute inset-0 flex items-center justify-center bg-black/20">
+                        <div className="w-16 h-16 bg-red-600 rounded-full flex items-center justify-center">
+                          <Play className="w-8 h-8 text-white ml-1" fill="white" />
+                        </div>
                       </div>
                     </div>
-                  </div>
+                  )}
                 </div>
               )}
             </div>

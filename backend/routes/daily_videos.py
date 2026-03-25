@@ -57,6 +57,7 @@ class DailyVideoBase(BaseModel):
     title: str
     title_ar: str
     youtube_video_id: str
+    video_platform: Optional[str] = "youtube"  # "youtube" or "tiktok"
     description: Optional[str] = ""
     description_ar: Optional[str] = ""
     scheduled_date: str  # YYYY-MM-DD format
@@ -107,6 +108,35 @@ def extract_youtube_video_id(url: str) -> Optional[str]:
             return match.group(1)
     
     return None
+
+
+def extract_tiktok_video_id(url: str) -> Optional[str]:
+    """Extract TikTok video ID from URL formats"""
+    if not url:
+        return None
+    # Already a numeric ID
+    if re.match(r'^\d+$', url):
+        return url
+    # tiktok.com/@username/video/VIDEO_ID or vm.tiktok.com/VIDEO_ID
+    patterns = [
+        r'tiktok\.com\/@[^/]+\/video\/(\d+)',
+        r'tiktok\.com\/t\/(\w+)',
+        r'vm\.tiktok\.com\/(\w+)',
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, url)
+        if match:
+            return match.group(1)
+    return None
+
+
+def detect_video_platform(url: str) -> str:
+    """Detect video platform from URL"""
+    if not url:
+        return "youtube"
+    if 'tiktok.com' in url or 'vm.tiktok.com' in url:
+        return "tiktok"
+    return "youtube"
 
 
 # ============ ROUTES ============
@@ -295,11 +325,19 @@ async def create_daily_video(
     video_id = str(uuid.uuid4())
     now = datetime.now(timezone.utc).isoformat()
     
-    # Extract YouTube video ID
-    youtube_id = extract_youtube_video_id(video.youtube_video_id)
-    if not youtube_id:
-        raise HTTPException(status_code=400, detail="رابط YouTube غير صالح")
-    
+    # Detect platform and extract video ID
+    platform = detect_video_platform(video.youtube_video_id)
+    if platform == "tiktok":
+        extracted_id = extract_tiktok_video_id(video.youtube_video_id)
+        if not extracted_id:
+            raise HTTPException(status_code=400, detail="رابط TikTok غير صالح")
+        youtube_id = None
+    else:
+        extracted_id = extract_youtube_video_id(video.youtube_video_id)
+        if not extracted_id:
+            raise HTTPException(status_code=400, detail="رابط YouTube غير صالح")
+        youtube_id = extracted_id
+
     # Get coach info if not provided
     coach_id = video.coach_id or current_user.get("user_id")
     coach_name = video.coach_name
@@ -311,7 +349,8 @@ async def create_daily_video(
         "id": video_id,
         "title": video.title,
         "title_ar": video.title_ar,
-        "youtube_video_id": youtube_id,
+        "youtube_video_id": extracted_id,
+        "video_platform": platform,
         "description": video.description,
         "description_ar": video.description_ar,
         "scheduled_date": video.scheduled_date,
@@ -386,15 +425,22 @@ async def update_daily_video(
     if not existing:
         raise HTTPException(status_code=404, detail="Video not found")
     
-    # Extract YouTube video ID
-    youtube_id = extract_youtube_video_id(video.youtube_video_id)
-    if not youtube_id:
-        raise HTTPException(status_code=400, detail="رابط YouTube غير صالح")
-    
+    # Detect platform and extract video ID
+    platform = detect_video_platform(video.youtube_video_id)
+    if platform == "tiktok":
+        extracted_id = extract_tiktok_video_id(video.youtube_video_id)
+        if not extracted_id:
+            raise HTTPException(status_code=400, detail="رابط TikTok غير صالح")
+    else:
+        extracted_id = extract_youtube_video_id(video.youtube_video_id)
+        if not extracted_id:
+            raise HTTPException(status_code=400, detail="رابط YouTube غير صالح")
+
     update_data = {
         "title": video.title,
         "title_ar": video.title_ar,
-        "youtube_video_id": youtube_id,
+        "youtube_video_id": extracted_id,
+        "video_platform": platform,
         "description": video.description,
         "description_ar": video.description_ar,
         "scheduled_date": video.scheduled_date,
