@@ -6,3 +6,9 @@ id = "jMHMyBDkS8RUDoIiDrcOq"
 uri = "file://frontend/android-v2.zip"
 type = "unspecified"
 title = "android-v2.zip - مشروع Android جاهز"
+
+[[outputs]]
+id = "WEaoWGz56x26Kh3fH8kkH"
+uri = "file://android-v1.0.9.zip"
+type = "unspecified"
+title = "مشروع Android - الإصدار v1.0.9 (build 10)"
