@@ -4,8 +4,7 @@ import { Bell, BellOff, Loader2, Check, X } from 'lucide-react';
 import { Button } from './ui/button';
 import { toast } from 'sonner';
 import axios from 'axios';
-
-const API_URL = '';
+import { API_URL } from '../config/api';
 
 const isNativeApp = () => {
   return window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform();
