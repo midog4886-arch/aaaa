@@ -325,8 +325,8 @@ async def create_daily_video(
     video_id = str(uuid.uuid4())
     now = datetime.now(timezone.utc).isoformat()
     
-    # Detect platform and extract video ID
-    platform = detect_video_platform(video.youtube_video_id)
+    # Use sent platform if available, else detect from URL
+    platform = video.video_platform or detect_video_platform(video.youtube_video_id)
     if platform == "tiktok":
         extracted_id = extract_tiktok_video_id(video.youtube_video_id)
         if not extracted_id:
@@ -425,8 +425,8 @@ async def update_daily_video(
     if not existing:
         raise HTTPException(status_code=404, detail="Video not found")
     
-    # Detect platform and extract video ID
-    platform = detect_video_platform(video.youtube_video_id)
+    # Use sent platform if available, else detect from URL
+    platform = video.video_platform or detect_video_platform(video.youtube_video_id)
     if platform == "tiktok":
         extracted_id = extract_tiktok_video_id(video.youtube_video_id)
         if not extracted_id:
