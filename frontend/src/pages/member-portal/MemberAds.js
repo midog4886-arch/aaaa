@@ -5,13 +5,15 @@ import { Dialog, DialogContent } from '../../components/ui/dialog';
 import { X, ChevronLeft, ChevronRight, Play, ExternalLink, Volume2, VolumeX, ZoomIn } from 'lucide-react';
 import { memberAPI, getDarkMode } from './MemberLayout';
 
-const BACKEND_URL = '';
+const LIVE_SERVER_URL = 'https://adaa-alabtal.replit.app';
+const isNativeApp = !!(window.Capacitor?.isNativePlatform?.());
 
-// Helper function to get proper image URL
+// Helper function to get proper image URL (absolute for Android, relative for web)
 const getImageUrl = (url) => {
   if (!url) return '';
-  if (url.startsWith('/api')) return url;
-  return `/api${url}`;
+  if (url.startsWith('http')) return url;
+  const fullPath = url.startsWith('/api') ? url : `/api${url}`;
+  return isNativeApp ? `${LIVE_SERVER_URL}${fullPath}` : fullPath;
 };
 
 // Hero Banner Carousel Component
