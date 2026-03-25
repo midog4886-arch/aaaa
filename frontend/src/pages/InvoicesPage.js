@@ -3030,13 +3030,7 @@ https://chat.whatsapp.com/JDf5d5mwAcxBy6nXA9gvhs
 ━━━━━━━━━━━━━━
 *الأنشطة والمواعيد:*
 ${itemsList}
-━━━━━━━━━━━━━━
-💰 *المجموع الفرعي:* ${form.subtotal?.toFixed(2)} ر.س
-${form.discount > 0 ? `🎁 *الخصم:* ${form.discount?.toFixed(2)} ر.س\n` : ''}✨ *الإجمالي:* ${form.total?.toFixed(2)} ر.س
-💳 *طريقة الدفع:* ${paymentText}
-━━━━━━━━━━━━━━
-🏛️ الرقم الضريبي: ${COMPANY_INFO.tax_number}
-📋 السجل التجاري: ${COMPANY_INFO.commercial_reg}`;
+━━━━━━━━━━━━━━`;
 
     window.open(`https://wa.me/${formattedPhone}?text=${encodeURIComponent(message)}`, '_blank');
   };
