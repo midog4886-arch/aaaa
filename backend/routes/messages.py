@@ -10,6 +10,25 @@ from .common import db, get_current_user
 router = APIRouter(prefix="/messages", tags=["messages"])
 
 
+async def send_message_push(member_id: str, subject: str, body: str):
+    """Send push notification to member when they receive a message"""
+    try:
+        from .push_notifications import send_push_notification, NotificationPayload
+        sub = await db.push_subscriptions.find_one({"member_id": member_id, "is_active": True})
+        if not sub:
+            return
+        payload = NotificationPayload(
+            title=f"✉️ رسالة جديدة: {subject}",
+            body=body[:100] + ("..." if len(body) > 100 else ""),
+            url="/member-messages",
+            tag=f"message-{member_id}",
+            data={"type": "message"}
+        )
+        await send_push_notification(sub, payload)
+    except Exception as e:
+        print(f"send_message_push error: {e}")
+
+
 class MessageCreate(BaseModel):
     recipient_member_id: Optional[str] = None
     subject: str
@@ -53,6 +72,12 @@ async def send_message(data: MessageCreate, current_user: dict = Depends(get_cur
 
         if messages:
             await db.messages.insert_many(messages)
+            # Send push notification to each member
+            for msg in messages:
+                try:
+                    await send_message_push(msg["recipient_member_id"], data.subject, data.body)
+                except Exception:
+                    pass
 
         return {"message": f"تم إرسال الرسالة إلى {len(messages)} عضو", "count": len(messages)}
 
@@ -81,6 +106,10 @@ async def send_message(data: MessageCreate, current_user: dict = Depends(get_cur
     }
 
     await db.messages.insert_one(message)
+    try:
+        await send_message_push(member["id"], data.subject, data.body)
+    except Exception as e:
+        print(f"Message push error: {e}")
     return {"message": "تم إرسال الرسالة بنجاح", "id": msg_id}
 
 
@@ -206,6 +235,10 @@ async def admin_reply(member_id: str, data: MessageReply, current_user: dict = D
     }
 
     await db.messages.insert_one(message)
+    try:
+        await send_message_push(member_id, message["subject"], data.body)
+    except Exception as e:
+        print(f"Reply push error: {e}")
     return {"message": "تم إرسال الرد", "id": msg_id}
 
 
