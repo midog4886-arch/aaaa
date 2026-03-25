@@ -784,17 +784,37 @@ export const InvoicesPage = () => {
       // Open WhatsApp with message
       const phone = selectedInvoice.customer_phone?.replace(/^0/, '966') || '';
       if (phone) {
-        const message = `السلام عليكم،
-
-مرفق فاتورتكم رقم #${invoiceNum}
-المبلغ الإجمالي: ${selectedInvoice.total} ر.س
-الفرع: ${branchName}
-
-يرجى إرفاق ملف PDF المحفوظ في هذه المحادثة.
-
-شكراً لكم،
-شركة اداء الابطال العالمية للرياضة
-📞 ${branchName}`;
+        const pdfItemsList = selectedInvoice.items?.map((item, i) => {
+          let line = `${i + 1}. ${item.activity_name} - ${item.fee} ر.س`;
+          if (item.schedule) line += `\n   📅 ${item.schedule}`;
+          return line;
+        }).join('\n') || '';
+        const pdfTerms = INVOICE_TERMS.ar.map(t => `• ${t}`).join('\n');
+        const pdfVat = selectedInvoice.vat_amount || 0;
+        const message = `🏆 *${COMPANY_INFO.name_ar}*
+━━━━━━━━━━━━━━
+📄 *فاتورة رقم:* #${invoiceNum}
+📅 *التاريخ:* ${new Date(selectedInvoice.created_at).toLocaleDateString('ar-SA')}
+👤 *العميل:* ${selectedInvoice.customer_name_ar || selectedInvoice.member_name}
+🔢 *رقم العضوية:* #${selectedInvoice.member_code || '-'}
+━━━━━━━━━━━━━━
+*الأنشطة والمواعيد:*
+${pdfItemsList}
+━━━━━━━━━━━━━━
+💰 *المجموع:* ${selectedInvoice.subtotal} ر.س
+${selectedInvoice.discount > 0 ? `🎁 *الخصم:* ${selectedInvoice.discount} ر.س\n` : ''}📊 *ضريبة القيمة المضافة (15%):* ${pdfVat} ر.س
+━━━━━━━━━━━━━━
+✨ *الإجمالي:* ${selectedInvoice.total} ر.س
+📌 *الحالة:* ${selectedInvoice.status === 'paid' ? '✅ مدفوعة' : '⏳ غير مدفوعة'}
+━━━━━━━━━━━━━━
+⚠️ *شروط وأحكام:*
+${pdfTerms}
+━━━━━━━━━━━━━━
+🏛️ الرقم الضريبي: ${COMPANY_INFO.tax_number}
+📋 السجل التجاري: ${COMPANY_INFO.commercial_reg}
+━━━━━━━━━━━━━━
+📱 *حمّل تطبيقنا:*
+https://play.google.com/store/apps/details?id=com.champions.academy.member`;
         
         // Small delay to ensure PDF download starts first
         setTimeout(() => {
@@ -1863,11 +1883,14 @@ export const InvoicesPage = () => {
       return line;
     }).join('\n') || '';
     
+    const termsText = INVOICE_TERMS.ar.map(t => `• ${t}`).join('\n');
+
     const message = `🏆 *${COMPANY_INFO.name_ar}*
 ━━━━━━━━━━━━━━
 📄 *فاتورة رقم:* #${invoice.id.slice(0, 8)}
 📅 *التاريخ:* ${new Date(invoice.created_at).toLocaleDateString('ar-SA')}
-👤 *العميل:* ${invoice.customer_name_ar || invoice.member_name}${invoice.member_code ? ` (#${invoice.member_code})` : ''}
+👤 *العميل:* ${invoice.customer_name_ar || invoice.member_name}
+🔢 *رقم العضوية:* #${invoice.member_code || '-'}
 ━━━━━━━━━━━━━━
 *الأنشطة والمواعيد:*
 ${itemsList}
@@ -1879,11 +1902,13 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
 📌 *الحالة:* ${invoice.status === 'paid' ? '✅ مدفوعة' : '⏳ غير مدفوعة'}
 ━━━━━━━━━━━━━━
 ⚠️ *شروط وأحكام:*
-• ${INVOICE_TERMS.ar[0]}
-• ${INVOICE_TERMS.ar[1]}
+${termsText}
 ━━━━━━━━━━━━━━
 🏛️ الرقم الضريبي: ${COMPANY_INFO.tax_number}
-📋 السجل التجاري: ${COMPANY_INFO.commercial_reg}`;
+📋 السجل التجاري: ${COMPANY_INFO.commercial_reg}
+━━━━━━━━━━━━━━
+📱 *حمّل تطبيقنا:*
+https://play.google.com/store/apps/details?id=com.champions.academy.member`;
     window.open(`https://wa.me/${formattedPhone}?text=${encodeURIComponent(message)}`, '_blank');
   };
 
