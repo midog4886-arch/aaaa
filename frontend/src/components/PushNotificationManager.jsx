@@ -17,18 +17,58 @@ const PushNotificationManager = ({ memberId, compact = false }) => {
   const [isLoading, setIsLoading] = useState(true);
   const [permission, setPermission] = useState('default');
 
+  // Auto-registers FCM token silently if permission already granted (e.g. after reinstall)
+  const autoRegisterNativeIfGranted = useCallback(async (memberIdArg) => {
+    const mid = memberIdArg || memberId;
+    if (!mid) return;
+    try {
+      const PushNotifications = window.Capacitor?.Plugins?.PushNotifications;
+      if (!PushNotifications) return;
+      const permResult = await PushNotifications.checkPermissions();
+      if (permResult.receive !== 'granted') return;
+      setPermission('granted');
+      await PushNotifications.removeAllListeners();
+      PushNotifications.addListener('registration', async (token) => {
+        try {
+          await axios.post(`${API_URL}/api/push-notifications/subscribe`, {
+            member_id: mid,
+            subscription: {
+              endpoint: `fcm://${token.value}`,
+              keys: { fcm_token: token.value, platform: 'android' }
+            }
+          });
+          setIsSubscribed(true);
+        } catch (e) {
+          console.error('Auto-registration token save failed:', e);
+        }
+      });
+      PushNotifications.addListener('pushNotificationReceived', (notification) => {
+        toast.info(notification.title || 'إشعار جديد', { description: notification.body });
+      });
+      PushNotifications.addListener('pushNotificationActionPerformed', (notification) => {
+        const url = notification.notification?.data?.url;
+        if (url) window.location.href = url;
+      });
+      PushNotifications.register();
+    } catch (e) {
+      console.log('Auto-registration skipped:', e);
+    }
+  }, [memberId]);
+
   useEffect(() => {
     const checkSupport = () => {
       if (isNativeApp()) {
         const hasPushPlugin = !!(window.Capacitor?.Plugins?.PushNotifications);
         if (hasPushPlugin) {
           setIsSupported(true);
+          autoRegisterNativeIfGranted(memberId);
         } else {
           console.log('Native app detected but PushNotifications plugin not yet available, retrying...');
           setTimeout(() => {
             const retryPlugin = !!(window.Capacitor?.Plugins?.PushNotifications);
             if (retryPlugin) {
               setIsSupported(true);
+              autoRegisterNativeIfGranted(memberId);
             } else {
               console.log('PushNotifications plugin not available - notification UI will be hidden');
               setIsSupported(false);
@@ -47,7 +87,7 @@ const PushNotificationManager = ({ memberId, compact = false }) => {
       }
     };
     checkSupport();
-  }, []);
+  }, [autoRegisterNativeIfGranted, memberId]);
 
   useEffect(() => {
     const checkSubscription = async () => {

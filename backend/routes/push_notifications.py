@@ -183,8 +183,7 @@ async def send_fcm_notification(token: str, payload: NotificationPayload):
                     icon="ic_launcher",
                     color="#1e40af",
                     sound="default",
-                    click_action="FCM_PLUGIN_ACTIVITY",
-                    channel_id="champions_notifications",
+                    channel_id="default",
                 ),
             ),
         )
