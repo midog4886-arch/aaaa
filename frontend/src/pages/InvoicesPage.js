@@ -814,7 +814,9 @@ ${pdfTerms}
 📋 السجل التجاري: ${COMPANY_INFO.commercial_reg}
 ━━━━━━━━━━━━━━
 📱 *حمّل تطبيقنا:*
-https://play.google.com/store/apps/details?id=com.champions.academy.member`;
+https://play.google.com/store/apps/details?id=com.champions.academy.member
+👥 *انضم لمجموعتنا على الواتساب:*
+https://chat.whatsapp.com/JDf5d5mwAcxBy6nXA9gvhs`;
         
         // Small delay to ensure PDF download starts first
         setTimeout(() => {
@@ -1908,7 +1910,9 @@ ${termsText}
 📋 السجل التجاري: ${COMPANY_INFO.commercial_reg}
 ━━━━━━━━━━━━━━
 📱 *حمّل تطبيقنا:*
-https://play.google.com/store/apps/details?id=com.champions.academy.member`;
+https://play.google.com/store/apps/details?id=com.champions.academy.member
+👥 *انضم لمجموعتنا على الواتساب:*
+https://chat.whatsapp.com/JDf5d5mwAcxBy6nXA9gvhs`;
     window.open(`https://wa.me/${formattedPhone}?text=${encodeURIComponent(message)}`, '_blank');
   };
 
