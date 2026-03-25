@@ -791,7 +791,14 @@ export const InvoicesPage = () => {
         }).join('\n') || '';
         const pdfTerms = INVOICE_TERMS.ar.map(t => `• ${t}`).join('\n');
         const pdfVat = selectedInvoice.vat_amount || 0;
-        const message = `🏆 *${COMPANY_INFO.name_ar}*
+        const message = `📲 *لتحميل أيقونة تطبيق الأعضاء اندرويد اضغط على الرابط:*
+https://play.google.com/store/apps/details?id=com.champions.academy.member
+🍎 *لتحميل الأيفون اضغط على الرابط:*
+https://adaa-alabtal.replit.app/member-login
+👥 *انضم لمجموعتنا على الواتساب:*
+https://chat.whatsapp.com/JDf5d5mwAcxBy6nXA9gvhs
+━━━━━━━━━━━━━━
+🏆 *${COMPANY_INFO.name_ar}*
 ━━━━━━━━━━━━━━
 📄 *فاتورة رقم:* #${invoiceNum}
 📅 *التاريخ:* ${new Date(selectedInvoice.created_at).toLocaleDateString('ar-SA')}
@@ -811,14 +818,7 @@ ${selectedInvoice.discount > 0 ? `🎁 *الخصم:* ${selectedInvoice.discount}
 ${pdfTerms}
 ━━━━━━━━━━━━━━
 🏛️ الرقم الضريبي: ${COMPANY_INFO.tax_number}
-📋 السجل التجاري: ${COMPANY_INFO.commercial_reg}
-━━━━━━━━━━━━━━
-📲 *لتحميل أيقونة تطبيق الأعضاء اضغط على الرابط:*
-https://play.google.com/store/apps/details?id=com.champions.academy.member
-🍎 *لتحميل الأيفون اضغط على الرابط:*
-https://adaa-alabtal.replit.app/member-login
-👥 *انضم لمجموعتنا على الواتساب:*
-https://chat.whatsapp.com/JDf5d5mwAcxBy6nXA9gvhs`;
+📋 السجل التجاري: ${COMPANY_INFO.commercial_reg}`;
         
         // Small delay to ensure PDF download starts first
         setTimeout(() => {
@@ -1889,7 +1889,14 @@ https://chat.whatsapp.com/JDf5d5mwAcxBy6nXA9gvhs`;
     
     const termsText = INVOICE_TERMS.ar.map(t => `• ${t}`).join('\n');
 
-    const message = `🏆 *${COMPANY_INFO.name_ar}*
+    const message = `📲 *لتحميل أيقونة تطبيق الأعضاء اندرويد اضغط على الرابط:*
+https://play.google.com/store/apps/details?id=com.champions.academy.member
+🍎 *لتحميل الأيفون اضغط على الرابط:*
+https://adaa-alabtal.replit.app/member-login
+👥 *انضم لمجموعتنا على الواتساب:*
+https://chat.whatsapp.com/JDf5d5mwAcxBy6nXA9gvhs
+━━━━━━━━━━━━━━
+🏆 *${COMPANY_INFO.name_ar}*
 ━━━━━━━━━━━━━━
 📄 *فاتورة رقم:* #${invoice.id.slice(0, 8)}
 📅 *التاريخ:* ${new Date(invoice.created_at).toLocaleDateString('ar-SA')}
@@ -1909,14 +1916,7 @@ ${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}�
 ${termsText}
 ━━━━━━━━━━━━━━
 🏛️ الرقم الضريبي: ${COMPANY_INFO.tax_number}
-📋 السجل التجاري: ${COMPANY_INFO.commercial_reg}
-━━━━━━━━━━━━━━
-📲 *لتحميل أيقونة تطبيق الأعضاء اضغط على الرابط:*
-https://play.google.com/store/apps/details?id=com.champions.academy.member
-🍎 *لتحميل الأيفون اضغط على الرابط:*
-https://adaa-alabtal.replit.app/member-login
-👥 *انضم لمجموعتنا على الواتساب:*
-https://chat.whatsapp.com/JDf5d5mwAcxBy6nXA9gvhs`;
+📋 السجل التجاري: ${COMPANY_INFO.commercial_reg}`;
     window.open(`https://wa.me/${formattedPhone}?text=${encodeURIComponent(message)}`, '_blank');
   };
 
