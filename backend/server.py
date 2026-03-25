@@ -7180,6 +7180,16 @@ async def create_default_admin():
                 print("Admin created: admin / 123456")
         except Exception as e:
             print(f"Startup DB check: {str(e)}")
+        # Fix attendance records missing the status field
+        try:
+            result = await db.attendance.update_many(
+                {"status": {"$exists": False}},
+                {"$set": {"status": "present"}}
+            )
+            if result.modified_count:
+                print(f"Migration: fixed {result.modified_count} attendance records missing status field")
+        except Exception as e:
+            print(f"Attendance migration error: {str(e)}")
     asyncio.create_task(_init())
 
 @app.on_event("shutdown")
