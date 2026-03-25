@@ -289,6 +289,7 @@ self.addEventListener('push', (event) => {
         body: data.body || notificationData.body,
         icon: data.icon || notificationData.icon,
         badge: data.badge || notificationData.badge,
+        image: data.image || null,
         url: data.url || notificationData.url,
         tag: data.tag || 'default',
         data: data.data || {}
@@ -302,6 +303,7 @@ self.addEventListener('push', (event) => {
     body: notificationData.body,
     icon: notificationData.icon,
     badge: notificationData.badge,
+    image: notificationData.image || undefined,
     vibrate: [200, 100, 200],
     dir: 'rtl',
     lang: 'ar',

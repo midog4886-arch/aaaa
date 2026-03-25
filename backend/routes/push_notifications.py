@@ -73,6 +73,7 @@ class NotificationPayload(BaseModel):
     body: str
     icon: Optional[str] = "/logo-new.png"
     badge: Optional[str] = "/images/icon-72x72.png"
+    image: Optional[str] = None
     url: Optional[str] = "/portal/daily-videos"
     tag: Optional[str] = None
     data: Optional[dict] = None
@@ -170,6 +171,7 @@ async def send_fcm_notification(token: str, payload: NotificationPayload):
             notification=messaging.Notification(
                 title=payload.title,
                 body=payload.body,
+                image=payload.image or None,
             ),
             data={
                 "url": payload.url or "/",
@@ -184,6 +186,7 @@ async def send_fcm_notification(token: str, payload: NotificationPayload):
                     color="#1e40af",
                     sound="default",
                     channel_id="default",
+                    image_url=payload.image or None,
                 ),
             ),
         )
@@ -217,6 +220,7 @@ async def send_push_notification(subscription: dict, payload: NotificationPayloa
             "body": payload.body,
             "icon": payload.icon,
             "badge": payload.badge,
+            "image": payload.image or None,
             "url": payload.url,
             "tag": payload.tag or str(uuid.uuid4()),
             "data": payload.data or {}
@@ -273,11 +277,13 @@ async def send_notification_to_all_members(payload: NotificationPayload, branch_
     }
 
 
-async def notify_new_video(video_title: str, video_id: str, branch_id: Optional[str] = None):
+async def notify_new_video(video_title: str, video_id: str, branch_id: Optional[str] = None, youtube_id: Optional[str] = None):
+    thumbnail = f"https://img.youtube.com/vi/{youtube_id}/hqdefault.jpg" if youtube_id else None
     payload = NotificationPayload(
         title="🎬 فيديو جديد!",
         body=video_title,
         icon="/logo-new.png",
+        image=thumbnail,
         url="/portal/daily-videos",
         tag=f"video-{video_id}",
         data={"video_id": video_id, "type": "new_video"}
@@ -294,6 +300,7 @@ class BroadcastPayload(BaseModel):
     title: str
     body: str
     url: Optional[str] = "/"
+    image: Optional[str] = None
     branch_id: Optional[str] = None
     member_ids: Optional[List[str]] = None
 
@@ -303,6 +310,7 @@ async def broadcast_notification(data: BroadcastPayload):
     payload = NotificationPayload(
         title=data.title,
         body=data.body,
+        image=data.image or None,
         url=data.url or "/",
         tag=f"broadcast-{uuid.uuid4()}"
     )

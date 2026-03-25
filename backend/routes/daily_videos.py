@@ -365,7 +365,8 @@ async def create_daily_video(
                     push_result = await push_notify_new_video(
                         video_title=video.title_ar,
                         video_id=video_id,
-                        branch_id=video.branch_id if video.branch_id != "all" else None
+                        branch_id=video.branch_id if video.branch_id != "all" else None,
+                        youtube_id=youtube_id
                     )
                     print(f"Push notifications sent: {push_result}")
                 except Exception as e:
