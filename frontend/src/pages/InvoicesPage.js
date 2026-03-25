@@ -2999,6 +2999,48 @@ ${termsText}
     };
   };
 
+  // Send registration form via WhatsApp
+  const handleSendRegFormWhatsApp = (form) => {
+    if (!form) return;
+    const phone = form.customer_phone || '';
+    if (!phone) { toast.info(language === 'ar' ? 'لا يوجد رقم جوال للعميل' : 'No phone number'); return; }
+    let formattedPhone = phone.replace(/\D/g, '');
+    if (formattedPhone.startsWith('0')) formattedPhone = '966' + formattedPhone.slice(1);
+
+    const itemsList = form.items?.map(item =>
+      `• ${item.activity_name}${item.is_product ? ` (كمية: ${item.quantity || 1})` : ''}: ${((item.fee || 0) * (item.quantity || 1)).toFixed(2)} ر.س${item.schedule ? `\n  🕐 ${item.schedule}` : ''}${item.period ? `\n  📅 ${item.period}` : ''}`
+    ).join('\n') || '';
+
+    const paymentText = form.payment_method === 'cash' ? 'نقداً' :
+      form.payment_method === 'card' ? 'بطاقة' :
+      form.payment_method === 'transfer' ? 'تحويل بنكي' : (form.payment_method || '');
+
+    const message = `📲 *لتحميل أيقونة تطبيق الأعضاء اندرويد اضغط على الرابط:*
+https://play.google.com/store/apps/details?id=com.champions.academy.member
+🍎 *لتحميل الأيفون اضغط على الرابط:*
+https://adaa-alabtal.replit.app/member-login
+👥 *انضم لمجموعتنا على الواتساب:*
+https://chat.whatsapp.com/JDf5d5mwAcxBy6nXA9gvhs
+━━━━━━━━━━━━━━
+🏆 *${COMPANY_INFO.name_ar}*
+━━━━━━━━━━━━━━
+📋 *استمارة تسجيل رقم:* #${form.form_number}
+📅 *التاريخ:* ${new Date(form.created_at).toLocaleDateString('ar-SA')}
+👤 *العميل:* ${form.customer_name}
+━━━━━━━━━━━━━━
+*الأنشطة والمواعيد:*
+${itemsList}
+━━━━━━━━━━━━━━
+💰 *المجموع الفرعي:* ${form.subtotal?.toFixed(2)} ر.س
+${form.discount > 0 ? `🎁 *الخصم:* ${form.discount?.toFixed(2)} ر.س\n` : ''}✨ *الإجمالي:* ${form.total?.toFixed(2)} ر.س
+💳 *طريقة الدفع:* ${paymentText}
+━━━━━━━━━━━━━━
+🏛️ الرقم الضريبي: ${COMPANY_INFO.tax_number}
+📋 السجل التجاري: ${COMPANY_INFO.commercial_reg}`;
+
+    window.open(`https://wa.me/${formattedPhone}?text=${encodeURIComponent(message)}`, '_blank');
+  };
+
   // Open edit registration form dialog
   const handleEditRegForm = (form) => {
     setEditRegFormId(form.id);
@@ -6080,6 +6122,10 @@ ${termsText}
               <Button variant="outline" onClick={() => handleSaveRegFormPdf(selectedRegForm)} className="text-teal-600 border-teal-300">
                 <FileText className="w-4 h-4 me-2" />
                 {language === 'ar' ? 'حفظ PDF' : 'Save PDF'}
+              </Button>
+              <Button variant="outline" onClick={() => handleSendRegFormWhatsApp(selectedRegForm)} className="text-green-600 border-green-400 hover:bg-green-50">
+                <MessageSquare className="w-4 h-4 me-2" />
+                {language === 'ar' ? 'واتساب' : 'WhatsApp'}
               </Button>
               {selectedRegForm?.status === 'pending' && (
                 <>
