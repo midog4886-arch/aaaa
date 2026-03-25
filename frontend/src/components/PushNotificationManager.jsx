@@ -331,6 +331,10 @@ const PushNotificationManager = ({ memberId, compact = false }) => {
     return null;
   }
 
+  if (!compact && isSubscribed && !isLoading) {
+    return null;
+  }
+
   if (compact) {
     return (
       <Button
