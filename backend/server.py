@@ -145,9 +145,8 @@ set_push_notify_function(push_notify_new_video)
 # Member Portal router (mounted directly on app, not api_router)
 app.include_router(member_portal_router)
 
-# Mount uploads directory for serving images
+# Mount uploads directory for serving images (disk-only, no /api prefix)
 app.mount("/uploads", StaticFiles(directory=str(UPLOADS_DIR)), name="uploads")
-app.mount("/api/uploads", StaticFiles(directory=str(UPLOADS_DIR)), name="api_uploads")
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -164,6 +163,34 @@ async def root():
     if index_file.exists():
         return FileResponse(str(index_file), headers={"Cache-Control": "no-cache, no-store, must-revalidate"})
     return JSONResponse(content={"status": "ok"}, status_code=200)
+
+# ============ AD IMAGES - serve from disk or MongoDB fallback ============
+
+@api_router.get("/uploads/ads/{filename}")
+async def serve_ad_image(filename: str):
+    """Serve ad banner images. Falls back to MongoDB if file is missing from disk."""
+    import base64
+    from fastapi.responses import Response as FastAPIResponse
+    ads_dir = ROOT_DIR / "uploads" / "ads"
+    file_path = ads_dir / filename
+    if file_path.exists():
+        from fastapi.responses import FileResponse as FR
+        return FR(str(file_path))
+    # Fallback: retrieve from MongoDB ad_images collection
+    doc = await db.ad_images.find_one({"filename": filename})
+    if doc and doc.get("data"):
+        image_bytes = base64.b64decode(doc["data"])
+        content_type = doc.get("content_type", "image/jpeg")
+        # Write back to disk for subsequent requests
+        try:
+            ads_dir.mkdir(parents=True, exist_ok=True)
+            with open(file_path, "wb") as f:
+                f.write(image_bytes)
+        except Exception:
+            pass
+        return FastAPIResponse(content=image_bytes, media_type=content_type)
+    raise HTTPException(status_code=404, detail="Image not found")
+
 
 # ============ PUBLIC API - Member Card ============
 
@@ -7190,6 +7217,30 @@ async def create_default_admin():
                 print(f"Migration: fixed {result.modified_count} attendance records missing status field")
         except Exception as e:
             print(f"Attendance migration error: {str(e)}")
+        # Backup ad images from disk to MongoDB (so they survive restarts)
+        try:
+            import base64
+            ads_dir = ROOT_DIR / "uploads" / "ads"
+            if ads_dir.exists():
+                backed_up = 0
+                for img_file in ads_dir.iterdir():
+                    if img_file.is_file():
+                        existing = await db.ad_images.find_one({"filename": img_file.name})
+                        if not existing:
+                            ext = img_file.suffix.lower()
+                            ct = "image/png" if ext == ".png" else ("image/gif" if ext == ".gif" else "image/jpeg")
+                            data = base64.b64encode(img_file.read_bytes()).decode("utf-8")
+                            await db.ad_images.insert_one({
+                                "filename": img_file.name,
+                                "data": data,
+                                "content_type": ct,
+                                "created_at": datetime.now(timezone.utc).isoformat()
+                            })
+                            backed_up += 1
+                if backed_up:
+                    print(f"Migration: backed up {backed_up} ad images to MongoDB")
+        except Exception as e:
+            print(f"Ad images backup error: {str(e)}")
     asyncio.create_task(_init())
 
 @app.on_event("shutdown")

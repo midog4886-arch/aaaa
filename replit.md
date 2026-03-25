@@ -104,5 +104,7 @@ frontend/
 
 - Performance Optimizations: `/api/levels` batch queries (2.23s → 0.17s, 13× faster), MembersPage lazy-loads levels data only when add/edit dialog opens (initial page load no longer waits for levels), auto-cleanup of expired level subscriptions removed from GET request to avoid slowdown. Post-merge setup script at `scripts/post-merge.sh` auto-rebuilds frontend only when `frontend/src` changes.
 
+- Advertisement Image Persistence: Ad banner images now stored in MongoDB (`ad_images` collection) in addition to disk. New dynamic route `GET /api/uploads/ads/{filename}` serves from disk first, falls back to MongoDB if file is missing (e.g. after server restart), and writes back to disk for future requests. Startup migration auto-backs-up any existing disk images to MongoDB. Removed static `app.mount("/api/uploads", ...)` in favor of this dynamic route.
+
 ## Known Issues
 - MongoDB Atlas SSL handshake may fail with `TLSV1_ALERT_INTERNAL_ERROR` - this is typically caused by the Replit IP not being whitelisted in MongoDB Atlas Network Access settings. The user needs to add `0.0.0.0/0` (allow all) in MongoDB Atlas Network Access.

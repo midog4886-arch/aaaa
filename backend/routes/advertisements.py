@@ -277,6 +277,24 @@ def resize_image_to_fit(image: PILImage.Image, target_width: int, target_height:
     return result
 
 
+async def _save_ad_image_to_db(filename: str, image_bytes: bytes, content_type: str = "image/jpeg"):
+    """Persist ad image bytes to MongoDB so images survive server restarts."""
+    import base64
+    try:
+        await db.ad_images.update_one(
+            {"filename": filename},
+            {"$set": {
+                "filename": filename,
+                "data": base64.b64encode(image_bytes).decode("utf-8"),
+                "content_type": content_type,
+                "created_at": datetime.now(timezone.utc).isoformat()
+            }},
+            upsert=True
+        )
+    except Exception as e:
+        print(f"Warning: could not save ad image to DB: {e}")
+
+
 @router.post("/upload-banner")
 async def upload_banner_image(
     file: UploadFile = File(...),
@@ -301,7 +319,14 @@ async def upload_banner_image(
 
         filename = f"{uuid.uuid4()}.jpg"
         file_path = UPLOADS_DIR / filename
+
+        # Save to disk
         img.save(file_path, "JPEG", quality=85, optimize=True)
+
+        # Also persist to MongoDB as backup (survives server restarts)
+        saved_bytes = io.BytesIO()
+        img.save(saved_bytes, "JPEG", quality=85, optimize=True)
+        await _save_ad_image_to_db(filename, saved_bytes.getvalue(), "image/jpeg")
 
         return {
             "url": f"/uploads/ads/{filename}",
@@ -318,6 +343,8 @@ async def upload_banner_image(
         file_path = UPLOADS_DIR / filename
         with open(file_path, "wb") as buffer:
             buffer.write(file_content)
+        # Also persist raw bytes to MongoDB
+        await _save_ad_image_to_db(filename, file_content, file.content_type or "image/jpeg")
         return {"url": f"/uploads/ads/{filename}", "filename": filename}
 
 
