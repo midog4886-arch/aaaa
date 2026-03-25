@@ -7165,14 +7165,16 @@ if STATIC_DIR.exists():
 
     @app.get("/api/download-apk")
     async def download_android_project():
-        zip_path = STATIC_DIR / "android-project.zip"
-        if zip_path.exists():
-            return FileResponse(
-                str(zip_path),
-                media_type="application/zip",
-                filename="android-project.zip",
-                headers={"Content-Disposition": "attachment; filename=android-project.zip"}
-            )
+        # Try latest version first, then fall back to older files
+        for fname in ["android_v1.0.11.zip", "android-project.zip"]:
+            zip_path = STATIC_DIR / fname
+            if zip_path.exists():
+                return FileResponse(
+                    str(zip_path),
+                    media_type="application/zip",
+                    filename=fname,
+                    headers={"Content-Disposition": f"attachment; filename={fname}"}
+                )
         return {"error": "File not found"}
 
 
