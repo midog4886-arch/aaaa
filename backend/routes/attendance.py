@@ -4,7 +4,6 @@ from pydantic import BaseModel
 from typing import List, Optional
 import uuid
 import math
-import json
 from datetime import datetime, timezone, timedelta
 
 from .common import db, get_current_user
@@ -13,49 +12,20 @@ from .common import db, get_current_user
 async def send_attendance_push(member_id: str, member_name: str, activity_name: str, check_in_time: str):
     """Send push notification to member when attendance is recorded"""
     try:
+        from .push_notifications import send_push_notification, NotificationPayload
         sub = await db.push_subscriptions.find_one({"member_id": member_id, "is_active": True})
         if not sub:
             return
-        platform = sub.get("platform", "web")
         title = "✅ تم تسجيل حضورك"
         body = f"{activity_name} - {check_in_time}" if activity_name else f"وقت الدخول: {check_in_time}"
-
-        if platform in ["android", "ios"]:
-            fcm_token = sub.get("keys", {}).get("fcm_token")
-            if not fcm_token:
-                return
-            try:
-                import firebase_admin
-                from firebase_admin import messaging
-                message = messaging.Message(
-                    notification=messaging.Notification(title=title, body=body),
-                    data={"url": "/", "type": "attendance"},
-                    token=fcm_token,
-                    android=messaging.AndroidConfig(
-                        priority="high",
-                        notification=messaging.AndroidNotification(
-                            icon="ic_launcher", color="#1e40af",
-                            sound="default", channel_id="default"
-                        )
-                    )
-                )
-                messaging.send(message)
-            except Exception as e:
-                print(f"FCM attendance notification failed: {e}")
-        else:
-            try:
-                from pywebpush import webpush, WebPushException
-                import os
-                VAPID_PRIVATE_KEY = os.environ.get('VAPID_PRIVATE_KEY', 'BQv3sSRJtUCFQiEZ6z9IXPKHFuJ6E9d0cL0pFQxXVgM')
-                VAPID_CLAIMS = {"sub": "mailto:admin@globalchampions.sa"}
-                webpush(
-                    subscription_info={"endpoint": sub["endpoint"], "keys": sub["keys"]},
-                    data=json.dumps({"title": title, "body": body, "url": "/", "tag": f"attendance-{member_id}"}),
-                    vapid_private_key=VAPID_PRIVATE_KEY,
-                    vapid_claims=VAPID_CLAIMS
-                )
-            except Exception as e:
-                print(f"Web push attendance notification failed: {e}")
+        payload = NotificationPayload(
+            title=title,
+            body=body,
+            url="/",
+            tag=f"attendance-{member_id}",
+            data={"type": "attendance"}
+        )
+        await send_push_notification(sub, payload)
     except Exception as e:
         print(f"send_attendance_push error: {e}")
 
