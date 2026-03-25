@@ -11,6 +11,31 @@ const isNativeApp = () => {
   return window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform();
 };
 
+const showLocalNotification = async (title, body, url) => {
+  try {
+    const LocalNotifications = window.Capacitor?.Plugins?.LocalNotifications;
+    if (!LocalNotifications) return;
+    const perm = await LocalNotifications.checkPermissions();
+    if (perm.display !== 'granted') {
+      await LocalNotifications.requestPermissions();
+    }
+    await LocalNotifications.schedule({
+      notifications: [{
+        id: Math.floor(Math.random() * 100000),
+        title: title || 'أكاديمية أداء الأبطال',
+        body: body || '',
+        extra: { url: url || '/' },
+        sound: 'default',
+        smallIcon: 'ic_launcher',
+        iconColor: '#1e40af',
+        channelId: 'default',
+      }]
+    });
+  } catch (e) {
+    console.log('LocalNotification fallback to toast:', e);
+  }
+};
+
 const PushNotificationManager = ({ memberId, compact = false }) => {
   const [isSupported, setIsSupported] = useState(false);
   const [isSubscribed, setIsSubscribed] = useState(false);
@@ -43,6 +68,7 @@ const PushNotificationManager = ({ memberId, compact = false }) => {
         }
       });
       PushNotifications.addListener('pushNotificationReceived', (notification) => {
+        showLocalNotification(notification.title, notification.body, notification.data?.url);
         toast.info(notification.title || 'إشعار جديد', { description: notification.body });
       });
       PushNotifications.addListener('pushNotificationActionPerformed', (notification) => {
@@ -205,9 +231,8 @@ const PushNotificationManager = ({ memberId, compact = false }) => {
         });
 
         PushNotifications.addListener('pushNotificationReceived', (notification) => {
-          toast.info(notification.title || 'إشعار جديد', {
-            description: notification.body,
-          });
+          showLocalNotification(notification.title, notification.body, notification.data?.url);
+          toast.info(notification.title || 'إشعار جديد', { description: notification.body });
         });
 
         PushNotifications.addListener('pushNotificationActionPerformed', (notification) => {
