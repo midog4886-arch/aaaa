@@ -45,6 +45,7 @@ memberAPI.interceptors.request.use((config) => {
 const MemberLayout = ({ children }) => {
   const navigate = useNavigate();
   const location = useLocation();
+  const isNativeApp = !!(window.Capacitor?.isNativePlatform?.());
   const [member, setMember] = useState(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [notifications, setNotifications] = useState({ unread_count: 0 });
@@ -329,8 +330,8 @@ const MemberLayout = ({ children }) => {
 
             {/* User Menu */}
             <div className="flex items-center gap-2">
-              {/* Install App Button - Only show if not installed */}
-              {!isAppInstalled && (
+              {/* Install App Button - Only show if not installed and not native app */}
+              {!isAppInstalled && !isNativeApp && (
                 <Button 
                   variant="ghost" 
                   size="sm"
@@ -490,7 +491,7 @@ const MemberLayout = ({ children }) => {
       </footer>
 
       {/* Install Reminder Popup */}
-      {showInstallReminder && !isAppInstalled && (
+      {showInstallReminder && !isAppInstalled && !isNativeApp && (
         <div 
           className="fixed bottom-20 left-4 right-4 lg:bottom-6 lg:left-auto lg:right-6 lg:w-96 z-50 animate-in slide-in-from-bottom-5 duration-500"
           dir={language === 'ar' ? 'rtl' : 'ltr'}
@@ -553,7 +554,7 @@ const MemberLayout = ({ children }) => {
       )}
 
       {/* Install Instructions Dialog */}
-      <Dialog open={showInstallDialog} onOpenChange={setShowInstallDialog}>
+      <Dialog open={showInstallDialog && !isNativeApp} onOpenChange={setShowInstallDialog}>
         <DialogContent className={`max-w-md ${darkMode ? 'bg-gray-800 text-white' : ''}`}>
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-xl">
