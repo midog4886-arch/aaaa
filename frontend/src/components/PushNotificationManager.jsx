@@ -41,16 +41,14 @@ const PushNotificationManager = ({ memberId, compact = false }) => {
   const [isLoading, setIsLoading] = useState(true);
   const [permission, setPermission] = useState('default');
 
-  // Auto-registers FCM token silently if permission already granted (e.g. after reinstall)
+  // Auto-registers FCM token - requests permission automatically if not yet decided
   const autoRegisterNativeIfGranted = useCallback(async (memberIdArg) => {
     const mid = memberIdArg || memberId;
     if (!mid) return;
     try {
       const PushNotifications = window.Capacitor?.Plugins?.PushNotifications;
       if (!PushNotifications) return;
-      const permResult = await PushNotifications.checkPermissions();
-      if (permResult.receive !== 'granted') return;
-      setPermission('granted');
+
       await PushNotifications.removeAllListeners();
       PushNotifications.addListener('registration', async (token) => {
         try {
@@ -74,7 +72,22 @@ const PushNotificationManager = ({ memberId, compact = false }) => {
         const url = notification.notification?.data?.url;
         if (url) window.location.href = url;
       });
-      PushNotifications.register();
+
+      const permResult = await PushNotifications.checkPermissions();
+      if (permResult.receive === 'granted') {
+        setPermission('granted');
+        PushNotifications.register();
+      } else if (permResult.receive === 'denied') {
+        setPermission('denied');
+      } else {
+        const requestResult = await PushNotifications.requestPermissions();
+        if (requestResult.receive === 'granted') {
+          setPermission('granted');
+          PushNotifications.register();
+        } else {
+          setPermission('denied');
+        }
+      }
     } catch (e) {
       console.log('Auto-registration skipped:', e);
     }
