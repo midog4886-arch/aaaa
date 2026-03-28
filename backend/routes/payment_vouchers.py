@@ -37,11 +37,22 @@ class PaymentVoucherUpdate(BaseModel):
 
 
 async def generate_voucher_number() -> str:
+    """Generate a sequential, collision-free voucher number using an atomic counter."""
     year = datetime.now(timezone.utc).year
-    count = await db.payment_vouchers.count_documents({
-        "voucher_number": {"$regex": f"^PV-{year}-"}
-    })
-    return f"PV-{year}-{str(count + 1).zfill(3)}"
+    counter_id = f"payment_vouchers_{year}"
+    result = await db.counters.find_one_and_update(
+        {"_id": counter_id},
+        {"$inc": {"seq": 1}},
+        upsert=True,
+        return_document=True,
+    )
+    seq = result["seq"]
+    return f"PV-{year}-{str(seq).zfill(3)}"
+
+
+async def ensure_voucher_indexes():
+    """Create unique index on voucher_number to prevent duplicates at DB level."""
+    await db.payment_vouchers.create_index("voucher_number", unique=True)
 
 
 def _build_ownership_query(voucher_id: str, current_user: dict) -> dict:
@@ -86,7 +97,16 @@ async def create_payment_voucher(
         "updated_at": now,
     }
 
-    await db.payment_vouchers.insert_one(voucher)
+    try:
+        await db.payment_vouchers.insert_one(voucher)
+    except Exception as e:
+        if "duplicate key" in str(e).lower() or "E11000" in str(e):
+            # Retry once with a fresh number in the rare case of a race condition
+            voucher["voucher_number"] = await generate_voucher_number()
+            voucher["id"] = str(uuid.uuid4())
+            await db.payment_vouchers.insert_one(voucher)
+        else:
+            raise HTTPException(status_code=500, detail="خطأ في حفظ السند")
     voucher.pop("_id", None)
     return voucher
 

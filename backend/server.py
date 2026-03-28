@@ -7246,6 +7246,12 @@ async def create_default_admin():
                     print(f"Migration: backed up {backed_up} ad images to MongoDB")
         except Exception as e:
             print(f"Ad images backup error: {str(e)}")
+        # Ensure payment vouchers unique index on voucher_number
+        try:
+            from routes.payment_vouchers import ensure_voucher_indexes
+            await ensure_voucher_indexes()
+        except Exception as e:
+            print(f"Payment vouchers index setup error: {str(e)}")
     asyncio.create_task(_init())
 
 @app.on_event("shutdown")
