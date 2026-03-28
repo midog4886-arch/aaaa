@@ -925,86 +925,87 @@ export default function AccountingPage() {
   };
 
   const handlePrintVoucher = (voucher) => {
+    const escHtml = (str) => String(str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
     const amountWords = amountToArabicWords(parseFloat(voucher.amount));
-    const paymentMethodAr = { cash: 'نقداً', transfer: 'تحويل بنكي', check: 'شيك' }[voucher.payment_method] || voucher.payment_method;
-    const printContent = `
-      <!DOCTYPE html>
-      <html dir="rtl" lang="ar">
-      <head>
-        <meta charset="UTF-8">
-        <title>سند صرف - ${voucher.voucher_number}</title>
-        <style>
-          * { margin: 0; padding: 0; box-sizing: border-box; }
-          body { font-family: 'Arial', sans-serif; direction: rtl; background: #fff; color: #000; }
-          .page { width: 210mm; min-height: 148mm; margin: 0 auto; padding: 15mm; }
-          .header { text-align: center; border-bottom: 3px double #333; padding-bottom: 10px; margin-bottom: 15px; }
-          .company-name { font-size: 20px; font-weight: bold; color: #1a1a1a; }
-          .company-sub { font-size: 13px; color: #555; margin-top: 4px; }
-          .title { font-size: 22px; font-weight: bold; text-align: center; margin: 12px 0; color: #c0392b; letter-spacing: 2px; }
-          .voucher-number { text-align: center; font-size: 14px; color: #555; margin-bottom: 15px; }
-          .info-table { width: 100%; border-collapse: collapse; margin-bottom: 15px; }
-          .info-table td { padding: 8px 10px; border: 1px solid #ccc; font-size: 13px; }
-          .info-table .label { background: #f5f5f5; font-weight: bold; width: 30%; }
-          .amount-box { border: 2px solid #c0392b; border-radius: 6px; padding: 12px; margin: 15px 0; text-align: center; }
-          .amount-num { font-size: 28px; font-weight: bold; color: #c0392b; }
-          .amount-words { font-size: 15px; color: #333; margin-top: 5px; direction: rtl; }
-          .signatures { display: flex; justify-content: space-around; margin-top: 25px; }
-          .sig-box { text-align: center; width: 35%; }
-          .sig-line { border-top: 1px solid #333; margin-top: 40px; padding-top: 6px; font-size: 13px; }
-          .footer { text-align: center; margin-top: 20px; font-size: 11px; color: #888; border-top: 1px solid #eee; padding-top: 8px; }
-          @media print { body { margin: 0; } }
-        </style>
-      </head>
-      <body>
-        <div class="page">
-          <div class="header">
-            <div class="logo-row" style="display:flex;align-items:center;justify-content:center;gap:12px;margin-bottom:8px;">
-              <img src="${window.location.origin}/images/academy-logo.png" alt="شعار الأكاديمية" style="height:60px;width:auto;" onerror="this.style.display='none'" />
-            </div>
-            <div class="company-name">شركة أداء الأبطال العالمية للرياضة</div>
-            <div class="company-sub">Champions Academy</div>
-          </div>
-          <div class="title">سند صرف</div>
-          <div class="voucher-number">رقم السند: <strong>${voucher.voucher_number}</strong></div>
-          <table class="info-table">
-            <tr>
-              <td class="label">اسم المستفيد</td>
-              <td>${voucher.beneficiary_name}</td>
-              <td class="label">التاريخ</td>
-              <td>${voucher.payment_date}</td>
-            </tr>
-            <tr>
-              <td class="label">الغرض من الصرف</td>
-              <td colspan="3">${voucher.purpose}</td>
-            </tr>
-            <tr>
-              <td class="label">طريقة الدفع</td>
-              <td>${paymentMethodAr}</td>
-              <td class="label">المرجع</td>
-              <td>${voucher.reference || '-'}</td>
-            </tr>
-            ${voucher.notes ? `<tr><td class="label">ملاحظات</td><td colspan="3">${voucher.notes}</td></tr>` : ''}
-          </table>
-          <div class="amount-box">
-            <div class="amount-num">${parseFloat(voucher.amount).toLocaleString('ar-SA', { minimumFractionDigits: 2 })} ريال</div>
-            <div class="amount-words">فقط: ${amountWords}</div>
-          </div>
-          <div class="signatures">
-            <div class="sig-box">
-              <div class="sig-line">المحاسب / Accountant</div>
-            </div>
-            <div class="sig-box">
-              <div class="sig-line">المستلم / Receiver</div>
-            </div>
-          </div>
-          <div class="footer">تم إصداره بواسطة نظام أكاديمية الأبطال | ${new Date().toLocaleDateString('ar-SA')}</div>
-        </div>
-      </body>
-      </html>
-    `;
+    const paymentMethodAr = { cash: 'نقداً', transfer: 'تحويل بنكي', check: 'شيك' }[voucher.payment_method] || escHtml(voucher.payment_method);
+    const logoOrigin = window.location.origin;
+    const notesRow = voucher.notes
+      ? `<tr><td class="label">ملاحظات</td><td colspan="3">${escHtml(voucher.notes)}</td></tr>`
+      : '';
+
     const printWindow = window.open('', '_blank', 'width=800,height=600');
-    printWindow.document.write(printContent);
-    printWindow.document.close();
+    if (!printWindow) return;
+    const doc = printWindow.document;
+    doc.open();
+    doc.write(`<!DOCTYPE html><html dir="rtl" lang="ar"><head><meta charset="UTF-8"><title>سند صرف</title>
+      <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Arial', sans-serif; direction: rtl; background: #fff; color: #000; }
+        .page { width: 210mm; min-height: 148mm; margin: 0 auto; padding: 15mm; }
+        .header { text-align: center; border-bottom: 3px double #333; padding-bottom: 10px; margin-bottom: 15px; }
+        .logo-row { display: flex; align-items: center; justify-content: center; margin-bottom: 8px; }
+        .company-name { font-size: 20px; font-weight: bold; color: #1a1a1a; }
+        .company-sub { font-size: 13px; color: #555; margin-top: 4px; }
+        .title { font-size: 22px; font-weight: bold; text-align: center; margin: 12px 0; color: #c0392b; letter-spacing: 2px; }
+        .voucher-number { text-align: center; font-size: 14px; color: #555; margin-bottom: 15px; }
+        .info-table { width: 100%; border-collapse: collapse; margin-bottom: 15px; }
+        .info-table td { padding: 8px 10px; border: 1px solid #ccc; font-size: 13px; }
+        .info-table .label { background: #f5f5f5; font-weight: bold; width: 30%; }
+        .amount-box { border: 2px solid #c0392b; border-radius: 6px; padding: 12px; margin: 15px 0; text-align: center; }
+        .amount-num { font-size: 28px; font-weight: bold; color: #c0392b; }
+        .amount-words { font-size: 15px; color: #333; margin-top: 5px; direction: rtl; }
+        .signatures { display: flex; justify-content: space-around; margin-top: 25px; }
+        .sig-box { text-align: center; width: 35%; }
+        .sig-line { border-top: 1px solid #333; margin-top: 40px; padding-top: 6px; font-size: 13px; }
+        .footer { text-align: center; margin-top: 20px; font-size: 11px; color: #888; border-top: 1px solid #eee; padding-top: 8px; }
+        @media print { body { margin: 0; } }
+      </style></head><body>`);
+
+    const page = doc.createElement('div');
+    page.className = 'page';
+
+    page.innerHTML = `
+      <div class="header">
+        <div class="logo-row">
+          <img src="${escHtml(logoOrigin)}/images/academy-logo.png" alt="شعار الأكاديمية" style="height:60px;width:auto;" onerror="this.style.display='none'" />
+        </div>
+        <div class="company-name">شركة أداء الأبطال العالمية للرياضة</div>
+        <div class="company-sub">Champions Academy</div>
+      </div>
+      <div class="title">سند صرف</div>
+      <div class="voucher-number">رقم السند: <strong>${escHtml(voucher.voucher_number)}</strong></div>
+      <table class="info-table">
+        <tr>
+          <td class="label">اسم المستفيد</td>
+          <td>${escHtml(voucher.beneficiary_name)}</td>
+          <td class="label">التاريخ</td>
+          <td>${escHtml(voucher.payment_date)}</td>
+        </tr>
+        <tr>
+          <td class="label">الغرض من الصرف</td>
+          <td colspan="3">${escHtml(voucher.purpose)}</td>
+        </tr>
+        <tr>
+          <td class="label">طريقة الدفع</td>
+          <td>${paymentMethodAr}</td>
+          <td class="label">المرجع</td>
+          <td>${escHtml(voucher.reference) || '-'}</td>
+        </tr>
+        ${notesRow}
+      </table>
+      <div class="amount-box">
+        <div class="amount-num">${escHtml(parseFloat(voucher.amount).toLocaleString('ar-SA', { minimumFractionDigits: 2 }))} ريال</div>
+        <div class="amount-words">فقط: ${escHtml(amountWords)}</div>
+      </div>
+      <div class="signatures">
+        <div class="sig-box"><div class="sig-line">المحاسب / Accountant</div></div>
+        <div class="sig-box"><div class="sig-line">المستلم / Receiver</div></div>
+      </div>
+      <div class="footer">تم إصداره بواسطة نظام أكاديمية الأبطال | ${escHtml(new Date().toLocaleDateString('ar-SA'))}</div>
+    `;
+    doc.body.appendChild(page);
+    doc.write('</body></html>');
+    doc.close();
     printWindow.focus();
     setTimeout(() => { printWindow.print(); }, 500);
   };
