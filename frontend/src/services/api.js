@@ -427,3 +427,10 @@ export const freezesAPI = {
   getActiveFreezes: () => axios.get(`${API}/freezes/active`),
   getMemberStats: (memberId) => axios.get(`${API}/freezes/member/${memberId}/stats`),
 };
+
+export const paymentVouchersAPI = {
+  getAll: (params = {}) => axios.get(`${API}/payment-vouchers`, { params }),
+  create: (data) => axios.post(`${API}/payment-vouchers`, data),
+  update: (id, data) => axios.put(`${API}/payment-vouchers/${id}`, data),
+  delete: (id) => axios.delete(`${API}/payment-vouchers/${id}`),
+};

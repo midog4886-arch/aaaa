@@ -17,7 +17,8 @@ import {
   exportAccountingAPI,
   reportsAPI,
   internalExpensesAPI,
-  bankReportsAPI
+  bankReportsAPI,
+  paymentVouchersAPI
 } from '../services/api';
 
 // Arabic month names
@@ -36,8 +37,53 @@ const TABS = {
   EXPENSES: 'expenses',
   JOURNAL: 'journal',
   REPORTS: 'reports',
-  VAT: 'vat'
+  VAT: 'vat',
+  VOUCHERS: 'vouchers'
 };
+
+// Arabic number to words conversion
+function amountToArabicWords(amount) {
+  if (!amount || isNaN(amount)) return '';
+  const ones = ['', 'واحد', 'اثنان', 'ثلاثة', 'أربعة', 'خمسة', 'ستة', 'سبعة', 'ثمانية', 'تسعة',
+    'عشرة', 'أحد عشر', 'اثنا عشر', 'ثلاثة عشر', 'أربعة عشر', 'خمسة عشر', 'ستة عشر',
+    'سبعة عشر', 'ثمانية عشر', 'تسعة عشر'];
+  const tens = ['', '', 'عشرون', 'ثلاثون', 'أربعون', 'خمسون', 'ستون', 'سبعون', 'ثمانون', 'تسعون'];
+  const hundreds = ['', 'مائة', 'مئتان', 'ثلاثمائة', 'أربعمائة', 'خمسمائة', 'ستمائة', 'سبعمائة', 'ثمانمائة', 'تسعمائة'];
+
+  function convertLessThan1000(n) {
+    if (n === 0) return '';
+    if (n < 20) return ones[n];
+    if (n < 100) {
+      const t = Math.floor(n / 10), o = n % 10;
+      return o > 0 ? ones[o] + ' و' + tens[t] : tens[t];
+    }
+    const h = Math.floor(n / 100), rem = n % 100;
+    return rem > 0 ? hundreds[h] + ' و' + convertLessThan1000(rem) : hundreds[h];
+  }
+
+  function convertInteger(n) {
+    if (n === 0) return 'صفر';
+    const parts = [];
+    if (n >= 1000000) {
+      const m = Math.floor(n / 1000000);
+      parts.push(m === 1 ? 'مليون' : m === 2 ? 'مليونان' : convertLessThan1000(m) + ' ملايين');
+      n %= 1000000;
+    }
+    if (n >= 1000) {
+      const k = Math.floor(n / 1000);
+      parts.push(k === 1 ? 'ألف' : k === 2 ? 'ألفان' : convertLessThan1000(k) + ' آلاف');
+      n %= 1000;
+    }
+    if (n > 0) parts.push(convertLessThan1000(n));
+    return parts.join(' و');
+  }
+
+  const intPart = Math.floor(amount);
+  const decPart = Math.round((amount - intPart) * 100);
+  let result = convertInteger(intPart) + ' ريال سعودي';
+  if (decPart > 0) result += ' و' + convertInteger(decPart) + ' هللة';
+  return result;
+}
 
 const ACCOUNT_TYPES = [
   { value: 'assets', label: 'الأصول', color: 'bg-blue-100 text-blue-800' },
@@ -72,6 +118,22 @@ export default function AccountingPage() {
   const [expenseTypes, setExpenseTypes] = useState([]);
   const [expensesSummary, setExpensesSummary] = useState(null);
   const [loading, setLoading] = useState(false);
+
+  // Payment Vouchers states
+  const [paymentVouchers, setPaymentVouchers] = useState([]);
+  const [isVoucherDialogOpen, setIsVoucherDialogOpen] = useState(false);
+  const [editingVoucher, setEditingVoucher] = useState(null);
+  const [voucherSearch, setVoucherSearch] = useState('');
+  const [voucherDateFilter, setVoucherDateFilter] = useState({ start: '', end: '' });
+  const [voucherForm, setVoucherForm] = useState({
+    beneficiary_name: '',
+    amount: '',
+    purpose: '',
+    payment_date: new Date().toISOString().split('T')[0],
+    payment_method: 'cash',
+    reference: '',
+    notes: ''
+  });
   
   // Dialog states
   const [isAccountDialogOpen, setIsAccountDialogOpen] = useState(false);
@@ -302,6 +364,21 @@ export default function AccountingPage() {
     }
   }, []);
 
+  // Fetch payment vouchers
+  const fetchPaymentVouchers = useCallback(async () => {
+    try {
+      const params = {};
+      if (voucherDateFilter.start) params.start_date = voucherDateFilter.start;
+      if (voucherDateFilter.end) params.end_date = voucherDateFilter.end;
+      if (voucherSearch) params.search = voucherSearch;
+      if (selectedBranchId && selectedBranchId !== 'all') params.branch_filter = selectedBranchId;
+      const res = await paymentVouchersAPI.getAll(params);
+      setPaymentVouchers(res.data);
+    } catch (error) {
+      console.error('Error fetching payment vouchers:', error);
+    }
+  }, [voucherDateFilter, voucherSearch, selectedBranchId]);
+
   // Fetch saved bank reports
   const fetchSavedBankReports = useCallback(async () => {
     try {
@@ -389,7 +466,12 @@ export default function AccountingPage() {
     if (activeTab === TABS.REPORTS) { fetchSalesReport(); fetchFinancialReport(); fetchSavedBankReports(); loadSavedBankReport(); }
     if (activeTab === TABS.VAT) fetchVatReport();
     if (activeTab === TABS.EXPENSES) { fetchInternalExpenses(); fetchExpensesSummary(); }
-  }, [activeTab, fetchPurchaseInvoices, fetchJournalEntries, fetchSalesReport, fetchVatReport, fetchFinancialReport, fetchInternalExpenses, fetchExpensesSummary, fetchSavedBankReports, loadSavedBankReport]);
+    if (activeTab === TABS.VOUCHERS) fetchPaymentVouchers();
+  }, [activeTab, fetchPurchaseInvoices, fetchJournalEntries, fetchSalesReport, fetchVatReport, fetchFinancialReport, fetchInternalExpenses, fetchExpensesSummary, fetchSavedBankReports, loadSavedBankReport, fetchPaymentVouchers]);
+
+  useEffect(() => {
+    if (activeTab === TABS.VOUCHERS) fetchPaymentVouchers();
+  }, [voucherSearch, voucherDateFilter, fetchPaymentVouchers, activeTab]);
 
   // Update date filter when month/year changes for bank report
   useEffect(() => {
@@ -783,6 +865,245 @@ export default function AccountingPage() {
     }
   };
 
+  // Payment Voucher handlers
+  const handleOpenVoucherDialog = (voucher = null) => {
+    if (voucher) {
+      setEditingVoucher(voucher);
+      setVoucherForm({
+        beneficiary_name: voucher.beneficiary_name || '',
+        amount: voucher.amount || '',
+        purpose: voucher.purpose || '',
+        payment_date: voucher.payment_date || new Date().toISOString().split('T')[0],
+        payment_method: voucher.payment_method || 'cash',
+        reference: voucher.reference || '',
+        notes: voucher.notes || ''
+      });
+    } else {
+      setEditingVoucher(null);
+      setVoucherForm({
+        beneficiary_name: '',
+        amount: '',
+        purpose: '',
+        payment_date: new Date().toISOString().split('T')[0],
+        payment_method: 'cash',
+        reference: '',
+        notes: ''
+      });
+    }
+    setIsVoucherDialogOpen(true);
+  };
+
+  const handleSaveVoucher = async () => {
+    if (!voucherForm.beneficiary_name.trim()) { toast.error('اسم المستفيد مطلوب'); return; }
+    if (!voucherForm.amount || parseFloat(voucherForm.amount) <= 0) { toast.error('المبلغ يجب أن يكون أكبر من صفر'); return; }
+    if (!voucherForm.purpose.trim()) { toast.error('الغرض من الصرف مطلوب'); return; }
+    try {
+      const data = { ...voucherForm, amount: parseFloat(voucherForm.amount) };
+      if (editingVoucher) {
+        await paymentVouchersAPI.update(editingVoucher.id, data);
+        toast.success('تم تحديث السند');
+      } else {
+        await paymentVouchersAPI.create(data);
+        toast.success('تم إنشاء السند بنجاح');
+      }
+      setIsVoucherDialogOpen(false);
+      fetchPaymentVouchers();
+    } catch (error) {
+      toast.error(error.response?.data?.detail || 'حدث خطأ');
+    }
+  };
+
+  const handleDeleteVoucher = async (id) => {
+    if (!window.confirm('هل أنت متأكد من حذف هذا السند؟')) return;
+    try {
+      await paymentVouchersAPI.delete(id);
+      toast.success('تم حذف السند');
+      fetchPaymentVouchers();
+    } catch (error) {
+      toast.error(error.response?.data?.detail || 'حدث خطأ في الحذف');
+    }
+  };
+
+  const handlePrintVoucher = (voucher) => {
+    const amountWords = amountToArabicWords(parseFloat(voucher.amount));
+    const paymentMethodAr = { cash: 'نقداً', transfer: 'تحويل بنكي', check: 'شيك' }[voucher.payment_method] || voucher.payment_method;
+    const printContent = `
+      <!DOCTYPE html>
+      <html dir="rtl" lang="ar">
+      <head>
+        <meta charset="UTF-8">
+        <title>سند صرف - ${voucher.voucher_number}</title>
+        <style>
+          * { margin: 0; padding: 0; box-sizing: border-box; }
+          body { font-family: 'Arial', sans-serif; direction: rtl; background: #fff; color: #000; }
+          .page { width: 210mm; min-height: 148mm; margin: 0 auto; padding: 15mm; }
+          .header { text-align: center; border-bottom: 3px double #333; padding-bottom: 10px; margin-bottom: 15px; }
+          .company-name { font-size: 20px; font-weight: bold; color: #1a1a1a; }
+          .company-sub { font-size: 13px; color: #555; margin-top: 4px; }
+          .title { font-size: 22px; font-weight: bold; text-align: center; margin: 12px 0; color: #c0392b; letter-spacing: 2px; }
+          .voucher-number { text-align: center; font-size: 14px; color: #555; margin-bottom: 15px; }
+          .info-table { width: 100%; border-collapse: collapse; margin-bottom: 15px; }
+          .info-table td { padding: 8px 10px; border: 1px solid #ccc; font-size: 13px; }
+          .info-table .label { background: #f5f5f5; font-weight: bold; width: 30%; }
+          .amount-box { border: 2px solid #c0392b; border-radius: 6px; padding: 12px; margin: 15px 0; text-align: center; }
+          .amount-num { font-size: 28px; font-weight: bold; color: #c0392b; }
+          .amount-words { font-size: 15px; color: #333; margin-top: 5px; direction: rtl; }
+          .signatures { display: flex; justify-content: space-around; margin-top: 25px; }
+          .sig-box { text-align: center; width: 35%; }
+          .sig-line { border-top: 1px solid #333; margin-top: 40px; padding-top: 6px; font-size: 13px; }
+          .footer { text-align: center; margin-top: 20px; font-size: 11px; color: #888; border-top: 1px solid #eee; padding-top: 8px; }
+          @media print { body { margin: 0; } }
+        </style>
+      </head>
+      <body>
+        <div class="page">
+          <div class="header">
+            <div class="company-name">شركة أداء الأبطال العالمية للرياضة</div>
+            <div class="company-sub">Champions Academy</div>
+          </div>
+          <div class="title">سند صرف</div>
+          <div class="voucher-number">رقم السند: <strong>${voucher.voucher_number}</strong></div>
+          <table class="info-table">
+            <tr>
+              <td class="label">اسم المستفيد</td>
+              <td>${voucher.beneficiary_name}</td>
+              <td class="label">التاريخ</td>
+              <td>${voucher.payment_date}</td>
+            </tr>
+            <tr>
+              <td class="label">الغرض من الصرف</td>
+              <td colspan="3">${voucher.purpose}</td>
+            </tr>
+            <tr>
+              <td class="label">طريقة الدفع</td>
+              <td>${paymentMethodAr}</td>
+              <td class="label">المرجع</td>
+              <td>${voucher.reference || '-'}</td>
+            </tr>
+            ${voucher.notes ? `<tr><td class="label">ملاحظات</td><td colspan="3">${voucher.notes}</td></tr>` : ''}
+          </table>
+          <div class="amount-box">
+            <div class="amount-num">${parseFloat(voucher.amount).toLocaleString('ar-SA', { minimumFractionDigits: 2 })} ريال</div>
+            <div class="amount-words">فقط: ${amountWords}</div>
+          </div>
+          <div class="signatures">
+            <div class="sig-box">
+              <div class="sig-line">المحاسب / Accountant</div>
+            </div>
+            <div class="sig-box">
+              <div class="sig-line">المستلم / Receiver</div>
+            </div>
+          </div>
+          <div class="footer">تم إصداره بواسطة نظام أكاديمية الأبطال | ${new Date().toLocaleDateString('ar-SA')}</div>
+        </div>
+      </body>
+      </html>
+    `;
+    const printWindow = window.open('', '_blank', 'width=800,height=600');
+    printWindow.document.write(printContent);
+    printWindow.document.close();
+    printWindow.focus();
+    setTimeout(() => { printWindow.print(); }, 500);
+  };
+
+  const renderVouchersTab = () => (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-2">
+        <h2 className="text-lg font-bold">سندات الصرف</h2>
+        <Button onClick={() => handleOpenVoucherDialog()} className="bg-orange-500 hover:bg-orange-600">
+          + إنشاء سند صرف
+        </Button>
+      </div>
+
+      {/* Filters */}
+      <div className="flex flex-wrap gap-3 p-3 bg-gray-50 rounded-lg">
+        <Input
+          placeholder="بحث باسم المستفيد أو الغرض أو رقم السند..."
+          value={voucherSearch}
+          onChange={e => setVoucherSearch(e.target.value)}
+          className="w-64"
+        />
+        <div className="flex items-center gap-2">
+          <label className="text-sm text-gray-600">من:</label>
+          <Input type="date" value={voucherDateFilter.start} onChange={e => setVoucherDateFilter(prev => ({ ...prev, start: e.target.value }))} className="w-36" />
+        </div>
+        <div className="flex items-center gap-2">
+          <label className="text-sm text-gray-600">إلى:</label>
+          <Input type="date" value={voucherDateFilter.end} onChange={e => setVoucherDateFilter(prev => ({ ...prev, end: e.target.value }))} className="w-36" />
+        </div>
+        <Button variant="outline" onClick={() => { setVoucherSearch(''); setVoucherDateFilter({ start: '', end: '' }); }}>
+          مسح الفلاتر
+        </Button>
+      </div>
+
+      {/* Summary */}
+      {paymentVouchers.length > 0 && (
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+          <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-center">
+            <div className="text-xs text-gray-500 mb-1">إجمالي المصروف</div>
+            <div className="text-xl font-bold text-red-600">
+              {paymentVouchers.reduce((s, v) => s + parseFloat(v.amount || 0), 0).toLocaleString('ar-SA', { minimumFractionDigits: 2 })} ريال
+            </div>
+          </div>
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-center">
+            <div className="text-xs text-gray-500 mb-1">عدد السندات</div>
+            <div className="text-xl font-bold text-blue-600">{paymentVouchers.length}</div>
+          </div>
+        </div>
+      )}
+
+      {/* Table */}
+      {paymentVouchers.length === 0 ? (
+        <div className="text-center text-gray-400 py-12">لا توجد سندات صرف</div>
+      ) : (
+        <div className="overflow-x-auto rounded-lg border border-gray-200">
+          <table className="w-full text-sm">
+            <thead className="bg-gray-50 text-gray-700">
+              <tr>
+                <th className="px-3 py-2 text-right">رقم السند</th>
+                <th className="px-3 py-2 text-right">التاريخ</th>
+                <th className="px-3 py-2 text-right">المستفيد</th>
+                <th className="px-3 py-2 text-right">الغرض</th>
+                <th className="px-3 py-2 text-right">طريقة الدفع</th>
+                <th className="px-3 py-2 text-right">المبلغ</th>
+                <th className="px-3 py-2 text-center">الإجراءات</th>
+              </tr>
+            </thead>
+            <tbody>
+              {paymentVouchers.map((v, idx) => (
+                <tr key={v.id} className={idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                  <td className="px-3 py-2 font-mono text-orange-600 font-semibold">{v.voucher_number}</td>
+                  <td className="px-3 py-2">{v.payment_date}</td>
+                  <td className="px-3 py-2 font-medium">{v.beneficiary_name}</td>
+                  <td className="px-3 py-2 text-gray-600 max-w-xs truncate">{v.purpose}</td>
+                  <td className="px-3 py-2">
+                    <span className={`px-2 py-0.5 rounded text-xs font-medium ${
+                      v.payment_method === 'cash' ? 'bg-green-100 text-green-700' :
+                      v.payment_method === 'transfer' ? 'bg-blue-100 text-blue-700' :
+                      'bg-purple-100 text-purple-700'
+                    }`}>
+                      {v.payment_method_ar || { cash: 'نقداً', transfer: 'تحويل بنكي', check: 'شيك' }[v.payment_method] || v.payment_method}
+                    </span>
+                  </td>
+                  <td className="px-3 py-2 font-bold text-red-600">
+                    {parseFloat(v.amount).toLocaleString('ar-SA', { minimumFractionDigits: 2 })} ريال
+                  </td>
+                  <td className="px-3 py-2">
+                    <div className="flex gap-1 justify-center">
+                      <Button size="sm" variant="outline" onClick={() => handlePrintVoucher(v)} title="طباعة">🖨️</Button>
+                      <Button size="sm" variant="outline" onClick={() => handleOpenVoucherDialog(v)} title="تعديل">✏️</Button>
+                      <Button size="sm" variant="outline" className="text-red-600 hover:text-red-700" onClick={() => handleDeleteVoucher(v.id)} title="حذف">🗑️</Button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+
   // Render tabs
   const renderTabContent = () => {
     switch (activeTab) {
@@ -802,6 +1123,8 @@ export default function AccountingPage() {
         return renderReportsTab();
       case TABS.VAT:
         return renderVatTab();
+      case TABS.VOUCHERS:
+        return renderVouchersTab();
       default:
         return null;
     }
@@ -2271,7 +2594,8 @@ export default function AccountingPage() {
             { key: TABS.EXPENSES, label: 'المصروفات الداخلية', icon: '💸' },
             { key: TABS.JOURNAL, label: 'القيود', icon: '📒' },
             { key: TABS.REPORTS, label: 'التقارير', icon: '📈' },
-            { key: TABS.VAT, label: 'إقرار الضريبة', icon: '🧾' }
+            { key: TABS.VAT, label: 'إقرار الضريبة', icon: '🧾' },
+            { key: TABS.VOUCHERS, label: 'سندات الصرف', icon: '📄' }
           ].map(tab => (
             <Button
               key={tab.key}
@@ -3162,6 +3486,94 @@ export default function AccountingPage() {
                 ))}
               </div>
             )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Payment Voucher Dialog */}
+      <Dialog open={isVoucherDialogOpen} onOpenChange={setIsVoucherDialogOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>{editingVoucher ? 'تعديل سند الصرف' : 'إنشاء سند صرف جديد'}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <label className="text-sm font-medium">اسم المستفيد *</label>
+              <Input
+                value={voucherForm.beneficiary_name}
+                onChange={e => setVoucherForm(prev => ({ ...prev, beneficiary_name: e.target.value }))}
+                placeholder="الاسم الكامل للمستفيد"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-sm font-medium">المبلغ (ريال) *</label>
+                <Input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={voucherForm.amount}
+                  onChange={e => setVoucherForm(prev => ({ ...prev, amount: e.target.value }))}
+                  placeholder="0.00"
+                />
+                {voucherForm.amount && parseFloat(voucherForm.amount) > 0 && (
+                  <p className="text-xs text-gray-500 mt-1">{amountToArabicWords(parseFloat(voucherForm.amount))}</p>
+                )}
+              </div>
+              <div>
+                <label className="text-sm font-medium">التاريخ *</label>
+                <Input
+                  type="date"
+                  value={voucherForm.payment_date}
+                  onChange={e => setVoucherForm(prev => ({ ...prev, payment_date: e.target.value }))}
+                />
+              </div>
+            </div>
+            <div>
+              <label className="text-sm font-medium">الغرض من الصرف *</label>
+              <Input
+                value={voucherForm.purpose}
+                onChange={e => setVoucherForm(prev => ({ ...prev, purpose: e.target.value }))}
+                placeholder="سبب صرف المبلغ"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-sm font-medium">طريقة الدفع</label>
+                <Select value={voucherForm.payment_method} onValueChange={v => setVoucherForm(prev => ({ ...prev, payment_method: v }))}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="cash">نقداً</SelectItem>
+                    <SelectItem value="transfer">تحويل بنكي</SelectItem>
+                    <SelectItem value="check">شيك</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <label className="text-sm font-medium">رقم المرجع</label>
+                <Input
+                  value={voucherForm.reference}
+                  onChange={e => setVoucherForm(prev => ({ ...prev, reference: e.target.value }))}
+                  placeholder="رقم الشيك / رقم التحويل"
+                />
+              </div>
+            </div>
+            <div>
+              <label className="text-sm font-medium">ملاحظات</label>
+              <Input
+                value={voucherForm.notes}
+                onChange={e => setVoucherForm(prev => ({ ...prev, notes: e.target.value }))}
+                placeholder="ملاحظات إضافية"
+              />
+            </div>
+            <div className="flex gap-2 justify-end pt-2">
+              <Button variant="outline" onClick={() => setIsVoucherDialogOpen(false)}>إلغاء</Button>
+              <Button onClick={handleSaveVoucher} className="bg-orange-500 hover:bg-orange-600">
+                {editingVoucher ? 'تحديث السند' : 'إنشاء السند'}
+              </Button>
+            </div>
           </div>
         </DialogContent>
       </Dialog>

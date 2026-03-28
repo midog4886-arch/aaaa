@@ -107,5 +107,7 @@ frontend/
 
 - Advertisement Image Persistence: Ad banner images now stored in MongoDB (`ad_images` collection) in addition to disk. New dynamic route `GET /api/uploads/ads/{filename}` serves from disk first, falls back to MongoDB if file is missing (e.g. after server restart), and writes back to disk for future requests. Startup migration auto-backs-up any existing disk images to MongoDB. Removed static `app.mount("/api/uploads", ...)` in favor of this dynamic route.
 
+- Payment Vouchers (سندات الصرف للأفراد): New tab in Accounting page for documenting payments to individuals. Features: create/edit/delete vouchers with sequential number (PV-YEAR-NNN), beneficiary name, amount, purpose, payment date, payment method (cash/transfer/check), reference number, and notes. Amount shown in Arabic words (فقط: مائة وعشرون ريالاً). Print button opens an official formatted voucher with company header, data table, and two signature fields (Accountant / Receiver). Search and date filter. Backend: routes/payment_vouchers.py with MongoDB payment_vouchers collection. API: paymentVouchersAPI in services/api.js.
+
 ## Known Issues
 - MongoDB Atlas SSL handshake may fail with `TLSV1_ALERT_INTERNAL_ERROR` - this is typically caused by the Replit IP not being whitelisted in MongoDB Atlas Network Access settings. The user needs to add `0.0.0.0/0` (allow all) in MongoDB Atlas Network Access.
