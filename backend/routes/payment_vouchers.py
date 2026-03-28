@@ -14,6 +14,7 @@ PAYMENT_METHODS = {
     "transfer": "تحويل بنكي",
     "check": "شيك",
 }
+ALLOWED_PAYMENT_METHODS = set(PAYMENT_METHODS.keys())
 
 
 class PaymentVoucherCreate(BaseModel):
@@ -76,6 +77,8 @@ async def create_payment_voucher(
         raise HTTPException(status_code=400, detail="اسم المستفيد مطلوب")
     if not data.purpose.strip():
         raise HTTPException(status_code=400, detail="الغرض من الصرف مطلوب")
+    if data.payment_method not in ALLOWED_PAYMENT_METHODS:
+        raise HTTPException(status_code=400, detail=f"طريقة الدفع غير صالحة. القيم المسموح بها: {', '.join(ALLOWED_PAYMENT_METHODS)}")
 
     voucher_number = await generate_voucher_number()
     now = datetime.now(timezone.utc).isoformat()
@@ -174,6 +177,8 @@ async def update_payment_voucher(
 
     update_data = {k: v for k, v in data.dict().items() if v is not None}
     if "payment_method" in update_data:
+        if update_data["payment_method"] not in ALLOWED_PAYMENT_METHODS:
+            raise HTTPException(status_code=400, detail=f"طريقة الدفع غير صالحة. القيم المسموح بها: {', '.join(ALLOWED_PAYMENT_METHODS)}")
         update_data["payment_method_ar"] = PAYMENT_METHODS.get(update_data["payment_method"], update_data["payment_method"])
     update_data["updated_at"] = datetime.now(timezone.utc).isoformat()
 
