@@ -6010,6 +6010,7 @@ async def create_expense_payment(
     description: str = Form(""),
     reference: str = Form(""),
     notes: str = Form(""),
+    branch_id: Optional[str] = Form(None),
     current_user: dict = Depends(get_current_user)
 ):
     """Create a new expense payment (admin only)"""
@@ -6021,7 +6022,12 @@ async def create_expense_payment(
         raise HTTPException(status_code=400, detail="طريقة دفع غير صحيحة")
 
     year = datetime.now().year
-    branch_id = current_user.get("branch_id")
+    # Admin can pass an explicit branch_id; non-admin always uses their own branch
+    is_admin = current_user.get("is_admin", False)
+    if is_admin and branch_id and branch_id != "all":
+        branch_id = branch_id
+    else:
+        branch_id = current_user.get("branch_id")
     number_query = {"payment_number": {"$regex": f"^PAY-{year}-"}}
     if branch_id:
         number_query["branch_id"] = branch_id

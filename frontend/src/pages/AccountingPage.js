@@ -2773,6 +2773,9 @@ export default function AccountingPage() {
       fd.append('description', expPaymentForm.description);
       fd.append('reference', expPaymentForm.reference);
       fd.append('notes', expPaymentForm.notes);
+      if (!editingExpPayment && selectedBranchId && selectedBranchId !== 'all') {
+        fd.append('branch_id', selectedBranchId);
+      }
       if (editingExpPayment) {
         await internalExpensePaymentsAPI.update(editingExpPayment.id, fd);
         toast.success('تم تعديل الدفعة');
@@ -4165,10 +4168,12 @@ export default function AccountingPage() {
             </div>
             <div>
               <label className="text-sm font-medium">ملاحظات</label>
-              <Input
+              <textarea
                 value={expPaymentForm.notes}
                 onChange={e => setExpPaymentForm(prev => ({ ...prev, notes: e.target.value }))}
                 placeholder="ملاحظات إضافية..."
+                className="w-full border rounded p-2 text-sm resize-none"
+                rows={2}
               />
             </div>
             <div className="flex gap-2 justify-end pt-2">
