@@ -33,24 +33,38 @@ def _init_firebase():
     try:
         import firebase_admin
         from firebase_admin import credentials
-        
+
+        # Check if already initialized by another route/module
+        try:
+            firebase_admin.get_app()
+            _firebase_initialized = True
+            return True
+        except ValueError:
+            pass  # Not yet initialized
+
         firebase_creds = os.environ.get('FIREBASE_SERVICE_ACCOUNT')
         if firebase_creds:
             cred_dict = json.loads(firebase_creds)
             cred = credentials.Certificate(cred_dict)
-            firebase_admin.initialize_app(cred)
+            try:
+                firebase_admin.initialize_app(cred)
+            except ValueError:
+                pass  # Already initialized between our check and initialize
             _firebase_initialized = True
             print("Firebase Admin SDK initialized successfully")
             return True
-        
+
         cred_path = os.path.join(os.path.dirname(__file__), '..', 'firebase-service-account.json')
         if os.path.exists(cred_path):
             cred = credentials.Certificate(cred_path)
-            firebase_admin.initialize_app(cred)
+            try:
+                firebase_admin.initialize_app(cred)
+            except ValueError:
+                pass
             _firebase_initialized = True
             print("Firebase Admin SDK initialized from file")
             return True
-            
+
         print("Firebase credentials not found - FCM notifications disabled")
         return False
     except Exception as e:
@@ -160,19 +174,21 @@ async def get_subscription_status(member_id: str):
 
 
 async def send_fcm_notification(token: str, payload: NotificationPayload):
+    import logging
+    logger = logging.getLogger(__name__)
     try:
         if not _init_firebase():
-            print("Firebase not initialized, skipping FCM notification")
+            logger.error("Firebase not initialized, skipping FCM notification")
             return False
-            
+
         from firebase_admin import messaging
-        
+
+        notif_kwargs = {"title": payload.title, "body": payload.body}
+        if payload.image:
+            notif_kwargs["image"] = payload.image
+
         message = messaging.Message(
-            notification=messaging.Notification(
-                title=payload.title,
-                body=payload.body,
-                image=payload.image or None,
-            ),
+            notification=messaging.Notification(**notif_kwargs),
             data={
                 "url": payload.url or "/",
                 "tag": payload.tag or "",
@@ -186,23 +202,50 @@ async def send_fcm_notification(token: str, payload: NotificationPayload):
                     color="#1e40af",
                     sound="default",
                     channel_id="default",
-                    image_url=payload.image or None,
                 ),
             ),
         )
-        
-        messaging.send(message)
+
+        result = messaging.send(message)
+        logger.info(f"FCM sent OK: {result}")
         return True
-        
+
     except Exception as e:
         error_str = str(e)
-        print(f"FCM notification failed: {error_str}")
+        logger.error(f"FCM notification failed: {type(e).__name__}: {error_str}")
         if 'NOT_FOUND' in error_str or 'UNREGISTERED' in error_str or 'INVALID_ARGUMENT' in error_str:
             await db.push_subscriptions.update_one(
                 {"keys.fcm_token": token},
                 {"$set": {"is_active": False}}
             )
         return False
+
+
+@router.get("/test-send")
+async def test_send_notification():
+    """Debug endpoint - test FCM send directly"""
+    import logging
+    logger = logging.getLogger(__name__)
+    subs = await db.push_subscriptions.find(
+        {"is_active": True, "platform": "android"}, {"_id": 0}
+    ).to_list(10)
+    if not subs:
+        return {"error": "No active Android subscriptions found"}
+    results = []
+    for sub in subs:
+        token = sub.get("keys", {}).get("fcm_token", "")
+        payload = NotificationPayload(
+            title="🔔 اختبار مباشر",
+            body="اختبار إشعار مباشر من السيرفر",
+            url="/",
+            tag="debug-test"
+        )
+        try:
+            ok = await send_fcm_notification(token, payload)
+            results.append({"member": sub.get("member_id", "")[:8], "success": ok})
+        except Exception as e:
+            results.append({"member": sub.get("member_id", "")[:8], "error": str(e)})
+    return {"results": results}
 
 
 async def send_push_notification(subscription: dict, payload: NotificationPayload):
