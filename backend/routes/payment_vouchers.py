@@ -44,6 +44,16 @@ async def generate_voucher_number() -> str:
     return f"PV-{year}-{str(count + 1).zfill(3)}"
 
 
+def _build_ownership_query(voucher_id: str, current_user: dict) -> dict:
+    """Return a query that scopes the voucher to the user's branch for non-admins."""
+    query = {"id": voucher_id}
+    if not current_user.get("is_admin", False):
+        branch_id = current_user.get("branch_id")
+        if branch_id:
+            query["branch_id"] = branch_id
+    return query
+
+
 @router.post("")
 async def create_payment_voucher(
     data: PaymentVoucherCreate,
@@ -121,7 +131,8 @@ async def get_payment_voucher(
     voucher_id: str,
     current_user: dict = Depends(get_current_user)
 ):
-    voucher = await db.payment_vouchers.find_one({"id": voucher_id}, {"_id": 0})
+    query = _build_ownership_query(voucher_id, current_user)
+    voucher = await db.payment_vouchers.find_one(query, {"_id": 0})
     if not voucher:
         raise HTTPException(status_code=404, detail="السند غير موجود")
     return voucher
@@ -133,7 +144,11 @@ async def update_payment_voucher(
     data: PaymentVoucherUpdate,
     current_user: dict = Depends(get_current_user)
 ):
-    existing = await db.payment_vouchers.find_one({"id": voucher_id})
+    if not current_user.get("is_admin", False):
+        raise HTTPException(status_code=403, detail="صلاحية الأدمن مطلوبة لتعديل السندات")
+
+    query = _build_ownership_query(voucher_id, current_user)
+    existing = await db.payment_vouchers.find_one(query)
     if not existing:
         raise HTTPException(status_code=404, detail="السند غير موجود")
 
@@ -152,7 +167,11 @@ async def delete_payment_voucher(
     voucher_id: str,
     current_user: dict = Depends(get_current_user)
 ):
-    result = await db.payment_vouchers.delete_one({"id": voucher_id})
+    if not current_user.get("is_admin", False):
+        raise HTTPException(status_code=403, detail="صلاحية الأدمن مطلوبة لحذف السندات")
+
+    query = _build_ownership_query(voucher_id, current_user)
+    result = await db.payment_vouchers.delete_one(query)
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="السند غير موجود")
     return {"message": "تم حذف السند بنجاح"}

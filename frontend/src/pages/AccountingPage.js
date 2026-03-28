@@ -102,7 +102,7 @@ const JOURNAL_TYPES = [
 ];
 
 export default function AccountingPage() {
-  const { selectedBranchId, token } = useAuth();
+  const { selectedBranchId, token, isAdmin } = useAuth();
   const [activeTab, setActiveTab] = useState(TABS.ACCOUNTS);
   
   // Data states
@@ -958,6 +958,9 @@ export default function AccountingPage() {
       <body>
         <div class="page">
           <div class="header">
+            <div class="logo-row" style="display:flex;align-items:center;justify-content:center;gap:12px;margin-bottom:8px;">
+              <img src="${window.location.origin}/images/academy-logo.png" alt="شعار الأكاديمية" style="height:60px;width:auto;" onerror="this.style.display='none'" />
+            </div>
             <div class="company-name">شركة أداء الأبطال العالمية للرياضة</div>
             <div class="company-sub">Champions Academy</div>
           </div>
@@ -1091,8 +1094,12 @@ export default function AccountingPage() {
                   <td className="px-3 py-2">
                     <div className="flex gap-1 justify-center">
                       <Button size="sm" variant="outline" onClick={() => handlePrintVoucher(v)} title="طباعة">🖨️</Button>
-                      <Button size="sm" variant="outline" onClick={() => handleOpenVoucherDialog(v)} title="تعديل">✏️</Button>
-                      <Button size="sm" variant="outline" className="text-red-600 hover:text-red-700" onClick={() => handleDeleteVoucher(v.id)} title="حذف">🗑️</Button>
+                      {isAdmin && (
+                        <>
+                          <Button size="sm" variant="outline" onClick={() => handleOpenVoucherDialog(v)} title="تعديل">✏️</Button>
+                          <Button size="sm" variant="outline" className="text-red-600 hover:text-red-700" onClick={() => handleDeleteVoucher(v.id)} title="حذف">🗑️</Button>
+                        </>
+                      )}
                     </div>
                   </td>
                 </tr>
