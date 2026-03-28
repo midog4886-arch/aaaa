@@ -430,7 +430,9 @@ export const freezesAPI = {
 
 export const paymentVouchersAPI = {
   getAll: (params = {}) => axios.get(`${API}/payment-vouchers`, { params }),
+  getBeneficiaries: (params = {}) => axios.get(`${API}/payment-vouchers/beneficiaries`, { params }),
   create: (data) => axios.post(`${API}/payment-vouchers`, data),
   update: (id, data) => axios.put(`${API}/payment-vouchers/${id}`, data),
+  updateStatus: (id, status) => axios.put(`${API}/payment-vouchers/${id}`, { status }),
   delete: (id) => axios.delete(`${API}/payment-vouchers/${id}`),
 };

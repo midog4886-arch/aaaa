@@ -16,6 +16,12 @@ PAYMENT_METHODS = {
 }
 ALLOWED_PAYMENT_METHODS = set(PAYMENT_METHODS.keys())
 
+PAYMENT_STATUSES = {
+    "paid": "مدفوع",
+    "unpaid": "غير مدفوع",
+}
+ALLOWED_STATUSES = set(PAYMENT_STATUSES.keys())
+
 
 class PaymentVoucherCreate(BaseModel):
     beneficiary_name: str
@@ -23,6 +29,7 @@ class PaymentVoucherCreate(BaseModel):
     purpose: str
     payment_date: str
     payment_method: str = "cash"
+    status: str = "paid"
     reference: Optional[str] = ""
     notes: Optional[str] = ""
 
@@ -33,6 +40,7 @@ class PaymentVoucherUpdate(BaseModel):
     purpose: Optional[str] = None
     payment_date: Optional[str] = None
     payment_method: Optional[str] = None
+    status: Optional[str] = None
     reference: Optional[str] = None
     notes: Optional[str] = None
 
@@ -79,6 +87,8 @@ async def create_payment_voucher(
         raise HTTPException(status_code=400, detail="الغرض من الصرف مطلوب")
     if data.payment_method not in ALLOWED_PAYMENT_METHODS:
         raise HTTPException(status_code=400, detail=f"طريقة الدفع غير صالحة. القيم المسموح بها: {', '.join(ALLOWED_PAYMENT_METHODS)}")
+    if data.status not in ALLOWED_STATUSES:
+        raise HTTPException(status_code=400, detail=f"حالة الدفع غير صالحة. القيم المسموح بها: {', '.join(ALLOWED_STATUSES)}")
 
     voucher_number = await generate_voucher_number()
     now = datetime.now(timezone.utc).isoformat()
@@ -92,6 +102,8 @@ async def create_payment_voucher(
         "payment_date": data.payment_date,
         "payment_method": data.payment_method,
         "payment_method_ar": PAYMENT_METHODS.get(data.payment_method, data.payment_method),
+        "status": data.status,
+        "status_ar": PAYMENT_STATUSES.get(data.status, data.status),
         "reference": data.reference or "",
         "notes": data.notes or "",
         "created_by": current_user.get("name", current_user.get("username", "")),
@@ -104,7 +116,6 @@ async def create_payment_voucher(
         await db.payment_vouchers.insert_one(voucher)
     except Exception as e:
         if "duplicate key" in str(e).lower() or "E11000" in str(e):
-            # Retry once with a fresh number in the rare case of a race condition
             voucher["voucher_number"] = await generate_voucher_number()
             voucher["id"] = str(uuid.uuid4())
             await db.payment_vouchers.insert_one(voucher)
@@ -114,11 +125,56 @@ async def create_payment_voucher(
     return voucher
 
 
+@router.get("/beneficiaries")
+async def list_beneficiaries(
+    branch_filter: Optional[str] = None,
+    current_user: dict = Depends(get_current_user)
+):
+    """Return unique beneficiary names with aggregated payment stats."""
+    query = {}
+    is_admin = current_user.get("is_admin", False)
+    branch_id = current_user.get("branch_id")
+    if is_admin and branch_filter and branch_filter != "all":
+        query["branch_id"] = branch_filter
+    elif not is_admin and branch_id:
+        query["branch_id"] = branch_id
+
+    pipeline = [
+        {"$match": query},
+        {"$sort": {"payment_date": -1}},
+        {"$group": {
+            "_id": "$beneficiary_name",
+            "total_amount": {"$sum": "$amount"},
+            "count": {"$sum": 1},
+            "last_payment_date": {"$first": "$payment_date"},
+            "last_voucher_number": {"$first": "$voucher_number"},
+            "paid_amount": {"$sum": {"$cond": [{"$eq": ["$status", "paid"]}, "$amount", 0]}},
+            "unpaid_amount": {"$sum": {"$cond": [{"$eq": ["$status", "unpaid"]}, "$amount", 0]}},
+        }},
+        {"$project": {
+            "_id": 0,
+            "beneficiary_name": "$_id",
+            "total_amount": 1,
+            "count": 1,
+            "last_payment_date": 1,
+            "last_voucher_number": 1,
+            "paid_amount": 1,
+            "unpaid_amount": 1,
+        }},
+        {"$sort": {"beneficiary_name": 1}},
+    ]
+
+    beneficiaries = await db.payment_vouchers.aggregate(pipeline).to_list(500)
+    return beneficiaries
+
+
 @router.get("")
 async def list_payment_vouchers(
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
     search: Optional[str] = None,
+    status: Optional[str] = None,
+    beneficiary_name: Optional[str] = None,
     branch_filter: Optional[str] = None,
     current_user: dict = Depends(get_current_user)
 ):
@@ -137,6 +193,12 @@ async def list_payment_vouchers(
             {"purpose": {"$regex": search, "$options": "i"}},
             {"voucher_number": {"$regex": search, "$options": "i"}},
         ]
+
+    if status and status in ALLOWED_STATUSES:
+        query["status"] = status
+
+    if beneficiary_name:
+        query["beneficiary_name"] = beneficiary_name
 
     is_admin = current_user.get("is_admin", False)
     branch_id = current_user.get("branch_id")
@@ -180,6 +242,10 @@ async def update_payment_voucher(
         if update_data["payment_method"] not in ALLOWED_PAYMENT_METHODS:
             raise HTTPException(status_code=400, detail=f"طريقة الدفع غير صالحة. القيم المسموح بها: {', '.join(ALLOWED_PAYMENT_METHODS)}")
         update_data["payment_method_ar"] = PAYMENT_METHODS.get(update_data["payment_method"], update_data["payment_method"])
+    if "status" in update_data:
+        if update_data["status"] not in ALLOWED_STATUSES:
+            raise HTTPException(status_code=400, detail=f"حالة الدفع غير صالحة. القيم المسموح بها: {', '.join(ALLOWED_STATUSES)}")
+        update_data["status_ar"] = PAYMENT_STATUSES.get(update_data["status"], update_data["status"])
     update_data["updated_at"] = datetime.now(timezone.utc).isoformat()
 
     await db.payment_vouchers.update_one({"id": voucher_id}, {"$set": update_data})
