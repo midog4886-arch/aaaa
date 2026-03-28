@@ -1174,17 +1174,25 @@ export default function AccountingPage() {
         </span>
       </td>
       <td className="px-3 py-2">
-        <button
-          onClick={() => handleUpdateVoucherStatus(v, v.status === 'paid' ? 'unpaid' : 'paid')}
-          title="اضغط لتغيير الحالة"
-          className={`px-2 py-0.5 rounded text-xs font-medium border cursor-pointer transition-colors ${
-            v.status === 'unpaid'
-              ? 'bg-yellow-50 text-yellow-700 border-yellow-300 hover:bg-yellow-100'
-              : 'bg-green-50 text-green-700 border-green-300 hover:bg-green-100'
-          }`}
-        >
-          {v.status === 'unpaid' ? '⏳ غير مدفوع' : '✅ مدفوع'}
-        </button>
+        {isAdmin ? (
+          <button
+            onClick={() => handleUpdateVoucherStatus(v, v.status === 'paid' ? 'unpaid' : 'paid')}
+            title="اضغط لتغيير الحالة"
+            className={`px-2 py-0.5 rounded text-xs font-medium border cursor-pointer transition-colors ${
+              v.status === 'unpaid'
+                ? 'bg-yellow-50 text-yellow-700 border-yellow-300 hover:bg-yellow-100'
+                : 'bg-green-50 text-green-700 border-green-300 hover:bg-green-100'
+            }`}
+          >
+            {v.status === 'unpaid' ? '⏳ غير مدفوع' : '✅ مدفوع'}
+          </button>
+        ) : (
+          <span className={`px-2 py-0.5 rounded text-xs font-medium ${
+            v.status === 'unpaid' ? 'bg-yellow-50 text-yellow-700' : 'bg-green-50 text-green-700'
+          }`}>
+            {v.status === 'unpaid' ? '⏳ غير مدفوع' : '✅ مدفوع'}
+          </span>
+        )}
       </td>
       <td className="px-3 py-2 font-bold text-red-600">
         {parseFloat(v.amount).toLocaleString('ar-SA', { minimumFractionDigits: 2 })} ريال
@@ -1397,9 +1405,9 @@ export default function AccountingPage() {
               {/* Stats cards */}
               {selectedBeneficiaryData && (
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                  <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-center">
-                    <div className="text-xs text-gray-500 mb-1">إجمالي المدفوع</div>
-                    <div className="text-lg font-bold text-red-600">
+                  <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 text-center">
+                    <div className="text-xs text-gray-500 mb-1">إجمالي قيمة السندات</div>
+                    <div className="text-lg font-bold text-gray-700">
                       {parseFloat(selectedBeneficiaryData.total_amount).toLocaleString('ar-SA', { minimumFractionDigits: 2 })} ريال
                     </div>
                   </div>
@@ -1408,7 +1416,7 @@ export default function AccountingPage() {
                     <div className="text-lg font-bold text-blue-600">{selectedBeneficiaryData.count}</div>
                   </div>
                   <div className="bg-green-50 border border-green-200 rounded-lg p-3 text-center">
-                    <div className="text-xs text-gray-500 mb-1">مدفوع فعلاً</div>
+                    <div className="text-xs text-gray-500 mb-1">المدفوع فعلاً ✅</div>
                     <div className="text-lg font-bold text-green-600">
                       {parseFloat(selectedBeneficiaryData.paid_amount || 0).toLocaleString('ar-SA', { minimumFractionDigits: 2 })} ريال
                     </div>

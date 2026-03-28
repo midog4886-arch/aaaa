@@ -207,7 +207,8 @@ async def list_payment_vouchers(
     elif not is_admin and branch_id:
         query["branch_id"] = branch_id
 
-    vouchers = await db.payment_vouchers.find(query, {"_id": 0}).sort("created_at", -1).to_list(1000)
+    sort_field = "payment_date" if beneficiary_name else "created_at"
+    vouchers = await db.payment_vouchers.find(query, {"_id": 0}).sort(sort_field, -1).to_list(1000)
     return vouchers
 
 
