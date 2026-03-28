@@ -17,6 +17,7 @@ import {
   exportAccountingAPI,
   reportsAPI,
   internalExpensesAPI,
+  internalExpensePaymentsAPI,
   bankReportsAPI,
   paymentVouchersAPI
 } from '../services/api';
@@ -117,6 +118,19 @@ export default function AccountingPage() {
   const [internalExpenses, setInternalExpenses] = useState([]);
   const [expenseTypes, setExpenseTypes] = useState([]);
   const [expensesSummary, setExpensesSummary] = useState(null);
+  const [expensePayments, setExpensePayments] = useState([]);
+  const [expensePaymentsSummary, setExpensePaymentsSummary] = useState({ total_amount: 0, count: 0 });
+  const [expensesSubView, setExpensesSubView] = useState('expenses');
+  const [showExpPaymentDialog, setShowExpPaymentDialog] = useState(false);
+  const [editingExpPayment, setEditingExpPayment] = useState(null);
+  const [expPaymentForm, setExpPaymentForm] = useState({
+    payment_date: new Date().toISOString().split('T')[0],
+    amount: '',
+    payment_method: 'cash',
+    description: '',
+    reference: '',
+    notes: ''
+  });
   const [loading, setLoading] = useState(false);
 
   // Payment Vouchers states
@@ -370,6 +384,24 @@ export default function AccountingPage() {
     }
   }, []);
 
+  // Fetch expense payments (مدفوعات المصروفات الداخلية)
+  const fetchExpensePayments = useCallback(async () => {
+    try {
+      const params = {};
+      if (selectedBranchId && selectedBranchId !== 'all') params.branch_filter = selectedBranchId;
+      if (dateFilter.start) params.start_date = dateFilter.start;
+      if (dateFilter.end) params.end_date = dateFilter.end;
+      const [listRes, sumRes] = await Promise.all([
+        internalExpensePaymentsAPI.getAll(params),
+        internalExpensePaymentsAPI.getSummary(params),
+      ]);
+      setExpensePayments(listRes.data);
+      setExpensePaymentsSummary(sumRes.data || { total_amount: 0, count: 0 });
+    } catch (error) {
+      console.error('Error fetching expense payments:', error);
+    }
+  }, [selectedBranchId, dateFilter]);
+
   // Fetch payment vouchers
   const fetchPaymentVouchers = useCallback(async () => {
     try {
@@ -497,9 +529,9 @@ export default function AccountingPage() {
     if (activeTab === TABS.JOURNAL) fetchJournalEntries();
     if (activeTab === TABS.REPORTS) { fetchSalesReport(); fetchFinancialReport(); fetchSavedBankReports(); loadSavedBankReport(); }
     if (activeTab === TABS.VAT) fetchVatReport();
-    if (activeTab === TABS.EXPENSES) { fetchInternalExpenses(); fetchExpensesSummary(); }
+    if (activeTab === TABS.EXPENSES) { fetchInternalExpenses(); fetchExpensesSummary(); fetchExpensePayments(); }
     if (activeTab === TABS.VOUCHERS) { fetchPaymentVouchers(); fetchBeneficiaries(); }
-  }, [activeTab, fetchPurchaseInvoices, fetchJournalEntries, fetchSalesReport, fetchVatReport, fetchFinancialReport, fetchInternalExpenses, fetchExpensesSummary, fetchSavedBankReports, loadSavedBankReport, fetchPaymentVouchers, fetchBeneficiaries]);
+  }, [activeTab, fetchPurchaseInvoices, fetchJournalEntries, fetchSalesReport, fetchVatReport, fetchFinancialReport, fetchInternalExpenses, fetchExpensesSummary, fetchExpensePayments, fetchSavedBankReports, loadSavedBankReport, fetchPaymentVouchers, fetchBeneficiaries]);
 
   useEffect(() => {
     if (activeTab === TABS.VOUCHERS) {
@@ -2703,6 +2735,69 @@ export default function AccountingPage() {
     toast.success('جاري تحميل التقرير...');
   };
 
+  // ──── Expense Payment Handlers (مدفوعات المصروفات الداخلية) ────
+  const openNewPaymentDialog = () => {
+    setEditingExpPayment(null);
+    setExpPaymentForm({
+      payment_date: new Date().toISOString().split('T')[0],
+      amount: '',
+      payment_method: 'cash',
+      description: '',
+      reference: '',
+      notes: ''
+    });
+    setShowExpPaymentDialog(true);
+  };
+
+  const openEditPaymentDialog = (payment) => {
+    setEditingExpPayment(payment);
+    setExpPaymentForm({
+      payment_date: payment.payment_date || '',
+      amount: payment.amount || '',
+      payment_method: payment.payment_method || 'cash',
+      description: payment.description || '',
+      reference: payment.reference || '',
+      notes: payment.notes || ''
+    });
+    setShowExpPaymentDialog(true);
+  };
+
+  const handleSaveExpPayment = async () => {
+    if (!expPaymentForm.payment_date) { toast.error('يرجى تحديد تاريخ الدفعة'); return; }
+    if (!expPaymentForm.amount || parseFloat(expPaymentForm.amount) <= 0) { toast.error('يرجى إدخال مبلغ صحيح'); return; }
+    try {
+      const fd = new FormData();
+      fd.append('payment_date', expPaymentForm.payment_date);
+      fd.append('amount', expPaymentForm.amount);
+      fd.append('payment_method', expPaymentForm.payment_method);
+      fd.append('description', expPaymentForm.description);
+      fd.append('reference', expPaymentForm.reference);
+      fd.append('notes', expPaymentForm.notes);
+      if (editingExpPayment) {
+        await internalExpensePaymentsAPI.update(editingExpPayment.id, fd);
+        toast.success('تم تعديل الدفعة');
+      } else {
+        await internalExpensePaymentsAPI.create(fd);
+        toast.success('تم إضافة الدفعة');
+      }
+      setShowExpPaymentDialog(false);
+      fetchExpensePayments();
+    } catch (error) {
+      toast.error(error.response?.data?.detail || 'حدث خطأ');
+    }
+  };
+
+  const handleDeleteExpPayment = async (id) => {
+    if (!window.confirm('هل أنت متأكد من حذف هذه الدفعة؟')) return;
+    try {
+      await internalExpensePaymentsAPI.delete(id);
+      toast.success('تم حذف الدفعة');
+      fetchExpensePayments();
+    } catch (error) {
+      toast.error(error.response?.data?.detail || 'حدث خطأ في الحذف');
+    }
+  };
+
   // Internal Expenses Tab
   const renderInternalExpensesTab = () => {
     const filteredExpenses = expenseSearchQuery
@@ -2714,222 +2809,287 @@ export default function AccountingPage() {
           (EXPENSE_TYPE_LABELS[e.expense_type] || '').includes(expenseSearchQuery)
         )
       : internalExpenses;
-    const totalExpenses = filteredExpenses.reduce((sum, e) => sum + (e.amount || 0), 0);
+    const totalExpenses = internalExpenses.reduce((sum, e) => sum + (e.amount || 0), 0);
     const pendingCount = filteredExpenses.filter(e => e.status === 'pending').length;
     const approvedCount = filteredExpenses.filter(e => e.status === 'approved').length;
     const approvedTotal = filteredExpenses.filter(e => e.status === 'approved').reduce((sum, e) => sum + (e.amount || 0), 0);
+    const totalPayments = expensePaymentsSummary.total_amount || 0;
+    const balance = totalExpenses - totalPayments;
+    const pmMethodLabel = { cash: 'نقداً', transfer: 'تحويل بنكي', check: 'شيك' };
 
     return (
       <div className="space-y-4">
+        {/* Header */}
         <div className="flex justify-between items-center flex-wrap gap-4">
           <h2 className="text-xl font-bold">💸 المصروفات الداخلية (النثرية)</h2>
           <div className="flex gap-2">
-            <Button onClick={handleExportInternalExpenses} variant="outline">
-              📥 تصدير Excel
-            </Button>
-            {approvedCount > 0 && (
-              <Button onClick={handlePostExpensesToAccounting} className="bg-purple-600 hover:bg-purple-700">
-                ⬆️ ترحيل للقيود ({approvedCount})
+            {expensesSubView === 'expenses' ? (
+              <>
+                <Button onClick={handleExportInternalExpenses} variant="outline">
+                  📥 تصدير Excel
+                </Button>
+                {approvedCount > 0 && (
+                  <Button onClick={handlePostExpensesToAccounting} className="bg-purple-600 hover:bg-purple-700">
+                    ⬆️ ترحيل للقيود ({approvedCount})
+                  </Button>
+                )}
+                <Button onClick={openNewExpenseDialog} className="bg-green-600 hover:bg-green-700">
+                  + إضافة مصروف
+                </Button>
+              </>
+            ) : (
+              <Button onClick={openNewPaymentDialog} className="bg-green-600 hover:bg-green-700">
+                + إضافة دفعة
               </Button>
             )}
-            <Button onClick={openNewExpenseDialog} className="bg-green-600 hover:bg-green-700">
-              + إضافة مصروف
-            </Button>
           </div>
         </div>
 
-        {/* Filters */}
-        <div className="flex gap-4 flex-wrap p-4 bg-gray-50 rounded-lg items-end">
-          <div className="flex-1 min-w-[200px]">
-            <label className="text-sm text-gray-600">🔍 بحث</label>
-            <Input
-              type="text"
-              placeholder="بحث بالوصف، الرقم، المورد..."
-              value={expenseSearchQuery}
-              onChange={e => setExpenseSearchQuery(e.target.value)}
-            />
-          </div>
-          <div>
-            <label className="text-sm text-gray-600">من تاريخ</label>
-            <Input type="date" value={dateFilter.start} onChange={e => setDateFilter(prev => ({ ...prev, start: e.target.value }))} className="w-40" />
-          </div>
-          <div>
-            <label className="text-sm text-gray-600">إلى تاريخ</label>
-            <Input type="date" value={dateFilter.end} onChange={e => setDateFilter(prev => ({ ...prev, end: e.target.value }))} className="w-40" />
-          </div>
-          <div>
-            <label className="text-sm text-gray-600">نوع المصروف</label>
-            <select value={expenseTypeFilter} onChange={e => setExpenseTypeFilter(e.target.value)} className="border rounded p-2 w-40">
-              <option value="">الكل</option>
-              {Object.entries(EXPENSE_TYPE_LABELS).map(([key, label]) => (
-                <option key={key} value={key}>{label}</option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="text-sm text-gray-600">الحالة</label>
-            <select value={expenseStatusFilter} onChange={e => setExpenseStatusFilter(e.target.value)} className="border rounded p-2 w-36">
-              <option value="">الكل</option>
-              <option value="pending">قيد المراجعة</option>
-              <option value="approved">معتمد</option>
-              <option value="rejected">مرفوض</option>
-              <option value="posted">مرحل</option>
-            </select>
-          </div>
-          <Button variant="outline" onClick={() => { setDateFilter({ start: '', end: '' }); setExpenseTypeFilter(''); setExpenseStatusFilter(''); setExpenseSearchQuery(''); }}>
-            مسح الفلاتر
-          </Button>
-        </div>
-
-        {/* Summary Cards */}
+        {/* Summary Cards — always visible */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <div className="bg-blue-50 p-4 rounded-lg text-center">
             <div className="text-sm text-gray-600">عدد المصروفات</div>
             <div className="text-2xl font-bold text-blue-600">{internalExpenses.length}</div>
           </div>
-          <div className="bg-green-50 p-4 rounded-lg text-center">
+          <div className="bg-red-50 p-4 rounded-lg text-center">
             <div className="text-sm text-gray-600">إجمالي المصروفات</div>
-            <div className="text-2xl font-bold text-green-600">{totalExpenses.toLocaleString()} ر.س</div>
+            <div className="text-2xl font-bold text-red-600">{totalExpenses.toLocaleString('ar-SA', { minimumFractionDigits: 2 })} ر.س</div>
           </div>
-          <div className="bg-yellow-50 p-4 rounded-lg text-center">
-            <div className="text-sm text-gray-600">قيد المراجعة</div>
-            <div className="text-2xl font-bold text-yellow-600">{pendingCount}</div>
+          <div className="bg-green-50 p-4 rounded-lg text-center">
+            <div className="text-sm text-gray-600">إجمالي المدفوعات</div>
+            <div className="text-2xl font-bold text-green-600">{totalPayments.toLocaleString('ar-SA', { minimumFractionDigits: 2 })} ر.س</div>
+            <div className="text-xs text-gray-400">{expensePaymentsSummary.count || 0} دفعة</div>
           </div>
-          <div className="bg-purple-50 p-4 rounded-lg text-center">
-            <div className="text-sm text-gray-600">جاهز للترحيل</div>
-            <div className="text-2xl font-bold text-purple-600">{approvedTotal.toLocaleString()} ر.س</div>
+          <div className={`p-4 rounded-lg text-center ${balance >= 0 ? 'bg-orange-50' : 'bg-emerald-50'}`}>
+            <div className="text-sm text-gray-600">الرصيد المتبقي</div>
+            <div className={`text-2xl font-bold ${balance >= 0 ? 'text-orange-600' : 'text-emerald-600'}`}>
+              {balance.toLocaleString('ar-SA', { minimumFractionDigits: 2 })} ر.س
+            </div>
+            <div className="text-xs text-gray-400">{balance >= 0 ? 'مصروفات - مدفوعات' : '✅ تم سداد الكل'}</div>
           </div>
         </div>
 
-        {/* Expenses by Type Summary */}
-        {expensesSummary && expensesSummary.by_type && Object.keys(expensesSummary.by_type).length > 0 && (
-          <div className="bg-white border rounded-lg p-4">
-            <h3 className="font-semibold mb-3">📊 التوزيع حسب النوع</h3>
-            <div className="flex gap-3 flex-wrap">
-              {Object.entries(expensesSummary.by_type).map(([type, data]) => (
-                <div key={type} className="border rounded-lg p-3 min-w-[140px] bg-gray-50">
-                  <div className="text-sm text-gray-500">{EXPENSE_TYPE_LABELS[type] || type}</div>
-                  <div className="font-bold">{data.count} مصروف</div>
-                  <div className="text-green-600">{data.total?.toLocaleString()} ر.س</div>
-                </div>
-              ))}
+        {/* Sub-view toggle */}
+        <div className="flex gap-2 border-b pb-2">
+          <button
+            onClick={() => setExpensesSubView('expenses')}
+            className={`px-4 py-2 rounded-t text-sm font-medium border-b-2 transition-colors ${
+              expensesSubView === 'expenses'
+                ? 'border-orange-500 text-orange-600 bg-orange-50'
+                : 'border-transparent text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            💸 المصروفات ({internalExpenses.length})
+          </button>
+          <button
+            onClick={() => setExpensesSubView('payments')}
+            className={`px-4 py-2 rounded-t text-sm font-medium border-b-2 transition-colors ${
+              expensesSubView === 'payments'
+                ? 'border-green-500 text-green-600 bg-green-50'
+                : 'border-transparent text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            💰 المدفوعات ({expensePaymentsSummary.count || 0})
+          </button>
+        </div>
+
+        {/* ── EXPENSES sub-view ── */}
+        {expensesSubView === 'expenses' && (
+          <>
+            {/* Filters */}
+            <div className="flex gap-4 flex-wrap p-4 bg-gray-50 rounded-lg items-end">
+              <div className="flex-1 min-w-[200px]">
+                <label className="text-sm text-gray-600">🔍 بحث</label>
+                <Input
+                  type="text"
+                  placeholder="بحث بالوصف، الرقم، المورد..."
+                  value={expenseSearchQuery}
+                  onChange={e => setExpenseSearchQuery(e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="text-sm text-gray-600">من تاريخ</label>
+                <Input type="date" value={dateFilter.start} onChange={e => setDateFilter(prev => ({ ...prev, start: e.target.value }))} className="w-40" />
+              </div>
+              <div>
+                <label className="text-sm text-gray-600">إلى تاريخ</label>
+                <Input type="date" value={dateFilter.end} onChange={e => setDateFilter(prev => ({ ...prev, end: e.target.value }))} className="w-40" />
+              </div>
+              <div>
+                <label className="text-sm text-gray-600">نوع المصروف</label>
+                <select value={expenseTypeFilter} onChange={e => setExpenseTypeFilter(e.target.value)} className="border rounded p-2 w-40">
+                  <option value="">الكل</option>
+                  {Object.entries(EXPENSE_TYPE_LABELS).map(([key, label]) => (
+                    <option key={key} value={key}>{label}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="text-sm text-gray-600">الحالة</label>
+                <select value={expenseStatusFilter} onChange={e => setExpenseStatusFilter(e.target.value)} className="border rounded p-2 w-36">
+                  <option value="">الكل</option>
+                  <option value="pending">قيد المراجعة</option>
+                  <option value="approved">معتمد</option>
+                  <option value="rejected">مرفوض</option>
+                  <option value="posted">مرحل</option>
+                </select>
+              </div>
+              <Button variant="outline" onClick={() => { setDateFilter({ start: '', end: '' }); setExpenseTypeFilter(''); setExpenseStatusFilter(''); setExpenseSearchQuery(''); }}>
+                مسح الفلاتر
+              </Button>
             </div>
-          </div>
+
+            {/* Workflow summary sub-cards */}
+            <div className="flex gap-3 flex-wrap">
+              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 text-center min-w-[130px]">
+                <div className="text-xs text-gray-500">قيد المراجعة</div>
+                <div className="text-xl font-bold text-yellow-600">{pendingCount}</div>
+              </div>
+              <div className="bg-purple-50 border border-purple-200 rounded-lg p-3 text-center min-w-[160px]">
+                <div className="text-xs text-gray-500">جاهز للترحيل</div>
+                <div className="text-xl font-bold text-purple-600">{approvedTotal.toLocaleString()} ر.س</div>
+              </div>
+            </div>
+
+            {/* Expenses by Type Summary */}
+            {expensesSummary && expensesSummary.by_type && Object.keys(expensesSummary.by_type).length > 0 && (
+              <div className="bg-white border rounded-lg p-4">
+                <h3 className="font-semibold mb-3">📊 التوزيع حسب النوع</h3>
+                <div className="flex gap-3 flex-wrap">
+                  {Object.entries(expensesSummary.by_type).map(([type, data]) => (
+                    <div key={type} className="border rounded-lg p-3 min-w-[140px] bg-gray-50">
+                      <div className="text-sm text-gray-500">{EXPENSE_TYPE_LABELS[type] || type}</div>
+                      <div className="font-bold">{data.count} مصروف</div>
+                      <div className="text-green-600">{data.total?.toLocaleString()} ر.س</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Expenses Table */}
+            <div className="overflow-x-auto">
+              <table className="w-full border rounded-lg">
+                <thead className="bg-gray-100">
+                  <tr>
+                    <th className="p-3 text-right">الرقم</th>
+                    <th className="p-3 text-right">التاريخ</th>
+                    <th className="p-3 text-right">النوع</th>
+                    <th className="p-3 text-right">الوصف</th>
+                    <th className="p-3 text-right">المبلغ</th>
+                    <th className="p-3 text-right">طريقة الدفع</th>
+                    <th className="p-3 text-right">الحالة</th>
+                    <th className="p-3 text-right">المرفق</th>
+                    <th className="p-3 text-center">إجراءات</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredExpenses.map(expense => (
+                    <tr key={expense.id} className="border-t hover:bg-gray-50">
+                      <td className="p-3 font-mono text-sm">{expense.expense_number}</td>
+                      <td className="p-3">{expense.expense_date}</td>
+                      <td className="p-3">
+                        <span className="bg-blue-100 text-blue-800 px-2 py-1 rounded text-sm">
+                          {EXPENSE_TYPE_LABELS[expense.expense_type] || expense.expense_type}
+                        </span>
+                      </td>
+                      <td className="p-3 max-w-xs truncate" title={expense.description}>
+                        {expense.description}
+                        {expense.executor_name && <span className="text-gray-400 text-sm block">بواسطة: {expense.executor_name}</span>}
+                      </td>
+                      <td className="p-3 font-bold">{expense.amount?.toLocaleString()} ر.س</td>
+                      <td className="p-3 text-sm">
+                        {expense.payment_method === 'cash' ? 'نقدي' : expense.payment_method === 'card' ? 'بطاقة' : expense.payment_method}
+                      </td>
+                      <td className="p-3">
+                        <span className={`px-2 py-1 rounded text-xs ${EXPENSE_STATUS_LABELS[expense.status]?.color || 'bg-gray-100'}`}>
+                          {EXPENSE_STATUS_LABELS[expense.status]?.label || expense.status}
+                        </span>
+                      </td>
+                      <td className="p-3 text-center">
+                        {expense.attachment_url ? (
+                          <a href={expense.attachment_url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">📎 عرض</a>
+                        ) : (
+                          <span className="text-gray-400">-</span>
+                        )}
+                      </td>
+                      <td className="p-3 text-center">
+                        <div className="flex gap-1 justify-center flex-wrap">
+                          {expense.status === 'pending' && (
+                            <>
+                              <Button variant="ghost" size="sm" onClick={() => handleUpdateExpenseStatus(expense.id, 'approved')} className="text-green-600 hover:bg-green-50" title="اعتماد">✓</Button>
+                              <Button variant="ghost" size="sm" onClick={() => handleUpdateExpenseStatus(expense.id, 'rejected')} className="text-red-600 hover:bg-red-50" title="رفض">✗</Button>
+                            </>
+                          )}
+                          {(expense.status === 'pending' || expense.status === 'approved') && (
+                            <Button variant="ghost" size="sm" onClick={() => openEditExpenseDialog(expense)} className="text-blue-600" title="تعديل">✏️</Button>
+                          )}
+                          {expense.status !== 'posted' && (
+                            <Button variant="ghost" size="sm" onClick={() => handleDeleteExpense(expense.id)} className="text-red-600" title="حذف">🗑️</Button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                  {filteredExpenses.length === 0 && (
+                    <tr><td colSpan="9" className="p-8 text-center text-gray-500">لا توجد مصروفات داخلية</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </>
         )}
 
-        {/* Expenses Table */}
-        <div className="overflow-x-auto">
-          <table className="w-full border rounded-lg">
-            <thead className="bg-gray-100">
-              <tr>
-                <th className="p-3 text-right">الرقم</th>
-                <th className="p-3 text-right">التاريخ</th>
-                <th className="p-3 text-right">النوع</th>
-                <th className="p-3 text-right">الوصف</th>
-                <th className="p-3 text-right">المبلغ</th>
-                <th className="p-3 text-right">طريقة الدفع</th>
-                <th className="p-3 text-right">الحالة</th>
-                <th className="p-3 text-right">المرفق</th>
-                <th className="p-3 text-center">إجراءات</th>
-              </tr>
-            </thead>
-            <tbody>
-              {internalExpenses.map(expense => (
-                <tr key={expense.id} className="border-t hover:bg-gray-50">
-                  <td className="p-3 font-mono text-sm">{expense.expense_number}</td>
-                  <td className="p-3">{expense.expense_date}</td>
-                  <td className="p-3">
-                    <span className="bg-blue-100 text-blue-800 px-2 py-1 rounded text-sm">
-                      {EXPENSE_TYPE_LABELS[expense.expense_type] || expense.expense_type}
-                    </span>
-                  </td>
-                  <td className="p-3 max-w-xs truncate" title={expense.description}>
-                    {expense.description}
-                    {expense.executor_name && <span className="text-gray-400 text-sm block">بواسطة: {expense.executor_name}</span>}
-                  </td>
-                  <td className="p-3 font-bold">{expense.amount?.toLocaleString()} ر.س</td>
-                  <td className="p-3 text-sm">
-                    {expense.payment_method === 'cash' ? 'نقدي' : expense.payment_method === 'card' ? 'بطاقة' : expense.payment_method}
-                  </td>
-                  <td className="p-3">
-                    <span className={`px-2 py-1 rounded text-xs ${EXPENSE_STATUS_LABELS[expense.status]?.color || 'bg-gray-100'}`}>
-                      {EXPENSE_STATUS_LABELS[expense.status]?.label || expense.status}
-                    </span>
-                  </td>
-                  <td className="p-3 text-center">
-                    {expense.attachment_url ? (
-                      <a 
-                        href={expense.attachment_url} 
-                        target="_blank" 
-                        rel="noopener noreferrer"
-                        className="text-blue-600 hover:underline"
-                      >
-                        📎 عرض
-                      </a>
-                    ) : (
-                      <span className="text-gray-400">-</span>
-                    )}
-                  </td>
-                  <td className="p-3 text-center">
-                    <div className="flex gap-1 justify-center flex-wrap">
-                      {expense.status === 'pending' && (
-                        <>
-                          <Button 
-                            variant="ghost" 
-                            size="sm" 
-                            onClick={() => handleUpdateExpenseStatus(expense.id, 'approved')}
-                            className="text-green-600 hover:bg-green-50"
-                            title="اعتماد"
-                          >
-                            ✓
-                          </Button>
-                          <Button 
-                            variant="ghost" 
-                            size="sm" 
-                            onClick={() => handleUpdateExpenseStatus(expense.id, 'rejected')}
-                            className="text-red-600 hover:bg-red-50"
-                            title="رفض"
-                          >
-                            ✗
-                          </Button>
-                        </>
-                      )}
-                      {(expense.status === 'pending' || expense.status === 'approved') && (
-                        <Button 
-                          variant="ghost" 
-                          size="sm" 
-                          onClick={() => openEditExpenseDialog(expense)}
-                          className="text-blue-600"
-                          title="تعديل"
-                        >
-                          ✏️
-                        </Button>
-                      )}
-                      {expense.status !== 'posted' && (
-                        <Button 
-                          variant="ghost" 
-                          size="sm" 
-                          onClick={() => handleDeleteExpense(expense.id)}
-                          className="text-red-600"
-                          title="حذف"
-                        >
-                          🗑️
-                        </Button>
-                      )}
-                    </div>
-                  </td>
-                </tr>
-              ))}
-              {internalExpenses.length === 0 && (
+        {/* ── PAYMENTS sub-view ── */}
+        {expensesSubView === 'payments' && (
+          <div className="overflow-x-auto">
+            <table className="w-full border rounded-lg">
+              <thead className="bg-gray-100">
                 <tr>
-                  <td colSpan="9" className="p-8 text-center text-gray-500">
-                    لا توجد مصروفات داخلية
-                  </td>
+                  <th className="p-3 text-right">الرقم</th>
+                  <th className="p-3 text-right">التاريخ</th>
+                  <th className="p-3 text-right">المبلغ</th>
+                  <th className="p-3 text-right">طريقة الدفع</th>
+                  <th className="p-3 text-right">البيان</th>
+                  <th className="p-3 text-right">المرجع</th>
+                  <th className="p-3 text-center">إجراءات</th>
                 </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {expensePayments.map(pm => (
+                  <tr key={pm.id} className="border-t hover:bg-gray-50">
+                    <td className="p-3 font-mono text-sm">{pm.payment_number}</td>
+                    <td className="p-3">{pm.payment_date}</td>
+                    <td className="p-3 font-bold text-green-700">{parseFloat(pm.amount || 0).toLocaleString('ar-SA', { minimumFractionDigits: 2 })} ر.س</td>
+                    <td className="p-3">
+                      <span className="bg-blue-100 text-blue-800 px-2 py-1 rounded text-sm">
+                        {pm.payment_method_ar || pmMethodLabel[pm.payment_method] || pm.payment_method}
+                      </span>
+                    </td>
+                    <td className="p-3 max-w-xs truncate" title={pm.description}>{pm.description || '-'}</td>
+                    <td className="p-3 text-sm text-gray-500">{pm.reference || '-'}</td>
+                    <td className="p-3 text-center">
+                      <div className="flex gap-1 justify-center">
+                        <Button variant="ghost" size="sm" onClick={() => openEditPaymentDialog(pm)} className="text-blue-600" title="تعديل">✏️</Button>
+                        <Button variant="ghost" size="sm" onClick={() => handleDeleteExpPayment(pm.id)} className="text-red-600" title="حذف">🗑️</Button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+                {expensePayments.length === 0 && (
+                  <tr><td colSpan="7" className="p-8 text-center text-gray-500">لا توجد مدفوعات مسجلة</td></tr>
+                )}
+                {expensePayments.length > 0 && (
+                  <tr className="bg-green-50 font-bold border-t-2 border-green-300">
+                    <td colSpan="2" className="p-3 text-right text-green-800">الإجمالي</td>
+                    <td className="p-3 text-green-700">{totalPayments.toLocaleString('ar-SA', { minimumFractionDigits: 2 })} ر.س</td>
+                    <td colSpan="4"></td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
     );
   };
@@ -3946,6 +4106,81 @@ export default function AccountingPage() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* ── Expense Payment Dialog ── */}
+      <Dialog open={showExpPaymentDialog} onOpenChange={setShowExpPaymentDialog}>
+        <DialogContent className="max-w-md" dir="rtl">
+          <DialogHeader>
+            <DialogTitle>{editingExpPayment ? 'تعديل الدفعة' : 'إضافة دفعة جديدة'}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 mt-2">
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="text-sm font-medium">تاريخ الدفعة *</label>
+                <Input
+                  type="date"
+                  value={expPaymentForm.payment_date}
+                  onChange={e => setExpPaymentForm(prev => ({ ...prev, payment_date: e.target.value }))}
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium">المبلغ (ر.س) *</label>
+                <Input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={expPaymentForm.amount}
+                  onChange={e => setExpPaymentForm(prev => ({ ...prev, amount: e.target.value }))}
+                  placeholder="0.00"
+                />
+              </div>
+            </div>
+            <div>
+              <label className="text-sm font-medium">طريقة الدفع</label>
+              <select
+                value={expPaymentForm.payment_method}
+                onChange={e => setExpPaymentForm(prev => ({ ...prev, payment_method: e.target.value }))}
+                className="w-full border rounded p-2"
+              >
+                <option value="cash">نقداً</option>
+                <option value="transfer">تحويل بنكي</option>
+                <option value="check">شيك</option>
+              </select>
+            </div>
+            <div>
+              <label className="text-sm font-medium">البيان</label>
+              <Input
+                value={expPaymentForm.description}
+                onChange={e => setExpPaymentForm(prev => ({ ...prev, description: e.target.value }))}
+                placeholder="وصف الدفعة..."
+              />
+            </div>
+            <div>
+              <label className="text-sm font-medium">رقم المرجع</label>
+              <Input
+                value={expPaymentForm.reference}
+                onChange={e => setExpPaymentForm(prev => ({ ...prev, reference: e.target.value }))}
+                placeholder="رقم الشيك / رقم التحويل..."
+              />
+            </div>
+            <div>
+              <label className="text-sm font-medium">ملاحظات</label>
+              <Input
+                value={expPaymentForm.notes}
+                onChange={e => setExpPaymentForm(prev => ({ ...prev, notes: e.target.value }))}
+                placeholder="ملاحظات إضافية..."
+              />
+            </div>
+            <div className="flex gap-2 justify-end pt-2">
+              <Button variant="outline" onClick={() => setShowExpPaymentDialog(false)}>إلغاء</Button>
+              <Button onClick={handleSaveExpPayment} className="bg-green-600 hover:bg-green-700">
+                {editingExpPayment ? 'تحديث الدفعة' : 'حفظ الدفعة'}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
     </Layout>
   );
 }

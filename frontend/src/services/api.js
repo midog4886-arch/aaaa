@@ -269,6 +269,19 @@ export const internalExpensesAPI = {
   delete: (id) => axios.delete(`${API}/internal-expenses/${id}`),
 };
 
+// Internal Expense Payments API (مدفوعات المصروفات الداخلية)
+export const internalExpensePaymentsAPI = {
+  getAll: (params = {}) => axios.get(`${API}/internal-expense-payments`, { params }),
+  getSummary: (params = {}) => axios.get(`${API}/internal-expense-payments/summary`, { params }),
+  create: (formData) => axios.post(`${API}/internal-expense-payments`, formData, {
+    headers: { 'Content-Type': 'multipart/form-data' }
+  }),
+  update: (id, formData) => axios.put(`${API}/internal-expense-payments/${id}`, formData, {
+    headers: { 'Content-Type': 'multipart/form-data' }
+  }),
+  delete: (id) => axios.delete(`${API}/internal-expense-payments/${id}`),
+};
+
 // Attendance API
 export const attendanceAPI = {
   getAll: (params = {}) => axios.get(`${API}/attendance`, { params }),

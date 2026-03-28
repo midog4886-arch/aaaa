@@ -5947,6 +5947,168 @@ async def get_expense_types():
     """Get list of expense types"""
     return EXPENSE_TYPES
 
+
+# ──────────────────────────────────────────────────────────────────────────
+# Internal Expense Payments  (مدفوعات المصروفات الداخلية)
+# ──────────────────────────────────────────────────────────────────────────
+
+PAYMENT_METHOD_LABELS = {"cash": "نقداً", "transfer": "تحويل بنكي", "check": "شيك"}
+
+@api_router.get("/internal-expense-payments/summary")
+async def get_expense_payments_summary(
+    branch_filter: Optional[str] = None,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    current_user: dict = Depends(get_current_user)
+):
+    """Summary of expense payments: total_amount, count, last_payment_date"""
+    query = {}
+    is_admin = current_user.get("is_admin", False)
+    if branch_filter and branch_filter != "all":
+        query["branch_id"] = branch_filter
+    elif not is_admin and current_user.get("branch_id"):
+        query["branch_id"] = current_user["branch_id"]
+    if start_date:
+        query.setdefault("payment_date", {})["$gte"] = start_date
+    if end_date:
+        query.setdefault("payment_date", {})["$lte"] = end_date
+
+    payments = await db.internal_expense_payments.find(query, {"_id": 0}).to_list(100000)
+    total = sum(p.get("amount", 0) for p in payments)
+    last = max((p.get("payment_date", "") for p in payments), default=None)
+    return {"total_amount": total, "count": len(payments), "last_payment_date": last}
+
+
+@api_router.get("/internal-expense-payments")
+async def list_expense_payments(
+    branch_filter: Optional[str] = None,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    current_user: dict = Depends(get_current_user)
+):
+    """List expense payments, newest payment_date first"""
+    query = {}
+    is_admin = current_user.get("is_admin", False)
+    if branch_filter and branch_filter != "all":
+        query["branch_id"] = branch_filter
+    elif not is_admin and current_user.get("branch_id"):
+        query["branch_id"] = current_user["branch_id"]
+    if start_date:
+        query.setdefault("payment_date", {})["$gte"] = start_date
+    if end_date:
+        query.setdefault("payment_date", {})["$lte"] = end_date
+
+    payments = await db.internal_expense_payments.find(query, {"_id": 0}).sort("payment_date", -1).to_list(10000)
+    return payments
+
+
+@api_router.post("/internal-expense-payments")
+async def create_expense_payment(
+    payment_date: str = Form(...),
+    amount: float = Form(...),
+    payment_method: str = Form("cash"),
+    description: str = Form(""),
+    reference: str = Form(""),
+    notes: str = Form(""),
+    current_user: dict = Depends(get_current_user)
+):
+    """Create a new expense payment (admin only)"""
+    if not current_user.get("is_admin", False):
+        raise HTTPException(status_code=403, detail="غير مصرح")
+    if amount <= 0:
+        raise HTTPException(status_code=400, detail="المبلغ يجب أن يكون أكبر من صفر")
+    if payment_method not in PAYMENT_METHOD_LABELS:
+        raise HTTPException(status_code=400, detail="طريقة دفع غير صحيحة")
+
+    year = datetime.now().year
+    branch_id = current_user.get("branch_id")
+    number_query = {"payment_number": {"$regex": f"^PAY-{year}-"}}
+    if branch_id:
+        number_query["branch_id"] = branch_id
+    last = await db.internal_expense_payments.find_one(number_query, sort=[("payment_number", -1)])
+    if last and last.get("payment_number"):
+        try:
+            seq = int(last["payment_number"].split("-")[-1]) + 1
+        except Exception:
+            seq = 1
+    else:
+        seq = 1
+    payment_number = f"PAY-{year}-{seq:03d}"
+
+    payment_data = {
+        "id": str(uuid.uuid4()),
+        "payment_number": payment_number,
+        "payment_date": payment_date,
+        "amount": amount,
+        "payment_method": payment_method,
+        "payment_method_ar": PAYMENT_METHOD_LABELS.get(payment_method, payment_method),
+        "description": description,
+        "reference": reference,
+        "notes": notes,
+        "branch_id": branch_id,
+        "created_by": current_user.get("username"),
+        "created_at": datetime.utcnow().isoformat(),
+    }
+    await db.internal_expense_payments.insert_one(payment_data)
+    payment_data.pop("_id", None)
+    return payment_data
+
+
+@api_router.put("/internal-expense-payments/{payment_id}")
+async def update_expense_payment(
+    payment_id: str,
+    payment_date: Optional[str] = Form(None),
+    amount: Optional[float] = Form(None),
+    payment_method: Optional[str] = Form(None),
+    description: Optional[str] = Form(None),
+    reference: Optional[str] = Form(None),
+    notes: Optional[str] = Form(None),
+    current_user: dict = Depends(get_current_user)
+):
+    """Update an expense payment (admin only)"""
+    if not current_user.get("is_admin", False):
+        raise HTTPException(status_code=403, detail="غير مصرح")
+    existing = await db.internal_expense_payments.find_one({"id": payment_id})
+    if not existing:
+        raise HTTPException(status_code=404, detail="الدفعة غير موجودة")
+
+    update_data = {}
+    if payment_date is not None:
+        update_data["payment_date"] = payment_date
+    if amount is not None:
+        if amount <= 0:
+            raise HTTPException(status_code=400, detail="المبلغ يجب أن يكون أكبر من صفر")
+        update_data["amount"] = amount
+    if payment_method is not None:
+        if payment_method not in PAYMENT_METHOD_LABELS:
+            raise HTTPException(status_code=400, detail="طريقة دفع غير صحيحة")
+        update_data["payment_method"] = payment_method
+        update_data["payment_method_ar"] = PAYMENT_METHOD_LABELS[payment_method]
+    if description is not None:
+        update_data["description"] = description
+    if reference is not None:
+        update_data["reference"] = reference
+    if notes is not None:
+        update_data["notes"] = notes
+
+    if update_data:
+        await db.internal_expense_payments.update_one({"id": payment_id}, {"$set": update_data})
+    updated = await db.internal_expense_payments.find_one({"id": payment_id}, {"_id": 0})
+    return updated
+
+
+@api_router.delete("/internal-expense-payments/{payment_id}")
+async def delete_expense_payment(payment_id: str, current_user: dict = Depends(get_current_user)):
+    """Delete an expense payment (admin only)"""
+    if not current_user.get("is_admin", False):
+        raise HTTPException(status_code=403, detail="غير مصرح")
+    existing = await db.internal_expense_payments.find_one({"id": payment_id})
+    if not existing:
+        raise HTTPException(status_code=404, detail="الدفعة غير موجودة")
+    await db.internal_expense_payments.delete_one({"id": payment_id})
+    return {"message": "تم حذف الدفعة"}
+
+
 @api_router.get("/export/internal-expenses")
 async def export_internal_expenses(
     status_filter: Optional[str] = None,
