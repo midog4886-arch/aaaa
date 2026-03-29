@@ -3050,7 +3050,19 @@ ${itemsList}
       customer_name: form.customer_name || '',
       customer_phone: form.customer_phone || ''
     });
-    setRegFormItems((form.items || []).map(item => ({ ...item, weeks: item.weeks ?? 4 })));
+    setRegFormItems((form.items || []).map(item => {
+      const sd = item.start_date || (item.period || '').split(' - ')[0] || '';
+      const ed = item.end_date || (item.period || '').split(' - ')[1] || '';
+      const derivedWeeks = (() => {
+        if (item.weeks != null) return item.weeks;
+        if (sd && ed) {
+          const diff = Math.round((new Date(ed) - new Date(sd)) / (7 * 24 * 60 * 60 * 1000));
+          return diff > 0 ? diff : 4;
+        }
+        return 4;
+      })();
+      return { ...item, weeks: derivedWeeks };
+    }));
     setRegFormDiscount(form.discount || 0);
     setRegFormNotes(form.notes || '');
     setRegFormPaymentMethod(form.payment_method || 'cash');
@@ -5296,8 +5308,8 @@ ${itemsList}
                                       : [...currentDays, day];
                                     const updated = [...regFormItems];
                                     updated[idx].training_days = newDays;
-                                    // Auto recalculate end_date when days change
-                                    if (updated[idx].start_date) {
+                                    // Auto recalculate end_date when days change (only for new forms)
+                                    if (!editRegFormId && updated[idx].start_date) {
                                       const w = updated[idx].weeks ?? 4;
                                       updated[idx].end_date = calcEndDate(updated[idx].start_date, w, newDays);
                                       updated[idx].period = `${updated[idx].start_date} - ${updated[idx].end_date}`;
