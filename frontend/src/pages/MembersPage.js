@@ -261,8 +261,15 @@ export const MembersPage = () => {
     }
   };
 
+  const DELETE_MEMBER_PASSWORD = '242456';
+
   const handleDelete = async (id) => {
-    if (!window.confirm(language === 'ar' ? 'هل أنت متأكد من الحذف؟' : 'Are you sure you want to delete?')) {
+    const password = window.prompt(language === 'ar' ? 'أدخل كلمة المرور لحذف العضو:' : 'Enter password to delete member:');
+    if (password !== DELETE_MEMBER_PASSWORD) {
+      toast.error(language === 'ar' ? 'كلمة المرور غير صحيحة' : 'Incorrect password');
+      return;
+    }
+    if (!window.confirm(language === 'ar' ? 'هل أنت متأكد من الحذف نهائياً؟' : 'Are you sure you want to permanently delete?')) {
       return;
     }
     
