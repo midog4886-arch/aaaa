@@ -712,7 +712,15 @@ export const InvoicesPage = () => {
       training_time_hour: item.training_time_hour || '',
       level_id: item.level_id || '',
       level_name: item.level_name || '',
-      weeks: item.weeks ?? 4
+      weeks: item.weeks ?? (() => {
+        const sd = item.start_date || (item.period || '').split(' - ')[0] || '';
+        const ed = item.end_date || (item.period || '').split(' - ')[1] || '';
+        if (sd && ed) {
+          const diff = Math.round((new Date(ed) - new Date(sd)) / (7 * 24 * 60 * 60 * 1000));
+          return diff > 0 ? diff : 4;
+        }
+        return 4;
+      })()
     })));
     setDiscount(invoice.discount || 0);
     setNotes(invoice.notes || '');
@@ -4051,8 +4059,8 @@ ${itemsList}
                                         : [...currentDays, day];
                                       const updated = [...invoiceItems];
                                       updated[idx].training_days = newDays;
-                                      // Auto recalculate end_date when days change
-                                      if (updated[idx].start_date) {
+                                      // Auto recalculate end_date when days change (only for new invoices)
+                                      if (!isEditMode && updated[idx].start_date) {
                                         const w = updated[idx].weeks ?? 4;
                                         updated[idx].end_date = calcEndDate(updated[idx].start_date, w, newDays);
                                         updated[idx].period = `${updated[idx].start_date} - ${updated[idx].end_date}`;
