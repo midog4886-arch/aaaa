@@ -33,6 +33,9 @@ class InvoiceItem(BaseModel):
     level_name: Optional[str] = ""
     start_date: Optional[str] = ""
     end_date: Optional[str] = ""
+    training_days: Optional[List[str]] = []
+    training_time: Optional[str] = ""
+    training_time_hour: Optional[str] = ""
     is_product: Optional[bool] = False
     product_id: Optional[str] = None
     quantity: Optional[int] = 1
