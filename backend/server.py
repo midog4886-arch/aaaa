@@ -488,6 +488,9 @@ class InvoiceItem(BaseModel):
     level_name: Optional[str] = ""
     start_date: Optional[str] = ""  # تاريخ البداية
     end_date: Optional[str] = ""  # تاريخ النهاية
+    training_days: Optional[List[str]] = []
+    training_time: Optional[str] = ""
+    training_time_hour: Optional[str] = ""
     # Product fields for store items
     is_product: Optional[bool] = False
     product_id: Optional[str] = None
@@ -636,6 +639,9 @@ class RegistrationFormItem(BaseModel):
     schedule: Optional[str] = ""
     level_id: Optional[str] = ""
     level_name: Optional[str] = ""
+    training_days: Optional[List[str]] = []
+    training_time: Optional[str] = ""
+    training_time_hour: Optional[str] = ""
     is_product: bool = False
     quantity: int = 1
 
