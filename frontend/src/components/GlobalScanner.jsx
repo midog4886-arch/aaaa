@@ -99,7 +99,7 @@ const GlobalScanner = ({ enabled = true, language = 'ar' }) => {
     return null;
   };
 
-  // Fetch member data and show dialog - NO auto check-in
+  // Fetch member data and show dialog; auto check-in when member has exactly one active unrecorded activity
   const handleScan = useCallback(async (scannedData) => {
     if (!scannedData) return;
     
@@ -195,7 +195,6 @@ const GlobalScanner = ({ enabled = true, language = 'ar' }) => {
           setActivityStates({ [act.activity_id]: { status: 'error', message: `❌ ${errorMsg}` } });
         }
       } else {
-        playSound('scan');
         setLoading(false);
       }
       
