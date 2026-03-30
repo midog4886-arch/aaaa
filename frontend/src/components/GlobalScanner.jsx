@@ -163,8 +163,40 @@ const GlobalScanner = ({ enabled = true, language = 'ar' }) => {
       
       if (activeActivities.length === 0) {
         playSound('error');
+        setLoading(false);
+      } else if (activeActivities.length === 1 && !activeActivities[0].recorded_today) {
+        // Auto check-in when member has exactly one unrecorded active activity
+        const act = activeActivities[0];
+        setActivityStates({ [act.activity_id]: { status: 'loading' } });
+        setLoading(false);
+        try {
+          const res = await attendanceAPI.qrCheckin(
+            mData.member_code || mData.id,
+            act.activity_id,
+            false
+          );
+          if (res.data.status === 'already_checked_in') {
+            playSound('error');
+            setActivityStates({ [act.activity_id]: { status: 'recorded', message: t('مسجل مسبقاً اليوم ✓', 'Already checked in today ✓') } });
+            setMemberData(prev => ({ ...prev, activeActivities: prev.activeActivities.map(a => a.activity_id === act.activity_id ? { ...a, recorded_today: true } : a) }));
+          } else if (res.data.status === 'wrong_day') {
+            playSound('error');
+            setActivityStates({ [act.activity_id]: { status: 'wrong_day', scheduleDays: res.data.schedule_days || [], today: res.data.today, message: res.data.message || t('هذا ليس موعدك اليوم!', 'This is not your scheduled day!') } });
+          } else {
+            const quotaWarn = res.data.session_quota_warning;
+            playSound(quotaWarn ? 'error' : 'success');
+            setActivityStates({ [act.activity_id]: { status: 'recorded', sessionQuotaWarning: quotaWarn || null, message: t('✅ تم تسجيل الحضور', '✅ Checked in') } });
+            setMemberData(prev => ({ ...prev, activeActivities: prev.activeActivities.map(a => a.activity_id === act.activity_id ? { ...a, recorded_today: true } : a) }));
+          }
+        } catch (checkinError) {
+          playSound('error');
+          const rawErr = checkinError.response?.data?.detail;
+          const errorMsg = typeof rawErr === 'string' ? rawErr : (rawErr?.msg || rawErr?.message || t('خطأ في التسجيل', 'Check-in error'));
+          setActivityStates({ [act.activity_id]: { status: 'error', message: `❌ ${errorMsg}` } });
+        }
       } else {
         playSound('scan');
+        setLoading(false);
       }
       
     } catch (error) {
@@ -174,10 +206,9 @@ const GlobalScanner = ({ enabled = true, language = 'ar' }) => {
         message: t('⚠️ رقم العضوية غير موجود', '⚠️ Member ID not found'),
         memberCode
       });
-    } finally {
       setLoading(false);
     }
-  }, [playSound, t]);
+  }, [playSound, t, attendanceAPI]);
 
   // Close dialog handler
   const handleCloseDialog = useCallback(() => {
