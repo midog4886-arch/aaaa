@@ -335,10 +335,15 @@ export default function WhatsAppPage() {
         const name = m.name_ar || m.name || '';
         const activeActs = m.activities?.filter(a => a.status === 'active').map(a => a.activity_name || a.name || '').filter(Boolean);
         const activity = activeActs?.join('، ') || '';
+        const endDateRaw = getMemberEndDate(m);
+        const endDateFmt = endDateRaw
+          ? new Date(endDateRaw).toLocaleDateString('ar-SA', { day: '2-digit', month: '2-digit', year: 'numeric' })
+          : '';
         msg = waSettings.message_template
           .replace('{name}', name)
           .replace('{activity}', activity)
-          .replace('{days}', waSettings.days_before);
+          .replace('{days}', waSettings.days_before)
+          .replace('{end_date}', endDateFmt);
       } else {
         msg = connTabCustomMsg;
       }
@@ -630,7 +635,7 @@ export default function WhatsAppPage() {
 
               <div>
                 <label className="block text-sm font-medium mb-1">{t('نص الرسالة', 'Message Template')}</label>
-                <p className="text-xs text-muted-foreground mb-2">{t('المتغيرات: {name} الاسم، {activity} النشاط، {days} الأيام', 'Variables: {name}, {activity}, {days}')}</p>
+                <p className="text-xs text-muted-foreground mb-2">{t('المتغيرات: {name} الاسم، {activity} النشاط، {days} الأيام، {end_date} تاريخ الانتهاء', 'Variables: {name}, {activity}, {days} days, {end_date} expiry date')}</p>
                 <textarea value={waSettings.message_template}
                   onChange={e => setWaSettings(s => ({ ...s, message_template: e.target.value }))}
                   rows={5} dir="auto"
