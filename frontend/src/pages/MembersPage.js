@@ -71,6 +71,8 @@ export const MembersPage = () => {
   const [memberProductPurchases, setMemberProductPurchases] = useState([]);
   const [memberAttendance, setMemberAttendance] = useState(null);
   const [memberSessionQuota, setMemberSessionQuota] = useState([]);
+  const [expandedQuotaIdx, setExpandedQuotaIdx] = useState(new Set());
+  const [registeringDate, setRegisteringDate] = useState(null);
   const [viewTab, setViewTab] = useState('info'); // info, activities, invoices, history, attendance
   const [isFreezeDialogOpen, setIsFreezeDialogOpen] = useState(false);
   const [freezeForm, setFreezeForm] = useState({ start_date: '', end_date: '', reason: 'personal' });
@@ -524,9 +526,66 @@ export const MembersPage = () => {
     loadLevels();
   };
 
+  const ARABIC_DAY_TO_JS = {
+    'الأحد': 0, 'الاحد': 0,
+    'الإثنين': 1, 'الاثنين': 1,
+    'الثلاثاء': 2,
+    'الأربعاء': 3, 'الاربعاء': 3,
+    'الخميس': 4,
+    'الجمعة': 5,
+    'السبت': 6
+  };
+
+  const generateScheduleDates = (start_date, end_date, schedule_days_arabic) => {
+    if (!start_date || !end_date || !schedule_days_arabic?.length) return [];
+    const targetDays = schedule_days_arabic
+      .map(d => ARABIC_DAY_TO_JS[d])
+      .filter(n => n !== undefined);
+    if (!targetDays.length) return [];
+    const dates = [];
+    const start = new Date(start_date + 'T00:00:00');
+    const end = new Date(end_date + 'T00:00:00');
+    const cur = new Date(start);
+    while (cur <= end) {
+      if (targetDays.includes(cur.getDay())) {
+        dates.push(cur.toISOString().slice(0, 10));
+      }
+      cur.setDate(cur.getDate() + 1);
+    }
+    return dates;
+  };
+
+  const refreshMemberAttendance = async (memberId) => {
+    try {
+      const [attendanceRes, quotaRes] = await Promise.all([
+        attendanceAPI.getMemberReport(memberId),
+        attendanceAPI.getSessionQuota(memberId)
+      ]);
+      setMemberAttendance(attendanceRes.data);
+      setMemberSessionQuota(Array.isArray(quotaRes.data) ? quotaRes.data : []);
+    } catch (e) {
+      console.error('Failed to refresh attendance:', e);
+    }
+  };
+
+  const handleRegisterDateAttendance = async (memberId, activityId, date) => {
+    const key = `${activityId}_${date}`;
+    setRegisteringDate(key);
+    try {
+      await attendanceAPI.record({ member_id: memberId, activity_id: activityId, date, notes: 'تسجيل يدوي' });
+      await refreshMemberAttendance(memberId);
+    } catch (e) {
+      const msg = e?.response?.data?.detail || (language === 'ar' ? 'فشل تسجيل الحضور' : 'Failed to record attendance');
+      alert(msg);
+    } finally {
+      setRegisteringDate(null);
+    }
+  };
+
   const openViewDialog = async (member) => {
     setSelectedMember(member);
     setViewTab('info');
+    setExpandedQuotaIdx(new Set());
     setIsViewDialogOpen(true);
     setMemberAttendance(null);
     setMemberProductPurchases([]);
@@ -2121,24 +2180,109 @@ export const MembersPage = () => {
                           {language === 'ar' ? 'حصص الاشتراك' : 'Session Quota'}
                         </h4>
                         <div className="space-y-2">
-                          {memberSessionQuota.map((q, idx) => (
-                            <div key={idx} className={`p-3 rounded-lg border ${q.exceeded ? 'bg-red-50 border-red-300' : q.remaining <= 2 ? 'bg-amber-50 border-amber-300' : 'bg-green-50 border-green-300'}`}>
-                              <div className="flex items-center justify-between mb-1">
-                                <span className="font-medium text-sm">{q.activity_name}</span>
-                                <Badge className={q.exceeded ? 'bg-red-100 text-red-700' : q.remaining <= 2 ? 'bg-amber-100 text-amber-700' : 'bg-green-100 text-green-700'}>
-                                  {q.exceeded ? (language === 'ar' ? 'استنفدت' : 'Exceeded') : `${q.remaining} ${language === 'ar' ? 'متبقي' : 'left'}`}
-                                </Badge>
+                          {memberSessionQuota.map((q, idx) => {
+                            const isExpanded = expandedQuotaIdx.has(idx);
+                            const scheduleDates = generateScheduleDates(q.start_date, q.end_date, q.schedule_days);
+                            const attendedDates = new Set(
+                              (memberAttendance?.records || [])
+                                .filter(r => r.activity_id === q.activity_id)
+                                .map(r => r.date)
+                            );
+                            const todayStr = new Date().toISOString().slice(0, 10);
+                            return (
+                              <div key={idx} className={`rounded-lg border ${q.exceeded ? 'bg-red-50 border-red-300' : q.remaining <= 2 ? 'bg-amber-50 border-amber-300' : 'bg-green-50 border-green-300'}`}>
+                                <div className="p-3">
+                                  <div className="flex items-center justify-between mb-1">
+                                    <span className="font-medium text-sm">{q.activity_name}</span>
+                                    <Badge className={q.exceeded ? 'bg-red-100 text-red-700' : q.remaining <= 2 ? 'bg-amber-100 text-amber-700' : 'bg-green-100 text-green-700'}>
+                                      {q.exceeded ? (language === 'ar' ? 'استنفدت' : 'Exceeded') : `${q.remaining} ${language === 'ar' ? 'متبقي' : 'left'}`}
+                                    </Badge>
+                                  </div>
+                                  <div className="flex items-center gap-3 text-xs text-gray-600">
+                                    <span>{language === 'ar' ? `${q.days_per_week} أيام/أسبوع` : `${q.days_per_week} days/week`}</span>
+                                    <span>{language === 'ar' ? `${q.used_sessions}/${q.total_allowed} حصة` : `${q.used_sessions}/${q.total_allowed} sessions`}</span>
+                                    <span>{q.schedule_days?.join(' - ')}</span>
+                                  </div>
+                                  <div className="mt-2 w-full bg-gray-200 rounded-full h-2">
+                                    <div className={`h-2 rounded-full ${q.exceeded ? 'bg-red-500' : q.remaining <= 2 ? 'bg-amber-500' : 'bg-green-500'}`} style={{ width: `${Math.min(100, (q.used_sessions / q.total_allowed) * 100)}%` }}></div>
+                                  </div>
+                                  {scheduleDates.length > 0 && (
+                                    <button
+                                      onClick={() => setExpandedQuotaIdx(prev => {
+                                        const next = new Set(prev);
+                                        if (next.has(idx)) next.delete(idx); else next.add(idx);
+                                        return next;
+                                      })}
+                                      className="mt-2 text-xs text-blue-600 hover:text-blue-800 flex items-center gap-1 font-medium"
+                                    >
+                                      <Calendar className="w-3 h-3" />
+                                      {isExpanded
+                                        ? (language === 'ar' ? 'إخفاء التواريخ' : 'Hide Dates')
+                                        : (language === 'ar' ? `عرض التواريخ (${scheduleDates.length})` : `Show Dates (${scheduleDates.length})`)}
+                                    </button>
+                                  )}
+                                </div>
+
+                                {isExpanded && (
+                                  <div className="border-t px-3 pb-3 pt-2">
+                                    <p className="text-xs text-gray-500 mb-2">
+                                      {language === 'ar'
+                                        ? 'اضغط على تاريخ غير مسجّل لتسجيل الحضور'
+                                        : 'Click an unregistered date to record attendance'}
+                                    </p>
+                                    <div className="flex flex-wrap gap-1.5">
+                                      {scheduleDates.map(date => {
+                                        const attended = attendedDates.has(date);
+                                        const isFuture = date > todayStr;
+                                        const isToday = date === todayStr;
+                                        const key = `${q.activity_id}_${date}`;
+                                        const isRegistering = registeringDate === key;
+                                        return (
+                                          <button
+                                            key={date}
+                                            disabled={attended || isRegistering}
+                                            onClick={() => {
+                                              if (!attended && !isRegistering) {
+                                                if (window.confirm(language === 'ar'
+                                                  ? `تسجيل حضور بتاريخ ${date}؟`
+                                                  : `Record attendance for ${date}?`)) {
+                                                  handleRegisterDateAttendance(selectedMember.id, q.activity_id, date);
+                                                }
+                                              }
+                                            }}
+                                            title={attended
+                                              ? (language === 'ar' ? 'تم التسجيل' : 'Attended')
+                                              : isFuture
+                                                ? (language === 'ar' ? 'موعد مستقبلي' : 'Future date')
+                                                : (language === 'ar' ? 'اضغط للتسجيل' : 'Click to register')}
+                                            className={`text-xs px-2 py-1 rounded-full border font-medium transition-all ${
+                                              attended
+                                                ? 'bg-green-100 border-green-400 text-green-700 cursor-default'
+                                                : isRegistering
+                                                  ? 'bg-blue-100 border-blue-300 text-blue-500 cursor-wait'
+                                                  : isFuture
+                                                    ? 'bg-gray-100 border-gray-300 text-gray-400 cursor-pointer hover:bg-gray-200'
+                                                    : isToday
+                                                      ? 'bg-blue-500 border-blue-600 text-white cursor-pointer hover:bg-blue-600 shadow-sm'
+                                                      : 'bg-white border-blue-300 text-blue-700 cursor-pointer hover:bg-blue-50'
+                                            }`}
+                                          >
+                                            {isRegistering ? '...' : attended ? `✓ ${date}` : date}
+                                          </button>
+                                        );
+                                      })}
+                                    </div>
+                                    <div className="mt-2 flex items-center gap-3 text-xs text-gray-500">
+                                      <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-green-400 inline-block"></span>{language === 'ar' ? 'حضر' : 'Attended'}</span>
+                                      <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-blue-500 inline-block"></span>{language === 'ar' ? 'اليوم' : 'Today'}</span>
+                                      <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-white border border-blue-300 inline-block"></span>{language === 'ar' ? 'غائب (اضغط للتسجيل)' : 'Missed (click to register)'}</span>
+                                      <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-gray-200 inline-block"></span>{language === 'ar' ? 'مستقبلي' : 'Future'}</span>
+                                    </div>
+                                  </div>
+                                )}
                               </div>
-                              <div className="flex items-center gap-3 text-xs text-gray-600">
-                                <span>{language === 'ar' ? `${q.days_per_week} أيام/أسبوع` : `${q.days_per_week} days/week`}</span>
-                                <span>{language === 'ar' ? `${q.used_sessions}/${q.total_allowed} حصة` : `${q.used_sessions}/${q.total_allowed} sessions`}</span>
-                                <span>{q.schedule_days?.join(' - ')}</span>
-                              </div>
-                              <div className="mt-2 w-full bg-gray-200 rounded-full h-2">
-                                <div className={`h-2 rounded-full ${q.exceeded ? 'bg-red-500' : q.remaining <= 2 ? 'bg-amber-500' : 'bg-green-500'}`} style={{ width: `${Math.min(100, (q.used_sessions / q.total_allowed) * 100)}%` }}></div>
-                              </div>
-                            </div>
-                          ))}
+                            );
+                          })}
                         </div>
                       </div>
                     )}
