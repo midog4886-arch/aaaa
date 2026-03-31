@@ -10,6 +10,13 @@ from .common import get_current_user
 
 logger = logging.getLogger("whatsapp")
 
+
+def _require_whatsapp_access(current_user: dict):
+    if current_user.get("is_admin", False):
+        return
+    if "whatsapp" not in (current_user.get("permissions") or []):
+        raise HTTPException(status_code=403, detail="WhatsApp access required")
+
 router = APIRouter(prefix="/whatsapp", tags=["whatsapp"])
 
 WA_SERVICE_URL = "http://localhost:3001"
@@ -157,11 +164,13 @@ def start_scheduler():
 
 @router.get("/status")
 async def get_status(current_user: dict = Depends(get_current_user)):
+    _require_whatsapp_access(current_user)
     return await _get_wa_status()
 
 
 @router.get("/settings")
 async def get_settings_endpoint(current_user: dict = Depends(get_current_user)):
+    _require_whatsapp_access(current_user)
     return await _get_settings()
 
 
@@ -174,6 +183,7 @@ class WhatsAppSettings(BaseModel):
 
 @router.put("/settings")
 async def update_settings(data: WhatsAppSettings, current_user: dict = Depends(get_current_user)):
+    _require_whatsapp_access(current_user)
     if _db is None:
         raise HTTPException(status_code=503, detail="Database not available")
     coll = _db["whatsapp_settings"]
@@ -191,13 +201,14 @@ class SendTestRequest(BaseModel):
 
 @router.post("/test")
 async def send_test(data: SendTestRequest, current_user: dict = Depends(get_current_user)):
+    _require_whatsapp_access(current_user)
     now_riyadh = datetime.now(RIYADH_TZ)
     message = data.message or f"رسالة تجريبية من نظام إدارة أكاديمية الأبطال 🏆\nالوقت: {now_riyadh.strftime('%Y-%m-%d %H:%M')}"
     wa_phone = _format_phone(data.phone)
     if not wa_phone:
         raise HTTPException(status_code=400, detail="Invalid phone number")
-    status = await _get_wa_status()
-    if not status.get("connected"):
+    wa_status = await _get_wa_status()
+    if not wa_status.get("connected"):
         raise HTTPException(status_code=400, detail="WhatsApp not connected. Please scan the QR code first.")
     success = await _send_wa_message(wa_phone, message)
     if success:
@@ -207,8 +218,9 @@ async def send_test(data: SendTestRequest, current_user: dict = Depends(get_curr
 
 @router.post("/send-now")
 async def send_reminders_now(current_user: dict = Depends(get_current_user)):
-    status = await _get_wa_status()
-    if not status.get("connected"):
+    _require_whatsapp_access(current_user)
+    wa_status = await _get_wa_status()
+    if not wa_status.get("connected"):
         raise HTTPException(status_code=400, detail="WhatsApp not connected")
     asyncio.ensure_future(_run_daily_reminders())
     return {"success": True, "message": "Reminders are being sent in the background"}
@@ -216,6 +228,7 @@ async def send_reminders_now(current_user: dict = Depends(get_current_user)):
 
 @router.post("/disconnect")
 async def disconnect(current_user: dict = Depends(get_current_user)):
+    _require_whatsapp_access(current_user)
     try:
         async with httpx.AsyncClient(timeout=5.0) as client:
             r = await client.post(f"{WA_SERVICE_URL}/disconnect")

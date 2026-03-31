@@ -39,18 +39,33 @@ def _start_whatsapp_service():
                 return s.connect_ex(("127.0.0.1", port)) == 0
         wa_service_dir = os.path.join(backend_dir, "whatsapp_service")
         wa_service_path = os.path.join(wa_service_dir, "index.js")
-        if os.path.exists(wa_service_path) and shutil.which("node") and not _port_in_use(3001):
-            wa_log = open(os.path.join(wa_service_dir, "service.log"), "a")
-            subprocess.Popen(
-                ["node", wa_service_path],
-                stdout=wa_log,
-                stderr=wa_log,
+        node_modules = os.path.join(wa_service_dir, "node_modules")
+        if not os.path.exists(wa_service_path) or not shutil.which("node"):
+            return
+        # Ensure npm dependencies are installed
+        if not os.path.isdir(node_modules) and shutil.which("npm"):
+            logger.info("Installing WhatsApp service npm dependencies...")
+            result = subprocess.run(
+                ["npm", "install", "--omit=dev"],
                 cwd=wa_service_dir,
-                start_new_session=True,
+                capture_output=True,
+                timeout=120,
             )
-            logger.info("WhatsApp Node.js service started")
-        elif _port_in_use(3001):
+            if result.returncode != 0:
+                logger.warning(f"npm install failed: {result.stderr.decode()[:200]}")
+                return
+        if _port_in_use(3001):
             logger.info("WhatsApp service already running on port 3001")
+            return
+        wa_log = open(os.path.join(wa_service_dir, "service.log"), "a")
+        subprocess.Popen(
+            ["node", wa_service_path],
+            stdout=wa_log,
+            stderr=wa_log,
+            cwd=wa_service_dir,
+            start_new_session=True,
+        )
+        logger.info("WhatsApp Node.js service started")
     except Exception as e:
         logger.warning(f"Could not start WhatsApp service: {e}")
 

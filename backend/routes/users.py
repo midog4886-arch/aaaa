@@ -34,7 +34,7 @@ class UserUpdateAdmin(BaseModel):
 ALL_PERMISSIONS = [
     'dashboard', 'members', 'invoices', 'activities', 'levels', 'schedule', 'attendance',
     'coach-ratings', 'advertisements', 'daily-videos', 'loyalty',
-    'store', 'accounting', 'reports', 'messages', 'branches', 'users', 'settings'
+    'store', 'accounting', 'reports', 'messages', 'branches', 'users', 'settings', 'whatsapp'
 ]
 
 # ============ ROUTES ============
