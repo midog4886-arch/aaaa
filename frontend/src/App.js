@@ -408,7 +408,7 @@ function AppRoutes() {
       <Route 
         path="/admin/whatsapp" 
         element={
-          <ProtectedRoute>
+          <ProtectedRoute permission="whatsapp">
             <WhatsAppPage />
           </ProtectedRoute>
         } 

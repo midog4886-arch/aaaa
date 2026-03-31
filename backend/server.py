@@ -7432,24 +7432,6 @@ async def create_default_admin():
         except Exception as e:
             print(f"Payment vouchers index setup error: {str(e)}")
     asyncio.create_task(_init())
-    # Start WhatsApp Node.js microservice as subprocess
-    try:
-        import subprocess, shutil
-        wa_service_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "whatsapp_service")
-        wa_service_path = os.path.join(wa_service_dir, "index.js")
-        wa_log_path = os.path.join(wa_service_dir, "service.log")
-        if os.path.exists(wa_service_path) and shutil.which("node"):
-            wa_log = open(wa_log_path, "a")
-            subprocess.Popen(
-                ["node", wa_service_path],
-                stdout=wa_log,
-                stderr=wa_log,
-                cwd=wa_service_dir,
-                start_new_session=True,
-            )
-            logging.getLogger("whatsapp").info("WhatsApp service subprocess started")
-    except Exception as e:
-        logging.getLogger("whatsapp").warning(f"Could not start WhatsApp service: {e}")
     # Start WhatsApp scheduler
     start_whatsapp_scheduler()
 

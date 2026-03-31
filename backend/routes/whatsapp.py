@@ -1,16 +1,19 @@
 import asyncio
 import logging
 from datetime import datetime, timedelta, date
+from zoneinfo import ZoneInfo
 from typing import Optional
 import httpx
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
+from .common import get_current_user
 
 logger = logging.getLogger("whatsapp")
 
 router = APIRouter(prefix="/whatsapp", tags=["whatsapp"])
 
 WA_SERVICE_URL = "http://localhost:3001"
+RIYADH_TZ = ZoneInfo("Asia/Riyadh")
 
 DEFAULT_SETTINGS = {
     "enabled": False,
@@ -78,7 +81,7 @@ async def _run_daily_reminders():
 
     days_before = int(settings.get("days_before", 3))
     template = settings.get("message_template", DEFAULT_SETTINGS["message_template"])
-    today = date.today()
+    today = datetime.now(RIYADH_TZ).date()
     target_date = today + timedelta(days=days_before)
     target_str = target_date.strftime("%Y-%m-%d")
 
@@ -113,17 +116,17 @@ async def _run_daily_reminders():
 async def _scheduler_loop():
     global _scheduler_started
     _scheduler_started = True
-    logger.info("WhatsApp scheduler started")
+    logger.info("WhatsApp scheduler started (timezone: Asia/Riyadh)")
     while True:
         try:
-            now = datetime.now()
+            now = datetime.now(RIYADH_TZ)
             settings = await _get_settings()
             send_hour = int(settings.get("send_hour", 9))
             next_run = now.replace(hour=send_hour, minute=0, second=0, microsecond=0)
             if next_run <= now:
                 next_run += timedelta(days=1)
             wait_seconds = (next_run - now).total_seconds()
-            logger.info(f"WhatsApp scheduler: next run in {wait_seconds:.0f}s at {next_run.strftime('%H:%M')}")
+            logger.info(f"WhatsApp scheduler: next run in {wait_seconds:.0f}s at {next_run.strftime('%H:%M')} Riyadh time")
             await asyncio.sleep(wait_seconds)
             await _run_daily_reminders()
         except asyncio.CancelledError:
@@ -140,12 +143,12 @@ def start_scheduler():
 
 
 @router.get("/status")
-async def get_status():
+async def get_status(current_user: dict = Depends(get_current_user)):
     return await _get_wa_status()
 
 
 @router.get("/settings")
-async def get_settings():
+async def get_settings_endpoint(current_user: dict = Depends(get_current_user)):
     return await _get_settings()
 
 
@@ -157,7 +160,7 @@ class WhatsAppSettings(BaseModel):
 
 
 @router.put("/settings")
-async def update_settings(data: WhatsAppSettings):
+async def update_settings(data: WhatsAppSettings, current_user: dict = Depends(get_current_user)):
     if _db is None:
         raise HTTPException(status_code=503, detail="Database not available")
     coll = _db["whatsapp_settings"]
@@ -174,9 +177,9 @@ class SendTestRequest(BaseModel):
 
 
 @router.post("/test")
-async def send_test(data: SendTestRequest):
-    settings = await _get_settings()
-    message = data.message or f"رسالة تجريبية من نظام إدارة أكاديمية الأبطال 🏆\nالوقت: {datetime.now().strftime('%Y-%m-%d %H:%M')}"
+async def send_test(data: SendTestRequest, current_user: dict = Depends(get_current_user)):
+    now_riyadh = datetime.now(RIYADH_TZ)
+    message = data.message or f"رسالة تجريبية من نظام إدارة أكاديمية الأبطال 🏆\nالوقت: {now_riyadh.strftime('%Y-%m-%d %H:%M')}"
     wa_phone = _format_phone(data.phone)
     if not wa_phone:
         raise HTTPException(status_code=400, detail="Invalid phone number")
@@ -190,7 +193,7 @@ async def send_test(data: SendTestRequest):
 
 
 @router.post("/send-now")
-async def send_reminders_now():
+async def send_reminders_now(current_user: dict = Depends(get_current_user)):
     status = await _get_wa_status()
     if not status.get("connected"):
         raise HTTPException(status_code=400, detail="WhatsApp not connected")
@@ -199,7 +202,7 @@ async def send_reminders_now():
 
 
 @router.post("/disconnect")
-async def disconnect():
+async def disconnect(current_user: dict = Depends(get_current_user)):
     try:
         async with httpx.AsyncClient(timeout=5.0) as client:
             r = await client.post(f"{WA_SERVICE_URL}/disconnect")
