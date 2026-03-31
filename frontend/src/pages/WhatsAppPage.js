@@ -290,6 +290,44 @@ export default function WhatsAppPage() {
     }
   };
 
+  const [sendingToSelected, setSendingToSelected] = useState(false);
+  const [sendToSelectedProgress, setSendToSelectedProgress] = useState({ done: 0, total: 0 });
+
+  const handleSendToSelectedViaSession = async () => {
+    if (!selectedMembers.length) { toast.error(t('اختر الأعضاء أولاً', 'Select members first')); return; }
+    if (!status.connected) { toast.error(t('يجب الاتصال بواتساب أولاً', 'Connect first')); return; }
+    if (!window.confirm(t(`سيتم إرسال الرسالة لـ ${selectedMembers.length} عضو عبر الجلسة النشطة. هل تريد المتابعة؟`, `Send message to ${selectedMembers.length} members via active session. Continue?`))) return;
+
+    const selected = members.filter(m => selectedMembers.includes(m.id));
+    setSendingToSelected(true);
+    setSendToSelectedProgress({ done: 0, total: selected.length });
+    let success = 0;
+
+    for (let i = 0; i < selected.length; i++) {
+      const m = selected[i];
+      const name = m.name_ar || m.name || '';
+      const activeActs = m.activities?.filter(a => a.status === 'active').map(a => a.activity_name || a.name || '').filter(Boolean);
+      const activity = activeActs?.join('، ') || '';
+      const msg = waSettings.message_template
+        .replace('{name}', name)
+        .replace('{activity}', activity)
+        .replace('{days}', waSettings.days_before);
+      try {
+        await whatsappAPI.sendTest(m.phone, msg);
+        success++;
+      } catch { }
+      setSendToSelectedProgress({ done: i + 1, total: selected.length });
+      if (i < selected.length - 1) await new Promise(r => setTimeout(r, 2000));
+    }
+
+    setSendingToSelected(false);
+    setSendToSelectedProgress({ done: 0, total: 0 });
+    setSelectedMembers([]);
+    setSelectAll(false);
+    toast.success(t(`تم الإرسال: ${success} من ${selected.length}`, `Sent: ${success} of ${selected.length}`));
+    loadSendLogs();
+  };
+
   const toggleBranchExpanded = (id) => setExpandedBranches(p => ({ ...p, [id]: !p[id] }));
   const toggleBranchMembers = (branchId, bMembers) => {
     const ids = bMembers.map(m => m.id);
@@ -562,11 +600,13 @@ export default function WhatsAppPage() {
             </div>
 
             {/* Test & Manual Send */}
-            <div className="rounded-2xl border p-6 bg-card space-y-4">
+            <div className="rounded-2xl border p-6 bg-card space-y-5">
               <div className="flex items-center gap-2">
                 <PhoneCall className="w-5 h-5 text-primary" />
-                <h2 className="text-lg font-bold">{t('اختبار وإرسال يدوي', 'Test & Manual Send')}</h2>
+                <h2 className="text-lg font-bold">{t('إرسال يدوي', 'Manual Send')}</h2>
               </div>
+
+              {/* Test to single phone */}
               <div>
                 <label className="block text-sm font-medium mb-2">{t('إرسال تجريبي لرقم محدد', 'Test send to number')}</label>
                 <div className="flex gap-2">
@@ -580,9 +620,146 @@ export default function WhatsAppPage() {
                 </div>
                 {!status.connected && <p className="text-xs text-orange-600 mt-1">{t('يجب الاتصال بواتساب أولاً', 'Connect first')}</p>}
               </div>
+
+              {/* Send to selected members */}
+              <div className="border-t pt-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <p className="text-sm font-semibold">{t('إرسال لأعضاء محددين', 'Send to Selected Members')}</p>
+                  <div className="flex items-center gap-2">
+                    {selectedMembers.length > 0 && (
+                      <Badge variant="secondary">{selectedMembers.length} {t('محدد', 'selected')}</Badge>
+                    )}
+                    {!members.length && (
+                      <Button variant="ghost" size="sm" onClick={loadMembers} disabled={loadingMembers}>
+                        <RefreshCw className={`w-3.5 h-3.5 ${loadingMembers ? 'animate-spin' : ''}`} />
+                        <span className="ms-1 text-xs">{t('تحميل', 'Load')}</span>
+                      </Button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Filters */}
+                <div className="flex gap-2 flex-wrap">
+                  <Filter className="w-4 h-4 text-muted-foreground self-center" />
+                  <Select value={filterActivity} onValueChange={setFilterActivity}>
+                    <SelectTrigger className="flex-1 min-w-[140px] h-9 text-sm"><SelectValue placeholder={t('جميع الأنشطة', 'All Activities')} /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">{t('جميع الأنشطة', 'All Activities')}</SelectItem>
+                      {activities.filter(a => a.id).map(a => <SelectItem key={a.id} value={a.id}>{isRTL ? a.name_ar : a.name}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                  {isAdmin && branches.length > 0 && (
+                    <Select value={filterBranch} onValueChange={setFilterBranch}>
+                      <SelectTrigger className="flex-1 min-w-[140px] h-9 text-sm"><SelectValue placeholder={t('جميع الفروع', 'All Branches')} /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">{t('جميع الفروع', 'All Branches')}</SelectItem>
+                        {branches.filter(b => b.id).map(b => <SelectItem key={b.id} value={b.id}>{b.name_ar || b.name}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  )}
+                </div>
+
+                {/* Select All */}
+                {filteredMembers.length > 0 && (
+                  <div className="flex items-center gap-2 p-2 bg-muted/50 rounded-lg cursor-pointer" onClick={toggleSelectAll}>
+                    <Checkbox checked={selectAll} onCheckedChange={toggleSelectAll} />
+                    <span className="text-sm font-medium">{t('تحديد الكل', 'Select All')}</span>
+                    <span className="text-xs text-muted-foreground">({filteredMembers.length})</span>
+                  </div>
+                )}
+
+                {/* Members List */}
+                {loadingMembers ? (
+                  <div className="py-6 text-center"><Loader2 className="w-6 h-6 animate-spin mx-auto text-muted-foreground" /></div>
+                ) : members.length === 0 ? (
+                  <div className="text-center py-6 text-muted-foreground text-sm border-2 border-dashed rounded-xl">
+                    <Users className="w-8 h-8 mx-auto mb-2 opacity-30" />
+                    <p>{t('اضغط "تحميل" لعرض الأعضاء', 'Press "Load" to show members')}</p>
+                  </div>
+                ) : (
+                  <div className="space-y-2 max-h-[350px] overflow-y-auto">
+                    {isAdmin && branches.length > 0 ? Object.keys(membersByBranch).map(bid => {
+                      const bm = membersByBranch[bid];
+                      const exp = expandedBranches[bid];
+                      const allSel = bm.every(m => selectedMembers.includes(m.id));
+                      const someSel = bm.some(m => selectedMembers.includes(m.id));
+                      return (
+                        <div key={bid} className="border rounded-xl overflow-hidden">
+                          <div className="flex items-center justify-between p-3 bg-muted/40 cursor-pointer hover:bg-muted/60" onClick={() => toggleBranchExpanded(bid)}>
+                            <div className="flex items-center gap-2">
+                              <Checkbox checked={allSel} className={someSel && !allSel ? 'opacity-50' : ''}
+                                onCheckedChange={e => { e.stopPropagation(); toggleBranchMembers(bid, bm); }}
+                                onClick={e => e.stopPropagation()} />
+                              <Building2 className="w-4 h-4 text-primary" />
+                              <span className="font-semibold text-sm">{getBranchName(bid)}</span>
+                              <Badge variant="secondary" className="text-xs">{bm.length}</Badge>
+                            </div>
+                            {exp ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                          </div>
+                          {exp && (
+                            <div className="divide-y">
+                              {bm.map(m => (
+                                <div key={m.id}
+                                  className={`flex items-center justify-between px-4 py-2.5 cursor-pointer transition-colors ${selectedMembers.includes(m.id) ? 'bg-primary/8' : 'hover:bg-muted/20'}`}
+                                  onClick={() => toggleMember(m.id)}>
+                                  <div className="flex items-center gap-3">
+                                    <Checkbox checked={selectedMembers.includes(m.id)} onCheckedChange={() => toggleMember(m.id)} />
+                                    <span className="text-sm font-medium">{isRTL ? m.name_ar : m.name}</span>
+                                  </div>
+                                  <span className="text-xs text-muted-foreground" dir="ltr">{m.phone}</span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    }) : filteredMembers.map(m => (
+                      <div key={m.id}
+                        className={`flex items-center justify-between px-4 py-2.5 rounded-xl border cursor-pointer transition-colors ${selectedMembers.includes(m.id) ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/50'}`}
+                        onClick={() => toggleMember(m.id)}>
+                        <div className="flex items-center gap-3">
+                          <Checkbox checked={selectedMembers.includes(m.id)} onCheckedChange={() => toggleMember(m.id)} />
+                          <span className="text-sm font-medium">{isRTL ? m.name_ar : m.name}</span>
+                        </div>
+                        <span className="text-xs text-muted-foreground" dir="ltr">{m.phone}</span>
+                      </div>
+                    ))}
+                    {filteredMembers.length === 0 && members.length > 0 && (
+                      <div className="text-center py-6 text-muted-foreground text-sm">{t('لا يوجد أعضاء بهذا الفلتر', 'No members match filter')}</div>
+                    )}
+                  </div>
+                )}
+
+                {/* Send to selected */}
+                {sendingToSelected && sendToSelectedProgress.total > 0 && (
+                  <div className="space-y-2">
+                    <div className="flex justify-between text-xs text-muted-foreground">
+                      <span>{t('جاري الإرسال...', 'Sending...')}</span>
+                      <span>{sendToSelectedProgress.done} / {sendToSelectedProgress.total}</span>
+                    </div>
+                    <div className="h-2 bg-muted rounded-full overflow-hidden">
+                      <div className="h-full bg-green-500 transition-all duration-300 rounded-full"
+                        style={{ width: `${(sendToSelectedProgress.done / sendToSelectedProgress.total) * 100}%` }} />
+                    </div>
+                  </div>
+                )}
+                <Button
+                  onClick={handleSendToSelectedViaSession}
+                  disabled={!selectedMembers.length || !status.connected || sendingToSelected}
+                  className="w-full gap-2"
+                >
+                  {sendingToSelected ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                  {sendingToSelected
+                    ? t(`إرسال ${sendToSelectedProgress.done}/${sendToSelectedProgress.total}...`, `Sending ${sendToSelectedProgress.done}/${sendToSelectedProgress.total}...`)
+                    : t(`إرسال الرسالة لـ ${selectedMembers.length} عضو`, `Send to ${selectedMembers.length} members`)}
+                </Button>
+                {!status.connected && <p className="text-xs text-orange-600 -mt-1">{t('يجب الاتصال بواتساب أولاً', 'Connect first')}</p>}
+              </div>
+
+              {/* Send all reminders now */}
               <div className="border-t pt-4">
                 <div className="flex items-center justify-between mb-1">
-                  <p className="text-sm font-medium">{t('إرسال التذكيرات الآن', 'Send Reminders Now')}</p>
+                  <p className="text-sm font-medium">{t('إرسال التذكيرات التلقائية الآن', 'Send Auto Reminders Now')}</p>
                   {targetInfo.count > 0 && <span className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded-full">{targetInfo.count} {t('عضو', 'members')}</span>}
                 </div>
                 <p className="text-xs text-muted-foreground mb-3">{t(`لكل عضو ينتهي اشتراكه بعد ${waSettings.days_before} يوم، بفاصل دقيقة بين كل رسالة`, `Members expiring in ${waSettings.days_before} days, 1 min apart`)}</p>
