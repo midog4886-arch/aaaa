@@ -144,7 +144,7 @@ app.get('/health', (req, res) => {
 });
 
 const PORT = 3001;
-app.listen(PORT, () => {
+app.listen(PORT, '127.0.0.1', () => {
   logger.info(`WhatsApp service running on port ${PORT}`);
   connectToWhatsApp();
 });
