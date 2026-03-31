@@ -114,6 +114,8 @@ async def _do_daily_reminders():
         if not phone:
             continue
         activities = member.get("activities", [])
+        # Collect all expiring activities for this member (one message per member)
+        expiring_activities = []
         for act in activities:
             if act.get("status") != "active":
                 continue
@@ -121,16 +123,20 @@ async def _do_daily_reminders():
             # Normalize to YYYY-MM-DD (handles both date strings and ISO datetimes)
             end_date = str(raw_end)[:10] if raw_end else ""
             if end_date == target_str:
-                name = member.get("name", "")
-                activity_name = act.get("activity_name", "")
-                message = template.replace("{name}", name).replace("{activity}", activity_name).replace("{days}", str(days_before))
-                wa_phone = _format_phone(phone)
-                if wa_phone:
-                    success = await _send_wa_message(wa_phone, message)
-                    if success:
-                        sent_count += 1
-                        logger.info(f"WhatsApp reminder sent to {name} ({phone})")
-                    await asyncio.sleep(60)
+                expiring_activities.append(act.get("activity_name", ""))
+        if not expiring_activities:
+            continue
+        name = member.get("name", "")
+        # Use first activity name for template; if multiple, join them
+        activity_name = "، ".join(filter(None, expiring_activities))
+        message = template.replace("{name}", name).replace("{activity}", activity_name).replace("{days}", str(days_before))
+        wa_phone = _format_phone(phone)
+        if wa_phone:
+            success = await _send_wa_message(wa_phone, message)
+            if success:
+                sent_count += 1
+                logger.info(f"WhatsApp reminder sent to {name} ({phone}) for activities: {activity_name}")
+            await asyncio.sleep(60)
 
     logger.info(f"WhatsApp daily reminders: sent {sent_count} messages")
 

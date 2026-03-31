@@ -60,7 +60,7 @@ export default function WhatsAppPage() {
     loadSettings();
     intervalRef.current = setInterval(() => {
       if (!status.connected) loadStatus();
-    }, 15000);
+    }, 30000);
     return () => clearInterval(intervalRef.current);
   }, []);
 

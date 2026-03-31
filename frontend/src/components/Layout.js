@@ -58,6 +58,7 @@ export const Sidebar = ({ isOpen, onClose }) => {
   const [branches, setBranches] = useState([]);
 
   const isAdmin = user?.is_admin;
+  const userPermissions = user?.permissions || [];
 
   useEffect(() => {
     if (isAdmin) {
@@ -146,7 +147,7 @@ export const Sidebar = ({ isOpen, onClose }) => {
         { to: '/admin/advertisements', icon: Megaphone, label: 'advertisements', permission: 'advertisements' },
         { to: '/admin/daily-videos', icon: Video, label: 'daily_videos', permission: 'daily-videos' },
         ...(isAdmin ? [{ to: '/admin/push-notifications', icon: Bell, label: 'push_notifications', permission: 'push-notifications' }] : []),
-        ...(isAdmin ? [{ to: '/admin/whatsapp', icon: MessageCircle, label: 'whatsapp', permission: 'whatsapp' }] : []),
+        ...((isAdmin || userPermissions.includes('whatsapp')) ? [{ to: '/admin/whatsapp', icon: MessageCircle, label: 'whatsapp', permission: 'whatsapp' }] : []),
       ]
     },
     {
@@ -173,7 +174,6 @@ export const Sidebar = ({ isOpen, onClose }) => {
     },
   ];
 
-  const userPermissions = user?.permissions || [];
   const filteredGroups = navGroups.map(group => ({
     ...group,
     items: group.items.filter(item => isAdmin || userPermissions.includes(item.permission))
