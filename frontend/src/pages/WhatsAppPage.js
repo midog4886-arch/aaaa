@@ -373,6 +373,23 @@ export default function WhatsAppPage() {
     return new Date(a.end_date) >= today;
   };
 
+  const getMemberEndDate = (m) => {
+    const active = m.activities?.filter(a => isSubscriptionActive(a));
+    if (!active || active.length === 0) return null;
+    const sorted = active.filter(a => a.end_date).sort((a, b) => new Date(a.end_date) - new Date(b.end_date));
+    return sorted.length > 0 ? sorted[0].end_date : null;
+  };
+
+  const formatEndDate = (dateStr) => {
+    if (!dateStr) return '';
+    const d = new Date(dateStr);
+    const diff = Math.ceil((d - today) / (1000 * 60 * 60 * 24));
+    const label = d.toLocaleDateString('ar-SA', { day: '2-digit', month: '2-digit', year: '2-digit' });
+    if (diff <= 7) return { label, color: 'text-red-500' };
+    if (diff <= 14) return { label, color: 'text-orange-500' };
+    return { label, color: 'text-muted-foreground' };
+  };
+
   const filteredMembers = members.filter(m => {
     const hasActive = m.activities?.some(a => isSubscriptionActive(a));
     if (!hasActive) return false;
@@ -735,7 +752,10 @@ export default function WhatsAppPage() {
                           </div>
                           {exp && (
                             <div className="divide-y">
-                              {bm.map(m => (
+                              {bm.map(m => {
+                                const endDate = getMemberEndDate(m);
+                                const fmt = endDate ? formatEndDate(endDate) : null;
+                                return (
                                 <div key={m.id}
                                   className={`flex items-center justify-between px-4 py-2.5 cursor-pointer transition-colors ${selectedMembers.includes(m.id) ? 'bg-primary/8' : 'hover:bg-muted/20'}`}
                                   onClick={() => toggleMember(m.id)}>
@@ -743,14 +763,21 @@ export default function WhatsAppPage() {
                                     <Checkbox checked={selectedMembers.includes(m.id)} onCheckedChange={() => toggleMember(m.id)} />
                                     <span className="text-sm font-medium">{isRTL ? m.name_ar : m.name}</span>
                                   </div>
-                                  <span className="text-xs text-muted-foreground" dir="ltr">{m.phone}</span>
+                                  <div className="flex flex-col items-end gap-0.5">
+                                    <span className="text-xs text-muted-foreground" dir="ltr">{m.phone}</span>
+                                    {fmt && <span className={`text-xs font-medium ${fmt.color}`}>{t('ينتهي', 'ends')} {fmt.label}</span>}
+                                  </div>
                                 </div>
-                              ))}
+                                );
+                              })}
                             </div>
                           )}
                         </div>
                       );
-                    }) : filteredMembers.map(m => (
+                    }) : filteredMembers.map(m => {
+                      const endDate = getMemberEndDate(m);
+                      const fmt = endDate ? formatEndDate(endDate) : null;
+                      return (
                       <div key={m.id}
                         className={`flex items-center justify-between px-4 py-2.5 rounded-xl border cursor-pointer transition-colors ${selectedMembers.includes(m.id) ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/50'}`}
                         onClick={() => toggleMember(m.id)}>
@@ -758,9 +785,13 @@ export default function WhatsAppPage() {
                           <Checkbox checked={selectedMembers.includes(m.id)} onCheckedChange={() => toggleMember(m.id)} />
                           <span className="text-sm font-medium">{isRTL ? m.name_ar : m.name}</span>
                         </div>
-                        <span className="text-xs text-muted-foreground" dir="ltr">{m.phone}</span>
+                        <div className="flex flex-col items-end gap-0.5">
+                          <span className="text-xs text-muted-foreground" dir="ltr">{m.phone}</span>
+                          {fmt && <span className={`text-xs font-medium ${fmt.color}`}>{t('ينتهي', 'ends')} {fmt.label}</span>}
+                        </div>
                       </div>
-                    ))}
+                      );
+                    })}
                     {filteredMembers.length === 0 && members.length > 0 && (
                       <div className="text-center py-6 text-muted-foreground text-sm">{t('لا يوجد أعضاء بهذا الفلتر', 'No members match filter')}</div>
                     )}
