@@ -129,13 +129,18 @@ async def cancel_freeze(freeze_id: str, current_user: dict = Depends(get_current
     except ValueError:
         raise HTTPException(status_code=500, detail="Invalid freeze dates")
 
-    if today_str <= freeze_doc["end_date"]:
-        if today_str < freeze_doc["start_date"]:
-            remaining_days = freeze_doc["duration_days"]
-        else:
-            today_dt = datetime.strptime(today_str, "%Y-%m-%d")
-            remaining_days = (end_dt - today_dt).days + 1
+    if today_str < freeze_doc["start_date"]:
+        # Freeze hasn't started yet — restore full duration
+        restore_days = freeze_doc["duration_days"]
+    elif today_str <= freeze_doc["end_date"]:
+        # Freeze is currently active — restore remaining days only
+        today_dt = datetime.strptime(today_str, "%Y-%m-%d")
+        restore_days = (end_dt - today_dt).days + 1
+    else:
+        # Freeze already ended — still restore full duration (undo original extension)
+        restore_days = freeze_doc["duration_days"]
 
+    if restore_days > 0:
         member = await db.members.find_one({"id": freeze_doc["member_id"]}, {"_id": 0})
         if member:
             activities = member.get("activities", [])
@@ -144,7 +149,7 @@ async def cancel_freeze(freeze_id: str, current_user: dict = Depends(get_current
                 if act_end:
                     try:
                         act_end_dt = datetime.strptime(act_end, "%Y-%m-%d")
-                        new_end_dt = act_end_dt - timedelta(days=remaining_days)
+                        new_end_dt = act_end_dt - timedelta(days=restore_days)
                         activities[i]["end_date"] = new_end_dt.strftime("%Y-%m-%d")
                     except ValueError:
                         pass
