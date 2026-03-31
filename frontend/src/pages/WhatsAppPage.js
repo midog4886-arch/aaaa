@@ -70,7 +70,7 @@ export default function WhatsAppPage() {
       intervalRef.current = null;
     } else {
       if (!intervalRef.current) {
-        intervalRef.current = setInterval(loadStatus, 15000);
+        intervalRef.current = setInterval(loadStatus, 30000);
       }
     }
   }, [status.connected]);
@@ -125,7 +125,7 @@ export default function WhatsAppPage() {
         clearInterval(intervalRef.current);
         intervalRef.current = null;
         loadStatus();
-        intervalRef.current = setInterval(loadStatus, 15000);
+        intervalRef.current = setInterval(loadStatus, 30000);
       }, 3000);
     } catch {
       toast.error(t('فشل الفصل', 'Disconnect failed'));
@@ -185,7 +185,7 @@ export default function WhatsAppPage() {
                 className="mx-auto w-56 h-56 rounded-xl border-4 border-white shadow-lg"
               />
               <p className="text-xs text-muted-foreground mt-3">
-                {t('يتجدد الكود تلقائياً كل 15 ثانية', 'Code refreshes every 15 seconds')}
+                {t('يتجدد الكود تلقائياً كل 30 ثانية', 'Code refreshes every 30 seconds')}
               </p>
             </div>
           )}

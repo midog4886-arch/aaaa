@@ -112,7 +112,15 @@ async def _do_daily_reminders():
     target_str = target_date.strftime("%Y-%m-%d")
 
     members_coll = _db["members"]
-    members = await members_coll.find({}).to_list(length=None)
+    # Filter at DB level for members with at least one active activity ending on target date
+    members = await members_coll.find({
+        "activities": {
+            "$elemMatch": {
+                "status": "active",
+                "end_date": {"$regex": f"^{target_str}"}
+            }
+        }
+    }).to_list(length=None)
 
     sent_count = 0
     for member in members:
