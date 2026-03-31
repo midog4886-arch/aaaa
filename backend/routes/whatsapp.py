@@ -147,6 +147,14 @@ async def _do_daily_reminders():
         wa_phone = _format_phone(phone)
         if wa_phone:
             success = await _send_wa_message(wa_phone, message)
+            log_entry = {
+                "timestamp": datetime.now(RIYADH_TZ).isoformat(),
+                "member_name": name,
+                "phone": phone,
+                "activities": activity_name,
+                "success": success,
+            }
+            await _db["whatsapp_send_log"].insert_one(log_entry)
             if success:
                 sent_count += 1
                 logger.info(f"WhatsApp reminder sent to {name} ({phone}) for activities: {activity_name}")

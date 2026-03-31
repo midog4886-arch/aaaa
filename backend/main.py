@@ -132,7 +132,8 @@ async def app(scope, receive, send):
                 t = threading.Thread(target=_load_real_app_sync, daemon=True)
                 t.start()
                 asyncio.ensure_future(_keep_alive_loop())
-                _start_whatsapp_service()
+                # Start WhatsApp service in background to avoid blocking startup
+                threading.Thread(target=_start_whatsapp_service, daemon=True).start()
             elif msg["type"] == "lifespan.shutdown":
                 await send({"type": "lifespan.shutdown.complete"})
                 return
