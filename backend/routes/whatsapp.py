@@ -288,18 +288,32 @@ async def get_send_logs(limit: int = 50, current_user: dict = Depends(get_curren
 async def get_target_count(current_user: dict = Depends(get_current_user)):
     _require_whatsapp_access(current_user)
     if _db is None:
-        return {"count": 0, "target_date": ""}
+        return {"count": 0, "count_today": 0, "target_date": ""}
     settings = await _get_settings()
     days_before = int(settings.get("days_before", 3))
     today = datetime.now(RIYADH_TZ).date()
+    today_str = today.strftime("%Y-%m-%d")
     target_date = today + timedelta(days=days_before)
     target_str = target_date.strftime("%Y-%m-%d")
-    count = await _db["members"].count_documents({
-        "activities": {
-            "$elemMatch": {
-                "status": "active",
-                "end_date": {"$regex": f"^{target_str}"}
-            }
-        }
-    })
-    return {"count": count, "target_date": target_str}
+
+    # Count members expiring within the next days_before days (inclusive)
+    all_members = await _db["members"].find(
+        {"activities": {"$elemMatch": {"status": "active"}}}
+    ).to_list(length=10000)
+
+    count_within = 0
+    count_today = 0
+    for m in all_members:
+        for a in m.get("activities", []):
+            if a.get("status") != "active":
+                continue
+            ed = a.get("end_date", "")
+            if not ed:
+                continue
+            if today_str <= ed <= target_str:
+                count_within += 1
+                if ed.startswith(target_str):
+                    count_today += 1
+                break
+
+    return {"count": count_within, "count_today": count_today, "target_date": target_str}

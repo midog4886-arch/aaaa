@@ -49,7 +49,7 @@ export default function WhatsAppPage() {
   const [sendingNow, setSendingNow] = useState(false);
   const [disconnecting, setDisconnecting] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
-  const [targetInfo, setTargetInfo] = useState({ count: 0, target_date: '', loading: false });
+  const [targetInfo, setTargetInfo] = useState({ count: 0, count_today: 0, target_date: '', loading: false });
   const [sendLogs, setSendLogs] = useState([]);
   const [loadingLogs, setLoadingLogs] = useState(false);
   const [showLogs, setShowLogs] = useState(false);
@@ -622,7 +622,18 @@ export default function WhatsAppPage() {
                     <Button variant="ghost" size="sm" className="h-6 px-1" onClick={loadTargetCount}><RefreshCw className="w-3 h-3" /></Button>
                   </div>
                 </div>
-                {targetInfo.target_date && <p className="text-xs text-muted-foreground mt-1">{t(`تاريخ الانتهاء: ${targetInfo.target_date}`, `Expiry date: ${targetInfo.target_date}`)}</p>}
+                {targetInfo.target_date && (
+                  <div className="mt-1 space-y-0.5">
+                    <p className="text-xs text-muted-foreground">
+                      {t(`ينتهي خلال ${waSettings.days_before} أيام (حتى ${targetInfo.target_date})`, `Expiring within ${waSettings.days_before} days (until ${targetInfo.target_date})`)}
+                    </p>
+                    {targetInfo.count_today > 0 && (
+                      <p className="text-xs text-orange-600 font-medium">
+                        {t(`سيُرسل اليوم لـ ${targetInfo.count_today} عضو (ينتهون ${targetInfo.target_date})`, `Today's send: ${targetInfo.count_today} members expiring ${targetInfo.target_date}`)}
+                      </p>
+                    )}
+                  </div>
+                )}
               </div>
 
               <div>
