@@ -584,7 +584,7 @@ export const MembersPage = () => {
       await refreshMemberAttendance(memberId);
     } catch (e) {
       const msg = e?.response?.data?.detail || (language === 'ar' ? 'فشل تسجيل الحضور' : 'Failed to record attendance');
-      alert(msg);
+      toast.error(msg);
     } finally {
       setRegisteringDate(null);
     }
@@ -2248,9 +2248,9 @@ export const MembersPage = () => {
                                         return (
                                           <button
                                             key={date}
-                                            disabled={attended || isRegistering}
+                                            disabled={attended || isRegistering || isFuture}
                                             onClick={() => {
-                                              if (!attended && !isRegistering) {
+                                              if (!attended && !isRegistering && !isFuture) {
                                                 if (window.confirm(language === 'ar'
                                                   ? `تسجيل حضور بتاريخ ${date}؟`
                                                   : `Record attendance for ${date}?`)) {
@@ -2269,7 +2269,7 @@ export const MembersPage = () => {
                                                 : isRegistering
                                                   ? 'bg-blue-100 border-blue-300 text-blue-500 cursor-wait'
                                                   : isFuture
-                                                    ? 'bg-gray-100 border-gray-300 text-gray-400 cursor-pointer hover:bg-gray-200'
+                                                    ? 'bg-gray-100 border-gray-300 text-gray-400 cursor-not-allowed'
                                                     : isToday
                                                       ? 'bg-blue-500 border-blue-600 text-white cursor-pointer hover:bg-blue-600 shadow-sm'
                                                       : 'bg-white border-blue-300 text-blue-700 cursor-pointer hover:bg-blue-50'
