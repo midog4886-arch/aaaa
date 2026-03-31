@@ -24,6 +24,7 @@ DEFAULT_SETTINGS = {
 
 _db = None
 _scheduler_started = False
+_reminders_running = False
 
 
 def set_database(db):
@@ -73,6 +74,18 @@ async def _get_settings() -> dict:
 
 
 async def _run_daily_reminders():
+    global _reminders_running
+    if _reminders_running:
+        logger.info("WhatsApp reminders already running, skipping duplicate run")
+        return
+    _reminders_running = True
+    try:
+        await _do_daily_reminders()
+    finally:
+        _reminders_running = False
+
+
+async def _do_daily_reminders():
     if _db is None:
         return
     settings = await _get_settings()

@@ -7432,6 +7432,26 @@ async def create_default_admin():
         except Exception as e:
             print(f"Payment vouchers index setup error: {str(e)}")
     asyncio.create_task(_init())
+    # Start WhatsApp Node.js service (idempotent — skipped if port 3001 already in use)
+    try:
+        import subprocess, shutil, socket as _socket
+        def _port_in_use(port):
+            with _socket.socket(_socket.AF_INET, _socket.SOCK_STREAM) as s:
+                return s.connect_ex(("127.0.0.1", port)) == 0
+        wa_service_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "whatsapp_service")
+        wa_service_path = os.path.join(wa_service_dir, "index.js")
+        if os.path.exists(wa_service_path) and shutil.which("node") and not _port_in_use(3001):
+            wa_log = open(os.path.join(wa_service_dir, "service.log"), "a")
+            subprocess.Popen(
+                ["node", wa_service_path],
+                stdout=wa_log,
+                stderr=wa_log,
+                cwd=wa_service_dir,
+                start_new_session=True,
+            )
+            logging.getLogger("whatsapp").info("WhatsApp service started (from server.py startup)")
+    except Exception as e:
+        logging.getLogger("whatsapp").warning(f"Could not start WhatsApp service: {e}")
     # Start WhatsApp scheduler
     start_whatsapp_scheduler()
 

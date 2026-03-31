@@ -32,13 +32,15 @@ logger.info("Lightweight wrapper ready")
 
 
 def _start_whatsapp_service():
-    import subprocess, shutil
+    import subprocess, shutil, socket as _socket
     try:
+        def _port_in_use(port):
+            with _socket.socket(_socket.AF_INET, _socket.SOCK_STREAM) as s:
+                return s.connect_ex(("127.0.0.1", port)) == 0
         wa_service_dir = os.path.join(backend_dir, "whatsapp_service")
         wa_service_path = os.path.join(wa_service_dir, "index.js")
-        wa_log_path = os.path.join(wa_service_dir, "service.log")
-        if os.path.exists(wa_service_path) and shutil.which("node"):
-            wa_log = open(wa_log_path, "a")
+        if os.path.exists(wa_service_path) and shutil.which("node") and not _port_in_use(3001):
+            wa_log = open(os.path.join(wa_service_dir, "service.log"), "a")
             subprocess.Popen(
                 ["node", wa_service_path],
                 stdout=wa_log,
@@ -47,6 +49,8 @@ def _start_whatsapp_service():
                 start_new_session=True,
             )
             logger.info("WhatsApp Node.js service started")
+        elif _port_in_use(3001):
+            logger.info("WhatsApp service already running on port 3001")
     except Exception as e:
         logger.warning(f"Could not start WhatsApp service: {e}")
 

@@ -67,6 +67,11 @@ export default function WhatsAppPage() {
   useEffect(() => {
     if (status.connected) {
       clearInterval(intervalRef.current);
+      intervalRef.current = null;
+    } else {
+      if (!intervalRef.current) {
+        intervalRef.current = setInterval(loadStatus, 15000);
+      }
     }
   }, [status.connected]);
 
@@ -117,10 +122,10 @@ export default function WhatsAppPage() {
       await whatsappAPI.disconnect();
       toast.success(t('تم الفصل. سيتم توليد QR جديد...', 'Disconnected. New QR will appear...'));
       setTimeout(() => {
+        clearInterval(intervalRef.current);
+        intervalRef.current = null;
         loadStatus();
-        if (!intervalRef.current) {
-          intervalRef.current = setInterval(loadStatus, 15000);
-        }
+        intervalRef.current = setInterval(loadStatus, 15000);
       }, 3000);
     } catch {
       toast.error(t('فشل الفصل', 'Disconnect failed'));
