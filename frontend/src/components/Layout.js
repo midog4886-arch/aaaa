@@ -47,7 +47,8 @@ import {
   Radio,
   ShieldCheck,
   BookOpen,
-  CalendarOff
+  CalendarOff,
+  MessageCircle
 } from 'lucide-react';
 
 export const Sidebar = ({ isOpen, onClose }) => {
@@ -145,6 +146,7 @@ export const Sidebar = ({ isOpen, onClose }) => {
         { to: '/admin/advertisements', icon: Megaphone, label: 'advertisements', permission: 'advertisements' },
         { to: '/admin/daily-videos', icon: Video, label: 'daily_videos', permission: 'daily-videos' },
         ...(isAdmin ? [{ to: '/admin/push-notifications', icon: Bell, label: 'push_notifications', permission: 'push-notifications' }] : []),
+        ...(isAdmin ? [{ to: '/admin/whatsapp', icon: MessageCircle, label: 'whatsapp', permission: 'whatsapp' }] : []),
       ]
     },
     {

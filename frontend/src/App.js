@@ -60,6 +60,7 @@ import PushNotificationsPage from './pages/PushNotificationsPage';
 import PrivacyPolicyPage from './pages/PrivacyPolicyPage';
 import DailyLedgerPage from './pages/DailyLedgerPage';
 import DayExtensionsPage from './pages/DayExtensionsPage';
+import WhatsAppPage from './pages/WhatsAppPage';
 
 // Member Portal Pages
 import MemberLogin from './pages/member-portal/MemberLogin';
@@ -401,6 +402,14 @@ function AppRoutes() {
         element={
           <ProtectedRoute permission="member-card">
             <MemberCardPage />
+          </ProtectedRoute>
+        } 
+      />
+      <Route 
+        path="/admin/whatsapp" 
+        element={
+          <ProtectedRoute>
+            <WhatsAppPage />
           </ProtectedRoute>
         } 
       />

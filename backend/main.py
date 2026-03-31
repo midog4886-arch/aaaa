@@ -31,6 +31,26 @@ if os.path.exists(_static_index):
 logger.info("Lightweight wrapper ready")
 
 
+def _start_whatsapp_service():
+    import subprocess, shutil
+    try:
+        wa_service_dir = os.path.join(backend_dir, "whatsapp_service")
+        wa_service_path = os.path.join(wa_service_dir, "index.js")
+        wa_log_path = os.path.join(wa_service_dir, "service.log")
+        if os.path.exists(wa_service_path) and shutil.which("node"):
+            wa_log = open(wa_log_path, "a")
+            subprocess.Popen(
+                ["node", wa_service_path],
+                stdout=wa_log,
+                stderr=wa_log,
+                cwd=wa_service_dir,
+                start_new_session=True,
+            )
+            logger.info("WhatsApp Node.js service started")
+    except Exception as e:
+        logger.warning(f"Could not start WhatsApp service: {e}")
+
+
 def _load_real_app_sync():
     global _real_app
     if _real_app is not None:
@@ -93,6 +113,7 @@ async def app(scope, receive, send):
                 t = threading.Thread(target=_load_real_app_sync, daemon=True)
                 t.start()
                 asyncio.ensure_future(_keep_alive_loop())
+                _start_whatsapp_service()
             elif msg["type"] == "lifespan.shutdown":
                 await send({"type": "lifespan.shutdown.complete"})
                 return

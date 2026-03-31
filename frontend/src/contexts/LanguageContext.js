@@ -48,6 +48,7 @@ const translations = {
     settings: 'الإعدادات',
     backup: 'النسخ الاحتياطي',
     push_notifications: 'إشعارات Push',
+    whatsapp: 'واتساب',
     branches: 'الفروع',
     users: 'المستخدمين',
     
@@ -202,6 +203,7 @@ const translations = {
     settings: 'Settings',
     backup: 'Backup',
     push_notifications: 'Push Notifications',
+    whatsapp: 'WhatsApp',
     branches: 'Branches',
     users: 'Users',
     member_card: 'Member Card',

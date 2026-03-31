@@ -75,6 +75,7 @@ from routes.day_extensions import router as day_extensions_router
 from routes.freezes import router as freezes_router
 from routes.coach_attendance import router as coach_attendance_router
 from routes.payment_vouchers import router as payment_vouchers_router
+from routes.whatsapp import router as whatsapp_router, set_database as set_whatsapp_db, start_scheduler as start_whatsapp_scheduler
 
 ROOT_DIR = Path(__file__).parent
 UPLOADS_DIR = ROOT_DIR / "uploads"
@@ -128,12 +129,16 @@ api_router.include_router(day_extensions_router)
 api_router.include_router(freezes_router)
 api_router.include_router(coach_attendance_router)
 api_router.include_router(payment_vouchers_router)
+api_router.include_router(whatsapp_router)
 
 # Set database for loyalty router
 set_loyalty_db(db)
 
 # Set loyalty award function for attendance router
 set_loyalty_award_function(loyalty_award_points)
+
+# Set database for WhatsApp router
+set_whatsapp_db(db)
 
 # Set loyalty award function for invoices router (subscription renewals)
 set_invoices_loyalty(loyalty_award_points)
@@ -7427,6 +7432,26 @@ async def create_default_admin():
         except Exception as e:
             print(f"Payment vouchers index setup error: {str(e)}")
     asyncio.create_task(_init())
+    # Start WhatsApp Node.js microservice as subprocess
+    try:
+        import subprocess, shutil
+        wa_service_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "whatsapp_service")
+        wa_service_path = os.path.join(wa_service_dir, "index.js")
+        wa_log_path = os.path.join(wa_service_dir, "service.log")
+        if os.path.exists(wa_service_path) and shutil.which("node"):
+            wa_log = open(wa_log_path, "a")
+            subprocess.Popen(
+                ["node", wa_service_path],
+                stdout=wa_log,
+                stderr=wa_log,
+                cwd=wa_service_dir,
+                start_new_session=True,
+            )
+            logging.getLogger("whatsapp").info("WhatsApp service subprocess started")
+    except Exception as e:
+        logging.getLogger("whatsapp").warning(f"Could not start WhatsApp service: {e}")
+    # Start WhatsApp scheduler
+    start_whatsapp_scheduler()
 
 @app.on_event("shutdown")
 async def shutdown_db_client():

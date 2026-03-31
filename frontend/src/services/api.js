@@ -449,3 +449,12 @@ export const paymentVouchersAPI = {
   updateStatus: (id, status) => axios.put(`${API}/payment-vouchers/${id}`, { status }),
   delete: (id) => axios.delete(`${API}/payment-vouchers/${id}`),
 };
+
+export const whatsappAPI = {
+  getStatus: () => axios.get(`${API}/whatsapp/status`),
+  getSettings: () => axios.get(`${API}/whatsapp/settings`),
+  updateSettings: (data) => axios.put(`${API}/whatsapp/settings`, data),
+  sendTest: (phone, message) => axios.post(`${API}/whatsapp/test`, { phone, message }),
+  sendNow: () => axios.post(`${API}/whatsapp/send-now`),
+  disconnect: () => axios.post(`${API}/whatsapp/disconnect`),
+};
