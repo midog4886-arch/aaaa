@@ -197,13 +197,18 @@ export default function WhatsAppPage() {
     loadWaSettings();
     loadSendLogs();
     loadTargetCount();
-    intervalRef.current = setInterval(() => { if (!status.connected) loadStatus(); }, 30000);
+    // Poll every 5s when not connected (waiting for QR or waiting for scan)
+    intervalRef.current = setInterval(() => { if (!status.connected) loadStatus(); }, 5000);
     return () => clearInterval(intervalRef.current);
   }, []);
 
   useEffect(() => {
-    if (status.connected) { clearInterval(intervalRef.current); intervalRef.current = null; }
-    else { if (!intervalRef.current) intervalRef.current = setInterval(loadStatus, 30000); }
+    clearInterval(intervalRef.current);
+    intervalRef.current = null;
+    if (!status.connected) {
+      // 5s when waiting for QR or scan; slow down to 15s once connected
+      intervalRef.current = setInterval(loadStatus, 5000);
+    }
   }, [status.connected]);
 
   useEffect(() => {
