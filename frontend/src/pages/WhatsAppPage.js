@@ -292,11 +292,36 @@ export default function WhatsAppPage() {
 
   const [sendingToSelected, setSendingToSelected] = useState(false);
   const [sendToSelectedProgress, setSendToSelectedProgress] = useState({ done: 0, total: 0 });
+  const [connTabMsgType, setConnTabMsgType] = useState('template');
+  const [connTabCustomMsg, setConnTabCustomMsg] = useState('');
+
+  const connTabTemplates = {
+    payment_reminder: {
+      ar: 'السلام عليكم، نود تذكيركم بموعد سداد رسوم الاشتراك في شركة اداء الابطال العالمية للرياضة. نرجو التواصل معنا لمزيد من التفاصيل.',
+      en: 'Hello, this is a reminder about your subscription payment. Please contact us.'
+    },
+    expiry_alert: {
+      ar: 'السلام عليكم، نود إعلامكم بأن اشتراككم سينتهي قريباً. يرجى التواصل معنا لتجديد الاشتراك.',
+      en: 'Hello, your subscription is expiring soon. Please contact us to renew.'
+    },
+    promotion: {
+      ar: 'السلام عليكم، نقدم لكم عروضاً خاصة في شركة اداء الابطال العالمية للرياضة. تواصلوا معنا!',
+      en: 'Hello, we have special offers. Contact us to learn more!'
+    }
+  };
+
+  const handleConnTabMsgTypeChange = (type) => {
+    setConnTabMsgType(type);
+    if (type === 'template') setConnTabCustomMsg('');
+    else if (type === 'custom') setConnTabCustomMsg('');
+    else if (connTabTemplates[type]) setConnTabCustomMsg(connTabTemplates[type][language]);
+  };
 
   const handleSendToSelectedViaSession = async () => {
     if (!selectedMembers.length) { toast.error(t('اختر الأعضاء أولاً', 'Select members first')); return; }
     if (!status.connected) { toast.error(t('يجب الاتصال بواتساب أولاً', 'Connect first')); return; }
-    if (!window.confirm(t(`سيتم إرسال الرسالة لـ ${selectedMembers.length} عضو عبر الجلسة النشطة. هل تريد المتابعة؟`, `Send message to ${selectedMembers.length} members via active session. Continue?`))) return;
+    if (connTabMsgType === 'custom' && !connTabCustomMsg.trim()) { toast.error(t('أدخل نص الرسالة', 'Enter message')); return; }
+    if (!window.confirm(t(`سيتم إرسال الرسالة لـ ${selectedMembers.length} عضو. هل تريد المتابعة؟`, `Send to ${selectedMembers.length} members. Continue?`))) return;
 
     const selected = members.filter(m => selectedMembers.includes(m.id));
     setSendingToSelected(true);
@@ -305,13 +330,18 @@ export default function WhatsAppPage() {
 
     for (let i = 0; i < selected.length; i++) {
       const m = selected[i];
-      const name = m.name_ar || m.name || '';
-      const activeActs = m.activities?.filter(a => a.status === 'active').map(a => a.activity_name || a.name || '').filter(Boolean);
-      const activity = activeActs?.join('، ') || '';
-      const msg = waSettings.message_template
-        .replace('{name}', name)
-        .replace('{activity}', activity)
-        .replace('{days}', waSettings.days_before);
+      let msg;
+      if (connTabMsgType === 'template') {
+        const name = m.name_ar || m.name || '';
+        const activeActs = m.activities?.filter(a => a.status === 'active').map(a => a.activity_name || a.name || '').filter(Boolean);
+        const activity = activeActs?.join('، ') || '';
+        msg = waSettings.message_template
+          .replace('{name}', name)
+          .replace('{activity}', activity)
+          .replace('{days}', waSettings.days_before);
+      } else {
+        msg = connTabCustomMsg;
+      }
       try {
         await whatsappAPI.sendTest(m.phone, msg);
         success++;
@@ -729,6 +759,52 @@ export default function WhatsAppPage() {
                     )}
                   </div>
                 )}
+
+                {/* Message Composer */}
+                <div className="border rounded-xl p-4 bg-muted/20 space-y-3">
+                  <div className="flex items-center gap-2">
+                    <MessageSquare className="w-4 h-4 text-primary" />
+                    <p className="text-sm font-semibold">{t('نص الرسالة', 'Message')}</p>
+                  </div>
+
+                  {/* Type selector */}
+                  <div>
+                    <label className="block text-xs font-medium text-muted-foreground mb-1">{t('نوع الرسالة', 'Message Type')}</label>
+                    <Select value={connTabMsgType} onValueChange={handleConnTabMsgTypeChange}>
+                      <SelectTrigger className="h-9 text-sm bg-background"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="template">{t('رسالة التذكير (من الإعدادات)', 'Reminder Template (from settings)')}</SelectItem>
+                        <SelectItem value="custom">{t('مخصص', 'Custom')}</SelectItem>
+                        <SelectItem value="payment_reminder">{t('تذكير دفع', 'Payment Reminder')}</SelectItem>
+                        <SelectItem value="expiry_alert">{t('تنبيه انتهاء', 'Expiry Alert')}</SelectItem>
+                        <SelectItem value="promotion">{t('عرض خاص', 'Promotion')}</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {/* Template preview */}
+                  {connTabMsgType === 'template' && (
+                    <div className="p-3 rounded-lg bg-green-50 border border-green-200 text-sm whitespace-pre-wrap text-muted-foreground" dir="auto">
+                      <p className="text-xs font-semibold text-green-700 mb-1">{t('الرسالة المحفوظة:', 'Saved template:')}</p>
+                      {waSettings.message_template}
+                    </div>
+                  )}
+
+                  {/* Custom / preset textarea */}
+                  {connTabMsgType !== 'template' && (
+                    <div>
+                      <Textarea
+                        value={connTabCustomMsg}
+                        onChange={e => setConnTabCustomMsg(e.target.value)}
+                        placeholder={t('أدخل نص الرسالة...', 'Enter message text...')}
+                        rows={5}
+                        dir="auto"
+                        className="text-sm resize-none bg-background"
+                      />
+                      <p className="text-xs text-muted-foreground mt-1">{connTabCustomMsg.length} {t('حرف', 'chars')}</p>
+                    </div>
+                  )}
+                </div>
 
                 {/* Send to selected */}
                 {sendingToSelected && sendToSelectedProgress.total > 0 && (
