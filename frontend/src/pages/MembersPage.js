@@ -536,19 +536,27 @@ export const MembersPage = () => {
     'السبت': 6
   };
 
+  const localDateStr = (d) => {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  };
+
   const generateScheduleDates = (start_date, end_date, schedule_days_arabic) => {
     if (!start_date || !end_date || !schedule_days_arabic?.length) return [];
     const targetDays = schedule_days_arabic
       .map(d => ARABIC_DAY_TO_JS[d])
       .filter(n => n !== undefined);
     if (!targetDays.length) return [];
+    const [sy, sm, sd] = start_date.split('-').map(Number);
+    const [ey, em, ed] = end_date.split('-').map(Number);
+    const end = new Date(ey, em - 1, ed);
+    const cur = new Date(sy, sm - 1, sd);
     const dates = [];
-    const start = new Date(start_date + 'T00:00:00');
-    const end = new Date(end_date + 'T00:00:00');
-    const cur = new Date(start);
     while (cur <= end) {
       if (targetDays.includes(cur.getDay())) {
-        dates.push(cur.toISOString().slice(0, 10));
+        dates.push(localDateStr(cur));
       }
       cur.setDate(cur.getDate() + 1);
     }
@@ -2188,7 +2196,7 @@ export const MembersPage = () => {
                                 .filter(r => r.activity_id === q.activity_id)
                                 .map(r => r.date)
                             );
-                            const todayStr = new Date().toISOString().slice(0, 10);
+                            const todayStr = localDateStr(new Date());
                             return (
                               <div key={idx} className={`rounded-lg border ${q.exceeded ? 'bg-red-50 border-red-300' : q.remaining <= 2 ? 'bg-amber-50 border-amber-300' : 'bg-green-50 border-green-300'}`}>
                                 <div className="p-3">
