@@ -1,5 +1,9 @@
 # See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
 
+# WhatsApp service runtime artifacts
+backend/whatsapp_service/service.log
+backend/whatsapp_service/auth_info_baileys/
+
 # IDE and editors
 .idea/
 .vscode/
