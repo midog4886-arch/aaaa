@@ -117,7 +117,9 @@ async def _do_daily_reminders():
         for act in activities:
             if act.get("status") != "active":
                 continue
-            end_date = act.get("end_date", "")
+            raw_end = act.get("end_date", "")
+            # Normalize to YYYY-MM-DD (handles both date strings and ISO datetimes)
+            end_date = str(raw_end)[:10] if raw_end else ""
             if end_date == target_str:
                 name = member.get("name", "")
                 activity_name = act.get("activity_name", "")
@@ -186,6 +188,12 @@ async def update_settings(data: WhatsAppSettings, current_user: dict = Depends(g
     _require_whatsapp_access(current_user)
     if _db is None:
         raise HTTPException(status_code=503, detail="Database not available")
+    if data.days_before is not None and not (1 <= data.days_before <= 30):
+        raise HTTPException(status_code=400, detail="days_before must be between 1 and 30")
+    if data.send_hour is not None and not (0 <= data.send_hour <= 23):
+        raise HTTPException(status_code=400, detail="send_hour must be between 0 and 23")
+    if data.message_template is not None and len(data.message_template) > 1000:
+        raise HTTPException(status_code=400, detail="message_template must not exceed 1000 characters")
     coll = _db["whatsapp_settings"]
     update = {k: v for k, v in data.dict().items() if v is not None}
     if not update:

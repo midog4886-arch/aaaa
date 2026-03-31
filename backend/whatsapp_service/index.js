@@ -65,7 +65,6 @@ async function connectToWhatsApp() {
         isConnected = false;
         isConnecting = false;
         const statusCode = lastDisconnect?.error?.output?.statusCode;
-        const { Boom } = await import('@hapi/boom');
         const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
         logger.info(`Connection closed. Status: ${statusCode}. Reconnect: ${shouldReconnect}`);
         if (shouldReconnect) {
@@ -120,7 +119,6 @@ app.post('/send', async (req, res) => {
 app.post('/disconnect', async (req, res) => {
   try {
     if (sock) {
-      const { Boom } = await import('@hapi/boom');
       await sock.logout();
       sock = null;
     }
