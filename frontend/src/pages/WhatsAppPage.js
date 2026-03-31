@@ -366,10 +366,17 @@ export default function WhatsAppPage() {
     else setSelectedMembers(p => [...new Set([...p, ...ids])]);
   };
 
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const isSubscriptionActive = (a) => {
+    if (a.status !== 'active') return false;
+    if (!a.end_date) return true;
+    return new Date(a.end_date) >= today;
+  };
+
   const filteredMembers = members.filter(m => {
-    const hasActive = m.activities?.some(a => a.status === 'active');
+    const hasActive = m.activities?.some(a => isSubscriptionActive(a));
     if (!hasActive) return false;
-    const actMatch = filterActivity === 'all' || m.activities?.some(a => a.activity_id === filterActivity);
+    const actMatch = filterActivity === 'all' || m.activities?.some(a => a.activity_id === filterActivity && isSubscriptionActive(a));
     const brMatch = filterBranch === 'all' || m.branch_id === filterBranch;
     return actMatch && brMatch;
   });
