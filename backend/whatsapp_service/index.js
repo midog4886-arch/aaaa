@@ -1,18 +1,98 @@
 const express = require('express');
 const path = require('path');
+const fs = require('fs');
 const QRCode = require('qrcode');
 const pino = require('pino');
+const { MongoClient } = require('mongodb');
 
 const logger = pino({ level: 'info' });
 const app = express();
 app.use(express.json());
 
 const AUTH_DIR = path.join(__dirname, 'auth_info_baileys');
+const MONGO_URL = process.env.MONGO_URL;
+const DB_NAME = 'champions_academy';
+const COLL_NAME = 'whatsapp_auth';
+
+let mongoClient = null;
+
+async function getMongoCollection() {
+  if (!MONGO_URL) return null;
+  try {
+    if (!mongoClient) {
+      mongoClient = new MongoClient(MONGO_URL, { serverSelectionTimeoutMS: 5000 });
+      await mongoClient.connect();
+    }
+    return mongoClient.db(DB_NAME).collection(COLL_NAME);
+  } catch (err) {
+    logger.error('MongoDB connection failed:', err.message);
+    return null;
+  }
+}
+
+async function backupAuthToMongo() {
+  try {
+    if (!fs.existsSync(AUTH_DIR)) return;
+    const files = fs.readdirSync(AUTH_DIR);
+    if (!files.length) return;
+    const data = {};
+    for (const file of files) {
+      const filePath = path.join(AUTH_DIR, file);
+      data[file] = fs.readFileSync(filePath).toString('base64');
+    }
+    const col = await getMongoCollection();
+    if (!col) return;
+    await col.updateOne({ _id: 'session' }, { $set: { files: data, updatedAt: new Date() } }, { upsert: true });
+    logger.info('Auth session backed up to MongoDB');
+  } catch (err) {
+    logger.error('Failed to backup auth to MongoDB:', err.message);
+  }
+}
+
+async function restoreAuthFromMongo() {
+  try {
+    const col = await getMongoCollection();
+    if (!col) return false;
+    const doc = await col.findOne({ _id: 'session' });
+    if (!doc || !doc.files || !Object.keys(doc.files).length) {
+      logger.info('No saved session found in MongoDB');
+      return false;
+    }
+    if (!fs.existsSync(AUTH_DIR)) fs.mkdirSync(AUTH_DIR, { recursive: true });
+    for (const [filename, b64] of Object.entries(doc.files)) {
+      fs.writeFileSync(path.join(AUTH_DIR, filename), Buffer.from(b64, 'base64'));
+    }
+    logger.info('Auth session restored from MongoDB');
+    return true;
+  } catch (err) {
+    logger.error('Failed to restore auth from MongoDB:', err.message);
+    return false;
+  }
+}
+
+async function clearAuthFromMongo() {
+  try {
+    const col = await getMongoCollection();
+    if (!col) return;
+    await col.deleteOne({ _id: 'session' });
+    logger.info('Auth session cleared from MongoDB');
+  } catch (err) {
+    logger.error('Failed to clear auth from MongoDB:', err.message);
+  }
+}
 
 let sock = null;
 let currentQR = null;
 let isConnected = false;
 let isConnecting = false;
+let backupTimer = null;
+
+function scheduleBackup() {
+  if (backupTimer) clearTimeout(backupTimer);
+  backupTimer = setTimeout(() => {
+    backupAuthToMongo();
+  }, 2000);
+}
 
 async function getBaileys() {
   return await import('@whiskeysockets/baileys');
@@ -24,6 +104,8 @@ async function connectToWhatsApp() {
   currentQR = null;
 
   try {
+    await restoreAuthFromMongo();
+
     const {
       default: makeWASocket,
       useMultiFileAuthState,
@@ -43,7 +125,10 @@ async function connectToWhatsApp() {
       generateHighQualityLinkPreview: false,
     });
 
-    sock.ev.on('creds.update', saveCreds);
+    sock.ev.on('creds.update', () => {
+      saveCreds();
+      scheduleBackup();
+    });
 
     sock.ev.on('connection.update', async (update) => {
       const { connection, lastDisconnect, qr } = update;
@@ -59,6 +144,7 @@ async function connectToWhatsApp() {
         currentQR = null;
         isConnecting = false;
         logger.info('WhatsApp connected successfully!');
+        scheduleBackup();
       }
 
       if (connection === 'close') {
@@ -72,6 +158,7 @@ async function connectToWhatsApp() {
         } else {
           sock = null;
           currentQR = null;
+          await clearAuthFromMongo();
         }
       }
     });
@@ -125,10 +212,10 @@ app.post('/disconnect', async (req, res) => {
     isConnected = false;
     currentQR = null;
     isConnecting = false;
-    const fs = require('fs');
     if (fs.existsSync(AUTH_DIR)) {
       fs.rmSync(AUTH_DIR, { recursive: true, force: true });
     }
+    await clearAuthFromMongo();
     res.json({ success: true, message: 'Disconnected and session cleared' });
     setTimeout(connectToWhatsApp, 2000);
   } catch (err) {
