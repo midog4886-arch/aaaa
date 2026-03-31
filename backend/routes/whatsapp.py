@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import os
 from datetime import datetime, timedelta, date
 from zoneinfo import ZoneInfo
 from typing import Optional
@@ -19,7 +20,7 @@ def _require_whatsapp_access(current_user: dict):
 
 router = APIRouter(prefix="/whatsapp", tags=["whatsapp"])
 
-WA_SERVICE_URL = "http://localhost:3001"
+WA_SERVICE_URL = os.environ.get("WA_SERVICE_URL", "http://localhost:3001")
 RIYADH_TZ = ZoneInfo("Asia/Riyadh")
 
 DEFAULT_SETTINGS = {
@@ -94,6 +95,11 @@ async def _run_daily_reminders():
 
 async def _do_daily_reminders():
     if _db is None:
+        return
+    # Skip if WhatsApp is not connected
+    wa_status = await _get_wa_status()
+    if not wa_status.get("connected"):
+        logger.info("WhatsApp not connected, skipping reminder batch")
         return
     settings = await _get_settings()
     if not settings.get("enabled"):
