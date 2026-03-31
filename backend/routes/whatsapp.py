@@ -271,3 +271,35 @@ async def disconnect(current_user: dict = Depends(get_current_user)):
             return r.json()
     except Exception:
         raise HTTPException(status_code=503, detail="WhatsApp service not available")
+
+
+@router.get("/logs")
+async def get_send_logs(limit: int = 50, current_user: dict = Depends(get_current_user)):
+    _require_whatsapp_access(current_user)
+    if _db is None:
+        return []
+    logs = await _db["whatsapp_send_log"].find(
+        {}, {"_id": 0}
+    ).sort("timestamp", -1).limit(limit).to_list(length=limit)
+    return logs
+
+
+@router.get("/target-count")
+async def get_target_count(current_user: dict = Depends(get_current_user)):
+    _require_whatsapp_access(current_user)
+    if _db is None:
+        return {"count": 0, "target_date": ""}
+    settings = await _get_settings()
+    days_before = int(settings.get("days_before", 3))
+    today = datetime.now(RIYADH_TZ).date()
+    target_date = today + timedelta(days=days_before)
+    target_str = target_date.strftime("%Y-%m-%d")
+    count = await _db["members"].count_documents({
+        "activities": {
+            "$elemMatch": {
+                "status": "active",
+                "end_date": {"$regex": f"^{target_str}"}
+            }
+        }
+    })
+    return {"count": count, "target_date": target_str}

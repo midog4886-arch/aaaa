@@ -457,4 +457,6 @@ export const whatsappAPI = {
   sendTest: (phone, message) => axios.post(`${API}/whatsapp/test`, { phone, message }),
   sendNow: () => axios.post(`${API}/whatsapp/send-now`),
   disconnect: () => axios.post(`${API}/whatsapp/disconnect`),
+  getLogs: (limit = 50) => axios.get(`${API}/whatsapp/logs?limit=${limit}`),
+  getTargetCount: () => axios.get(`${API}/whatsapp/target-count`),
 };
