@@ -269,14 +269,7 @@ function AppRoutes() {
           </ProtectedRoute>
         } 
       />
-      <Route 
-        path="/admin/messages" 
-        element={
-          <ProtectedRoute permission="messages">
-            <MessagesPage />
-          </ProtectedRoute>
-        } 
-      />
+      <Route path="/admin/messages" element={<Navigate to="/admin/whatsapp" replace />} />
       <Route 
         path="/admin/settings" 
         element={
@@ -389,14 +382,7 @@ function AppRoutes() {
           </ProtectedRoute>
         } 
       />
-      <Route 
-        path="/admin/push-notifications" 
-        element={
-          <ProtectedRoute permission="push-notifications">
-            <PushNotificationsPage />
-          </ProtectedRoute>
-        } 
-      />
+      <Route path="/admin/push-notifications" element={<Navigate to="/admin/whatsapp" replace />} />
       <Route 
         path="/admin/member-card" 
         element={
@@ -408,7 +394,7 @@ function AppRoutes() {
       <Route 
         path="/admin/whatsapp" 
         element={
-          <ProtectedRoute permission="whatsapp">
+          <ProtectedRoute permission="messages">
             <WhatsAppPage />
           </ProtectedRoute>
         } 

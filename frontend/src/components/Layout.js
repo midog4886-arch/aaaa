@@ -143,11 +143,9 @@ export const Sidebar = ({ isOpen, onClose }) => {
       label_en: 'Communication',
       icon: Radio,
       items: [
-        { to: '/admin/messages', icon: MessageSquare, label: 'messages', permission: 'messages' },
+        { to: '/admin/whatsapp', icon: MessageCircle, label: 'messages', permission: 'messages' },
         { to: '/admin/advertisements', icon: Megaphone, label: 'advertisements', permission: 'advertisements' },
         { to: '/admin/daily-videos', icon: Video, label: 'daily_videos', permission: 'daily-videos' },
-        ...(isAdmin ? [{ to: '/admin/push-notifications', icon: Bell, label: 'push_notifications', permission: 'push-notifications' }] : []),
-        ...((isAdmin || userPermissions.includes('whatsapp')) ? [{ to: '/admin/whatsapp', icon: MessageCircle, label: 'whatsapp', permission: 'whatsapp' }] : []),
       ]
     },
     {
