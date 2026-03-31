@@ -26,6 +26,8 @@ RIYADH_TZ = ZoneInfo("Asia/Riyadh")
 DEFAULT_SETTINGS = {
     "enabled": False,
     "days_before": 3,
+    "days_before_2": 1,
+    "reminder_2_enabled": True,
     "message_template": "مرحباً {name}،\nنذكركم بأن اشتراككم في نشاط {activity} سينتهي بعد {days} يوم/أيام.\nيرجى التواصل معنا للتجديد. 🏆",
     "send_hour": 9,
 }
@@ -93,26 +95,13 @@ async def _run_daily_reminders():
         _reminders_running = False
 
 
-async def _do_daily_reminders():
-    if _db is None:
-        return
-    # Skip if WhatsApp is not connected
-    wa_status = await _get_wa_status()
-    if not wa_status.get("connected"):
-        logger.info("WhatsApp not connected, skipping reminder batch")
-        return
-    settings = await _get_settings()
-    if not settings.get("enabled"):
-        return
-
-    days_before = int(settings.get("days_before", 3))
-    template = settings.get("message_template", DEFAULT_SETTINGS["message_template"])
+async def _send_reminders_for_day(settings: dict, days_before: int, template: str):
+    """Send reminders to members whose active subscription ends exactly `days_before` days from today."""
     today = datetime.now(RIYADH_TZ).date()
     target_date = today + timedelta(days=days_before)
     target_str = target_date.strftime("%Y-%m-%d")
 
     members_coll = _db["members"]
-    # Filter at DB level for members with at least one active activity ending on target date
     members = await members_coll.find({
         "activities": {
             "$elemMatch": {
@@ -128,22 +117,24 @@ async def _do_daily_reminders():
         if not phone:
             continue
         activities = member.get("activities", [])
-        # Collect all expiring activities for this member (one message per member)
         expiring_activities = []
         for act in activities:
             if act.get("status") != "active":
                 continue
             raw_end = act.get("end_date", "")
-            # Normalize to YYYY-MM-DD (handles both date strings and ISO datetimes)
             end_date = str(raw_end)[:10] if raw_end else ""
             if end_date == target_str:
                 expiring_activities.append(act.get("activity_name", ""))
         if not expiring_activities:
             continue
         name = member.get("name", "")
-        # Use first activity name for template; if multiple, join them
         activity_name = "، ".join(filter(None, expiring_activities))
-        message = template.replace("{name}", name).replace("{activity}", activity_name).replace("{days}", str(days_before))
+        end_date_fmt = target_date.strftime("%Y/%m/%d")
+        message = (template
+                   .replace("{name}", name)
+                   .replace("{activity}", activity_name)
+                   .replace("{days}", str(days_before))
+                   .replace("{end_date}", end_date_fmt))
         wa_phone = _format_phone(phone)
         if wa_phone:
             success = await _send_wa_message(wa_phone, message)
@@ -153,14 +144,41 @@ async def _do_daily_reminders():
                 "phone": phone,
                 "activities": activity_name,
                 "success": success,
+                "days_before": days_before,
             }
             await _db["whatsapp_send_log"].insert_one(log_entry)
             if success:
                 sent_count += 1
-                logger.info(f"WhatsApp reminder sent to {name} ({phone}) for activities: {activity_name}")
+                logger.info(f"Reminder ({days_before}d) sent to {name} ({phone})")
             await asyncio.sleep(60)
+    return sent_count
 
-    logger.info(f"WhatsApp daily reminders: sent {sent_count} messages")
+
+async def _do_daily_reminders():
+    if _db is None:
+        return
+    wa_status = await _get_wa_status()
+    if not wa_status.get("connected"):
+        logger.info("WhatsApp not connected, skipping reminder batch")
+        return
+    settings = await _get_settings()
+    if not settings.get("enabled"):
+        return
+
+    template = settings.get("message_template", DEFAULT_SETTINGS["message_template"])
+
+    # First reminder
+    days_before = int(settings.get("days_before", 3))
+    sent1 = await _send_reminders_for_day(settings, days_before, template)
+
+    # Second reminder (if enabled and different from first)
+    reminder_2_enabled = settings.get("reminder_2_enabled", True)
+    days_before_2 = int(settings.get("days_before_2", 1))
+    sent2 = 0
+    if reminder_2_enabled and days_before_2 != days_before:
+        sent2 = await _send_reminders_for_day(settings, days_before_2, template)
+
+    logger.info(f"WhatsApp daily reminders: sent {sent1 + sent2} messages (reminder1={sent1}, reminder2={sent2})")
 
 
 async def _scheduler_loop():
@@ -207,6 +225,8 @@ async def get_settings_endpoint(current_user: dict = Depends(get_current_user)):
 class WhatsAppSettings(BaseModel):
     enabled: Optional[bool] = None
     days_before: Optional[int] = None
+    days_before_2: Optional[int] = None
+    reminder_2_enabled: Optional[bool] = None
     message_template: Optional[str] = None
     send_hour: Optional[int] = None
 
@@ -218,6 +238,8 @@ async def update_settings(data: WhatsAppSettings, current_user: dict = Depends(g
         raise HTTPException(status_code=503, detail="Database not available")
     if data.days_before is not None and not (1 <= data.days_before <= 30):
         raise HTTPException(status_code=400, detail="days_before must be between 1 and 30")
+    if data.days_before_2 is not None and not (1 <= data.days_before_2 <= 30):
+        raise HTTPException(status_code=400, detail="days_before_2 must be between 1 and 30")
     if data.send_hour is not None and not (0 <= data.send_hour <= 23):
         raise HTTPException(status_code=400, detail="send_hour must be between 0 and 23")
     if data.message_template is not None and len(data.message_template) > 1000:
@@ -288,32 +310,51 @@ async def get_send_logs(limit: int = 50, current_user: dict = Depends(get_curren
 async def get_target_count(current_user: dict = Depends(get_current_user)):
     _require_whatsapp_access(current_user)
     if _db is None:
-        return {"count": 0, "count_today": 0, "target_date": ""}
+        return {"count": 0, "count_today": 0, "target_date": "", "count_2": 0, "count_today_2": 0, "target_date_2": ""}
     settings = await _get_settings()
     days_before = int(settings.get("days_before", 3))
+    days_before_2 = int(settings.get("days_before_2", 1))
+    reminder_2_enabled = settings.get("reminder_2_enabled", True)
     today = datetime.now(RIYADH_TZ).date()
     today_str = today.strftime("%Y-%m-%d")
     target_date = today + timedelta(days=days_before)
     target_str = target_date.strftime("%Y-%m-%d")
+    target_date_2 = today + timedelta(days=days_before_2)
+    target_str_2 = target_date_2.strftime("%Y-%m-%d")
 
-    # Count members expiring within the next days_before days (inclusive)
+    # Count members expiring within relevant windows
+    max_days = max(days_before, days_before_2)
+    max_date = (today + timedelta(days=max_days)).strftime("%Y-%m-%d")
     all_members = await _db["members"].find(
         {"activities": {"$elemMatch": {"status": "active"}}}
     ).to_list(length=10000)
 
     count_within = 0
     count_today = 0
+    count_within_2 = 0
+    count_today_2 = 0
+
     for m in all_members:
+        matched_1 = False
+        matched_2 = False
         for a in m.get("activities", []):
             if a.get("status") != "active":
                 continue
             ed = a.get("end_date", "")
             if not ed:
                 continue
-            if today_str <= ed <= target_str:
+            if not matched_1 and today_str <= ed <= target_str:
                 count_within += 1
                 if ed.startswith(target_str):
                     count_today += 1
-                break
+                matched_1 = True
+            if reminder_2_enabled and not matched_2 and ed.startswith(target_str_2):
+                count_within_2 += 1
+                count_today_2 += 1
+                matched_2 = True
 
-    return {"count": count_within, "count_today": count_today, "target_date": target_str}
+    return {
+        "count": count_within, "count_today": count_today, "target_date": target_str,
+        "count_2": count_within_2, "count_today_2": count_today_2, "target_date_2": target_str_2,
+        "reminder_2_enabled": reminder_2_enabled,
+    }

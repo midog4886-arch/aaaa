@@ -38,7 +38,7 @@ export default function WhatsAppPage() {
   // ── WhatsApp Connection State ──
   const [status, setStatus] = useState({ connected: false, qr: null, connecting: false });
   const [waSettings, setWaSettings] = useState({
-    enabled: false, days_before: 3,
+    enabled: false, days_before: 3, days_before_2: 1, reminder_2_enabled: true,
     message_template: 'مرحباً {name}،\nنذكركم بأن اشتراككم في نشاط {activity} سينتهي بعد {days} يوم/أيام.\nيرجى التواصل معنا للتجديد. 🏆',
     send_hour: 9,
   });
@@ -49,7 +49,7 @@ export default function WhatsAppPage() {
   const [sendingNow, setSendingNow] = useState(false);
   const [disconnecting, setDisconnecting] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
-  const [targetInfo, setTargetInfo] = useState({ count: 0, count_today: 0, target_date: '', loading: false });
+  const [targetInfo, setTargetInfo] = useState({ count: 0, count_today: 0, target_date: '', count_2: 0, count_today_2: 0, target_date_2: '', reminder_2_enabled: true, loading: false });
   const [sendLogs, setSendLogs] = useState([]);
   const [loadingLogs, setLoadingLogs] = useState(false);
   const [showLogs, setShowLogs] = useState(false);
@@ -614,8 +614,10 @@ export default function WhatsAppPage() {
                 </button>
               </div>
 
-              <div>
-                <label className="block text-sm font-medium mb-2">{t('إرسال قبل الانتهاء بـ (أيام)', 'Days before expiry')}</label>
+              {/* Reminder 1 */}
+              <div className="border rounded-xl p-4 space-y-2">
+                <p className="text-sm font-semibold text-primary">{t('التذكير الأول', 'First Reminder')}</p>
+                <label className="block text-sm font-medium">{t('إرسال قبل الانتهاء بـ (أيام)', 'Days before expiry')}</label>
                 <div className="flex items-center gap-3">
                   <input type="number" min={1} max={30} value={waSettings.days_before}
                     onChange={e => setWaSettings(s => ({ ...s, days_before: parseInt(e.target.value) || 3 }))}
@@ -623,21 +625,62 @@ export default function WhatsAppPage() {
                   <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-blue-50 border border-blue-200">
                     <Users className="w-4 h-4 text-blue-600" />
                     {targetInfo.loading ? <Loader2 className="w-4 h-4 animate-spin text-blue-500" /> :
-                      <span className="text-sm font-semibold text-blue-700">{targetInfo.count} {t('عضو مستهدف', 'targeted')}</span>}
+                      <span className="text-sm font-semibold text-blue-700">{targetInfo.count} {t('عضو', 'members')}</span>}
                     <Button variant="ghost" size="sm" className="h-6 px-1" onClick={loadTargetCount}><RefreshCw className="w-3 h-3" /></Button>
                   </div>
                 </div>
                 {targetInfo.target_date && (
-                  <div className="mt-1 space-y-0.5">
+                  <div className="space-y-0.5">
                     <p className="text-xs text-muted-foreground">
                       {t(`ينتهي خلال ${waSettings.days_before} أيام (حتى ${targetInfo.target_date})`, `Expiring within ${waSettings.days_before} days (until ${targetInfo.target_date})`)}
                     </p>
                     {targetInfo.count_today > 0 && (
                       <p className="text-xs text-orange-600 font-medium">
-                        {t(`سيُرسل اليوم لـ ${targetInfo.count_today} عضو (ينتهون ${targetInfo.target_date})`, `Today's send: ${targetInfo.count_today} members expiring ${targetInfo.target_date}`)}
+                        {t(`سيُرسل اليوم لـ ${targetInfo.count_today} عضو`, `Today's send: ${targetInfo.count_today} members`)}
                       </p>
                     )}
                   </div>
+                )}
+              </div>
+
+              {/* Reminder 2 */}
+              <div className="border rounded-xl p-4 space-y-2">
+                <div className="flex items-center justify-between">
+                  <p className="text-sm font-semibold text-primary">{t('التذكير الثاني', 'Second Reminder')}</p>
+                  <button onClick={() => setWaSettings(s => ({ ...s, reminder_2_enabled: !s.reminder_2_enabled }))}
+                    className={`relative w-10 h-5 rounded-full transition-colors ${waSettings.reminder_2_enabled ? 'bg-green-500' : 'bg-gray-300'}`}>
+                    <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${waSettings.reminder_2_enabled ? (isRTL ? 'right-0.5' : 'translate-x-5') : (isRTL ? 'right-5' : 'translate-x-0.5')}`} />
+                  </button>
+                </div>
+                {waSettings.reminder_2_enabled && (
+                  <>
+                    <label className="block text-sm font-medium">{t('إرسال قبل الانتهاء بـ (أيام)', 'Days before expiry')}</label>
+                    <div className="flex items-center gap-3">
+                      <input type="number" min={1} max={30} value={waSettings.days_before_2}
+                        onChange={e => setWaSettings(s => ({ ...s, days_before_2: parseInt(e.target.value) || 1 }))}
+                        className="border rounded-lg px-3 py-2 w-24 text-center focus:outline-none focus:ring-2 focus:ring-primary" />
+                      <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-purple-50 border border-purple-200">
+                        <Users className="w-4 h-4 text-purple-600" />
+                        {targetInfo.loading ? <Loader2 className="w-4 h-4 animate-spin text-purple-500" /> :
+                          <span className="text-sm font-semibold text-purple-700">{targetInfo.count_2} {t('عضو', 'members')}</span>}
+                      </div>
+                    </div>
+                    {targetInfo.target_date_2 && (
+                      <div className="space-y-0.5">
+                        <p className="text-xs text-muted-foreground">
+                          {t(`سيُرسل لمن ينتهي اشتراكهم بتاريخ ${targetInfo.target_date_2}`, `Sends to members expiring ${targetInfo.target_date_2}`)}
+                        </p>
+                        {targetInfo.count_today_2 > 0 && (
+                          <p className="text-xs text-purple-600 font-medium">
+                            {t(`سيُرسل اليوم لـ ${targetInfo.count_today_2} عضو`, `Today's send: ${targetInfo.count_today_2} members`)}
+                          </p>
+                        )}
+                      </div>
+                    )}
+                  </>
+                )}
+                {!waSettings.reminder_2_enabled && (
+                  <p className="text-xs text-muted-foreground">{t('التذكير الثاني معطّل', 'Second reminder disabled')}</p>
                 )}
               </div>
 
