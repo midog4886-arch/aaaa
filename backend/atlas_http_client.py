@@ -279,7 +279,11 @@ class AtlasClient:
         self._app_id = app_id
         self._api_key = api_key
         self._data_source = data_source
-        self._base_url = f"https://data.mongodb-api.com/app/{app_id}/endpoint/data/v1"
+        custom_base = os.environ.get("ATLAS_BASE_URL", "").rstrip("/")
+        if custom_base:
+            self._base_url = custom_base
+        else:
+            self._base_url = f"https://data.mongodb-api.com/app/{app_id}/endpoint/data/v1"
         self._databases: Dict[str, AtlasDatabase] = {}
 
     def __getitem__(self, name: str) -> AtlasDatabase:
