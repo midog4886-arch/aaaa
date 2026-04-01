@@ -4,7 +4,6 @@ from fastapi.responses import StreamingResponse, FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
-from motor.motor_asyncio import AsyncIOMotorClient
 import os
 import logging
 import io
@@ -82,19 +81,8 @@ UPLOADS_DIR = ROOT_DIR / "uploads"
 UPLOADS_DIR.mkdir(exist_ok=True)
 load_dotenv(ROOT_DIR / '.env')
 
-# MongoDB connection
-import certifi
-import ssl
-mongo_url = os.environ['MONGO_URL']
-client = AsyncIOMotorClient(
-    mongo_url,
-    tls=True,
-    tlsAllowInvalidCertificates=True,
-    serverSelectionTimeoutMS=10000,
-    connectTimeoutMS=10000,
-    socketTimeoutMS=10000
-)
-db = client[os.environ['DB_NAME']]
+# Use centralized database connection (supports both Motor and Atlas HTTP proxy)
+from database import db
 
 # JWT Config
 JWT_SECRET = os.environ.get('JWT_SECRET_KEY', 'default_secret')

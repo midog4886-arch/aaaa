@@ -10,7 +10,6 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel
 from typing import Optional, List, Dict, Any
 from datetime import datetime, timezone, timedelta
-from motor.motor_asyncio import AsyncIOMotorClient
 import os
 import jwt
 import uuid
@@ -18,10 +17,8 @@ import uuid
 router = APIRouter(prefix="/api/member-portal", tags=["Member Portal"])
 security = HTTPBearer()
 
-# Database connection
-mongo_url = os.environ.get('MONGO_URL', 'mongodb://localhost:27017')
-client = AsyncIOMotorClient(mongo_url)
-db = client[os.environ.get('DB_NAME', 'champions_academy')]
+# Use centralized database connection
+from database import db
 
 # JWT Config for members
 MEMBER_JWT_SECRET = os.environ.get('JWT_SECRET_KEY', 'default_secret') + "_member"

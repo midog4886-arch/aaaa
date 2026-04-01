@@ -13,10 +13,8 @@ from pywebpush import webpush, WebPushException
 
 router = APIRouter(prefix="/push-notifications", tags=["push-notifications"])
 
-from motor.motor_asyncio import AsyncIOMotorClient
-mongo_url = os.environ.get('MONGO_URL')
-client = AsyncIOMotorClient(mongo_url)
-db = client[os.environ.get('DB_NAME')]
+# Use centralized database connection
+from database import db
 
 VAPID_PUBLIC_KEY = os.environ.get('VAPID_PUBLIC_KEY', 'BLBx-hf2WrL2qEa0qKb-aCJbcxEvyn62GDTyyP9KTS5K7ZL0K7TfmOKSPqp8vQF0DaG8hgSFYHdBYq_VuaJSbxQ')
 VAPID_PRIVATE_KEY = os.environ.get('VAPID_PRIVATE_KEY', 'BQv3sSRJtUCFQiEZ6z9IXPKHFuJ6E9d0cL0pFQxXVgM')

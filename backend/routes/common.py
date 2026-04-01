@@ -1,15 +1,11 @@
 """Common dependencies and utilities for routes"""
 from fastapi import Depends, HTTPException
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from motor.motor_asyncio import AsyncIOMotorClient
 import os
 import jwt
 
-# MongoDB connection
-mongo_url = os.environ.get('MONGO_URL', 'mongodb://localhost:27017')
-db_name = os.environ.get('DB_NAME', 'champions_academy')
-client = AsyncIOMotorClient(mongo_url)
-db = client[db_name]
+# Use centralized database connection
+from database import db
 
 # JWT Config
 JWT_SECRET = os.environ.get('JWT_SECRET_KEY', 'default_secret')

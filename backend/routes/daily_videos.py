@@ -26,11 +26,8 @@ def set_push_notify_function(func):
     global push_notify_new_video
     push_notify_new_video = func
 
-# Database connection
-from motor.motor_asyncio import AsyncIOMotorClient
-mongo_url = os.environ.get('MONGO_URL')
-client = AsyncIOMotorClient(mongo_url)
-db = client[os.environ.get('DB_NAME')]
+# Use centralized database connection
+from database import db
 
 # Auth
 import jwt
