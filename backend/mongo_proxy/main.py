@@ -1,7 +1,7 @@
 """
 MongoDB HTTP Proxy
 Implements Atlas Data API-compatible endpoints over HTTPS.
-Deploy to Railway/Render/Fly.io - platforms that allow port 27017 outbound.
+Deploy to Hugging Face Spaces - allows port 27017 outbound.
 """
 from fastapi import FastAPI, Header, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -13,15 +13,18 @@ from datetime import datetime, timezone
 app = FastAPI()
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
-MONGO_URL = os.environ["MONGO_URL"]
+MONGO_URL = os.environ.get("MONGO_URL", "")
 PROXY_API_KEY = os.environ.get("PROXY_API_KEY", "champions-proxy-key-2024")
 
 _client = None
 
+
 def get_client():
     global _client
+    if not MONGO_URL:
+        raise Exception("MONGO_URL environment variable is not set")
     if _client is None:
-        _client = MongoClient(MONGO_URL, serverSelectionTimeoutMS=10000)
+        _client = MongoClient(MONGO_URL, serverSelectionTimeoutMS=15000)
     return _client
 
 
@@ -30,7 +33,7 @@ def parse_ejson(value):
         if "$oid" in value:
             try:
                 return ObjectId(value["$oid"])
-            except:
+            except Exception:
                 return value["$oid"]
         if "$date" in value:
             d = value["$date"]
@@ -72,7 +75,12 @@ def clean_doc(doc):
 
 @app.get("/health")
 async def health():
-    return {"status": "ok"}
+    mongo_configured = bool(MONGO_URL)
+    return {
+        "status": "ok",
+        "mongo_configured": mongo_configured,
+        "version": "1.1"
+    }
 
 
 @app.post("/action/{action}")
@@ -84,7 +92,11 @@ async def handle_action(action: str, request: Request, api_key: str = Header(Non
     db_name = body.get("database", "champions_academy")
     col_name = body.get("collection", "")
 
-    client = get_client()
+    try:
+        client = get_client()
+    except Exception as e:
+        raise HTTPException(status_code=503, detail=f"Database not configured: {e}")
+
     col = client[db_name][col_name]
 
     try:
@@ -169,5 +181,5 @@ async def handle_action(action: str, request: Request, api_key: str = Header(Non
 
 if __name__ == "__main__":
     import uvicorn
-    port = int(os.environ.get("PORT", 8000))
+    port = int(os.environ.get("PORT", 7860))
     uvicorn.run(app, host="0.0.0.0", port=port)
