@@ -6,7 +6,7 @@ from dotenv import load_dotenv
 logger = logging.getLogger("database")
 
 ROOT_DIR = Path(__file__).parent
-load_dotenv(ROOT_DIR / '.env')
+load_dotenv(ROOT_DIR / '.env', override=True)
 
 # ── Choose connection method ──────────────────────────────────────────────────
 # If ATLAS_APP_ID + ATLAS_API_KEY are set → use HTTP Data API (port 443)
