@@ -7444,6 +7444,21 @@ async def create_default_admin():
     asyncio.create_task(_init())
     # Start WhatsApp scheduler
     start_whatsapp_scheduler()
+    # Keep proxy alive (prevent Render free tier from sleeping)
+    async def _keep_proxy_alive():
+        import httpx as _httpx
+        proxy_url = os.environ.get("ATLAS_BASE_URL", "").rstrip("/")
+        if not proxy_url:
+            return
+        while True:
+            await asyncio.sleep(8 * 60)  # every 8 minutes
+            try:
+                async with _httpx.AsyncClient(timeout=10) as c:
+                    await c.get(f"{proxy_url}/health")
+                    print(f"Keep-alive ping OK → {proxy_url}")
+            except Exception as e:
+                print(f"Keep-alive ping failed: {e}")
+    asyncio.create_task(_keep_proxy_alive())
 
 @app.on_event("shutdown")
 async def shutdown_db_client():

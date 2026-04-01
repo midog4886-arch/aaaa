@@ -176,7 +176,7 @@ class AtlasCollection:
             "Content-Type": "application/ejson",
             "Accept": "application/ejson",
         }
-        async with httpx.AsyncClient(timeout=30) as client:
+        async with httpx.AsyncClient(timeout=65) as client:
             resp = await client.post(url, json=body, headers=headers)
             if resp.status_code >= 400:
                 logger.error(f"Atlas API {action} error {resp.status_code}: {resp.text[:300]}")
