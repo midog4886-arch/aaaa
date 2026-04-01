@@ -826,18 +826,40 @@ async def register(user: UserCreate):
 
 @api_router.post("/auth/login", response_model=TokenResponse)
 async def login(credentials: UserLogin):
-    user = await db.users.find_one({"username": credentials.username}, {"_id": 0})
-    if not user or not verify_password(credentials.password, user["password"]):
-        raise HTTPException(status_code=401, detail="Invalid credentials")
-    
-    branch_id = user.get("branch_id")
-    is_admin = user.get("is_admin", False)
-    
-    token = create_token(user["id"], user["username"], branch_id, is_admin)
-    return TokenResponse(
-        access_token=token,
-        user={"id": user["id"], "username": user["username"], "name": user["name"], "branch_id": branch_id, "is_admin": is_admin}
-    )
+    try:
+        user = await db.users.find_one({"username": credentials.username}, {"_id": 0})
+        if not user:
+            raise HTTPException(status_code=401, detail="Invalid credentials")
+        
+        stored_password = user.get("password", "")
+        # Handle both bytes and str stored passwords
+        if isinstance(stored_password, bytes):
+            pass  # already bytes
+        else:
+            stored_password = stored_password.encode("utf-8")
+        
+        try:
+            password_ok = bcrypt.checkpw(credentials.password.encode("utf-8"), stored_password)
+        except Exception as e:
+            print(f"Password verification error for user {credentials.username}: {e}")
+            raise HTTPException(status_code=401, detail="Invalid credentials")
+        
+        if not password_ok:
+            raise HTTPException(status_code=401, detail="Invalid credentials")
+        
+        branch_id = user.get("branch_id")
+        is_admin = user.get("is_admin", False)
+        
+        token = create_token(user["id"], user["username"], branch_id, is_admin)
+        return TokenResponse(
+            access_token=token,
+            user={"id": user["id"], "username": user["username"], "name": user.get("name", user["username"]), "branch_id": branch_id, "is_admin": is_admin}
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Login error: {type(e).__name__}: {e}")
+        raise HTTPException(status_code=500, detail=f"Login error: {str(e)}")
 
 @api_router.get("/auth/me")
 async def get_me(current_user: dict = Depends(get_current_user)):
