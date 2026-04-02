@@ -1121,11 +1121,11 @@ async def create_registration_form(
             last_num = int(last_reg["form_number"].replace("REG-", ""))
             next_reg = last_num + 1
         except:
-            next_reg = 9001
+            next_reg = 10001
     else:
-        next_reg = 9001
-    if next_reg < 9001:
-        next_reg = 9001
+        next_reg = 10001
+    if next_reg < 10001:
+        next_reg = 10001
     form_number = f"REG-{next_reg:05d}"
     
     # Determine branch_id
@@ -1180,8 +1180,8 @@ async def create_registration_form(
                     continue
             
             next_num = max_number + 1
-            if next_num < 9001:
-                next_num = 9001
+            if next_num < 10001:
+                next_num = 10001
             next_member_code = str(next_num)
             member_id = str(uuid.uuid4())
             member_code = next_member_code
@@ -1405,8 +1405,8 @@ async def convert_registration_form(form_id: str, current_user: dict = Depends(g
         except (ValueError, AttributeError):
             continue
     next_inv = max_inv + 1
-    if next_inv < 26001:
-        next_inv = 26001
+    if next_inv < 30001:
+        next_inv = 30001
     invoice_number = f"INV-{next_inv:05d}"
     
     # Get supervisor name from current user
@@ -3943,8 +3943,8 @@ async def create_purchase_invoice(invoice: PurchaseInvoiceCreate, current_user: 
         except (ValueError, AttributeError):
             continue
     next_pur = max_pur + 1
-    if next_pur < 9001:
-        next_pur = 9001
+    if next_pur < 10001:
+        next_pur = 10001
     invoice_number = f"PUR-{next_pur:05d}"
     
     # Get user info
@@ -3993,11 +3993,11 @@ async def create_purchase_invoice(invoice: PurchaseInvoiceCreate, current_user: 
                 je_last = int(last_je["entry_number"].replace("JE-", ""))
                 je_next = je_last + 1
             except:
-                je_next = 9001
+                je_next = 10001
         else:
-            je_next = 9001
-        if je_next < 9001:
-            je_next = 9001
+            je_next = 10001
+        if je_next < 10001:
+            je_next = 10001
         entry_number = f"JE-{je_next:05d}"
         
         lines = [
@@ -4240,11 +4240,11 @@ async def create_supplier_payment(payment: SupplierPaymentCreate, current_user: 
                 je2_last = int(last_je2["entry_number"].replace("JE-", ""))
                 je2_next = je2_last + 1
             except:
-                je2_next = 9001
+                je2_next = 10001
         else:
-            je2_next = 9001
-        if je2_next < 9001:
-            je2_next = 9001
+            je2_next = 10001
+        if je2_next < 10001:
+            je2_next = 10001
         entry_number = f"JE-{je2_next:05d}"
         
         journal_entry = {
@@ -5811,11 +5811,11 @@ async def create_internal_expense(
             last_num = int(last_expense["expense_number"].replace("EXP-", ""))
             next_num = last_num + 1
         except:
-            next_num = 9001
+            next_num = 10001
     else:
-        next_num = 9001
-    if next_num < 9001:
-        next_num = 9001
+        next_num = 10001
+    if next_num < 10001:
+        next_num = 10001
     expense_number = f"EXP-{next_num:05d}"
     
     # Handle image upload
@@ -5986,11 +5986,11 @@ async def post_expenses_to_accounting(
             last_num = int(last_entry["entry_number"].replace("JE-", ""))
             next_num = last_num + 1
         except:
-            next_num = 9001
+            next_num = 10001
     else:
-        next_num = 9001
-    if next_num < 9001:
-        next_num = 9001
+        next_num = 10001
+    if next_num < 10001:
+        next_num = 10001
     entry_number = f"JE-{next_num:05d}"
     
     # Create description
@@ -6663,11 +6663,11 @@ async def create_journal_entry(entry: JournalEntryCreate, current_user: dict = D
             je_m_last = int(last_je_manual["entry_number"].replace("JE-", ""))
             je_m_next = je_m_last + 1
         except:
-            je_m_next = 9001
+            je_m_next = 10001
     else:
-        je_m_next = 9001
-    if je_m_next < 9001:
-        je_m_next = 9001
+        je_m_next = 10001
+    if je_m_next < 10001:
+        je_m_next = 10001
     entry_number = f"JE-{je_m_next:05d}"
     
     user_doc = await db.users.find_one({"id": current_user["user_id"]}, {"_id": 0})

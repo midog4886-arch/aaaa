@@ -236,8 +236,8 @@ async def create_invoice(invoice: InvoiceCreate, current_user: dict = Depends(ge
             continue
     
     next_number = max_number + 1
-    if next_number < 26001:
-        next_number = 26001
+    if next_number < 30001:
+        next_number = 30001
     
     # Get member info if member_id provided
     member = None
