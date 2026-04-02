@@ -824,7 +824,7 @@ export default function WhatsAppPage() {
                                   className={`flex items-center justify-between px-4 py-2.5 cursor-pointer transition-colors ${selectedMembers.includes(m.id) ? 'bg-primary/8' : 'hover:bg-muted/20'}`}
                                   onClick={() => toggleMember(m.id)}>
                                   <div className="flex items-center gap-3">
-                                    <Checkbox checked={selectedMembers.includes(m.id)} onCheckedChange={() => toggleMember(m.id)} />
+                                    <Checkbox checked={selectedMembers.includes(m.id)} onClick={e => e.stopPropagation()} onCheckedChange={() => toggleMember(m.id)} />
                                     <span className="text-sm font-medium">{isRTL ? m.name_ar : m.name}</span>
                                   </div>
                                   <div className="flex flex-col items-end gap-0.5">
@@ -846,7 +846,7 @@ export default function WhatsAppPage() {
                         className={`flex items-center justify-between px-4 py-2.5 rounded-xl border cursor-pointer transition-colors ${selectedMembers.includes(m.id) ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/50'}`}
                         onClick={() => toggleMember(m.id)}>
                         <div className="flex items-center gap-3">
-                          <Checkbox checked={selectedMembers.includes(m.id)} onCheckedChange={() => toggleMember(m.id)} />
+                          <Checkbox checked={selectedMembers.includes(m.id)} onClick={e => e.stopPropagation()} onCheckedChange={() => toggleMember(m.id)} />
                           <span className="text-sm font-medium">{isRTL ? m.name_ar : m.name}</span>
                         </div>
                         <div className="flex flex-col items-end gap-0.5">
