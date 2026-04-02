@@ -1,0 +1,66 @@
+Hello,
+
+ 
+
+We are writing to inform you of ongoing AWS infrastructure events affecting multiple Availability Zones in the Middle East.  We have determined that one or more of your Atlas clusters has at least one node in an affected Availability Zone.
+
+ 
+
+What is happening
+
+ 
+
+Two Availability Zones in AWS ME-CENTRAL-1 (UAE) continue to experience significant impairments. In addition, workloads in ME-SOUTH-1 (Bahrain) are currently not operational, cannot be modified, and are not able to migrate to other regions or support other disaster recovery actions such as backup and restore.
+
+ 
+
+Because MongoDB Atlas runs on AWS infrastructure, Atlas clusters deployed in the affected Availability Zones may be unavailable or experience operational impact, and certain Atlas management operations (including the Atlas UI, API, and CLI) may show increased error rates during this time.
+
+
+Who may be impacted
+
+ 
+
+The impact of these events depends on your Atlas cluster topology and configuration:
+
+Customers using multi–region deployments, global clusters, or replicas located in unaffected regions remain operational. Multi-region deployments with a node in ME-CENTRAL-1 and ME-SOUTH-1 may experience reduced node unavailability or experience cluster configuration change limitations.
+Customers with clusters or workloads primarily or exclusively located in the affected Availability Zones will experience reduced availability or degraded performance.
+Clusters deployed entirely outside the impacted regions are operating normally.
+
+Available options
+
+ 
+
+Depending on your application requirements and cluster configuration, you may consider the following options:
+
+If your cluster has nodes in an unaffected availability zone, add electable nodes in another region, which can enable the cluster to establish a minimum viable topology and restore database operations.
+If all cluster nodes are in the affected ME-SOUTH-1 region and you have cross-region backups outside the affected regions, initiate DR procedures to restore services in a different region.
+Take no action and wait for the affected Availability Zones to be fully recovered.
+ 
+
+We continue to assist customers in their chosen remediation path to the extent possible. Customers running workloads in the Middle East should consider alternate Atlas regions, such as those in North America, Europe, or Asia Pacific, as appropriate for your latency and data residency requirements. MongoDB Atlas has paused backup snapshot deletion in ME-CENTRAL-1 and ME-SOUTH-1 at this time.
+
+ 
+
+For ongoing updates related to the affected Availability Zones, please monitor the MongoDB Cloud Status Page.
+
+
+How to get help
+
+ 
+
+We recognize the complexity of this ongoing situation  and are committed to helping you minimize disruption to your workloads.
+
+ 
+
+If you would like assistance assessing how these events may affect your Atlas deployment, our support team is available:
+
+Open a support case through the MongoDB Support Portal.
+Start a chat with Support using the webpage chat tool within the MongoDB Atlas interface.
+ 
+
+We continue to monitor the situation closely and will share updates as additional information becomes available.
+
+ 
+
+Thank you for your patience.
