@@ -330,6 +330,40 @@ export const SettingsPage = () => {
               </div>
             </div>
 
+            {/* Full Backup Button */}
+            <div className="p-4 border-2 border-primary rounded-lg space-y-3 bg-primary/5">
+              <div className="flex items-center gap-2">
+                <FolderArchive className="w-5 h-5 text-primary" />
+                <h4 className="font-medium text-primary">
+                  {language === 'ar' ? '📦 النسخة الاحتياطية الكاملة' : '📦 Full Backup'}
+                </h4>
+              </div>
+              <p className="text-sm text-muted-foreground">
+                {language === 'ar' 
+                  ? 'تحميل نسخة كاملة تشمل الكود + قاعدة البيانات في ملف واحد'
+                  : 'Download complete backup including Code + Database in one file'}
+              </p>
+              <Button 
+                onClick={downloadFullBackup}
+                disabled={backupLoading.full}
+                className="w-full"
+                size="lg"
+                data-testid="download-full-backup"
+              >
+                {backupLoading.full ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    {language === 'ar' ? 'جاري التحميل... (قد يستغرق دقيقة)' : 'Downloading... (may take a minute)'}
+                  </>
+                ) : (
+                  <>
+                    <FolderArchive className="w-4 h-4 mr-2" />
+                    {language === 'ar' ? 'تحميل النسخة الكاملة' : 'Download Full Backup'}
+                  </>
+                )}
+              </Button>
+            </div>
+
             <div className="p-3 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg border border-yellow-200 dark:border-yellow-800">
               <p className="text-sm text-yellow-800 dark:text-yellow-200">
                 {language === 'ar' 
