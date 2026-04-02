@@ -249,8 +249,36 @@ export const InvoicesPage = () => {
 
   const calcEndDate = (startDate, weeks, trainingDays = []) => {
     if (!startDate || !weeks) return '';
+    const dayOrder = ['الأحد', 'الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'];
+    const numWeeks = parseInt(weeks, 10);
+    // If no training days selected, add weeks*7 days as before
+    if (!trainingDays || trainingDays.length === 0) {
+      const d = new Date(startDate);
+      d.setDate(d.getDate() + numWeeks * 7);
+      return d.toISOString().split('T')[0];
+    }
+    // Convert Arabic day names → JS day indices (0=Sunday ... 6=Saturday)
+    const trainingIndices = trainingDays
+      .map(day => dayOrder.indexOf(day))
+      .filter(idx => idx !== -1);
+    if (trainingIndices.length === 0) {
+      const d = new Date(startDate);
+      d.setDate(d.getDate() + numWeeks * 7);
+      return d.toISOString().split('T')[0];
+    }
+    // Last day of the N-week period (numWeeks*7 - 1 days after start)
+    const lastDay = new Date(startDate);
+    lastDay.setDate(lastDay.getDate() + numWeeks * 7 - 1);
+    // Walk backwards from lastDay to find the last training day
+    for (let i = 0; i < 7; i++) {
+      if (trainingIndices.includes(lastDay.getDay())) {
+        return lastDay.toISOString().split('T')[0];
+      }
+      lastDay.setDate(lastDay.getDate() - 1);
+    }
+    // Fallback: add weeks*7 days
     const d = new Date(startDate);
-    d.setDate(d.getDate() + parseInt(weeks, 10) * 7);
+    d.setDate(d.getDate() + numWeeks * 7);
     return d.toISOString().split('T')[0];
   };
 
