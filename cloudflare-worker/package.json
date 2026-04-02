@@ -1,0 +1,11 @@
+{
+  "name": "mongodb-proxy",
+  "version": "1.0.0",
+  "private": true,
+  "dependencies": {
+    "mongodb": "^6.3.0"
+  },
+  "devDependencies": {
+    "wrangler": "^3.0.0"
+  }
+}
