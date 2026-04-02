@@ -1166,7 +1166,10 @@ async def create_registration_form(
                 except ValueError:
                     continue
             
-            next_member_code = str(max_number + 1)
+            next_num = max_number + 1
+            if next_num < 9001:
+                next_num = 9001
+            next_member_code = str(next_num)
             member_id = str(uuid.uuid4())
             member_code = next_member_code
             
@@ -1374,9 +1377,24 @@ async def convert_registration_form(form_id: str, current_user: dict = Depends(g
     if form["status"] == "converted":
         raise HTTPException(status_code=400, detail="Form already converted to invoice")
     
-    # Create invoice from form
-    count = await db.invoices.count_documents({})
-    invoice_number = f"INV-{count + 1:05d}"
+    # Create invoice from form - use max-based numbering to avoid conflicts with old data
+    all_invs = await db.invoices.find(
+        {"invoice_number": {"$exists": True}},
+        {"invoice_number": 1, "_id": 0}
+    ).to_list(100000)
+    max_inv = 0
+    for inv in all_invs:
+        inv_num = inv.get("invoice_number", "")
+        try:
+            num = int(inv_num.replace("INV-", "")) if inv_num.startswith("INV-") else int(inv_num)
+            if num > max_inv:
+                max_inv = num
+        except (ValueError, AttributeError):
+            continue
+    next_inv = max_inv + 1
+    if next_inv < 26001:
+        next_inv = 26001
+    invoice_number = f"INV-{next_inv:05d}"
     
     # Get supervisor name from current user
     user_doc = await db.users.find_one({"id": current_user["user_id"]}, {"_id": 0})
@@ -3862,9 +3880,24 @@ async def create_purchase_invoice(invoice: PurchaseInvoiceCreate, current_user: 
     
     total = round(subtotal + tax_amount, 2)
     
-    # Generate invoice number
-    count = await db.purchase_invoices.count_documents({})
-    invoice_number = f"PUR-{count + 1:05d}"
+    # Generate invoice number - max-based to avoid conflicts with old data
+    all_purs = await db.purchase_invoices.find(
+        {"invoice_number": {"$exists": True}},
+        {"invoice_number": 1, "_id": 0}
+    ).to_list(100000)
+    max_pur = 0
+    for pur in all_purs:
+        pur_num = pur.get("invoice_number", "")
+        try:
+            num = int(pur_num.replace("PUR-", "")) if pur_num.startswith("PUR-") else int(pur_num)
+            if num > max_pur:
+                max_pur = num
+        except (ValueError, AttributeError):
+            continue
+    next_pur = max_pur + 1
+    if next_pur < 9001:
+        next_pur = 9001
+    invoice_number = f"PUR-{next_pur:05d}"
     
     # Get user info
     user_doc = await db.users.find_one({"id": current_user["user_id"]}, {"_id": 0})

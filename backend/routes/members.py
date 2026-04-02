@@ -162,9 +162,9 @@ async def create_member(member: MemberCreate, current_user: dict = Depends(get_c
             last_code = int(last_member["member_code"])
             new_code = str(last_code + 1)
         except ValueError:
-            new_code = "2601"
+            new_code = "9001"
     else:
-        new_code = "2601"
+        new_code = "9001"
     
     member_doc = {
         "id": member_id,
