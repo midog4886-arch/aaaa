@@ -1111,9 +1111,22 @@ async def create_registration_form(
     current_user: dict = Depends(get_current_user)
 ):
     """Create a new registration form"""
-    # Generate form number
-    count = await db.registration_forms.count_documents({})
-    form_number = f"REG-{count + 1:05d}"
+    # Generate form number - max-based to avoid conflicts
+    last_reg = await db.registration_forms.find_one(
+        {"form_number": {"$exists": True}},
+        sort=[("created_at", -1)]
+    )
+    if last_reg and last_reg.get("form_number"):
+        try:
+            last_num = int(last_reg["form_number"].replace("REG-", ""))
+            next_reg = last_num + 1
+        except:
+            next_reg = 9001
+    else:
+        next_reg = 9001
+    if next_reg < 9001:
+        next_reg = 9001
+    form_number = f"REG-{next_reg:05d}"
     
     # Determine branch_id
     branch_id = form.branch_id
@@ -3937,8 +3950,20 @@ async def create_purchase_invoice(invoice: PurchaseInvoiceCreate, current_user: 
     
     if purchases_account and supplier_account:
         journal_entry_id = str(uuid.uuid4())
-        je_count = await db.journal_entries.count_documents({})
-        entry_number = f"JE-{je_count + 1:05d}"
+        last_je = await db.journal_entries.find_one(
+            {"entry_number": {"$exists": True}}, sort=[("created_at", -1)]
+        )
+        if last_je and last_je.get("entry_number"):
+            try:
+                je_last = int(last_je["entry_number"].replace("JE-", ""))
+                je_next = je_last + 1
+            except:
+                je_next = 9001
+        else:
+            je_next = 9001
+        if je_next < 9001:
+            je_next = 9001
+        entry_number = f"JE-{je_next:05d}"
         
         lines = [
             {
@@ -4172,8 +4197,20 @@ async def create_supplier_payment(payment: SupplierPaymentCreate, current_user: 
     
     if cash_account and supplier_account:
         je_id = str(uuid.uuid4())
-        je_count = await db.journal_entries.count_documents({})
-        entry_number = f"JE-{je_count + 1:05d}"
+        last_je2 = await db.journal_entries.find_one(
+            {"entry_number": {"$exists": True}}, sort=[("created_at", -1)]
+        )
+        if last_je2 and last_je2.get("entry_number"):
+            try:
+                je2_last = int(last_je2["entry_number"].replace("JE-", ""))
+                je2_next = je2_last + 1
+            except:
+                je2_next = 9001
+        else:
+            je2_next = 9001
+        if je2_next < 9001:
+            je2_next = 9001
+        entry_number = f"JE-{je2_next:05d}"
         
         journal_entry = {
             "id": je_id,
@@ -5739,10 +5776,11 @@ async def create_internal_expense(
             last_num = int(last_expense["expense_number"].replace("EXP-", ""))
             next_num = last_num + 1
         except:
-            next_num = 1
+            next_num = 9001
     else:
-        next_num = 1
-    
+        next_num = 9001
+    if next_num < 9001:
+        next_num = 9001
     expense_number = f"EXP-{next_num:05d}"
     
     # Handle image upload
@@ -5913,10 +5951,11 @@ async def post_expenses_to_accounting(
             last_num = int(last_entry["entry_number"].replace("JE-", ""))
             next_num = last_num + 1
         except:
-            next_num = 1
+            next_num = 9001
     else:
-        next_num = 1
-    
+        next_num = 9001
+    if next_num < 9001:
+        next_num = 9001
     entry_number = f"JE-{next_num:05d}"
     
     # Create description
@@ -6581,8 +6620,20 @@ async def create_journal_entry(entry: JournalEntryCreate, current_user: dict = D
         raise HTTPException(status_code=400, detail=f"القيد غير متوازن: المدين {total_debit} ≠ الدائن {total_credit}")
     
     entry_id = str(uuid.uuid4())
-    count = await db.journal_entries.count_documents({})
-    entry_number = f"JE-{count + 1:05d}"
+    last_je_manual = await db.journal_entries.find_one(
+        {"entry_number": {"$exists": True}}, sort=[("created_at", -1)]
+    )
+    if last_je_manual and last_je_manual.get("entry_number"):
+        try:
+            je_m_last = int(last_je_manual["entry_number"].replace("JE-", ""))
+            je_m_next = je_m_last + 1
+        except:
+            je_m_next = 9001
+    else:
+        je_m_next = 9001
+    if je_m_next < 9001:
+        je_m_next = 9001
+    entry_number = f"JE-{je_m_next:05d}"
     
     user_doc = await db.users.find_one({"id": current_user["user_id"]}, {"_id": 0})
     created_by = user_doc.get("name", current_user.get("username", "")) if user_doc else ""
