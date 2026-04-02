@@ -93,6 +93,30 @@ export const SettingsPage = () => {
     }
   };
 
+  const downloadFullBackup = async () => {
+    setBackupLoading(prev => ({ ...prev, full: true }));
+    try {
+      const response = await fetch(`${API_URL}/api/backup/full`);
+      if (!response.ok) throw new Error('Failed to download backup');
+      
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `gcsp-academy-full-backup-${new Date().toISOString().split('T')[0]}.zip`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      a.remove();
+      
+      toast.success(language === 'ar' ? 'تم تحميل النسخة الاحتياطية الكاملة' : 'Full backup downloaded successfully');
+    } catch (error) {
+      toast.error(language === 'ar' ? 'فشل تحميل النسخة الاحتياطية' : 'Failed to download backup');
+    } finally {
+      setBackupLoading(prev => ({ ...prev, full: false }));
+    }
+  };
+
   return (
     <Layout title={t('settings')}>
       <div className="space-y-6 max-w-2xl" data-testid="settings-page">
