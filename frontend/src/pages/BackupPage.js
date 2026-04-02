@@ -71,11 +71,41 @@ const BackupPage = () => {
     loadBackups();
   }, []);
 
+  const triggerAutoDownload = (backupsList) => {
+    const autoBackups = (backupsList || []).filter(b => b.is_auto);
+    if (autoBackups.length === 0) return;
+    // Sort by created_at desc to get the latest auto backup
+    const latest = autoBackups.sort((a, b) =>
+      new Date(b.created_at || 0) - new Date(a.created_at || 0)
+    )[0];
+    if (!latest) return;
+    // Check localStorage to see if we already downloaded this backup today
+    const storageKey = 'lastAutoBackupDownloaded';
+    const lastDownloaded = localStorage.getItem(storageKey);
+    if (lastDownloaded === latest.filename) return;
+    // Auto-download the latest auto backup
+    const url = backupAPI.download(latest.filename);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = latest.filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    localStorage.setItem(storageKey, latest.filename);
+    toast.success(
+      isAr
+        ? `تم تنزيل النسخة الاحتياطية التلقائية: ${latest.filename}`
+        : `Auto backup downloaded: ${latest.filename}`
+    );
+  };
+
   const loadBackups = async () => {
     setLoading(true);
     try {
       const res = await backupAPI.list();
-      setBackups(res.data?.backups || []);
+      const list = res.data?.backups || [];
+      setBackups(list);
+      triggerAutoDownload(list);
     } catch (error) {
       console.error('Failed to load backups:', error);
       toast.error(isAr ? 'فشل في تحميل النسخ الاحتياطية' : 'Failed to load backups');
