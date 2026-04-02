@@ -49,6 +49,7 @@ from pydantic import BaseModel, Field
 from typing import List, Optional, Dict, Any
 import uuid
 from datetime import datetime, timezone, timedelta
+from zoneinfo import ZoneInfo
 import jwt
 import bcrypt
 # Stripe integration disabled for external deployment
@@ -2740,6 +2741,63 @@ async def export_invoices_pdf(
 BACKUPS_DIR = ROOT_DIR / "backups"
 BACKUPS_DIR.mkdir(exist_ok=True)
 
+_RIYADH_TZ = ZoneInfo("Asia/Riyadh")
+_backup_scheduler_started = False
+
+
+async def _create_auto_backup():
+    timestamp = datetime.now(_RIYADH_TZ).strftime('%Y%m%d')
+    filename = f"auto_backup_{timestamp}.json"
+    filepath = BACKUPS_DIR / filename
+
+    backup_data = {
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "collections": {}
+    }
+
+    collection_names = await db.list_collection_names()
+    for col_name in collection_names:
+        collection = db[col_name]
+        documents = await collection.find({}, {"_id": 0}).to_list(100000)
+        backup_data["collections"][col_name] = documents
+
+    with open(filepath, 'w', encoding='utf-8') as f:
+        import json as _json
+        _json.dump(backup_data, f, ensure_ascii=False, default=str)
+
+    print(f"Auto backup created: {filename}")
+
+    auto_backups = sorted(BACKUPS_DIR.glob("auto_backup_*.json"), key=lambda x: x.stat().st_mtime)
+    while len(auto_backups) > 7:
+        oldest = auto_backups.pop(0)
+        oldest.unlink()
+        print(f"Auto backup deleted (retention limit): {oldest.name}")
+
+
+async def backup_scheduler_loop():
+    global _backup_scheduler_started
+    _backup_scheduler_started = True
+    print("Backup scheduler started (timezone: Asia/Riyadh, runs at midnight)")
+    while True:
+        try:
+            now = datetime.now(_RIYADH_TZ)
+            next_midnight = (now + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+            wait_seconds = (next_midnight - now).total_seconds()
+            print(f"Backup scheduler: next run in {wait_seconds:.0f}s at midnight Riyadh time")
+            await asyncio.sleep(wait_seconds)
+            await _create_auto_backup()
+        except asyncio.CancelledError:
+            break
+        except Exception as e:
+            print(f"Backup scheduler error: {e}")
+            await asyncio.sleep(3600)
+
+
+def start_backup_scheduler():
+    global _backup_scheduler_started
+    if not _backup_scheduler_started:
+        asyncio.ensure_future(backup_scheduler_loop())
+
 
 @api_router.post("/backup/create")
 async def create_backup(token: Optional[str] = None):
@@ -2792,13 +2850,15 @@ async def list_backups(token: Optional[str] = None):
 
     backups = []
     if BACKUPS_DIR.exists():
-        for f in sorted(BACKUPS_DIR.glob("backup_*.json"), reverse=True):
+        all_files = list(BACKUPS_DIR.glob("backup_*.json")) + list(BACKUPS_DIR.glob("auto_backup_*.json"))
+        for f in sorted(all_files, key=lambda x: x.stat().st_mtime, reverse=True):
             stat = f.stat()
             backups.append({
                 "filename": f.name,
                 "size": stat.st_size,
                 "size_mb": round(stat.st_size / (1024 * 1024), 2),
-                "created_at": datetime.fromtimestamp(stat.st_mtime).isoformat()
+                "created_at": datetime.fromtimestamp(stat.st_mtime).isoformat(),
+                "is_auto": f.name.startswith("auto_backup_")
             })
 
     return {"backups": backups, "count": len(backups)}
@@ -7578,6 +7638,8 @@ async def create_default_admin():
             except Exception as e:
                 print(f"Keep-alive ping failed: {e}")
     asyncio.create_task(_keep_proxy_alive())
+    # Start auto backup scheduler (daily at midnight Riyadh time)
+    start_backup_scheduler()
 
 @app.on_event("shutdown")
 async def shutdown_db_client():

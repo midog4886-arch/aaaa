@@ -26,6 +26,7 @@ import {
   AlertTriangle,
   Plus,
   Shield,
+  Bot,
 } from 'lucide-react';
 
 const formatSize = (bytes) => {
@@ -283,11 +284,23 @@ const BackupPage = () => {
                     className="flex flex-col sm:flex-row sm:items-center justify-between p-4 border rounded-lg hover:bg-muted/50 transition-colors gap-3"
                   >
                     <div className="flex items-center gap-3 min-w-0">
-                      <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
-                        <Database className="w-5 h-5 text-primary" />
+                      <div className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 ${backup.is_auto ? 'bg-blue-100 dark:bg-blue-900/30' : 'bg-primary/10'}`}>
+                        {backup.is_auto ? (
+                          <Bot className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+                        ) : (
+                          <Database className="w-5 h-5 text-primary" />
+                        )}
                       </div>
                       <div className="min-w-0">
-                        <p className="font-medium truncate">{backup.filename}</p>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <p className="font-medium truncate">{backup.filename}</p>
+                          {backup.is_auto && (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300 shrink-0">
+                              <Bot className="w-3 h-3" />
+                              {isAr ? 'تلقائي' : 'Auto'}
+                            </span>
+                          )}
+                        </div>
                         <div className="flex items-center gap-3 text-sm text-muted-foreground mt-1">
                           <span className="flex items-center gap-1">
                             <HardDrive className="w-3 h-3" />
