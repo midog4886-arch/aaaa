@@ -25,7 +25,8 @@ export const SettingsPage = () => {
   });
   const [backupLoading, setBackupLoading] = React.useState({
     code: false,
-    database: false
+    database: false,
+    full: false
   });
 
   const toggleDarkMode = () => {
