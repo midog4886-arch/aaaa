@@ -183,10 +183,15 @@ class AtlasCollection:
                 raise Exception(f"Atlas API error {resp.status_code}: {resp.text[:200]}")
             return resp.json()
 
-    async def find_one(self, filter_=None, projection=None):
+    async def find_one(self, filter_=None, projection=None, sort=None):
         payload = {"filter": _to_ejson(filter_ or {})}
         if projection:
             payload["projection"] = projection
+        if sort:
+            if isinstance(sort, list):
+                payload["sort"] = {k: v for k, v in sort}
+            else:
+                payload["sort"] = sort
         result = await self._request("findOne", payload)
         doc = result.get("document")
         return _from_ejson(doc) if doc else None
