@@ -4672,7 +4672,13 @@ ${itemsList}
                                                 </SelectTrigger>
                                                 <SelectContent>
                                                   <SelectItem value="none">{language === 'ar' ? '-- بدون --' : '-- None --'}</SelectItem>
-                                                  {(levels || []).filter(l => l.id && (l.activity_name === item.activity_name || !l.activity_name)).map(l => (
+                                                  {(levels || []).filter(l => {
+                                                    if (!l.id) return false;
+                                                    if (!l.activity_name) return true;
+                                                    const lvlCat = parseActivityForLevel(l.activity_name);
+                                                    const itmCat = parseActivityForLevel(item.activity_name);
+                                                    return lvlCat === itmCat || l.activity_name === item.activity_name;
+                                                  }).map(l => (
                                                     <SelectItem key={l.id} value={l.id}>{l.activity_name} - {language === 'ar' ? 'مستوى' : 'Level'} {l.level_number}</SelectItem>
                                                   ))}
                                                 </SelectContent>
