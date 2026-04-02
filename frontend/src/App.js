@@ -1,8 +1,20 @@
-import React from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import React, { useEffect } from 'react';
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { LanguageProvider } from './contexts/LanguageContext';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { Toaster } from './components/ui/sonner';
+
+const ManifestSwitcher = () => {
+  const location = useLocation();
+  useEffect(() => {
+    const isAdmin = location.pathname.startsWith('/admin');
+    const link = document.querySelector('link[rel="manifest"]');
+    if (link) {
+      link.href = isAdmin ? '/admin-manifest.json' : '/manifest.json';
+    }
+  }, [location.pathname]);
+  return null;
+};
 
 class ErrorBoundary extends React.Component {
   constructor(props) {
@@ -411,6 +423,7 @@ function App() {
     <LanguageProvider>
       <AuthProvider>
         <BrowserRouter>
+          <ManifestSwitcher />
           <ErrorBoundary>
             <AppRoutes />
           </ErrorBoundary>
