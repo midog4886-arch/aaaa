@@ -1,4 +1,4 @@
-from fastapi import FastAPI, APIRouter, HTTPException, Depends, status, Request, UploadFile, File, Form
+from fastapi import FastAPI, APIRouter, HTTPException, Depends, status, Request, UploadFile, File, Form, Query
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.responses import StreamingResponse, FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -2857,6 +2857,41 @@ async def restore_backup(filename: str, token: Optional[str] = None):
         "restored_collections": restored,
         "total_collections": len(restored),
         "backup_timestamp": backup_data.get("timestamp", "")
+    }
+
+
+@api_router.post("/backup/upload")
+async def upload_backup(file: UploadFile = File(...), token: Optional[str] = Query(None)):
+    if not token:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    try:
+        jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+    except:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+    if not file.filename.endswith(".json"):
+        raise HTTPException(status_code=400, detail="يجب أن يكون الملف بصيغة JSON")
+
+    filename = file.filename
+    if not filename.startswith("backup_"):
+        filename = f"backup_{filename}"
+
+    filepath = BACKUPS_DIR / filename
+    content = await file.read()
+
+    try:
+        json.loads(content)
+    except Exception:
+        raise HTTPException(status_code=400, detail="الملف ليس JSON صحيحاً")
+
+    with open(filepath, 'wb') as f:
+        f.write(content)
+
+    return {
+        "success": True,
+        "filename": filename,
+        "size": len(content),
+        "message": "تم رفع النسخة الاحتياطية بنجاح"
     }
 
 

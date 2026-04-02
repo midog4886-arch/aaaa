@@ -178,6 +178,13 @@ export const backupAPI = {
   download: (filename) => `${API}/backup/download/${filename}?token=${localStorage.getItem('token')}`,
   restore: (filename) => axios.post(`${API}/backup/restore/${filename}?token=${localStorage.getItem('token')}`),
   delete: (filename) => axios.delete(`${API}/backup/${filename}?token=${localStorage.getItem('token')}`),
+  upload: (file) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return axios.post(`${API}/backup/upload?token=${localStorage.getItem('token')}`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+  },
 };
 
 // Chart of Accounts API

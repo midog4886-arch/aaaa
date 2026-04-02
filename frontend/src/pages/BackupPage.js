@@ -59,8 +59,10 @@ const BackupPage = () => {
   const [creating, setCreating] = useState(false);
   const [restoring, setRestoring] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const [restoreDialog, setRestoreDialog] = useState({ open: false, filename: null });
   const [deleteDialog, setDeleteDialog] = useState({ open: false, filename: null });
+  const fileInputRef = React.useRef(null);
 
   const isAr = language === 'ar';
 
@@ -142,6 +144,30 @@ const BackupPage = () => {
     }
   };
 
+  const handleUploadClick = () => {
+    if (fileInputRef.current) fileInputRef.current.click();
+  };
+
+  const handleFileChange = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.name.endsWith('.json')) {
+      toast.error(isAr ? 'يجب أن يكون الملف بصيغة JSON' : 'File must be JSON format');
+      return;
+    }
+    setUploading(true);
+    try {
+      const res = await backupAPI.upload(file);
+      toast.success(isAr ? `تم رفع النسخة الاحتياطية: ${res.data?.filename || ''}` : `Backup uploaded: ${res.data?.filename || ''}`);
+      await loadBackups();
+    } catch (error) {
+      toast.error(isAr ? 'فشل في رفع النسخة الاحتياطية' : 'Failed to upload backup');
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
   const totalSize = backups.reduce((sum, b) => sum + (b.size || 0), 0);
 
   return (
@@ -161,11 +187,26 @@ const BackupPage = () => {
               </p>
             </div>
           </div>
-          <div className="flex gap-2">
+          <div className="flex gap-2 flex-wrap">
             <Button variant="outline" size="sm" onClick={loadBackups} disabled={loading}>
               <RefreshCcw className={`w-4 h-4 me-2 ${loading ? 'animate-spin' : ''}`} />
               {isAr ? 'تحديث' : 'Refresh'}
             </Button>
+            <Button variant="outline" onClick={handleUploadClick} disabled={uploading} className="text-green-600 border-green-300 hover:bg-green-50 hover:text-green-700">
+              {uploading ? (
+                <Loader2 className="w-4 h-4 me-2 animate-spin" />
+              ) : (
+                <Upload className="w-4 h-4 me-2" />
+              )}
+              {isAr ? 'رفع نسخة احتياطية' : 'Upload Backup'}
+            </Button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".json"
+              className="hidden"
+              onChange={handleFileChange}
+            />
             <Button onClick={handleCreate} disabled={creating}>
               {creating ? (
                 <Loader2 className="w-4 h-4 me-2 animate-spin" />
