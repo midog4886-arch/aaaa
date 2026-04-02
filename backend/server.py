@@ -247,6 +247,90 @@ async def download_database_backup():
         logger.error(f"Database backup error: {e}")
         raise HTTPException(status_code=500, detail=f"Backup failed: {str(e)}")
 
+@api_router.get("/backup/full")
+async def download_full_backup():
+    """Download full backup (Code + Database)"""
+    try:
+        # Create backup directory
+        backup_dir = Path("/tmp/full-backup")
+        if backup_dir.exists():
+            shutil.rmtree(backup_dir)
+        backup_dir.mkdir(parents=True)
+        
+        # ========== CODE BACKUP ==========
+        code_dir = backup_dir / "code"
+        code_dir.mkdir(parents=True)
+        
+        # Copy frontend (exclude node_modules and build)
+        frontend_src = Path(__file__).parent.parent / "frontend"
+        frontend_dst = code_dir / "frontend"
+        if frontend_src.exists():
+            shutil.copytree(
+                frontend_src, 
+                frontend_dst,
+                ignore=shutil.ignore_patterns('node_modules', 'build', '.git', '__pycache__')
+            )
+        
+        # Copy backend (exclude __pycache__)
+        backend_src = Path(__file__).parent
+        backend_dst = code_dir / "backend"
+        shutil.copytree(
+            backend_src, 
+            backend_dst,
+            ignore=shutil.ignore_patterns('__pycache__', '.git', 'uploads')
+        )
+        
+        # Copy Docker files if they exist
+        docker_files = ['Dockerfile', 'docker-compose.yml', 'railway.json']
+        for f in docker_files:
+            src = Path(__file__).parent.parent / f
+            if src.exists():
+                shutil.copy(src, code_dir / f)
+        
+        # ========== DATABASE BACKUP ==========
+        db_dir = backup_dir / "database"
+        db_dir.mkdir(parents=True)
+        
+        # Get MongoDB connection info
+        mongo_url = os.environ.get('MONGO_URL')
+        db_name = os.environ.get('DB_NAME', 'champions_academy')
+        
+        # Run mongodump
+        result = subprocess.run(
+            ['mongodump', '--uri', mongo_url, '--db', db_name, '--out', str(db_dir)],
+            capture_output=True,
+            text=True,
+            timeout=120
+        )
+        
+        if result.returncode != 0:
+            logger.warning(f"mongodump warning: {result.stderr}")
+        
+        # ========== CREATE ZIP ==========
+        zip_path = Path("/tmp/gcsp-academy-full-backup.zip")
+        if zip_path.exists():
+            zip_path.unlink()
+            
+        shutil.make_archive(
+            str(zip_path).replace('.zip', ''),
+            'zip',
+            backup_dir
+        )
+        
+        # Clean up
+        shutil.rmtree(backup_dir)
+        
+        return FileResponse(
+            path=str(zip_path),
+            filename=f"gcsp-academy-full-backup-{datetime.now().strftime('%Y%m%d')}.zip",
+            media_type="application/zip"
+        )
+    except subprocess.TimeoutExpired:
+        raise HTTPException(status_code=500, detail="Backup timed out")
+    except Exception as e:
+        logger.error(f"Full backup error: {e}")
+        raise HTTPException(status_code=500, detail=f"Backup failed: {str(e)}")
+
 # ============ PUBLIC API - Member Card ============
 
 @api_router.get("/public/member-card/{search_term}")
