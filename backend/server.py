@@ -331,6 +331,62 @@ async def download_full_backup():
         logger.error(f"Full backup error: {e}")
         raise HTTPException(status_code=500, detail=f"Backup failed: {str(e)}")
 
+@api_router.get("/backup/json")
+async def download_json_backup():
+    """Download complete database backup as JSON file"""
+    import json
+    from bson import ObjectId
+    
+    def serialize_doc(doc):
+        """Convert MongoDB document to JSON-serializable format"""
+        if doc is None:
+            return None
+        if isinstance(doc, dict):
+            return {k: serialize_doc(v) for k, v in doc.items()}
+        if isinstance(doc, list):
+            return [serialize_doc(item) for item in doc]
+        if isinstance(doc, ObjectId):
+            return str(doc)
+        if isinstance(doc, datetime):
+            return doc.isoformat()
+        return doc
+    
+    try:
+        # Get all collections
+        collections = await db.list_collection_names()
+        
+        backup_data = {
+            "backup_info": {
+                "created_at": datetime.now(timezone.utc).isoformat(),
+                "database": os.environ.get('DB_NAME', 'champions_academy'),
+                "version": "1.0"
+            },
+            "collections": {}
+        }
+        
+        # Export each collection
+        for collection_name in collections:
+            collection = db[collection_name]
+            documents = await collection.find({}).to_list(length=None)
+            backup_data["collections"][collection_name] = [serialize_doc(doc) for doc in documents]
+        
+        # Create JSON file
+        json_content = json.dumps(backup_data, ensure_ascii=False, indent=2)
+        
+        # Create response
+        filename = f"backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+        
+        return StreamingResponse(
+            io.BytesIO(json_content.encode('utf-8')),
+            media_type="application/json",
+            headers={
+                "Content-Disposition": f"attachment; filename={filename}"
+            }
+        )
+    except Exception as e:
+        logger.error(f"JSON backup error: {e}")
+        raise HTTPException(status_code=500, detail=f"Backup failed: {str(e)}")
+
 # ============ PUBLIC API - Member Card ============
 
 @api_router.get("/public/member-card/{search_term}")
