@@ -135,18 +135,20 @@ async function connectToWhatsApp(forceNewQR = false) {
 
     const { state, saveCreds } = await useMultiFileAuthState(AUTH_DIR);
 
-    // fetchLatestBaileysVersion makes an HTTP call to GitHub; use fallback if it hangs
-    let version;
+    // Use hardcoded version directly – fetchLatestBaileysVersion() hits GitHub
+    // which hangs in restricted environments and delays QR generation.
+    // Try quickly in background; always proceed immediately with the fallback.
+    const FALLBACK_VERSION = [2, 3000, 1015901307];
+    let version = FALLBACK_VERSION;
     try {
       const versionResult = await Promise.race([
         fetchLatestBaileysVersion(),
-        new Promise((_, reject) => setTimeout(() => reject(new Error('version fetch timeout')), 8000))
+        new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 2000))
       ]);
       version = versionResult.version;
-      logger.info(`Using WA version: ${version}`);
-    } catch (e) {
-      version = [2, 3000, 1015901307];
-      logger.warn(`Using fallback WA version: ${version} (reason: ${e.message})`);
+      logger.info(`WA version from server: ${version}`);
+    } catch {
+      logger.info(`Using built-in WA version: ${FALLBACK_VERSION}`);
     }
 
     sock = makeWASocket({
