@@ -1112,27 +1112,27 @@ async def create_registration_form(
     current_user: dict = Depends(get_current_user)
 ):
     """Create a new registration form"""
-    # Generate form number - max-based to avoid conflicts
-    last_reg = await db.registration_forms.find_one(
-        {"form_number": {"$exists": True}},
-        sort=[("created_at", -1)]
-    )
-    if last_reg and last_reg.get("form_number"):
-        try:
-            last_num = int(last_reg["form_number"].replace("REG-", ""))
-            next_reg = last_num + 1
-        except:
-            next_reg = 10001
-    else:
-        next_reg = 10001
-    if next_reg < 10001:
-        next_reg = 10001
-    form_number = f"REG-{next_reg:05d}"
-    
-    # Determine branch_id
+    # Determine branch_id first (needed for per-branch numbering)
     branch_id = form.branch_id
     if not current_user.get("is_admin"):
         branch_id = current_user.get("branch_id")
+
+    # Generate form number per branch - max-based to avoid conflicts
+    branch_reg_filter = {"branch_id": branch_id} if branch_id else {}
+    all_regs = await db.registration_forms.find(
+        {"form_number": {"$exists": True}, **branch_reg_filter},
+        {"form_number": 1, "_id": 0}
+    ).to_list(10000)
+    max_reg = 0
+    for r in all_regs:
+        try:
+            num = int(r["form_number"].replace("REG-", ""))
+            if num > max_reg:
+                max_reg = num
+        except (ValueError, KeyError):
+            continue
+    next_reg = max(max_reg + 1, 10001)
+    form_number = f"REG-{next_reg:05d}"
     
     form_doc = {
         "id": str(uuid.uuid4()),
@@ -1164,9 +1164,10 @@ async def create_registration_form(
             member_code = member.get("member_code")
         else:
             # Create new member from registration form data
-            # Generate sequential member number
+            # Generate sequential member number per branch
+            branch_mem_filter = {"branch_id": branch_id} if branch_id else {}
             all_members = await db.members.find(
-                {"member_code": {"$exists": True, "$ne": ""}},
+                {"member_code": {"$exists": True, "$ne": ""}, **branch_mem_filter},
                 {"member_code": 1, "_id": 0}
             ).to_list(10000)
             
@@ -1180,9 +1181,7 @@ async def create_registration_form(
                 except ValueError:
                     continue
             
-            next_num = max_number + 1
-            if next_num < 10001:
-                next_num = 10001
+            next_num = max(max_number + 1, 10001)
             next_member_code = str(next_num)
             member_id = str(uuid.uuid4())
             member_code = next_member_code
@@ -1391,9 +1390,11 @@ async def convert_registration_form(form_id: str, current_user: dict = Depends(g
     if form["status"] == "converted":
         raise HTTPException(status_code=400, detail="Form already converted to invoice")
     
-    # Create invoice from form - use max-based numbering to avoid conflicts with old data
+    # Create invoice from form - per-branch numbering
+    form_branch_id = form.get("branch_id")
+    branch_inv_filter = {"branch_id": form_branch_id} if form_branch_id else {}
     all_invs = await db.invoices.find(
-        {"invoice_number": {"$exists": True}},
+        {"invoice_number": {"$exists": True}, **branch_inv_filter},
         {"invoice_number": 1, "_id": 0}
     ).to_list(100000)
     max_inv = 0
@@ -1405,9 +1406,7 @@ async def convert_registration_form(form_id: str, current_user: dict = Depends(g
                 max_inv = num
         except (ValueError, AttributeError):
             continue
-    next_inv = max_inv + 1
-    if next_inv < 30001:
-        next_inv = 30001
+    next_inv = max(max_inv + 1, 30001)
     invoice_number = f"INV-{next_inv:05d}"
     
     # Get supervisor name from current user

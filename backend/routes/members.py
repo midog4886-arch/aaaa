@@ -152,9 +152,10 @@ async def create_member(member: MemberCreate, current_user: dict = Depends(get_c
     member_id = str(uuid.uuid4())
     branch_id = current_user.get("branch_id")
     
-    # Generate sequential member code - use max numeric value for safety
+    # Generate sequential member code per branch - use max numeric value for safety
+    branch_filter = {"branch_id": branch_id} if branch_id else {}
     all_members = await db.members.find(
-        {"member_code": {"$exists": True, "$ne": None}},
+        {"member_code": {"$exists": True, "$ne": None}, **branch_filter},
         {"member_code": 1, "_id": 0}
     ).to_list(length=None)
     max_code = 10000

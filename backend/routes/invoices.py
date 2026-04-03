@@ -216,9 +216,10 @@ async def create_invoice(invoice: InvoiceCreate, current_user: dict = Depends(ge
     user_doc = await db.users.find_one({"id": current_user["user_id"]}, {"_id": 0})
     supervisor_name = user_doc.get("name", current_user.get("username", "")) if user_doc else current_user.get("username", "")
     
-    # Generate invoice number
+    # Generate invoice number per branch
+    branch_inv_filter = {"branch_id": branch_id} if branch_id else {}
     all_invoices = await db.invoices.find(
-        {"invoice_number": {"$exists": True}},
+        {"invoice_number": {"$exists": True}, **branch_inv_filter},
         {"invoice_number": 1, "_id": 0}
     ).to_list(10000)
     
