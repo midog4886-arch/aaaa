@@ -86,6 +86,8 @@ let currentQR = null;
 let isConnected = false;
 let isConnecting = false;
 let backupTimer = null;
+let reconnectAttempts = 0;
+const MAX_RECONNECT_BEFORE_FRESH_QR = 3;
 
 function scheduleBackup() {
   if (backupTimer) clearTimeout(backupTimer);
@@ -98,13 +100,31 @@ async function getBaileys() {
   return await import('@whiskeysockets/baileys');
 }
 
-async function connectToWhatsApp() {
+async function clearLocalAuth() {
+  try {
+    if (fs.existsSync(AUTH_DIR)) {
+      fs.rmSync(AUTH_DIR, { recursive: true, force: true });
+    }
+  } catch (e) {
+    logger.error('Failed to clear local auth:', e.message);
+  }
+}
+
+async function connectToWhatsApp(forceNewQR = false) {
   if (isConnecting) return;
   isConnecting = true;
   currentQR = null;
 
   try {
-    await restoreAuthFromMongo();
+    // If forced fresh QR or too many reconnect attempts, clear old session
+    if (forceNewQR || reconnectAttempts >= MAX_RECONNECT_BEFORE_FRESH_QR) {
+      logger.info(`Clearing session (forceNewQR=${forceNewQR}, attempts=${reconnectAttempts})`);
+      await clearLocalAuth();
+      await clearAuthFromMongo();
+      reconnectAttempts = 0;
+    } else {
+      await restoreAuthFromMongo();
+    }
 
     const {
       default: makeWASocket,
@@ -136,6 +156,7 @@ async function connectToWhatsApp() {
       if (qr) {
         currentQR = qr;
         isConnected = false;
+        isConnecting = false;
         logger.info('QR code generated, waiting for scan...');
       }
 
@@ -143,6 +164,7 @@ async function connectToWhatsApp() {
         isConnected = true;
         currentQR = null;
         isConnecting = false;
+        reconnectAttempts = 0;
         logger.info('WhatsApp connected successfully!');
         scheduleBackup();
       }
@@ -152,19 +174,24 @@ async function connectToWhatsApp() {
         isConnecting = false;
         const statusCode = lastDisconnect?.error?.output?.statusCode;
         const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
-        logger.info(`Connection closed. Status: ${statusCode}. Reconnect: ${shouldReconnect}`);
+        logger.info(`Connection closed. Status: ${statusCode}. Reconnect: ${shouldReconnect}, attempts: ${reconnectAttempts}`);
         if (shouldReconnect) {
+          reconnectAttempts++;
           setTimeout(connectToWhatsApp, 5000);
         } else {
           sock = null;
           currentQR = null;
+          reconnectAttempts = 0;
+          await clearLocalAuth();
           await clearAuthFromMongo();
+          setTimeout(connectToWhatsApp, 3000);
         }
       }
     });
   } catch (err) {
     logger.error('Failed to connect:', err.message);
     isConnecting = false;
+    reconnectAttempts++;
     setTimeout(connectToWhatsApp, 10000);
   }
 }
@@ -204,24 +231,22 @@ app.post('/send', async (req, res) => {
 });
 
 app.post('/disconnect', async (req, res) => {
-  try {
-    if (sock) {
-      await sock.logout();
-      sock = null;
-    }
-    isConnected = false;
-    currentQR = null;
-    isConnecting = false;
-    if (fs.existsSync(AUTH_DIR)) {
-      fs.rmSync(AUTH_DIR, { recursive: true, force: true });
-    }
-    await clearAuthFromMongo();
-    res.json({ success: true, message: 'Disconnected and session cleared' });
-    setTimeout(connectToWhatsApp, 2000);
-  } catch (err) {
-    logger.error('Disconnect error:', err.message);
-    res.status(500).json({ success: false, error: err.message });
+  // Always respond success and reset regardless of logout outcome
+  isConnected = false;
+  currentQR = null;
+  isConnecting = false;
+  reconnectAttempts = 0;
+
+  if (sock) {
+    try { await sock.logout(); } catch (e) { logger.warn('Logout error (ignored):', e.message); }
+    sock = null;
   }
+
+  await clearLocalAuth();
+  await clearAuthFromMongo();
+
+  res.json({ success: true, message: 'Disconnected and session cleared' });
+  setTimeout(() => connectToWhatsApp(true), 2000);
 });
 
 app.get('/health', (req, res) => {
