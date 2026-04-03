@@ -2744,6 +2744,22 @@ BACKUPS_DIR.mkdir(exist_ok=True)
 _RIYADH_TZ = ZoneInfo("Asia/Riyadh")
 _backup_scheduler_started = False
 
+# All known collection names (Atlas HTTP client doesn't support list_collection_names)
+_ALL_COLLECTIONS = [
+    "accounts", "activities", "activity_notes", "ad_images", "advertisements",
+    "attendance", "bank_reports", "branches", "closures", "coach_attendance",
+    "coaches", "coach_ratings", "counters", "credit_notes", "daily_videos",
+    "dashboard_settings", "discounts", "expenses", "extension_logs",
+    "internal_expense_payments", "internal_expenses", "invoices",
+    "journal_entries", "levels", "level_subscriptions", "loyalty_rewards",
+    "loyalty_settings", "member_freezes", "member_notifications", "member_points",
+    "members", "messages", "notifications", "payment_transactions",
+    "payment_vouchers", "points_history", "product_invoices", "products",
+    "purchase_invoices", "push_subscriptions", "redemption_requests",
+    "registration_forms", "supplier_payments", "suppliers", "users",
+    "video_views", "whatsapp_settings", "whatsapp_send_log",
+]
+
 
 async def _create_auto_backup():
     timestamp = datetime.now(_RIYADH_TZ).strftime('%Y%m%d')
@@ -2755,11 +2771,14 @@ async def _create_auto_backup():
         "collections": {}
     }
 
-    collection_names = await db.list_collection_names()
-    for col_name in collection_names:
-        collection = db[col_name]
-        documents = await collection.find({}, {"_id": 0}).to_list(100000)
-        backup_data["collections"][col_name] = documents
+    for col_name in _ALL_COLLECTIONS:
+        try:
+            collection = db[col_name]
+            documents = await collection.find({}, {"_id": 0}).to_list(100000)
+            if documents:
+                backup_data["collections"][col_name] = documents
+        except Exception as e:
+            print(f"Auto backup: skipping {col_name}: {e}")
 
     with open(filepath, 'w', encoding='utf-8') as f:
         import json as _json
@@ -2817,24 +2836,28 @@ async def create_backup(token: Optional[str] = None):
         "collections": {}
     }
 
-    collection_names = await db.list_collection_names()
-    for col_name in collection_names:
-        collection = db[col_name]
-        documents = await collection.find({}, {"_id": 0}).to_list(100000)
-        backup_data["collections"][col_name] = documents
+    for col_name in _ALL_COLLECTIONS:
+        try:
+            collection = db[col_name]
+            documents = await collection.find({}, {"_id": 0}).to_list(100000)
+            if documents:
+                backup_data["collections"][col_name] = documents
+        except Exception as e:
+            pass  # Skip empty or inaccessible collections
 
     with open(filepath, 'w', encoding='utf-8') as f:
         json.dump(backup_data, f, ensure_ascii=False, default=str)
 
     file_size = filepath.stat().st_size
+    saved_collections = list(backup_data["collections"].keys())
 
     return {
         "success": True,
         "filename": filename,
         "size": file_size,
         "size_mb": round(file_size / (1024 * 1024), 2),
-        "collections_count": len(collection_names),
-        "collections": collection_names,
+        "collections_count": len(saved_collections),
+        "collections": saved_collections,
         "timestamp": backup_data["timestamp"]
     }
 
