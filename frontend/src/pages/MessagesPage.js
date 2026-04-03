@@ -679,7 +679,7 @@ export const MessagesPage = () => {
                 className="flex items-center gap-2 p-2 bg-muted/50 rounded-lg cursor-pointer"
                 onClick={toggleSelectAll}
               >
-                <Checkbox checked={selectAll} onCheckedChange={toggleSelectAll} />
+                <Checkbox checked={selectAll} onClick={e => e.stopPropagation()} onCheckedChange={toggleSelectAll} />
                 <span className="font-medium">
                   {language === 'ar' ? 'تحديد الكل' : 'Select All'}
                 </span>
@@ -741,6 +741,7 @@ export const MessagesPage = () => {
                                 <div className="flex items-center gap-3">
                                   <Checkbox 
                                     checked={selectedMembers.includes(member.id)}
+                                    onClick={e => e.stopPropagation()}
                                     onCheckedChange={() => toggleMember(member.id)}
                                   />
                                   <div>
@@ -779,6 +780,7 @@ export const MessagesPage = () => {
                       <div className="flex items-center gap-3">
                         <Checkbox 
                           checked={selectedMembers.includes(member.id)}
+                          onClick={e => e.stopPropagation()}
                           onCheckedChange={() => toggleMember(member.id)}
                         />
                         <div>

@@ -1038,7 +1038,7 @@ export default function WhatsAppPage() {
                   </div>
 
                   <div className="flex items-center gap-2 p-2 bg-muted/50 rounded-lg cursor-pointer" onClick={toggleSelectAll}>
-                    <Checkbox checked={selectAll} onCheckedChange={toggleSelectAll} />
+                    <Checkbox checked={selectAll} onClick={e => e.stopPropagation()} onCheckedChange={toggleSelectAll} />
                     <span className="font-medium text-sm">{t('تحديد الكل', 'Select All')}</span>
                     <span className="text-xs text-muted-foreground">({filteredMembers.length})</span>
                   </div>
@@ -1064,7 +1064,7 @@ export default function WhatsAppPage() {
                             {exp && <div className="divide-y">{bm.map(m => (
                               <div key={m.id} className={`flex items-center justify-between p-3 cursor-pointer transition-colors ${selectedMembers.includes(m.id) ? 'bg-primary/5' : 'hover:bg-muted/20'}`} onClick={() => toggleMember(m.id)}>
                                 <div className="flex items-center gap-2">
-                                  <Checkbox checked={selectedMembers.includes(m.id)} onCheckedChange={() => toggleMember(m.id)} />
+                                  <Checkbox checked={selectedMembers.includes(m.id)} onClick={e => e.stopPropagation()} onCheckedChange={() => toggleMember(m.id)} />
                                   <span className="text-sm font-medium">{isRTL ? m.name_ar : m.name}</span>
                                 </div>
                                 <span className="text-xs text-muted-foreground" dir="ltr">{m.phone}</span>
@@ -1075,7 +1075,7 @@ export default function WhatsAppPage() {
                       }) : filteredMembers.map(m => (
                         <div key={m.id} className={`flex items-center justify-between p-3 rounded-lg border cursor-pointer ${selectedMembers.includes(m.id) ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/50'}`} onClick={() => toggleMember(m.id)}>
                           <div className="flex items-center gap-2">
-                            <Checkbox checked={selectedMembers.includes(m.id)} onCheckedChange={() => toggleMember(m.id)} />
+                            <Checkbox checked={selectedMembers.includes(m.id)} onClick={e => e.stopPropagation()} onCheckedChange={() => toggleMember(m.id)} />
                             <span className="text-sm font-medium">{isRTL ? m.name_ar : m.name}</span>
                           </div>
                           <span className="text-xs text-muted-foreground" dir="ltr">{m.phone}</span>
