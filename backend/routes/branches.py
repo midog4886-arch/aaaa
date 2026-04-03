@@ -10,6 +10,7 @@ import uuid
 
 from database import db
 from utils.auth import get_current_user
+from utils.sequences import assign_seq_starts_for_new_branch
 
 router = APIRouter(prefix="/branches", tags=["Branches"])
 
@@ -59,6 +60,8 @@ async def create_branch(branch: BranchCreate, current_user: dict = Depends(get_c
         "created_at": datetime.now(timezone.utc).isoformat()
     }
     await db.branches.insert_one(branch_doc)
+    # Assign exclusive sequence blocks for this new branch
+    await assign_seq_starts_for_new_branch(branch_id)
     return {k: v for k, v in branch_doc.items() if k != "_id"}
 
 

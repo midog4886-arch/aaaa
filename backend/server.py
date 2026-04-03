@@ -1117,13 +1117,14 @@ async def create_registration_form(
     if not current_user.get("is_admin"):
         branch_id = current_user.get("branch_id")
 
-    # Generate form number per branch - max-based to avoid conflicts
+    # Generate form number per branch – unique across branches
+    reg_seq_start = await _get_branch_seq_start(branch_id, "reg")
     branch_reg_filter = {"branch_id": branch_id} if branch_id else {}
     all_regs = await db.registration_forms.find(
         {"form_number": {"$exists": True}, **branch_reg_filter},
         {"form_number": 1, "_id": 0}
     ).to_list(10000)
-    max_reg = 0
+    max_reg = reg_seq_start - 1
     for r in all_regs:
         try:
             num = int(r["form_number"].replace("REG-", ""))
@@ -1131,7 +1132,7 @@ async def create_registration_form(
                 max_reg = num
         except (ValueError, KeyError):
             continue
-    next_reg = max(max_reg + 1, 10001)
+    next_reg = max(max_reg + 1, reg_seq_start)
     form_number = f"REG-{next_reg:05d}"
     
     form_doc = {
@@ -1164,14 +1165,15 @@ async def create_registration_form(
             member_code = member.get("member_code")
         else:
             # Create new member from registration form data
-            # Generate sequential member number per branch
+            # Generate sequential member number per branch – unique across branches
+            mem_seq_start = await _get_branch_seq_start(branch_id, "member")
             branch_mem_filter = {"branch_id": branch_id} if branch_id else {}
             all_members = await db.members.find(
                 {"member_code": {"$exists": True, "$ne": ""}, **branch_mem_filter},
                 {"member_code": 1, "_id": 0}
             ).to_list(10000)
             
-            max_number = 0
+            max_number = mem_seq_start - 1
             for m in all_members:
                 code = m.get("member_code", "")
                 try:
@@ -1181,7 +1183,7 @@ async def create_registration_form(
                 except ValueError:
                     continue
             
-            next_num = max(max_number + 1, 10001)
+            next_num = max(max_number + 1, mem_seq_start)
             next_member_code = str(next_num)
             member_id = str(uuid.uuid4())
             member_code = next_member_code
@@ -1390,14 +1392,15 @@ async def convert_registration_form(form_id: str, current_user: dict = Depends(g
     if form["status"] == "converted":
         raise HTTPException(status_code=400, detail="Form already converted to invoice")
     
-    # Create invoice from form - per-branch numbering
+    # Create invoice from form – unique per branch
     form_branch_id = form.get("branch_id")
+    inv_seq_start = await _get_branch_seq_start(form_branch_id, "invoice")
     branch_inv_filter = {"branch_id": form_branch_id} if form_branch_id else {}
     all_invs = await db.invoices.find(
         {"invoice_number": {"$exists": True}, **branch_inv_filter},
         {"invoice_number": 1, "_id": 0}
     ).to_list(100000)
-    max_inv = 0
+    max_inv = inv_seq_start - 1
     for inv in all_invs:
         inv_num = inv.get("invoice_number", "")
         try:
@@ -1406,7 +1409,7 @@ async def convert_registration_form(form_id: str, current_user: dict = Depends(g
                 max_inv = num
         except (ValueError, AttributeError):
             continue
-    next_inv = max(max_inv + 1, 30001)
+    next_inv = max(max_inv + 1, inv_seq_start)
     invoice_number = f"INV-{next_inv:05d}"
     
     # Get supervisor name from current user
@@ -2742,6 +2745,39 @@ BACKUPS_DIR.mkdir(exist_ok=True)
 
 _RIYADH_TZ = ZoneInfo("Asia/Riyadh")
 _backup_scheduler_started = False
+
+# ── Branch Sequence Blocks ──────────────────────────────────────────────────
+# Each branch gets an exclusive block of SEQ_BLOCK_SIZE numbers.
+# Branch index 0 (first branch): starts at base
+# Branch index 1: starts at base + BLOCK_SIZE, etc.
+_SEQ_BLOCK_SIZE = 100_000   # 100 000 numbers per branch – plenty for any branch
+_SEQ_BASES = {"member": 10_001, "invoice": 30_001, "reg": 10_001}
+
+
+async def _get_branch_seq_start(branch_id: str, seq_type: str) -> int:
+    """Return the exclusive start number for this branch+type.
+    Initialises and persists the value on first call so the block never changes."""
+    base = _SEQ_BASES.get(seq_type, 10_001)
+    if not branch_id:
+        return base
+
+    field = f"{seq_type}_seq_start"
+    branch = await db.branches.find_one({"id": branch_id}, {"_id": 0})
+    if not branch:
+        return base
+
+    if branch.get(field):
+        return int(branch[field])
+
+    # First time – assign block based on the branch's creation order
+    all_branches = await db.branches.find(
+        {}, {"id": 1, "created_at": 1, "_id": 0}
+    ).to_list(500)
+    all_branches.sort(key=lambda b: b.get("created_at", ""))
+    idx = next((i for i, b in enumerate(all_branches) if b["id"] == branch_id), 0)
+    seq_start = base + idx * _SEQ_BLOCK_SIZE
+    await db.branches.update_one({"id": branch_id}, {"$set": {field: seq_start}})
+    return seq_start
 
 # All known collection names (Atlas HTTP client doesn't support list_collection_names)
 _ALL_COLLECTIONS = [

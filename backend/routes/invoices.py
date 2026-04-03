@@ -6,6 +6,7 @@ import uuid
 from datetime import datetime, timezone
 
 from .common import db, get_current_user
+from utils.sequences import get_branch_seq_start
 
 # Loyalty points function - will be set from server.py
 loyalty_award_points = None
@@ -216,14 +217,15 @@ async def create_invoice(invoice: InvoiceCreate, current_user: dict = Depends(ge
     user_doc = await db.users.find_one({"id": current_user["user_id"]}, {"_id": 0})
     supervisor_name = user_doc.get("name", current_user.get("username", "")) if user_doc else current_user.get("username", "")
     
-    # Generate invoice number per branch
+    # Generate invoice number – unique per branch (each branch owns a block)
+    seq_start = await get_branch_seq_start(branch_id, "invoice")
     branch_inv_filter = {"branch_id": branch_id} if branch_id else {}
     all_invoices = await db.invoices.find(
         {"invoice_number": {"$exists": True}, **branch_inv_filter},
         {"invoice_number": 1, "_id": 0}
     ).to_list(10000)
     
-    max_number = 26000
+    max_number = seq_start - 1
     for inv in all_invoices:
         inv_num = inv.get("invoice_number", "")
         try:
@@ -236,9 +238,7 @@ async def create_invoice(invoice: InvoiceCreate, current_user: dict = Depends(ge
         except ValueError:
             continue
     
-    next_number = max_number + 1
-    if next_number < 30001:
-        next_number = 30001
+    next_number = max(max_number + 1, seq_start)
     
     # Get member info if member_id provided
     member = None
