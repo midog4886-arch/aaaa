@@ -134,7 +134,20 @@ async function connectToWhatsApp(forceNewQR = false) {
     } = await getBaileys();
 
     const { state, saveCreds } = await useMultiFileAuthState(AUTH_DIR);
-    const { version } = await fetchLatestBaileysVersion();
+
+    // fetchLatestBaileysVersion makes an HTTP call to GitHub; use fallback if it hangs
+    let version;
+    try {
+      const versionResult = await Promise.race([
+        fetchLatestBaileysVersion(),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('version fetch timeout')), 8000))
+      ]);
+      version = versionResult.version;
+      logger.info(`Using WA version: ${version}`);
+    } catch (e) {
+      version = [2, 3000, 1015901307];
+      logger.warn(`Using fallback WA version: ${version} (reason: ${e.message})`);
+    }
 
     sock = makeWASocket({
       version,
