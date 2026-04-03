@@ -288,11 +288,14 @@ export default function WhatsAppPage() {
     if (!waMessage.trim()) { toast.error(t('أدخل نص الرسالة', 'Enter message text')); return; }
     const encoded = encodeURIComponent(waMessage);
     const selected = members.filter(m => selectedMembers.includes(m.id));
-    const links = selected.map(m => `https://wa.me/${m.phone.replace(/^0/, '966')}?text=${encoded}`);
-    if (links.length > 0) {
-      window.open(links[0], '_blank');
-      toast.success(t(`تم فتح واتساب لـ ${selectedMembers.length} مستلم`, `Opened WhatsApp for ${selectedMembers.length} recipients`));
-    }
+    if (selected.length === 0) return;
+    // Open each recipient's WhatsApp link with a small delay to avoid popup blocking
+    selected.forEach((m, idx) => {
+      const phone = m.phone.replace(/\D/g, '').replace(/^0/, '966');
+      const link = `https://wa.me/${phone}?text=${encoded}`;
+      setTimeout(() => window.open(link, '_blank'), idx * 600);
+    });
+    toast.success(t(`تم فتح واتساب لـ ${selected.length} مستلم`, `Opened WhatsApp for ${selected.length} recipients`));
   };
 
   const [sendingToSelected, setSendingToSelected] = useState(false);
