@@ -98,7 +98,7 @@ export const InvoicesPage = () => {
   const [regFormItems, setRegFormItems] = useState([]);
   const [regFormDiscount, setRegFormDiscount] = useState(0);
   const [regFormNotes, setRegFormNotes] = useState('');
-  const [regFormPaymentMethod, setRegFormPaymentMethod] = useState('شبكة');
+  const [regFormPaymentMethod, setRegFormPaymentMethod] = useState('cash');
   const [regFormCouponCode, setRegFormCouponCode] = useState('');
   const [regFormAppliedCoupon, setRegFormAppliedCoupon] = useState(null);
   const [regFormCouponDiscount, setRegFormCouponDiscount] = useState(0);
