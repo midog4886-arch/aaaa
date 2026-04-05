@@ -945,6 +945,7 @@ ${pdfTerms}
   const handleTabChange = (newTab) => {
     if (newTab === 'forms') {
       const pw = window.prompt(language === 'ar' ? 'أدخل كلمة المرور للوصول إلى استمارات التسجيل:' : 'Enter password to access registration forms:');
+      if (pw === null) return;
       if (pw !== REG_FORMS_PASSWORD) {
         toast.error(language === 'ar' ? 'كلمة المرور غير صحيحة' : 'Incorrect password');
         return;
