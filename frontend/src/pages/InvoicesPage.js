@@ -940,6 +940,18 @@ ${pdfTerms}
   };
 
   const DELETE_PASSWORD = '242456';
+  const REG_FORMS_PASSWORD = '242456';
+
+  const handleTabChange = (newTab) => {
+    if (newTab === 'forms') {
+      const pw = window.prompt(language === 'ar' ? 'أدخل كلمة المرور للوصول إلى استمارات التسجيل:' : 'Enter password to access registration forms:');
+      if (pw !== REG_FORMS_PASSWORD) {
+        toast.error(language === 'ar' ? 'كلمة المرور غير صحيحة' : 'Incorrect password');
+        return;
+      }
+    }
+    setActiveTab(newTab);
+  };
 
   const handleDeleteInvoice = async (invoiceId, invoiceStatus) => {
     if (!isAdmin) {
@@ -3557,7 +3569,7 @@ ${itemsList}
         </div>
 
         {/* Tabs for Invoices, Registration Forms, and Credit Notes */}
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+        <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
           <TabsList className="grid w-full grid-cols-3 max-w-2xl">
             <TabsTrigger value="invoices" className="flex items-center gap-2">
               <Receipt className="w-4 h-4" />
