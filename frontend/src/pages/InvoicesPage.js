@@ -78,7 +78,7 @@ export const InvoicesPage = () => {
   const [invoiceItems, setInvoiceItems] = useState([]);
   const [discount, setDiscount] = useState(0);
   const [notes, setNotes] = useState('');
-  const [paymentMethod, setPaymentMethod] = useState('cash');
+  const [paymentMethod, setPaymentMethod] = useState('شبكة');
   const [saving, setSaving] = useState(false);
   const [qrCode, setQrCode] = useState(null);
   const [savingImage, setSavingImage] = useState(false);
@@ -98,7 +98,7 @@ export const InvoicesPage = () => {
   const [regFormItems, setRegFormItems] = useState([]);
   const [regFormDiscount, setRegFormDiscount] = useState(0);
   const [regFormNotes, setRegFormNotes] = useState('');
-  const [regFormPaymentMethod, setRegFormPaymentMethod] = useState('cash');
+  const [regFormPaymentMethod, setRegFormPaymentMethod] = useState('شبكة');
   const [regFormCouponCode, setRegFormCouponCode] = useState('');
   const [regFormAppliedCoupon, setRegFormAppliedCoupon] = useState(null);
   const [regFormCouponDiscount, setRegFormCouponDiscount] = useState(0);
