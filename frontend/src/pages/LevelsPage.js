@@ -819,11 +819,20 @@ export const LevelsPage = () => {
     }
   };
 
-  // Filter members not in current level
+  // Filter members not in current level – only those with active subscriptions
+  const todayStr = new Date().toISOString().split('T')[0];
+  const hasActiveSubscription = (m) => {
+    if (!m.activities || m.activities.length === 0) return false;
+    return m.activities.some(a => {
+      if (a.status !== 'active') return false;
+      if (!a.end_date) return true;
+      return a.end_date >= todayStr;
+    });
+  };
   const availableMembers = members.filter(m => {
     if (!selectedLevel) return true;
     return !(selectedLevel.members || []).includes(m.id);
-  }).filter(m => {
+  }).filter(m => hasActiveSubscription(m)).filter(m => {
     if (!searchQuery) return true;
     const name = (m.name_ar || m.name || '').toLowerCase();
     const phone = (m.phone || '').toLowerCase();
