@@ -142,6 +142,35 @@ const GlobalScanner = ({ enabled = true, language = 'ar' }) => {
       const response = await fetch(`${API_URL}/api/public/member-card/${memberCode}`);
       
       if (!response.ok) {
+        // Not a member — try coach lookup
+        const coachRes = await fetch(`/api/coach-attendance/qr-status-by-code/${memberCode}`);
+        if (coachRes.ok) {
+          // It's a coach — auto check-in/out then close dialog
+          setLoading(false);
+          setShowMemberDialog(false);
+          setMemberData(null);
+          try {
+            const checkInRes = await fetch(`/api/coach-attendance/qr-checkin-by-code/${memberCode}`, { method: 'POST' });
+            if (checkInRes.ok) {
+              const cData = await checkInRes.json();
+              if (cData.action === 'checked_in') {
+                playSound('success');
+                toast.success(`✅ ${cData.coach_name} — تم تسجيل الحضور`);
+              } else if (cData.action === 'checked_out') {
+                playSound('success');
+                toast.success(`✅ ${cData.coach_name} — تم تسجيل الانصراف`);
+              } else {
+                playSound('scan');
+                toast.info(`${cData.coach_name} — ${cData.message || 'تم المسح'}`);
+              }
+            }
+          } catch (_) {}
+          setTimeout(() => {
+            isProcessingRef.current = false;
+            lastScannedCodeRef.current = '';
+          }, 300);
+          return;
+        }
         throw new Error('Member not found');
       }
       
