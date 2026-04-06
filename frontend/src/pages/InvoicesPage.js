@@ -111,6 +111,10 @@ export const InvoicesPage = () => {
   const [isEditRegFormDialogOpen, setIsEditRegFormDialogOpen] = useState(false);
   const [selectedRegForm, setSelectedRegForm] = useState(null);
   const [editRegFormId, setEditRegFormId] = useState(null);
+
+  // Registration forms password dialog
+  const [showRegFormsPasswordDialog, setShowRegFormsPasswordDialog] = useState(false);
+  const [regFormsPasswordInput, setRegFormsPasswordInput] = useState('');
   
   // Products & Discounts
   const [products, setProducts] = useState([]);
@@ -944,14 +948,22 @@ ${pdfTerms}
 
   const handleTabChange = (newTab) => {
     if (newTab === 'forms') {
-      const pw = window.prompt(language === 'ar' ? 'أدخل كلمة المرور للوصول إلى استمارات التسجيل:' : 'Enter password to access registration forms:');
-      if (pw === null) return;
-      if (pw !== REG_FORMS_PASSWORD) {
-        toast.error(language === 'ar' ? 'كلمة المرور غير صحيحة' : 'Incorrect password');
-        return;
-      }
+      setRegFormsPasswordInput('');
+      setShowRegFormsPasswordDialog(true);
+      return;
     }
     setActiveTab(newTab);
+  };
+
+  const handleRegFormsPasswordConfirm = () => {
+    if (regFormsPasswordInput !== REG_FORMS_PASSWORD) {
+      toast.error(language === 'ar' ? 'كلمة المرور غير صحيحة' : 'Incorrect password');
+      setRegFormsPasswordInput('');
+      return;
+    }
+    setShowRegFormsPasswordDialog(false);
+    setRegFormsPasswordInput('');
+    setActiveTab('forms');
   };
 
   const handleDeleteInvoice = async (invoiceId, invoiceStatus) => {
@@ -6528,6 +6540,44 @@ ${itemsList}
             )}
           </DialogContent>
         </Dialog>
+
+      {/* Registration Forms Password Dialog */}
+      <Dialog open={showRegFormsPasswordDialog} onOpenChange={(open) => { if (!open) { setShowRegFormsPasswordDialog(false); setRegFormsPasswordInput(''); } }}>
+        <DialogContent className="max-w-sm" dir="rtl">
+          <DialogHeader>
+            <DialogTitle>{language === 'ar' ? 'أدخل كلمة المرور' : 'Enter Password'}</DialogTitle>
+          </DialogHeader>
+          <div className="py-2">
+            <p className="text-sm text-gray-600 mb-3">
+              {language === 'ar' ? 'أدخل كلمة المرور للوصول إلى استمارات التسجيل:' : 'Enter password to access registration forms:'}
+            </p>
+            <input
+              type="password"
+              value={regFormsPasswordInput}
+              onChange={e => setRegFormsPasswordInput(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') handleRegFormsPasswordConfirm(); }}
+              className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+              autoFocus
+              placeholder="••••••"
+            />
+          </div>
+          <DialogFooter className="gap-2">
+            <button
+              onClick={() => { setShowRegFormsPasswordDialog(false); setRegFormsPasswordInput(''); }}
+              className="px-4 py-2 text-sm rounded-lg border border-gray-200 hover:bg-gray-50 transition-colors"
+            >
+              {language === 'ar' ? 'إلغاء' : 'Cancel'}
+            </button>
+            <button
+              onClick={handleRegFormsPasswordConfirm}
+              className="px-4 py-2 text-sm rounded-lg bg-primary text-white hover:bg-primary/90 transition-colors"
+            >
+              {language === 'ar' ? 'تأكيد' : 'Confirm'}
+            </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       </div>
     </Layout>
   );
