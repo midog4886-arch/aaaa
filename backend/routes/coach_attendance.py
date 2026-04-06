@@ -292,11 +292,13 @@ async def monthly_report(
         ]}
     coaches = await db.coaches.find(coach_query, {"_id": 0}).to_list(100)
 
-    # Parse late threshold once
+    # Parse late threshold once; fall back to 09:00 on invalid input
     try:
         threshold_dt = datetime.strptime(late_threshold, "%H:%M")
+        effective_threshold = late_threshold
     except Exception:
         threshold_dt = datetime.strptime("09:00", "%H:%M")
+        effective_threshold = "09:00"
 
     report = {}
     for coach in coaches:
@@ -346,7 +348,7 @@ async def monthly_report(
             "records": coach_records
         }
 
-    return {"month": month, "late_threshold": late_threshold, "report": list(report.values())}
+    return {"month": month, "late_threshold": effective_threshold, "report": list(report.values())}
 
 
 # ══════════════════════════════════════════════════════
