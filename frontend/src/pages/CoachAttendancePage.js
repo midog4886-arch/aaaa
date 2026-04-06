@@ -241,7 +241,8 @@ const CoachAttendancePage = () => {
         email: editCoachForm.email.trim(),
         activities: editCoachForm.specialization ? editCoachForm.specialization.split(',').map(s => s.trim()).filter(Boolean) : [],
         notes: editingCoach.notes || '',
-        branch_id: editingCoach.branch_id || null
+        branch_id: editingCoach.branch_id || null,
+        expected_checkin_time: editCoachForm.expected_checkin_time || null
       }, { headers: { Authorization: `Bearer ${token}` } });
       showToast('تم تعديل بيانات المدرب بنجاح');
       setEditingCoach(null);
@@ -365,6 +366,18 @@ const CoachAttendancePage = () => {
                     placeholder="مثال: كرة قدم، سباحة، لياقة بدنية"
                   />
                 </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    <Clock className="w-4 h-4 inline ml-1 text-orange-500" />
+                    وقت الحضور المعتاد <span className="text-gray-400 font-normal">(اختياري — يُستخدم لحساب التأخر)</span>
+                  </label>
+                  <input
+                    type="time"
+                    value={addCoachForm.expected_checkin_time}
+                    onChange={e => setAddCoachForm({...addCoachForm, expected_checkin_time: e.target.value})}
+                    className="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+                  />
+                </div>
               </div>
               <div className="flex gap-3 p-5 border-t bg-gray-50 rounded-b-xl">
                 <button
@@ -452,6 +465,21 @@ const CoachAttendancePage = () => {
                     className="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                     placeholder="مثال: كرة قدم, سباحة"
                   />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    <Clock className="w-4 h-4 inline ml-1 text-orange-500" />
+                    وقت الحضور المعتاد <span className="text-gray-400 font-normal">(اختياري — يُستخدم لحساب التأخر)</span>
+                  </label>
+                  <input
+                    type="time"
+                    value={editCoachForm.expected_checkin_time}
+                    onChange={e => setEditCoachForm({...editCoachForm, expected_checkin_time: e.target.value})}
+                    className="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  />
+                  {editingCoach?.expected_checkin_time && (
+                    <p className="text-xs text-gray-400 mt-1">الوقت الحالي: {editingCoach.expected_checkin_time}</p>
+                  )}
                 </div>
               </div>
               <div className="flex gap-3 p-5 border-t bg-gray-50 rounded-b-xl">
@@ -900,8 +928,11 @@ const CoachAttendancePage = () => {
                     <p className="text-xs text-gray-500 mt-0.5">إجمالي الدقائق</p>
                   </div>
                   <div className="flex-1 bg-gray-50 rounded-lg p-3 text-center">
-                    <p className="text-2xl font-bold text-gray-600">{lateThreshold}</p>
+                    <p className="text-2xl font-bold text-gray-600">{lateDetailCoach.coach_threshold || lateThreshold}</p>
                     <p className="text-xs text-gray-500 mt-0.5">وقت الحضور المعتاد</p>
+                    {lateDetailCoach.coach_threshold && lateDetailCoach.coach_threshold !== lateThreshold && (
+                      <p className="text-xs text-orange-500 mt-0.5">خاص بالمدرب</p>
+                    )}
                   </div>
                 </div>
                 <div className="space-y-2 max-h-64 overflow-y-auto">
