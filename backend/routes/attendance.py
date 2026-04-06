@@ -307,70 +307,104 @@ async def get_member_schedule_days(member_id: str, activity_id: str) -> list:
     return all_days
 
 async def check_member_session_quota(member_id: str, activity_id: str = None):
-    """Check if member has used all their allowed sessions based on subscription days per week"""
+    """Check if member has used all their allowed sessions based on subscription days per week.
+    Checks both invoices (normal members) and member.activities (registration form members)."""
     saudi_tz = timezone(timedelta(hours=3))
     today_str = datetime.now(saudi_tz).strftime("%Y-%m-%d")
-    
+
+    results = []
+    # Track (activity_id, start_date, end_date) combos already added to avoid duplicates
+    seen_subs = set()
+
+    async def _process_subscription(item_activity_id, activity_name, start_date, end_date,
+                                     schedule_text, invoice_number=""):
+        """Inner helper to build one quota result from a subscription item."""
+        if not end_date or not schedule_text:
+            return
+        if end_date < today_str:
+            return
+        if activity_id and item_activity_id != activity_id:
+            return
+
+        key = (item_activity_id, start_date, end_date)
+        if key in seen_subs:
+            return
+        seen_subs.add(key)
+
+        days = parse_schedule_days(schedule_text)
+        days_per_week = len(days)
+        if days_per_week == 0:
+            return
+
+        effective_start = start_date or today_str
+        try:
+            start_dt = datetime.strptime(effective_start, "%Y-%m-%d")
+            end_dt = datetime.strptime(end_date, "%Y-%m-%d")
+            total_weeks = max(1, math.ceil((end_dt - start_dt).days / 7))
+            total_allowed_sessions = total_weeks * days_per_week
+        except Exception:
+            return
+
+        attendance_count = await db.attendance.count_documents({
+            "member_id": member_id,
+            "activity_id": item_activity_id,
+            "date": {"$gte": effective_start, "$lte": end_date}
+        })
+
+        results.append({
+            "activity_id": item_activity_id,
+            "activity_name": activity_name,
+            "days_per_week": days_per_week,
+            "schedule_days": [ENGLISH_TO_ARABIC_DAY.get(d, d) for d in days],
+            "total_allowed": total_allowed_sessions,
+            "used_sessions": attendance_count,
+            "remaining": max(0, total_allowed_sessions - attendance_count),
+            "exceeded": attendance_count >= total_allowed_sessions,
+            "start_date": effective_start,
+            "end_date": end_date,
+            "invoice_number": invoice_number
+        })
+
+    # ── 1. Check paid/partial invoices (normal registration path) ──────────────
     invoices = await db.invoices.find(
         {"member_id": member_id, "status": {"$in": ["paid", "partial"]}},
         {"_id": 0}
     ).to_list(100)
-    
-    results = []
-    
+
     for inv in invoices:
         for item in inv.get("items", []):
             if item.get("is_product"):
                 continue
             item_activity_id = item.get("activity_id", "")
-            if activity_id and item_activity_id != activity_id:
+            if not item_activity_id:
                 continue
-            
-            start_date = item.get("start_date", "")
-            end_date = item.get("end_date", "")
-            schedule_text = item.get("schedule", "")
-            
-            if not end_date or not schedule_text:
-                continue
-            if end_date < today_str:
-                continue
-            
-            days = parse_schedule_days(schedule_text)
-            days_per_week = len(days)
-            if days_per_week == 0:
-                continue
-            
-            if not start_date:
-                start_date = inv.get("created_at", "")[:10]
-            
-            try:
-                start_dt = datetime.strptime(start_date, "%Y-%m-%d")
-                end_dt = datetime.strptime(end_date, "%Y-%m-%d")
-                total_weeks = max(1, math.ceil((end_dt - start_dt).days / 7))
-                total_allowed_sessions = total_weeks * days_per_week
-            except Exception:
-                continue
-            
-            attendance_count = await db.attendance.count_documents({
-                "member_id": member_id,
-                "activity_id": item_activity_id,
-                "date": {"$gte": start_date, "$lte": end_date}
-            })
-            
-            results.append({
-                "activity_id": item_activity_id,
-                "activity_name": item.get("activity_name", ""),
-                "days_per_week": days_per_week,
-                "schedule_days": [ENGLISH_TO_ARABIC_DAY.get(d, d) for d in days],
-                "total_allowed": total_allowed_sessions,
-                "used_sessions": attendance_count,
-                "remaining": max(0, total_allowed_sessions - attendance_count),
-                "exceeded": attendance_count >= total_allowed_sessions,
-                "start_date": start_date,
-                "end_date": end_date,
-                "invoice_number": inv.get("invoice_number", "")
-            })
-    
+            start = item.get("start_date", "") or inv.get("created_at", "")[:10]
+            await _process_subscription(
+                item_activity_id,
+                item.get("activity_name", ""),
+                start,
+                item.get("end_date", ""),
+                item.get("schedule", ""),
+                inv.get("invoice_number", "")
+            )
+
+    # ── 2. Check member.activities (registration form path) ────────────────────
+    member_doc = await db.members.find_one({"id": member_id}, {"_id": 0, "activities": 1})
+    for act in (member_doc or {}).get("activities", []):
+        item_activity_id = act.get("activity_id", "")
+        if not item_activity_id:
+            continue
+        if act.get("status", "active") != "active":
+            continue
+        await _process_subscription(
+            item_activity_id,
+            act.get("activity_name", ""),
+            act.get("start_date", ""),
+            act.get("end_date", ""),
+            act.get("schedule", ""),
+            ""
+        )
+
     return results
 
 
