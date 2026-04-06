@@ -30,6 +30,8 @@ export default function SchedulePage() {
   const [selectedTime, setSelectedTime] = useState('all'); // فلتر المواعيد
   const [selectedLevelFilter, setSelectedLevelFilter] = useState('all'); // فلتر المستويات
   const [selectedActivityType, setSelectedActivityType] = useState('all'); // فلتر نوع النشاط
+  const [viewMode, setViewMode] = useState('by-activity'); // 'by-activity' | 'by-time'
+  const [selectedHour, setSelectedHour] = useState(null); // الساعة المختارة في وضع by-time
   
   // Attendance dialog state
   const [attendanceDialog, setAttendanceDialog] = useState({
@@ -1113,7 +1115,7 @@ export default function SchedulePage() {
             </div>
 
             {/* Stats */}
-            <div className="flex gap-3 ms-auto">
+            <div className="flex gap-3 ms-auto items-end">
               <div className="bg-primary/10 px-4 py-2 rounded-lg text-center">
                 <div className="text-xl font-bold text-primary">{activitiesData.filter(a => getTotalMembers(a) > 0).length}</div>
                 <div className="text-xs text-gray-500">{t('نشاط', 'Activities')}</div>
@@ -1123,6 +1125,23 @@ export default function SchedulePage() {
                   {activitiesData.reduce((sum, a) => sum + getTotalMembers(a), 0)}
                 </div>
                 <div className="text-xs text-gray-500">{t('مشترك', 'Members')}</div>
+              </div>
+              {/* View Mode Toggle */}
+              <div className="flex rounded-lg border overflow-hidden shadow-sm">
+                <button
+                  onClick={() => setViewMode('by-activity')}
+                  className={`px-3 py-2 text-xs font-medium flex items-center gap-1 transition-colors ${viewMode === 'by-activity' ? 'bg-primary text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}
+                >
+                  <Layers className="w-3.5 h-3.5" />
+                  {t('حسب النشاط', 'By Activity')}
+                </button>
+                <button
+                  onClick={() => { setViewMode('by-time'); setSelectedHour(null); }}
+                  className={`px-3 py-2 text-xs font-medium flex items-center gap-1 transition-colors border-s ${viewMode === 'by-time' ? 'bg-primary text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}
+                >
+                  <Clock className="w-3.5 h-3.5" />
+                  {t('حسب الوقت', 'By Time')}
+                </button>
               </div>
             </div>
           </div>
@@ -1136,8 +1155,125 @@ export default function SchedulePage() {
           </div>
         )}
 
-        {/* Activities Cards */}
-        {!loading && (
+        {/* ══ BY-TIME VIEW ══ */}
+        {!loading && viewMode === 'by-time' && (() => {
+          const allTimes = getAvailableTimes();
+          const displayHour = selectedHour || (allTimes[0] ?? null);
+          return (
+            <div className="space-y-4">
+              {/* Hour selector */}
+              <div className="bg-white rounded-xl border shadow-sm p-4">
+                <p className="text-sm font-semibold text-gray-600 mb-3 flex items-center gap-2">
+                  <Clock className="w-4 h-4 text-primary" />
+                  {t('اختر الساعة', 'Select Hour')}
+                </p>
+                {allTimes.length === 0 ? (
+                  <p className="text-sm text-gray-400">{t('لا توجد مواعيد لهذا اليوم', 'No times for this day')}</p>
+                ) : (
+                  <div className="flex flex-wrap gap-2">
+                    {allTimes.map(time => (
+                      <button
+                        key={time}
+                        onClick={() => setSelectedHour(time)}
+                        className={`px-4 py-2 rounded-lg text-sm font-medium border transition-all ${
+                          displayHour === time
+                            ? 'bg-primary text-white border-primary shadow-md'
+                            : 'bg-white text-gray-700 border-gray-200 hover:border-primary/50 hover:bg-primary/5'
+                        }`}
+                      >
+                        {time === 'غير محدد' ? t('بدون وقت محدد', 'No specific time') : time}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Activities for selected hour */}
+              {displayHour && (() => {
+                const activitiesAtHour = activitiesData
+                  .filter(a => activityMatchesType(a))
+                  .map(activity => {
+                    const timeData = activity.times[displayHour];
+                    const members = timeData ? (timeData[selectedDay] || []) : [];
+                    return { activity, members };
+                  })
+                  .filter(({ members }) => members.length > 0);
+
+                if (activitiesAtHour.length === 0) {
+                  return (
+                    <div className="text-center py-16 text-gray-400">
+                      <Clock className="w-12 h-12 mx-auto mb-3 opacity-30" />
+                      <p className="text-sm">{t('لا يوجد أنشطة في هذه الساعة', 'No activities at this hour')}</p>
+                    </div>
+                  );
+                }
+
+                return (
+                  <div>
+                    <div className="flex items-center gap-3 mb-3">
+                      <h3 className="text-base font-bold text-gray-800">
+                        {displayHour === 'غير محدد' ? t('بدون وقت محدد', 'No specific time') : displayHour}
+                      </h3>
+                      <span className="bg-primary/10 text-primary text-xs font-semibold px-2.5 py-1 rounded-full">
+                        {activitiesAtHour.length} {t('نشاط', 'activities')}
+                        &nbsp;•&nbsp;
+                        {activitiesAtHour.reduce((s, { members }) => s + members.length, 0)} {t('مشترك', 'members')}
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                      {activitiesAtHour.map(({ activity, members }) => {
+                        const style = getActivityStyle(activity.activity_name);
+                        return (
+                          <div key={activity.activity_id} className={`rounded-xl border-2 ${style.border} overflow-hidden shadow-sm`}>
+                            {/* Card header */}
+                            <div className={`${style.bg} text-white px-4 py-3 flex items-center justify-between`}>
+                              <div className="flex items-center gap-2">
+                                <span className="text-lg">{style.icon}</span>
+                                <span className="font-bold text-sm">{activity.activity_name}</span>
+                              </div>
+                              <span className="bg-white/25 text-white text-xs font-bold px-2 py-0.5 rounded-full flex items-center gap-1">
+                                <Users className="w-3 h-3" />
+                                {members.length}
+                              </span>
+                            </div>
+                            {/* Members list */}
+                            <div className="bg-white divide-y max-h-64 overflow-y-auto">
+                              {members.map((member, idx) => {
+                                const memberLevel = getMemberLevel(member.member_id);
+                                const initials = (member.member_name || '?').charAt(0).toUpperCase();
+                                return (
+                                  <div key={member.member_id || idx} className="flex items-center gap-3 px-4 py-2.5 hover:bg-gray-50 transition-colors">
+                                    <div className={`w-8 h-8 rounded-full ${style.bg} text-white text-xs font-bold flex items-center justify-center shrink-0`}>
+                                      {initials}
+                                    </div>
+                                    <div className="flex-1 min-w-0">
+                                      <p className="text-sm font-medium text-gray-800 truncate">{member.member_name}</p>
+                                      {member.member_code && (
+                                        <p className="text-xs text-gray-400">#{member.member_code}</p>
+                                      )}
+                                    </div>
+                                    {memberLevel && (
+                                      <span className="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full shrink-0">
+                                        {t('م', 'L')}{memberLevel.level_number}
+                                      </span>
+                                    )}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })()}
+            </div>
+          );
+        })()}
+
+        {/* Activities Cards (by-activity mode) */}
+        {!loading && viewMode === 'by-activity' && (
           <div className="space-y-4">
             {activitiesData.length > 0 ? (
               activitiesData.map(activity => {
@@ -1403,8 +1539,8 @@ export default function SchedulePage() {
           </div>
         )}
         
-        {/* Empty State */}
-        {!loading && activitiesData.filter(a => getTotalMembers(a) > 0).length === 0 && (
+        {/* Empty State (by-activity only) */}
+        {!loading && viewMode === 'by-activity' && activitiesData.filter(a => getTotalMembers(a) > 0).length === 0 && (
           <div className="text-center py-16 bg-gray-50 rounded-xl border">
             <Calendar className="w-16 h-16 mx-auto mb-4 text-gray-300" />
             <h3 className="text-lg font-medium text-gray-600 mb-2">
@@ -1416,8 +1552,8 @@ export default function SchedulePage() {
           </div>
         )}
 
-        {/* Instructions */}
-        {!loading && activitiesData.filter(a => getTotalMembers(a) > 0).length > 0 && (
+        {/* Instructions (by-activity only) */}
+        {!loading && viewMode === 'by-activity' && activitiesData.filter(a => getTotalMembers(a) > 0).length > 0 && (
           <div className="mt-4 text-center text-sm text-gray-500 bg-blue-50 p-3 rounded-lg">
             💡 {t('انقر على اسم أي عضو لتسجيل حضوره أو غيابه', 'Click any member to record attendance')}
           </div>
