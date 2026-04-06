@@ -28,8 +28,26 @@ class CoachCreate(CoachBase):
 
 class Coach(CoachBase):
     id: str
+    employee_id: Optional[str] = None
     branch_id: Optional[str] = None
     created_at: str
+
+
+async def get_next_employee_id() -> str:
+    """Generate next sequential employee_id starting from 5001."""
+    coaches = await db.coaches.find(
+        {"employee_id": {"$exists": True, "$ne": None}},
+        {"employee_id": 1, "_id": 0}
+    ).to_list(500)
+    max_id = 5000
+    for c in coaches:
+        try:
+            val = int(c.get("employee_id", "0"))
+            if val > max_id:
+                max_id = val
+        except (ValueError, TypeError):
+            pass
+    return str(max_id + 1)
 
 # ============ ROUTES ============
 
@@ -68,14 +86,37 @@ async def create_coach(coach: CoachCreate, current_user: dict = Depends(get_curr
     else:
         final_branch_id = current_user.get("branch_id")
     
+    employee_id = await get_next_employee_id()
+    
     coach_doc = {
         "id": coach_id,
+        "employee_id": employee_id,
         **coach.model_dump(),
         "branch_id": final_branch_id,
         "created_at": datetime.now(timezone.utc).isoformat()
     }
     await db.coaches.insert_one(coach_doc)
     return Coach(**{k: v for k, v in coach_doc.items() if k != "_id"})
+
+
+@router.post("/assign-employee-ids")
+async def assign_employee_ids(current_user: dict = Depends(get_current_user)):
+    """Assign employee_id to coaches that don't have one yet."""
+    coaches = await db.coaches.find(
+        {"$or": [{"employee_id": {"$exists": False}}, {"employee_id": None}]},
+        {"_id": 0}
+    ).to_list(500)
+    
+    count = 0
+    for coach in coaches:
+        new_id = await get_next_employee_id()
+        await db.coaches.update_one(
+            {"id": coach["id"]},
+            {"$set": {"employee_id": new_id}}
+        )
+        count += 1
+    
+    return {"assigned": count, "message": f"تم تعيين رقم الموظف لـ {count} مدرب"}
 
 
 @router.put("/{coach_id}", response_model=Coach)

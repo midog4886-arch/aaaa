@@ -45,6 +45,7 @@ export default function AttendancePage() {
   const [manualMemberId, setManualMemberId] = useState('');
   const [isScannerActive, setIsScannerActive] = useState(false);
   const [qrMemberData, setQrMemberData] = useState(null); // Member data with activities after QR scan
+  const [qrCoachResult, setQrCoachResult] = useState(null); // Coach data after QR scan
   const [qrLoading, setQrLoading] = useState(false);
   const scannerRef = useRef(null);
   
@@ -452,18 +453,47 @@ export default function AttendancePage() {
     // Ignore scan errors (they happen frequently while scanning)
   };
 
+  // Auto-check-in coach via QR scan
+  const handleCoachQRCheckin = async (employeeId) => {
+    setQrLoading(true);
+    setQrCoachResult(null);
+    setQrMemberData(null);
+    setQrScanResult(null);
+    try {
+      const res = await fetch(`/api/coach-attendance/qr-checkin-by-code/${employeeId}`, { method: 'POST' });
+      if (!res.ok) throw new Error('Coach not found');
+      const data = await res.json();
+      setQrCoachResult(data);
+      if (data.action === 'checked_in') toast.success(`✅ ${data.coach_name} — تم تسجيل الحضور`);
+      else if (data.action === 'checked_out') toast.success(`✅ ${data.coach_name} — تم تسجيل الانصراف`);
+    } catch {
+      setQrScanResult({ error: true, message: t('⚠️ الرقم غير موجود (عضو أو مدرب)', '⚠️ Code not found') });
+    } finally {
+      setQrLoading(false);
+    }
+  };
+
   // Fetch member activities after QR scan
   const fetchMemberActivities = async (memberCode) => {
     setQrLoading(true);
     setQrScanResult(null);
     setQrMemberData(null);
+    setQrCoachResult(null);
     
     try {
       const API_URL = '';
       const response = await fetch(`${API_URL}/api/public/member-card/${memberCode}`);
       
       if (!response.ok) {
-        throw new Error('Member not found');
+        // Not a member — try coach lookup
+        const coachRes = await fetch(`/api/coach-attendance/qr-status-by-code/${memberCode}`);
+        if (coachRes.ok) {
+          // It's a coach — auto check-in/out
+          setQrLoading(false);
+          await handleCoachQRCheckin(memberCode);
+          return;
+        }
+        throw new Error('Not found');
       }
       
       const memberData = await response.json();
@@ -551,6 +581,7 @@ export default function AttendancePage() {
   const clearQRScan = () => {
     setQrMemberData(null);
     setQrScanResult(null);
+    setQrCoachResult(null);
     setManualMemberId('');
   };
 
@@ -593,44 +624,64 @@ export default function AttendancePage() {
     }
   }, [kioskSoundEnabled]);
 
-  // Handle kiosk mode check-in
+  // Handle kiosk mode check-in (members + coaches)
   const handleKioskCheckin = useCallback(async (memberCode) => {
-    if (!memberCode || !kioskActivityId) return;
+    if (!memberCode) return;
     
     playSound('scan');
     
-    try {
-      const res = await attendanceAPI.qrCheckin(memberCode, kioskActivityId);
-      
-      if (res.data.status === 'already_checked_in') {
-        playSound('error');
-        setKioskLastScan({
-          success: false,
-          memberName: res.data.member?.name || memberCode,
-          message: t('⚠️ مسجل مسبقاً اليوم', '⚠️ Already checked in today'),
-          time: new Date().toLocaleTimeString('ar-SA')
-        });
-      } else {
-        playSound('success');
-        setKioskLastScan({
-          success: true,
-          memberName: res.data.member_name || memberCode,
-          message: t('✅ تم تسجيل الحضور', '✅ Check-in successful'),
-          time: new Date().toLocaleTimeString('ar-SA')
-        });
+    // Try member first (requires kioskActivityId)
+    if (kioskActivityId) {
+      try {
+        const res = await attendanceAPI.qrCheckin(memberCode, kioskActivityId);
+        if (res.data.status === 'already_checked_in') {
+          playSound('error');
+          setKioskLastScan({
+            success: false,
+            memberName: res.data.member?.name || memberCode,
+            message: t('⚠️ مسجل مسبقاً اليوم', '⚠️ Already checked in today'),
+            time: new Date().toLocaleTimeString('ar-SA')
+          });
+        } else {
+          playSound('success');
+          setKioskLastScan({
+            success: true,
+            memberName: res.data.member_name || memberCode,
+            message: t('✅ تم تسجيل الحضور', '✅ Check-in successful'),
+            time: new Date().toLocaleTimeString('ar-SA')
+          });
+        }
+        setTimeout(() => setKioskLastScan(null), 5000);
+        return;
+      } catch (memberError) {
+        // If 404, try coach. Otherwise show error.
+        if (memberError.response?.status !== 404) {
+          playSound('error');
+          const errorMsg = memberError.response?.data?.detail || t('خطأ', 'Error');
+          setKioskLastScan({ success: false, memberName: memberCode, message: `❌ ${errorMsg}`, time: new Date().toLocaleTimeString('ar-SA') });
+          setTimeout(() => setKioskLastScan(null), 5000);
+          return;
+        }
       }
-    } catch (error) {
-      playSound('error');
-      const errorMsg = error.response?.data?.detail || t('خطأ', 'Error');
-      setKioskLastScan({
-        success: false,
-        memberName: memberCode,
-        message: `❌ ${errorMsg}`,
-        time: new Date().toLocaleTimeString('ar-SA')
-      });
     }
     
-    // Clear last scan after 5 seconds
+    // Try coach check-in by employee_id
+    try {
+      const coachRes = await fetch(`/api/coach-attendance/qr-checkin-by-code/${memberCode}`, { method: 'POST' });
+      if (!coachRes.ok) throw new Error('not found');
+      const data = await coachRes.json();
+      playSound('success');
+      setKioskLastScan({
+        success: true,
+        memberName: `${data.coach_name} (مدرب)`,
+        message: data.action === 'checked_in' ? '✅ تم تسجيل حضور المدرب' : data.action === 'checked_out' ? '🔵 تم تسجيل انصراف المدرب' : data.message,
+        time: new Date().toLocaleTimeString('ar-SA')
+      });
+    } catch {
+      playSound('error');
+      setKioskLastScan({ success: false, memberName: memberCode, message: `❌ ${t('الرقم غير موجود', 'Code not found')}`, time: new Date().toLocaleTimeString('ar-SA') });
+    }
+    
     setTimeout(() => setKioskLastScan(null), 5000);
   }, [kioskActivityId, playSound, t]);
 
@@ -1325,6 +1376,46 @@ export default function AttendancePage() {
                 <div className="text-center py-10">
                   <Clock className="w-12 h-12 mx-auto mb-3 text-gray-300 animate-spin" />
                   <p className="text-gray-500">{t('جاري البحث...', 'Searching...')}</p>
+                </div>
+              ) : qrCoachResult ? (
+                <div className="space-y-4">
+                  {/* Coach Result Card */}
+                  <div className={`p-5 rounded-xl text-center border-2 ${
+                    qrCoachResult.action === 'checked_in' ? 'bg-green-50 border-green-300' :
+                    qrCoachResult.action === 'checked_out' ? 'bg-blue-50 border-blue-300' :
+                    'bg-gray-50 border-gray-200'
+                  }`}>
+                    <div className={`text-4xl mb-3 ${
+                      qrCoachResult.action === 'checked_in' ? 'text-green-600' :
+                      qrCoachResult.action === 'checked_out' ? 'text-blue-600' : 'text-gray-500'
+                    }`}>
+                      {qrCoachResult.action === 'checked_in' ? '✅' :
+                       qrCoachResult.action === 'checked_out' ? '🔵' : 'ℹ️'}
+                    </div>
+                    <p className="text-xl font-bold text-gray-800 mb-1">{qrCoachResult.coach_name}</p>
+                    <p className="text-sm text-gray-500 mb-3">
+                      {qrCoachResult.employee_id && `رقم الموظف: #${qrCoachResult.employee_id}`}
+                    </p>
+                    <div className={`text-lg font-bold mb-2 ${
+                      qrCoachResult.action === 'checked_in' ? 'text-green-700' :
+                      qrCoachResult.action === 'checked_out' ? 'text-blue-700' : 'text-gray-700'
+                    }`}>
+                      {qrCoachResult.message}
+                    </div>
+                    {qrCoachResult.check_in_time && (
+                      <p className="text-sm text-gray-600">وقت الحضور: {qrCoachResult.check_in_time}</p>
+                    )}
+                    {qrCoachResult.check_out_time && (
+                      <p className="text-sm text-gray-600">وقت الانصراف: {qrCoachResult.check_out_time}</p>
+                    )}
+                    {qrCoachResult.total_hours && (
+                      <p className="text-sm font-semibold text-indigo-600 mt-1">ساعات العمل: {qrCoachResult.total_hours} ساعة</p>
+                    )}
+                  </div>
+                  <Button onClick={clearQRScan} variant="outline" className="w-full gap-2">
+                    <X className="w-4 h-4" />
+                    {t('مسح وبدء من جديد', 'Clear and start over')}
+                  </Button>
                 </div>
               ) : qrMemberData ? (
                 <div className="space-y-4">

@@ -47,6 +47,17 @@ const CoachAttendancePage = () => {
       ]);
       setCoaches(coachesRes.data);
       setRecords(recordsRes.data);
+
+      // Auto-assign employee_id to coaches that don't have one
+      const withoutId = coachesRes.data.filter(c => !c.employee_id);
+      if (withoutId.length > 0) {
+        try {
+          await axios.post('/api/coaches/assign-employee-ids');
+          // Re-fetch coaches to get updated employee_ids
+          const refreshed = await axios.get('/api/coaches', { params: { branch_filter: branchFilter } });
+          setCoaches(refreshed.data);
+        } catch (_) {}
+      }
     } catch (err) {
       showToast('حدث خطأ في تحميل البيانات', 'error');
     }
@@ -605,6 +616,9 @@ const CoachAttendancePage = () => {
                             <div>
                               <p className="font-bold text-gray-800">{coach.name_ar || coach.name}</p>
                               <p className="text-xs text-gray-400">{coach.phone}</p>
+                              {coach.employee_id && (
+                                <p className="text-xs text-orange-500 font-semibold">#{coach.employee_id}</p>
+                              )}
                             </div>
                             <div className="flex items-center gap-1 mr-2">
                               <button
@@ -895,7 +909,8 @@ const CoachAttendancePage = () => {
 
       {/* ══ QR Card Modal (member-card style) ══ */}
       {qrCoach && (() => {
-        const qrUrl = `${window.location.origin}/coach-qr/${qrCoach.id}`;
+        const employeeId = qrCoach.employee_id || qrCoach.id;
+        const qrValue = employeeId; // Encode just the numeric employee_id (like member_code)
         const coachName = qrCoach.name_ar || qrCoach.name;
         const origin = window.location.origin;
 
@@ -948,12 +963,13 @@ const CoachAttendancePage = () => {
                   </div>
                   <div class="card-body">
                     <div class="qr-container">
-                      <div class="qr-section"><img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(qrUrl)}" /></div>
+                      <div class="qr-section"><img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(qrValue)}" /></div>
                       <div class="qr-label">تسجيل الحضور/الانصراف</div>
                     </div>
                     <div class="info-section">
                       <div class="coach-label">المدرب</div>
                       <div class="coach-name">${coachName}</div>
+                      <div class="info-row"><span class="info-label">رقم الموظف:</span><span class="member-code">#${employeeId}</span></div>
                       ${qrCoach.phone ? `<div class="info-row"><span class="info-label">الجوال:</span><span>${qrCoach.phone}</span></div>` : ''}
                       ${qrCoach.specialization ? `<div class="badge">🏅 ${qrCoach.specialization}</div>` : ''}
                     </div>
@@ -980,12 +996,13 @@ const CoachAttendancePage = () => {
                 </div>
                 <div class="card-body">
                   <div class="qr-container">
-                    <div class="qr-section"><img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(qrUrl)}" /></div>
+                    <div class="qr-section"><img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(qrValue)}" /></div>
                     <div class="qr-label">تسجيل الحضور/الانصراف</div>
                   </div>
                   <div class="info-section">
                     <div class="coach-label">المدرب</div>
                     <div class="coach-name">${coachName}</div>
+                    <div class="info-row"><span class="info-label">رقم الموظف:</span><span class="member-code">#${employeeId}</span></div>
                     ${qrCoach.phone ? `<div class="info-row"><span class="info-label">الجوال:</span><span>${qrCoach.phone}</span></div>` : ''}
                     ${qrCoach.specialization ? `<div class="badge">🏅 ${qrCoach.specialization}</div>` : ''}
                   </div>
@@ -1031,7 +1048,7 @@ const CoachAttendancePage = () => {
                     {/* QR Side */}
                     <div className="flex flex-col items-center shrink-0">
                       <div className="border border-gray-200 rounded-lg p-1 bg-white">
-                        <QRCodeSVG value={qrUrl} size={100} level="M" includeMargin={false} fgColor="#1a1a1a" />
+                        <QRCodeSVG value={qrValue} size={100} level="M" includeMargin={false} fgColor="#1a1a1a" />
                       </div>
                       <p className="text-[10px] text-orange-500 font-semibold mt-1 text-center">تسجيل الحضور/الانصراف</p>
                     </div>
@@ -1040,6 +1057,9 @@ const CoachAttendancePage = () => {
                     <div className="flex-1 text-right">
                       <p className="text-[10px] text-gray-400">المدرب</p>
                       <p className="font-bold text-gray-800 text-sm leading-tight mb-1">{coachName}</p>
+                      <div className="text-[11px] text-orange-600 font-bold mb-1">
+                        رقم الموظف: <span className="text-orange-700">#{employeeId}</span>
+                      </div>
                       {qrCoach.phone && (
                         <div className="text-[11px] text-gray-600 mb-1">
                           <span className="text-gray-400 text-[10px]">الجوال: </span>{qrCoach.phone}
