@@ -893,71 +893,180 @@ const CoachAttendancePage = () => {
         )}
       </div>
 
-      {/* ══ QR Code Modal ══ */}
+      {/* ══ QR Card Modal (member-card style) ══ */}
       {qrCoach && (() => {
         const qrUrl = `${window.location.origin}/coach-qr/${qrCoach.id}`;
         const coachName = qrCoach.name_ar || qrCoach.name;
+        const origin = window.location.origin;
+
         const handlePrint = () => {
-          const svg = qrRef.current?.querySelector('svg');
-          if (!svg) return;
-          const svgData = new XMLSerializer().serializeToString(svg);
-          const blob = new Blob([svgData], { type: 'image/svg+xml' });
-          const url = URL.createObjectURL(blob);
-          const win = window.open('', '_blank');
-          win.document.write(`
-            <html><head><title>QR - ${coachName}</title>
+          const win = window.open('', '_blank', 'width=900,height=700');
+          win.document.write(`<!DOCTYPE html><html><head>
+            <meta charset="UTF-8">
+            <title>كارت المدرب - ${coachName}</title>
             <style>
-              body { display:flex; flex-direction:column; align-items:center; justify-content:center; min-height:100vh; margin:0; font-family:Arial,sans-serif; direction:rtl; background:#fff; }
-              img { width:220px; height:220px; }
-              h2 { margin:16px 0 6px; font-size:22px; color:#1a1a1a; }
-              p { margin:0; color:#888; font-size:13px; }
-              @media print { button { display:none } }
-            </style></head>
-            <body>
-              <img src="${url}" />
-              <h2>${coachName}</h2>
-              <p>امسح رمز QR لتسجيل الحضور / الانصراف</p>
-              <p style="margin-top:8px;font-size:11px;color:#ccc;">${qrUrl}</p>
-              <button onclick="window.print()" style="margin-top:20px;padding:10px 24px;background:#f97316;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:15px">طباعة</button>
-            </body></html>`);
+              @import url('https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700&display=swap');
+              @page { size: A4; margin: 0mm; }
+              * { margin:0; padding:0; box-sizing:border-box; }
+              body { font-family:'Tajawal',Arial,sans-serif; background:#f3f4f6; direction:rtl; }
+              .screen-only { padding:20px; display:flex; flex-direction:column; align-items:center; justify-content:center; min-height:100vh; }
+              @media print { .screen-only { display:none !important; } .print-area { display:flex !important; position:absolute; top:10mm; right:15mm; gap:5mm; } }
+              @media screen { .print-area { display:none; } }
+              .sticker-preview { display:flex; gap:15px; justify-content:center; margin-bottom:20px; }
+              .card { width:90mm; height:60mm; background:white; border-radius:4mm; overflow:hidden; box-shadow:0 4px 15px rgba(0,0,0,.1); display:flex; flex-direction:column; }
+              .card-header { background:linear-gradient(135deg,#F97316,#F59E0B); padding:1.5mm 2mm; display:flex; justify-content:space-between; align-items:center; color:white; }
+              .header-text h2 { font-size:7pt; font-weight:700; margin:0; line-height:1.3; }
+              .header-text p { font-size:5.5pt; opacity:.9; margin:0; }
+              .header-logo { width:10mm; height:10mm; border-radius:50%; background:white; padding:.5mm; display:flex; align-items:center; justify-content:center; }
+              .header-logo img { width:100%; height:100%; object-fit:contain; border-radius:50%; }
+              .card-body { padding:2mm; display:flex; gap:2mm; flex:1; }
+              .info-section { flex:1; text-align:right; overflow:hidden; }
+              .qr-container { display:flex; flex-direction:column; align-items:center; }
+              .qr-section { width:28mm; height:28mm; background:white; border:1px solid #eee; border-radius:2mm; padding:.5mm; }
+              .qr-section img { width:100%; height:100%; }
+              .qr-label { text-align:center; font-size:5.5pt; color:#F97316; margin-top:1mm; font-weight:600; }
+              .coach-name { font-size:10pt; font-weight:700; color:#1f2937; margin-bottom:1.5mm; }
+              .coach-label { color:#6b7280; font-size:6pt; margin-bottom:.3mm; }
+              .info-row { display:flex; align-items:center; gap:1mm; margin-bottom:.8mm; font-size:7pt; }
+              .info-label { color:#6b7280; font-size:6pt; }
+              .badge { background:#FFF7ED; color:#F97316; font-weight:700; font-size:7pt; padding:.5mm 1.5mm; border-radius:2mm; border:1px solid #FED7AA; display:inline-block; margin-bottom:1mm; }
+              .card-footer { text-align:center; padding:1.5mm 2mm; background:#FFF7ED; font-size:6pt; color:#92400E; border-top:1px solid #FED7AA; font-weight:600; }
+              .logo-card { width:90mm; height:60mm; background:white; border-radius:4mm; overflow:hidden; box-shadow:0 4px 15px rgba(0,0,0,.1); display:flex; flex-direction:column; align-items:center; justify-content:center; padding:3mm; }
+              .logo-card img { max-width:100%; max-height:55%; object-fit:contain; }
+              .logo-card .contact-info { font-size:7pt; color:#374151; text-align:center; margin-top:2mm; font-weight:600; line-height:1.6; }
+              .print-btn { margin-top:20px; padding:12px 30px; background:linear-gradient(135deg,#F97316,#EA580C); color:white; border:none; border-radius:10px; cursor:pointer; font-family:'Tajawal',Arial,sans-serif; font-size:16px; font-weight:bold; }
+              .position-labels { display:flex; gap:15px; justify-content:center; margin-top:10px; }
+              .position-label { padding:8px 16px; background:#FEF3C7; border-radius:8px; color:#92400E; font-size:12px; }
+            </style></head><body>
+            <div class="screen-only">
+              <p style="font-size:18px;margin-bottom:20px;">📋 معاينة الطباعة - كارت المدرب + شعار الأكاديمية</p>
+              <div class="sticker-preview">
+                <div class="card">
+                  <div class="card-header">
+                    <div class="header-text"><h2>شركة اداء الابطال العالمية للرياضة</h2><p>Global Champions Sports Performance</p></div>
+                    <div class="header-logo"><img src="${origin}/images/academy-logo.png" alt="logo"/></div>
+                  </div>
+                  <div class="card-body">
+                    <div class="qr-container">
+                      <div class="qr-section"><img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(qrUrl)}" /></div>
+                      <div class="qr-label">تسجيل الحضور/الانصراف</div>
+                    </div>
+                    <div class="info-section">
+                      <div class="coach-label">المدرب</div>
+                      <div class="coach-name">${coachName}</div>
+                      ${qrCoach.phone ? `<div class="info-row"><span class="info-label">الجوال:</span><span>${qrCoach.phone}</span></div>` : ''}
+                      ${qrCoach.specialization ? `<div class="badge">🏅 ${qrCoach.specialization}</div>` : ''}
+                    </div>
+                  </div>
+                  <div class="card-footer">امسح رمز QR لتسجيل الحضور أو الانصراف</div>
+                </div>
+                <div class="logo-card">
+                  <img src="${origin}/images/academy-logo.png" alt="شعار الأكاديمية"/>
+                  <div class="contact-info">📞 0566238384</div>
+                </div>
+              </div>
+              <div class="position-labels">
+                <div class="position-label">📍 خانة 1: كارت المدرب</div>
+                <div class="position-label">📍 خانة 2: شعار الأكاديمية</div>
+              </div>
+              <p style="margin-top:10px;color:#6b7280;font-size:14px;">📐 حجم كل كرت: 9سم × 6سم</p>
+              <button class="print-btn" onclick="window.print()">🖨️ طباعة الكارت</button>
+            </div>
+            <div class="print-area">
+              <div class="card">
+                <div class="card-header">
+                  <div class="header-text"><h2>شركة اداء الابطال العالمية للرياضة</h2><p>Global Champions Sports Performance</p></div>
+                  <div class="header-logo"><img src="${origin}/images/academy-logo.png" alt="logo"/></div>
+                </div>
+                <div class="card-body">
+                  <div class="qr-container">
+                    <div class="qr-section"><img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(qrUrl)}" /></div>
+                    <div class="qr-label">تسجيل الحضور/الانصراف</div>
+                  </div>
+                  <div class="info-section">
+                    <div class="coach-label">المدرب</div>
+                    <div class="coach-name">${coachName}</div>
+                    ${qrCoach.phone ? `<div class="info-row"><span class="info-label">الجوال:</span><span>${qrCoach.phone}</span></div>` : ''}
+                    ${qrCoach.specialization ? `<div class="badge">🏅 ${qrCoach.specialization}</div>` : ''}
+                  </div>
+                </div>
+                <div class="card-footer">امسح رمز QR لتسجيل الحضور أو الانصراف</div>
+              </div>
+              <div class="logo-card">
+                <img src="${origin}/images/academy-logo.png" alt="شعار الأكاديمية"/>
+                <div class="contact-info">📞 0566238384</div>
+              </div>
+            </div>
+          </body></html>`);
           win.document.close();
         };
+
         return (
           <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4" dir="rtl">
-            <div className="bg-white rounded-2xl shadow-2xl max-w-sm w-full overflow-hidden">
-              <div className="bg-gradient-to-l from-orange-500 to-amber-500 px-6 py-4 flex items-center justify-between">
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
+              {/* Dialog Header */}
+              <div className="bg-gradient-to-l from-orange-500 to-amber-500 px-5 py-4 flex items-center justify-between">
                 <h2 className="text-white font-bold text-lg flex items-center gap-2">
-                  <QrCode className="w-5 h-5" /> رمز QR للمدرب
+                  <QrCode className="w-5 h-5" /> كارت المدرب
                 </h2>
-                <button
-                  onClick={() => setQrCoach(null)}
-                  className="text-white/80 hover:text-white rounded-full p-1 hover:bg-white/20"
-                >
+                <button onClick={() => setQrCoach(null)} className="text-white/80 hover:text-white rounded-full p-1 hover:bg-white/20">
                   <X className="w-5 h-5" />
                 </button>
               </div>
 
-              <div className="p-6 text-center" ref={qrRef}>
-                <p className="font-bold text-xl text-gray-800 mb-1">{coachName}</p>
-                <p className="text-sm text-gray-400 mb-5">امسح رمز QR لتسجيل الحضور أو الانصراف</p>
-                <div className="inline-block bg-white rounded-xl shadow-lg p-4 border-2 border-orange-100">
-                  <QRCodeSVG
-                    value={qrUrl}
-                    size={200}
-                    level="M"
-                    includeMargin={false}
-                    fgColor="#1a1a1a"
-                  />
+              {/* Card Preview — matches the printed card exactly */}
+              <div className="p-5" ref={qrRef}>
+                <div className="border-2 border-orange-200 rounded-xl overflow-hidden shadow-md" style={{ direction: 'rtl' }}>
+                  {/* Card Header */}
+                  <div className="flex items-center justify-between px-3 py-2" style={{ background: 'linear-gradient(135deg,#F97316,#F59E0B)' }}>
+                    <div>
+                      <p className="text-white font-bold text-xs leading-tight">شركة اداء الابطال العالمية للرياضة</p>
+                      <p className="text-orange-100 text-[10px]">Global Champions Sports Performance</p>
+                    </div>
+                    <img src="/images/academy-logo.png" alt="logo" className="w-10 h-10 rounded-full bg-white p-0.5 object-contain" />
+                  </div>
+
+                  {/* Card Body */}
+                  <div className="flex gap-3 p-3 bg-white">
+                    {/* QR Side */}
+                    <div className="flex flex-col items-center shrink-0">
+                      <div className="border border-gray-200 rounded-lg p-1 bg-white">
+                        <QRCodeSVG value={qrUrl} size={100} level="M" includeMargin={false} fgColor="#1a1a1a" />
+                      </div>
+                      <p className="text-[10px] text-orange-500 font-semibold mt-1 text-center">تسجيل الحضور/الانصراف</p>
+                    </div>
+
+                    {/* Info Side */}
+                    <div className="flex-1 text-right">
+                      <p className="text-[10px] text-gray-400">المدرب</p>
+                      <p className="font-bold text-gray-800 text-sm leading-tight mb-1">{coachName}</p>
+                      {qrCoach.phone && (
+                        <div className="text-[11px] text-gray-600 mb-1">
+                          <span className="text-gray-400 text-[10px]">الجوال: </span>{qrCoach.phone}
+                        </div>
+                      )}
+                      {qrCoach.specialization && (
+                        <span className="inline-block bg-orange-50 border border-orange-200 text-orange-700 text-[10px] font-semibold px-2 py-0.5 rounded-full">
+                          🏅 {qrCoach.specialization}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Card Footer */}
+                  <div className="bg-orange-50 px-3 py-1.5 text-center text-[10px] text-orange-700 font-medium border-t border-orange-100">
+                    امسح رمز QR لتسجيل الحضور أو الانصراف
+                  </div>
                 </div>
-                <p className="mt-3 text-xs text-gray-400 break-all px-4">{qrUrl}</p>
               </div>
 
-              <div className="px-6 pb-6 flex gap-3">
+              {/* Buttons */}
+              <div className="px-5 pb-5 flex gap-3">
                 <button
                   onClick={handlePrint}
                   className="flex-1 bg-orange-500 hover:bg-orange-600 text-white font-semibold py-2.5 rounded-xl flex items-center justify-center gap-2 transition-colors"
                 >
-                  <Printer className="w-4 h-4" /> طباعة
+                  <Printer className="w-4 h-4" /> طباعة الكارت
                 </button>
                 <button
                   onClick={() => setQrCoach(null)}
