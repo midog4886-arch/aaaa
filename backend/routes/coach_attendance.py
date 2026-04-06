@@ -311,3 +311,127 @@ async def monthly_report(
         }
 
     return {"month": month, "report": list(report.values())}
+
+
+# ══════════════════════════════════════════════════════
+#  PUBLIC QR CHECK-IN / CHECK-OUT  (no auth required)
+# ══════════════════════════════════════════════════════
+
+@router.get("/qr-status/{coach_id}")
+async def get_coach_qr_status(coach_id: str):
+    """Public endpoint: returns coach name + today's attendance status for QR scan page."""
+    coach = await db.coaches.find_one({"id": coach_id}, {"_id": 0})
+    if not coach:
+        raise HTTPException(status_code=404, detail="المدرب غير موجود")
+
+    today = get_saudi_now().strftime("%Y-%m-%d")
+    record = await db.coach_attendance.find_one(
+        {"coach_id": coach_id, "date": today},
+        {"_id": 0}
+    )
+
+    return {
+        "coach_id": coach_id,
+        "coach_name": coach.get("name_ar", coach.get("name", "")),
+        "coach_phone": coach.get("phone", ""),
+        "today": today,
+        "status": record.get("status") if record else None,
+        "check_in_time": record.get("check_in_time") if record else None,
+        "check_out_time": record.get("check_out_time") if record else None,
+        "total_hours": record.get("total_hours") if record else None,
+        "record_id": record.get("id") if record else None,
+    }
+
+
+@router.post("/qr-checkin/{coach_id}")
+async def qr_checkin_coach(coach_id: str):
+    """Public endpoint: check in (if not yet) or check out (if present) via QR scan."""
+    now = get_saudi_now()
+    today = now.strftime("%Y-%m-%d")
+    current_time = now.strftime("%H:%M")
+
+    coach = await db.coaches.find_one({"id": coach_id}, {"_id": 0})
+    if not coach:
+        raise HTTPException(status_code=404, detail="المدرب غير موجود")
+
+    coach_name = coach.get("name_ar", coach.get("name", ""))
+
+    # Look for today's record
+    record = await db.coach_attendance.find_one({"coach_id": coach_id, "date": today})
+
+    # ── Already checked out ──────────────────────────────
+    if record and record.get("status") == "checked_out":
+        return {
+            "action": "already_out",
+            "coach_name": coach_name,
+            "check_in_time": record.get("check_in_time"),
+            "check_out_time": record.get("check_out_time"),
+            "total_hours": record.get("total_hours"),
+            "message": f"تم تسجيل انصرافك مسبقاً في {record.get('check_out_time', '')}"
+        }
+
+    # ── Present → Check out ──────────────────────────────
+    if record and record.get("status") == "present":
+        total_hours = None
+        try:
+            cin = datetime.strptime(record["check_in_time"], "%H:%M")
+            cout = datetime.strptime(current_time, "%H:%M")
+            diff = (cout - cin).total_seconds() / 3600
+            if diff < 0:
+                diff += 24
+            total_hours = round(diff, 2)
+        except Exception:
+            pass
+
+        await db.coach_attendance.update_one(
+            {"id": record["id"]},
+            {"$set": {
+                "check_out_time": current_time,
+                "total_hours": total_hours,
+                "status": "checked_out"
+            }}
+        )
+        return {
+            "action": "checked_out",
+            "coach_name": coach_name,
+            "check_in_time": record.get("check_in_time"),
+            "check_out_time": current_time,
+            "total_hours": total_hours,
+            "message": f"تم تسجيل انصرافك بنجاح — {current_time}"
+        }
+
+    # ── Not present → Check in ───────────────────────────
+    # Remove any absent/leave records for today first
+    await db.coach_attendance.delete_many({
+        "coach_id": coach_id,
+        "date": today,
+        "status": {"$in": ["absent", "leave"]}
+    })
+
+    new_record = {
+        "id": str(uuid.uuid4()),
+        "coach_id": coach_id,
+        "coach_name": coach_name,
+        "coach_phone": coach.get("phone", ""),
+        "date": today,
+        "check_in_time": current_time,
+        "check_out_time": None,
+        "total_hours": None,
+        "status": "present",
+        "notes": "تسجيل عبر QR",
+        "reason": "",
+        "branch_id": coach.get("branch_id"),
+        "recorded_by": "QR",
+        "created_at": now.isoformat()
+    }
+    await db.coach_attendance.insert_one(new_record)
+    new_record.pop("_id", None)
+
+    return {
+        "action": "checked_in",
+        "coach_name": coach_name,
+        "check_in_time": current_time,
+        "check_out_time": None,
+        "total_hours": None,
+        "message": f"تم تسجيل حضورك بنجاح — {current_time}"
+    }

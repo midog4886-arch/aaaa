@@ -1,10 +1,11 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import Layout from '../components/Layout';
 import { 
   Clock, LogIn, LogOut, UserX, Calendar, ChevronLeft, ChevronRight,
   FileText, Download, Edit2, Trash2, Save, X, AlertCircle, CheckCircle,
-  Users, Timer, CalendarDays, UserPlus, Phone, Mail
+  Users, Timer, CalendarDays, UserPlus, Phone, Mail, QrCode, Printer
 } from 'lucide-react';
+import { QRCodeSVG } from 'qrcode.react';
 import axios from 'axios';
 
 const CoachAttendancePage = () => {
@@ -28,6 +29,8 @@ const CoachAttendancePage = () => {
   const [editCoachForm, setEditCoachForm] = useState({ name: '', phone: '', email: '', specialization: '', name_en: '' });
   const [savingCoach, setSavingCoach] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState(null);
+  const [qrCoach, setQrCoach] = useState(null); // coach whose QR is being shown
+  const qrRef = useRef(null);
   const branchFilter = localStorage.getItem('selectedBranch') || 'all';
 
   const showToast = (message, type = 'success') => {
@@ -605,6 +608,13 @@ const CoachAttendancePage = () => {
                             </div>
                             <div className="flex items-center gap-1 mr-2">
                               <button
+                                onClick={() => setQrCoach(coach)}
+                                className="p-1 text-gray-400 hover:text-orange-500 rounded hover:bg-orange-50"
+                                title="رمز QR للمدرب"
+                              >
+                                <QrCode className="w-3.5 h-3.5" />
+                              </button>
+                              <button
                                 onClick={() => openEditCoach(coach)}
                                 className="p-1 text-gray-400 hover:text-blue-500 rounded hover:bg-blue-50"
                                 title="تعديل المدرب"
@@ -882,6 +892,85 @@ const CoachAttendancePage = () => {
           </div>
         )}
       </div>
+
+      {/* ══ QR Code Modal ══ */}
+      {qrCoach && (() => {
+        const qrUrl = `${window.location.origin}/coach-qr/${qrCoach.id}`;
+        const coachName = qrCoach.name_ar || qrCoach.name;
+        const handlePrint = () => {
+          const svg = qrRef.current?.querySelector('svg');
+          if (!svg) return;
+          const svgData = new XMLSerializer().serializeToString(svg);
+          const blob = new Blob([svgData], { type: 'image/svg+xml' });
+          const url = URL.createObjectURL(blob);
+          const win = window.open('', '_blank');
+          win.document.write(`
+            <html><head><title>QR - ${coachName}</title>
+            <style>
+              body { display:flex; flex-direction:column; align-items:center; justify-content:center; min-height:100vh; margin:0; font-family:Arial,sans-serif; direction:rtl; background:#fff; }
+              img { width:220px; height:220px; }
+              h2 { margin:16px 0 6px; font-size:22px; color:#1a1a1a; }
+              p { margin:0; color:#888; font-size:13px; }
+              @media print { button { display:none } }
+            </style></head>
+            <body>
+              <img src="${url}" />
+              <h2>${coachName}</h2>
+              <p>امسح رمز QR لتسجيل الحضور / الانصراف</p>
+              <p style="margin-top:8px;font-size:11px;color:#ccc;">${qrUrl}</p>
+              <button onclick="window.print()" style="margin-top:20px;padding:10px 24px;background:#f97316;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:15px">طباعة</button>
+            </body></html>`);
+          win.document.close();
+        };
+        return (
+          <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4" dir="rtl">
+            <div className="bg-white rounded-2xl shadow-2xl max-w-sm w-full overflow-hidden">
+              <div className="bg-gradient-to-l from-orange-500 to-amber-500 px-6 py-4 flex items-center justify-between">
+                <h2 className="text-white font-bold text-lg flex items-center gap-2">
+                  <QrCode className="w-5 h-5" /> رمز QR للمدرب
+                </h2>
+                <button
+                  onClick={() => setQrCoach(null)}
+                  className="text-white/80 hover:text-white rounded-full p-1 hover:bg-white/20"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="p-6 text-center" ref={qrRef}>
+                <p className="font-bold text-xl text-gray-800 mb-1">{coachName}</p>
+                <p className="text-sm text-gray-400 mb-5">امسح رمز QR لتسجيل الحضور أو الانصراف</p>
+                <div className="inline-block bg-white rounded-xl shadow-lg p-4 border-2 border-orange-100">
+                  <QRCodeSVG
+                    value={qrUrl}
+                    size={200}
+                    level="M"
+                    includeMargin={false}
+                    fgColor="#1a1a1a"
+                  />
+                </div>
+                <p className="mt-3 text-xs text-gray-400 break-all px-4">{qrUrl}</p>
+              </div>
+
+              <div className="px-6 pb-6 flex gap-3">
+                <button
+                  onClick={handlePrint}
+                  className="flex-1 bg-orange-500 hover:bg-orange-600 text-white font-semibold py-2.5 rounded-xl flex items-center justify-center gap-2 transition-colors"
+                >
+                  <Printer className="w-4 h-4" /> طباعة
+                </button>
+                <button
+                  onClick={() => setQrCoach(null)}
+                  className="px-5 py-2.5 border border-gray-200 rounded-xl text-gray-600 hover:bg-gray-50 transition-colors"
+                >
+                  إغلاق
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
     </Layout>
   );
 };

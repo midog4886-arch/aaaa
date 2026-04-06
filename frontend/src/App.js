@@ -87,6 +87,7 @@ import MemberDailyVideos from './pages/member-portal/MemberDailyVideos';
 import MemberLoyalty from './pages/member-portal/MemberLoyalty';
 import MemberSupport from './pages/member-portal/MemberSupport';
 import MemberMessages from './pages/member-portal/MemberMessages';
+import CoachQRPage from './pages/CoachQRPage';
 
 import './App.css';
 
@@ -190,6 +191,7 @@ function AppRoutes() {
       
       {/* Privacy Policy - Public page */}
       <Route path="/privacy" element={<PrivacyPolicyPage />} />
+      <Route path="/coach-qr/:coachId" element={<CoachQRPage />} />
       
       {/* Root - smart redirect based on user role */}
       <Route path="/" element={<SmartRedirect />} />
