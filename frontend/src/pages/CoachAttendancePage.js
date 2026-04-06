@@ -30,6 +30,8 @@ const CoachAttendancePage = () => {
   const [savingCoach, setSavingCoach] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState(null);
   const [qrCoach, setQrCoach] = useState(null); // coach whose QR is being shown
+  const [lateThreshold, setLateThreshold] = useState('09:00'); // وقت الحضور المعتاد
+  const [lateDetailCoach, setLateDetailCoach] = useState(null); // popup for late details
   const qrRef = useRef(null);
   const branchFilter = localStorage.getItem('selectedBranch') || 'all';
 
@@ -68,14 +70,14 @@ const CoachAttendancePage = () => {
     setLoading(true);
     try {
       const res = await axios.get('/api/coach-attendance/monthly-report', {
-        params: { month: selectedMonth, branch_filter: branchFilter }
+        params: { month: selectedMonth, branch_filter: branchFilter, late_threshold: lateThreshold }
       });
       setMonthlyReport(res.data);
     } catch (err) {
       showToast('حدث خطأ في تحميل التقرير', 'error');
     }
     setLoading(false);
-  }, [selectedMonth, branchFilter]);
+  }, [selectedMonth, branchFilter, lateThreshold]);
 
   useEffect(() => {
     if (view === 'daily') fetchData();
@@ -263,9 +265,9 @@ const CoachAttendancePage = () => {
 
   const exportCSV = () => {
     if (!monthlyReport) return;
-    const rows = [['المدرب', 'أيام الحضور', 'أيام الغياب', 'أيام الإجازة', 'إجمالي الساعات']];
+    const rows = [['المدرب', 'أيام الحضور', 'أيام الغياب', 'أيام الإجازة', 'إجمالي الساعات', 'أيام التأخر', 'إجمالي دقائق التأخر']];
     monthlyReport.report.forEach(r => {
-      rows.push([r.coach_name, r.present_days, r.absent_days, r.leave_days, r.total_hours]);
+      rows.push([r.coach_name, r.present_days, r.absent_days, r.leave_days, r.total_hours, r.late_days || 0, r.late_minutes || 0]);
     });
     const csv = '\uFEFF' + rows.map(r => r.join(',')).join('\n');
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
@@ -781,13 +783,23 @@ const CoachAttendancePage = () => {
           </>
         ) : (
           <>
-            <div className="flex items-center justify-center gap-3 mb-6">
+            <div className="flex items-center justify-center flex-wrap gap-3 mb-6">
               <input
                 type="month"
                 value={selectedMonth}
                 onChange={(e) => setSelectedMonth(e.target.value)}
                 className="border rounded-lg px-3 py-2"
               />
+              <div className="flex items-center gap-2 border rounded-lg px-3 py-2 bg-orange-50">
+                <Clock className="w-4 h-4 text-orange-500" />
+                <label className="text-xs text-gray-600 whitespace-nowrap">وقت الحضور المعتاد</label>
+                <input
+                  type="time"
+                  value={lateThreshold}
+                  onChange={(e) => setLateThreshold(e.target.value)}
+                  className="border rounded px-2 py-0.5 text-sm w-24"
+                />
+              </div>
               <button
                 onClick={exportCSV}
                 className="px-4 py-2 bg-green-500 text-white rounded-lg text-sm hover:bg-green-600 flex items-center gap-1"
@@ -811,6 +823,7 @@ const CoachAttendancePage = () => {
                         <th className="px-4 py-3 text-center font-medium text-red-600">أيام الغياب</th>
                         <th className="px-4 py-3 text-center font-medium text-yellow-600">أيام الإجازة</th>
                         <th className="px-4 py-3 text-center font-medium text-blue-600">إجمالي الساعات</th>
+                        <th className="px-4 py-3 text-center font-medium text-orange-600">التأخرات</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -837,6 +850,21 @@ const CoachAttendancePage = () => {
                               {r.total_hours}
                             </span>
                           </td>
+                          <td className="px-4 py-3 text-center">
+                            {(r.late_days || 0) === 0 ? (
+                              <span className="text-green-600 font-bold text-sm">✓</span>
+                            ) : (
+                              <button
+                                onClick={() => setLateDetailCoach(r)}
+                                className="inline-flex flex-col items-center gap-0.5 cursor-pointer group"
+                              >
+                                <span className="bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full text-xs font-bold group-hover:bg-orange-200 transition-colors">
+                                  {r.late_days} يوم
+                                </span>
+                                <span className="text-xs text-gray-500">{r.late_minutes} دقيقة</span>
+                              </button>
+                            )}
+                          </td>
                         </tr>
                       ))}
                     </tbody>
@@ -845,6 +873,51 @@ const CoachAttendancePage = () => {
               </div>
             )}
           </>
+        )}
+
+        {lateDetailCoach && (
+          <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={() => setLateDetailCoach(null)}>
+            <div className="bg-white rounded-xl w-full max-w-md shadow-2xl" dir="rtl" onClick={(e) => e.stopPropagation()}>
+              <div className="bg-orange-500 text-white px-5 py-4 rounded-t-xl flex items-center justify-between">
+                <div>
+                  <h3 className="font-bold text-lg">تفاصيل التأخرات</h3>
+                  <p className="text-orange-100 text-sm mt-0.5">{lateDetailCoach.coach_name}</p>
+                </div>
+                <button onClick={() => setLateDetailCoach(null)} className="text-white hover:text-orange-200 transition-colors">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+              <div className="p-5">
+                <div className="flex gap-4 mb-4">
+                  <div className="flex-1 bg-orange-50 rounded-lg p-3 text-center">
+                    <p className="text-2xl font-bold text-orange-600">{lateDetailCoach.late_days}</p>
+                    <p className="text-xs text-gray-500 mt-0.5">أيام التأخر</p>
+                  </div>
+                  <div className="flex-1 bg-red-50 rounded-lg p-3 text-center">
+                    <p className="text-2xl font-bold text-red-600">{lateDetailCoach.late_minutes}</p>
+                    <p className="text-xs text-gray-500 mt-0.5">إجمالي الدقائق</p>
+                  </div>
+                  <div className="flex-1 bg-gray-50 rounded-lg p-3 text-center">
+                    <p className="text-2xl font-bold text-gray-600">{lateThreshold}</p>
+                    <p className="text-xs text-gray-500 mt-0.5">وقت الحضور المعتاد</p>
+                  </div>
+                </div>
+                <div className="space-y-2 max-h-64 overflow-y-auto">
+                  {(lateDetailCoach.late_records || []).map((rec, idx) => (
+                    <div key={idx} className="flex items-center justify-between bg-gray-50 rounded-lg px-3 py-2 text-sm">
+                      <span className="text-gray-700 font-medium">{rec.date}</span>
+                      <div className="flex items-center gap-3">
+                        <span className="text-gray-600">دخل: <span className="font-bold text-orange-600">{rec.check_in_time}</span></span>
+                        <span className="bg-red-100 text-red-700 px-2 py-0.5 rounded-full text-xs font-bold">
+                          +{rec.minutes_late} دقيقة
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
         )}
 
         {showAbsentModal && (

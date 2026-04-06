@@ -270,6 +270,7 @@ async def delete_record(
 async def monthly_report(
     month: str,
     branch_filter: Optional[str] = None,
+    late_threshold: str = "09:00",
     current_user: dict = Depends(get_current_user)
 ):
     query = {"date": {"$regex": f"^{month}"}}
@@ -291,6 +292,12 @@ async def monthly_report(
         ]}
     coaches = await db.coaches.find(coach_query, {"_id": 0}).to_list(100)
 
+    # Parse late threshold once
+    try:
+        threshold_dt = datetime.strptime(late_threshold, "%H:%M")
+    except Exception:
+        threshold_dt = datetime.strptime("09:00", "%H:%M")
+
     report = {}
     for coach in coaches:
         cid = coach["id"]
@@ -300,6 +307,32 @@ async def monthly_report(
         leave_days = len([r for r in coach_records if r.get("status") == "leave"])
         total_hours = sum(r.get("total_hours", 0) or 0 for r in coach_records)
 
+        # ── Late arrivals ────────────────────────────────
+        late_records = []
+        late_days = 0
+        late_minutes_total = 0
+        for r in coach_records:
+            if r.get("status") not in ("present", "checked_out"):
+                continue
+            cin_str = r.get("check_in_time")
+            if not cin_str:
+                continue
+            try:
+                cin_dt = datetime.strptime(cin_str, "%H:%M")
+                diff = (cin_dt - threshold_dt).total_seconds() / 60
+                if diff > 0:
+                    late_days += 1
+                    late_minutes_total += diff
+                    late_records.append({
+                        "date": r.get("date", ""),
+                        "check_in_time": cin_str,
+                        "minutes_late": round(diff)
+                    })
+            except Exception:
+                pass
+        # Sort late records by date
+        late_records.sort(key=lambda x: x["date"])
+
         report[cid] = {
             "coach_id": cid,
             "coach_name": coach.get("name_ar", coach.get("name", "")),
@@ -307,10 +340,13 @@ async def monthly_report(
             "absent_days": absent_days,
             "leave_days": leave_days,
             "total_hours": round(total_hours, 2),
+            "late_days": late_days,
+            "late_minutes": round(late_minutes_total),
+            "late_records": late_records,
             "records": coach_records
         }
 
-    return {"month": month, "report": list(report.values())}
+    return {"month": month, "late_threshold": late_threshold, "report": list(report.values())}
 
 
 # ══════════════════════════════════════════════════════
