@@ -23,10 +23,10 @@ const CoachAttendancePage = () => {
   const [absentStatus, setAbsentStatus] = useState('absent');
   const [toast, setToast] = useState(null);
   const [showAddCoach, setShowAddCoach] = useState(false);
-  const [addCoachForm, setAddCoachForm] = useState({ name: '', phone: '', email: '', specialization: '', name_en: '' });
+  const [addCoachForm, setAddCoachForm] = useState({ name: '', phone: '', email: '', specialization: '', name_en: '', expected_checkin_time: '' });
   const [addingCoach, setAddingCoach] = useState(false);
   const [editingCoach, setEditingCoach] = useState(null);
-  const [editCoachForm, setEditCoachForm] = useState({ name: '', phone: '', email: '', specialization: '', name_en: '' });
+  const [editCoachForm, setEditCoachForm] = useState({ name: '', phone: '', email: '', specialization: '', name_en: '', expected_checkin_time: '' });
   const [savingCoach, setSavingCoach] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState(null);
   const [qrCoach, setQrCoach] = useState(null); // coach whose QR is being shown
@@ -200,11 +200,12 @@ const CoachAttendancePage = () => {
         email: addCoachForm.email.trim(),
         activities: addCoachForm.specialization ? [addCoachForm.specialization.trim()] : [],
         notes: '',
-        branch_id: branchId
+        branch_id: branchId,
+        expected_checkin_time: addCoachForm.expected_checkin_time || null
       }, { headers: { Authorization: `Bearer ${token}` } });
       showToast('تم إضافة المدرب بنجاح');
       setShowAddCoach(false);
-      setAddCoachForm({ name: '', phone: '', email: '', specialization: '', name_en: '' });
+      setAddCoachForm({ name: '', phone: '', email: '', specialization: '', name_en: '', expected_checkin_time: '' });
       fetchData();
     } catch (error) {
       showToast(error.response?.data?.detail || 'حدث خطأ أثناء إضافة المدرب', 'error');
@@ -220,7 +221,8 @@ const CoachAttendancePage = () => {
       name_en: coach.name || '',
       phone: coach.phone || '',
       email: coach.email || '',
-      specialization: (coach.activities || []).join(', ')
+      specialization: (coach.activities || []).join(', '),
+      expected_checkin_time: coach.expected_checkin_time || ''
     });
   };
 

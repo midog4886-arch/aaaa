@@ -309,7 +309,14 @@ async def monthly_report(
         leave_days = len([r for r in coach_records if r.get("status") == "leave"])
         total_hours = sum(r.get("total_hours", 0) or 0 for r in coach_records)
 
-        # ── Late arrivals ────────────────────────────────
+        # ── Late arrivals (per-coach threshold or global fallback) ──
+        # Use the coach's own expected_checkin_time if set, else the global threshold
+        coach_threshold_str = coach.get("expected_checkin_time") or effective_threshold
+        try:
+            coach_threshold_dt = datetime.strptime(coach_threshold_str, "%H:%M")
+        except Exception:
+            coach_threshold_dt = threshold_dt
+
         late_records = []
         late_days = 0
         late_minutes_total = 0
@@ -321,14 +328,15 @@ async def monthly_report(
                 continue
             try:
                 cin_dt = datetime.strptime(cin_str, "%H:%M")
-                diff = (cin_dt - threshold_dt).total_seconds() / 60
+                diff = (cin_dt - coach_threshold_dt).total_seconds() / 60
                 if diff > 0:
                     late_days += 1
                     late_minutes_total += diff
                     late_records.append({
                         "date": r.get("date", ""),
                         "check_in_time": cin_str,
-                        "minutes_late": round(diff)
+                        "minutes_late": round(diff),
+                        "threshold": coach_threshold_str
                     })
             except Exception:
                 pass
@@ -345,6 +353,7 @@ async def monthly_report(
             "late_days": late_days,
             "late_minutes": round(late_minutes_total),
             "late_records": late_records,
+            "coach_threshold": coach_threshold_str,
             "records": coach_records
         }
 

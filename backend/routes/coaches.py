@@ -22,6 +22,7 @@ class CoachBase(BaseModel):
     email: Optional[str] = ""
     activities: List[str] = []
     notes: Optional[str] = ""
+    expected_checkin_time: Optional[str] = None  # e.g. "09:00", per-coach late threshold
 
 class CoachCreate(CoachBase):
     branch_id: Optional[str] = None
