@@ -366,6 +366,17 @@ export default function SchedulePage() {
     return Array.from(times).sort();
   };
 
+  // Reset selectedHour when activitiesData/day changes and the hour is no longer valid
+  useEffect(() => {
+    if (selectedHour !== null) {
+      const available = getAvailableTimes();
+      if (!available.includes(selectedHour)) {
+        setSelectedHour(null);
+      }
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activitiesData, selectedDay]);
+
   // Get activity types (swimming, football, karate, etc.)
   const getActivityTypes = () => {
     const types = new Map(); // Use Map to store type -> display name
