@@ -16,49 +16,61 @@
       "src": "/images/icon-72x72.png",
       "sizes": "72x72",
       "type": "image/png",
-      "purpose": "any maskable"
+      "purpose": "any"
     },
     {
       "src": "/images/icon-96x96.png",
       "sizes": "96x96",
       "type": "image/png",
-      "purpose": "any maskable"
+      "purpose": "any"
     },
     {
       "src": "/images/icon-128x128.png",
       "sizes": "128x128",
       "type": "image/png",
-      "purpose": "any maskable"
+      "purpose": "any"
     },
     {
       "src": "/images/icon-144x144.png",
       "sizes": "144x144",
       "type": "image/png",
-      "purpose": "any maskable"
+      "purpose": "any"
     },
     {
       "src": "/images/icon-152x152.png",
       "sizes": "152x152",
       "type": "image/png",
-      "purpose": "any maskable"
+      "purpose": "any"
     },
     {
       "src": "/images/icon-192x192.png",
       "sizes": "192x192",
       "type": "image/png",
-      "purpose": "any maskable"
+      "purpose": "any"
     },
     {
       "src": "/images/icon-384x384.png",
       "sizes": "384x384",
       "type": "image/png",
-      "purpose": "any maskable"
+      "purpose": "any"
     },
     {
       "src": "/images/icon-512x512.png",
       "sizes": "512x512",
       "type": "image/png",
-      "purpose": "any maskable"
+      "purpose": "any"
+    },
+    {
+      "src": "/images/icon-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/images/icon-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
     }
   ],
   "screenshots": [
@@ -82,22 +94,22 @@
       "name": "لوحة التحكم",
       "short_name": "التحكم",
       "description": "الوصول السريع للوحة التحكم",
-      "url": "/dashboard",
-      "icons": [{ "src": "/images/icon-96x96.png", "sizes": "96x96" }]
+      "url": "/admin/dashboard",
+      "icons": [{ "src": "/images/icon-96x96.png", "sizes": "96x96", "purpose": "any" }]
     },
     {
       "name": "بوابة الأعضاء",
       "short_name": "الأعضاء",
       "description": "الوصول السريع لبوابة الأعضاء",
       "url": "/portal/login",
-      "icons": [{ "src": "/images/icon-96x96.png", "sizes": "96x96" }]
+      "icons": [{ "src": "/images/icon-96x96.png", "sizes": "96x96", "purpose": "any" }]
     },
     {
       "name": "الفيديوهات اليومية",
       "short_name": "فيديوهات",
       "description": "مشاهدة الفيديوهات التدريبية",
       "url": "/portal/daily-videos",
-      "icons": [{ "src": "/images/icon-96x96.png", "sizes": "96x96" }]
+      "icons": [{ "src": "/images/icon-96x96.png", "sizes": "96x96", "purpose": "any" }]
     }
   ],
   "related_applications": [],
