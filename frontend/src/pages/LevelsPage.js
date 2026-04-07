@@ -600,7 +600,7 @@ export const LevelsPage = () => {
         if (!levelObj) return `<td style="border:1px solid #ccc;padding:10px;vertical-align:top;background:#f9f9f9;"></td>`;
 
         const membersForDays = (levelObj.members_details || []).filter(memberMatchesAnyDay);
-        const memberNames = membersForDays.map(m => `<div style="padding:3px 0;border-bottom:1px dotted #ddd;">${escapeHtml(m.name_ar || m.name)}</div>`).join('');
+        const memberNames = membersForDays.map(m => `<div style="padding:3px 0;border-bottom:1px dotted #ddd;font-size:18px;">${escapeHtml(m.name_ar || m.name)}</div>`).join('');
         const count = membersForDays.length;
         const bgColor = count === 0 ? '#f9f9f9' : '#fff';
         return `<td style="border:1px solid #ccc;padding:10px;vertical-align:top;background:${bgColor};min-width:120px;">
