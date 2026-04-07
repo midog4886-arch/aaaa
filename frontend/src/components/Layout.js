@@ -497,7 +497,7 @@ export const TopHeader = ({ onMenuClick, title }) => {
 
 
         {/* Camera QR Scanner Button */}
-        {isAdmin && !isDailyLedger && (
+        {!isDailyLedger && (
           <Button
             variant="outline"
             size="sm"
