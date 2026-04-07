@@ -83,7 +83,7 @@ export const LevelsPage = () => {
 
   // Print schedule dialog
   const [isPrintDialogOpen, setIsPrintDialogOpen] = useState(false);
-  const [printDay, setPrintDay] = useState('saturday');
+  const [printDays, setPrintDays] = useState(['saturday']);
   const [printActivity, setPrintActivity] = useState('swimming');
   
   // Search, filter, sort for main activities view
@@ -552,10 +552,20 @@ export const LevelsPage = () => {
   // ========== Print Schedule ==========
 
   const handlePrintSchedule = () => {
-    const dayInfo = WEEKDAYS.find(d => d.id === printDay);
+    if (printDays.length === 0) {
+      toast.error(t('اختر يوماً واحداً على الأقل', 'Select at least one day'));
+      return;
+    }
+    const selectedDayInfos = WEEKDAYS.filter(d => printDays.includes(d.id));
+    const daysLabel = selectedDayInfos.map(d => d.name_ar).join(' / ');
     const activityInfo = getMainActivityInfo(printActivity);
     const activityLevels = groupedLevels[printActivity] || {};
-    const timeSlots = Object.keys(activityLevels).sort();
+    const timeSlots = Object.keys(activityLevels)
+      .sort((a, b) => {
+        const numA = parseInt(a.replace(/[^0-9]/g, ''), 10) || 0;
+        const numB = parseInt(b.replace(/[^0-9]/g, ''), 10) || 0;
+        return numA - numB;
+      });
     const allLevelNumbers = [...new Set(
       timeSlots.flatMap(slot => activityLevels[slot].map(l => l.level_number))
     )].sort((a, b) => a - b);
@@ -565,11 +575,13 @@ export const LevelsPage = () => {
       return;
     }
 
+    const escapeHtml = str => String(str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+
     const today = new Date();
     const dateStr = today.toLocaleDateString('ar-SA', { year: 'numeric', month: 'long', day: 'numeric' });
     const branchName = branches.length > 0 && selectedBranchId && selectedBranchId !== 'all'
       ? (branches.find(b => b.id === selectedBranchId)?.name_ar || branches.find(b => b.id === selectedBranchId)?.name || '')
-      : (branches.length > 0 ? branches[0]?.name_ar || branches[0]?.name || '' : '');
+      : (branches.length > 0 ? branches[0]?.name_ar || branches[0]?.name || '' : (user?.branch_name || ''));
 
     const levelColors = {
       1: '#7c3aed',
@@ -580,45 +592,51 @@ export const LevelsPage = () => {
       6: '#dc2626'
     };
 
+    const memberMatchesAnyDay = (m) => printDays.some(day => memberMatchesDay(m, day));
+
     const tableRows = timeSlots.map(slot => {
       const levelCells = allLevelNumbers.map(levelNum => {
         const levelObj = (activityLevels[slot] || []).find(l => l.level_number === levelNum);
-        if (!levelObj) return `<td style="border:1px solid #ccc;padding:8px;vertical-align:top;background:#f9f9f9;"></td>`;
+        if (!levelObj) return `<td style="border:1px solid #ccc;padding:10px;vertical-align:top;background:#f9f9f9;"></td>`;
 
-        const membersForDay = (levelObj.members_details || []).filter(m => memberMatchesDay(m, printDay));
-        const memberNames = membersForDay.map(m => `<div style="padding:2px 0;border-bottom:1px dotted #eee;">${m.name_ar || m.name || ''}</div>`).join('');
-        const count = membersForDay.length;
+        const membersForDays = (levelObj.members_details || []).filter(memberMatchesAnyDay);
+        const memberNames = membersForDays.map(m => `<div style="padding:3px 0;border-bottom:1px dotted #ddd;">${escapeHtml(m.name_ar || m.name)}</div>`).join('');
+        const count = membersForDays.length;
         const bgColor = count === 0 ? '#f9f9f9' : '#fff';
-        return `<td style="border:1px solid #ccc;padding:8px;vertical-align:top;background:${bgColor};min-width:100px;">
-          <div style="font-size:11px;color:#666;margin-bottom:4px;">(${count})</div>
-          ${memberNames || '<span style="color:#bbb;font-size:11px;">-</span>'}
+        return `<td style="border:1px solid #ccc;padding:10px;vertical-align:top;background:${bgColor};min-width:120px;">
+          <div style="font-size:13px;color:#666;margin-bottom:5px;">(${count})</div>
+          ${memberNames || '<span style="color:#bbb;font-size:13px;">-</span>'}
         </td>`;
       }).join('');
 
       return `<tr>
-        <td style="border:1px solid #ccc;padding:8px;font-weight:bold;background:#f0f4f8;white-space:nowrap;text-align:center;">${slot}</td>
+        <td style="border:1px solid #ccc;padding:10px;font-weight:bold;background:#f0f4f8;white-space:nowrap;text-align:center;font-size:17px;">${slot}</td>
         ${levelCells}
       </tr>`;
     }).join('');
 
     const headerCells = allLevelNumbers.map(n => {
       const color = levelColors[n] || '#555';
-      return `<th style="border:1px solid #ccc;padding:8px;background:${color};color:#fff;text-align:center;white-space:nowrap;">المستوى ${n}</th>`;
+      return `<th style="border:1px solid #ccc;padding:10px;background:${color};color:#fff;text-align:center;white-space:nowrap;font-size:17px;">المستوى ${n}</th>`;
     }).join('');
+
+    const totalCount = timeSlots.reduce((sum, slot) =>
+      sum + (activityLevels[slot] || []).reduce((s, l) =>
+        s + (l.members_details || []).filter(memberMatchesAnyDay).length, 0), 0);
 
     const html = `<!DOCTYPE html>
 <html dir="rtl" lang="ar">
 <head>
 <meta charset="UTF-8">
-<title>جدول ${activityInfo.name_ar} - ${dayInfo?.name_ar}</title>
+<title>جدول ${activityInfo.name_ar} - ${daysLabel}</title>
 <style>
   * { box-sizing: border-box; }
-  body { font-family: 'Segoe UI', Arial, sans-serif; direction: rtl; margin: 0; padding: 20px; background: #fff; color: #222; }
+  body { font-family: 'Segoe UI', Arial, sans-serif; direction: rtl; margin: 0; padding: 20px; background: #fff; color: #222; font-size: 16px; }
   .header { text-align: center; margin-bottom: 20px; border-bottom: 2px solid #333; padding-bottom: 12px; }
-  .header h1 { font-size: 22px; margin: 0 0 6px 0; }
-  .header .meta { font-size: 13px; color: #555; display: flex; justify-content: center; gap: 24px; flex-wrap: wrap; }
-  table { width: 100%; border-collapse: collapse; font-size: 13px; }
-  th, td { border: 1px solid #ccc; padding: 8px; }
+  .header h1 { font-size: 26px; margin: 0 0 8px 0; }
+  .header .meta { font-size: 16px; color: #555; display: flex; justify-content: center; gap: 24px; flex-wrap: wrap; }
+  table { width: 100%; border-collapse: collapse; font-size: 16px; }
+  th, td { border: 1px solid #ccc; padding: 10px; }
   th:first-child, td:first-child { background: #f0f4f8; font-weight: bold; text-align: center; }
   @media print {
     body { padding: 10px; }
@@ -629,17 +647,17 @@ export const LevelsPage = () => {
 </head>
 <body>
 <div class="header">
-  <h1>${activityInfo.icon} ${activityInfo.name_ar} — ${dayInfo?.name_ar}</h1>
+  <h1>${activityInfo.icon} ${activityInfo.name_ar} — ${daysLabel}</h1>
   <div class="meta">
     <span>📅 ${dateStr}</span>
     ${branchName ? `<span>🏢 ${branchName}</span>` : ''}
-    <span>👥 إجمالي المشتركين: ${timeSlots.reduce((sum, slot) => sum + (activityLevels[slot] || []).reduce((s, l) => s + (l.members_details || []).filter(m => memberMatchesDay(m, printDay)).length, 0), 0)}</span>
+    <span>👥 إجمالي المشتركين: ${totalCount}</span>
   </div>
 </div>
 <table>
   <thead>
     <tr>
-      <th style="background:#374151;color:#fff;text-align:center;border:1px solid #ccc;padding:8px;">الوقت</th>
+      <th style="background:#374151;color:#fff;text-align:center;border:1px solid #ccc;padding:10px;font-size:17px;">الوقت</th>
       ${headerCells}
     </tr>
   </thead>
@@ -648,7 +666,7 @@ export const LevelsPage = () => {
   </tbody>
 </table>
 <div class="no-print" style="margin-top:20px;text-align:center;">
-  <button onclick="window.print()" style="padding:10px 24px;background:#2563eb;color:#fff;border:none;border-radius:6px;font-size:15px;cursor:pointer;">🖨️ طباعة</button>
+  <button onclick="window.print()" style="padding:12px 28px;background:#2563eb;color:#fff;border:none;border-radius:6px;font-size:17px;cursor:pointer;">🖨️ طباعة</button>
 </div>
 </body>
 </html>`;
@@ -2262,19 +2280,32 @@ export const LevelsPage = () => {
             </DialogHeader>
             <div className="space-y-4">
               <div>
-                <Label>{t('اليوم', 'Day')} *</Label>
-                <Select value={printDay} onValueChange={setPrintDay}>
-                  <SelectTrigger className="mt-1">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {WEEKDAYS.map(day => (
-                      <SelectItem key={day.id} value={day.id}>
-                        {language === 'ar' ? day.name_ar : day.name_en}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <Label className="mb-2 block">{t('الأيام', 'Days')} *</Label>
+                <div className="grid grid-cols-2 gap-2 mt-1">
+                  {WEEKDAYS.map(day => {
+                    const checked = printDays.includes(day.id);
+                    return (
+                      <label key={day.id} className={`flex items-center gap-2 p-2 rounded-md border cursor-pointer transition-colors ${checked ? 'bg-primary/10 border-primary' : 'border-border hover:bg-muted'}`}>
+                        <input
+                          type="checkbox"
+                          className="accent-primary"
+                          checked={checked}
+                          onChange={() => {
+                            setPrintDays(prev =>
+                              prev.includes(day.id)
+                                ? prev.filter(d => d !== day.id)
+                                : [...prev, day.id]
+                            );
+                          }}
+                        />
+                        <span className="text-sm font-medium">{language === 'ar' ? day.name_ar : day.name_en}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+                {printDays.length === 0 && (
+                  <p className="text-xs text-red-500 mt-1">{t('اختر يوماً على الأقل', 'Select at least one day')}</p>
+                )}
               </div>
               <div>
                 <Label>{t('النشاط', 'Activity')} *</Label>
@@ -2299,7 +2330,7 @@ export const LevelsPage = () => {
               <Button variant="outline" onClick={() => setIsPrintDialogOpen(false)}>
                 {t('إلغاء', 'Cancel')}
               </Button>
-              <Button onClick={handlePrintSchedule} className="gap-2">
+              <Button onClick={handlePrintSchedule} className="gap-2" disabled={printDays.length === 0}>
                 <Printer className="w-4 h-4" />
                 {t('طباعة', 'Print')}
               </Button>
