@@ -33,6 +33,8 @@ export const InvoicesPage = () => {
   const [activities, setActivities] = useState([]);
   const [branches, setBranches] = useState([]);
   const [levels, setLevels] = useState([]);
+  const [loyaltySettings, setLoyaltySettings] = useState(null);
+  const [loyaltyLevelSettings, setLoyaltyLevelSettings] = useState(null);
   const [registrationForms, setRegistrationForms] = useState([]);
   const [creditNotes, setCreditNotes] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -150,9 +152,11 @@ export const InvoicesPage = () => {
   const loadData = async () => {
     try {
       const branchParams = selectedBranchId && selectedBranchId !== 'all' ? { branch_filter: selectedBranchId } : {};
-      const [invoicesRes, membersRes, activitiesRes, productsRes, branchesRes, regFormsRes, creditNotesRes, levelsRes] = await Promise.all([
+      const [invoicesRes, membersRes, activitiesRes, productsRes, branchesRes, regFormsRes, creditNotesRes, levelsRes, loyaltyPtsRes, loyaltyLvlRes] = await Promise.all([
         invoicesAPI.getAll(branchParams), membersAPI.getAll(branchParams), activitiesAPI.getAll(), productsAPI.getAll(branchParams),
-        branchesAPI.getAll(), registrationFormsAPI.getAll(branchParams), creditNotesAPI.getAll(branchParams), levelsAPI.getAll(branchParams)
+        branchesAPI.getAll(), registrationFormsAPI.getAll(branchParams), creditNotesAPI.getAll(branchParams), levelsAPI.getAll(branchParams),
+        fetch('/api/loyalty/settings/points').then(r => r.ok ? r.json() : null).catch(() => null),
+        fetch('/api/loyalty/settings/levels').then(r => r.ok ? r.json() : null).catch(() => null)
       ]);
       setInvoices(invoicesRes.data || []);
       setMembers(membersRes.data || []);
@@ -162,6 +166,8 @@ export const InvoicesPage = () => {
       setRegistrationForms(regFormsRes.data || []);
       setCreditNotes(creditNotesRes.data || []);
       setLevels(levelsRes.data || []);
+      setLoyaltySettings(loyaltyPtsRes);
+      setLoyaltyLevelSettings(loyaltyLvlRes);
     } catch (error) {
       toast.error(t('error'));
     } finally {
@@ -2105,20 +2111,20 @@ ${termsText}
       <div style="margin-top:12px;padding:10px;border:2px solid #9333EA;border-radius:8px">
         <p style="font-size:11px;font-weight:700;color:#6b21a8;margin-bottom:6px">🏆 برنامج نقاط الولاء</p>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px 16px;font-size:10px;color:#7e22ce">
-          <span>✅ كل حضور: 10 نقاط</span>
-          <span>🔥 سلسلة 5 أيام: 50 نقطة</span>
-          <span>📺 مشاهدة فيديو: 3 نقاط</span>
-          <span>👥 إحالة صديق: 200 نقطة</span>
-          <span>🔄 تجديد شهري: 100 نقطة</span>
-          <span>🎂 عيد ميلاد: 100 نقطة</span>
+          ${loyaltySettings?.attendance_points != null ? `<span>✅ كل حضور: ${loyaltySettings.attendance_points} نقاط</span>` : ''}
+          ${loyaltySettings?.streak_5_days_bonus != null ? `<span>🔥 سلسلة 5 أيام: ${loyaltySettings.streak_5_days_bonus} نقطة</span>` : ''}
+          ${loyaltySettings?.video_watch_points != null ? `<span>📺 مشاهدة فيديو: ${loyaltySettings.video_watch_points} نقاط</span>` : ''}
+          ${loyaltySettings?.referral_points != null ? `<span>👥 إحالة صديق: ${loyaltySettings.referral_points} نقطة</span>` : ''}
+          ${loyaltySettings?.monthly_renewal_points != null ? `<span>🔄 تجديد شهري: ${loyaltySettings.monthly_renewal_points} نقطة</span>` : ''}
+          ${loyaltySettings?.birthday_points != null ? `<span>🎂 عيد ميلاد: ${loyaltySettings.birthday_points} نقطة</span>` : ''}
         </div>
         <div style="margin-top:6px;padding-top:6px;border-top:1px solid #9333EA">
           <p style="font-size:10px;font-weight:700;color:#6b21a8;margin-bottom:4px">المستويات والمزايا:</p>
           <div style="display:flex;justify-content:space-between;font-size:9px;color:#7e22ce">
-            <span>🥉 برونزي: 0+</span>
-            <span>🥈 فضي: 500+ (خصم 3%)</span>
-            <span>🥇 ذهبي: 1500+ (خصم 5%)</span>
-            <span>💎 ماسي: 3000+ (خصم 10%)</span>
+            <span>🥉 برونزي: ${loyaltyLevelSettings?.bronze_min ?? 0}+</span>
+            <span>🥈 فضي: ${loyaltyLevelSettings?.silver_min ?? 500}+ (خصم ${loyaltyLevelSettings?.silver_discount ?? 3}%)</span>
+            <span>🥇 ذهبي: ${loyaltyLevelSettings?.gold_min ?? 1500}+ (خصم ${loyaltyLevelSettings?.gold_discount ?? 5}%)</span>
+            <span>💎 ماسي: ${loyaltyLevelSettings?.diamond_min ?? 3000}+ (خصم ${loyaltyLevelSettings?.diamond_discount ?? 10}%)</span>
           </div>
         </div>
       </div>
@@ -2470,20 +2476,20 @@ ${termsText}
         <div class="loyalty-section">
           <h4>🏆 برنامج نقاط الولاء</h4>
           <div class="loyalty-grid">
-            <div class="loyalty-item">✅ كل حضور: 10 نقاط</div>
-            <div class="loyalty-item">🔥 سلسلة 5 أيام: 50 نقطة</div>
-            <div class="loyalty-item">🎬 مشاهدة فيديو: 3 نقاط</div>
-            <div class="loyalty-item">👥 إحالة صديق: 200 نقطة</div>
-            <div class="loyalty-item">🔄 تجديد شهري: 100 نقطة</div>
-            <div class="loyalty-item">🎂 عيد ميلاد: 100 نقطة</div>
+            ${loyaltySettings?.attendance_points != null ? `<div class="loyalty-item">✅ كل حضور: ${loyaltySettings.attendance_points} نقاط</div>` : ''}
+            ${loyaltySettings?.streak_5_days_bonus != null ? `<div class="loyalty-item">🔥 سلسلة 5 أيام: ${loyaltySettings.streak_5_days_bonus} نقطة</div>` : ''}
+            ${loyaltySettings?.video_watch_points != null ? `<div class="loyalty-item">🎬 مشاهدة فيديو: ${loyaltySettings.video_watch_points} نقاط</div>` : ''}
+            ${loyaltySettings?.referral_points != null ? `<div class="loyalty-item">👥 إحالة صديق: ${loyaltySettings.referral_points} نقطة</div>` : ''}
+            ${loyaltySettings?.monthly_renewal_points != null ? `<div class="loyalty-item">🔄 تجديد شهري: ${loyaltySettings.monthly_renewal_points} نقطة</div>` : ''}
+            ${loyaltySettings?.birthday_points != null ? `<div class="loyalty-item">🎂 عيد ميلاد: ${loyaltySettings.birthday_points} نقطة</div>` : ''}
           </div>
           <div class="loyalty-levels">
             <h5>المستويات والمزايا:</h5>
             <div class="levels-grid">
-              <div>🥉 برونزي: 0+</div>
-              <div>🥈 فضي: 500+ (خصم 3%)</div>
-              <div>🥇 ذهبي: 1500+ (خصم 5%)</div>
-              <div>💎 ماسي: 3000+ (خصم 10%)</div>
+              <div>🥉 برونزي: ${loyaltyLevelSettings?.bronze_min ?? 0}+</div>
+              <div>🥈 فضي: ${loyaltyLevelSettings?.silver_min ?? 500}+ (خصم ${loyaltyLevelSettings?.silver_discount ?? 3}%)</div>
+              <div>🥇 ذهبي: ${loyaltyLevelSettings?.gold_min ?? 1500}+ (خصم ${loyaltyLevelSettings?.gold_discount ?? 5}%)</div>
+              <div>💎 ماسي: ${loyaltyLevelSettings?.diamond_min ?? 3000}+ (خصم ${loyaltyLevelSettings?.diamond_discount ?? 10}%)</div>
             </div>
           </div>
         </div>
@@ -2640,20 +2646,20 @@ ${termsText}
         <div class="loyalty-section">
           <h4>🏆 برنامج نقاط الولاء</h4>
           <div class="loyalty-grid">
-            <div class="loyalty-item">✅ كل حضور: 10 نقاط</div>
-            <div class="loyalty-item">🔥 سلسلة 5 أيام: 50 نقطة</div>
-            <div class="loyalty-item">🎬 مشاهدة فيديو: 3 نقاط</div>
-            <div class="loyalty-item">👥 إحالة صديق: 200 نقطة</div>
-            <div class="loyalty-item">🔄 تجديد شهري: 100 نقطة</div>
-            <div class="loyalty-item">🎂 عيد ميلاد: 100 نقطة</div>
+            ${loyaltySettings?.attendance_points != null ? `<div class="loyalty-item">✅ كل حضور: ${loyaltySettings.attendance_points} نقاط</div>` : ''}
+            ${loyaltySettings?.streak_5_days_bonus != null ? `<div class="loyalty-item">🔥 سلسلة 5 أيام: ${loyaltySettings.streak_5_days_bonus} نقطة</div>` : ''}
+            ${loyaltySettings?.video_watch_points != null ? `<div class="loyalty-item">🎬 مشاهدة فيديو: ${loyaltySettings.video_watch_points} نقاط</div>` : ''}
+            ${loyaltySettings?.referral_points != null ? `<div class="loyalty-item">👥 إحالة صديق: ${loyaltySettings.referral_points} نقطة</div>` : ''}
+            ${loyaltySettings?.monthly_renewal_points != null ? `<div class="loyalty-item">🔄 تجديد شهري: ${loyaltySettings.monthly_renewal_points} نقطة</div>` : ''}
+            ${loyaltySettings?.birthday_points != null ? `<div class="loyalty-item">🎂 عيد ميلاد: ${loyaltySettings.birthday_points} نقطة</div>` : ''}
           </div>
           <div class="loyalty-levels">
             <h5>المستويات والمزايا:</h5>
             <div class="levels-grid">
-              <div>🥉 برونزي: 0+</div>
-              <div>🥈 فضي: 500+ (خصم 3%)</div>
-              <div>🥇 ذهبي: 1500+ (خصم 5%)</div>
-              <div>💎 ماسي: 3000+ (خصم 10%)</div>
+              <div>🥉 برونزي: ${loyaltyLevelSettings?.bronze_min ?? 0}+</div>
+              <div>🥈 فضي: ${loyaltyLevelSettings?.silver_min ?? 500}+ (خصم ${loyaltyLevelSettings?.silver_discount ?? 3}%)</div>
+              <div>🥇 ذهبي: ${loyaltyLevelSettings?.gold_min ?? 1500}+ (خصم ${loyaltyLevelSettings?.gold_discount ?? 5}%)</div>
+              <div>💎 ماسي: ${loyaltyLevelSettings?.diamond_min ?? 3000}+ (خصم ${loyaltyLevelSettings?.diamond_discount ?? 10}%)</div>
             </div>
           </div>
         </div>
@@ -3018,20 +3024,20 @@ ${termsText}
         <div class="loyalty-section">
           <h4>🏆 برنامج نقاط الولاء</h4>
           <div class="loyalty-grid">
-            <div class="loyalty-item">✅ كل حضور: 10 نقاط</div>
-            <div class="loyalty-item">🔥 سلسلة 5 أيام: 50 نقطة</div>
-            <div class="loyalty-item">🎬 مشاهدة فيديو: 3 نقاط</div>
-            <div class="loyalty-item">👥 إحالة صديق: 200 نقطة</div>
-            <div class="loyalty-item">🔄 تجديد شهري: 100 نقطة</div>
-            <div class="loyalty-item">🎂 عيد ميلاد: 100 نقطة</div>
+            ${loyaltySettings?.attendance_points != null ? `<div class="loyalty-item">✅ كل حضور: ${loyaltySettings.attendance_points} نقاط</div>` : ''}
+            ${loyaltySettings?.streak_5_days_bonus != null ? `<div class="loyalty-item">🔥 سلسلة 5 أيام: ${loyaltySettings.streak_5_days_bonus} نقطة</div>` : ''}
+            ${loyaltySettings?.video_watch_points != null ? `<div class="loyalty-item">🎬 مشاهدة فيديو: ${loyaltySettings.video_watch_points} نقاط</div>` : ''}
+            ${loyaltySettings?.referral_points != null ? `<div class="loyalty-item">👥 إحالة صديق: ${loyaltySettings.referral_points} نقطة</div>` : ''}
+            ${loyaltySettings?.monthly_renewal_points != null ? `<div class="loyalty-item">🔄 تجديد شهري: ${loyaltySettings.monthly_renewal_points} نقطة</div>` : ''}
+            ${loyaltySettings?.birthday_points != null ? `<div class="loyalty-item">🎂 عيد ميلاد: ${loyaltySettings.birthday_points} نقطة</div>` : ''}
           </div>
           <div class="loyalty-levels">
             <h5>المستويات والمزايا:</h5>
             <div class="levels-grid">
-              <div>🥉 برونزي: 0+</div>
-              <div>🥈 فضي: 500+ (خصم 3%)</div>
-              <div>🥇 ذهبي: 1500+ (خصم 5%)</div>
-              <div>💎 ماسي: 3000+ (خصم 10%)</div>
+              <div>🥉 برونزي: ${loyaltyLevelSettings?.bronze_min ?? 0}+</div>
+              <div>🥈 فضي: ${loyaltyLevelSettings?.silver_min ?? 500}+ (خصم ${loyaltyLevelSettings?.silver_discount ?? 3}%)</div>
+              <div>🥇 ذهبي: ${loyaltyLevelSettings?.gold_min ?? 1500}+ (خصم ${loyaltyLevelSettings?.gold_discount ?? 5}%)</div>
+              <div>💎 ماسي: ${loyaltyLevelSettings?.diamond_min ?? 3000}+ (خصم ${loyaltyLevelSettings?.diamond_discount ?? 10}%)</div>
             </div>
           </div>
         </div>
