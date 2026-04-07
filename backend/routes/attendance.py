@@ -176,13 +176,15 @@ async def create_attendance(
     current_user: dict = Depends(get_current_user)
 ):
     """Record attendance for a member"""
-    branch_id = current_user.get("branch_id")
     user_name = current_user.get("name", current_user.get("username", ""))
     
     # Get member info
     member = await db.members.find_one({"id": attendance.member_id}, {"_id": 0})
     if not member:
         raise HTTPException(status_code=404, detail="Member not found")
+
+    # Use member's branch first, fall back to current user's branch
+    branch_id = member.get("branch_id") or current_user.get("branch_id")
     
     # Check if member has active freeze
     record_date_check = attendance.date or datetime.now(timezone.utc).strftime("%Y-%m-%d")
@@ -467,7 +469,6 @@ async def qr_checkin(
     current_user: dict = Depends(get_current_user)
 ):
     """Quick check-in via QR code scan with schedule validation"""
-    branch_id = current_user.get("branch_id")
     user_name = current_user.get("name", current_user.get("username", ""))
     
     member = await db.members.find_one(
@@ -476,6 +477,9 @@ async def qr_checkin(
     )
     if not member:
         raise HTTPException(status_code=404, detail="Member not found")
+
+    # Use member's branch first, fall back to current user's branch
+    branch_id = member.get("branch_id") or current_user.get("branch_id")
     
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     check_in_time = datetime.now(timezone.utc).strftime("%H:%M")
