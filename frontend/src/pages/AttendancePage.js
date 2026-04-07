@@ -13,6 +13,13 @@ import { QRCodeSVG } from 'qrcode.react';
 import { Html5QrcodeScanner } from 'html5-qrcode';
 import { Check, X, Users, Calendar, QrCode, FileSpreadsheet, Search, Clock, UserCheck, UserX, CalendarDays, Zap, Hash, Camera, CameraOff, Scan, Volume2, VolumeX } from 'lucide-react';
 
+const ACTIVITY_CATEGORIES = [
+  { id: 'swimming', name: '🏊 السباحة', keywords: ['سباح', 'swim'] },
+  { id: 'football', name: '⚽ كرة القدم', keywords: ['قدم', 'كرة', 'foot'] },
+  { id: 'karate', name: '🥋 الكاراتيه', keywords: ['كارات', 'karate'] },
+  { id: 'gymnastics', name: '🤸 الجمباز', keywords: ['جمباز', 'gym'] },
+];
+
 export default function AttendancePage() {
   const { language } = useLanguage();
   const { user } = useAuth();
@@ -54,6 +61,7 @@ export default function AttendancePage() {
   const [kioskBuffer, setKioskBuffer] = useState('');
   const [kioskLastKeyTime, setKioskLastKeyTime] = useState(0);
   const [kioskActivityId, setKioskActivityId] = useState('');
+  const [kioskCategoryId, setKioskCategoryId] = useState(''); // category-based selection
   const [kioskLastScan, setKioskLastScan] = useState(null);
   const [kioskSoundEnabled, setKioskSoundEnabled] = useState(true);
   const kioskBufferRef = useRef('');
@@ -630,39 +638,57 @@ export default function AttendancePage() {
     
     playSound('scan');
     
-    // Try member first (requires kioskActivityId)
-    if (kioskActivityId) {
-      try {
-        const res = await attendanceAPI.qrCheckin(memberCode, kioskActivityId);
-        if (res.data.status === 'already_checked_in') {
-          playSound('error');
-          setKioskLastScan({
-            success: false,
-            memberName: res.data.member?.name || memberCode,
-            message: t('⚠️ مسجل مسبقاً اليوم', '⚠️ Already checked in today'),
-            time: new Date().toLocaleTimeString('ar-SA')
-          });
-        } else {
-          playSound('success');
-          setKioskLastScan({
-            success: true,
-            memberName: res.data.member_name || memberCode,
-            message: t('✅ تم تسجيل الحضور', '✅ Check-in successful'),
-            time: new Date().toLocaleTimeString('ar-SA')
-          });
-        }
-        setTimeout(() => setKioskLastScan(null), 5000);
-        return;
-      } catch (memberError) {
-        // If 404, try coach. Otherwise show error.
-        if (memberError.response?.status !== 404) {
-          playSound('error');
-          const errorMsg = memberError.response?.data?.detail || t('خطأ', 'Error');
-          setKioskLastScan({ success: false, memberName: memberCode, message: `❌ ${errorMsg}`, time: new Date().toLocaleTimeString('ar-SA') });
+    // Try member first using category activities
+    if (kioskCategoryId) {
+      // Get all activity IDs for the selected category
+      const cat = ACTIVITY_CATEGORIES.find(c => c.id === kioskCategoryId);
+      const catActivities = cat
+        ? filteredActivitiesRaw.filter(a => {
+            const name = (a.name_ar || a.name || '').toLowerCase();
+            return cat.keywords.some(k => name.includes(k));
+          })
+        : [];
+      
+      // Try each activity in category until one succeeds
+      let memberCheckedIn = false;
+      for (const activity of catActivities) {
+        try {
+          const res = await attendanceAPI.qrCheckin(memberCode, activity.id);
+          if (res.data.status === 'already_checked_in') {
+            playSound('error');
+            setKioskLastScan({
+              success: false,
+              memberName: res.data.member?.name || memberCode,
+              message: t('⚠️ مسجل مسبقاً اليوم', '⚠️ Already checked in today'),
+              time: new Date().toLocaleTimeString('ar-SA')
+            });
+          } else {
+            playSound('success');
+            setKioskLastScan({
+              success: true,
+              memberName: res.data.member_name || memberCode,
+              message: t('✅ تم تسجيل الحضور', '✅ Check-in successful'),
+              time: new Date().toLocaleTimeString('ar-SA')
+            });
+          }
+          memberCheckedIn = true;
           setTimeout(() => setKioskLastScan(null), 5000);
           return;
+        } catch (err) {
+          // 404 = not subscribed in this activity, try next
+          if (err.response?.status !== 404) {
+            // Real error — show it and stop
+            playSound('error');
+            const errorMsg = err.response?.data?.detail || t('خطأ', 'Error');
+            setKioskLastScan({ success: false, memberName: memberCode, message: `❌ ${errorMsg}`, time: new Date().toLocaleTimeString('ar-SA') });
+            setTimeout(() => setKioskLastScan(null), 5000);
+            memberCheckedIn = true;
+            return;
+          }
         }
       }
+      // If tried all activities with 404 — not a member in this category, fall through to coach check
+      if (memberCheckedIn) return;
     }
     
     // Try coach check-in by employee_id
@@ -683,7 +709,7 @@ export default function AttendancePage() {
     }
     
     setTimeout(() => setKioskLastScan(null), 5000);
-  }, [kioskActivityId, playSound, t]);
+  }, [kioskCategoryId, filteredActivitiesRaw, playSound, t]);
 
   // Kiosk mode keyboard listener
   useEffect(() => {
@@ -768,13 +794,8 @@ export default function AttendancePage() {
     ? activities.filter(a => a.branch_id === selectedBranchId || !a.branch_id)
     : activities;
 
-  // Activity categories
-  const activityCategories = [
-    { id: 'swimming', name: '🏊 السباحة', keywords: ['سباح', 'swim'] },
-    { id: 'football', name: '⚽ كرة القدم', keywords: ['قدم', 'كرة', 'foot'] },
-    { id: 'karate', name: '🥋 الكاراتيه', keywords: ['كارات', 'karate'] },
-    { id: 'gymnastics', name: '🤸 الجمباز', keywords: ['جمباز', 'gym'] },
-  ];
+  // Activity categories (defined as module-level ACTIVITY_CATEGORIES)
+  const activityCategories = ACTIVITY_CATEGORIES;
 
   // Get activities by category
   const getActivitiesByCategory = (categoryId) => {
@@ -1555,22 +1576,20 @@ export default function AttendancePage() {
                 </p>
               </div>
 
-              {/* Activity Selection */}
+              {/* Activity Category Selection */}
               <div className="mb-6">
                 <label className="block text-sm font-bold text-gray-700 mb-2">
-                  {t('اختر النشاط للتسجيل', 'Select Activity for Check-in')}
+                  🏃 {t('النشاط', 'Activity')} *
                 </label>
                 <select
-                  value={kioskActivityId}
-                  onChange={(e) => setKioskActivityId(e.target.value)}
+                  value={kioskCategoryId}
+                  onChange={(e) => setKioskCategoryId(e.target.value)}
                   className="w-full border-2 rounded-xl p-4 text-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
                   disabled={kioskMode}
                 >
-                  <option value="">{t('-- اختر النشاط --', '-- Select Activity --')}</option>
-                  {filteredActivities.map(activity => (
-                    <option key={activity.id} value={activity.id}>
-                      {activity.name_ar || activity.name}
-                    </option>
+                  <option value="">{t('اختر النشاط', 'Select Activity')}</option>
+                  {availableCategories.map(cat => (
+                    <option key={cat.id} value={cat.id}>{cat.name}</option>
                   ))}
                 </select>
               </div>
@@ -1594,7 +1613,7 @@ export default function AttendancePage() {
               {!kioskMode ? (
                 <Button
                   onClick={() => setKioskMode(true)}
-                  disabled={!kioskActivityId}
+                  disabled={!kioskCategoryId}
                   className="w-full py-6 text-xl gap-3 bg-gradient-to-r from-green-500 to-blue-500 hover:from-green-600 hover:to-blue-600"
                 >
                   <Scan className="w-6 h-6" />
