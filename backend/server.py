@@ -1172,10 +1172,16 @@ async def create_registration_form(
     member_id = None
     member_code = None
     if form.customer_phone:
-        member = await db.members.find_one({"phone": form.customer_phone}, {"_id": 0, "id": 1, "member_code": 1})
+        member = await db.members.find_one({"phone": form.customer_phone}, {"_id": 0, "id": 1, "member_code": 1, "branch_id": 1})
         if member:
             member_id = member["id"]
             member_code = member.get("member_code")
+            # If existing member has no branch, assign the form's branch
+            if branch_id and not member.get("branch_id"):
+                await db.members.update_one(
+                    {"id": member_id},
+                    {"$set": {"branch_id": branch_id}}
+                )
         else:
             # Create new member from registration form data
             # Generate sequential member number per branch – unique across branches
@@ -7661,6 +7667,24 @@ async def create_default_admin():
                 print(f"Migration: fixed {result.modified_count} attendance records missing status field")
         except Exception as e:
             print(f"Attendance migration error: {str(e)}")
+        # Fix members with no branch: assign branch from their registration form
+        try:
+            forms_with_branch = await db.registration_forms.find(
+                {"branch_id": {"$exists": True, "$ne": None, "$ne": ""}, "member_id": {"$exists": True, "$ne": None}},
+                {"_id": 0, "branch_id": 1, "member_id": 1}
+            ).to_list(10000)
+            fixed_count = 0
+            for frm in forms_with_branch:
+                result2 = await db.members.update_one(
+                    {"id": frm["member_id"], "$or": [{"branch_id": {"$exists": False}}, {"branch_id": None}, {"branch_id": ""}]},
+                    {"$set": {"branch_id": frm["branch_id"]}}
+                )
+                if result2.modified_count:
+                    fixed_count += 1
+            if fixed_count:
+                print(f"Migration: assigned branch to {fixed_count} members from their registration forms")
+        except Exception as e:
+            print(f"Member branch migration error: {str(e)}")
         # Backup ad images from disk to MongoDB (so they survive restarts)
         try:
             import base64
