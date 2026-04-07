@@ -211,12 +211,36 @@ async def create_invoice(invoice: InvoiceCreate, current_user: dict = Depends(ge
     """Create a new invoice"""
     invoice_id = str(uuid.uuid4())
     is_admin = current_user.get("is_admin", False)
-    branch_id = invoice.branch_id if (is_admin and invoice.branch_id and invoice.branch_id != "all") else current_user.get("branch_id")
-    
+
     # Get supervisor name
     user_doc = await db.users.find_one({"id": current_user["user_id"]}, {"_id": 0})
     supervisor_name = user_doc.get("name", current_user.get("username", "")) if user_doc else current_user.get("username", "")
-    
+
+    # Fetch member first so we can use their branch if needed
+    member = None
+    member_name = ""
+    member_code = ""
+    customer_name = invoice.customer_name_ar
+    customer_phone = invoice.customer_phone
+
+    if invoice.member_id:
+        member = await db.members.find_one({"id": invoice.member_id}, {"_id": 0})
+        if member:
+            member_name = member.get("name_ar", member.get("name", ""))
+            member_code = member.get("member_code", "")
+            if not customer_name:
+                customer_name = member_name
+            if not customer_phone:
+                customer_phone = member.get("phone", "")
+
+    # Determine branch: explicit admin choice > member's branch > current user's branch
+    if is_admin and invoice.branch_id and invoice.branch_id != "all":
+        branch_id = invoice.branch_id
+    elif member and member.get("branch_id"):
+        branch_id = member["branch_id"]
+    else:
+        branch_id = current_user.get("branch_id")
+
     # Generate invoice number – unique per branch (each branch owns a block)
     seq_start = await get_branch_seq_start(branch_id, "invoice")
     branch_inv_filter = {"branch_id": branch_id} if branch_id else {}
@@ -224,7 +248,7 @@ async def create_invoice(invoice: InvoiceCreate, current_user: dict = Depends(ge
         {"invoice_number": {"$exists": True}, **branch_inv_filter},
         {"invoice_number": 1, "_id": 0}
     ).to_list(10000)
-    
+
     max_number = seq_start - 1
     for inv in all_invoices:
         inv_num = inv.get("invoice_number", "")
@@ -237,25 +261,8 @@ async def create_invoice(invoice: InvoiceCreate, current_user: dict = Depends(ge
                 max_number = num
         except ValueError:
             continue
-    
+
     next_number = max(max_number + 1, seq_start)
-    
-    # Get member info if member_id provided
-    member = None
-    member_name = ""
-    member_code = ""
-    customer_name = invoice.customer_name_ar
-    customer_phone = invoice.customer_phone
-    
-    if invoice.member_id:
-        member = await db.members.find_one({"id": invoice.member_id}, {"_id": 0})
-        if member:
-            member_name = member.get("name_ar", member.get("name", ""))
-            member_code = member.get("member_code", "")
-            if not customer_name:
-                customer_name = member_name
-            if not customer_phone:
-                customer_phone = member.get("phone", "")
     
     # Merge all items: tag primary member items + additional members items
     all_items = []

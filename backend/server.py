@@ -1112,10 +1112,23 @@ async def create_registration_form(
     current_user: dict = Depends(get_current_user)
 ):
     """Create a new registration form"""
-    # Determine branch_id first (needed for per-branch numbering)
-    branch_id = form.branch_id
-    if not current_user.get("is_admin"):
+    # Look up existing member by phone first so we can use their branch
+    existing_member_for_branch = None
+    if form.customer_phone:
+        existing_member_for_branch = await db.members.find_one(
+            {"phone": form.customer_phone}, {"_id": 0, "branch_id": 1}
+        )
+
+    # Determine branch: explicit choice > member's branch > current user's branch
+    is_admin = current_user.get("is_admin", False)
+    if is_admin and form.branch_id and form.branch_id != "all":
+        branch_id = form.branch_id
+    elif existing_member_for_branch and existing_member_for_branch.get("branch_id"):
+        branch_id = existing_member_for_branch["branch_id"]
+    elif not is_admin:
         branch_id = current_user.get("branch_id")
+    else:
+        branch_id = form.branch_id or current_user.get("branch_id")
 
     # Generate form number per branch – unique across branches
     reg_seq_start = await _get_branch_seq_start(branch_id, "reg")
