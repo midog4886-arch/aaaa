@@ -2056,9 +2056,12 @@ async def get_expiring_subscriptions(
                         days_remaining = 0
                     expiring.append({
                         "member_id": member["id"],
+                        "member_code": member.get("member_code", ""),
                         "member_name": member.get("name_ar", member.get("name", "")),
                         "phone": member.get("phone", ""),
+                        "branch_id": member.get("branch_id", ""),
                         "activity_name": activity.get("activity_name", ""),
+                        "activity_id": activity.get("activity_id", ""),
                         "end_date": end_date,
                         "days_remaining": days_remaining
                     })
