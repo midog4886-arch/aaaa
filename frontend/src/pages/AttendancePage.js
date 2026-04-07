@@ -632,6 +632,11 @@ export default function AttendancePage() {
     }
   }, [kioskSoundEnabled]);
 
+  // Filtered activities (needed before handleKioskCheckin useCallback)
+  const filteredActivitiesRaw = selectedBranchId
+    ? activities.filter(a => a.branch_id === selectedBranchId || !a.branch_id)
+    : activities;
+
   // Handle kiosk mode check-in (members + coaches)
   const handleKioskCheckin = useCallback(async (memberCode) => {
     if (!memberCode) return;
@@ -788,11 +793,6 @@ export default function AttendancePage() {
 
   // Get activity name
   const getActivityName = (id) => activities.find(a => a.id === id)?.name || '';
-
-  // Filter activities by branch
-  const filteredActivitiesRaw = selectedBranchId 
-    ? activities.filter(a => a.branch_id === selectedBranchId || !a.branch_id)
-    : activities;
 
   // Activity categories (defined as module-level ACTIVITY_CATEGORIES)
   const activityCategories = ACTIVITY_CATEGORIES;
