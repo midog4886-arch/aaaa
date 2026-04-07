@@ -1505,36 +1505,10 @@ async def convert_registration_form(form_id: str, current_user: dict = Depends(g
 
 @api_router.delete("/registration-forms/{form_id}")
 async def delete_registration_form(form_id: str, current_user: dict = Depends(get_current_user)):
-    """Delete a registration form and clean up member activities linked to it"""
-    form = await db.registration_forms.find_one({"id": form_id}, {"_id": 0})
-    if not form:
+    """Delete a registration form"""
+    result = await db.registration_forms.delete_one({"id": form_id})
+    if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Registration form not found")
-    
-    # Clean up member activities linked to this form
-    member_id = form.get("member_id")
-    if member_id:
-        member_doc = await db.members.find_one({"id": member_id}, {"_id": 0, "activities": 1})
-        if member_doc:
-            kept = [
-                act for act in member_doc.get("activities", [])
-                if act.get("source_id") != form_id
-            ]
-            await db.members.update_one(
-                {"id": member_id},
-                {"$set": {"activities": kept}}
-            )
-            # Delete attendance records for form's activity IDs
-            form_activity_ids = [
-                item.get("activity_id") for item in form.get("items", [])
-                if item.get("activity_id")
-            ]
-            if form_activity_ids:
-                await db.attendance.delete_many({
-                    "member_id": member_id,
-                    "activity_id": {"$in": form_activity_ids}
-                })
-    
-    await db.registration_forms.delete_one({"id": form_id})
     return {"message": "Registration form deleted"}
 
 @api_router.put("/registration-forms/{form_id}/branch")
