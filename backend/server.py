@@ -1055,6 +1055,43 @@ async def refund_invoice(invoice_id: str, refund: RefundRequest, current_user: d
         {"$set": update_data}
     )
     
+    # On full refund: remove member activities and related data
+    if refund.refund_type == "full":
+        member_id = invoice.get("member_id")
+        registration_form_id = invoice.get("registration_form_id")
+        
+        if member_id:
+            # Collect source_ids to remove from member activities
+            source_ids_to_remove = {invoice_id}
+            if registration_form_id:
+                source_ids_to_remove.add(registration_form_id)
+            
+            # Fetch member and filter out refunded activities
+            member_doc = await db.members.find_one({"id": member_id}, {"_id": 0, "activities": 1})
+            if member_doc:
+                kept = [
+                    act for act in member_doc.get("activities", [])
+                    if act.get("source_id") not in source_ids_to_remove
+                ]
+                await db.members.update_one(
+                    {"id": member_id},
+                    {"$set": {"activities": kept}}
+                )
+                # Delete attendance records for refunded activity IDs
+                refunded_activity_ids = [
+                    item.get("activity_id") for item in invoice.get("items", [])
+                    if item.get("activity_id")
+                ]
+                if refunded_activity_ids:
+                    await db.attendance.delete_many({
+                        "member_id": member_id,
+                        "activity_id": {"$in": refunded_activity_ids}
+                    })
+        
+        # Delete the linked registration form if present
+        if registration_form_id:
+            await db.registration_forms.delete_one({"id": registration_form_id})
+    
     # Remove _id before returning
     if "_id" in credit_note:
         del credit_note["_id"]
@@ -1468,10 +1505,36 @@ async def convert_registration_form(form_id: str, current_user: dict = Depends(g
 
 @api_router.delete("/registration-forms/{form_id}")
 async def delete_registration_form(form_id: str, current_user: dict = Depends(get_current_user)):
-    """Delete a registration form"""
-    result = await db.registration_forms.delete_one({"id": form_id})
-    if result.deleted_count == 0:
+    """Delete a registration form and clean up member activities linked to it"""
+    form = await db.registration_forms.find_one({"id": form_id}, {"_id": 0})
+    if not form:
         raise HTTPException(status_code=404, detail="Registration form not found")
+    
+    # Clean up member activities linked to this form
+    member_id = form.get("member_id")
+    if member_id:
+        member_doc = await db.members.find_one({"id": member_id}, {"_id": 0, "activities": 1})
+        if member_doc:
+            kept = [
+                act for act in member_doc.get("activities", [])
+                if act.get("source_id") != form_id
+            ]
+            await db.members.update_one(
+                {"id": member_id},
+                {"$set": {"activities": kept}}
+            )
+            # Delete attendance records for form's activity IDs
+            form_activity_ids = [
+                item.get("activity_id") for item in form.get("items", [])
+                if item.get("activity_id")
+            ]
+            if form_activity_ids:
+                await db.attendance.delete_many({
+                    "member_id": member_id,
+                    "activity_id": {"$in": form_activity_ids}
+                })
+    
+    await db.registration_forms.delete_one({"id": form_id})
     return {"message": "Registration form deleted"}
 
 @api_router.put("/registration-forms/{form_id}/branch")
