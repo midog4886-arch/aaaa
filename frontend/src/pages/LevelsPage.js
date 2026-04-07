@@ -14,7 +14,7 @@ import { toast } from 'sonner';
 import { 
   Plus, Edit, Trash2, Loader2, Layers, Users, Dumbbell, UserPlus, UserMinus, Search,
   ChevronDown, ChevronUp, ChevronRight, Clock, AlertTriangle, ArrowRight, ArrowLeft, Home,
-  GripVertical, Move, ArrowUpDown, SlidersHorizontal, TrendingUp, BarChart3, CheckCircle, Circle, UserCheck
+  GripVertical, Move, ArrowUpDown, SlidersHorizontal, TrendingUp, BarChart3, CheckCircle, Circle, UserCheck, Printer
 } from 'lucide-react';
 
 // Main activity types with Arabic names
@@ -80,6 +80,11 @@ export const LevelsPage = () => {
   // Add new time slot dialog
   const [isAddTimeSlotDialogOpen, setIsAddTimeSlotDialogOpen] = useState(false);
   const [newTimeSlotName, setNewTimeSlotName] = useState('');
+
+  // Print schedule dialog
+  const [isPrintDialogOpen, setIsPrintDialogOpen] = useState(false);
+  const [printDay, setPrintDay] = useState('saturday');
+  const [printActivity, setPrintActivity] = useState('swimming');
   
   // Search, filter, sort for main activities view
   const [levelSearchTerm, setLevelSearchTerm] = useState('');
@@ -542,6 +547,120 @@ export const LevelsPage = () => {
     } finally {
       setSaving(false);
     }
+  };
+
+  // ========== Print Schedule ==========
+
+  const handlePrintSchedule = () => {
+    const dayInfo = WEEKDAYS.find(d => d.id === printDay);
+    const activityInfo = getMainActivityInfo(printActivity);
+    const activityLevels = groupedLevels[printActivity] || {};
+    const timeSlots = Object.keys(activityLevels).sort();
+    const allLevelNumbers = [...new Set(
+      timeSlots.flatMap(slot => activityLevels[slot].map(l => l.level_number))
+    )].sort((a, b) => a - b);
+
+    if (timeSlots.length === 0) {
+      toast.error(t('لا توجد بيانات للطباعة', 'No data to print'));
+      return;
+    }
+
+    const today = new Date();
+    const dateStr = today.toLocaleDateString('ar-SA', { year: 'numeric', month: 'long', day: 'numeric' });
+    const branchName = branches.length > 0 && selectedBranchId && selectedBranchId !== 'all'
+      ? (branches.find(b => b.id === selectedBranchId)?.name_ar || branches.find(b => b.id === selectedBranchId)?.name || '')
+      : (branches.length > 0 ? branches[0]?.name_ar || branches[0]?.name || '' : '');
+
+    const levelColors = {
+      1: '#7c3aed',
+      2: '#16a34a',
+      3: '#2563eb',
+      4: '#ca8a04',
+      5: '#ea580c',
+      6: '#dc2626'
+    };
+
+    const tableRows = timeSlots.map(slot => {
+      const levelCells = allLevelNumbers.map(levelNum => {
+        const levelObj = (activityLevels[slot] || []).find(l => l.level_number === levelNum);
+        if (!levelObj) return `<td style="border:1px solid #ccc;padding:8px;vertical-align:top;background:#f9f9f9;"></td>`;
+
+        const membersForDay = (levelObj.members_details || []).filter(m => memberMatchesDay(m, printDay));
+        const memberNames = membersForDay.map(m => `<div style="padding:2px 0;border-bottom:1px dotted #eee;">${m.name_ar || m.name || ''}</div>`).join('');
+        const count = membersForDay.length;
+        const bgColor = count === 0 ? '#f9f9f9' : '#fff';
+        return `<td style="border:1px solid #ccc;padding:8px;vertical-align:top;background:${bgColor};min-width:100px;">
+          <div style="font-size:11px;color:#666;margin-bottom:4px;">(${count})</div>
+          ${memberNames || '<span style="color:#bbb;font-size:11px;">-</span>'}
+        </td>`;
+      }).join('');
+
+      return `<tr>
+        <td style="border:1px solid #ccc;padding:8px;font-weight:bold;background:#f0f4f8;white-space:nowrap;text-align:center;">${slot}</td>
+        ${levelCells}
+      </tr>`;
+    }).join('');
+
+    const headerCells = allLevelNumbers.map(n => {
+      const color = levelColors[n] || '#555';
+      return `<th style="border:1px solid #ccc;padding:8px;background:${color};color:#fff;text-align:center;white-space:nowrap;">المستوى ${n}</th>`;
+    }).join('');
+
+    const html = `<!DOCTYPE html>
+<html dir="rtl" lang="ar">
+<head>
+<meta charset="UTF-8">
+<title>جدول ${activityInfo.name_ar} - ${dayInfo?.name_ar}</title>
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: 'Segoe UI', Arial, sans-serif; direction: rtl; margin: 0; padding: 20px; background: #fff; color: #222; }
+  .header { text-align: center; margin-bottom: 20px; border-bottom: 2px solid #333; padding-bottom: 12px; }
+  .header h1 { font-size: 22px; margin: 0 0 6px 0; }
+  .header .meta { font-size: 13px; color: #555; display: flex; justify-content: center; gap: 24px; flex-wrap: wrap; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { border: 1px solid #ccc; padding: 8px; }
+  th:first-child, td:first-child { background: #f0f4f8; font-weight: bold; text-align: center; }
+  @media print {
+    body { padding: 10px; }
+    .no-print { display: none; }
+    @page { size: A4 landscape; margin: 1cm; }
+  }
+</style>
+</head>
+<body>
+<div class="header">
+  <h1>${activityInfo.icon} ${activityInfo.name_ar} — ${dayInfo?.name_ar}</h1>
+  <div class="meta">
+    <span>📅 ${dateStr}</span>
+    ${branchName ? `<span>🏢 ${branchName}</span>` : ''}
+    <span>👥 إجمالي المشتركين: ${timeSlots.reduce((sum, slot) => sum + (activityLevels[slot] || []).reduce((s, l) => s + (l.members_details || []).filter(m => memberMatchesDay(m, printDay)).length, 0), 0)}</span>
+  </div>
+</div>
+<table>
+  <thead>
+    <tr>
+      <th style="background:#374151;color:#fff;text-align:center;border:1px solid #ccc;padding:8px;">الوقت</th>
+      ${headerCells}
+    </tr>
+  </thead>
+  <tbody>
+    ${tableRows}
+  </tbody>
+</table>
+<div class="no-print" style="margin-top:20px;text-align:center;">
+  <button onclick="window.print()" style="padding:10px 24px;background:#2563eb;color:#fff;border:none;border-radius:6px;font-size:15px;cursor:pointer;">🖨️ طباعة</button>
+</div>
+</body>
+</html>`;
+
+    const printWindow = window.open('', '_blank');
+    if (printWindow) {
+      printWindow.document.write(html);
+      printWindow.document.close();
+      printWindow.focus();
+      setTimeout(() => printWindow.print(), 500);
+    }
+    setIsPrintDialogOpen(false);
   };
 
   // Add a new level directly to the current time slot
@@ -1205,25 +1324,35 @@ export const LevelsPage = () => {
                 </p>
               </div>
             </div>
-            {currentView !== 'days' && (
-              <Button 
-                onClick={() => { 
-                  if (currentView === 'levels' && selectedActivityId && selectedTimeSlotKey) {
-                    handleAddNewLevel(selectedActivityId, selectedTimeSlotKey);
-                  } else if (currentView === 'times' && selectedActivityId) {
-                    handleAddNewLevel(selectedActivityId, '');
-                  } else {
-                    resetForm(); 
-                    setIsDialogOpen(true);
-                  }
-                }} 
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
                 className="gap-2"
-                data-testid="add-level-btn"
+                onClick={() => setIsPrintDialogOpen(true)}
               >
-                <Plus className="w-4 h-4" />
-                {t('إضافة مستوى', 'Add Level')}
+                <Printer className="w-4 h-4" />
+                {t('طباعة الجدول', 'Print Schedule')}
               </Button>
-            )}
+              {currentView !== 'days' && (
+                <Button 
+                  onClick={() => { 
+                    if (currentView === 'levels' && selectedActivityId && selectedTimeSlotKey) {
+                      handleAddNewLevel(selectedActivityId, selectedTimeSlotKey);
+                    } else if (currentView === 'times' && selectedActivityId) {
+                      handleAddNewLevel(selectedActivityId, '');
+                    } else {
+                      resetForm(); 
+                      setIsDialogOpen(true);
+                    }
+                  }} 
+                  className="gap-2"
+                  data-testid="add-level-btn"
+                >
+                  <Plus className="w-4 h-4" />
+                  {t('إضافة مستوى', 'Add Level')}
+                </Button>
+              )}
+            </div>
           </div>
         </div>
 
@@ -2117,6 +2246,62 @@ export const LevelsPage = () => {
               <Button onClick={handleAddNewTimeSlot} disabled={saving}>
                 {saving && <Loader2 className="w-4 h-4 me-2 animate-spin" />}
                 {t('إضافة', 'Add')}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Print Schedule Dialog */}
+        <Dialog open={isPrintDialogOpen} onOpenChange={setIsPrintDialogOpen}>
+          <DialogContent className="max-w-sm">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <Printer className="w-5 h-5 text-primary" />
+                {t('طباعة جدول المستويات', 'Print Levels Schedule')}
+              </DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div>
+                <Label>{t('اليوم', 'Day')} *</Label>
+                <Select value={printDay} onValueChange={setPrintDay}>
+                  <SelectTrigger className="mt-1">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {WEEKDAYS.map(day => (
+                      <SelectItem key={day.id} value={day.id}>
+                        {language === 'ar' ? day.name_ar : day.name_en}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label>{t('النشاط', 'Activity')} *</Label>
+                <Select value={printActivity} onValueChange={setPrintActivity}>
+                  <SelectTrigger className="mt-1">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {MAIN_ACTIVITIES.map(a => {
+                      const info = getMainActivityInfo(a.id);
+                      return (
+                        <SelectItem key={a.id} value={a.id}>
+                          {info.icon} {language === 'ar' ? info.name_ar : info.name_en}
+                        </SelectItem>
+                      );
+                    })}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setIsPrintDialogOpen(false)}>
+                {t('إلغاء', 'Cancel')}
+              </Button>
+              <Button onClick={handlePrintSchedule} className="gap-2">
+                <Printer className="w-4 h-4" />
+                {t('طباعة', 'Print')}
               </Button>
             </DialogFooter>
           </DialogContent>
