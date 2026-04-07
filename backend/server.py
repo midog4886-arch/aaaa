@@ -7594,6 +7594,42 @@ async def delete_coach_rating(rating_id: str, _: dict = Depends(get_current_user
     return {"message": "تم حذف التقييم بنجاح"}
 
 
+@api_router.post("/admin/fix-member-branches")
+async def fix_member_branches(current_user: dict = Depends(get_current_user)):
+    """Fix: assign branch_id to members based on their registration forms (overwrites mismatched branches)"""
+    if not current_user.get("is_admin"):
+        raise HTTPException(status_code=403, detail="Admins only")
+    fixed = 0
+    skipped = 0
+    forms = []
+    details = []
+    try:
+        forms = await db.registration_forms.find(
+            {"branch_id": {"$exists": True}, "member_id": {"$exists": True}},
+            {"_id": 0, "branch_id": 1, "member_id": 1, "form_number": 1, "member_code": 1}
+        ).to_list(10000)
+        for frm in forms:
+            bid = frm.get("branch_id")
+            mid = frm.get("member_id")
+            if not bid or not mid:
+                skipped += 1
+                continue
+            member = await db.members.find_one({"id": mid}, {"_id": 0, "branch_id": 1, "name_ar": 1, "member_code": 1})
+            if not member:
+                skipped += 1
+                continue
+            current_branch = member.get("branch_id", "")
+            if current_branch != bid:
+                await db.members.update_one({"id": mid}, {"$set": {"branch_id": bid}})
+                fixed += 1
+                details.append({"form": frm.get("form_number"), "member_code": member.get("member_code"), "old_branch": current_branch, "new_branch": bid})
+            else:
+                skipped += 1
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    return {"fixed": fixed, "skipped": skipped, "total_forms": len(forms), "details": details}
+
+
 # Include router
 app.include_router(api_router)
 
