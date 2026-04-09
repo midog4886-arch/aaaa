@@ -2193,7 +2193,7 @@ export const MembersPage = () => {
                             const scheduleDates = generateScheduleDates(q.start_date, q.end_date, q.schedule_days);
                             const attendedDates = new Set(
                               (memberAttendance?.records || [])
-                                .filter(r => r.activity_id === q.activity_id)
+                                .filter(r => r.activity_id === q.activity_id && (r.status === 'present' || !r.status))
                                 .map(r => r.date)
                             );
                             const todayStr = localDateStr(new Date());
@@ -2344,12 +2344,12 @@ export const MembersPage = () => {
                                 <div 
                                   key={idx} 
                                   className={`px-4 py-2 border-b last:border-b-0 flex items-center justify-between ${
-                                    record.status === 'present' ? 'bg-green-50' : 'bg-red-50'
+                                    (record.status === 'present' || !record.status) ? 'bg-green-50' : 'bg-red-50'
                                   }`}
                                 >
                                   <div className="flex items-center gap-3">
                                     <span className={`w-2 h-2 rounded-full ${
-                                      record.status === 'present' ? 'bg-green-500' : 'bg-red-500'
+                                      (record.status === 'present' || !record.status) ? 'bg-green-500' : 'bg-red-500'
                                     }`}></span>
                                     <div>
                                       <div className="font-medium text-sm">{record.activity_name}</div>
@@ -2361,11 +2361,11 @@ export const MembersPage = () => {
                                       <span className="text-xs text-gray-500">{record.check_in_time}</span>
                                     )}
                                     <Badge className={
-                                      record.status === 'present' 
+                                      (record.status === 'present' || !record.status)
                                         ? 'bg-green-100 text-green-700' 
                                         : 'bg-red-100 text-red-700'
                                     }>
-                                      {record.status === 'present' 
+                                      {(record.status === 'present' || !record.status)
                                         ? (language === 'ar' ? 'حاضر' : 'Present')
                                         : (language === 'ar' ? 'غائب' : 'Absent')
                                       }

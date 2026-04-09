@@ -225,6 +225,7 @@ async def create_attendance(
         "activity_name": activity_name,
         "date": record_date,
         "check_in_time": check_in_time,
+        "status": "present",
         "notes": attendance.notes,
         "branch_id": branch_id,
         "recorded_by": user_name,
