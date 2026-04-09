@@ -129,7 +129,10 @@ def serialize_doc(doc):
     """Convert MongoDB document to JSON serializable format"""
     if doc is None:
         return None
-    doc['id'] = str(doc.pop('_id'))
+    if '_id' in doc:
+        doc['id'] = str(doc.pop('_id'))
+    elif 'id' not in doc:
+        doc['id'] = ''
     return doc
 
 # ============== Settings Endpoints ==============
