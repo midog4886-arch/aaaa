@@ -1987,13 +1987,16 @@ async def get_financial_report(
     elif not is_admin and branch_id:
         query["branch_id"] = branch_id
     
-    if start_date:
-        query["paid_at"] = {"$gte": start_date}
-    if end_date:
+    end_date_full = (end_date + "T23:59:59.999999") if end_date and "T" not in end_date else end_date
+    start_date_full = (start_date + "T00:00:00") if start_date and "T" not in start_date else start_date
+
+    if start_date_full:
+        query["paid_at"] = {"$gte": start_date_full}
+    if end_date_full:
         if "paid_at" in query:
-            query["paid_at"]["$lte"] = end_date
+            query["paid_at"]["$lte"] = end_date_full
         else:
-            query["paid_at"] = {"$lte": end_date}
+            query["paid_at"] = {"$lte": end_date_full}
     
     invoices = await db.invoices.find(query, {"_id": 0}).to_list(10000)
     
@@ -2003,13 +2006,13 @@ async def get_financial_report(
         credit_note_query["branch_id"] = branch_filter
     elif not is_admin and branch_id:
         credit_note_query["branch_id"] = branch_id
-    if start_date:
-        credit_note_query["created_at"] = {"$gte": start_date}
-    if end_date:
+    if start_date_full:
+        credit_note_query["created_at"] = {"$gte": start_date_full}
+    if end_date_full:
         if "created_at" in credit_note_query:
-            credit_note_query["created_at"]["$lte"] = end_date
+            credit_note_query["created_at"]["$lte"] = end_date_full
         else:
-            credit_note_query["created_at"] = {"$lte": end_date}
+            credit_note_query["created_at"] = {"$lte": end_date_full}
     
     credit_notes = await db.credit_notes.find(credit_note_query, {"_id": 0}).to_list(10000)
     
@@ -3107,14 +3110,17 @@ async def export_financial_report(
         raise HTTPException(status_code=401, detail="Invalid token")
     
     query = {"status": "paid"}
-    
-    if start_date:
-        query["paid_at"] = {"$gte": start_date}
-    if end_date:
+
+    end_date_full = (end_date + "T23:59:59.999999") if end_date and "T" not in end_date else end_date
+    start_date_full = (start_date + "T00:00:00") if start_date and "T" not in start_date else start_date
+
+    if start_date_full:
+        query["paid_at"] = {"$gte": start_date_full}
+    if end_date_full:
         if "paid_at" in query:
-            query["paid_at"]["$lte"] = end_date
+            query["paid_at"]["$lte"] = end_date_full
         else:
-            query["paid_at"] = {"$lte": end_date}
+            query["paid_at"] = {"$lte": end_date_full}
     
     invoices = await db.invoices.find(query, {"_id": 0}).sort("paid_at", -1).to_list(10000)
     activities_data = await db.activities.find({}, {"_id": 0}).to_list(100)
