@@ -13,6 +13,8 @@ const AUTH_DIR = path.join(__dirname, 'auth_info_baileys');
 const MONGO_URL = process.env.MONGO_URL;
 const DB_NAME = 'champions_academy';
 const COLL_NAME = 'whatsapp_auth';
+const _domain = process.env.REPLIT_DOMAINS || '';
+const SESSION_ID = (_domain.includes('.replit.app') && !_domain.includes('pike')) ? 'session_prod' : 'session_dev';
 
 let mongoClient = null;
 
@@ -42,7 +44,7 @@ async function backupAuthToMongo() {
     }
     const col = await getMongoCollection();
     if (!col) return;
-    await col.updateOne({ _id: 'session' }, { $set: { files: data, updatedAt: new Date() } }, { upsert: true });
+    await col.updateOne({ _id: SESSION_ID }, { $set: { files: data, updatedAt: new Date() } }, { upsert: true });
     logger.info('Auth session backed up to MongoDB');
   } catch (err) {
     logger.error('Failed to backup auth to MongoDB:', err.message);
@@ -53,7 +55,7 @@ async function restoreAuthFromMongo() {
   try {
     const col = await getMongoCollection();
     if (!col) return false;
-    const doc = await col.findOne({ _id: 'session' });
+    const doc = await col.findOne({ _id: SESSION_ID });
     if (!doc || !doc.files || !Object.keys(doc.files).length) {
       logger.info('No saved session found in MongoDB');
       return false;
@@ -74,7 +76,7 @@ async function clearAuthFromMongo() {
   try {
     const col = await getMongoCollection();
     if (!col) return;
-    await col.deleteOne({ _id: 'session' });
+    await col.deleteOne({ _id: SESSION_ID });
     logger.info('Auth session cleared from MongoDB');
   } catch (err) {
     logger.error('Failed to clear auth from MongoDB:', err.message);
