@@ -140,7 +140,7 @@ const MemberCardPage = () => {
                   </div>
                   <div class="info-section">
                     <div class="info-label">الاسم</div>
-                    <div class="member-name">${member?.name_ar || member?.name || ''}</div>
+                    <div class="member-name">${(member?.name_ar || member?.name || '').split('+').map(n => n.trim()).join('<br/>')}</div>
                     <div class="info-row"><span class="info-label">رقم العضوية:</span><span class="member-code">#${member?.member_code || ''}</span></div>
                     <div class="info-row"><span class="info-label">رقم الجوال:</span><span>${member?.phone || '-'}</span></div>
                     ${activitiesHtml ? `<div class="activities"><div class="activities-label">الأنشطة المسجلة</div>${activitiesHtml}</div>` : ''}
@@ -183,7 +183,7 @@ const MemberCardPage = () => {
                 </div>
                 <div class="info-section">
                   <div class="info-label">الاسم</div>
-                  <div class="member-name">${member?.name_ar || member?.name || ''}</div>
+                  <div class="member-name">${(member?.name_ar || member?.name || '').split('+').map(n => n.trim()).join('<br/>')}</div>
                   <div class="info-row"><span class="info-label">رقم العضوية:</span><span class="member-code">#${member?.member_code || ''}</span></div>
                   <div class="info-row"><span class="info-label">رقم الجوال:</span><span>${member?.phone || '-'}</span></div>
                   ${activitiesHtml ? `<div class="activities"><div class="activities-label">الأنشطة المسجلة</div>${activitiesHtml}</div>` : ''}
@@ -286,7 +286,7 @@ const MemberCardPage = () => {
                   <DialogTitle className="text-center text-xl">🖨️ طباعة الملصقات</DialogTitle>
                 </DialogHeader>
                 <div className="py-4">
-                  <p className="text-center text-gray-600 mb-2 font-bold">{member?.name_ar || member?.name}</p>
+                  <p className="text-center text-gray-600 mb-2 font-bold">{(member?.name_ar || member?.name || '').split('+').map((n, i) => <span key={i}>{i > 0 && <br/>}{n.trim()}</span>)}</p>
                   <p className="text-center text-sm text-orange-600 mb-4 font-bold">#{member?.member_code}</p>
                   <p className="text-center text-sm text-gray-500 mb-4">سيتم طباعة كرت العضوية + شعار الأكاديمية معاً</p>
                   
@@ -377,7 +377,7 @@ const MemberCardPage = () => {
                   <div className="flex-1 space-y-4 text-right">
                     <div>
                       <p className="text-gray-500 text-sm">الاسم</p>
-                      <p className="text-2xl font-bold text-gray-800">{member.name_ar || member.name}</p>
+                      <p className="text-2xl font-bold text-gray-800">{(member.name_ar || member.name || '').split('+').map((n, i) => <span key={i}>{i > 0 && <br/>}{n.trim()}</span>)}</p>
                     </div>
                     
                     <div className="flex items-center gap-3 justify-end">

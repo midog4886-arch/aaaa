@@ -485,7 +485,7 @@ export const MembersPage = () => {
                 <img src="${qrCodeUrl}" alt="QR Code" />
               </div>
               <div class="info-section">
-                <div class="member-name">${memberCardData.name_ar || memberCardData.name}</div>
+                <div class="member-name">${(memberCardData.name_ar || memberCardData.name || '').split('+').map(n => n.trim()).join('<br/>')}</div>
                 <div class="member-code">#${memberCardData.member_code || '---'}</div>
                 ${activeActivities.length > 0 ? `
                   <div class="activities-section">
