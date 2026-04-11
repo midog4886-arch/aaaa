@@ -331,180 +331,167 @@ export const MembersPage = () => {
   const printMemberCard = () => {
     if (!memberCardData) return;
     
-    const printWindow = window.open('', '_blank');
+    const printWindow = window.open('', '_blank', 'width=800,height=600');
     if (!printWindow) return;
     
     const qrData = `${memberCardData.member_code || memberCardData.id}`;
-    const qrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=${encodeURIComponent(qrData)}`;
-    
-    // Get active activities with schedules
-    const activeActivities = (memberCardData.activities || []).filter(a => {
-      const endDate = a.end_date ? new Date(a.end_date) : null;
-      return !endDate || endDate >= new Date();
-    });
-    
-    const activitiesHtml = activeActivities.map(act => `
-      <div style="margin-bottom: 4px; font-size: 9px;">
-        <strong>${act.activity_name || ''}</strong>
-        ${act.schedule ? `<br><span style="color: #666;">${act.schedule}</span>` : ''}
-        ${act.end_date ? `<br><span style="color: #888;">حتى: ${new Date(act.end_date).toLocaleDateString('ar-SA')}</span>` : ''}
-      </div>
-    `).join('');
-    
+
+    // Get first activity dates
+    const firstActivity = (memberCardData.activities || [])[0];
+    const startDate = firstActivity?.start_date || '';
+    const endDate = firstActivity?.end_date || '';
+    const schedule = firstActivity?.schedule || '';
+
+    // Build activities HTML
+    const activitiesHtml = (memberCardData.activities || []).map(act => {
+      const isActive = !act.end_date || new Date(act.end_date) >= new Date();
+      return `
+        <div class="activity-item ${isActive ? 'active' : 'expired'}">
+          <div class="activity-name">${isActive ? '✓' : '✗'} ${act.activity_name || ''}</div>
+          <div class="activity-status">${isActive ? 'ساري' : 'منتهي'}</div>
+        </div>
+      `;
+    }).join('');
+
+    const memberName = (memberCardData.name_ar || memberCardData.name || '').split('+').map(n => n.trim()).join('<br/>');
+    const origin = window.location.origin;
+
     const printContent = `
       <!DOCTYPE html>
-      <html dir="rtl">
-      <head>
-        <meta charset="UTF-8">
-        <title>بطاقة العضوية - ${memberCardData.name_ar || memberCardData.name}</title>
-        <style>
-          @page { size: 9cm 6cm; margin: 0; }
-          @media print {
-            body { margin: 0; padding: 0; }
-            .no-print { display: none !important; }
-          }
-          body {
-            font-family: 'Segoe UI', Tahoma, Arial, sans-serif;
-            margin: 0;
-            padding: 10px;
-            direction: rtl;
-          }
-          .card-container {
-            display: flex;
-            gap: 15mm;
-            align-items: flex-start;
-          }
-          .member-card {
-            width: 9cm;
-            height: 6cm;
-            border: 2px solid #1e3a5f;
-            border-radius: 10px;
-            overflow: hidden;
-            background: linear-gradient(135deg, #1e3a5f 0%, #2d5a87 100%);
-            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-            position: relative;
-          }
-          .card-header {
-            background: rgba(255,255,255,0.1);
-            padding: 8px 12px;
-            text-align: center;
-            border-bottom: 1px solid rgba(255,255,255,0.2);
-          }
-          .card-header h1 {
-            margin: 0;
-            font-size: 14px;
-            color: #fff;
-            font-weight: bold;
-          }
-          .card-header p {
-            margin: 2px 0 0;
-            font-size: 9px;
-            color: rgba(255,255,255,0.8);
-          }
-          .card-body {
-            padding: 10px 12px;
-            display: flex;
-            gap: 10px;
-          }
-          .qr-section {
-            flex-shrink: 0;
-          }
-          .qr-section img {
-            width: 70px;
-            height: 70px;
-            border: 3px solid #fff;
-            border-radius: 8px;
-          }
-          .info-section {
-            flex: 1;
-            color: #fff;
-          }
-          .member-name {
-            font-size: 14px;
-            font-weight: bold;
-            margin-bottom: 4px;
-            color: #fff;
-          }
-          .member-code {
-            font-size: 18px;
-            font-weight: bold;
-            color: #ffd700;
-            margin-bottom: 6px;
-          }
-          .activities-section {
-            background: rgba(255,255,255,0.1);
-            border-radius: 5px;
-            padding: 6px 8px;
-            margin-top: 4px;
-          }
-          .activities-title {
-            font-size: 8px;
-            color: rgba(255,255,255,0.7);
-            margin-bottom: 3px;
-          }
-          .logo-section {
-            width: 9cm;
-            height: 6cm;
-            border: 2px dashed #ccc;
-            border-radius: 10px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            background: #f9f9f9;
-          }
-          .logo-section img {
-            max-width: 80%;
-            max-height: 80%;
-            object-fit: contain;
-          }
-          .print-btn {
-            display: block;
-            margin: 20px auto;
-            padding: 10px 30px;
-            background: #1e3a5f;
-            color: #fff;
-            border: none;
-            border-radius: 5px;
-            cursor: pointer;
-            font-size: 16px;
-          }
-          .print-btn:hover {
-            background: #2d5a87;
-          }
-        </style>
-      </head>
-      <body>
-        <div class="card-container">
-          <div class="member-card">
-            <div class="card-header">
-              <h1>Global Champions Sports Performance</h1>
-              <p>أداء الأبطال العالمية للرياضة</p>
-            </div>
-            <div class="card-body">
-              <div class="qr-section">
-                <img src="${qrCodeUrl}" alt="QR Code" />
-              </div>
-              <div class="info-section">
-                <div class="member-name">${(memberCardData.name_ar || memberCardData.name || '').split('+').map(n => n.trim()).join('<br/>')}</div>
-                <div class="member-code">#${memberCardData.member_code || '---'}</div>
-                ${activeActivities.length > 0 ? `
-                  <div class="activities-section">
-                    <div class="activities-title">الأنشطة</div>
-                    ${activitiesHtml}
+      <html>
+        <head>
+          <meta charset="UTF-8">
+          <title>بطاقة العضوية - ${memberCardData.member_code}</title>
+          <style>
+            @import url('https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700&display=swap');
+            @page { size: A4; margin: 0mm; }
+            * { margin: 0; padding: 0; box-sizing: border-box; }
+            body { font-family: 'Tajawal', Arial, sans-serif; background: #f3f4f6; direction: rtl; }
+            .screen-only { padding: 20px; text-align: center; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; }
+            @media print { .screen-only { display: none !important; } .print-area { display: flex !important; position: absolute; top: 10mm; right: 10mm; gap: 5mm; } }
+            @media screen { .print-area { display: none; } }
+            .sticker-preview { display: flex; gap: 15px; justify-content: center; margin-bottom: 20px; }
+            .card { width: 90mm; height: 60mm; background: white; border-radius: 4mm; overflow: hidden; box-shadow: 0 4px 15px rgba(0,0,0,0.1); display: flex; flex-direction: column; }
+            .card-header { background: linear-gradient(135deg, #F97316, #F59E0B); padding: 1.5mm 2mm; display: flex; justify-content: space-between; align-items: center; color: white; }
+            .header-text h2 { font-size: 7pt; font-weight: 700; margin: 0; line-height: 1.3; }
+            .header-text p { font-size: 5.5pt; opacity: 0.9; margin: 0; }
+            .header-logo { width: 10mm; height: 10mm; border-radius: 50%; background: white; padding: 0.5mm; display: flex; align-items: center; justify-content: center; }
+            .header-logo img { width: 100%; height: 100%; object-fit: contain; border-radius: 50%; }
+            .card-body { padding: 2mm; display: flex; gap: 2mm; flex: 1; }
+            .info-section { flex: 1; text-align: right; overflow: hidden; }
+            .qr-container { display: flex; flex-direction: column; align-items: center; }
+            .qr-section { width: 26mm; height: 26mm; background: white; border: 1px solid #eee; border-radius: 2mm; padding: 0.5mm; }
+            .qr-section img { width: 100%; height: 100%; }
+            .qr-dates { text-align: center; font-size: 8pt; color: #1f2937; margin-top: 1mm; line-height: 1.4; font-weight: 700; }
+            .qr-dates span { display: block; }
+            .schedule-info { text-align: center; font-size: 6pt; color: #F97316; margin-top: 1mm; font-weight: 600; background: #FFF7ED; padding: 1mm; border-radius: 2mm; }
+            .member-name { font-size: 10pt; font-weight: 700; color: #1f2937; margin-bottom: 1mm; line-height: 1.4; }
+            .info-label { color: #6b7280; font-size: 6pt; }
+            .info-row { display: flex; align-items: center; gap: 1mm; margin-bottom: 0.8mm; font-size: 7pt; }
+            .member-code { color: #F97316; font-weight: 700; font-size: 10pt; }
+            .activities { margin-top: 1mm; padding-top: 1mm; border-top: 1px dashed #e5e7eb; }
+            .activities-label { font-size: 6pt; color: #6b7280; margin-bottom: 0.5mm; }
+            .activity-item { padding: 1mm 1.5mm; margin-bottom: 0.5mm; border-radius: 1.5mm; font-size: 6pt; }
+            .activity-item.active { background: #D1FAE5; border-right: 2px solid #10B981; }
+            .activity-item.expired { background: #FEE2E2; border-right: 2px solid #EF4444; }
+            .activity-name { font-weight: 600; color: #1f2937; font-size: 7pt; }
+            .activity-status { font-size: 6pt; font-weight: 700; }
+            .activity-item.active .activity-status { color: #059669; }
+            .activity-item.expired .activity-status { color: #DC2626; }
+            .card-footer { text-align: right; padding: 1.5mm 2mm; background: #f9fafb; font-size: 5pt; color: #374151; border-top: 1px dashed #e5e7eb; line-height: 1.4; }
+            .card-footer .terms-title { font-weight: 700; color: #1f2937; font-size: 6pt; margin-bottom: 0.5mm; }
+            .logo-card { width: 90mm; height: 60mm; background: white; border-radius: 4mm; overflow: hidden; box-shadow: 0 4px 15px rgba(0,0,0,0.1); display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 3mm; }
+            .logo-card img { max-width: 100%; max-height: 55%; object-fit: contain; }
+            .logo-card .lost-card-notice { font-size: 7pt; color: #DC2626; text-align: center; margin-top: 2mm; font-weight: 700; line-height: 1.5; background: #FEF2F2; padding: 2mm 3mm; border-radius: 2mm; border: 1.5px solid #EF4444; }
+            .logo-card .contact-info { font-size: 7pt; color: #374151; text-align: center; margin-top: 2mm; font-weight: 600; line-height: 1.6; }
+            .print-btn { margin-top: 20px; padding: 12px 30px; background: linear-gradient(135deg, #F97316, #EA580C); color: white; border: none; border-radius: 10px; cursor: pointer; font-family: 'Tajawal', Arial, sans-serif; font-size: 16px; font-weight: bold; }
+            .position-labels { display: flex; gap: 15px; justify-content: center; margin-top: 10px; }
+            .position-label { padding: 8px 16px; background: #FEF3C7; border-radius: 8px; color: #92400E; font-size: 12px; }
+          </style>
+        </head>
+        <body>
+          <div class="screen-only">
+            <p style="font-size: 18px; margin-bottom: 20px;">📋 معاينة الطباعة - كرت العضوية + شعار الأكاديمية</p>
+            <div class="sticker-preview">
+              <div class="card">
+                <div class="card-header">
+                  <div class="header-text"><h2>شركة اداء الابطال العالمية للرياضة</h2><p>Global Champions Sports Performance</p></div>
+                  <div class="header-logo"><img src="${origin}/images/academy-logo.png" alt="logo" /></div>
+                </div>
+                <div class="card-body">
+                  <div class="qr-container">
+                    <div class="qr-section"><img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(qrData)}" /></div>
+                    <div class="qr-dates">
+                      <span>من: ${startDate || '----'}</span>
+                      <span>إلى: ${endDate || '----'}</span>
+                    </div>
+                    ${schedule ? `<div class="schedule-info">📅 ${schedule}</div>` : ''}
                   </div>
-                ` : ''}
+                  <div class="info-section">
+                    <div class="info-label">الاسم</div>
+                    <div class="member-name">${memberName}</div>
+                    <div class="info-row"><span class="info-label">رقم العضوية:</span><span class="member-code">#${memberCardData.member_code || ''}</span></div>
+                    <div class="info-row"><span class="info-label">رقم الجوال:</span><span>${memberCardData.phone || '-'}</span></div>
+                    ${activitiesHtml ? `<div class="activities"><div class="activities-label">الأنشطة المسجلة</div>${activitiesHtml}</div>` : ''}
+                  </div>
+                </div>
+                <div class="card-footer">
+                  <div class="terms-title">شروط وأحكام:</div>
+                  <div>• الاشتراك محدد البداية والنهاية ولا يتم تعويض حصص غياب المشترك</div>
+                  <div>• المبلغ المدفوع لا يسترد بعد مرور أسبوع من الاشتراك</div>
+                </div>
+              </div>
+              <div class="logo-card">
+                <img src="${origin}/images/academy-logo.png" alt="شعار الأكاديمية" />
+                <div class="contact-info">📞 0566238384</div>
+                <div class="lost-card-notice">⚠️ في حال فقدان كرت العضوية،<br/>يتم إصدار كرت جديد برسوم 10 ر.س</div>
               </div>
             </div>
+            <div class="position-labels">
+              <div class="position-label">📍 خانة 1: كرت العضوية</div>
+              <div class="position-label">📍 خانة 2: شعار الأكاديمية</div>
+            </div>
+            <p style="margin-top: 10px; color: #6b7280; font-size: 14px;">📐 حجم كل كرت: 9سم × 6سم</p>
+            <button class="print-btn" onclick="window.print()">🖨️ طباعة الملصقات</button>
           </div>
-          <div class="logo-section">
-            <img src="/logo.png" alt="Logo" onerror="this.style.display='none'" />
+          <div class="print-area">
+            <div class="card">
+              <div class="card-header">
+                <div class="header-text"><h2>شركة اداء الابطال العالمية للرياضة</h2><p>Global Champions Sports Performance</p></div>
+                <div class="header-logo"><img src="${origin}/images/academy-logo.png" alt="logo" /></div>
+              </div>
+              <div class="card-body">
+                <div class="qr-container">
+                  <div class="qr-section"><img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(qrData)}" /></div>
+                  <div class="qr-dates">
+                    <span>من: ${startDate || '----'}</span>
+                    <span>إلى: ${endDate || '----'}</span>
+                  </div>
+                </div>
+                <div class="info-section">
+                  <div class="info-label">الاسم</div>
+                  <div class="member-name">${memberName}</div>
+                  <div class="info-row"><span class="info-label">رقم العضوية:</span><span class="member-code">#${memberCardData.member_code || ''}</span></div>
+                  <div class="info-row"><span class="info-label">رقم الجوال:</span><span>${memberCardData.phone || '-'}</span></div>
+                  ${activitiesHtml ? `<div class="activities"><div class="activities-label">الأنشطة المسجلة</div>${activitiesHtml}</div>` : ''}
+                </div>
+              </div>
+              <div class="card-footer">
+                <div class="terms-title">شروط وأحكام:</div>
+                <div>• الاشتراك محدد البداية والنهاية ولا يتم تعويض حصص غياب المشترك</div>
+                <div>• المبلغ المدفوع لا يسترد بعد مرور أسبوع من الاشتراك</div>
+              </div>
+            </div>
+            <div class="logo-card">
+              <img src="${origin}/images/academy-logo.png" alt="شعار الأكاديمية" />
+              <div class="contact-info">📞 0566238384</div>
+              <div class="lost-card-notice">⚠️ في حال فقدان كرت العضوية،<br/>يتم إصدار كرت جديد برسوم 10 ر.س</div>
+            </div>
           </div>
-        </div>
-        <button class="print-btn no-print" onclick="window.print()">🖨️ طباعة</button>
-      </body>
+        </body>
       </html>
     `;
-    
+
     printWindow.document.write(printContent);
     printWindow.document.close();
   };
