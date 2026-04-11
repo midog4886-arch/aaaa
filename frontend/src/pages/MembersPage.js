@@ -2786,7 +2786,7 @@ export const MembersPage = () => {
 
         {/* Member Card Dialog */}
         <Dialog open={isMemberCardDialogOpen} onOpenChange={setIsMemberCardDialogOpen}>
-          <DialogContent className="max-w-3xl">
+          <DialogContent className="max-w-4xl">
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
                 <CreditCard className="w-5 h-5 text-primary" />
@@ -2797,9 +2797,9 @@ export const MembersPage = () => {
             {memberCardData && (
               <div className="space-y-4">
                 {/* Card Preview - Same design as MemberCardPage */}
-                <div className="flex flex-wrap gap-4 justify-center p-4 bg-gray-100 rounded-lg">
+                <div className="flex flex-nowrap gap-3 justify-center p-4 bg-gray-100 rounded-lg overflow-x-auto">
                   {/* Member Card - Orange/Amber theme like MemberCardPage */}
-                  <div className="w-[340px] rounded-xl overflow-hidden shadow-lg bg-white">
+                  <div className="w-[300px] shrink-0 rounded-xl overflow-hidden shadow-lg bg-white">
                     {/* Header - Orange gradient */}
                     <div className="bg-gradient-to-r from-orange-500 to-amber-500 p-3 text-white">
                       <div className="flex items-center justify-between">
@@ -2888,7 +2888,7 @@ export const MembersPage = () => {
                   </div>
                   
                   {/* Logo Card */}
-                  <div className="w-[340px] h-[280px] rounded-xl overflow-hidden shadow-lg bg-white flex flex-col items-center justify-center p-4 gap-2">
+                  <div className="w-[300px] shrink-0 h-auto rounded-xl overflow-hidden shadow-lg bg-white flex flex-col items-center justify-center p-4 gap-2">
                     <img src="/images/academy-logo.png" alt="شعار الأكاديمية" className="max-w-[80%] max-h-[55%] object-contain" />
                     <p className="text-sm font-semibold text-gray-700">📞 0566238384</p>
                     <div className="text-center text-xs text-red-600 font-bold bg-red-50 border border-red-300 rounded px-3 py-2">
