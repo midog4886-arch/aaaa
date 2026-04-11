@@ -353,7 +353,7 @@ export const MembersPage = () => {
       `;
     }).join('');
 
-    const memberName = (memberCardData.name_ar || memberCardData.name || '').split('+').map(n => n.trim()).join('<br/>');
+    const memberName = (memberCardData.name_ar || memberCardData.name || '').split('+').map(n => `<div>${n.trim()}</div>`).join('');
     const origin = window.location.origin;
 
     const printContent = `

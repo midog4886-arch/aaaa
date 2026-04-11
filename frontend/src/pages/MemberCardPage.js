@@ -140,7 +140,7 @@ const MemberCardPage = () => {
                   </div>
                   <div class="info-section">
                     <div class="info-label">الاسم</div>
-                    <div class="member-name">${(member?.name_ar || member?.name || '').split('+').map(n => n.trim()).join('<br/>')}</div>
+                    <div class="member-name">${(member?.name_ar || member?.name || '').split('+').map(n => `<div>${n.trim()}</div>`).join('')}</div>
                     <div class="info-row"><span class="info-label">رقم العضوية:</span><span class="member-code">#${member?.member_code || ''}</span></div>
                     <div class="info-row"><span class="info-label">رقم الجوال:</span><span>${member?.phone || '-'}</span></div>
                     ${activitiesHtml ? `<div class="activities"><div class="activities-label">الأنشطة المسجلة</div>${activitiesHtml}</div>` : ''}
@@ -183,7 +183,7 @@ const MemberCardPage = () => {
                 </div>
                 <div class="info-section">
                   <div class="info-label">الاسم</div>
-                  <div class="member-name">${(member?.name_ar || member?.name || '').split('+').map(n => n.trim()).join('<br/>')}</div>
+                  <div class="member-name">${(member?.name_ar || member?.name || '').split('+').map(n => `<div>${n.trim()}</div>`).join('')}</div>
                   <div class="info-row"><span class="info-label">رقم العضوية:</span><span class="member-code">#${member?.member_code || ''}</span></div>
                   <div class="info-row"><span class="info-label">رقم الجوال:</span><span>${member?.phone || '-'}</span></div>
                   ${activitiesHtml ? `<div class="activities"><div class="activities-label">الأنشطة المسجلة</div>${activitiesHtml}</div>` : ''}
