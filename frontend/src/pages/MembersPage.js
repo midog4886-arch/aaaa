@@ -2843,7 +2843,7 @@ export const MembersPage = () => {
                       {/* Info */}
                       <div className="flex-1">
                         <p className="text-xs text-gray-500 mb-1">{language === 'ar' ? 'الاسم' : 'Name'}</p>
-                        <p className="font-bold text-gray-800 text-lg mb-2">{memberCardData.name_ar || memberCardData.name}</p>
+                        <p className="font-bold text-gray-800 text-lg mb-2">{(memberCardData.name_ar || memberCardData.name || '').split('+').map((n, i) => <span key={i}>{i > 0 && <br/>}{n.trim()}</span>)}</p>
                         
                         <div className="flex items-center gap-2 mb-1">
                           <span className="text-xs text-gray-500">{language === 'ar' ? 'رقم العضوية:' : 'ID:'}</span>
@@ -2888,8 +2888,12 @@ export const MembersPage = () => {
                   </div>
                   
                   {/* Logo Card */}
-                  <div className="w-[340px] h-[280px] rounded-xl border-2 border-dashed border-gray-300 bg-white flex items-center justify-center">
-                    <img src="/logo.png" alt="Logo" className="max-w-[80%] max-h-[80%] object-contain" onError={(e) => e.target.style.display='none'} />
+                  <div className="w-[340px] h-[280px] rounded-xl overflow-hidden shadow-lg bg-white flex flex-col items-center justify-center p-4 gap-2">
+                    <img src="/images/academy-logo.png" alt="شعار الأكاديمية" className="max-w-[80%] max-h-[55%] object-contain" />
+                    <p className="text-sm font-semibold text-gray-700">📞 0566238384</p>
+                    <div className="text-center text-xs text-red-600 font-bold bg-red-50 border border-red-300 rounded px-3 py-2">
+                      ⚠️ في حال فقدان كرت العضوية،<br/>يتم إصدار كرت جديد برسوم 10 ر.س
+                    </div>
                   </div>
                 </div>
                 
