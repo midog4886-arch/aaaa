@@ -2797,7 +2797,7 @@ export const MembersPage = () => {
             {memberCardData && (
               <div className="space-y-4">
                 {/* Card Preview - Same design as MemberCardPage */}
-                <div className="flex flex-nowrap gap-3 justify-center p-4 bg-gray-100 rounded-lg overflow-x-auto">
+                <div className="flex flex-nowrap gap-3 justify-center items-stretch p-4 bg-gray-100 rounded-lg overflow-x-auto">
                   {/* Member Card - Orange/Amber theme like MemberCardPage */}
                   <div className="w-[300px] shrink-0 rounded-xl overflow-hidden shadow-lg bg-white">
                     {/* Header - Orange gradient */}
