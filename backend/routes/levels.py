@@ -135,14 +135,6 @@ async def create_level(level: LevelCreate, current_user: dict = Depends(get_curr
     level_id = str(uuid.uuid4())
     is_admin = current_user.get("is_admin", False)
     
-    # Check if level already exists for this activity name
-    existing = await db.levels.find_one({
-        "level_number": level.level_number,
-        "activity_name": level.activity_name
-    })
-    if existing:
-        raise HTTPException(status_code=400, detail="هذا المستوى موجود مسبقاً لهذا النشاط")
-    
     if is_admin and level.branch_id:
         final_branch_id = level.branch_id if level.branch_id != "all" else None
     else:
