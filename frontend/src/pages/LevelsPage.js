@@ -693,19 +693,13 @@ export const LevelsPage = () => {
     const existingLevels = getLevelsForTimeSlot(selectedActivityId, selectedTimeSlotKey);
     const existingNumbers = existingLevels.map(l => l.level_number);
     
-    // Find the next available level number (1-6)
+    // Find the next available level number
     let nextLevelNumber = 1;
-    for (let i = 1; i <= 6; i++) {
+    for (let i = 1; i <= 1000; i++) {
       if (!existingNumbers.includes(i)) {
         nextLevelNumber = i;
         break;
       }
-    }
-    
-    // Check if all levels (1-6) are already used
-    if (existingNumbers.length >= 6) {
-      toast.error(t('تم الوصول للحد الأقصى من المستويات (6)', 'Maximum levels reached (6)'));
-      return;
     }
     
     // Get the activity_name from an existing level in this time slot
@@ -889,13 +883,31 @@ export const LevelsPage = () => {
     const activityInfo = getMainActivityInfo(mainActivityId);
     const defaultCapacity = mainActivityId === 'swimming' ? 6 : activityInfo.maxCapacity;
     
+    // Use existing level's activity_name as the template to ensure correct grouping
+    const existingLevels = getLevelsForTimeSlot(mainActivityId, timeSlot);
+    let activityName = timeSlot || activityInfo.name_ar;
+    if (existingLevels.length > 0) {
+      activityName = existingLevels[0].activity_name;
+    }
+
+    // Determine next available level number
+    const existingNumbers = existingLevels.map(l => l.level_number);
+    let nextLevelNumber = 1;
+    for (let i = 1; i <= 100; i++) {
+      if (!existingNumbers.includes(i)) {
+        nextLevelNumber = i;
+        break;
+      }
+    }
+    
     resetForm();
     setFormData(prev => ({
       ...prev,
       main_activity: mainActivityId,
       time_slot: timeSlot,
-      activity_name: timeSlot || activityInfo.name_ar,
-      capacity: defaultCapacity
+      activity_name: activityName,
+      capacity: defaultCapacity,
+      level_number: nextLevelNumber
     }));
     setIsDialogOpen(true);
   };
@@ -1838,7 +1850,7 @@ export const LevelsPage = () => {
                       <Button 
                         variant="secondary" 
                         onClick={handleQuickAddLevel}
-                        disabled={saving || slotLevels.length >= 6}
+                        disabled={saving}
                         className="gap-2"
                         data-testid="quick-add-level-btn"
                       >
