@@ -102,6 +102,7 @@ export const LevelsPage = () => {
     main_activity: '',
     time_slot: '',
     activity_name: '',
+    custom_name: '',
     description: '',
     capacity: 10,
     members: [],
@@ -876,6 +877,7 @@ export const LevelsPage = () => {
       time_slot: timeSlot,
       activity_name: level.activity_name || '',
       description: level.description || '',
+      custom_name: level.custom_name || '',
       capacity: level.capacity || 10,
       members: level.members || [],
       branch_id: level.branch_id || 'all'
@@ -1103,7 +1105,7 @@ export const LevelsPage = () => {
               <span className="text-2xl font-bold">{level.level_number}</span>
             </div>
             <div>
-              <span className="text-sm opacity-90">{t('المستوى', 'Level')}</span>
+              <span className="text-sm opacity-90">{level.custom_name ? level.custom_name : t('المستوى', 'Level')}</span>
               <p className="text-xs opacity-75">{level.activity_name}</p>
             </div>
           </div>
@@ -1939,6 +1941,17 @@ export const LevelsPage = () => {
                     ))}
                   </SelectContent>
                 </Select>
+              </div>
+
+              {/* Custom Level Name */}
+              <div>
+                <Label>{t('اسم مخصص للمستوى (اختياري)', 'Custom Level Name (optional)')}</Label>
+                <Input
+                  value={formData.custom_name}
+                  onChange={(e) => setFormData({ ...formData, custom_name: e.target.value })}
+                  placeholder={t('مثال: مجموعة أ، المبتدئين، البنات...', 'e.g. Group A, Beginners, Girls...')}
+                />
+                <p className="text-xs text-gray-500 mt-1">{t('سيظهر هذا الاسم في رأس البطاقة بدلاً من "المستوى"', 'This name will appear in the card header instead of "Level"')}</p>
               </div>
 
               {/* Activity Name (auto-filled but editable) */}

@@ -23,6 +23,7 @@ class LevelMember(BaseModel):
 class LevelCreate(BaseModel):
     level_number: int  # 1, 2, 3, 4, 5, 6
     activity_name: str  # Manual activity name
+    custom_name: Optional[str] = ""  # User-defined name for the level
     description: Optional[str] = ""
     members: List[str] = []  # List of member IDs
     branch_id: Optional[str] = None
@@ -31,6 +32,7 @@ class Level(BaseModel):
     id: str
     level_number: int
     activity_name: str
+    custom_name: Optional[str] = ""
     description: Optional[str] = ""
     members: List[str] = []
     members_details: List[LevelMember] = []
@@ -150,6 +152,7 @@ async def create_level(level: LevelCreate, current_user: dict = Depends(get_curr
         "id": level_id,
         "level_number": level.level_number,
         "activity_name": level.activity_name,
+        "custom_name": level.custom_name or "",
         "description": level.description,
         "members": level.members,
         "branch_id": final_branch_id,
@@ -165,6 +168,7 @@ async def update_level(level_id: str, level: LevelCreate, current_user: dict = D
     update_data = {
         "level_number": level.level_number,
         "activity_name": level.activity_name,
+        "custom_name": level.custom_name or "",
         "description": level.description,
         "members": level.members
     }
