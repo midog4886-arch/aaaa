@@ -22,6 +22,9 @@ _index_ct = b"text/html; charset=utf-8"
 KEEP_ALIVE_URL = "https://adaa-alabtal.replit.app/health"
 KEEP_ALIVE_INTERVAL = 240
 
+RENDER_PROXY_URL = os.environ.get('ATLAS_BASE_URL', '').rstrip('/')
+RENDER_PROXY_KEEPALIVE_INTERVAL = 600
+
 _static_index = os.path.join(backend_dir, "static", "index.html")
 if os.path.exists(_static_index):
     with open(_static_index, "rb") as f:
@@ -107,6 +110,25 @@ async def _keep_alive_loop():
         await asyncio.sleep(KEEP_ALIVE_INTERVAL)
 
 
+async def _render_proxy_warmup():
+    if not RENDER_PROXY_URL:
+        return
+    await asyncio.sleep(5)
+    logger.info(f"Render proxy warm-up: pinging {RENDER_PROXY_URL} every {RENDER_PROXY_KEEPALIVE_INTERVAL}s")
+    while True:
+        try:
+            loop = asyncio.get_running_loop()
+            req = urllib.request.Request(RENDER_PROXY_URL, method='GET')
+            await loop.run_in_executor(
+                None,
+                lambda: urllib.request.urlopen(req, timeout=15).read()
+            )
+            logger.info("Render proxy ping OK")
+        except Exception as e:
+            logger.info(f"Render proxy ping: {e}")
+        await asyncio.sleep(RENDER_PROXY_KEEPALIVE_INTERVAL)
+
+
 async def _send_response(receive, send, status, content_type, body):
     await receive()
     await send({
@@ -132,6 +154,7 @@ async def app(scope, receive, send):
                 t = threading.Thread(target=_load_real_app_sync, daemon=True)
                 t.start()
                 asyncio.ensure_future(_keep_alive_loop())
+                asyncio.ensure_future(_render_proxy_warmup())
                 # Start WhatsApp service in background to avoid blocking startup
                 threading.Thread(target=_start_whatsapp_service, daemon=True).start()
             elif msg["type"] == "lifespan.shutdown":

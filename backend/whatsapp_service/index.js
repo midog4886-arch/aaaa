@@ -115,7 +115,7 @@ async function clearLocalAuth() {
 async function connectToWhatsApp(forceNewQR = false) {
   if (isConnecting) return;
   isConnecting = true;
-  currentQR = null;
+  if (forceNewQR) currentQR = null;
 
   try {
     // If forced fresh QR or too many reconnect attempts, clear old session
