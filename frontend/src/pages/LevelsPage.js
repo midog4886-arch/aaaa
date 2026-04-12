@@ -890,24 +890,13 @@ export const LevelsPage = () => {
       activityName = existingLevels[0].activity_name;
     }
 
-    // Determine next available level number
-    const existingNumbers = existingLevels.map(l => l.level_number);
-    let nextLevelNumber = 1;
-    for (let i = 1; i <= 100; i++) {
-      if (!existingNumbers.includes(i)) {
-        nextLevelNumber = i;
-        break;
-      }
-    }
-    
     resetForm();
     setFormData(prev => ({
       ...prev,
       main_activity: mainActivityId,
       time_slot: timeSlot,
       activity_name: activityName,
-      capacity: defaultCapacity,
-      level_number: nextLevelNumber
+      capacity: defaultCapacity
     }));
     setIsDialogOpen(true);
   };
