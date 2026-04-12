@@ -1926,21 +1926,13 @@ export const LevelsPage = () => {
               {/* Level Number */}
               <div>
                 <Label>{t('رقم المستوى', 'Level Number')} *</Label>
-                <Select
-                  value={String(formData.level_number)}
-                  onValueChange={(value) => setFormData({ ...formData, level_number: parseInt(value) })}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {levelNumbers.map(num => (
-                      <SelectItem key={num} value={String(num)}>
-                        {t('المستوى', 'Level')} {num}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <Input
+                  type="number"
+                  min="1"
+                  value={formData.level_number}
+                  onChange={(e) => setFormData({ ...formData, level_number: parseInt(e.target.value) || 1 })}
+                  placeholder={t('أدخل رقم المستوى', 'Enter level number')}
+                />
               </div>
 
               {/* Custom Level Name */}
