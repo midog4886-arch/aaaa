@@ -250,6 +250,27 @@ const GlobalScanner = ({ enabled = true, language = 'ar' }) => {
     }, 300);
   }, []);
 
+  // Auto-close after all active activities are recorded (no wrong-day or error pending)
+  useEffect(() => {
+    if (!showMemberDialog || !memberData || memberData.error || loading) return;
+    const activeActivities = memberData.activeActivities || [];
+    if (activeActivities.length === 0) return;
+
+    const allRecorded = activeActivities.every(act => {
+      const state = activityStates[act.activity_id];
+      return (state && state.status === 'recorded') || act.recorded_today;
+    });
+    const hasWrongDay = Object.values(activityStates).some(s => s && s.status === 'wrong_day');
+    const hasError = Object.values(activityStates).some(s => s && s.status === 'error');
+
+    if (allRecorded && !hasWrongDay && !hasError) {
+      const timer = setTimeout(() => {
+        handleCloseDialog();
+      }, 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [activityStates, memberData, loading, showMemberDialog, handleCloseDialog]);
+
   // Handle check-in for a specific activity (with optional force override)
   const handleCheckin = useCallback(async (activityId, activityName, force = false) => {
     if (!memberData || !activityId) return;
