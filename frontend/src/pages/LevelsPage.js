@@ -1870,59 +1870,64 @@ export const LevelsPage = () => {
               </DialogTitle>
             </DialogHeader>
             <form onSubmit={handleSubmit} className="space-y-4">
-              {/* Main Activity */}
-              <div>
-                <Label>{t('النشاط الرئيسي', 'Main Activity')} *</Label>
-                <Select
-                  value={formData.main_activity}
-                  onValueChange={(value) => {
-                    const activityInfo = getMainActivityInfo(value);
-                    const defaultCapacity = value === 'swimming' ? 6 : activityInfo.maxCapacity;
-                    setFormData({ 
-                      ...formData, 
-                      main_activity: value,
-                      capacity: defaultCapacity,
-                      activity_name: formData.time_slot ? `${activityInfo.name_ar} - ${formData.time_slot}` : activityInfo.name_ar
-                    });
-                  }}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder={t('اختر النشاط', 'Select activity')} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {MAIN_ACTIVITIES.map(act => (
-                      <SelectItem key={act.id} value={act.id}>
-                        {act.icon} {language === 'ar' ? act.name_ar : act.name_en}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+              {/* Main Activity and Time Slot — only shown when adding a new level (not editing) */}
+              {!selectedLevel && (
+                <>
+                  <div>
+                    <Label>{t('النشاط الرئيسي', 'Main Activity')} *</Label>
+                    <Select
+                      value={formData.main_activity}
+                      onValueChange={(value) => {
+                        const activityInfo = getMainActivityInfo(value);
+                        const defaultCapacity = value === 'swimming' ? 6 : activityInfo.maxCapacity;
+                        setFormData({ 
+                          ...formData, 
+                          main_activity: value,
+                          capacity: defaultCapacity,
+                          activity_name: formData.time_slot ? `${activityInfo.name_ar} - ${formData.time_slot}` : activityInfo.name_ar
+                        });
+                      }}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder={t('اختر النشاط', 'Select activity')} />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {MAIN_ACTIVITIES.map(act => (
+                          <SelectItem key={act.id} value={act.id}>
+                            {act.icon} {language === 'ar' ? act.name_ar : act.name_en}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
 
-              {/* Time Slot */}
-              <div>
-                <Label>{t('الوقت (الساعة)', 'Time Slot')}</Label>
-                <Select
-                  value={formData.time_slot}
-                  onValueChange={(value) => {
-                    const activityInfo = getMainActivityInfo(formData.main_activity);
-                    setFormData({ 
-                      ...formData, 
-                      time_slot: value,
-                      activity_name: value || activityInfo.name_ar
-                    });
-                  }}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder={t('اختر الوقت', 'Select time')} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {TIME_SLOTS.map(slot => (
-                      <SelectItem key={slot} value={slot}>{slot}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+                  <div>
+                    <Label>{t('الوقت (الساعة)', 'Time Slot')}</Label>
+                    <Select
+                      value={formData.time_slot}
+                      onValueChange={(value) => {
+                        const activityInfo = getMainActivityInfo(formData.main_activity);
+                        setFormData({ 
+                          ...formData, 
+                          time_slot: value,
+                          activity_name: activityInfo && formData.main_activity !== 'other'
+                            ? `${activityInfo.name_ar} - ${value}`
+                            : value
+                        });
+                      }}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder={t('اختر الوقت', 'Select time')} />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {TIME_SLOTS.map(slot => (
+                          <SelectItem key={slot} value={slot}>{slot}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </>
+              )}
 
               {/* Level Number */}
               <div>
