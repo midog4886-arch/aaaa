@@ -179,7 +179,6 @@ export const MembersPage = () => {
   };
 
   const loadLevels = async () => {
-    if (levelsLoaded) return;
     try {
       const levelsRes = await levelsAPI.getAll();
       setLevels(levelsRes.data);
