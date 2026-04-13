@@ -1610,7 +1610,7 @@ export const MembersPage = () => {
                                     {(() => {
                                       const level = levels.find(l => l.id === activityForm.level_id);
                                       if (!level) return '';
-                                      const label = level.custom_name ? level.custom_name : `${language === 'ar' ? 'المستوى' : 'Level'} ${level.level_number}`;
+                                      const label = level.display_name || (level.custom_name ? level.custom_name : `${language === 'ar' ? 'المستوى' : 'Level'} ${level.level_number}`);
                                       return level.activity_name ? `${label} - ${level.activity_name}` : label;
                                     })()}
                                   </span>
@@ -1737,7 +1737,7 @@ export const MembersPage = () => {
                                         >
                                           <div className="flex items-center justify-between mb-1">
                                             <span className={`font-bold ${isFull ? 'text-red-600' : 'text-gray-800'}`}>
-                                              {level.custom_name ? level.custom_name : `${language === 'ar' ? 'المستوى' : 'Level'} ${level.level_number}`}
+                                              {level.display_name || (level.custom_name ? level.custom_name : `${language === 'ar' ? 'المستوى' : 'Level'} ${level.level_number}`)}
                                             </span>
                                             <span className={`text-sm ${isFull ? 'text-red-600' : 'text-gray-600'}`}>
                                               {memberCount}/{maxCapacity} {isFull && '⚠️'}

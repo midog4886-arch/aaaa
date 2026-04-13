@@ -16,7 +16,7 @@ import { PAYMENT_METHODS, VAT_RATE, SUBSCRIPTION_PERIODS, DAYS_OF_WEEK } from '.
 // Build a readable display name for a level matching the LevelsPage card view
 const getLevelDisplayName = (level) => {
   if (!level) return '';
-  const label = level.custom_name ? level.custom_name : `المستوى ${level.level_number}`;
+  const label = level.display_name || (level.custom_name ? level.custom_name : `المستوى ${level.level_number}`);
   const activity = level.activity_name || '';
   return activity ? `${label} - ${activity}` : label;
 };

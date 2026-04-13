@@ -127,6 +127,10 @@ async def get_levels(
         for level in levels:
             level["members_details"] = []
 
+    for level in levels:
+        cn = level.get("custom_name") or ""
+        level["display_name"] = cn.strip() if cn.strip() else f"المستوى {level.get('level_number', '')}"
+
     return levels
 
 
