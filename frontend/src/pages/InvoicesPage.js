@@ -418,7 +418,7 @@ export const InvoicesPage = () => {
     const updated = [...invoiceItems];
     const level = levels.find(l => l.id === levelId);
     updated[index].level_id = levelId;
-    updated[index].level_name = level ? `${language === 'ar' ? 'المستوى' : 'Level'} ${level.level_number} - ${level.activity_name}` : '';
+    updated[index].level_name = level ? `${level.display_name || (level.custom_name ? level.custom_name : `${language === 'ar' ? 'المستوى' : 'Level'} ${level.level_number}`)} - ${level.activity_name}` : '';
     
     // Reset selector state after selection
     resetLevelSelector(index);
@@ -3258,7 +3258,7 @@ ${itemsList}
     const updated = [...regFormItems];
     const level = levels.find(l => l.id === levelId);
     updated[index].level_id = levelId;
-    updated[index].level_name = level ? `${language === 'ar' ? 'المستوى' : 'Level'} ${level.level_number} - ${level.activity_name}` : '';
+    updated[index].level_name = level ? `${level.display_name || (level.custom_name ? level.custom_name : `${language === 'ar' ? 'المستوى' : 'Level'} ${level.level_number}`)} - ${level.activity_name}` : '';
     
     // Reset selector state after selection
     resetRegFormLevelSelector(index);
@@ -4345,7 +4345,7 @@ ${itemsList}
                                             >
                                               <div className="flex items-center justify-between mb-1">
                                                 <span className={`font-bold ${isFull ? 'text-red-600' : 'text-gray-800'}`}>
-                                                  {language === 'ar' ? 'المستوى' : 'Level'} {level.level_number}
+                                                  {level.display_name || (level.custom_name ? level.custom_name : `${language === 'ar' ? 'المستوى' : 'Level'} ${level.level_number}`)}
                                                 </span>
                                                 <span className={`text-sm ${isFull ? 'text-red-600' : 'text-gray-600'}`}>
                                                   {memberCount}/{maxCapacity} {isFull && '⚠️'}
@@ -5588,7 +5588,7 @@ ${itemsList}
                                             >
                                               <div className="flex items-center justify-between mb-1">
                                                 <span className={`font-bold ${isFull ? 'text-red-600' : 'text-gray-800'}`}>
-                                                  {language === 'ar' ? 'المستوى' : 'Level'} {level.level_number}
+                                                  {level.display_name || (level.custom_name ? level.custom_name : `${language === 'ar' ? 'المستوى' : 'Level'} ${level.level_number}`)}
                                                 </span>
                                                 <span className={`text-sm ${isFull ? 'text-red-600' : 'text-gray-600'}`}>
                                                   {memberCount}/{maxCapacity} {isFull && '⚠️'}
