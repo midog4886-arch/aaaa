@@ -1363,13 +1363,21 @@ export const LevelsPage = () => {
                   {t('إضافة نشاط', 'Add Activity')}
                 </Button>
               )}
-              {(currentView === 'times' || currentView === 'levels') && (
+              {currentView === 'times' && (
+                <Button
+                  onClick={() => openAddTimeSlotDialog(selectedActivityId)}
+                  className="gap-2"
+                  data-testid="add-timeslot-btn"
+                >
+                  <Plus className="w-4 h-4" />
+                  {t('إضافة ساعة', 'Add Time Slot')}
+                </Button>
+              )}
+              {currentView === 'levels' && (
                 <Button 
                   onClick={() => { 
-                    if (currentView === 'levels' && selectedActivityId && selectedTimeSlotKey) {
+                    if (selectedActivityId && selectedTimeSlotKey) {
                       handleAddNewLevel(selectedActivityId, selectedTimeSlotKey);
-                    } else if (currentView === 'times' && selectedActivityId) {
-                      handleAddNewLevel(selectedActivityId, '');
                     } else {
                       resetForm(); 
                       setIsDialogOpen(true);
