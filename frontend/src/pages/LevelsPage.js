@@ -80,6 +80,7 @@ export const LevelsPage = () => {
   // Add new time slot dialog
   const [isAddTimeSlotDialogOpen, setIsAddTimeSlotDialogOpen] = useState(false);
   const [newTimeSlotName, setNewTimeSlotName] = useState('');
+  const [dialogActivityId, setDialogActivityId] = useState('');
 
   // Print schedule dialog
   const [isPrintDialogOpen, setIsPrintDialogOpen] = useState(false);
@@ -481,8 +482,9 @@ export const LevelsPage = () => {
   // ========== Add New Time Slot ==========
   
   // Open dialog to add new time slot
-  const openAddTimeSlotDialog = () => {
+  const openAddTimeSlotDialog = (preselectedActivityId) => {
     setNewTimeSlotName('');
+    setDialogActivityId(preselectedActivityId || selectedActivityId || '');
     setIsAddTimeSlotDialogOpen(true);
   };
 
@@ -493,7 +495,8 @@ export const LevelsPage = () => {
       return;
     }
     
-    if (!selectedActivityId) {
+    const effectiveActivityId = dialogActivityId || selectedActivityId;
+    if (!effectiveActivityId) {
       toast.error(t('اختر نشاط أولاً', 'Select an activity first'));
       return;
     }
@@ -501,11 +504,9 @@ export const LevelsPage = () => {
     setSaving(true);
     try {
       // Get activity info to include the activity name prefix
-      const activity = getMainActivityInfo(selectedActivityId);
-      const activityPrefix = language === 'ar' ? activity.name_ar : activity.name_en;
+      const activity = getMainActivityInfo(effectiveActivityId);
       
       // Create activity_name that includes both the activity and time slot
-      // Format: "النشاط - الوقت" or just the time slot name if it already includes the activity
       let activityName = newTimeSlotName.trim();
       
       // Only add prefix if the time slot name doesn't already contain activity keywords
@@ -516,14 +517,12 @@ export const LevelsPage = () => {
                                   activityName.toLowerCase().includes('foot') ||
                                   activityName.toLowerCase().includes('karat');
       
-      if (!hasActivityKeyword && selectedActivityId !== 'other') {
-        // For display purposes, we'll use a format that parseActivityName can understand
-        // We add keywords to help with classification
-        if (selectedActivityId === 'swimming') {
+      if (!hasActivityKeyword && effectiveActivityId !== 'other') {
+        if (effectiveActivityId === 'swimming') {
           activityName = `سباحة - ${newTimeSlotName.trim()}`;
-        } else if (selectedActivityId === 'football') {
+        } else if (effectiveActivityId === 'football') {
           activityName = `كرة قدم - ${newTimeSlotName.trim()}`;
-        } else if (selectedActivityId === 'karate') {
+        } else if (effectiveActivityId === 'karate') {
           activityName = `كاراتيه - ${newTimeSlotName.trim()}`;
         }
       }
@@ -532,7 +531,7 @@ export const LevelsPage = () => {
         level_number: 1,
         activity_name: activityName,
         branch_id: selectedBranchId || 'all',
-        capacity: selectedActivityId === 'swimming' ? 6 : 10,
+        capacity: effectiveActivityId === 'swimming' ? 6 : 10,
         members: []
       };
       
@@ -1354,7 +1353,17 @@ export const LevelsPage = () => {
                 <Printer className="w-4 h-4" />
                 {t('طباعة الجدول', 'Print Schedule')}
               </Button>
-              {currentView !== 'days' && (
+              {currentView === 'activities' && (
+                <Button
+                  onClick={() => openAddTimeSlotDialog()}
+                  className="gap-2"
+                  data-testid="add-activity-btn"
+                >
+                  <Plus className="w-4 h-4" />
+                  {t('إضافة نشاط', 'Add Activity')}
+                </Button>
+              )}
+              {(currentView === 'times' || currentView === 'levels') && (
                 <Button 
                   onClick={() => { 
                     if (currentView === 'levels' && selectedActivityId && selectedTimeSlotKey) {
@@ -2244,12 +2253,30 @@ export const LevelsPage = () => {
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
                 <Clock className="w-5 h-5 text-primary" />
-                {t('إضافة ساعة جديدة', 'Add New Time Slot')}
+                {t('إضافة نشاط جديد', 'Add New Activity')}
               </DialogTitle>
             </DialogHeader>
             <div className="space-y-4">
               <div>
-                <Label>{t('اسم الساعة / الوقت', 'Time Slot Name')} *</Label>
+                <Label>{t('النشاط', 'Activity')} *</Label>
+                <Select
+                  value={dialogActivityId}
+                  onValueChange={setDialogActivityId}
+                >
+                  <SelectTrigger className="mt-1">
+                    <SelectValue placeholder={t('اختر النشاط', 'Select activity')} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {MAIN_ACTIVITIES.map(act => (
+                      <SelectItem key={act.id} value={act.id}>
+                        {act.icon} {language === 'ar' ? act.name_ar : act.name_en}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label>{t('اسم الوقت / المجموعة', 'Time / Group Name')} *</Label>
                 <Input
                   value={newTimeSlotName}
                   onChange={(e) => setNewTimeSlotName(e.target.value)}
@@ -2259,7 +2286,7 @@ export const LevelsPage = () => {
                   autoFocus
                 />
                 <p className="text-xs text-gray-400 mt-2">
-                  {t('سيتم إنشاء المستوى 1 تلقائياً مع هذه الساعة', 'Level 1 will be created automatically with this time slot')}
+                  {t('سيتم إنشاء المستوى 1 تلقائياً مع هذا النشاط', 'Level 1 will be created automatically')}
                 </p>
               </div>
             </div>
