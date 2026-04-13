@@ -1373,23 +1373,6 @@ export const LevelsPage = () => {
                   {t('إضافة ساعة', 'Add Time Slot')}
                 </Button>
               )}
-              {currentView === 'levels' && (
-                <Button 
-                  onClick={() => { 
-                    if (selectedActivityId && selectedTimeSlotKey) {
-                      handleAddNewLevel(selectedActivityId, selectedTimeSlotKey);
-                    } else {
-                      resetForm(); 
-                      setIsDialogOpen(true);
-                    }
-                  }} 
-                  className="gap-2"
-                  data-testid="add-level-btn"
-                >
-                  <Plus className="w-4 h-4" />
-                  {t('إضافة مستوى', 'Add Level')}
-                </Button>
-              )}
             </div>
           </div>
         </div>
