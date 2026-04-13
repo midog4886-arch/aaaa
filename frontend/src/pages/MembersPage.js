@@ -1610,7 +1610,9 @@ export const MembersPage = () => {
                                   <span className="text-sm">
                                     {(() => {
                                       const level = levels.find(l => l.id === activityForm.level_id);
-                                      return level ? `${language === 'ar' ? 'المستوى' : 'Level'} ${level.level_number} - ${level.activity_name}` : '';
+                                      if (!level) return '';
+                                      const label = level.custom_name ? level.custom_name : `${language === 'ar' ? 'المستوى' : 'Level'} ${level.level_number}`;
+                                      return level.activity_name ? `${label} - ${level.activity_name}` : label;
                                     })()}
                                   </span>
                                   <div className="flex gap-1">
@@ -1736,7 +1738,7 @@ export const MembersPage = () => {
                                         >
                                           <div className="flex items-center justify-between mb-1">
                                             <span className={`font-bold ${isFull ? 'text-red-600' : 'text-gray-800'}`}>
-                                              {language === 'ar' ? 'المستوى' : 'Level'} {level.level_number}
+                                              {level.custom_name ? level.custom_name : `${language === 'ar' ? 'المستوى' : 'Level'} ${level.level_number}`}
                                             </span>
                                             <span className={`text-sm ${isFull ? 'text-red-600' : 'text-gray-600'}`}>
                                               {memberCount}/{maxCapacity} {isFull && '⚠️'}

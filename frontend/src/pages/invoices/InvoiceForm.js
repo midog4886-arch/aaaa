@@ -13,6 +13,14 @@ import { Plus, Trash2, Loader2, Package } from 'lucide-react';
 import { toast } from 'sonner';
 import { PAYMENT_METHODS, VAT_RATE, SUBSCRIPTION_PERIODS, DAYS_OF_WEEK } from './constants';
 
+// Build a readable display name for a level matching the LevelsPage card view
+const getLevelDisplayName = (level) => {
+  if (!level) return '';
+  const label = level.custom_name ? level.custom_name : `المستوى ${level.level_number}`;
+  const activity = level.activity_name || '';
+  return activity ? `${label} - ${activity}` : label;
+};
+
 const InvoiceForm = ({
   isOpen,
   onClose,
@@ -105,7 +113,7 @@ const InvoiceForm = ({
     if (field === 'level_id') {
       const level = levels?.find(l => l.id === value);
       if (level) {
-        newItems[index].level_name = level.name;
+        newItems[index].level_name = getLevelDisplayName(level);
       }
     }
 
@@ -333,7 +341,7 @@ const InvoiceForm = ({
                             <SelectContent>
                               {levels.map(l => (
                                 <SelectItem key={l.id} value={l.id}>
-                                  {l.name}
+                                  {getLevelDisplayName(l)}
                                 </SelectItem>
                               ))}
                             </SelectContent>
