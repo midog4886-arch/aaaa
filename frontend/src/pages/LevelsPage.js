@@ -2114,28 +2114,40 @@ export const LevelsPage = () => {
                     {t('الأعضاء المتاحون', 'Available Members')} ({availableMembers.length})
                   </div>
                   <div className="flex-1 overflow-y-auto p-2 space-y-1">
-                    {availableMembers.slice(0, 50).map(member => (
-                      <div 
-                        key={member.id}
-                        className="flex items-center gap-2 p-2 bg-gray-50 rounded hover:bg-gray-100"
-                      >
-                        <div className="w-8 h-8 rounded-full bg-gray-400 text-white flex items-center justify-center text-sm font-bold">
-                          {(member.name_ar || member.name || '?').charAt(0)}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="font-medium text-sm truncate">{member.name_ar || member.name}</p>
-                          <p className="text-xs text-gray-500">#{member.member_code} • {member.phone}</p>
-                        </div>
-                        <Button
-                          size="icon"
-                          variant="ghost"
-                          className="h-7 w-7 text-green-500 hover:bg-green-50"
-                          onClick={() => handleAddMember(member.id)}
+                    {availableMembers.slice(0, 50).map(member => {
+                      const activeActivity = (member.activities || []).find(a => a.status === 'active');
+                      const activityLabel = activeActivity?.activity_name || '';
+                      const daysLabel = activeActivity?.training_days?.length
+                        ? activeActivity.training_days.join('، ')
+                        : activeActivity?.schedule || '';
+                      return (
+                        <div 
+                          key={member.id}
+                          className="flex items-center gap-2 p-2 bg-gray-50 rounded hover:bg-gray-100"
                         >
-                          <UserPlus className="w-4 h-4" />
-                        </Button>
-                      </div>
-                    ))}
+                          <div className="w-8 h-8 rounded-full bg-gray-400 text-white flex items-center justify-center text-sm font-bold flex-shrink-0">
+                            {(member.name_ar || member.name || '?').charAt(0)}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="font-medium text-sm truncate">{member.name_ar || member.name}</p>
+                            <p className="text-xs text-gray-500">#{member.member_code} • {member.phone}</p>
+                            {(activityLabel || daysLabel) && (
+                              <p className="text-xs text-blue-600 truncate mt-0.5">
+                                {activityLabel}{activityLabel && daysLabel ? ' — ' : ''}{daysLabel}
+                              </p>
+                            )}
+                          </div>
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            className="h-7 w-7 text-green-500 hover:bg-green-50 flex-shrink-0"
+                            onClick={() => handleAddMember(member.id)}
+                          >
+                            <UserPlus className="w-4 h-4" />
+                          </Button>
+                        </div>
+                      );
+                    })}
                     {availableMembers.length === 0 && (
                       <p className="text-center text-gray-400 py-4 text-sm">
                         {searchQuery ? t('لا توجد نتائج', 'No results') : t('لا يوجد أعضاء متاحون', 'No available members')}
