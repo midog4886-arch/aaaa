@@ -103,12 +103,15 @@ async def get_levels(
                             break
 
         # Build members_details for each level using the pre-fetched data
+        stale_updates = []  # (level_id, valid_members_list) pairs that need DB cleanup
         for level in levels:
             if level.get("members"):
                 members_details = []
+                valid_ids = []
                 for mid in level["members"]:
                     member = members_map.get(mid)
                     if member:
+                        valid_ids.append(mid)
                         schedule = ""
                         for act in member.get("activities", []):
                             if act.get("schedule"):
@@ -123,6 +126,23 @@ async def get_levels(
                             "schedule": schedule
                         })
                 level["members_details"] = members_details
+                # Sync members array to only valid IDs (remove stale/deleted member refs)
+                if len(valid_ids) != len(level["members"]):
+                    level["members"] = valid_ids
+                    if level.get("id"):
+                        stale_updates.append((level["id"], valid_ids))
+            else:
+                level["members_details"] = []
+
+        # Fire-and-forget: clean up stale member IDs in the database
+        for level_id, valid_ids in stale_updates:
+            try:
+                await db.levels.update_one(
+                    {"id": level_id},
+                    {"$set": {"members": valid_ids}}
+                )
+            except Exception:
+                pass
     else:
         for level in levels:
             level["members_details"] = []
