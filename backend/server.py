@@ -5887,6 +5887,12 @@ async def export_attendance_excel(
             "last_date": dates[-1] if dates else "",
         })
 
+    # Fetch activity label if not already set from level_doc
+    if not activity_label and activity_id:
+        act_doc = await db.activities.find_one({"id": activity_id}, {"_id": 0, "name_ar": 1, "name": 1})
+        if act_doc:
+            activity_label = act_doc.get("name_ar") or act_doc.get("name", "")
+
     export_date = datetime.now().strftime("%Y-%m-%d")
     date_range_label = ""
     if start_date and end_date:
@@ -5909,25 +5915,21 @@ async def export_attendance_excel(
                                 topMargin=15*mm, bottomMargin=15*mm,
                                 leftMargin=15*mm, rightMargin=15*mm)
 
-        # Register Arabic font
+        # Register Arabic font — deterministic paths only, no subprocess
         font_name = "Helvetica"
-        try:
-            font_paths = [
-                "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-                "/usr/share/fonts/TTF/DejaVuSans.ttf",
-            ]
-            import subprocess
-            result = subprocess.run(['find', '/nix/store', '-name', 'DejaVuSans.ttf', '-type', 'f'],
-                                    capture_output=True, text=True, timeout=5)
-            if result.stdout.strip():
-                font_paths.insert(0, result.stdout.strip().split('\n')[0])
-            for fp in font_paths:
+        font_paths = [
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+            "/usr/share/fonts/TTF/DejaVuSans.ttf",
+            "/nix/store/dejavu-fonts/share/fonts/truetype/DejaVuSans.ttf",
+        ]
+        for fp in font_paths:
+            try:
                 if Path(fp).exists():
                     pdfmetrics.registerFont(TTFont('ArabicFont', fp))
                     font_name = 'ArabicFont'
                     break
-        except:
-            pass
+            except Exception:
+                continue
 
         styles = getSampleStyleSheet()
         title_style = ParagraphStyle('T', fontName=font_name, fontSize=14, leading=20, alignment=2)
@@ -5949,7 +5951,7 @@ async def export_attendance_excel(
         elements.append(Paragraph("  |  ".join(subtitle_parts), sub_style))
         elements.append(Spacer(1, 5*mm))
 
-        headers_pdf = ["آخر حضور", "أول حضور", "عدد الجلسات", "النشاط", "الاسم", "رقم العضوية", "م"]
+        headers_pdf = ["آخر حضور", "أول حضور", "الجلسات", "المستوى", "النشاط", "الاسم", "رقم العضوية", "م"]
         header_row = [Paragraph(h, hdr_style) for h in headers_pdf]
         data = [header_row]
         for r in rows:
@@ -5957,13 +5959,14 @@ async def export_attendance_excel(
                 Paragraph(r["last_date"], cell_style),
                 Paragraph(r["first_date"], cell_style),
                 Paragraph(str(r["session_count"]), cell_style),
+                Paragraph(r["level_name"], cell_style),
                 Paragraph(r["activity_name"], cell_style),
                 Paragraph(r["member_name"], cell_style),
                 Paragraph(str(r["member_code"]), cell_style),
                 Paragraph(str(r["idx"]), cell_style),
             ])
 
-        col_widths = [28*mm, 28*mm, 22*mm, 40*mm, 45*mm, 22*mm, 10*mm]
+        col_widths = [24*mm, 24*mm, 16*mm, 28*mm, 32*mm, 40*mm, 20*mm, 8*mm]
         table = Table(data, colWidths=col_widths, repeatRows=1)
         table.setStyle(TableStyle([
             ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#F97316')),
@@ -6008,6 +6011,8 @@ async def export_attendance_excel(
     ws.append(["شركة اداء الابطال العالمية للرياضة"])
     ws.append(["كشف الحضور"])
     info_parts = []
+    if activity_label:
+        info_parts.append(f"النشاط: {activity_label}")
     if level_display_name:
         info_parts.append(f"المستوى: {level_display_name}")
     if date_range_label:
