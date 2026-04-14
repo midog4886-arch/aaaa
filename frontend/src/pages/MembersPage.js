@@ -77,6 +77,9 @@ export const MembersPage = () => {
   const [editingActivityId, setEditingActivityId] = useState(null);
   const [editActivityForm, setEditActivityForm] = useState({});
   const [editActivitySaving, setEditActivitySaving] = useState(false);
+  const [editingNotes, setEditingNotes] = useState(false);
+  const [notesValue, setNotesValue] = useState('');
+  const [notesSaving, setNotesSaving] = useState(false);
   const [isFreezeDialogOpen, setIsFreezeDialogOpen] = useState(false);
   const [freezeForm, setFreezeForm] = useState({ start_date: '', end_date: '', reason: 'personal' });
   const [memberFreezes, setMemberFreezes] = useState([]);
@@ -355,6 +358,23 @@ export const MembersPage = () => {
       toast.error(language === 'ar' ? 'فشل التحديث' : 'Update failed');
     } finally {
       setEditActivitySaving(false);
+    }
+  };
+
+  // Save notes directly from member view dialog
+  const handleSaveNotes = async () => {
+    if (!selectedMember) return;
+    setNotesSaving(true);
+    try {
+      await membersAPI.update(selectedMember.id, { notes: notesValue });
+      const updated = await membersAPI.getById(selectedMember.id);
+      setSelectedMember(updated.data);
+      setEditingNotes(false);
+      toast.success(language === 'ar' ? 'تم حفظ الملاحظات' : 'Notes saved');
+    } catch {
+      toast.error(language === 'ar' ? 'فشل الحفظ' : 'Save failed');
+    } finally {
+      setNotesSaving(false);
     }
   };
 
@@ -1950,12 +1970,48 @@ export const MembersPage = () => {
                         </div>
                       )}
                     </div>
-                    {selectedMember.notes && (
-                      <div className="p-4 bg-muted/50 rounded-lg">
-                        <p className="text-sm text-muted-foreground mb-1">{t('notes')}</p>
-                        <p>{selectedMember.notes}</p>
+                    {/* Notes section - always visible with edit capability */}
+                    <div className="p-4 bg-amber-50 border border-amber-200 rounded-lg">
+                      <div className="flex items-center justify-between mb-2">
+                        <p className="text-sm font-medium text-amber-800 flex items-center gap-1">
+                          📝 {language === 'ar' ? 'ملاحظات العضو' : 'Member Notes'}
+                        </p>
+                        {!editingNotes && (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-7 px-2 text-amber-700 hover:bg-amber-100"
+                            onClick={() => { setNotesValue(selectedMember.notes || ''); setEditingNotes(true); }}
+                          >
+                            <Edit className="w-3.5 h-3.5 me-1" />
+                            {language === 'ar' ? 'تعديل' : 'Edit'}
+                          </Button>
+                        )}
                       </div>
-                    )}
+                      {editingNotes ? (
+                        <div className="space-y-2">
+                          <Textarea
+                            value={notesValue}
+                            onChange={e => setNotesValue(e.target.value)}
+                            placeholder={language === 'ar' ? 'اكتب ملاحظات للعضو...' : 'Write member notes...'}
+                            className="min-h-[80px] text-sm bg-white"
+                            autoFocus
+                          />
+                          <div className="flex gap-2 justify-end">
+                            <Button size="sm" variant="outline" onClick={() => setEditingNotes(false)}>
+                              {language === 'ar' ? 'إلغاء' : 'Cancel'}
+                            </Button>
+                            <Button size="sm" onClick={handleSaveNotes} disabled={notesSaving} className="bg-amber-600 hover:bg-amber-700 text-white">
+                              {notesSaving ? (language === 'ar' ? 'جاري الحفظ...' : 'Saving...') : (language === 'ar' ? 'حفظ' : 'Save')}
+                            </Button>
+                          </div>
+                        </div>
+                      ) : (
+                        <p className="text-sm text-amber-900">
+                          {selectedMember.notes || <span className="text-amber-400 italic">{language === 'ar' ? 'لا توجد ملاحظات — اضغط تعديل لإضافة' : 'No notes — click Edit to add'}</span>}
+                        </p>
+                      )}
+                    </div>
                   </>
                 )}
 
