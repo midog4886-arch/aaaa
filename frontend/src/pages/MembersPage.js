@@ -342,12 +342,29 @@ export const MembersPage = () => {
         else { const last = sorted.pop(); daysStr = sorted.join('، ') + ' و ' + last; }
         return time ? `${daysStr} - ${time}` : daysStr;
       };
+
+      // Find the original activity to detect level change
+      const originalActivity = (selectedMember.activities || []).find(a => a.activity_id === editingActivityId);
+      const oldLevelId = originalActivity?.level_id || '';
+      const newLevelId = editActivityForm.level_id || '';
+
       const payload = {
         ...editActivityForm,
         fee: parseFloat(editActivityForm.fee) || 0,
         schedule: formatSchedule(editActivityForm.training_days || [], editActivityForm.training_time || '')
       };
       await membersAPI.updateActivity(selectedMember.id, editingActivityId, payload);
+
+      // Handle level change: remove from old level, add to new level
+      if (oldLevelId !== newLevelId) {
+        try {
+          if (oldLevelId) await levelsAPI.removeMember(oldLevelId, selectedMember.id);
+          if (newLevelId) await levelsAPI.addMember(newLevelId, selectedMember.id);
+        } catch (lvlErr) {
+          console.warn('Level update warning:', lvlErr);
+        }
+      }
+
       toast.success(language === 'ar' ? 'تم تحديث النشاط' : 'Activity updated');
       const updated = await membersAPI.getById(selectedMember.id);
       setSelectedMember(updated.data);
@@ -2121,6 +2138,7 @@ export const MembersPage = () => {
                                         setEditingActivityId(null);
                                         setEditActivityForm({});
                                       } else {
+                                        if (!levelsLoaded) loadLevels();
                                         setEditingActivityId(activity.activity_id);
                                         setEditActivityForm({
                                           activity_id: activity.activity_id,
@@ -2160,6 +2178,56 @@ export const MembersPage = () => {
                               {/* Inline Edit Form */}
                               {isEditing && (
                                 <div className="mt-3 pt-3 border-t border-blue-200 space-y-3">
+                                  {/* Activity selector */}
+                                  <div className="space-y-1">
+                                    <Label className="text-xs">{language === 'ar' ? 'النشاط' : 'Activity'}</Label>
+                                    <select
+                                      value={editActivityForm.activity_id || ''}
+                                      onChange={e => {
+                                        const act = activities.find(a => a.id === e.target.value);
+                                        setEditActivityForm({
+                                          ...editActivityForm,
+                                          activity_id: e.target.value,
+                                          activity_name: act ? (language === 'ar' ? act.name_ar : act.name) : editActivityForm.activity_name,
+                                          level_id: ''
+                                        });
+                                      }}
+                                      className="w-full h-9 text-sm border rounded-md px-2 bg-white"
+                                    >
+                                      <option value="">{language === 'ar' ? '-- اختر النشاط --' : '-- Select Activity --'}</option>
+                                      {activities.map(act => (
+                                        <option key={act.id} value={act.id}>
+                                          {language === 'ar' ? act.name_ar : act.name}
+                                        </option>
+                                      ))}
+                                    </select>
+                                  </div>
+                                  {/* Level selector */}
+                                  <div className="space-y-1">
+                                    <Label className="text-xs">{language === 'ar' ? 'المستوى' : 'Level'}</Label>
+                                    <select
+                                      value={editActivityForm.level_id || ''}
+                                      onChange={e => setEditActivityForm({...editActivityForm, level_id: e.target.value})}
+                                      className="w-full h-9 text-sm border rounded-md px-2 bg-white"
+                                    >
+                                      <option value="">{language === 'ar' ? '-- بدون مستوى --' : '-- No Level --'}</option>
+                                      {levels
+                                        .filter(l => {
+                                          if (!editActivityForm.activity_id) return true;
+                                          const act = activities.find(a => a.id === editActivityForm.activity_id);
+                                          if (!act) return true;
+                                          const actNameAr = act.name_ar || '';
+                                          return l.activity_name && l.activity_name.includes(actNameAr.split(' ')[0]);
+                                        })
+                                        .map(l => (
+                                          <option key={l.id} value={l.id}>
+                                            {l.display_name || l.custom_name || `${language === 'ar' ? 'المستوى' : 'Level'} ${l.level_number}`}
+                                            {l.activity_name ? ` — ${l.activity_name}` : ''}
+                                          </option>
+                                        ))
+                                      }
+                                    </select>
+                                  </div>
                                   <div className="grid grid-cols-2 gap-3">
                                     <div className="space-y-1">
                                       <Label className="text-xs">{t('start_date')}</Label>
