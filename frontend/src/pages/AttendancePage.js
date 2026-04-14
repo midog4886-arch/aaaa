@@ -838,7 +838,13 @@ export default function AttendancePage() {
   // Export attendance summary (summary mode: one row per member)
   const handleExportAttendanceSummary = (format = 'xlsx') => {
     const params = { format };
-    if (selectedActivityId) params.activity_id = selectedActivityId;
+    // Determine activity_id: if a level is selected its activity is used on backend;
+    // otherwise use first activity from selected category
+    if (!reportSelectedLevelId) {
+      const catActivities = selectedCategory ? getActivitiesByCategory(selectedCategory) : [];
+      const actId = selectedActivityId || (catActivities.length > 0 ? catActivities[0].id : null);
+      if (actId) params.activity_id = actId;
+    }
     if (reportSelectedLevelId) params.level_id = reportSelectedLevelId;
     if (selectedBranchId) params.branch_id = selectedBranchId;
     if (reportDateRange.start) params.start_date = reportDateRange.start;

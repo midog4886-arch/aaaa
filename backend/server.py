@@ -5795,8 +5795,8 @@ async def export_attendance_excel(
     """Export attendance summary to Excel or PDF (one row per member with session count)"""
     if token:
         try:
-            jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        except:
+            jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+        except Exception:
             raise HTTPException(status_code=401, detail="Invalid token")
 
     # Build date query
@@ -5819,16 +5819,36 @@ async def export_attendance_excel(
     # If level_id is given, restrict to members in that level
     level_doc = None
     level_display_name = ""
+    activity_label = ""
     if level_id:
         level_doc = await db.levels.find_one({"id": level_id}, {"_id": 0})
         if level_doc:
             custom = (level_doc.get("custom_name") or "").strip()
             level_display_name = custom if custom else f"المستوى {level_doc.get('level_number', '')}"
+            activity_label = level_doc.get("activity_name", "")
+            # Override activity_id from level doc if not already set
+            if not activity_id and level_doc.get("activity_id"):
+                query["activity_id"] = level_doc["activity_id"]
             level_member_ids = level_doc.get("members", [])
             if level_member_ids:
                 query["member_id"] = {"$in": level_member_ids}
+            else:
+                # Level is empty — guarantee zero results
+                query["member_id"] = {"$in": ["__no_match__"]}
 
     records = await db.attendance.find(query, {"_id": 0}).sort("date", 1).to_list(20000)
+
+    # Build per-member level name map (for when no level_id filter is applied)
+    member_level_map = {}
+    if not level_id:
+        lookup_aid = activity_id or (level_doc.get("activity_id") if level_doc else None)
+        lvl_query = {"activity_id": lookup_aid} if lookup_aid else {}
+        all_lvls = await db.levels.find(lvl_query, {"_id": 0}).to_list(200)
+        for lvl in all_lvls:
+            cn = (lvl.get("custom_name") or "").strip()
+            lname = cn if cn else f"المستوى {lvl.get('level_number', '')}"
+            for mid in lvl.get("members", []):
+                member_level_map[mid] = lname
 
     # Aggregate: one row per member
     from collections import defaultdict
@@ -5855,12 +5875,13 @@ async def export_attendance_excel(
     rows = []
     for idx, (mid, entry) in enumerate(sorted(member_map.items(), key=lambda x: x[1]["member_name"]), 1):
         dates = sorted(entry["dates"])
+        per_member_level = level_display_name if level_display_name else member_level_map.get(mid, "")
         rows.append({
             "idx": idx,
             "member_code": entry["member_code"],
             "member_name": entry["member_name"],
             "activity_name": entry["activity_name"],
-            "level_name": level_display_name,
+            "level_name": per_member_level,
             "session_count": entry["session_count"],
             "first_date": dates[0] if dates else "",
             "last_date": dates[-1] if dates else "",
@@ -5918,6 +5939,8 @@ async def export_attendance_excel(
         elements.append(Paragraph("شركة اداء الابطال العالمية للرياضة", title_style))
         elements.append(Paragraph("كشف الحضور", title_style))
         subtitle_parts = []
+        if activity_label:
+            subtitle_parts.append(f"النشاط: {activity_label}")
         if level_display_name:
             subtitle_parts.append(f"المستوى: {level_display_name}")
         if date_range_label:
