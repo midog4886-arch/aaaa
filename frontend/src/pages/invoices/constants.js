@@ -14,6 +14,13 @@ export const COMPANY_TAX_NUMBER = "312655637900003";
 export const COMPANY_COMMERCIAL_REG = "7043630230";
 export const VAT_RATE = 15; // 15%
 
+// Main activities for level selector
+export const MAIN_ACTIVITIES_FOR_LEVELS = [
+  { id: 'swimming', name_ar: 'السباحة', name_en: 'Swimming', icon: '🏊', color: 'bg-blue-500' },
+  { id: 'football', name_ar: 'كرة القدم', name_en: 'Football', icon: '⚽', color: 'bg-green-500' },
+  { id: 'karate', name_ar: 'الكاراتيه', name_en: 'Karate', icon: '🥋', color: 'bg-red-500' },
+];
+
 // Company info object
 export const COMPANY_INFO = {
   name_ar: "شركة اداء الابطال العالمية للرياضة",

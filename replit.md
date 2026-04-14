@@ -26,7 +26,7 @@ The system employs a full-stack architecture with distinct components for the ba
 
 **Technical Implementations & Feature Specifications:**
 - **Member Management:** Comprehensive CRUD operations for member profiles, including subscription details, attendance records, and communication.
-- **Invoicing:** Generation and management of invoices, with PDF and Excel export capabilities. WhatsApp sharing of invoice images is supported.
+- **Invoicing:** Generation and management of invoices, with PDF and Excel export capabilities. WhatsApp sharing of invoice images is supported. InvoicesPage has been refactored: the original 6,615-line file is now split into 5 hooks (`useInvoiceForm`, `useViewInvoiceHandlers`, `useQRCardPrint`, `useMemberCardPrint`, `useRegFormState`) under `invoices/hooks/`, and 12 dialog components under `invoices/components/dialogs/`. The main `InvoicesPage.js` is now 531 lines (orchestrator only).
 - **Attendance Tracking:**
     - **Member Attendance:** QR code-based check-in with schedule validation, instant notifications, and session quota monitoring.
     - **Coach Attendance:** Tracking check-in/check-out times, work hours calculation, and monthly reports.

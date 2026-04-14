@@ -7,7 +7,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { 
   invoicesAPI, membersAPI, activitiesAPI, productsAPI, 
   branchesAPI, registrationFormsAPI, creditNotesAPI, levelsAPI 
-} from '../../services/api';
+} from '../../../services/api';
 import { toast } from 'sonner';
 
 export const useInvoicesData = (t) => {
