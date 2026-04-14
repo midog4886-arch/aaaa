@@ -125,6 +125,7 @@ export const MembersPage = () => {
   
   // State for cascading level selector
   const [memberLevelSelectorState, setMemberLevelSelectorState] = useState(null);
+  const [editMemberLevelSelectorState, setEditMemberLevelSelectorState] = useState(null);
 
   // Main activities for level selector
   const MAIN_ACTIVITIES_FOR_LEVELS = [
@@ -370,6 +371,7 @@ export const MembersPage = () => {
       setSelectedMember(updated.data);
       setEditingActivityId(null);
       setEditActivityForm({});
+      setEditMemberLevelSelectorState(null);
     } catch (err) {
       console.error(err);
       toast.error(language === 'ar' ? 'فشل التحديث' : 'Update failed');
@@ -1767,7 +1769,7 @@ export const MembersPage = () => {
                                 <div className="p-2 space-y-1 max-h-48 overflow-y-auto">
                                   {Object.entries(groupedLevelsForSelector[memberLevelSelectorState.selectedActivity] || {}).map(([timeSlot, timeLevels]) => {
                                     const totalMembers = timeLevels.reduce((sum, l) => sum + (l.members || []).length, 0);
-                                    const totalCapacity = timeLevels.reduce((sum, l) => sum + (memberLevelSelectorState.selectedActivity === 'swimming' ? 6 : (l.capacity || 10)), 0);
+                                    const totalCapacity = timeLevels.reduce((sum, l) => sum + (l.capacity || 10), 0);
                                     return (
                                       <button
                                         key={timeSlot}
@@ -1797,7 +1799,7 @@ export const MembersPage = () => {
                                     .sort((a, b) => a.level_number - b.level_number)
                                     .map(level => {
                                       const memberCount = (level.members || []).length;
-                                      const maxCapacity = memberLevelSelectorState.selectedActivity === 'swimming' ? 6 : (level.capacity || 10);
+                                      const maxCapacity = level.capacity || 10;
                                       const isFull = memberCount >= maxCapacity;
                                       const fillPercent = Math.round((memberCount / maxCapacity) * 100);
                                       return (
@@ -2137,6 +2139,7 @@ export const MembersPage = () => {
                                       if (isEditing) {
                                         setEditingActivityId(null);
                                         setEditActivityForm({});
+                                        setEditMemberLevelSelectorState(null);
                                       } else {
                                         if (!levelsLoaded) loadLevels();
                                         setEditingActivityId(activity.activity_id);
@@ -2202,22 +2205,119 @@ export const MembersPage = () => {
                                       ))}
                                     </select>
                                   </div>
-                                  {/* Level selector */}
+                                  {/* Level selector - cascading */}
                                   <div className="space-y-1">
                                     <Label className="text-xs">{language === 'ar' ? 'المستوى' : 'Level'}</Label>
-                                    <select
-                                      value={editActivityForm.level_id || ''}
-                                      onChange={e => setEditActivityForm({...editActivityForm, level_id: e.target.value})}
-                                      className="w-full h-9 text-sm border rounded-md px-2 bg-white"
-                                    >
-                                      <option value="">{language === 'ar' ? '-- بدون مستوى --' : '-- No Level --'}</option>
-                                      {levels.map(l => (
-                                        <option key={l.id} value={l.id}>
-                                          {l.display_name || l.custom_name || `${language === 'ar' ? 'المستوى' : 'Level'} ${l.level_number}`}
-                                          {l.activity_name ? ` — ${l.activity_name}` : ''}
-                                        </option>
-                                      ))}
-                                    </select>
+                                    {!editMemberLevelSelectorState ? (
+                                      <div>
+                                        {editActivityForm.level_id ? (
+                                          <div className="flex items-center justify-between p-2 border rounded-lg bg-gray-50">
+                                            <span className="text-sm">
+                                              {(() => {
+                                                const level = levels.find(l => l.id === editActivityForm.level_id);
+                                                if (!level) return editActivityForm.level_id;
+                                                const label = level.display_name || (level.custom_name ? level.custom_name : `${language === 'ar' ? 'المستوى' : 'Level'} ${level.level_number}`);
+                                                return level.activity_name ? `${label} - ${level.activity_name}` : label;
+                                              })()}
+                                            </span>
+                                            <div className="flex gap-1">
+                                              <Button type="button" variant="ghost" size="sm" className="h-7 px-2" onClick={() => setEditMemberLevelSelectorState({ step: 'activity', selectedActivity: '', selectedTime: '' })}>
+                                                {language === 'ar' ? 'تغيير' : 'Change'}
+                                              </Button>
+                                              <Button type="button" variant="ghost" size="sm" className="h-7 px-2 text-red-500" onClick={() => setEditActivityForm({...editActivityForm, level_id: ''})}>✕</Button>
+                                            </div>
+                                          </div>
+                                        ) : (
+                                          <Button type="button" variant="outline" className="w-full h-8 text-sm justify-start gap-2" onClick={() => setEditMemberLevelSelectorState({ step: 'activity', selectedActivity: '', selectedTime: '' })}>
+                                            <span>🎯</span>
+                                            {language === 'ar' ? 'اختر المستوى' : 'Select Level'}
+                                          </Button>
+                                        )}
+                                      </div>
+                                    ) : (
+                                      <div className="border rounded-lg overflow-hidden bg-white shadow-sm">
+                                        <div className="flex items-center justify-between p-2 bg-gray-100 border-b">
+                                          <div className="flex items-center gap-2">
+                                            {editMemberLevelSelectorState.step !== 'activity' && (
+                                              <Button type="button" variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={() => {
+                                                if (editMemberLevelSelectorState.step === 'level') {
+                                                  setEditMemberLevelSelectorState({ ...editMemberLevelSelectorState, step: 'time', selectedTime: '' });
+                                                } else if (editMemberLevelSelectorState.step === 'time') {
+                                                  setEditMemberLevelSelectorState({ step: 'activity', selectedActivity: '', selectedTime: '' });
+                                                }
+                                              }}>{language === 'ar' ? '→' : '←'}</Button>
+                                            )}
+                                            <span className="text-xs font-medium text-gray-600">
+                                              {editMemberLevelSelectorState.step === 'activity' && (language === 'ar' ? 'اختر النشاط' : 'Select Activity')}
+                                              {editMemberLevelSelectorState.step === 'time' && (language === 'ar' ? 'اختر الساعة' : 'Select Time')}
+                                              {editMemberLevelSelectorState.step === 'level' && (language === 'ar' ? 'اختر المستوى' : 'Select Level')}
+                                            </span>
+                                          </div>
+                                          <Button type="button" variant="ghost" size="sm" className="h-6 px-2 text-xs" onClick={() => setEditMemberLevelSelectorState(null)}>✕</Button>
+                                        </div>
+                                        {editMemberLevelSelectorState.step === 'activity' && (
+                                          <div className="p-2 space-y-1 max-h-48 overflow-y-auto">
+                                            {MAIN_ACTIVITIES_FOR_LEVELS.map(activity => {
+                                              const activityLevels = groupedLevelsForSelector[activity.id] || {};
+                                              const timeCount = Object.keys(activityLevels).length;
+                                              if (timeCount === 0) return null;
+                                              return (
+                                                <button key={activity.id} type="button" className={`w-full flex items-center justify-between p-2 rounded-lg hover:bg-gray-100 transition-colors ${activity.color} bg-opacity-10`}
+                                                  onClick={() => setEditMemberLevelSelectorState({ ...editMemberLevelSelectorState, step: 'time', selectedActivity: activity.id })}>
+                                                  <div className="flex items-center gap-2"><span className="text-xl">{activity.icon}</span><span className="font-medium">{language === 'ar' ? activity.name_ar : activity.name_en}</span></div>
+                                                  <div className="flex items-center gap-1 text-gray-500"><span className="text-xs">{timeCount} {language === 'ar' ? 'أوقات' : 'times'}</span><span>{language === 'ar' ? '←' : '→'}</span></div>
+                                                </button>
+                                              );
+                                            })}
+                                          </div>
+                                        )}
+                                        {editMemberLevelSelectorState.step === 'time' && (
+                                          <div className="p-2 space-y-1 max-h-48 overflow-y-auto">
+                                            {Object.entries(groupedLevelsForSelector[editMemberLevelSelectorState.selectedActivity] || {}).map(([timeSlot, timeLevels]) => {
+                                              const totalMembers = timeLevels.reduce((sum, l) => sum + (l.members || []).length, 0);
+                                              const totalCapacity = timeLevels.reduce((sum, l) => sum + (l.capacity || 10), 0);
+                                              return (
+                                                <button key={timeSlot} type="button" className="w-full flex items-center justify-between p-2 rounded-lg hover:bg-blue-50 transition-colors border"
+                                                  onClick={() => setEditMemberLevelSelectorState({ ...editMemberLevelSelectorState, step: 'level', selectedTime: timeSlot })}>
+                                                  <div className="flex items-center gap-2"><span className="text-lg">🕐</span><span className="font-medium text-sm">{timeSlot}</span></div>
+                                                  <div className="flex items-center gap-2">
+                                                    <span className="text-xs text-gray-500">{timeLevels.length} {language === 'ar' ? 'مستويات' : 'levels'} • {totalMembers}/{totalCapacity}</span>
+                                                    <span className="text-gray-400">{language === 'ar' ? '←' : '→'}</span>
+                                                  </div>
+                                                </button>
+                                              );
+                                            })}
+                                          </div>
+                                        )}
+                                        {editMemberLevelSelectorState.step === 'level' && (
+                                          <div className="p-2 space-y-1 max-h-48 overflow-y-auto">
+                                            {(groupedLevelsForSelector[editMemberLevelSelectorState.selectedActivity]?.[editMemberLevelSelectorState.selectedTime] || [])
+                                              .sort((a, b) => a.level_number - b.level_number)
+                                              .map(level => {
+                                                const memberCount = (level.members || []).length;
+                                                const maxCapacity = level.capacity || 10;
+                                                const isFull = memberCount >= maxCapacity;
+                                                const fillPercent = Math.round((memberCount / maxCapacity) * 100);
+                                                return (
+                                                  <button key={level.id} type="button"
+                                                    className={`w-full p-2 rounded-lg transition-colors border ${isFull ? 'bg-red-50 border-red-200 hover:bg-red-100' : 'hover:bg-green-50 border-gray-200'}`}
+                                                    onClick={() => { setEditActivityForm({...editActivityForm, level_id: level.id}); setEditMemberLevelSelectorState(null); }}>
+                                                    <div className="flex items-center justify-between mb-1">
+                                                      <span className={`font-bold ${isFull ? 'text-red-600' : 'text-gray-800'}`}>
+                                                        {level.display_name || (level.custom_name ? level.custom_name : `${language === 'ar' ? 'المستوى' : 'Level'} ${level.level_number}`)}
+                                                      </span>
+                                                      <span className={`text-sm ${isFull ? 'text-red-600' : 'text-gray-600'}`}>{memberCount}/{maxCapacity} {isFull && '⚠️'}</span>
+                                                    </div>
+                                                    <div className="w-full bg-gray-200 rounded-full h-1.5">
+                                                      <div className={`h-1.5 rounded-full ${isFull ? 'bg-red-500' : 'bg-green-500'}`} style={{ width: `${Math.min(fillPercent, 100)}%` }} />
+                                                    </div>
+                                                  </button>
+                                                );
+                                              })}
+                                          </div>
+                                        )}
+                                      </div>
+                                    )}
                                   </div>
                                   <div className="grid grid-cols-2 gap-3">
                                     <div className="space-y-1">
