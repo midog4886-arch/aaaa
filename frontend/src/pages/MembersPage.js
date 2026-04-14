@@ -2211,21 +2211,12 @@ export const MembersPage = () => {
                                       className="w-full h-9 text-sm border rounded-md px-2 bg-white"
                                     >
                                       <option value="">{language === 'ar' ? '-- بدون مستوى --' : '-- No Level --'}</option>
-                                      {levels
-                                        .filter(l => {
-                                          if (!editActivityForm.activity_id) return true;
-                                          const act = activities.find(a => a.id === editActivityForm.activity_id);
-                                          if (!act) return true;
-                                          const actNameAr = act.name_ar || '';
-                                          return l.activity_name && l.activity_name.includes(actNameAr.split(' ')[0]);
-                                        })
-                                        .map(l => (
-                                          <option key={l.id} value={l.id}>
-                                            {l.display_name || l.custom_name || `${language === 'ar' ? 'المستوى' : 'Level'} ${l.level_number}`}
-                                            {l.activity_name ? ` — ${l.activity_name}` : ''}
-                                          </option>
-                                        ))
-                                      }
+                                      {levels.map(l => (
+                                        <option key={l.id} value={l.id}>
+                                          {l.display_name || l.custom_name || `${language === 'ar' ? 'المستوى' : 'Level'} ${l.level_number}`}
+                                          {l.activity_name ? ` — ${l.activity_name}` : ''}
+                                        </option>
+                                      ))}
                                     </select>
                                   </div>
                                   <div className="grid grid-cols-2 gap-3">
