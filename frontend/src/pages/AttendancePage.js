@@ -431,26 +431,44 @@ export default function AttendancePage() {
   const onQRScanSuccess = async (decodedText) => {
     try {
       const data = JSON.parse(decodedText);
-      
-      // Support multiple QR formats (old and new)
+
+      // If JSON parsed to a primitive (number/string), treat as a plain member/coach code
+      if (typeof data !== 'object' || data === null) {
+        const code = String(data).trim();
+        stopQRScanner();
+        setManualMemberId(code);
+        await fetchMemberActivities(code);
+        return;
+      }
+
+      // Coach QR with explicit type
+      if (data.type === 'WCPA_COACH' || data.employee_id) {
+        const empId = String(data.employee_id || data.id || '').trim();
+        if (empId) {
+          stopQRScanner();
+          await handleCoachQRCheckin(empId);
+        } else {
+          toast.error(t('كود غير صالح', 'Invalid QR code'));
+        }
+        return;
+      }
+
+      // Support multiple member QR formats (old and new)
       const memberCode = data.code || data.member_code || data.id;
-      
       if ((data.type === 'WCPA_MEMBER' || data.type === 'WCPA_REG_FORM' || data.member_id || data.member_code) && memberCode) {
-        // Stop scanner after successful scan
         stopQRScanner();
         setManualMemberId(memberCode);
-        
-        // Fetch member data with activities
         await fetchMemberActivities(memberCode);
       } else {
         toast.error(t('كود غير صالح', 'Invalid QR code'));
       }
     } catch (e) {
-      // Maybe it's just a member code string
-      if (decodedText.match(/^\d+$/)) {
+      // Plain text — try as member/coach code
+      const trimmed = decodedText.trim();
+      if (trimmed.match(/^\d+$/)) {
         stopQRScanner();
-        setManualMemberId(decodedText);
-        await fetchMemberActivities(decodedText);
+        setManualMemberId(trimmed);
+        await fetchMemberActivities(trimmed);
       } else {
         toast.error(t('كود غير صالح', 'Invalid QR code'));
       }
