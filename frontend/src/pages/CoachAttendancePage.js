@@ -3,7 +3,8 @@ import Layout from '../components/Layout';
 import { 
   Clock, LogIn, LogOut, UserX, Calendar, ChevronLeft, ChevronRight,
   FileText, Download, Edit2, Trash2, Save, X, AlertCircle, CheckCircle,
-  Users, Timer, CalendarDays, UserPlus, Phone, Mail, QrCode, Printer
+  Users, Timer, CalendarDays, UserPlus, Phone, Mail, QrCode, Printer,
+  FileSpreadsheet, TrendingUp, Award, AlarmClock, List
 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import axios from 'axios';
@@ -32,6 +33,7 @@ const CoachAttendancePage = () => {
   const [qrCoach, setQrCoach] = useState(null); // coach whose QR is being shown
   const [lateThreshold, setLateThreshold] = useState('09:00'); // وقت الحضور المعتاد
   const [lateDetailCoach, setLateDetailCoach] = useState(null); // popup for late details
+  const [detailCoach, setDetailCoach] = useState(null); // daily breakdown modal
   const qrRef = useRef(null);
   const branchFilter = localStorage.getItem('selectedBranch') || 'all';
 
@@ -281,8 +283,42 @@ const CoachAttendancePage = () => {
     a.click();
   };
 
+  const exportFile = (format) => {
+    const token = localStorage.getItem('token');
+    const params = new URLSearchParams({ month: selectedMonth, format, late_threshold: lateThreshold });
+    if (branchFilter && branchFilter !== 'all') params.append('branch_filter', branchFilter);
+    const url = `/api/coach-attendance/monthly-report/export?${params.toString()}`;
+    const a = document.createElement('a');
+    a.href = url;
+    a.setAttribute('download', `coach_report_${selectedMonth}.${format}`);
+    document.body.appendChild(a);
+    fetch(url, { headers: { Authorization: `Bearer ${token}` } })
+      .then(res => res.blob())
+      .then(blob => {
+        const blobUrl = URL.createObjectURL(blob);
+        a.href = blobUrl;
+        a.click();
+        URL.revokeObjectURL(blobUrl);
+        document.body.removeChild(a);
+      })
+      .catch(() => { document.body.removeChild(a); showToast('حدث خطأ أثناء التصدير', 'error'); });
+  };
+
+  const handlePrint = () => window.print();
+
   return (
     <Layout>
+      <style>{`
+        @media print {
+          nav, header, aside, [data-sidebar], .sidebar,
+          [class*="sidebar"], [class*="nav-"], [class*="header-"],
+          button, .print\\:hidden { display: none !important; }
+          body, html { background: white !important; }
+          table { width: 100% !important; border-collapse: collapse; }
+          th, td { border: 1px solid #ccc !important; padding: 6px !important; font-size: 12px; }
+          * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+        }
+      `}</style>
       <div className="p-4 md:p-6 max-w-7xl mx-auto" dir="rtl">
         {toast && (
           <div className={`fixed top-4 left-1/2 -translate-x-1/2 z-50 px-4 py-3 rounded-lg shadow-lg flex items-center gap-2 ${
@@ -813,7 +849,14 @@ const CoachAttendancePage = () => {
           </>
         ) : (
           <>
-            <div className="flex items-center justify-center flex-wrap gap-3 mb-6">
+            {/* Print-only header */}
+            <div className="hidden print:block text-center mb-6">
+              <h1 className="text-xl font-bold">شركة اداء الابطال العالمية للرياضة</h1>
+              <p className="text-base mt-1">التقرير الشهري للمدربين — {selectedMonth}</p>
+            </div>
+
+            {/* Controls bar */}
+            <div className="print:hidden flex items-center justify-center flex-wrap gap-3 mb-6">
               <input
                 type="month"
                 value={selectedMonth}
@@ -831,10 +874,28 @@ const CoachAttendancePage = () => {
                 />
               </div>
               <button
-                onClick={exportCSV}
-                className="px-4 py-2 bg-green-500 text-white rounded-lg text-sm hover:bg-green-600 flex items-center gap-1"
+                onClick={() => exportFile('xlsx')}
+                className="px-4 py-2 bg-green-600 text-white rounded-lg text-sm hover:bg-green-700 flex items-center gap-1"
               >
-                <Download className="w-4 h-4" /> تصدير CSV
+                <FileSpreadsheet className="w-4 h-4" /> Excel
+              </button>
+              <button
+                onClick={() => exportFile('pdf')}
+                className="px-4 py-2 bg-red-600 text-white rounded-lg text-sm hover:bg-red-700 flex items-center gap-1"
+              >
+                <FileText className="w-4 h-4" /> PDF
+              </button>
+              <button
+                onClick={exportCSV}
+                className="px-4 py-2 bg-gray-500 text-white rounded-lg text-sm hover:bg-gray-600 flex items-center gap-1"
+              >
+                <Download className="w-4 h-4" /> CSV
+              </button>
+              <button
+                onClick={handlePrint}
+                className="px-4 py-2 bg-gray-700 text-white rounded-lg text-sm hover:bg-gray-800 flex items-center gap-1"
+              >
+                <Printer className="w-4 h-4" /> طباعة
               </button>
             </div>
 
@@ -843,64 +904,113 @@ const CoachAttendancePage = () => {
             ) : !monthlyReport || monthlyReport.report.length === 0 ? (
               <div className="text-center py-12 text-gray-400">لا توجد بيانات للشهر المحدد</div>
             ) : (
-              <div className="bg-white rounded-xl border shadow-sm overflow-hidden">
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="bg-gray-50 border-b">
-                        <th className="px-4 py-3 text-right font-medium text-gray-600">المدرب</th>
-                        <th className="px-4 py-3 text-center font-medium text-green-600">أيام الحضور</th>
-                        <th className="px-4 py-3 text-center font-medium text-red-600">أيام الغياب</th>
-                        <th className="px-4 py-3 text-center font-medium text-yellow-600">أيام الإجازة</th>
-                        <th className="px-4 py-3 text-center font-medium text-blue-600">إجمالي الساعات</th>
-                        <th className="px-4 py-3 text-center font-medium text-orange-600">التأخرات</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {monthlyReport.report.map(r => (
-                        <tr key={r.coach_id} className="border-b hover:bg-gray-50">
-                          <td className="px-4 py-3 font-medium">{r.coach_name}</td>
-                          <td className="px-4 py-3 text-center">
-                            <span className="bg-green-100 text-green-700 px-2 py-0.5 rounded-full text-xs font-bold">
-                              {r.present_days}
-                            </span>
-                          </td>
-                          <td className="px-4 py-3 text-center">
-                            <span className="bg-red-100 text-red-700 px-2 py-0.5 rounded-full text-xs font-bold">
-                              {r.absent_days}
-                            </span>
-                          </td>
-                          <td className="px-4 py-3 text-center">
-                            <span className="bg-yellow-100 text-yellow-700 px-2 py-0.5 rounded-full text-xs font-bold">
-                              {r.leave_days}
-                            </span>
-                          </td>
-                          <td className="px-4 py-3 text-center">
-                            <span className="bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full text-xs font-bold">
-                              {r.total_hours}
-                            </span>
-                          </td>
-                          <td className="px-4 py-3 text-center">
-                            {(r.late_days || 0) === 0 ? (
-                              <span className="text-green-600 font-bold text-sm">✓</span>
-                            ) : (
-                              <button
-                                onClick={() => setLateDetailCoach(r)}
-                                className="inline-flex flex-col items-center gap-0.5 cursor-pointer group"
-                              >
-                                <span className="bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full text-xs font-bold group-hover:bg-orange-200 transition-colors">
-                                  {r.late_days} يوم
-                                </span>
-                                <span className="text-xs text-gray-500">{r.late_minutes} دقيقة</span>
-                              </button>
-                            )}
-                          </td>
+              <>
+                {/* Summary stat cards */}
+                {(() => {
+                  const report = monthlyReport.report;
+                  const totalHours = report.reduce((s, r) => s + (r.total_hours || 0), 0).toFixed(1);
+                  const totalPresent = report.reduce((s, r) => s + (r.present_days || 0), 0);
+                  const totalAbsent = report.reduce((s, r) => s + (r.absent_days || 0), 0);
+                  const attendanceRate = totalPresent + totalAbsent > 0
+                    ? Math.round((totalPresent / (totalPresent + totalAbsent)) * 100)
+                    : 0;
+                  const totalLateDays = report.reduce((s, r) => s + (r.late_days || 0), 0);
+                  const topCoach = report.reduce((best, r) => (!best || r.present_days > best.present_days) ? r : best, null);
+                  return (
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+                      <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 text-center">
+                        <Timer className="w-6 h-6 text-blue-500 mx-auto mb-2" />
+                        <p className="text-2xl font-bold text-blue-700">{totalHours}</p>
+                        <p className="text-xs text-blue-500 mt-1">إجمالي ساعات العمل</p>
+                      </div>
+                      <div className="bg-green-50 border border-green-200 rounded-xl p-4 text-center">
+                        <TrendingUp className="w-6 h-6 text-green-500 mx-auto mb-2" />
+                        <p className="text-2xl font-bold text-green-700">{attendanceRate}%</p>
+                        <p className="text-xs text-green-500 mt-1">متوسط نسبة الحضور</p>
+                      </div>
+                      <div className="bg-orange-50 border border-orange-200 rounded-xl p-4 text-center">
+                        <AlarmClock className="w-6 h-6 text-orange-500 mx-auto mb-2" />
+                        <p className="text-2xl font-bold text-orange-700">{totalLateDays}</p>
+                        <p className="text-xs text-orange-500 mt-1">إجمالي أيام التأخر</p>
+                      </div>
+                      <div className="bg-purple-50 border border-purple-200 rounded-xl p-4 text-center">
+                        <Award className="w-6 h-6 text-purple-500 mx-auto mb-2" />
+                        <p className="text-sm font-bold text-purple-700 truncate">{topCoach ? topCoach.coach_name : '—'}</p>
+                        <p className="text-xs text-purple-500 mt-1">أعلى حضوراً ({topCoach ? topCoach.present_days : 0} يوم)</p>
+                      </div>
+                    </div>
+                  );
+                })()}
+
+                {/* Main table */}
+                <div className="bg-white rounded-xl border shadow-sm overflow-hidden">
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="bg-gray-50 border-b">
+                          <th className="px-4 py-3 text-right font-medium text-gray-600">المدرب</th>
+                          <th className="px-4 py-3 text-center font-medium text-green-600">أيام الحضور</th>
+                          <th className="px-4 py-3 text-center font-medium text-red-600">أيام الغياب</th>
+                          <th className="px-4 py-3 text-center font-medium text-yellow-600">أيام الإجازة</th>
+                          <th className="px-4 py-3 text-center font-medium text-blue-600">إجمالي الساعات</th>
+                          <th className="px-4 py-3 text-center font-medium text-orange-600">التأخرات</th>
+                          <th className="px-4 py-3 text-center font-medium text-gray-500 print:hidden">تفاصيل</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                      </thead>
+                      <tbody>
+                        {monthlyReport.report.map(r => (
+                          <tr key={r.coach_id} className="border-b hover:bg-gray-50">
+                            <td className="px-4 py-3 font-medium">{r.coach_name}</td>
+                            <td className="px-4 py-3 text-center">
+                              <span className="bg-green-100 text-green-700 px-2 py-0.5 rounded-full text-xs font-bold">
+                                {r.present_days}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3 text-center">
+                              <span className="bg-red-100 text-red-700 px-2 py-0.5 rounded-full text-xs font-bold">
+                                {r.absent_days}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3 text-center">
+                              <span className="bg-yellow-100 text-yellow-700 px-2 py-0.5 rounded-full text-xs font-bold">
+                                {r.leave_days}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3 text-center">
+                              <span className="bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full text-xs font-bold">
+                                {r.total_hours}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3 text-center">
+                              {(r.late_days || 0) === 0 ? (
+                                <span className="text-green-600 font-bold text-sm">✓</span>
+                              ) : (
+                                <button
+                                  onClick={() => setLateDetailCoach(r)}
+                                  className="inline-flex flex-col items-center gap-0.5 cursor-pointer group"
+                                >
+                                  <span className="bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full text-xs font-bold group-hover:bg-orange-200 transition-colors">
+                                    {r.late_days} يوم
+                                  </span>
+                                  <span className="text-xs text-gray-500">{r.late_minutes} دقيقة</span>
+                                </button>
+                              )}
+                            </td>
+                            <td className="px-4 py-3 text-center print:hidden">
+                              <button
+                                onClick={() => setDetailCoach(r)}
+                                className="inline-flex items-center gap-1 text-xs text-gray-500 hover:text-blue-600 border border-gray-200 hover:border-blue-300 rounded-lg px-2 py-1 transition-colors"
+                              >
+                                <List className="w-3.5 h-3.5" /> الأيام
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
-              </div>
+              </>
             )}
           </>
         )}
@@ -948,6 +1058,72 @@ const CoachAttendancePage = () => {
                     </div>
                   ))}
                 </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Daily breakdown modal */}
+        {detailCoach && (
+          <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={() => setDetailCoach(null)}>
+            <div className="bg-white rounded-xl w-full max-w-2xl shadow-2xl" dir="rtl" onClick={(e) => e.stopPropagation()}>
+              <div className="bg-blue-600 text-white px-5 py-4 rounded-t-xl flex items-center justify-between">
+                <div>
+                  <h3 className="font-bold text-lg">تفاصيل الأيام الشهرية</h3>
+                  <p className="text-blue-100 text-sm mt-0.5">{detailCoach.coach_name} — {selectedMonth}</p>
+                </div>
+                <button onClick={() => setDetailCoach(null)} className="text-white hover:text-blue-200 transition-colors">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+              <div className="p-5">
+                <div className="flex gap-3 mb-4 text-sm flex-wrap">
+                  <span className="bg-green-100 text-green-700 px-3 py-1 rounded-full font-medium">حضور: {detailCoach.present_days}</span>
+                  <span className="bg-red-100 text-red-700 px-3 py-1 rounded-full font-medium">غياب: {detailCoach.absent_days}</span>
+                  <span className="bg-yellow-100 text-yellow-700 px-3 py-1 rounded-full font-medium">إجازة: {detailCoach.leave_days}</span>
+                  <span className="bg-blue-100 text-blue-700 px-3 py-1 rounded-full font-medium">ساعات: {detailCoach.total_hours}</span>
+                </div>
+                {(!detailCoach.records || detailCoach.records.length === 0) ? (
+                  <p className="text-center text-gray-400 py-6">لا توجد سجلات لهذا الشهر</p>
+                ) : (
+                  <div className="max-h-96 overflow-y-auto">
+                    <table className="w-full text-sm">
+                      <thead className="sticky top-0 bg-gray-50">
+                        <tr className="border-b">
+                          <th className="px-3 py-2 text-right font-medium text-gray-600">التاريخ</th>
+                          <th className="px-3 py-2 text-center font-medium text-gray-600">الحضور</th>
+                          <th className="px-3 py-2 text-center font-medium text-gray-600">الانصراف</th>
+                          <th className="px-3 py-2 text-center font-medium text-gray-600">الساعات</th>
+                          <th className="px-3 py-2 text-center font-medium text-gray-600">الحالة</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {[...detailCoach.records].sort((a, b) => a.date.localeCompare(b.date)).map((rec, idx) => {
+                          const statusMap = {
+                            present: { label: 'حاضر', cls: 'bg-green-100 text-green-700' },
+                            checked_out: { label: 'انصرف', cls: 'bg-blue-100 text-blue-700' },
+                            absent: { label: 'غائب', cls: 'bg-red-100 text-red-700' },
+                            leave: { label: 'إجازة', cls: 'bg-yellow-100 text-yellow-700' },
+                          };
+                          const st = statusMap[rec.status] || { label: rec.status, cls: 'bg-gray-100 text-gray-600' };
+                          return (
+                            <tr key={idx} className={`border-b ${idx % 2 === 1 ? 'bg-gray-50' : ''}`}>
+                              <td className="px-3 py-2 font-medium">{rec.date}</td>
+                              <td className="px-3 py-2 text-center">{rec.check_in_time || '—'}</td>
+                              <td className="px-3 py-2 text-center">{rec.check_out_time || '—'}</td>
+                              <td className="px-3 py-2 text-center">
+                                {rec.total_hours ? `${rec.total_hours} س` : '—'}
+                              </td>
+                              <td className="px-3 py-2 text-center">
+                                <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${st.cls}`}>{st.label}</span>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
               </div>
             </div>
           </div>

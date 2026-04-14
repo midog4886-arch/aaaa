@@ -3,13 +3,42 @@ Coach Attendance API Routes
 Handles coach/trainer attendance tracking (check-in, check-out, reports)
 """
 from fastapi import APIRouter, HTTPException, Depends
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from typing import Optional, List
 from datetime import datetime, timezone, timedelta
+from io import BytesIO
+from pathlib import Path
 import uuid
 
 from database import db
 from utils.auth import get_current_user
+
+
+def _get_openpyxl():
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, Alignment, Border, Side, PatternFill
+    return type('XL', (), {
+        'Workbook': Workbook, 'Font': Font, 'Alignment': Alignment,
+        'Border': Border, 'Side': Side, 'PatternFill': PatternFill,
+    })()
+
+
+def _get_reportlab():
+    from reportlab.lib import colors
+    from reportlab.lib.pagesizes import A4
+    from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.lib.units import mm
+    from reportlab.pdfbase import pdfmetrics
+    from reportlab.pdfbase.ttfonts import TTFont
+    return type('RL', (), {
+        'colors': colors, 'A4': A4,
+        'SimpleDocTemplate': SimpleDocTemplate, 'Table': Table,
+        'TableStyle': TableStyle, 'Paragraph': Paragraph, 'Spacer': Spacer,
+        'getSampleStyleSheet': getSampleStyleSheet, 'ParagraphStyle': ParagraphStyle,
+        'mm': mm, 'pdfmetrics': pdfmetrics, 'TTFont': TTFont,
+    })()
 
 router = APIRouter(prefix="/coach-attendance", tags=["Coach Attendance"])
 
@@ -358,6 +387,240 @@ async def monthly_report(
         }
 
     return {"month": month, "late_threshold": effective_threshold, "report": list(report.values())}
+
+
+@router.get("/monthly-report/export")
+async def export_monthly_report(
+    month: str,
+    branch_filter: Optional[str] = None,
+    late_threshold: str = "09:00",
+    format: str = "xlsx",
+    current_user: dict = Depends(get_current_user)
+):
+    """Export monthly coach attendance report as Excel or PDF."""
+    query = {"date": {"$regex": f"^{month}"}}
+    if branch_filter and branch_filter != "all":
+        query["$or"] = [
+            {"branch_id": branch_filter},
+            {"branch_id": None},
+            {"branch_id": {"$exists": False}}
+        ]
+    records = await db.coach_attendance.find(query, {"_id": 0}).to_list(5000)
+
+    coach_query = {}
+    if branch_filter and branch_filter != "all":
+        coach_query = {"$or": [
+            {"branch_id": branch_filter},
+            {"branch_id": None},
+            {"branch_id": {"$exists": False}}
+        ]}
+    coaches = await db.coaches.find(coach_query, {"_id": 0}).to_list(100)
+
+    try:
+        threshold_dt = datetime.strptime(late_threshold, "%H:%M")
+        effective_threshold = late_threshold
+    except Exception:
+        threshold_dt = datetime.strptime("09:00", "%H:%M")
+        effective_threshold = "09:00"
+
+    rows = []
+    for idx, coach in enumerate(coaches, 1):
+        cid = coach["id"]
+        coach_records = [r for r in records if r.get("coach_id") == cid]
+        present_days = len([r for r in coach_records if r.get("status") in ("present", "checked_out")])
+        absent_days = len([r for r in coach_records if r.get("status") == "absent"])
+        leave_days = len([r for r in coach_records if r.get("status") == "leave"])
+        total_hours = round(sum(r.get("total_hours", 0) or 0 for r in coach_records), 2)
+
+        coach_threshold_str = coach.get("expected_checkin_time") or effective_threshold
+        try:
+            coach_threshold_dt = datetime.strptime(coach_threshold_str, "%H:%M")
+        except Exception:
+            coach_threshold_dt = threshold_dt
+
+        late_days = 0
+        late_minutes_total = 0
+        for r in coach_records:
+            if r.get("status") not in ("present", "checked_out"):
+                continue
+            cin_str = r.get("check_in_time")
+            if not cin_str:
+                continue
+            try:
+                cin_dt = datetime.strptime(cin_str, "%H:%M")
+                diff = (cin_dt - coach_threshold_dt).total_seconds() / 60
+                if diff > 0:
+                    late_days += 1
+                    late_minutes_total += diff
+            except Exception:
+                pass
+
+        rows.append({
+            "idx": idx,
+            "coach_name": coach.get("name_ar", coach.get("name", "")),
+            "present_days": present_days,
+            "absent_days": absent_days,
+            "leave_days": leave_days,
+            "total_hours": total_hours,
+            "late_days": late_days,
+            "late_minutes": round(late_minutes_total),
+        })
+
+    export_date = datetime.now().strftime("%Y-%m-%d")
+    headers_row = ["م", "المدرب", "أيام الحضور", "أيام الغياب", "أيام الإجازة", "إجمالي الساعات", "أيام التأخر", "دقائق التأخر"]
+
+    # ── Excel ──────────────────────────────────────────
+    if format == "xlsx":
+        xl = _get_openpyxl()
+        Workbook = xl.Workbook; Font = xl.Font; PatternFill = xl.PatternFill
+        Border = xl.Border; Side = xl.Side; Alignment = xl.Alignment
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "تقرير المدربين"
+
+        orange_fill = PatternFill("solid", fgColor="F97316")
+        white_on_orange = Font(bold=True, color="FFFFFF")
+        alt_fill = PatternFill("solid", fgColor="FFF7ED")
+        border = Border(
+            left=Side(style='thin', color='DDDDDD'),
+            right=Side(style='thin', color='DDDDDD'),
+            top=Side(style='thin', color='DDDDDD'),
+            bottom=Side(style='thin', color='DDDDDD'),
+        )
+        center = Alignment(horizontal='center', vertical='center', wrap_text=True)
+        right_align = Alignment(horizontal='right', vertical='center', wrap_text=True)
+
+        ws.append(["شركة اداء الابطال العالمية للرياضة"])
+        ws.append([f"التقرير الشهري للمدربين — {month}"])
+        ws.append([f"تاريخ التصدير: {export_date}"])
+        ws.append([])
+
+        for col in range(1, 9):
+            ws.cell(row=1, column=col).font = Font(bold=True, size=13)
+        ws.merge_cells('A1:H1')
+        ws.merge_cells('A2:H2')
+        ws.merge_cells('A3:H3')
+        ws['A1'].alignment = right_align
+        ws['A2'].alignment = right_align
+        ws['A3'].alignment = right_align
+
+        ws.append(headers_row)
+        header_row_num = 5
+        for col_idx, _ in enumerate(headers_row, 1):
+            cell = ws.cell(row=header_row_num, column=col_idx)
+            cell.fill = orange_fill
+            cell.font = white_on_orange
+            cell.alignment = center
+            cell.border = border
+
+        for data_idx, r in enumerate(rows):
+            ws.append([r["idx"], r["coach_name"], r["present_days"], r["absent_days"],
+                       r["leave_days"], r["total_hours"], r["late_days"], r["late_minutes"]])
+            row_num = header_row_num + 1 + data_idx
+            use_alt = data_idx % 2 == 1
+            for col_idx in range(1, 9):
+                cell = ws.cell(row=row_num, column=col_idx)
+                if use_alt:
+                    cell.fill = alt_fill
+                cell.border = border
+                cell.alignment = center if col_idx != 2 else right_align
+
+        col_widths = [6, 28, 14, 14, 14, 16, 14, 16]
+        col_letters = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H']
+        for letter, width in zip(col_letters, col_widths):
+            ws.column_dimensions[letter].width = width
+
+        buffer = BytesIO()
+        wb.save(buffer)
+        buffer.seek(0)
+        filename = f"coach_report_{month}.xlsx"
+        return StreamingResponse(
+            buffer,
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": f"attachment; filename={filename}"}
+        )
+
+    # ── PDF ────────────────────────────────────────────
+    rl = _get_reportlab()
+    colors = rl.colors; A4 = rl.A4; mm = rl.mm
+    SimpleDocTemplate = rl.SimpleDocTemplate; Table = rl.Table
+    TableStyle = rl.TableStyle; Paragraph = rl.Paragraph; Spacer = rl.Spacer
+    getSampleStyleSheet = rl.getSampleStyleSheet
+    ParagraphStyle = rl.ParagraphStyle
+    pdfmetrics = rl.pdfmetrics; TTFont = rl.TTFont
+
+    buffer = BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=A4,
+                            topMargin=15*mm, bottomMargin=15*mm,
+                            leftMargin=15*mm, rightMargin=15*mm)
+
+    font_name = "Helvetica"
+    font_paths = [
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+        "/usr/share/fonts/TTF/DejaVuSans.ttf",
+        "/nix/store/dejavu-fonts/share/fonts/truetype/DejaVuSans.ttf",
+    ]
+    for fp in font_paths:
+        try:
+            if Path(fp).exists():
+                pdfmetrics.registerFont(TTFont('ArabicFont', fp))
+                font_name = 'ArabicFont'
+                break
+        except Exception:
+            continue
+
+    title_style = ParagraphStyle('T', fontName=font_name, fontSize=13, leading=18, alignment=2)
+    sub_style = ParagraphStyle('S', fontName=font_name, fontSize=9, leading=13,
+                               textColor=colors.HexColor('#555555'), alignment=2)
+    cell_style = ParagraphStyle('C', fontName=font_name, fontSize=8, leading=11, alignment=1)
+    hdr_style = ParagraphStyle('H', fontName=font_name, fontSize=8, leading=11,
+                               textColor=colors.white, alignment=1)
+
+    elements = []
+    elements.append(Paragraph("شركة اداء الابطال العالمية للرياضة", title_style))
+    elements.append(Paragraph(f"التقرير الشهري للمدربين — {month}", title_style))
+    elements.append(Paragraph(f"تاريخ التصدير: {export_date}", sub_style))
+    elements.append(Spacer(1, 5*mm))
+
+    pdf_headers = ["دقائق التأخر", "أيام التأخر", "الساعات", "الإجازة", "الغياب", "الحضور", "المدرب", "م"]
+    header_row_pdf = [Paragraph(h, hdr_style) for h in pdf_headers]
+    data = [header_row_pdf]
+    for r in rows:
+        data.append([
+            Paragraph(str(r["late_minutes"]), cell_style),
+            Paragraph(str(r["late_days"]), cell_style),
+            Paragraph(str(r["total_hours"]), cell_style),
+            Paragraph(str(r["leave_days"]), cell_style),
+            Paragraph(str(r["absent_days"]), cell_style),
+            Paragraph(str(r["present_days"]), cell_style),
+            Paragraph(r["coach_name"], cell_style),
+            Paragraph(str(r["idx"]), cell_style),
+        ])
+
+    col_widths_pdf = [22*mm, 18*mm, 18*mm, 18*mm, 18*mm, 18*mm, 48*mm, 10*mm]
+    table = Table(data, colWidths=col_widths_pdf, repeatRows=1)
+    table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#F97316')),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('GRID', (0, 0), (-1, -1), 0.4, colors.HexColor('#DDDDDD')),
+        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#FFF7ED')]),
+        ('TOPPADDING', (0, 0), (-1, -1), 4),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+    ]))
+    elements.append(table)
+    elements.append(Spacer(1, 5*mm))
+    elements.append(Paragraph(f"إجمالي المدربين: {len(rows)}", sub_style))
+
+    doc.build(elements)
+    buffer.seek(0)
+    filename_pdf = f"coach_report_{month}.pdf"
+    return StreamingResponse(
+        buffer,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f"attachment; filename={filename_pdf}"}
+    )
 
 
 # ══════════════════════════════════════════════════════
