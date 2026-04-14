@@ -31,7 +31,33 @@ export const useInvoiceActions = ({ loadData, language, t, isAdmin, getBranchNam
   };
 
   const handleMarkPaid = async (id) => {
-    try { await invoicesAPI.pay(id); toast.success(t('success')); loadData(); } catch { toast.error(t('error')); }
+    try {
+      const res = await invoicesAPI.pay(id);
+      const loyaltyAwarded = res.data?.loyalty_awarded || [];
+      if (loyaltyAwarded.length > 0) {
+        const totalPoints = loyaltyAwarded.reduce((sum, r) => sum + (r.points || 0), 0);
+        const typeLabels = {
+          monthly_renewal: language === 'ar' ? 'شهري' : 'monthly',
+          quarterly_renewal: language === 'ar' ? 'ربع سنوي' : 'quarterly',
+          yearly_renewal: language === 'ar' ? 'سنوي' : 'yearly',
+        };
+        let msg;
+        if (loyaltyAwarded.length === 1) {
+          const typeLabel = typeLabels[loyaltyAwarded[0]?.renewal_type] || (language === 'ar' ? 'شهري' : 'monthly');
+          msg = language === 'ar'
+            ? `تم الدفع بنجاح ✓ — تم منح ${totalPoints} نقطة ولاء (${typeLabel})`
+            : `Payment successful ✓ — ${totalPoints} loyalty points awarded (${typeLabel})`;
+        } else {
+          msg = language === 'ar'
+            ? `تم الدفع بنجاح ✓ — تم منح ${totalPoints} نقطة ولاء لـ ${loyaltyAwarded.length} أعضاء`
+            : `Payment successful ✓ — ${totalPoints} loyalty points awarded across ${loyaltyAwarded.length} members`;
+        }
+        toast.success(msg);
+      } else {
+        toast.success(t('success'));
+      }
+      loadData();
+    } catch { toast.error(t('error')); }
   };
 
   const handleRestoreInvoice = async (id) => {

@@ -313,7 +313,7 @@ async def award_points(member_id: str, action_type: str, description_ar: str, de
     points = custom_points if custom_points is not None else points_map.get(action_type, 0)
     
     if points <= 0:
-        return
+        return 0
     
     # Update member points
     await db.member_points.update_one(
@@ -359,6 +359,8 @@ async def award_points(member_id: str, action_type: str, description_ar: str, de
                 "is_read": False,
                 "created_at": datetime.now(timezone.utc)
             })
+
+    return points
 
 # ============== Rewards Endpoints ==============
 

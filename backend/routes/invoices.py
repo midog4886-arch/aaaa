@@ -3,7 +3,10 @@ from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 from typing import List, Optional
 import uuid
+import logging
 from datetime import datetime, timezone
+
+logger = logging.getLogger(__name__)
 
 from .common import db, get_current_user
 from utils.sequences import get_branch_seq_start
@@ -502,52 +505,66 @@ async def pay_invoice(invoice_id: str, current_user: dict = Depends(get_current_
                         upsert=True
                     )
     
-    # Award loyalty points for subscription renewal
-    member_id = primary_member_id
-    if member_id and loyalty_award_points:
-        try:
-            # Determine renewal type based on duration
-            activity_items = [i for i in invoice.get("items", []) if not i.get("is_product")]
-            if activity_items:
-                # Check if this is a renewal (member had previous activity)
-                member = await db.members.find_one({"id": member_id})
-                if member and member.get("activities"):
-                    # Calculate duration from first item
-                    first_item = activity_items[0]
-                    start = first_item.get("start_date", "")
-                    end = first_item.get("end_date", "")
-                    
-                    renewal_type = "monthly_renewal"
-                    description_ar = "مكافأة تجديد اشتراك شهري"
-                    description_en = "Monthly subscription renewal bonus"
-                    
-                    if start and end:
-                        try:
-                            start_date = datetime.strptime(start, '%Y-%m-%d')
-                            end_date = datetime.strptime(end, '%Y-%m-%d')
-                            days = (end_date - start_date).days
-                            
-                            if days >= 330:  # ~yearly
-                                renewal_type = "yearly_renewal"
-                                description_ar = "مكافأة تجديد اشتراك سنوي"
-                                description_en = "Yearly subscription renewal bonus"
-                            elif days >= 80:  # ~quarterly
-                                renewal_type = "quarterly_renewal"
-                                description_ar = "مكافأة تجديد اشتراك ربع سنوي"
-                                description_en = "Quarterly subscription renewal bonus"
-                        except Exception:
-                            pass
-                    
-                    await loyalty_award_points(
-                        member_id,
-                        renewal_type,
-                        description_ar,
-                        description_en
-                    )
-        except Exception as e:
-            print(f"Error awarding loyalty points for renewal: {e}")
-    
-    return {"message": "Invoice paid", "status": "paid"}
+    # Award loyalty points for each member's activity items
+    loyalty_results = []  # track what was awarded for response message
+    if loyalty_award_points:
+        for mid, member_items in items_by_member.items():
+            try:
+                activity_items = [i for i in member_items if not i.get("is_product")]
+                if not activity_items:
+                    continue
+
+                # Determine renewal type from the first activity item's dates.
+                # Fall back to monthly if dates are missing or cannot be parsed.
+                first_item = activity_items[0]
+                start = first_item.get("start_date", "")
+                end = first_item.get("end_date", "")
+
+                # Also try extracting from the period field (e.g. "2024-01-01 - 2024-04-01")
+                if (not start or not end) and first_item.get("period") and " - " in first_item.get("period", ""):
+                    period_parts = first_item["period"].split(" - ")
+                    if len(period_parts) == 2:
+                        start = start or period_parts[0].strip()
+                        end = end or period_parts[1].strip()
+
+                renewal_type = "monthly_renewal"
+                description_ar = "مكافأة اشتراك شهري"
+                description_en = "Monthly subscription bonus"
+
+                if start and end:
+                    try:
+                        start_dt = datetime.strptime(start, '%Y-%m-%d')
+                        end_dt = datetime.strptime(end, '%Y-%m-%d')
+                        days = (end_dt - start_dt).days
+
+                        if days >= 330:  # ~yearly
+                            renewal_type = "yearly_renewal"
+                            description_ar = "مكافأة اشتراك سنوي"
+                            description_en = "Yearly subscription bonus"
+                        elif days >= 80:  # ~quarterly
+                            renewal_type = "quarterly_renewal"
+                            description_ar = "مكافأة اشتراك ربع سنوي"
+                            description_en = "Quarterly subscription bonus"
+                    except Exception:
+                        pass  # keep monthly default
+
+                points_awarded = await loyalty_award_points(mid, renewal_type, description_ar, description_en)
+                loyalty_results.append({
+                    "member_id": mid,
+                    "renewal_type": renewal_type,
+                    "points": points_awarded or 0
+                })
+            except Exception as e:
+                logger.error(
+                    "Failed to award loyalty points: invoice_id=%s member_id=%s error=%s",
+                    invoice_id, mid, e
+                )
+
+    return {
+        "message": "Invoice paid",
+        "status": "paid",
+        "loyalty_awarded": loyalty_results
+    }
 
 @router.put("/{invoice_id}/cancel")
 async def cancel_invoice(invoice_id: str, current_user: dict = Depends(get_current_user)):
