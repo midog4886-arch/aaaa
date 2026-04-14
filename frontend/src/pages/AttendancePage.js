@@ -1446,6 +1446,17 @@ export default function AttendancePage() {
                     <p className="text-lg text-blue-600 font-bold">#{qrMemberData.member_code}</p>
                     {qrMemberData.phone && <p className="text-sm text-gray-500" dir="ltr">{qrMemberData.phone}</p>}
                   </div>
+
+                  {/* Member Notes - shown prominently for supervisor */}
+                  {qrMemberData.notes && (
+                    <div className="bg-amber-50 border-2 border-amber-400 rounded-lg p-3 flex items-start gap-2">
+                      <span className="text-amber-500 text-xl flex-shrink-0">📝</span>
+                      <div>
+                        <p className="text-xs font-bold text-amber-700 mb-0.5">{t('ملاحظات', 'Notes')}</p>
+                        <p className="text-sm text-amber-900 font-medium">{qrMemberData.notes}</p>
+                      </div>
+                    </div>
+                  )}
                   
                   {/* Activities List */}
                   {qrMemberData.activities && qrMemberData.activities.length > 0 ? (
