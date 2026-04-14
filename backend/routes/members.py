@@ -22,6 +22,8 @@ class MemberActivity(BaseModel):
     coach_id: Optional[str] = ""
     level_id: Optional[str] = ""
     schedule: Optional[str] = ""
+    training_days: Optional[List[str]] = []
+    training_time: Optional[str] = ""
     source: Optional[str] = ""
     source_id: Optional[str] = ""
 

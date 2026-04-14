@@ -74,6 +74,9 @@ export const MembersPage = () => {
   const [expandedQuotaIdx, setExpandedQuotaIdx] = useState(new Set());
   const [registeringDate, setRegisteringDate] = useState(null);
   const [viewTab, setViewTab] = useState('info'); // info, activities, invoices, history, attendance
+  const [editingActivityId, setEditingActivityId] = useState(null);
+  const [editActivityForm, setEditActivityForm] = useState({});
+  const [editActivitySaving, setEditActivitySaving] = useState(false);
   const [isFreezeDialogOpen, setIsFreezeDialogOpen] = useState(false);
   const [freezeForm, setFreezeForm] = useState({ start_date: '', end_date: '', reason: 'personal' });
   const [memberFreezes, setMemberFreezes] = useState([]);
@@ -319,6 +322,39 @@ export const MembersPage = () => {
       toast.error(t('error'));
     } finally {
       setSaving(false);
+    }
+  };
+
+  // Save edited activity directly (without invoice)
+  const handleSaveEditActivity = async () => {
+    if (!selectedMember || !editingActivityId) return;
+    setEditActivitySaving(true);
+    try {
+      const dayOrder = ['الأحد', 'الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'];
+      const formatSchedule = (days, time) => {
+        if (!days || days.length === 0) return time || '';
+        const sorted = [...days].sort((a, b) => dayOrder.indexOf(a) - dayOrder.indexOf(b));
+        let daysStr;
+        if (sorted.length === 1) { daysStr = sorted[0]; }
+        else { const last = sorted.pop(); daysStr = sorted.join('، ') + ' و ' + last; }
+        return time ? `${daysStr} - ${time}` : daysStr;
+      };
+      const payload = {
+        ...editActivityForm,
+        fee: parseFloat(editActivityForm.fee) || 0,
+        schedule: formatSchedule(editActivityForm.training_days || [], editActivityForm.training_time || '')
+      };
+      await membersAPI.updateActivity(selectedMember.id, editingActivityId, payload);
+      toast.success(language === 'ar' ? 'تم تحديث النشاط' : 'Activity updated');
+      const updated = await membersAPI.getById(selectedMember.id);
+      setSelectedMember(updated.data);
+      setEditingActivityId(null);
+      setEditActivityForm({});
+    } catch (err) {
+      console.error(err);
+      toast.error(language === 'ar' ? 'فشل التحديث' : 'Update failed');
+    } finally {
+      setEditActivitySaving(false);
     }
   };
 
@@ -1959,8 +1995,9 @@ export const MembersPage = () => {
                           const isExpired = daysRemaining !== null && daysRemaining <= 0;
                           const isNearExpiry = daysRemaining !== null && daysRemaining > 0 && daysRemaining <= 7;
                           
+                          const isEditing = editingActivityId === activity.activity_id;
                           return (
-                            <Card key={idx} className={`p-4 ${isNearExpiry ? 'border-amber-400 bg-amber-50/50' : ''} ${isExpired ? 'border-red-400 bg-red-50/50' : ''}`}>
+                            <Card key={idx} className={`p-4 ${isNearExpiry ? 'border-amber-400 bg-amber-50/50' : ''} ${isExpired ? 'border-red-400 bg-red-50/50' : ''} ${isEditing ? 'border-blue-400 bg-blue-50/30' : ''}`}>
                               <div className="flex items-start justify-between">
                                 <div className="flex-1">
                                   <div className="flex items-center gap-2 mb-2 flex-wrap">
@@ -1993,36 +2030,155 @@ export const MembersPage = () => {
                                     )}
                                   </div>
                                   
-                                  <div className="grid grid-cols-2 gap-4 text-sm">
-                                    <div>
-                                      <span className="text-muted-foreground">{t('start_date')}: </span>
-                                      <span>{activity.start_date}</span>
+                                  {!isEditing && (
+                                    <div className="grid grid-cols-2 gap-4 text-sm">
+                                      <div>
+                                        <span className="text-muted-foreground">{t('start_date')}: </span>
+                                        <span>{activity.start_date}</span>
+                                      </div>
+                                      <div>
+                                        <span className="text-muted-foreground">{t('end_date')}: </span>
+                                        <span>{activity.end_date}</span>
+                                      </div>
+                                      <div>
+                                        <span className="text-muted-foreground">{t('monthly_fee')}: </span>
+                                        <span>{activity.fee} {t('sar')}</span>
+                                      </div>
+                                      {activity.schedule && (
+                                        <div>
+                                          <span className="text-muted-foreground">{language === 'ar' ? 'الموعد' : 'Schedule'}: </span>
+                                          <span>{activity.schedule}</span>
+                                        </div>
+                                      )}
                                     </div>
-                                    <div>
-                                      <span className="text-muted-foreground">{t('end_date')}: </span>
-                                      <span>{activity.end_date}</span>
-                                    </div>
-                                    <div>
-                                      <span className="text-muted-foreground">{t('monthly_fee')}: </span>
-                                      <span>{activity.fee} {t('sar')}</span>
-                                    </div>
-                                  </div>
+                                  )}
                                 </div>
                                 
-                                {/* Renewal button */}
-                                {showRenewalBtn && (
+                                <div className="flex flex-col gap-1 ms-3">
+                                  {/* Edit button */}
                                   <Button
                                     size="sm"
-                                    variant={isExpired ? "default" : "outline"}
-                                    className={`ms-4 ${isExpired ? 'bg-red-500 hover:bg-red-600' : 'border-amber-500 text-amber-600 hover:bg-amber-50'}`}
-                                    onClick={() => openRenewalDialog(activity)}
-                                    data-testid={`renew-activity-${activity.activity_id}`}
+                                    variant="outline"
+                                    className="border-blue-400 text-blue-600 hover:bg-blue-50 h-8 px-2"
+                                    onClick={() => {
+                                      if (isEditing) {
+                                        setEditingActivityId(null);
+                                        setEditActivityForm({});
+                                      } else {
+                                        setEditingActivityId(activity.activity_id);
+                                        setEditActivityForm({
+                                          activity_id: activity.activity_id,
+                                          activity_name: activity.activity_name,
+                                          start_date: activity.start_date || '',
+                                          end_date: activity.end_date || '',
+                                          fee: activity.fee || 0,
+                                          status: activity.status || 'active',
+                                          coach_id: activity.coach_id || '',
+                                          level_id: activity.level_id || '',
+                                          schedule: activity.schedule || '',
+                                          training_days: activity.training_days || [],
+                                          training_time: activity.training_time || '',
+                                          source: activity.source || '',
+                                          source_id: activity.source_id || ''
+                                        });
+                                      }
+                                    }}
                                   >
-                                    <RefreshCcw className="w-4 h-4 me-1" />
-                                    {language === 'ar' ? 'تجديد' : 'Renew'}
+                                    {isEditing ? <X className="w-3.5 h-3.5" /> : <Edit className="w-3.5 h-3.5" />}
                                   </Button>
-                                )}
+                                  {/* Renewal button */}
+                                  {showRenewalBtn && !isEditing && (
+                                    <Button
+                                      size="sm"
+                                      variant={isExpired ? "default" : "outline"}
+                                      className={`${isExpired ? 'bg-red-500 hover:bg-red-600 text-white' : 'border-amber-500 text-amber-600 hover:bg-amber-50'} h-8 px-2`}
+                                      onClick={() => openRenewalDialog(activity)}
+                                      data-testid={`renew-activity-${activity.activity_id}`}
+                                    >
+                                      <RefreshCcw className="w-3.5 h-3.5" />
+                                    </Button>
+                                  )}
+                                </div>
                               </div>
+
+                              {/* Inline Edit Form */}
+                              {isEditing && (
+                                <div className="mt-3 pt-3 border-t border-blue-200 space-y-3">
+                                  <div className="grid grid-cols-2 gap-3">
+                                    <div className="space-y-1">
+                                      <Label className="text-xs">{t('start_date')}</Label>
+                                      <Input type="date" value={editActivityForm.start_date || ''} onChange={e => setEditActivityForm({...editActivityForm, start_date: e.target.value})} className="h-9 text-sm" />
+                                    </div>
+                                    <div className="space-y-1">
+                                      <Label className="text-xs">{t('end_date')}</Label>
+                                      <Input type="date" value={editActivityForm.end_date || ''} onChange={e => setEditActivityForm({...editActivityForm, end_date: e.target.value})} className="h-9 text-sm" />
+                                    </div>
+                                  </div>
+                                  <div className="grid grid-cols-2 gap-3">
+                                    <div className="space-y-1">
+                                      <Label className="text-xs">{t('monthly_fee')} ({t('sar')})</Label>
+                                      <Input type="number" value={editActivityForm.fee || ''} onChange={e => setEditActivityForm({...editActivityForm, fee: e.target.value})} className="h-9 text-sm" />
+                                    </div>
+                                    <div className="space-y-1">
+                                      <Label className="text-xs">{language === 'ar' ? 'الحالة' : 'Status'}</Label>
+                                      <select
+                                        value={editActivityForm.status || 'active'}
+                                        onChange={e => setEditActivityForm({...editActivityForm, status: e.target.value})}
+                                        className="w-full h-9 text-sm border rounded-md px-2 bg-white"
+                                      >
+                                        <option value="active">{language === 'ar' ? 'نشط' : 'Active'}</option>
+                                        <option value="inactive">{language === 'ar' ? 'غير نشط' : 'Inactive'}</option>
+                                        <option value="expired">{language === 'ar' ? 'منتهي' : 'Expired'}</option>
+                                      </select>
+                                    </div>
+                                  </div>
+                                  <div className="space-y-1">
+                                    <Label className="text-xs">{language === 'ar' ? 'أيام التدريب' : 'Training Days'}</Label>
+                                    <div className="flex flex-wrap gap-1">
+                                      {['الأحد', 'الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'].map(day => (
+                                        <button
+                                          key={day}
+                                          type="button"
+                                          onClick={() => {
+                                            const cur = editActivityForm.training_days || [];
+                                            const newDays = cur.includes(day) ? cur.filter(d => d !== day) : [...cur, day];
+                                            setEditActivityForm({...editActivityForm, training_days: newDays});
+                                          }}
+                                          className={`px-2 py-0.5 text-xs rounded border transition-colors ${
+                                            (editActivityForm.training_days || []).includes(day)
+                                              ? 'bg-blue-500 text-white border-blue-500'
+                                              : 'bg-white text-gray-700 border-gray-300 hover:border-blue-400'
+                                          }`}
+                                        >
+                                          {day}
+                                        </button>
+                                      ))}
+                                    </div>
+                                  </div>
+                                  <div className="space-y-1">
+                                    <Label className="text-xs">{language === 'ar' ? 'الساعة' : 'Time'}</Label>
+                                    <Input
+                                      type="number" min="1" max="12"
+                                      value={editActivityForm.training_time ? editActivityForm.training_time.split(':')[0] : ''}
+                                      onChange={e => {
+                                        const h = e.target.value;
+                                        setEditActivityForm({...editActivityForm, training_time: h ? `${h}:00 م` : ''});
+                                      }}
+                                      className="h-9 text-sm"
+                                      placeholder={language === 'ar' ? 'مثال: 4' : 'e.g. 4'}
+                                    />
+                                    {editActivityForm.training_time && <p className="text-xs text-muted-foreground">{editActivityForm.training_time}</p>}
+                                  </div>
+                                  <div className="flex gap-2 justify-end pt-1">
+                                    <Button size="sm" variant="outline" onClick={() => { setEditingActivityId(null); setEditActivityForm({}); }}>
+                                      {language === 'ar' ? 'إلغاء' : 'Cancel'}
+                                    </Button>
+                                    <Button size="sm" onClick={handleSaveEditActivity} disabled={editActivitySaving} className="bg-blue-600 hover:bg-blue-700 text-white">
+                                      {editActivitySaving ? (language === 'ar' ? 'جاري الحفظ...' : 'Saving...') : (language === 'ar' ? 'حفظ التعديل' : 'Save Changes')}
+                                    </Button>
+                                  </div>
+                                </div>
+                              )}
                             </Card>
                           );
                         })}
