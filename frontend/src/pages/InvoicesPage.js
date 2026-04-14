@@ -4310,7 +4310,7 @@ ${itemsList}
                                           }
                                           return sum + (l.members || []).length;
                                         }, 0);
-                                        const totalCapacity = timeLevels.reduce((sum, l) => sum + (levelSelectorState[idx].selectedActivity === 'swimming' ? 6 : (l.capacity || 10)), 0);
+                                        const totalCapacity = timeLevels.reduce((sum, l) => sum + (l.capacity || 10), 0);
                                         return (
                                           <button
                                             key={timeSlot}
@@ -4344,7 +4344,7 @@ ${itemsList}
                                           const memberCount = (_days.length > 0 && (level.members_details || []).length > 0)
                                             ? Math.max(..._days.map(day => (level.members_details || []).filter(m => m.schedule && m.schedule.includes(day)).length), 0)
                                             : (level.members || []).length;
-                                          const maxCapacity = levelSelectorState[idx].selectedActivity === 'swimming' ? 6 : (level.capacity || 10);
+                                          const maxCapacity = level.capacity || 10;
                                           const isFull = memberCount >= maxCapacity;
                                           const fillPercent = Math.round((memberCount / maxCapacity) * 100);
                                           return (
@@ -5564,7 +5564,7 @@ ${itemsList}
                                           }
                                           return sum + (l.members || []).length;
                                         }, 0);
-                                        const totalCapacity = timeLevels.reduce((sum, l) => sum + (regFormLevelSelectorState[idx].selectedActivity === 'swimming' ? 6 : (l.capacity || 10)), 0);
+                                        const totalCapacity = timeLevels.reduce((sum, l) => sum + (l.capacity || 10), 0);
                                         return (
                                           <button
                                             key={timeSlot}
@@ -5598,7 +5598,7 @@ ${itemsList}
                                           const memberCount = (_days.length > 0 && (level.members_details || []).length > 0)
                                             ? Math.max(..._days.map(day => (level.members_details || []).filter(m => m.schedule && m.schedule.includes(day)).length), 0)
                                             : (level.members || []).length;
-                                          const maxCapacity = regFormLevelSelectorState[idx].selectedActivity === 'swimming' ? 6 : (level.capacity || 10);
+                                          const maxCapacity = level.capacity || 10;
                                           const isFull = memberCount >= maxCapacity;
                                           const fillPercent = Math.round((memberCount / maxCapacity) * 100);
                                           return (
