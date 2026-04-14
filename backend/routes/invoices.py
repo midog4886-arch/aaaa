@@ -451,6 +451,8 @@ async def pay_invoice(invoice_id: str, current_user: dict = Depends(get_current_
                         "coach_id": existing_act.get("coach_id", ""),
                         "level_id": item.get("level_id", ""),
                         "schedule": item.get("schedule", ""),
+                        "training_days": item.get("training_days", []),
+                        "training_time": item.get("training_time", ""),
                         "source": "invoice",
                         "source_id": invoice_id
                     }
@@ -468,6 +470,8 @@ async def pay_invoice(invoice_id: str, current_user: dict = Depends(get_current_
                     "coach_id": "",
                     "level_id": item.get("level_id", ""),
                     "schedule": item.get("schedule", ""),
+                    "training_days": item.get("training_days", []),
+                    "training_time": item.get("training_time", ""),
                     "source": "invoice",
                     "source_id": invoice_id
                 })

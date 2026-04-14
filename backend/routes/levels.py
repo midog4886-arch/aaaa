@@ -113,10 +113,30 @@ async def get_levels(
                     if member:
                         valid_ids.append(mid)
                         schedule = ""
-                        for act in member.get("activities", []):
-                            if act.get("schedule"):
-                                schedule = act["schedule"]
+                        level_id_current = level.get("id", "")
+                        activities = member.get("activities", [])
+                        # Priority 1: activity that matches the current level
+                        for act in activities:
+                            if act.get("level_id") == level_id_current:
+                                if act.get("schedule"):
+                                    schedule = act["schedule"]
+                                elif act.get("training_days"):
+                                    days_str = " و ".join(act["training_days"])
+                                    time_str = act.get("training_time", "")
+                                    schedule = f"{days_str} - {time_str}" if time_str else days_str
                                 break
+                        # Priority 2: any other activity with a schedule
+                        if not schedule:
+                            for act in activities:
+                                if act.get("schedule"):
+                                    schedule = act["schedule"]
+                                    break
+                                elif act.get("training_days"):
+                                    days_str = " و ".join(act["training_days"])
+                                    time_str = act.get("training_time", "")
+                                    schedule = f"{days_str} - {time_str}" if time_str else days_str
+                                    break
+                        # Priority 3: invoice-based fallback
                         if not schedule:
                             schedule = invoice_schedules.get(mid, "")
                         members_details.append({
