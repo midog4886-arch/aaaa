@@ -398,6 +398,8 @@ async def export_monthly_report(
     current_user: dict = Depends(get_current_user)
 ):
     """Export monthly coach attendance report as Excel or PDF."""
+    if format not in ("xlsx", "pdf"):
+        raise HTTPException(status_code=400, detail="format يجب أن يكون xlsx أو pdf")
     query = {"date": {"$regex": f"^{month}"}}
     if branch_filter and branch_filter != "all":
         query["$or"] = [

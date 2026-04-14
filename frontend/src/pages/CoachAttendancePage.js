@@ -917,7 +917,7 @@ const CoachAttendancePage = () => {
                   const totalLateDays = report.reduce((s, r) => s + (r.late_days || 0), 0);
                   const topCoach = report.reduce((best, r) => (!best || r.present_days > best.present_days) ? r : best, null);
                   return (
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6 print:hidden">
                       <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 text-center">
                         <Timer className="w-6 h-6 text-blue-500 mx-auto mb-2" />
                         <p className="text-2xl font-bold text-blue-700">{totalHours}</p>
