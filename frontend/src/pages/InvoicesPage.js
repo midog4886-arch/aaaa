@@ -4301,7 +4301,13 @@ ${itemsList}
                                   {levelSelectorState[idx].step === 'time' && (
                                     <div className="p-2 space-y-1 max-h-48 overflow-y-auto">
                                       {Object.entries(groupedLevelsForSelector[levelSelectorState[idx].selectedActivity] || {}).map(([timeSlot, timeLevels]) => {
-                                        const totalMembers = timeLevels.reduce((sum, l) => sum + (l.members || []).length, 0);
+                                        const _itemDays = item.training_days || [];
+                                        const totalMembers = timeLevels.reduce((sum, l) => {
+                                          if (_itemDays.length > 0 && (l.members_details || []).length > 0) {
+                                            return sum + (l.members_details || []).filter(m => !m.schedule || _itemDays.some(d => m.schedule.includes(d))).length;
+                                          }
+                                          return sum + (l.members || []).length;
+                                        }, 0);
                                         const totalCapacity = timeLevels.reduce((sum, l) => sum + (levelSelectorState[idx].selectedActivity === 'swimming' ? 6 : (l.capacity || 10)), 0);
                                         return (
                                           <button
@@ -4332,7 +4338,10 @@ ${itemsList}
                                       {(groupedLevelsForSelector[levelSelectorState[idx].selectedActivity]?.[levelSelectorState[idx].selectedTime] || [])
                                         .sort((a, b) => a.level_number - b.level_number)
                                         .map(level => {
-                                          const memberCount = (level.members || []).length;
+                                          const _days = item.training_days || [];
+                                          const memberCount = (_days.length > 0 && (level.members_details || []).length > 0)
+                                            ? (level.members_details || []).filter(m => !m.schedule || _days.some(d => m.schedule.includes(d))).length
+                                            : (level.members || []).length;
                                           const maxCapacity = levelSelectorState[idx].selectedActivity === 'swimming' ? 6 : (level.capacity || 10);
                                           const isFull = memberCount >= maxCapacity;
                                           const fillPercent = Math.round((memberCount / maxCapacity) * 100);
@@ -5544,7 +5553,13 @@ ${itemsList}
                                   {regFormLevelSelectorState[idx].step === 'time' && (
                                     <div className="p-2 space-y-1 max-h-48 overflow-y-auto">
                                       {Object.entries(groupedLevelsForSelector[regFormLevelSelectorState[idx].selectedActivity] || {}).map(([timeSlot, timeLevels]) => {
-                                        const totalMembers = timeLevels.reduce((sum, l) => sum + (l.members || []).length, 0);
+                                        const _itemDays = item.training_days || [];
+                                        const totalMembers = timeLevels.reduce((sum, l) => {
+                                          if (_itemDays.length > 0 && (l.members_details || []).length > 0) {
+                                            return sum + (l.members_details || []).filter(m => !m.schedule || _itemDays.some(d => m.schedule.includes(d))).length;
+                                          }
+                                          return sum + (l.members || []).length;
+                                        }, 0);
                                         const totalCapacity = timeLevels.reduce((sum, l) => sum + (regFormLevelSelectorState[idx].selectedActivity === 'swimming' ? 6 : (l.capacity || 10)), 0);
                                         return (
                                           <button
@@ -5575,7 +5590,10 @@ ${itemsList}
                                       {(groupedLevelsForSelector[regFormLevelSelectorState[idx].selectedActivity]?.[regFormLevelSelectorState[idx].selectedTime] || [])
                                         .sort((a, b) => a.level_number - b.level_number)
                                         .map(level => {
-                                          const memberCount = (level.members || []).length;
+                                          const _days = item.training_days || [];
+                                          const memberCount = (_days.length > 0 && (level.members_details || []).length > 0)
+                                            ? (level.members_details || []).filter(m => !m.schedule || _days.some(d => m.schedule.includes(d))).length
+                                            : (level.members || []).length;
                                           const maxCapacity = regFormLevelSelectorState[idx].selectedActivity === 'swimming' ? 6 : (level.capacity || 10);
                                           const isFull = memberCount >= maxCapacity;
                                           const fillPercent = Math.round((memberCount / maxCapacity) * 100);
