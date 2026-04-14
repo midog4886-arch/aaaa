@@ -4305,7 +4305,7 @@ ${itemsList}
                                         const totalMembers = timeLevels.reduce((sum, l) => {
                                           if (_itemDays.length > 0 && (l.members_details || []).length > 0) {
                                             const det = l.members_details || [];
-                                            const perDay = _itemDays.map(day => det.filter(m => !m.schedule || m.schedule.includes(day)).length);
+                                            const perDay = _itemDays.map(day => det.filter(m => m.schedule && m.schedule.includes(day)).length);
                                             return sum + Math.max(...perDay, 0);
                                           }
                                           return sum + (l.members || []).length;
@@ -4342,7 +4342,7 @@ ${itemsList}
                                         .map(level => {
                                           const _days = item.training_days || [];
                                           const memberCount = (_days.length > 0 && (level.members_details || []).length > 0)
-                                            ? Math.max(..._days.map(day => (level.members_details || []).filter(m => !m.schedule || m.schedule.includes(day)).length), 0)
+                                            ? Math.max(..._days.map(day => (level.members_details || []).filter(m => m.schedule && m.schedule.includes(day)).length), 0)
                                             : (level.members || []).length;
                                           const maxCapacity = levelSelectorState[idx].selectedActivity === 'swimming' ? 6 : (level.capacity || 10);
                                           const isFull = memberCount >= maxCapacity;
@@ -5559,7 +5559,7 @@ ${itemsList}
                                         const totalMembers = timeLevels.reduce((sum, l) => {
                                           if (_itemDays.length > 0 && (l.members_details || []).length > 0) {
                                             const det = l.members_details || [];
-                                            const perDay = _itemDays.map(day => det.filter(m => !m.schedule || m.schedule.includes(day)).length);
+                                            const perDay = _itemDays.map(day => det.filter(m => m.schedule && m.schedule.includes(day)).length);
                                             return sum + Math.max(...perDay, 0);
                                           }
                                           return sum + (l.members || []).length;
@@ -5596,7 +5596,7 @@ ${itemsList}
                                         .map(level => {
                                           const _days = item.training_days || [];
                                           const memberCount = (_days.length > 0 && (level.members_details || []).length > 0)
-                                            ? Math.max(..._days.map(day => (level.members_details || []).filter(m => !m.schedule || m.schedule.includes(day)).length), 0)
+                                            ? Math.max(..._days.map(day => (level.members_details || []).filter(m => m.schedule && m.schedule.includes(day)).length), 0)
                                             : (level.members || []).length;
                                           const maxCapacity = regFormLevelSelectorState[idx].selectedActivity === 'swimming' ? 6 : (level.capacity || 10);
                                           const isFull = memberCount >= maxCapacity;
