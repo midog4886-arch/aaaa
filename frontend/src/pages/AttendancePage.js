@@ -8,10 +8,10 @@ import { Input } from '../components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../components/ui/dialog';
 import { Badge } from '../components/ui/badge';
 import { toast } from 'sonner';
-import { activitiesAPI, attendanceAPI, branchesAPI, schedulesAPI } from '../services/api';
+import { activitiesAPI, attendanceAPI, branchesAPI, schedulesAPI, levelsAPI } from '../services/api';
 import { QRCodeSVG } from 'qrcode.react';
 import { Html5QrcodeScanner } from 'html5-qrcode';
-import { Check, X, Users, Calendar, QrCode, FileSpreadsheet, Search, Clock, UserCheck, UserX, CalendarDays, Zap, Hash, Camera, CameraOff, Scan, Volume2, VolumeX } from 'lucide-react';
+import { Check, X, Users, Calendar, QrCode, FileSpreadsheet, FileText, Search, Clock, UserCheck, UserX, CalendarDays, Zap, Hash, Camera, CameraOff, Scan, Volume2, VolumeX } from 'lucide-react';
 
 const ACTIVITY_CATEGORIES = [
   { id: 'swimming', name: '🏊 السباحة', keywords: ['سباح', 'swim'] },
@@ -72,6 +72,10 @@ export default function AttendancePage() {
   const [reportData, setReportData] = useState(null);
   const [reportType, setReportType] = useState('activity');
   const [reportDateRange, setReportDateRange] = useState({ start: '', end: '' });
+
+  // Level filter for attendance export (reports tab)
+  const [reportLevels, setReportLevels] = useState([]);
+  const [reportSelectedLevelId, setReportSelectedLevelId] = useState('');
 
   // Tab state
   const [activeTab, setActiveTab] = useState('quick'); // quick, record, qr, kiosk, reports
@@ -808,6 +812,41 @@ export default function AttendancePage() {
       setKioskMode(false);
     }
   }, [activeTab]);
+
+  // Fetch levels for selected category (reports tab)
+  useEffect(() => {
+    if (!selectedCategory) {
+      setReportLevels([]);
+      setReportSelectedLevelId('');
+      return;
+    }
+    const actIds = getActivitiesByCategory(selectedCategory).map(a => a.id);
+    if (!actIds.length) { setReportLevels([]); setReportSelectedLevelId(''); return; }
+    levelsAPI.getAll().then(res => {
+      const allLevels = res.data || [];
+      const filtered = allLevels.filter(l => actIds.includes(l.activity_id));
+      filtered.forEach(l => {
+        const cn = (l.custom_name || '').trim();
+        l.display_name = cn || `المستوى ${l.level_number || ''}`;
+      });
+      setReportLevels(filtered);
+      setReportSelectedLevelId('');
+    }).catch(() => { setReportLevels([]); setReportSelectedLevelId(''); });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedCategory]);
+
+  // Export attendance summary (summary mode: one row per member)
+  const handleExportAttendanceSummary = (format = 'xlsx') => {
+    const params = { format };
+    if (selectedActivityId) params.activity_id = selectedActivityId;
+    if (reportSelectedLevelId) params.level_id = reportSelectedLevelId;
+    if (selectedBranchId) params.branch_id = selectedBranchId;
+    if (reportDateRange.start) params.start_date = reportDateRange.start;
+    if (reportDateRange.end) params.end_date = reportDateRange.end;
+    const url = attendanceAPI.exportSummary(params);
+    window.open(url, '_blank');
+    toast.success(t('جاري تحميل الكشف...', 'Downloading report...'));
+  };
 
   // Get activity name
   const getActivityName = (id) => activities.find(a => a.id === id)?.name || '';
@@ -1729,7 +1768,8 @@ export default function AttendancePage() {
             {/* Report Filters */}
             <div className="bg-white p-4 rounded-lg border shadow-sm">
               <h2 className="font-bold mb-4">{t('تقرير الحضور', 'Attendance Report')}</h2>
-              <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-3">
+                {/* Activity */}
                 <div>
                   <label className="text-sm font-medium text-gray-600 block mb-1">
                     {t('النشاط', 'Activity')}
@@ -1737,7 +1777,7 @@ export default function AttendancePage() {
                   <select
                     value={selectedCategory}
                     onChange={e => setSelectedCategory(e.target.value)}
-                    className="w-full border rounded-lg p-2"
+                    className="w-full border rounded-lg p-2 text-sm"
                   >
                     <option value="">{t('اختر النشاط', 'Select Activity')}</option>
                     {availableCategories.map(cat => (
@@ -1745,6 +1785,24 @@ export default function AttendancePage() {
                     ))}
                   </select>
                 </div>
+                {/* Level */}
+                <div>
+                  <label className="text-sm font-medium text-gray-600 block mb-1">
+                    {t('المستوى', 'Level')}
+                  </label>
+                  <select
+                    value={reportSelectedLevelId}
+                    onChange={e => setReportSelectedLevelId(e.target.value)}
+                    disabled={!selectedCategory || reportLevels.length === 0}
+                    className="w-full border rounded-lg p-2 text-sm disabled:opacity-50"
+                  >
+                    <option value="">{reportLevels.length === 0 ? t('لا توجد مستويات', 'No levels') : t('كل المستويات', 'All Levels')}</option>
+                    {reportLevels.map(lvl => (
+                      <option key={lvl.id} value={lvl.id}>{lvl.display_name}</option>
+                    ))}
+                  </select>
+                </div>
+                {/* From Date */}
                 <div>
                   <label className="text-sm font-medium text-gray-600 block mb-1">
                     {t('من تاريخ', 'From Date')}
@@ -1755,6 +1813,7 @@ export default function AttendancePage() {
                     onChange={e => setReportDateRange(prev => ({ ...prev, start: e.target.value }))}
                   />
                 </div>
+                {/* To Date */}
                 <div>
                   <label className="text-sm font-medium text-gray-600 block mb-1">
                     {t('إلى تاريخ', 'To Date')}
@@ -1765,16 +1824,22 @@ export default function AttendancePage() {
                     onChange={e => setReportDateRange(prev => ({ ...prev, end: e.target.value }))}
                   />
                 </div>
+                {/* View Report */}
                 <div className="flex items-end">
                   <Button onClick={handleFetchReport} disabled={!selectedCategory} className="w-full gap-2">
                     <Search className="w-4 h-4" />
-                    {t('عرض التقرير', 'Show Report')}
+                    {t('عرض', 'View')}
                   </Button>
                 </div>
-                <div className="flex items-end">
-                  <Button onClick={handleExportAttendance} variant="outline" className="w-full gap-2">
+                {/* Export buttons */}
+                <div className="flex items-end gap-2">
+                  <Button onClick={() => handleExportAttendanceSummary('xlsx')} variant="outline" className="flex-1 gap-1 text-green-700 border-green-300 hover:bg-green-50" title="تصدير Excel">
                     <FileSpreadsheet className="w-4 h-4" />
-                    {t('تصدير', 'Export')}
+                    <span className="hidden sm:inline">Excel</span>
+                  </Button>
+                  <Button onClick={() => handleExportAttendanceSummary('pdf')} variant="outline" className="flex-1 gap-1 text-red-600 border-red-300 hover:bg-red-50" title="تصدير PDF">
+                    <FileText className="w-4 h-4" />
+                    <span className="hidden sm:inline">PDF</span>
                   </Button>
                 </div>
               </div>

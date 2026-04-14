@@ -5785,62 +5785,254 @@ async def delete_attendance(
 @api_router.get("/export/attendance")
 async def export_attendance_excel(
     activity_id: str = None,
+    level_id: str = None,
     start_date: str = None,
     end_date: str = None,
     branch_id: str = None,
+    format: str = "xlsx",
     token: str = None
 ):
-    """Export attendance to Excel"""
+    """Export attendance summary to Excel or PDF (one row per member with session count)"""
     if token:
         try:
-            payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+            jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         except:
             raise HTTPException(status_code=401, detail="Invalid token")
-    
+
+    # Build date query
+    date_query = {}
+    if start_date and end_date:
+        date_query = {"$gte": start_date, "$lte": end_date}
+    elif start_date:
+        date_query = {"$gte": start_date}
+    elif end_date:
+        date_query = {"$lte": end_date}
+
     query = {}
     if activity_id:
         query["activity_id"] = activity_id
     if branch_id:
         query["branch_id"] = branch_id
-    if start_date:
-        query["date"] = {"$gte": start_date}
-    if end_date:
-        if "date" in query:
-            query["date"]["$lte"] = end_date
-        else:
-            query["date"] = {"$lte": end_date}
-    
-    records = await db.attendance.find(query, {"_id": 0}).sort("date", -1).to_list(10000)
-    
+    if date_query:
+        query["date"] = date_query
+
+    # If level_id is given, restrict to members in that level
+    level_doc = None
+    level_display_name = ""
+    if level_id:
+        level_doc = await db.levels.find_one({"id": level_id}, {"_id": 0})
+        if level_doc:
+            custom = (level_doc.get("custom_name") or "").strip()
+            level_display_name = custom if custom else f"المستوى {level_doc.get('level_number', '')}"
+            level_member_ids = level_doc.get("members", [])
+            if level_member_ids:
+                query["member_id"] = {"$in": level_member_ids}
+
+    records = await db.attendance.find(query, {"_id": 0}).sort("date", 1).to_list(20000)
+
+    # Aggregate: one row per member
+    from collections import defaultdict
+    member_map = defaultdict(lambda: {
+        "member_name": "", "member_code": "", "activity_name": "",
+        "dates": [], "session_count": 0
+    })
+    for r in records:
+        mid = r.get("member_id", "")
+        if not mid:
+            continue
+        entry = member_map[mid]
+        if not entry["member_name"]:
+            entry["member_name"] = r.get("member_name", "")
+        if not entry["member_code"]:
+            entry["member_code"] = r.get("member_code", "")
+        if not entry["activity_name"]:
+            entry["activity_name"] = r.get("activity_name", "")
+        d = r.get("date", "")
+        if d:
+            entry["dates"].append(d)
+        entry["session_count"] += 1
+
+    rows = []
+    for idx, (mid, entry) in enumerate(sorted(member_map.items(), key=lambda x: x[1]["member_name"]), 1):
+        dates = sorted(entry["dates"])
+        rows.append({
+            "idx": idx,
+            "member_code": entry["member_code"],
+            "member_name": entry["member_name"],
+            "activity_name": entry["activity_name"],
+            "level_name": level_display_name,
+            "session_count": entry["session_count"],
+            "first_date": dates[0] if dates else "",
+            "last_date": dates[-1] if dates else "",
+        })
+
+    export_date = datetime.now().strftime("%Y-%m-%d")
+    date_range_label = ""
+    if start_date and end_date:
+        date_range_label = f"{start_date} → {end_date}"
+    elif start_date:
+        date_range_label = f"من {start_date}"
+    elif end_date:
+        date_range_label = f"حتى {end_date}"
+
+    if format == "pdf":
+        rl = _get_reportlab()
+        colors = rl.colors; A4 = rl.A4; SimpleDocTemplate = rl.SimpleDocTemplate
+        Table = rl.Table; TableStyle = rl.TableStyle; Paragraph = rl.Paragraph
+        Spacer = rl.Spacer; getSampleStyleSheet = rl.getSampleStyleSheet
+        ParagraphStyle = rl.ParagraphStyle; mm = rl.mm
+        pdfmetrics = rl.pdfmetrics; TTFont = rl.TTFont
+
+        buffer = BytesIO()
+        doc = SimpleDocTemplate(buffer, pagesize=A4,
+                                topMargin=15*mm, bottomMargin=15*mm,
+                                leftMargin=15*mm, rightMargin=15*mm)
+
+        # Register Arabic font
+        font_name = "Helvetica"
+        try:
+            font_paths = [
+                "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+                "/usr/share/fonts/TTF/DejaVuSans.ttf",
+            ]
+            import subprocess
+            result = subprocess.run(['find', '/nix/store', '-name', 'DejaVuSans.ttf', '-type', 'f'],
+                                    capture_output=True, text=True, timeout=5)
+            if result.stdout.strip():
+                font_paths.insert(0, result.stdout.strip().split('\n')[0])
+            for fp in font_paths:
+                if Path(fp).exists():
+                    pdfmetrics.registerFont(TTFont('ArabicFont', fp))
+                    font_name = 'ArabicFont'
+                    break
+        except:
+            pass
+
+        styles = getSampleStyleSheet()
+        title_style = ParagraphStyle('T', fontName=font_name, fontSize=14, leading=20, alignment=2)
+        sub_style = ParagraphStyle('S', fontName=font_name, fontSize=9, leading=13, textColor=colors.HexColor('#555555'), alignment=2)
+        cell_style = ParagraphStyle('C', fontName=font_name, fontSize=8, leading=11, alignment=1)
+        hdr_style = ParagraphStyle('H', fontName=font_name, fontSize=8, leading=11, textColor=colors.white, alignment=1)
+
+        elements = []
+        elements.append(Paragraph("شركة اداء الابطال العالمية للرياضة", title_style))
+        elements.append(Paragraph("كشف الحضور", title_style))
+        subtitle_parts = []
+        if level_display_name:
+            subtitle_parts.append(f"المستوى: {level_display_name}")
+        if date_range_label:
+            subtitle_parts.append(date_range_label)
+        subtitle_parts.append(f"تاريخ التصدير: {export_date}")
+        elements.append(Paragraph("  |  ".join(subtitle_parts), sub_style))
+        elements.append(Spacer(1, 5*mm))
+
+        headers_pdf = ["آخر حضور", "أول حضور", "عدد الجلسات", "النشاط", "الاسم", "رقم العضوية", "م"]
+        header_row = [Paragraph(h, hdr_style) for h in headers_pdf]
+        data = [header_row]
+        for r in rows:
+            data.append([
+                Paragraph(r["last_date"], cell_style),
+                Paragraph(r["first_date"], cell_style),
+                Paragraph(str(r["session_count"]), cell_style),
+                Paragraph(r["activity_name"], cell_style),
+                Paragraph(r["member_name"], cell_style),
+                Paragraph(str(r["member_code"]), cell_style),
+                Paragraph(str(r["idx"]), cell_style),
+            ])
+
+        col_widths = [28*mm, 28*mm, 22*mm, 40*mm, 45*mm, 22*mm, 10*mm]
+        table = Table(data, colWidths=col_widths, repeatRows=1)
+        table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#F97316')),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            ('GRID', (0, 0), (-1, -1), 0.4, colors.HexColor('#DDDDDD')),
+            ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#FFF7ED')]),
+            ('TOPPADDING', (0, 0), (-1, -1), 4),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+        ]))
+        elements.append(table)
+        elements.append(Spacer(1, 5*mm))
+        elements.append(Paragraph(f"إجمالي الأعضاء: {len(rows)}", sub_style))
+
+        doc.build(elements)
+        buffer.seek(0)
+        filename_pdf = f"attendance_report_{datetime.now().strftime('%Y%m%d')}.pdf"
+        return StreamingResponse(buffer, media_type="application/pdf",
+                                 headers={"Content-Disposition": f"attachment; filename={filename_pdf}"})
+
+    # --- Excel (default) ---
     xl = _get_openpyxl()
-    Workbook = xl.Workbook; Font = xl.Font; PatternFill = xl.PatternFill; Border = xl.Border; Side = xl.Side; Alignment = xl.Alignment
+    Workbook = xl.Workbook; Font = xl.Font; PatternFill = xl.PatternFill
+    Border = xl.Border; Side = xl.Side; Alignment = xl.Alignment
     wb = Workbook()
     ws = wb.active
-    ws.title = "سجل الحضور"
-    
-    headers = ["التاريخ", "النشاط", "اسم العضو", "الحالة", "وقت الحضور", "ملاحظات", "المسجل"]
-    ws.append(headers)
-    
-    for r in records:
+    ws.title = "كشف الحضور"
+
+    orange_fill = PatternFill("solid", fgColor="F97316")
+    white_on_orange = Font(bold=True, color="FFFFFF")
+    alt_fill = PatternFill("solid", fgColor="FFF7ED")
+    border = Border(
+        left=Side(style='thin', color='DDDDDD'),
+        right=Side(style='thin', color='DDDDDD'),
+        top=Side(style='thin', color='DDDDDD'),
+        bottom=Side(style='thin', color='DDDDDD'),
+    )
+    center = Alignment(horizontal='center', vertical='center', wrap_text=True)
+
+    # Title rows
+    ws.append(["شركة اداء الابطال العالمية للرياضة"])
+    ws.append(["كشف الحضور"])
+    info_parts = []
+    if level_display_name:
+        info_parts.append(f"المستوى: {level_display_name}")
+    if date_range_label:
+        info_parts.append(date_range_label)
+    info_parts.append(f"تاريخ التصدير: {export_date}")
+    ws.append(["  |  ".join(info_parts)])
+    ws.append([])
+
+    headers_xl = ["م", "رقم العضوية", "الاسم", "النشاط", "المستوى", "عدد الجلسات", "أول حضور", "آخر حضور"]
+    ws.append(headers_xl)
+    hdr_row = ws.max_row
+    for col_idx, cell in enumerate(ws[hdr_row], 1):
+        cell.fill = orange_fill
+        cell.font = white_on_orange
+        cell.alignment = center
+        cell.border = border
+
+    col_widths_xl = [6, 14, 25, 22, 18, 14, 14, 14]
+    for i, w in enumerate(col_widths_xl, 1):
+        ws.column_dimensions[ws.cell(row=1, column=i).column_letter].width = w
+
+    for r_idx, r in enumerate(rows):
         ws.append([
-            r.get("date", ""),
-            r.get("activity_name", ""),
-            r.get("member_name", ""),
-            "حاضر" if r.get("status") == "present" else "غائب",
-            r.get("check_in_time", ""),
-            r.get("notes", ""),
-            r.get("recorded_by", "")
+            r["idx"], r["member_code"], r["member_name"],
+            r["activity_name"], r["level_name"], r["session_count"],
+            r["first_date"], r["last_date"],
         ])
-    
+        row_num = ws.max_row
+        fill = alt_fill if r_idx % 2 == 1 else None
+        for cell in ws[row_num]:
+            cell.alignment = center
+            cell.border = border
+            if fill:
+                cell.fill = fill
+
+    # Summary row
+    ws.append([])
+    ws.append([f"إجمالي الأعضاء: {len(rows)}"])
+    ws[ws.max_row][0].font = Font(bold=True)
+
     output = BytesIO()
     wb.save(output)
     output.seek(0)
-    
-    filename = f"attendance_{datetime.now().strftime('%Y%m%d')}.xlsx"
+    filename_xl = f"attendance_report_{datetime.now().strftime('%Y%m%d')}.xlsx"
     return StreamingResponse(
         output,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={"Content-Disposition": f"attachment; filename={filename}"}
+        headers={"Content-Disposition": f"attachment; filename={filename_xl}"}
     )
 
 # ============ INTERNAL EXPENSES (PETTY CASH) SYSTEM ============

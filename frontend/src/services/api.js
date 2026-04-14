@@ -317,6 +317,11 @@ export const attendanceAPI = {
     const token = localStorage.getItem('token');
     const queryParams = new URLSearchParams({ token, ...params }).toString();
     return `${API}/export/attendance?${queryParams}`;
+  },
+  exportSummary: (params = {}) => {
+    const token = localStorage.getItem('token');
+    const queryParams = new URLSearchParams({ token, ...params }).toString();
+    return `${API}/export/attendance?${queryParams}`;
   }
 };
 
