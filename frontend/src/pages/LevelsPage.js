@@ -1163,14 +1163,14 @@ export const LevelsPage = () => {
           )}
           
           {/* Members Preview - Draggable */}
-          <div className="space-y-1.5 max-h-32 overflow-y-auto mb-3 scrollbar-thin">
+          <div className="space-y-1.5 max-h-72 overflow-y-auto mb-3 scrollbar-thin">
             {levelMembers.length === 0 ? (
               <p className="text-center text-gray-400 py-3 text-sm">
                 {t('لا يوجد لاعبين', 'No players')}
               </p>
             ) : (
               <>
-                {levelMembers.slice(0, 5).map(member => {
+                {levelMembers.map(member => {
                   const attKey = `${member.id}_${level.id}`;
                   const isPresent = attendanceMap[attKey];
                   const isAttLoading = attendanceLoading[attKey];
