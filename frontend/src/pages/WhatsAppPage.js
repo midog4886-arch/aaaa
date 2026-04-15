@@ -110,6 +110,8 @@ export default function WhatsAppPage() {
   const [actNotifActivity, setActNotifActivity] = useState('');
   const [actNotifLevel, setActNotifLevel] = useState('all');
   const [actNotifLevels, setActNotifLevels] = useState([]);
+  const [actNotifAllActivities, setActNotifAllActivities] = useState([]);
+  const [actNotifLoadingActivities, setActNotifLoadingActivities] = useState(false);
   const [actNotifChannel, setActNotifChannel] = useState('push');
   const [actNotifTitle, setActNotifTitle] = useState('');
   const [actNotifBody, setActNotifBody] = useState('');
@@ -226,12 +228,36 @@ export default function WhatsAppPage() {
     }
   }, [status.connected]);
 
+  const loadActivityNotifActivities = async () => {
+    setActNotifLoadingActivities(true);
+    try {
+      // Fetch all levels and derive unique activities from them (more complete than db.activities)
+      const [lvlRes, actRes] = await Promise.all([
+        levelsAPI.getAll(),
+        activitiesAPI.getAll({ branch_filter: 'all' }),
+      ]);
+      const allLevels = lvlRes.data || [];
+      const actMap = {};
+      // Build from db.activities first
+      (actRes.data || []).forEach(a => { actMap[a.id] = a.name || a.name_ar || a.id; });
+      // Supplement with activity names from levels (covers activities not in db.activities)
+      allLevels.forEach(l => {
+        if (l.activity_id && !actMap[l.activity_id]) {
+          actMap[l.activity_id] = l.activity_name || l.activity_id;
+        }
+      });
+      const derived = Object.entries(actMap).map(([id, name]) => ({ id, name }));
+      setActNotifAllActivities(derived);
+    } catch { }
+    finally { setActNotifLoadingActivities(false); }
+  };
+
   useEffect(() => {
     if (activeTab === 'manual' && !members.length) loadMembers();
     if (activeTab === 'portal') loadPortalNotifications();
     if (activeTab === 'internal') loadConversations();
     if (activeTab === 'push') loadPushData();
-    if (activeTab === 'activity_notif' && !activities.length) loadMembers();
+    if (activeTab === 'activity_notif') loadActivityNotifActivities();
   }, [activeTab]);
 
   // Load levels when actNotifActivity changes
@@ -1272,10 +1298,11 @@ export default function WhatsAppPage() {
               <div>
                 <label className="block text-sm font-medium mb-1">{t('النشاط', 'Activity')}</label>
                 <select value={actNotifActivity} onChange={e => setActNotifActivity(e.target.value)}
-                  className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary bg-background">
-                  <option value="">{t('— اختر النشاط —', '— Select Activity —')}</option>
-                  {activities.map(a => (
-                    <option key={a.id} value={a.id}>{a.name || a.activity_name}</option>
+                  disabled={actNotifLoadingActivities}
+                  className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary bg-background disabled:opacity-60">
+                  <option value="">{actNotifLoadingActivities ? t('جاري التحميل...', 'Loading...') : t('— اختر النشاط —', '— Select Activity —')}</option>
+                  {actNotifAllActivities.map(a => (
+                    <option key={a.id} value={a.id}>{a.name}</option>
                   ))}
                 </select>
               </div>
