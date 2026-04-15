@@ -1482,7 +1482,33 @@ export const MembersPage = () => {
                     required
                     placeholder="05xxxxxxxx"
                     data-testid="member-phone-input"
+                    className={(() => {
+                      if (!selectedMember && formData.phone.length >= 7) {
+                        const dup = members.find(m => m.phone && m.phone.trim() === formData.phone.trim());
+                        if (dup) return 'border-orange-500 focus-visible:ring-orange-400';
+                      }
+                      return '';
+                    })()}
                   />
+                  {/* Duplicate phone warning */}
+                  {(() => {
+                    if (!selectedMember && formData.phone.length >= 7) {
+                      const dup = members.find(m => m.phone && m.phone.trim() === formData.phone.trim());
+                      if (dup) {
+                        return (
+                          <div className="flex items-center gap-2 bg-orange-50 border border-orange-300 rounded-md px-3 py-2 text-sm text-orange-800" dir="rtl">
+                            <span className="text-lg">⚠️</span>
+                            <span>
+                              {language === 'ar'
+                                ? <>الرقم مسجّل مسبقاً باسم <strong>{dup.name_ar || dup.name}</strong> (#{dup.member_id || dup.id})</>
+                                : <>Number already used by <strong>{dup.name_ar || dup.name}</strong> (#{dup.member_id || dup.id})</>}
+                            </span>
+                          </div>
+                        );
+                      }
+                    }
+                    return null;
+                  })()}
                 </div>
                 
                 {/* Age - Optional */}
