@@ -327,6 +327,12 @@ const CameraQRScanner = ({ open, onClose, language = 'ar' }) => {
                               <Calendar className="w-3 h-3" />
                               {t('ينتهي:', 'Expires:')} {act.end_date || '-'}
                             </p>
+                            {act.schedule && (
+                              <p className="text-xs text-blue-600 flex items-center gap-1 mt-0.5">
+                                <Clock className="w-3 h-3" />
+                                {act.schedule}
+                              </p>
+                            )}
                           </div>
                           {isRecorded ? (
                             <Badge className="bg-green-100 text-green-700 gap-1 flex-shrink-0">
