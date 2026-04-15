@@ -11,7 +11,7 @@ import { Checkbox } from '../components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../components/ui/dialog';
 import { toast } from 'sonner';
-import { whatsappAPI, membersAPI, activitiesAPI, branchesAPI, messagesAPI, pushNotificationsAPI } from '../services/api';
+import { whatsappAPI, membersAPI, activitiesAPI, branchesAPI, messagesAPI, pushNotificationsAPI, levelsAPI } from '../services/api';
 import {
   MessageSquare, CheckCircle2, XCircle, RefreshCw, Send, Settings, Loader2,
   Wifi, WifiOff, PhoneCall, Bell, Eye, Users, History, Clock, Phone,
@@ -105,6 +105,17 @@ export default function WhatsAppPage() {
   const [showPushSubscribers, setShowPushSubscribers] = useState(false);
   const [pushSubscribers, setPushSubscribers] = useState([]);
   const [loadingPushSubscribers, setLoadingPushSubscribers] = useState(false);
+
+  // ── Activity Notification State ──
+  const [actNotifActivity, setActNotifActivity] = useState('');
+  const [actNotifLevel, setActNotifLevel] = useState('all');
+  const [actNotifLevels, setActNotifLevels] = useState([]);
+  const [actNotifChannel, setActNotifChannel] = useState('push');
+  const [actNotifTitle, setActNotifTitle] = useState('');
+  const [actNotifBody, setActNotifBody] = useState('');
+  const [actNotifSending, setActNotifSending] = useState(false);
+  const [actNotifMemberCount, setActNotifMemberCount] = useState(null);
+  const [actNotifPriority, setActNotifPriority] = useState('info');
 
   const messageTemplates = {
     payment_reminder: {
@@ -220,7 +231,72 @@ export default function WhatsAppPage() {
     if (activeTab === 'portal') loadPortalNotifications();
     if (activeTab === 'internal') loadConversations();
     if (activeTab === 'push') loadPushData();
+    if (activeTab === 'activity_notif' && !activities.length) loadMembers();
   }, [activeTab]);
+
+  // Load levels when actNotifActivity changes
+  useEffect(() => {
+    if (!actNotifActivity) { setActNotifLevels([]); setActNotifLevel('all'); setActNotifMemberCount(null); return; }
+    levelsAPI.getAll({ activity_id: actNotifActivity }).then(res => {
+      const lvls = res.data || [];
+      setActNotifLevels(lvls);
+      setActNotifLevel('all');
+      const total = lvls.reduce((s, l) => s + (l.members || []).length, 0);
+      setActNotifMemberCount(total);
+    }).catch(() => setActNotifLevels([]));
+  }, [actNotifActivity]);
+
+  // Update member count when level changes
+  useEffect(() => {
+    if (!actNotifActivity) return;
+    if (actNotifLevel === 'all') {
+      const total = actNotifLevels.reduce((s, l) => s + (l.members || []).length, 0);
+      setActNotifMemberCount(total);
+    } else {
+      const lvl = actNotifLevels.find(l => l.id === actNotifLevel);
+      setActNotifMemberCount(lvl ? (lvl.members || []).length : 0);
+    }
+  }, [actNotifLevel, actNotifLevels]);
+
+  const handleSendActivityNotif = async () => {
+    if (!actNotifActivity) { toast.error(t('اختر النشاط أولاً', 'Select an activity first')); return; }
+    if (!actNotifTitle.trim()) { toast.error(t('أدخل عنوان الإشعار', 'Enter notification title')); return; }
+    if (!actNotifBody.trim()) { toast.error(t('أدخل نص الإشعار', 'Enter notification body')); return; }
+    const level_id = actNotifLevel !== 'all' ? actNotifLevel : null;
+    if (!window.confirm(t(`سيتم إرسال الإشعار لـ ${actNotifMemberCount ?? '?'} عضو. متابعة؟`, `Send notification to ${actNotifMemberCount ?? '?'} members. Continue?`))) return;
+    setActNotifSending(true);
+    try {
+      if (actNotifChannel === 'push') {
+        const res = await pushNotificationsAPI.broadcast({
+          title: actNotifTitle,
+          body: actNotifBody,
+          url: '/portal/notifications',
+          activity_id: actNotifActivity,
+          level_id: level_id,
+        });
+        const d = res.data;
+        toast.success(t(`تم الإرسال ✓ (${d.success ?? 0} ناجح، ${d.failed ?? 0} فشل)`, `Sent ✓ (${d.success ?? 0} ok, ${d.failed ?? 0} failed)`));
+      } else {
+        const res = await pushNotificationsAPI.createMemberNotification({
+          title: actNotifTitle,
+          message: actNotifBody,
+          target: 'activity_members',
+          target_activity_id: actNotifActivity,
+          target_level_id: level_id,
+          priority: actNotifPriority,
+          notification_type: 'announcement',
+        });
+        const d = res.data;
+        toast.success(t(`تم الإرسال ✓ (${d.target_count ?? 0} عضو)`, `Sent ✓ (${d.target_count ?? 0} members)`));
+      }
+      setActNotifTitle('');
+      setActNotifBody('');
+    } catch (err) {
+      toast.error(err.response?.data?.detail || t('فشل الإرسال', 'Send failed'));
+    } finally {
+      setActNotifSending(false);
+    }
+  };
 
   // ── WhatsApp handlers ──
   const handleToggleEnabled = () => {
@@ -525,6 +601,7 @@ export default function WhatsAppPage() {
   const tabs = [
     { id: 'connection', label: t('واتساب', 'WhatsApp'), icon: <Wifi className="w-4 h-4" /> },
     { id: 'manual', label: t('إرسال يدوي', 'Manual Send'), icon: <Phone className="w-4 h-4" /> },
+    { id: 'activity_notif', label: t('إشعار النشاط', 'Activity Alert'), icon: <Megaphone className="w-4 h-4" /> },
     { id: 'portal', label: t('إشعارات الأعضاء', 'Member Notifications'), icon: <Bell className="w-4 h-4" /> },
     { id: 'internal', label: t('رسائل داخلية', 'Internal Messages'), icon: <Mail className="w-4 h-4" />, badge: msgUnreadCount },
     { id: 'push', label: t('إشعارات Push', 'Push Notifications'), icon: <Megaphone className="w-4 h-4" /> },
@@ -1176,6 +1253,113 @@ export default function WhatsAppPage() {
                   </Button>
                 </CardContent>
               </Card>
+            </div>
+          </div>
+        )}
+
+        {/* ══════════════════════════════════════════
+            TAB: ACTIVITY / LEVEL NOTIFICATION
+        ══════════════════════════════════════════ */}
+        {activeTab === 'activity_notif' && (
+          <div className="max-w-xl space-y-6">
+            <div className="rounded-2xl border p-6 bg-card space-y-5">
+              <div className="flex items-center gap-2">
+                <Megaphone className="w-5 h-5 text-primary" />
+                <h2 className="text-lg font-bold">{t('إشعار جماعي لأعضاء نشاط / مستوى', 'Bulk Notification for Activity / Level')}</h2>
+              </div>
+
+              {/* Activity selector */}
+              <div>
+                <label className="block text-sm font-medium mb-1">{t('النشاط', 'Activity')}</label>
+                <select value={actNotifActivity} onChange={e => setActNotifActivity(e.target.value)}
+                  className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary bg-background">
+                  <option value="">{t('— اختر النشاط —', '— Select Activity —')}</option>
+                  {activities.map(a => (
+                    <option key={a.id} value={a.id}>{a.name || a.activity_name}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Level selector */}
+              {actNotifActivity && (
+                <div>
+                  <label className="block text-sm font-medium mb-1">{t('المستوى', 'Level')}</label>
+                  <select value={actNotifLevel} onChange={e => setActNotifLevel(e.target.value)}
+                    className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary bg-background">
+                    <option value="all">{t('جميع المستويات', 'All Levels')}</option>
+                    {actNotifLevels.map(l => (
+                      <option key={l.id} value={l.id}>
+                        {l.level_name || l.name || `مستوى ${l.level_number}`} ({(l.members || []).length} {t('عضو', 'members')})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              {/* Member count badge */}
+              {actNotifActivity && actNotifMemberCount !== null && (
+                <div className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium ${actNotifMemberCount > 0 ? 'bg-blue-50 text-blue-700 border border-blue-200' : 'bg-gray-50 text-gray-500 border'}`}>
+                  <Users className="w-4 h-4" />
+                  {t(`عدد الأعضاء المستهدفين: ${actNotifMemberCount}`, `Target members: ${actNotifMemberCount}`)}
+                </div>
+              )}
+
+              {/* Channel toggle */}
+              <div>
+                <label className="block text-sm font-medium mb-2">{t('قناة الإرسال', 'Channel')}</label>
+                <div className="flex gap-3">
+                  <button onClick={() => setActNotifChannel('push')}
+                    className={`flex-1 py-2 rounded-lg border text-sm font-medium transition-colors ${actNotifChannel === 'push' ? 'bg-primary text-primary-foreground border-primary' : 'bg-background hover:bg-muted'}`}>
+                    <Megaphone className="w-4 h-4 inline me-1" />
+                    {t('Push (جوال/متصفح)', 'Push (Mobile/Browser)')}
+                  </button>
+                  <button onClick={() => setActNotifChannel('portal')}
+                    className={`flex-1 py-2 rounded-lg border text-sm font-medium transition-colors ${actNotifChannel === 'portal' ? 'bg-primary text-primary-foreground border-primary' : 'bg-background hover:bg-muted'}`}>
+                    <Bell className="w-4 h-4 inline me-1" />
+                    {t('بوابة العضو', 'Member Portal')}
+                  </button>
+                </div>
+              </div>
+
+              {/* Priority (portal only) */}
+              {actNotifChannel === 'portal' && (
+                <div>
+                  <label className="block text-sm font-medium mb-1">{t('الأولوية', 'Priority')}</label>
+                  <select value={actNotifPriority} onChange={e => setActNotifPriority(e.target.value)}
+                    className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary bg-background">
+                    <option value="info">{t('عادي', 'Info')}</option>
+                    <option value="warning">{t('تحذير', 'Warning')}</option>
+                    <option value="danger">{t('عاجل', 'Urgent')}</option>
+                  </select>
+                </div>
+              )}
+
+              {/* Title */}
+              <div>
+                <label className="block text-sm font-medium mb-1">{t('عنوان الإشعار', 'Notification Title')}</label>
+                <input type="text" value={actNotifTitle} onChange={e => setActNotifTitle(e.target.value)}
+                  placeholder={t('مثال: موعد التدريب القادم', 'e.g. Upcoming training session')}
+                  className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary" dir="auto" />
+              </div>
+
+              {/* Body */}
+              <div>
+                <label className="block text-sm font-medium mb-1">{t('نص الإشعار', 'Notification Body')}</label>
+                <textarea value={actNotifBody} onChange={e => setActNotifBody(e.target.value)}
+                  placeholder={t('اكتب نص الرسالة هنا...', 'Write message here...')}
+                  rows={4} dir="auto"
+                  className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary resize-none" />
+              </div>
+
+              {/* Send button */}
+              <Button onClick={handleSendActivityNotif}
+                disabled={actNotifSending || !actNotifActivity || !actNotifTitle.trim() || !actNotifBody.trim() || actNotifMemberCount === 0}
+                className="w-full">
+                {actNotifSending ? <Loader2 className="w-4 h-4 animate-spin me-2" /> : <Send className="w-4 h-4 me-2" />}
+                {actNotifMemberCount === 0
+                  ? t('لا يوجد أعضاء في هذا المستوى', 'No members in this level')
+                  : t(`إرسال${actNotifMemberCount !== null ? ` لـ ${actNotifMemberCount} عضو` : ''}`, `Send${actNotifMemberCount !== null ? ` to ${actNotifMemberCount} members` : ''}`)}
+              </Button>
             </div>
           </div>
         )}

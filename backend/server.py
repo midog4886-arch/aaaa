@@ -6903,8 +6903,10 @@ async def check_subscription_renewals(current_user: dict = Depends(get_current_u
 class MemberNotificationCreate(BaseModel):
     title: str
     message: str
-    target: str = "all_members"  # all_members, specific_member
+    target: str = "all_members"  # all_members, specific_member, activity_members
     target_member_id: Optional[str] = None
+    target_activity_id: Optional[str] = None
+    target_level_id: Optional[str] = None
     priority: str = "info"  # info, warning, danger
     notification_type: str = "announcement"  # announcement, offer, reminder
 
@@ -6913,22 +6915,47 @@ async def create_member_notification(data: MemberNotificationCreate, current_use
     """Create a notification for member portal"""
     if not current_user.get("is_admin"):
         raise HTTPException(status_code=403, detail="Admin access required")
-    
+
+    # Resolve target_members list
+    target_members = []
+    if data.target == "specific_member" and data.target_member_id:
+        target_members = [data.target_member_id]
+    elif data.target == "activity_members":
+        if data.target_level_id:
+            level = await db.levels.find_one({"id": data.target_level_id}, {"_id": 0, "members": 1})
+            target_members = level.get("members", []) if level else []
+        elif data.target_activity_id:
+            levels = await db.levels.find(
+                {"activity_id": data.target_activity_id}, {"_id": 0, "members": 1}
+            ).to_list(500)
+            seen = set()
+            for lvl in levels:
+                for mid in lvl.get("members", []):
+                    if mid not in seen:
+                        seen.add(mid)
+                        target_members.append(mid)
+
     notification = {
         "id": str(uuid.uuid4()),
         "title": data.title,
         "message": data.message,
         "target": data.target,
-        "target_members": [data.target_member_id] if data.target == "specific_member" and data.target_member_id else [],
+        "target_members": target_members,
         "priority": data.priority,
         "type": data.notification_type,
+        "target_activity_id": data.target_activity_id,
+        "target_level_id": data.target_level_id,
         "created_by": current_user.get("id"),
         "created_at": datetime.now(timezone.utc).isoformat()
     }
     
     await db.notifications.insert_one(notification)
     
-    return {"message": "تم إرسال الإشعار بنجاح", "notification_id": notification["id"]}
+    return {
+        "message": "تم إرسال الإشعار بنجاح",
+        "notification_id": notification["id"],
+        "target_count": len(target_members)
+    }
 
 @api_router.get("/member-notifications")
 async def get_member_notifications(current_user: dict = Depends(get_current_user)):

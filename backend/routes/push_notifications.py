@@ -344,6 +344,23 @@ class BroadcastPayload(BaseModel):
     image: Optional[str] = None
     branch_id: Optional[str] = None
     member_ids: Optional[List[str]] = None
+    activity_id: Optional[str] = None
+    level_id: Optional[str] = None
+
+
+async def _resolve_activity_member_ids(activity_id: Optional[str], level_id: Optional[str]) -> Optional[List[str]]:
+    """Resolve activity_id / level_id to a list of member_ids. Returns None if neither provided."""
+    if not activity_id and not level_id:
+        return None
+    if level_id:
+        level = await db.levels.find_one({"id": level_id}, {"_id": 0, "members": 1})
+        if not level:
+            return []
+        return level.get("members", [])
+    # activity_id only — collect members from all levels of that activity
+    levels = await db.levels.find({"activity_id": activity_id}, {"_id": 0, "members": 1}).to_list(500)
+    ids = list({mid for lvl in levels for mid in lvl.get("members", [])})
+    return ids
 
 
 @router.post("/broadcast")
@@ -356,8 +373,12 @@ async def broadcast_notification(data: BroadcastPayload):
         tag=f"broadcast-{uuid.uuid4()}"
     )
 
-    if data.member_ids:
-        query = {"is_active": True, "member_id": {"$in": data.member_ids}}
+    # Resolve activity/level targeting to member_ids
+    resolved_ids = await _resolve_activity_member_ids(data.activity_id, data.level_id)
+    effective_member_ids = resolved_ids if resolved_ids is not None else data.member_ids
+
+    if effective_member_ids is not None:
+        query = {"is_active": True, "member_id": {"$in": effective_member_ids}}
         subscriptions = await db.push_subscriptions.find(query, {"_id": 0}).to_list(10000)
         success_count = 0
         fail_count = 0
