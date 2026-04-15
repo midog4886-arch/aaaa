@@ -994,8 +994,11 @@ export default function WhatsAppPage() {
                   <p className="text-sm font-medium">{t('إرسال التذكيرات التلقائية الآن', 'Send Auto Reminders Now')}</p>
                   {targetInfo.count > 0 && <span className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded-full">{targetInfo.count} {t('عضو', 'members')}</span>}
                 </div>
-                <p className="text-xs text-muted-foreground mb-3">{t(`لكل عضو ينتهي اشتراكه بعد ${waSettings.days_before} يوم، بفاصل دقيقة بين كل رسالة`, `Members expiring in ${waSettings.days_before} days, 1 min apart`)}</p>
-                <Button onClick={handleSendNow} disabled={sendingNow || !status.connected} className="w-full" variant="outline">
+                <p className="text-xs text-muted-foreground mb-3">
+                  {t(`يُرسل لأعضاء ينتهي اشتراكهم بعد ${waSettings.days_before} يوم عبر: WhatsApp (إذا متصل) + Push + بوابة العضو`,
+                     `Members expiring in ${waSettings.days_before} days via: WhatsApp (if connected) + Push + Portal`)}
+                </p>
+                <Button onClick={handleSendNow} disabled={sendingNow} className="w-full" variant="outline">
                   {sendingNow ? <Loader2 className="w-4 h-4 animate-spin me-2" /> : <MessageSquare className="w-4 h-4 me-2" />}
                   {t('إرسال التذكيرات الآن', 'Send Reminders Now')}
                 </Button>
