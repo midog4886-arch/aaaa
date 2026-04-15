@@ -1293,16 +1293,62 @@ export default function WhatsAppPage() {
                 <h2 className="text-lg font-bold">{t('إشعار جماعي لأعضاء نشاط / مستوى', 'Bulk Notification for Activity / Level')}</h2>
               </div>
 
-              {/* Activity selector */}
+              {/* Activity selector — same optgroup structure as SchedulePage */}
               <div>
-                <label className="block text-sm font-medium mb-1">{t('النشاط', 'Activity')}</label>
+                <label className="block text-sm font-medium mb-1">🏃 {t('النشاط', 'Activity')}</label>
                 <select value={actNotifActivity} onChange={e => setActNotifActivity(e.target.value)}
                   disabled={actNotifLoadingActivities}
                   className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary bg-background disabled:opacity-60">
                   <option value="">{actNotifLoadingActivities ? t('جاري التحميل...', 'Loading...') : t('— اختر النشاط —', '— Select Activity —')}</option>
-                  {actNotifAllActivities.map(a => (
-                    <option key={a.id} value={a.id}>{a.name}</option>
-                  ))}
+
+                  {/* Swimming group */}
+                  {actNotifAllActivities.some(a => (a.name||'').includes('سباح') || (a.name||'').toLowerCase().includes('swim')) && (
+                    <optgroup label={t('🏊 السباحة', '🏊 Swimming')}>
+                      <option value="سباح">{t('🏊 كل السباحة', '🏊 All Swimming')}</option>
+                      {actNotifAllActivities
+                        .filter(a => (a.name||'').includes('سباح') || (a.name||'').toLowerCase().includes('swim'))
+                        .map(a => <option key={a.id} value={a.name}>{a.name}</option>)}
+                    </optgroup>
+                  )}
+
+                  {/* Football group */}
+                  {actNotifAllActivities.some(a => (a.name||'').includes('قدم') || (a.name||'').toLowerCase().includes('football')) && (
+                    <optgroup label={t('⚽ كرة القدم', '⚽ Football')}>
+                      <option value="قدم">{t('⚽ كل كرة القدم', '⚽ All Football')}</option>
+                      {actNotifAllActivities
+                        .filter(a => (a.name||'').includes('قدم') || (a.name||'').toLowerCase().includes('football'))
+                        .map(a => <option key={a.id} value={a.name}>{a.name}</option>)}
+                    </optgroup>
+                  )}
+
+                  {/* Karate group */}
+                  {actNotifAllActivities.some(a => (a.name||'').includes('كارات') || (a.name||'').toLowerCase().includes('karate')) && (
+                    <optgroup label={t('🥋 الكاراتيه', '🥋 Karate')}>
+                      <option value="كارات">{t('🥋 كل الكاراتيه', '🥋 All Karate')}</option>
+                      {actNotifAllActivities
+                        .filter(a => (a.name||'').includes('كارات') || (a.name||'').toLowerCase().includes('karate'))
+                        .map(a => <option key={a.id} value={a.name}>{a.name}</option>)}
+                    </optgroup>
+                  )}
+
+                  {/* Other activities */}
+                  {actNotifAllActivities.filter(a => {
+                    const n = (a.name||'').toLowerCase();
+                    return !n.includes('سباح') && !n.includes('swim') &&
+                           !n.includes('قدم') && !n.includes('football') &&
+                           !n.includes('كارات') && !n.includes('karate');
+                  }).length > 0 && (
+                    <optgroup label={t('📋 أنشطة أخرى', '📋 Other')}>
+                      {actNotifAllActivities
+                        .filter(a => {
+                          const n = (a.name||'').toLowerCase();
+                          return !n.includes('سباح') && !n.includes('swim') &&
+                                 !n.includes('قدم') && !n.includes('football') &&
+                                 !n.includes('كارات') && !n.includes('karate');
+                        })
+                        .map(a => <option key={a.id} value={a.name}>{a.name}</option>)}
+                    </optgroup>
+                  )}
                 </select>
               </div>
 
