@@ -118,6 +118,10 @@ export default function WhatsAppPage() {
   const [actNotifSending, setActNotifSending] = useState(false);
   const [actNotifMemberCount, setActNotifMemberCount] = useState(null);
   const [actNotifPriority, setActNotifPriority] = useState('info');
+  const [actNotifMembers, setActNotifMembers] = useState([]);       // full member list with active status
+  const [actNotifLoadingMembers, setActNotifLoadingMembers] = useState(false);
+  const [actNotifActiveOnly, setActNotifActiveOnly] = useState(true); // filter to active subscribers
+  const [actNotifShowList, setActNotifShowList] = useState(false);   // toggle member list visibility
 
   const messageTemplates = {
     payment_reminder: {
@@ -250,46 +254,73 @@ export default function WhatsAppPage() {
     if (activeTab === 'activity_notif') loadActivityNotifActivities();
   }, [activeTab]);
 
+  // Helper: collect all member_ids from the currently filtered levels
+  const getTargetMemberIds = (levels, levelId) => {
+    const targetLvls = levelId && levelId !== 'all'
+      ? levels.filter(l => l.id === levelId)
+      : levels;
+    const seen = new Set();
+    targetLvls.forEach(l => (l.members || []).forEach(mid => seen.add(mid)));
+    return [...seen];
+  };
+
+  // Fetch member details + active status for a list of ids
+  const fetchMemberDetails = async (memberIds) => {
+    if (!memberIds.length) { setActNotifMembers([]); setActNotifMemberCount(0); return; }
+    setActNotifLoadingMembers(true);
+    try {
+      const res = await pushNotificationsAPI.getMembersActiveStatus(memberIds);
+      setActNotifMembers(res.data || []);
+    } catch { setActNotifMembers([]); }
+    finally { setActNotifLoadingMembers(false); }
+  };
+
   // Load levels when actNotifActivity changes
   // activity_name in db.levels is compound e.g. "السباحة - 8:00-9:00"
   // so we fetch ALL levels and filter client-side by includes() — same logic as LevelsPage
   useEffect(() => {
-    if (!actNotifActivity) { setActNotifLevels([]); setActNotifLevel('all'); setActNotifMemberCount(null); return; }
-    levelsAPI.getAll().then(res => {
+    if (!actNotifActivity) {
+      setActNotifLevels([]); setActNotifLevel('all');
+      setActNotifMemberCount(null); setActNotifMembers([]); setActNotifShowList(false);
+      return;
+    }
+    levelsAPI.getAll().then(async res => {
       const allLvls = res.data || [];
       const filtered = allLvls.filter(l => (l.activity_name || '').includes(actNotifActivity));
       setActNotifLevels(filtered);
       setActNotifLevel('all');
-      const total = filtered.reduce((s, l) => s + (l.members || []).length, 0);
-      setActNotifMemberCount(total);
-    }).catch(() => setActNotifLevels([]));
+      const ids = getTargetMemberIds(filtered, 'all');
+      await fetchMemberDetails(ids);
+    }).catch(() => { setActNotifLevels([]); setActNotifMembers([]); });
   }, [actNotifActivity]);
 
-  // Update member count when level changes
+  // Update member list when level or members change
   useEffect(() => {
-    if (!actNotifActivity) return;
-    if (actNotifLevel === 'all') {
-      const total = actNotifLevels.reduce((s, l) => s + (l.members || []).length, 0);
-      setActNotifMemberCount(total);
-    } else {
-      const lvl = actNotifLevels.find(l => l.id === actNotifLevel);
-      setActNotifMemberCount(lvl ? (lvl.members || []).length : 0);
-    }
+    if (!actNotifActivity || !actNotifLevels.length) return;
+    const ids = getTargetMemberIds(actNotifLevels, actNotifLevel);
+    fetchMemberDetails(ids);
   }, [actNotifLevel, actNotifLevels]);
+
+  // Derived: filtered member list based on active-only toggle
+  const actNotifFilteredMembers = actNotifActiveOnly
+    ? actNotifMembers.filter(m => m.is_active)
+    : actNotifMembers;
+
+  // Sync member count with filtered list
+  useEffect(() => {
+    if (!actNotifLoadingMembers) {
+      setActNotifMemberCount(actNotifFilteredMembers.length);
+    }
+  }, [actNotifFilteredMembers, actNotifLoadingMembers]);
 
   const handleSendActivityNotif = async () => {
     if (!actNotifActivity) { toast.error(t('اختر النشاط أولاً', 'Select an activity first')); return; }
     if (!actNotifTitle.trim()) { toast.error(t('أدخل عنوان الإشعار', 'Enter notification title')); return; }
     if (!actNotifBody.trim()) { toast.error(t('أدخل نص الإشعار', 'Enter notification body')); return; }
-    const level_id = actNotifLevel !== 'all' ? actNotifLevel : null;
-    if (!window.confirm(t(`سيتم إرسال الإشعار لـ ${actNotifMemberCount ?? '?'} عضو. متابعة؟`, `Send notification to ${actNotifMemberCount ?? '?'} members. Continue?`))) return;
-    // Collect member IDs from filtered levels (handles compound activity_name like "السباحة - 8:00-9:00")
-    const targetLevels = level_id
-      ? actNotifLevels.filter(l => l.id === level_id)
-      : actNotifLevels;
-    const memberIdSet = new Set();
-    targetLevels.forEach(l => (l.members || []).forEach(mid => memberIdSet.add(mid)));
-    const resolvedMemberIds = [...memberIdSet];
+    // Use the filtered member list (active-only or all) — computed from actNotifMembers
+    const resolvedMemberIds = actNotifFilteredMembers.map(m => m.member_id);
+    if (!resolvedMemberIds.length) { toast.error(t('لا يوجد أعضاء مستهدفون', 'No target members')); return; }
+    if (!window.confirm(t(`سيتم إرسال الإشعار لـ ${resolvedMemberIds.length} عضو. متابعة؟`, `Send notification to ${resolvedMemberIds.length} members. Continue?`))) return;
 
     setActNotifSending(true);
     try {
@@ -1376,11 +1407,64 @@ export default function WhatsAppPage() {
                 </div>
               )}
 
-              {/* Member count badge */}
-              {actNotifActivity && actNotifMemberCount !== null && (
-                <div className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium ${actNotifMemberCount > 0 ? 'bg-blue-50 text-blue-700 border border-blue-200' : 'bg-gray-50 text-gray-500 border'}`}>
-                  <Users className="w-4 h-4" />
-                  {t(`عدد الأعضاء المستهدفين: ${actNotifMemberCount}`, `Target members: ${actNotifMemberCount}`)}
+              {/* Member count + active filter + list */}
+              {actNotifActivity && (
+                <div className="space-y-2">
+                  {/* Active-only toggle + count */}
+                  <div className="flex items-center justify-between gap-3 flex-wrap">
+                    <label className="flex items-center gap-2 cursor-pointer select-none text-sm">
+                      <input
+                        type="checkbox"
+                        checked={actNotifActiveOnly}
+                        onChange={e => setActNotifActiveOnly(e.target.checked)}
+                        className="accent-primary w-4 h-4"
+                      />
+                      {t('نشطين فقط (اشتراك سارٍ)', 'Active subscribers only')}
+                    </label>
+                    {actNotifLoadingMembers
+                      ? <span className="text-xs text-muted-foreground">{t('جاري التحقق...', 'Checking...')}</span>
+                      : actNotifMembers.length > 0 && (
+                        <span className="text-xs text-muted-foreground">
+                          {actNotifActiveOnly
+                            ? t(`${actNotifFilteredMembers.length} نشط من ${actNotifMembers.length}`, `${actNotifFilteredMembers.length} active of ${actNotifMembers.length}`)
+                            : t(`${actNotifMembers.length} عضو`, `${actNotifMembers.length} members`)}
+                        </span>
+                      )}
+                  </div>
+
+                  {/* Count badge */}
+                  {!actNotifLoadingMembers && (
+                    <div
+                      className={`flex items-center justify-between gap-2 px-4 py-2 rounded-xl text-sm font-medium cursor-pointer ${actNotifFilteredMembers.length > 0 ? 'bg-blue-50 text-blue-700 border border-blue-200' : 'bg-gray-50 text-gray-500 border'}`}
+                      onClick={() => setActNotifShowList(v => !v)}
+                    >
+                      <div className="flex items-center gap-2">
+                        <Users className="w-4 h-4" />
+                        {t(`عدد الأعضاء المستهدفين: ${actNotifFilteredMembers.length}`, `Target members: ${actNotifFilteredMembers.length}`)}
+                      </div>
+                      <span className="text-xs opacity-60">{actNotifShowList ? '▲' : '▼'} {t('عرض', 'Show')}</span>
+                    </div>
+                  )}
+
+                  {/* Member list */}
+                  {actNotifShowList && actNotifFilteredMembers.length > 0 && (
+                    <div className="border rounded-xl overflow-hidden">
+                      <div className="max-h-48 overflow-y-auto divide-y text-sm">
+                        {actNotifFilteredMembers.map((m, i) => (
+                          <div key={m.member_id} className="flex items-center gap-3 px-3 py-2 hover:bg-muted/40">
+                            <span className="text-xs text-muted-foreground w-6 text-center">{i + 1}</span>
+                            <div className="flex-1">
+                              <p className="font-medium leading-none">{m.name || m.member_id}</p>
+                              {m.phone && <p className="text-xs text-muted-foreground mt-0.5">{m.phone}</p>}
+                            </div>
+                            <span className={`text-xs px-1.5 py-0.5 rounded-full ${m.is_active ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-600'}`}>
+                              {m.is_active ? t('نشط', 'Active') : t('منتهي', 'Expired')}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
 

@@ -6975,6 +6975,49 @@ async def create_member_notification(data: MemberNotificationCreate, current_use
         "target_count": len(target_members)
     }
 
+class MemberActiveCheckRequest(BaseModel):
+    member_ids: List[str]
+
+@api_router.post("/members/active-status")
+async def get_members_active_status(
+    data: MemberActiveCheckRequest,
+    current_user: dict = Depends(get_current_user)
+):
+    """Return details + active-subscription status for a given list of member_ids."""
+    if not current_user.get("is_admin"):
+        raise HTTPException(status_code=403, detail="Admin access required")
+
+    from datetime import date
+    today = date.today().isoformat()
+
+    if not data.member_ids:
+        return []
+
+    members = await db.members.find(
+        {"id": {"$in": data.member_ids}},
+        {"_id": 0, "id": 1, "name": 1, "name_ar": 1, "phone": 1, "activities": 1}
+    ).to_list(1000)
+
+    result = []
+    for m in members:
+        activities = m.get("activities") or []
+        is_active = any(
+            (a.get("end_date") or "") >= today
+            for a in activities
+        )
+        result.append({
+            "member_id": m["id"],
+            "name": m.get("name_ar") or m.get("name", ""),
+            "phone": m.get("phone", ""),
+            "is_active": is_active,
+        })
+
+    # Preserve original ordering
+    order = {mid: i for i, mid in enumerate(data.member_ids)}
+    result.sort(key=lambda x: order.get(x["member_id"], 9999))
+    return result
+
+
 @api_router.get("/member-notifications")
 async def get_member_notifications(current_user: dict = Depends(get_current_user)):
     """Get all member portal notifications"""

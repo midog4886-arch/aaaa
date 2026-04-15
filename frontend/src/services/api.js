@@ -388,6 +388,7 @@ export const pushNotificationsAPI = {
   getSubscribersList: () => axios.get(`${API}/push-notifications/subscribers-list`),
   broadcast: (data) => axios.post(`${API}/push-notifications/broadcast`, data),
   createMemberNotification: (data) => axios.post(`${API}/member-notifications`, data),
+  getMembersActiveStatus: (memberIds) => axios.post(`${API}/members/active-status`, { member_ids: memberIds }),
 };
 
 export const messagesAPI = {
