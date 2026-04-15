@@ -56,7 +56,7 @@ export const CreateEditInvoiceDialog = ({
               <SelectContent>
                 <SelectItem value="none">{language === 'ar' ? '-- بدون عضو --' : '-- No member --'}</SelectItem>
                 <SelectItem value="new" className="text-primary font-medium"><UserPlus className="w-4 h-4 inline me-2" />{language === 'ar' ? 'إضافة عضو جديد' : 'Add new member'}</SelectItem>
-                {(members || []).filter(m => m.id).map(m => <SelectItem key={m.id} value={m.id}>{language === 'ar' ? m.name_ar : m.name} - {m.phone}</SelectItem>)}
+                {(members || []).filter(m => m.id).map(m => <SelectItem key={m.id} value={m.id}>{m.member_id && <span className="font-mono text-primary font-semibold me-1">#{m.member_id}</span>}{language === 'ar' ? m.name_ar : m.name} - {m.phone}</SelectItem>)}
               </SelectContent>
             </Select>
           </div>
@@ -395,7 +395,7 @@ export const CreateEditInvoiceDialog = ({
                         <SelectContent>
                           <SelectItem value="none">{language === 'ar' ? '-- اختر --' : '-- Select --'}</SelectItem>
                           <SelectItem value="new_member" className="text-primary font-medium"><UserPlus className="w-4 h-4 inline me-2" />{language === 'ar' ? 'إضافة عضو جديد' : 'Add new member'}</SelectItem>
-                          {(members || []).filter(m => m.id && m.id !== selectedMember?.id && !additionalMembers.some((a, i) => i !== amIdx && a.member?.id === m.id)).map(m => <SelectItem key={m.id} value={m.id}>{language === 'ar' ? m.name_ar : m.name} - {m.phone}</SelectItem>)}
+                          {(members || []).filter(m => m.id && m.id !== selectedMember?.id && !additionalMembers.some((a, i) => i !== amIdx && a.member?.id === m.id)).map(m => <SelectItem key={m.id} value={m.id}>{m.member_id && <span className="font-mono text-primary font-semibold me-1">#{m.member_id}</span>}{language === 'ar' ? m.name_ar : m.name} - {m.phone}</SelectItem>)}
                         </SelectContent>
                       </Select>
                       {additionalMemberNewForm.show && additionalMemberNewForm.index === amIdx && (

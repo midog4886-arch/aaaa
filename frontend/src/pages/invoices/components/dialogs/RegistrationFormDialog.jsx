@@ -67,7 +67,7 @@ export const RegistrationFormDialog = ({
                     <SelectItem value="new" className="text-primary font-semibold">
                       <span className="flex items-center gap-2"><Plus className="w-4 h-4" />{language === 'ar' ? '+ إضافة عضو جديد' : '+ Add New Member'}</span>
                     </SelectItem>
-                    {(members || []).map(m => <SelectItem key={m.id} value={m.id}>{m.name_ar || m.name} - {m.phone}</SelectItem>)}
+                    {(members || []).map(m => <SelectItem key={m.id} value={m.id}>{m.member_id && <span className="font-mono text-primary font-semibold me-1">#{m.member_id}</span>}{m.name_ar || m.name} - {m.phone}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>
@@ -359,7 +359,7 @@ export const RegistrationFormDialog = ({
                       <SelectContent>
                         <SelectItem value="none">{language === 'ar' ? '-- اختر --' : '-- Select --'}</SelectItem>
                         <SelectItem value="new_member" className="text-primary font-medium"><UserPlus className="w-4 h-4 inline me-2" />{language === 'ar' ? 'إضافة عضو جديد' : 'Add new member'}</SelectItem>
-                        {(members || []).filter(m => m.id && !regFormAdditionalMembers.some((a, i) => i !== amIdx && a.member?.id === m.id)).map(m => <SelectItem key={m.id} value={m.id}>{language === 'ar' ? m.name_ar : m.name} - {m.phone}</SelectItem>)}
+                        {(members || []).filter(m => m.id && !regFormAdditionalMembers.some((a, i) => i !== amIdx && a.member?.id === m.id)).map(m => <SelectItem key={m.id} value={m.id}>{m.member_id && <span className="font-mono text-primary font-semibold me-1">#{m.member_id}</span>}{language === 'ar' ? m.name_ar : m.name} - {m.phone}</SelectItem>)}
                       </SelectContent>
                     </Select>
                     {regFormAdditionalMemberNewForm.show && regFormAdditionalMemberNewForm.index === amIdx && (
