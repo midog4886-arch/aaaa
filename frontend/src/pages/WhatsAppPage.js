@@ -122,6 +122,7 @@ export default function WhatsAppPage() {
   const [actNotifLoadingMembers, setActNotifLoadingMembers] = useState(false);
   const [actNotifActiveOnly, setActNotifActiveOnly] = useState(true); // filter to active subscribers
   const [actNotifShowList, setActNotifShowList] = useState(false);   // toggle member list visibility
+  const [actNotifBranch, setActNotifBranch] = useState('');         // branch filter for activity notif
 
   const messageTemplates = {
     payment_reminder: {
@@ -232,13 +233,17 @@ export default function WhatsAppPage() {
     }
   }, [status.connected]);
 
-  const loadActivityNotifActivities = async () => {
+  const loadActivityNotifActivities = async (branchFilter) => {
     setActNotifLoadingActivities(true);
+    // reset activity/levels when branch changes
+    setActNotifActivity(''); setActNotifLevels([]); setActNotifMembers([]);
+    setActNotifMemberCount(null); setActNotifShowList(false);
     try {
       // Same source as SchedulePage: activitiesAPI.getAll — shows all registered activities
-      const res = await activitiesAPI.getAll({ branch_filter: 'all' });
+      const params = branchFilter ? { branch_filter: branchFilter } : { branch_filter: 'all' };
+      const res = await activitiesAPI.getAll(params);
       const list = (res.data || []).map(a => ({
-        id: a.name_ar || a.name || a.id,   // use Arabic name as key (matches what's stored in level.activity_name)
+        id: a.name_ar || a.name || a.id,
         name: a.name_ar || a.name || a.id,
       }));
       setActNotifAllActivities(list);
@@ -251,8 +256,13 @@ export default function WhatsAppPage() {
     if (activeTab === 'portal') loadPortalNotifications();
     if (activeTab === 'internal') loadConversations();
     if (activeTab === 'push') loadPushData();
-    if (activeTab === 'activity_notif') loadActivityNotifActivities();
+    if (activeTab === 'activity_notif') loadActivityNotifActivities(actNotifBranch);
   }, [activeTab]);
+
+  // Reload activities when branch changes (in activity_notif tab)
+  useEffect(() => {
+    if (activeTab === 'activity_notif') loadActivityNotifActivities(actNotifBranch);
+  }, [actNotifBranch]);
 
   // Helper: collect all member_ids from the currently filtered levels
   const getTargetMemberIds = (levels, levelId) => {
@@ -275,7 +285,7 @@ export default function WhatsAppPage() {
     finally { setActNotifLoadingMembers(false); }
   };
 
-  // Load levels when actNotifActivity changes
+  // Load levels when actNotifActivity (or branch) changes
   // activity_name in db.levels is compound e.g. "السباحة - 8:00-9:00"
   // so we fetch ALL levels and filter client-side by includes() — same logic as LevelsPage
   useEffect(() => {
@@ -284,7 +294,8 @@ export default function WhatsAppPage() {
       setActNotifMemberCount(null); setActNotifMembers([]); setActNotifShowList(false);
       return;
     }
-    levelsAPI.getAll().then(async res => {
+    const params = actNotifBranch ? { branch_filter: actNotifBranch } : {};
+    levelsAPI.getAll(params).then(async res => {
       const allLvls = res.data || [];
       const filtered = allLvls.filter(l => (l.activity_name || '').includes(actNotifActivity));
       setActNotifLevels(filtered);
@@ -292,7 +303,7 @@ export default function WhatsAppPage() {
       const ids = getTargetMemberIds(filtered, 'all');
       await fetchMemberDetails(ids);
     }).catch(() => { setActNotifLevels([]); setActNotifMembers([]); });
-  }, [actNotifActivity]);
+  }, [actNotifActivity, actNotifBranch]);
 
   // Update member list when level or members change
   useEffect(() => {
@@ -1323,6 +1334,23 @@ export default function WhatsAppPage() {
                 <Megaphone className="w-5 h-5 text-primary" />
                 <h2 className="text-lg font-bold">{t('إشعار جماعي لأعضاء نشاط / مستوى', 'Bulk Notification for Activity / Level')}</h2>
               </div>
+
+              {/* Branch selector — admin only */}
+              {isAdmin && branches.length > 0 && (
+                <div>
+                  <label className="block text-sm font-medium mb-1">🏢 {t('الفرع', 'Branch')}</label>
+                  <select
+                    value={actNotifBranch}
+                    onChange={e => setActNotifBranch(e.target.value)}
+                    className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary bg-background"
+                  >
+                    <option value="">{t('جميع الفروع', 'All Branches')}</option>
+                    {branches.filter(b => b.id).map(b => (
+                      <option key={b.id} value={b.id}>{b.name_ar || b.name}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
 
               {/* Activity selector — same optgroup structure as SchedulePage */}
               <div>
