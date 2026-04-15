@@ -1500,8 +1500,8 @@ export const MembersPage = () => {
                     data-testid="member-phone-input"
                     className={(() => {
                       if (!selectedMember && formData.phone.length >= 7) {
-                        const dup = members.find(m => m.phone && m.phone.trim() === formData.phone.trim());
-                        if (dup) return 'border-orange-500 focus-visible:ring-orange-400';
+                        const dups = members.filter(m => m.phone && m.phone.trim() === formData.phone.trim());
+                        if (dups.length) return 'border-orange-500 focus-visible:ring-orange-400';
                       }
                       return '';
                     })()}
@@ -1509,16 +1509,24 @@ export const MembersPage = () => {
                   {/* Duplicate phone warning */}
                   {(() => {
                     if (!selectedMember && formData.phone.length >= 7) {
-                      const dup = members.find(m => m.phone && m.phone.trim() === formData.phone.trim());
-                      if (dup) {
+                      const dups = members.filter(m => m.phone && m.phone.trim() === formData.phone.trim());
+                      if (dups.length) {
                         return (
-                          <div className="flex items-center gap-2 bg-orange-50 border border-orange-300 rounded-md px-3 py-2 text-sm text-orange-800" dir="rtl">
-                            <span className="text-lg">⚠️</span>
-                            <span>
-                              {language === 'ar'
-                                ? <>الرقم مسجّل مسبقاً باسم <strong>{dup.name_ar || dup.name}</strong> (#{dup.member_id || dup.id})</>
-                                : <>Number already used by <strong>{dup.name_ar || dup.name}</strong> (#{dup.member_id || dup.id})</>}
-                            </span>
+                          <div className="bg-orange-50 border border-orange-300 rounded-md px-3 py-2 text-sm text-orange-800" dir="rtl">
+                            <div className="flex items-center gap-2 mb-1">
+                              <span className="text-lg">⚠️</span>
+                              <span className="font-semibold">
+                                {language === 'ar' ? `الرقم مسجّل مسبقاً لـ ${dups.length} عضو:` : `Number already used by ${dups.length} member(s):`}
+                              </span>
+                            </div>
+                            <ul className="space-y-0.5 ps-7">
+                              {dups.map(d => (
+                                <li key={d.id} className="flex items-center gap-1">
+                                  <span className="font-mono text-primary font-bold text-xs">#{d.member_code || d.member_id || d.id}</span>
+                                  <strong>{d.name_ar || d.name}</strong>
+                                </li>
+                              ))}
+                            </ul>
                           </div>
                         );
                       }
