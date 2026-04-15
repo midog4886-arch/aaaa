@@ -123,6 +123,7 @@ export default function WhatsAppPage() {
   const [actNotifActiveOnly, setActNotifActiveOnly] = useState(true); // filter to active subscribers
   const [actNotifShowList, setActNotifShowList] = useState(false);   // toggle member list visibility
   const [actNotifBranch, setActNotifBranch] = useState('');         // branch filter for activity notif
+  const [actNotifWaProgress, setActNotifWaProgress] = useState({ done: 0, total: 0 }); // WhatsApp send progress
 
   const messageTemplates = {
     payment_reminder: {
@@ -326,13 +327,37 @@ export default function WhatsAppPage() {
 
   const handleSendActivityNotif = async () => {
     if (!actNotifActivity) { toast.error(t('اختر النشاط أولاً', 'Select an activity first')); return; }
-    if (!actNotifTitle.trim()) { toast.error(t('أدخل عنوان الإشعار', 'Enter notification title')); return; }
     if (!actNotifBody.trim()) { toast.error(t('أدخل نص الإشعار', 'Enter notification body')); return; }
+    if (actNotifChannel !== 'whatsapp' && !actNotifTitle.trim()) { toast.error(t('أدخل عنوان الإشعار', 'Enter notification title')); return; }
     // Use the filtered member list (active-only or all) — computed from actNotifMembers
     const resolvedMemberIds = actNotifFilteredMembers.map(m => m.member_id);
     if (!resolvedMemberIds.length) { toast.error(t('لا يوجد أعضاء مستهدفون', 'No target members')); return; }
-    if (!window.confirm(t(`سيتم إرسال الإشعار لـ ${resolvedMemberIds.length} عضو. متابعة؟`, `Send notification to ${resolvedMemberIds.length} members. Continue?`))) return;
 
+    if (actNotifChannel === 'whatsapp') {
+      if (!status.connected) { toast.error(t('واتساب غير متصل', 'WhatsApp not connected')); return; }
+      const membersWithPhone = actNotifFilteredMembers.filter(m => m.phone);
+      if (!membersWithPhone.length) { toast.error(t('لا يوجد أعضاء لديهم رقم هاتف', 'No members have phone numbers')); return; }
+      if (!window.confirm(t(`سيتم إرسال رسالة واتساب لـ ${membersWithPhone.length} عضو. متابعة؟`, `Send WhatsApp to ${membersWithPhone.length} members. Continue?`))) return;
+      setActNotifSending(true);
+      setActNotifWaProgress({ done: 0, total: membersWithPhone.length });
+      let success = 0;
+      for (let i = 0; i < membersWithPhone.length; i++) {
+        const m = membersWithPhone[i];
+        try {
+          await whatsappAPI.sendTest(m.phone, actNotifBody);
+          success++;
+        } catch { }
+        setActNotifWaProgress({ done: i + 1, total: membersWithPhone.length });
+        if (i < membersWithPhone.length - 1) await new Promise(r => setTimeout(r, 2000));
+      }
+      setActNotifSending(false);
+      setActNotifWaProgress({ done: 0, total: 0 });
+      toast.success(t(`تم الإرسال عبر واتساب: ${success} من ${membersWithPhone.length}`, `WhatsApp sent: ${success} of ${membersWithPhone.length}`));
+      setActNotifBody('');
+      return;
+    }
+
+    if (!window.confirm(t(`سيتم إرسال الإشعار لـ ${resolvedMemberIds.length} عضو. متابعة؟`, `Send notification to ${resolvedMemberIds.length} members. Continue?`))) return;
     setActNotifSending(true);
     try {
       if (actNotifChannel === 'push') {
@@ -340,7 +365,7 @@ export default function WhatsAppPage() {
           title: actNotifTitle,
           body: actNotifBody,
           url: '/portal/notifications',
-          member_ids: resolvedMemberIds,  // pass directly — already filtered client-side
+          member_ids: resolvedMemberIds,
         });
         const d = res.data;
         toast.success(t(`تم الإرسال ✓ (${d.success ?? 0} ناجح، ${d.failed ?? 0} فشل)`, `Sent ✓ (${d.success ?? 0} ok, ${d.failed ?? 0} failed)`));
@@ -349,7 +374,7 @@ export default function WhatsAppPage() {
           title: actNotifTitle,
           message: actNotifBody,
           target: 'activity_members',
-          target_member_ids: resolvedMemberIds,  // pass directly — already filtered client-side
+          target_member_ids: resolvedMemberIds,
           priority: actNotifPriority,
           notification_type: 'announcement',
         });
@@ -1499,19 +1524,39 @@ export default function WhatsAppPage() {
               {/* Channel toggle */}
               <div>
                 <label className="block text-sm font-medium mb-2">{t('قناة الإرسال', 'Channel')}</label>
-                <div className="flex gap-3">
+                <div className="flex gap-2 flex-wrap">
                   <button onClick={() => setActNotifChannel('push')}
                     className={`flex-1 py-2 rounded-lg border text-sm font-medium transition-colors ${actNotifChannel === 'push' ? 'bg-primary text-primary-foreground border-primary' : 'bg-background hover:bg-muted'}`}>
                     <Megaphone className="w-4 h-4 inline me-1" />
-                    {t('Push (جوال/متصفح)', 'Push (Mobile/Browser)')}
+                    {t('Push (جوال/متصفح)', 'Push')}
                   </button>
                   <button onClick={() => setActNotifChannel('portal')}
                     className={`flex-1 py-2 rounded-lg border text-sm font-medium transition-colors ${actNotifChannel === 'portal' ? 'bg-primary text-primary-foreground border-primary' : 'bg-background hover:bg-muted'}`}>
                     <Bell className="w-4 h-4 inline me-1" />
-                    {t('بوابة العضو', 'Member Portal')}
+                    {t('بوابة العضو', 'Portal')}
+                  </button>
+                  <button onClick={() => setActNotifChannel('whatsapp')}
+                    className={`flex-1 py-2 rounded-lg border text-sm font-medium transition-colors ${actNotifChannel === 'whatsapp' ? 'bg-green-600 text-white border-green-600' : 'bg-background hover:bg-muted'}`}>
+                    <span className="inline me-1">📱</span>
+                    {t('واتساب', 'WhatsApp')}
+                    {!status.connected && actNotifChannel === 'whatsapp' && (
+                      <span className="ms-1 text-xs opacity-80">{t('(غير متصل)', '(offline)')}</span>
+                    )}
                   </button>
                 </div>
               </div>
+
+              {/* WhatsApp progress */}
+              {actNotifChannel === 'whatsapp' && actNotifWaProgress.total > 0 && (
+                <div className="space-y-1">
+                  <div className="w-full bg-gray-200 rounded-full h-2">
+                    <div className="bg-green-500 h-2 rounded-full transition-all" style={{ width: `${(actNotifWaProgress.done / actNotifWaProgress.total) * 100}%` }} />
+                  </div>
+                  <p className="text-xs text-center text-muted-foreground">
+                    {t(`جاري الإرسال... ${actNotifWaProgress.done} / ${actNotifWaProgress.total}`, `Sending... ${actNotifWaProgress.done} / ${actNotifWaProgress.total}`)}
+                  </p>
+                </div>
+              )}
 
               {/* Priority (portal only) */}
               {actNotifChannel === 'portal' && (
@@ -1526,13 +1571,15 @@ export default function WhatsAppPage() {
                 </div>
               )}
 
-              {/* Title */}
-              <div>
-                <label className="block text-sm font-medium mb-1">{t('عنوان الإشعار', 'Notification Title')}</label>
-                <input type="text" value={actNotifTitle} onChange={e => setActNotifTitle(e.target.value)}
-                  placeholder={t('مثال: موعد التدريب القادم', 'e.g. Upcoming training session')}
-                  className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary" dir="auto" />
-              </div>
+              {/* Title — hidden for WhatsApp */}
+              {actNotifChannel !== 'whatsapp' && (
+                <div>
+                  <label className="block text-sm font-medium mb-1">{t('عنوان الإشعار', 'Notification Title')}</label>
+                  <input type="text" value={actNotifTitle} onChange={e => setActNotifTitle(e.target.value)}
+                    placeholder={t('مثال: موعد التدريب القادم', 'e.g. Upcoming training session')}
+                    className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary" dir="auto" />
+                </div>
+              )}
 
               {/* Body */}
               <div>
