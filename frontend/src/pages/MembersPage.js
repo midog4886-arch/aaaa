@@ -1316,6 +1316,9 @@ export const MembersPage = () => {
                           {member.member_code && (
                             <div className="sm:hidden text-xs font-mono text-primary font-semibold mt-0.5">#{member.member_code}</div>
                           )}
+                          {member.phone && (
+                            <div className="sm:hidden text-xs text-gray-500 mt-0.5" dir="ltr">{member.phone}</div>
+                          )}
                         </td>
                         <td dir="ltr" className="text-start">
                           <div className="flex items-center gap-1">
