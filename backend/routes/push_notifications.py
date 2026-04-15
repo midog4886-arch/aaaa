@@ -344,21 +344,29 @@ class BroadcastPayload(BaseModel):
     image: Optional[str] = None
     branch_id: Optional[str] = None
     member_ids: Optional[List[str]] = None
-    activity_id: Optional[str] = None
+    activity_id: Optional[str] = None      # legacy / kept for compatibility
+    activity_name: Optional[str] = None    # preferred: filter levels by activity_name
     level_id: Optional[str] = None
 
 
-async def _resolve_activity_member_ids(activity_id: Optional[str], level_id: Optional[str]) -> Optional[List[str]]:
-    """Resolve activity_id / level_id to a list of member_ids. Returns None if neither provided."""
-    if not activity_id and not level_id:
+async def _resolve_activity_member_ids(
+    activity_id: Optional[str],
+    level_id: Optional[str],
+    activity_name: Optional[str] = None,
+) -> Optional[List[str]]:
+    """Resolve activity / level targeting to a list of member_ids. Returns None if nothing provided."""
+    if not activity_id and not activity_name and not level_id:
         return None
     if level_id:
         level = await db.levels.find_one({"id": level_id}, {"_id": 0, "members": 1})
         if not level:
             return []
         return level.get("members", [])
-    # activity_id only — collect members from all levels of that activity
-    levels = await db.levels.find({"activity_id": activity_id}, {"_id": 0, "members": 1}).to_list(500)
+    # activity filter — prefer activity_name (how levels are actually stored)
+    if activity_name:
+        levels = await db.levels.find({"activity_name": activity_name}, {"_id": 0, "members": 1}).to_list(500)
+    else:
+        levels = await db.levels.find({"activity_id": activity_id}, {"_id": 0, "members": 1}).to_list(500)
     ids = list({mid for lvl in levels for mid in lvl.get("members", [])})
     return ids
 
@@ -374,7 +382,7 @@ async def broadcast_notification(data: BroadcastPayload):
     )
 
     # Resolve activity/level targeting to member_ids
-    resolved_ids = await _resolve_activity_member_ids(data.activity_id, data.level_id)
+    resolved_ids = await _resolve_activity_member_ids(data.activity_id, data.level_id, data.activity_name)
     effective_member_ids = resolved_ids if resolved_ids is not None else data.member_ids
 
     if effective_member_ids is not None:

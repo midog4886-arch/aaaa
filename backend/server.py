@@ -6905,7 +6905,8 @@ class MemberNotificationCreate(BaseModel):
     message: str
     target: str = "all_members"  # all_members, specific_member, activity_members
     target_member_id: Optional[str] = None
-    target_activity_id: Optional[str] = None
+    target_activity_id: Optional[str] = None    # legacy
+    target_activity_name: Optional[str] = None  # preferred: matches activity_name stored in levels
     target_level_id: Optional[str] = None
     priority: str = "info"  # info, warning, danger
     notification_type: str = "announcement"  # announcement, offer, reminder
@@ -6924,7 +6925,19 @@ async def create_member_notification(data: MemberNotificationCreate, current_use
         if data.target_level_id:
             level = await db.levels.find_one({"id": data.target_level_id}, {"_id": 0, "members": 1})
             target_members = level.get("members", []) if level else []
+        elif data.target_activity_name:
+            # Filter by activity_name (how levels are actually stored in db.levels)
+            levels = await db.levels.find(
+                {"activity_name": data.target_activity_name}, {"_id": 0, "members": 1}
+            ).to_list(500)
+            seen = set()
+            for lvl in levels:
+                for mid in lvl.get("members", []):
+                    if mid not in seen:
+                        seen.add(mid)
+                        target_members.append(mid)
         elif data.target_activity_id:
+            # Legacy: filter by activity_id
             levels = await db.levels.find(
                 {"activity_id": data.target_activity_id}, {"_id": 0, "members": 1}
             ).to_list(500)
@@ -6944,6 +6957,7 @@ async def create_member_notification(data: MemberNotificationCreate, current_use
         "priority": data.priority,
         "type": data.notification_type,
         "target_activity_id": data.target_activity_id,
+        "target_activity_name": data.target_activity_name,
         "target_level_id": data.target_level_id,
         "created_by": current_user.get("id"),
         "created_at": datetime.now(timezone.utc).isoformat()

@@ -231,22 +231,18 @@ export default function WhatsAppPage() {
   const loadActivityNotifActivities = async () => {
     setActNotifLoadingActivities(true);
     try {
-      // Fetch all levels and derive unique activities from them (more complete than db.activities)
-      const [lvlRes, actRes] = await Promise.all([
-        levelsAPI.getAll(),
-        activitiesAPI.getAll({ branch_filter: 'all' }),
-      ]);
+      // Levels store activity_name (not activity_id) — derive unique activities from them
+      const lvlRes = await levelsAPI.getAll();
       const allLevels = lvlRes.data || [];
-      const actMap = {};
-      // Build from db.activities first
-      (actRes.data || []).forEach(a => { actMap[a.id] = a.name || a.name_ar || a.id; });
-      // Supplement with activity names from levels (covers activities not in db.activities)
+      const seen = new Set();
+      const derived = [];
       allLevels.forEach(l => {
-        if (l.activity_id && !actMap[l.activity_id]) {
-          actMap[l.activity_id] = l.activity_name || l.activity_id;
+        const aName = l.activity_name;
+        if (aName && !seen.has(aName)) {
+          seen.add(aName);
+          derived.push({ id: aName, name: aName }); // id = activity_name (used as filter value)
         }
       });
-      const derived = Object.entries(actMap).map(([id, name]) => ({ id, name }));
       setActNotifAllActivities(derived);
     } catch { }
     finally { setActNotifLoadingActivities(false); }
@@ -263,7 +259,8 @@ export default function WhatsAppPage() {
   // Load levels when actNotifActivity changes
   useEffect(() => {
     if (!actNotifActivity) { setActNotifLevels([]); setActNotifLevel('all'); setActNotifMemberCount(null); return; }
-    levelsAPI.getAll({ activity_id: actNotifActivity }).then(res => {
+    // activity_name is the real field stored in db.levels (not activity_id)
+    levelsAPI.getAll({ activity_name: actNotifActivity }).then(res => {
       const lvls = res.data || [];
       setActNotifLevels(lvls);
       setActNotifLevel('all');
@@ -297,7 +294,7 @@ export default function WhatsAppPage() {
           title: actNotifTitle,
           body: actNotifBody,
           url: '/portal/notifications',
-          activity_id: actNotifActivity,
+          activity_name: actNotifActivity,  // levels use activity_name not activity_id
           level_id: level_id,
         });
         const d = res.data;
@@ -307,7 +304,7 @@ export default function WhatsAppPage() {
           title: actNotifTitle,
           message: actNotifBody,
           target: 'activity_members',
-          target_activity_id: actNotifActivity,
+          target_activity_name: actNotifActivity,  // levels use activity_name not activity_id
           target_level_id: level_id,
           priority: actNotifPriority,
           notification_type: 'announcement',

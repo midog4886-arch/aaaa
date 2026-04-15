@@ -45,6 +45,7 @@ class Level(BaseModel):
 async def get_levels(
     branch_filter: Optional[str] = None,
     activity_id: Optional[str] = None,
+    activity_name: Optional[str] = None,
     current_user: dict = Depends(get_current_user)
 ):
     import asyncio
@@ -60,6 +61,8 @@ async def get_levels(
 
     if activity_id:
         query["activity_id"] = activity_id
+    if activity_name:
+        query["activity_name"] = activity_name
 
     levels = await db.levels.find(query, {"_id": 0}).sort("level_number", 1).to_list(100)
 
