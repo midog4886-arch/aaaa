@@ -6905,6 +6905,7 @@ class MemberNotificationCreate(BaseModel):
     message: str
     target: str = "all_members"  # all_members, specific_member, activity_members
     target_member_id: Optional[str] = None
+    target_member_ids: Optional[List[str]] = None  # direct list — bypasses level/activity resolution
     target_activity_id: Optional[str] = None    # legacy
     target_activity_name: Optional[str] = None  # preferred: matches activity_name stored in levels
     target_level_id: Optional[str] = None
@@ -6919,7 +6920,10 @@ async def create_member_notification(data: MemberNotificationCreate, current_use
 
     # Resolve target_members list
     target_members = []
-    if data.target == "specific_member" and data.target_member_id:
+    if data.target_member_ids:
+        # Direct list provided — use as-is (bypasses level/activity resolution)
+        target_members = data.target_member_ids
+    elif data.target == "specific_member" and data.target_member_id:
         target_members = [data.target_member_id]
     elif data.target == "activity_members":
         if data.target_level_id:

@@ -231,19 +231,13 @@ export default function WhatsAppPage() {
   const loadActivityNotifActivities = async () => {
     setActNotifLoadingActivities(true);
     try {
-      // Levels store activity_name (not activity_id) — derive unique activities from them
-      const lvlRes = await levelsAPI.getAll();
-      const allLevels = lvlRes.data || [];
-      const seen = new Set();
-      const derived = [];
-      allLevels.forEach(l => {
-        const aName = l.activity_name;
-        if (aName && !seen.has(aName)) {
-          seen.add(aName);
-          derived.push({ id: aName, name: aName }); // id = activity_name (used as filter value)
-        }
-      });
-      setActNotifAllActivities(derived);
+      // Same source as SchedulePage: activitiesAPI.getAll — shows all registered activities
+      const res = await activitiesAPI.getAll({ branch_filter: 'all' });
+      const list = (res.data || []).map(a => ({
+        id: a.name_ar || a.name || a.id,   // use Arabic name as key (matches what's stored in level.activity_name)
+        name: a.name_ar || a.name || a.id,
+      }));
+      setActNotifAllActivities(list);
     } catch { }
     finally { setActNotifLoadingActivities(false); }
   };
@@ -257,14 +251,16 @@ export default function WhatsAppPage() {
   }, [activeTab]);
 
   // Load levels when actNotifActivity changes
+  // activity_name in db.levels is compound e.g. "السباحة - 8:00-9:00"
+  // so we fetch ALL levels and filter client-side by includes() — same logic as LevelsPage
   useEffect(() => {
     if (!actNotifActivity) { setActNotifLevels([]); setActNotifLevel('all'); setActNotifMemberCount(null); return; }
-    // activity_name is the real field stored in db.levels (not activity_id)
-    levelsAPI.getAll({ activity_name: actNotifActivity }).then(res => {
-      const lvls = res.data || [];
-      setActNotifLevels(lvls);
+    levelsAPI.getAll().then(res => {
+      const allLvls = res.data || [];
+      const filtered = allLvls.filter(l => (l.activity_name || '').includes(actNotifActivity));
+      setActNotifLevels(filtered);
       setActNotifLevel('all');
-      const total = lvls.reduce((s, l) => s + (l.members || []).length, 0);
+      const total = filtered.reduce((s, l) => s + (l.members || []).length, 0);
       setActNotifMemberCount(total);
     }).catch(() => setActNotifLevels([]));
   }, [actNotifActivity]);
@@ -287,6 +283,14 @@ export default function WhatsAppPage() {
     if (!actNotifBody.trim()) { toast.error(t('أدخل نص الإشعار', 'Enter notification body')); return; }
     const level_id = actNotifLevel !== 'all' ? actNotifLevel : null;
     if (!window.confirm(t(`سيتم إرسال الإشعار لـ ${actNotifMemberCount ?? '?'} عضو. متابعة؟`, `Send notification to ${actNotifMemberCount ?? '?'} members. Continue?`))) return;
+    // Collect member IDs from filtered levels (handles compound activity_name like "السباحة - 8:00-9:00")
+    const targetLevels = level_id
+      ? actNotifLevels.filter(l => l.id === level_id)
+      : actNotifLevels;
+    const memberIdSet = new Set();
+    targetLevels.forEach(l => (l.members || []).forEach(mid => memberIdSet.add(mid)));
+    const resolvedMemberIds = [...memberIdSet];
+
     setActNotifSending(true);
     try {
       if (actNotifChannel === 'push') {
@@ -294,8 +298,7 @@ export default function WhatsAppPage() {
           title: actNotifTitle,
           body: actNotifBody,
           url: '/portal/notifications',
-          activity_name: actNotifActivity,  // levels use activity_name not activity_id
-          level_id: level_id,
+          member_ids: resolvedMemberIds,  // pass directly — already filtered client-side
         });
         const d = res.data;
         toast.success(t(`تم الإرسال ✓ (${d.success ?? 0} ناجح، ${d.failed ?? 0} فشل)`, `Sent ✓ (${d.success ?? 0} ok, ${d.failed ?? 0} failed)`));
@@ -304,8 +307,7 @@ export default function WhatsAppPage() {
           title: actNotifTitle,
           message: actNotifBody,
           target: 'activity_members',
-          target_activity_name: actNotifActivity,  // levels use activity_name not activity_id
-          target_level_id: level_id,
+          target_member_ids: resolvedMemberIds,  // pass directly — already filtered client-side
           priority: actNotifPriority,
           notification_type: 'announcement',
         });
@@ -1311,11 +1313,19 @@ export default function WhatsAppPage() {
                   <select value={actNotifLevel} onChange={e => setActNotifLevel(e.target.value)}
                     className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary bg-background">
                     <option value="all">{t('جميع المستويات', 'All Levels')}</option>
-                    {actNotifLevels.map(l => (
-                      <option key={l.id} value={l.id}>
-                        {l.level_name || l.name || `مستوى ${l.level_number}`} ({(l.members || []).length} {t('عضو', 'members')})
-                      </option>
-                    ))}
+                    {actNotifLevels.map(l => {
+                      // Extract time slot from compound activity_name e.g. "السباحة - 8:00-9:00"
+                      const parts = (l.activity_name || '').split(' - ');
+                      const timeSlot = parts.length > 1 ? parts.slice(1).join(' - ') : '';
+                      const label = [
+                        timeSlot || l.activity_name,
+                        l.custom_name ? `(${l.custom_name})` : `${t('مستوى', 'Level')} ${l.level_number}`,
+                        `— ${(l.members || []).length} ${t('عضو', 'members')}`,
+                      ].filter(Boolean).join(' ');
+                      return (
+                        <option key={l.id} value={l.id}>{label}</option>
+                      );
+                    })}
                   </select>
                 </div>
               )}
