@@ -370,7 +370,7 @@ export const RegistrationFormDialog = ({
                           <Button type="button" size="sm" variant="outline" onClick={() => setRegFormAdditionalMemberNewForm({ show: false, index: -1, data: { name_ar: '' } })}>{language === 'ar' ? 'إلغاء' : 'Cancel'}</Button>
                           <Button type="button" size="sm" className="bg-green-600 hover:bg-green-700" disabled={!regFormAdditionalMemberNewForm.data.name_ar} onClick={async () => {
                             try {
-                              const res = await membersAPI.create({ name_ar: regFormAdditionalMemberNewForm.data.name_ar, name: regFormAdditionalMemberNewForm.data.name_ar, phone: '', status: 'active' });
+                              const res = await membersAPI.create({ name_ar: regFormAdditionalMemberNewForm.data.name_ar, name: regFormAdditionalMemberNewForm.data.name_ar, phone: regFormData?.customer_phone || '', status: 'active' });
                               const newMember = res.data;
                               if (setMembers) setMembers(prev => [...prev, newMember]);
                               const updated = [...regFormAdditionalMembers]; updated[amIdx] = { ...updated[amIdx], member: newMember }; setRegFormAdditionalMembers(updated);

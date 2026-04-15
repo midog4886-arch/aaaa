@@ -1302,7 +1302,11 @@ export const MembersPage = () => {
                       </td>
                     </tr>
                   ) : (
-                    filteredMembers.map(member => {
+                    (() => {
+                      const phoneCount = {};
+                      members.forEach(m => { if (m.phone) phoneCount[m.phone.trim()] = (phoneCount[m.phone.trim()] || 0) + 1; });
+                      return filteredMembers.map(member => {
+                      const isSharedPhone = member.phone && (phoneCount[member.phone.trim()] || 0) > 1;
                       return (
                       <tr key={member.id} data-testid={`member-row-${member.id}`} className={member.activities?.some(a => { const d = getDaysRemaining(a.end_date); const s = getActivityStatusFromDate(a); return s === 'active' && d !== null && d <= 7 && d >= 0; }) ? 'bg-amber-50' : member.activities?.every(a => getActivityStatusFromDate(a) === 'expired') && member.activities?.length > 0 ? 'bg-red-50/50' : ''}>
                         <td className="font-mono text-primary font-bold hidden sm:table-cell">
@@ -1317,12 +1321,17 @@ export const MembersPage = () => {
                             <div className="sm:hidden text-xs font-mono text-primary font-semibold mt-0.5">#{member.member_code}</div>
                           )}
                           {member.phone && (
-                            <div className="sm:hidden text-xs text-gray-500 mt-0.5" dir="ltr">{member.phone}</div>
+                            <div className={`sm:hidden text-xs mt-0.5 ${isSharedPhone ? 'text-amber-600 font-medium' : 'text-gray-500'}`} dir="ltr">
+                              {member.phone}{isSharedPhone && <span className="ms-1 text-xs bg-amber-100 text-amber-700 rounded px-1" dir="rtl">مشترك</span>}
+                            </div>
                           )}
                         </td>
                         <td dir="ltr" className="text-start">
                           <div className="flex items-center gap-1">
-                            <span>{member.phone}</span>
+                            <span className={isSharedPhone ? 'text-amber-600 font-medium' : ''} title={isSharedPhone ? (language === 'ar' ? 'رقم مشترك بين أكثر من عضو' : 'Shared phone number') : ''}>
+                              {member.phone}
+                              {isSharedPhone && <span className="ms-1 text-xs bg-amber-100 text-amber-700 rounded px-1" dir="rtl">مشترك</span>}
+                            </span>
                             {member.phone && (
                               <a
                                 href={`https://wa.me/966${member.phone?.replace(/^0/, '')}`}
@@ -1446,7 +1455,8 @@ export const MembersPage = () => {
                           </div>
                         </td>
                       </tr>
-                    )})
+                    )});
+                    })()
                   )}
                 </tbody>
               </table>
