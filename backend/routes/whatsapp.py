@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import os
+import uuid
 from datetime import datetime, timedelta, date
 from zoneinfo import ZoneInfo
 from typing import Optional
@@ -30,6 +31,10 @@ DEFAULT_SETTINGS = {
     "reminder_2_enabled": True,
     "message_template": "مرحباً {name}،\nنذكركم بأن اشتراككم في نشاط {activity} سينتهي بعد {days} يوم/أيام.\nيرجى التواصل معنا للتجديد. 🏆",
     "send_hour": 9,
+    "push_enabled": True,
+    "portal_enabled": True,
+    "push_title_template": "تنبيه: اشتراكك ينتهي قريباً 🔔",
+    "push_body_template": "اشتراكك في {activity} ينتهي خلال {days} أيام ({end_date})",
 }
 
 _db = None
@@ -95,11 +100,12 @@ async def _run_daily_reminders():
         _reminders_running = False
 
 
-async def _send_reminders_for_day(settings: dict, days_before: int, template: str):
-    """Send reminders to members whose active subscription ends exactly `days_before` days from today."""
+async def _get_expiring_members(days_before: int) -> list:
+    """Return list of dicts {member, activity_name, end_date_str, end_date_fmt} for members expiring in exactly days_before days."""
     today = datetime.now(RIYADH_TZ).date()
     target_date = today + timedelta(days=days_before)
     target_str = target_date.strftime("%Y-%m-%d")
+    target_fmt = target_date.strftime("%Y/%m/%d")
 
     members_coll = _db["members"]
     members = await members_coll.find({
@@ -111,14 +117,10 @@ async def _send_reminders_for_day(settings: dict, days_before: int, template: st
         }
     }).to_list(length=None)
 
-    sent_count = 0
+    results = []
     for member in members:
-        phone = member.get("phone", "")
-        if not phone:
-            continue
-        activities = member.get("activities", [])
         expiring_activities = []
-        for act in activities:
+        for act in member.get("activities", []):
             if act.get("status") != "active":
                 continue
             raw_end = act.get("end_date", "")
@@ -127,9 +129,26 @@ async def _send_reminders_for_day(settings: dict, days_before: int, template: st
                 expiring_activities.append(act.get("activity_name", ""))
         if not expiring_activities:
             continue
+        results.append({
+            "member": member,
+            "activity_name": "، ".join(filter(None, expiring_activities)),
+            "end_date_str": target_str,
+            "end_date_fmt": target_fmt,
+        })
+    return results
+
+
+async def _send_wa_for_members(members_data: list, days_before: int, template: str) -> int:
+    """Send WhatsApp reminder messages. Returns count of successful sends."""
+    sent_count = 0
+    for item in members_data:
+        member = item["member"]
+        phone = member.get("phone", "")
+        if not phone:
+            continue
         name = member.get("name", "")
-        activity_name = "، ".join(filter(None, expiring_activities))
-        end_date_fmt = target_date.strftime("%Y/%m/%d")
+        activity_name = item["activity_name"]
+        end_date_fmt = item["end_date_fmt"]
         message = (template
                    .replace("{name}", name)
                    .replace("{activity}", activity_name)
@@ -149,36 +168,152 @@ async def _send_reminders_for_day(settings: dict, days_before: int, template: st
             await _db["whatsapp_send_log"].insert_one(log_entry)
             if success:
                 sent_count += 1
-                logger.info(f"Reminder ({days_before}d) sent to {name} ({phone})")
+                logger.info(f"WhatsApp reminder ({days_before}d) sent to {name} ({phone})")
             await asyncio.sleep(60)
     return sent_count
+
+
+async def _send_push_for_members(members_data: list, days_before: int, settings: dict) -> int:
+    """Send push notifications to members with expiring subscriptions. Returns count of successful sends."""
+    from .push_notifications import send_push_notification, NotificationPayload
+
+    push_title_tmpl = settings.get("push_title_template", DEFAULT_SETTINGS["push_title_template"])
+    push_body_tmpl = settings.get("push_body_template", DEFAULT_SETTINGS["push_body_template"])
+
+    sent_count = 0
+    for item in members_data:
+        member = item["member"]
+        member_id = member.get("id", "")
+        if not member_id:
+            continue
+        name = member.get("name", "")
+        activity_name = item["activity_name"]
+        end_date_fmt = item["end_date_fmt"]
+
+        title = (push_title_tmpl
+                 .replace("{name}", name)
+                 .replace("{activity}", activity_name)
+                 .replace("{days}", str(days_before))
+                 .replace("{end_date}", end_date_fmt))
+        body = (push_body_tmpl
+                .replace("{name}", name)
+                .replace("{activity}", activity_name)
+                .replace("{days}", str(days_before))
+                .replace("{end_date}", end_date_fmt))
+
+        payload = NotificationPayload(
+            title=title,
+            body=body,
+            url="/portal/notifications",
+            tag=f"expiry-{member_id}-{item['end_date_str']}",
+        )
+
+        subscriptions = await _db["push_subscriptions"].find(
+            {"member_id": member_id, "is_active": True},
+            {"_id": 0}
+        ).to_list(20)
+
+        for sub in subscriptions:
+            try:
+                ok = await send_push_notification(sub, payload)
+                if ok:
+                    sent_count += 1
+            except Exception as e:
+                logger.error(f"Push expiry reminder failed for {name}: {e}")
+    return sent_count
+
+
+async def _send_portal_for_members(members_data: list, days_before: int, settings: dict) -> int:
+    """Insert portal (member_notifications) entries for expiring members. Returns count inserted."""
+    inserted_count = 0
+    for item in members_data:
+        member = item["member"]
+        member_id = member.get("id", "")
+        if not member_id:
+            continue
+        name = member.get("name", "")
+        activity_name = item["activity_name"]
+        end_date_str = item["end_date_str"]
+
+        dedup_key = f"expiry-{member_id}-{end_date_str}-{days_before}"
+        existing = await _db["member_notifications"].find_one({"dedup_key": dedup_key})
+        if existing:
+            continue
+
+        if days_before == 0:
+            title_ar = "⚠️ اشتراكك ينتهي اليوم!"
+        elif days_before == 1:
+            title_ar = "🔴 اشتراكك ينتهي غداً!"
+        else:
+            title_ar = f"🔔 اشتراكك ينتهي خلال {days_before} أيام"
+
+        notification = {
+            "id": str(uuid.uuid4()),
+            "member_id": member_id,
+            "type": "expiry_reminder",
+            "title_ar": title_ar,
+            "title": title_ar,
+            "message_ar": f"اشتراكك في {activity_name} سينتهي في {end_date_str}",
+            "message": f"اشتراكك في {activity_name} سينتهي في {end_date_str}",
+            "priority": "warning",
+            "dedup_key": dedup_key,
+            "is_read": False,
+            "created_at": datetime.now(RIYADH_TZ).isoformat(),
+        }
+        await _db["member_notifications"].insert_one(notification)
+        inserted_count += 1
+    return inserted_count
 
 
 async def _do_daily_reminders():
     if _db is None:
         return
-    wa_status = await _get_wa_status()
-    if not wa_status.get("connected"):
-        logger.info("WhatsApp not connected, skipping reminder batch")
-        return
     settings = await _get_settings()
     if not settings.get("enabled"):
         return
 
+    days_before = int(settings.get("days_before", 3))
+    days_before_2 = int(settings.get("days_before_2", 1))
+    reminder_2_enabled = settings.get("reminder_2_enabled", True)
     template = settings.get("message_template", DEFAULT_SETTINGS["message_template"])
 
-    # First reminder
-    days_before = int(settings.get("days_before", 3))
-    sent1 = await _send_reminders_for_day(settings, days_before, template)
+    wa_status = await _get_wa_status()
+    wa_connected = wa_status.get("connected", False)
+    push_enabled = settings.get("push_enabled", True)
+    portal_enabled = settings.get("portal_enabled", True)
 
-    # Second reminder (if enabled and different from first)
-    reminder_2_enabled = settings.get("reminder_2_enabled", True)
-    days_before_2 = int(settings.get("days_before_2", 1))
-    sent2 = 0
+    if not wa_connected:
+        logger.info("WhatsApp not connected — skipping WhatsApp channel (push/portal still active)")
+
+    days_set = [days_before]
     if reminder_2_enabled and days_before_2 != days_before:
-        sent2 = await _send_reminders_for_day(settings, days_before_2, template)
+        days_set.append(days_before_2)
 
-    logger.info(f"WhatsApp daily reminders: sent {sent1 + sent2} messages (reminder1={sent1}, reminder2={sent2})")
+    total_wa = 0
+    total_push = 0
+    total_portal = 0
+
+    for days in days_set:
+        members_data = await _get_expiring_members(days)
+        if not members_data:
+            continue
+
+        if wa_connected:
+            total_wa += await _send_wa_for_members(members_data, days, template)
+
+        if push_enabled:
+            try:
+                total_push += await _send_push_for_members(members_data, days, settings)
+            except Exception as e:
+                logger.error(f"Push expiry reminders error (days={days}): {e}")
+
+        if portal_enabled:
+            try:
+                total_portal += await _send_portal_for_members(members_data, days, settings)
+            except Exception as e:
+                logger.error(f"Portal expiry reminders error (days={days}): {e}")
+
+    logger.info(f"Daily reminders done — WhatsApp={total_wa}, Push={total_push}, Portal={total_portal}")
 
 
 async def _scheduler_loop():
@@ -229,6 +364,10 @@ class WhatsAppSettings(BaseModel):
     reminder_2_enabled: Optional[bool] = None
     message_template: Optional[str] = None
     send_hour: Optional[int] = None
+    push_enabled: Optional[bool] = None
+    portal_enabled: Optional[bool] = None
+    push_title_template: Optional[str] = None
+    push_body_template: Optional[str] = None
 
 
 @router.put("/settings")
@@ -277,11 +416,8 @@ async def send_test(data: SendTestRequest, current_user: dict = Depends(get_curr
 @router.post("/send-now")
 async def send_reminders_now(current_user: dict = Depends(get_current_user)):
     _require_whatsapp_access(current_user)
-    wa_status = await _get_wa_status()
-    if not wa_status.get("connected"):
-        raise HTTPException(status_code=400, detail="WhatsApp not connected")
     asyncio.ensure_future(_run_daily_reminders())
-    return {"success": True, "message": "Reminders are being sent in the background"}
+    return {"success": True, "message": "Reminders are being sent in the background (WhatsApp + Push + Portal)"}
 
 
 @router.post("/disconnect")

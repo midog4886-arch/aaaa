@@ -41,6 +41,10 @@ export default function WhatsAppPage() {
     enabled: false, days_before: 3, days_before_2: 1, reminder_2_enabled: true,
     message_template: 'مرحباً {name}،\nنذكركم بأن اشتراككم في نشاط {activity} سينتهي بعد {days} يوم/أيام.\nيرجى التواصل معنا للتجديد. 🏆',
     send_hour: 9,
+    push_enabled: true,
+    portal_enabled: true,
+    push_title_template: 'تنبيه: اشتراكك ينتهي قريباً 🔔',
+    push_body_template: 'اشتراكك في {activity} ينتهي خلال {days} أيام ({end_date})',
   });
   const [loadingStatus, setLoadingStatus] = useState(true);
   const [savingSettings, setSavingSettings] = useState(false);
@@ -712,6 +716,53 @@ export default function WhatsAppPage() {
                     {messagePreview}
                   </div>
                 )}
+              </div>
+
+              {/* Push & Portal notification channels */}
+              <div className="border rounded-xl p-4 space-y-4 bg-muted/30">
+                <p className="text-sm font-semibold">{t('قنوات الإشعار الإضافية (تعمل دون اتصال واتساب)', 'Extra notification channels (work without WhatsApp)')}</p>
+
+                {/* Push toggle */}
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-medium">{t('إشعار Push للجوال/المتصفح', 'Mobile / Browser Push')}</p>
+                    <p className="text-xs text-muted-foreground">{t('يصل للأعضاء المشتركين في الإشعارات', 'Reaches members subscribed to notifications')}</p>
+                  </div>
+                  <button onClick={() => setWaSettings(s => ({ ...s, push_enabled: !s.push_enabled }))}
+                    className={`relative w-10 h-5 rounded-full transition-colors ${waSettings.push_enabled ? 'bg-green-500' : 'bg-gray-300'}`}>
+                    <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${waSettings.push_enabled ? (isRTL ? 'right-0.5' : 'translate-x-5') : (isRTL ? 'right-5' : 'translate-x-0.5')}`} />
+                  </button>
+                </div>
+
+                {waSettings.push_enabled && (
+                  <div className="space-y-2 ps-2 border-s-2 border-green-400">
+                    <div>
+                      <label className="block text-xs font-medium mb-1">{t('عنوان الإشعار', 'Push title')}</label>
+                      <input type="text" value={waSettings.push_title_template}
+                        onChange={e => setWaSettings(s => ({ ...s, push_title_template: e.target.value }))}
+                        className="w-full border rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary" dir="auto" />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium mb-1">{t('نص الإشعار', 'Push body')}</label>
+                      <p className="text-xs text-muted-foreground mb-1">{t('المتغيرات: {name}، {activity}، {days}، {end_date}', 'Variables: {name}, {activity}, {days}, {end_date}')}</p>
+                      <input type="text" value={waSettings.push_body_template}
+                        onChange={e => setWaSettings(s => ({ ...s, push_body_template: e.target.value }))}
+                        className="w-full border rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary" dir="auto" />
+                    </div>
+                  </div>
+                )}
+
+                {/* Portal toggle */}
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-medium">{t('إشعار بوابة العضو', 'Member portal notification')}</p>
+                    <p className="text-xs text-muted-foreground">{t('يظهر داخل تطبيق العضو في قسم الإشعارات', 'Appears inside the member app under notifications')}</p>
+                  </div>
+                  <button onClick={() => setWaSettings(s => ({ ...s, portal_enabled: !s.portal_enabled }))}
+                    className={`relative w-10 h-5 rounded-full transition-colors ${waSettings.portal_enabled ? 'bg-green-500' : 'bg-gray-300'}`}>
+                    <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${waSettings.portal_enabled ? (isRTL ? 'right-0.5' : 'translate-x-5') : (isRTL ? 'right-5' : 'translate-x-0.5')}`} />
+                  </button>
+                </div>
               </div>
 
               <Button onClick={handleSaveSettings} disabled={savingSettings} className="w-full">
