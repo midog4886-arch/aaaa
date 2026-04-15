@@ -1313,6 +1313,9 @@ export const MembersPage = () => {
                           {(member.guardian_name_ar || member.guardian_name) && (
                             <div className="text-xs text-gray-500">{language === 'ar' ? member.guardian_name_ar : member.guardian_name}</div>
                           )}
+                          {member.member_code && (
+                            <div className="sm:hidden text-xs font-mono text-primary font-semibold mt-0.5">#{member.member_code}</div>
+                          )}
                         </td>
                         <td dir="ltr" className="text-start">
                           <div className="flex items-center gap-1">
