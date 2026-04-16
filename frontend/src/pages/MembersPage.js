@@ -12,6 +12,7 @@ import { Badge } from '../components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '../components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Popover, PopoverContent, PopoverTrigger } from '../components/ui/popover';
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '../components/ui/command';
 import { Textarea } from '../components/ui/textarea';
 import { membersAPI, activitiesAPI, coachesAPI, exportAPI, invoicesAPI, attendanceAPI, levelsAPI, productInvoicesAPI, freezesAPI } from '../services/api';
 import { toast } from 'sonner';
@@ -56,8 +57,10 @@ export const MembersPage = () => {
   const [searchTerm, setSearchTerm] = useState(searchParams.get('search') || '');
   const [filterActivity, setFilterActivity] = useState('all');
   const [filterStatus, setFilterStatus] = useState('all');
+  const [filterSchedule, setFilterSchedule] = useState('');
   const [activityFilterOpen, setActivityFilterOpen] = useState(false);
   const [activityFilterSearch, setActivityFilterSearch] = useState('');
+  const [schedulePopoverOpen, setSchedulePopoverOpen] = useState(false);
   
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [isViewDialogOpen, setIsViewDialogOpen] = useState(false);
@@ -1068,6 +1071,27 @@ export const MembersPage = () => {
     return colorMap[activityName] || '';
   };
 
+  // Build unique schedule options filtered by current activity selection
+  const scheduleOptions = useMemo(() => {
+    const times = new Set();
+    members.forEach(m => {
+      (m.activities || []).forEach(a => {
+        if (!a.schedule) return;
+        if (filterActivity !== 'all') {
+          if (filterActivity.startsWith('group:')) {
+            const act = activities.find(ac => ac.id === a.activity_id);
+            if (!act) return;
+            if (getActivityGroupKey(act.name_ar || act.name || '') !== filterActivity.replace('group:', '')) return;
+          } else {
+            if (a.activity_id !== filterActivity) return;
+          }
+        }
+        times.add(a.schedule);
+      });
+    });
+    return [...times].sort();
+  }, [members, filterActivity, activities]);
+
   const filteredMembers = members.filter(member => {
     const matchesSearch = 
       member.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -1089,8 +1113,11 @@ export const MembersPage = () => {
         const actStatus = a.end_date ? (new Date(a.end_date) >= new Date(new Date().setHours(0,0,0,0)) ? 'active' : 'expired') : a.status;
         return actStatus === filterStatus;
       });
+
+    const matchesSchedule = !filterSchedule ||
+      member.activities?.some(a => (a.schedule || '') === filterSchedule);
     
-    return matchesSearch && matchesActivity && matchesStatus;
+    return matchesSearch && matchesActivity && matchesStatus && matchesSchedule;
   });
 
   if (loading) {
@@ -1146,7 +1173,7 @@ export const MembersPage = () => {
                 <div className="max-h-[300px] overflow-y-auto">
                   <button
                     className={`w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-gray-50 transition-colors ${filterActivity === 'all' ? 'bg-primary/5 text-primary font-medium' : ''}`}
-                    onClick={() => { setFilterActivity('all'); setActivityFilterOpen(false); setActivityFilterSearch(''); }}
+                    onClick={() => { setFilterActivity('all'); setFilterSchedule(''); setActivityFilterOpen(false); setActivityFilterSearch(''); }}
                   >
                     {filterActivity === 'all' && <Check className="w-4 h-4 text-primary shrink-0" />}
                     <Filter className={`w-4 h-4 shrink-0 ${filterActivity === 'all' ? '' : 'ms-6'} opacity-50`} />
@@ -1161,7 +1188,7 @@ export const MembersPage = () => {
                     <div key={group.key}>
                       <button
                         className={`w-full flex items-center gap-2 px-3 py-2 text-sm font-bold hover:bg-blue-50 transition-colors sticky top-0 ${isGroupSelected ? 'bg-primary/10 text-primary' : 'bg-gray-50 text-gray-700'}`}
-                        onClick={() => { setFilterActivity(`group:${group.key}`); setActivityFilterOpen(false); setActivityFilterSearch(''); }}
+                        onClick={() => { setFilterActivity(`group:${group.key}`); setFilterSchedule(''); setActivityFilterOpen(false); setActivityFilterSearch(''); }}
                       >
                         {isGroupSelected && <Check className="w-4 h-4 text-primary shrink-0" />}
                         <span className={isGroupSelected ? '' : 'ms-6'}>{group.label}</span>
@@ -1171,7 +1198,7 @@ export const MembersPage = () => {
                         <button
                           key={act.id}
                           className={`w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-gray-50 transition-colors ${filterActivity === act.id ? 'bg-primary/5 text-primary font-medium' : ''}`}
-                          onClick={() => { setFilterActivity(act.id); setActivityFilterOpen(false); setActivityFilterSearch(''); }}
+                          onClick={() => { setFilterActivity(act.id); setFilterSchedule(''); setActivityFilterOpen(false); setActivityFilterSearch(''); }}
                         >
                           {filterActivity === act.id && <Check className="w-4 h-4 text-primary shrink-0" />}
                           <span className={`text-base ${filterActivity === act.id ? '' : 'ms-6'}`}>{act.icon}</span>
@@ -1211,6 +1238,34 @@ export const MembersPage = () => {
                 {language === 'ar' ? 'منتهي' : 'Expired'}
               </button>
             </div>
+
+            {/* Schedule Combobox */}
+            <Popover open={schedulePopoverOpen} onOpenChange={setSchedulePopoverOpen}>
+              <PopoverTrigger asChild>
+                <Button variant="outline" size="sm" className="h-8 text-xs gap-1 max-w-[180px]">
+                  <span className="truncate">{filterSchedule || (language === 'ar' ? 'كل المواعيد' : 'All schedules')}</span>
+                  <ChevronDown className="w-3 h-3 opacity-50 flex-shrink-0" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-64 p-0" align="start">
+                <Command>
+                  <CommandInput placeholder={language === 'ar' ? 'بحث عن موعد...' : 'Search schedule...'} className="h-8 text-xs" />
+                  <CommandList className="max-h-52">
+                    <CommandEmpty>{language === 'ar' ? 'لا توجد نتائج' : 'No results'}</CommandEmpty>
+                    <CommandGroup>
+                      <CommandItem value="__all__" onSelect={() => { setFilterSchedule(''); setSchedulePopoverOpen(false); }}>
+                        {language === 'ar' ? 'كل المواعيد' : 'All schedules'}
+                      </CommandItem>
+                      {scheduleOptions.map(s => (
+                        <CommandItem key={s} value={s} onSelect={() => { setFilterSchedule(s); setSchedulePopoverOpen(false); }}>
+                          {s}
+                        </CommandItem>
+                      ))}
+                    </CommandGroup>
+                  </CommandList>
+                </Command>
+              </PopoverContent>
+            </Popover>
           </div>
           
           <div className="flex flex-wrap gap-2">
