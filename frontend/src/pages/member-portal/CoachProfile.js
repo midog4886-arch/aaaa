@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Card, CardContent } from '../../components/ui/card';
-import { ArrowRight, Star, Loader2, Dumbbell, MessageSquare, Award } from 'lucide-react';
+import { ArrowRight, Star, Loader2, Dumbbell, MessageSquare, Award, Send, CheckCircle } from 'lucide-react';
+import { toast } from 'sonner';
 import MemberLayout, { memberAPI, getDarkMode } from './MemberLayout';
 
 const StarDisplay = ({ value, size = 'sm' }) => {
@@ -19,6 +20,35 @@ const StarDisplay = ({ value, size = 'sm' }) => {
   );
 };
 
+const InteractiveStars = ({ rating, hoverRating, onRate, onHover, onLeave, size = 'w-9 h-9' }) => (
+  <div className="flex gap-1" dir="ltr">
+    {[1, 2, 3, 4, 5].map(star => (
+      <Star
+        key={star}
+        className={`${size} cursor-pointer transition-all hover:scale-110 ${
+          star <= (hoverRating || rating)
+            ? 'text-yellow-400 fill-yellow-400'
+            : 'text-gray-300 dark:text-gray-600'
+        }`}
+        onClick={() => onRate(star)}
+        onMouseEnter={() => onHover(star)}
+        onMouseLeave={onLeave}
+      />
+    ))}
+  </div>
+);
+
+const getRatingText = (r) => {
+  switch (r) {
+    case 1: return 'ضعيف';
+    case 2: return 'مقبول';
+    case 3: return 'جيد';
+    case 4: return 'جيد جداً';
+    case 5: return 'ممتاز';
+    default: return '';
+  }
+};
+
 const CoachProfile = () => {
   const { coachId } = useParams();
   const navigate = useNavigate();
@@ -27,19 +57,55 @@ const CoachProfile = () => {
   const [profile, setProfile] = useState(null);
   const [imgError, setImgError] = useState(false);
 
+  const [rating, setRating] = useState(0);
+  const [hoverRating, setHoverRating] = useState(0);
+  const [comment, setComment] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [submitted, setSubmitted] = useState(false);
+
+  const fetchProfile = async () => {
+    try {
+      const res = await memberAPI.get(`/api/member-portal/coach-profile/${coachId}`);
+      setProfile(res.data);
+    } catch (err) {
+      console.error('Failed to fetch coach profile', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
-    const fetchProfile = async () => {
-      try {
-        const res = await memberAPI.get(`/api/member-portal/coach-profile/${coachId}`);
-        setProfile(res.data);
-      } catch (err) {
-        console.error('Failed to fetch coach profile', err);
-      } finally {
-        setLoading(false);
-      }
-    };
+    setRating(0);
+    setHoverRating(0);
+    setComment('');
+    setSubmitted(false);
+    setLoading(true);
+    setProfile(null);
+    setImgError(false);
     fetchProfile();
   }, [coachId]);
+
+  const handleSubmitRating = async () => {
+    if (rating === 0) {
+      toast.error('يرجى اختيار تقييم');
+      return;
+    }
+    setSubmitting(true);
+    try {
+      await memberAPI.post('/api/member-portal/rate-coach', {
+        coach_id: coachId,
+        rating,
+        comment,
+      });
+      toast.success('تم إرسال التقييم بنجاح ⭐');
+      setSubmitted(true);
+      await fetchProfile();
+    } catch (err) {
+      toast.error('فشل إرسال التقييم');
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   if (loading) {
     return (
@@ -161,6 +227,78 @@ const CoachProfile = () => {
             </CardContent>
           </Card>
         )}
+
+        {/* Rate this Coach */}
+        <Card className={darkMode ? 'bg-gray-800 border-gray-700' : ''}>
+          <CardContent className="p-5">
+            <h2 className={`text-base font-bold mb-4 flex items-center gap-2 ${darkMode ? 'text-gray-100' : 'text-gray-800'}`}>
+              <Star className="w-5 h-5 text-yellow-500" />
+              قيّم هذا المدرب
+            </h2>
+
+            {submitted ? (
+              <div className={`flex flex-col items-center gap-3 py-4 ${darkMode ? 'text-green-400' : 'text-green-600'}`}>
+                <CheckCircle className="w-10 h-10" />
+                <p className="text-base font-semibold">شكراً! تم إرسال تقييمك بنجاح</p>
+                <button
+                  onClick={() => { setSubmitted(false); setRating(0); setComment(''); }}
+                  className={`text-sm underline ${darkMode ? 'text-gray-400 hover:text-gray-200' : 'text-gray-500 hover:text-gray-700'}`}
+                >
+                  تعديل التقييم
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {/* Stars */}
+                <div className="flex flex-col items-center gap-2">
+                  <InteractiveStars
+                    rating={rating}
+                    hoverRating={hoverRating}
+                    onRate={setRating}
+                    onHover={setHoverRating}
+                    onLeave={() => setHoverRating(0)}
+                  />
+                  {(hoverRating || rating) > 0 && (
+                    <p className={`text-sm font-bold ${darkMode ? 'text-yellow-300' : 'text-yellow-600'}`}>
+                      {getRatingText(hoverRating || rating)}
+                    </p>
+                  )}
+                </div>
+
+                {/* Comment */}
+                <textarea
+                  value={comment}
+                  onChange={e => setComment(e.target.value)}
+                  placeholder="شاركنا رأيك (اختياري)..."
+                  rows={3}
+                  className={`w-full rounded-lg border px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-yellow-400 ${
+                    darkMode
+                      ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400'
+                      : 'bg-white border-gray-300 text-gray-800 placeholder-gray-400'
+                  }`}
+                />
+
+                {/* Submit */}
+                <button
+                  onClick={handleSubmitRating}
+                  disabled={submitting || rating === 0}
+                  className={`w-full flex items-center justify-center gap-2 py-2.5 rounded-lg text-sm font-semibold text-white transition-all ${
+                    rating === 0 || submitting
+                      ? 'bg-gray-400 cursor-not-allowed'
+                      : 'bg-gradient-to-r from-yellow-500 to-amber-500 hover:from-yellow-600 hover:to-amber-600'
+                  }`}
+                >
+                  {submitting ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <Send className="w-4 h-4" />
+                  )}
+                  إرسال التقييم
+                </button>
+              </div>
+            )}
+          </CardContent>
+        </Card>
 
         {/* Ratings & Reviews */}
         <Card className={darkMode ? 'bg-gray-800 border-gray-700' : ''}>
