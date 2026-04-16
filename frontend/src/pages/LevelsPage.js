@@ -2176,7 +2176,10 @@ export const LevelsPage = () => {
                           {(member.name_ar || member.name || '?').charAt(0)}
                         </div>
                         <div className="flex-1 min-w-0">
-                          <p className="font-medium text-sm truncate">{member.name_ar || member.name}</p>
+                          <p className="font-medium text-sm truncate">
+                            {member.name_ar || member.name}
+                            {member.age ? <span className="text-xs text-orange-500 font-normal mr-1"> ({member.age} سنة)</span> : null}
+                          </p>
                           <p className="text-xs text-gray-500">#{member.member_code}</p>
                         </div>
                         <Button
@@ -2218,7 +2221,10 @@ export const LevelsPage = () => {
                             {(member.name_ar || member.name || '?').charAt(0)}
                           </div>
                           <div className="flex-1 min-w-0">
-                            <p className="font-medium text-sm truncate">{member.name_ar || member.name}</p>
+                            <p className="font-medium text-sm truncate">
+                              {member.name_ar || member.name}
+                              {member.age ? <span className="text-xs text-orange-500 font-normal mr-1"> ({member.age} سنة)</span> : null}
+                            </p>
                             <p className="text-xs text-gray-500">#{member.member_code} • {member.phone}</p>
                             {(activityLabel || daysLabel) && (
                               <p className="text-xs text-blue-600 truncate mt-0.5">
