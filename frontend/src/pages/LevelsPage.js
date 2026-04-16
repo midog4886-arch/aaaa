@@ -972,16 +972,17 @@ export const LevelsPage = () => {
       return a.end_date >= todayStr;
     });
   };
-  // Build unique filter options from all members' active activities
+  // Build activity filter options from the fetched activities list (clean names + icons)
+  const ACTIVITY_ICONS = { 'السباحة': '🏊', 'كرة القدم': '⚽', 'الكاراتيه': '🥋', 'كرة اليد': '🤾', 'تنس': '🎾', 'جمباز': '🤸' };
+  const getActivityIcon = (name) => {
+    for (const [k, v] of Object.entries(ACTIVITY_ICONS)) {
+      if ((name || '').includes(k)) return v;
+    }
+    return '🏅';
+  };
   const activityFilterOptions = useMemo(() => {
-    const names = new Set();
-    members.forEach(m => {
-      (m.activities || []).filter(a => a.status === 'active').forEach(a => {
-        if (a.activity_name) names.add(a.activity_name);
-      });
-    });
-    return [...names].sort();
-  }, [members]);
+    return activities.map(a => ({ id: a.id, name: a.name_ar || a.name, icon: getActivityIcon(a.name_ar || a.name) }));
+  }, [activities]);
 
   const timeFilterOptions = useMemo(() => {
     const times = new Set();
@@ -1008,7 +1009,7 @@ export const LevelsPage = () => {
     if (!filterActivity && !filterTime) return true;
     const activeActs = (m.activities || []).filter(a => a.status === 'active');
     return activeActs.some(a => {
-      const actMatch = !filterActivity || (a.activity_name || '') === filterActivity;
+      const actMatch = !filterActivity || (a.activity_name || '').includes(filterActivity);
       const timeMatch = !filterTime || (a.schedule || '') === filterTime;
       return actMatch && timeMatch;
     });
@@ -2092,8 +2093,8 @@ export const LevelsPage = () => {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="__all__">{t('كل الأنشطة', 'All activities')}</SelectItem>
-                    {activityFilterOptions.map(name => (
-                      <SelectItem key={name} value={name}>{name}</SelectItem>
+                    {activityFilterOptions.map(opt => (
+                      <SelectItem key={opt.id} value={opt.name}>{opt.icon} {opt.name}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
