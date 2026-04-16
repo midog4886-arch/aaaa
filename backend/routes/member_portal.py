@@ -1032,6 +1032,18 @@ async def get_coach_profile(coach_id: str, member: dict = Depends(get_current_me
     ]
     reviews = sorted(reviews, key=lambda x: x["date"], reverse=True)[:10]
 
+    # Fetch the current member's own rating for this coach
+    my_rating_doc = await db.coach_ratings.find_one(
+        {"coach_id": coach_id, "member_id": member["id"]},
+        {"_id": 0, "rating": 1, "comment": 1}
+    )
+    my_rating = None
+    if my_rating_doc:
+        my_rating = {
+            "rating": my_rating_doc.get("rating", 0),
+            "comment": my_rating_doc.get("comment") or "",
+        }
+
     return {
         "id": coach["id"],
         "name": coach.get("name_ar") or coach.get("name"),
@@ -1042,7 +1054,20 @@ async def get_coach_profile(coach_id: str, member: dict = Depends(get_current_me
         "avg_rating": avg_rating,
         "total_ratings": total_ratings,
         "reviews": reviews,
+        "my_rating": my_rating,
     }
+
+
+@router.delete("/delete-rating/{coach_id}")
+async def delete_coach_rating(coach_id: str, member: dict = Depends(get_current_member)):
+    """Delete the current member's rating for a coach"""
+    result = await db.coach_ratings.delete_one({
+        "member_id": member["id"],
+        "coach_id": coach_id
+    })
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="لم يتم العثور على تقييم")
+    return {"message": "تم حذف التقييم بنجاح"}
 
 
 @router.get("/my-ratings")

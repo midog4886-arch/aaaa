@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Card, CardContent } from '../../components/ui/card';
-import { ArrowRight, Star, Loader2, Dumbbell, MessageSquare, Award, Send, CheckCircle } from 'lucide-react';
+import { ArrowRight, Star, Loader2, Dumbbell, MessageSquare, Award, Send, CheckCircle, Trash2, Edit2 } from 'lucide-react';
 import { toast } from 'sonner';
 import MemberLayout, { memberAPI, getDarkMode } from './MemberLayout';
 
@@ -61,12 +61,27 @@ const CoachProfile = () => {
   const [hoverRating, setHoverRating] = useState(0);
   const [comment, setComment] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+  const [hasExistingRating, setHasExistingRating] = useState(false);
 
   const fetchProfile = async () => {
     try {
       const res = await memberAPI.get(`/api/member-portal/coach-profile/${coachId}`);
-      setProfile(res.data);
+      const data = res.data;
+      setProfile(data);
+
+      if (data.my_rating) {
+        setRating(data.my_rating.rating);
+        setComment(data.my_rating.comment || '');
+        setHasExistingRating(true);
+        setSubmitted(false);
+      } else {
+        setRating(0);
+        setComment('');
+        setHasExistingRating(false);
+        setSubmitted(false);
+      }
     } catch (err) {
       console.error('Failed to fetch coach profile', err);
     } finally {
@@ -75,9 +90,7 @@ const CoachProfile = () => {
   };
 
   useEffect(() => {
-    setRating(0);
     setHoverRating(0);
-    setComment('');
     setSubmitted(false);
     setLoading(true);
     setProfile(null);
@@ -97,13 +110,31 @@ const CoachProfile = () => {
         rating,
         comment,
       });
-      toast.success('تم إرسال التقييم بنجاح ⭐');
+      toast.success(hasExistingRating ? 'تم تحديث تقييمك بنجاح ⭐' : 'تم إرسال التقييم بنجاح ⭐');
       setSubmitted(true);
+      setHasExistingRating(true);
       await fetchProfile();
     } catch (err) {
       toast.error('فشل إرسال التقييم');
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const handleDeleteRating = async () => {
+    setDeleting(true);
+    try {
+      await memberAPI.delete(`/api/member-portal/delete-rating/${coachId}`);
+      toast.success('تم حذف تقييمك بنجاح');
+      setSubmitted(false);
+      setHasExistingRating(false);
+      setRating(0);
+      setComment('');
+      await fetchProfile();
+    } catch (err) {
+      toast.error('فشل حذف التقييم');
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -233,22 +264,43 @@ const CoachProfile = () => {
           <CardContent className="p-5">
             <h2 className={`text-base font-bold mb-4 flex items-center gap-2 ${darkMode ? 'text-gray-100' : 'text-gray-800'}`}>
               <Star className="w-5 h-5 text-yellow-500" />
-              قيّم هذا المدرب
+              {hasExistingRating ? 'تقييمك لهذا المدرب' : 'قيّم هذا المدرب'}
             </h2>
 
             {submitted ? (
               <div className={`flex flex-col items-center gap-3 py-4 ${darkMode ? 'text-green-400' : 'text-green-600'}`}>
                 <CheckCircle className="w-10 h-10" />
                 <p className="text-base font-semibold">شكراً! تم إرسال تقييمك بنجاح</p>
-                <button
-                  onClick={() => { setSubmitted(false); setRating(0); setComment(''); }}
-                  className={`text-sm underline ${darkMode ? 'text-gray-400 hover:text-gray-200' : 'text-gray-500 hover:text-gray-700'}`}
-                >
-                  تعديل التقييم
-                </button>
+                <div className="flex items-center gap-3 mt-1">
+                  <button
+                    onClick={() => setSubmitted(false)}
+                    className={`flex items-center gap-1 text-sm underline ${darkMode ? 'text-gray-400 hover:text-gray-200' : 'text-gray-500 hover:text-gray-700'}`}
+                  >
+                    <Edit2 className="w-3.5 h-3.5" />
+                    تعديل التقييم
+                  </button>
+                  <span className={`text-xs ${darkMode ? 'text-gray-600' : 'text-gray-300'}`}>|</span>
+                  <button
+                    onClick={handleDeleteRating}
+                    disabled={deleting}
+                    className={`flex items-center gap-1 text-sm underline ${darkMode ? 'text-red-400 hover:text-red-300' : 'text-red-500 hover:text-red-700'}`}
+                  >
+                    {deleting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+                    حذف التقييم
+                  </button>
+                </div>
               </div>
             ) : (
               <div className="space-y-4">
+                {hasExistingRating && (
+                  <div className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium ${
+                    darkMode ? 'bg-blue-900/30 text-blue-300 border border-blue-700' : 'bg-blue-50 text-blue-700 border border-blue-200'
+                  }`}>
+                    <Edit2 className="w-3.5 h-3.5 flex-shrink-0" />
+                    لديك تقييم سابق — يمكنك تعديله أو حذفه
+                  </div>
+                )}
+
                 {/* Stars */}
                 <div className="flex flex-col items-center gap-2">
                   <InteractiveStars
@@ -293,8 +345,28 @@ const CoachProfile = () => {
                   ) : (
                     <Send className="w-4 h-4" />
                   )}
-                  إرسال التقييم
+                  {hasExistingRating ? 'تحديث التقييم' : 'إرسال التقييم'}
                 </button>
+
+                {/* Delete option for existing ratings */}
+                {hasExistingRating && (
+                  <button
+                    onClick={handleDeleteRating}
+                    disabled={deleting}
+                    className={`w-full flex items-center justify-center gap-2 py-2 rounded-lg text-sm font-medium border transition-all ${
+                      darkMode
+                        ? 'border-red-700 text-red-400 hover:bg-red-900/30'
+                        : 'border-red-300 text-red-600 hover:bg-red-50'
+                    }`}
+                  >
+                    {deleting ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <Trash2 className="w-4 h-4" />
+                    )}
+                    حذف تقييمي
+                  </button>
+                )}
               </div>
             )}
           </CardContent>
