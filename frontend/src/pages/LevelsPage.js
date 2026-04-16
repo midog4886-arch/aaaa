@@ -991,11 +991,13 @@ export const LevelsPage = () => {
     const times = new Set();
     members.forEach(m => {
       (m.activities || []).filter(a => a.status === 'active').forEach(a => {
-        if (a.schedule) times.add(a.schedule);
+        if (!a.schedule) return;
+        if (filterActivity && !(a.activity_name || '').includes(filterActivity)) return;
+        times.add(a.schedule);
       });
     });
     return [...times].sort();
-  }, [members]);
+  }, [members, filterActivity]);
 
   const availableMembers = members.filter(m => {
     if (!selectedLevel) return true;
@@ -2090,7 +2092,7 @@ export const LevelsPage = () => {
               
               {/* Activity & Time Filters */}
               <div className="flex gap-2 mb-3">
-                <Select value={filterActivity || '__all__'} onValueChange={v => setFilterActivity(v === '__all__' ? '' : v)}>
+                <Select value={filterActivity || '__all__'} onValueChange={v => { setFilterActivity(v === '__all__' ? '' : v); setFilterTime(''); }}>
                   <SelectTrigger className="flex-1 h-8 text-xs">
                     <SelectValue placeholder={t('كل الأنشطة', 'All activities')} />
                   </SelectTrigger>
