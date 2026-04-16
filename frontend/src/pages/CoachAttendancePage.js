@@ -207,7 +207,8 @@ const CoachAttendancePage = () => {
         name_ar: addCoachForm.name.trim(),
         phone: addCoachForm.phone.trim(),
         email: addCoachForm.email.trim(),
-        activities: addCoachForm.specialization ? [addCoachForm.specialization.trim()] : [],
+        activities: [],
+        specialization: addCoachForm.specialization.trim() || null,
         notes: '',
         branch_id: branchId,
         expected_checkin_time: addCoachForm.expected_checkin_time || null,
@@ -231,7 +232,7 @@ const CoachAttendancePage = () => {
       name_en: coach.name || '',
       phone: coach.phone || '',
       email: coach.email || '',
-      specialization: (coach.activities || []).join(', '),
+      specialization: coach.specialization || '',
       expected_checkin_time: coach.expected_checkin_time || '',
       photo: coach.photo || ''
     });
@@ -250,7 +251,8 @@ const CoachAttendancePage = () => {
         name_ar: editCoachForm.name.trim(),
         phone: editCoachForm.phone.trim(),
         email: editCoachForm.email.trim(),
-        activities: editCoachForm.specialization ? editCoachForm.specialization.split(',').map(s => s.trim()).filter(Boolean) : [],
+        activities: editingCoach.activities || [],
+        specialization: editCoachForm.specialization.trim() || null,
         notes: editingCoach.notes || '',
         branch_id: editingCoach.branch_id || null,
         expected_checkin_time: editCoachForm.expected_checkin_time || null,
