@@ -603,10 +603,35 @@ async def get_member_attendance(member: dict = Depends(get_current_member)):
 
 # ============ ATTENDANCE STATS ============
 
+def _count_scheduled_days(schedule_text: str) -> int:
+    """Count how many days per week from a schedule text string (Arabic or English)."""
+    if not schedule_text:
+        return 0
+    # Arabic day names (each is unique and unambiguous)
+    ar_days = ["الأحد", "الاثنين", "الثلاثاء", "الأربعاء", "الخميس", "الجمعة", "السبت"]
+    # Full English day names (check before short forms to avoid double-counting)
+    en_days_full = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"]
+    en_days_short = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"]
+    
+    count = sum(1 for d in ar_days if d in schedule_text)
+    if count == 0:
+        text_lower = schedule_text.lower()
+        matched = set()
+        for i, full in enumerate(en_days_full):
+            if full in text_lower:
+                matched.add(i)
+        for i, short in enumerate(en_days_short):
+            if short in text_lower and i not in matched:
+                matched.add(i)
+        count = len(matched)
+    return count
+
+
 @router.get("/attendance-stats")
 async def get_member_attendance_stats(member: dict = Depends(get_current_member)):
     """Get attendance statistics for the member"""
     from datetime import datetime, timedelta
+    import re as _re
     
     # Get current month dates
     today = datetime.now(timezone.utc)
@@ -647,6 +672,42 @@ async def get_member_attendance_stats(member: dict = Depends(get_current_member)
         activity_name = att.get("activity_name", "غير محدد")
         activities_count[activity_name] = activities_count.get(activity_name, 0) + 1
     
+    # Extract attendance dates for current month
+    this_month_dates = sorted(set(
+        att.get("date", "") for att in this_month_attendance if att.get("date")
+    ))
+
+    # Calculate best week from this month (group by ISO week)
+    week_counts = {}
+    for att in this_month_attendance:
+        date_str = att.get("date", "")
+        if not date_str:
+            continue
+        try:
+            d = datetime.strptime(date_str, "%Y-%m-%d")
+            iso = d.isocalendar()
+            week_key = f"{iso[0]}-W{iso[1]:02d}"
+            week_counts[week_key] = week_counts.get(week_key, 0) + 1
+        except Exception:
+            pass
+    best_week = None
+    if week_counts:
+        best_week_key = max(week_counts, key=lambda k: week_counts[k])
+        best_week = {
+            "count": week_counts[best_week_key],
+            "week_label": best_week_key
+        }
+
+    # Calculate scheduled_per_week from active subscriptions' schedule text
+    scheduled_per_week = 0
+    activities = member.get("activities", [])
+    for act in activities:
+        end_date = act.get("end_date", "")
+        if end_date and end_date >= today_str:
+            schedule_text = act.get("schedule", "") or ""
+            days = _count_scheduled_days(schedule_text)
+            scheduled_per_week += days
+    
     # Recent attendance (last 10)
     recent_attendance = await db.attendance.find(
         {"member_id": member["id"]},
@@ -657,14 +718,17 @@ async def get_member_attendance_stats(member: dict = Depends(get_current_member)
         "this_month": {
             "count": len(this_month_attendance),
             "month_name": today.strftime('%B %Y'),
-            "activities": activities_count
+            "activities": activities_count,
+            "dates": this_month_dates
         },
         "last_month": {
             "count": len(last_month_attendance),
             "month_name": last_month.strftime('%B %Y')
         },
         "total": total_attendance,
-        "recent": recent_attendance
+        "recent": recent_attendance,
+        "best_week": best_week,
+        "scheduled_per_week": scheduled_per_week
     }
 
 
