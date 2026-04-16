@@ -11,6 +11,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Textarea } from '../components/ui/textarea';
 import { activitiesAPI, branchesAPI } from '../services/api';
+import axios from 'axios';
 import { toast } from 'sonner';
 import { 
   Plus, 
@@ -44,6 +45,7 @@ export const ActivitiesPage = () => {
   const isAdmin = user?.is_admin === true;
   const [activities, setActivities] = useState([]);
   const [branches, setBranches] = useState([]);
+  const [coaches, setCoaches] = useState([]);
   const [memberCounts, setMemberCounts] = useState({});
   const [loading, setLoading] = useState(true);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -64,7 +66,8 @@ export const ActivitiesPage = () => {
     description_ar: '',
     monthly_fee: '',
     color: '#F97316',
-    branch_id: 'all'
+    branch_id: 'all',
+    coach_id: ''
   });
 
   const colorOptions = [
@@ -115,14 +118,17 @@ export const ActivitiesPage = () => {
   const loadActivities = async () => {
     try {
       const branchParams = selectedBranchId && selectedBranchId !== 'all' ? { branch_filter: selectedBranchId } : {};
-      const [activitiesRes, branchesRes, countsRes] = await Promise.all([
+      const token = localStorage.getItem('token');
+      const [activitiesRes, branchesRes, countsRes, coachesRes] = await Promise.all([
         activitiesAPI.getAll(branchParams),
         isAdmin ? branchesAPI.getAll() : Promise.resolve({ data: [] }),
-        activitiesAPI.getMemberCounts().catch(() => ({ data: {} }))
+        activitiesAPI.getMemberCounts().catch(() => ({ data: {} })),
+        axios.get('/api/coaches', { headers: { Authorization: `Bearer ${token}` } }).catch(() => ({ data: [] }))
       ]);
       setActivities(activitiesRes.data);
       setBranches(branchesRes.data || []);
       setMemberCounts(countsRes.data || {});
+      setCoaches(coachesRes.data || []);
     } catch (error) {
       console.error('Failed to load activities:', error);
       toast.error(t('error'));
@@ -139,7 +145,8 @@ export const ActivitiesPage = () => {
       const data = {
         ...formData,
         monthly_fee: parseFloat(formData.monthly_fee) || 0,
-        branch_id: isAdmin ? formData.branch_id : undefined
+        branch_id: isAdmin ? formData.branch_id : undefined,
+        coach_id: formData.coach_id || null
       };
       
       if (selectedActivity) {
@@ -183,7 +190,8 @@ export const ActivitiesPage = () => {
       description_ar: activity.description_ar || '',
       monthly_fee: activity.monthly_fee?.toString() || '',
       color: activity.color || '#F97316',
-      branch_id: activity.branch_id || 'all'
+      branch_id: activity.branch_id || 'all',
+      coach_id: activity.coach_id || ''
     });
     setIsDialogOpen(true);
   };
@@ -204,7 +212,8 @@ export const ActivitiesPage = () => {
       description_ar: '',
       monthly_fee: '',
       color: '#F97316',
-      branch_id: 'all'
+      branch_id: 'all',
+      coach_id: ''
     });
   };
 
@@ -553,6 +562,16 @@ export const ActivitiesPage = () => {
                     </div>
                   </div>
                   
+                  {activity.coach_id && (() => {
+                    const assignedCoach = coaches.find(c => c.id === activity.coach_id);
+                    return assignedCoach ? (
+                      <div className="flex items-center gap-1 text-xs text-blue-600 mb-2">
+                        <Users className="w-3 h-3" />
+                        <span>{assignedCoach.name_ar || assignedCoach.name}</span>
+                      </div>
+                    ) : null;
+                  })()}
+
                   {isAdmin && (
                     <div className="flex items-center gap-1 text-xs text-muted-foreground mb-3">
                       <Building2 className="w-3 h-3" />
@@ -670,6 +689,33 @@ export const ActivitiesPage = () => {
                 </div>
               </div>
               
+              {coaches.length > 0 && (
+                <div className="space-y-2">
+                  <Label className="flex items-center gap-2">
+                    <Users className="w-4 h-4" />
+                    {language === 'ar' ? 'المدرب المسؤول' : 'Assigned Coach'}
+                  </Label>
+                  <Select
+                    value={formData.coach_id || '__none__'}
+                    onValueChange={(v) => setFormData({...formData, coach_id: v === '__none__' ? '' : v})}
+                  >
+                    <SelectTrigger data-testid="activity-coach-select">
+                      <SelectValue placeholder={language === 'ar' ? 'اختر المدرب' : 'Select Coach'} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__none__">
+                        {language === 'ar' ? 'بدون مدرب' : 'No Coach'}
+                      </SelectItem>
+                      {coaches.map(coach => (
+                        <SelectItem key={coach.id} value={coach.id}>
+                          {coach.name_ar || coach.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+
               {isAdmin && branches.length > 0 && (
                 <div className="space-y-2">
                   <Label className="flex items-center gap-2">

@@ -22,6 +22,7 @@ class ActivityBase(BaseModel):
     description_ar: Optional[str] = ""
     monthly_fee: float
     color: str
+    coach_id: Optional[str] = None
 
 class ActivityCreate(ActivityBase):
     branch_id: Optional[str] = None

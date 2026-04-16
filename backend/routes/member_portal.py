@@ -852,6 +852,7 @@ async def get_coaches_to_rate(member: dict = Depends(get_current_member)):
                     "name": coach.get("name"),
                     "name_ar": coach.get("name_ar"),
                     "specialization": coach.get("specialization"),
+                    "photo": coach.get("photo"),
                     "activities": [{"id": a["id"], "name": a.get("name_ar") or a.get("name")} for a in coach_activities],
                     "my_rating": existing_rating
                 })
@@ -883,6 +884,7 @@ async def get_all_coaches_for_rating(member: dict = Depends(get_current_member))
             "name": coach.get("name"),
             "name_ar": coach.get("name_ar"),
             "specialization": coach.get("specialization"),
+            "photo": coach.get("photo"),
             "activities": [{"id": a["id"], "name": a.get("name_ar") or a.get("name")} for a in coach_activities],
             "my_rating": existing_rating
         })

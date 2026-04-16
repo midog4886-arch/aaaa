@@ -24,10 +24,10 @@ const CoachAttendancePage = () => {
   const [absentStatus, setAbsentStatus] = useState('absent');
   const [toast, setToast] = useState(null);
   const [showAddCoach, setShowAddCoach] = useState(false);
-  const [addCoachForm, setAddCoachForm] = useState({ name: '', phone: '', email: '', specialization: '', name_en: '', expected_checkin_time: '' });
+  const [addCoachForm, setAddCoachForm] = useState({ name: '', phone: '', email: '', specialization: '', name_en: '', expected_checkin_time: '', photo: '' });
   const [addingCoach, setAddingCoach] = useState(false);
   const [editingCoach, setEditingCoach] = useState(null);
-  const [editCoachForm, setEditCoachForm] = useState({ name: '', phone: '', email: '', specialization: '', name_en: '', expected_checkin_time: '' });
+  const [editCoachForm, setEditCoachForm] = useState({ name: '', phone: '', email: '', specialization: '', name_en: '', expected_checkin_time: '', photo: '' });
   const [savingCoach, setSavingCoach] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState(null);
   const [qrCoach, setQrCoach] = useState(null); // coach whose QR is being shown
@@ -182,6 +182,13 @@ const CoachAttendancePage = () => {
     return `${days[d.getDay()]} ${d.toLocaleDateString('ar-SA')}`;
   };
 
+  const fileToBase64 = (file) => new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+
   const handleAddCoach = async () => {
     if (!addCoachForm.name.trim()) {
       showToast('يرجى إدخال اسم المدرب', 'error');
@@ -203,11 +210,12 @@ const CoachAttendancePage = () => {
         activities: addCoachForm.specialization ? [addCoachForm.specialization.trim()] : [],
         notes: '',
         branch_id: branchId,
-        expected_checkin_time: addCoachForm.expected_checkin_time || null
+        expected_checkin_time: addCoachForm.expected_checkin_time || null,
+        photo: addCoachForm.photo || null
       }, { headers: { Authorization: `Bearer ${token}` } });
       showToast('تم إضافة المدرب بنجاح');
       setShowAddCoach(false);
-      setAddCoachForm({ name: '', phone: '', email: '', specialization: '', name_en: '', expected_checkin_time: '' });
+      setAddCoachForm({ name: '', phone: '', email: '', specialization: '', name_en: '', expected_checkin_time: '', photo: '' });
       fetchData();
     } catch (error) {
       showToast(error.response?.data?.detail || 'حدث خطأ أثناء إضافة المدرب', 'error');
@@ -224,7 +232,8 @@ const CoachAttendancePage = () => {
       phone: coach.phone || '',
       email: coach.email || '',
       specialization: (coach.activities || []).join(', '),
-      expected_checkin_time: coach.expected_checkin_time || ''
+      expected_checkin_time: coach.expected_checkin_time || '',
+      photo: coach.photo || ''
     });
   };
 
@@ -244,7 +253,8 @@ const CoachAttendancePage = () => {
         activities: editCoachForm.specialization ? editCoachForm.specialization.split(',').map(s => s.trim()).filter(Boolean) : [],
         notes: editingCoach.notes || '',
         branch_id: editingCoach.branch_id || null,
-        expected_checkin_time: editCoachForm.expected_checkin_time || null
+        expected_checkin_time: editCoachForm.expected_checkin_time || null,
+        photo: editCoachForm.photo || null
       }, { headers: { Authorization: `Bearer ${token}` } });
       showToast('تم تعديل بيانات المدرب بنجاح');
       setEditingCoach(null);
@@ -414,6 +424,32 @@ const CoachAttendancePage = () => {
                     className="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
                   />
                 </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">صورة المدرب (اختياري)</label>
+                  <div className="flex items-center gap-3">
+                    {addCoachForm.photo && (
+                      <img src={addCoachForm.photo} alt="preview" className="w-14 h-14 rounded-full object-cover border-2 border-orange-300" />
+                    )}
+                    <label className="flex-1 cursor-pointer border-2 border-dashed border-gray-300 rounded-lg px-3 py-2 text-sm text-center text-gray-500 hover:border-orange-400 hover:text-orange-500 transition-colors">
+                      {addCoachForm.photo ? 'تغيير الصورة' : 'اختر صورة...'}
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={async (e) => {
+                          const file = e.target.files[0];
+                          if (!file) return;
+                          if (file.size > 2 * 1024 * 1024) { showToast('حجم الصورة يجب أن يكون أقل من 2 ميغابايت', 'error'); return; }
+                          const b64 = await fileToBase64(file);
+                          setAddCoachForm({...addCoachForm, photo: b64});
+                        }}
+                      />
+                    </label>
+                    {addCoachForm.photo && (
+                      <button type="button" onClick={() => setAddCoachForm({...addCoachForm, photo: ''})} className="text-red-400 hover:text-red-600 text-xs">حذف</button>
+                    )}
+                  </div>
+                </div>
               </div>
               <div className="flex gap-3 p-5 border-t bg-gray-50 rounded-b-xl">
                 <button
@@ -516,6 +552,32 @@ const CoachAttendancePage = () => {
                   {editingCoach?.expected_checkin_time && (
                     <p className="text-xs text-gray-400 mt-1">الوقت الحالي: {editingCoach.expected_checkin_time}</p>
                   )}
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">صورة المدرب (اختياري)</label>
+                  <div className="flex items-center gap-3">
+                    {editCoachForm.photo && (
+                      <img src={editCoachForm.photo} alt="preview" className="w-14 h-14 rounded-full object-cover border-2 border-blue-300" />
+                    )}
+                    <label className="flex-1 cursor-pointer border-2 border-dashed border-gray-300 rounded-lg px-3 py-2 text-sm text-center text-gray-500 hover:border-blue-400 hover:text-blue-500 transition-colors">
+                      {editCoachForm.photo ? 'تغيير الصورة' : 'اختر صورة...'}
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={async (e) => {
+                          const file = e.target.files[0];
+                          if (!file) return;
+                          if (file.size > 2 * 1024 * 1024) { showToast('حجم الصورة يجب أن يكون أقل من 2 ميغابايت', 'error'); return; }
+                          const b64 = await fileToBase64(file);
+                          setEditCoachForm({...editCoachForm, photo: b64});
+                        }}
+                      />
+                    </label>
+                    {editCoachForm.photo && (
+                      <button type="button" onClick={() => setEditCoachForm({...editCoachForm, photo: ''})} className="text-red-400 hover:text-red-600 text-xs">حذف</button>
+                    )}
+                  </div>
                 </div>
               </div>
               <div className="flex gap-3 p-5 border-t bg-gray-50 rounded-b-xl">

@@ -8,6 +8,30 @@ import { Star, User, Loader2, Send, CheckCircle, MessageSquare, Plus, Award } fr
 import { toast } from 'sonner';
 import MemberLayout, { memberAPI } from './MemberLayout';
 
+const CoachAvatar = ({ coach, size = 'w-16 h-16', textSize = 'text-lg' }) => {
+  const initials = (coach.name_ar || coach.name || '?')
+    .trim()
+    .split(/\s+/)
+    .slice(0, 2)
+    .map(w => w[0])
+    .join('');
+  if (coach.photo) {
+    return (
+      <img
+        src={coach.photo}
+        alt={coach.name_ar || coach.name}
+        className={`${size} rounded-full object-cover flex-shrink-0 border-2 border-white shadow`}
+        onError={(e) => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'flex'; }}
+      />
+    );
+  }
+  return (
+    <div className={`${size} bg-gradient-to-br from-blue-500 to-indigo-600 rounded-full flex items-center justify-center flex-shrink-0`}>
+      <span className={`${textSize} font-bold text-white`}>{initials || <User className="w-6 h-6" />}</span>
+    </div>
+  );
+};
+
 const MemberRateCoach = () => {
   const [loading, setLoading] = useState(true);
   const [coaches, setCoaches] = useState([]);
@@ -180,9 +204,7 @@ const MemberRateCoach = () => {
                 <Card key={coach.id} className="hover:shadow-lg transition-shadow dark:bg-gray-800 dark:border-gray-700">
                   <CardContent className="p-6">
                     <div className="flex items-start gap-4">
-                      <div className="w-16 h-16 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-full flex items-center justify-center flex-shrink-0">
-                        <User className="w-8 h-8 text-white" />
-                      </div>
+                      <CoachAvatar coach={coach} size="w-16 h-16" textSize="text-lg" />
                       <div className="flex-1">
                         <h3 className="text-lg font-bold text-gray-800 dark:text-white">
                           {coach.name_ar || coach.name}
@@ -287,9 +309,7 @@ const MemberRateCoach = () => {
           {selectedCoach && (
             <div className="space-y-6">
               <div className="flex items-center gap-4 p-4 rounded-lg bg-gray-50 dark:bg-gray-700">
-                <div className="w-14 h-14 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-full flex items-center justify-center">
-                  <User className="w-7 h-7 text-white" />
-                </div>
+                <CoachAvatar coach={selectedCoach} size="w-14 h-14" textSize="text-base" />
                 <div>
                   <p className="font-bold text-lg dark:text-white">{selectedCoach.name_ar || selectedCoach.name}</p>
                   <p className="text-sm text-gray-500 dark:text-gray-400">
