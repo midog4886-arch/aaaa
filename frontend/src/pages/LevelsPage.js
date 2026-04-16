@@ -26,6 +26,18 @@ const MAIN_ACTIVITIES = [
   { id: 'karate', name_ar: 'الكاراتيه', name_en: 'Karate', icon: '🥋', color: 'bg-red-500', maxCapacity: 12 }
 ];
 
+// Activity groups for filtering (keyword-based matching)
+const ACTIVITY_GROUPS = [
+  { id: 'swimming', label: 'السباحة', icon: '🏊', keywords: ['سباحة', 'سباحه'] },
+  { id: 'football', label: 'كرة القدم', icon: '⚽', keywords: ['قدم', 'كره', 'كرة'] },
+  { id: 'karate',   label: 'الكاراتيه', icon: '🥋', keywords: ['كارات', 'كاراتيه', 'كارتيه'] },
+];
+const matchesGroup = (activityName, groupId) => {
+  const g = ACTIVITY_GROUPS.find(g => g.id === groupId);
+  if (!g) return false;
+  return g.keywords.some(k => (activityName || '').includes(k));
+};
+
 // Time slots
 const TIME_SLOTS = ['الساعة 3', 'الساعة 4', 'الساعة 5', 'الساعة 6', 'الساعة 7', 'الساعة 8'];
 
@@ -975,24 +987,21 @@ export const LevelsPage = () => {
       return a.end_date >= todayStr;
     });
   };
-  // Build activity filter options from the fetched activities list (clean names + icons)
-  const ACTIVITY_ICONS = { 'السباحة': '🏊', 'كرة القدم': '⚽', 'الكاراتيه': '🥋', 'كرة اليد': '🤾', 'تنس': '🎾', 'جمباز': '🤸' };
-  const getActivityIcon = (name) => {
-    for (const [k, v] of Object.entries(ACTIVITY_ICONS)) {
-      if ((name || '').includes(k)) return v;
-    }
-    return '🏅';
-  };
+  // Build activity filter options — only show groups that have at least one member
   const activityFilterOptions = useMemo(() => {
-    return activities.map(a => ({ id: a.id, name: a.name_ar || a.name, icon: getActivityIcon(a.name_ar || a.name) }));
-  }, [activities]);
+    return ACTIVITY_GROUPS.filter(g =>
+      members.some(m =>
+        (m.activities || []).some(a => a.status === 'active' && matchesGroup(a.activity_name, g.id))
+      )
+    );
+  }, [members]);
 
   const timeFilterOptions = useMemo(() => {
     const times = new Set();
     members.forEach(m => {
       (m.activities || []).filter(a => a.status === 'active').forEach(a => {
         if (!a.schedule) return;
-        if (filterActivity && !(a.activity_name || '').includes(filterActivity)) return;
+        if (filterActivity && !matchesGroup(a.activity_name, filterActivity)) return;
         times.add(a.schedule);
       });
     });
@@ -1014,7 +1023,7 @@ export const LevelsPage = () => {
     if (!filterActivity && !filterTime) return true;
     const activeActs = (m.activities || []).filter(a => a.status === 'active');
     return activeActs.some(a => {
-      const actMatch = !filterActivity || (a.activity_name || '').includes(filterActivity);
+      const actMatch = !filterActivity || matchesGroup(a.activity_name, filterActivity);
       const timeMatch = !filterTime || (a.schedule || '') === filterTime;
       return actMatch && timeMatch;
     });
@@ -2099,7 +2108,7 @@ export const LevelsPage = () => {
                   <SelectContent>
                     <SelectItem value="__all__">{t('كل الأنشطة', 'All activities')}</SelectItem>
                     {activityFilterOptions.map(opt => (
-                      <SelectItem key={opt.id} value={opt.name}>{opt.icon} {opt.name}</SelectItem>
+                      <SelectItem key={opt.id} value={opt.id}>{opt.icon} {opt.label}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
