@@ -188,10 +188,9 @@ const buildStickerHtml = (cardData) => {
 
 const SubscriptionCard = ({ act, darkMode, language, today }) => {
   const totalDays = daysDiff(act.start_date, act.end_date);
-  const elapsedDays = daysDiff(act.start_date, today);
-  const remaining = daysDiff(today, act.end_date);
+  const remaining = Math.max(0, daysDiff(today, act.end_date));
   const progressPct = totalDays > 0
-    ? Math.min(100, Math.max(0, Math.round((elapsedDays / totalDays) * 100)))
+    ? Math.min(100, Math.max(0, Math.round((remaining / totalDays) * 100)))
     : 0;
   const colors = remainingColor(remaining);
 
@@ -331,9 +330,11 @@ const MemberCard = () => {
 
         {/* ── Print Dialog ── */}
         <Dialog open={showPrintDialog} onOpenChange={setShowPrintDialog}>
-          <DialogContent className="max-w-lg" dir="rtl">
+          <DialogContent className="max-w-lg" dir={language === 'ar' ? 'rtl' : 'ltr'}>
             <DialogHeader>
-              <DialogTitle className="text-center text-xl">🖨️ طباعة الملصقات</DialogTitle>
+              <DialogTitle className="text-center text-xl">
+                🖨️ {language === 'ar' ? 'طباعة الملصقات' : 'Print Stickers'}
+              </DialogTitle>
             </DialogHeader>
             <div className="py-4">
               <p className="text-center text-gray-600 mb-2 font-bold">{cardData?.name_ar}</p>
