@@ -42,6 +42,11 @@ const buildStickerHtml = (cardData) => {
     <div class="activity-item active">
       <div class="activity-name">✓ ${act.activity_name}</div>
       ${act.schedule ? `<div style="font-size:5.5pt;color:#2563EB;margin-top:0.3mm;">📅 ${act.schedule}</div>` : ''}
+      ${act.coach_name ? `
+      <div class="coach-info">
+        ${act.coach_photo ? `<img class="coach-photo" src="${act.coach_photo}" alt="${act.coach_name}" onerror="this.style.display='none';this.insertAdjacentHTML('afterend','<span style=\\"font-size:5pt;\\">🏋️</span>')" />` : `<span style="font-size:5pt;">🏋️</span>`}
+        <span class="coach-name">${act.coach_name}</span>
+      </div>` : ''}
     </div>
   `).join('') || '';
 
@@ -82,6 +87,9 @@ const buildStickerHtml = (cardData) => {
       .activity-item { padding: 1mm 1.5mm; margin-bottom: 0.5mm; border-radius: 1.5mm; font-size: 6pt; }
       .activity-item.active { background: #D1FAE5; border-right: 2px solid #10B981; }
       .activity-name { font-weight: 600; color: #1f2937; font-size: 7pt; }
+      .coach-info { display: flex; align-items: center; gap: 1mm; margin-top: 0.5mm; }
+      .coach-photo { width: 4mm; height: 4mm; border-radius: 50%; object-fit: cover; border: 0.3mm solid #d1d5db; flex-shrink: 0; }
+      .coach-name { font-size: 5pt; color: #6b7280; }
       .card-footer { text-align: right; padding: 1.5mm 2mm; background: #f9fafb; font-size: 5pt; color: #374151; border-top: 1px dashed #e5e7eb; line-height: 1.4; }
       .card-footer .terms-title { font-weight: 700; color: #1f2937; font-size: 6pt; margin-bottom: 0.5mm; }
       .logo-card { width: 90mm; height: 60mm; background: white; border-radius: 4mm; overflow: hidden; box-shadow: 0 4px 15px rgba(0,0,0,0.1); display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 3mm; }
