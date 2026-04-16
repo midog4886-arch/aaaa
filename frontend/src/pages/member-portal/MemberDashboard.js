@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
 import { 
@@ -89,15 +89,22 @@ const formatDate = (dateStr) => {
 
 // ── Attendance Calendar ───────────────────────────────────────────────────────
 
-const AttendanceCalendar = ({ attendanceStats, darkMode, language }) => {
+const AttendanceCalendar = ({ attendanceStats, darkMode, language, refreshToken }) => {
   const now = new Date();
   const [viewYear, setViewYear] = useState(now.getFullYear());
   const [viewMonth, setViewMonth] = useState(now.getMonth()); // 0-indexed
   const [monthDates, setMonthDates] = useState(null);
   const [loadingMonth, setLoadingMonth] = useState(false);
+  const monthCacheRef = useRef({});
 
   const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
   const isCurrentMonth = viewYear === now.getFullYear() && viewMonth === now.getMonth();
+
+  // Clear entire cache when a pull-to-refresh happens
+  useEffect(() => {
+    monthCacheRef.current = {};
+    setMonthDates(null);
+  }, [refreshToken]);
 
   // Fetch attendance dates when month changes (not the current month)
   useEffect(() => {
@@ -105,16 +112,27 @@ const AttendanceCalendar = ({ attendanceStats, darkMode, language }) => {
       setMonthDates(null);
       return;
     }
+    const cacheKey = `${viewYear}-${viewMonth + 1}`;
+    if (monthCacheRef.current[cacheKey] !== undefined) {
+      setMonthDates(monthCacheRef.current[cacheKey]);
+      return;
+    }
     let cancelled = false;
     setLoadingMonth(true);
     memberAPI.get(`/api/member-portal/attendance-stats?year=${viewYear}&month=${viewMonth + 1}`)
       .then(res => {
-        if (!cancelled) setMonthDates(new Set((res.data?.this_month?.dates || []).map(d => d.slice(0, 10))));
+        if (!cancelled) {
+          const dates = new Set((res.data?.this_month?.dates || []).map(d => d.slice(0, 10)));
+          monthCacheRef.current[cacheKey] = dates;
+          setMonthDates(dates);
+        }
       })
-      .catch(() => { if (!cancelled) setMonthDates(new Set()); })
+      .catch(() => {
+        if (!cancelled) setMonthDates(new Set());
+      })
       .finally(() => { if (!cancelled) setLoadingMonth(false); });
     return () => { cancelled = true; };
-  }, [viewYear, viewMonth, isCurrentMonth]);
+  }, [viewYear, viewMonth, isCurrentMonth, refreshToken]);
 
   const attendedDates = isCurrentMonth
     ? new Set([
@@ -292,6 +310,7 @@ const LoadingSkeleton = ({ darkMode }) => (
 const MemberDashboard = () => {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [refreshToken, setRefreshToken] = useState(0);
   const [subscriptions, setSubscriptions] = useState({ active: [], expired: [], total_active: 0, total_expired: 0 });
   const [notifications, setNotifications] = useState({ notifications: [], unread_count: 0 });
   const [attendanceStats, setAttendanceStats] = useState(null);
@@ -340,6 +359,7 @@ const MemberDashboard = () => {
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
     await fetchData(true);
+    setRefreshToken(t => t + 1);
   }, [fetchData]);
 
   const quickLinks = [
@@ -559,6 +579,7 @@ const MemberDashboard = () => {
                       attendanceStats={attendanceStats}
                       darkMode={darkMode}
                       language={language}
+                      refreshToken={refreshToken}
                     />
                     <div className="flex items-center gap-4 mt-3 justify-center">
                       <div className="flex items-center gap-1">
