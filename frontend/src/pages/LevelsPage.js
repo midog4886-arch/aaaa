@@ -48,6 +48,8 @@ export const LevelsPage = () => {
   const [selectedTimeSlot, setSelectedTimeSlot] = useState(null);
   const [saving, setSaving] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [filterActivity, setFilterActivity] = useState('');
+  const [filterTime, setFilterTime] = useState('');
   
   // Navigation states for drill-down view
   const [currentView, setCurrentView] = useState('days'); // 'days' | 'activities' | 'times' | 'levels'
@@ -917,6 +919,8 @@ export const LevelsPage = () => {
   const openMembersDialog = (level) => {
     setSelectedLevel(level);
     setSearchQuery('');
+    setFilterActivity('');
+    setFilterTime('');
     setIsMembersDialogOpen(true);
   };
 
@@ -968,6 +972,27 @@ export const LevelsPage = () => {
       return a.end_date >= todayStr;
     });
   };
+  // Build unique filter options from all members' active activities
+  const activityFilterOptions = useMemo(() => {
+    const names = new Set();
+    members.forEach(m => {
+      (m.activities || []).filter(a => a.status === 'active').forEach(a => {
+        if (a.activity_name) names.add(a.activity_name);
+      });
+    });
+    return [...names].sort();
+  }, [members]);
+
+  const timeFilterOptions = useMemo(() => {
+    const times = new Set();
+    members.forEach(m => {
+      (m.activities || []).filter(a => a.status === 'active').forEach(a => {
+        if (a.schedule) times.add(a.schedule);
+      });
+    });
+    return [...times].sort();
+  }, [members]);
+
   const availableMembers = members.filter(m => {
     if (!selectedLevel) return true;
     return !(selectedLevel.members || []).includes(m.id);
@@ -979,6 +1004,14 @@ export const LevelsPage = () => {
     return name.includes(searchQuery.toLowerCase()) || 
            phone.includes(searchQuery.toLowerCase()) ||
            code.includes(searchQuery.toLowerCase());
+  }).filter(m => {
+    if (!filterActivity && !filterTime) return true;
+    const activeActs = (m.activities || []).filter(a => a.status === 'active');
+    return activeActs.some(a => {
+      const actMatch = !filterActivity || (a.activity_name || '') === filterActivity;
+      const timeMatch = !filterTime || (a.schedule || '') === filterTime;
+      return actMatch && timeMatch;
+    });
   });
 
   // Get members in level
@@ -2051,6 +2084,32 @@ export const LevelsPage = () => {
                 />
               </div>
               
+              {/* Activity & Time Filters */}
+              <div className="flex gap-2 mb-3">
+                <Select value={filterActivity} onValueChange={setFilterActivity}>
+                  <SelectTrigger className="flex-1 h-8 text-xs">
+                    <SelectValue placeholder={t('كل الأنشطة', 'All activities')} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="">{t('كل الأنشطة', 'All activities')}</SelectItem>
+                    {activityFilterOptions.map(name => (
+                      <SelectItem key={name} value={name}>{name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Select value={filterTime} onValueChange={setFilterTime}>
+                  <SelectTrigger className="flex-1 h-8 text-xs">
+                    <SelectValue placeholder={t('كل المواعيد', 'All times')} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="">{t('كل المواعيد', 'All times')}</SelectItem>
+                    {timeFilterOptions.map(s => (
+                      <SelectItem key={s} value={s}>{s}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
               {/* Capacity Warning */}
               {selectedLevel && (
                 <div className={`mb-3 p-2 rounded-lg ${
