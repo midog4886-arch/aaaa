@@ -64,6 +64,7 @@ const CoachProfile = () => {
   const [deleting, setDeleting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [hasExistingRating, setHasExistingRating] = useState(false);
+  const [selectedActivity, setSelectedActivity] = useState(null);
 
   const fetchProfile = async () => {
     try {
@@ -92,11 +93,18 @@ const CoachProfile = () => {
   useEffect(() => {
     setHoverRating(0);
     setSubmitted(false);
+    setSelectedActivity(null);
     setLoading(true);
     setProfile(null);
     setImgError(false);
     fetchProfile();
   }, [coachId]);
+
+  useEffect(() => {
+    if (profile && profile.activities_with_ids && profile.activities_with_ids.length === 1) {
+      setSelectedActivity(profile.activities_with_ids[0]);
+    }
+  }, [profile]);
 
   const handleSubmitRating = async () => {
     if (rating === 0) {
@@ -105,11 +113,15 @@ const CoachProfile = () => {
     }
     setSubmitting(true);
     try {
-      await memberAPI.post('/api/member-portal/rate-coach', {
-        coach_id: coachId,
-        rating,
-        comment,
-      });
+      const payload = { coach_id: coachId, rating, comment };
+      if (selectedActivity) {
+        if (selectedActivity.id) {
+          payload.activity_id = selectedActivity.id;
+        } else if (selectedActivity.name) {
+          payload.activity_name = selectedActivity.name;
+        }
+      }
+      await memberAPI.post('/api/member-portal/rate-coach', payload);
       toast.success(hasExistingRating ? 'تم تحديث تقييمك بنجاح ⭐' : 'تم إرسال التقييم بنجاح ⭐');
       setSubmitted(true);
       setHasExistingRating(true);
@@ -298,6 +310,39 @@ const CoachProfile = () => {
                   }`}>
                     <Edit2 className="w-3.5 h-3.5 flex-shrink-0" />
                     لديك تقييم سابق — يمكنك تعديله أو حذفه
+                  </div>
+                )}
+
+                {/* Activity selector — shown only when coach has multiple activities */}
+                {profile.activities_with_ids && profile.activities_with_ids.length > 1 && (
+                  <div>
+                    <p className={`text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                      اختر النشاط الذي تقيّمه <span className="text-gray-400 font-normal">(اختياري)</span>
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      {profile.activities_with_ids.map((act, i) => {
+                        const isActive = selectedActivity && (
+                          act.id ? selectedActivity.id === act.id : selectedActivity.name === act.name
+                        );
+                        return (
+                          <button
+                            key={i}
+                            onClick={() => setSelectedActivity(isActive ? null : act)}
+                            className={`px-3 py-1.5 rounded-full text-sm font-medium transition-all border ${
+                              isActive
+                                ? darkMode
+                                  ? 'bg-green-700 border-green-500 text-white'
+                                  : 'bg-green-600 border-green-600 text-white'
+                                : darkMode
+                                  ? 'bg-gray-700 border-gray-600 text-gray-300 hover:border-green-500'
+                                  : 'bg-white border-gray-300 text-gray-600 hover:border-green-500'
+                            }`}
+                          >
+                            {act.name}
+                          </button>
+                        );
+                      })}
+                    </div>
                   </div>
                 )}
 

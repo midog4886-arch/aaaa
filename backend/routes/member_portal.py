@@ -1005,6 +1005,18 @@ async def get_coach_profile(coach_id: str, member: dict = Depends(get_current_me
     coach_own_activities = set(coach.get("activities") or [])
     all_activities = sorted(activity_names_from_db | coach_own_activities)
 
+    # Build a list of activities with IDs for the rating selector
+    activities_with_ids = [
+        {"id": a.get("id"), "name": a.get("name_ar") or a.get("name")}
+        for a in db_activities
+        if a.get("name") or a.get("name_ar")
+    ]
+    db_activity_names_set = {a["name"] for a in activities_with_ids}
+    for name in coach_own_activities:
+        if name not in db_activity_names_set:
+            activities_with_ids.append({"id": None, "name": name})
+    activities_with_ids = sorted(activities_with_ids, key=lambda x: x["name"])
+
     # Count total ratings accurately without a document limit
     total_ratings = await db.coach_ratings.count_documents({"coach_id": coach_id})
 
@@ -1051,6 +1063,7 @@ async def get_coach_profile(coach_id: str, member: dict = Depends(get_current_me
         "specialization": coach.get("specialization") or "",
         "notes": coach.get("notes") or "",
         "activities": all_activities,
+        "activities_with_ids": activities_with_ids,
         "avg_rating": avg_rating,
         "total_ratings": total_ratings,
         "reviews": reviews,
