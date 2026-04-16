@@ -1,16 +1,25 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
-import { CheckCircle, XCircle, Clock, Calendar, Loader2 } from 'lucide-react';
+import { CheckCircle, XCircle, Clock, Calendar, Loader2, ChevronLeft } from 'lucide-react';
 import MemberLayout, { memberAPI, getDarkMode } from './MemberLayout';
 
-const CoachCard = ({ name, photo, darkMode }) => {
+const CoachCard = ({ name, photo, coachId, darkMode }) => {
   const [imgError, setImgError] = useState(false);
+  const navigate = useNavigate();
   const initials = name
     ? name.trim().split(/\s+/).slice(0, 2).map(w => w[0]).join('')
     : '?';
 
+  const handleClick = () => {
+    if (coachId) navigate(`/coach-profile/${coachId}`);
+  };
+
   return (
-    <div className={`mt-4 pt-4 border-t flex items-center gap-3 ${darkMode ? 'border-green-800' : 'border-green-200'}`}>
+    <div
+      onClick={handleClick}
+      className={`mt-4 pt-4 border-t flex items-center gap-3 ${coachId ? 'cursor-pointer' : ''} ${darkMode ? 'border-green-800' : 'border-green-200'}`}
+    >
       {photo && !imgError ? (
         <img
           src={photo}
@@ -27,10 +36,13 @@ const CoachCard = ({ name, photo, darkMode }) => {
           {initials}
         </div>
       )}
-      <div>
+      <div className="flex-1 min-w-0">
         <p className={`text-xs font-medium uppercase tracking-wide ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>المدرب المسؤول</p>
         <p className={`font-bold text-base ${darkMode ? 'text-green-300' : 'text-green-800'}`}>{name}</p>
       </div>
+      {coachId && (
+        <ChevronLeft className={`w-4 h-4 flex-shrink-0 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`} />
+      )}
     </div>
   );
 };
@@ -39,6 +51,7 @@ const MemberSubscriptions = () => {
   const [loading, setLoading] = useState(true);
   const [subscriptions, setSubscriptions] = useState({ active: [], expired: [] });
   const darkMode = getDarkMode();
+  const navigate = useNavigate();
 
   useEffect(() => {
     fetchSubscriptions();
@@ -101,7 +114,7 @@ const MemberSubscriptions = () => {
                         </div>
                         {/* Coach Card */}
                         {sub.coach_name && (
-                          <CoachCard name={sub.coach_name} photo={sub.coach_photo} darkMode={darkMode} />
+                          <CoachCard name={sub.coach_name} photo={sub.coach_photo} coachId={sub.coach_id} darkMode={darkMode} />
                         )}
                       </div>
                       <span className="px-4 py-2 bg-green-600 text-white rounded-full text-sm font-bold flex-shrink-0 mr-3">
@@ -146,7 +159,12 @@ const MemberSubscriptions = () => {
                             إلى: {sub.end_date || '-'}
                           </p>
                           {sub.coach_name && (
-                            <p className={`mt-1 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>👨‍🏫 المدرب: {sub.coach_name}</p>
+                            <p
+                              onClick={() => sub.coach_id && navigate(`/coach-profile/${sub.coach_id}`)}
+                              className={`mt-1 ${sub.coach_id ? 'cursor-pointer underline-offset-2 hover:underline' : ''} ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}
+                            >
+                              👨‍🏫 المدرب: {sub.coach_name}
+                            </p>
                           )}
                         </div>
                       </div>

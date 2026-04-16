@@ -959,6 +959,63 @@ async def rate_coach(data: CoachRatingCreate, member: dict = Depends(get_current
     return {"message": message}
 
 
+@router.get("/coach-profile/{coach_id}")
+async def get_coach_profile(coach_id: str, member: dict = Depends(get_current_member)):
+    """Get a coach's public profile including activities and ratings summary"""
+    coach = await db.coaches.find_one({"id": coach_id}, {"_id": 0})
+    if not coach:
+        raise HTTPException(status_code=404, detail="لم يتم العثور على المدرب")
+
+    # Merge activities from db.activities (linked by coach_id) with the coach's own activity list
+    db_activities = await db.activities.find(
+        {"coach_id": coach_id},
+        {"_id": 0, "id": 1, "name": 1, "name_ar": 1}
+    ).to_list(50)
+    activity_names_from_db = {a.get("name_ar") or a.get("name") for a in db_activities if a.get("name") or a.get("name_ar")}
+    # Coach document may also store its own activity strings
+    coach_own_activities = set(coach.get("activities") or [])
+    all_activities = sorted(activity_names_from_db | coach_own_activities)
+
+    # Count total ratings accurately without a document limit
+    total_ratings = await db.coach_ratings.count_documents({"coach_id": coach_id})
+
+    # Compute average from all ratings (up to 1000 for aggregate accuracy)
+    all_ratings_for_avg = await db.coach_ratings.find(
+        {"coach_id": coach_id},
+        {"_id": 0, "rating": 1}
+    ).to_list(1000)
+    avg_rating = round(sum(r["rating"] for r in all_ratings_for_avg) / len(all_ratings_for_avg), 1) if all_ratings_for_avg else 0
+
+    # Fetch reviews with comments for display (10 most recent)
+    reviews_raw = await db.coach_ratings.find(
+        {"coach_id": coach_id, "comment": {"$nin": [None, ""]}},
+        {"_id": 0, "rating": 1, "comment": 1, "created_at": 1, "updated_at": 1, "activity_name": 1}
+    ).to_list(200)
+
+    reviews = [
+        {
+            "rating": r["rating"],
+            "comment": r.get("comment") or "",
+            "activity_name": r.get("activity_name") or "",
+            "date": (r.get("updated_at") or r.get("created_at") or "")[:10],
+        }
+        for r in reviews_raw
+    ]
+    reviews = sorted(reviews, key=lambda x: x["date"], reverse=True)[:10]
+
+    return {
+        "id": coach["id"],
+        "name": coach.get("name_ar") or coach.get("name"),
+        "photo": coach.get("photo"),
+        "specialization": coach.get("specialization") or "",
+        "notes": coach.get("notes") or "",
+        "activities": all_activities,
+        "avg_rating": avg_rating,
+        "total_ratings": total_ratings,
+        "reviews": reviews,
+    }
+
+
 @router.get("/my-ratings")
 async def get_my_ratings(member: dict = Depends(get_current_member)):
     """Get all ratings submitted by this member"""
