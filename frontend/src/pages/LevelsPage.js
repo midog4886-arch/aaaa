@@ -2086,23 +2086,23 @@ export const LevelsPage = () => {
               
               {/* Activity & Time Filters */}
               <div className="flex gap-2 mb-3">
-                <Select value={filterActivity} onValueChange={setFilterActivity}>
+                <Select value={filterActivity || '__all__'} onValueChange={v => setFilterActivity(v === '__all__' ? '' : v)}>
                   <SelectTrigger className="flex-1 h-8 text-xs">
                     <SelectValue placeholder={t('كل الأنشطة', 'All activities')} />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">{t('كل الأنشطة', 'All activities')}</SelectItem>
+                    <SelectItem value="__all__">{t('كل الأنشطة', 'All activities')}</SelectItem>
                     {activityFilterOptions.map(name => (
                       <SelectItem key={name} value={name}>{name}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
-                <Select value={filterTime} onValueChange={setFilterTime}>
+                <Select value={filterTime || '__all__'} onValueChange={v => setFilterTime(v === '__all__' ? '' : v)}>
                   <SelectTrigger className="flex-1 h-8 text-xs">
                     <SelectValue placeholder={t('كل المواعيد', 'All times')} />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">{t('كل المواعيد', 'All times')}</SelectItem>
+                    <SelectItem value="__all__">{t('كل المواعيد', 'All times')}</SelectItem>
                     {timeFilterOptions.map(s => (
                       <SelectItem key={s} value={s}>{s}</SelectItem>
                     ))}
