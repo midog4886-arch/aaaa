@@ -221,17 +221,6 @@ const CoachProfile = () => {
                     <p className={`text-sm font-medium ${darkMode ? 'text-yellow-300' : 'text-yellow-700'}`}>{profile.specialization}</p>
                   </div>
                 )}
-                {profile.total_ratings > 0 && (
-                  <div className="flex items-center justify-center gap-2 mt-2">
-                    <StarDisplay value={profile.avg_rating} size="lg" />
-                    <span className={`text-sm font-medium ${darkMode ? 'text-yellow-300' : 'text-yellow-600'}`}>
-                      {profile.avg_rating}
-                    </span>
-                    <span className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                      ({profile.total_ratings} تقييم)
-                    </span>
-                  </div>
-                )}
               </div>
             </div>
           </CardContent>
@@ -417,63 +406,6 @@ const CoachProfile = () => {
           </CardContent>
         </Card>
 
-        {/* Ratings & Reviews */}
-        <Card className={darkMode ? 'bg-gray-800 border-gray-700' : ''}>
-          <CardContent className="p-5">
-            <h2 className={`text-base font-bold mb-3 flex items-center gap-2 ${darkMode ? 'text-gray-100' : 'text-gray-800'}`}>
-              <MessageSquare className="w-5 h-5 text-blue-500" />
-              آراء الأعضاء
-              {profile.total_ratings > 0 && (
-                <span className={`text-sm font-normal ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                  ({profile.total_ratings})
-                </span>
-              )}
-            </h2>
-
-            {profile.total_ratings === 0 ? (
-              <p className={`text-sm text-center py-4 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
-                لا توجد تقييمات بعد
-              </p>
-            ) : profile.reviews.length === 0 ? (
-              <div className={`text-sm text-center py-4 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                <StarDisplay value={profile.avg_rating} size="lg" />
-                <p className="mt-2">
-                  {profile.total_ratings} تقييم · متوسط {profile.avg_rating} نجوم
-                </p>
-              </div>
-            ) : (
-              <div className="space-y-4">
-                {/* Rating summary bar */}
-                <div className={`flex items-center gap-3 p-3 rounded-lg ${darkMode ? 'bg-gray-700' : 'bg-gray-50'}`}>
-                  <div className="text-center">
-                    <p className={`text-3xl font-bold ${darkMode ? 'text-yellow-300' : 'text-yellow-600'}`}>{profile.avg_rating}</p>
-                    <StarDisplay value={profile.avg_rating} />
-                    <p className={`text-xs mt-1 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{profile.total_ratings} تقييم</p>
-                  </div>
-                </div>
-
-                {/* Individual reviews */}
-                {profile.reviews.map((review, i) => (
-                  <div
-                    key={i}
-                    className={`p-4 rounded-lg border ${
-                      darkMode ? 'bg-gray-700 border-gray-600' : 'bg-white border-gray-200'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between mb-2">
-                      <StarDisplay value={review.rating} />
-                      <span className={`text-xs ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>{review.date}</span>
-                    </div>
-                    {review.activity_name && (
-                      <p className={`text-xs mb-1 ${darkMode ? 'text-green-400' : 'text-green-700'}`}>{review.activity_name}</p>
-                    )}
-                    <p className={`text-sm ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>{review.comment}</p>
-                  </div>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
       </div>
     </MemberLayout>
   );

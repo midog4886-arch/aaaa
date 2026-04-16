@@ -1081,34 +1081,8 @@ async def get_coach_profile(coach_id: str, member: dict = Depends(get_current_me
             activities_with_ids.append({"id": None, "name": name})
     activities_with_ids = sorted(activities_with_ids, key=lambda x: x["name"])
 
-    # Count total ratings accurately without a document limit
-    total_ratings = await db.coach_ratings.count_documents({"coach_id": coach_id})
-
-    # Compute average from all ratings (up to 1000 for aggregate accuracy)
-    all_ratings_for_avg = await db.coach_ratings.find(
-        {"coach_id": coach_id},
-        {"_id": 0, "rating": 1}
-    ).to_list(1000)
-    avg_rating = round(sum(r["rating"] for r in all_ratings_for_avg) / len(all_ratings_for_avg), 1) if all_ratings_for_avg else 0
-
-    # Fetch reviews with comments for display (10 most recent)
-    reviews_raw = await db.coach_ratings.find(
-        {"coach_id": coach_id, "comment": {"$nin": [None, ""]}},
-        {"_id": 0, "rating": 1, "comment": 1, "created_at": 1, "updated_at": 1, "activity_name": 1}
-    ).to_list(200)
-
-    reviews = [
-        {
-            "rating": r["rating"],
-            "comment": r.get("comment") or "",
-            "activity_name": r.get("activity_name") or "",
-            "date": (r.get("updated_at") or r.get("created_at") or "")[:10],
-        }
-        for r in reviews_raw
-    ]
-    reviews = sorted(reviews, key=lambda x: x["date"], reverse=True)[:10]
-
-    # Fetch the current member's own rating for this coach
+    # Privacy: each member should only see THEIR OWN rating for a coach.
+    # Aggregate stats and other members' reviews are intentionally NOT returned.
     my_rating_doc = await db.coach_ratings.find_one(
         {"coach_id": coach_id, "member_id": member["id"]},
         {"_id": 0, "rating": 1, "comment": 1}
@@ -1128,9 +1102,6 @@ async def get_coach_profile(coach_id: str, member: dict = Depends(get_current_me
         "notes": coach.get("notes") or "",
         "activities": all_activities,
         "activities_with_ids": activities_with_ids,
-        "avg_rating": avg_rating,
-        "total_ratings": total_ratings,
-        "reviews": reviews,
         "my_rating": my_rating,
     }
 
