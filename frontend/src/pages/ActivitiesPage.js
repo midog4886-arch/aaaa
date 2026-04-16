@@ -689,32 +689,30 @@ export const ActivitiesPage = () => {
                 </div>
               </div>
               
-              {coaches.length > 0 && (
-                <div className="space-y-2">
-                  <Label className="flex items-center gap-2">
-                    <Users className="w-4 h-4" />
-                    {language === 'ar' ? 'المدرب المسؤول' : 'Assigned Coach'}
-                  </Label>
-                  <Select
-                    value={formData.coach_id || '__none__'}
-                    onValueChange={(v) => setFormData({...formData, coach_id: v === '__none__' ? '' : v})}
-                  >
-                    <SelectTrigger data-testid="activity-coach-select">
-                      <SelectValue placeholder={language === 'ar' ? 'اختر المدرب' : 'Select Coach'} />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="__none__">
-                        {language === 'ar' ? 'بدون مدرب' : 'No Coach'}
+              <div className="space-y-2">
+                <Label className="flex items-center gap-2">
+                  <Users className="w-4 h-4" />
+                  {language === 'ar' ? 'المدرب المسؤول' : 'Assigned Coach'}
+                </Label>
+                <Select
+                  value={formData.coach_id || '__none__'}
+                  onValueChange={(v) => setFormData({...formData, coach_id: v === '__none__' ? '' : v})}
+                >
+                  <SelectTrigger data-testid="activity-coach-select">
+                    <SelectValue placeholder={language === 'ar' ? 'اختر المدرب' : 'Select Coach'} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">
+                      {language === 'ar' ? 'بدون مدرب' : 'No Coach'}
+                    </SelectItem>
+                    {coaches.map(coach => (
+                      <SelectItem key={coach.id} value={coach.id}>
+                        {coach.name_ar || coach.name}
                       </SelectItem>
-                      {coaches.map(coach => (
-                        <SelectItem key={coach.id} value={coach.id}>
-                          {coach.name_ar || coach.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              )}
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
 
               {isAdmin && branches.length > 0 && (
                 <div className="space-y-2">

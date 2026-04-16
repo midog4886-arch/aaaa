@@ -77,7 +77,7 @@ async def get_coaches(
     return coaches
 
 
-MAX_PHOTO_BYTES = 2 * 1024 * 1024  # 2MB limit for base64 photo string (matches frontend)
+MAX_PHOTO_BYTES = 3 * 1024 * 1024  # ~2MB actual file after base64 overhead (~33%), matches frontend 2MB file check
 
 def _validate_photo(photo: Optional[str]) -> None:
     if not photo:
