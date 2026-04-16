@@ -5,7 +5,7 @@ import { Input } from '../components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../components/ui/dialog';
 import { 
-  Star, User, Search, Trash2, MessageSquare, TrendingUp, 
+  Star, Search, Trash2, MessageSquare, TrendingUp, 
   Award, Users, Filter, Calendar, Loader2
 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -85,6 +85,28 @@ const CoachRatingsPage = () => {
     coaches.forEach(c => { map[c.id] = c; });
     return map;
   }, [coaches]);
+
+  const MemberAvatar = ({ memberPhoto, memberName, size = 'md' }) => {
+    const initials = (memberName || '?').split(' ').map(w => w[0]).slice(0, 2).join('');
+    const sizeClass = size === 'lg' ? 'w-14 h-14 text-base' : size === 'sm' ? 'w-6 h-6 text-xs' : 'w-12 h-12 text-sm';
+    const [imgError, setImgError] = React.useState(false);
+
+    if (memberPhoto && !imgError) {
+      return (
+        <img
+          src={memberPhoto}
+          alt={memberName}
+          className={`${sizeClass} rounded-full object-cover border-2 border-white shadow`}
+          onError={() => setImgError(true)}
+        />
+      );
+    }
+    return (
+      <div className={`${sizeClass} rounded-full flex items-center justify-center font-bold bg-gradient-to-br from-orange-400 to-orange-600 text-white border-2 border-white shadow`}>
+        {initials}
+      </div>
+    );
+  };
 
   const CoachAvatar = ({ coachId, coachName, size = 'md' }) => {
     const coach = coachMap[coachId];
@@ -320,9 +342,7 @@ const CoachRatingsPage = () => {
                   >
                     <div className="flex items-start justify-between">
                       <div className="flex items-start gap-4">
-                        <div className="w-12 h-12 bg-gradient-to-br from-orange-400 to-orange-600 rounded-full flex items-center justify-center">
-                          <User className="w-6 h-6 text-white" />
-                        </div>
+                        <MemberAvatar memberPhoto={rating.member_photo} memberName={rating.member_name} size="md" />
                         <div>
                           <div className="flex items-center gap-2">
                             <p className="font-bold text-gray-800">{rating.member_name || 'عضو'}</p>

@@ -7883,7 +7883,7 @@ async def get_all_coach_ratings(
     
     ratings = await db.coach_ratings.find(query, {"_id": 0}).sort("created_at", -1).to_list(500)
     
-    # Enrich with coach and activity names
+    # Enrich with coach, activity names, and member photo
     for rating in ratings:
         coach = await db.coaches.find_one({"id": rating.get("coach_id")}, {"_id": 0, "name": 1, "name_ar": 1})
         if coach:
@@ -7892,6 +7892,10 @@ async def get_all_coach_ratings(
         activity = await db.activities.find_one({"id": rating.get("activity_id")}, {"_id": 0, "name": 1, "name_ar": 1})
         if activity:
             rating["activity_name"] = activity.get("name_ar") or activity.get("name")
+
+        member = await db.members.find_one({"id": rating.get("member_id")}, {"_id": 0, "photo": 1})
+        if member:
+            rating["member_photo"] = member.get("photo", "")
     
     return {"ratings": ratings}
 
