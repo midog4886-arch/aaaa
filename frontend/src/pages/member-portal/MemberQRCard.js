@@ -24,9 +24,9 @@ const daysDiff = (a, b) => {
 };
 
 const remainingColor = (days) => {
-  if (days > 30) return { bar: 'bg-green-500', badge: 'bg-green-100 text-green-700 border-green-300', text: 'text-green-600' };
-  if (days > 7)  return { bar: 'bg-yellow-500', badge: 'bg-yellow-100 text-yellow-700 border-yellow-300', text: 'text-yellow-600' };
-  return            { bar: 'bg-red-500',    badge: 'bg-red-100 text-red-700 border-red-300',    text: 'text-red-600' };
+  if (days >= 30) return { bar: 'bg-green-500', badge: 'bg-green-100 text-green-700 border-green-300', text: 'text-green-600' };
+  if (days >= 7)  return { bar: 'bg-yellow-500', badge: 'bg-yellow-100 text-yellow-700 border-yellow-300', text: 'text-yellow-600' };
+  return             { bar: 'bg-red-500',    badge: 'bg-red-100 text-red-700 border-red-300',    text: 'text-red-600' };
 };
 
 // ── Print / Download Logic (unchanged from original) ──────────────────────────
@@ -367,7 +367,11 @@ const MemberCard = () => {
         </Dialog>
 
         {/* ── Profile Header ── */}
-        <div className="relative rounded-3xl overflow-hidden bg-gradient-to-br from-gray-950 via-gray-900 to-gray-950 border border-amber-500/10 shadow-xl">
+        <div className={`relative rounded-3xl overflow-hidden border shadow-xl ${
+          darkMode
+            ? 'bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 border-amber-500/10'
+            : 'bg-gradient-to-br from-gray-950 via-gray-900 to-gray-950 border-amber-500/10'
+        }`}>
           {/* Decorative circles */}
           <div className="absolute top-0 right-0 w-40 h-40 bg-amber-500/10 rounded-full -translate-y-16 translate-x-16" />
           <div className="absolute bottom-0 left-0 w-32 h-32 bg-orange-500/10 rounded-full translate-y-12 -translate-x-12" />
@@ -429,7 +433,7 @@ const MemberCard = () => {
               <div className={`p-4 rounded-2xl shadow-lg ${darkMode ? 'bg-white' : 'bg-white'} mb-4`} style={{ boxShadow: '0 8px 32px rgba(0,0,0,0.12)' }}>
                 <QRCodeSVG
                   value={qrData || ' '}
-                  size={220}
+                  size={240}
                   level="H"
                   includeMargin={false}
                 />
