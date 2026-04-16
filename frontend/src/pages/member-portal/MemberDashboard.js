@@ -37,17 +37,14 @@ const remainingDaysColor = (days) => {
 };
 
 const loyaltyLevelStyle = (level) => {
+  const key = (level || '').toLowerCase();
   const map = {
-    'برونزي': { bg: 'from-amber-700 to-amber-900', icon: '🥉', textColor: 'text-amber-100' },
-    'Bronze':  { bg: 'from-amber-700 to-amber-900', icon: '🥉', textColor: 'text-amber-100' },
-    'فضي':    { bg: 'from-slate-400 to-slate-600',  icon: '🥈', textColor: 'text-slate-100' },
-    'Silver':  { bg: 'from-slate-400 to-slate-600',  icon: '🥈', textColor: 'text-slate-100' },
-    'ذهبي':   { bg: 'from-yellow-500 to-yellow-700', icon: '🥇', textColor: 'text-yellow-100' },
-    'Gold':    { bg: 'from-yellow-500 to-yellow-700', icon: '🥇', textColor: 'text-yellow-100' },
-    'ماسي':   { bg: 'from-blue-400 to-indigo-600',   icon: '💎', textColor: 'text-blue-100' },
-    'Diamond': { bg: 'from-blue-400 to-indigo-600',   icon: '💎', textColor: 'text-blue-100' },
+    'bronze':  { bg: 'from-amber-700 to-amber-900',  icon: '🥉', textColor: 'text-amber-100' },
+    'silver':  { bg: 'from-slate-400 to-slate-600',   icon: '🥈', textColor: 'text-slate-100' },
+    'gold':    { bg: 'from-yellow-500 to-yellow-700', icon: '🥇', textColor: 'text-yellow-100' },
+    'diamond': { bg: 'from-blue-400 to-indigo-600',   icon: '💎', textColor: 'text-blue-100' },
   };
-  return map[level] || { bg: 'from-amber-700 to-amber-900', icon: '🥉', textColor: 'text-amber-100' };
+  return map[key] || { bg: 'from-amber-700 to-amber-900', icon: '🥉', textColor: 'text-amber-100' };
 };
 
 const formatDate = (dateStr) => {
@@ -247,13 +244,16 @@ const MemberDashboard = () => {
               <Link to="/loyalty-points">
                 {loyaltyData ? (() => {
                   const style = loyaltyLevelStyle(loyaltyData.level);
+                  const levelLabel = language === 'ar'
+                    ? (loyaltyData.level_ar || loyaltyData.level_en || loyaltyData.level || 'برونزي')
+                    : (loyaltyData.level_en || loyaltyData.level_ar || loyaltyData.level || 'Bronze');
                   return (
                     <Card className={`h-full cursor-pointer hover:shadow-md transition-shadow overflow-hidden bg-gradient-to-br ${style.bg} border-0`}>
                       <CardContent className="p-4">
                         <div className="flex items-center gap-2 mb-3">
                           <span className="text-xl">{style.icon}</span>
                           <span className={`text-xs font-medium ${style.textColor} opacity-80`}>
-                            {loyaltyData.level || (language === 'ar' ? 'مستواك' : 'Your Level')}
+                            {levelLabel}
                           </span>
                         </div>
                         <p className={`text-2xl font-black ${style.textColor}`}>
