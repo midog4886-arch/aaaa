@@ -77,8 +77,16 @@ async def get_coaches(
     return coaches
 
 
+MAX_PHOTO_BYTES = 3 * 1024 * 1024  # 3MB limit for base64 photo string
+
+def _validate_photo(photo: Optional[str]) -> None:
+    if photo and len(photo.encode()) > MAX_PHOTO_BYTES:
+        raise HTTPException(status_code=400, detail="حجم الصورة كبير جداً، الحد الأقصى 2 ميجابايت")
+
+
 @router.post("", response_model=Coach)
 async def create_coach(coach: CoachCreate, current_user: dict = Depends(get_current_user)):
+    _validate_photo(coach.photo)
     coach_id = str(uuid.uuid4())
     is_admin = current_user.get("is_admin", False)
     
@@ -123,6 +131,7 @@ async def assign_employee_ids(current_user: dict = Depends(get_current_user)):
 
 @router.put("/{coach_id}", response_model=Coach)
 async def update_coach(coach_id: str, coach: CoachCreate, current_user: dict = Depends(get_current_user)):
+    _validate_photo(coach.photo)
     result = await db.coaches.find_one_and_update(
         {"id": coach_id},
         {"$set": coach.model_dump()},
