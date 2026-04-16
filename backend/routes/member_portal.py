@@ -94,7 +94,8 @@ async def member_login(data: MemberLogin):
             "name_ar": member.get("name_ar"),
             "phone": member.get("phone"),
             "member_code": member.get("member_code"),
-            "email": member.get("email")
+            "email": member.get("email"),
+            "dark_mode": member.get("preferences", {}).get("dark_mode", False)
         }
     }
 
@@ -115,8 +116,32 @@ async def get_member_profile(member: dict = Depends(get_current_member)):
         "gender": member.get("gender"),
         "address": member.get("address"),
         "emergency_contact": member.get("emergency_contact"),
-        "created_at": member.get("created_at")
+        "created_at": member.get("created_at"),
+        "dark_mode": member.get("preferences", {}).get("dark_mode", False)
     }
+
+
+class MemberPreferences(BaseModel):
+    dark_mode: Optional[bool] = None
+
+
+@router.put("/preferences")
+async def update_member_preferences(
+    data: MemberPreferences,
+    member: dict = Depends(get_current_member)
+):
+    """Save member UI preferences (e.g. dark mode) to the database"""
+    update_fields = {}
+    if data.dark_mode is not None:
+        update_fields["preferences.dark_mode"] = data.dark_mode
+
+    if update_fields:
+        await db.members.update_one(
+            {"id": member["id"]},
+            {"$set": update_fields}
+        )
+
+    return {"success": True}
 
 
 # ============ SUBSCRIPTIONS ============

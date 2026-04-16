@@ -25,9 +25,29 @@ export const memberLogout = () => {
   localStorage.removeItem('member_data');
 };
 
-// Dark mode helper
-export const getDarkMode = () => localStorage.getItem('portal_dark_mode') === 'true';
-export const setDarkMode = (value) => localStorage.setItem('portal_dark_mode', value);
+// Dark mode helper - reads from member_data (DB-synced) first, falls back to localStorage
+export const getDarkMode = () => {
+  try {
+    const memberData = localStorage.getItem('member_data');
+    if (memberData) {
+      const parsed = JSON.parse(memberData);
+      if (typeof parsed.dark_mode === 'boolean') return parsed.dark_mode;
+    }
+  } catch (_) {}
+  return localStorage.getItem('portal_dark_mode') === 'true';
+};
+export const setDarkMode = (value) => {
+  const boolValue = value === true || value === 'true';
+  localStorage.setItem('portal_dark_mode', String(boolValue));
+  try {
+    const memberData = localStorage.getItem('member_data');
+    if (memberData) {
+      const parsed = JSON.parse(memberData);
+      parsed.dark_mode = boolValue;
+      localStorage.setItem('member_data', JSON.stringify(parsed));
+    }
+  } catch (_) {}
+};
 
 // Axios instance with auth
 export const memberAPI = axios.create({
@@ -209,10 +229,17 @@ const MemberLayout = ({ children }) => {
     }
   }, [darkMode]);
 
-  const toggleDarkMode = () => {
+  const toggleDarkMode = async () => {
     const newValue = !darkMode;
     setDarkModeState(newValue);
-    setDarkMode(newValue.toString());
+    setDarkMode(newValue);
+    try {
+      await memberAPI.put('/api/member-portal/preferences', { dark_mode: newValue });
+    } catch (error) {
+      console.error('Failed to save dark mode preference, reverting');
+      setDarkModeState(darkMode);
+      setDarkMode(darkMode);
+    }
   };
 
   const fetchNotifications = async () => {
