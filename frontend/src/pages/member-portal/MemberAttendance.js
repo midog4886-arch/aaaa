@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/ca
 import { 
   CheckCircle, Calendar, Clock, Loader2, 
   CalendarDays, Activity, Award, Flame, TrendingUp, Star,
-  ChevronLeft, ChevronRight
+  ChevronLeft, ChevronRight, ChevronDown
 } from 'lucide-react';
 import MemberLayout, { memberAPI, getDarkMode, getLanguage } from './MemberLayout';
 
@@ -183,6 +183,9 @@ const MemberAttendance = () => {
   const [loading, setLoading] = useState(true);
   const [monthLoading, setMonthLoading] = useState(false);
   const [stats, setStats] = useState(null);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [pickerYear, setPickerYear] = useState(today.getFullYear());
+  const pickerRef = useRef(null);
   const darkMode = getDarkMode();
   const language = getLanguage();
 
@@ -232,6 +235,28 @@ const MemberAttendance = () => {
     setViewYear(today.getFullYear());
     setViewMonth(today.getMonth() + 1);
   };
+
+  const openPicker = () => {
+    setPickerYear(viewYear);
+    setPickerOpen(true);
+  };
+
+  const selectPickerMonth = (month) => {
+    setViewYear(pickerYear);
+    setViewMonth(month);
+    setPickerOpen(false);
+  };
+
+  useEffect(() => {
+    if (!pickerOpen) return;
+    const handleOutside = (e) => {
+      if (pickerRef.current && !pickerRef.current.contains(e.target)) {
+        setPickerOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleOutside);
+    return () => document.removeEventListener('mousedown', handleOutside);
+  }, [pickerOpen]);
 
   // Build display month name
   const displayMonthName = `${MONTH_NAMES_EN[viewMonth - 1]} ${viewYear}`;
@@ -286,13 +311,19 @@ const MemberAttendance = () => {
             {language === 'ar' ? <ChevronRight className="w-5 h-5" /> : <ChevronLeft className="w-5 h-5" />}
           </button>
 
-          <div className="flex flex-col items-center gap-1">
-            <div className="flex items-center gap-2">
+          <div ref={pickerRef} className="relative flex flex-col items-center gap-1">
+            <button
+              onClick={openPicker}
+              className={`flex items-center gap-1.5 px-3 py-1 rounded-xl transition-colors ${darkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-100'}`}
+              aria-label={language === 'ar' ? 'اختر الشهر والسنة' : 'Select month and year'}
+            >
               <span className={`text-base font-bold ${darkMode ? 'text-white' : 'text-gray-800'}`}>
                 {language === 'ar' ? displayMonthNameAr : displayMonthName}
               </span>
+              <ChevronDown className={`w-4 h-4 transition-transform ${pickerOpen ? 'rotate-180' : ''} ${darkMode ? 'text-gray-400' : 'text-gray-500'}`} />
               {monthLoading && <Loader2 className="w-4 h-4 animate-spin text-green-500" />}
-            </div>
+            </button>
+
             {!isCurrentMonth && (
               <button
                 onClick={goToCurrentMonth}
@@ -300,6 +331,63 @@ const MemberAttendance = () => {
               >
                 {language === 'ar' ? 'العودة للشهر الحالي' : 'Back to current month'}
               </button>
+            )}
+
+            {/* ── Month/Year Picker Dropdown ── */}
+            {pickerOpen && (
+              <div
+                className={`absolute top-full mt-2 z-50 w-64 rounded-2xl shadow-xl border p-4 ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}
+                style={{ left: '50%', transform: 'translateX(-50%)' }}
+              >
+                {/* Year selector */}
+                <div className="flex items-center justify-between mb-3">
+                  <button
+                    onClick={() => setPickerYear(y => y - 1)}
+                    className={`p-1.5 rounded-lg transition-colors ${darkMode ? 'hover:bg-gray-700 text-gray-300' : 'hover:bg-gray-100 text-gray-600'}`}
+                    aria-label={language === 'ar' ? 'السنة السابقة' : 'Previous year'}
+                  >
+                    {language === 'ar' ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
+                  </button>
+                  <span className={`font-bold text-sm ${darkMode ? 'text-white' : 'text-gray-800'}`}>{pickerYear}</span>
+                  <button
+                    onClick={() => setPickerYear(y => y + 1)}
+                    disabled={pickerYear >= today.getFullYear()}
+                    className={`p-1.5 rounded-lg transition-colors ${pickerYear >= today.getFullYear() ? 'opacity-30 cursor-not-allowed' : darkMode ? 'hover:bg-gray-700 text-gray-300' : 'hover:bg-gray-100 text-gray-600'}`}
+                    aria-label={language === 'ar' ? 'السنة التالية' : 'Next year'}
+                  >
+                    {language === 'ar' ? <ChevronLeft className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+                  </button>
+                </div>
+
+                {/* Month grid */}
+                <div className="grid grid-cols-3 gap-1.5">
+                  {MONTH_NAMES_EN.map((name, idx) => {
+                    const monthNum = idx + 1;
+                    const isFuture = pickerYear > today.getFullYear() ||
+                      (pickerYear === today.getFullYear() && monthNum > today.getMonth() + 1);
+                    const isSelected = pickerYear === viewYear && monthNum === viewMonth;
+                    const label = language === 'ar' ? AR_MONTHS[name] : name.slice(0, 3);
+                    return (
+                      <button
+                        key={name}
+                        onClick={() => !isFuture && selectPickerMonth(monthNum)}
+                        disabled={isFuture}
+                        className={`py-1.5 rounded-xl text-xs font-medium transition-colors ${
+                          isFuture
+                            ? 'opacity-30 cursor-not-allowed ' + (darkMode ? 'text-gray-500' : 'text-gray-400')
+                            : isSelected
+                              ? 'bg-green-500 text-white'
+                              : darkMode
+                                ? 'hover:bg-gray-700 text-gray-300'
+                                : 'hover:bg-gray-100 text-gray-700'
+                        }`}
+                      >
+                        {label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
             )}
           </div>
 
