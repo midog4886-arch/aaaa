@@ -26,6 +26,30 @@ JWT_ALGORITHM = "HS256"
 MEMBER_JWT_EXPIRATION_DAYS = 365 * 100  # Permanent
 
 
+async def get_member_level_coach_maps(member_id: str):
+    """Return (by_activity_id, by_activity_name) coach_id maps from the levels
+    this member is currently a member of. Used to resolve a per-LEVEL coach for
+    each of the member's activities (since one activity can have many coaches
+    across different levels)."""
+    member_levels = await db.levels.find(
+        {"members": member_id},
+        {"_id": 0, "id": 1, "activity_id": 1, "activity_name": 1, "coach_id": 1}
+    ).to_list(100)
+    by_activity_id = {}
+    by_activity_name = {}
+    for lv in member_levels:
+        cid = lv.get("coach_id")
+        if not cid:
+            continue
+        aid = lv.get("activity_id")
+        aname = lv.get("activity_name")
+        if aid:
+            by_activity_id[aid] = cid
+        if aname:
+            by_activity_name[aname] = cid
+    return by_activity_id, by_activity_name
+
+
 class MemberLogin(BaseModel):
     phone: str
 
@@ -156,6 +180,9 @@ async def get_member_subscriptions(member: dict = Depends(get_current_member)):
     
     active_subscriptions = []
     expired_subscriptions = []
+
+    # Build per-level coach maps from levels this member is enrolled in.
+    level_coach_by_aid, level_coach_by_aname = await get_member_level_coach_maps(member["id"])
     
     for activity in activities:
         end_date = activity.get("end_date", "")
@@ -167,16 +194,18 @@ async def get_member_subscriptions(member: dict = Depends(get_current_member)):
             {"_id": 0, "schedule": 1, "coach_id": 1}
         )
         
-        # Get coach info if available — prefer the coach assigned to the member's LEVEL,
-        # then activity-level coach, then any coach_id stored on the member's activity record.
+        # Get coach info if available — prefer the coach assigned to the LEVEL the
+        # member is enrolled in (matched by activity_id, then activity_name), then
+        # the activity-level coach, then any coach_id stored on the member's activity.
         coach_name = ""
         coach_photo = ""
+        aid = activity.get("activity_id")
+        aname = activity.get("activity_name")
         coach_id = ""
-        level_id = activity.get("level_id")
-        if level_id:
-            level_doc = await db.levels.find_one({"id": level_id}, {"_id": 0, "coach_id": 1})
-            if level_doc and level_doc.get("coach_id"):
-                coach_id = level_doc.get("coach_id")
+        if aid and aid in level_coach_by_aid:
+            coach_id = level_coach_by_aid[aid]
+        elif aname and aname in level_coach_by_aname:
+            coach_id = level_coach_by_aname[aname]
         if not coach_id:
             coach_id = (activity_data.get("coach_id") if activity_data else "") or activity.get("coach_id") or ""
         if coach_id:
@@ -309,30 +338,21 @@ async def get_qr_card_data(member: dict = Depends(get_current_member)):
     # Cache coach lookups to avoid redundant DB queries
     coach_cache = {}
 
-    # Map activity_id -> level_id for THIS member, so we can resolve the coach
-    # assigned to the specific level the member is enrolled in.
-    member_level_by_activity = {}
-    for act in member.get("activities", []):
-        aid = act.get("activity_id")
-        lid = act.get("level_id")
-        if aid and lid:
-            member_level_by_activity[aid] = lid
+    # Per-LEVEL coach maps (matched by activity_id and activity_name).
+    level_coach_by_aid, level_coach_by_aname = await get_member_level_coach_maps(member["id"])
 
-    async def get_coach_info(activity_id: str):
-        if not activity_id:
+    async def get_coach_info(activity_id: str, activity_name: str = ""):
+        if not activity_id and not activity_name:
             return "", ""
-        # Cache key includes the level so different levels of the same activity
-        # resolve to different coaches.
-        level_id = member_level_by_activity.get(activity_id)
-        cache_key = (activity_id, level_id or "")
+        cache_key = (activity_id or "", activity_name or "")
         if cache_key in coach_cache:
             return coach_cache[cache_key]
         coach_id = ""
-        if level_id:
-            level_doc = await db.levels.find_one({"id": level_id}, {"_id": 0, "coach_id": 1})
-            if level_doc and level_doc.get("coach_id"):
-                coach_id = level_doc.get("coach_id")
-        if not coach_id:
+        if activity_id and activity_id in level_coach_by_aid:
+            coach_id = level_coach_by_aid[activity_id]
+        elif activity_name and activity_name in level_coach_by_aname:
+            coach_id = level_coach_by_aname[activity_name]
+        if not coach_id and activity_id:
             activity_data = await db.activities.find_one(
                 {"id": activity_id}, {"_id": 0, "coach_id": 1}
             )
@@ -366,7 +386,7 @@ async def get_qr_card_data(member: dict = Depends(get_current_member)):
                             end_date = parts[1].strip()
                 
                 if end_date and end_date >= today:
-                    coach_name, coach_photo = await get_coach_info(item.get("activity_id"))
+                    coach_name, coach_photo = await get_coach_info(item.get("activity_id"), item.get("activity_name") or "")
                     active_activities.append({
                         "activity_name": item.get("activity_name"),
                         "start_date": start_date,
@@ -887,37 +907,24 @@ async def get_coaches_to_rate(member: dict = Depends(get_current_member)):
         ).to_list(100)
         activities_by_id = {a.get("id"): a for a in activities}
 
-        # Build level-coach mapping ONLY for levels tied to eligible activities
-        # (coach is now per-level, not per-activity). This avoids polluting
-        # results with stale entries from `member.activities`.
-        member_level_ids = list({
-            a.get("level_id") for a in member.get("activities", [])
-            if a.get("level_id") and a.get("activity_id") in activity_ids
-        })
-        level_coach_by_id = {}
-        if member_level_ids:
-            member_levels = await db.levels.find(
-                {"id": {"$in": member_level_ids}},
-                {"_id": 0, "id": 1, "coach_id": 1}
-            ).to_list(100)
-            level_coach_by_id = {
-                lv["id"]: lv.get("coach_id") for lv in member_levels if lv.get("coach_id")
-            }
-
-        # Resolve a single coach per eligible activity: level-first, activity fallback.
+        # Resolve a single coach per eligible activity using the LEVELS this
+        # member is enrolled in (matched by activity_id, then activity_name).
+        # Falls back to the activity-level coach when no level match exists.
+        level_coach_by_aid, level_coach_by_aname = await get_member_level_coach_maps(member["id"])
         activity_coach = {}  # activity_id -> coach_id (final resolution)
-        for a in member.get("activities", []):
-            aid = a.get("activity_id")
-            lid = a.get("level_id")
-            if aid in activity_ids and lid and level_coach_by_id.get(lid):
-                activity_coach[aid] = level_coach_by_id[lid]
-        # Fallback for activities still unresolved
         for aid in activity_ids:
-            if aid in activity_coach:
-                continue
             act = activities_by_id.get(aid)
-            if act and act.get("coach_id"):
-                activity_coach[aid] = act.get("coach_id")
+            cid = ""
+            if aid in level_coach_by_aid:
+                cid = level_coach_by_aid[aid]
+            elif act:
+                aname = act.get("name_ar") or act.get("name") or ""
+                if aname and aname in level_coach_by_aname:
+                    cid = level_coach_by_aname[aname]
+            if not cid and act and act.get("coach_id"):
+                cid = act.get("coach_id")
+            if cid:
+                activity_coach[aid] = cid
 
         coach_ids = set(activity_coach.values())
 
@@ -1184,30 +1191,24 @@ async def get_member_full_schedule(member: dict = Depends(get_current_member)):
     # Cache for coach lookups to avoid duplicate DB queries
     coach_cache = {}
 
-    # Map activity_id -> level_id for THIS member, so we resolve the coach
-    # assigned to the specific level the member is enrolled in.
-    member_level_by_activity = {}
-    for act in member.get("activities", []):
-        aid = act.get("activity_id")
-        lid = act.get("level_id")
-        if aid and lid:
-            member_level_by_activity[aid] = lid
+    # Per-LEVEL coach maps for this member.
+    level_coach_by_aid, level_coach_by_aname = await get_member_level_coach_maps(member["id"])
 
-    async def get_coach_for_activity(activity_id: str):
+    async def get_coach_for_activity(activity_id: str, activity_name: str = ""):
         """Look up coach info for an activity, using cache.
-        Prefers the coach assigned to the member's level over the activity-level coach."""
-        if not activity_id:
+        Prefers the coach assigned to the member's level (matched by activity_id
+        then activity_name) over the activity-level coach."""
+        if not activity_id and not activity_name:
             return "", "", ""
-        level_id = member_level_by_activity.get(activity_id)
-        cache_key = (activity_id, level_id or "")
+        cache_key = (activity_id or "", activity_name or "")
         if cache_key in coach_cache:
             return coach_cache[cache_key]
         coach_id = ""
-        if level_id:
-            level_doc = await db.levels.find_one({"id": level_id}, {"_id": 0, "coach_id": 1})
-            if level_doc and level_doc.get("coach_id"):
-                coach_id = level_doc.get("coach_id")
-        if not coach_id:
+        if activity_id and activity_id in level_coach_by_aid:
+            coach_id = level_coach_by_aid[activity_id]
+        elif activity_name and activity_name in level_coach_by_aname:
+            coach_id = level_coach_by_aname[activity_name]
+        if not coach_id and activity_id:
             activity_data = await db.activities.find_one(
                 {"id": activity_id}, {"_id": 0, "coach_id": 1}
             )
@@ -1242,7 +1243,7 @@ async def get_member_full_schedule(member: dict = Depends(get_current_member)):
                             end_date = parts[1].strip()
                 
                 status = "active" if end_date and end_date >= today else "expired"
-                coach_id, coach_name, coach_photo = await get_coach_for_activity(item.get("activity_id"))
+                coach_id, coach_name, coach_photo = await get_coach_for_activity(item.get("activity_id"), item.get("activity_name") or "")
                 
                 schedules.append({
                     "source": "registration_form",
@@ -1288,7 +1289,7 @@ async def get_member_full_schedule(member: dict = Depends(get_current_member)):
                 )
                 
                 if not already_exists:
-                    coach_id, coach_name, coach_photo = await get_coach_for_activity(item.get("activity_id"))
+                    coach_id, coach_name, coach_photo = await get_coach_for_activity(item.get("activity_id"), item.get("activity_name") or "")
                     schedules.append({
                         "source": "invoice",
                         "invoice_number": inv.get("invoice_number"),

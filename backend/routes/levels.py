@@ -248,6 +248,32 @@ async def add_member_to_level(level_id: str, member_id: str, current_user: dict 
         {"id": level_id},
         {"$addToSet": {"members": member_id}}
     )
+
+    # Backfill level_id on the member's matching activity entry so that
+    # downstream lookups (member portal, coach resolution) can find the level
+    # without needing to scan levels.members[]. Match by activity_id when the
+    # level has one, else by activity_name.
+    match_aid = level.get("activity_id")
+    match_aname = level.get("activity_name")
+    member_doc = await db.members.find_one({"id": member_id}, {"_id": 0, "activities": 1})
+    if member_doc:
+        activities = member_doc.get("activities", []) or []
+        changed = False
+        for act in activities:
+            matches = False
+            if match_aid and act.get("activity_id") == match_aid:
+                matches = True
+            elif match_aname and act.get("activity_name") == match_aname:
+                matches = True
+            if matches and act.get("level_id") != level_id:
+                act["level_id"] = level_id
+                changed = True
+        if changed:
+            await db.members.update_one(
+                {"id": member_id},
+                {"$set": {"activities": activities}}
+            )
+
     return {"message": "Member added to level"}
 
 
