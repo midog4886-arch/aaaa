@@ -421,10 +421,14 @@ export const MembersPage = () => {
     // Build activities HTML
     const activitiesHtml = (memberCardData.activities || []).map(act => {
       const isActive = !act.end_date || new Date(act.end_date) >= new Date();
+      const actSchedule = act.schedule || '';
       return `
         <div class="activity-item ${isActive ? 'active' : 'expired'}">
-          <div class="activity-name">${isActive ? '✓' : '✗'} ${act.activity_name || ''}</div>
-          <div class="activity-status">${isActive ? 'ساري' : 'منتهي'}</div>
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+            <div class="activity-name">${isActive ? '✓' : '✗'} ${act.activity_name || ''}</div>
+            <div class="activity-status">${isActive ? 'ساري' : 'منتهي'}</div>
+          </div>
+          ${actSchedule ? `<div class="activity-schedule">📅 ${actSchedule}</div>` : ''}
         </div>
       `;
     }).join('');
@@ -474,6 +478,7 @@ export const MembersPage = () => {
             .activity-status { font-size: 6pt; font-weight: 700; }
             .activity-item.active .activity-status { color: #059669; }
             .activity-item.expired .activity-status { color: #DC2626; }
+            .activity-schedule { font-size: 5.5pt; color: #2563EB; margin-top: 0.3mm; font-weight: 500; }
             .card-footer { text-align: right; padding: 1.5mm 2mm; background: #f9fafb; font-size: 5pt; color: #374151; border-top: 1px dashed #e5e7eb; line-height: 1.4; }
             .card-footer .terms-title { font-weight: 700; color: #1f2937; font-size: 6pt; margin-bottom: 0.5mm; }
             .logo-card { width: 90mm; height: 60mm; background: white; border-radius: 4mm; overflow: hidden; box-shadow: 0 4px 15px rgba(0,0,0,0.1); display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 3mm; }
