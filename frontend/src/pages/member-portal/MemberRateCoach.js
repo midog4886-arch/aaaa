@@ -210,8 +210,8 @@ const MemberRateCoach = () => {
                         <h3 className="text-lg font-bold text-gray-800 dark:text-white">
                           {coach.name_ar || coach.name}
                         </h3>
-                        {coach.specialization && (
-                          <p className="text-sm text-gray-500 dark:text-gray-400">{coach.specialization}</p>
+                        {(coach.specialization || (coach.activities && coach.activities.length > 0)) && (
+                          <p className="text-sm text-gray-500 dark:text-gray-400">{coach.specialization || coach.activities.join(', ')}</p>
                         )}
                         <div className="flex flex-wrap gap-1 mt-2">
                           {coach.activities?.map((act, idx) => (
