@@ -9,6 +9,8 @@ import { Label } from '../components/ui/label';
 import { Badge } from '../components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '../components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
+import { Popover, PopoverContent, PopoverTrigger } from '../components/ui/popover';
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '../components/ui/command';
 import { levelsAPI, membersAPI, branchesAPI, activitiesAPI, attendanceAPI } from '../services/api';
 import { toast } from 'sonner';
 import { 
@@ -50,6 +52,7 @@ export const LevelsPage = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [filterActivity, setFilterActivity] = useState('');
   const [filterTime, setFilterTime] = useState('');
+  const [timePopoverOpen, setTimePopoverOpen] = useState(false);
   
   // Navigation states for drill-down view
   const [currentView, setCurrentView] = useState('days'); // 'days' | 'activities' | 'times' | 'levels'
@@ -2098,17 +2101,32 @@ export const LevelsPage = () => {
                     ))}
                   </SelectContent>
                 </Select>
-                <Select value={filterTime || '__all__'} onValueChange={v => setFilterTime(v === '__all__' ? '' : v)}>
-                  <SelectTrigger className="flex-1 h-8 text-xs">
-                    <SelectValue placeholder={t('كل المواعيد', 'All times')} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="__all__">{t('كل المواعيد', 'All times')}</SelectItem>
-                    {timeFilterOptions.map(s => (
-                      <SelectItem key={s} value={s}>{s}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <Popover open={timePopoverOpen} onOpenChange={setTimePopoverOpen}>
+                  <PopoverTrigger asChild>
+                    <Button variant="outline" className="flex-1 h-8 text-xs justify-between font-normal px-2">
+                      <span className="truncate">{filterTime || t('كل المواعيد', 'All times')}</span>
+                      <ChevronDown className="w-3 h-3 opacity-50 flex-shrink-0" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-64 p-0" align="start">
+                    <Command>
+                      <CommandInput placeholder={t('بحث عن موعد...', 'Search schedule...')} className="h-8 text-xs" />
+                      <CommandList className="max-h-48">
+                        <CommandEmpty>{t('لا توجد نتائج', 'No results')}</CommandEmpty>
+                        <CommandGroup>
+                          <CommandItem value="__all__" onSelect={() => { setFilterTime(''); setTimePopoverOpen(false); }}>
+                            {t('كل المواعيد', 'All times')}
+                          </CommandItem>
+                          {timeFilterOptions.map(s => (
+                            <CommandItem key={s} value={s} onSelect={() => { setFilterTime(s); setTimePopoverOpen(false); }}>
+                              {s}
+                            </CommandItem>
+                          ))}
+                        </CommandGroup>
+                      </CommandList>
+                    </Command>
+                  </PopoverContent>
+                </Popover>
               </div>
 
               {/* Capacity Warning */}
