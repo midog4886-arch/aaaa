@@ -77,10 +77,14 @@ async def get_coaches(
     return coaches
 
 
-MAX_PHOTO_BYTES = 3 * 1024 * 1024  # 3MB limit for base64 photo string
+MAX_PHOTO_BYTES = 2 * 1024 * 1024  # 2MB limit for base64 photo string (matches frontend)
 
 def _validate_photo(photo: Optional[str]) -> None:
-    if photo and len(photo.encode()) > MAX_PHOTO_BYTES:
+    if not photo:
+        return
+    if not photo.startswith("data:image/"):
+        raise HTTPException(status_code=400, detail="نوع الملف غير مدعوم، يجب أن تكون صورة")
+    if len(photo.encode()) > MAX_PHOTO_BYTES:
         raise HTTPException(status_code=400, detail="حجم الصورة كبير جداً، الحد الأقصى 2 ميجابايت")
 
 
