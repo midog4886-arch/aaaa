@@ -90,7 +90,7 @@ const CoachRatingsPage = () => {
     const coach = coachMap[coachId];
     const photo = coach?.photo;
     const initials = (coachName || '?').split(' ').map(w => w[0]).slice(0, 2).join('');
-    const sizeClass = size === 'lg' ? 'w-14 h-14 text-base' : 'w-10 h-10 text-sm';
+    const sizeClass = size === 'lg' ? 'w-14 h-14 text-base' : size === 'sm' ? 'w-6 h-6 text-xs' : 'w-10 h-10 text-sm';
     const [imgError, setImgError] = React.useState(false);
 
     if (photo && !imgError) {
@@ -330,12 +330,14 @@ const CoachRatingsPage = () => {
                               {rating.member_phone || ''}
                             </span>
                           </div>
-                          <p className="text-sm text-gray-500 mt-0.5">
-                            قيّم المدرب: <span className="font-medium text-blue-600">{rating.coach_name || 'غير محدد'}</span>
+                          <div className="flex items-center gap-1.5 mt-0.5">
+                            <span className="text-sm text-gray-500">قيّم المدرب:</span>
+                            <CoachAvatar coachId={rating.coach_id} coachName={rating.coach_name || 'غير محدد'} size="sm" />
+                            <span className="text-sm font-medium text-blue-600">{rating.coach_name || 'غير محدد'}</span>
                             {rating.activity_name && (
-                              <span className="text-gray-400"> • {rating.activity_name}</span>
+                              <span className="text-sm text-gray-400"> • {rating.activity_name}</span>
                             )}
-                          </p>
+                          </div>
                           <div className="flex items-center gap-2 mt-2">
                             {renderStars(rating.rating)}
                             <span className="text-sm text-gray-500">({rating.rating}/5)</span>
