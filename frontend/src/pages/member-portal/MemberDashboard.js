@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
 import { 
   CreditCard, Calendar, QrCode, Bell, CheckCircle, 
-  AlertTriangle, Clock, ChevronLeft, Trophy, Star, Activity
+  AlertTriangle, Clock, ChevronLeft, Star, Activity
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { motion } from 'framer-motion';
@@ -125,12 +125,17 @@ const MemberDashboard = () => {
 
       const [subsRes, notifRes, attRes, loyaltyRes] = await Promise.allSettled(requests);
 
-      if (subsRes.status === 'fulfilled')   setSubscriptions(subsRes.value.data);
-      if (notifRes.status === 'fulfilled')  setNotifications(notifRes.value.data);
-      if (attRes.status === 'fulfilled')    setAttendanceStats(attRes.value.data);
+      if (subsRes.status === 'fulfilled')     setSubscriptions(subsRes.value.data);
+      if (notifRes.status === 'fulfilled')    setNotifications(notifRes.value.data);
+      if (attRes.status === 'fulfilled')      setAttendanceStats(attRes.value.data);
       if (loyaltyRes?.status === 'fulfilled') setLoyaltyData(loyaltyRes.value.data);
 
-      if (showToast) toast.success('تم تحديث البيانات بنجاح');
+      if (showToast) {
+        const coreOk = subsRes.status === 'fulfilled' && notifRes.status === 'fulfilled';
+        coreOk
+          ? toast.success('تم تحديث البيانات بنجاح')
+          : toast.error('فشل في تحديث بعض البيانات');
+      }
     } catch (error) {
       console.error('Failed to fetch data');
       if (showToast) toast.error('فشل في تحديث البيانات');
