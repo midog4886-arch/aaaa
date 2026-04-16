@@ -1,8 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
 import { 
   CheckCircle, Calendar, Clock, Loader2, 
-  CalendarDays, Activity, Award, Flame, TrendingUp, Star
+  CalendarDays, Activity, Award, Flame, TrendingUp, Star,
+  ChevronLeft, ChevronRight
 } from 'lucide-react';
 import MemberLayout, { memberAPI, getDarkMode, getLanguage } from './MemberLayout';
 
@@ -16,6 +17,11 @@ const AR_MONTHS = {
 };
 const AR_DAYS_SHORT = ['ح', 'ن', 'ث', 'ر', 'خ', 'ج', 'س'];
 const EN_DAYS_SHORT = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
+
+const MONTH_NAMES_EN = [
+  'January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December'
+];
 
 // Format ISO week label "2026-W16" → "الأسبوع 16 / Week 16"
 const formatWeekLabel = (weekLabel, language) => {
@@ -38,11 +44,9 @@ const buildMonthGrid = (year, month, attendedDates) => {
   const todayStr = new Date().toISOString().slice(0, 10);
   const firstDay = new Date(year, month - 1, 1);
   const daysInMonth = new Date(year, month, 0).getDate();
-  // Sunday = 0 → we want Sunday first column (index 0)
   const startDow = firstDay.getDay(); // 0=Sun
 
   const cells = [];
-  // Empty cells before month starts
   for (let i = 0; i < startDow; i++) cells.push(null);
 
   for (let d = 1; d <= daysInMonth; d++) {
@@ -56,33 +60,29 @@ const buildMonthGrid = (year, month, attendedDates) => {
       isToday: dateStr === todayStr,
     });
   }
-  // Pad to complete last row
   while (cells.length % 7 !== 0) cells.push(null);
   return cells;
 };
 
 // ── Streak Calendar Component ─────────────────────────────────────────────────
 
-const StreakCalendar = ({ dates, monthName, darkMode, language }) => {
-  const today = new Date();
-  const year = today.getFullYear();
-  const month = today.getMonth() + 1;
+const StreakCalendar = ({ dates, year, month, monthName, darkMode, language }) => {
   const cells = buildMonthGrid(year, month, dates || []);
   const weeks = [];
   for (let i = 0; i < cells.length; i += 7) weeks.push(cells.slice(i, i + 7));
 
   const dayLabels = language === 'ar' ? AR_DAYS_SHORT : EN_DAYS_SHORT;
+  const displayName = language === 'ar' ? arabicMonth(monthName) : monthName;
 
   return (
     <Card className={darkMode ? 'bg-gray-800 border-gray-700' : ''}>
       <CardHeader className="pb-3">
         <CardTitle className={`text-base flex items-center gap-2 ${darkMode ? 'text-white' : ''}`}>
           <Flame className="w-4 h-4 text-orange-500" />
-          {language === 'ar' ? `تقويم الحضور — ${arabicMonth(monthName)}` : `Attendance Calendar — ${monthName}`}
+          {language === 'ar' ? `تقويم الحضور — ${displayName}` : `Attendance Calendar — ${displayName}`}
         </CardTitle>
       </CardHeader>
       <CardContent className="pt-0">
-        {/* Day headers */}
         <div className="grid grid-cols-7 gap-1 mb-1">
           {dayLabels.map((d, i) => (
             <div key={i} className={`text-center text-[10px] font-bold py-1 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
@@ -90,7 +90,6 @@ const StreakCalendar = ({ dates, monthName, darkMode, language }) => {
             </div>
           ))}
         </div>
-        {/* Weeks */}
         <div className="space-y-1">
           {weeks.map((week, wi) => (
             <div key={wi} className="grid grid-cols-7 gap-1">
@@ -122,7 +121,6 @@ const StreakCalendar = ({ dates, monthName, darkMode, language }) => {
             </div>
           ))}
         </div>
-        {/* Legend */}
         <div className="flex items-center gap-4 mt-3 justify-center">
           <div className="flex items-center gap-1.5">
             <div className="w-3 h-3 rounded bg-green-500" />
@@ -179,23 +177,65 @@ const CircularProgress = ({ pct, attended, expected, darkMode, language }) => {
 // ── Main Component ────────────────────────────────────────────────────────────
 
 const MemberAttendance = () => {
+  const today = new Date();
+  const [viewYear, setViewYear] = useState(today.getFullYear());
+  const [viewMonth, setViewMonth] = useState(today.getMonth() + 1);
   const [loading, setLoading] = useState(true);
+  const [monthLoading, setMonthLoading] = useState(false);
   const [stats, setStats] = useState(null);
   const darkMode = getDarkMode();
   const language = getLanguage();
 
-  useEffect(() => { fetchStats(); }, []);
+  const isCurrentMonth = viewYear === today.getFullYear() && viewMonth === (today.getMonth() + 1);
 
-  const fetchStats = async () => {
+  const fetchStats = useCallback(async (year, month, isInitial = false) => {
+    if (isInitial) setLoading(true);
+    else setMonthLoading(true);
     try {
-      const res = await memberAPI.get('/api/member-portal/attendance-stats');
+      const res = await memberAPI.get(`/api/member-portal/attendance-stats?year=${year}&month=${month}`);
       setStats(res.data);
     } catch (error) {
       console.error('Failed to fetch attendance stats');
     } finally {
-      setLoading(false);
+      if (isInitial) setLoading(false);
+      else setMonthLoading(false);
+    }
+  }, []);
+
+  const isFirstMount = useRef(true);
+  useEffect(() => {
+    const initial = isFirstMount.current;
+    isFirstMount.current = false;
+    fetchStats(viewYear, viewMonth, initial);
+  }, [viewYear, viewMonth, fetchStats]);
+
+  const goToPrevMonth = () => {
+    if (viewMonth === 1) {
+      setViewYear(y => y - 1);
+      setViewMonth(12);
+    } else {
+      setViewMonth(m => m - 1);
     }
   };
+
+  const goToNextMonth = () => {
+    if (isCurrentMonth) return;
+    if (viewMonth === 12) {
+      setViewYear(y => y + 1);
+      setViewMonth(1);
+    } else {
+      setViewMonth(m => m + 1);
+    }
+  };
+
+  const goToCurrentMonth = () => {
+    setViewYear(today.getFullYear());
+    setViewMonth(today.getMonth() + 1);
+  };
+
+  // Build display month name
+  const displayMonthName = `${MONTH_NAMES_EN[viewMonth - 1]} ${viewYear}`;
+  const displayMonthNameAr = `${AR_MONTHS[MONTH_NAMES_EN[viewMonth - 1]]} ${viewYear}`;
 
   if (loading) {
     return (
@@ -207,15 +247,20 @@ const MemberAttendance = () => {
     );
   }
 
-  // Compute expected sessions this month
-  const today = new Date();
+  // Compute expected sessions for the viewed month
   const scheduledPerWeek = stats?.scheduled_per_week || 0;
-  // Weeks elapsed so far this month (days elapsed / 7)
-  const dayOfMonth = today.getDate();
-  const weeksElapsed = dayOfMonth / 7;
-  const expectedThisMonth = scheduledPerWeek > 0
-    ? Math.max(1, Math.round(scheduledPerWeek * weeksElapsed))
-    : 0;
+  let expectedThisMonth = 0;
+  if (scheduledPerWeek > 0) {
+    if (isCurrentMonth) {
+      const dayOfMonth = today.getDate();
+      const weeksElapsed = dayOfMonth / 7;
+      expectedThisMonth = Math.max(1, Math.round(scheduledPerWeek * weeksElapsed));
+    } else {
+      const daysInViewedMonth = new Date(viewYear, viewMonth, 0).getDate();
+      expectedThisMonth = Math.round(scheduledPerWeek * (daysInViewedMonth / 7));
+    }
+  }
+
   const attended = stats?.this_month?.count || 0;
   const attendancePct = expectedThisMonth > 0
     ? Math.min(100, Math.round((attended / expectedThisMonth) * 100))
@@ -230,14 +275,60 @@ const MemberAttendance = () => {
           {language === 'ar' ? 'سجل الحضور' : 'Attendance Record'}
         </h1>
 
+        {/* ── Month Navigation ── */}
+        <div className={`relative flex items-center justify-between p-3 rounded-2xl ${darkMode ? 'bg-gray-800 border border-gray-700' : 'bg-white border border-gray-200'} shadow-sm`}>
+          <button
+            onClick={goToPrevMonth}
+            disabled={monthLoading}
+            className={`p-2 rounded-xl transition-colors ${monthLoading ? 'opacity-40 cursor-not-allowed' : darkMode ? 'hover:bg-gray-700 text-gray-300' : 'hover:bg-gray-100 text-gray-600'}`}
+            aria-label={language === 'ar' ? 'الشهر السابق' : 'Previous month'}
+          >
+            {language === 'ar' ? <ChevronRight className="w-5 h-5" /> : <ChevronLeft className="w-5 h-5" />}
+          </button>
+
+          <div className="flex flex-col items-center gap-1">
+            <div className="flex items-center gap-2">
+              <span className={`text-base font-bold ${darkMode ? 'text-white' : 'text-gray-800'}`}>
+                {language === 'ar' ? displayMonthNameAr : displayMonthName}
+              </span>
+              {monthLoading && <Loader2 className="w-4 h-4 animate-spin text-green-500" />}
+            </div>
+            {!isCurrentMonth && (
+              <button
+                onClick={goToCurrentMonth}
+                className="text-[11px] text-green-600 hover:text-green-500 font-medium transition-colors"
+              >
+                {language === 'ar' ? 'العودة للشهر الحالي' : 'Back to current month'}
+              </button>
+            )}
+          </div>
+
+          <button
+            onClick={goToNextMonth}
+            disabled={isCurrentMonth || monthLoading}
+            className={`p-2 rounded-xl transition-colors ${
+              isCurrentMonth || monthLoading
+                ? 'opacity-30 cursor-not-allowed'
+                : darkMode ? 'hover:bg-gray-700 text-gray-300' : 'hover:bg-gray-100 text-gray-600'
+            }`}
+            aria-label={language === 'ar' ? 'الشهر التالي' : 'Next month'}
+          >
+            {language === 'ar' ? <ChevronLeft className="w-5 h-5" /> : <ChevronRight className="w-5 h-5" />}
+          </button>
+        </div>
+
         {/* ── Top Stats Row ── */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {/* This Month */}
+          {/* Selected Month */}
           <Card className="bg-gradient-to-br from-green-500 to-emerald-600 text-white border-0">
             <CardContent className="p-5">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-green-100 text-sm">{language === 'ar' ? 'هذا الشهر' : 'This Month'}</p>
+                  <p className="text-green-100 text-sm">
+                    {isCurrentMonth
+                      ? (language === 'ar' ? 'هذا الشهر' : 'This Month')
+                      : (language === 'ar' ? 'الشهر المختار' : 'Selected Month')}
+                  </p>
                   <p className="text-4xl font-black mt-1">{attended}</p>
                   <p className="text-green-100 text-sm mt-1">{language === 'ar' ? 'حصة' : 'sessions'}</p>
                 </div>
@@ -245,16 +336,18 @@ const MemberAttendance = () => {
                   <CalendarDays className="w-7 h-7" />
                 </div>
               </div>
-              <p className="text-green-100 text-xs mt-3">{arabicMonth(stats?.this_month?.month_name)}</p>
+              <p className="text-green-100 text-xs mt-3">
+                {language === 'ar' ? displayMonthNameAr : displayMonthName}
+              </p>
             </CardContent>
           </Card>
 
-          {/* Last Month */}
+          {/* Previous Month */}
           <Card className="bg-gradient-to-br from-blue-500 to-indigo-600 text-white border-0">
             <CardContent className="p-5">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-blue-100 text-sm">{language === 'ar' ? 'الشهر الماضي' : 'Last Month'}</p>
+                  <p className="text-blue-100 text-sm">{language === 'ar' ? 'الشهر السابق' : 'Previous Month'}</p>
                   <p className="text-4xl font-black mt-1">{stats?.last_month?.count || 0}</p>
                   <p className="text-blue-100 text-sm mt-1">{language === 'ar' ? 'حصة' : 'sessions'}</p>
                 </div>
@@ -316,7 +409,9 @@ const MemberAttendance = () => {
                     {attended}
                   </div>
                   <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                    {language === 'ar' ? 'جلسة هذا الشهر' : 'sessions this month'}
+                    {language === 'ar'
+                      ? `جلسة — ${displayMonthNameAr}`
+                      : `sessions — ${displayMonthName}`}
                   </p>
                   <p className={`text-xs mt-2 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
                     {language === 'ar' ? 'لا يوجد جدول محدد' : 'No schedule set'}
@@ -347,14 +442,18 @@ const MemberAttendance = () => {
                     {formatWeekLabel(bestWeek.week_label, language)}
                   </p>
                   <p className={`text-xs mt-1 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
-                    {language === 'ar' ? 'في أسبوع واحد هذا الشهر' : 'in one week this month'}
+                    {language === 'ar'
+                      ? `في أسبوع واحد — ${displayMonthNameAr}`
+                      : `in one week — ${displayMonthName}`}
                   </p>
                 </>
               ) : (
                 <div className="text-center py-4">
                   <Calendar className={`w-10 h-10 mx-auto mb-2 opacity-30 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`} />
                   <p className={`text-sm ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
-                    {language === 'ar' ? 'لا يوجد حضور هذا الشهر' : 'No attendance this month'}
+                    {language === 'ar'
+                      ? `لا يوجد حضور — ${displayMonthNameAr}`
+                      : `No attendance — ${displayMonthName}`}
                   </p>
                 </div>
               )}
@@ -365,7 +464,9 @@ const MemberAttendance = () => {
         {/* ── Streak Calendar ── */}
         <StreakCalendar
           dates={stats?.this_month?.dates || []}
-          monthName={stats?.this_month?.month_name}
+          year={viewYear}
+          month={viewMonth}
+          monthName={stats?.this_month?.month_name || displayMonthName}
           darkMode={darkMode}
           language={language}
         />
@@ -456,7 +557,9 @@ const MemberAttendance = () => {
                                   '🎯 حاول زيادة حضورك!'}
               </h3>
               <p className="text-purple-100 mt-1 text-sm">
-                {language === 'ar' ? `حضرت ${attended} حصة هذا الشهر` : `You attended ${attended} sessions this month`}
+                {language === 'ar'
+                  ? `حضرت ${attended} حصة — ${displayMonthNameAr}`
+                  : `You attended ${attended} sessions — ${displayMonthName}`}
               </p>
             </CardContent>
           </Card>
