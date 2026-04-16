@@ -80,6 +80,36 @@ const CoachRatingsPage = () => {
     );
   };
 
+  const coachMap = React.useMemo(() => {
+    const map = {};
+    coaches.forEach(c => { map[c.id] = c; });
+    return map;
+  }, [coaches]);
+
+  const CoachAvatar = ({ coachId, coachName, size = 'md' }) => {
+    const coach = coachMap[coachId];
+    const photo = coach?.photo;
+    const initials = (coachName || '?').split(' ').map(w => w[0]).slice(0, 2).join('');
+    const sizeClass = size === 'lg' ? 'w-14 h-14 text-base' : 'w-10 h-10 text-sm';
+    const [imgError, setImgError] = React.useState(false);
+
+    if (photo && !imgError) {
+      return (
+        <img
+          src={photo}
+          alt={coachName}
+          className={`${sizeClass} rounded-full object-cover border-2 border-white shadow`}
+          onError={() => setImgError(true)}
+        />
+      );
+    }
+    return (
+      <div className={`${sizeClass} rounded-full flex items-center justify-center font-bold bg-gradient-to-br from-blue-400 to-indigo-600 text-white border-2 border-white shadow`}>
+        {initials}
+      </div>
+    );
+  };
+
   const filteredRatings = ratings.filter(rating => {
     const matchesSearch = 
       (rating.member_name || '').includes(searchTerm) ||
@@ -214,20 +244,23 @@ const CoachRatingsPage = () => {
                     }`}
                   >
                     <div className="flex items-center gap-3">
-                      <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold ${
-                        idx === 0 ? 'bg-yellow-500 text-white' :
-                        idx === 1 ? 'bg-gray-400 text-white' :
-                        idx === 2 ? 'bg-orange-400 text-white' :
-                        'bg-blue-100 text-blue-600'
-                      }`}>
-                        {idx + 1}
+                      <div className="relative flex-shrink-0">
+                        <CoachAvatar coachId={coach.coach_id} coachName={coach.coach_name} size="md" />
+                        <span className={`absolute -bottom-1 -right-1 w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold border border-white ${
+                          idx === 0 ? 'bg-yellow-500 text-white' :
+                          idx === 1 ? 'bg-gray-400 text-white' :
+                          idx === 2 ? 'bg-orange-400 text-white' :
+                          'bg-blue-100 text-blue-600'
+                        }`}>
+                          {idx + 1}
+                        </span>
                       </div>
-                      <div className="flex-1">
-                        <p className="font-bold text-gray-800">{coach.coach_name}</p>
-                        <div className="flex items-center gap-2">
+                      <div className="flex-1 min-w-0">
+                        <p className="font-bold text-gray-800 truncate">{coach.coach_name}</p>
+                        <div className="flex items-center gap-2 flex-wrap">
                           {renderStars(Math.round(coach.average_rating))}
                           <span className="text-sm text-gray-500">
-                            ({coach.average_rating}) - {coach.total_ratings} تقييم
+                            {coach.average_rating} — {coach.total_ratings} تقييم
                           </span>
                         </div>
                       </div>
