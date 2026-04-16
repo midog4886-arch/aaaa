@@ -55,6 +55,109 @@ const formatDate = (dateStr) => {
   } catch { return dateStr; }
 };
 
+// ── Attendance Calendar ───────────────────────────────────────────────────────
+
+const AttendanceCalendar = ({ attendanceStats, darkMode, language }) => {
+  const today = new Date();
+  const year = today.getFullYear();
+  const month = today.getMonth();
+
+  const todayStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+
+  const attendedDates = new Set(
+    (attendanceStats?.recent || []).map(r => r.date?.slice(0, 10)).filter(Boolean)
+  );
+
+  const firstDay = new Date(year, month, 1);
+  const lastDay = new Date(year, month + 1, 0);
+  const totalDays = lastDay.getDate();
+
+  const startOffset = firstDay.getDay();
+
+  const allCells = [];
+  for (let i = 0; i < startOffset; i++) allCells.push(null);
+  for (let d = 1; d <= totalDays; d++) {
+    const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+    allCells.push({ day: d, dateStr });
+  }
+  const grid = allCells.slice(0, 35);
+  while (grid.length < 35) grid.push(null);
+  const hiddenDays = Math.max(0, allCells.filter(c => c !== null).length - grid.filter(c => c !== null).length);
+
+  const dayLabels = language === 'ar'
+    ? ['أح', 'اث', 'ث', 'أر', 'خ', 'ج', 'س']
+    : ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
+
+  const monthLabel = today.toLocaleDateString(language === 'ar' ? 'ar-SA-u-ca-gregory' : 'en-US', { month: 'long', year: 'numeric' });
+
+  return (
+    <div>
+      <p className={`text-xs font-semibold text-center mb-2 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+        {monthLabel}
+      </p>
+      <div className="grid grid-cols-7 gap-0.5 mb-1">
+        {dayLabels.map((d, i) => (
+          <div key={i} className={`text-center text-[10px] font-medium py-0.5 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+            {d}
+          </div>
+        ))}
+      </div>
+      <div className="grid grid-cols-7 gap-0.5" style={{ gridTemplateRows: 'repeat(5, 1fr)' }}>
+        {grid.map((cell, idx) => {
+          if (!cell) {
+            return <div key={idx} className="aspect-square" />;
+          }
+          const isToday = cell.dateStr === todayStr;
+          const isAttended = attendedDates.has(cell.dateStr);
+          const isFuture = cell.dateStr > todayStr;
+
+          let dotColor = '';
+          let textColor = '';
+          let ring = '';
+
+          if (isToday) {
+            ring = 'ring-2 ring-amber-400';
+            textColor = darkMode ? 'text-white' : 'text-gray-900';
+            dotColor = isAttended ? 'bg-green-500' : 'bg-gray-400';
+          } else if (isAttended) {
+            dotColor = 'bg-green-500';
+            textColor = darkMode ? 'text-green-300' : 'text-green-700';
+          } else if (isFuture) {
+            dotColor = darkMode ? 'bg-gray-700' : 'bg-gray-200';
+            textColor = darkMode ? 'text-gray-600' : 'text-gray-300';
+          } else {
+            dotColor = 'bg-gray-300';
+            textColor = darkMode ? 'text-gray-500' : 'text-gray-400';
+          }
+
+          return (
+            <div
+              key={idx}
+              className={`aspect-square flex flex-col items-center justify-center rounded-md ${ring} ${
+                isAttended && !isToday ? (darkMode ? 'bg-green-900/30' : 'bg-green-50') :
+                isToday ? (darkMode ? 'bg-gray-700' : 'bg-amber-50') :
+                ''
+              }`}
+            >
+              <span className={`text-[10px] font-medium leading-none ${textColor}`}>{cell.day}</span>
+              {dotColor && (
+                <span className={`mt-0.5 w-1 h-1 rounded-full ${dotColor}`} />
+              )}
+            </div>
+          );
+        })}
+      </div>
+      {hiddenDays > 0 && (
+        <p className={`text-center text-[10px] mt-1.5 ${darkMode ? 'text-gray-600' : 'text-gray-400'}`}>
+          {language === 'ar'
+            ? `+ ${hiddenDays} ${hiddenDays === 1 ? 'يوم' : 'أيام'} من نهاية الشهر`
+            : `+ ${hiddenDays} more day${hiddenDays === 1 ? '' : 's'} at month end`}
+        </p>
+      )}
+    </div>
+  );
+};
+
 // ── Skeleton Components ───────────────────────────────────────────────────────
 
 const Skeleton = ({ className }) => (
@@ -346,6 +449,49 @@ const MemberDashboard = () => {
               </Link>
             </motion.div>
           </div>
+
+          {/* ── Attendance Calendar ── */}
+          {attendanceStats && (
+            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.22 }}>
+              <Link to="/member-attendance">
+                <Card className={`cursor-pointer hover:shadow-md transition-shadow ${darkMode ? 'bg-gray-800 border-gray-700' : ''}`}>
+                  <CardHeader className="pb-2">
+                    <CardTitle className={`text-sm flex items-center gap-2 ${darkMode ? 'text-white' : ''}`}>
+                      <Activity className="w-4 h-4 text-green-600" />
+                      {language === 'ar' ? 'سجل الحضور الشهري' : 'Monthly Attendance'}
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="pt-0 pb-4 px-4">
+                    <AttendanceCalendar
+                      attendanceStats={attendanceStats}
+                      darkMode={darkMode}
+                      language={language}
+                    />
+                    <div className="flex items-center gap-4 mt-3 justify-center">
+                      <div className="flex items-center gap-1">
+                        <span className="w-2 h-2 rounded-full bg-green-500 inline-block" />
+                        <span className={`text-[10px] ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                          {language === 'ar' ? 'حضور' : 'Attended'}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <span className="w-2 h-2 rounded-full bg-gray-300 inline-block" />
+                        <span className={`text-[10px] ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                          {language === 'ar' ? 'غياب' : 'Absent'}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <span className="w-3 h-3 rounded-md ring-2 ring-amber-400 inline-block" />
+                        <span className={`text-[10px] ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                          {language === 'ar' ? 'اليوم' : 'Today'}
+                        </span>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              </Link>
+            </motion.div>
+          )}
 
           {/* ── Active Subscriptions with Progress Bars ── */}
           {subscriptions.active.length > 0 && (
