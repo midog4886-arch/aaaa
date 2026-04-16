@@ -7882,21 +7882,46 @@ async def get_all_coach_ratings(
         query["coach_id"] = coach_id
     
     ratings = await db.coach_ratings.find(query, {"_id": 0}).sort("created_at", -1).to_list(500)
-    
+
+    # Collect unique IDs for bulk lookups
+    coach_ids = {r.get("coach_id") for r in ratings if r.get("coach_id")}
+    activity_ids = {r.get("activity_id") for r in ratings if r.get("activity_id")}
+    member_ids = {r.get("member_id") for r in ratings if r.get("member_id")}
+
+    # Bulk fetch
+    coaches_map = {
+        c["id"]: c
+        async for c in db.coaches.find(
+            {"id": {"$in": list(coach_ids)}}, {"_id": 0, "id": 1, "name": 1, "name_ar": 1}
+        )
+    } if coach_ids else {}
+    activities_map = {
+        a["id"]: a
+        async for a in db.activities.find(
+            {"id": {"$in": list(activity_ids)}}, {"_id": 0, "id": 1, "name": 1, "name_ar": 1}
+        )
+    } if activity_ids else {}
+    members_map = {
+        m["id"]: m
+        async for m in db.members.find(
+            {"id": {"$in": list(member_ids)}}, {"_id": 0, "id": 1, "photo": 1}
+        )
+    } if member_ids else {}
+
     # Enrich with coach, activity names, and member photo
     for rating in ratings:
-        coach = await db.coaches.find_one({"id": rating.get("coach_id")}, {"_id": 0, "name": 1, "name_ar": 1})
+        coach = coaches_map.get(rating.get("coach_id"))
         if coach:
             rating["coach_name"] = coach.get("name_ar") or coach.get("name")
-        
-        activity = await db.activities.find_one({"id": rating.get("activity_id")}, {"_id": 0, "name": 1, "name_ar": 1})
+
+        activity = activities_map.get(rating.get("activity_id"))
         if activity:
             rating["activity_name"] = activity.get("name_ar") or activity.get("name")
 
-        member = await db.members.find_one({"id": rating.get("member_id")}, {"_id": 0, "photo": 1})
+        member = members_map.get(rating.get("member_id"))
         if member:
             rating["member_photo"] = member.get("photo", "")
-    
+
     return {"ratings": ratings}
 
 
