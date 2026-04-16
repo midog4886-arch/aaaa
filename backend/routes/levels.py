@@ -27,6 +27,7 @@ class LevelCreate(BaseModel):
     description: Optional[str] = ""
     members: List[str] = []  # List of member IDs
     branch_id: Optional[str] = None
+    coach_id: Optional[str] = None  # Coach assigned to this level
 
 class Level(BaseModel):
     id: str
@@ -37,6 +38,7 @@ class Level(BaseModel):
     members: List[str] = []
     members_details: List[LevelMember] = []
     branch_id: Optional[str] = None
+    coach_id: Optional[str] = None
     created_at: str
 
 # ============ ROUTES ============
@@ -195,6 +197,7 @@ async def create_level(level: LevelCreate, current_user: dict = Depends(get_curr
         "description": level.description,
         "members": level.members,
         "branch_id": final_branch_id,
+        "coach_id": level.coach_id or None,
         "created_at": datetime.now(timezone.utc).isoformat()
     }
     await db.levels.insert_one(level_doc)
@@ -209,7 +212,8 @@ async def update_level(level_id: str, level: LevelCreate, current_user: dict = D
         "activity_name": level.activity_name,
         "custom_name": level.custom_name or "",
         "description": level.description,
-        "members": level.members
+        "members": level.members,
+        "coach_id": level.coach_id or None
     }
     
     result = await db.levels.find_one_and_update(

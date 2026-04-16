@@ -11,7 +11,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Popover, PopoverContent, PopoverTrigger } from '../components/ui/popover';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '../components/ui/command';
-import { levelsAPI, membersAPI, branchesAPI, activitiesAPI, attendanceAPI } from '../services/api';
+import { levelsAPI, membersAPI, branchesAPI, activitiesAPI, attendanceAPI, coachesAPI } from '../services/api';
 import { toast } from 'sonner';
 import { 
   Plus, Edit, Trash2, Loader2, Layers, Users, Dumbbell, UserPlus, UserMinus, Search,
@@ -124,8 +124,10 @@ export const LevelsPage = () => {
     description: '',
     capacity: 10,
     members: [],
-    branch_id: 'all'
+    branch_id: 'all',
+    coach_id: '__none__'
   });
+  const [coaches, setCoaches] = useState([]);
 
   const [timeSlotForm, setTimeSlotForm] = useState({
     name: ''
@@ -139,17 +141,19 @@ export const LevelsPage = () => {
     try {
       const branchParams = selectedBranchId && selectedBranchId !== 'all' ? { branch_filter: selectedBranchId } : {};
       const today = new Date().toISOString().split('T')[0];
-      const [levelsRes, membersRes, branchesRes, activitiesRes, attendanceRes] = await Promise.all([
+      const [levelsRes, membersRes, branchesRes, activitiesRes, attendanceRes, coachesRes] = await Promise.all([
         levelsAPI.getAll(branchParams),
         membersAPI.getAll(branchParams),
         isAdmin ? branchesAPI.getAll() : Promise.resolve({ data: [] }),
         activitiesAPI.getAll(),
-        attendanceAPI.getAll({ date: today }).catch(() => ({ data: [] }))
+        attendanceAPI.getAll({ date: today }).catch(() => ({ data: [] })),
+        coachesAPI.getAll().catch(() => ({ data: [] }))
       ]);
       setLevels(levelsRes.data);
       setMembers(membersRes.data);
       setBranches(branchesRes.data || []);
       setActivities(activitiesRes.data || []);
+      setCoaches(coachesRes.data || []);
       
       const todayRecords = attendanceRes.data || [];
       const attMap = {};
@@ -842,7 +846,8 @@ export const LevelsPage = () => {
     try {
       const data = {
         ...formData,
-        branch_id: isAdmin ? formData.branch_id : undefined
+        branch_id: isAdmin ? formData.branch_id : undefined,
+        coach_id: formData.coach_id && formData.coach_id !== '__none__' ? formData.coach_id : null
       };
       
       if (selectedLevel) {
@@ -890,7 +895,8 @@ export const LevelsPage = () => {
       custom_name: level.custom_name || '',
       capacity: level.capacity || 10,
       members: level.members || [],
-      branch_id: level.branch_id || 'all'
+      branch_id: level.branch_id || 'all',
+      coach_id: level.coach_id || '__none__'
     });
     setIsDialogOpen(true);
   };
@@ -924,10 +930,12 @@ export const LevelsPage = () => {
       main_activity: '',
       time_slot: '',
       activity_name: '',
+      custom_name: '',
       description: '',
       capacity: 10,
       members: [],
-      branch_id: 'all'
+      branch_id: 'all',
+      coach_id: '__none__'
     });
   };
 
@@ -1155,6 +1163,15 @@ export const LevelsPage = () => {
             <div>
               <span className="text-sm opacity-90">{level.custom_name ? level.custom_name : t('المستوى', 'Level')}</span>
               <p className="text-xs opacity-75">{level.activity_name}</p>
+              {(() => {
+                const lvCoach = level.coach_id ? coaches.find(c => c.id === level.coach_id) : null;
+                return lvCoach ? (
+                  <p className="text-xs opacity-90 mt-0.5 flex items-center gap-1">
+                    <span className="opacity-75">👤</span>
+                    {lvCoach.name_ar || lvCoach.name}
+                  </p>
+                ) : null;
+              })()}
             </div>
           </div>
           <div className="flex gap-1">
@@ -1987,6 +2004,31 @@ export const LevelsPage = () => {
                   onChange={(e) => setFormData({ ...formData, level_number: parseInt(e.target.value) || 1 })}
                   placeholder={t('أدخل رقم المستوى', 'Enter level number')}
                 />
+              </div>
+
+              {/* Coach assigned to this level */}
+              <div>
+                <Label>{t('المدرب المسؤول عن هذا المستوى', 'Coach for this Level')}</Label>
+                <Select
+                  value={formData.coach_id || '__none__'}
+                  onValueChange={(value) => setFormData({ ...formData, coach_id: value })}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder={t('اختر مدرباً (اختياري)', 'Select a coach (optional)')} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">{t('بدون مدرب', 'No coach')}</SelectItem>
+                    {coaches.map(c => (
+                      <SelectItem key={c.id} value={c.id}>
+                        {c.name_ar || c.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-gray-500 mt-1">
+                  {t('سيظهر هذا المدرب لأعضاء هذا المستوى في صفحات الاشتراكات والجدول وتقييم المدربين.',
+                     'This coach will appear for this level\'s members on subscriptions, schedule, and rate-coach pages.')}
+                </p>
               </div>
 
               {/* Custom Level Name */}
