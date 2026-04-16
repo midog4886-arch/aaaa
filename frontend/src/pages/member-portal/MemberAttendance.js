@@ -17,6 +17,15 @@ const AR_MONTHS = {
 const AR_DAYS_SHORT = ['ح', 'ن', 'ث', 'ر', 'خ', 'ج', 'س'];
 const EN_DAYS_SHORT = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
 
+// Format ISO week label "2026-W16" → "الأسبوع 16 / Week 16"
+const formatWeekLabel = (weekLabel, language) => {
+  if (!weekLabel) return '';
+  const m = weekLabel.match(/(\d{4})-W(\d+)/);
+  if (!m) return weekLabel;
+  const weekNum = parseInt(m[2], 10);
+  return language === 'ar' ? `الأسبوع ${weekNum}` : `Week ${weekNum}`;
+};
+
 const arabicMonth = (str) => {
   if (!str) return '';
   const parts = str.split(' ');
@@ -335,7 +344,7 @@ const MemberAttendance = () => {
                     {language === 'ar' ? `${bestWeek.count} جلسات` : `${bestWeek.count} sessions`}
                   </p>
                   <p className={`text-xs mt-1 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                    {bestWeek.week_label}
+                    {formatWeekLabel(bestWeek.week_label, language)}
                   </p>
                   <p className={`text-xs mt-1 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
                     {language === 'ar' ? 'في أسبوع واحد هذا الشهر' : 'in one week this month'}
