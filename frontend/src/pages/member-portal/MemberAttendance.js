@@ -3,8 +3,12 @@ import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/ca
 import { 
   CheckCircle, Calendar, Clock, Loader2, 
   CalendarDays, Activity, Award, Flame, TrendingUp, Star,
-  ChevronLeft, ChevronRight, ChevronDown
+  ChevronLeft, ChevronRight, ChevronDown, BarChart2
 } from 'lucide-react';
+import {
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
+  ResponsiveContainer, Cell
+} from 'recharts';
 import MemberLayout, { memberAPI, getDarkMode, getLanguage } from './MemberLayout';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -171,6 +175,134 @@ const CircularProgress = ({ pct, attended, expected, darkMode, language }) => {
         {attended} / {expected} {language === 'ar' ? 'جلسة' : 'sessions'}
       </p>
     </div>
+  );
+};
+
+// Short month labels for chart X-axis
+const MONTH_SHORT_EN = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+const MONTH_SHORT_AR = ['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'];
+
+// ── Attendance Trend Chart Component ──────────────────────────────────────────
+
+const AttendanceTrendChart = ({ darkMode, language }) => {
+  const [trendData, setTrendData] = useState([]);
+  const [trendLoading, setTrendLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchTrend = async () => {
+      setTrendLoading(true);
+      try {
+        const today = new Date();
+        // Build last 6 months (oldest first)
+        const months = [];
+        for (let i = 5; i >= 0; i--) {
+          const d = new Date(today.getFullYear(), today.getMonth() - i, 1);
+          months.push({ year: d.getFullYear(), month: d.getMonth() + 1 });
+        }
+
+        const results = await Promise.all(
+          months.map(({ year, month }) =>
+            memberAPI.get(`/api/member-portal/attendance-stats?year=${year}&month=${month}`)
+              .then(r => ({ year, month, count: r.data?.this_month?.count || 0 }))
+              .catch(() => ({ year, month, count: 0 }))
+          )
+        );
+
+        setTrendData(
+          results.map(({ year, month, count }) => ({
+            label: language === 'ar' ? MONTH_SHORT_AR[month - 1] : MONTH_SHORT_EN[month - 1],
+            count,
+            key: `${year}-${month}`,
+          }))
+        );
+      } catch {
+        setTrendData([]);
+      } finally {
+        setTrendLoading(false);
+      }
+    };
+
+    fetchTrend();
+  }, [language]);
+
+  const textColor = darkMode ? '#9ca3af' : '#6b7280';
+  const gridColor = darkMode ? '#374151' : '#e5e7eb';
+  const maxCount = Math.max(...trendData.map(d => d.count), 1);
+  const currentMonthKey = (() => {
+    const t = new Date();
+    return `${t.getFullYear()}-${t.getMonth() + 1}`;
+  })();
+
+  const CustomTooltip = ({ active, payload, label }) => {
+    if (!active || !payload?.length) return null;
+    return (
+      <div className={`px-3 py-2 rounded-xl shadow-lg text-sm font-semibold border ${darkMode ? 'bg-gray-800 border-gray-600 text-white' : 'bg-white border-gray-200 text-gray-800'}`}>
+        <p>{label}</p>
+        <p className="text-green-500">{payload[0].value} {language === 'ar' ? 'حصة' : 'sessions'}</p>
+      </div>
+    );
+  };
+
+  return (
+    <Card className={darkMode ? 'bg-gray-800 border-gray-700' : ''}>
+      <CardHeader className="pb-2">
+        <CardTitle className={`text-base flex items-center gap-2 ${darkMode ? 'text-white' : ''}`}>
+          <BarChart2 className="w-4 h-4 text-green-600" />
+          {language === 'ar' ? 'اتجاه الحضور — آخر 6 أشهر' : 'Attendance Trend — Last 6 Months'}
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="pt-0">
+        {trendLoading ? (
+          <div className="flex items-center justify-center h-40">
+            <Loader2 className="w-6 h-6 animate-spin text-green-600" />
+          </div>
+        ) : (
+          <ResponsiveContainer width="100%" height={180}>
+            <BarChart data={trendData} margin={{ top: 8, right: 8, left: -20, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke={gridColor} vertical={false} />
+              <XAxis
+                dataKey="label"
+                tick={{ fill: textColor, fontSize: 11 }}
+                axisLine={false}
+                tickLine={false}
+              />
+              <YAxis
+                allowDecimals={false}
+                tick={{ fill: textColor, fontSize: 11 }}
+                axisLine={false}
+                tickLine={false}
+                domain={[0, Math.max(maxCount + 1, 4)]}
+              />
+              <Tooltip content={<CustomTooltip />} cursor={{ fill: darkMode ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)' }} />
+              <Bar dataKey="count" radius={[6, 6, 0, 0]} maxBarSize={40}>
+                {trendData.map((entry) => (
+                  <Cell
+                    key={entry.key}
+                    fill={entry.key === currentMonthKey ? '#22c55e' : darkMode ? '#4b7a5e' : '#86efac'}
+                  />
+                ))}
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        )}
+        {!trendLoading && (
+          <div className="flex items-center gap-4 mt-2 justify-center">
+            <div className="flex items-center gap-1.5">
+              <div className="w-3 h-3 rounded" style={{ background: '#22c55e' }} />
+              <span className={`text-[10px] ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                {language === 'ar' ? 'الشهر الحالي' : 'Current month'}
+              </span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <div className="w-3 h-3 rounded" style={{ background: darkMode ? '#4b7a5e' : '#86efac' }} />
+              <span className={`text-[10px] ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                {language === 'ar' ? 'الأشهر السابقة' : 'Previous months'}
+              </span>
+            </div>
+          </div>
+        )}
+      </CardContent>
+    </Card>
   );
 };
 
@@ -464,6 +596,9 @@ const MemberAttendance = () => {
             </CardContent>
           </Card>
         </div>
+
+        {/* ── Attendance Trend Chart ── */}
+        <AttendanceTrendChart darkMode={darkMode} language={language} />
 
         {/* ── Attendance Rate + Best Week ── */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
