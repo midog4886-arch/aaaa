@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/ca
 import { Button } from '../../components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../../components/ui/dialog';
 import { FileText, Download, Eye, Loader2, Receipt, Calendar, Clock, CheckCircle, XCircle, Printer, ClipboardList } from 'lucide-react';
-import MemberLayout, { memberAPI } from './MemberLayout';
+import MemberLayout, { memberAPI, getDarkMode } from './MemberLayout';
 import jsPDF from 'jspdf';
 
 const MemberInvoices = () => {
@@ -13,6 +13,7 @@ const MemberInvoices = () => {
   const [selectedItem, setSelectedItem] = useState(null);
   const [viewDialogOpen, setViewDialogOpen] = useState(false);
   const [activeTab, setActiveTab] = useState('all');
+  const darkMode = getDarkMode();
 
   useEffect(() => {
     fetchData();
@@ -36,7 +37,6 @@ const MemberInvoices = () => {
   const today = new Date().toISOString().split('T')[0];
 
   const getItemStatus = (item) => {
-    // Check if any activity is still active
     const hasActiveActivity = item.items?.some(i => {
       let endDate = i.end_date || '';
       if (!endDate && i.period) {
@@ -56,7 +56,6 @@ const MemberInvoices = () => {
   const handleDownloadPDF = (item, type) => {
     const doc = new jsPDF();
     
-    // Header
     doc.setFontSize(18);
     doc.setTextColor(249, 115, 22);
     doc.text('World Champions Performance Academy', 105, 20, { align: 'center' });
@@ -65,18 +64,15 @@ const MemberInvoices = () => {
     doc.setTextColor(0, 0, 0);
     doc.text(type === 'form' ? 'Registration Form' : 'Invoice', 105, 30, { align: 'center' });
     
-    // Document number
     doc.setFontSize(12);
     doc.text(`#${type === 'form' ? item.form_number : item.invoice_number}`, 105, 40, { align: 'center' });
     doc.text(`Date: ${new Date(item.created_at).toLocaleDateString('en-GB')}`, 105, 48, { align: 'center' });
     
-    // Customer Info
     doc.setFontSize(10);
     doc.text('Customer Information:', 20, 65);
     doc.text(`Name: ${item.customer_name || item.member_name || '-'}`, 25, 73);
     doc.text(`Phone: ${item.customer_phone || '-'}`, 25, 81);
     
-    // Items Table
     doc.setFillColor(249, 115, 22);
     doc.rect(20, 95, 170, 10, 'F');
     doc.setTextColor(255, 255, 255);
@@ -101,7 +97,6 @@ const MemberInvoices = () => {
       y += 10;
     });
     
-    // Totals
     y += 10;
     doc.line(20, y, 190, y);
     y += 10;
@@ -118,7 +113,6 @@ const MemberInvoices = () => {
     doc.setTextColor(249, 115, 22);
     doc.text(`Total: ${item.total || 0} SAR`, 140, y);
     
-    // Terms and Conditions
     y += 20;
     doc.setFillColor(254, 243, 199);
     doc.rect(20, y, 170, 35, 'F');
@@ -141,14 +135,12 @@ const MemberInvoices = () => {
     y += 6;
     doc.text('- No claims for sessions after subscription period ends.', 25, y);
     
-    // Footer
     doc.setFontSize(8);
     doc.setFont('helvetica', 'normal');
     doc.setTextColor(128, 128, 128);
     doc.text('Thank you for choosing World Champions Performance Academy!', 105, 280, { align: 'center' });
     doc.text('Phone: +966 56 623 8384', 105, 286, { align: 'center' });
     
-    // Save
     const fileName = type === 'form' ? `registration-${item.form_number}.pdf` : `invoice-${item.invoice_number}.pdf`;
     doc.save(fileName);
   };
@@ -325,7 +317,6 @@ const MemberInvoices = () => {
     );
   };
 
-  // Combine and sort all items
   const allItems = [
     ...registrationForms.map(f => ({ ...f, type: 'form', number: f.form_number })),
     ...invoices.map(i => ({ ...i, type: 'invoice', number: i.invoice_number }))
@@ -348,25 +339,25 @@ const MemberInvoices = () => {
   return (
     <MemberLayout>
       <div className="space-y-6">
-        <h1 className="text-2xl font-bold text-gray-800">فواتيري واستماراتي</h1>
+        <h1 className={`text-2xl font-bold ${darkMode ? 'text-white' : 'text-gray-800'}`}>فواتيري واستماراتي</h1>
 
         {/* Stats */}
         <div className="grid grid-cols-3 gap-4">
-          <Card className="bg-orange-50 border-orange-200 cursor-pointer hover:shadow-md" onClick={() => setActiveTab('forms')}>
+          <Card className={`cursor-pointer hover:shadow-md ${darkMode ? 'bg-orange-900/20 border-orange-700' : 'bg-orange-50 border-orange-200'}`} onClick={() => setActiveTab('forms')}>
             <CardContent className="p-4 text-center">
               <ClipboardList className="w-8 h-8 text-orange-600 mx-auto mb-2" />
               <p className="text-2xl font-bold text-orange-700">{registrationForms.length}</p>
               <p className="text-sm text-orange-600">استمارة تسجيل</p>
             </CardContent>
           </Card>
-          <Card className="bg-purple-50 border-purple-200 cursor-pointer hover:shadow-md" onClick={() => setActiveTab('invoices')}>
+          <Card className={`cursor-pointer hover:shadow-md ${darkMode ? 'bg-purple-900/20 border-purple-700' : 'bg-purple-50 border-purple-200'}`} onClick={() => setActiveTab('invoices')}>
             <CardContent className="p-4 text-center">
               <Receipt className="w-8 h-8 text-purple-600 mx-auto mb-2" />
               <p className="text-2xl font-bold text-purple-700">{invoices.length}</p>
               <p className="text-sm text-purple-600">فاتورة</p>
             </CardContent>
           </Card>
-          <Card className="bg-blue-50 border-blue-200 cursor-pointer hover:shadow-md" onClick={() => setActiveTab('all')}>
+          <Card className={`cursor-pointer hover:shadow-md ${darkMode ? 'bg-blue-900/20 border-blue-700' : 'bg-blue-50 border-blue-200'}`} onClick={() => setActiveTab('all')}>
             <CardContent className="p-4 text-center">
               <FileText className="w-8 h-8 text-blue-600 mx-auto mb-2" />
               <p className="text-2xl font-bold text-blue-700">{allItems.length}</p>
@@ -389,9 +380,9 @@ const MemberInvoices = () => {
         </div>
 
         {/* Items List */}
-        <Card>
+        <Card className={darkMode ? 'bg-gray-800 border-gray-700' : ''}>
           <CardHeader>
-            <CardTitle className="text-lg flex items-center gap-2">
+            <CardTitle className={`text-lg flex items-center gap-2 ${darkMode ? 'text-white' : ''}`}>
               <FileText className="w-5 h-5 text-blue-600" />
               {activeTab === 'all' ? 'جميع المستندات' : activeTab === 'forms' ? 'استمارات التسجيل' : 'الفواتير'}
             </CardTitle>
@@ -407,9 +398,13 @@ const MemberInvoices = () => {
                     <div 
                       key={idx} 
                       className={`p-4 rounded-lg border-2 ${
-                        isForm 
-                          ? 'bg-gradient-to-l from-orange-50 to-white border-orange-200' 
-                          : 'bg-gradient-to-l from-purple-50 to-white border-purple-200'
+                        darkMode
+                          ? isForm
+                            ? 'bg-orange-900/10 border-orange-700'
+                            : 'bg-purple-900/10 border-purple-700'
+                          : isForm 
+                            ? 'bg-gradient-to-l from-orange-50 to-white border-orange-200' 
+                            : 'bg-gradient-to-l from-purple-50 to-white border-purple-200'
                       }`}
                     >
                       <div className="flex items-start justify-between flex-wrap gap-3">
@@ -420,7 +415,7 @@ const MemberInvoices = () => {
                             ) : (
                               <Receipt className="w-5 h-5 text-purple-600" />
                             )}
-                            <span className="font-bold text-lg">{item.number}</span>
+                            <span className={`font-bold text-lg ${darkMode ? 'text-white' : ''}`}>{item.number}</span>
                             {getStatusBadge(itemStatus)}
                             {!isForm && getPaymentStatusBadge(item.status)}
                             <span className={`text-xs px-2 py-0.5 rounded ${isForm ? 'bg-orange-100 text-orange-700' : 'bg-purple-100 text-purple-700'}`}>
@@ -428,7 +423,7 @@ const MemberInvoices = () => {
                             </span>
                           </div>
                           
-                          <p className="text-sm text-gray-500 mt-1 flex items-center gap-1">
+                          <p className={`text-sm mt-1 flex items-center gap-1 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
                             <Calendar className="w-4 h-4" />
                             {new Date(item.created_at).toLocaleDateString('ar-SA')}
                           </p>
@@ -444,7 +439,11 @@ const MemberInvoices = () => {
                               const isActive = endDate && endDate >= today;
                               
                               return (
-                                <div key={i} className={`p-2 rounded-lg ${isActive ? 'bg-green-50 border border-green-200' : 'bg-red-50 border border-red-200'}`}>
+                                <div key={i} className={`p-2 rounded-lg ${
+                                  darkMode
+                                    ? isActive ? 'bg-green-900/20 border border-green-700' : 'bg-red-900/20 border border-red-700'
+                                    : isActive ? 'bg-green-50 border border-green-200' : 'bg-red-50 border border-red-200'
+                                }`}>
                                   <div className="flex items-center justify-between">
                                     <div className="flex items-center gap-2">
                                       {isActive ? (
@@ -452,7 +451,7 @@ const MemberInvoices = () => {
                                       ) : (
                                         <XCircle className="w-4 h-4 text-red-500" />
                                       )}
-                                      <span className="font-medium">{activity.activity_name}</span>
+                                      <span className={`font-medium ${darkMode ? 'text-gray-200' : ''}`}>{activity.activity_name}</span>
                                     </div>
                                     <span className={`text-xs ${isActive ? 'text-green-600' : 'text-red-600'}`}>
                                       {isActive ? 'ساري' : 'منتهي'}
@@ -479,7 +478,7 @@ const MemberInvoices = () => {
                               size="sm" 
                               variant="outline"
                               onClick={() => handleViewItem(item, item.type)}
-                              className="gap-1"
+                              className={`gap-1 ${darkMode ? 'border-gray-600 text-gray-200 hover:bg-gray-700' : ''}`}
                             >
                               <Eye className="w-4 h-4" />
                               عرض
@@ -511,7 +510,7 @@ const MemberInvoices = () => {
                 })}
               </div>
             ) : (
-              <div className="text-center py-8 text-gray-500">
+              <div className={`text-center py-8 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
                 <FileText className="w-12 h-12 mx-auto mb-3 opacity-30" />
                 <p>لا توجد مستندات</p>
               </div>
@@ -522,9 +521,9 @@ const MemberInvoices = () => {
 
       {/* View Dialog */}
       <Dialog open={viewDialogOpen} onOpenChange={setViewDialogOpen}>
-        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto" dir="rtl">
+        <DialogContent className={`max-w-lg max-h-[90vh] overflow-y-auto ${darkMode ? 'bg-gray-800 border-gray-700' : ''}`} dir="rtl">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
+            <DialogTitle className={`flex items-center gap-2 ${darkMode ? 'text-white' : ''}`}>
               {selectedItem?.type === 'form' ? (
                 <><ClipboardList className="w-5 h-5 text-orange-600" /> استمارة {selectedItem?.form_number}</>
               ) : (
@@ -536,16 +535,16 @@ const MemberInvoices = () => {
           {selectedItem && (
             <div className="space-y-4">
               <div className="flex justify-between text-sm">
-                <span className="text-gray-500">التاريخ:</span>
-                <span>{new Date(selectedItem.created_at).toLocaleDateString('ar-SA')}</span>
+                <span className={darkMode ? 'text-gray-400' : 'text-gray-500'}>التاريخ:</span>
+                <span className={darkMode ? 'text-gray-200' : ''}>{new Date(selectedItem.created_at).toLocaleDateString('ar-SA')}</span>
               </div>
               <div className="flex justify-between text-sm">
-                <span className="text-gray-500">حالة الاشتراك:</span>
+                <span className={darkMode ? 'text-gray-400' : 'text-gray-500'}>حالة الاشتراك:</span>
                 {getStatusBadge(getItemStatus(selectedItem))}
               </div>
               
-              <div className="border-t pt-4">
-                <p className="font-medium mb-3">الأنشطة وجدول التدريب:</p>
+              <div className="border-t pt-4 border-gray-700">
+                <p className={`font-medium mb-3 ${darkMode ? 'text-gray-200' : ''}`}>الأنشطة وجدول التدريب:</p>
                 {selectedItem.items?.map((item, idx) => {
                   let endDate = item.end_date || '';
                   let startDate = item.start_date || '';
@@ -559,23 +558,27 @@ const MemberInvoices = () => {
                   const isActive = endDate && endDate >= today;
                   
                   return (
-                    <div key={idx} className={`p-3 rounded-lg mb-2 ${isActive ? 'bg-green-50 border border-green-200' : 'bg-red-50 border border-red-200'}`}>
+                    <div key={idx} className={`p-3 rounded-lg mb-2 ${
+                      darkMode
+                        ? isActive ? 'bg-green-900/20 border border-green-700' : 'bg-red-900/20 border border-red-700'
+                        : isActive ? 'bg-green-50 border border-green-200' : 'bg-red-50 border border-red-200'
+                    }`}>
                       <div className="flex justify-between items-center">
                         <div className="flex items-center gap-2">
                           {isActive ? <CheckCircle className="w-4 h-4 text-green-600" /> : <XCircle className="w-4 h-4 text-red-500" />}
-                          <span className="font-bold">{item.activity_name || item.description}</span>
+                          <span className={`font-bold ${darkMode ? 'text-gray-200' : ''}`}>{item.activity_name || item.description}</span>
                         </div>
-                        <span className="font-bold">{item.fee || item.price} ر.س</span>
+                        <span className={`font-bold ${darkMode ? 'text-gray-200' : ''}`}>{item.fee || item.price} ر.س</span>
                       </div>
                       {item.schedule && (
-                        <div className="mt-2 p-2 bg-orange-50 rounded border border-orange-200">
-                          <p className="text-orange-700 font-bold flex items-center gap-1">
+                        <div className={`mt-2 p-2 rounded border ${darkMode ? 'bg-orange-900/20 border-orange-700' : 'bg-orange-50 border-orange-200'}`}>
+                          <p className="text-orange-600 font-bold flex items-center gap-1">
                             <Clock className="w-4 h-4" />
                             {item.schedule}
                           </p>
                         </div>
                       )}
-                      <p className="text-xs text-gray-500 mt-2">
+                      <p className={`text-xs mt-2 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
                         من: {startDate || '-'} | إلى: {endDate || '-'}
                       </p>
                       <p className={`text-xs mt-1 font-bold ${isActive ? 'text-green-600' : 'text-red-600'}`}>
@@ -586,8 +589,8 @@ const MemberInvoices = () => {
                 })}
               </div>
               
-              <div className="bg-gray-50 p-4 rounded-lg space-y-2">
-                <div className="flex justify-between">
+              <div className={`p-4 rounded-lg space-y-2 ${darkMode ? 'bg-gray-700' : 'bg-gray-50'}`}>
+                <div className={`flex justify-between ${darkMode ? 'text-gray-200' : ''}`}>
                   <span>المجموع الفرعي:</span>
                   <span>{selectedItem.subtotal} ر.س</span>
                 </div>
@@ -597,22 +600,22 @@ const MemberInvoices = () => {
                     <span>-{selectedItem.discount} ر.س</span>
                   </div>
                 )}
-                <div className="flex justify-between">
+                <div className={`flex justify-between ${darkMode ? 'text-gray-200' : ''}`}>
                   <span>الضريبة (15%):</span>
                   <span>{selectedItem.vat_amount} ر.س</span>
                 </div>
-                <div className={`flex justify-between font-bold text-lg pt-2 border-t ${selectedItem.type === 'form' ? 'text-orange-600' : 'text-purple-600'}`}>
+                <div className={`flex justify-between font-bold text-lg pt-2 border-t ${darkMode ? 'border-gray-600' : ''} ${selectedItem.type === 'form' ? 'text-orange-600' : 'text-purple-600'}`}>
                   <span>الإجمالي:</span>
                   <span>{selectedItem.total} ر.س</span>
                 </div>
               </div>
               
               {/* Terms and Conditions */}
-              <div className="bg-amber-50 border-2 border-amber-400 rounded-lg p-4">
-                <p className="font-bold text-amber-800 mb-2 flex items-center gap-1">
+              <div className={`border-2 rounded-lg p-4 ${darkMode ? 'bg-amber-900/20 border-amber-700' : 'bg-amber-50 border-amber-400'}`}>
+                <p className={`font-bold mb-2 flex items-center gap-1 ${darkMode ? 'text-amber-400' : 'text-amber-800'}`}>
                   <span>⚠️</span> شروط وأحكام:
                 </p>
-                <ul className="text-sm text-amber-700 space-y-1 list-disc list-inside">
+                <ul className={`text-sm space-y-1 list-disc list-inside ${darkMode ? 'text-amber-300' : 'text-amber-700'}`}>
                   <li>عرض عدد الحصص لا يعني أن الاشتراك ما زال فعّالًا بعد تاريخ الانتهاء.</li>
                   <li><strong>يُعتد فقط بتاريخ بداية ونهاية الاشتراك</strong> الموضّح في هذه الاستمارة/الفاتورة.</li>
                   <li>لا يحق للمشترك المطالبة بالحصص بعد انتهاء فترة الاشتراك.</li>

@@ -1,10 +1,11 @@
 import React from 'react';
 import { Card, CardContent } from '../../components/ui/card';
 import { Phone, MessageCircle } from 'lucide-react';
-import MemberLayout, { getLanguage } from './MemberLayout';
+import MemberLayout, { getLanguage, getDarkMode } from './MemberLayout';
 
 const MemberSupport = () => {
   const language = getLanguage();
+  const darkMode = getDarkMode();
   const t = (ar, en) => language === 'ar' ? ar : en;
   const phoneNumber = '0566238384';
   const whatsappNumber = '966566238384';
@@ -16,15 +17,15 @@ const MemberSupport = () => {
           <div className="w-20 h-20 bg-gradient-to-br from-blue-500 to-cyan-500 rounded-full flex items-center justify-center mx-auto mb-4 shadow-lg">
             <Phone className="w-10 h-10 text-white" />
           </div>
-          <h1 className="text-2xl font-bold text-gray-800">
+          <h1 className={`text-2xl font-bold ${darkMode ? 'text-white' : 'text-gray-800'}`}>
             {t('خدمة العملاء', 'Customer Support')}
           </h1>
-          <p className="text-gray-500 mt-2 text-sm">
+          <p className={`mt-2 text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
             {t('تواصل معنا في أي وقت', 'Contact us anytime')}
           </p>
         </div>
 
-        <Card className="border-2 border-green-200 shadow-lg overflow-hidden">
+        <Card className={`border-2 shadow-lg overflow-hidden ${darkMode ? 'bg-gray-800 border-green-700' : 'border-green-200'}`}>
           <div className="bg-gradient-to-r from-green-500 to-emerald-500 px-4 py-3">
             <h2 className="text-white font-bold flex items-center gap-2">
               <MessageCircle className="w-5 h-5" />
@@ -32,7 +33,7 @@ const MemberSupport = () => {
             </h2>
           </div>
           <CardContent className="p-6 text-center">
-            <p className="text-3xl font-bold text-gray-800 tracking-wider mb-4" dir="ltr">
+            <p className={`text-3xl font-bold tracking-wider mb-4 ${darkMode ? 'text-white' : 'text-gray-800'}`} dir="ltr">
               {phoneNumber}
             </p>
             <a
@@ -47,7 +48,7 @@ const MemberSupport = () => {
           </CardContent>
         </Card>
 
-        <Card className="border-2 border-blue-200 shadow-lg overflow-hidden">
+        <Card className={`border-2 shadow-lg overflow-hidden ${darkMode ? 'bg-gray-800 border-blue-700' : 'border-blue-200'}`}>
           <div className="bg-gradient-to-r from-blue-500 to-indigo-500 px-4 py-3">
             <h2 className="text-white font-bold flex items-center gap-2">
               <Phone className="w-5 h-5" />
@@ -55,7 +56,7 @@ const MemberSupport = () => {
             </h2>
           </div>
           <CardContent className="p-6 text-center">
-            <p className="text-3xl font-bold text-gray-800 tracking-wider mb-4" dir="ltr">
+            <p className={`text-3xl font-bold tracking-wider mb-4 ${darkMode ? 'text-white' : 'text-gray-800'}`} dir="ltr">
               {phoneNumber}
             </p>
             <a
@@ -69,7 +70,7 @@ const MemberSupport = () => {
         </Card>
 
         <div className="text-center pb-6">
-          <p className="text-gray-400 text-xs">
+          <p className={`text-xs ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
             {t('شركة اداء الابطال العالمية للرياضة', 'Champions Academy')}
           </p>
         </div>
