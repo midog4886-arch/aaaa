@@ -167,13 +167,15 @@ async def get_member_subscriptions(member: dict = Depends(get_current_member)):
             {"_id": 0, "schedule": 1, "coach_id": 1}
         )
         
-        # Get coach name if available
+        # Get coach info if available
         coach_name = ""
+        coach_photo = ""
         coach_id = activity.get("coach_id") or (activity_data.get("coach_id") if activity_data else "")
         if coach_id:
-            coach = await db.coaches.find_one({"id": coach_id}, {"_id": 0, "name_ar": 1, "name": 1})
+            coach = await db.coaches.find_one({"id": coach_id}, {"_id": 0, "name_ar": 1, "name": 1, "photo": 1})
             if coach:
                 coach_name = coach.get("name_ar") or coach.get("name")
+                coach_photo = coach.get("photo", "")
         
         subscription = {
             "activity_id": activity.get("activity_id"),
@@ -183,6 +185,8 @@ async def get_member_subscriptions(member: dict = Depends(get_current_member)):
             "schedule": activity.get("schedule") or (activity_data.get("schedule") if activity_data else ""),
             "fee": activity.get("fee", 0),
             "coach_name": coach_name,
+            "coach_photo": coach_photo,
+            "coach_id": coach_id,
             "status": activity.get("status", "")
         }
         
@@ -1018,6 +1022,34 @@ async def get_member_full_schedule(member: dict = Depends(get_current_member)):
         {"_id": 0}
     ).to_list(50)
     
+    # Cache for coach lookups to avoid duplicate DB queries
+    coach_cache = {}
+
+    async def get_coach_for_activity(activity_id: str):
+        """Look up coach info for an activity, using cache."""
+        if not activity_id:
+            return "", "", ""
+        if activity_id in coach_cache:
+            return coach_cache[activity_id]
+        activity_data = await db.activities.find_one(
+            {"id": activity_id}, {"_id": 0, "coach_id": 1}
+        )
+        coach_id = activity_data.get("coach_id") if activity_data else ""
+        if coach_id:
+            coach = await db.coaches.find_one(
+                {"id": coach_id}, {"_id": 0, "name_ar": 1, "name": 1, "photo": 1}
+            )
+            if coach:
+                result = (
+                    coach_id,
+                    coach.get("name_ar") or coach.get("name", ""),
+                    coach.get("photo", "")
+                )
+                coach_cache[activity_id] = result
+                return result
+        coach_cache[activity_id] = ("", "", "")
+        return ("", "", "")
+
     for form in forms:
         for item in form.get("items", []):
             if item.get("activity_id") and item.get("schedule"):
@@ -1033,15 +1065,20 @@ async def get_member_full_schedule(member: dict = Depends(get_current_member)):
                             end_date = parts[1].strip()
                 
                 status = "active" if end_date and end_date >= today else "expired"
+                coach_id, coach_name, coach_photo = await get_coach_for_activity(item.get("activity_id"))
                 
                 schedules.append({
                     "source": "registration_form",
                     "form_number": form.get("form_number"),
+                    "activity_id": item.get("activity_id"),
                     "activity_name": item.get("activity_name"),
                     "schedule": item.get("schedule"),
                     "start_date": start_date,
                     "end_date": end_date,
-                    "status": status
+                    "status": status,
+                    "coach_id": coach_id,
+                    "coach_name": coach_name,
+                    "coach_photo": coach_photo
                 })
     
     # Get from invoices (for items with schedule)
@@ -1074,14 +1111,19 @@ async def get_member_full_schedule(member: dict = Depends(get_current_member)):
                 )
                 
                 if not already_exists:
+                    coach_id, coach_name, coach_photo = await get_coach_for_activity(item.get("activity_id"))
                     schedules.append({
                         "source": "invoice",
                         "invoice_number": inv.get("invoice_number"),
+                        "activity_id": item.get("activity_id"),
                         "activity_name": item.get("activity_name"),
                         "schedule": item.get("schedule"),
                         "start_date": start_date,
                         "end_date": end_date,
-                        "status": status
+                        "status": status,
+                        "coach_id": coach_id,
+                        "coach_name": coach_name,
+                        "coach_photo": coach_photo
                     })
     
     # Sort by status (active first) then by end_date

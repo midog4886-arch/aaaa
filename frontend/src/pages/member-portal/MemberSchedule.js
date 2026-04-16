@@ -1,7 +1,34 @@
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
-import { Calendar, Clock, MapPin, Loader2, AlertCircle, CheckCircle, XCircle, FileText } from 'lucide-react';
+import { Calendar, Clock, MapPin, Loader2, CheckCircle, XCircle, FileText } from 'lucide-react';
 import MemberLayout, { memberAPI, getDarkMode } from './MemberLayout';
+
+const CoachAvatar = ({ photo, name, darkMode, size = 'md' }) => {
+  const [imgError, setImgError] = React.useState(false);
+  const initials = name
+    ? name.trim().split(/\s+/).slice(0, 2).map(w => w[0]).join('')
+    : '?';
+  const sizeClass = size === 'sm' ? 'w-8 h-8 text-xs' : 'w-10 h-10 text-sm';
+
+  if (photo && !imgError) {
+    return (
+      <img
+        src={photo}
+        alt={name || 'المدرب'}
+        className={`${sizeClass} rounded-full object-cover border-2 border-green-400 flex-shrink-0`}
+        onError={() => setImgError(true)}
+      />
+    );
+  }
+
+  return (
+    <div className={`${sizeClass} rounded-full flex items-center justify-center flex-shrink-0 font-bold border-2 ${
+      darkMode ? 'bg-green-800 border-green-500 text-green-200' : 'bg-green-100 border-green-400 text-green-700'
+    }`}>
+      {initials}
+    </div>
+  );
+};
 
 const MemberSchedule = () => {
   const [loading, setLoading] = useState(true);
@@ -74,9 +101,22 @@ const MemberSchedule = () => {
                   <div key={idx} className={`p-4 rounded-lg border-2 ${darkMode ? 'bg-green-900/20 border-green-700' : 'bg-green-50 border-green-200'}`}>
                     <div className="flex items-start justify-between">
                       <div className="flex-1">
-                        <div className="flex items-center gap-2">
-                          <h3 className={`text-lg font-bold ${darkMode ? 'text-white' : 'text-gray-800'}`}>{item.activity_name}</h3>
-                          <span className="px-2 py-0.5 bg-green-600 text-white text-xs rounded-full">ساري</span>
+                        {/* Activity name with coach avatar */}
+                        <div className="flex items-center gap-3">
+                          {item.coach_name && (
+                            <CoachAvatar photo={item.coach_photo} name={item.coach_name} darkMode={darkMode} />
+                          )}
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <h3 className={`text-lg font-bold ${darkMode ? 'text-white' : 'text-gray-800'}`}>{item.activity_name}</h3>
+                              <span className="px-2 py-0.5 bg-green-600 text-white text-xs rounded-full">ساري</span>
+                            </div>
+                            {item.coach_name && (
+                              <p className={`text-sm mt-0.5 ${darkMode ? 'text-green-400' : 'text-green-700'}`}>
+                                المدرب: {item.coach_name}
+                              </p>
+                            )}
+                          </div>
                         </div>
                         
                         {item.schedule && (
@@ -133,11 +173,19 @@ const MemberSchedule = () => {
                 {expiredSchedules.slice(0, 5).map((item, idx) => (
                   <div key={idx} className={`p-3 rounded-lg border opacity-70 ${darkMode ? 'bg-gray-700 border-gray-600' : 'bg-gray-50 border-gray-200'}`}>
                     <div className="flex items-center justify-between">
-                      <div>
-                        <p className={`font-medium ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>{item.activity_name}</p>
-                        {item.schedule && (
-                          <p className={`text-sm mt-1 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>{item.schedule}</p>
+                      <div className="flex items-center gap-2 flex-1 min-w-0">
+                        {item.coach_name && (
+                          <CoachAvatar photo={item.coach_photo} name={item.coach_name} darkMode={darkMode} size="sm" />
                         )}
+                        <div>
+                          <p className={`font-medium ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>{item.activity_name}</p>
+                          {item.schedule && (
+                            <p className={`text-sm mt-1 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>{item.schedule}</p>
+                          )}
+                          {item.coach_name && (
+                            <p className={`text-xs mt-0.5 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>المدرب: {item.coach_name}</p>
+                          )}
+                        </div>
                       </div>
                       <div className={`text-left text-sm ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
                         <p>انتهى في</p>
