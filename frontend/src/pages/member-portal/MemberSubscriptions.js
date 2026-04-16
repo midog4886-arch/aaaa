@@ -39,9 +39,9 @@ const MemberSubscriptions = () => {
         <h1 className={`text-xl sm:text-2xl font-bold ${darkMode ? 'text-gray-100' : 'text-gray-800'}`}>اشتراكاتي</h1>
 
         {/* Active Subscriptions */}
-        <Card>
+        <Card className={darkMode ? 'bg-gray-800 border-gray-700' : ''}>
           <CardHeader>
-            <CardTitle className="text-lg flex items-center gap-2 text-green-700">
+            <CardTitle className={`text-lg flex items-center gap-2 ${darkMode ? 'text-green-400' : 'text-green-700'}`}>
               <CheckCircle className="w-5 h-5" />
               الاشتراكات السارية ({subscriptions.total_active})
             </CardTitle>
@@ -50,11 +50,11 @@ const MemberSubscriptions = () => {
             {subscriptions.active.length > 0 ? (
               <div className="space-y-4">
                 {subscriptions.active.map((sub, idx) => (
-                  <div key={idx} className="p-4 bg-green-50 rounded-lg border-2 border-green-200">
+                  <div key={idx} className={`p-4 rounded-lg border-2 ${darkMode ? 'bg-green-900/20 border-green-700' : 'bg-green-50 border-green-200'}`}>
                     <div className="flex items-start justify-between">
                       <div>
-                        <h3 className="text-lg font-bold text-gray-800">{sub.activity_name}</h3>
-                        <div className="mt-2 space-y-1 text-sm text-gray-600">
+                        <h3 className={`text-lg font-bold ${darkMode ? 'text-gray-100' : 'text-gray-800'}`}>{sub.activity_name}</h3>
+                        <div className={`mt-2 space-y-1 text-sm ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
                           <p className="flex items-center gap-2">
                             <Calendar className="w-4 h-4" />
                             من: {sub.start_date || '-'}
@@ -64,10 +64,10 @@ const MemberSubscriptions = () => {
                             إلى: {sub.end_date || '-'}
                           </p>
                           {sub.coach_name && (
-                            <p className="text-gray-500 mt-1">👨‍🏫 المدرب: {sub.coach_name}</p>
+                            <p className={`mt-1 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>👨‍🏫 المدرب: {sub.coach_name}</p>
                           )}
                           {sub.schedule && (
-                            <p className="text-gray-500 mt-1">📅 {sub.schedule}</p>
+                            <p className={`mt-1 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>📅 {sub.schedule}</p>
                           )}
                         </div>
                       </div>
@@ -79,7 +79,7 @@ const MemberSubscriptions = () => {
                 ))}
               </div>
             ) : (
-              <div className="text-center py-8 text-gray-500">
+              <div className={`text-center py-8 ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>
                 <CheckCircle className="w-12 h-12 mx-auto mb-3 opacity-30" />
                 <p>لا توجد اشتراكات سارية</p>
               </div>
@@ -88,9 +88,9 @@ const MemberSubscriptions = () => {
         </Card>
 
         {/* Expired Subscriptions */}
-        <Card>
+        <Card className={darkMode ? 'bg-gray-800 border-gray-700' : ''}>
           <CardHeader>
-            <CardTitle className="text-lg flex items-center gap-2 text-red-700">
+            <CardTitle className={`text-lg flex items-center gap-2 ${darkMode ? 'text-red-400' : 'text-red-700'}`}>
               <XCircle className="w-5 h-5" />
               الاشتراكات المنتهية ({subscriptions.total_expired})
             </CardTitle>
@@ -99,11 +99,11 @@ const MemberSubscriptions = () => {
             {subscriptions.expired.length > 0 ? (
               <div className="space-y-4">
                 {subscriptions.expired.map((sub, idx) => (
-                  <div key={idx} className="p-4 bg-red-50 rounded-lg border-2 border-red-200 opacity-75">
+                  <div key={idx} className={`p-4 rounded-lg border-2 opacity-75 ${darkMode ? 'bg-red-900/20 border-red-700' : 'bg-red-50 border-red-200'}`}>
                     <div className="flex items-start justify-between">
                       <div>
-                        <h3 className="text-lg font-bold text-gray-800">{sub.activity_name}</h3>
-                        <div className="mt-2 space-y-1 text-sm text-gray-600">
+                        <h3 className={`text-lg font-bold ${darkMode ? 'text-gray-100' : 'text-gray-800'}`}>{sub.activity_name}</h3>
+                        <div className={`mt-2 space-y-1 text-sm ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
                           <p className="flex items-center gap-2">
                             <Calendar className="w-4 h-4" />
                             من: {sub.start_date || '-'}
@@ -113,7 +113,7 @@ const MemberSubscriptions = () => {
                             إلى: {sub.end_date || '-'}
                           </p>
                           {sub.coach_name && (
-                            <p className="text-gray-500 mt-1">👨‍🏫 المدرب: {sub.coach_name}</p>
+                            <p className={`mt-1 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>👨‍🏫 المدرب: {sub.coach_name}</p>
                           )}
                         </div>
                       </div>
@@ -121,8 +121,8 @@ const MemberSubscriptions = () => {
                         منتهي ✗
                       </span>
                     </div>
-                    <div className="mt-3 pt-3 border-t border-red-200">
-                      <p className="text-red-700 text-center font-medium">
+                    <div className={`mt-3 pt-3 border-t ${darkMode ? 'border-red-700' : 'border-red-200'}`}>
+                      <p className={`text-center font-medium ${darkMode ? 'text-red-400' : 'text-red-700'}`}>
                         ⚠️ يرجى التواصل للتجديد
                       </p>
                     </div>
@@ -130,7 +130,7 @@ const MemberSubscriptions = () => {
                 ))}
               </div>
             ) : (
-              <div className="text-center py-8 text-gray-500">
+              <div className={`text-center py-8 ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>
                 <XCircle className="w-12 h-12 mx-auto mb-3 opacity-30" />
                 <p>لا توجد اشتراكات منتهية</p>
               </div>
