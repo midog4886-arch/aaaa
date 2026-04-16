@@ -747,6 +747,9 @@ const CoachAttendancePage = () => {
                             </div>
                             <div>
                               <p className="font-bold text-gray-800">{coach.name_ar || coach.name}</p>
+                              {coach.specialization && (
+                                <p className="text-xs text-orange-500 font-medium">{coach.specialization}</p>
+                              )}
                               <p className="text-xs text-gray-400">{coach.phone}</p>
                               {coach.employee_id && (
                                 <p className="text-xs text-orange-500 font-semibold">#{coach.employee_id}</p>
