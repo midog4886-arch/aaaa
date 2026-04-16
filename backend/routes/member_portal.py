@@ -884,7 +884,7 @@ async def get_coaches_to_rate(member: dict = Depends(get_current_member)):
                     "id": coach["id"],
                     "name": coach.get("name"),
                     "name_ar": coach.get("name_ar"),
-                    "specialization": coach.get("specialization"),
+                    "specialization": coach.get("specialization") or ", ".join(str(a) for a in (coach.get("activities") or []) if a),
                     "photo": coach.get("photo"),
                     "activities": [{"id": a["id"], "name": a.get("name_ar") or a.get("name")} for a in coach_activities],
                     "my_rating": existing_rating
@@ -916,7 +916,7 @@ async def get_all_coaches_for_rating(member: dict = Depends(get_current_member))
             "id": coach["id"],
             "name": coach.get("name"),
             "name_ar": coach.get("name_ar"),
-            "specialization": coach.get("specialization"),
+            "specialization": coach.get("specialization") or ", ".join(str(a) for a in (coach.get("activities") or []) if a),
             "photo": coach.get("photo"),
             "activities": [{"id": a["id"], "name": a.get("name_ar") or a.get("name")} for a in coach_activities],
             "my_rating": existing_rating
@@ -1060,7 +1060,7 @@ async def get_coach_profile(coach_id: str, member: dict = Depends(get_current_me
         "id": coach["id"],
         "name": coach.get("name_ar") or coach.get("name"),
         "photo": coach.get("photo"),
-        "specialization": coach.get("specialization") or "",
+        "specialization": coach.get("specialization") or ", ".join(str(a) for a in (coach.get("activities") or []) if a),
         "notes": coach.get("notes") or "",
         "activities": all_activities,
         "activities_with_ids": activities_with_ids,

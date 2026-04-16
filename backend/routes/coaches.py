@@ -153,3 +153,38 @@ async def delete_coach(coach_id: str, current_user: dict = Depends(get_current_u
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Coach not found")
     return {"message": "Coach deleted"}
+
+
+@router.post("/migrate-activities-to-specialization")
+async def migrate_activities_to_specialization(current_user: dict = Depends(get_current_user)):
+    """
+    One-time migration: for any coach that has a non-empty `activities` list
+    but an empty/missing `specialization`, copy the activities joined as a
+    comma-separated string into the `specialization` field.
+    Safe to run multiple times — only updates coaches that still need it.
+    """
+    migrated = 0
+    migrated_ids = []
+
+    cursor = db.coaches.find(
+        {},
+        {"_id": 0, "id": 1, "activities": 1, "specialization": 1}
+    )
+    async for coach in cursor:
+        activities = coach.get("activities") or []
+        specialization = coach.get("specialization") or ""
+        if activities and not specialization.strip():
+            joined = ", ".join(str(a) for a in activities if a)
+            if joined:
+                await db.coaches.update_one(
+                    {"id": coach["id"]},
+                    {"$set": {"specialization": joined}}
+                )
+                migrated += 1
+                migrated_ids.append(coach["id"])
+
+    return {
+        "migrated": migrated,
+        "migrated_ids": migrated_ids,
+        "message": f"تم ترحيل {migrated} مدرب — تم نسخ قائمة الأنشطة إلى حقل التخصص"
+    }
