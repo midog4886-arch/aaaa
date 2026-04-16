@@ -298,6 +298,32 @@ async def get_qr_card_data(member: dict = Depends(get_current_member)):
         {"_id": 0}
     ).to_list(100)
     
+    # Cache coach lookups to avoid redundant DB queries
+    coach_cache = {}
+
+    async def get_coach_info(activity_id: str):
+        if not activity_id:
+            return "", ""
+        if activity_id in coach_cache:
+            return coach_cache[activity_id]
+        activity_data = await db.activities.find_one(
+            {"id": activity_id}, {"_id": 0, "coach_id": 1}
+        )
+        coach_id = activity_data.get("coach_id") if activity_data else ""
+        if coach_id:
+            coach = await db.coaches.find_one(
+                {"id": coach_id}, {"_id": 0, "name_ar": 1, "name": 1, "photo": 1}
+            )
+            if coach:
+                result = (
+                    coach.get("name_ar") or coach.get("name", ""),
+                    coach.get("photo", "")
+                )
+                coach_cache[activity_id] = result
+                return result
+        coach_cache[activity_id] = ("", "")
+        return ("", "")
+
     active_activities = []
     for inv in invoices:
         for item in inv.get("items", []):
@@ -313,11 +339,14 @@ async def get_qr_card_data(member: dict = Depends(get_current_member)):
                             end_date = parts[1].strip()
                 
                 if end_date and end_date >= today:
+                    coach_name, coach_photo = await get_coach_info(item.get("activity_id"))
                     active_activities.append({
                         "activity_name": item.get("activity_name"),
                         "start_date": start_date,
                         "end_date": end_date,
-                        "schedule": item.get("schedule", "")
+                        "schedule": item.get("schedule", ""),
+                        "coach_name": coach_name,
+                        "coach_photo": coach_photo
                     })
     
     return {

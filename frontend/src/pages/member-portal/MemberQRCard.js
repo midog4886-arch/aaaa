@@ -208,7 +208,19 @@ const SubscriptionCard = ({ act, darkMode, language, today }) => {
             <div className="flex-1 min-w-0">
               <p className={`font-bold text-sm truncate ${darkMode ? 'text-white' : 'text-gray-900'}`}>{act.activity_name}</p>
               {act.coach_name && (
-                <p className={`text-xs mt-0.5 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>🏋️ {act.coach_name}</p>
+                <div className="flex items-center gap-1.5 mt-1">
+                  {act.coach_photo ? (
+                    <img
+                      src={act.coach_photo}
+                      alt={act.coach_name}
+                      className="w-5 h-5 rounded-full object-cover flex-shrink-0 border border-gray-200"
+                      onError={e => { e.target.style.display = 'none'; }}
+                    />
+                  ) : (
+                    <span className="text-xs">🏋️</span>
+                  )}
+                  <p className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{act.coach_name}</p>
+                </div>
               )}
             </div>
           </div>
