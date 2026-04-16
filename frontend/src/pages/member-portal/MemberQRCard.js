@@ -322,6 +322,38 @@ const MemberCard = () => {
       ctx.fillStyle = '#F97316';
       ctx.font = 'bold 24px Tajawal, sans-serif';
       ctx.fillText(`#${cardData?.member_code || ''}`, 200, 340);
+      const activities = cardData?.active_activities || [];
+      if (activities.length > 0) {
+        ctx.strokeStyle = '#e5e7eb';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(40, 358);
+        ctx.lineTo(360, 358);
+        ctx.stroke();
+        const availableHeight = 440 - 375;
+        const lineHeight = Math.max(13, Math.floor(availableHeight / activities.length));
+        const fontSize = Math.max(9, lineHeight - 4);
+        const maxTextWidth = 340;
+        const truncate = (text) => {
+          ctx.font = `bold ${fontSize}px Tajawal, sans-serif`;
+          if (ctx.measureText(text).width <= maxTextWidth) return text;
+          let truncated = text;
+          while (truncated.length > 0 && ctx.measureText(truncated + '…').width > maxTextWidth) {
+            truncated = truncated.slice(0, -1);
+          }
+          return truncated + '…';
+        };
+        activities.forEach((act, i) => {
+          const y = 375 + i * lineHeight;
+          if (y > 443) return;
+          ctx.fillStyle = '#374151';
+          ctx.font = `bold ${fontSize}px Tajawal, sans-serif`;
+          ctx.textAlign = 'center';
+          const actText = act.activity_name || '';
+          const coachText = act.coach_name ? ` · ${act.coach_name}` : '';
+          ctx.fillText(truncate(actText + coachText), 200, y);
+        });
+      }
       const link = document.createElement('a');
       link.download = `membership-card-${cardData?.member_code}.png`;
       link.href = canvas.toDataURL('image/png');
