@@ -30,21 +30,53 @@ const daysDiff = (dateStr1, dateStr2) => {
   return Math.round((d2 - d1) / 86400000);
 };
 
-const remainingDaysColor = (days) => {
-  if (days > 14) return { text: 'text-green-600', bg: 'bg-green-500', badge: 'bg-green-100 text-green-700 border-green-300' };
-  if (days > 7)  return { text: 'text-yellow-600', bg: 'bg-yellow-500', badge: 'bg-yellow-100 text-yellow-700 border-yellow-300' };
-  return            { text: 'text-red-600',   bg: 'bg-red-500',   badge: 'bg-red-100 text-red-700 border-red-300' };
+const remainingDaysColor = (days, darkMode = false) => {
+  if (days > 14) return {
+    text:  darkMode ? 'text-green-400'  : 'text-green-600',
+    bg:    'bg-green-500',
+    badge: darkMode ? 'bg-green-900/40 text-green-300 border-green-700' : 'bg-green-100 text-green-700 border-green-300',
+  };
+  if (days > 7) return {
+    text:  darkMode ? 'text-yellow-400' : 'text-yellow-600',
+    bg:    'bg-yellow-500',
+    badge: darkMode ? 'bg-yellow-900/40 text-yellow-200 border-yellow-700' : 'bg-yellow-100 text-yellow-700 border-yellow-300',
+  };
+  return {
+    text:  darkMode ? 'text-red-400'    : 'text-red-600',
+    bg:    'bg-red-500',
+    badge: darkMode ? 'bg-red-900/40 text-red-300 border-red-700' : 'bg-red-100 text-red-700 border-red-300',
+  };
 };
 
-const loyaltyLevelStyle = (level) => {
+const loyaltyLevelStyle = (level, darkMode = false) => {
   const key = (level || '').toLowerCase();
   const map = {
-    'bronze':  { bg: 'from-amber-700 to-amber-900',  icon: '🥉', textColor: 'text-amber-100' },
-    'silver':  { bg: 'from-slate-400 to-slate-600',   icon: '🥈', textColor: 'text-slate-100' },
-    'gold':    { bg: 'from-yellow-500 to-yellow-700', icon: '🥇', textColor: 'text-yellow-100' },
-    'diamond': { bg: 'from-blue-400 to-indigo-600',   icon: '💎', textColor: 'text-blue-100' },
+    'bronze':  {
+      bg: darkMode ? 'from-amber-800 to-amber-950'  : 'from-amber-700 to-amber-900',
+      icon: '🥉',
+      textColor: 'text-amber-100',
+    },
+    'silver':  {
+      bg: darkMode ? 'from-slate-600 to-slate-800'   : 'from-slate-400 to-slate-600',
+      icon: '🥈',
+      textColor: 'text-slate-100',
+    },
+    'gold':    {
+      bg: darkMode ? 'from-yellow-600 to-yellow-800' : 'from-yellow-500 to-yellow-700',
+      icon: '🥇',
+      textColor: 'text-yellow-100',
+    },
+    'diamond': {
+      bg: darkMode ? 'from-blue-600 to-indigo-800'   : 'from-blue-400 to-indigo-600',
+      icon: '💎',
+      textColor: 'text-blue-100',
+    },
   };
-  return map[key] || { bg: 'from-amber-700 to-amber-900', icon: '🥉', textColor: 'text-amber-100' };
+  return map[key] || {
+    bg: darkMode ? 'from-amber-800 to-amber-950' : 'from-amber-700 to-amber-900',
+    icon: '🥉',
+    textColor: 'text-amber-100',
+  };
 };
 
 const formatDate = (dateStr) => {
@@ -324,8 +356,8 @@ const MemberDashboard = () => {
                 <Card className={`h-full cursor-pointer hover:shadow-md transition-shadow ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white'}`}>
                   <CardContent className="p-4">
                     <div className="flex items-center gap-2 mb-3">
-                      <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
-                        <Activity className="w-4 h-4 text-blue-600" />
+                      <div className={`w-8 h-8 rounded-full flex items-center justify-center ${darkMode ? 'bg-blue-900/40' : 'bg-blue-100'}`}>
+                        <Activity className={`w-4 h-4 ${darkMode ? 'text-blue-400' : 'text-blue-600'}`} />
                       </div>
                       <span className={`text-xs font-medium ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
                         {language === 'ar' ? 'الحضور' : 'Attendance'}
@@ -351,7 +383,7 @@ const MemberDashboard = () => {
             <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}>
               <Link to="/loyalty-points">
                 {loyaltyData ? (() => {
-                  const style = loyaltyLevelStyle(loyaltyData.level);
+                  const style = loyaltyLevelStyle(loyaltyData.level, darkMode);
                   const levelLabel = language === 'ar'
                     ? (loyaltyData.level_ar || loyaltyData.level_en || loyaltyData.level || 'برونزي')
                     : (loyaltyData.level_en || loyaltyData.level_ar || loyaltyData.level || 'Bronze');
@@ -384,8 +416,8 @@ const MemberDashboard = () => {
                   <Card className={`h-full cursor-pointer hover:shadow-md transition-shadow ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-amber-50 border-amber-200'}`}>
                     <CardContent className="p-4">
                       <div className="flex items-center gap-2 mb-3">
-                        <div className="w-8 h-8 bg-amber-100 rounded-full flex items-center justify-center">
-                          <Star className="w-4 h-4 text-amber-600" />
+                        <div className={`w-8 h-8 rounded-full flex items-center justify-center ${darkMode ? 'bg-amber-900/40' : 'bg-amber-100'}`}>
+                          <Star className={`w-4 h-4 ${darkMode ? 'text-amber-400' : 'text-amber-600'}`} />
                         </div>
                         <span className={`text-xs font-medium ${darkMode ? 'text-gray-400' : 'text-amber-700'}`}>
                           {language === 'ar' ? 'نقاط الولاء' : 'Loyalty Points'}
@@ -407,8 +439,8 @@ const MemberDashboard = () => {
                 <Card className={`h-full cursor-pointer hover:shadow-md transition-shadow ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-green-50 border-green-200'}`}>
                   <CardContent className="p-4">
                     <div className="flex items-center gap-2 mb-3">
-                      <div className="w-8 h-8 bg-green-100 rounded-full flex items-center justify-center">
-                        <CheckCircle className="w-4 h-4 text-green-600" />
+                      <div className={`w-8 h-8 rounded-full flex items-center justify-center ${darkMode ? 'bg-green-900/40' : 'bg-green-100'}`}>
+                        <CheckCircle className={`w-4 h-4 ${darkMode ? 'text-green-400' : 'text-green-600'}`} />
                       </div>
                       <span className={`text-xs font-medium ${darkMode ? 'text-gray-400' : 'text-green-700'}`}>
                         {language === 'ar' ? 'اشتراكات سارية' : 'Active Subs'}
@@ -431,8 +463,12 @@ const MemberDashboard = () => {
                 <Card className={`h-full cursor-pointer hover:shadow-md transition-shadow ${darkMode ? 'bg-gray-800 border-gray-700' : notifications.unread_count > 0 ? 'bg-orange-50 border-orange-200' : 'bg-white'}`}>
                   <CardContent className="p-4">
                     <div className="flex items-center gap-2 mb-3">
-                      <div className={`w-8 h-8 rounded-full flex items-center justify-center ${notifications.unread_count > 0 ? 'bg-orange-100' : 'bg-gray-100'}`}>
-                        <Bell className={`w-4 h-4 ${notifications.unread_count > 0 ? 'text-orange-600' : 'text-gray-500'}`} />
+                      <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
+                        notifications.unread_count > 0
+                          ? (darkMode ? 'bg-orange-900/40' : 'bg-orange-100')
+                          : (darkMode ? 'bg-gray-700' : 'bg-gray-100')
+                      }`}>
+                        <Bell className={`w-4 h-4 ${notifications.unread_count > 0 ? (darkMode ? 'text-orange-400' : 'text-orange-600') : (darkMode ? 'text-gray-400' : 'text-gray-500')}`} />
                       </div>
                       <span className={`text-xs font-medium ${darkMode ? 'text-gray-400' : notifications.unread_count > 0 ? 'text-orange-700' : 'text-gray-500'}`}>
                         {language === 'ar' ? 'إشعارات' : 'Notifications'}
@@ -514,7 +550,7 @@ const MemberDashboard = () => {
                     const progressPct = totalDays > 0
                       ? Math.min(100, Math.max(0, Math.round((elapsedDays / totalDays) * 100)))
                       : 0;
-                    const colors = remainingDaysColor(remaining);
+                    const colors = remainingDaysColor(remaining, darkMode);
 
                     return (
                       <div key={idx} className={`rounded-xl p-3.5 border ${darkMode ? 'bg-gray-700/50 border-gray-600' : 'bg-gray-50 border-gray-200'}`}>
