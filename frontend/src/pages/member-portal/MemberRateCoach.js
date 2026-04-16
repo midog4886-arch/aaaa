@@ -9,19 +9,20 @@ import { toast } from 'sonner';
 import MemberLayout, { memberAPI } from './MemberLayout';
 
 const CoachAvatar = ({ coach, size = 'w-16 h-16', textSize = 'text-lg' }) => {
+  const [imgError, setImgError] = useState(false);
   const initials = (coach.name_ar || coach.name || '?')
     .trim()
     .split(/\s+/)
     .slice(0, 2)
     .map(w => w[0])
     .join('');
-  if (coach.photo) {
+  if (coach.photo && !imgError) {
     return (
       <img
         src={coach.photo}
         alt={coach.name_ar || coach.name}
         className={`${size} rounded-full object-cover flex-shrink-0 border-2 border-white shadow`}
-        onError={(e) => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'flex'; }}
+        onError={() => setImgError(true)}
       />
     );
   }
