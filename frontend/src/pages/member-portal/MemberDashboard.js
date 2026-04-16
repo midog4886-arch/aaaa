@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
 import { 
   CreditCard, Calendar, QrCode, Bell, CheckCircle, 
-  AlertTriangle, Clock, ChevronLeft, Star, Activity
+  AlertTriangle, Clock, ChevronLeft, ChevronRight, Star, Activity
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { motion } from 'framer-motion';
@@ -90,26 +90,48 @@ const formatDate = (dateStr) => {
 // ── Attendance Calendar ───────────────────────────────────────────────────────
 
 const AttendanceCalendar = ({ attendanceStats, darkMode, language }) => {
-  const today = new Date();
-  const year = today.getFullYear();
-  const month = today.getMonth();
+  const now = new Date();
+  const [viewYear, setViewYear] = useState(now.getFullYear());
+  const [viewMonth, setViewMonth] = useState(now.getMonth()); // 0-indexed
+  const [monthDates, setMonthDates] = useState(null);
+  const [loadingMonth, setLoadingMonth] = useState(false);
 
-  const todayStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+  const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  const isCurrentMonth = viewYear === now.getFullYear() && viewMonth === now.getMonth();
 
-  const attendedDates = new Set(
-    (attendanceStats?.recent || []).map(r => r.date?.slice(0, 10)).filter(Boolean)
-  );
+  // Fetch attendance dates when month changes (not the current month)
+  useEffect(() => {
+    if (isCurrentMonth) {
+      setMonthDates(null);
+      return;
+    }
+    let cancelled = false;
+    setLoadingMonth(true);
+    memberAPI.get(`/api/member-portal/attendance-stats?year=${viewYear}&month=${viewMonth + 1}`)
+      .then(res => {
+        if (!cancelled) setMonthDates(new Set((res.data?.this_month?.dates || []).map(d => d.slice(0, 10))));
+      })
+      .catch(() => { if (!cancelled) setMonthDates(new Set()); })
+      .finally(() => { if (!cancelled) setLoadingMonth(false); });
+    return () => { cancelled = true; };
+  }, [viewYear, viewMonth, isCurrentMonth]);
 
-  const firstDay = new Date(year, month, 1);
-  const lastDay = new Date(year, month + 1, 0);
+  const attendedDates = isCurrentMonth
+    ? new Set([
+        ...(attendanceStats?.this_month?.dates || []).map(d => d.slice(0, 10)),
+        ...(attendanceStats?.recent || []).map(r => r.date?.slice(0, 10)).filter(Boolean)
+      ])
+    : (monthDates || new Set());
+
+  const firstDay = new Date(viewYear, viewMonth, 1);
+  const lastDay = new Date(viewYear, viewMonth + 1, 0);
   const totalDays = lastDay.getDate();
-
   const startOffset = firstDay.getDay();
 
   const allCells = [];
   for (let i = 0; i < startOffset; i++) allCells.push(null);
   for (let d = 1; d <= totalDays; d++) {
-    const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+    const dateStr = `${viewYear}-${String(viewMonth + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
     allCells.push({ day: d, dateStr });
   }
   const grid = allCells.slice(0, 35);
@@ -120,13 +142,48 @@ const AttendanceCalendar = ({ attendanceStats, darkMode, language }) => {
     ? ['أح', 'اث', 'ث', 'أر', 'خ', 'ج', 'س']
     : ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
 
-  const monthLabel = today.toLocaleDateString(language === 'ar' ? 'ar-SA-u-ca-gregory' : 'en-US', { month: 'long', year: 'numeric' });
+  const monthLabel = new Date(viewYear, viewMonth, 1).toLocaleDateString(
+    language === 'ar' ? 'ar-SA-u-ca-gregory' : 'en-US',
+    { month: 'long', year: 'numeric' }
+  );
+
+  const goPrev = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (viewMonth === 0) { setViewYear(y => y - 1); setViewMonth(11); }
+    else setViewMonth(m => m - 1);
+  };
+
+  const goNext = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (isCurrentMonth) return;
+    if (viewMonth === 11) { setViewYear(y => y + 1); setViewMonth(0); }
+    else setViewMonth(m => m + 1);
+  };
 
   return (
     <div>
-      <p className={`text-xs font-semibold text-center mb-2 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-        {monthLabel}
-      </p>
+      <div className="flex items-center justify-between mb-2">
+        <button
+          onClick={goPrev}
+          className={`p-1 rounded-full transition-colors ${darkMode ? 'hover:bg-gray-700 text-gray-400' : 'hover:bg-gray-100 text-gray-500'}`}
+          aria-label={language === 'ar' ? 'الشهر السابق' : 'Previous month'}
+        >
+          {language === 'ar' ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
+        </button>
+        <p className={`text-xs font-semibold text-center ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+          {loadingMonth ? '...' : monthLabel}
+        </p>
+        <button
+          onClick={goNext}
+          disabled={isCurrentMonth}
+          className={`p-1 rounded-full transition-colors ${isCurrentMonth ? 'opacity-30 cursor-not-allowed' : darkMode ? 'hover:bg-gray-700 text-gray-400' : 'hover:bg-gray-100 text-gray-500'}`}
+          aria-label={language === 'ar' ? 'الشهر التالي' : 'Next month'}
+        >
+          {language === 'ar' ? <ChevronLeft className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+        </button>
+      </div>
       <div className="grid grid-cols-7 gap-0.5 mb-1">
         {dayLabels.map((d, i) => (
           <div key={i} className={`text-center text-[10px] font-medium py-0.5 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
@@ -134,7 +191,7 @@ const AttendanceCalendar = ({ attendanceStats, darkMode, language }) => {
           </div>
         ))}
       </div>
-      <div className="grid grid-cols-7 gap-0.5" style={{ gridTemplateRows: 'repeat(5, 1fr)' }}>
+      <div className={`grid grid-cols-7 gap-0.5 transition-opacity ${loadingMonth ? 'opacity-40' : 'opacity-100'}`} style={{ gridTemplateRows: 'repeat(5, 1fr)' }}>
         {grid.map((cell, idx) => {
           if (!cell) {
             return <div key={idx} className="aspect-square" />;

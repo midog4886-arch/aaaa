@@ -5,7 +5,7 @@ Member Portal API Routes
 - Download QR card
 - Notifications
 """
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, Query
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel
 from typing import Optional, List, Dict, Any
@@ -628,28 +628,50 @@ def _count_scheduled_days(schedule_text: str) -> int:
 
 
 @router.get("/attendance-stats")
-async def get_member_attendance_stats(member: dict = Depends(get_current_member)):
+async def get_member_attendance_stats(
+    year: Optional[int] = Query(default=None, ge=2000, le=2100),
+    month: Optional[int] = Query(default=None, ge=1, le=12),
+    member: dict = Depends(get_current_member)
+):
     """Get attendance statistics for the member"""
     from datetime import datetime, timedelta
     import re as _re
+    import calendar as _calendar
     
-    # Get current month dates
+    # Determine the target month/year (bounds already validated by FastAPI Query)
     today = datetime.now(timezone.utc)
-    first_day_of_month = today.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-    first_day_str = first_day_of_month.strftime('%Y-%m-%d')
+    if year and month:
+        target_year = year
+        target_month = month
+    else:
+        target_year = today.year
+        target_month = today.month
+
     today_str = today.strftime('%Y-%m-%d')
-    
-    # Get last month dates
-    last_month = first_day_of_month - timedelta(days=1)
-    first_day_last_month = last_month.replace(day=1)
+
+    # Compute first and last day of the target month
+    first_day_of_month = datetime(target_year, target_month, 1, tzinfo=timezone.utc)
+    last_day_num = _calendar.monthrange(target_year, target_month)[1]
+    last_day_of_month = datetime(target_year, target_month, last_day_num, tzinfo=timezone.utc)
+
+    first_day_str = first_day_of_month.strftime('%Y-%m-%d')
+    # For the current month, cap at today; for past months use the last day
+    if target_year == today.year and target_month == today.month:
+        last_day_str = today_str
+    else:
+        last_day_str = last_day_of_month.strftime('%Y-%m-%d')
+
+    # Get last month dates (relative to the target month)
+    last_month_dt = first_day_of_month - timedelta(days=1)
+    first_day_last_month = last_month_dt.replace(day=1)
     first_day_last_month_str = first_day_last_month.strftime('%Y-%m-%d')
-    last_day_last_month_str = last_month.strftime('%Y-%m-%d')
+    last_day_last_month_str = last_month_dt.strftime('%Y-%m-%d')
     
-    # Get attendance for this month
+    # Get attendance for the target month
     this_month_attendance = await db.attendance.find(
         {
             "member_id": member["id"],
-            "date": {"$gte": first_day_str, "$lte": today_str}
+            "date": {"$gte": first_day_str, "$lte": last_day_str}
         },
         {"_id": 0}
     ).to_list(100)
@@ -717,13 +739,15 @@ async def get_member_attendance_stats(member: dict = Depends(get_current_member)
     return {
         "this_month": {
             "count": len(this_month_attendance),
-            "month_name": today.strftime('%B %Y'),
+            "month_name": first_day_of_month.strftime('%B %Y'),
+            "year": target_year,
+            "month": target_month,
             "activities": activities_count,
             "dates": this_month_dates
         },
         "last_month": {
             "count": len(last_month_attendance),
-            "month_name": last_month.strftime('%B %Y')
+            "month_name": last_month_dt.strftime('%B %Y')
         },
         "total": total_attendance,
         "recent": recent_attendance,
