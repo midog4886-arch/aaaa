@@ -420,7 +420,7 @@ export const InvoicesPage = () => {
 
         <CreateEditInvoiceDialog
           isOpen={isCreateDialogOpen} onOpenChange={open => { if (!open) closeCreateDialog(); else setIsCreateDialogOpen(true); }}
-          isEditMode={isEditMode} members={members} activities={activities} products={products} levels={levels}
+          isEditMode={isEditMode} members={members} activities={activities} products={products} levels={levels} coaches={coaches}
           selectedMember={selectedMember} handleMemberSelect={handleMemberSelect}
           customerNameAr={customerNameAr} setCustomerNameAr={setCustomerNameAr}
           customerPhone={customerPhone} setCustomerPhone={setCustomerPhone}
