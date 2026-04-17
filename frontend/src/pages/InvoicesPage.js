@@ -9,7 +9,7 @@ import { Label } from '../components/ui/label';
 import { Badge } from '../components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
-import { invoicesAPI, membersAPI, activitiesAPI, exportAPI, productsAPI, branchesAPI, registrationFormsAPI, creditNotesAPI, levelsAPI } from '../services/api';
+import { invoicesAPI, membersAPI, activitiesAPI, exportAPI, productsAPI, branchesAPI, registrationFormsAPI, creditNotesAPI, levelsAPI, coachesAPI } from '../services/api';
 import { toast } from 'sonner';
 import {
   Plus, Search, Eye, Printer, Receipt, CheckCircle, XCircle, Clock,
@@ -50,6 +50,7 @@ export const InvoicesPage = () => {
   const [activities, setActivities] = useState([]);
   const [branches, setBranches] = useState([]);
   const [levels, setLevels] = useState([]);
+  const [coaches, setCoaches] = useState([]);
   const [products, setProducts] = useState([]);
   const [registrationForms, setRegistrationForms] = useState([]);
   const [creditNotes, setCreditNotes] = useState([]);
@@ -75,15 +76,16 @@ export const InvoicesPage = () => {
   const loadData = async () => {
     try {
       const branchParams = selectedBranchId && selectedBranchId !== 'all' ? { branch_filter: selectedBranchId } : {};
-      const [invRes, memRes, actRes, prodRes, brRes, rfRes, cnRes, lvRes, loyPtsRes, loyLvlRes] = await Promise.all([
+      const [invRes, memRes, actRes, prodRes, brRes, rfRes, cnRes, lvRes, coachRes, loyPtsRes, loyLvlRes] = await Promise.all([
         invoicesAPI.getAll(branchParams), membersAPI.getAll(branchParams), activitiesAPI.getAll(), productsAPI.getAll(branchParams),
         branchesAPI.getAll(), registrationFormsAPI.getAll(branchParams), creditNotesAPI.getAll(branchParams), levelsAPI.getAll(branchParams),
+        coachesAPI.getAll().catch(() => ({ data: [] })),
         fetch('/api/loyalty/settings/points').then(r => r.ok ? r.json() : null).catch(() => null),
         fetch('/api/loyalty/settings/levels').then(r => r.ok ? r.json() : null).catch(() => null)
       ]);
       setInvoices(invRes.data || []); setMembers(memRes.data || []); setActivities(actRes.data || []);
       setProducts(prodRes.data || []); setBranches(brRes.data || []); setRegistrationForms(rfRes.data || []);
-      setCreditNotes(cnRes.data || []); setLevels(lvRes.data || []);
+      setCreditNotes(cnRes.data || []); setLevels(lvRes.data || []); setCoaches(coachRes.data || []);
       setLoyaltySettings(loyPtsRes); setLoyaltyLevelSettings(loyLvlRes);
     } catch { toast.error(t('error')); } finally { setLoading(false); }
   };
@@ -506,6 +508,7 @@ export const InvoicesPage = () => {
           handlePrintNewRegistrationForm={handlePrintNewRegistrationForm}
           calcEndDate={calcEndDate} groupedLevelsForSelector={groupedLevelsForSelector}
           setAddMemberSource={setAddMemberSource} setIsAddMemberDialogOpen={setIsAddMemberDialogOpen} setMembers={setMembers}
+          coaches={coaches}
           language={language} t={t}
         />
 

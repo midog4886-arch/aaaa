@@ -6,7 +6,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { 
   invoicesAPI, membersAPI, activitiesAPI, productsAPI, 
-  branchesAPI, registrationFormsAPI, creditNotesAPI, levelsAPI 
+  branchesAPI, registrationFormsAPI, creditNotesAPI, levelsAPI, coachesAPI
 } from '../../../services/api';
 import { toast } from 'sonner';
 
@@ -20,6 +20,7 @@ export const useInvoicesData = (t) => {
   const [products, setProducts] = useState([]);
   const [branches, setBranches] = useState([]);
   const [levels, setLevels] = useState([]);
+  const [coaches, setCoaches] = useState([]);
   const [registrationForms, setRegistrationForms] = useState([]);
   const [creditNotes, setCreditNotes] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -34,7 +35,7 @@ export const useInvoicesData = (t) => {
       
       const [
         invoicesRes, membersRes, activitiesRes, productsRes,
-        branchesRes, regFormsRes, creditNotesRes, levelsRes
+        branchesRes, regFormsRes, creditNotesRes, levelsRes, coachesRes
       ] = await Promise.all([
         invoicesAPI.getAll(branchParams),
         membersAPI.getAll(branchParams),
@@ -43,7 +44,8 @@ export const useInvoicesData = (t) => {
         branchesAPI.getAll(),
         registrationFormsAPI.getAll(branchParams),
         creditNotesAPI.getAll(branchParams),
-        levelsAPI.getAll(branchParams)
+        levelsAPI.getAll(branchParams),
+        coachesAPI.getAll().catch(() => ({ data: [] })),
       ]);
 
       setInvoices(invoicesRes.data);
@@ -54,6 +56,7 @@ export const useInvoicesData = (t) => {
       setRegistrationForms(regFormsRes.data || []);
       setCreditNotes(creditNotesRes.data || []);
       setLevels(levelsRes.data || []);
+      setCoaches(coachesRes.data || []);
     } catch (error) {
       toast.error(t('error'));
     } finally {
@@ -96,6 +99,7 @@ export const useInvoicesData = (t) => {
     products,
     branches,
     levels,
+    coaches,
     registrationForms,
     creditNotes,
     loading,
