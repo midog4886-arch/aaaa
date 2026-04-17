@@ -48,7 +48,8 @@ import {
   ShieldCheck,
   BookOpen,
   CalendarOff,
-  MessageCircle
+  MessageCircle,
+  UserCog
 } from 'lucide-react';
 
 export const Sidebar = ({ isOpen, onClose }) => {
@@ -122,6 +123,7 @@ export const Sidebar = ({ isOpen, onClose }) => {
         { to: '/admin/schedule', icon: CalendarDays, label: 'schedule', permission: 'schedule' },
         { to: '/admin/coach-ratings', icon: Star, label: 'coach_ratings', permission: 'coach-ratings' },
         { to: '/admin/coach-attendance', icon: Clock, label: 'coach_attendance', permission: 'coach-attendance' },
+        { to: '/admin/supervisors', icon: UserCog, label: 'supervisors', permission: 'coaches' },
       ]
     },
     {

@@ -4,7 +4,7 @@ import { Button } from '../../components/ui/button';
 import { Textarea } from '../../components/ui/textarea';
 import { Input } from '../../components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../../components/ui/dialog';
-import { Star, User, Loader2, Send, CheckCircle, MessageSquare, Plus, Award } from 'lucide-react';
+import { Star, User, Loader2, Send, CheckCircle, MessageSquare, Plus, Award, UserCog } from 'lucide-react';
 import { toast } from 'sonner';
 import MemberLayout, { memberAPI } from './MemberLayout';
 
@@ -36,6 +36,7 @@ const CoachAvatar = ({ coach, size = 'w-16 h-16', textSize = 'text-lg' }) => {
 const MemberRateCoach = () => {
   const [loading, setLoading] = useState(true);
   const [coaches, setCoaches] = useState([]);
+  const [supervisors, setSupervisors] = useState([]);
   const [selectedCoach, setSelectedCoach] = useState(null);
   const [ratingDialogOpen, setRatingDialogOpen] = useState(false);
   const [manualDialogOpen, setManualDialogOpen] = useState(false);
@@ -59,6 +60,12 @@ const MemberRateCoach = () => {
     try {
       const coachesRes = await memberAPI.get('/api/member-portal/coaches-to-rate');
       setCoaches(coachesRes.data.coaches || []);
+      try {
+        const supRes = await memberAPI.get('/api/supervisors');
+        setSupervisors(supRes.data || []);
+      } catch (e) {
+        // supervisors are optional; ignore failure
+      }
     } catch (error) {
       console.error('Failed to fetch data');
     } finally {
@@ -263,6 +270,52 @@ const MemberRateCoach = () => {
                   </CardContent>
                 </Card>
               ))}
+            </div>
+          </div>
+        )}
+
+        {/* Supervisors Section (display only, no rating) */}
+        {supervisors.length > 0 && (
+          <div>
+            <h2 className="text-lg font-bold text-gray-700 dark:text-gray-200 mb-4 flex items-center gap-2">
+              <UserCog className="w-5 h-5 text-emerald-500" />
+              المشرفون
+            </h2>
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
+              {supervisors.map((sup) => {
+                const initials = (sup.name || '?')
+                  .trim()
+                  .split(/\s+/)
+                  .slice(0, 2)
+                  .map((w) => w[0])
+                  .join('');
+                return (
+                  <Card
+                    key={sup.id}
+                    className="hover:shadow-lg transition-shadow dark:bg-gray-800 dark:border-gray-700"
+                  >
+                    <CardContent className="p-4 flex flex-col items-center text-center gap-3">
+                      {sup.photo ? (
+                        <img
+                          src={sup.photo}
+                          alt={sup.name}
+                          className="w-20 h-20 rounded-full object-cover border-2 border-white shadow"
+                        />
+                      ) : (
+                        <div className="w-20 h-20 bg-gradient-to-br from-emerald-500 to-teal-600 rounded-full flex items-center justify-center">
+                          <span className="text-xl font-bold text-white">
+                            {initials || <UserCog className="w-7 h-7" />}
+                          </span>
+                        </div>
+                      )}
+                      <div>
+                        <h3 className="font-bold text-gray-800 dark:text-white text-sm">{sup.name}</h3>
+                        <p className="text-xs text-gray-400 mt-1">مشرف</p>
+                      </div>
+                    </CardContent>
+                  </Card>
+                );
+              })}
             </div>
           </div>
         )}
