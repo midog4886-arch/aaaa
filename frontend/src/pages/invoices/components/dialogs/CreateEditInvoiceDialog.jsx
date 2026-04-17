@@ -233,7 +233,7 @@ export const CreateEditInvoiceDialog = ({
                         </div>
                         <div className="space-y-1 col-span-2">
                           <Label className="text-xs">{language === 'ar' ? 'الساعة' : 'Time'}</Label>
-                          <Input type="number" min="1" max="12" value={item.training_time_hour || ''} onChange={(e) => {
+                          <Input type="number" min="1" max="12" onWheel={(e) => e.currentTarget.blur()} value={item.training_time_hour || ''} onChange={(e) => {
                             const hour = e.target.value;
                             const updated = [...invoiceItems];
                             updated[idx].training_time_hour = hour;
@@ -516,7 +516,7 @@ export const CreateEditInvoiceDialog = ({
                                       <div className="grid grid-cols-2 gap-2">
                                         <div className="space-y-1">
                                           <Label className="text-xs">{language === 'ar' ? 'الساعة' : 'Time'}</Label>
-                                          <Input type="number" min="1" max="12" placeholder={language === 'ar' ? 'مثال: 4' : 'e.g., 4'} value={item.training_time_hour || ''} onChange={(e) => {
+                                          <Input type="number" min="1" max="12" onWheel={(e) => e.currentTarget.blur()} placeholder={language === 'ar' ? 'مثال: 4' : 'e.g., 4'} value={item.training_time_hour || ''} onChange={(e) => {
                                             const hour = e.target.value;
                                             const updated = [...additionalMembers];
                                             updated[amIdx].items[itemIdx].training_time_hour = hour;
