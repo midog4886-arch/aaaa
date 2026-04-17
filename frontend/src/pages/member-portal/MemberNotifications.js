@@ -1,13 +1,26 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
-import { Bell, AlertTriangle, Clock, Info, Loader2, CheckCircle } from 'lucide-react';
+import { Bell, AlertTriangle, Clock, Info, Loader2, CheckCircle, Play } from 'lucide-react';
 import MemberLayout, { memberAPI, getLanguage } from './MemberLayout';
 
 const MemberNotifications = () => {
+  const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [notifications, setNotifications] = useState({ notifications: [], unread_count: 0 });
   const language = getLanguage();
   const t = (ar, en) => language === 'ar' ? ar : en;
+
+  const handleNotificationClick = (notif) => {
+    if (notif.type === 'new_video') {
+      const videoId = notif.video_id;
+      navigate(videoId ? `/videos?videoId=${videoId}` : '/videos');
+      return;
+    }
+    if (notif.link) {
+      navigate(notif.link);
+    }
+  };
 
   useEffect(() => {
     fetchNotifications();
@@ -192,14 +205,33 @@ const MemberNotifications = () => {
               <div className="space-y-3">
                 {otherNotifications.map((notif, idx) => {
                   const style = getNotificationStyle(notif.priority);
+                  const isClickable = notif.type === 'new_video' || !!notif.link;
+                  const isVideo = notif.type === 'new_video';
                   return (
-                    <div key={idx} className={`flex items-start gap-3 p-4 rounded-lg border tap-highlight ${style.bg}`}>
-                      <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${style.icon}`}>
-                        {getNotificationIcon(notif.priority)}
+                    <div
+                      key={idx}
+                      onClick={isClickable ? () => handleNotificationClick(notif) : undefined}
+                      role={isClickable ? 'button' : undefined}
+                      tabIndex={isClickable ? 0 : undefined}
+                      onKeyDown={isClickable ? (e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          handleNotificationClick(notif);
+                        }
+                      } : undefined}
+                      className={`flex items-start gap-3 p-4 rounded-lg border tap-highlight ${style.bg} ${isClickable ? 'cursor-pointer hover:shadow-md transition-shadow' : ''}`}
+                    >
+                      <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${isVideo ? 'bg-purple-500' : style.icon}`}>
+                        {isVideo ? <Play className="w-5 h-5 text-white" /> : getNotificationIcon(notif.priority)}
                       </div>
-                      <div>
-                        <p className={`font-bold ${style.title}`}>{notif.title}</p>
+                      <div className="flex-1">
+                        <p className={`font-bold ${isVideo ? 'text-purple-800' : style.title}`}>{notif.title}</p>
                         <p className="text-gray-600 mt-1">{notif.message}</p>
+                        {isVideo && (
+                          <p className="text-xs text-purple-600 mt-2 font-medium">
+                            {t('▶️ اضغط لمشاهدة الفيديو', '▶️ Tap to watch the video')}
+                          </p>
+                        )}
                       </div>
                     </div>
                   );

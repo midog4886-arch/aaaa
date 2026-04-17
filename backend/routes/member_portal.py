@@ -503,6 +503,7 @@ async def get_member_notifications(member: dict = Depends(get_current_member)):
             "message_en": notif.get("message", notif.get("message_en", "")),
             "priority": "info",
             "link": notif.get("link"),
+            "video_id": notif.get("video_id"),
             "created_at": notif.get("created_at"),
             "is_read": notif.get("is_read", False)
         })

@@ -386,7 +386,7 @@ async def create_daily_video(
                     "message_en": f"New video added: {video.title or video.title_ar}{activity_text}",
                     "type": "new_video",
                     "video_id": video_id,
-                    "link": "/portal/daily-videos",
+                    "link": f"/videos?videoId={video_id}",
                     "is_read": False,
                     "created_at": now
                 }

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { useLocation } from 'react-router-dom';
 import { Plyr } from 'plyr-react';
 import 'plyr-react/plyr.css';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
@@ -62,6 +63,8 @@ const MemberDailyVideos = () => {
   const member = getMemberData();
   const darkMode = getDarkMode();
   const today = new Date();
+  const location = useLocation();
+  const autoOpenedRef = useRef(false);
 
   const fetchData = useCallback(async (showToast = false) => {
     try {
@@ -160,6 +163,35 @@ const MemberDailyVideos = () => {
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
+  // Auto-open a specific video when arriving via ?videoId=... (e.g. from a notification).
+  useEffect(() => {
+    if (autoOpenedRef.current || loading) return;
+    const params = new URLSearchParams(location.search);
+    const targetId = params.get('videoId');
+    if (!targetId) return;
+
+    const findVideo = (list) => (list || []).find((v) => v && v.id === targetId);
+    let video = findVideo(todayVideos) || findVideo(weekVideos) || findVideo(allVideos);
+
+    if (video) {
+      autoOpenedRef.current = true;
+      handlePlayVideo(video);
+      return;
+    }
+
+    // Not in the loaded lists — fetch directly by id.
+    autoOpenedRef.current = true;
+    memberAPI
+      .get(`/api/daily-videos/${targetId}`)
+      .then((res) => {
+        if (res && res.data) handlePlayVideo(res.data);
+      })
+      .catch(() => {
+        toast.error('الفيديو غير متاح');
+      });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, location.search, todayVideos, weekVideos, allVideos]);
 
   const handlePlayVideo = (video) => {
     setSelectedVideo(video);
