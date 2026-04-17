@@ -44,6 +44,13 @@ const MemberRateCoach = () => {
   const [hoverRating, setHoverRating] = useState(0);
   const [comment, setComment] = useState('');
   const [submitting, setSubmitting] = useState(false);
+
+  // Supervisor rating
+  const [selectedSupervisor, setSelectedSupervisor] = useState(null);
+  const [supRatingDialogOpen, setSupRatingDialogOpen] = useState(false);
+  const [supRating, setSupRating] = useState(0);
+  const [supHoverRating, setSupHoverRating] = useState(0);
+  const [supComment, setSupComment] = useState('');
   
   // Manual rating form
   const [manualCoachName, setManualCoachName] = useState('');
@@ -61,8 +68,8 @@ const MemberRateCoach = () => {
       const coachesRes = await memberAPI.get('/api/member-portal/coaches-to-rate');
       setCoaches(coachesRes.data.coaches || []);
       try {
-        const supRes = await memberAPI.get('/api/supervisors');
-        setSupervisors(supRes.data || []);
+        const supRes = await memberAPI.get('/api/member-portal/supervisors-to-rate');
+        setSupervisors(supRes.data?.supervisors || []);
       } catch (e) {
         // supervisors are optional; ignore failure
       }
@@ -78,6 +85,36 @@ const MemberRateCoach = () => {
     setRating(coach.my_rating?.rating || 0);
     setComment(coach.my_rating?.comment || '');
     setRatingDialogOpen(true);
+  };
+
+  const openSupervisorRatingDialog = (sup) => {
+    setSelectedSupervisor(sup);
+    setSupRating(sup.my_rating?.rating || 0);
+    setSupComment(sup.my_rating?.comment || '');
+    setSupHoverRating(0);
+    setSupRatingDialogOpen(true);
+  };
+
+  const handleSubmitSupervisorRating = async () => {
+    if (supRating === 0) {
+      toast.error('يرجى اختيار التقييم');
+      return;
+    }
+    setSubmitting(true);
+    try {
+      await memberAPI.post('/api/member-portal/rate-supervisor', {
+        supervisor_id: selectedSupervisor.id,
+        rating: supRating,
+        comment: supComment,
+      });
+      toast.success('تم إرسال التقييم بنجاح ⭐');
+      setSupRatingDialogOpen(false);
+      fetchData();
+    } catch (error) {
+      toast.error('فشل إرسال التقييم');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const openManualDialog = () => {
@@ -274,14 +311,14 @@ const MemberRateCoach = () => {
           </div>
         )}
 
-        {/* Supervisors Section (display only, no rating) */}
+        {/* Supervisors Section (rateable) */}
         {supervisors.length > 0 && (
           <div>
             <h2 className="text-lg font-bold text-gray-700 dark:text-gray-200 mb-4 flex items-center gap-2">
               <UserCog className="w-5 h-5 text-emerald-500" />
               المشرفون
             </h2>
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {supervisors.map((sup) => {
                 const initials = (sup.name || '?')
                   .trim()
@@ -294,23 +331,61 @@ const MemberRateCoach = () => {
                     key={sup.id}
                     className="hover:shadow-lg transition-shadow dark:bg-gray-800 dark:border-gray-700"
                   >
-                    <CardContent className="p-4 flex flex-col items-center text-center gap-3">
-                      {sup.photo ? (
-                        <img
-                          src={sup.photo}
-                          alt={sup.name}
-                          className="w-20 h-20 rounded-full object-cover border-2 border-white shadow"
-                        />
-                      ) : (
-                        <div className="w-20 h-20 bg-gradient-to-br from-emerald-500 to-teal-600 rounded-full flex items-center justify-center">
-                          <span className="text-xl font-bold text-white">
-                            {initials || <UserCog className="w-7 h-7" />}
-                          </span>
+                    <CardContent className="p-6">
+                      <div className="flex items-start gap-4">
+                        {sup.photo ? (
+                          <img
+                            src={sup.photo}
+                            alt={sup.name}
+                            className="w-16 h-16 rounded-full object-cover border-2 border-white shadow flex-shrink-0"
+                          />
+                        ) : (
+                          <div className="w-16 h-16 bg-gradient-to-br from-emerald-500 to-teal-600 rounded-full flex items-center justify-center flex-shrink-0">
+                            <span className="text-lg font-bold text-white">
+                              {initials || <UserCog className="w-6 h-6" />}
+                            </span>
+                          </div>
+                        )}
+                        <div className="flex-1">
+                          <h3 className="text-lg font-bold text-gray-800 dark:text-white">{sup.name}</h3>
+                          <p className="text-sm text-gray-500 dark:text-gray-400">مشرف</p>
+
+                          {sup.my_rating ? (
+                            <div className="mt-4 p-3 rounded-lg border bg-green-50 border-green-200 dark:bg-green-900/30 dark:border-green-700">
+                              <div className="flex items-center justify-between">
+                                <div>
+                                  <p className="text-sm font-medium flex items-center gap-1 text-green-700 dark:text-green-400">
+                                    <CheckCircle className="w-4 h-4" />
+                                    تقييمك
+                                  </p>
+                                  <div className="mt-1">{renderStars(sup.my_rating.rating, 'w-5 h-5')}</div>
+                                </div>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => openSupervisorRatingDialog(sup)}
+                                  className="dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-700"
+                                >
+                                  تعديل
+                                </Button>
+                              </div>
+                              {sup.my_rating.comment && (
+                                <p className="text-sm mt-2 flex items-start gap-1 text-gray-600 dark:text-gray-300">
+                                  <MessageSquare className="w-4 h-4 mt-0.5 flex-shrink-0" />
+                                  {sup.my_rating.comment}
+                                </p>
+                              )}
+                            </div>
+                          ) : (
+                            <Button
+                              className="mt-4 w-full gap-2 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700"
+                              onClick={() => openSupervisorRatingDialog(sup)}
+                            >
+                              <Star className="w-4 h-4" />
+                              قيّم الآن
+                            </Button>
+                          )}
                         </div>
-                      )}
-                      <div>
-                        <h3 className="font-bold text-gray-800 dark:text-white text-sm">{sup.name}</h3>
-                        <p className="text-xs text-gray-400 mt-1">مشرف</p>
                       </div>
                     </CardContent>
                   </Card>
@@ -408,6 +483,84 @@ const MemberRateCoach = () => {
                   <Send className="w-4 h-4" />
                 )}
                 {selectedCoach.my_rating ? 'تحديث التقييم' : 'إرسال التقييم'}
+              </Button>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Supervisor Rating Dialog */}
+      <Dialog open={supRatingDialogOpen} onOpenChange={setSupRatingDialogOpen}>
+        <DialogContent className="max-w-md dark:bg-gray-800 dark:border-gray-700" dir="rtl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 dark:text-white">
+              <Star className="w-5 h-5 text-yellow-500" />
+              تقييم المشرف
+            </DialogTitle>
+          </DialogHeader>
+
+          {selectedSupervisor && (
+            <div className="space-y-6">
+              <div className="flex items-center gap-4 p-4 rounded-lg bg-gray-50 dark:bg-gray-700">
+                {selectedSupervisor.photo ? (
+                  <img
+                    src={selectedSupervisor.photo}
+                    alt={selectedSupervisor.name}
+                    className="w-14 h-14 rounded-full object-cover border-2 border-white shadow"
+                  />
+                ) : (
+                  <div className="w-14 h-14 bg-gradient-to-br from-emerald-500 to-teal-600 rounded-full flex items-center justify-center">
+                    <UserCog className="w-6 h-6 text-white" />
+                  </div>
+                )}
+                <div>
+                  <p className="font-bold text-lg dark:text-white">{selectedSupervisor.name}</p>
+                  <p className="text-sm text-gray-500 dark:text-gray-400">مشرف</p>
+                </div>
+              </div>
+
+              <div className="text-center">
+                <p className="text-sm mb-3 text-gray-500 dark:text-gray-400">اختر تقييمك</p>
+                <div className="flex justify-center gap-1" dir="ltr">
+                  {[1, 2, 3, 4, 5].map((star) => (
+                    <Star
+                      key={star}
+                      className={`w-10 h-10 cursor-pointer transition-all hover:scale-110 ${
+                        star <= (supHoverRating || supRating)
+                          ? 'text-yellow-400 fill-yellow-400'
+                          : 'text-gray-300'
+                      }`}
+                      onClick={() => setSupRating(star)}
+                      onMouseEnter={() => setSupHoverRating(star)}
+                      onMouseLeave={() => setSupHoverRating(0)}
+                    />
+                  ))}
+                </div>
+                {supRating > 0 && (
+                  <p className="mt-2 text-lg font-bold text-yellow-600">{getRatingText(supRating)}</p>
+                )}
+              </div>
+
+              <div>
+                <label className="text-sm font-medium mb-2 block text-gray-700 dark:text-gray-300">
+                  تعليق (اختياري)
+                </label>
+                <Textarea
+                  value={supComment}
+                  onChange={(e) => setSupComment(e.target.value)}
+                  placeholder="شاركنا رأيك في المشرف..."
+                  rows={3}
+                  className="dark:bg-gray-700 dark:border-gray-600 dark:text-white dark:placeholder:text-gray-400"
+                />
+              </div>
+
+              <Button
+                className="w-full gap-2 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700"
+                onClick={handleSubmitSupervisorRating}
+                disabled={submitting || supRating === 0}
+              >
+                {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                {selectedSupervisor.my_rating ? 'تحديث التقييم' : 'إرسال التقييم'}
               </Button>
             </div>
           )}

@@ -1114,6 +1114,86 @@ async def get_coach_profile(coach_id: str, member: dict = Depends(get_current_me
     }
 
 
+# ============ SUPERVISOR RATINGS ============
+
+class SupervisorRatingCreate(BaseModel):
+    supervisor_id: str
+    rating: int  # 1-5
+    comment: Optional[str] = None
+
+
+@router.get("/supervisors-to-rate")
+async def get_supervisors_to_rate(member: dict = Depends(get_current_member)):
+    """List all supervisors with the current member's rating (if any)."""
+    supervisors = await db.supervisors.find({}, {"_id": 0}).sort("created_at", -1).to_list(200)
+    result = []
+    for sup in supervisors:
+        existing = await db.supervisor_ratings.find_one(
+            {"member_id": member["id"], "supervisor_id": sup["id"]},
+            {"_id": 0, "rating": 1, "comment": 1}
+        )
+        result.append({
+            "id": sup["id"],
+            "name": sup.get("name"),
+            "photo": sup.get("photo"),
+            "my_rating": existing,
+        })
+    return {"supervisors": result}
+
+
+@router.post("/rate-supervisor")
+async def rate_supervisor(data: SupervisorRatingCreate, member: dict = Depends(get_current_member)):
+    """Submit or update supervisor rating."""
+    if data.rating < 1 or data.rating > 5:
+        raise HTTPException(status_code=400, detail="Rating must be between 1 and 5")
+
+    sup = await db.supervisors.find_one({"id": data.supervisor_id}, {"_id": 0, "name": 1})
+    if not sup:
+        raise HTTPException(status_code=404, detail="المشرف غير موجود")
+
+    rating_data = {
+        "member_id": member["id"],
+        "member_name": member.get("name_ar") or member.get("name"),
+        "member_phone": member.get("phone"),
+        "supervisor_id": data.supervisor_id,
+        "supervisor_name": sup.get("name"),
+        "rating": data.rating,
+        "comment": data.comment,
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+    existing = await db.supervisor_ratings.find_one({
+        "member_id": member["id"],
+        "supervisor_id": data.supervisor_id,
+    })
+
+    if existing:
+        await db.supervisor_ratings.update_one(
+            {"member_id": member["id"], "supervisor_id": data.supervisor_id},
+            {"$set": rating_data},
+        )
+        message = "تم تحديث التقييم بنجاح"
+    else:
+        rating_data["id"] = str(uuid.uuid4())
+        rating_data["created_at"] = datetime.now(timezone.utc).isoformat()
+        await db.supervisor_ratings.insert_one(rating_data)
+        message = "تم إرسال التقييم بنجاح"
+
+    return {"message": message}
+
+
+@router.delete("/delete-supervisor-rating/{supervisor_id}")
+async def delete_supervisor_rating(supervisor_id: str, member: dict = Depends(get_current_member)):
+    """Delete the current member's rating for a supervisor."""
+    result = await db.supervisor_ratings.delete_one({
+        "member_id": member["id"],
+        "supervisor_id": supervisor_id,
+    })
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="لم يتم العثور على تقييم")
+    return {"message": "تم حذف التقييم بنجاح"}
+
+
 @router.delete("/delete-rating/{coach_id}")
 async def delete_coach_rating(coach_id: str, member: dict = Depends(get_current_member)):
     """Delete the current member's rating for a coach"""
