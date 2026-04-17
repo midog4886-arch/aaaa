@@ -305,8 +305,10 @@ async def get_calendar_videos(
 
 
 @router.get("/{video_id}", response_model=DailyVideo)
-async def get_daily_video(video_id: str, current_user: dict = Depends(get_current_user)):
-    """Get a single daily video"""
+async def get_daily_video(video_id: str):
+    """Get a single daily video (public endpoint for member portal — video IDs
+    are non-guessable UUIDs, and the same content is already exposed via the
+    public /today and /week endpoints)."""
     video = await db.daily_videos.find_one({"id": video_id}, {"_id": 0})
     if not video:
         raise HTTPException(status_code=404, detail="Video not found")
