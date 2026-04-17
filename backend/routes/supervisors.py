@@ -47,9 +47,12 @@ class Supervisor(SupervisorBase):
 
 
 @router.get("", response_model=List[Supervisor])
-async def list_supervisors():
-    """List all supervisors (public — used by member portal)."""
+async def list_supervisors(current_user: dict = Depends(get_current_user)):
+    """List all supervisors. Admin-only. Members use /api/member-portal/supervisors-to-rate."""
+    _require_admin(current_user)
     supervisors = await db.supervisors.find({}, {"_id": 0}).sort("created_at", -1).to_list(200)
+    for sup in supervisors:
+        sup.setdefault("created_at", None)
     return supervisors
 
 
