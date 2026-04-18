@@ -21,7 +21,7 @@ router = APIRouter(prefix="/tournaments", tags=["Tournaments"])
 PERMISSION_KEY = "tournaments"
 
 
-def require_tournaments_permission(current_user: dict = Depends(require_tournaments_permission)) -> dict:
+def require_tournaments_permission(current_user: dict = Depends(get_current_user)) -> dict:
     """Defense-in-depth: verify the caller has the `tournaments` permission
     (or is admin) before any tournaments endpoint executes."""
     if current_user.get("is_admin"):
