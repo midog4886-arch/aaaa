@@ -324,36 +324,39 @@ const MemberDashboard = () => {
   useEffect(() => { fetchData(); }, []);
 
   const fetchData = useCallback(async (showToast = false) => {
-    try {
-      const requests = [
-        memberAPI.get('/api/member-portal/subscriptions'),
-        memberAPI.get('/api/member-portal/notifications'),
-        memberAPI.get('/api/member-portal/attendance-stats'),
-      ];
-      if (member?.id) {
-        requests.push(memberAPI.get(`/api/loyalty/members/${member.id}/points`));
-      }
+    // Fire all requests in parallel and update state as each resolves
+    // (don't block the entire UI on the slowest endpoint)
+    const subsP = memberAPI.get('/api/member-portal/subscriptions')
+      .then(res => { setSubscriptions(res.data); return { ok: true }; })
+      .catch(() => ({ ok: false }));
 
-      const [subsRes, notifRes, attRes, loyaltyRes] = await Promise.allSettled(requests);
+    const notifP = memberAPI.get('/api/member-portal/notifications')
+      .then(res => { setNotifications(res.data); return { ok: true }; })
+      .catch(() => ({ ok: false }));
 
-      if (subsRes.status === 'fulfilled')     setSubscriptions(subsRes.value.data);
-      if (notifRes.status === 'fulfilled')    setNotifications(notifRes.value.data);
-      if (attRes.status === 'fulfilled')      setAttendanceStats(attRes.value.data);
-      if (loyaltyRes?.status === 'fulfilled') setLoyaltyData(loyaltyRes.value.data);
+    const attP = memberAPI.get('/api/member-portal/attendance-stats')
+      .then(res => { setAttendanceStats(res.data); return { ok: true }; })
+      .catch(() => ({ ok: false }));
 
-      if (showToast) {
-        const coreOk = subsRes.status === 'fulfilled' && notifRes.status === 'fulfilled';
-        coreOk
-          ? toast.success('تم تحديث البيانات بنجاح')
-          : toast.error('فشل في تحديث بعض البيانات');
-      }
-    } catch (error) {
-      console.error('Failed to fetch data');
-      if (showToast) toast.error('فشل في تحديث البيانات');
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
+    const loyaltyP = member?.id
+      ? memberAPI.get(`/api/loyalty/members/${member.id}/points`)
+          .then(res => { setLoyaltyData(res.data); return { ok: true }; })
+          .catch(() => ({ ok: false }))
+      : Promise.resolve({ ok: true });
+
+    // Show the page as soon as the FASTEST core endpoint returns,
+    // remaining sections fill in shortly after.
+    Promise.race([subsP, notifP, attP]).then(() => setLoading(false));
+
+    const [subsR, notifR] = await Promise.all([subsP, notifP, attP, loyaltyP]);
+
+    if (showToast) {
+      (subsR.ok && notifR.ok)
+        ? toast.success('تم تحديث البيانات بنجاح')
+        : toast.error('فشل في تحديث بعض البيانات');
     }
+    setLoading(false);
+    setRefreshing(false);
   }, [member?.id]);
 
   const handleRefresh = useCallback(async () => {

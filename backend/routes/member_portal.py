@@ -183,22 +183,20 @@ async def get_member_subscriptions(member: dict = Depends(get_current_member)):
 
     # Build per-level coach maps from levels this member is enrolled in.
     level_coach_by_aid, level_coach_by_aname = await get_member_level_coach_maps(member["id"])
-    
+
+    # ── Batch fetch all activities (single query instead of N) ──
+    activity_ids = list({a.get("activity_id") for a in activities if a.get("activity_id")})
+    activities_map = {}
+    if activity_ids:
+        activity_docs = await db.activities.find(
+            {"id": {"$in": activity_ids}},
+            {"_id": 0, "id": 1, "schedule": 1, "coach_id": 1}
+        ).to_list(len(activity_ids))
+        activities_map = {a["id"]: a for a in activity_docs}
+
+    # ── Resolve coach IDs per activity (no DB calls yet) ──
+    activity_coach_id = {}
     for activity in activities:
-        end_date = activity.get("end_date", "")
-        start_date = activity.get("start_date", "")
-        
-        # Get activity details for schedule
-        activity_data = await db.activities.find_one(
-            {"id": activity.get("activity_id")},
-            {"_id": 0, "schedule": 1, "coach_id": 1}
-        )
-        
-        # Get coach info if available — prefer the coach assigned to the LEVEL the
-        # member is enrolled in (matched by activity_id, then activity_name), then
-        # the activity-level coach, then any coach_id stored on the member's activity.
-        coach_name = ""
-        coach_photo = ""
         aid = activity.get("activity_id")
         aname = activity.get("activity_name")
         coach_id = ""
@@ -207,13 +205,30 @@ async def get_member_subscriptions(member: dict = Depends(get_current_member)):
         elif aname and aname in level_coach_by_aname:
             coach_id = level_coach_by_aname[aname]
         if not coach_id:
-            coach_id = (activity_data.get("coach_id") if activity_data else "") or activity.get("coach_id") or ""
-        if coach_id:
-            coach = await db.coaches.find_one({"id": coach_id}, {"_id": 0, "name_ar": 1, "name": 1, "photo": 1})
-            if coach:
-                coach_name = coach.get("name_ar") or coach.get("name")
-                coach_photo = coach.get("photo", "")
-        
+            adata = activities_map.get(aid) if aid else None
+            coach_id = (adata.get("coach_id") if adata else "") or activity.get("coach_id") or ""
+        activity_coach_id[id(activity)] = coach_id
+
+    # ── Batch fetch all coaches (single query) ──
+    coach_ids = list({cid for cid in activity_coach_id.values() if cid})
+    coaches_map = {}
+    if coach_ids:
+        coach_docs = await db.coaches.find(
+            {"id": {"$in": coach_ids}},
+            {"_id": 0, "id": 1, "name_ar": 1, "name": 1, "photo": 1}
+        ).to_list(len(coach_ids))
+        coaches_map = {c["id"]: c for c in coach_docs}
+
+    for activity in activities:
+        end_date = activity.get("end_date", "")
+        start_date = activity.get("start_date", "")
+
+        activity_data = activities_map.get(activity.get("activity_id"))
+        coach_id = activity_coach_id.get(id(activity), "")
+        coach = coaches_map.get(coach_id) if coach_id else None
+        coach_name = (coach.get("name_ar") or coach.get("name")) if coach else ""
+        coach_photo = coach.get("photo", "") if coach else ""
+
         subscription = {
             "activity_id": activity.get("activity_id"),
             "activity_name": activity.get("activity_name"),
