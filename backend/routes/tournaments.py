@@ -213,6 +213,64 @@ async def list_tournaments(
     return items
 
 
+@router.get("/by-member/{member_id}")
+async def list_tournaments_for_member(
+    member_id: str,
+    current_user: dict = Depends(require_tournaments_permission),
+):
+    """Return every tournament this member participated in (branch-scoped),
+    with that participant's level/age/weight/position attached. Sorted by
+    tournament date descending."""
+    # Restrict to tournaments the caller is allowed to see
+    base_query = _branch_query(current_user, None)
+    query = {**base_query, "participants.member_id": member_id}
+    items = await db.tournaments.find(
+        query,
+        {"_id": 0}
+    ).sort("date", -1).to_list(500)
+
+    # Pre-fetch level labels for any level_id used by this member's records
+    level_ids = []
+    for t in items:
+        for p in (t.get("participants") or []):
+            if p.get("member_id") == member_id and p.get("level_id"):
+                level_ids.append(p.get("level_id"))
+    level_ids = list({lid for lid in level_ids if lid})
+    levels_map = {}
+    if level_ids:
+        lvls = await db.levels.find(
+            {"id": {"$in": level_ids}},
+            {"_id": 0, "id": 1, "level_number": 1, "custom_name": 1, "activity_name": 1}
+        ).to_list(len(level_ids) + 10)
+        for l in lvls:
+            cn = (l.get("custom_name") or "").strip()
+            levels_map[l["id"]] = cn if cn else f"المستوى {l.get('level_number', '')}"
+
+    results = []
+    for t in items:
+        member_part = next(
+            (p for p in (t.get("participants") or []) if p.get("member_id") == member_id),
+            None
+        )
+        if not member_part:
+            continue
+        results.append({
+            "id": t.get("id"),
+            "name": t.get("name", ""),
+            "date": t.get("date", ""),
+            "place": t.get("place", ""),
+            "activity_name": t.get("activity_name", ""),
+            "status": t.get("status", ""),
+            "level_id": member_part.get("level_id"),
+            "level_label": levels_map.get(member_part.get("level_id"), ""),
+            "age": member_part.get("age", ""),
+            "weight": member_part.get("weight", ""),
+            "position": _norm_pos(member_part.get("position")),
+            "notes": member_part.get("notes", ""),
+        })
+    return results
+
+
 @router.get("/{tournament_id}")
 async def get_tournament(tournament_id: str, current_user: dict = Depends(require_tournaments_permission)):
     t = await _load_tournament_or_403(tournament_id, current_user)

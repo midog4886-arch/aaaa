@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import html2canvas from 'html2canvas';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/AuthContext';
@@ -49,8 +50,18 @@ const TournamentsPage = () => {
   const isAdmin = user?.is_admin === true;
 
   // View state: 'list' | 'detail'
-  const [view, setView] = useState('list');
-  const [selectedTid, setSelectedTid] = useState(null);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const tidFromUrl = searchParams.get('tid');
+  const [view, setView] = useState(tidFromUrl ? 'detail' : 'list');
+  const [selectedTid, setSelectedTid] = useState(tidFromUrl || null);
+
+  useEffect(() => {
+    const tid = searchParams.get('tid');
+    if (tid && tid !== selectedTid) {
+      setSelectedTid(tid);
+      setView('detail');
+    }
+  }, [searchParams]);
 
   // Data
   const [tournaments, setTournaments] = useState([]);
@@ -194,6 +205,11 @@ const TournamentsPage = () => {
   const backToList = () => {
     setView('list');
     setSelectedTid(null);
+    if (searchParams.get('tid')) {
+      const next = new URLSearchParams(searchParams);
+      next.delete('tid');
+      setSearchParams(next, { replace: true });
+    }
     loadList();
   };
 

@@ -52,6 +52,7 @@ export const levelsAPI = {
 export const tournamentsAPI = {
   getAll: (params = {}) => axios.get(`${API}/tournaments`, { params }),
   get: (id) => axios.get(`${API}/tournaments/${id}`),
+  getByMember: (memberId) => axios.get(`${API}/tournaments/by-member/${memberId}`),
   create: (data) => axios.post(`${API}/tournaments`, data),
   update: (id, data) => axios.put(`${API}/tournaments/${id}`, data),
   delete: (id) => axios.delete(`${API}/tournaments/${id}`),

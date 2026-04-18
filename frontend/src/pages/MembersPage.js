@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/AuthContext';
 import { Layout } from '../components/Layout';
@@ -14,7 +14,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { Popover, PopoverContent, PopoverTrigger } from '../components/ui/popover';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '../components/ui/command';
 import { Textarea } from '../components/ui/textarea';
-import { membersAPI, activitiesAPI, coachesAPI, exportAPI, invoicesAPI, attendanceAPI, levelsAPI, productInvoicesAPI, freezesAPI } from '../services/api';
+import { membersAPI, activitiesAPI, coachesAPI, exportAPI, invoicesAPI, attendanceAPI, levelsAPI, productInvoicesAPI, freezesAPI, tournamentsAPI } from '../services/api';
 import { toast } from 'sonner';
 import { 
   Plus, 
@@ -43,13 +43,15 @@ import {
   ShoppingBag,
   Package,
   Snowflake,
-  PlayCircle
+  PlayCircle,
+  Trophy
 } from 'lucide-react';
 
 export const MembersPage = () => {
   const { t, language } = useLanguage();
   const { selectedBranchId } = useAuth();
   const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
   const [members, setMembers] = useState([]);
   const [activities, setActivities] = useState([]);
   const [coaches, setCoaches] = useState([]);
@@ -85,6 +87,7 @@ export const MembersPage = () => {
   const [notesSaving, setNotesSaving] = useState(false);
   const [isFreezeDialogOpen, setIsFreezeDialogOpen] = useState(false);
   const [freezeForm, setFreezeForm] = useState({ start_date: '', end_date: '', reason: 'personal' });
+  const [memberTournaments, setMemberTournaments] = useState([]);
   const [memberFreezes, setMemberFreezes] = useState([]);
   const [memberFreezeStats, setMemberFreezeStats] = useState(null);
   const [freezeLoading, setFreezeLoading] = useState(false);
@@ -671,17 +674,20 @@ export const MembersPage = () => {
     setMemberAttendance(null);
     setMemberProductPurchases([]);
     setMemberSessionQuota([]);
+    setMemberTournaments([]);
     try {
-      const [invoicesRes, attendanceRes, productInvRes, quotaRes] = await Promise.all([
+      const [invoicesRes, attendanceRes, productInvRes, quotaRes, tournamentsRes] = await Promise.all([
         invoicesAPI.getAll({ member_id: member.id }),
         attendanceAPI.getMemberReport(member.id),
         productInvoicesAPI.getAll({ member_id: member.id }),
-        attendanceAPI.getSessionQuota(member.id)
+        attendanceAPI.getSessionQuota(member.id),
+        tournamentsAPI.getByMember(member.id).catch(() => ({ data: [] }))
       ]);
       setMemberInvoices(invoicesRes.data);
       setMemberAttendance(attendanceRes.data);
       setMemberProductPurchases(Array.isArray(productInvRes.data) ? productInvRes.data : []);
       setMemberSessionQuota(Array.isArray(quotaRes.data) ? quotaRes.data : []);
+      setMemberTournaments(Array.isArray(tournamentsRes.data) ? tournamentsRes.data : []);
     } catch (error) {
       console.error('Failed to load member data:', error);
       setMemberInvoices([]);
@@ -2057,6 +2063,22 @@ export const MembersPage = () => {
                       </span>
                     )}
                   </button>
+                  {memberTournaments.length > 0 && (
+                    <button
+                      onClick={() => setViewTab('tournaments')}
+                      className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+                        viewTab === 'tournaments'
+                          ? 'border-primary text-primary'
+                          : 'border-transparent text-muted-foreground hover:text-foreground'
+                      }`}
+                    >
+                      <Trophy className="w-4 h-4 inline me-1" />
+                      {language === 'ar' ? 'البطولات' : 'Tournaments'}
+                      <span className="ms-1 text-xs bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded">
+                        {memberTournaments.length}
+                      </span>
+                    </button>
+                  )}
                   <button
                     onClick={() => {
                       setViewTab('freeze');
@@ -2938,6 +2960,77 @@ export const MembersPage = () => {
                         <ShoppingBag className="w-12 h-12 mx-auto mb-3 opacity-30" />
                         {language === 'ar' ? 'لا توجد مشتريات منتجات لهذا العضو' : 'No product purchases for this member'}
                       </div>
+                    )}
+                  </div>
+                )}
+
+                {viewTab === 'tournaments' && (
+                  <div className="space-y-3">
+                    {memberTournaments.length === 0 ? (
+                      <div className="text-center py-8 text-muted-foreground">
+                        <Trophy className="w-12 h-12 mx-auto mb-3 opacity-30" />
+                        {language === 'ar' ? 'لم يشارك في أي بطولة بعد' : 'No tournament history yet'}
+                      </div>
+                    ) : (
+                      memberTournaments.map((tn) => {
+                        const posMeta = {
+                          '1': { icon: '🥇', label: language === 'ar' ? 'المركز الأول' : '1st Place', color: 'bg-yellow-100 text-yellow-800 border-yellow-300' },
+                          '2': { icon: '🥈', label: language === 'ar' ? 'المركز الثاني' : '2nd Place', color: 'bg-gray-100 text-gray-800 border-gray-300' },
+                          '3': { icon: '🥉', label: language === 'ar' ? 'المركز الثالث' : '3rd Place', color: 'bg-amber-100 text-amber-800 border-amber-400' },
+                          'participation': { icon: '🎖️', label: language === 'ar' ? 'مشاركة' : 'Participation', color: 'bg-blue-100 text-blue-800 border-blue-300' },
+                        };
+                        const pm = tn.position ? posMeta[tn.position] : null;
+                        return (
+                          <Card
+                            key={tn.id}
+                            className="cursor-pointer hover:shadow-md transition border-2 hover:border-orange-400"
+                            onClick={() => navigate(`/admin/tournaments?tid=${tn.id}`)}
+                          >
+                            <CardContent className="p-4">
+                              <div className="flex items-start justify-between gap-3 flex-wrap">
+                                <div className="flex-1 min-w-[200px]">
+                                  <div className="flex items-center gap-2 mb-2">
+                                    <Trophy className="w-4 h-4 text-orange-500" />
+                                    <h4 className="font-bold text-base">{tn.name}</h4>
+                                  </div>
+                                  <div className="text-sm text-muted-foreground space-y-1">
+                                    {tn.date && (
+                                      <div className="flex items-center gap-2">
+                                        <Calendar className="w-3.5 h-3.5" />
+                                        {tn.date}
+                                      </div>
+                                    )}
+                                    {tn.place && (
+                                      <div className="flex items-center gap-2">
+                                        <span className="inline-block w-3.5">📍</span>
+                                        {tn.place}
+                                      </div>
+                                    )}
+                                    {tn.level_label && (
+                                      <div className="flex items-center gap-2">
+                                        <Activity className="w-3.5 h-3.5" />
+                                        {tn.level_label}
+                                      </div>
+                                    )}
+                                    {(tn.age || tn.weight) && (
+                                      <div className="flex items-center gap-3 text-xs">
+                                        {tn.age && <span>{language === 'ar' ? 'العمر:' : 'Age:'} {tn.age}</span>}
+                                        {tn.weight && <span>{language === 'ar' ? 'الوزن:' : 'Weight:'} {tn.weight}</span>}
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                                {pm && (
+                                  <div className={`px-3 py-2 rounded-lg border-2 ${pm.color} text-center min-w-[110px]`}>
+                                    <div className="text-2xl leading-none">{pm.icon}</div>
+                                    <div className="text-xs font-semibold mt-1">{pm.label}</div>
+                                  </div>
+                                )}
+                              </div>
+                            </CardContent>
+                          </Card>
+                        );
+                      })
                     )}
                   </div>
                 )}
