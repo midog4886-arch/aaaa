@@ -84,6 +84,10 @@ class Participant(BaseModel):
     # Optional: tournaments without any activities accept any participant.
     activity_id: Optional[str] = None
     level_id: Optional[str] = None
+    # Sub-category within the tournament (e.g. swimming strokes:
+    # حر/ظهر/صدر/فراشة). When the tournament defines `subcategories`, the
+    # SAME member can be added once per subcategory.
+    subcategory: Optional[str] = None
     age: Optional[str] = ""
     weight: Optional[str] = ""
     # "1" / "2" / "3" / "participation" / None
@@ -106,12 +110,18 @@ class TournamentCreate(BaseModel):
     branch_id: Optional[str] = None
     description: Optional[str] = ""
     status: Optional[str] = "upcoming"  # upcoming | ongoing | completed
+    # Sub-categories (e.g. swimming strokes). When set, the SAME member can
+    # be added once per subcategory and capacity is enforced per
+    # (subcategory, level_id).
+    subcategories: Optional[List[str]] = None
+    subcategory_capacity: Optional[int] = 6
     notify: Optional[bool] = False  # broadcast announcement to members on create
 
 
 class ParticipantUpdate(BaseModel):
     activity_id: Optional[str] = None
     level_id: Optional[str] = None
+    subcategory: Optional[str] = None
     age: Optional[str] = None
     weight: Optional[str] = None
     position: Optional[str] = None
@@ -681,6 +691,9 @@ async def create_tournament(payload: TournamentCreate, current_user: dict = Depe
     legacy_aid = aid_list[0] if aid_list else None
     legacy_aname = aname_list[0] if aname_list else ""
 
+    sub_list = [s.strip() for s in (payload.subcategories or []) if s and s.strip()]
+    sub_capacity = int(payload.subcategory_capacity) if payload.subcategory_capacity else 6
+
     doc = {
         "id": str(uuid.uuid4()),
         "name": payload.name,
@@ -693,6 +706,8 @@ async def create_tournament(payload: TournamentCreate, current_user: dict = Depe
         "branch_id": final_branch_id,
         "description": payload.description or "",
         "status": payload.status or "upcoming",
+        "subcategories": sub_list,
+        "subcategory_capacity": sub_capacity,
         "participants": [],
         "created_at": datetime.now(timezone.utc).isoformat(),
         "updated_at": datetime.now(timezone.utc).isoformat(),
@@ -729,6 +744,9 @@ async def update_tournament(tournament_id: str, payload: TournamentCreate, curre
     legacy_aid = aid_list[0] if aid_list else None
     legacy_aname = aname_list[0] if aname_list else ""
 
+    sub_list = [s.strip() for s in (payload.subcategories or []) if s and s.strip()]
+    sub_capacity = int(payload.subcategory_capacity) if payload.subcategory_capacity else 6
+
     update = {
         "name": payload.name,
         "place": payload.place or "",
@@ -739,6 +757,8 @@ async def update_tournament(tournament_id: str, payload: TournamentCreate, curre
         "activity_name": legacy_aname,
         "description": payload.description or "",
         "status": payload.status or "upcoming",
+        "subcategories": sub_list,
+        "subcategory_capacity": sub_capacity,
         "updated_at": datetime.now(timezone.utc).isoformat(),
     }
     if current_user.get("is_admin", False) and payload.branch_id is not None:
@@ -778,8 +798,33 @@ async def add_participant(tournament_id: str, participant: Participant, current_
     t = await _load_tournament_or_403(tournament_id, current_user)
 
     existing = t.get("participants") or []
-    if any(p.get("member_id") == participant.member_id for p in existing):
-        raise HTTPException(status_code=400, detail="العضو مضاف بالفعل في هذه البطولة")
+    t_subs = [s for s in (t.get("subcategories") or []) if s]
+    sub = (participant.subcategory or "").strip() or None
+
+    # When the tournament defines subcategories, every participant MUST be
+    # tagged with one of them.
+    if t_subs and not sub:
+        raise HTTPException(status_code=400, detail="يجب اختيار التصنيف الفرعي")
+    if t_subs and sub and sub not in t_subs:
+        raise HTTPException(status_code=400, detail="التصنيف الفرعي غير موجود في هذه البطولة")
+
+    # Identity is (member_id, subcategory): same member can be added once per
+    # subcategory, but only once when no subcategory is in play.
+    if any(p.get("member_id") == participant.member_id and (p.get("subcategory") or None) == sub for p in existing):
+        raise HTTPException(status_code=400, detail="العضو مضاف بالفعل في هذا التصنيف")
+
+    # Capacity per (subcategory, level_id) when subcategories are defined.
+    if t_subs and sub and participant.level_id:
+        cap = int(t.get("subcategory_capacity") or 6)
+        used = sum(
+            1 for p in existing
+            if (p.get("subcategory") or None) == sub and p.get("level_id") == participant.level_id
+        )
+        if used >= cap:
+            raise HTTPException(
+                status_code=400,
+                detail=f"السعة القصوى لهذا المستوى في هذا التصنيف ({cap}) ممتلئة",
+            )
 
     # Verify member exists; if tournament has an activity, prefer members
     # subscribed to that activity (soft warning – allow staff override only
@@ -859,10 +904,15 @@ async def add_participant(tournament_id: str, participant: Participant, current_
     new_part["position"] = _norm_pos(new_part.get("position"))
 
     # If position is a ranked one (1/2/3), it must be unique per level inside this tournament.
+    # When subcategories are defined, uniqueness is per (subcategory, level).
     # "participation" can be assigned to any number of members.
     if new_part["position"] in RANKED_POSITIONS:
         for p in existing:
-            if p.get("level_id") == participant.level_id and _norm_pos(p.get("position")) == new_part["position"]:
+            if (
+                p.get("level_id") == participant.level_id
+                and (p.get("subcategory") or None) == sub
+                and _norm_pos(p.get("position")) == new_part["position"]
+            ):
                 raise HTTPException(status_code=400, detail="هذا المركز محجوز لمشارك آخر في نفس المستوى")
 
     await db.tournaments.update_one(
@@ -891,11 +941,28 @@ async def add_participant(tournament_id: str, participant: Participant, current_
 
 
 @router.put("/{tournament_id}/participants/{member_id}")
-async def update_participant(tournament_id: str, member_id: str, payload: ParticipantUpdate, current_user: dict = Depends(require_tournaments_permission)):
+async def update_participant(
+    tournament_id: str,
+    member_id: str,
+    payload: ParticipantUpdate,
+    subcategory: Optional[str] = None,
+    current_user: dict = Depends(require_tournaments_permission),
+):
     t = await _load_tournament_or_403(tournament_id, current_user)
 
     parts = t.get("participants") or []
-    target = next((p for p in parts if p.get("member_id") == member_id), None)
+    sub_filter = (subcategory or "").strip() or None
+    # Locate the participant. When subcategory query param is supplied, match
+    # both (member_id + subcategory). Otherwise match the first record by
+    # member_id (legacy behavior).
+    if sub_filter is not None:
+        target = next(
+            (p for p in parts
+             if p.get("member_id") == member_id and (p.get("subcategory") or None) == sub_filter),
+            None,
+        )
+    else:
+        target = next((p for p in parts if p.get("member_id") == member_id), None)
     if not target:
         raise HTTPException(status_code=404, detail="Participant not found")
 
@@ -905,24 +972,74 @@ async def update_participant(tournament_id: str, member_id: str, payload: Partic
     if "position" in new_data:
         new_data["position"] = _norm_pos(new_data["position"])
 
+    # Normalise subcategory in the payload (treat empty string as None).
+    if "subcategory" in new_data:
+        s = (new_data.get("subcategory") or "").strip()
+        new_data["subcategory"] = s or None
+
     # Compute the EFFECTIVE final state for uniqueness validation.
-    # If the payload omits position/level_id, fall back to the participant's
-    # current value so that moving an already-ranked participant into a
-    # different level still validates against the destination's existing
-    # winners.
+    # If the payload omits position/level_id/subcategory, fall back to the
+    # participant's current value so that moving an already-ranked participant
+    # into a different level still validates against the destination's
+    # existing winners.
     effective_position = (
         new_data["position"] if "position" in new_data else _norm_pos(target.get("position"))
     )
     effective_level = (
         new_data["level_id"] if "level_id" in new_data else target.get("level_id")
     )
+    effective_sub = (
+        new_data["subcategory"] if "subcategory" in new_data else target.get("subcategory")
+    )
+    effective_sub = (effective_sub or None)
 
-    # Ranked position uniqueness per level (within this tournament).
+    # Validate subcategory: when the tournament defines them, the effective
+    # subcategory must be one of them (and non-empty).
+    t_subs = [s for s in (t.get("subcategories") or []) if s]
+    if t_subs:
+        if not effective_sub:
+            raise HTTPException(status_code=400, detail="يجب اختيار التصنيف الفرعي")
+        if effective_sub not in t_subs:
+            raise HTTPException(status_code=400, detail="التصنيف الفرعي غير موجود في هذه البطولة")
+
+    # Identity uniqueness on (member_id, subcategory) — only relevant when
+    # subcategory actually changed. Block conflicts with another row.
+    if "subcategory" in new_data and effective_sub != (target.get("subcategory") or None):
+        for p in parts:
+            if p is target:
+                continue
+            if p.get("member_id") == member_id and (p.get("subcategory") or None) == effective_sub:
+                raise HTTPException(status_code=400, detail="العضو مضاف بالفعل في هذا التصنيف")
+
+    # Capacity per (subcategory, level) on moves between groups.
+    moved_group = (
+        ("subcategory" in new_data and effective_sub != (target.get("subcategory") or None))
+        or ("level_id" in new_data and effective_level != target.get("level_id"))
+    )
+    if t_subs and moved_group and effective_sub and effective_level:
+        cap = int(t.get("subcategory_capacity") or 6)
+        used = sum(
+            1 for p in parts
+            if p is not target
+            and (p.get("subcategory") or None) == effective_sub
+            and p.get("level_id") == effective_level
+        )
+        if used >= cap:
+            raise HTTPException(
+                status_code=400,
+                detail=f"السعة القصوى لهذا المستوى في هذا التصنيف ({cap}) ممتلئة",
+            )
+
+    # Ranked position uniqueness per (subcategory, level).
     if effective_position in RANKED_POSITIONS:
         for p in parts:
-            if p.get("member_id") == member_id:
+            if p is target:
                 continue
-            if p.get("level_id") == effective_level and _norm_pos(p.get("position")) == effective_position:
+            if (
+                p.get("level_id") == effective_level
+                and (p.get("subcategory") or None) == (effective_sub or None)
+                and _norm_pos(p.get("position")) == effective_position
+            ):
                 raise HTTPException(status_code=400, detail="هذا المركز محجوز لمشارك آخر في نفس المستوى")
 
     target.update(new_data)
@@ -956,20 +1073,47 @@ async def update_participant(tournament_id: str, member_id: str, payload: Partic
 
 
 @router.delete("/{tournament_id}/participants/{member_id}")
-async def remove_participant(tournament_id: str, member_id: str, current_user: dict = Depends(require_tournaments_permission)):
+async def remove_participant(
+    tournament_id: str,
+    member_id: str,
+    subcategory: Optional[str] = None,
+    current_user: dict = Depends(require_tournaments_permission),
+):
     t = await _load_tournament_or_403(tournament_id, current_user)
+    parts = t.get("participants") or []
+    sub_filter = (subcategory or "").strip() or None
+
     # Confirm the participant exists *before* the update — `$set(updated_at)`
     # always changes the document, so `modified_count` alone cannot tell us
     # whether the `$pull` actually removed anything.
-    if not any(p.get("member_id") == member_id for p in (t.get("participants") or [])):
+    if sub_filter is not None:
+        match = any(
+            p.get("member_id") == member_id and (p.get("subcategory") or None) == sub_filter
+            for p in parts
+        )
+    else:
+        match = any(p.get("member_id") == member_id for p in parts)
+    if not match:
         raise HTTPException(status_code=404, detail="Participant not found")
-    await db.tournaments.update_one(
-        {"id": tournament_id},
-        {"$pull": {"participants": {"member_id": member_id}},
-         "$set": {"updated_at": datetime.now(timezone.utc).isoformat()}}
-    )
+
+    if sub_filter is not None:
+        # Manual filter + $set so we can scope to (member_id, subcategory).
+        new_parts = [
+            p for p in parts
+            if not (p.get("member_id") == member_id and (p.get("subcategory") or None) == sub_filter)
+        ]
+        await db.tournaments.update_one(
+            {"id": tournament_id},
+            {"$set": {"participants": new_parts, "updated_at": datetime.now(timezone.utc).isoformat()}}
+        )
+    else:
+        await db.tournaments.update_one(
+            {"id": tournament_id},
+            {"$pull": {"participants": {"member_id": member_id}},
+             "$set": {"updated_at": datetime.now(timezone.utc).isoformat()}}
+        )
     await _log_activity("remove_participant", current_user, {
-        "tournament_id": tournament_id, "member_id": member_id
+        "tournament_id": tournament_id, "member_id": member_id, "subcategory": sub_filter,
     })
     return {"message": "Participant removed"}
 

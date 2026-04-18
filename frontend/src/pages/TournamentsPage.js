@@ -132,7 +132,9 @@ const TournamentsPage = () => {
   const [tournamentForm, setTournamentForm] = useState({
     name: '', date: '', place: '',
     activity_ids: [], activity_names: [],
-    branch_id: 'all', description: '', status: 'upcoming', notify: false
+    branch_id: 'all', description: '', status: 'upcoming',
+    subcategories: [], subcategory_capacity: 6,
+    notify: false
   });
   const [saving, setSaving] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
@@ -225,7 +227,9 @@ const TournamentsPage = () => {
       name: '', date: new Date().toISOString().split('T')[0], place: '',
       activity_ids: [], activity_names: [],
       branch_id: selectedBranchId && selectedBranchId !== 'all' ? selectedBranchId : 'all',
-      description: '', status: 'upcoming', notify: false
+      description: '', status: 'upcoming',
+      subcategories: [], subcategory_capacity: 6,
+      notify: false
     });
     setTournamentDialogOpen(true);
   };
@@ -241,6 +245,8 @@ const TournamentsPage = () => {
       branch_id: tn.branch_id || 'all',
       description: tn.description || '',
       status: tn.status || 'upcoming',
+      subcategories: Array.isArray(tn.subcategories) ? tn.subcategories : [],
+      subcategory_capacity: tn.subcategory_capacity || 6,
       notify: false,
     });
     setTournamentDialogOpen(true);
@@ -577,6 +583,85 @@ const TournamentsPage = () => {
                   : 'Leave empty for an open tournament (any branch member can join).'}
               </p>
             </div>
+
+            {/* Subcategories (سباقات) — e.g. swimming strokes */}
+            <div className="border rounded-md p-3 bg-orange-50/40 space-y-2">
+              <Label className="text-sm font-semibold">
+                {language === 'ar' ? 'التصنيفات الفرعية (السباقات)' : 'Sub-categories'}
+              </Label>
+              <p className="text-xs text-muted-foreground">
+                {language === 'ar'
+                  ? 'اختياري. أنشئ تصنيفات داخل البطولة (مثل سباقات السباحة: حر، ظهر، صدر، فراشة). يمكن للعضو نفسه المشاركة في أكثر من تصنيف.'
+                  : 'Optional. Sub-divide the tournament (e.g. swimming strokes). The same member can compete in multiple sub-categories.'}
+              </p>
+              <div className="flex flex-wrap gap-1.5">
+                {(tournamentForm.subcategories || []).map((s, i) => (
+                  <span key={`${s}-${i}`} className="inline-flex items-center gap-1 bg-white border border-orange-300 text-orange-800 rounded-full px-2 py-0.5 text-xs">
+                    {s}
+                    <button
+                      type="button"
+                      className="text-orange-500 hover:text-red-600 font-bold"
+                      onClick={() => setTournamentForm({
+                        ...tournamentForm,
+                        subcategories: tournamentForm.subcategories.filter((_, idx) => idx !== i),
+                      })}
+                      aria-label="remove"
+                    >×</button>
+                  </span>
+                ))}
+              </div>
+              <div className="flex gap-2">
+                <Input
+                  placeholder={language === 'ar' ? 'أضف تصنيف ثم اضغط Enter (مثال: حر)' : 'Add a sub-category then press Enter (e.g. Freestyle)'}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      const v = (e.currentTarget.value || '').trim();
+                      if (!v) return;
+                      const list = tournamentForm.subcategories || [];
+                      if (list.includes(v)) return;
+                      setTournamentForm({ ...tournamentForm, subcategories: [...list, v] });
+                      e.currentTarget.value = '';
+                    }
+                  }}
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setTournamentForm({
+                    ...tournamentForm,
+                    subcategories: ['حر', 'ظهر', 'صدر', 'فراشة'],
+                  })}
+                  title={language === 'ar' ? 'سباقات السباحة الأربعة' : 'Four swimming strokes'}
+                >
+                  {language === 'ar' ? 'سباحة' : 'Swimming'}
+                </Button>
+              </div>
+              {(tournamentForm.subcategories || []).length > 0 && (
+                <div className="grid grid-cols-2 gap-2 items-end pt-1">
+                  <div>
+                    <Label className="text-xs">
+                      {language === 'ar' ? 'سعة كل مستوى داخل التصنيف' : 'Capacity per (level × sub-category)'}
+                    </Label>
+                    <Input
+                      type="number"
+                      min={1}
+                      value={tournamentForm.subcategory_capacity || 6}
+                      onChange={(e) => setTournamentForm({
+                        ...tournamentForm,
+                        subcategory_capacity: Math.max(1, parseInt(e.target.value || '6', 10)),
+                      })}
+                    />
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    {language === 'ar'
+                      ? `الحد الأقصى ${tournamentForm.subcategory_capacity || 6} مشارك في كل مستوى داخل كل تصنيف.`
+                      : `Max ${tournamentForm.subcategory_capacity || 6} members per level within each sub-category.`}
+                  </p>
+                </div>
+              )}
+            </div>
+
             {isAdmin && branches.length > 0 && (
               <div>
                 <Label>{language === 'ar' ? 'الفرع' : 'Branch'}</Label>
@@ -742,12 +827,15 @@ const TournamentDetail = ({ tid, onBack }) => {
   const [addOpen, setAddOpen] = useState(false);
   const [memberSearch, setMemberSearch] = useState('');
   const [partForm, setPartForm] = useState({
-    member_id: '', activity_id: '', level_id: '', age: '', weight: '', notes: '', notify: false
+    member_id: '', activity_id: '', level_id: '', subcategory: '', age: '', weight: '', notes: '', notify: false
   });
   const [saving, setSaving] = useState(false);
 
+  // Active subcategory tab. '' means "all" (or tournament has no subcategories).
+  const [selectedSubcategory, setSelectedSubcategory] = useState('');
+
   const [editingPart, setEditingPart] = useState(null);
-  const [editForm, setEditForm] = useState({ activity_id: '', level_id: '', age: '', weight: '', notes: '', position: '', notify: false });
+  const [editForm, setEditForm] = useState({ activity_id: '', level_id: '', subcategory: '', age: '', weight: '', notes: '', position: '', notify: false });
 
   const [removeTarget, setRemoveTarget] = useState(null);
   const [shareOpen, setShareOpen] = useState(false);
@@ -794,6 +882,14 @@ const TournamentDetail = ({ tid, onBack }) => {
     return tournament.activity_name ? [tournament.activity_name] : [];
   }, [tournament]);
 
+  // Sub-categories defined on this tournament (e.g. swimming strokes).
+  const tournamentSubcategories = useMemo(() => {
+    if (!tournament) return [];
+    return Array.isArray(tournament.subcategories) ? tournament.subcategories.filter(Boolean) : [];
+  }, [tournament]);
+  const subCapacity = tournament?.subcategory_capacity || 6;
+  const hasSubcategories = tournamentSubcategories.length > 0;
+
   const activityNameById = useMemo(() => {
     const map = {};
     tournamentActivityIds.forEach((id, i) => {
@@ -831,18 +927,26 @@ const TournamentDetail = ({ tid, onBack }) => {
   // Eligible members for the tournament's activities (or ALL members if no
   // activity restriction). When the user picks a specific activity in the
   // form, only members enrolled in THAT activity are shown.
+  // Identity for "already added" is (member_id, subcategory): when the
+  // tournament has subcategories, the same member may be added once per
+  // subcategory.
   const eligibleMembers = useMemo(() => {
     if (!tournament) return [];
     const targetIds = partForm.activity_id ? [partForm.activity_id] : tournamentActivityIds;
-    const partIds = new Set((tournament.participants || []).map(p => p.member_id));
+    const sub = (partForm.subcategory || '') || null;
+    const takenIds = new Set(
+      (tournament.participants || [])
+        .filter(p => (p.subcategory || null) === sub)
+        .map(p => p.member_id)
+    );
     return members
-      .filter(m => !partIds.has(m.id))
+      .filter(m => !takenIds.has(m.id))
       .filter(m => {
         if (targetIds.length === 0) return true;
         const acts = m.activities || [];
         return acts.some(a => targetIds.includes(a.activity_id));
       });
-  }, [members, tournament, tournamentActivityIds, partForm.activity_id]);
+  }, [members, tournament, tournamentActivityIds, partForm.activity_id, partForm.subcategory]);
 
   const filteredEligible = useMemo(() => {
     if (!memberSearch) return eligibleMembers.slice(0, 50);
@@ -855,9 +959,14 @@ const TournamentDetail = ({ tid, onBack }) => {
     }).slice(0, 50);
   }, [eligibleMembers, memberSearch]);
 
-  // Group participants by level for display
+  // Group participants by level for display. When the tournament defines
+  // sub-categories, only show participants from the selected tab.
   const groupedParticipants = useMemo(() => {
-    const parts = tournament?.participants || [];
+    let parts = tournament?.participants || [];
+    if (hasSubcategories) {
+      const sub = selectedSubcategory || tournamentSubcategories[0] || '';
+      parts = parts.filter(p => (p.subcategory || '') === sub);
+    }
     const groups = {};
     for (const p of parts) {
       const key = p.level_id || '__none__';
@@ -874,7 +983,8 @@ const TournamentDetail = ({ tid, onBack }) => {
       });
     });
     return groups;
-  }, [tournament]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tournament, hasSubcategories, selectedSubcategory, tournamentSubcategories]);
 
   const getLevelLabel = (lid) => {
     if (!lid || lid === '__none__') return language === 'ar' ? 'بدون مستوى' : 'No level';
@@ -888,7 +998,11 @@ const TournamentDetail = ({ tid, onBack }) => {
     setMemberSearch('');
     // Auto-pick the activity when the tournament has only one.
     const defaultAid = tournamentActivityIds.length === 1 ? tournamentActivityIds[0] : '';
-    setPartForm({ member_id: '', activity_id: defaultAid, level_id: '', age: '', weight: '', notes: '', notify: false });
+    // Default subcategory = currently selected tab (or first available).
+    const defaultSub = hasSubcategories
+      ? (selectedSubcategory || tournamentSubcategories[0] || '')
+      : '';
+    setPartForm({ member_id: '', activity_id: defaultAid, level_id: '', subcategory: defaultSub, age: '', weight: '', notes: '', notify: false });
     setAddOpen(true);
   };
 
@@ -907,6 +1021,7 @@ const TournamentDetail = ({ tid, onBack }) => {
         member_id: partForm.member_id,
         activity_id: partForm.activity_id || null,
         level_id: partForm.level_id || null,
+        subcategory: partForm.subcategory || null,
         age: partForm.age || '',
         weight: partForm.weight || '',
         notes: partForm.notes || '',
@@ -928,6 +1043,7 @@ const TournamentDetail = ({ tid, onBack }) => {
     setEditForm({
       activity_id: p.activity_id || (tournamentActivityIds.length === 1 ? tournamentActivityIds[0] : ''),
       level_id: p.level_id || '',
+      subcategory: p.subcategory || '',
       age: p.age || '',
       weight: p.weight || '',
       notes: p.notes || '',
@@ -940,9 +1056,11 @@ const TournamentDetail = ({ tid, onBack }) => {
     if (!editingPart) return;
     setSaving(true);
     try {
-      const res = await tournamentsAPI.updateParticipant(tid, editingPart.member_id, {
+      const subQ = editingPart.subcategory ? `?subcategory=${encodeURIComponent(editingPart.subcategory)}` : '';
+      const res = await tournamentsAPI.updateParticipant(tid, `${editingPart.member_id}${subQ}`, {
         activity_id: editForm.activity_id || null,
         level_id: editForm.level_id || null,
+        subcategory: editForm.subcategory || null,
         age: editForm.age,
         weight: editForm.weight,
         notes: editForm.notes,
@@ -961,7 +1079,8 @@ const TournamentDetail = ({ tid, onBack }) => {
 
   const quickPositionChange = async (p, newPos) => {
     try {
-      await tournamentsAPI.updateParticipant(tid, p.member_id, {
+      const subQ = p.subcategory ? `?subcategory=${encodeURIComponent(p.subcategory)}` : '';
+      await tournamentsAPI.updateParticipant(tid, `${p.member_id}${subQ}`, {
         position: newPos || null,
       });
       await load();
@@ -973,7 +1092,8 @@ const TournamentDetail = ({ tid, onBack }) => {
   const removeParticipant = async () => {
     if (!removeTarget) return;
     try {
-      await tournamentsAPI.removeParticipant(tid, removeTarget.member_id);
+      const subQ = removeTarget.subcategory ? `?subcategory=${encodeURIComponent(removeTarget.subcategory)}` : '';
+      await tournamentsAPI.removeParticipant(tid, `${removeTarget.member_id}${subQ}`);
       toast.success(language === 'ar' ? 'تم الحذف' : 'Removed');
       setRemoveTarget(null);
       await load();
@@ -1185,6 +1305,44 @@ const TournamentDetail = ({ tid, onBack }) => {
             </CardContent>
           </Card>
 
+          {/* Subcategory tabs */}
+          {hasSubcategories && (
+            <div className="bg-white border rounded-lg p-3 print:hidden">
+              <div className="flex items-center gap-2 mb-2">
+                <Activity className="w-4 h-4 text-orange-500" />
+                <span className="text-sm font-semibold">
+                  {language === 'ar' ? 'التصنيفات الفرعية' : 'Sub-categories'}
+                </span>
+                <span className="text-xs text-muted-foreground">
+                  · {language === 'ar' ? `سعة كل مستوى: ${subCapacity}` : `Capacity per level: ${subCapacity}`}
+                </span>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {tournamentSubcategories.map(s => {
+                  const active = (selectedSubcategory || tournamentSubcategories[0]) === s;
+                  const count = (tournament.participants || []).filter(p => (p.subcategory || '') === s).length;
+                  return (
+                    <button
+                      key={s}
+                      type="button"
+                      onClick={() => setSelectedSubcategory(s)}
+                      className={`px-3 py-1.5 rounded-full text-sm border transition ${
+                        active
+                          ? 'bg-orange-500 text-white border-orange-500'
+                          : 'bg-white text-orange-700 border-orange-300 hover:bg-orange-50'
+                      }`}
+                    >
+                      {s}
+                      <span className={`ms-1.5 text-xs ${active ? 'text-orange-100' : 'text-muted-foreground'}`}>
+                        ({count})
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
           {/* Levels with participants */}
           {tournamentLevels.length === 0 && Object.keys(groupedParticipants).length === 0 ? (
             <Card><CardContent className="py-10 text-center text-muted-foreground">
@@ -1247,6 +1405,27 @@ const TournamentDetail = ({ tid, onBack }) => {
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-3">
+            {hasSubcategories && (
+              <div>
+                <Label>
+                  {language === 'ar' ? 'التصنيف الفرعي (السباق)' : 'Sub-category'}
+                  <span className="text-red-500"> *</span>
+                </Label>
+                <Select
+                  value={partForm.subcategory || ''}
+                  onValueChange={(v) => setPartForm({ ...partForm, subcategory: v, member_id: '' })}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder={language === 'ar' ? 'اختر التصنيف' : 'Pick sub-category'} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {tournamentSubcategories.map(s => (
+                      <SelectItem key={s} value={s}>{s}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
             {tournamentActivityIds.length > 1 && (
               <div>
                 <Label>
@@ -1377,6 +1556,24 @@ const TournamentDetail = ({ tid, onBack }) => {
             <DialogDescription>{editingPart?.member_name}</DialogDescription>
           </DialogHeader>
           <div className="space-y-3">
+            {hasSubcategories && (
+              <div>
+                <Label>{language === 'ar' ? 'التصنيف الفرعي' : 'Sub-category'}</Label>
+                <Select
+                  value={editForm.subcategory || ''}
+                  onValueChange={(v) => setEditForm({ ...editForm, subcategory: v })}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder={language === 'ar' ? 'اختر' : 'Pick'} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {tournamentSubcategories.map(s => (
+                      <SelectItem key={s} value={s}>{s}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
             {tournamentActivityIds.length > 1 && (
               <div>
                 <Label>{language === 'ar' ? 'النشاط' : 'Activity'}</Label>
