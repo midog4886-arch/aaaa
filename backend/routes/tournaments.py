@@ -395,13 +395,24 @@ async def update_participant(tournament_id: str, member_id: str, payload: Partic
     if "position" in new_data:
         new_data["position"] = _norm_pos(new_data["position"])
 
+    # Compute the EFFECTIVE final state for uniqueness validation.
+    # If the payload omits position/level_id, fall back to the participant's
+    # current value so that moving an already-ranked participant into a
+    # different level still validates against the destination's existing
+    # winners.
+    effective_position = (
+        new_data["position"] if "position" in new_data else _norm_pos(target.get("position"))
+    )
+    effective_level = (
+        new_data["level_id"] if "level_id" in new_data else target.get("level_id")
+    )
+
     # Ranked position uniqueness per level (within this tournament).
-    if new_data.get("position") in RANKED_POSITIONS:
-        target_level = new_data.get("level_id", target.get("level_id"))
+    if effective_position in RANKED_POSITIONS:
         for p in parts:
             if p.get("member_id") == member_id:
                 continue
-            if p.get("level_id") == target_level and _norm_pos(p.get("position")) == new_data["position"]:
+            if p.get("level_id") == effective_level and _norm_pos(p.get("position")) == effective_position:
                 raise HTTPException(status_code=400, detail="هذا المركز محجوز لمشارك آخر في نفس المستوى")
 
     target.update(new_data)
