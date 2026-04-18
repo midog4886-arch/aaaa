@@ -30,13 +30,16 @@ import {
 } from 'lucide-react';
 
 const POSITIONS = [
-  { value: 1, label: 'الأول 🥇', emoji: '🥇', color: 'bg-yellow-500' },
-  { value: 2, label: 'الثاني 🥈', emoji: '🥈', color: 'bg-gray-400' },
-  { value: 3, label: 'الثالث 🥉', emoji: '🥉', color: 'bg-amber-700' },
+  { value: '1', label: 'الأول 🥇', emoji: '🥇', color: 'bg-yellow-500' },
+  { value: '2', label: 'الثاني 🥈', emoji: '🥈', color: 'bg-gray-400' },
+  { value: '3', label: 'الثالث 🥉', emoji: '🥉', color: 'bg-amber-700' },
+  { value: 'participation', label: 'مشاركة', emoji: '🎖️', color: 'bg-blue-500' },
 ];
 
 const positionLabel = (pos) => {
-  const p = POSITIONS.find(x => x.value === pos);
+  if (pos === null || pos === undefined || pos === '') return '-';
+  const key = String(pos);
+  const p = POSITIONS.find(x => x.value === key);
   return p ? p.label : '-';
 };
 
@@ -58,6 +61,9 @@ const TournamentsPage = () => {
   // Search/filter for list
   const [searchTerm, setSearchTerm] = useState('');
   const [filterActivity, setFilterActivity] = useState('all');
+  const [filterBranch, setFilterBranch] = useState('all');
+  const [filterFromDate, setFilterFromDate] = useState('');
+  const [filterToDate, setFilterToDate] = useState('');
 
   // Dialogs (list view)
   const [tournamentDialogOpen, setTournamentDialogOpen] = useState(false);
@@ -97,6 +103,9 @@ const TournamentsPage = () => {
   const filteredTournaments = useMemo(() => {
     return (tournaments || []).filter(tn => {
       if (filterActivity !== 'all' && tn.activity_id !== filterActivity) return false;
+      if (filterBranch !== 'all' && (tn.branch_id || '') !== filterBranch) return false;
+      if (filterFromDate && (tn.date || '') < filterFromDate) return false;
+      if (filterToDate && (tn.date || '') > filterToDate) return false;
       if (searchTerm) {
         const q = searchTerm.toLowerCase();
         const fields = [tn.name, tn.place, tn.date, tn.activity_name].filter(Boolean).join(' ').toLowerCase();
@@ -104,7 +113,7 @@ const TournamentsPage = () => {
       }
       return true;
     });
-  }, [tournaments, searchTerm, filterActivity]);
+  }, [tournaments, searchTerm, filterActivity, filterBranch, filterFromDate, filterToDate]);
 
   const openCreate = () => {
     setEditingTournament(null);
@@ -234,30 +243,74 @@ const TournamentsPage = () => {
 
         {/* Filters */}
         <Card>
-          <CardContent className="pt-4 pb-4 grid grid-cols-1 md:grid-cols-3 gap-3">
-            <div className="relative">
-              <Search className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-              <Input
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                placeholder={language === 'ar' ? 'بحث بالاسم أو المكان أو التاريخ' : 'Search'}
-                className="pe-10"
-              />
+          <CardContent className="pt-4 pb-4 space-y-3">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+              <div className="relative">
+                <Search className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                <Input
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  placeholder={language === 'ar' ? 'بحث بالاسم أو المكان أو التاريخ' : 'Search'}
+                  className="pe-10"
+                />
+              </div>
+              <Select value={filterActivity} onValueChange={setFilterActivity}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">{language === 'ar' ? 'كل الأنشطة' : 'All activities'}</SelectItem>
+                  {activities.map(a => (
+                    <SelectItem key={a.id} value={a.id}>{a.name_ar || a.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {isAdmin && branches.length > 0 ? (
+                <Select value={filterBranch} onValueChange={setFilterBranch}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">{language === 'ar' ? 'كل الفروع' : 'All branches'}</SelectItem>
+                    {branches.map(b => (
+                      <SelectItem key={b.id} value={b.id}>{b.name_ar || b.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              ) : <div className="hidden lg:block" />}
             </div>
-            <Select value={filterActivity} onValueChange={setFilterActivity}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">{language === 'ar' ? 'كل الأنشطة' : 'All activities'}</SelectItem>
-                {activities.map(a => (
-                  <SelectItem key={a.id} value={a.id}>{a.name_ar || a.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <div className="flex items-center text-sm text-muted-foreground gap-2">
-              <Trophy className="w-4 h-4" />
-              {language === 'ar'
-                ? `إجمالي البطولات: ${filteredTournaments.length}`
-                : `Total: ${filteredTournaments.length}`}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 items-end">
+              <div>
+                <Label className="text-xs text-muted-foreground">
+                  {language === 'ar' ? 'من تاريخ' : 'From date'}
+                </Label>
+                <Input type="date" value={filterFromDate} onChange={(e) => setFilterFromDate(e.target.value)} />
+              </div>
+              <div>
+                <Label className="text-xs text-muted-foreground">
+                  {language === 'ar' ? 'إلى تاريخ' : 'To date'}
+                </Label>
+                <Input type="date" value={filterToDate} onChange={(e) => setFilterToDate(e.target.value)} />
+              </div>
+              <div className="flex items-center justify-between text-sm text-muted-foreground gap-2">
+                <span className="flex items-center gap-2">
+                  <Trophy className="w-4 h-4" />
+                  {language === 'ar'
+                    ? `إجمالي البطولات: ${filteredTournaments.length}`
+                    : `Total: ${filteredTournaments.length}`}
+                </span>
+                {(searchTerm || filterActivity !== 'all' || filterBranch !== 'all' || filterFromDate || filterToDate) && (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => {
+                      setSearchTerm('');
+                      setFilterActivity('all');
+                      setFilterBranch('all');
+                      setFilterFromDate('');
+                      setFilterToDate('');
+                    }}
+                  >
+                    {language === 'ar' ? 'مسح الفلاتر' : 'Clear'}
+                  </Button>
+                )}
+              </div>
             </div>
           </CardContent>
         </Card>
@@ -603,7 +656,7 @@ const TournamentDetail = ({ tid, onBack }) => {
         age: editForm.age,
         weight: editForm.weight,
         notes: editForm.notes,
-        position: editForm.position ? Number(editForm.position) : null,
+        position: editForm.position || null,
       });
       toast.success(language === 'ar' ? 'تم التحديث' : 'Updated');
       setEditingPart(null);
@@ -616,7 +669,7 @@ const TournamentDetail = ({ tid, onBack }) => {
   const quickPositionChange = async (p, newPos) => {
     try {
       await tournamentsAPI.updateParticipant(tid, p.member_id, {
-        position: newPos ? Number(newPos) : null,
+        position: newPos || null,
       });
       await load();
     } catch (e) {

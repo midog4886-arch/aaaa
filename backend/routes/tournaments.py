@@ -70,7 +70,8 @@ class Participant(BaseModel):
     level_id: Optional[str] = None
     age: Optional[str] = ""
     weight: Optional[str] = ""
-    position: Optional[int] = None  # 1, 2, 3 or None
+    # "1" / "2" / "3" / "participation" / None
+    position: Optional[str] = None
     notes: Optional[str] = ""
 
 
@@ -89,7 +90,7 @@ class ParticipantUpdate(BaseModel):
     level_id: Optional[str] = None
     age: Optional[str] = None
     weight: Optional[str] = None
-    position: Optional[int] = None
+    position: Optional[str] = None
     notes: Optional[str] = None
 
 
@@ -229,6 +230,9 @@ async def create_tournament(payload: TournamentCreate, current_user: dict = Depe
     }
     await db.tournaments.insert_one(doc)
     cache_invalidate("tournaments:")
+    await _log_activity("create_tournament", current_user, {
+        "tournament_id": doc["id"], "name": doc["name"], "branch_id": final_branch_id
+    })
     return {k: v for k, v in doc.items() if k != "_id"}
 
 
@@ -256,16 +260,22 @@ async def update_tournament(tournament_id: str, payload: TournamentCreate, curre
     if not result:
         raise HTTPException(status_code=404, detail="Tournament not found")
     cache_invalidate("tournaments:")
+    await _log_activity("update_tournament", current_user, {
+        "tournament_id": tournament_id, "name": payload.name
+    })
     return {k: v for k, v in result.items() if k != "_id"}
 
 
 @router.delete("/{tournament_id}")
 async def delete_tournament(tournament_id: str, current_user: dict = Depends(get_current_user)):
-    await _load_tournament_or_403(tournament_id, current_user)
+    t = await _load_tournament_or_403(tournament_id, current_user)
     res = await db.tournaments.delete_one({"id": tournament_id})
     if res.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Tournament not found")
     cache_invalidate("tournaments:")
+    await _log_activity("delete_tournament", current_user, {
+        "tournament_id": tournament_id, "name": t.get("name")
+    })
     return {"message": "Tournament deleted"}
 
 
@@ -279,17 +289,24 @@ async def add_participant(tournament_id: str, participant: Participant, current_
     if any(p.get("member_id") == participant.member_id for p in existing):
         raise HTTPException(status_code=400, detail="العضو مضاف بالفعل في هذه البطولة")
 
-    # If position is set (1/2/3), make sure it's unique per level inside this tournament
-    if participant.position in (1, 2, 3):
+    new_part = participant.model_dump()
+    new_part["position"] = _norm_pos(new_part.get("position"))
+
+    # If position is a ranked one (1/2/3), it must be unique per level inside this tournament.
+    # "participation" can be assigned to any number of members.
+    if new_part["position"] in RANKED_POSITIONS:
         for p in existing:
-            if p.get("level_id") == participant.level_id and p.get("position") == participant.position:
+            if p.get("level_id") == participant.level_id and _norm_pos(p.get("position")) == new_part["position"]:
                 raise HTTPException(status_code=400, detail="هذا المركز محجوز لمشارك آخر في نفس المستوى")
 
-    new_part = participant.model_dump()
     await db.tournaments.update_one(
         {"id": tournament_id},
         {"$push": {"participants": new_part}, "$set": {"updated_at": datetime.now(timezone.utc).isoformat()}}
     )
+    await _log_activity("add_participant", current_user, {
+        "tournament_id": tournament_id, "member_id": participant.member_id,
+        "position": new_part["position"]
+    })
     return {"message": "Participant added"}
 
 
@@ -303,14 +320,16 @@ async def update_participant(tournament_id: str, member_id: str, payload: Partic
         raise HTTPException(status_code=404, detail="Participant not found")
 
     new_data = payload.model_dump(exclude_unset=True)
+    if "position" in new_data:
+        new_data["position"] = _norm_pos(new_data["position"])
 
-    # Position uniqueness per level (within this tournament), allowing the same record to keep its current position
-    if new_data.get("position") in (1, 2, 3):
+    # Ranked position uniqueness per level (within this tournament).
+    if new_data.get("position") in RANKED_POSITIONS:
         target_level = new_data.get("level_id", target.get("level_id"))
         for p in parts:
             if p.get("member_id") == member_id:
                 continue
-            if p.get("level_id") == target_level and p.get("position") == new_data["position"]:
+            if p.get("level_id") == target_level and _norm_pos(p.get("position")) == new_data["position"]:
                 raise HTTPException(status_code=400, detail="هذا المركز محجوز لمشارك آخر في نفس المستوى")
 
     target.update(new_data)
@@ -318,6 +337,10 @@ async def update_participant(tournament_id: str, member_id: str, payload: Partic
         {"id": tournament_id},
         {"$set": {"participants": parts, "updated_at": datetime.now(timezone.utc).isoformat()}}
     )
+    await _log_activity("update_participant", current_user, {
+        "tournament_id": tournament_id, "member_id": member_id,
+        "changes": new_data
+    })
     return {"message": "Participant updated"}
 
 
@@ -331,12 +354,53 @@ async def remove_participant(tournament_id: str, member_id: str, current_user: d
     )
     if res.modified_count == 0:
         raise HTTPException(status_code=404, detail="Participant not found")
+    await _log_activity("remove_participant", current_user, {
+        "tournament_id": tournament_id, "member_id": member_id
+    })
     return {"message": "Participant removed"}
 
 
 # ─── Exports ─────────────────────────────────────
 
-POSITION_LABEL = {1: "الأول", 2: "الثاني", 3: "الثالث"}
+POSITION_LABEL = {"1": "الأول", "2": "الثاني", "3": "الثالث", "participation": "مشاركة"}
+RANKED_POSITIONS = ("1", "2", "3")
+
+
+def _norm_pos(v):
+    """Normalize a position value to canonical string form ('1'|'2'|'3'|'participation'|None)."""
+    if v is None or v == "":
+        return None
+    if isinstance(v, int):
+        return str(v) if v in (1, 2, 3) else None
+    s = str(v).strip().lower()
+    if s in ("1", "2", "3", "participation"):
+        return s
+    return None
+
+
+def _pos_sort_key(v):
+    n = _norm_pos(v)
+    if n in RANKED_POSITIONS:
+        return int(n)
+    if n == "participation":
+        return 50
+    return 99
+
+
+async def _log_activity(action: str, current_user: dict, details: dict) -> None:
+    """Best-effort activity log; never raises."""
+    try:
+        await db.activity_logs.insert_one({
+            "id": str(uuid.uuid4()),
+            "category": "tournaments",
+            "action": action,
+            "user_id": current_user.get("id") or str(current_user.get("_id", "")),
+            "user_name": current_user.get("username") or current_user.get("name") or "",
+            "details": details or {},
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        })
+    except Exception:
+        pass
 
 
 @router.get("/{tournament_id}/export")
@@ -355,7 +419,7 @@ async def export_tournament(
         grouped.setdefault(key, []).append(p)
     # Sort each group by position (1,2,3, then None)
     for k, lst in grouped.items():
-        lst.sort(key=lambda x: (x.get("position") or 99, x.get("member_name") or ""))
+        lst.sort(key=lambda x: (_pos_sort_key(x.get("position")), x.get("member_name") or ""))
 
     export_date = datetime.now().strftime("%Y-%m-%d")
 
@@ -407,7 +471,7 @@ async def export_tournament(
             cur_row += 1
 
             for idx, p in enumerate(lst, 1):
-                pos = p.get("position")
+                pos = _norm_pos(p.get("position"))
                 pos_label = POSITION_LABEL.get(pos, "-") if pos else "-"
                 row_vals = [
                     idx,
@@ -473,7 +537,7 @@ async def export_tournament(
         elements.append(rl.Paragraph(f"المستوى: {level_label}  ({len(lst)} مشاركين)", section))
         data = [[rl.Paragraph(h, hdr) for h in pdf_headers]]
         for idx, p in enumerate(lst, 1):
-            pos = p.get("position")
+            pos = _norm_pos(p.get("position"))
             pos_label = POSITION_LABEL.get(pos, "-") if pos else "-"
             data.append([
                 rl.Paragraph(pos_label, cell),
@@ -537,10 +601,12 @@ async def participant_certificate(tournament_id: str, member_id: str, current_us
     accent = rl.ParagraphStyle('CA', fontName=font_name, fontSize=22, leading=28, alignment=1,
                                textColor=rl.colors.HexColor('#F59E0B'))
 
-    pos = p.get("position")
+    pos = _norm_pos(p.get("position"))
     pos_text = ""
-    if pos in (1, 2, 3):
+    if pos in RANKED_POSITIONS:
         pos_text = f"المركز {POSITION_LABEL[pos]} 🏆"
+    elif pos == "participation":
+        pos_text = "شهادة مشاركة"
 
     elements = [
         rl.Spacer(1, 8 * rl.mm),
