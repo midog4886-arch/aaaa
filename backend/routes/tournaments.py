@@ -300,6 +300,21 @@ async def add_participant(tournament_id: str, participant: Participant, current_
     if t_branch and m_branch and t_branch != m_branch:
         raise HTTPException(status_code=400, detail="العضو ليس من نفس فرع البطولة")
 
+    # If tournament is bound to a specific activity, the member must be
+    # actively subscribed to that activity (any subscription with status
+    # "active" referencing the same activity).
+    if t.get("activity_id"):
+        sub = await db.subscriptions.find_one({
+            "member_id": participant.member_id,
+            "activity_id": t["activity_id"],
+            "status": "active",
+        })
+        if not sub:
+            raise HTTPException(
+                status_code=400,
+                detail="العضو ليس لديه اشتراك نشط في نشاط البطولة",
+            )
+
     new_part = participant.model_dump()
     new_part["position"] = _norm_pos(new_part.get("position"))
 
@@ -420,6 +435,8 @@ async def export_tournament(
     format: str = Query("xlsx", description="xlsx or pdf"),
     current_user: dict = Depends(get_current_user)
 ):
+    if format not in ("xlsx", "pdf"):
+        raise HTTPException(status_code=400, detail="format must be 'xlsx' or 'pdf'")
     t = await _load_tournament_or_403(tournament_id, current_user)
     t = await _enrich_participants(t)
     parts = t.get("participants") or []
