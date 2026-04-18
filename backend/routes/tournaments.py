@@ -314,18 +314,51 @@ async def add_participant(tournament_id: str, participant: Participant, current_
         raise HTTPException(status_code=400, detail="العضو ليس من نفس فرع البطولة")
 
     # If tournament is bound to a specific activity, the member must be
-    # actively subscribed to that activity (any subscription with status
-    # "active" referencing the same activity).
+    # currently enrolled in that activity. Enrollment in this codebase comes
+    # from two sources: paid/partial invoices (normal flow) or the inline
+    # `members.activities` array (registration-form flow). A subscription is
+    # considered active when its end_date is today or later.
     if t.get("activity_id"):
-        sub = await db.subscriptions.find_one({
-            "member_id": participant.member_id,
-            "activity_id": t["activity_id"],
-            "status": "active",
-        })
-        if not sub:
+        from datetime import date as _date
+        today_str = _date.today().isoformat()
+        target_activity = t["activity_id"]
+        is_enrolled = False
+
+        for act in (member.get("activities") or []):
+            if act.get("activity_id") != target_activity:
+                continue
+            if act.get("status", "active") != "active":
+                continue
+            end = (act.get("end_date") or "")
+            if not end or end >= today_str:
+                is_enrolled = True
+                break
+
+        if not is_enrolled:
+            invoices = await db.invoices.find(
+                {
+                    "member_id": participant.member_id,
+                    "status": {"$in": ["paid", "partial"]},
+                },
+                {"_id": 0, "items": 1},
+            ).to_list(100)
+            for inv in invoices:
+                for item in inv.get("items", []) or []:
+                    if item.get("is_product"):
+                        continue
+                    if item.get("activity_id") != target_activity:
+                        continue
+                    end = item.get("end_date") or ""
+                    if not end or end >= today_str:
+                        is_enrolled = True
+                        break
+                if is_enrolled:
+                    break
+
+        if not is_enrolled:
             raise HTTPException(
                 status_code=400,
-                detail="العضو ليس لديه اشتراك نشط في نشاط البطولة",
+                detail="العضو ليس مسجلاً في نشاط البطولة أو انتهى اشتراكه",
             )
 
     new_part = participant.model_dump()
