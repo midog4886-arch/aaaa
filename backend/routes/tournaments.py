@@ -18,6 +18,19 @@ from utils.cache import cache_invalidate
 
 router = APIRouter(prefix="/tournaments", tags=["Tournaments"])
 
+PERMISSION_KEY = "tournaments"
+
+
+def require_tournaments_permission(current_user: dict = Depends(require_tournaments_permission)) -> dict:
+    """Defense-in-depth: verify the caller has the `tournaments` permission
+    (or is admin) before any tournaments endpoint executes."""
+    if current_user.get("is_admin"):
+        return current_user
+    perms = current_user.get("permissions") or []
+    if PERMISSION_KEY in perms:
+        return current_user
+    raise HTTPException(status_code=403, detail="Permission denied: tournaments")
+
 # ============ Lazy imports for heavy libs ============
 
 def _get_openpyxl():
@@ -187,7 +200,7 @@ async def _enrich_participants(tournament: dict) -> dict:
 async def list_tournaments(
     branch_filter: Optional[str] = None,
     activity_id: Optional[str] = None,
-    current_user: dict = Depends(get_current_user)
+    current_user: dict = Depends(require_tournaments_permission)
 ):
     """List tournaments — branch-scoped for non-admins."""
     query = _branch_query(current_user, branch_filter)
@@ -201,13 +214,13 @@ async def list_tournaments(
 
 
 @router.get("/{tournament_id}")
-async def get_tournament(tournament_id: str, current_user: dict = Depends(get_current_user)):
+async def get_tournament(tournament_id: str, current_user: dict = Depends(require_tournaments_permission)):
     t = await _load_tournament_or_403(tournament_id, current_user)
     return await _enrich_participants(t)
 
 
 @router.post("")
-async def create_tournament(payload: TournamentCreate, current_user: dict = Depends(get_current_user)):
+async def create_tournament(payload: TournamentCreate, current_user: dict = Depends(require_tournaments_permission)):
     is_admin = current_user.get("is_admin", False)
     if is_admin and payload.branch_id:
         final_branch_id = payload.branch_id if payload.branch_id != "all" else None
@@ -237,7 +250,7 @@ async def create_tournament(payload: TournamentCreate, current_user: dict = Depe
 
 
 @router.put("/{tournament_id}")
-async def update_tournament(tournament_id: str, payload: TournamentCreate, current_user: dict = Depends(get_current_user)):
+async def update_tournament(tournament_id: str, payload: TournamentCreate, current_user: dict = Depends(require_tournaments_permission)):
     await _load_tournament_or_403(tournament_id, current_user)
     update = {
         "name": payload.name,
@@ -267,7 +280,7 @@ async def update_tournament(tournament_id: str, payload: TournamentCreate, curre
 
 
 @router.delete("/{tournament_id}")
-async def delete_tournament(tournament_id: str, current_user: dict = Depends(get_current_user)):
+async def delete_tournament(tournament_id: str, current_user: dict = Depends(require_tournaments_permission)):
     t = await _load_tournament_or_403(tournament_id, current_user)
     res = await db.tournaments.delete_one({"id": tournament_id})
     if res.deleted_count == 0:
@@ -282,7 +295,7 @@ async def delete_tournament(tournament_id: str, current_user: dict = Depends(get
 # ─── Participants ────────────────────────────────
 
 @router.post("/{tournament_id}/participants")
-async def add_participant(tournament_id: str, participant: Participant, current_user: dict = Depends(get_current_user)):
+async def add_participant(tournament_id: str, participant: Participant, current_user: dict = Depends(require_tournaments_permission)):
     t = await _load_tournament_or_403(tournament_id, current_user)
 
     existing = t.get("participants") or []
@@ -337,7 +350,7 @@ async def add_participant(tournament_id: str, participant: Participant, current_
 
 
 @router.put("/{tournament_id}/participants/{member_id}")
-async def update_participant(tournament_id: str, member_id: str, payload: ParticipantUpdate, current_user: dict = Depends(get_current_user)):
+async def update_participant(tournament_id: str, member_id: str, payload: ParticipantUpdate, current_user: dict = Depends(require_tournaments_permission)):
     t = await _load_tournament_or_403(tournament_id, current_user)
 
     parts = t.get("participants") or []
@@ -371,7 +384,7 @@ async def update_participant(tournament_id: str, member_id: str, payload: Partic
 
 
 @router.delete("/{tournament_id}/participants/{member_id}")
-async def remove_participant(tournament_id: str, member_id: str, current_user: dict = Depends(get_current_user)):
+async def remove_participant(tournament_id: str, member_id: str, current_user: dict = Depends(require_tournaments_permission)):
     await _load_tournament_or_403(tournament_id, current_user)
     res = await db.tournaments.update_one(
         {"id": tournament_id},
@@ -433,7 +446,7 @@ async def _log_activity(action: str, current_user: dict, details: dict) -> None:
 async def export_tournament(
     tournament_id: str,
     format: str = Query("xlsx", description="xlsx or pdf"),
-    current_user: dict = Depends(get_current_user)
+    current_user: dict = Depends(require_tournaments_permission)
 ):
     if format not in ("xlsx", "pdf"):
         raise HTTPException(status_code=400, detail="format must be 'xlsx' or 'pdf'")
@@ -604,7 +617,7 @@ async def export_tournament(
 
 
 @router.get("/{tournament_id}/certificate/{member_id}")
-async def participant_certificate(tournament_id: str, member_id: str, current_user: dict = Depends(get_current_user)):
+async def participant_certificate(tournament_id: str, member_id: str, current_user: dict = Depends(require_tournaments_permission)):
     t = await _load_tournament_or_403(tournament_id, current_user)
     t = await _enrich_participants(t)
     p = next((x for x in (t.get("participants") or []) if x.get("member_id") == member_id), None)
