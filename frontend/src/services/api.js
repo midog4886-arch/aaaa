@@ -62,6 +62,7 @@ export const tournamentsAPI = {
   exportUrl: (tid, format = 'xlsx') => `${API}/tournaments/${tid}/export?format=${format}`,
   certificateUrl: (tid, mid) => `${API}/tournaments/${tid}/certificate/${mid}`,
   getRecentMedalists: (params = {}) => axios.get(`${API}/tournaments/recent-medalists`, { params }),
+  previewRecipients: (params = {}) => axios.get(`${API}/tournaments/recipients-preview`, { params }),
 };
 
 // Members API

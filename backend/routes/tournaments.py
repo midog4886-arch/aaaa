@@ -478,6 +478,54 @@ async def list_recent_medalists(
     return medalists
 
 
+@router.get("/recipients-preview")
+async def preview_announcement_recipients(
+    branch_id: Optional[str] = None,
+    activity_id: Optional[str] = None,
+    activity_name: Optional[str] = None,
+    current_user: dict = Depends(require_tournaments_permission),
+):
+    """Preview the members who would receive a tournament announcement
+    broadcast for the given branch/activity. Mirrors the targeting logic
+    used by `_broadcast_tournament_announcement` so the admin can see the
+    audience before sending."""
+    is_admin = current_user.get("is_admin", False)
+    if is_admin:
+        # "all" or empty means no branch restriction
+        effective_branch = branch_id if (branch_id and branch_id != "all") else None
+    else:
+        # Non-admins are always scoped to their own branch
+        effective_branch = current_user.get("branch_id")
+
+    member_query: dict = {}
+    if effective_branch:
+        member_query["branch_id"] = effective_branch
+    if activity_id or activity_name:
+        elem: dict = {"status": "active"}
+        if activity_id:
+            elem["activity_id"] = activity_id
+        elif activity_name:
+            elem["activity_name"] = activity_name
+        member_query["activities"] = {"$elemMatch": elem}
+
+    members = await db.members.find(
+        member_query,
+        {"_id": 0, "id": 1, "name_ar": 1, "name": 1, "member_code": 1},
+    ).to_list(10000)
+
+    items = [
+        {
+            "id": m.get("id"),
+            "name": m.get("name_ar") or m.get("name") or "",
+            "member_code": m.get("member_code") or "",
+        }
+        for m in members
+        if m.get("id")
+    ]
+    items.sort(key=lambda x: x["name"])
+    return {"count": len(items), "members": items}
+
+
 @router.get("/{tournament_id}")
 async def get_tournament(tournament_id: str, current_user: dict = Depends(require_tournaments_permission)):
     t = await _load_tournament_or_403(tournament_id, current_user)

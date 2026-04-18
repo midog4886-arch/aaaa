@@ -87,6 +87,37 @@ const TournamentsPage = () => {
   const [saving, setSaving] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
 
+  // Recipients preview for the "notify" checkbox in the create dialog
+  const [recipientsPreview, setRecipientsPreview] = useState({ count: 0, members: [], loading: false, loaded: false });
+  const [recipientsListOpen, setRecipientsListOpen] = useState(false);
+
+  useEffect(() => {
+    if (!tournamentDialogOpen || editingTournament) {
+      return;
+    }
+    let cancelled = false;
+    setRecipientsPreview(prev => ({ ...prev, loading: true }));
+    const params = {};
+    if (tournamentForm.branch_id) params.branch_id = tournamentForm.branch_id;
+    if (tournamentForm.activity_id) params.activity_id = tournamentForm.activity_id;
+    else if (tournamentForm.activity_name) params.activity_name = tournamentForm.activity_name;
+    tournamentsAPI.previewRecipients(params)
+      .then((res) => {
+        if (cancelled) return;
+        setRecipientsPreview({
+          count: res.data?.count || 0,
+          members: res.data?.members || [],
+          loading: false,
+          loaded: true,
+        });
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setRecipientsPreview({ count: 0, members: [], loading: false, loaded: true });
+      });
+    return () => { cancelled = true; };
+  }, [tournamentDialogOpen, editingTournament, tournamentForm.branch_id, tournamentForm.activity_id, tournamentForm.activity_name]);
+
   useEffect(() => {
     loadList();
   }, [selectedBranchId]);
@@ -490,6 +521,32 @@ const TournamentsPage = () => {
                       ? 'سيتم إرسال إشعار للأعضاء المسجلين في النشاط (والفرع المختار).'
                       : 'Members enrolled in the chosen activity (and branch) will receive a notification.'}
                   </p>
+                  <div className="text-xs mt-2 flex items-center gap-2 flex-wrap">
+                    {recipientsPreview.loading ? (
+                      <span className="text-muted-foreground inline-flex items-center gap-1">
+                        <Loader2 className="w-3 h-3 animate-spin" />
+                        {language === 'ar' ? 'جاري حساب المستلمين…' : 'Calculating recipients…'}
+                      </span>
+                    ) : (
+                      <>
+                        <Badge variant="secondary" className="font-medium">
+                          <Users className="w-3 h-3 me-1" />
+                          {language === 'ar'
+                            ? `سيصل الإشعار إلى ${recipientsPreview.count} عضو`
+                            : `This will notify ${recipientsPreview.count} member${recipientsPreview.count === 1 ? '' : 's'}`}
+                        </Badge>
+                        {recipientsPreview.count > 0 && (
+                          <button
+                            type="button"
+                            className="text-orange-600 hover:underline"
+                            onClick={() => setRecipientsListOpen(true)}
+                          >
+                            {language === 'ar' ? 'عرض المستلمين' : 'View recipients'}
+                          </button>
+                        )}
+                      </>
+                    )}
+                  </div>
                 </div>
               </div>
             )}
@@ -501,6 +558,47 @@ const TournamentsPage = () => {
             <Button onClick={saveTournament} disabled={saving} className="bg-orange-500 hover:bg-orange-600 text-white">
               {saving && <Loader2 className="w-4 h-4 animate-spin ms-1" />}
               {language === 'ar' ? 'حفظ' : 'Save'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Recipients preview list */}
+      <Dialog open={recipientsListOpen} onOpenChange={setRecipientsListOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>
+              {language === 'ar'
+                ? `المستلمون (${recipientsPreview.count})`
+                : `Recipients (${recipientsPreview.count})`}
+            </DialogTitle>
+            <DialogDescription>
+              {language === 'ar'
+                ? 'الأعضاء الذين سيتلقون إشعار البطولة الجديدة.'
+                : 'Members who will receive the tournament announcement.'}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="max-h-[50vh] overflow-y-auto border rounded">
+            {recipientsPreview.members.length === 0 ? (
+              <p className="text-sm text-muted-foreground text-center p-4">
+                {language === 'ar' ? 'لا يوجد مستلمون.' : 'No recipients.'}
+              </p>
+            ) : (
+              <ul className="divide-y">
+                {recipientsPreview.members.map((m) => (
+                  <li key={m.id} className="px-3 py-2 text-sm flex items-center justify-between">
+                    <span>{m.name || '-'}</span>
+                    {m.member_code && (
+                      <span className="text-xs text-muted-foreground ms-2">{m.member_code}</span>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRecipientsListOpen(false)}>
+              {language === 'ar' ? 'إغلاق' : 'Close'}
             </Button>
           </DialogFooter>
         </DialogContent>
