@@ -14,9 +14,9 @@ import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, Command
 import { levelsAPI, membersAPI, branchesAPI, activitiesAPI, attendanceAPI, coachesAPI } from '../services/api';
 import { toast } from 'sonner';
 import { 
-  Plus, Edit, Trash2, Loader2, Layers, Users, Dumbbell, UserPlus, UserMinus, Search,
+  Plus, Edit, Trash2, Loader2, Layers, Users, Dumbbell, UserPlus, UserMinus, UserX, Search,
   ChevronDown, ChevronUp, ChevronRight, Clock, AlertTriangle, ArrowRight, ArrowLeft, Home,
-  GripVertical, Move, ArrowUpDown, SlidersHorizontal, TrendingUp, BarChart3, CheckCircle, Circle, UserCheck, Printer
+  GripVertical, Move, ArrowUpDown, SlidersHorizontal, TrendingUp, BarChart3, CheckCircle, Circle, UserCheck, Printer, RefreshCw
 } from 'lucide-react';
 
 // Main activity types with Arabic names
@@ -103,6 +103,17 @@ export const LevelsPage = () => {
   const [isPrintDialogOpen, setIsPrintDialogOpen] = useState(false);
   const [printDays, setPrintDays] = useState(['saturday']);
   const [printActivity, setPrintActivity] = useState('swimming');
+
+  // Unassigned members dialog
+  const [isUnassignedDialogOpen, setIsUnassignedDialogOpen] = useState(false);
+  const [unassignedData, setUnassignedData] = useState([]);
+  const [unassignedLoading, setUnassignedLoading] = useState(false);
+  const [unassignedSearch, setUnassignedSearch] = useState('');
+  const [unassignedActivityFilter, setUnassignedActivityFilter] = useState('');
+  const [unassignedCount, setUnassignedCount] = useState(0);
+  const [assignPickerOpen, setAssignPickerOpen] = useState(false);
+  const [assignTarget, setAssignTarget] = useState(null); // { member, activity }
+  const [assigning, setAssigning] = useState(false);
   
   // Search, filter, sort for main activities view
   const [levelSearchTerm, setLevelSearchTerm] = useState('');
@@ -135,7 +146,103 @@ export const LevelsPage = () => {
 
   useEffect(() => {
     loadData();
+    loadUnassignedCount();
   }, [selectedBranchId]);
+
+  const loadUnassignedCount = async () => {
+    try {
+      const branchParams = selectedBranchId && selectedBranchId !== 'all' ? { branch_filter: selectedBranchId } : {};
+      const res = await levelsAPI.getUnassignedCount(branchParams);
+      setUnassignedCount(res.data?.count || 0);
+    } catch (e) { /* silent */ }
+  };
+
+  const loadUnassigned = async () => {
+    setUnassignedLoading(true);
+    try {
+      const branchParams = selectedBranchId && selectedBranchId !== 'all' ? { branch_filter: selectedBranchId } : {};
+      const res = await levelsAPI.getUnassignedMembers(branchParams);
+      setUnassignedData(res.data?.members || []);
+      setUnassignedCount(res.data?.count || 0);
+    } catch (e) {
+      toast.error(t('فشل تحميل البيانات', 'Failed to load data'));
+    } finally {
+      setUnassignedLoading(false);
+    }
+  };
+
+  const openUnassignedDialog = () => {
+    setIsUnassignedDialogOpen(true);
+    setUnassignedSearch('');
+    setUnassignedActivityFilter('');
+    loadUnassigned();
+  };
+
+  const openAssignPicker = (member, activity) => {
+    setAssignTarget({ member, activity });
+    setAssignPickerOpen(true);
+  };
+
+  const handleAssignToLevel = async (level) => {
+    if (!assignTarget) return;
+    setAssigning(true);
+    try {
+      await levelsAPI.addMember(level.id, assignTarget.member.id);
+      toast.success(t('تم تعيين العضو للمستوى', 'Member assigned to level'));
+      setAssignPickerOpen(false);
+      setAssignTarget(null);
+      await Promise.all([loadUnassigned(), loadData()]);
+    } catch (e) {
+      const msg = e.response?.data?.detail || '';
+      toast.error(msg || t('فشل التعيين', 'Assignment failed'));
+    } finally {
+      setAssigning(false);
+    }
+  };
+
+  // Filter unassigned data based on search and activity filter
+  const filteredUnassigned = useMemo(() => {
+    return unassignedData.filter(m => {
+      // Activity filter
+      if (unassignedActivityFilter) {
+        const hasMatch = (m.unassigned_activities || []).some(a =>
+          matchesGroup(a.activity_name, unassignedActivityFilter)
+        );
+        if (!hasMatch) return false;
+      }
+      // Search filter
+      if (unassignedSearch) {
+        const q = unassignedSearch.toLowerCase();
+        const name = (m.name_ar || m.name || '').toLowerCase();
+        const phone = (m.phone || '').toLowerCase();
+        const code = (m.member_code || '').toLowerCase();
+        return name.includes(q) || phone.includes(q) || code.includes(q);
+      }
+      return true;
+    });
+  }, [unassignedData, unassignedSearch, unassignedActivityFilter]);
+
+  // Available levels matching the assignTarget activity (branch-scoped)
+  const matchingLevelsForAssign = useMemo(() => {
+    if (!assignTarget) return [];
+    const actName = assignTarget.activity?.activity_name || '';
+    const memberBranch = assignTarget.member?.branch_id || null;
+    return levels
+      .filter(l => {
+        // Branch isolation: level must belong to member's branch (or be a "main"/null branch level)
+        if (memberBranch && l.branch_id && l.branch_id !== memberBranch) return false;
+        const ln = l.activity_name || '';
+        // Match by exact or by activity-group keywords
+        if (ln === actName) return true;
+        for (const g of ACTIVITY_GROUPS) {
+          if (g.keywords.some(k => actName.includes(k)) && g.keywords.some(k => ln.includes(k))) {
+            return true;
+          }
+        }
+        return false;
+      })
+      .sort((a, b) => (a.level_number || 0) - (b.level_number || 0));
+  }, [assignTarget, levels]);
 
   const loadData = async () => {
     try {
@@ -1410,6 +1517,22 @@ export const LevelsPage = () => {
               </div>
             </div>
             <div className="flex items-center gap-2">
+              {currentView === 'days' && (
+                <Button
+                  variant="outline"
+                  className="gap-2 relative border-red-300 text-red-700 hover:bg-red-50"
+                  onClick={openUnassignedDialog}
+                  data-testid="open-unassigned-btn"
+                >
+                  <UserX className="w-4 h-4" />
+                  {t('أعضاء بدون مستوى', 'Members without level')}
+                  {unassignedCount > 0 && (
+                    <span className="ms-1 inline-flex items-center justify-center min-w-[22px] h-5 px-1.5 rounded-full bg-red-500 text-white text-[11px] font-bold">
+                      {unassignedCount > 99 ? '99+' : unassignedCount}
+                    </span>
+                  )}
+                </Button>
+              )}
               <Button
                 variant="outline"
                 className="gap-2"
@@ -2298,6 +2421,200 @@ export const LevelsPage = () => {
             <DialogFooter className="mt-4">
               <Button variant="outline" onClick={() => setIsMembersDialogOpen(false)}>
                 {t('إغلاق', 'Close')}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Unassigned Members Dialog */}
+        <Dialog open={isUnassignedDialogOpen} onOpenChange={setIsUnassignedDialogOpen}>
+          <DialogContent className="max-w-3xl max-h-[85vh] overflow-hidden flex flex-col">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <UserX className="w-5 h-5 text-red-500" />
+                {t('أعضاء بدون مستوى', 'Members without level')}
+                <Badge variant="destructive" className="ms-2">{filteredUnassigned.length}</Badge>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="ms-auto h-8 w-8"
+                  onClick={loadUnassigned}
+                  disabled={unassignedLoading}
+                  title={t('تحديث', 'Refresh')}
+                >
+                  <RefreshCw className={`w-4 h-4 ${unassignedLoading ? 'animate-spin' : ''}`} />
+                </Button>
+              </DialogTitle>
+            </DialogHeader>
+
+            <div className="flex-1 overflow-hidden flex flex-col">
+              {/* Filters */}
+              <div className="flex flex-col sm:flex-row gap-2 mb-3">
+                <div className="relative flex-1">
+                  <Search className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 w-4 h-4" />
+                  <Input
+                    placeholder={t('بحث بالاسم أو رقم الجوال أو رقم العضوية...', 'Search by name, phone or member code...')}
+                    value={unassignedSearch}
+                    onChange={(e) => setUnassignedSearch(e.target.value)}
+                    className="pe-10"
+                    data-testid="unassigned-search"
+                  />
+                </div>
+                <Select
+                  value={unassignedActivityFilter || '__all__'}
+                  onValueChange={v => setUnassignedActivityFilter(v === '__all__' ? '' : v)}
+                >
+                  <SelectTrigger className="w-full sm:w-48">
+                    <SelectValue placeholder={t('كل الأنشطة', 'All activities')} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__all__">{t('كل الأنشطة', 'All activities')}</SelectItem>
+                    {ACTIVITY_GROUPS.map(g => (
+                      <SelectItem key={g.id} value={g.id}>{g.icon} {g.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Body */}
+              <div className="flex-1 overflow-y-auto border rounded-lg">
+                {unassignedLoading ? (
+                  <div className="flex items-center justify-center py-12">
+                    <Loader2 className="w-6 h-6 animate-spin text-primary" />
+                  </div>
+                ) : filteredUnassigned.length === 0 ? (
+                  <div className="text-center py-12 text-gray-500">
+                    <CheckCircle className="w-12 h-12 mx-auto text-green-500 mb-2" />
+                    <p className="font-medium">
+                      {unassignedData.length === 0
+                        ? t('ممتاز! كل الأعضاء النشطين معيّنون لمستويات', 'Excellent! All active members are assigned to levels')
+                        : t('لا توجد نتائج بهذه الفلاتر', 'No results match these filters')}
+                    </p>
+                  </div>
+                ) : (
+                  <div className="divide-y">
+                    {filteredUnassigned.map(member => (
+                      <div key={member.id} className="p-3 hover:bg-gray-50">
+                        <div className="flex items-start gap-3">
+                          <div className="w-10 h-10 rounded-full bg-red-100 text-red-700 flex items-center justify-center text-sm font-bold flex-shrink-0">
+                            {(member.name_ar || member.name || '?').charAt(0)}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-baseline gap-2 flex-wrap">
+                              <p className="font-semibold text-sm">{member.name_ar || member.name}</p>
+                              <span className="text-xs text-gray-500">#{member.member_code}</span>
+                              <span className="text-xs text-gray-500">• {member.phone}</span>
+                            </div>
+                            <div className="mt-2 space-y-1.5">
+                              {(member.unassigned_activities || [])
+                                .filter(a => !unassignedActivityFilter || matchesGroup(a.activity_name, unassignedActivityFilter))
+                                .map((act, idx) => (
+                                <div key={idx} className="flex items-center justify-between gap-2 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                                  <div className="min-w-0 flex-1">
+                                    <p className="text-sm font-medium text-amber-900 truncate">
+                                      {act.activity_name || t('نشاط', 'Activity')}
+                                    </p>
+                                    <p className="text-xs text-amber-700 truncate">
+                                      {act.schedule && <span>⏰ {act.schedule}</span>}
+                                      {act.end_date && <span className="ms-2">🗓️ {t('حتى', 'until')} {act.end_date}</span>}
+                                    </p>
+                                  </div>
+                                  <Button
+                                    size="sm"
+                                    className="gap-1 flex-shrink-0 bg-primary hover:bg-primary/90"
+                                    onClick={() => openAssignPicker(member, act)}
+                                    data-testid={`assign-${member.id}-${idx}`}
+                                  >
+                                    <UserPlus className="w-3.5 h-3.5" />
+                                    {t('تعيين لمستوى', 'Assign to level')}
+                                  </Button>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <DialogFooter className="mt-4">
+              <Button variant="outline" onClick={() => setIsUnassignedDialogOpen(false)}>
+                {t('إغلاق', 'Close')}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Assign-to-Level Picker Dialog */}
+        <Dialog open={assignPickerOpen} onOpenChange={(o) => { setAssignPickerOpen(o); if (!o) setAssignTarget(null); }}>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <Layers className="w-5 h-5 text-primary" />
+                {t('اختر المستوى', 'Choose Level')}
+              </DialogTitle>
+            </DialogHeader>
+            {assignTarget && (
+              <div className="space-y-3">
+                <div className="bg-gray-50 rounded-lg p-3 text-sm">
+                  <p className="font-medium">{assignTarget.member.name_ar || assignTarget.member.name}</p>
+                  <p className="text-xs text-gray-600 mt-0.5">
+                    {assignTarget.activity?.activity_name}
+                    {assignTarget.activity?.schedule && <span> • ⏰ {assignTarget.activity.schedule}</span>}
+                  </p>
+                </div>
+                <div className="max-h-72 overflow-y-auto space-y-2 -mx-1 px-1">
+                  {matchingLevelsForAssign.length === 0 ? (
+                    <p className="text-center text-sm text-gray-500 py-6">
+                      {t('لا توجد مستويات متاحة لهذا النشاط', 'No levels available for this activity')}
+                    </p>
+                  ) : matchingLevelsForAssign.map(level => {
+                    const memberCount = (level.members || []).length;
+                    const maxCap = level.activity_name?.includes('سباحة') ? 6 : (level.capacity || 10);
+                    const isFull = memberCount >= maxCap;
+                    return (
+                      <button
+                        key={level.id}
+                        onClick={() => !isFull && !assigning && handleAssignToLevel(level)}
+                        disabled={isFull || assigning}
+                        className={`w-full text-start p-3 rounded-lg border-2 transition-all ${
+                          isFull
+                            ? 'opacity-50 cursor-not-allowed bg-gray-50 border-gray-200'
+                            : 'hover:border-primary hover:bg-primary/5 border-gray-200'
+                        }`}
+                        data-testid={`pick-level-${level.id}`}
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <Badge className={`${getLevelColor(level.level_number)} text-white`}>
+                              {t('مستوى', 'Lv')} {level.level_number}
+                            </Badge>
+                            <div className="min-w-0">
+                              <p className="font-medium text-sm truncate">{level.custom_name || level.activity_name}</p>
+                              <p className="text-xs text-gray-500 truncate">{level.activity_name}</p>
+                            </div>
+                          </div>
+                          <div className="text-xs text-gray-600 flex-shrink-0">
+                            {memberCount}/{maxCap}
+                            {isFull && (
+                              <Badge variant="destructive" className="ms-1 text-[10px]">
+                                {t('ممتلئ', 'Full')}
+                              </Badge>
+                            )}
+                          </div>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+            <DialogFooter>
+              <Button variant="outline" onClick={() => { setAssignPickerOpen(false); setAssignTarget(null); }} disabled={assigning}>
+                {t('إلغاء', 'Cancel')}
               </Button>
             </DialogFooter>
           </DialogContent>

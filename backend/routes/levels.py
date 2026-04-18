@@ -300,6 +300,67 @@ async def remove_member_from_level(level_id: str, member_id: str, current_user: 
     return {"message": "Member removed from level"}
 
 
+@router.get("/unassigned-members")
+async def get_unassigned_members(
+    branch_filter: Optional[str] = None,
+    current_user: dict = Depends(get_current_user)
+):
+    """Members with active subscriptions that are NOT yet assigned to any level."""
+    is_admin = current_user.get("is_admin", False)
+    branch_id = current_user.get("branch_id")
+
+    query = {}
+    if is_admin:
+        if branch_filter and branch_filter != "all":
+            query["$or"] = [{"branch_id": branch_filter}, {"branch_id": None}, {"branch_id": {"$exists": False}}]
+    else:
+        query["$or"] = [{"branch_id": branch_id}, {"branch_id": None}, {"branch_id": {"$exists": False}}]
+
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    members = await db.members.find(query, {"_id": 0}).to_list(10000)
+
+    result = []
+    for m in members:
+        unassigned_acts = []
+        for a in (m.get("activities") or []):
+            if a.get("status") != "active":
+                continue
+            end_date = a.get("end_date") or ""
+            if end_date and end_date < today:
+                continue
+            lvl_id = a.get("level_id")
+            if not lvl_id:
+                unassigned_acts.append({
+                    "activity_id": a.get("activity_id"),
+                    "activity_name": a.get("activity_name"),
+                    "schedule": a.get("schedule"),
+                    "start_date": a.get("start_date"),
+                    "end_date": a.get("end_date"),
+                })
+        if unassigned_acts:
+            result.append({
+                "id": m.get("id"),
+                "name": m.get("name_ar") or m.get("name"),
+                "name_ar": m.get("name_ar"),
+                "phone": m.get("phone"),
+                "member_code": m.get("member_code"),
+                "branch_id": m.get("branch_id"),
+                "unassigned_activities": unassigned_acts,
+            })
+
+    return {"count": len(result), "members": result}
+
+
+@router.get("/unassigned-count")
+async def get_unassigned_count(
+    branch_filter: Optional[str] = None,
+    current_user: dict = Depends(get_current_user)
+):
+    """Lightweight: just the count of unassigned members for sidebar badge."""
+    data = await get_unassigned_members(branch_filter=branch_filter, current_user=current_user)
+    return {"count": data["count"]}
+
+
 @router.get("/{level_id}/count")
 async def get_level_member_count(level_id: str, current_user: dict = Depends(get_current_user)):
     """Get the count of members in a level"""

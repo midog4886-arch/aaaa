@@ -4,7 +4,7 @@ import { useLanguage } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/AuthContext';
 import { Button } from './ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
-import { branchesAPI, notificationsAPI } from '../services/api';
+import { branchesAPI, notificationsAPI, levelsAPI } from '../services/api';
 import GlobalScanner from './GlobalScanner';
 import CameraQRScanner from './CameraQRScanner';
 import GlobalSearch from './GlobalSearch';
@@ -57,6 +57,7 @@ export const Sidebar = ({ isOpen, onClose }) => {
   const { logout, user, selectedBranchId, switchBranch } = useAuth();
   const navigate = useNavigate();
   const [branches, setBranches] = useState([]);
+  const [unassignedCount, setUnassignedCount] = useState(0);
 
   const isAdmin = user?.is_admin;
   const userPermissions = user?.permissions || [];
@@ -66,6 +67,23 @@ export const Sidebar = ({ isOpen, onClose }) => {
       loadBranches();
     }
   }, [isAdmin]);
+
+  useEffect(() => {
+    const canSeeLevels = isAdmin || (user?.permissions || []).includes('levels');
+    if (!canSeeLevels) return;
+    const loadCount = async () => {
+      try {
+        const params = selectedBranchId && selectedBranchId !== 'all' ? { branch_filter: selectedBranchId } : {};
+        const res = await levelsAPI.getUnassignedCount(params);
+        setUnassignedCount(res.data?.count || 0);
+      } catch (e) {
+        // silent
+      }
+    };
+    loadCount();
+    const id = setInterval(loadCount, 5 * 60 * 1000); // refresh every 5 min
+    return () => clearInterval(id);
+  }, [isAdmin, user?.permissions, selectedBranchId]);
 
   const loadBranches = async () => {
     try {
@@ -273,7 +291,16 @@ export const Sidebar = ({ isOpen, onClose }) => {
                       onClick={onClose}
                     >
                       <item.icon className="nav-item-icon" />
-                      <span>{t(item.label)}</span>
+                      <span className="flex-1">{t(item.label)}</span>
+                      {item.to === '/admin/levels' && unassignedCount > 0 && (
+                        <span
+                          className="ms-auto inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full bg-red-500 text-white text-[11px] font-bold"
+                          title={language === 'ar' ? 'أعضاء بدون مستوى' : 'Members without level'}
+                          data-testid="sidebar-unassigned-badge"
+                        >
+                          {unassignedCount > 99 ? '99+' : unassignedCount}
+                        </span>
+                      )}
                     </NavLink>
                   ))}
                 </div>
