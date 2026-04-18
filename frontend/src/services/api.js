@@ -48,6 +48,20 @@ export const levelsAPI = {
   getUnassignedCount: (params = {}) => axios.get(`${API}/levels/unassigned-count`, { params }),
 };
 
+// Tournaments API
+export const tournamentsAPI = {
+  getAll: (params = {}) => axios.get(`${API}/tournaments`, { params }),
+  get: (id) => axios.get(`${API}/tournaments/${id}`),
+  create: (data) => axios.post(`${API}/tournaments`, data),
+  update: (id, data) => axios.put(`${API}/tournaments/${id}`, data),
+  delete: (id) => axios.delete(`${API}/tournaments/${id}`),
+  addParticipant: (tid, data) => axios.post(`${API}/tournaments/${tid}/participants`, data),
+  updateParticipant: (tid, mid, data) => axios.put(`${API}/tournaments/${tid}/participants/${mid}`, data),
+  removeParticipant: (tid, mid) => axios.delete(`${API}/tournaments/${tid}/participants/${mid}`),
+  exportUrl: (tid, format = 'xlsx') => `${API}/tournaments/${tid}/export?format=${format}`,
+  certificateUrl: (tid, mid) => `${API}/tournaments/${tid}/certificate/${mid}`,
+};
+
 // Members API
 export const membersAPI = {
   getAll: (params = {}) => axios.get(`${API}/members`, { params }),

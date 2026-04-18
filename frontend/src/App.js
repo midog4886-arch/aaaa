@@ -74,6 +74,7 @@ import PrivacyPolicyPage from './pages/PrivacyPolicyPage';
 import DailyLedgerPage from './pages/DailyLedgerPage';
 import DayExtensionsPage from './pages/DayExtensionsPage';
 import WhatsAppPage from './pages/WhatsAppPage';
+import TournamentsPage from './pages/TournamentsPage';
 
 // Member Portal Pages
 import MemberLogin from './pages/member-portal/MemberLogin';
@@ -421,6 +422,14 @@ function AppRoutes() {
         element={
           <ProtectedRoute permission="messages">
             <WhatsAppPage />
+          </ProtectedRoute>
+        } 
+      />
+      <Route 
+        path="/admin/tournaments" 
+        element={
+          <ProtectedRoute permission="tournaments">
+            <TournamentsPage />
           </ProtectedRoute>
         } 
       />

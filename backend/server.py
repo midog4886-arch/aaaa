@@ -78,6 +78,7 @@ from routes.coach_attendance import router as coach_attendance_router
 from routes.supervisors import router as supervisors_router
 from routes.payment_vouchers import router as payment_vouchers_router
 from routes.whatsapp import router as whatsapp_router, set_database as set_whatsapp_db, start_scheduler as start_whatsapp_scheduler
+from routes.tournaments import router as tournaments_router
 
 ROOT_DIR = Path(__file__).parent
 UPLOADS_DIR = ROOT_DIR / "uploads"
@@ -122,6 +123,7 @@ api_router.include_router(coach_attendance_router)
 api_router.include_router(supervisors_router)
 api_router.include_router(payment_vouchers_router)
 api_router.include_router(whatsapp_router)
+api_router.include_router(tournaments_router)
 
 # Set database for loyalty router
 set_loyalty_db(db)

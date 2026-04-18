@@ -142,6 +142,7 @@ export const Sidebar = ({ isOpen, onClose }) => {
         { to: '/admin/coach-ratings', icon: Star, label: 'coach_ratings', permission: 'coach-ratings' },
         { to: '/admin/coach-attendance', icon: Clock, label: 'coach_attendance', permission: 'coach-attendance' },
         { to: '/admin/supervisors', icon: UserCog, label: 'supervisors', permission: 'coaches' },
+        { to: '/admin/tournaments', icon: Trophy, label: 'tournaments', permission: 'tournaments' },
       ]
     },
     {
