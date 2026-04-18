@@ -86,6 +86,7 @@ class Participant(BaseModel):
     # "1" / "2" / "3" / "participation" / None
     position: Optional[str] = None
     notes: Optional[str] = ""
+    notify: Optional[bool] = False  # send direct notification to the member
 
 
 class TournamentCreate(BaseModel):
@@ -97,6 +98,7 @@ class TournamentCreate(BaseModel):
     branch_id: Optional[str] = None
     description: Optional[str] = ""
     status: Optional[str] = "upcoming"  # upcoming | ongoing | completed
+    notify: Optional[bool] = False  # broadcast announcement to members on create
 
 
 class ParticipantUpdate(BaseModel):
@@ -105,6 +107,7 @@ class ParticipantUpdate(BaseModel):
     weight: Optional[str] = None
     position: Optional[str] = None
     notes: Optional[str] = None
+    notify: Optional[bool] = False  # send congrats notification on result
 
 
 # ============ HELPERS ============
@@ -192,6 +195,151 @@ async def _enrich_participants(tournament: dict) -> dict:
         })
     tournament["participants"] = enriched
     return tournament
+
+
+# ============ NOTIFICATION HELPERS ============
+
+async def _send_member_notification(
+    member_id: str,
+    title_ar: str,
+    message_ar: str,
+    title_en: str = "",
+    message_en: str = "",
+    notif_type: str = "tournament",
+    link: Optional[str] = None,
+    tag: Optional[str] = None,
+) -> None:
+    """Insert in-app member notification + send push (best-effort, never raises)."""
+    try:
+        await db.member_notifications.insert_one({
+            "id": str(uuid.uuid4()),
+            "member_id": member_id,
+            "title_ar": title_ar,
+            "title_en": title_en or title_ar,
+            "message_ar": message_ar,
+            "message_en": message_en or message_ar,
+            "type": notif_type,
+            "link": link,
+            "is_read": False,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        })
+    except Exception:
+        pass
+
+    try:
+        from routes.push_notifications import (
+            send_push_notification, NotificationPayload,
+        )
+        subs = await db.push_subscriptions.find(
+            {"is_active": True, "member_id": member_id}, {"_id": 0}
+        ).to_list(20)
+        if not subs:
+            return
+        payload = NotificationPayload(
+            title=title_ar,
+            body=message_ar,
+            url=link or "/portal",
+            tag=tag or f"tournament-{uuid.uuid4()}",
+            data={"type": notif_type},
+        )
+        for sub in subs:
+            try:
+                await send_push_notification(sub, payload)
+            except Exception:
+                continue
+    except Exception:
+        pass
+
+
+async def _broadcast_tournament_announcement(tournament: dict) -> None:
+    """Best-effort broadcast: notify members of the tournament's branch
+    (and activity, when set) about the new tournament."""
+    try:
+        branch_id = tournament.get("branch_id")
+        activity_id = tournament.get("activity_id")
+        activity_name = tournament.get("activity_name") or ""
+
+        # Resolve target member IDs: members enrolled in the activity within the branch
+        member_query: dict = {}
+        if branch_id:
+            member_query["branch_id"] = branch_id
+        if activity_id or activity_name:
+            elem: dict = {"status": "active"}
+            if activity_id:
+                elem["activity_id"] = activity_id
+            elif activity_name:
+                elem["activity_name"] = activity_name
+            member_query["activities"] = {"$elemMatch": elem}
+        members = await db.members.find(
+            member_query, {"_id": 0, "id": 1}
+        ).to_list(10000)
+        member_ids = [m["id"] for m in members if m.get("id")]
+        if not member_ids:
+            return
+
+        t_name = tournament.get("name", "")
+        t_date = tournament.get("date") or ""
+        t_place = tournament.get("place") or ""
+        bits_ar = [f"بطولة جديدة: {t_name}"]
+        bits_en = [f"New tournament: {t_name}"]
+        if t_date:
+            bits_ar.append(f"التاريخ: {t_date}")
+            bits_en.append(f"Date: {t_date}")
+        if t_place:
+            bits_ar.append(f"المكان: {t_place}")
+            bits_en.append(f"Place: {t_place}")
+        msg_ar = " — ".join(bits_ar)
+        msg_en = " — ".join(bits_en)
+
+        for mid in member_ids:
+            await _send_member_notification(
+                member_id=mid,
+                title_ar="🏆 بطولة جديدة",
+                title_en="🏆 New Tournament",
+                message_ar=msg_ar,
+                message_en=msg_en,
+                notif_type="tournament_announcement",
+                link="/portal/my-tournaments",
+                tag=f"tournament-new-{tournament.get('id')}",
+            )
+    except Exception:
+        pass
+
+
+async def _notify_participant_added(tournament: dict, member_id: str) -> None:
+    """Direct notification: member was added to a tournament."""
+    t_name = tournament.get("name", "")
+    t_date = tournament.get("date") or "-"
+    t_place = tournament.get("place") or "-"
+    await _send_member_notification(
+        member_id=member_id,
+        title_ar="🎯 تم تسجيلك في بطولة",
+        title_en="🎯 Registered for a tournament",
+        message_ar=f"تم تسجيلك في بطولة \"{t_name}\" — التاريخ: {t_date} — المكان: {t_place}",
+        message_en=f"You've been registered for \"{t_name}\" — Date: {t_date} — Place: {t_place}",
+        notif_type="tournament_registration",
+        link="/portal/my-tournaments",
+        tag=f"tournament-reg-{tournament.get('id')}-{member_id}",
+    )
+
+
+async def _notify_result(tournament: dict, member_id: str, position: str) -> None:
+    """Congratulatory direct notification when a ranked result is recorded."""
+    pos_ar = {"1": "الأول 🥇", "2": "الثاني 🥈", "3": "الثالث 🥉"}.get(position, "")
+    pos_en = {"1": "1st 🥇", "2": "2nd 🥈", "3": "3rd 🥉"}.get(position, "")
+    if not pos_ar:
+        return
+    t_name = tournament.get("name", "")
+    await _send_member_notification(
+        member_id=member_id,
+        title_ar="🏆 مبروك! حققت إنجازاً",
+        title_en="🏆 Congratulations!",
+        message_ar=f"مبروك! حصلت على المركز {pos_ar} في بطولة \"{t_name}\".",
+        message_en=f"Congratulations! You won {pos_en} place in \"{t_name}\".",
+        notif_type="tournament_result",
+        link="/portal/my-tournaments",
+        tag=f"tournament-result-{tournament.get('id')}-{member_id}",
+    )
 
 
 # ============ ROUTES ============
@@ -363,6 +511,8 @@ async def create_tournament(payload: TournamentCreate, current_user: dict = Depe
     await _log_activity("create_tournament", current_user, {
         "tournament_id": doc["id"], "name": doc["name"], "branch_id": final_branch_id
     })
+    if payload.notify:
+        await _broadcast_tournament_announcement(doc)
     return {k: v for k, v in doc.items() if k != "_id"}
 
 
@@ -479,6 +629,7 @@ async def add_participant(tournament_id: str, participant: Participant, current_
             )
 
     new_part = participant.model_dump()
+    notify_member = bool(new_part.pop("notify", False))
     new_part["position"] = _norm_pos(new_part.get("position"))
 
     # If position is a ranked one (1/2/3), it must be unique per level inside this tournament.
@@ -496,6 +647,8 @@ async def add_participant(tournament_id: str, participant: Participant, current_
         "tournament_id": tournament_id, "member_id": participant.member_id,
         "position": new_part["position"]
     })
+    if notify_member:
+        await _notify_participant_added(t, participant.member_id)
     return {"message": "Participant added"}
 
 
@@ -509,6 +662,8 @@ async def update_participant(tournament_id: str, member_id: str, payload: Partic
         raise HTTPException(status_code=404, detail="Participant not found")
 
     new_data = payload.model_dump(exclude_unset=True)
+    notify_member = bool(new_data.pop("notify", False))
+    prev_position = _norm_pos(target.get("position"))
     if "position" in new_data:
         new_data["position"] = _norm_pos(new_data["position"])
 
@@ -541,6 +696,11 @@ async def update_participant(tournament_id: str, member_id: str, payload: Partic
         "tournament_id": tournament_id, "member_id": member_id,
         "changes": new_data
     })
+    # Congratulate when a ranked position is freshly assigned/changed
+    if notify_member and "position" in new_data:
+        new_pos = new_data.get("position")
+        if new_pos in RANKED_POSITIONS and new_pos != prev_position:
+            await _notify_result(t, member_id, new_pos)
     return {"message": "Participant updated"}
 
 

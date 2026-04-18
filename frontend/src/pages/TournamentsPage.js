@@ -10,6 +10,7 @@ import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { Badge } from '../components/ui/badge';
 import { Textarea } from '../components/ui/textarea';
+import { Checkbox } from '../components/ui/checkbox';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription
 } from '../components/ui/dialog';
@@ -81,7 +82,7 @@ const TournamentsPage = () => {
   const [editingTournament, setEditingTournament] = useState(null);
   const [tournamentForm, setTournamentForm] = useState({
     name: '', date: '', place: '', activity_id: '', activity_name: '',
-    branch_id: 'all', description: '', status: 'upcoming'
+    branch_id: 'all', description: '', status: 'upcoming', notify: false
   });
   const [saving, setSaving] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
@@ -132,7 +133,7 @@ const TournamentsPage = () => {
       name: '', date: new Date().toISOString().split('T')[0], place: '',
       activity_id: '', activity_name: '',
       branch_id: selectedBranchId && selectedBranchId !== 'all' ? selectedBranchId : 'all',
-      description: '', status: 'upcoming'
+      description: '', status: 'upcoming', notify: false
     });
     setTournamentDialogOpen(true);
   };
@@ -148,6 +149,7 @@ const TournamentsPage = () => {
       branch_id: tn.branch_id || 'all',
       description: tn.description || '',
       status: tn.status || 'upcoming',
+      notify: false,
     });
     setTournamentDialogOpen(true);
   };
@@ -170,7 +172,8 @@ const TournamentsPage = () => {
     try {
       const payload = { ...tournamentForm };
       if (editingTournament) {
-        await tournamentsAPI.update(editingTournament.id, payload);
+        const { notify: _ignored, ...editPayload } = payload;
+        await tournamentsAPI.update(editingTournament.id, editPayload);
         toast.success(language === 'ar' ? 'تم التحديث' : 'Updated');
       } else {
         await tournamentsAPI.create(payload);
@@ -469,6 +472,27 @@ const TournamentsPage = () => {
                 onChange={(e) => setTournamentForm({ ...tournamentForm, description: e.target.value })}
               />
             </div>
+            {!editingTournament && (
+              <div className="flex items-start gap-2 pt-1 border-t mt-2 pt-3">
+                <Checkbox
+                  id="notify-create-tournament"
+                  checked={!!tournamentForm.notify}
+                  onCheckedChange={(v) => setTournamentForm({ ...tournamentForm, notify: !!v })}
+                />
+                <div className="flex-1">
+                  <Label htmlFor="notify-create-tournament" className="cursor-pointer">
+                    {language === 'ar'
+                      ? 'إرسال إشعار للأعضاء بهذه البطولة الجديدة'
+                      : 'Notify members about this new tournament'}
+                  </Label>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {language === 'ar'
+                      ? 'سيتم إرسال إشعار للأعضاء المسجلين في النشاط (والفرع المختار).'
+                      : 'Members enrolled in the chosen activity (and branch) will receive a notification.'}
+                  </p>
+                </div>
+              </div>
+            )}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setTournamentDialogOpen(false)}>
@@ -521,12 +545,12 @@ const TournamentDetail = ({ tid, onBack }) => {
   const [addOpen, setAddOpen] = useState(false);
   const [memberSearch, setMemberSearch] = useState('');
   const [partForm, setPartForm] = useState({
-    member_id: '', level_id: '', age: '', weight: '', notes: ''
+    member_id: '', level_id: '', age: '', weight: '', notes: '', notify: false
   });
   const [saving, setSaving] = useState(false);
 
   const [editingPart, setEditingPart] = useState(null);
-  const [editForm, setEditForm] = useState({ level_id: '', age: '', weight: '', notes: '', position: '' });
+  const [editForm, setEditForm] = useState({ level_id: '', age: '', weight: '', notes: '', position: '', notify: false });
 
   const [removeTarget, setRemoveTarget] = useState(null);
   const [shareOpen, setShareOpen] = useState(false);
@@ -631,7 +655,7 @@ const TournamentDetail = ({ tid, onBack }) => {
 
   const openAdd = () => {
     setMemberSearch('');
-    setPartForm({ member_id: '', level_id: '', age: '', weight: '', notes: '' });
+    setPartForm({ member_id: '', level_id: '', age: '', weight: '', notes: '', notify: false });
     setAddOpen(true);
   };
 
@@ -649,6 +673,7 @@ const TournamentDetail = ({ tid, onBack }) => {
         weight: partForm.weight || '',
         notes: partForm.notes || '',
         position: null,
+        notify: !!partForm.notify,
       });
       toast.success(language === 'ar' ? 'تمت إضافة المشارك' : 'Participant added');
       setAddOpen(false);
@@ -666,6 +691,7 @@ const TournamentDetail = ({ tid, onBack }) => {
       weight: p.weight || '',
       notes: p.notes || '',
       position: p.position ? String(p.position) : '',
+      notify: false,
     });
   };
 
@@ -679,6 +705,7 @@ const TournamentDetail = ({ tid, onBack }) => {
         weight: editForm.weight,
         notes: editForm.notes,
         position: editForm.position || null,
+        notify: !!editForm.notify,
       });
       toast.success(language === 'ar' ? 'تم التحديث' : 'Updated');
       setEditingPart(null);
@@ -965,6 +992,18 @@ const TournamentDetail = ({ tid, onBack }) => {
                 onChange={(e) => setPartForm({ ...partForm, notes: e.target.value })}
               />
             </div>
+            <div className="flex items-start gap-2 pt-3 border-t">
+              <Checkbox
+                id="notify-add-participant"
+                checked={!!partForm.notify}
+                onCheckedChange={(v) => setPartForm({ ...partForm, notify: !!v })}
+              />
+              <Label htmlFor="notify-add-participant" className="cursor-pointer">
+                {language === 'ar'
+                  ? 'إرسال إشعار للعضو بتسجيله في البطولة'
+                  : 'Notify the member of their registration'}
+              </Label>
+            </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setAddOpen(false)}>
@@ -1028,6 +1067,20 @@ const TournamentDetail = ({ tid, onBack }) => {
               <Label>{language === 'ar' ? 'ملاحظات' : 'Notes'}</Label>
               <Textarea rows={2} value={editForm.notes} onChange={(e) => setEditForm({ ...editForm, notes: e.target.value })} />
             </div>
+            {['1', '2', '3'].includes(String(editForm.position || '')) && (
+              <div className="flex items-start gap-2 pt-3 border-t">
+                <Checkbox
+                  id="notify-edit-participant"
+                  checked={!!editForm.notify}
+                  onCheckedChange={(v) => setEditForm({ ...editForm, notify: !!v })}
+                />
+                <Label htmlFor="notify-edit-participant" className="cursor-pointer">
+                  {language === 'ar'
+                    ? 'إرسال إشعار تهنئة للعضو بفوزه'
+                    : 'Send a congratulations notification to the member'}
+                </Label>
+              </div>
+            )}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditingPart(null)}>
