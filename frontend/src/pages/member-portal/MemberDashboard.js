@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
 import { 
   CreditCard, Calendar, QrCode, Bell, CheckCircle, 
-  AlertTriangle, Clock, ChevronLeft, ChevronRight, Star, Activity
+  AlertTriangle, Clock, ChevronLeft, ChevronRight, Star, Activity, Trophy
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { motion } from 'framer-motion';
@@ -315,6 +315,7 @@ const MemberDashboard = () => {
   const [notifications, setNotifications] = useState({ notifications: [], unread_count: 0 });
   const [attendanceStats, setAttendanceStats] = useState(null);
   const [loyaltyData, setLoyaltyData] = useState(null);
+  const [myTournaments, setMyTournaments] = useState(null);
 
   const member = getMemberData();
   const darkMode = getDarkMode();
@@ -344,11 +345,15 @@ const MemberDashboard = () => {
           .catch(() => ({ ok: false }))
       : Promise.resolve({ ok: true });
 
+    const tournamentsP = memberAPI.get('/api/member-portal/my-tournaments')
+      .then(res => { setMyTournaments(res.data); return { ok: true }; })
+      .catch(() => ({ ok: false }));
+
     // Show the page as soon as the FASTEST core endpoint returns,
     // remaining sections fill in shortly after.
     Promise.race([subsP, notifP, attP]).then(() => setLoading(false));
 
-    const [subsR, notifR] = await Promise.all([subsP, notifP, attP, loyaltyP]);
+    const [subsR, notifR] = await Promise.all([subsP, notifP, attP, loyaltyP, tournamentsP]);
 
     if (showToast) {
       (subsR.ok && notifR.ok)
@@ -684,6 +689,74 @@ const MemberDashboard = () => {
                       </div>
                     );
                   })}
+                </CardContent>
+              </Card>
+            </motion.div>
+          )}
+
+          {/* ── My Tournaments ── */}
+          {myTournaments && myTournaments.tournaments?.length > 0 && (
+            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.28 }}>
+              <Card className={darkMode ? 'bg-gray-800 border-gray-700' : ''}>
+                <CardHeader className="pb-3">
+                  <CardTitle className={`text-base flex items-center gap-2 ${darkMode ? 'text-white' : ''}`}>
+                    <Trophy className="w-4 h-4 text-yellow-500" />
+                    {language === 'ar' ? 'بطولاتي' : 'My Tournaments'}
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="pt-0 space-y-3">
+                  {/* Medal totals row */}
+                  <div className="grid grid-cols-4 gap-2 mb-1">
+                    {[
+                      { emoji: '🥇', count: myTournaments.totals?.gold || 0, label_ar: 'ذهبية', label_en: 'Gold' },
+                      { emoji: '🥈', count: myTournaments.totals?.silver || 0, label_ar: 'فضية', label_en: 'Silver' },
+                      { emoji: '🥉', count: myTournaments.totals?.bronze || 0, label_ar: 'برونزية', label_en: 'Bronze' },
+                      { emoji: '🎯', count: myTournaments.totals?.participations || 0, label_ar: 'مشاركة', label_en: 'Total' },
+                    ].map((s, i) => (
+                      <div key={i} className={`rounded-xl p-2 text-center border ${darkMode ? 'bg-gray-700/50 border-gray-600' : 'bg-gray-50 border-gray-200'}`}>
+                        <div className="text-xl leading-none">{s.emoji}</div>
+                        <div className={`text-base font-black mt-1 ${darkMode ? 'text-white' : 'text-gray-900'}`}>{s.count}</div>
+                        <div className={`text-[10px] ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{language === 'ar' ? s.label_ar : s.label_en}</div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Tournament list */}
+                  {myTournaments.tournaments.slice(0, 5).map((tr, idx) => {
+                    const medal = tr.position === '1' ? '🥇' : tr.position === '2' ? '🥈' : tr.position === '3' ? '🥉' : '🎯';
+                    const posLabel = (language === 'ar' ? tr.position_label_ar : tr.position_label_en)
+                      || (language === 'ar' ? 'مشاركة' : 'Participation');
+                    return (
+                      <div key={`${tr.tournament_id}-${idx}`} className={`flex items-center gap-3 p-3 rounded-xl border ${darkMode ? 'bg-gray-700/50 border-gray-600' : 'bg-gray-50 border-gray-200'}`}>
+                        <span className="text-2xl leading-none shrink-0" aria-hidden>{medal}</span>
+                        <div className="flex-1 min-w-0">
+                          <p className={`font-bold text-sm truncate ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                            {tr.tournament_name}
+                          </p>
+                          <div className={`text-[11px] mt-0.5 flex items-center gap-2 flex-wrap ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                            {tr.date && <span className="flex items-center gap-1"><Calendar className="w-3 h-3" /> {tr.date}</span>}
+                            {tr.place && <span>· {tr.place}</span>}
+                            {tr.activity_name && <span>· {tr.activity_name}</span>}
+                          </div>
+                        </div>
+                        <span className={`shrink-0 text-[11px] font-bold px-2 py-1 rounded-full border ${
+                          tr.position === '1' ? 'bg-yellow-100 text-yellow-700 border-yellow-300' :
+                          tr.position === '2' ? 'bg-slate-100 text-slate-700 border-slate-300' :
+                          tr.position === '3' ? 'bg-amber-100 text-amber-800 border-amber-300' :
+                          (darkMode ? 'bg-gray-600 text-gray-200 border-gray-500' : 'bg-gray-100 text-gray-600 border-gray-300')
+                        }`}>
+                          {posLabel}
+                        </span>
+                      </div>
+                    );
+                  })}
+                  {myTournaments.tournaments.length > 5 && (
+                    <p className={`text-center text-xs ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                      {language === 'ar'
+                        ? `+ ${myTournaments.tournaments.length - 5} بطولة أخرى`
+                        : `+ ${myTournaments.tournaments.length - 5} more tournaments`}
+                    </p>
+                  )}
                 </CardContent>
               </Card>
             </motion.div>

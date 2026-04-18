@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import { Badge } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
 // eslint-disable-next-line react-hooks/exhaustive-deps
-import { dashboardAPI, reportsAPI, membersAPI, activitiesAPI, invoicesAPI, discountsAPI, activityNotesAPI } from '../services/api';
+import { dashboardAPI, reportsAPI, membersAPI, activitiesAPI, invoicesAPI, discountsAPI, activityNotesAPI, tournamentsAPI } from '../services/api';
 import { toast } from 'sonner';
 import { 
   Users, 
@@ -34,7 +34,8 @@ import {
   GripVertical,
   ChevronUp,
   ChevronDown,
-  EyeIcon
+  EyeIcon,
+  Trophy
 } from 'lucide-react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from 'recharts';
 
@@ -43,6 +44,7 @@ const DEFAULT_WIDGETS = [
   { id: 'details', visible: true },
   { id: 'expiring', visible: true },
   { id: 'notes', visible: true },
+  { id: 'champions', visible: false },
 ];
 
 const WIDGET_LABELS = {
@@ -50,6 +52,13 @@ const WIDGET_LABELS = {
   details: { ar: 'عرض التفاصيل', en: 'Detail View' },
   expiring: { ar: 'الاشتراكات المنتهية', en: 'Expiring Subscriptions' },
   notes: { ar: 'آخر الملاحظات', en: 'Recent Notes' },
+  champions: { ar: 'أبطال البطولات الأخيرة', en: 'Recent Champions' },
+};
+
+const MEDAL_STYLES = {
+  '1': { emoji: '🥇', label_ar: 'الأول', label_en: '1st', cls: 'bg-yellow-100 text-yellow-700 border-yellow-300' },
+  '2': { emoji: '🥈', label_ar: 'الثاني', label_en: '2nd', cls: 'bg-slate-100 text-slate-700 border-slate-300' },
+  '3': { emoji: '🥉', label_ar: 'الثالث', label_en: '3rd', cls: 'bg-amber-100 text-amber-800 border-amber-300' },
 };
 
 export const DashboardPage = () => {
@@ -59,6 +68,7 @@ export const DashboardPage = () => {
   const [expiring, setExpiring] = useState([]);
   const [discounts, setDiscounts] = useState([]);
   const [recentNotes, setRecentNotes] = useState([]);
+  const [recentChampions, setRecentChampions] = useState([]);
   const [loading, setLoading] = useState(true);
   
   const [statsUnlocked, setStatsUnlocked] = useState(false);
@@ -86,7 +96,16 @@ export const DashboardPage = () => {
     try {
       const res = await dashboardAPI.getSettings();
       if (res.data?.widgets?.length > 0) {
-        setWidgets(res.data.widgets);
+        // Merge saved widgets with defaults so newly-added widgets appear for
+        // users who already have a saved layout (preserves order/visibility
+        // for known widgets, appends new ones at the end as hidden by default).
+        const saved = res.data.widgets;
+        const savedIds = new Set(saved.map(w => w.id));
+        const merged = [
+          ...saved,
+          ...DEFAULT_WIDGETS.filter(w => !savedIds.has(w.id)),
+        ];
+        setWidgets(merged);
       }
     } catch (err) {
       console.error('Failed to load dashboard settings:', err);
@@ -123,16 +142,18 @@ export const DashboardPage = () => {
   const loadData = async () => {
     try {
       const branchParams = selectedBranchId && selectedBranchId !== 'all' ? { branch_filter: selectedBranchId } : {};
-      const [statsRes, expiringRes, discountsRes, notesRes] = await Promise.all([
+      const [statsRes, expiringRes, discountsRes, notesRes, championsRes] = await Promise.all([
         dashboardAPI.getStats(branchParams),
         reportsAPI.getExpiringSubscriptions(7, selectedBranchId),
         discountsAPI.getAll(branchParams),
-        activityNotesAPI.getRecent(5)
+        activityNotesAPI.getRecent(5),
+        tournamentsAPI.getRecentMedalists({ limit: 5, ...branchParams }).catch(() => ({ data: [] })),
       ]);
       setStats(statsRes.data);
       setExpiring(expiringRes.data);
       setDiscounts(discountsRes.data);
       setRecentNotes(notesRes.data || []);
+      setRecentChampions(championsRes.data || []);
     } catch (error) {
       console.error('Failed to load dashboard data:', error);
     } finally {
@@ -765,6 +786,56 @@ export const DashboardPage = () => {
               </CardContent>
             </Card>
           </div>
+          );
+
+          if (widget.id === 'champions') return (
+          <Card key="champions" data-testid="recent-champions">
+            <CardHeader>
+              <CardTitle className="flex items-center justify-between">
+                <span className="flex items-center gap-2">
+                  <Trophy className="w-5 h-5 text-yellow-500" />
+                  {language === 'ar' ? 'أبطال البطولات الأخيرة' : 'Recent Champions'}
+                </span>
+                <Button size="sm" variant="outline" onClick={() => window.location.href = '/admin/tournaments'} className="text-yellow-700 border-yellow-500/30 hover:bg-yellow-500/10">
+                  <ExternalLink className="w-4 h-4 me-1" />
+                  {language === 'ar' ? 'عرض البطولات' : 'View Tournaments'}
+                </Button>
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {recentChampions.length > 0 ? (
+                <div className="space-y-3 max-h-[320px] overflow-y-auto">
+                  {recentChampions.map((c, index) => {
+                    const m = MEDAL_STYLES[c.position] || {};
+                    return (
+                      <div key={`${c.tournament_id}-${c.member_id}`} className="flex items-center justify-between p-3 bg-muted/40 rounded-lg animate-slide-in" style={{ animationDelay: `${index * 0.05}s` }}>
+                        <div className="flex items-center gap-3 min-w-0">
+                          <span className="text-2xl leading-none shrink-0" aria-hidden>{m.emoji}</span>
+                          <div className="min-w-0">
+                            <p className="font-medium truncate">{c.member_name || (language === 'ar' ? 'عضو' : 'Member')}</p>
+                            <p className="text-xs text-muted-foreground truncate">{c.tournament_name}</p>
+                            {c.tournament_date && (
+                              <p className="text-[11px] text-muted-foreground/80 mt-0.5 flex items-center gap-1">
+                                <Calendar className="w-3 h-3" /> {c.tournament_date}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                        <Badge variant="outline" className={m.cls}>
+                          {language === 'ar' ? m.label_ar : m.label_en}
+                        </Badge>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="empty-state">
+                  <Trophy className="empty-state-icon" />
+                  <p>{language === 'ar' ? 'لا يوجد أبطال مسجلون بعد' : 'No champions recorded yet'}</p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
           );
 
           if (widget.id === 'notes') return (

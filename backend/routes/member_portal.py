@@ -427,6 +427,77 @@ async def get_qr_card_data(member: dict = Depends(get_current_member)):
     }
 
 
+# ============ TOURNAMENTS ============
+
+@router.get("/my-tournaments")
+async def get_my_tournaments(member: dict = Depends(get_current_member)):
+    """Return all tournaments this member has participated in, with their
+    position/medal in each. Most-recent first.
+    """
+    POSITION_LABEL_AR = {"1": "الأول", "2": "الثاني", "3": "الثالث", "participation": "مشاركة"}
+    POSITION_LABEL_EN = {"1": "1st Place", "2": "2nd Place", "3": "3rd Place", "participation": "Participation"}
+
+    tournaments = await db.tournaments.find(
+        {"participants.member_id": member["id"]},
+        {"_id": 0, "id": 1, "name": 1, "date": 1, "place": 1,
+         "activity_name": 1, "status": 1, "participants": 1},
+    ).sort("date", -1).to_list(200)
+
+    # Collect level ids needed for label enrichment
+    level_ids = set()
+    for t in tournaments:
+        for p in t.get("participants", []) or []:
+            if p.get("member_id") == member["id"] and p.get("level_id"):
+                level_ids.add(p["level_id"])
+
+    levels_map: Dict[str, dict] = {}
+    if level_ids:
+        levels = await db.levels.find(
+            {"id": {"$in": list(level_ids)}},
+            {"_id": 0, "id": 1, "level_number": 1, "custom_name": 1},
+        ).to_list(len(level_ids) + 5)
+        levels_map = {l["id"]: l for l in levels}
+
+    results = []
+    medals_count = {"1": 0, "2": 0, "3": 0}
+    for t in tournaments:
+        my = next((p for p in (t.get("participants") or []) if p.get("member_id") == member["id"]), None)
+        if not my:
+            continue
+        pos = my.get("position")
+        if pos in medals_count:
+            medals_count[pos] += 1
+        lvl = levels_map.get(my.get("level_id")) if my.get("level_id") else None
+        lvl_label = ""
+        if lvl:
+            cn = (lvl.get("custom_name") or "").strip()
+            lvl_label = cn if cn else f"المستوى {lvl.get('level_number', '')}"
+        results.append({
+            "tournament_id": t.get("id"),
+            "tournament_name": t.get("name") or "",
+            "date": t.get("date") or "",
+            "place": t.get("place") or "",
+            "activity_name": t.get("activity_name") or "",
+            "status": t.get("status") or "",
+            "position": pos,
+            "position_label_ar": POSITION_LABEL_AR.get(pos or "", ""),
+            "position_label_en": POSITION_LABEL_EN.get(pos or "", ""),
+            "level_label": lvl_label,
+            "notes": my.get("notes") or "",
+        })
+
+    return {
+        "tournaments": results,
+        "totals": {
+            "participations": len(results),
+            "gold": medals_count["1"],
+            "silver": medals_count["2"],
+            "bronze": medals_count["3"],
+            "medals": medals_count["1"] + medals_count["2"] + medals_count["3"],
+        },
+    }
+
+
 # ============ NOTIFICATIONS ============
 
 @router.get("/notifications")

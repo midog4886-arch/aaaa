@@ -61,6 +61,7 @@ export const tournamentsAPI = {
   removeParticipant: (tid, mid) => axios.delete(`${API}/tournaments/${tid}/participants/${mid}`),
   exportUrl: (tid, format = 'xlsx') => `${API}/tournaments/${tid}/export?format=${format}`,
   certificateUrl: (tid, mid) => `${API}/tournaments/${tid}/certificate/${mid}`,
+  getRecentMedalists: (params = {}) => axios.get(`${API}/tournaments/recent-medalists`, { params }),
 };
 
 // Members API

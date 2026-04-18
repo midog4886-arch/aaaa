@@ -271,6 +271,65 @@ async def list_tournaments_for_member(
     return results
 
 
+@router.get("/recent-medalists")
+async def list_recent_medalists(
+    limit: int = Query(5, ge=1, le=50),
+    branch_filter: Optional[str] = None,
+    current_user: dict = Depends(require_tournaments_permission),
+):
+    """Return the latest medalists (1st/2nd/3rd) across tournaments the
+    caller can access. Branch-scoped via the same rules as the listing endpoint.
+    Used by the admin dashboard "Recent Champions" widget.
+    """
+    query = _branch_query(current_user, branch_filter)
+    # Only consider tournaments that have any participants — small optimization.
+    query["participants"] = {"$exists": True, "$ne": []}
+
+    tournaments = await db.tournaments.find(
+        query,
+        {"_id": 0, "id": 1, "name": 1, "date": 1, "branch_id": 1, "participants": 1},
+    ).sort("date", -1).to_list(200)
+
+    # Collect medalists with their tournament context
+    medalists: List[dict] = []
+    member_ids: set = set()
+    for t in tournaments:
+        for p in (t.get("participants") or []):
+            pos = _norm_pos(p.get("position"))
+            if pos not in RANKED_POSITIONS:
+                continue
+            mid = p.get("member_id")
+            if not mid:
+                continue
+            member_ids.add(mid)
+            medalists.append({
+                "tournament_id": t.get("id"),
+                "tournament_name": t.get("name") or "",
+                "tournament_date": t.get("date") or "",
+                "branch_id": t.get("branch_id"),
+                "member_id": mid,
+                "position": pos,
+                "position_label": POSITION_LABEL.get(pos, pos),
+            })
+
+    # Sort by tournament date desc then position asc (1 before 2 before 3)
+    medalists.sort(key=lambda m: (m.get("tournament_date") or "", -_pos_sort_key(m["position"])), reverse=True)
+    medalists = medalists[:limit]
+
+    if member_ids:
+        members = await db.members.find(
+            {"id": {"$in": list({m["member_id"] for m in medalists})}},
+            {"_id": 0, "id": 1, "name_ar": 1, "name": 1, "member_code": 1},
+        ).to_list(len(medalists) + 5)
+        m_map = {m["id"]: m for m in members}
+        for entry in medalists:
+            mm = m_map.get(entry["member_id"]) or {}
+            entry["member_name"] = mm.get("name_ar") or mm.get("name") or ""
+            entry["member_code"] = mm.get("member_code") or ""
+
+    return medalists
+
+
 @router.get("/{tournament_id}")
 async def get_tournament(tournament_id: str, current_user: dict = Depends(require_tournaments_permission)):
     t = await _load_tournament_or_403(tournament_id, current_user)
