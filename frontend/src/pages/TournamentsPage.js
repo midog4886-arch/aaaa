@@ -490,7 +490,7 @@ const TournamentsPage = () => {
 
       {/* Create/Edit Tournament Dialog */}
       <Dialog open={tournamentDialogOpen} onOpenChange={setTournamentDialogOpen}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>
               {editingTournament
