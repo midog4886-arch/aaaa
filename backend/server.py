@@ -4,6 +4,7 @@ from fastapi.responses import StreamingResponse, FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
+from starlette.middleware.gzip import GZipMiddleware
 import os
 import logging
 import io
@@ -8025,6 +8026,10 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# GZip compression for JSON responses (compresses 70-85% on large payloads
+# such as members/invoices lists). minimum_size avoids overhead on tiny responses.
+app.add_middleware(GZipMiddleware, minimum_size=1024)
 
 # Serve React static files in production
 STATIC_DIR = ROOT_DIR / "static"
