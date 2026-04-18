@@ -28,8 +28,57 @@ import { toast } from 'sonner';
 import {
   Trophy, Plus, Edit, Trash2, Loader2, ArrowRight, Search, UserPlus,
   Calendar, MapPin, Activity, FileSpreadsheet, FileText, Award, Share2,
-  Medal, X, Users
+  Medal, X, Users, Bell, Send, History, CheckCircle2, AlertTriangle
 } from 'lucide-react';
+
+// Build a human-readable toast message from a notification delivery summary
+// returned by the backend. Works for both broadcast (members_count > 0) and
+// per-member DMs.
+const formatNotificationSummary = (summary, language) => {
+  if (!summary) return '';
+  const isBroadcast = (summary.members_count ?? 0) > 0
+    && (summary.in_app !== undefined);
+  const ar = language === 'ar';
+  if (isBroadcast) {
+    const total = summary.members_count || 0;
+    const inApp = summary.in_app || 0;
+    const ok = summary.push_success || 0;
+    const fail = summary.push_failed || 0;
+    const noPush = summary.no_push || 0;
+    if (total === 0) {
+      return ar
+        ? 'لم يتم العثور على أعضاء مؤهلين للإشعار.'
+        : 'No eligible members to notify.';
+    }
+    return ar
+      ? `تم إخطار ${inApp} عضو داخل التطبيق · إشعارات هاتف ناجحة: ${ok} · فشلت: ${fail} · بدون اشتراك: ${noPush}`
+      : `Notified ${inApp} in-app · push delivered: ${ok} · failed: ${fail} · no device: ${noPush}`;
+  }
+  // Single-member DM
+  const inApp = summary.in_app ? 1 : 0;
+  const ok = summary.push_success || 0;
+  const fail = summary.push_failed || 0;
+  const total = summary.push_total || 0;
+  if (total === 0 && inApp) {
+    return ar
+      ? 'تم حفظ الإشعار داخل التطبيق (لا يوجد جهاز مشترك للإشعار الفوري).'
+      : 'Saved in-app (member has no device subscribed for push).';
+  }
+  return ar
+    ? `داخل التطبيق: ${inApp ? 'نعم' : 'لا'} · إشعار هاتف ناجح: ${ok} · فشل: ${fail}`
+    : `In-app: ${inApp ? 'yes' : 'no'} · push delivered: ${ok} · failed: ${fail}`;
+};
+
+const showNotificationToast = (summary, language) => {
+  if (!summary) return;
+  const msg = formatNotificationSummary(summary, language);
+  const failed = (summary.push_failed || 0) > 0;
+  if (failed) {
+    toast.warning(msg);
+  } else {
+    toast.success(msg);
+  }
+};
 
 const POSITIONS = [
   { value: '1', label: 'الأول 🥇', emoji: '🥇', color: 'bg-yellow-500' },
@@ -207,8 +256,10 @@ const TournamentsPage = () => {
         await tournamentsAPI.update(editingTournament.id, editPayload);
         toast.success(language === 'ar' ? 'تم التحديث' : 'Updated');
       } else {
-        await tournamentsAPI.create(payload);
+        const res = await tournamentsAPI.create(payload);
         toast.success(language === 'ar' ? 'تم إنشاء البطولة' : 'Tournament created');
+        const summary = res?.data?.notification_summary;
+        if (summary) showNotificationToast(summary, language);
       }
       setTournamentDialogOpen(false);
       await loadList();
@@ -653,6 +704,12 @@ const TournamentDetail = ({ tid, onBack }) => {
   const [removeTarget, setRemoveTarget] = useState(null);
   const [shareOpen, setShareOpen] = useState(false);
 
+  const [resendingAnnouncement, setResendingAnnouncement] = useState(false);
+  const [resendingMemberId, setResendingMemberId] = useState(null);
+  const [logsOpen, setLogsOpen] = useState(false);
+  const [logs, setLogs] = useState([]);
+  const [logsLoading, setLogsLoading] = useState(false);
+
   const printRef = useRef(null);
 
   useEffect(() => { load(); /* eslint-disable-next-line */ }, [tid]);
@@ -764,7 +821,7 @@ const TournamentDetail = ({ tid, onBack }) => {
     }
     setSaving(true);
     try {
-      await tournamentsAPI.addParticipant(tid, {
+      const res = await tournamentsAPI.addParticipant(tid, {
         member_id: partForm.member_id,
         level_id: partForm.level_id || null,
         age: partForm.age || '',
@@ -774,6 +831,8 @@ const TournamentDetail = ({ tid, onBack }) => {
         notify: !!partForm.notify,
       });
       toast.success(language === 'ar' ? 'تمت إضافة المشارك' : 'Participant added');
+      const summary = res?.data?.notification_summary;
+      if (summary) showNotificationToast(summary, language);
       setAddOpen(false);
       await load();
     } catch (e) {
@@ -797,7 +856,7 @@ const TournamentDetail = ({ tid, onBack }) => {
     if (!editingPart) return;
     setSaving(true);
     try {
-      await tournamentsAPI.updateParticipant(tid, editingPart.member_id, {
+      const res = await tournamentsAPI.updateParticipant(tid, editingPart.member_id, {
         level_id: editForm.level_id || null,
         age: editForm.age,
         weight: editForm.weight,
@@ -806,6 +865,8 @@ const TournamentDetail = ({ tid, onBack }) => {
         notify: !!editForm.notify,
       });
       toast.success(language === 'ar' ? 'تم التحديث' : 'Updated');
+      const summary = res?.data?.notification_summary;
+      if (summary) showNotificationToast(summary, language);
       setEditingPart(null);
       await load();
     } catch (e) {
@@ -890,6 +951,53 @@ const TournamentDetail = ({ tid, onBack }) => {
     window.print();
   };
 
+  const handleResendAnnouncement = async () => {
+    setResendingAnnouncement(true);
+    try {
+      const res = await tournamentsAPI.resendAnnouncement(tid);
+      const summary = res?.data?.notification_summary;
+      if (summary) {
+        showNotificationToast(summary, language);
+      } else {
+        toast.success(language === 'ar' ? 'تم إعادة الإرسال' : 'Resent');
+      }
+    } catch (e) {
+      toast.error(e.response?.data?.detail || (language === 'ar' ? 'فشل إعادة الإرسال' : 'Resend failed'));
+    } finally {
+      setResendingAnnouncement(false);
+    }
+  };
+
+  const handleResendParticipant = async (p) => {
+    setResendingMemberId(p.member_id);
+    try {
+      const res = await tournamentsAPI.resendParticipant(tid, p.member_id, 'auto');
+      const summary = res?.data?.notification_summary;
+      if (summary) {
+        showNotificationToast(summary, language);
+      } else {
+        toast.success(language === 'ar' ? 'تم إعادة الإرسال' : 'Resent');
+      }
+    } catch (e) {
+      toast.error(e.response?.data?.detail || (language === 'ar' ? 'فشل إعادة الإرسال' : 'Resend failed'));
+    } finally {
+      setResendingMemberId(null);
+    }
+  };
+
+  const openLogs = async () => {
+    setLogsOpen(true);
+    setLogsLoading(true);
+    try {
+      const res = await tournamentsAPI.getNotificationLogs(tid);
+      setLogs(res.data || []);
+    } catch (e) {
+      toast.error(language === 'ar' ? 'فشل تحميل السجل' : 'Failed to load log');
+    } finally {
+      setLogsLoading(false);
+    }
+  };
+
   if (loading || !tournament) {
     return (
       <Layout>
@@ -931,6 +1039,26 @@ const TournamentDetail = ({ tid, onBack }) => {
             <Button variant="outline" onClick={handleWhatsAppShare} className="bg-green-50 hover:bg-green-100 text-green-700 border-green-300">
               <Share2 className="w-4 h-4 ms-1" />
               {language === 'ar' ? 'واتساب' : 'WhatsApp'}
+            </Button>
+            <Button
+              variant="outline"
+              onClick={handleResendAnnouncement}
+              disabled={resendingAnnouncement}
+              className="bg-amber-50 hover:bg-amber-100 text-amber-700 border-amber-300"
+              title={language === 'ar' ? 'إعادة إرسال إشعار البطولة لجميع الأعضاء المؤهلين' : 'Re-broadcast tournament announcement'}
+            >
+              {resendingAnnouncement
+                ? <Loader2 className="w-4 h-4 animate-spin ms-1" />
+                : <Bell className="w-4 h-4 ms-1" />}
+              {language === 'ar' ? 'إعادة إرسال الإشعار' : 'Resend announcement'}
+            </Button>
+            <Button
+              variant="outline"
+              onClick={openLogs}
+              title={language === 'ar' ? 'سجل الإشعارات' : 'Notification log'}
+            >
+              <History className="w-4 h-4 ms-1" />
+              {language === 'ar' ? 'سجل الإشعارات' : 'Notification log'}
             </Button>
           </div>
         </div>
@@ -990,6 +1118,8 @@ const TournamentDetail = ({ tid, onBack }) => {
                     onRemove={(p) => setRemoveTarget(p)}
                     onPositionChange={quickPositionChange}
                     onCertificate={handleCertificate}
+                    onResend={handleResendParticipant}
+                    resendingMemberId={resendingMemberId}
                     language={language}
                   />
                 );
@@ -1006,6 +1136,8 @@ const TournamentDetail = ({ tid, onBack }) => {
                     onRemove={(p) => setRemoveTarget(p)}
                     onPositionChange={quickPositionChange}
                     onCertificate={handleCertificate}
+                    onResend={handleResendParticipant}
+                    resendingMemberId={resendingMemberId}
                     language={language}
                   />
                 ))}
@@ -1192,6 +1324,87 @@ const TournamentDetail = ({ tid, onBack }) => {
         </DialogContent>
       </Dialog>
 
+      {/* Notification log dialog */}
+      <Dialog open={logsOpen} onOpenChange={setLogsOpen}>
+        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <History className="w-5 h-5 text-orange-500" />
+              {language === 'ar' ? 'سجل إشعارات البطولة' : 'Tournament Notification Log'}
+            </DialogTitle>
+            <DialogDescription>
+              {language === 'ar'
+                ? 'كل إشعار تم إرساله لهذه البطولة وعدد التسليمات الناجحة والفاشلة.'
+                : 'Every notification sent for this tournament with delivery counts.'}
+            </DialogDescription>
+          </DialogHeader>
+          {logsLoading ? (
+            <div className="flex items-center justify-center py-10">
+              <Loader2 className="w-6 h-6 animate-spin text-orange-500" />
+            </div>
+          ) : logs.length === 0 ? (
+            <div className="text-center text-sm text-muted-foreground py-8">
+              {language === 'ar' ? 'لا توجد إشعارات مسجلة بعد.' : 'No notifications recorded yet.'}
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {logs.map(l => {
+                const typeLabel = {
+                  announcement: language === 'ar' ? 'إعلان البطولة' : 'Announcement',
+                  registration: language === 'ar' ? 'تسجيل مشارك' : 'Registration',
+                  result: language === 'ar' ? 'نتيجة مشارك' : 'Result',
+                }[l.type] || l.type;
+                const failed = (l.push_failed || 0) > 0;
+                const when = (() => {
+                  try { return new Date(l.created_at).toLocaleString(); } catch { return l.created_at; }
+                })();
+                return (
+                  <div key={l.id} className="border rounded-md p-3 text-sm">
+                    <div className="flex items-center justify-between gap-2 flex-wrap">
+                      <div className="flex items-center gap-2">
+                        {failed
+                          ? <AlertTriangle className="w-4 h-4 text-amber-600" />
+                          : <CheckCircle2 className="w-4 h-4 text-green-600" />}
+                        <span className="font-medium">{typeLabel}</span>
+                        {l.member_name && (
+                          <span className="text-muted-foreground">— {l.member_name}</span>
+                        )}
+                      </div>
+                      <span className="text-xs text-muted-foreground">{when}</span>
+                    </div>
+                    <div className="mt-1 text-xs text-muted-foreground">
+                      {l.type === 'announcement' ? (
+                        <>
+                          {language === 'ar'
+                            ? `أعضاء مستهدفون: ${l.members_count} · داخل التطبيق: ${l.in_app} · إشعارات هاتف ناجحة: ${l.push_success} · فشلت: ${l.push_failed} · بدون اشتراك: ${l.no_push}`
+                            : `Targeted: ${l.members_count} · in-app: ${l.in_app} · push delivered: ${l.push_success} · failed: ${l.push_failed} · no device: ${l.no_push}`}
+                        </>
+                      ) : (
+                        <>
+                          {language === 'ar'
+                            ? `داخل التطبيق: ${l.in_app ? 'نعم' : 'لا'} · إشعار هاتف ناجح: ${l.push_success} · فشل: ${l.push_failed}`
+                            : `In-app: ${l.in_app ? 'yes' : 'no'} · push delivered: ${l.push_success} · failed: ${l.push_failed}`}
+                        </>
+                      )}
+                    </div>
+                    {l.sent_by_user_name && (
+                      <div className="text-xs text-muted-foreground mt-1">
+                        {language === 'ar' ? 'بواسطة' : 'By'}: {l.sent_by_user_name}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setLogsOpen(false)}>
+              {language === 'ar' ? 'إغلاق' : 'Close'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* Remove participant confirmation */}
       <AlertDialog open={!!removeTarget} onOpenChange={(o) => !o && setRemoveTarget(null)}>
         <AlertDialogContent>
@@ -1216,7 +1429,7 @@ const TournamentDetail = ({ tid, onBack }) => {
 };
 
 // Reusable level group component (collapsible)
-const LevelGroup = ({ label, levelNumber, participants, onEdit, onRemove, onPositionChange, onCertificate, language }) => {
+const LevelGroup = ({ label, levelNumber, participants, onEdit, onRemove, onPositionChange, onCertificate, onResend, resendingMemberId, language }) => {
   const [collapsed, setCollapsed] = useState(false);
   return (
     <Card>
@@ -1283,6 +1496,19 @@ const LevelGroup = ({ label, levelNumber, participants, onEdit, onRemove, onPosi
                     </td>
                     <td className="py-2 px-2 text-end print:hidden">
                       <div className="flex justify-end gap-1">
+                        {onResend && (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            title={language === 'ar' ? 'إعادة إرسال إشعار' : 'Resend notification'}
+                            onClick={() => onResend(p)}
+                            disabled={resendingMemberId === p.member_id}
+                          >
+                            {resendingMemberId === p.member_id
+                              ? <Loader2 className="w-4 h-4 animate-spin" />
+                              : <Send className="w-4 h-4 text-blue-600" />}
+                          </Button>
+                        )}
                         <Button size="sm" variant="ghost" title={language === 'ar' ? 'شهادة' : 'Certificate'} onClick={() => onCertificate(p)}>
                           <Award className="w-4 h-4 text-amber-600" />
                         </Button>

@@ -208,8 +208,14 @@ async def _send_member_notification(
     notif_type: str = "tournament",
     link: Optional[str] = None,
     tag: Optional[str] = None,
-) -> None:
-    """Insert in-app member notification + send push (best-effort, never raises)."""
+) -> dict:
+    """Insert in-app member notification + send push (best-effort, never raises).
+
+    Returns a delivery summary dict so callers can surface what actually
+    happened to the admin: ``{"in_app": bool, "push_total": int,
+    "push_success": int, "push_failed": int}``.
+    """
+    result = {"in_app": False, "push_total": 0, "push_success": 0, "push_failed": 0}
     try:
         await db.member_notifications.insert_one({
             "id": str(uuid.uuid4()),
@@ -223,6 +229,7 @@ async def _send_member_notification(
             "is_read": False,
             "created_at": datetime.now(timezone.utc).isoformat(),
         })
+        result["in_app"] = True
     except Exception:
         pass
 
@@ -233,8 +240,9 @@ async def _send_member_notification(
         subs = await db.push_subscriptions.find(
             {"is_active": True, "member_id": member_id}, {"_id": 0}
         ).to_list(20)
+        result["push_total"] = len(subs)
         if not subs:
-            return
+            return result
         payload = NotificationPayload(
             title=title_ar,
             body=message_ar,
@@ -244,16 +252,62 @@ async def _send_member_notification(
         )
         for sub in subs:
             try:
-                await send_push_notification(sub, payload)
+                ok = await send_push_notification(sub, payload)
+                if ok:
+                    result["push_success"] += 1
+                else:
+                    result["push_failed"] += 1
             except Exception:
+                result["push_failed"] += 1
                 continue
+    except Exception:
+        pass
+    return result
+
+
+async def _record_notification_log(
+    tournament_id: str,
+    notif_type: str,
+    summary: dict,
+    current_user: dict,
+    member_id: Optional[str] = None,
+    member_name: Optional[str] = None,
+) -> None:
+    """Persist a per-tournament delivery log entry (best-effort)."""
+    try:
+        await db.tournament_notification_logs.insert_one({
+            "id": str(uuid.uuid4()),
+            "tournament_id": tournament_id,
+            "type": notif_type,  # announcement | registration | result
+            "member_id": member_id,
+            "member_name": member_name or "",
+            "members_count": int(summary.get("members_count", 1 if member_id else 0)),
+            "in_app": int(summary.get("in_app", 0)),
+            "push_success": int(summary.get("push_success", 0)),
+            "push_failed": int(summary.get("push_failed", 0)),
+            "no_push": int(summary.get("no_push", 0)),
+            "sent_by_user_id": current_user.get("id") or str(current_user.get("_id", "")),
+            "sent_by_user_name": current_user.get("username") or current_user.get("name") or "",
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        })
     except Exception:
         pass
 
 
-async def _broadcast_tournament_announcement(tournament: dict) -> None:
+async def _broadcast_tournament_announcement(tournament: dict) -> dict:
     """Best-effort broadcast: notify members of the tournament's branch
-    (and activity, when set) about the new tournament."""
+    (and activity, when set) about the new tournament.
+
+    Returns an aggregate delivery summary so callers can show admins how
+    many members were reached / failed.
+    """
+    summary = {
+        "members_count": 0,
+        "in_app": 0,
+        "push_success": 0,
+        "push_failed": 0,
+        "no_push": 0,  # members with no active push subscription
+    }
     try:
         branch_id = tournament.get("branch_id")
         activity_id = tournament.get("activity_id")
@@ -274,8 +328,9 @@ async def _broadcast_tournament_announcement(tournament: dict) -> None:
             member_query, {"_id": 0, "id": 1}
         ).to_list(10000)
         member_ids = [m["id"] for m in members if m.get("id")]
+        summary["members_count"] = len(member_ids)
         if not member_ids:
-            return
+            return summary
 
         t_name = tournament.get("name", "")
         t_date = tournament.get("date") or ""
@@ -292,7 +347,7 @@ async def _broadcast_tournament_announcement(tournament: dict) -> None:
         msg_en = " — ".join(bits_en)
 
         for mid in member_ids:
-            await _send_member_notification(
+            res = await _send_member_notification(
                 member_id=mid,
                 title_ar="🏆 بطولة جديدة",
                 title_en="🏆 New Tournament",
@@ -302,16 +357,23 @@ async def _broadcast_tournament_announcement(tournament: dict) -> None:
                 link="/portal/my-tournaments",
                 tag=f"tournament-new-{tournament.get('id')}",
             )
+            if res.get("in_app"):
+                summary["in_app"] += 1
+            summary["push_success"] += res.get("push_success", 0)
+            summary["push_failed"] += res.get("push_failed", 0)
+            if res.get("push_total", 0) == 0:
+                summary["no_push"] += 1
     except Exception:
         pass
+    return summary
 
 
-async def _notify_participant_added(tournament: dict, member_id: str) -> None:
-    """Direct notification: member was added to a tournament."""
+async def _notify_participant_added(tournament: dict, member_id: str) -> dict:
+    """Direct notification: member was added to a tournament. Returns delivery summary."""
     t_name = tournament.get("name", "")
     t_date = tournament.get("date") or "-"
     t_place = tournament.get("place") or "-"
-    await _send_member_notification(
+    return await _send_member_notification(
         member_id=member_id,
         title_ar="🎯 تم تسجيلك في بطولة",
         title_en="🎯 Registered for a tournament",
@@ -323,14 +385,18 @@ async def _notify_participant_added(tournament: dict, member_id: str) -> None:
     )
 
 
-async def _notify_result(tournament: dict, member_id: str, position: str) -> None:
-    """Congratulatory direct notification when a ranked result is recorded."""
+async def _notify_result(tournament: dict, member_id: str, position: str) -> Optional[dict]:
+    """Congratulatory direct notification when a ranked result is recorded.
+
+    Returns ``None`` when the position is not a ranked one (1/2/3) and no
+    notification is appropriate; otherwise returns the delivery summary.
+    """
     pos_ar = {"1": "الأول 🥇", "2": "الثاني 🥈", "3": "الثالث 🥉"}.get(position, "")
     pos_en = {"1": "1st 🥇", "2": "2nd 🥈", "3": "3rd 🥉"}.get(position, "")
     if not pos_ar:
-        return
+        return None
     t_name = tournament.get("name", "")
-    await _send_member_notification(
+    return await _send_member_notification(
         member_id=member_id,
         title_ar="🏆 مبروك! حققت إنجازاً",
         title_en="🏆 Congratulations!",
@@ -340,6 +406,16 @@ async def _notify_result(tournament: dict, member_id: str, position: str) -> Non
         link="/portal/my-tournaments",
         tag=f"tournament-result-{tournament.get('id')}-{member_id}",
     )
+
+
+async def _resolve_member_name(member_id: str) -> str:
+    try:
+        m = await db.members.find_one({"id": member_id}, {"_id": 0, "name_ar": 1, "name": 1})
+        if m:
+            return m.get("name_ar") or m.get("name") or ""
+    except Exception:
+        pass
+    return ""
 
 
 # ============ ROUTES ============
@@ -559,9 +635,19 @@ async def create_tournament(payload: TournamentCreate, current_user: dict = Depe
     await _log_activity("create_tournament", current_user, {
         "tournament_id": doc["id"], "name": doc["name"], "branch_id": final_branch_id
     })
+    notification_summary = None
     if payload.notify:
-        await _broadcast_tournament_announcement(doc)
-    return {k: v for k, v in doc.items() if k != "_id"}
+        notification_summary = await _broadcast_tournament_announcement(doc)
+        await _record_notification_log(
+            tournament_id=doc["id"],
+            notif_type="announcement",
+            summary=notification_summary,
+            current_user=current_user,
+        )
+    out = {k: v for k, v in doc.items() if k != "_id"}
+    if notification_summary is not None:
+        out["notification_summary"] = notification_summary
+    return out
 
 
 @router.put("/{tournament_id}")
@@ -695,9 +781,21 @@ async def add_participant(tournament_id: str, participant: Participant, current_
         "tournament_id": tournament_id, "member_id": participant.member_id,
         "position": new_part["position"]
     })
+    notification_summary = None
     if notify_member:
-        await _notify_participant_added(t, participant.member_id)
-    return {"message": "Participant added"}
+        notification_summary = await _notify_participant_added(t, participant.member_id)
+        await _record_notification_log(
+            tournament_id=tournament_id,
+            notif_type="registration",
+            summary=notification_summary,
+            current_user=current_user,
+            member_id=participant.member_id,
+            member_name=await _resolve_member_name(participant.member_id),
+        )
+    out = {"message": "Participant added"}
+    if notification_summary is not None:
+        out["notification_summary"] = notification_summary
+    return out
 
 
 @router.put("/{tournament_id}/participants/{member_id}")
@@ -745,11 +843,24 @@ async def update_participant(tournament_id: str, member_id: str, payload: Partic
         "changes": new_data
     })
     # Congratulate when a ranked position is freshly assigned/changed
+    notification_summary = None
     if notify_member and "position" in new_data:
         new_pos = new_data.get("position")
         if new_pos in RANKED_POSITIONS and new_pos != prev_position:
-            await _notify_result(t, member_id, new_pos)
-    return {"message": "Participant updated"}
+            notification_summary = await _notify_result(t, member_id, new_pos)
+            if notification_summary is not None:
+                await _record_notification_log(
+                    tournament_id=tournament_id,
+                    notif_type="result",
+                    summary=notification_summary,
+                    current_user=current_user,
+                    member_id=member_id,
+                    member_name=await _resolve_member_name(member_id),
+                )
+    out = {"message": "Participant updated"}
+    if notification_summary is not None:
+        out["notification_summary"] = notification_summary
+    return out
 
 
 @router.delete("/{tournament_id}/participants/{member_id}")
@@ -769,6 +880,98 @@ async def remove_participant(tournament_id: str, member_id: str, current_user: d
         "tournament_id": tournament_id, "member_id": member_id
     })
     return {"message": "Participant removed"}
+
+
+# ─── Notifications: resend & logs ────────────────
+
+@router.post("/{tournament_id}/resend-announcement")
+async def resend_announcement(
+    tournament_id: str,
+    current_user: dict = Depends(require_tournaments_permission),
+):
+    """Re-broadcast the tournament announcement to eligible members and
+    return how many in-app/push deliveries succeeded or failed."""
+    t = await _load_tournament_or_403(tournament_id, current_user)
+    summary = await _broadcast_tournament_announcement(t)
+    await _record_notification_log(
+        tournament_id=tournament_id,
+        notif_type="announcement",
+        summary=summary,
+        current_user=current_user,
+    )
+    await _log_activity("resend_announcement", current_user, {
+        "tournament_id": tournament_id, "summary": summary,
+    })
+    return {"message": "Announcement resent", "notification_summary": summary}
+
+
+@router.post("/{tournament_id}/resend-participant/{member_id}")
+async def resend_participant_notification(
+    tournament_id: str,
+    member_id: str,
+    kind: str = Query("auto", description="auto | registration | result"),
+    current_user: dict = Depends(require_tournaments_permission),
+):
+    """Resend a direct notification to a single participant.
+
+    ``kind`` controls which message: ``registration`` always re-sends the
+    "you've been registered" DM; ``result`` re-sends the congratulations DM
+    if the participant has a ranked position; ``auto`` (default) chooses
+    ``result`` when a ranked position exists, otherwise ``registration``.
+    """
+    t = await _load_tournament_or_403(tournament_id, current_user)
+    parts = t.get("participants") or []
+    target = next((p for p in parts if p.get("member_id") == member_id), None)
+    if not target:
+        raise HTTPException(status_code=404, detail="Participant not found")
+
+    pos = _norm_pos(target.get("position"))
+    if kind == "auto":
+        kind = "result" if pos in RANKED_POSITIONS else "registration"
+
+    if kind == "result":
+        if pos not in RANKED_POSITIONS:
+            raise HTTPException(
+                status_code=400,
+                detail="لا يمكن إرسال إشعار نتيجة لمشارك بدون مركز مصنّف",
+            )
+        summary = await _notify_result(t, member_id, pos)
+    elif kind == "registration":
+        summary = await _notify_participant_added(t, member_id)
+    else:
+        raise HTTPException(status_code=400, detail="kind must be 'registration', 'result' or 'auto'")
+
+    if summary is None:
+        # Defensive: _notify_result can return None for non-ranked positions
+        raise HTTPException(status_code=400, detail="Notification could not be sent")
+
+    await _record_notification_log(
+        tournament_id=tournament_id,
+        notif_type=kind,
+        summary=summary,
+        current_user=current_user,
+        member_id=member_id,
+        member_name=await _resolve_member_name(member_id),
+    )
+    await _log_activity("resend_participant_notification", current_user, {
+        "tournament_id": tournament_id, "member_id": member_id,
+        "kind": kind, "summary": summary,
+    })
+    return {"message": "Notification resent", "kind": kind, "notification_summary": summary}
+
+
+@router.get("/{tournament_id}/notification-logs")
+async def list_notification_logs(
+    tournament_id: str,
+    limit: int = Query(100, ge=1, le=500),
+    current_user: dict = Depends(require_tournaments_permission),
+):
+    """Return delivery log entries for a tournament (most recent first)."""
+    await _load_tournament_or_403(tournament_id, current_user)
+    items = await db.tournament_notification_logs.find(
+        {"tournament_id": tournament_id}, {"_id": 0}
+    ).sort("created_at", -1).to_list(limit)
+    return items
 
 
 # ─── Exports ─────────────────────────────────────

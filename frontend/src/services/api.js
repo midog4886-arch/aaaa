@@ -63,6 +63,11 @@ export const tournamentsAPI = {
   certificateUrl: (tid, mid) => `${API}/tournaments/${tid}/certificate/${mid}`,
   getRecentMedalists: (params = {}) => axios.get(`${API}/tournaments/recent-medalists`, { params }),
   previewRecipients: (params = {}) => axios.get(`${API}/tournaments/recipients-preview`, { params }),
+  resendAnnouncement: (tid) => axios.post(`${API}/tournaments/${tid}/resend-announcement`),
+  resendParticipant: (tid, mid, kind = 'auto') =>
+    axios.post(`${API}/tournaments/${tid}/resend-participant/${mid}`, null, { params: { kind } }),
+  getNotificationLogs: (tid, params = {}) =>
+    axios.get(`${API}/tournaments/${tid}/notification-logs`, { params }),
 };
 
 // Members API
