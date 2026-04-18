@@ -594,7 +594,13 @@ const TournamentDetail = ({ tid, onBack }) => {
       groups[key].push(p);
     }
     Object.keys(groups).forEach(k => {
-      groups[k].sort((a, b) => (a.position || 99) - (b.position || 99));
+      const RANK_MAP = { '1': 1, '2': 2, '3': 3, 'participation': 50 };
+      groups[k].sort((a, b) => {
+        const ra = RANK_MAP[String(a.position || '')] ?? 99;
+        const rb = RANK_MAP[String(b.position || '')] ?? 99;
+        if (ra !== rb) return ra - rb;
+        return (a.member_name || '').localeCompare(b.member_name || '');
+      });
     });
     return groups;
   }, [tournament]);
@@ -1042,22 +1048,34 @@ const TournamentDetail = ({ tid, onBack }) => {
   );
 };
 
-// Reusable level group component
+// Reusable level group component (collapsible)
 const LevelGroup = ({ label, levelNumber, participants, onEdit, onRemove, onPositionChange, onCertificate, language }) => {
+  const [collapsed, setCollapsed] = useState(false);
   return (
     <Card>
       <CardContent className="p-4">
-        <div className="flex items-center justify-between mb-3 pb-2 border-b">
+        <div
+          className="flex items-center justify-between mb-3 pb-2 border-b cursor-pointer select-none print:cursor-auto"
+          onClick={() => setCollapsed(c => !c)}
+          title={language === 'ar' ? (collapsed ? 'إظهار' : 'إخفاء') : (collapsed ? 'Expand' : 'Collapse')}
+        >
           <div className="flex items-center gap-2">
             <Medal className="w-5 h-5 text-orange-500" />
             <h3 className="font-bold text-lg">{label}</h3>
+            <span className="text-muted-foreground text-sm print:hidden">
+              {collapsed ? '▸' : '▾'}
+            </span>
           </div>
           <Badge variant="outline" className="gap-1">
             <Users className="w-3.5 h-3.5" />
             {participants.length}
           </Badge>
         </div>
-        {participants.length === 0 ? (
+        {collapsed ? (
+          <div className="text-xs text-muted-foreground text-center py-2 print:hidden">
+            {language === 'ar' ? 'اضغط للإظهار' : 'Click to expand'}
+          </div>
+        ) : participants.length === 0 ? (
           <div className="text-sm text-muted-foreground text-center py-3">
             {language === 'ar' ? 'لا يوجد مشاركون في هذا المستوى' : 'No participants in this level'}
           </div>

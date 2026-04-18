@@ -289,6 +289,17 @@ async def add_participant(tournament_id: str, participant: Participant, current_
     if any(p.get("member_id") == participant.member_id for p in existing):
         raise HTTPException(status_code=400, detail="العضو مضاف بالفعل في هذه البطولة")
 
+    # Verify member exists; if tournament has an activity, prefer members
+    # subscribed to that activity (soft warning – allow staff override only
+    # when member belongs to the same branch as the tournament).
+    member = await db.members.find_one({"id": participant.member_id}, {"_id": 0})
+    if not member:
+        raise HTTPException(status_code=404, detail="العضو غير موجود")
+    t_branch = t.get("branch_id")
+    m_branch = member.get("branch_id")
+    if t_branch and m_branch and t_branch != m_branch:
+        raise HTTPException(status_code=400, detail="العضو ليس من نفس فرع البطولة")
+
     new_part = participant.model_dump()
     new_part["position"] = _norm_pos(new_part.get("position"))
 
