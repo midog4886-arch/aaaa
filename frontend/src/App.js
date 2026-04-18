@@ -89,6 +89,7 @@ import MemberDailyVideos from './pages/member-portal/MemberDailyVideos';
 import MemberLoyalty from './pages/member-portal/MemberLoyalty';
 import MemberSupport from './pages/member-portal/MemberSupport';
 import MemberMessages from './pages/member-portal/MemberMessages';
+import MemberTournaments from './pages/member-portal/MemberTournaments';
 import CoachProfile from './pages/member-portal/CoachProfile';
 import CoachQRPage from './pages/CoachQRPage';
 
@@ -212,6 +213,7 @@ function AppRoutes() {
       <Route path="/loyalty-points" element={<MemberLoyalty />} />
       <Route path="/support" element={<MemberSupport />} />
       <Route path="/member-messages" element={<MemberMessages />} />
+      <Route path="/my-tournaments" element={<MemberTournaments />} />
       <Route path="/coach-profile/:coachId" element={<CoachProfile />} />
       
       {/* Admin Protected Routes - under /admin prefix */}

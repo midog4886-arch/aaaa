@@ -70,6 +70,7 @@ const MemberLayout = ({ children }) => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [notifications, setNotifications] = useState({ unread_count: 0 });
   const [msgUnreadCount, setMsgUnreadCount] = useState(0);
+  const [tournamentsCount, setTournamentsCount] = useState(0);
   const [darkMode, setDarkModeState] = useState(getDarkMode());
   const [language, setLanguageState] = useState(getLanguage());
   
@@ -120,6 +121,7 @@ const MemberLayout = ({ children }) => {
     setMember(memberData);
     fetchNotifications();
     fetchMsgUnread();
+    fetchTournamentsCount();
     
     // Update document title and manifest for member portal PWA
     document.title = language === 'ar' ? 'بوابة الأعضاء - شركة اداء الابطال العالمية للرياضة' : 'Member Portal - Champions Academy';
@@ -260,6 +262,16 @@ const MemberLayout = ({ children }) => {
     }
   };
 
+  const fetchTournamentsCount = async () => {
+    try {
+      const res = await memberAPI.get('/api/member-portal/my-tournaments');
+      const list = Array.isArray(res.data?.tournaments) ? res.data.tournaments : [];
+      setTournamentsCount(list.length);
+    } catch (error) {
+      setTournamentsCount(0);
+    }
+  };
+
   const handleLogout = () => {
     memberLogout();
     navigate('/member-login');
@@ -272,6 +284,9 @@ const MemberLayout = ({ children }) => {
     { to: '/subscriptions', icon: CreditCard, labelKey: 'subscriptions' },
     { to: '/member-schedule', icon: Calendar, labelKey: 'schedule' },
     { to: '/loyalty-points', icon: Trophy, labelKey: 'loyalty' },
+    ...(tournamentsCount > 0
+      ? [{ to: '/my-tournaments', icon: Trophy, labelKey: 'tournaments' }]
+      : []),
     { to: '/card', icon: QrCode, labelKey: 'memberCard' },
     { to: '/rate-coach', icon: Star, labelKey: 'rateCoaches' },
     { to: '/member-messages', icon: Mail, labelKey: 'messages', badge: msgUnreadCount },
@@ -288,6 +303,7 @@ const MemberLayout = ({ children }) => {
       subscriptions: { ar: 'اشتراكاتي', en: 'My Subscriptions' },
       schedule: { ar: 'جدول التدريبات', en: 'Schedule' },
       loyalty: { ar: 'نقاط الولاء', en: 'Loyalty Points' },
+      tournaments: { ar: 'بطولاتي', en: 'My Tournaments' },
       memberCard: { ar: 'بطاقة العضوية', en: 'Member Card' },
       rateCoaches: { ar: 'تقييم المدربين', en: 'Rate Coaches' },
       messages: { ar: 'الرسائل', en: 'Messages' },
