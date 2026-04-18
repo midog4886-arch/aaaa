@@ -80,6 +80,9 @@ def _register_arabic_font():
 
 class Participant(BaseModel):
     member_id: str
+    # Which of the tournament's activities this participant competes in.
+    # Optional: tournaments without any activities accept any participant.
+    activity_id: Optional[str] = None
     level_id: Optional[str] = None
     age: Optional[str] = ""
     weight: Optional[str] = ""
@@ -93,8 +96,13 @@ class TournamentCreate(BaseModel):
     name: str
     place: Optional[str] = ""
     date: Optional[str] = ""  # YYYY-MM-DD
-    activity_id: Optional[str] = None
-    activity_name: Optional[str] = ""
+    # NEW: a tournament can span multiple activities (e.g. swimming + football
+    # + karate). The legacy single-activity fields below are kept for backward
+    # compatibility and are auto-derived from the first item in activity_ids.
+    activity_ids: Optional[List[str]] = None
+    activity_names: Optional[List[str]] = None
+    activity_id: Optional[str] = None        # legacy / fallback
+    activity_name: Optional[str] = ""        # legacy / fallback
     branch_id: Optional[str] = None
     description: Optional[str] = ""
     status: Optional[str] = "upcoming"  # upcoming | ongoing | completed
@@ -102,6 +110,7 @@ class TournamentCreate(BaseModel):
 
 
 class ParticipantUpdate(BaseModel):
+    activity_id: Optional[str] = None
     level_id: Optional[str] = None
     age: Optional[str] = None
     weight: Optional[str] = None
@@ -145,6 +154,25 @@ def _can_access(tournament: dict, current_user: dict) -> bool:
     return t_branch == user_branch
 
 
+def _tournament_activity_ids(tournament: dict) -> List[str]:
+    """Return the list of activity IDs a tournament covers, transparently
+    handling both the new `activity_ids` array and the legacy single
+    `activity_id` field. Empty list means "no activity restriction"."""
+    ids = tournament.get("activity_ids")
+    if isinstance(ids, list) and ids:
+        return [a for a in ids if a]
+    legacy = tournament.get("activity_id")
+    return [legacy] if legacy else []
+
+
+def _tournament_activity_names(tournament: dict) -> List[str]:
+    names = tournament.get("activity_names")
+    if isinstance(names, list) and names:
+        return [n for n in names if n]
+    legacy = tournament.get("activity_name")
+    return [legacy] if legacy else []
+
+
 async def _load_tournament_or_403(tournament_id: str, current_user: dict, projection: Optional[dict] = None):
     """Fetch tournament by id and validate the current user is allowed to access it."""
     t = await db.tournaments.find_one({"id": tournament_id}, projection or {"_id": 0})
@@ -177,6 +205,14 @@ async def _enrich_participants(tournament: dict) -> dict:
     ).to_list(len(level_ids) + 10) if level_ids else []
     levels_map = {l["id"]: l for l in levels}
 
+    # Map participant.activity_id -> activity_name using the tournament's
+    # own activity_ids/activity_names arrays so the UI can display which
+    # activity each participant competes in (multi-activity tournaments).
+    t_aids = _tournament_activity_ids(tournament)
+    t_anames = _tournament_activity_names(tournament)
+    activity_name_map = {aid: (t_anames[i] if i < len(t_anames) else "")
+                         for i, aid in enumerate(t_aids)}
+
     enriched = []
     for p in parts:
         m = members_map.get(p.get("member_id")) or {}
@@ -192,6 +228,7 @@ async def _enrich_participants(tournament: dict) -> dict:
             "member_code": m.get("member_code") or "",
             "level_label": lvl_label,
             "level_number": l.get("level_number"),
+            "activity_name": activity_name_map.get(p.get("activity_id")) or "",
         })
     tournament["participants"] = enriched
     return tournament
@@ -310,20 +347,24 @@ async def _broadcast_tournament_announcement(tournament: dict) -> dict:
     }
     try:
         branch_id = tournament.get("branch_id")
-        activity_id = tournament.get("activity_id")
-        activity_name = tournament.get("activity_name") or ""
+        activity_ids = _tournament_activity_ids(tournament)
+        activity_names = _tournament_activity_names(tournament)
 
-        # Resolve target member IDs: members enrolled in the activity within the branch
+        # Resolve target member IDs: members enrolled in ANY of the
+        # tournament's activities, within the branch.
         member_query: dict = {}
         if branch_id:
             member_query["branch_id"] = branch_id
-        if activity_id or activity_name:
-            elem: dict = {"status": "active"}
-            if activity_id:
-                elem["activity_id"] = activity_id
-            elif activity_name:
-                elem["activity_name"] = activity_name
-            member_query["activities"] = {"$elemMatch": elem}
+        if activity_ids:
+            member_query["activities"] = {"$elemMatch": {
+                "status": "active",
+                "activity_id": {"$in": activity_ids},
+            }}
+        elif activity_names:
+            member_query["activities"] = {"$elemMatch": {
+                "status": "active",
+                "activity_name": {"$in": activity_names},
+            }}
         members = await db.members.find(
             member_query, {"_id": 0, "id": 1}
         ).to_list(10000)
@@ -558,6 +599,7 @@ async def list_recent_medalists(
 async def preview_announcement_recipients(
     branch_id: Optional[str] = None,
     activity_id: Optional[str] = None,
+    activity_ids: Optional[str] = None,        # comma-separated list (multi-activity)
     activity_name: Optional[str] = None,
     current_user: dict = Depends(require_tournaments_permission),
 ):
@@ -573,16 +615,26 @@ async def preview_announcement_recipients(
         # Non-admins are always scoped to their own branch
         effective_branch = current_user.get("branch_id")
 
+    # Normalise activity inputs into a list.
+    aid_list: List[str] = []
+    if activity_ids:
+        aid_list = [a.strip() for a in activity_ids.split(",") if a.strip()]
+    if activity_id and activity_id not in aid_list:
+        aid_list.append(activity_id)
+
     member_query: dict = {}
     if effective_branch:
         member_query["branch_id"] = effective_branch
-    if activity_id or activity_name:
-        elem: dict = {"status": "active"}
-        if activity_id:
-            elem["activity_id"] = activity_id
-        elif activity_name:
-            elem["activity_name"] = activity_name
-        member_query["activities"] = {"$elemMatch": elem}
+    if aid_list:
+        member_query["activities"] = {"$elemMatch": {
+            "status": "active",
+            "activity_id": {"$in": aid_list},
+        }}
+    elif activity_name:
+        member_query["activities"] = {"$elemMatch": {
+            "status": "active",
+            "activity_name": activity_name,
+        }}
 
     members = await db.members.find(
         member_query,
@@ -616,13 +668,28 @@ async def create_tournament(payload: TournamentCreate, current_user: dict = Depe
     else:
         final_branch_id = current_user.get("branch_id")
 
+    # Normalise the multi-activity inputs. We always persist `activity_ids`
+    # (list) as the source of truth, and mirror the first one into the legacy
+    # single-activity fields so older code paths and existing UI continue to
+    # work without changes.
+    aid_list = [a for a in (payload.activity_ids or []) if a]
+    aname_list = [n for n in (payload.activity_names or []) if n]
+    if not aid_list and payload.activity_id:
+        aid_list = [payload.activity_id]
+    if not aname_list and payload.activity_name:
+        aname_list = [payload.activity_name]
+    legacy_aid = aid_list[0] if aid_list else None
+    legacy_aname = aname_list[0] if aname_list else ""
+
     doc = {
         "id": str(uuid.uuid4()),
         "name": payload.name,
         "place": payload.place or "",
         "date": payload.date or "",
-        "activity_id": payload.activity_id,
-        "activity_name": payload.activity_name or "",
+        "activity_ids": aid_list,
+        "activity_names": aname_list,
+        "activity_id": legacy_aid,
+        "activity_name": legacy_aname,
         "branch_id": final_branch_id,
         "description": payload.description or "",
         "status": payload.status or "upcoming",
@@ -653,12 +720,23 @@ async def create_tournament(payload: TournamentCreate, current_user: dict = Depe
 @router.put("/{tournament_id}")
 async def update_tournament(tournament_id: str, payload: TournamentCreate, current_user: dict = Depends(require_tournaments_permission)):
     await _load_tournament_or_403(tournament_id, current_user)
+    aid_list = [a for a in (payload.activity_ids or []) if a]
+    aname_list = [n for n in (payload.activity_names or []) if n]
+    if not aid_list and payload.activity_id:
+        aid_list = [payload.activity_id]
+    if not aname_list and payload.activity_name:
+        aname_list = [payload.activity_name]
+    legacy_aid = aid_list[0] if aid_list else None
+    legacy_aname = aname_list[0] if aname_list else ""
+
     update = {
         "name": payload.name,
         "place": payload.place or "",
         "date": payload.date or "",
-        "activity_id": payload.activity_id,
-        "activity_name": payload.activity_name or "",
+        "activity_ids": aid_list,
+        "activity_names": aname_list,
+        "activity_id": legacy_aid,
+        "activity_name": legacy_aname,
         "description": payload.description or "",
         "status": payload.status or "upcoming",
         "updated_at": datetime.now(timezone.utc).isoformat(),
@@ -714,19 +792,33 @@ async def add_participant(tournament_id: str, participant: Participant, current_
     if t_branch and m_branch and t_branch != m_branch:
         raise HTTPException(status_code=400, detail="العضو ليس من نفس فرع البطولة")
 
-    # If tournament is bound to a specific activity, the member must be
-    # currently enrolled in that activity. Enrollment in this codebase comes
-    # from two sources: paid/partial invoices (normal flow) or the inline
-    # `members.activities` array (registration-form flow). A subscription is
-    # considered active when its end_date is today or later.
-    if t.get("activity_id"):
+    # If the tournament is bound to one or more activities, the member must
+    # be currently enrolled in AT LEAST ONE of them (or, when the client
+    # specified `participant.activity_id`, in that exact one). Enrollment is
+    # detected from either `members.activities` (registration form flow) or
+    # paid/partial invoices (normal flow). A subscription counts as active
+    # while its end_date is today or later.
+    tournament_aids = _tournament_activity_ids(t)
+    if tournament_aids:
         from datetime import date as _date
         today_str = _date.today().isoformat()
-        target_activity = t["activity_id"]
-        is_enrolled = False
 
+        # If a specific activity was selected for this participant, restrict
+        # validation to it; otherwise accept enrollment in any of the
+        # tournament's activities.
+        if participant.activity_id:
+            if participant.activity_id not in tournament_aids:
+                raise HTTPException(
+                    status_code=400,
+                    detail="النشاط المختار لا ينتمي لهذه البطولة",
+                )
+            target_activities = {participant.activity_id}
+        else:
+            target_activities = set(tournament_aids)
+
+        is_enrolled = False
         for act in (member.get("activities") or []):
-            if act.get("activity_id") != target_activity:
+            if act.get("activity_id") not in target_activities:
                 continue
             if act.get("status", "active") != "active":
                 continue
@@ -747,7 +839,7 @@ async def add_participant(tournament_id: str, participant: Participant, current_
                 for item in inv.get("items", []) or []:
                     if item.get("is_product"):
                         continue
-                    if item.get("activity_id") != target_activity:
+                    if item.get("activity_id") not in target_activities:
                         continue
                     end = item.get("end_date") or ""
                     if not end or end >= today_str:

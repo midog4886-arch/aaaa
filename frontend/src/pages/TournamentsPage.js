@@ -130,7 +130,8 @@ const TournamentsPage = () => {
   const [tournamentDialogOpen, setTournamentDialogOpen] = useState(false);
   const [editingTournament, setEditingTournament] = useState(null);
   const [tournamentForm, setTournamentForm] = useState({
-    name: '', date: '', place: '', activity_id: '', activity_name: '',
+    name: '', date: '', place: '',
+    activity_ids: [], activity_names: [],
     branch_id: 'all', description: '', status: 'upcoming', notify: false
   });
   const [saving, setSaving] = useState(false);
@@ -148,8 +149,9 @@ const TournamentsPage = () => {
     setRecipientsPreview(prev => ({ ...prev, loading: true }));
     const params = {};
     if (tournamentForm.branch_id) params.branch_id = tournamentForm.branch_id;
-    if (tournamentForm.activity_id) params.activity_id = tournamentForm.activity_id;
-    else if (tournamentForm.activity_name) params.activity_name = tournamentForm.activity_name;
+    if ((tournamentForm.activity_ids || []).length > 0) {
+      params.activity_ids = tournamentForm.activity_ids.join(',');
+    }
     tournamentsAPI.previewRecipients(params)
       .then((res) => {
         if (cancelled) return;
@@ -165,7 +167,8 @@ const TournamentsPage = () => {
         setRecipientsPreview({ count: 0, members: [], loading: false, loaded: true });
       });
     return () => { cancelled = true; };
-  }, [tournamentDialogOpen, editingTournament, tournamentForm.branch_id, tournamentForm.activity_id, tournamentForm.activity_name]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tournamentDialogOpen, editingTournament, tournamentForm.branch_id, (tournamentForm.activity_ids || []).join(',')]);
 
   useEffect(() => {
     loadList();
@@ -192,15 +195,24 @@ const TournamentsPage = () => {
     }
   };
 
+  const tnActivityIds = (tn) => {
+    if (Array.isArray(tn.activity_ids) && tn.activity_ids.length) return tn.activity_ids;
+    return tn.activity_id ? [tn.activity_id] : [];
+  };
+  const tnActivityNames = (tn) => {
+    if (Array.isArray(tn.activity_names) && tn.activity_names.length) return tn.activity_names;
+    return tn.activity_name ? [tn.activity_name] : [];
+  };
+
   const filteredTournaments = useMemo(() => {
     return (tournaments || []).filter(tn => {
-      if (filterActivity !== 'all' && tn.activity_id !== filterActivity) return false;
+      if (filterActivity !== 'all' && !tnActivityIds(tn).includes(filterActivity)) return false;
       if (filterBranch !== 'all' && (tn.branch_id || '') !== filterBranch) return false;
       if (filterFromDate && (tn.date || '') < filterFromDate) return false;
       if (filterToDate && (tn.date || '') > filterToDate) return false;
       if (searchTerm) {
         const q = searchTerm.toLowerCase();
-        const fields = [tn.name, tn.place, tn.date, tn.activity_name].filter(Boolean).join(' ').toLowerCase();
+        const fields = [tn.name, tn.place, tn.date, ...tnActivityNames(tn)].filter(Boolean).join(' ').toLowerCase();
         return fields.includes(q);
       }
       return true;
@@ -211,7 +223,7 @@ const TournamentsPage = () => {
     setEditingTournament(null);
     setTournamentForm({
       name: '', date: new Date().toISOString().split('T')[0], place: '',
-      activity_id: '', activity_name: '',
+      activity_ids: [], activity_names: [],
       branch_id: selectedBranchId && selectedBranchId !== 'all' ? selectedBranchId : 'all',
       description: '', status: 'upcoming', notify: false
     });
@@ -224,8 +236,8 @@ const TournamentsPage = () => {
       name: tn.name || '',
       date: tn.date || '',
       place: tn.place || '',
-      activity_id: tn.activity_id || '',
-      activity_name: tn.activity_name || '',
+      activity_ids: tnActivityIds(tn),
+      activity_names: tnActivityNames(tn),
       branch_id: tn.branch_id || 'all',
       description: tn.description || '',
       status: tn.status || 'upcoming',
@@ -234,13 +246,19 @@ const TournamentsPage = () => {
     setTournamentDialogOpen(true);
   };
 
-  const handleActivityChange = (activityId) => {
-    const act = activities.find(a => a.id === activityId);
-    setTournamentForm(prev => ({
-      ...prev,
-      activity_id: activityId,
-      activity_name: act ? (act.name_ar || act.name || '') : prev.activity_name,
-    }));
+  const toggleActivity = (activityId) => {
+    setTournamentForm(prev => {
+      const current = prev.activity_ids || [];
+      const isOn = current.includes(activityId);
+      const nextIds = isOn ? current.filter(x => x !== activityId) : [...current, activityId];
+      const nextNames = nextIds
+        .map(id => {
+          const a = activities.find(x => x.id === id);
+          return a ? (a.name_ar || a.name || '') : '';
+        })
+        .filter(Boolean);
+      return { ...prev, activity_ids: nextIds, activity_names: nextNames };
+    });
   };
 
   const saveTournament = async () => {
@@ -442,7 +460,12 @@ const TournamentsPage = () => {
                   <div className="text-sm text-muted-foreground space-y-1">
                     {tn.date && (<div className="flex items-center gap-2"><Calendar className="w-3.5 h-3.5" /> {tn.date}</div>)}
                     {tn.place && (<div className="flex items-center gap-2"><MapPin className="w-3.5 h-3.5" /> {tn.place}</div>)}
-                    {tn.activity_name && (<div className="flex items-center gap-2"><Activity className="w-3.5 h-3.5" /> {tn.activity_name}</div>)}
+                    {tnActivityNames(tn).length > 0 && (
+                      <div className="flex items-start gap-2">
+                        <Activity className="w-3.5 h-3.5 mt-0.5" />
+                        <span className="flex-1">{tnActivityNames(tn).join(' + ')}</span>
+                      </div>
+                    )}
                   </div>
                   <div className="flex items-center justify-between pt-2 border-t">
                     <Badge variant="secondary" className="gap-1">
@@ -519,15 +542,40 @@ const TournamentsPage = () => {
               />
             </div>
             <div>
-              <Label>{language === 'ar' ? 'النشاط' : 'Activity'}</Label>
-              <Select value={tournamentForm.activity_id || ''} onValueChange={handleActivityChange}>
-                <SelectTrigger><SelectValue placeholder={language === 'ar' ? 'اختر النشاط' : 'Select activity'} /></SelectTrigger>
-                <SelectContent>
-                  {activities.map(a => (
-                    <SelectItem key={a.id} value={a.id}>{a.name_ar || a.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Label>{language === 'ar' ? 'الأنشطة (يمكن اختيار أكثر من نشاط)' : 'Activities (you can pick multiple)'}</Label>
+              <div className="border rounded-md p-2 max-h-40 overflow-y-auto space-y-1">
+                {activities.length === 0 ? (
+                  <div className="text-xs text-muted-foreground text-center py-2">
+                    {language === 'ar' ? 'لا توجد أنشطة' : 'No activities'}
+                  </div>
+                ) : activities.map(a => {
+                  const checked = (tournamentForm.activity_ids || []).includes(a.id);
+                  return (
+                    <label
+                      key={a.id}
+                      className={`flex items-center gap-2 text-sm p-1.5 rounded cursor-pointer hover:bg-muted ${checked ? 'bg-orange-50' : ''}`}
+                    >
+                      <Checkbox
+                        checked={checked}
+                        onCheckedChange={() => toggleActivity(a.id)}
+                      />
+                      <span>{a.name_ar || a.name}</span>
+                    </label>
+                  );
+                })}
+              </div>
+              {(tournamentForm.activity_ids || []).length > 0 && (
+                <p className="text-xs text-muted-foreground mt-1">
+                  {language === 'ar'
+                    ? `تم اختيار ${tournamentForm.activity_ids.length} نشاط: ${tournamentForm.activity_names.join(' + ')}`
+                    : `${tournamentForm.activity_ids.length} selected: ${tournamentForm.activity_names.join(' + ')}`}
+                </p>
+              )}
+              <p className="text-xs text-muted-foreground mt-1">
+                {language === 'ar'
+                  ? 'اتركه فارغًا لجعل البطولة عامة (تقبل أي عضو من الفرع).'
+                  : 'Leave empty for an open tournament (any branch member can join).'}
+              </p>
             </div>
             {isAdmin && branches.length > 0 && (
               <div>
@@ -694,12 +742,12 @@ const TournamentDetail = ({ tid, onBack }) => {
   const [addOpen, setAddOpen] = useState(false);
   const [memberSearch, setMemberSearch] = useState('');
   const [partForm, setPartForm] = useState({
-    member_id: '', level_id: '', age: '', weight: '', notes: '', notify: false
+    member_id: '', activity_id: '', level_id: '', age: '', weight: '', notes: '', notify: false
   });
   const [saving, setSaving] = useState(false);
 
   const [editingPart, setEditingPart] = useState(null);
-  const [editForm, setEditForm] = useState({ level_id: '', age: '', weight: '', notes: '', position: '', notify: false });
+  const [editForm, setEditForm] = useState({ activity_id: '', level_id: '', age: '', weight: '', notes: '', position: '', notify: false });
 
   const [removeTarget, setRemoveTarget] = useState(null);
   const [shareOpen, setShareOpen] = useState(false);
@@ -734,39 +782,67 @@ const TournamentDetail = ({ tid, onBack }) => {
     }
   };
 
-  // Levels filtered to this tournament's activity (by activity_id then by name fallback)
+  // Tournament activity helpers (handle both new array and legacy single field)
+  const tournamentActivityIds = useMemo(() => {
+    if (!tournament) return [];
+    if (Array.isArray(tournament.activity_ids) && tournament.activity_ids.length) return tournament.activity_ids;
+    return tournament.activity_id ? [tournament.activity_id] : [];
+  }, [tournament]);
+  const tournamentActivityNames = useMemo(() => {
+    if (!tournament) return [];
+    if (Array.isArray(tournament.activity_names) && tournament.activity_names.length) return tournament.activity_names;
+    return tournament.activity_name ? [tournament.activity_name] : [];
+  }, [tournament]);
+
+  const activityNameById = useMemo(() => {
+    const map = {};
+    tournamentActivityIds.forEach((id, i) => {
+      map[id] = tournamentActivityNames[i] || '';
+    });
+    return map;
+  }, [tournamentActivityIds, tournamentActivityNames]);
+
+  // Levels filtered to the participant-form's selected activity (or to ANY
+  // of the tournament's activities when none is specifically chosen).
   const tournamentLevels = useMemo(() => {
     if (!tournament) return [];
-    const aid = tournament.activity_id;
-    const aname = (tournament.activity_name || '').toLowerCase();
+    const targetIds = partForm.activity_id ? [partForm.activity_id] : tournamentActivityIds;
     return levels
       .filter(l => {
-        if (aid && l.activity_id === aid) return true;
-        if (aname && (l.activity_name || '').toLowerCase().includes(aname.split(' ')[0])) return true;
-        if (!aid && !aname) return true;
-        return (l.activity_name || '').toLowerCase() === aname;
+        if (targetIds.length === 0) return true;
+        return targetIds.includes(l.activity_id);
       })
       .sort((a, b) => (a.level_number || 0) - (b.level_number || 0));
-  }, [tournament, levels]);
+  }, [tournament, levels, tournamentActivityIds, partForm.activity_id]);
 
-  // Eligible members for the activity
+  // Levels available when EDITING a participant (filtered to that
+  // participant's chosen activity if multi-activity tournament).
+  const editLevels = useMemo(() => {
+    if (!tournament) return [];
+    const targetIds = editForm.activity_id ? [editForm.activity_id] : tournamentActivityIds;
+    return levels
+      .filter(l => {
+        if (targetIds.length === 0) return true;
+        return targetIds.includes(l.activity_id);
+      })
+      .sort((a, b) => (a.level_number || 0) - (b.level_number || 0));
+  }, [tournament, levels, tournamentActivityIds, editForm.activity_id]);
+
+  // Eligible members for the tournament's activities (or ALL members if no
+  // activity restriction). When the user picks a specific activity in the
+  // form, only members enrolled in THAT activity are shown.
   const eligibleMembers = useMemo(() => {
     if (!tournament) return [];
-    const aid = tournament.activity_id;
-    const aname = (tournament.activity_name || '').toLowerCase();
+    const targetIds = partForm.activity_id ? [partForm.activity_id] : tournamentActivityIds;
     const partIds = new Set((tournament.participants || []).map(p => p.member_id));
     return members
       .filter(m => !partIds.has(m.id))
       .filter(m => {
-        if (!aid && !aname) return true;
+        if (targetIds.length === 0) return true;
         const acts = m.activities || [];
-        return acts.some(a => {
-          if (aid && a.activity_id === aid) return true;
-          const an = (a.activity_name || '').toLowerCase();
-          return aname && (an === aname || an.includes(aname.split(' ')[0]));
-        });
+        return acts.some(a => targetIds.includes(a.activity_id));
       });
-  }, [members, tournament]);
+  }, [members, tournament, tournamentActivityIds, partForm.activity_id]);
 
   const filteredEligible = useMemo(() => {
     if (!memberSearch) return eligibleMembers.slice(0, 50);
@@ -810,7 +886,9 @@ const TournamentDetail = ({ tid, onBack }) => {
 
   const openAdd = () => {
     setMemberSearch('');
-    setPartForm({ member_id: '', level_id: '', age: '', weight: '', notes: '', notify: false });
+    // Auto-pick the activity when the tournament has only one.
+    const defaultAid = tournamentActivityIds.length === 1 ? tournamentActivityIds[0] : '';
+    setPartForm({ member_id: '', activity_id: defaultAid, level_id: '', age: '', weight: '', notes: '', notify: false });
     setAddOpen(true);
   };
 
@@ -819,10 +897,15 @@ const TournamentDetail = ({ tid, onBack }) => {
       toast.error(language === 'ar' ? 'اختر عضواً' : 'Select a member');
       return;
     }
+    if (tournamentActivityIds.length > 1 && !partForm.activity_id) {
+      toast.error(language === 'ar' ? 'اختر النشاط الذي يشارك به العضو' : 'Pick which activity the member competes in');
+      return;
+    }
     setSaving(true);
     try {
       const res = await tournamentsAPI.addParticipant(tid, {
         member_id: partForm.member_id,
+        activity_id: partForm.activity_id || null,
         level_id: partForm.level_id || null,
         age: partForm.age || '',
         weight: partForm.weight || '',
@@ -843,6 +926,7 @@ const TournamentDetail = ({ tid, onBack }) => {
   const openEdit = (p) => {
     setEditingPart(p);
     setEditForm({
+      activity_id: p.activity_id || (tournamentActivityIds.length === 1 ? tournamentActivityIds[0] : ''),
       level_id: p.level_id || '',
       age: p.age || '',
       weight: p.weight || '',
@@ -857,6 +941,7 @@ const TournamentDetail = ({ tid, onBack }) => {
     setSaving(true);
     try {
       const res = await tournamentsAPI.updateParticipant(tid, editingPart.member_id, {
+        activity_id: editForm.activity_id || null,
         level_id: editForm.level_id || null,
         age: editForm.age,
         weight: editForm.weight,
@@ -1081,7 +1166,11 @@ const TournamentDetail = ({ tid, onBack }) => {
                     <div className="flex flex-wrap gap-3 mt-2 text-sm">
                       {tournament.date && <span className="flex items-center gap-1"><Calendar className="w-4 h-4" /> {tournament.date}</span>}
                       {tournament.place && <span className="flex items-center gap-1"><MapPin className="w-4 h-4" /> {tournament.place}</span>}
-                      {tournament.activity_name && <span className="flex items-center gap-1"><Activity className="w-4 h-4" /> {tournament.activity_name}</span>}
+                      {tournamentActivityNames.length > 0 && (
+                        <span className="flex items-center gap-1">
+                          <Activity className="w-4 h-4" /> {tournamentActivityNames.join(' + ')}
+                        </span>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -1153,11 +1242,42 @@ const TournamentDetail = ({ tid, onBack }) => {
             <DialogTitle>{language === 'ar' ? 'إضافة مشارك' : 'Add Participant'}</DialogTitle>
             <DialogDescription>
               {language === 'ar'
-                ? `الأعضاء النشطون في نشاط "${tournament.activity_name || '-'}"`
-                : `Active members in "${tournament.activity_name || '-'}"`}
+                ? `الأعضاء النشطون في: ${tournamentActivityNames.join(' + ') || '-'}`
+                : `Active members in: ${tournamentActivityNames.join(' + ') || '-'}`}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-3">
+            {tournamentActivityIds.length > 1 && (
+              <div>
+                <Label>
+                  {language === 'ar' ? 'النشاط الذي يشارك به العضو' : "Member's competing activity"}
+                  <span className="text-red-500"> *</span>
+                </Label>
+                <Select
+                  value={partForm.activity_id || ''}
+                  onValueChange={(v) => {
+                    setPartForm({ ...partForm, activity_id: v, member_id: '', level_id: '' });
+                    setMemberSearch('');
+                  }}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder={language === 'ar' ? 'اختر النشاط' : 'Pick the activity'} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {tournamentActivityIds.map((aid, i) => (
+                      <SelectItem key={aid} value={aid}>
+                        {tournamentActivityNames[i] || aid}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground mt-1">
+                  {language === 'ar'
+                    ? 'يجب اختيار النشاط أولاً لتصفية المستويات والأعضاء.'
+                    : 'Pick the activity first to filter levels and members.'}
+                </p>
+              </div>
+            )}
             <div>
               <Label>{language === 'ar' ? 'بحث عن عضو' : 'Search member'}</Label>
               <div className="relative">
@@ -1257,13 +1377,33 @@ const TournamentDetail = ({ tid, onBack }) => {
             <DialogDescription>{editingPart?.member_name}</DialogDescription>
           </DialogHeader>
           <div className="space-y-3">
+            {tournamentActivityIds.length > 1 && (
+              <div>
+                <Label>{language === 'ar' ? 'النشاط' : 'Activity'}</Label>
+                <Select
+                  value={editForm.activity_id || ''}
+                  onValueChange={(v) => setEditForm({ ...editForm, activity_id: v, level_id: '' })}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder={language === 'ar' ? 'اختر النشاط' : 'Pick the activity'} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {tournamentActivityIds.map((aid, i) => (
+                      <SelectItem key={aid} value={aid}>
+                        {tournamentActivityNames[i] || aid}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
             <div>
               <Label>{language === 'ar' ? 'المستوى' : 'Level'}</Label>
               <Select value={editForm.level_id || '__none__'} onValueChange={(v) => setEditForm({ ...editForm, level_id: v === '__none__' ? '' : v })}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="__none__">{language === 'ar' ? 'بدون مستوى' : 'No level'}</SelectItem>
-                  {tournamentLevels.map(l => (
+                  {editLevels.map(l => (
                     <SelectItem key={l.id} value={l.id}>
                       {l.custom_name?.trim() || `${language === 'ar' ? 'المستوى' : 'Level'} ${l.level_number}`}
                     </SelectItem>
@@ -1477,7 +1617,15 @@ const LevelGroup = ({ label, levelNumber, participants, onEdit, onRemove, onPosi
                 {participants.map((p, i) => (
                   <tr key={p.member_id} className="border-b hover:bg-muted/30">
                     <td className="py-2 px-2 text-muted-foreground">{i + 1}</td>
-                    <td className="py-2 px-2 font-medium">{p.member_name}</td>
+                    <td className="py-2 px-2 font-medium">
+                      {p.member_name}
+                      {p.activity_name && (
+                        <span className="ms-2 inline-flex items-center gap-1 text-[11px] font-normal text-orange-700 bg-orange-50 border border-orange-200 rounded px-1.5 py-0.5 align-middle">
+                          <Activity className="w-3 h-3" />
+                          {p.activity_name}
+                        </span>
+                      )}
+                    </td>
                     <td className="py-2 px-2 hidden md:table-cell text-muted-foreground">{p.phone}</td>
                     <td className="py-2 px-2 text-center">{p.age || '-'}</td>
                     <td className="py-2 px-2 text-center">{p.weight || '-'}</td>
