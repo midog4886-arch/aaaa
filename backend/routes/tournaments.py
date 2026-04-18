@@ -429,14 +429,17 @@ async def update_participant(tournament_id: str, member_id: str, payload: Partic
 
 @router.delete("/{tournament_id}/participants/{member_id}")
 async def remove_participant(tournament_id: str, member_id: str, current_user: dict = Depends(require_tournaments_permission)):
-    await _load_tournament_or_403(tournament_id, current_user)
-    res = await db.tournaments.update_one(
+    t = await _load_tournament_or_403(tournament_id, current_user)
+    # Confirm the participant exists *before* the update — `$set(updated_at)`
+    # always changes the document, so `modified_count` alone cannot tell us
+    # whether the `$pull` actually removed anything.
+    if not any(p.get("member_id") == member_id for p in (t.get("participants") or [])):
+        raise HTTPException(status_code=404, detail="Participant not found")
+    await db.tournaments.update_one(
         {"id": tournament_id},
         {"$pull": {"participants": {"member_id": member_id}},
          "$set": {"updated_at": datetime.now(timezone.utc).isoformat()}}
     )
-    if res.modified_count == 0:
-        raise HTTPException(status_code=404, detail="Participant not found")
     await _log_activity("remove_participant", current_user, {
         "tournament_id": tournament_id, "member_id": member_id
     })
