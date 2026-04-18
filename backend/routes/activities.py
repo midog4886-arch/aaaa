@@ -10,6 +10,7 @@ import uuid
 
 from database import db
 from utils.auth import get_current_user
+from utils.cache import cache_get, cache_set, cache_invalidate
 
 router = APIRouter(prefix="/activities", tags=["Activities"])
 
@@ -41,7 +42,12 @@ async def get_activities(
 ):
     is_admin = current_user.get("is_admin", False)
     branch_id = current_user.get("branch_id")
-    
+
+    cache_key = f"activities:{'admin' if is_admin else 'user'}:{branch_filter or branch_id or 'all'}"
+    cached = cache_get(cache_key)
+    if cached is not None:
+        return cached
+
     if is_admin:
         if branch_filter and branch_filter != "all":
             activities = await db.activities.find(
@@ -56,6 +62,7 @@ async def get_activities(
             {"$or": [{"branch_id": branch_id}, {"branch_id": None}, {"branch_id": {"$exists": False}}]}, 
             {"_id": 0}
         ).to_list(100)
+    cache_set(cache_key, activities, ttl=600)
     return activities
 
 
@@ -77,6 +84,7 @@ async def create_activity(activity: ActivityCreate, current_user: dict = Depends
         "created_at": datetime.now(timezone.utc).isoformat()
     }
     await db.activities.insert_one(activity_doc)
+    cache_invalidate("activities:")
     return Activity(**{k: v for k, v in activity_doc.items() if k != "_id"})
 
 
@@ -89,6 +97,7 @@ async def update_activity(activity_id: str, activity: ActivityCreate, current_us
     )
     if not result:
         raise HTTPException(status_code=404, detail="Activity not found")
+    cache_invalidate("activities:")
     return Activity(**{k: v for k, v in result.items() if k != "_id"})
 
 
@@ -113,4 +122,5 @@ async def delete_activity(activity_id: str, current_user: dict = Depends(get_cur
     result = await db.activities.delete_one({"id": activity_id})
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Activity not found")
+    cache_invalidate("activities:")
     return {"message": "Activity deleted"}

@@ -10,6 +10,7 @@ import uuid
 
 from database import db
 from utils.auth import get_current_user
+from utils.cache import cache_get, cache_set, cache_invalidate
 
 router = APIRouter(prefix="/coaches", tags=["Coaches"])
 
@@ -61,7 +62,12 @@ async def get_coaches(
 ):
     is_admin = current_user.get("is_admin", False)
     branch_id = current_user.get("branch_id")
-    
+
+    cache_key = f"coaches:{'admin' if is_admin else 'user'}:{branch_filter or branch_id or 'all'}"
+    cached = cache_get(cache_key)
+    if cached is not None:
+        return cached
+
     if is_admin:
         if branch_filter and branch_filter != "all":
             coaches = await db.coaches.find(
@@ -75,6 +81,7 @@ async def get_coaches(
             {"$or": [{"branch_id": branch_id}, {"branch_id": None}, {"branch_id": {"$exists": False}}]}, 
             {"_id": 0}
         ).to_list(100)
+    cache_set(cache_key, coaches, ttl=600)
     return coaches
 
 
@@ -111,6 +118,7 @@ async def create_coach(coach: CoachCreate, current_user: dict = Depends(get_curr
         "created_at": datetime.now(timezone.utc).isoformat()
     }
     await db.coaches.insert_one(coach_doc)
+    cache_invalidate("coaches:")
     return Coach(**{k: v for k, v in coach_doc.items() if k != "_id"})
 
 
@@ -144,6 +152,7 @@ async def update_coach(coach_id: str, coach: CoachCreate, current_user: dict = D
     )
     if not result:
         raise HTTPException(status_code=404, detail="Coach not found")
+    cache_invalidate("coaches:")
     return Coach(**{k: v for k, v in result.items() if k != "_id"})
 
 
@@ -152,6 +161,7 @@ async def delete_coach(coach_id: str, current_user: dict = Depends(get_current_u
     result = await db.coaches.delete_one({"id": coach_id})
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Coach not found")
+    cache_invalidate("coaches:")
     return {"message": "Coach deleted"}
 
 

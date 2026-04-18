@@ -10,6 +10,7 @@ import uuid
 
 from database import db
 from utils.auth import get_current_user
+from utils.cache import cache_get, cache_set, cache_invalidate
 
 router = APIRouter(prefix="/levels", tags=["Levels"])
 
@@ -53,6 +54,11 @@ async def get_levels(
     import asyncio
     is_admin = current_user.get("is_admin", False)
     branch_id = current_user.get("branch_id")
+
+    cache_key = f"levels:{'admin' if is_admin else 'user'}:{branch_filter or branch_id or 'all'}:{activity_id or '-'}:{activity_name or '-'}"
+    cached = cache_get(cache_key)
+    if cached is not None:
+        return cached
 
     query = {}
     if is_admin:
@@ -176,6 +182,7 @@ async def get_levels(
         cn = level.get("custom_name") or ""
         level["display_name"] = cn.strip() if cn.strip() else f"المستوى {level.get('level_number', '')}"
 
+    cache_set(cache_key, levels, ttl=300)  # 5 min (members can change more often)
     return levels
 
 
@@ -201,7 +208,7 @@ async def create_level(level: LevelCreate, current_user: dict = Depends(get_curr
         "created_at": datetime.now(timezone.utc).isoformat()
     }
     await db.levels.insert_one(level_doc)
-    
+    cache_invalidate("levels:")
     return {k: v for k, v in level_doc.items() if k != "_id"}
 
 
@@ -223,6 +230,7 @@ async def update_level(level_id: str, level: LevelCreate, current_user: dict = D
     )
     if not result:
         raise HTTPException(status_code=404, detail="Level not found")
+    cache_invalidate("levels:")
     return {k: v for k, v in result.items() if k != "_id"}
 
 
@@ -231,6 +239,7 @@ async def delete_level(level_id: str, current_user: dict = Depends(get_current_u
     result = await db.levels.delete_one({"id": level_id})
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Level not found")
+    cache_invalidate("levels:")
     return {"message": "Level deleted"}
 
 
@@ -274,6 +283,7 @@ async def add_member_to_level(level_id: str, member_id: str, current_user: dict 
                 {"$set": {"activities": activities}}
             )
 
+    cache_invalidate("levels:")
     return {"message": "Member added to level"}
 
 
@@ -286,6 +296,7 @@ async def remove_member_from_level(level_id: str, member_id: str, current_user: 
     )
     if result.modified_count == 0:
         raise HTTPException(status_code=404, detail="Member not found in level")
+    cache_invalidate("levels:")
     return {"message": "Member removed from level"}
 
 

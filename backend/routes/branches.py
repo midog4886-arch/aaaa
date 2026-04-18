@@ -11,6 +11,7 @@ import uuid
 from database import db
 from utils.auth import get_current_user
 from utils.sequences import assign_seq_starts_for_new_branch
+from utils.cache import cache_get, cache_set, cache_invalidate
 
 router = APIRouter(prefix="/branches", tags=["Branches"])
 
@@ -39,11 +40,17 @@ async def get_branches(current_user: dict = Depends(get_current_user)):
     """Get all branches - admin sees all, others see only their branch"""
     is_admin = current_user.get("is_admin", False)
     branch_id = current_user.get("branch_id")
-    
+
+    cache_key = "branches:all" if is_admin else f"branches:one:{branch_id}"
+    cached = cache_get(cache_key)
+    if cached is not None:
+        return cached
+
     if is_admin:
         branches = await db.branches.find({}, {"_id": 0}).to_list(100)
     else:
         branches = await db.branches.find({"id": branch_id}, {"_id": 0}).to_list(100)
+    cache_set(cache_key, branches, ttl=600)  # 10 min
     return branches
 
 
@@ -62,6 +69,7 @@ async def create_branch(branch: BranchCreate, current_user: dict = Depends(get_c
     await db.branches.insert_one(branch_doc)
     # Assign exclusive sequence blocks for this new branch
     await assign_seq_starts_for_new_branch(branch_id)
+    cache_invalidate("branches:")
     return {k: v for k, v in branch_doc.items() if k != "_id"}
 
 
@@ -87,6 +95,7 @@ async def update_branch(branch_id: str, branch: BranchCreate, current_user: dict
     )
     if not result:
         raise HTTPException(status_code=404, detail="Branch not found")
+    cache_invalidate("branches:")
     return {k: v for k, v in result.items() if k != "_id"}
 
 
@@ -99,4 +108,5 @@ async def delete_branch(branch_id: str, current_user: dict = Depends(get_current
     result = await db.branches.delete_one({"id": branch_id})
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Branch not found")
+    cache_invalidate("branches:")
     return {"message": "Branch deleted"}
