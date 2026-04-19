@@ -276,6 +276,31 @@ async def add_member_to_level(level_id: str, member_id: str, current_user: dict 
             detail += f" ({slot_label})"
         raise HTTPException(status_code=400, detail=detail)
 
+    # Prevent the same member from being added to a DIFFERENT activity that
+    # runs at the same time slot (clash on the academy schedule).
+    slot = level.get("time_slot")
+    if slot:
+        clash_query = {
+            "id": {"$ne": level_id},
+            "members": member_id,
+            "time_slot": slot,
+        }
+        if act_id:
+            clash_query["activity_id"] = {"$ne": act_id}
+        elif act_name:
+            clash_query["activity_name"] = {"$ne": act_name}
+        clash = await db.levels.find_one(
+            clash_query,
+            {"_id": 0, "activity_name": 1, "level_number": 1, "name": 1, "time_slot": 1},
+        )
+        if clash:
+            other_act = clash.get("activity_name") or "نشاط آخر"
+            other_lvl = clash.get("name") or f"المستوى {clash.get('level_number', '')}"
+            raise HTTPException(
+                status_code=400,
+                detail=f"العضو مسجّل بالفعل في {other_act} - {other_lvl} في نفس التوقيت ({slot})",
+            )
+
     await db.levels.update_one(
         {"id": level_id},
         {"$addToSet": {"members": member_id}}
