@@ -254,7 +254,28 @@ async def add_member_to_level(level_id: str, member_id: str, current_user: dict 
     
     if member_id in level.get("members", []):
         raise HTTPException(status_code=400, detail="العضو موجود مسبقاً في هذا المستوى")
-    
+
+    # Prevent the same member from being added to more than one level of the
+    # same activity (whether matched by activity_id or activity_name).
+    dup_query = {
+        "id": {"$ne": level_id},
+        "members": member_id,
+    }
+    act_id = level.get("activity_id")
+    act_name = level.get("activity_name")
+    if act_id:
+        dup_query["activity_id"] = act_id
+    elif act_name:
+        dup_query["activity_name"] = act_name
+    existing = await db.levels.find_one(dup_query, {"_id": 0, "id": 1, "level_number": 1, "name": 1, "time_slot": 1})
+    if existing:
+        lvl_label = existing.get("name") or f"المستوى {existing.get('level_number', '')}"
+        slot_label = existing.get("time_slot") or ""
+        detail = f"العضو موجود بالفعل في {lvl_label}"
+        if slot_label:
+            detail += f" ({slot_label})"
+        raise HTTPException(status_code=400, detail=detail)
+
     await db.levels.update_one(
         {"id": level_id},
         {"$addToSet": {"members": member_id}}
