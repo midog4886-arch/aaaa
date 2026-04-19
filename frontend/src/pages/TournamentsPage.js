@@ -843,6 +843,11 @@ const TournamentDetail = ({ tid, onBack }) => {
   const [manageSearch, setManageSearch] = useState('');
   const [manageBusyId, setManageBusyId] = useState(null);
 
+  // New-Level dialog state
+  const [newLevelOpen, setNewLevelOpen] = useState(false);
+  const [newLevelSaving, setNewLevelSaving] = useState(false);
+  const [newLevelForm, setNewLevelForm] = useState({ custom_name: '', capacity: '' });
+
   const [addOpen, setAddOpen] = useState(false);
   const [memberSearch, setMemberSearch] = useState('');
   const [partForm, setPartForm] = useState({
@@ -1025,6 +1030,48 @@ const TournamentDetail = ({ tid, onBack }) => {
       : '';
     setPartForm({ member_id: '', activity_id: defaultAid, level_id: '', subcategory: defaultSub, age: '', weight: '', notes: '', notify: false });
     setAddOpen(true);
+  };
+
+  // ── Create-Level (from inside the tournament page) ────────────────
+  const openNewLevel = () => {
+    setNewLevelForm({ custom_name: '', capacity: String(subCapacity || 6) });
+    setNewLevelOpen(true);
+  };
+
+  const handleCreateLevel = async () => {
+    if (tournamentActivityIds.length === 0) {
+      toast.error(language === 'ar' ? 'لا يوجد نشاط للبطولة' : 'Tournament has no activity');
+      return;
+    }
+    setNewLevelSaving(true);
+    try {
+      const aid = tournamentActivityIds[0];
+      const aname = activityNameById[aid] || tournamentActivityNames[0] || '';
+      // Next level number = max within this activity + 1.
+      const existing = levels.filter(l => l.activity_id === aid);
+      const nextNum = existing.length
+        ? Math.max(...existing.map(l => l.level_number || 0)) + 1
+        : 1;
+      const cap = parseInt(newLevelForm.capacity, 10) || subCapacity || 6;
+      const branchId = selectedBranchId && selectedBranchId !== 'all'
+        ? selectedBranchId : 'all';
+      await levelsAPI.create({
+        level_number: nextNum,
+        activity_name: aname,
+        activity_id: aid,
+        custom_name: newLevelForm.custom_name?.trim() || `${language === 'ar' ? 'المستوى' : 'Level'} ${nextNum}`,
+        capacity: cap,
+        branch_id: branchId,
+        members: [],
+      });
+      toast.success(language === 'ar' ? `تم إنشاء المستوى ${nextNum}` : `Level ${nextNum} created`);
+      setNewLevelOpen(false);
+      await loadDetail();
+    } catch (e) {
+      toast.error(e.response?.data?.detail || (language === 'ar' ? 'فشل إنشاء المستوى' : 'Failed to create level'));
+    } finally {
+      setNewLevelSaving(false);
+    }
   };
 
   const handleAddParticipant = async () => {
@@ -1386,16 +1433,40 @@ const TournamentDetail = ({ tid, onBack }) => {
                     </div>
                   </div>
                 </div>
-                <Button
-                  onClick={openAdd}
-                  className="bg-slate-900 hover:bg-slate-800 text-white"
-                >
-                  <Plus className="w-4 h-4 ms-1" />
-                  {language === 'ar' ? 'إضافة مشارك' : 'New participant'}
-                </Button>
+                <div className="flex gap-2">
+                  <Button
+                    onClick={openNewLevel}
+                    variant="secondary"
+                    className="bg-white/15 hover:bg-white/25 text-white border-white/30"
+                  >
+                    <Plus className="w-4 h-4 ms-1" />
+                    {language === 'ar' ? 'إضافة مستوى' : 'New level'}
+                  </Button>
+                  <Button
+                    onClick={openAdd}
+                    className="bg-slate-900 hover:bg-slate-800 text-white"
+                  >
+                    <Plus className="w-4 h-4 ms-1" />
+                    {language === 'ar' ? 'إضافة مشارك' : 'New participant'}
+                  </Button>
+                </div>
               </div>
             );
           })()}
+
+          {/* Add-level button when subcategories aren't enabled */}
+          {!hasSubcategories && tournamentActivityIds.length > 0 && (
+            <div className="flex justify-end print:hidden">
+              <Button
+                onClick={openNewLevel}
+                variant="outline"
+                size="sm"
+              >
+                <Plus className="w-4 h-4 ms-1" />
+                {language === 'ar' ? 'إضافة مستوى جديد' : 'Add new level'}
+              </Button>
+            </div>
+          )}
 
           {/* Levels with participants — card grid (3 per row) */}
           {tournamentLevels.length === 0 && Object.keys(groupedParticipants).length === 0 ? (
@@ -1838,6 +1909,46 @@ const TournamentDetail = ({ tid, onBack }) => {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* New Level dialog */}
+      <Dialog open={newLevelOpen} onOpenChange={setNewLevelOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>{language === 'ar' ? 'إضافة مستوى جديد' : 'Add new level'}</DialogTitle>
+            <DialogDescription>
+              {language === 'ar'
+                ? `سيتم إنشاء مستوى جديد ضمن نشاط "${tournamentActivityNames[0] || ''}".`
+                : `Creates a new level under activity "${tournamentActivityNames[0] || ''}".`}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div>
+              <Label>{language === 'ar' ? 'اسم المستوى (اختياري)' : 'Level name (optional)'}</Label>
+              <Input
+                value={newLevelForm.custom_name}
+                onChange={(e) => setNewLevelForm({ ...newLevelForm, custom_name: e.target.value })}
+                placeholder={language === 'ar' ? 'مثال: المستوى المتقدم' : 'e.g. Advanced'}
+              />
+            </div>
+            <div>
+              <Label>{language === 'ar' ? 'السعة القصوى' : 'Max capacity'}</Label>
+              <Input
+                type="number" min="1"
+                value={newLevelForm.capacity}
+                onChange={(e) => setNewLevelForm({ ...newLevelForm, capacity: e.target.value })}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setNewLevelOpen(false)} disabled={newLevelSaving}>
+              {language === 'ar' ? 'إلغاء' : 'Cancel'}
+            </Button>
+            <Button onClick={handleCreateLevel} disabled={newLevelSaving}>
+              {newLevelSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : (language === 'ar' ? 'إنشاء' : 'Create')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Manage Members dialog (per level + subcategory) */}
       <Dialog open={!!manageCtx} onOpenChange={(o) => !o && setManageCtx(null)}>

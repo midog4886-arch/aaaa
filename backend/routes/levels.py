@@ -24,6 +24,7 @@ class LevelMember(BaseModel):
 class LevelCreate(BaseModel):
     level_number: int  # 1, 2, 3, 4, 5, 6
     activity_name: str  # Manual activity name
+    activity_id: Optional[str] = None  # Optional FK to activities collection
     custom_name: Optional[str] = ""  # User-defined name for the level
     description: Optional[str] = ""
     members: List[str] = []  # List of member IDs
@@ -200,6 +201,7 @@ async def create_level(level: LevelCreate, current_user: dict = Depends(get_curr
         "id": level_id,
         "level_number": level.level_number,
         "activity_name": level.activity_name,
+        "activity_id": level.activity_id or None,
         "custom_name": level.custom_name or "",
         "description": level.description,
         "members": level.members,
