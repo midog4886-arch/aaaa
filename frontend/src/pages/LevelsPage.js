@@ -480,7 +480,15 @@ export const LevelsPage = () => {
   // Get time slots for selected activity
   const getTimeSlotsForActivity = (activityId) => {
     const activityLevels = groupedLevels[activityId] || {};
-    return Object.keys(activityLevels);
+    const slots = Object.keys(activityLevels);
+    // Sort by the hour number embedded in the slot name (e.g. "الساعة 4" → 4).
+    // Slots without a number fall back to alphabetical order at the end.
+    return slots.sort((a, b) => {
+      const na = parseInt((a.match(/\d+/) || [Infinity])[0], 10);
+      const nb = parseInt((b.match(/\d+/) || [Infinity])[0], 10);
+      if (na !== nb) return na - nb;
+      return a.localeCompare(b, 'ar');
+    });
   };
 
   // Get levels for selected time slot
