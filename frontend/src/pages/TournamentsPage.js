@@ -1841,7 +1841,7 @@ const TournamentDetail = ({ tid, onBack }) => {
 
       {/* Manage Members dialog (per level + subcategory) */}
       <Dialog open={!!manageCtx} onOpenChange={(o) => !o && setManageCtx(null)}>
-        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>
               {language === 'ar' ? 'إدارة الأعضاء' : 'Manage members'}
@@ -1922,9 +1922,9 @@ const TournamentDetail = ({ tid, onBack }) => {
             };
 
             return (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 {/* Current members */}
-                <div>
+                <div className="md:col-span-1">
                   <div className="flex items-center justify-between mb-2">
                     <h4 className="font-semibold text-sm">
                       {language === 'ar' ? 'الأعضاء الحاليون' : 'Current members'}
@@ -1960,11 +1960,14 @@ const TournamentDetail = ({ tid, onBack }) => {
                   </div>
                 </div>
 
-                {/* Available members */}
-                <div>
-                  <h4 className="font-semibold text-sm mb-2">
-                    {language === 'ar' ? 'الأعضاء المتاحون' : 'Available members'}
-                  </h4>
+                {/* Available members — wider panel with full member info */}
+                <div className="md:col-span-2">
+                  <div className="flex items-center justify-between mb-2">
+                    <h4 className="font-semibold text-sm">
+                      {language === 'ar' ? 'الأعضاء المتاحون' : 'Available members'}
+                      <span className="ms-2 text-muted-foreground font-normal">({candidates.length})</span>
+                    </h4>
+                  </div>
                   <div className="relative mb-2">
                     <Search className="w-4 h-4 absolute start-2 top-1/2 -translate-y-1/2 text-muted-foreground" />
                     <Input
@@ -1974,32 +1977,64 @@ const TournamentDetail = ({ tid, onBack }) => {
                       className="ps-8"
                     />
                   </div>
-                  <div className="border rounded-lg max-h-[48vh] overflow-y-auto">
+                  <div className="border rounded-lg max-h-[60vh] overflow-y-auto divide-y">
                     {candidates.length === 0 ? (
                       <p className="text-center text-sm text-muted-foreground py-6">
                         {language === 'ar' ? 'لا توجد نتائج' : 'No results'}
                       </p>
-                    ) : candidates.map(m => (
-                      <div key={m.id} className="flex items-center gap-2 p-2 border-b last:border-b-0 hover:bg-muted/30">
-                        <div className="w-7 h-7 rounded-full bg-slate-200 text-slate-700 flex items-center justify-center text-xs font-bold">
-                          {(m.name_ar || m.name || '?').charAt(0)}
+                    ) : candidates.map(m => {
+                      const memberActs = (m.activities || [])
+                        .map(aid => activityNameById[aid])
+                        .filter(Boolean);
+                      return (
+                        <div key={m.id} className="flex items-start gap-3 p-3 hover:bg-muted/30 transition-colors">
+                          <div className="w-10 h-10 rounded-full bg-slate-200 text-slate-700 flex items-center justify-center text-sm font-bold shrink-0">
+                            {(m.name_ar || m.name || '?').charAt(0)}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <p className="font-semibold text-sm truncate">
+                                {m.name_ar || m.name}
+                                {m.age ? (
+                                  <span className="ms-1.5 text-xs text-muted-foreground font-normal">
+                                    ({m.age} {language === 'ar' ? 'سنة' : 'y'})
+                                  </span>
+                                ) : null}
+                              </p>
+                              <Badge variant="outline" className="text-[10px] px-1.5">
+                                #{m.member_code}
+                              </Badge>
+                            </div>
+                            <p className="text-xs text-muted-foreground mt-0.5 flex items-center gap-2 flex-wrap">
+                              <span>📱 {m.phone || '—'}</span>
+                              {m.weight ? <span>⚖️ {m.weight} {language === 'ar' ? 'كجم' : 'kg'}</span> : null}
+                              {m.gender ? <span>{m.gender === 'male' || m.gender === 'ذكر' ? '♂' : '♀'} {m.gender}</span> : null}
+                            </p>
+                            {memberActs.length > 0 && (
+                              <div className="flex flex-wrap gap-1 mt-1.5">
+                                {memberActs.map((name, i) => (
+                                  <span key={i} className="inline-flex items-center gap-1 text-[11px] text-orange-700 bg-orange-50 border border-orange-200 rounded px-1.5 py-0.5">
+                                    <Activity className="w-3 h-3" />
+                                    {name}
+                                  </span>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                          <Button
+                            size="sm"
+                            className="bg-green-600 hover:bg-green-700 text-white shrink-0"
+                            disabled={manageBusyId === m.id || isFull}
+                            onClick={() => handleAdd(m)}
+                            title={isFull ? (language === 'ar' ? 'ممتلئ' : 'Full') : (language === 'ar' ? 'إضافة' : 'Add')}
+                          >
+                            {manageBusyId === m.id
+                              ? <Loader2 className="w-4 h-4 animate-spin" />
+                              : <><UserPlus className="w-4 h-4 ms-1" />{language === 'ar' ? 'إضافة' : 'Add'}</>}
+                          </Button>
                         </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium truncate">{m.name_ar || m.name}</p>
-                          <p className="text-[11px] text-muted-foreground truncate">
-                            #{m.member_code} · {m.phone || '—'}
-                          </p>
-                        </div>
-                        <Button
-                          size="icon" variant="ghost" className="h-7 w-7 text-green-600"
-                          disabled={manageBusyId === m.id || isFull}
-                          onClick={() => handleAdd(m)}
-                          title={isFull ? (language === 'ar' ? 'ممتلئ' : 'Full') : (language === 'ar' ? 'إضافة' : 'Add')}
-                        >
-                          {manageBusyId === m.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <UserPlus className="w-4 h-4" />}
-                        </Button>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
               </div>
