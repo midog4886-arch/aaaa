@@ -22,7 +22,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue
 } from '../components/ui/select';
 import {
-  tournamentsAPI, levelsAPI, membersAPI, branchesAPI, activitiesAPI
+  tournamentsAPI, levelsAPI, membersAPI, branchesAPI, activitiesAPI, coachesAPI
 } from '../services/api';
 import { toast } from 'sonner';
 import {
@@ -814,6 +814,19 @@ const TournamentsPage = () => {
 // ════════════════════════════════════════════════════════
 //  TOURNAMENT DETAIL VIEW
 // ════════════════════════════════════════════════════════
+// Color palette for level cards (mirrors LevelsPage).
+const getLevelColor = (n) => {
+  const colors = {
+    1: 'bg-purple-500',
+    2: 'bg-green-500',
+    3: 'bg-blue-500',
+    4: 'bg-yellow-500',
+    5: 'bg-orange-500',
+    6: 'bg-red-500',
+  };
+  return colors[((n - 1) % 6) + 1] || 'bg-slate-500';
+};
+
 const TournamentDetail = ({ tid, onBack }) => {
   const { language } = useLanguage();
   const { user, selectedBranchId } = useAuth();
@@ -822,7 +835,13 @@ const TournamentDetail = ({ tid, onBack }) => {
   const [tournament, setTournament] = useState(null);
   const [levels, setLevels] = useState([]);
   const [members, setMembers] = useState([]);
+  const [coaches, setCoaches] = useState([]);
   const [loading, setLoading] = useState(true);
+
+  // Manage-Members dialog (per-level + subcategory) state
+  const [manageCtx, setManageCtx] = useState(null); // { level, subcategory, levelLabel }
+  const [manageSearch, setManageSearch] = useState('');
+  const [manageBusyId, setManageBusyId] = useState(null);
 
   const [addOpen, setAddOpen] = useState(false);
   const [memberSearch, setMemberSearch] = useState('');
@@ -855,14 +874,16 @@ const TournamentDetail = ({ tid, onBack }) => {
     try {
       const branchParams = selectedBranchId && selectedBranchId !== 'all'
         ? { branch_filter: selectedBranchId } : {};
-      const [tRes, lRes, mRes] = await Promise.all([
+      const [tRes, lRes, mRes, cRes] = await Promise.all([
         tournamentsAPI.get(tid),
         levelsAPI.getAll(branchParams),
         membersAPI.getAll(branchParams),
+        coachesAPI.getAll().catch(() => ({ data: [] })),
       ]);
       setTournament(tRes.data);
       setLevels(lRes.data || []);
       setMembers(mRes.data || []);
+      setCoaches(cRes.data || []);
     } catch (e) {
       toast.error(language === 'ar' ? 'فشل التحميل' : 'Load failed');
     } finally {
@@ -1343,7 +1364,40 @@ const TournamentDetail = ({ tid, onBack }) => {
             </div>
           )}
 
-          {/* Levels with participants */}
+          {/* Active subcategory summary banner (matches LevelsPage style) */}
+          {hasSubcategories && (() => {
+            const activeSub = selectedSubcategory || tournamentSubcategories[0] || '';
+            const subParts = (tournament.participants || []).filter(p => (p.subcategory || '') === activeSub);
+            const levelsCount = tournamentLevels.length;
+            return (
+              <div className="bg-gradient-to-l from-blue-600 to-indigo-600 text-white rounded-xl p-5 flex items-center justify-between flex-wrap gap-3 shadow print:hidden">
+                <div className="flex items-center gap-3 flex-1">
+                  <div className="w-12 h-12 rounded-xl bg-white/20 flex items-center justify-center">
+                    <Activity className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <div className="text-lg font-bold">
+                      {tournamentActivityNames.join(' + ') || tournament.name} – {activeSub}
+                    </div>
+                    <div className="text-xs opacity-90 mt-0.5">
+                      {language === 'ar'
+                        ? `${levelsCount} مستويات · ${subParts.length} لاعب`
+                        : `${levelsCount} levels · ${subParts.length} players`}
+                    </div>
+                  </div>
+                </div>
+                <Button
+                  onClick={openAdd}
+                  className="bg-slate-900 hover:bg-slate-800 text-white"
+                >
+                  <Plus className="w-4 h-4 ms-1" />
+                  {language === 'ar' ? 'إضافة مشارك' : 'New participant'}
+                </Button>
+              </div>
+            );
+          })()}
+
+          {/* Levels with participants — card grid (3 per row) */}
           {tournamentLevels.length === 0 && Object.keys(groupedParticipants).length === 0 ? (
             <Card><CardContent className="py-10 text-center text-muted-foreground">
               {language === 'ar'
@@ -1351,21 +1405,34 @@ const TournamentDetail = ({ tid, onBack }) => {
                 : 'No levels exist for this activity yet. Add participants without a level or create levels first.'}
             </CardContent></Card>
           ) : (
-            <div className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
               {/* Existing levels for this activity */}
               {tournamentLevels.map(lvl => {
                 const parts = groupedParticipants[lvl.id] || [];
+                const coach = lvl.coach_id ? coaches.find(c => c.id === lvl.coach_id) : null;
+                const cap = hasSubcategories ? subCapacity : (lvl.max_capacity || subCapacity);
                 return (
-                  <LevelGroup
+                  <TournamentLevelCard
                     key={lvl.id}
-                    label={lvl.custom_name?.trim() || `${language === 'ar' ? 'المستوى' : 'Level'} ${lvl.level_number}`}
-                    levelNumber={lvl.level_number}
+                    level={lvl}
+                    coach={coach}
+                    capacity={cap}
+                    activityName={activityNameById[lvl.activity_id] || tournamentActivityNames[0] || ''}
+                    subcategory={hasSubcategories ? (selectedSubcategory || tournamentSubcategories[0] || '') : ''}
                     participants={parts}
                     onEdit={openEdit}
                     onRemove={(p) => setRemoveTarget(p)}
                     onPositionChange={quickPositionChange}
                     onCertificate={handleCertificate}
                     onResend={handleResendParticipant}
+                    onManage={(level) => {
+                      setManageSearch('');
+                      setManageCtx({
+                        level,
+                        subcategory: hasSubcategories ? (selectedSubcategory || tournamentSubcategories[0] || '') : '',
+                        levelLabel: level.custom_name?.trim() || `${language === 'ar' ? 'المستوى' : 'Level'} ${level.level_number}`,
+                      });
+                    }}
                     resendingMemberId={resendingMemberId}
                     language={language}
                   />
@@ -1374,20 +1441,30 @@ const TournamentDetail = ({ tid, onBack }) => {
               {/* Participants whose level is missing or unassigned */}
               {Object.keys(groupedParticipants)
                 .filter(lid => lid === '__none__' || !tournamentLevels.find(l => l.id === lid))
-                .map(lid => (
-                  <LevelGroup
-                    key={lid}
-                    label={getLevelLabel(lid)}
-                    participants={groupedParticipants[lid]}
-                    onEdit={openEdit}
-                    onRemove={(p) => setRemoveTarget(p)}
-                    onPositionChange={quickPositionChange}
-                    onCertificate={handleCertificate}
-                    onResend={handleResendParticipant}
-                    resendingMemberId={resendingMemberId}
-                    language={language}
-                  />
-                ))}
+                .map(lid => {
+                  const parts = groupedParticipants[lid] || [];
+                  // Synthesize a pseudo-level so we can reuse the card.
+                  const pseudoLevel = { id: lid, level_number: 0, custom_name: getLevelLabel(lid) };
+                  return (
+                    <TournamentLevelCard
+                      key={lid}
+                      level={pseudoLevel}
+                      coach={null}
+                      capacity={hasSubcategories ? subCapacity : (parts.length || 0)}
+                      activityName={tournamentActivityNames[0] || ''}
+                      subcategory={hasSubcategories ? (selectedSubcategory || tournamentSubcategories[0] || '') : ''}
+                      participants={parts}
+                      onEdit={openEdit}
+                      onRemove={(p) => setRemoveTarget(p)}
+                      onPositionChange={quickPositionChange}
+                      onCertificate={handleCertificate}
+                      onResend={handleResendParticipant}
+                      onManage={null /* unassigned bucket has no level to manage */}
+                      resendingMemberId={resendingMemberId}
+                      language={language}
+                    />
+                  );
+                })}
             </div>
           )}
         </div>
@@ -1761,6 +1838,181 @@ const TournamentDetail = ({ tid, onBack }) => {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Manage Members dialog (per level + subcategory) */}
+      <Dialog open={!!manageCtx} onOpenChange={(o) => !o && setManageCtx(null)}>
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>
+              {language === 'ar' ? 'إدارة الأعضاء' : 'Manage members'}
+              {manageCtx && (
+                <span className="ms-2 text-sm font-normal text-muted-foreground">
+                  · {manageCtx.levelLabel}
+                  {manageCtx.subcategory ? ` · ${manageCtx.subcategory}` : ''}
+                </span>
+              )}
+            </DialogTitle>
+            <DialogDescription>
+              {language === 'ar'
+                ? 'أضف أو احذف أعضاء من هذا المستوى مباشرة.'
+                : 'Add or remove members for this level directly.'}
+            </DialogDescription>
+          </DialogHeader>
+
+          {manageCtx && (() => {
+            const lvl = manageCtx.level;
+            const sub = manageCtx.subcategory || '';
+            const allParts = tournament?.participants || [];
+            const inLevel = allParts.filter(p =>
+              p.level_id === lvl.id && (p.subcategory || '') === sub
+            );
+            const inLevelIds = new Set(inLevel.map(p => p.member_id));
+            const cap = hasSubcategories ? subCapacity : (lvl.max_capacity || subCapacity);
+            const isFull = cap > 0 && inLevel.length >= cap;
+
+            // Members eligible: active + in tournament's activities + not yet in this group + matching search
+            const eligibleActivityIds = new Set(tournament?.activity_ids || []);
+            const q = manageSearch.trim().toLowerCase();
+            const candidates = members.filter(m => {
+              if (m.subscription_status !== 'active') return false;
+              if (eligibleActivityIds.size > 0 && !(m.activities || []).some(aid => eligibleActivityIds.has(aid))) return false;
+              if (inLevelIds.has(m.id)) return false;
+              if (!q) return true;
+              return (m.name_ar || '').toLowerCase().includes(q)
+                || (m.name || '').toLowerCase().includes(q)
+                || (m.member_code || '').toLowerCase().includes(q)
+                || (m.phone || '').toLowerCase().includes(q);
+            }).slice(0, 80);
+
+            const handleAdd = async (m) => {
+              if (isFull) {
+                toast.error(language === 'ar' ? 'المستوى ممتلئ' : 'Level is full');
+                return;
+              }
+              try {
+                setManageBusyId(m.id);
+                await tournamentsAPI.addParticipant(tid, {
+                  member_id: m.id,
+                  level_id: lvl.id,
+                  subcategory: sub || undefined,
+                });
+                toast.success(language === 'ar' ? 'تمت الإضافة' : 'Added');
+                await loadDetail();
+              } catch (e) {
+                toast.error(e.response?.data?.detail || (language === 'ar' ? 'فشل الإضافة' : 'Failed'));
+              } finally {
+                setManageBusyId(null);
+              }
+            };
+
+            const handleRemove = async (p) => {
+              try {
+                setManageBusyId(p.member_id);
+                const path = sub
+                  ? `${p.member_id}?subcategory=${encodeURIComponent(sub)}`
+                  : p.member_id;
+                await tournamentsAPI.removeParticipant(tid, path);
+                toast.success(language === 'ar' ? 'تم الحذف' : 'Removed');
+                await loadDetail();
+              } catch (e) {
+                toast.error(e.response?.data?.detail || (language === 'ar' ? 'فشل الحذف' : 'Failed'));
+              } finally {
+                setManageBusyId(null);
+              }
+            };
+
+            return (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Current members */}
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <h4 className="font-semibold text-sm">
+                      {language === 'ar' ? 'الأعضاء الحاليون' : 'Current members'}
+                    </h4>
+                    <Badge variant={isFull ? 'destructive' : 'outline'}>
+                      {inLevel.length}/{cap || '∞'}
+                    </Badge>
+                  </div>
+                  <div className="border rounded-lg max-h-[55vh] overflow-y-auto">
+                    {inLevel.length === 0 ? (
+                      <p className="text-center text-sm text-muted-foreground py-6">
+                        {language === 'ar' ? 'لا يوجد أعضاء' : 'No members'}
+                      </p>
+                    ) : inLevel.map(p => (
+                      <div key={p.member_id} className="flex items-center gap-2 p-2 border-b last:border-b-0 hover:bg-muted/30">
+                        <div className={`w-7 h-7 rounded-full ${getLevelColor(lvl.level_number || 0)} text-white flex items-center justify-center text-xs font-bold`}>
+                          {(p.member_name || '?').charAt(0)}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium truncate">{p.member_name}</p>
+                          <p className="text-[11px] text-muted-foreground truncate">{p.phone || '—'}</p>
+                        </div>
+                        <Button
+                          size="icon" variant="ghost" className="h-7 w-7 text-red-600"
+                          disabled={manageBusyId === p.member_id}
+                          onClick={() => handleRemove(p)}
+                          title={language === 'ar' ? 'حذف' : 'Remove'}
+                        >
+                          {manageBusyId === p.member_id ? <Loader2 className="w-4 h-4 animate-spin" /> : <X className="w-4 h-4" />}
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Available members */}
+                <div>
+                  <h4 className="font-semibold text-sm mb-2">
+                    {language === 'ar' ? 'الأعضاء المتاحون' : 'Available members'}
+                  </h4>
+                  <div className="relative mb-2">
+                    <Search className="w-4 h-4 absolute start-2 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                    <Input
+                      value={manageSearch}
+                      onChange={(e) => setManageSearch(e.target.value)}
+                      placeholder={language === 'ar' ? 'بحث بالاسم أو الكود أو الهاتف...' : 'Search by name, code, phone...'}
+                      className="ps-8"
+                    />
+                  </div>
+                  <div className="border rounded-lg max-h-[48vh] overflow-y-auto">
+                    {candidates.length === 0 ? (
+                      <p className="text-center text-sm text-muted-foreground py-6">
+                        {language === 'ar' ? 'لا توجد نتائج' : 'No results'}
+                      </p>
+                    ) : candidates.map(m => (
+                      <div key={m.id} className="flex items-center gap-2 p-2 border-b last:border-b-0 hover:bg-muted/30">
+                        <div className="w-7 h-7 rounded-full bg-slate-200 text-slate-700 flex items-center justify-center text-xs font-bold">
+                          {(m.name_ar || m.name || '?').charAt(0)}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium truncate">{m.name_ar || m.name}</p>
+                          <p className="text-[11px] text-muted-foreground truncate">
+                            #{m.member_code} · {m.phone || '—'}
+                          </p>
+                        </div>
+                        <Button
+                          size="icon" variant="ghost" className="h-7 w-7 text-green-600"
+                          disabled={manageBusyId === m.id || isFull}
+                          onClick={() => handleAdd(m)}
+                          title={isFull ? (language === 'ar' ? 'ممتلئ' : 'Full') : (language === 'ar' ? 'إضافة' : 'Add')}
+                        >
+                          {manageBusyId === m.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <UserPlus className="w-4 h-4" />}
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setManageCtx(null)}>
+              {language === 'ar' ? 'إغلاق' : 'Close'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Layout>
   );
 };
@@ -1873,6 +2125,157 @@ const LevelGroup = ({ label, levelNumber, participants, onEdit, onRemove, onPosi
         )}
       </CardContent>
     </Card>
+  );
+};
+
+// ─────────────────────────────────────────────────────────
+// TournamentLevelCard — visual card matching LevelsPage design
+// ─────────────────────────────────────────────────────────
+const TournamentLevelCard = ({
+  level, coach, capacity, activityName, subcategory,
+  participants, onEdit, onRemove, onPositionChange, onCertificate,
+  onResend, onManage, resendingMemberId, language,
+}) => {
+  const t = (ar, en) => (language === 'ar' ? ar : en);
+  const memberCount = participants.length;
+  const cap = Math.max(capacity || 0, 1);
+  const isFull = capacity > 0 && memberCount >= capacity;
+  const headerColor = getLevelColor(level.level_number || 0);
+
+  return (
+    <div
+      className={`border rounded-xl overflow-hidden shadow-sm hover:shadow-lg transition-all duration-300 ${
+        isFull ? 'border-red-300 bg-red-50/30' : 'bg-white'
+      }`}
+    >
+      {/* Header */}
+      <div className={`${headerColor} text-white p-3 flex items-center justify-between`}>
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center shrink-0">
+            <span className="text-2xl font-bold">{level.level_number || '–'}</span>
+          </div>
+          <div className="min-w-0">
+            <div className="text-sm opacity-95 font-semibold truncate">
+              {level.custom_name?.trim() || t('المستوى', 'Level')}
+            </div>
+            <p className="text-xs opacity-80 truncate">
+              {activityName}{subcategory ? ` · ${subcategory}` : ''}
+            </p>
+            {coach && (
+              <p className="text-xs opacity-90 mt-0.5 flex items-center gap-1 truncate">
+                <span className="opacity-75">👤</span>
+                {coach.name_ar || coach.name}
+              </p>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Body */}
+      <div className="p-3">
+        {/* Capacity bar */}
+        {capacity > 0 && (
+          <div className="mb-3">
+            <div className="flex items-center justify-between text-sm mb-1">
+              <span className={`font-medium ${isFull ? 'text-red-600' : 'text-gray-700'}`}>
+                {memberCount}/{capacity} {t('لاعب', 'players')}
+              </span>
+              {isFull && (
+                <Badge variant="destructive" className="text-xs gap-1">
+                  <AlertTriangle className="w-3 h-3" />
+                  {t('ممتلئ', 'Full')}
+                </Badge>
+              )}
+            </div>
+            <div className="w-full bg-gray-200 rounded-full h-2.5">
+              <div
+                className={`h-2.5 rounded-full transition-all duration-500 ${
+                  isFull ? 'bg-red-500' : 'bg-gradient-to-r from-green-400 to-green-600'
+                }`}
+                style={{ width: `${Math.min((memberCount / cap) * 100, 100)}%` }}
+              />
+            </div>
+          </div>
+        )}
+
+        {/* Participants list */}
+        <div className="space-y-1.5 max-h-72 overflow-y-auto mb-3 scrollbar-thin">
+          {memberCount === 0 ? (
+            <p className="text-center text-gray-400 py-3 text-sm">
+              {t('لا يوجد لاعبين', 'No players')}
+            </p>
+          ) : (
+            participants.map((p, i) => (
+              <div
+                key={p.member_id}
+                className="flex items-center gap-2 p-2 rounded-lg bg-gray-50 hover:bg-gray-100 transition-colors"
+              >
+                <div className="text-xs text-gray-400 w-4 text-center shrink-0">{i + 1}</div>
+                <div className={`w-7 h-7 rounded-full ${headerColor} text-white flex items-center justify-center text-xs font-bold shadow-sm shrink-0`}>
+                  {(p.member_name || '?').charAt(0)}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="font-medium text-sm truncate">{p.member_name}</p>
+                  <p className="text-[10px] text-muted-foreground truncate">
+                    {p.phone || '—'}
+                    {p.age ? ` · ${p.age}${language === 'ar' ? ' سنة' : 'y'}` : ''}
+                    {p.weight ? ` · ${p.weight}kg` : ''}
+                  </p>
+                </div>
+                {/* Position select (compact) */}
+                <select
+                  value={p.position || ''}
+                  onChange={(e) => onPositionChange(p, e.target.value)}
+                  className="border rounded px-1 py-0.5 text-[11px] bg-white print:hidden shrink-0"
+                  title={t('المركز', 'Position')}
+                >
+                  <option value="">—</option>
+                  {POSITIONS.map(opt => (
+                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                  ))}
+                </select>
+                <div className="flex gap-0.5 shrink-0 print:hidden">
+                  {onResend && (
+                    <Button
+                      size="icon" variant="ghost" className="h-7 w-7"
+                      title={t('إعادة إرسال', 'Resend')}
+                      onClick={() => onResend(p)}
+                      disabled={resendingMemberId === p.member_id}
+                    >
+                      {resendingMemberId === p.member_id
+                        ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        : <Send className="w-3.5 h-3.5 text-blue-600" />}
+                    </Button>
+                  )}
+                  <Button size="icon" variant="ghost" className="h-7 w-7" title={t('شهادة', 'Certificate')} onClick={() => onCertificate(p)}>
+                    <Award className="w-3.5 h-3.5 text-amber-600" />
+                  </Button>
+                  <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => onEdit(p)}>
+                    <Edit className="w-3.5 h-3.5" />
+                  </Button>
+                  <Button size="icon" variant="ghost" className="h-7 w-7 text-red-600" onClick={() => onRemove(p)}>
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </Button>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+
+        {/* Manage Members button */}
+        {onManage && (
+          <Button
+            variant="outline"
+            size="sm"
+            className="w-full"
+            onClick={() => onManage(level)}
+          >
+            <Users className="w-4 h-4 ms-1" />
+            {t('إدارة الأعضاء', 'Manage members')}
+          </Button>
+        )}
+      </div>
+    </div>
   );
 };
 
