@@ -702,9 +702,24 @@ export const LevelsPage = () => {
         const numB = parseInt(b.replace(/[^0-9]/g, ''), 10) || 0;
         return numA - numB;
       });
-    const allLevelNumbers = [...new Set(
-      timeSlots.flatMap(slot => activityLevels[slot].map(l => l.level_number))
-    )].sort((a, b) => a - b);
+    // Build a column per distinct level (id). Multiple levels can share the
+    // same level_number (e.g. two captains/sub-levels), so grouping by number
+    // alone would hide some columns. We key by level.id and order by
+    // level_number then by name for stability.
+    const allLevelsMap = new Map();
+    timeSlots.forEach(slot => {
+      (activityLevels[slot] || []).forEach(l => {
+        if (l && l.id && !allLevelsMap.has(l.id)) {
+          allLevelsMap.set(l.id, l);
+        }
+      });
+    });
+    const allLevels = [...allLevelsMap.values()].sort((a, b) => {
+      const na = a.level_number || 0;
+      const nb = b.level_number || 0;
+      if (na !== nb) return na - nb;
+      return String(a.name || '').localeCompare(String(b.name || ''), 'ar');
+    });
 
     if (timeSlots.length === 0) {
       toast.error(t('لا توجد بيانات للطباعة', 'No data to print'));
@@ -731,8 +746,8 @@ export const LevelsPage = () => {
     const memberMatchesAnyDay = (m) => printDays.some(day => memberMatchesDay(m, day));
 
     const tableRows = timeSlots.map(slot => {
-      const levelCells = allLevelNumbers.map(levelNum => {
-        const levelObj = (activityLevels[slot] || []).find(l => l.level_number === levelNum);
+      const levelCells = allLevels.map(col => {
+        const levelObj = (activityLevels[slot] || []).find(l => l.id === col.id);
         if (!levelObj) return `<td style="border:1px solid #ccc;padding:10px;vertical-align:top;background:#f9f9f9;"></td>`;
 
         const membersForDays = (levelObj.members_details || []).filter(memberMatchesAnyDay);
@@ -751,9 +766,13 @@ export const LevelsPage = () => {
       </tr>`;
     }).join('');
 
-    const headerCells = allLevelNumbers.map(n => {
+    const headerCells = allLevels.map(col => {
+      const n = col.level_number || 0;
       const color = levelColors[n] || '#555';
-      return `<th style="border:1px solid #ccc;padding:10px;background:${color};color:#fff;text-align:center;white-space:nowrap;font-size:17px;">المستوى ${n}</th>`;
+      const nameLine = col.name
+        ? `<div style="font-size:13px;font-weight:normal;opacity:0.9;margin-top:2px;">${escapeHtml(col.name)}</div>`
+        : '';
+      return `<th style="border:1px solid #ccc;padding:10px;background:${color};color:#fff;text-align:center;white-space:nowrap;font-size:17px;">المستوى ${n}${nameLine}</th>`;
     }).join('');
 
     const totalCount = timeSlots.reduce((sum, slot) =>
