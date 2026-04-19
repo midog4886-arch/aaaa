@@ -1841,7 +1841,7 @@ const TournamentDetail = ({ tid, onBack }) => {
 
       {/* Manage Members dialog (per level + subcategory) */}
       <Dialog open={!!manageCtx} onOpenChange={(o) => !o && setManageCtx(null)}>
-        <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="w-[95vw] max-w-6xl max-h-[92vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>
               {language === 'ar' ? 'إدارة الأعضاء' : 'Manage members'}
@@ -1922,7 +1922,7 @@ const TournamentDetail = ({ tid, onBack }) => {
             };
 
             return (
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                 {/* Current members */}
                 <div className="md:col-span-1">
                   <div className="flex items-center justify-between mb-2">
