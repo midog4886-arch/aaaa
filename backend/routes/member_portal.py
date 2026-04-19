@@ -604,10 +604,35 @@ async def get_member_notifications(member: dict = Depends(get_current_member)):
         return (priority_order.get(x.get("priority"), 3), str(created_at))
     
     notifications.sort(key=get_sort_key, reverse=True)
-    
+
+    def is_unread(n):
+        if n.get("type") in ("expiring_soon", "expired"):
+            return not n.get("is_read", False)
+        return not n.get("is_read", False)
+
     return {
         "notifications": notifications,
-        "unread_count": len([n for n in notifications if n.get("priority") in ["danger", "warning"]])
+        "unread_count": len([n for n in notifications if is_unread(n)])
+    }
+
+
+@router.put("/notifications/mark-all-read")
+async def member_mark_all_notifications_read(member: dict = Depends(get_current_member)):
+    """Mark all notifications as read for the current member"""
+    member_result = await db.member_notifications.update_many(
+        {"member_id": member["id"], "is_read": {"$ne": True}},
+        {"$set": {"is_read": True}}
+    )
+    general_result = await db.notifications.update_many(
+        {"$or": [
+            {"target": "all_members"},
+            {"target_members": member["id"]}
+        ], "is_read": {"$ne": True}},
+        {"$set": {"is_read": True}}
+    )
+    return {
+        "message": "ok",
+        "updated": (member_result.modified_count or 0) + (general_result.modified_count or 0)
     }
 
 

@@ -289,8 +289,7 @@ const MemberLayout = ({ children }) => {
       : []),
     { to: '/card', icon: QrCode, labelKey: 'memberCard' },
     { to: '/rate-coach', icon: Star, labelKey: 'rateCoaches' },
-    { to: '/member-messages', icon: Mail, labelKey: 'messages', badge: msgUnreadCount },
-    { to: '/notifications', icon: Bell, labelKey: 'notifications', badge: notifications.unread_count },
+    { to: '/notifications', icon: Bell, labelKey: 'notifications', badge: (notifications.unread_count || 0) + (msgUnreadCount || 0) },
     { to: '/support', icon: Phone, labelKey: 'support' },
   ];
 
@@ -307,7 +306,7 @@ const MemberLayout = ({ children }) => {
       memberCard: { ar: 'بطاقة العضوية', en: 'Member Card' },
       rateCoaches: { ar: 'تقييم المدربين', en: 'Rate Coaches' },
       messages: { ar: 'الرسائل', en: 'Messages' },
-      notifications: { ar: 'الإشعارات', en: 'Notifications' },
+      notifications: { ar: 'الإشعارات والرسائل', en: 'Notifications & Messages' },
       support: { ar: 'خدمة العملاء', en: 'Support' },
       memberPortal: { ar: 'بوابة الأعضاء', en: 'Member Portal' },
       academy: { ar: 'شركة اداء الابطال العالمية للرياضة', en: 'Champions Academy' },
@@ -486,7 +485,7 @@ const MemberLayout = ({ children }) => {
             { to: '/card', icon: QrCode, label: language === 'ar' ? 'البطاقة' : 'Card' },
             { to: '/loyalty-points', icon: Trophy, label: language === 'ar' ? 'النقاط' : 'Points' },
             { to: '/subscriptions', icon: CreditCard, label: language === 'ar' ? 'الاشتراكات' : 'Subs' },
-            { to: '/notifications', icon: Bell, label: getText('notifications'), badge: notifications.unread_count },
+            { to: '/notifications', icon: Bell, label: language === 'ar' ? 'الإشعارات' : 'Inbox', badge: (notifications.unread_count || 0) + (msgUnreadCount || 0) },
           ].map((item) => {
             const isActive = location.pathname === item.to;
             const Icon = item.icon;
