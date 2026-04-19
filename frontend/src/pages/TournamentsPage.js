@@ -1373,8 +1373,101 @@ const TournamentDetail = ({ tid, onBack }) => {
             </CardContent>
           </Card>
 
+          {/* ───── SUBCATEGORY GRID VIEW (drill-down landing) ───── */}
+          {hasSubcategories && !selectedSubcategory && (
+            <div className="space-y-4 print:hidden">
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <div>
+                  <h2 className="text-xl font-bold flex items-center gap-2">
+                    <Activity className="w-5 h-5 text-orange-500" />
+                    {language === 'ar' ? 'اختر التوقيت' : 'Select time slot'}
+                  </h2>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    {language === 'ar'
+                      ? `${tournamentSubcategories.length} توقيتات · سعة كل مستوى ${subCapacity}`
+                      : `${tournamentSubcategories.length} time slots · capacity ${subCapacity}/level`}
+                  </p>
+                </div>
+                <Button onClick={openNewLevel} variant="outline">
+                  <Plus className="w-4 h-4 ms-1" />
+                  {language === 'ar' ? 'إضافة مستوى' : 'New level'}
+                </Button>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                {tournamentSubcategories.map((s, idx) => {
+                  const subParts = (tournament.participants || []).filter(p => (p.subcategory || '') === s);
+                  const subLevels = tournamentLevels;
+                  const totalCap = subLevels.length * subCapacity;
+                  const fillPct = totalCap > 0 ? Math.round((subParts.length / totalCap) * 100) : 0;
+                  const colorClass = getLevelColor(idx + 1);
+                  return (
+                    <Card
+                      key={s}
+                      className="overflow-hidden cursor-pointer hover:shadow-xl transition-all duration-300 transform hover:scale-[1.02]"
+                      onClick={() => setSelectedSubcategory(s)}
+                    >
+                      <div className={`${colorClass} text-white p-4`}>
+                        <div className="flex items-center gap-3">
+                          <div className="p-2 rounded-full bg-white/20">
+                            <Calendar className="w-6 h-6" />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <h3 className="font-bold text-xl truncate">{s}</h3>
+                            <p className="text-sm opacity-90">
+                              {subLevels.length} {language === 'ar' ? 'مستويات' : 'levels'}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                      <CardContent className="p-4 space-y-2">
+                        <div className="flex items-center justify-between text-sm">
+                          <span className="text-muted-foreground">
+                            {language === 'ar' ? 'لاعبون' : 'Players'}
+                          </span>
+                          <span className="font-semibold">
+                            {subParts.length}{totalCap > 0 ? ` / ${totalCap}` : ''}
+                          </span>
+                        </div>
+                        {totalCap > 0 && (
+                          <div className="w-full bg-gray-200 rounded-full h-2">
+                            <div
+                              className={`h-2 rounded-full transition-all duration-500 ${
+                                fillPct >= 100 ? 'bg-red-500' : 'bg-gradient-to-r from-green-400 to-green-600'
+                              }`}
+                              style={{ width: `${Math.min(fillPct, 100)}%` }}
+                            />
+                          </div>
+                        )}
+                        <div className="text-xs text-muted-foreground text-center pt-1">
+                          {language === 'ar' ? 'اضغط لعرض المستويات' : 'Tap to view levels'}
+                        </div>
+                      </CardContent>
+                    </Card>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Back-to-subcategories breadcrumb */}
+          {hasSubcategories && selectedSubcategory && (
+            <div className="flex items-center gap-2 print:hidden">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setSelectedSubcategory('')}
+                className="text-orange-600 hover:text-orange-700"
+              >
+                <ArrowRight className="w-4 h-4 ms-1" />
+                {language === 'ar' ? 'كل التوقيتات' : 'All time slots'}
+              </Button>
+              <span className="text-muted-foreground">/</span>
+              <span className="font-semibold">{selectedSubcategory}</span>
+            </div>
+          )}
+
           {/* Subcategory tabs */}
-          {hasSubcategories && (
+          {hasSubcategories && selectedSubcategory && (
             <div className="bg-white border rounded-lg p-3 print:hidden">
               <div className="flex items-center gap-2 mb-2">
                 <Activity className="w-4 h-4 text-orange-500" />
