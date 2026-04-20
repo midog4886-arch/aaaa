@@ -1152,8 +1152,24 @@ ${slotTables}
     }
     
     try {
+      // Ensure the member isn't kept in any other level for the same main
+      // activity. We remove them from any conflicting level first, so the
+      // same person never appears in two levels.
+      const conflictingLevels = (levels || []).filter(l =>
+        l.id !== selectedLevel.id &&
+        parseActivityName(l.activity_name).mainActivity === mainActivity &&
+        (l.members || []).includes(memberId)
+      );
+      for (const cl of conflictingLevels) {
+        try { await levelsAPI.removeMember(cl.id, memberId); } catch (_) { /* ignore */ }
+      }
+
       await levelsAPI.addMember(selectedLevel.id, memberId);
-      toast.success(t('تمت إضافة العضو', 'Member added'));
+      toast.success(
+        conflictingLevels.length > 0
+          ? t('تمت إضافة العضو ونُقل من المستوى السابق', 'Member added and moved from previous level')
+          : t('تمت إضافة العضو', 'Member added')
+      );
       loadData();
       setSelectedLevel(prev => ({
         ...prev,
