@@ -1429,13 +1429,19 @@ ${slotTables}
   // Render a level card component with drag & drop support
   const renderLevelCard = (originalLevel, activityId) => {
     const level = getFilteredLevelForDay(originalLevel);
-    const memberCount = (level.members || []).length;
     const maxCapacity = activityId === 'swimming' ? 6 : (originalLevel.capacity || 10);
-    const isFull = memberCount >= maxCapacity;
-    const levelMembers = (level.members_details || []).map(md => {
+    // Hide members whose subscriptions have expired so they don't appear in
+    // the level cards or count toward the displayed enrollment.
+    const rawLevelMembers = (level.members_details || []).map(md => {
       const fullMember = members.find(m => m.id === md.member_id);
-      return fullMember || { id: md.member_id, name_ar: md.member_name, phone: md.phone };
+      return fullMember || { id: md.member_id, name_ar: md.member_name, phone: md.phone, _stub: true };
     });
+    const levelMembers = rawLevelMembers.filter(m => {
+      if (m._stub) return false;
+      return (m.activities || []).some(isActivityNonExpired);
+    });
+    const memberCount = levelMembers.length;
+    const isFull = memberCount >= maxCapacity;
     const isDropTarget = dropTargetLevel === originalLevel.id;
     
     return (
