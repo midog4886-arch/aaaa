@@ -2417,6 +2417,11 @@ export const LevelsPage = () => {
                               {member.name_ar || member.name}
                               {member.age ? <span className="text-xs text-orange-500 font-normal mr-1"> ({member.age} سنة)</span> : null}
                             </p>
+                            {(member.guardian_name_ar || member.guardian_name) && (
+                              <p className="text-xs text-purple-600 truncate">
+                                {t('ولي الأمر:', 'Guardian:')} {member.guardian_name_ar || member.guardian_name}
+                              </p>
+                            )}
                             <p className="text-xs text-gray-500">#{member.member_code} • {member.phone}</p>
                             {(activityLabel || daysLabel) && (
                               <p className="text-xs text-blue-600 truncate mt-0.5">
