@@ -769,45 +769,72 @@ export const LevelsPage = () => {
 
     const memberMatchesAnyDay = (m) => printDays.some(day => memberMatchesDay(m, day));
 
-    const tableRows = timeSlots.map(slot => {
-      const levelCells = allLevels.map(col => {
-        const levelObj = (activityLevels[slot] || []).find(l => l.id === col.id);
-        if (!levelObj) return `<td style="border:1px solid #ccc;padding:10px;vertical-align:top;background:#f9f9f9;"></td>`;
+    // Build one section per time slot, each containing a banner + a grid of
+    // colored level cards (matching the on-screen levels page layout).
+    const slotSections = timeSlots.map(slot => {
+      const slotLevels = (activityLevels[slot] || []).slice().sort((a, b) => {
+        const na = a.level_number || 0;
+        const nb = b.level_number || 0;
+        if (na !== nb) return na - nb;
+        return String(a.name || '').localeCompare(String(b.name || ''), 'ar');
+      });
 
-        const membersForDays = (levelObj.members_details || []).filter(memberMatchesAnyDay);
-        const memberNames = membersForDays.map(m => `<div style="padding:3px 0;border-bottom:1px dotted #ddd;font-size:18px;">${escapeHtml(m.member_name || m.name_ar || m.name)}</div>`).join('');
+      const slotMemberCount = slotLevels.reduce(
+        (s, l) => s + (l.members_details || []).filter(memberMatchesAnyDay).length, 0
+      );
+
+      const cards = slotLevels.map(lvl => {
+        const n = lvl.level_number || 0;
+        const color = levelColors[n] || '#555';
+        const customName = lvl.custom_name || lvl.name || '';
+        const titleText = customName ? customName : `المستوى ${n}`;
+        const subLine = customName
+          ? `<div style="font-size:12px;opacity:0.9;margin-top:2px;">${activityInfo.name_ar} - ${escapeHtml(slot)}</div>`
+          : `<div style="font-size:12px;opacity:0.9;margin-top:2px;">${activityInfo.name_ar} - ${escapeHtml(slot)}</div>`;
+        const coachObj = lvl.coach_id ? coaches.find(c => c.id === lvl.coach_id) : null;
+        const coachName = coachObj ? (coachObj.name_ar || coachObj.name) : '';
+        const coachLine = coachName
+          ? `<div style="font-size:12px;margin-top:6px;background:rgba(255,255,255,0.2);padding:3px 8px;border-radius:4px;display:inline-block;">👤 ${escapeHtml(coachName)}</div>`
+          : '';
+
+        const membersForDays = (lvl.members_details || []).filter(memberMatchesAnyDay);
+        const capacity = lvl.capacity || lvl.max_members || 6;
         const count = membersForDays.length;
-        const bgColor = count === 0 ? '#f9f9f9' : '#fff';
-        return `<td style="border:1px solid #ccc;padding:10px;vertical-align:top;background:${bgColor};min-width:120px;">
-          <div style="font-size:13px;color:#666;margin-bottom:5px;">(${count})</div>
-          ${memberNames || '<span style="color:#bbb;font-size:13px;">-</span>'}
-        </td>`;
+        const pct = capacity > 0 ? Math.min(100, Math.round((count / capacity) * 100)) : 0;
+        const memberRows = membersForDays.length > 0
+          ? membersForDays.map((m, i) => `<div style="padding:5px 8px;border-bottom:1px dotted #e5e7eb;font-size:14px;display:flex;justify-content:space-between;"><span>${escapeHtml(m.member_name || m.name_ar || m.name)}</span><span style="color:#999;font-size:11px;">${i + 1}</span></div>`).join('')
+          : `<div style="text-align:center;color:#aaa;padding:14px 0;font-size:13px;">لا يوجد لاعبين</div>`;
+
+        return `<div style="background:#fff;border:1px solid #e5e7eb;border-radius:10px;overflow:hidden;break-inside:avoid;page-break-inside:avoid;">
+          <div style="background:${color};color:#fff;padding:12px;position:relative;">
+            <div style="position:absolute;top:10px;left:10px;background:rgba(255,255,255,0.25);width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:bold;font-size:16px;">${n}</div>
+            <div style="text-align:right;padding-right:0;">
+              <div style="font-size:15px;font-weight:bold;">${escapeHtml(titleText)}</div>
+              ${subLine}
+              ${coachLine}
+            </div>
+          </div>
+          <div style="padding:10px 12px;">
+            <div style="display:flex;justify-content:space-between;font-size:13px;color:#555;margin-bottom:6px;">
+              <span style="font-weight:bold;">${count}/${capacity} لاعب</span>
+            </div>
+            <div style="height:6px;background:#f1f5f9;border-radius:3px;overflow:hidden;margin-bottom:10px;">
+              <div style="height:100%;width:${pct}%;background:${color};"></div>
+            </div>
+            <div>${memberRows}</div>
+          </div>
+        </div>`;
       }).join('');
 
-      return `<tr>
-        <td style="border:1px solid #ccc;padding:10px;font-weight:bold;background:#f0f4f8;white-space:nowrap;text-align:center;font-size:17px;">${slot}</td>
-        ${levelCells}
-      </tr>`;
-    }).join('');
-
-    const headerCells = allLevels.map(col => {
-      const n = col.level_number || 0;
-      const color = levelColors[n] || '#555';
-      const customName = col.custom_name || col.name || '';
-      const titleText = customName ? customName : `المستوى ${n}`;
-      const subLine = customName
-        ? `<div style="font-size:12px;font-weight:normal;opacity:0.85;margin-top:2px;">المستوى ${n}</div>`
-        : '';
-      const coachObj = col.coach_id ? coaches.find(c => c.id === col.coach_id) : null;
-      const coachName = coachObj ? (coachObj.name_ar || coachObj.name) : '';
-      const coachLine = coachName
-        ? `<div style="font-size:12px;font-weight:normal;opacity:0.95;margin-top:4px;background:rgba(255,255,255,0.18);padding:2px 6px;border-radius:4px;display:inline-block;">👤 ${escapeHtml(coachName)}</div>`
-        : '';
-      return `<th style="border:1px solid #ccc;padding:10px;background:${color};color:#fff;text-align:center;white-space:nowrap;font-size:16px;min-width:130px;">
-        <div style="font-size:17px;font-weight:bold;">${escapeHtml(titleText)}</div>
-        ${subLine}
-        ${coachLine}
-      </th>`;
+      return `<section style="margin-bottom:24px;break-inside:avoid;">
+        <div style="background:linear-gradient(135deg,${activityInfo.color || '#2563eb'},${activityInfo.color || '#1e40af'});color:#fff;padding:14px 18px;border-radius:10px;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;">
+          <div style="font-size:18px;font-weight:bold;">${activityInfo.icon} ${activityInfo.name_ar} - ${escapeHtml(slot)}</div>
+          <div style="font-size:13px;opacity:0.95;">${slotLevels.length} مستويات • ${slotMemberCount} لاعب</div>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;">
+          ${cards || '<div style="color:#888;text-align:center;padding:20px;">لا توجد مستويات</div>'}
+        </div>
+      </section>`;
     }).join('');
 
     const totalCount = timeSlots.reduce((sum, slot) =>
@@ -821,17 +848,15 @@ export const LevelsPage = () => {
 <title>جدول ${activityInfo.name_ar} - ${daysLabel}</title>
 <style>
   * { box-sizing: border-box; }
-  body { font-family: 'Segoe UI', Arial, sans-serif; direction: rtl; margin: 0; padding: 20px; background: #fff; color: #222; font-size: 16px; }
-  .header { text-align: center; margin-bottom: 20px; border-bottom: 2px solid #333; padding-bottom: 12px; }
-  .header h1 { font-size: 26px; margin: 0 0 8px 0; }
-  .header .meta { font-size: 16px; color: #555; display: flex; justify-content: center; gap: 24px; flex-wrap: wrap; }
-  table { width: 100%; border-collapse: collapse; font-size: 16px; }
-  th, td { border: 1px solid #ccc; padding: 10px; }
-  th:first-child, td:first-child { background: #f0f4f8; font-weight: bold; text-align: center; }
+  body { font-family: 'Segoe UI', Arial, sans-serif; direction: rtl; margin: 0; padding: 20px; background: #f8fafc; color: #222; font-size: 14px; }
+  .header { text-align: center; margin-bottom: 20px; border-bottom: 2px solid #333; padding-bottom: 12px; background: #fff; padding: 16px; border-radius: 10px; }
+  .header h1 { font-size: 24px; margin: 0 0 8px 0; }
+  .header .meta { font-size: 14px; color: #555; display: flex; justify-content: center; gap: 20px; flex-wrap: wrap; }
   @media print {
-    body { padding: 10px; }
+    body { padding: 10px; background: #fff; }
     .no-print { display: none; }
-    @page { size: A4 landscape; margin: 1cm; }
+    @page { size: A4 landscape; margin: 0.8cm; }
+    section { page-break-inside: avoid; }
   }
 </style>
 </head>
@@ -844,17 +869,7 @@ export const LevelsPage = () => {
     <span>👥 إجمالي المشتركين: ${totalCount}</span>
   </div>
 </div>
-<table>
-  <thead>
-    <tr>
-      <th style="background:#374151;color:#fff;text-align:center;border:1px solid #ccc;padding:10px;font-size:17px;">الوقت</th>
-      ${headerCells}
-    </tr>
-  </thead>
-  <tbody>
-    ${tableRows}
-  </tbody>
-</table>
+${slotSections}
 <div class="no-print" style="margin-top:20px;text-align:center;">
   <button onclick="window.print()" style="padding:12px 28px;background:#2563eb;color:#fff;border:none;border-radius:6px;font-size:17px;cursor:pointer;">🖨️ طباعة</button>
 </div>
