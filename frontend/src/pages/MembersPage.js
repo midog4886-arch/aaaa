@@ -1920,6 +1920,8 @@ export const MembersPage = () => {
                                       const maxCapacity = level.capacity || 10;
                                       const isFull = memberCount >= maxCapacity;
                                       const fillPercent = Math.round((memberCount / maxCapacity) * 100);
+                                      const levelCoach = level.coach_id ? (coaches || []).find(c => c.id === level.coach_id) : null;
+                                      const coachName = levelCoach ? (levelCoach.name_ar || levelCoach.name) : null;
                                       return (
                                         <button
                                           key={level.id}
@@ -1938,6 +1940,16 @@ export const MembersPage = () => {
                                               {memberCount}/{maxCapacity} {isFull && '⚠️'}
                                             </span>
                                           </div>
+                                          {(level.time_slot || level.schedule || memberLevelSelectorState.selectedTime) && (
+                                            <div className="text-xs font-bold text-amber-700 mb-1 text-right flex items-center justify-end gap-1">
+                                              <span>🕐</span><span>{level.time_slot || level.schedule || memberLevelSelectorState.selectedTime}</span>
+                                            </div>
+                                          )}
+                                          {coachName && (
+                                            <div className="text-xs text-blue-600 mb-1 text-right">
+                                              👤 {language === 'ar' ? 'المدرب: ' : 'Coach: '}{coachName}
+                                            </div>
+                                          )}
                                           <div className="w-full bg-gray-200 rounded-full h-1.5">
                                             <div 
                                               className={`h-1.5 rounded-full ${isFull ? 'bg-red-500' : 'bg-green-500'}`}
@@ -2432,6 +2444,8 @@ export const MembersPage = () => {
                                                 const maxCapacity = level.capacity || 10;
                                                 const isFull = memberCount >= maxCapacity;
                                                 const fillPercent = Math.round((memberCount / maxCapacity) * 100);
+                                                const levelCoach = level.coach_id ? (coaches || []).find(c => c.id === level.coach_id) : null;
+                                                const coachName = levelCoach ? (levelCoach.name_ar || levelCoach.name) : null;
                                                 return (
                                                   <button key={level.id} type="button"
                                                     className={`w-full p-2 rounded-lg transition-colors border ${isFull ? 'bg-red-50 border-red-200 hover:bg-red-100' : 'hover:bg-green-50 border-gray-200'}`}
@@ -2442,6 +2456,16 @@ export const MembersPage = () => {
                                                       </span>
                                                       <span className={`text-sm ${isFull ? 'text-red-600' : 'text-gray-600'}`}>{memberCount}/{maxCapacity} {isFull && '⚠️'}</span>
                                                     </div>
+                                                    {(level.time_slot || level.schedule || editMemberLevelSelectorState.selectedTime) && (
+                                                      <div className="text-xs font-bold text-amber-700 mb-1 text-right flex items-center justify-end gap-1">
+                                                        <span>🕐</span><span>{level.time_slot || level.schedule || editMemberLevelSelectorState.selectedTime}</span>
+                                                      </div>
+                                                    )}
+                                                    {coachName && (
+                                                      <div className="text-xs text-blue-600 mb-1 text-right">
+                                                        👤 {language === 'ar' ? 'المدرب: ' : 'Coach: '}{coachName}
+                                                      </div>
+                                                    )}
                                                     <div className="w-full bg-gray-200 rounded-full h-1.5">
                                                       <div className={`h-1.5 rounded-full ${isFull ? 'bg-red-500' : 'bg-green-500'}`} style={{ width: `${Math.min(fillPercent, 100)}%` }} />
                                                     </div>
