@@ -318,9 +318,11 @@ async def add_member_to_level(level_id: str, member_id: str, current_user: dict 
         changed = False
         for act in activities:
             matches = False
+            # Match by activity_id OR activity_name — older member records may
+            # only have activity_name populated, so we must accept either.
             if match_aid and act.get("activity_id") == match_aid:
                 matches = True
-            elif match_aname and act.get("activity_name") == match_aname:
+            if not matches and match_aname and act.get("activity_name") == match_aname:
                 matches = True
             if matches and act.get("level_id") != level_id:
                 act["level_id"] = level_id
