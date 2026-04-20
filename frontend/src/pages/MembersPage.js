@@ -61,6 +61,38 @@ export const MembersPage = () => {
   const [filterStatus, setFilterStatus] = useState('all');
   const [filterSchedule, setFilterSchedule] = useState('');
   const [activityFilterOpen, setActivityFilterOpen] = useState(false);
+  const [isPrintRangeOpen, setIsPrintRangeOpen] = useState(false);
+  const [printFromDate, setPrintFromDate] = useState('');
+  const [printToDate, setPrintToDate] = useState('');
+
+  const handlePrintMembersRange = () => {
+    let list = filteredMembers.slice();
+    const from = printFromDate ? new Date(printFromDate + 'T00:00:00') : null;
+    const to = printToDate ? new Date(printToDate + 'T23:59:59') : null;
+    if (from || to) {
+      list = list.filter(m => {
+        if (!m.created_at) return false;
+        const d = new Date(m.created_at);
+        if (Number.isNaN(d.getTime())) return false;
+        if (from && d < from) return false;
+        if (to && d > to) return false;
+        return true;
+      });
+    }
+    const printWindow = window.open('', '', 'width=900,height=700');
+    if (!printWindow) return;
+    const rows = list.map((m, i) => {
+      const reg = m.created_at ? new Date(m.created_at).toLocaleDateString('ar-SA') : '-';
+      return `<tr><td>${i+1}</td><td>${m.name_ar || m.name || ''}</td><td>${m.age || '-'}</td><td>${m.guardian_name_ar || '-'}</td><td dir="ltr">${m.phone || '-'}</td><td>${m.activities?.map(a => a.activity_name).join(', ') || '-'}</td><td>${m.activities?.map(a => a.status === 'active' ? 'ساري' : 'منتهي').join(', ') || '-'}</td><td>${reg}</td></tr>`;
+    }).join('');
+    const rangeLabel = (printFromDate || printToDate)
+      ? `<p style="text-align:center;color:#444;margin:6px 0 14px;">من ${printFromDate || '...'} إلى ${printToDate || '...'} — العدد: ${list.length}</p>`
+      : `<p style="text-align:center;color:#444;margin:6px 0 14px;">العدد: ${list.length}</p>`;
+    printWindow.document.write(`<html><head><title>بيانات الأعضاء</title><style>@import url('https://fonts.googleapis.com/css2?family=Tajawal:wght@400;700&display=swap');body{font-family:'Tajawal',Arial;direction:rtl;padding:20px}h1{color:#F97316;text-align:center;margin-bottom:6px}table{width:100%;border-collapse:collapse}th,td{border:1px solid #ddd;padding:8px;text-align:right;font-size:12px}th{background:#F97316;color:white}.footer{text-align:center;margin-top:20px;font-size:11px;color:#666}</style></head><body><h1>شركة اداء الابطال العالمية للرياضة - بيانات الأعضاء</h1>${rangeLabel}<table><thead><tr><th>م</th><th>الاسم</th><th>العمر</th><th>ولي الأمر</th><th>الجوال</th><th>الأنشطة</th><th>الحالة</th><th>تاريخ التسجيل</th></tr></thead><tbody>${rows}</tbody></table><div class="footer">تاريخ الطباعة: ${new Date().toLocaleDateString('ar-SA')}</div></body></html>`);
+    printWindow.document.close();
+    setTimeout(() => printWindow.print(), 400);
+    setIsPrintRangeOpen(false);
+  };
   const [activityFilterSearch, setActivityFilterSearch] = useState('');
   const [schedulePopoverOpen, setSchedulePopoverOpen] = useState(false);
   
@@ -1305,13 +1337,7 @@ export const MembersPage = () => {
             <Button 
               variant="outline"
               size="sm"
-              onClick={() => {
-                const printWindow = window.open('', '', 'width=900,height=700');
-                const rows = filteredMembers.map((m, i) => `<tr><td>${i+1}</td><td>${m.name_ar || m.name}</td><td>${m.age || '-'}</td><td>${m.guardian_name_ar || '-'}</td><td dir="ltr">${m.phone || '-'}</td><td>${m.activities?.map(a => a.activity_name).join(', ') || '-'}</td><td>${m.activities?.map(a => a.status === 'active' ? 'ساري' : 'منتهي').join(', ') || '-'}</td></tr>`).join('');
-                printWindow.document.write(`<html><head><title>بيانات الأعضاء</title><style>@import url('https://fonts.googleapis.com/css2?family=Tajawal:wght@400;700&display=swap');body{font-family:'Tajawal',Arial;direction:rtl;padding:20px}h1{color:#F97316;text-align:center;margin-bottom:20px}table{width:100%;border-collapse:collapse}th,td{border:1px solid #ddd;padding:8px;text-align:right;font-size:12px}th{background:#F97316;color:white}.footer{text-align:center;margin-top:20px;font-size:11px;color:#666}</style></head><body><h1>شركة اداء الابطال العالمية للرياضة - بيانات الأعضاء</h1><table><thead><tr><th>م</th><th>الاسم</th><th>العمر</th><th>ولي الأمر</th><th>الجوال</th><th>الأنشطة</th><th>الحالة</th></tr></thead><tbody>${rows}</tbody></table><div class="footer">تاريخ الطباعة: ${new Date().toLocaleDateString('ar-SA')}</div></body></html>`);
-                printWindow.document.close();
-                printWindow.print();
-              }}
+              onClick={() => setIsPrintRangeOpen(true)}
               data-testid="print-members-btn"
             >
               <Printer className="w-4 h-4 me-1" />
@@ -1531,6 +1557,53 @@ export const MembersPage = () => {
         </Card>
 
         {/* Add/Edit Dialog */}
+        <Dialog open={isPrintRangeOpen} onOpenChange={setIsPrintRangeOpen}>
+          <DialogContent className="max-w-md" dir="rtl">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <Printer className="w-5 h-5 text-orange-500" />
+                طباعة الأعضاء حسب التاريخ
+              </DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4 py-2">
+              <p className="text-sm text-gray-600">
+                اختر مدى التاريخ حسب تاريخ تسجيل العضو. اتركه فارغاً لطباعة الكل.
+              </p>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <Label>من تاريخ</Label>
+                  <Input type="date" value={printFromDate} onChange={(e) => setPrintFromDate(e.target.value)} />
+                </div>
+                <div>
+                  <Label>إلى تاريخ</Label>
+                  <Input type="date" value={printToDate} onChange={(e) => setPrintToDate(e.target.value)} />
+                </div>
+              </div>
+              <div className="flex gap-2 flex-wrap">
+                <Button type="button" variant="outline" size="sm" onClick={() => {
+                  const today = new Date().toISOString().split('T')[0];
+                  setPrintFromDate(today); setPrintToDate(today);
+                }}>اليوم</Button>
+                <Button type="button" variant="outline" size="sm" onClick={() => {
+                  const now = new Date();
+                  const start = new Date(now.getFullYear(), now.getMonth(), 1);
+                  setPrintFromDate(start.toISOString().split('T')[0]);
+                  setPrintToDate(now.toISOString().split('T')[0]);
+                }}>هذا الشهر</Button>
+                <Button type="button" variant="outline" size="sm" onClick={() => {
+                  setPrintFromDate(''); setPrintToDate('');
+                }}>الكل</Button>
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setIsPrintRangeOpen(false)}>إلغاء</Button>
+              <Button className="bg-orange-500 hover:bg-orange-600" onClick={handlePrintMembersRange}>
+                <Printer className="w-4 h-4 me-1" /> طباعة
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
         <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
           <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
