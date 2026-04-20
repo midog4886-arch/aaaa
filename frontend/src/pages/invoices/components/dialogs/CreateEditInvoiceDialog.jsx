@@ -465,7 +465,36 @@ export const CreateEditInvoiceDialog = ({
                             setAdditionalMembers(updated);
                           }}>
                             <SelectTrigger className="mb-2"><SelectValue placeholder={language === 'ar' ? '+ اختر نشاط...' : '+ Select activity...'} /></SelectTrigger>
-                            <SelectContent>{(activities || []).filter(a => a.id).map(a => <SelectItem key={a.id} value={a.id}>{a.name_ar || a.name} - {a.monthly_fee} {language === 'ar' ? 'ر.س' : 'SAR'}</SelectItem>)}</SelectContent>
+                            <SelectContent>
+                              {(() => {
+                                const styleFor = (rawName) => {
+                                  const name = (rawName || '').toLowerCase();
+                                  if (name.includes('سباح') || name.includes('swim'))
+                                    return { dot: 'bg-blue-500', text: 'text-blue-700', icon: '🏊' };
+                                  if (name.includes('كر') || name.includes('foot') || name.includes('قدم'))
+                                    return { dot: 'bg-green-500', text: 'text-green-700', icon: '⚽' };
+                                  if (name.includes('كارات') || name.includes('karate'))
+                                    return { dot: 'bg-red-500', text: 'text-red-700', icon: '🥋' };
+                                  return { dot: 'bg-gray-400', text: 'text-gray-700', icon: '📋' };
+                                };
+                                return (activities || []).filter(a => a.id).map(a => {
+                                  const label = a.name_ar || a.name;
+                                  const s = styleFor(label);
+                                  return (
+                                    <SelectItem key={a.id} value={a.id}>
+                                      <div className="flex items-center justify-between w-full gap-3">
+                                        <div className="flex items-center gap-2">
+                                          <span className={`inline-block w-2.5 h-2.5 rounded-full ${s.dot}`} />
+                                          <span className="text-base">{s.icon}</span>
+                                          <span className={`font-medium ${s.text}`}>{label}</span>
+                                        </div>
+                                        <span className="font-bold text-orange-600">{a.monthly_fee} {language === 'ar' ? 'ر.س' : 'SAR'}</span>
+                                      </div>
+                                    </SelectItem>
+                                  );
+                                });
+                              })()}
+                            </SelectContent>
                           </Select>
                           {am.items.length > 0 && (
                             <div className="space-y-2">
