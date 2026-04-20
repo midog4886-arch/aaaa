@@ -280,6 +280,11 @@ export const RegistrationFormDialog = ({
                                           <span className={`font-bold ${isFull ? 'text-red-600' : 'text-gray-800'}`}>{level.display_name || (level.custom_name ? level.custom_name : `${language === 'ar' ? 'المستوى' : 'Level'} ${level.level_number}`)}</span>
                                           <span className={`text-sm ${isFull ? 'text-red-600' : 'text-gray-600'}`}>{memberCount}/{maxCapacity} {isFull && '⚠️'}</span>
                                         </div>
+                                        {(level.time_slot || level.schedule) && (
+                                          <div className="text-xs font-bold text-amber-700 mb-1 text-right flex items-center justify-end gap-1">
+                                            <span>🕐</span><span>{level.time_slot || level.schedule}</span>
+                                          </div>
+                                        )}
                                         {coachName && (
                                           <div className="text-xs text-blue-600 mb-1 text-right">
                                             👤 {language === 'ar' ? 'المدرب: ' : 'Coach: '}{coachName}
@@ -460,7 +465,38 @@ export const RegistrationFormDialog = ({
                                           <SelectTrigger className="h-7 text-sm"><SelectValue placeholder={language === 'ar' ? 'اختياري' : 'Optional'} /></SelectTrigger>
                                           <SelectContent>
                                             <SelectItem value="none">{language === 'ar' ? '-- بدون --' : '-- None --'}</SelectItem>
-                                            {(levels || []).filter(l => l.id && (l.activity_name === item.activity_name || !l.activity_name)).map(l => (<SelectItem key={l.id} value={l.id}>{l.activity_name} - {language === 'ar' ? 'مستوى' : 'Level'} {l.level_number}</SelectItem>))}
+                                            {(() => {
+                                              // Smart level filtering for the additional-sibling row:
+                                              // 1) Prefer EXACT activity_name match (our naming
+                                              //    convention encodes the time slot in the name).
+                                              // 2) When the row has a training_time, restrict to
+                                              //    levels whose time_slot/schedule matches it so a
+                                              //    sibling at 5pm karate doesn't see 6pm karate.
+                                              // 3) Fallback to the looser activity_name === item.activity_name
+                                              //    || empty when no exact-match levels exist.
+                                              const all = (levels || []).filter(l => l.id);
+                                              const targetTime = (item.training_time || '').trim();
+                                              const norm = (s) => (s || '').toString().trim();
+                                              const exact = all.filter(l => norm(l.activity_name) === norm(item.activity_name));
+                                              let pool = exact.length ? exact : all.filter(l => norm(l.activity_name) === norm(item.activity_name) || !l.activity_name);
+                                              if (targetTime) {
+                                                const timeMatched = pool.filter(l => {
+                                                  const slot = norm(l.time_slot) || norm(l.schedule);
+                                                  if (!slot) return true; // legacy levels with no time → keep
+                                                  return slot.includes(targetTime) || targetTime.includes(slot);
+                                                });
+                                                if (timeMatched.length) pool = timeMatched;
+                                              }
+                                              return pool.map(l => {
+                                                const slot = norm(l.time_slot) || norm(l.schedule);
+                                                return (
+                                                  <SelectItem key={l.id} value={l.id}>
+                                                    {l.activity_name} - {language === 'ar' ? 'مستوى' : 'Level'} {l.level_number}
+                                                    {slot ? ` 🕐 ${slot}` : ''}
+                                                  </SelectItem>
+                                                );
+                                              });
+                                            })()}
                                           </SelectContent>
                                         </Select>
                                       </div>
