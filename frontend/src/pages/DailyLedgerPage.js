@@ -762,10 +762,32 @@ export const DailyLedgerPage = () => {
                             ) : hiddenValue}
                           </td>
                           <td className="text-xs text-muted-foreground">
-                            {tx.type === 'invoice' && tx.payment_method && (
-                              <Badge variant="outline" className="text-xs">
-                                {PAYMENT_LABELS[language]?.[tx.payment_method] || tx.payment_method}
-                              </Badge>
+                            {tx.type === 'invoice' && (
+                              <div className="flex flex-col gap-1 items-start">
+                                {tx.payment_method && (
+                                  <Badge variant="outline" className="text-xs">
+                                    {PAYMENT_LABELS[language]?.[tx.payment_method] || tx.payment_method}
+                                  </Badge>
+                                )}
+                                {Array.isArray(tx.items) && tx.items.length > 0 && (
+                                  <div className="text-[11px] leading-snug text-gray-700 max-w-[260px]">
+                                    {tx.items.map((it, idx) => {
+                                      const name = it.activity_name || it.name_ar || it.name || it.description || '';
+                                      const sched = it.schedule || '';
+                                      const qty = it.quantity && it.quantity !== 1 ? ` × ${it.quantity}` : '';
+                                      const price = (it.total_price ?? it.price);
+                                      return (
+                                        <div key={idx} className="flex items-center gap-1 border-b border-dashed border-gray-200 last:border-0 py-0.5">
+                                          <span className="font-medium text-gray-800">{name}</span>
+                                          {sched && <span className="text-gray-500">— {sched}</span>}
+                                          {qty && <span className="text-gray-500">{qty}</span>}
+                                          {price != null && <span className="text-emerald-700 ms-auto">{Number(price).toLocaleString()}</span>}
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                )}
+                              </div>
                             )}
                             {tx.type === 'expense' && (
                               <Badge variant="outline" className="text-xs">
