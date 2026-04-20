@@ -1300,21 +1300,9 @@ ${slotTables}
     if (!selectedLevel) return true;
     return !(selectedLevel.members || []).includes(m.id);
   }).filter(m => {
-    // Must have at least one non-expired active subscription that matches
-    // the selected level's activity group AND time slot. If no level is
-    // selected, fall back to "any non-expired active subscription".
-    const acts = (m.activities || []).filter(isActivityNonExpired);
-    if (acts.length === 0) return false;
-    if (!selectedLevelInfo) return true;
-    return acts.some(a => {
-      const actMatch = !selectedLevelInfo.mainActivity || selectedLevelInfo.mainActivity === 'other'
-        ? true
-        : matchesGroup(a.activity_name, selectedLevelInfo.mainActivity);
-      const timeMatch = !selectedLevelInfo.timeSlot
-        ? true
-        : (a.schedule || '') === selectedLevelInfo.timeSlot;
-      return actMatch && timeMatch;
-    });
+    // Show every member with at least one non-expired active subscription,
+    // regardless of which activity or time slot it's for.
+    return (m.activities || []).some(isActivityNonExpired);
   }).filter(m => {
     if (!searchQuery) return true;
     const name = (m.name_ar || m.name || '').toLowerCase();
