@@ -222,24 +222,48 @@ export const LevelsPage = () => {
     });
   }, [unassignedData, unassignedSearch, unassignedActivityFilter]);
 
-  // Available levels matching the assignTarget activity (branch-scoped)
+  // Available levels matching the assignTarget activity (branch-scoped).
+  // Strategy: prefer EXACT activity_name match (which already encodes the
+  // time slot in our naming convention, e.g. "كاراتيه - الساعة 6"). Only
+  // fall back to broad keyword/group matching when no exact-name level
+  // exists — this prevents the picker from listing the sibling's other
+  // time-slot levels and causing accidental wrong-slot assignments.
   const matchingLevelsForAssign = useMemo(() => {
     if (!assignTarget) return [];
     const actName = assignTarget.activity?.activity_name || '';
+    const actSchedule = assignTarget.activity?.schedule || '';
     const memberBranch = assignTarget.member?.branch_id || null;
+
+    const branchOk = (l) =>
+      !memberBranch || !l.branch_id || l.branch_id === memberBranch;
+
+    // 1) Exact activity_name match (preferred, schedule-aware).
+    const exact = levels.filter(l => branchOk(l) && (l.activity_name || '') === actName);
+    if (exact.length > 0) {
+      return exact.slice().sort((a, b) => (a.level_number || 0) - (b.level_number || 0));
+    }
+
+    // 2) Fallback: same activity group AND, when both have a schedule/time
+    //    slot, those must match too — so a "Karate 5pm" activity won't show
+    //    "Karate 6pm" levels by mistake.
+    const norm = (s) => (s || '').replace(/\s+/g, ' ').trim();
+    const targetSlot = norm(actSchedule);
     return levels
       .filter(l => {
-        // Branch isolation: level must belong to member's branch (or be a "main"/null branch level)
-        if (memberBranch && l.branch_id && l.branch_id !== memberBranch) return false;
+        if (!branchOk(l)) return false;
         const ln = l.activity_name || '';
-        // Match by exact or by activity-group keywords
-        if (ln === actName) return true;
+        let groupMatch = false;
         for (const g of ACTIVITY_GROUPS) {
           if (g.keywords.some(k => actName.includes(k)) && g.keywords.some(k => ln.includes(k))) {
-            return true;
+            groupMatch = true; break;
           }
         }
-        return false;
+        if (!groupMatch) return false;
+        const lvlSlot = norm(l.time_slot || l.schedule || '');
+        // If both sides expose a slot, require equality. If either is empty,
+        // accept (legacy levels without time_slot stay reachable).
+        if (targetSlot && lvlSlot && targetSlot !== lvlSlot) return false;
+        return true;
       })
       .sort((a, b) => (a.level_number || 0) - (b.level_number || 0));
   }, [assignTarget, levels]);
@@ -2699,12 +2723,18 @@ export const LevelsPage = () => {
                             <div className="min-w-0">
                               <p className="font-medium text-sm truncate">{level.custom_name || level.activity_name}</p>
                               <p className="text-xs text-gray-500 truncate">{level.activity_name}</p>
+                              {(level.time_slot || level.schedule) && (
+                                <p className="text-xs font-bold text-amber-700 mt-1 flex items-center gap-1">
+                                  <Clock className="w-3 h-3" />
+                                  {level.time_slot || level.schedule}
+                                </p>
+                              )}
                             </div>
                           </div>
-                          <div className="text-xs text-gray-600 flex-shrink-0">
-                            {memberCount}/{maxCap}
+                          <div className="text-xs text-gray-600 flex-shrink-0 text-end">
+                            <div>{memberCount}/{maxCap}</div>
                             {isFull && (
-                              <Badge variant="destructive" className="ms-1 text-[10px]">
+                              <Badge variant="destructive" className="text-[10px] mt-1">
                                 {t('ممتلئ', 'Full')}
                               </Badge>
                             )}

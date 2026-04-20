@@ -253,6 +253,35 @@ async def add_member_to_level(level_id: str, member_id: str, current_user: dict 
         raise HTTPException(status_code=404, detail="Level not found")
     
     if member_id in level.get("members", []):
+        # Self-healing path: the member's id is already in level.members but
+        # the corresponding entry on the member document may have lost its
+        # `level_id` (e.g. legacy data, renewed activity, bulk import). In
+        # that case, instead of erroring, we silently re-link the activity
+        # to this level and report success — that's exactly what the admin
+        # is trying to achieve.
+        match_aid = level.get("activity_id")
+        match_aname = level.get("activity_name")
+        member_doc = await db.members.find_one({"id": member_id}, {"_id": 0, "activities": 1})
+        needs_heal = False
+        if member_doc:
+            activities = member_doc.get("activities", []) or []
+            for act in activities:
+                matches = False
+                if match_aid and act.get("activity_id") == match_aid:
+                    matches = True
+                if not matches and match_aname and act.get("activity_name") == match_aname:
+                    matches = True
+                if matches and not act.get("level_id"):
+                    act["level_id"] = level["id"]
+                    needs_heal = True
+            if needs_heal:
+                await db.members.update_one(
+                    {"id": member_id},
+                    {"$set": {"activities": activities}}
+                )
+                cache_invalidate("levels:")
+                return {"message": "Member activity re-linked to existing level membership", "healed": True}
+        # No desync to heal → genuine duplicate request, surface the error.
         raise HTTPException(status_code=400, detail="العضو موجود مسبقاً في هذا المستوى")
 
     # Prevent the same member from being added to more than one level of the
