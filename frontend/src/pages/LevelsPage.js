@@ -1156,22 +1156,22 @@ ${slotTables}
   };
 
   const handleAddMember = async (memberId) => {
-    // Use the SAME counting logic the level card uses on screen so the
-    // capacity check never disagrees with what the user sees: take the
-    // member ids actually present on the level, look them up in the loaded
-    // members list, and only count those with at least one non-expired
-    // active subscription. Members whose record can't be found (deleted) or
-    // whose subscriptions have all expired don't occupy a seat.
+    // Mirror EXACTLY what the level card shows: count derives from
+    // members_details only, mapped to the full member record, and only
+    // members with at least one non-expired active subscription occupy a
+    // seat. Stub records (no full member) and expired ones are skipped.
     const { mainActivity } = parseActivityName(selectedLevel?.activity_name);
-    const idsFromMembers = Array.isArray(selectedLevel?.members) ? selectedLevel.members : [];
-    const idsFromDetails = Array.isArray(selectedLevel?.members_details)
-      ? selectedLevel.members_details.map(d => d.member_id || d.id).filter(Boolean)
+    const detailsList = Array.isArray(selectedLevel?.members_details)
+      ? selectedLevel.members_details
       : [];
-    const uniqueIds = Array.from(new Set([...idsFromMembers, ...idsFromDetails]));
-    const currentCount = uniqueIds.reduce((acc, id) => {
-      const m = members.find(mm => mm.id === id);
-      if (!m) return acc;
-      return (m.activities || []).some(isActivityNonExpired) ? acc + 1 : acc;
+    const seenIds = new Set();
+    const currentCount = detailsList.reduce((acc, md) => {
+      const mid = md.member_id || md.id;
+      if (!mid || seenIds.has(mid)) return acc;
+      seenIds.add(mid);
+      const full = members.find(mm => mm.id === mid);
+      if (!full) return acc;
+      return (full.activities || []).some(isActivityNonExpired) ? acc + 1 : acc;
     }, 0);
     const maxCapacity = mainActivity === 'swimming' ? 6 : (selectedLevel?.capacity || 10);
 
