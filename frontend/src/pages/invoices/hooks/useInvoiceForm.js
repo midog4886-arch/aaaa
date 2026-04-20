@@ -232,6 +232,27 @@ export const useInvoiceForm = ({
   const handleCreateInvoice = async () => {
     if (invoiceItems.length === 0) { toast.error(language === 'ar' ? 'أضف نشاط واحد على الأقل' : 'Add at least one activity'); return; }
     if (!customerNameAr) { toast.error(language === 'ar' ? 'أدخل اسم العميل' : 'Enter customer name'); return; }
+    if (!isEditMode) {
+      const missingLevelMain = (invoiceItems || []).find(it => !it.is_product && !it.level_id);
+      if (missingLevelMain) {
+        const mainLabel = customerNameAr || (language === 'ar' ? 'العضو الرئيسي' : 'Primary member');
+        toast.error(language === 'ar'
+          ? `يجب اختيار المستوى للعضو "${mainLabel}" - النشاط: ${missingLevelMain.activity_name || ''}`
+          : `Please select a level for member "${mainLabel}" - activity: ${missingLevelMain.activity_name || ''}`);
+        return;
+      }
+      for (let i = 0; i < (additionalMembers || []).length; i++) {
+        const am = additionalMembers[i];
+        const memberLabel = am.member?.name_ar || am.member?.name || (language === 'ar' ? `العضو ${i + 2}` : `Member ${i + 2}`);
+        const missing = (am.items || []).find(it => !it.is_product && !it.level_id);
+        if (missing) {
+          toast.error(language === 'ar'
+            ? `يجب اختيار المستوى للعضو "${memberLabel}" - النشاط: ${missing.activity_name || ''}`
+            : `Please select a level for member "${memberLabel}" - activity: ${missing.activity_name || ''}`);
+          return;
+        }
+      }
+    }
     const hasUnacceptedFullLevel = Object.values(levelCapacityWarnings).some(w => w.isFull && !w.isAccepted);
     if (hasUnacceptedFullLevel) { toast.error(language === 'ar' ? 'يوجد مستوى مكتمل العدد، يرجى الموافقة أو اختيار مستوى آخر.' : 'A selected level is full, please accept or choose another level.'); return; }
     setSaving(true);

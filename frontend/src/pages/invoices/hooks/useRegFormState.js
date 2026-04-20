@@ -136,9 +136,34 @@ export const useRegFormState = ({
     return payload;
   };
 
+  const validateRegFormLevels = () => {
+    const missingMain = (regFormItems || []).find(it => !it.is_product && !it.level_id);
+    if (missingMain) {
+      const mainLabel = regFormData?.customer_name || (language === 'ar' ? 'العضو الرئيسي' : 'Primary member');
+      toast.error(language === 'ar'
+        ? `يجب اختيار المستوى للعضو "${mainLabel}" - النشاط: ${missingMain.activity_name || ''}`
+        : `Please select a level for member "${mainLabel}" - activity: ${missingMain.activity_name || ''}`);
+      return false;
+    }
+    for (let i = 0; i < (regFormAdditionalMembers || []).length; i++) {
+      const am = regFormAdditionalMembers[i];
+      if (!am.member || !(am.items || []).length) continue;
+      const memberLabel = am.member?.name_ar || am.member?.name || (language === 'ar' ? `العضو ${i + 2}` : `Member ${i + 2}`);
+      const missing = (am.items || []).find(it => !it.is_product && !it.level_id);
+      if (missing) {
+        toast.error(language === 'ar'
+          ? `يجب اختيار المستوى للعضو "${memberLabel}" - النشاط: ${missing.activity_name || ''}`
+          : `Please select a level for member "${memberLabel}" - activity: ${missing.activity_name || ''}`);
+        return false;
+      }
+    }
+    return true;
+  };
+
   const handlePrintNewRegistrationForm = async () => {
     const hasUnacceptedFullLevel = Object.values(regFormLevelWarnings).some(w => w.isFull && !w.isAccepted);
     if (hasUnacceptedFullLevel) { toast.error(language === 'ar' ? 'يوجد مستوى مكتمل العدد، يرجى الموافقة أو اختيار مستوى آخر.' : 'A selected level is full, please accept or choose another level.'); return; }
+    if (!validateRegFormLevels()) return;
     const branchName = branches.find(b => b.id === selectedBranchId)?.name_ar || '';
     const formSubtotal = regFormItems.reduce((sum, item) => sum + ((item.fee || 0) * (item.quantity || 1)), 0);
     const totalDiscountAmount = regFormDiscount + regFormCouponDiscount;
@@ -160,6 +185,7 @@ export const useRegFormState = ({
   const handleSaveRegistrationFormOnly = async () => {
     const hasUnacceptedFullLevel = Object.values(regFormLevelWarnings).some(w => w.isFull && !w.isAccepted);
     if (hasUnacceptedFullLevel) { toast.error(language === 'ar' ? 'يوجد مستوى مكتمل العدد، يرجى الموافقة أو اختيار مستوى آخر.' : 'A selected level is full, please accept or choose another level.'); return; }
+    if (!validateRegFormLevels()) return;
     try {
       await registrationFormsAPI.create(buildFormPayload());
       toast.success(language === 'ar' ? 'تم حفظ استمارة التسجيل بنجاح' : 'Registration form saved successfully');
