@@ -51,10 +51,7 @@ async def get_member_level_coach_maps(member_id: str):
             by_activity_name[aname] = cid
         if lid:
             by_level_id[lid] = cid
-    # Backward-compat: callers expect a 2-tuple, but we also expose the
-    # level_id map via a function attribute so newer code can opt-in.
-    get_member_level_coach_maps.last_by_level_id = by_level_id  # type: ignore[attr-defined]
-    return by_activity_id, by_activity_name
+    return by_activity_id, by_activity_name, by_level_id
 
 
 class MemberLogin(BaseModel):
@@ -257,7 +254,8 @@ async def get_member_subscriptions(member: dict = Depends(get_current_member)):
     expired_subscriptions = []
 
     # Build per-level coach maps from levels this member is enrolled in.
-    level_coach_by_aid, level_coach_by_aname = await get_member_level_coach_maps(member["id"])
+    level_coach_by_aid, level_coach_by_aname, level_coach_by_lid = \
+        await get_member_level_coach_maps(member["id"])
 
     # ── Batch fetch all activities (single query instead of N) ──
     activity_ids = list({a.get("activity_id") for a in activities if a.get("activity_id")})
@@ -270,12 +268,17 @@ async def get_member_subscriptions(member: dict = Depends(get_current_member)):
         activities_map = {a["id"]: a for a in activity_docs}
 
     # ── Resolve coach IDs per activity (no DB calls yet) ──
+    # Prefer the level_id stored on the member's activity entry — handles
+    # the case where the level's activity_name has drifted from the member's.
     activity_coach_id = {}
     for activity in activities:
         aid = activity.get("activity_id")
         aname = activity.get("activity_name")
+        lid = activity.get("level_id")
         coach_id = ""
-        if aid and aid in level_coach_by_aid:
+        if lid and lid in level_coach_by_lid:
+            coach_id = level_coach_by_lid[lid]
+        elif aid and aid in level_coach_by_aid:
             coach_id = level_coach_by_aid[aid]
         elif aname and aname in level_coach_by_aname:
             coach_id = level_coach_by_aname[aname]
@@ -522,8 +525,7 @@ async def get_qr_card_data(member: dict = Depends(get_current_member)):
     for lm in linked_meta:
         lm_id = lm["id"]
         doc = docs_by_id.get(lm_id, {})
-        level_by_aid, level_by_aname = await get_member_level_coach_maps(lm_id)
-        level_by_lid = getattr(get_member_level_coach_maps, "last_by_level_id", {}) or {}
+        level_by_aid, level_by_aname, level_by_lid = await get_member_level_coach_maps(lm_id)
 
         # Build a per-member map: activity_id -> level_id from the member's
         # own activity entries. Used to look up the per-level coach even when
@@ -1176,27 +1178,36 @@ async def get_coaches_to_rate(member: dict = Depends(get_current_member)):
     """Get list of coaches the member can rate based on their subscriptions"""
     today = datetime.now(timezone.utc).strftime('%Y-%m-%d')
     
-    # Get active subscriptions
+    # Get active subscriptions across the member AND every linked sibling so
+    # the rating page reflects all coaches the family is actively training with.
+    # An invoice paid by one parent often contains items for multiple kids; we
+    # accept any item whose item.member_id (or fallback inv.member_id) belongs
+    # to the linked-member set.
+    linked_ids = member.get("_linked_member_ids") or [member["id"]]
     invoices = await db.invoices.find(
-        {"member_id": member["id"], "status": {"$in": ["paid", "partial"]}},
+        {"member_id": {"$in": linked_ids}, "status": {"$in": ["paid", "partial"]}},
         {"_id": 0}
-    ).to_list(100)
-    
+    ).to_list(200)
+
     activity_ids = set()
     for inv in invoices:
+        inv_owner = inv.get("member_id")
         for item in inv.get("items", []):
-            if item.get("activity_id"):
-                end_date = item.get("end_date", "")
-                if not end_date and item.get("period"):
-                    period = item.get("period", "")
-                    if " - " in period:
-                        parts = period.split(" - ")
-                        if len(parts) == 2:
-                            end_date = parts[1].strip()
-                
-                # Include both active and recently expired (last 30 days)
-                if end_date:
-                    activity_ids.add(item.get("activity_id"))
+            if not item.get("activity_id"):
+                continue
+            owner = item.get("member_id") or inv_owner
+            if owner not in linked_ids:
+                continue
+            end_date = item.get("end_date", "")
+            if not end_date and item.get("period"):
+                period = item.get("period", "")
+                if " - " in period:
+                    parts = period.split(" - ")
+                    if len(parts) == 2:
+                        end_date = parts[1].strip()
+            # Include both active and recently expired (last 30 days)
+            if end_date:
+                activity_ids.add(item.get("activity_id"))
     
     # Get coaches for these activities
     coaches = []
@@ -1208,14 +1219,27 @@ async def get_coaches_to_rate(member: dict = Depends(get_current_member)):
         activities_by_id = {a.get("id"): a for a in activities}
 
         # Resolve a single coach per eligible activity using the LEVELS this
-        # member is enrolled in (matched by activity_id, then activity_name).
-        # Falls back to the activity-level coach when no level match exists.
-        level_coach_by_aid, level_coach_by_aname = await get_member_level_coach_maps(member["id"])
+        # member is enrolled in (matched by level_id from member.activities,
+        # then activity_id, then activity_name). Falls back to the
+        # activity-level coach when no level match exists.
+        level_coach_by_aid, level_coach_by_aname, level_coach_by_lid = \
+            await get_member_level_coach_maps(member["id"])
+        # Build activity_id -> level_id from the member's own activity entries
+        # (handles the case where the level's activity_name has drifted).
+        member_acts = member.get("activities", []) or []
+        level_id_by_aid = {
+            ma.get("activity_id"): ma.get("level_id")
+            for ma in member_acts
+            if ma.get("activity_id") and ma.get("level_id")
+        }
         activity_coach = {}  # activity_id -> coach_id (final resolution)
         for aid in activity_ids:
             act = activities_by_id.get(aid)
             cid = ""
-            if aid in level_coach_by_aid:
+            lid = level_id_by_aid.get(aid)
+            if lid and lid in level_coach_by_lid:
+                cid = level_coach_by_lid[lid]
+            elif aid in level_coach_by_aid:
                 cid = level_coach_by_aid[aid]
             elif act:
                 aname = act.get("name_ar") or act.get("name") or ""
@@ -1572,19 +1596,30 @@ async def get_member_full_schedule(member: dict = Depends(get_current_member)):
     coach_cache = {}
 
     # Per-LEVEL coach maps for this member.
-    level_coach_by_aid, level_coach_by_aname = await get_member_level_coach_maps(member["id"])
+    level_coach_by_aid, level_coach_by_aname, level_coach_by_lid = \
+        await get_member_level_coach_maps(member["id"])
+    # activity_id -> level_id from the member's own activity entries.
+    member_acts = member.get("activities", []) or []
+    level_id_by_aid = {
+        ma.get("activity_id"): ma.get("level_id")
+        for ma in member_acts
+        if ma.get("activity_id") and ma.get("level_id")
+    }
 
     async def get_coach_for_activity(activity_id: str, activity_name: str = ""):
         """Look up coach info for an activity, using cache.
-        Prefers the coach assigned to the member's level (matched by activity_id
-        then activity_name) over the activity-level coach."""
+        Prefers the coach assigned to the member's level (matched by level_id,
+        then activity_id, then activity_name) over the activity-level coach."""
         if not activity_id and not activity_name:
             return "", "", ""
         cache_key = (activity_id or "", activity_name or "")
         if cache_key in coach_cache:
             return coach_cache[cache_key]
         coach_id = ""
-        if activity_id and activity_id in level_coach_by_aid:
+        lid = level_id_by_aid.get(activity_id) if activity_id else ""
+        if lid and lid in level_coach_by_lid:
+            coach_id = level_coach_by_lid[lid]
+        elif activity_id and activity_id in level_coach_by_aid:
             coach_id = level_coach_by_aid[activity_id]
         elif activity_name and activity_name in level_coach_by_aname:
             coach_id = level_coach_by_aname[activity_name]
