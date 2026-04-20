@@ -1161,6 +1161,56 @@ export const LevelsPage = () => {
     return [...times].sort();
   }, [members, filterActivity]);
 
+  // ── Derive guardian (ولي الأمر) info per member ──
+  // Many member records have an empty guardian_name field even though a
+  // sibling (parent registered as their own member) shares the same phone.
+  // For each phone number, pick the most likely guardian: the adult — i.e.
+  // the member without an `age` (or with age >= 18). If everyone on the
+  // phone has a child age, fall back to the lowest member_code (oldest
+  // registration) as the guardian. Each member then gets the OTHER linked
+  // member's name as a derived guardian display.
+  const derivedGuardianByMemberId = useMemo(() => {
+    const byPhone = {};
+    for (const m of members) {
+      const phone = (m.phone || '').trim();
+      if (!phone) continue;
+      (byPhone[phone] = byPhone[phone] || []).push(m);
+    }
+    const result = {};
+    for (const phone of Object.keys(byPhone)) {
+      const group = byPhone[phone];
+      if (group.length < 2) continue;
+      // Pick guardian candidate: prefer the one without a child-like age.
+      const adults = group.filter(m => !m.age || Number(m.age) >= 18);
+      // Numeric-safe ordering: parse member_code as a number when possible
+      // so "20" < "100"; fall back to string compare for non-numeric codes.
+      const codeRank = (m) => {
+        const n = parseInt(String(m.member_code || ''), 10);
+        return Number.isFinite(n) ? n : Number.MAX_SAFE_INTEGER;
+      };
+      const sortByCode = (a, b) => {
+        const na = codeRank(a), nb = codeRank(b);
+        if (na !== nb) return na - nb;
+        return String(a.member_code || '').localeCompare(String(b.member_code || ''));
+      };
+      const pool = adults.length > 0 ? adults : group;
+      const guardian = [...pool].sort(sortByCode)[0];
+      const guardianName = guardian.name_ar || guardian.name || '';
+      const guardianCode = guardian.member_code || '';
+      for (const m of group) {
+        if (m.id === guardian.id) continue;
+        result[m.id] = { name: guardianName, member_code: guardianCode };
+      }
+    }
+    return result;
+  }, [members]);
+
+  const getGuardianDisplay = (member) => {
+    const explicit = member.guardian_name_ar || member.guardian_name;
+    if (explicit) return { name: explicit, member_code: '' };
+    return derivedGuardianByMemberId[member.id] || null;
+  };
+
   const availableMembers = members.filter(m => {
     if (!selectedLevel) return true;
     return !(selectedLevel.members || []).includes(m.id);
@@ -2370,7 +2420,9 @@ export const LevelsPage = () => {
                     {t('أعضاء المستوى', 'Level Members')} ({(selectedLevel?.members || []).length})
                   </div>
                   <div className="flex-1 overflow-y-auto p-2 space-y-1">
-                    {getLevelMembers(selectedLevel || {}).map(member => (
+                    {getLevelMembers(selectedLevel || {}).map(member => {
+                      const guardian = getGuardianDisplay(member);
+                      return (
                       <div 
                         key={member.id}
                         className="flex items-center gap-2 p-2 bg-gray-50 rounded hover:bg-gray-100"
@@ -2383,6 +2435,12 @@ export const LevelsPage = () => {
                             {member.name_ar || member.name}
                             {member.age ? <span className="text-xs text-orange-500 font-normal mr-1"> ({member.age} سنة)</span> : null}
                           </p>
+                          {guardian && (
+                            <p className="text-xs text-purple-600 truncate">
+                              👤 {t('ولي الأمر:', 'Guardian:')} {guardian.name}
+                              {guardian.member_code && <span className="text-gray-400"> · #{guardian.member_code}</span>}
+                            </p>
+                          )}
                           <p className="text-xs text-gray-500">#{member.member_code}</p>
                         </div>
                         <Button
@@ -2394,7 +2452,8 @@ export const LevelsPage = () => {
                           <UserMinus className="w-4 h-4" />
                         </Button>
                       </div>
-                    ))}
+                      );
+                    })}
                     {(selectedLevel?.members || []).length === 0 && (
                       <p className="text-center text-gray-400 py-4 text-sm">
                         {t('لا يوجد أعضاء', 'No members')}
@@ -2415,6 +2474,7 @@ export const LevelsPage = () => {
                       const daysLabel = activeActivity?.training_days?.length
                         ? activeActivity.training_days.join('، ')
                         : activeActivity?.schedule || '';
+                      const guardian = getGuardianDisplay(member);
                       return (
                         <div 
                           key={member.id}
@@ -2428,9 +2488,10 @@ export const LevelsPage = () => {
                               {member.name_ar || member.name}
                               {member.age ? <span className="text-xs text-orange-500 font-normal mr-1"> ({member.age} سنة)</span> : null}
                             </p>
-                            {(member.guardian_name_ar || member.guardian_name) && (
+                            {guardian && (
                               <p className="text-xs text-purple-600 truncate">
-                                {t('ولي الأمر:', 'Guardian:')} {member.guardian_name_ar || member.guardian_name}
+                                👤 {t('ولي الأمر:', 'Guardian:')} {guardian.name}
+                                {guardian.member_code && <span className="text-gray-400"> · #{guardian.member_code}</span>}
                               </p>
                             )}
                             <p className="text-xs text-gray-500">#{member.member_code} • {member.phone}</p>
