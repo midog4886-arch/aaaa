@@ -769,10 +769,21 @@ export const LevelsPage = () => {
     const headerCells = allLevels.map(col => {
       const n = col.level_number || 0;
       const color = levelColors[n] || '#555';
-      const nameLine = col.name
-        ? `<div style="font-size:13px;font-weight:normal;opacity:0.9;margin-top:2px;">${escapeHtml(col.name)}</div>`
+      const customName = col.custom_name || col.name || '';
+      const titleText = customName ? customName : `المستوى ${n}`;
+      const subLine = customName
+        ? `<div style="font-size:12px;font-weight:normal;opacity:0.85;margin-top:2px;">المستوى ${n}</div>`
         : '';
-      return `<th style="border:1px solid #ccc;padding:10px;background:${color};color:#fff;text-align:center;white-space:nowrap;font-size:17px;">المستوى ${n}${nameLine}</th>`;
+      const coachObj = col.coach_id ? coaches.find(c => c.id === col.coach_id) : null;
+      const coachName = coachObj ? (coachObj.name_ar || coachObj.name) : '';
+      const coachLine = coachName
+        ? `<div style="font-size:12px;font-weight:normal;opacity:0.95;margin-top:4px;background:rgba(255,255,255,0.18);padding:2px 6px;border-radius:4px;display:inline-block;">👤 ${escapeHtml(coachName)}</div>`
+        : '';
+      return `<th style="border:1px solid #ccc;padding:10px;background:${color};color:#fff;text-align:center;white-space:nowrap;font-size:16px;min-width:130px;">
+        <div style="font-size:17px;font-weight:bold;">${escapeHtml(titleText)}</div>
+        ${subLine}
+        ${coachLine}
+      </th>`;
     }).join('');
 
     const totalCount = timeSlots.reduce((sum, slot) =>
