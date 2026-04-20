@@ -1246,10 +1246,36 @@ ${slotTables}
     return derivedGuardianByMemberId[member.id] || null;
   };
 
+  // When a level is selected, derive its activity group and time slot so we
+  // can hide members who don't actually have a matching, non-expired
+  // subscription (avoids showing expired members in the level picker).
+  const selectedLevelInfo = selectedLevel ? parseActivityName(selectedLevel.activity_name) : null;
+  const isActivityNonExpired = (a) => {
+    if (!a || a.status !== 'active') return false;
+    if (!a.end_date) return true;
+    return a.end_date >= todayStr;
+  };
+
   const availableMembers = members.filter(m => {
     if (!selectedLevel) return true;
     return !(selectedLevel.members || []).includes(m.id);
-  }).filter(m => hasActiveSubscription(m)).filter(m => {
+  }).filter(m => {
+    // Must have at least one non-expired active subscription that matches
+    // the selected level's activity group AND time slot. If no level is
+    // selected, fall back to "any non-expired active subscription".
+    const acts = (m.activities || []).filter(isActivityNonExpired);
+    if (acts.length === 0) return false;
+    if (!selectedLevelInfo) return true;
+    return acts.some(a => {
+      const actMatch = !selectedLevelInfo.mainActivity || selectedLevelInfo.mainActivity === 'other'
+        ? true
+        : matchesGroup(a.activity_name, selectedLevelInfo.mainActivity);
+      const timeMatch = !selectedLevelInfo.timeSlot
+        ? true
+        : (a.schedule || '') === selectedLevelInfo.timeSlot;
+      return actMatch && timeMatch;
+    });
+  }).filter(m => {
     if (!searchQuery) return true;
     const name = (m.name_ar || m.name || '').toLowerCase();
     const phone = (m.phone || '').toLowerCase();
@@ -1259,7 +1285,7 @@ ${slotTables}
            code.includes(searchQuery.toLowerCase());
   }).filter(m => {
     if (!filterActivity && !filterTime) return true;
-    const activeActs = (m.activities || []).filter(a => a.status === 'active');
+    const activeActs = (m.activities || []).filter(isActivityNonExpired);
     return activeActs.some(a => {
       const actMatch = !filterActivity || matchesGroup(a.activity_name, filterActivity);
       const timeMatch = !filterTime || (a.schedule || '') === filterTime;
