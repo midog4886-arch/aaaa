@@ -1141,12 +1141,19 @@ ${slotTables}
   };
 
   const handleAddMember = async (memberId) => {
-    // Check capacity for swimming. Count only members whose subscription is
-    // still active (not expired) so the capacity check stays consistent with
-    // the count shown on the card itself.
+    // Use the SAME counting logic the level card uses on screen so the
+    // capacity check never disagrees with what the user sees: take the
+    // member ids actually present on the level, look them up in the loaded
+    // members list, and only count those with at least one non-expired
+    // active subscription. Members whose record can't be found (deleted) or
+    // whose subscriptions have all expired don't occupy a seat.
     const { mainActivity } = parseActivityName(selectedLevel?.activity_name);
-    const memberIds = Array.from(new Set(selectedLevel?.members || []));
-    const currentCount = memberIds.reduce((acc, id) => {
+    const idsFromMembers = Array.isArray(selectedLevel?.members) ? selectedLevel.members : [];
+    const idsFromDetails = Array.isArray(selectedLevel?.members_details)
+      ? selectedLevel.members_details.map(d => d.member_id || d.id).filter(Boolean)
+      : [];
+    const uniqueIds = Array.from(new Set([...idsFromMembers, ...idsFromDetails]));
+    const currentCount = uniqueIds.reduce((acc, id) => {
       const m = members.find(mm => mm.id === id);
       if (!m) return acc;
       return (m.activities || []).some(isActivityNonExpired) ? acc + 1 : acc;
