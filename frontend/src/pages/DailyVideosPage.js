@@ -42,6 +42,25 @@ const DailyVideosPage = () => {
   const [selectedDate, setSelectedDate] = useState(null);
   const [youtubeUrlInput, setYoutubeUrlInput] = useState('');
   const [urlValidationStatus, setUrlValidationStatus] = useState(null); // null, 'valid', 'invalid'
+  const [viewersDialogOpen, setViewersDialogOpen] = useState(false);
+  const [viewersLoading, setViewersLoading] = useState(false);
+  const [viewersList, setViewersList] = useState([]);
+  const [viewersVideoTitle, setViewersVideoTitle] = useState('');
+
+  const handleShowViewers = async (video) => {
+    setViewersVideoTitle(video.title_ar || video.title || '');
+    setViewersList([]);
+    setViewersDialogOpen(true);
+    setViewersLoading(true);
+    try {
+      const res = await dailyVideosAPI.getViewers(video.id);
+      setViewersList(res.data?.viewers || []);
+    } catch (err) {
+      toast({ title: 'خطأ', description: 'تعذر تحميل قائمة المشاهدين', variant: 'destructive' });
+    } finally {
+      setViewersLoading(false);
+    }
+  };
 
   // Form state
   const [formData, setFormData] = useState({
@@ -540,7 +559,12 @@ const DailyVideosPage = () => {
                               {video.activity_name}
                             </Badge>
                           )}
-                          <Badge variant="outline" className="gap-1">
+                          <Badge
+                            variant="outline"
+                            className="gap-1 cursor-pointer hover:bg-purple-50 hover:border-purple-400"
+                            onClick={(e) => { e.stopPropagation(); handleShowViewers(video); }}
+                            title="عرض من شاهد الفيديو"
+                          >
                             <Eye className="w-3 h-3" />
                             {video.views_count || 0}
                           </Badge>
@@ -800,6 +824,57 @@ const DailyVideosPage = () => {
             <Button onClick={handleSubmit}>
               {editingVideo ? 'حفظ التغييرات' : 'إضافة الفيديو'}
             </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Viewers Dialog */}
+      <Dialog open={viewersDialogOpen} onOpenChange={setViewersDialogOpen}>
+        <DialogContent className="max-w-lg max-h-[80vh] overflow-y-auto" dir="rtl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Eye className="w-5 h-5 text-purple-600" />
+              من شاهد الفيديو
+            </DialogTitle>
+            {viewersVideoTitle && (
+              <p className="text-sm text-gray-500 mt-1">{viewersVideoTitle}</p>
+            )}
+          </DialogHeader>
+          <div className="mt-2">
+            {viewersLoading ? (
+              <div className="text-center py-8 text-gray-500">جاري التحميل...</div>
+            ) : viewersList.length === 0 ? (
+              <div className="text-center py-8 text-gray-500">
+                لا يوجد مشاهدون مسجلون لهذا الفيديو
+              </div>
+            ) : (
+              <>
+                <div className="text-sm text-gray-600 mb-3">
+                  إجمالي المشاهدين الفريدين: <span className="font-bold text-purple-700">{viewersList.length}</span>
+                </div>
+                <div className="space-y-2">
+                  {viewersList.map((v) => (
+                    <div key={v.member_id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border">
+                      <div className="flex-1">
+                        <div className="font-semibold text-gray-900">{v.name || '—'}</div>
+                        <div className="text-xs text-gray-500 flex items-center gap-2 mt-1">
+                          {v.member_code && <span>#{v.member_code}</span>}
+                          {v.phone && <span dir="ltr">{v.phone}</span>}
+                        </div>
+                      </div>
+                      {v.watched_at && (
+                        <div className="text-xs text-gray-500" dir="ltr">
+                          {String(v.watched_at).slice(0, 10)}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setViewersDialogOpen(false)}>إغلاق</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

@@ -404,6 +404,7 @@ export const dailyVideosAPI = {
   getCalendar: (year, month, params = {}) => axios.get(`${API}/daily-videos/calendar/${year}/${month}`, { params }),
   getByActivity: (activityId, limit = 10) => axios.get(`${API}/daily-videos/activity/${activityId}/videos`, { params: { limit } }),
   recordView: (id) => axios.post(`${API}/daily-videos/${id}/view`),
+  getViewers: (id) => axios.get(`${API}/daily-videos/${id}/viewers`),
   getStats: (params = {}) => axios.get(`${API}/daily-videos/stats/summary`, { params })
 };
 

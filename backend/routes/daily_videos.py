@@ -516,6 +516,29 @@ async def record_video_view(video_id: str, member_id: Optional[str] = None):
     return {"success": True}
 
 
+@router.get("/{video_id}/viewers")
+async def list_video_viewers(video_id: str, current_user: dict = Depends(get_current_user)):
+    """List members who watched a given video."""
+    views = await db.video_views.find({"video_id": video_id}, {"_id": 0}).to_list(10000)
+    seen = set()
+    viewers = []
+    for v in views:
+        mid = v.get("member_id")
+        if not mid or mid in seen:
+            continue
+        seen.add(mid)
+        member = await db.members.find_one({"id": mid}, {"_id": 0}) or {}
+        viewers.append({
+            "member_id": mid,
+            "name": member.get("name_ar") or member.get("name") or "",
+            "phone": member.get("phone", ""),
+            "member_code": member.get("member_code", ""),
+            "watched_at": v.get("created_at") or v.get("date") or "",
+        })
+    viewers.sort(key=lambda x: x.get("watched_at", ""), reverse=True)
+    return {"viewers": viewers, "total": len(viewers)}
+
+
 @router.get("/stats/summary")
 async def get_videos_statistics(
     branch_id: Optional[str] = None,
