@@ -10,7 +10,7 @@ import { Textarea } from '../../../../components/ui/textarea';
 import { CheckCircle, Loader2, Lock, Package, Percent, Receipt, Tag, Trash2, UserPlus, Users, X } from 'lucide-react';
 import { COMPANY_INFO } from '../../constants';
 import { MAIN_ACTIVITIES_FOR_LEVELS } from '../../constants';
-import { membersAPI } from '../../../../services/api';
+import { membersAPI, levelsAPI } from '../../../../services/api';
 import { toast } from 'sonner';
 
 export const CreateEditInvoiceDialog = ({
@@ -537,29 +537,124 @@ export const CreateEditInvoiceDialog = ({
                                         </div>
                                         <div className="space-y-1">
                                           <Label className="text-xs">{language === 'ar' ? 'المستوى' : 'Level'}</Label>
-                                          <Select value={item.level_id || 'none'} onValueChange={(val) => {
-                                            const updated = [...additionalMembers];
-                                            if (val === 'none') { updated[amIdx].items[itemIdx].level_id = ''; updated[amIdx].items[itemIdx].level_name = ''; }
-                                            else {
-                                              const level = levels.find(l => l.id === val);
-                                              const levelLabel = level ? `${level.activity_name || ''} - ${language === 'ar' ? 'مستوى' : 'Level'} ${level.level_number}` : '';
-                                              updated[amIdx].items[itemIdx].level_id = val;
-                                              updated[amIdx].items[itemIdx].level_name = levelLabel;
-                                            }
-                                            setAdditionalMembers(updated);
-                                          }}>
-                                            <SelectTrigger className="h-7 text-sm"><SelectValue placeholder={language === 'ar' ? 'اختياري' : 'Optional'} /></SelectTrigger>
-                                            <SelectContent>
-                                              <SelectItem value="none">{language === 'ar' ? '-- بدون --' : '-- None --'}</SelectItem>
-                                              {(levels || []).filter(l => {
-                                                if (!l.id) return false;
-                                                if (!l.activity_name) return true;
-                                                const lvlCat = parseActivityForLevel(l.activity_name);
-                                                const itmCat = parseActivityForLevel(item.activity_name);
-                                                return lvlCat === itmCat || l.activity_name === item.activity_name;
-                                              }).map(l => (<SelectItem key={l.id} value={l.id}>{l.activity_name} - {language === 'ar' ? 'مستوى' : 'Level'} {l.level_number}</SelectItem>))}
-                                            </SelectContent>
-                                          </Select>
+                                          {(() => {
+                                            const selKey = `am-${amIdx}-${itemIdx}`;
+                                            const selectAmLevel = (levelId) => {
+                                              const updated = [...additionalMembers];
+                                              const level = levels.find(l => l.id === levelId);
+                                              updated[amIdx].items[itemIdx].level_id = levelId;
+                                              updated[amIdx].items[itemIdx].level_name = level ? `${level.display_name || (level.custom_name ? level.custom_name : `${language === 'ar' ? 'المستوى' : 'Level'} ${level.level_number}`)} - ${level.activity_name}` : '';
+                                              setAdditionalMembers(updated);
+                                              resetLevelSelector(selKey);
+                                            };
+                                            const clearAmLevel = () => {
+                                              const updated = [...additionalMembers];
+                                              updated[amIdx].items[itemIdx].level_id = '';
+                                              updated[amIdx].items[itemIdx].level_name = '';
+                                              setAdditionalMembers(updated);
+                                            };
+                                            return !levelSelectorState[selKey] ? (
+                                              <div>
+                                                {item.level_id ? (
+                                                  <div className="flex items-center justify-between p-2 border rounded-lg bg-gray-50">
+                                                    <span className="text-sm">{item.level_name}</span>
+                                                    <div className="flex gap-1">
+                                                      <Button type="button" variant="ghost" size="sm" className="h-7 px-2" onClick={() => initLevelSelector(selKey)}>{language === 'ar' ? 'تغيير' : 'Change'}</Button>
+                                                      <Button type="button" variant="ghost" size="sm" className="h-7 px-2 text-red-500" onClick={clearAmLevel}>✕</Button>
+                                                    </div>
+                                                  </div>
+                                                ) : (
+                                                  <Button type="button" variant="outline" className="w-full h-8 text-sm justify-start gap-2" onClick={() => initLevelSelector(selKey)}>
+                                                    <span>🎯</span>{language === 'ar' ? 'اختر المستوى' : 'Select Level'}
+                                                  </Button>
+                                                )}
+                                              </div>
+                                            ) : (
+                                              <div className="border rounded-lg overflow-hidden bg-white shadow-sm">
+                                                <div className="flex items-center justify-between p-2 bg-gray-100 border-b">
+                                                  <div className="flex items-center gap-2">
+                                                    {levelSelectorState[selKey].step !== 'activity' && <Button type="button" variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={() => goBackLevelSelector(selKey)}>{language === 'ar' ? '→' : '←'}</Button>}
+                                                    <span className="text-xs font-medium text-gray-600">
+                                                      {levelSelectorState[selKey].step === 'activity' && (language === 'ar' ? 'اختر النشاط' : 'Select Activity')}
+                                                      {levelSelectorState[selKey].step === 'time' && (language === 'ar' ? 'اختر الساعة' : 'Select Time')}
+                                                      {levelSelectorState[selKey].step === 'level' && (language === 'ar' ? 'اختر المستوى' : 'Select Level')}
+                                                    </span>
+                                                  </div>
+                                                  <Button type="button" variant="ghost" size="sm" className="h-6 px-2 text-xs" onClick={() => resetLevelSelector(selKey)}>✕</Button>
+                                                </div>
+                                                {levelSelectorState[selKey].step === 'activity' && (
+                                                  <div className="p-2 space-y-1 max-h-48 overflow-y-auto">
+                                                    {MAIN_ACTIVITIES_FOR_LEVELS.map(activity => {
+                                                      const activityLevels = groupedLevelsForSelector[activity.id] || {};
+                                                      const timeCount = Object.keys(activityLevels).length;
+                                                      if (timeCount === 0) return null;
+                                                      return (
+                                                        <button key={activity.id} type="button" className={`w-full flex items-center justify-between p-2 rounded-lg hover:bg-gray-100 transition-colors ${activity.color} bg-opacity-10 hover:bg-opacity-20`} onClick={() => selectLevelActivity(selKey, activity.id)}>
+                                                          <div className="flex items-center gap-2"><span className="text-xl">{activity.icon}</span><span className="font-medium">{language === 'ar' ? activity.name_ar : activity.name_en}</span></div>
+                                                          <div className="flex items-center gap-1 text-gray-500"><span className="text-xs">{timeCount} {language === 'ar' ? 'أوقات' : 'times'}</span><span>{language === 'ar' ? '←' : '→'}</span></div>
+                                                        </button>
+                                                      );
+                                                    })}
+                                                    {groupedLevelsForSelector['other'] && Object.keys(groupedLevelsForSelector['other']).length > 0 && (
+                                                      <button type="button" className="w-full flex items-center justify-between p-2 rounded-lg hover:bg-gray-100 transition-colors bg-gray-100" onClick={() => selectLevelActivity(selKey, 'other')}>
+                                                        <div className="flex items-center gap-2"><span className="text-xl">📋</span><span className="font-medium">{language === 'ar' ? 'أخرى' : 'Other'}</span></div>
+                                                        <span>{language === 'ar' ? '←' : '→'}</span>
+                                                      </button>
+                                                    )}
+                                                  </div>
+                                                )}
+                                                {levelSelectorState[selKey].step === 'time' && (
+                                                  <div className="p-2 space-y-1 max-h-48 overflow-y-auto">
+                                                    {Object.entries(groupedLevelsForSelector[levelSelectorState[selKey].selectedActivity] || {}).map(([timeSlot, timeLevels]) => {
+                                                      const _itemDays = item.training_days || [];
+                                                      const totalMembers = timeLevels.reduce((sum, l) => {
+                                                        if (_itemDays.length > 0 && (l.members_details || []).length > 0) {
+                                                          const det = l.members_details || [];
+                                                          const perDay = _itemDays.map(day => det.filter(m => m.schedule && m.schedule.includes(day)).length);
+                                                          return sum + Math.max(...perDay, 0);
+                                                        }
+                                                        return sum + (l.members || []).length;
+                                                      }, 0);
+                                                      const totalCapacity = timeLevels.reduce((sum, l) => sum + (l.capacity || 10), 0);
+                                                      return (
+                                                        <button key={timeSlot} type="button" className="w-full flex items-center justify-between p-2 rounded-lg hover:bg-blue-50 transition-colors border" onClick={() => selectLevelTime(selKey, timeSlot)}>
+                                                          <div className="flex items-center gap-2"><span className="text-lg">🕐</span><span className="font-medium text-sm">{timeSlot}</span></div>
+                                                          <div className="flex items-center gap-2"><span className="text-xs text-gray-500">{timeLevels.length} {language === 'ar' ? 'مستويات' : 'levels'} • {totalMembers}/{totalCapacity}</span><span className="text-gray-400">{language === 'ar' ? '←' : '→'}</span></div>
+                                                        </button>
+                                                      );
+                                                    })}
+                                                  </div>
+                                                )}
+                                                {levelSelectorState[selKey].step === 'level' && (
+                                                  <div className="p-2 space-y-1 max-h-48 overflow-y-auto">
+                                                    {(groupedLevelsForSelector[levelSelectorState[selKey].selectedActivity]?.[levelSelectorState[selKey].selectedTime] || []).sort((a, b) => a.level_number - b.level_number).map(level => {
+                                                      const _days = item.training_days || [];
+                                                      const memberCount = (_days.length > 0 && (level.members_details || []).length > 0) ? Math.max(..._days.map(day => (level.members_details || []).filter(m => m.schedule && m.schedule.includes(day)).length), 0) : (level.members || []).length;
+                                                      const maxCapacity = level.capacity || 10;
+                                                      const isFull = memberCount >= maxCapacity;
+                                                      const fillPercent = Math.round((memberCount / maxCapacity) * 100);
+                                                      const levelCoach = level.coach_id ? coaches.find(c => c.id === level.coach_id) : null;
+                                                      const coachName = levelCoach ? (levelCoach.name_ar || levelCoach.name) : null;
+                                                      return (
+                                                        <button key={level.id} type="button" className={`w-full p-2 rounded-lg transition-colors border ${isFull ? 'bg-red-50 border-red-200 hover:bg-red-100' : 'hover:bg-green-50 border-gray-200'}`} onClick={() => selectAmLevel(level.id)}>
+                                                          <div className="flex items-center justify-between mb-1">
+                                                            <span className={`font-bold ${isFull ? 'text-red-600' : 'text-gray-800'}`}>{level.display_name || (level.custom_name ? level.custom_name : `${language === 'ar' ? 'المستوى' : 'Level'} ${level.level_number}`)}</span>
+                                                            <span className={`text-sm ${isFull ? 'text-red-600' : 'text-gray-600'}`}>{memberCount}/{maxCapacity} {isFull && '⚠️'}</span>
+                                                          </div>
+                                                          {coachName && (
+                                                            <div className="text-xs text-blue-600 mb-1 text-right">
+                                                              👤 {language === 'ar' ? 'المدرب: ' : 'Coach: '}{coachName}
+                                                            </div>
+                                                          )}
+                                                          <div className="w-full bg-gray-200 rounded-full h-1.5"><div className={`h-1.5 rounded-full ${isFull ? 'bg-red-500' : 'bg-green-500'}`} style={{ width: `${Math.min(fillPercent, 100)}%` }} /></div>
+                                                        </button>
+                                                      );
+                                                    })}
+                                                  </div>
+                                                )}
+                                              </div>
+                                            );
+                                          })()}
                                         </div>
                                       </div>
                                     </div>
