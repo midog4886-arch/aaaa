@@ -1141,11 +1141,18 @@ ${slotTables}
   };
 
   const handleAddMember = async (memberId) => {
-    // Check capacity for swimming
+    // Check capacity for swimming. Count only members whose subscription is
+    // still active (not expired) so the capacity check stays consistent with
+    // the count shown on the card itself.
     const { mainActivity } = parseActivityName(selectedLevel?.activity_name);
-    const currentCount = (selectedLevel?.members || []).length;
+    const memberIds = Array.from(new Set(selectedLevel?.members || []));
+    const currentCount = memberIds.reduce((acc, id) => {
+      const m = members.find(mm => mm.id === id);
+      if (!m) return acc;
+      return (m.activities || []).some(isActivityNonExpired) ? acc + 1 : acc;
+    }, 0);
     const maxCapacity = mainActivity === 'swimming' ? 6 : (selectedLevel?.capacity || 10);
-    
+
     if (currentCount >= maxCapacity) {
       toast.error(t(`المستوى ممتلئ (الحد الأقصى ${maxCapacity} أعضاء)`, `Level is full (max ${maxCapacity} members)`));
       return;
