@@ -769,6 +769,14 @@ export const LevelsPage = () => {
 
     const memberMatchesAnyDay = (m) => printDays.some(day => memberMatchesDay(m, day));
 
+    // Hide members whose subscriptions are all expired so the print exactly
+    // matches what's shown on the level cards.
+    const isMemberActive = (m) => {
+      const full = members.find(mm => mm.id === (m.member_id || m.id));
+      if (!full) return false;
+      return (full.activities || []).some(isActivityNonExpired);
+    };
+
     // Track member IDs already printed so the same person doesn't appear in
     // more than one time slot. The first slot they show up in (in display
     // order) keeps them; later slots will skip duplicates.
@@ -811,6 +819,7 @@ export const LevelsPage = () => {
 
       const cells = slotLevels.map(lvl => {
         const membersForDays = (lvl.members_details || [])
+          .filter(isMemberActive)
           .filter(memberMatchesAnyDay)
           .filter(m => {
             const k = memberKey(m);
@@ -845,9 +854,15 @@ export const LevelsPage = () => {
 </table>`;
     }).filter(Boolean).join('');
 
+    const _countedIds = new Set();
     const totalCount = timeSlots.reduce((sum, slot) =>
       sum + (activityLevels[slot] || []).reduce((s, l) =>
-        s + (l.members_details || []).filter(memberMatchesAnyDay).length, 0), 0);
+        s + (l.members_details || []).filter(isMemberActive).filter(memberMatchesAnyDay).filter(m => {
+          const k = memberKey(m);
+          if (_countedIds.has(k)) return false;
+          _countedIds.add(k);
+          return true;
+        }).length, 0), 0);
 
     const html = `<!DOCTYPE html>
 <html dir="rtl" lang="ar">
