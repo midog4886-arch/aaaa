@@ -274,6 +274,7 @@ const SubscriptionCard = ({ act, darkMode, language, today }) => {
 const MemberCard = () => {
   const [loading, setLoading] = useState(true);
   const [cardData, setCardData] = useState(null);
+  const [selectedCardIdx, setSelectedCardIdx] = useState(0);
   const [showPrintDialog, setShowPrintDialog] = useState(false);
   const member = getMemberData();
   const darkMode = getDarkMode();
@@ -293,14 +294,23 @@ const MemberCard = () => {
     }
   };
 
+  // ── Build per-member cards list (siblings sharing a phone). Falls back to
+  // the legacy single-card response shape for older API versions.
+  const cards = (cardData?.cards && cardData.cards.length > 0)
+    ? cardData.cards
+    : (cardData ? [cardData] : []);
+  const safeIdx = Math.min(selectedCardIdx, Math.max(0, cards.length - 1));
+  const currentCard = cards[safeIdx] || null;
+
   const handleStickerPrint = () => {
     setShowPrintDialog(false);
     const printWindow = window.open('', '_blank', 'width=800,height=600');
-    printWindow.document.write(buildStickerHtml(cardData));
+    printWindow.document.write(buildStickerHtml(currentCard));
     printWindow.document.close();
   };
 
   const handleDownload = async () => {
+    const cardData = currentCard;
     const qrData = cardData?.member_code?.toString() || '';
     const canvas = document.createElement('canvas');
     canvas.width = 400;
@@ -372,13 +382,54 @@ const MemberCard = () => {
     );
   }
 
-  const qrData = cardData?.member_code?.toString() || '';
-  const name = cardData?.name_ar || member?.name_ar || '';
-  const activeActivities = cardData?.active_activities || [];
+  const qrData = currentCard?.member_code?.toString() || '';
+  const name = currentCard?.name_ar || member?.name_ar || '';
+  const activeActivities = currentCard?.active_activities || [];
 
   return (
     <MemberLayout>
       <div className="max-w-lg mx-auto space-y-5">
+
+        {/* ── Linked Members Switcher (siblings sharing this phone) ── */}
+        {cards.length > 1 && (
+          <div className={`rounded-2xl p-3 border ${darkMode ? 'bg-gray-800/60 border-gray-700' : 'bg-amber-50 border-amber-200'}`}>
+            <p className={`text-xs font-bold mb-2 ${darkMode ? 'text-amber-400' : 'text-amber-700'}`}>
+              👥 {language === 'ar'
+                ? `الأعضاء المرتبطون بنفس الرقم (${cards.length})`
+                : `Linked members on this phone (${cards.length})`}
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {cards.map((c, idx) => {
+                const active = idx === safeIdx;
+                return (
+                  <button
+                    key={c.id || idx}
+                    onClick={() => setSelectedCardIdx(idx)}
+                    className={`flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-bold border transition-all ${
+                      active
+                        ? 'bg-amber-500 text-gray-900 border-amber-500 shadow'
+                        : darkMode
+                          ? 'bg-gray-700 text-gray-200 border-gray-600 hover:bg-gray-600'
+                          : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'
+                    }`}
+                  >
+                    <span className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-black ${
+                      active ? 'bg-gray-900 text-amber-400' : 'bg-amber-100 text-amber-700'
+                    }`}>
+                      {getInitials(c.name_ar || c.name || '')}
+                    </span>
+                    <span className="flex flex-col items-start leading-tight">
+                      <span className="truncate max-w-[120px]">{c.name_ar || c.name || ''}</span>
+                      <span className={`text-[10px] font-mono ${active ? 'text-gray-700' : 'text-gray-400'}`}>
+                        #{c.member_code}
+                      </span>
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         {/* ── Print Dialog ── */}
         <Dialog open={showPrintDialog} onOpenChange={setShowPrintDialog}>
@@ -389,8 +440,8 @@ const MemberCard = () => {
               </DialogTitle>
             </DialogHeader>
             <div className="py-4">
-              <p className="text-center text-gray-600 mb-2 font-bold">{cardData?.name_ar}</p>
-              <p className="text-center text-sm text-orange-600 mb-4 font-bold">#{cardData?.member_code}</p>
+              <p className="text-center text-gray-600 mb-2 font-bold">{currentCard?.name_ar}</p>
+              <p className="text-center text-sm text-orange-600 mb-4 font-bold">#{currentCard?.member_code}</p>
               <p className="text-center text-sm text-gray-500 mb-4">
                 {language === 'ar' ? 'سيتم طباعة كرت العضوية + شعار الأكاديمية معاً' : 'Print member card + academy logo together'}
               </p>
@@ -444,13 +495,13 @@ const MemberCard = () => {
                 <h1 className="text-white font-black text-xl leading-tight truncate">{name}</h1>
                 <div className="flex items-center gap-2 mt-1.5">
                   <span className="bg-amber-500/20 border border-amber-500/30 text-amber-400 text-sm font-bold px-3 py-0.5 rounded-full">
-                    #{cardData?.member_code}
+                    #{currentCard?.member_code}
                   </span>
                 </div>
-                {cardData?.phone && (
+                {currentCard?.phone && (
                   <div className="flex items-center gap-1.5 mt-2">
                     <Phone className="w-3.5 h-3.5 text-gray-400" />
-                    <span className="text-gray-400 text-sm" dir="ltr">{cardData.phone}</span>
+                    <span className="text-gray-400 text-sm" dir="ltr">{currentCard.phone}</span>
                   </div>
                 )}
               </div>
@@ -494,7 +545,7 @@ const MemberCard = () => {
 
               {/* Member code under QR */}
               <p className={`text-2xl font-black mb-1 ${darkMode ? 'text-amber-400' : 'text-amber-600'}`}>
-                #{cardData?.member_code}
+                #{currentCard?.member_code}
               </p>
               <p className={`text-xs mb-5 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
                 📱 {language === 'ar' ? 'امسح هذا الرمز عند الدخول لتسجيل الحضور' : 'Scan this code at entry to record attendance'}

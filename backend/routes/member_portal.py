@@ -118,9 +118,11 @@ async def get_current_member(credentials: HTTPAuthorizationCredentials = Depends
                 for a in primary_acts:
                     a.setdefault("_owner_id", member["id"])
                     a.setdefault("_owner_name", member.get("name_ar") or member.get("name") or "")
+                    a.setdefault("_owner_member_code", member.get("member_code", ""))
                 for a in (sib.get("activities") or []):
                     a["_owner_id"] = sib["id"]
                     a["_owner_name"] = sib_name
+                    a["_owner_member_code"] = sib.get("member_code", "")
                     primary_acts.append(a)
                 member["activities"] = primary_acts
 
@@ -129,6 +131,7 @@ async def get_current_member(credentials: HTTPAuthorizationCredentials = Depends
             for a in (member.get("activities") or []):
                 a.setdefault("_owner_id", member["id"])
                 a.setdefault("_owner_name", member.get("name_ar") or member.get("name") or "")
+                a.setdefault("_owner_member_code", member.get("member_code", ""))
 
         member["_linked_member_ids"] = linked_ids
         member["_linked_members"] = linked_meta
@@ -304,7 +307,12 @@ async def get_member_subscriptions(member: dict = Depends(get_current_member)):
             "coach_name": coach_name,
             "coach_photo": coach_photo,
             "coach_id": coach_id,
-            "status": activity.get("status", "")
+            "status": activity.get("status", ""),
+            # Sibling-aggregation owner tags so the UI can label which linked
+            # member each subscription belongs to (parent + multiple children).
+            "_owner_id": activity.get("_owner_id", ""),
+            "_owner_name": activity.get("_owner_name", ""),
+            "_owner_member_code": activity.get("_owner_member_code", ""),
         }
         
         # Check if active or expired
@@ -414,32 +422,56 @@ async def get_invoice_details(invoice_id: str, member: dict = Depends(get_curren
 
 @router.get("/qr-card")
 async def get_qr_card_data(member: dict = Depends(get_current_member)):
-    """Get QR card data for the member"""
+    """Get QR card data for the member AND every linked sibling sharing the
+    same phone. Returns `cards`: one full card per linked member with their
+    own QR code, member_code, phone, and active activities. Top-level fields
+    mirror the primary (logged-in) card for backward compatibility."""
     today = datetime.now(timezone.utc).strftime('%Y-%m-%d')
-    
-    # Get active subscriptions
+
+    # Linked members = the logged-in member + any siblings sharing the phone.
+    # Falls back to a single-entry list when no siblings exist.
+    linked_meta = member.get("_linked_members") or [{
+        "id": member["id"],
+        "name": member.get("name_ar") or member.get("name") or "",
+        "member_code": member.get("member_code", ""),
+    }]
+    linked_ids = [lm["id"] for lm in linked_meta]
+
+    # Single batch fetch: all paid/partial invoices for ALL linked members.
     invoices = await db.invoices.find(
-        {"member_id": member["id"], "status": {"$in": ["paid", "partial"]}},
+        {"member_id": {"$in": linked_ids}, "status": {"$in": ["paid", "partial"]}},
         {"_id": 0}
-    ).to_list(100)
-    
-    # Cache coach lookups to avoid redundant DB queries
-    coach_cache = {}
+    ).to_list(500)
+    invoices_by_member: Dict[str, list] = {}
+    for inv in invoices:
+        invoices_by_member.setdefault(inv.get("member_id"), []).append(inv)
 
-    # Per-LEVEL coach maps (matched by activity_id and activity_name).
-    level_coach_by_aid, level_coach_by_aname = await get_member_level_coach_maps(member["id"])
+    # Hydrate each linked member's full doc once (name_ar, phone, etc).
+    linked_docs = await db.members.find(
+        {"id": {"$in": linked_ids}},
+        {"_id": 0, "id": 1, "name": 1, "name_ar": 1, "member_code": 1, "phone": 1}
+    ).to_list(len(linked_ids))
+    docs_by_id = {d["id"]: d for d in linked_docs}
 
-    async def get_coach_info(activity_id: str, activity_name: str = ""):
+    # Coach cache shared across all cards to avoid redundant DB lookups.
+    # Key includes the linked-member id because per-level coach assignments
+    # are member-specific: two siblings enrolled in the same activity may be
+    # in different levels with different coaches, so the cache must not bleed
+    # one sibling's coach into another's card.
+    coach_cache: Dict[tuple, tuple] = {}
+
+    async def resolve_coach(member_id: str, activity_id: str, activity_name: str,
+                            level_by_aid: Dict[str, str], level_by_aname: Dict[str, str]):
         if not activity_id and not activity_name:
             return "", ""
-        cache_key = (activity_id or "", activity_name or "")
+        cache_key = (member_id or "", activity_id or "", activity_name or "")
         if cache_key in coach_cache:
             return coach_cache[cache_key]
         coach_id = ""
-        if activity_id and activity_id in level_coach_by_aid:
-            coach_id = level_coach_by_aid[activity_id]
-        elif activity_name and activity_name in level_coach_by_aname:
-            coach_id = level_coach_by_aname[activity_name]
+        if activity_id and activity_id in level_by_aid:
+            coach_id = level_by_aid[activity_id]
+        elif activity_name and activity_name in level_by_aname:
+            coach_id = level_by_aname[activity_name]
         if not coach_id and activity_id:
             activity_data = await db.activities.find_one(
                 {"id": activity_id}, {"_id": 0, "coach_id": 1}
@@ -459,10 +491,17 @@ async def get_qr_card_data(member: dict = Depends(get_current_member)):
         coach_cache[cache_key] = ("", "")
         return ("", "")
 
-    active_activities = []
-    for inv in invoices:
-        for item in inv.get("items", []):
-            if item.get("activity_id"):
+    cards = []
+    for lm in linked_meta:
+        lm_id = lm["id"]
+        doc = docs_by_id.get(lm_id, {})
+        level_by_aid, level_by_aname = await get_member_level_coach_maps(lm_id)
+
+        active_activities = []
+        for inv in invoices_by_member.get(lm_id, []):
+            for item in inv.get("items", []):
+                if not item.get("activity_id"):
+                    continue
                 end_date = item.get("end_date", "")
                 start_date = item.get("start_date", "")
                 if not end_date and item.get("period"):
@@ -472,31 +511,44 @@ async def get_qr_card_data(member: dict = Depends(get_current_member)):
                         if len(parts) == 2:
                             start_date = start_date or parts[0].strip()
                             end_date = parts[1].strip()
-                
                 if end_date and end_date >= today:
-                    coach_name, coach_photo = await get_coach_info(item.get("activity_id"), item.get("activity_name") or "")
+                    coach_name, coach_photo = await resolve_coach(
+                        lm_id,
+                        item.get("activity_id"),
+                        item.get("activity_name") or "",
+                        level_by_aid, level_by_aname,
+                    )
                     active_activities.append({
                         "activity_name": item.get("activity_name"),
                         "start_date": start_date,
                         "end_date": end_date,
                         "schedule": item.get("schedule", ""),
                         "coach_name": coach_name,
-                        "coach_photo": coach_photo
+                        "coach_photo": coach_photo,
                     })
-    
+
+        name_ar = doc.get("name_ar") or lm.get("name") or ""
+        cards.append({
+            "id": lm_id,
+            "name": doc.get("name"),
+            "name_ar": name_ar,
+            "member_code": doc.get("member_code") or lm.get("member_code", ""),
+            "phone": doc.get("phone"),
+            "active_activities": active_activities,
+            "qr_data": {
+                "type": "WCPA_MEMBER",
+                "id": lm_id,
+                "code": doc.get("member_code") or lm.get("member_code", ""),
+                "name": name_ar,
+            }
+        })
+
+    # Backward compatibility: also expose the primary (logged-in) member's
+    # fields at the top level so older clients keep working.
+    primary = next((c for c in cards if c["id"] == member["id"]), cards[0] if cards else {})
     return {
-        "id": member["id"],
-        "name": member.get("name"),
-        "name_ar": member.get("name_ar"),
-        "member_code": member.get("member_code"),
-        "phone": member.get("phone"),
-        "active_activities": active_activities,
-        "qr_data": {
-            "type": "WCPA_MEMBER",
-            "id": member["id"],
-            "code": member.get("member_code"),
-            "name": member.get("name_ar")
-        }
+        **primary,
+        "cards": cards,
     }
 
 
