@@ -769,6 +769,12 @@ export const LevelsPage = () => {
 
     const memberMatchesAnyDay = (m) => printDays.some(day => memberMatchesDay(m, day));
 
+    // Track member IDs already printed so the same person doesn't appear in
+    // more than one time slot. The first slot they show up in (in display
+    // order) keeps them; later slots will skip duplicates.
+    const printedMemberIds = new Set();
+    const memberKey = (m) => m.member_id || m.id || `${m.member_name || m.name_ar || m.name || ''}|${m.member_code || ''}`;
+
     // Old-style table: one row per time slot. Each row only contains the
     // levels that actually exist for that slot (no empty placeholder cells
     // for levels registered in other slots).
@@ -804,7 +810,14 @@ export const LevelsPage = () => {
       const headerCells = slotLevels.map(renderLevelHeader).join('');
 
       const cells = slotLevels.map(lvl => {
-        const membersForDays = (lvl.members_details || []).filter(memberMatchesAnyDay);
+        const membersForDays = (lvl.members_details || [])
+          .filter(memberMatchesAnyDay)
+          .filter(m => {
+            const k = memberKey(m);
+            if (printedMemberIds.has(k)) return false;
+            printedMemberIds.add(k);
+            return true;
+          });
         const memberNames = membersForDays.map(m =>
           `<div style="padding:3px 0;border-bottom:1px dotted #ddd;font-size:16px;">${escapeHtml(m.member_name || m.name_ar || m.name)}</div>`
         ).join('');
