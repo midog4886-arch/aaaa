@@ -37,16 +37,23 @@ async def get_member_level_coach_maps(member_id: str):
     ).to_list(100)
     by_activity_id = {}
     by_activity_name = {}
+    by_level_id = {}
     for lv in member_levels:
         cid = lv.get("coach_id")
         if not cid:
             continue
         aid = lv.get("activity_id")
         aname = lv.get("activity_name")
+        lid = lv.get("id")
         if aid:
             by_activity_id[aid] = cid
         if aname:
             by_activity_name[aname] = cid
+        if lid:
+            by_level_id[lid] = cid
+    # Backward-compat: callers expect a 2-tuple, but we also expose the
+    # level_id map via a function attribute so newer code can opt-in.
+    get_member_level_coach_maps.last_by_level_id = by_level_id  # type: ignore[attr-defined]
     return by_activity_id, by_activity_name
 
 
@@ -438,18 +445,31 @@ async def get_qr_card_data(member: dict = Depends(get_current_member)):
     linked_ids = [lm["id"] for lm in linked_meta]
 
     # Single batch fetch: all paid/partial invoices for ALL linked members.
+    # IMPORTANT: A single invoice can be issued under one parent's member_id
+    # but contain items for multiple siblings (e.g. one swim subscription per
+    # child on the same receipt). So we group ITEMS — not invoices — by their
+    # own item.member_id (falling back to inv.member_id when missing). This
+    # ensures each sibling's card lists exactly their own subscriptions.
     invoices = await db.invoices.find(
         {"member_id": {"$in": linked_ids}, "status": {"$in": ["paid", "partial"]}},
         {"_id": 0}
     ).to_list(500)
-    invoices_by_member: Dict[str, list] = {}
+    items_by_member: Dict[str, list] = {}
     for inv in invoices:
-        invoices_by_member.setdefault(inv.get("member_id"), []).append(inv)
+        inv_owner = inv.get("member_id")
+        for item in inv.get("items", []):
+            owner = item.get("member_id") or inv_owner
+            if owner in linked_ids:
+                items_by_member.setdefault(owner, []).append(item)
 
-    # Hydrate each linked member's full doc once (name_ar, phone, etc).
+    # Hydrate each linked member's full doc once (name_ar, phone, activities).
+    # `activities` is needed so we can map each subscription's activity_id to
+    # its level_id and resolve the per-level coach even when the level's
+    # activity_name doesn't textually match the member's activity_name.
     linked_docs = await db.members.find(
         {"id": {"$in": linked_ids}},
-        {"_id": 0, "id": 1, "name": 1, "name_ar": 1, "member_code": 1, "phone": 1}
+        {"_id": 0, "id": 1, "name": 1, "name_ar": 1, "member_code": 1,
+         "phone": 1, "activities": 1}
     ).to_list(len(linked_ids))
     docs_by_id = {d["id"]: d for d in linked_docs}
 
@@ -461,14 +481,21 @@ async def get_qr_card_data(member: dict = Depends(get_current_member)):
     coach_cache: Dict[tuple, tuple] = {}
 
     async def resolve_coach(member_id: str, activity_id: str, activity_name: str,
-                            level_by_aid: Dict[str, str], level_by_aname: Dict[str, str]):
-        if not activity_id and not activity_name:
+                            level_by_aid: Dict[str, str], level_by_aname: Dict[str, str],
+                            level_by_lid: Dict[str, str] = None, level_id: str = ""):
+        if not activity_id and not activity_name and not level_id:
             return "", ""
-        cache_key = (member_id or "", activity_id or "", activity_name or "")
+        cache_key = (member_id or "", activity_id or "", activity_name or "", level_id or "")
         if cache_key in coach_cache:
             return coach_cache[cache_key]
         coach_id = ""
-        if activity_id and activity_id in level_by_aid:
+        # Prefer the explicit level_id on the member's activity entry — this
+        # handles the common case where the level's activity_name has been
+        # renamed (e.g. "سباحة - الساعه 4") and no longer textually matches
+        # the member's recorded activity_name ("السباحة 3 ايام في الاسبوع").
+        if level_id and level_by_lid and level_id in level_by_lid:
+            coach_id = level_by_lid[level_id]
+        elif activity_id and activity_id in level_by_aid:
             coach_id = level_by_aid[activity_id]
         elif activity_name and activity_name in level_by_aname:
             coach_id = level_by_aname[activity_name]
@@ -496,36 +523,56 @@ async def get_qr_card_data(member: dict = Depends(get_current_member)):
         lm_id = lm["id"]
         doc = docs_by_id.get(lm_id, {})
         level_by_aid, level_by_aname = await get_member_level_coach_maps(lm_id)
+        level_by_lid = getattr(get_member_level_coach_maps, "last_by_level_id", {}) or {}
+
+        # Build a per-member map: activity_id -> level_id from the member's
+        # own activity entries. Used to look up the per-level coach even when
+        # the level's activity_name has drifted from the member's recorded one.
+        member_activities = doc.get("activities") or []
+        level_id_by_aid: Dict[str, str] = {}
+        for ma in member_activities:
+            aid = ma.get("activity_id")
+            lid = ma.get("level_id")
+            if aid and lid:
+                level_id_by_aid[aid] = lid
 
         active_activities = []
-        for inv in invoices_by_member.get(lm_id, []):
-            for item in inv.get("items", []):
-                if not item.get("activity_id"):
+        seen_keys = set()
+        for item in items_by_member.get(lm_id, []):
+            if not item.get("activity_id"):
+                continue
+            end_date = item.get("end_date", "")
+            start_date = item.get("start_date", "")
+            if not end_date and item.get("period"):
+                period = item.get("period", "")
+                if " - " in period:
+                    parts = period.split(" - ")
+                    if len(parts) == 2:
+                        start_date = start_date or parts[0].strip()
+                        end_date = parts[1].strip()
+            if end_date and end_date >= today:
+                # Dedupe in case the same subscription appears on multiple
+                # invoices (e.g. partial + paid combinations).
+                dedupe_key = (item.get("activity_id"), start_date, end_date)
+                if dedupe_key in seen_keys:
                     continue
-                end_date = item.get("end_date", "")
-                start_date = item.get("start_date", "")
-                if not end_date and item.get("period"):
-                    period = item.get("period", "")
-                    if " - " in period:
-                        parts = period.split(" - ")
-                        if len(parts) == 2:
-                            start_date = start_date or parts[0].strip()
-                            end_date = parts[1].strip()
-                if end_date and end_date >= today:
-                    coach_name, coach_photo = await resolve_coach(
-                        lm_id,
-                        item.get("activity_id"),
-                        item.get("activity_name") or "",
-                        level_by_aid, level_by_aname,
-                    )
-                    active_activities.append({
-                        "activity_name": item.get("activity_name"),
-                        "start_date": start_date,
-                        "end_date": end_date,
-                        "schedule": item.get("schedule", ""),
-                        "coach_name": coach_name,
-                        "coach_photo": coach_photo,
-                    })
+                seen_keys.add(dedupe_key)
+                level_id_for_item = level_id_by_aid.get(item.get("activity_id"), "")
+                coach_name, coach_photo = await resolve_coach(
+                    lm_id,
+                    item.get("activity_id"),
+                    item.get("activity_name") or "",
+                    level_by_aid, level_by_aname,
+                    level_by_lid, level_id_for_item,
+                )
+                active_activities.append({
+                    "activity_name": item.get("activity_name"),
+                    "start_date": start_date,
+                    "end_date": end_date,
+                    "schedule": item.get("schedule", ""),
+                    "coach_name": coach_name,
+                    "coach_photo": coach_photo,
+                })
 
         name_ar = doc.get("name_ar") or lm.get("name") or ""
         cards.append({
