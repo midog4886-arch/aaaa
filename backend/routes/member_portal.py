@@ -72,20 +72,67 @@ def create_member_token(member_id: str, phone: str) -> str:
 
 
 async def get_current_member(credentials: HTTPAuthorizationCredentials = Depends(security)):
-    """Verify member JWT token"""
+    """Verify member JWT token. Also attach `_linked_member_ids` and
+    `_linked_members` covering every member that shares the same phone
+    (siblings sharing a guardian phone) and aggregate their `activities`
+    into the returned member dict so that subscriptions/schedule endpoints
+    naturally show all family members together. Each aggregated activity is
+    tagged with `_owner_id` and `_owner_name` so the UI can label them."""
     try:
         token = credentials.credentials
         payload = jwt.decode(token, MEMBER_JWT_SECRET, algorithms=[JWT_ALGORITHM])
-        
+
         if payload.get("type") != "member":
             raise HTTPException(status_code=401, detail="Invalid token type")
-        
+
         member_id = payload.get("member_id")
         member = await db.members.find_one({"id": member_id}, {"_id": 0})
-        
+
         if not member:
             raise HTTPException(status_code=401, detail="Member not found")
-        
+
+        # ── Find sibling members (same phone) ──
+        phone = (member.get("phone") or "").strip()
+        linked_ids = [member["id"]]
+        linked_meta = [{
+            "id": member["id"],
+            "name": member.get("name_ar") or member.get("name") or "",
+            "member_code": member.get("member_code", ""),
+        }]
+        if phone:
+            sibling_docs = await db.members.find(
+                {"phone": phone, "id": {"$ne": member["id"]}},
+                {"_id": 0, "id": 1, "name": 1, "name_ar": 1, "member_code": 1, "activities": 1}
+            ).to_list(20)
+            for sib in sibling_docs:
+                linked_ids.append(sib["id"])
+                sib_name = sib.get("name_ar") or sib.get("name") or ""
+                linked_meta.append({
+                    "id": sib["id"],
+                    "name": sib_name,
+                    "member_code": sib.get("member_code", ""),
+                })
+                # Tag and merge sibling activities into the primary member's list
+                primary_acts = member.get("activities") or []
+                # Tag primary's own activities once
+                for a in primary_acts:
+                    a.setdefault("_owner_id", member["id"])
+                    a.setdefault("_owner_name", member.get("name_ar") or member.get("name") or "")
+                for a in (sib.get("activities") or []):
+                    a["_owner_id"] = sib["id"]
+                    a["_owner_name"] = sib_name
+                    primary_acts.append(a)
+                member["activities"] = primary_acts
+
+        # If no siblings, still tag own activities for consistency
+        if len(linked_ids) == 1:
+            for a in (member.get("activities") or []):
+                a.setdefault("_owner_id", member["id"])
+                a.setdefault("_owner_name", member.get("name_ar") or member.get("name") or "")
+
+        member["_linked_member_ids"] = linked_ids
+        member["_linked_members"] = linked_meta
+
         return member
     except jwt.ExpiredSignatureError:
         raise HTTPException(status_code=401, detail="Token expired")
@@ -109,6 +156,23 @@ async def member_login(data: MemberLogin):
     # Create token
     token = create_member_token(member["id"], phone)
     
+    # Find any sibling members sharing this phone (so the UI can show them)
+    linked = [{
+        "id": member["id"],
+        "name": member.get("name_ar") or member.get("name") or "",
+        "member_code": member.get("member_code", ""),
+    }]
+    sibling_docs = await db.members.find(
+        {"phone": phone, "id": {"$ne": member["id"]}},
+        {"_id": 0, "id": 1, "name": 1, "name_ar": 1, "member_code": 1}
+    ).to_list(20)
+    for sib in sibling_docs:
+        linked.append({
+            "id": sib["id"],
+            "name": sib.get("name_ar") or sib.get("name") or "",
+            "member_code": sib.get("member_code", ""),
+        })
+
     return {
         "access_token": token,
         "token_type": "bearer",
@@ -119,7 +183,8 @@ async def member_login(data: MemberLogin):
             "phone": member.get("phone"),
             "member_code": member.get("member_code"),
             "email": member.get("email"),
-            "dark_mode": member.get("preferences", {}).get("dark_mode", False)
+            "dark_mode": member.get("preferences", {}).get("dark_mode", False),
+            "linked_members": linked,
         }
     }
 
@@ -316,10 +381,18 @@ async def get_member_schedule(member: dict = Depends(get_current_member)):
 async def get_member_invoices(member: dict = Depends(get_current_member)):
     """Get all invoices for the member"""
     invoices = await db.invoices.find(
-        {"member_id": member["id"]},
+        {"member_id": {"$in": member.get("_linked_member_ids", [member["id"]])}},
         {"_id": 0}
-    ).sort("created_at", -1).to_list(100)
-    
+    ).sort("created_at", -1).to_list(200)
+
+    # Tag each invoice with the owner's display name when sibling accounts are linked
+    linked_meta = {m["id"]: m for m in member.get("_linked_members", [])}
+    for inv in invoices:
+        owner = linked_meta.get(inv.get("member_id"))
+        if owner:
+            inv["_owner_name"] = owner.get("name", "")
+            inv["_owner_member_code"] = owner.get("member_code", "")
+
     return {"invoices": invoices}
 
 
@@ -327,7 +400,7 @@ async def get_member_invoices(member: dict = Depends(get_current_member)):
 async def get_invoice_details(invoice_id: str, member: dict = Depends(get_current_member)):
     """Get single invoice details"""
     invoice = await db.invoices.find_one(
-        {"id": invoice_id, "member_id": member["id"]},
+        {"id": invoice_id, "member_id": {"$in": member.get("_linked_member_ids", [member["id"]])}},
         {"_id": 0}
     )
     
@@ -437,8 +510,9 @@ async def get_my_tournaments(member: dict = Depends(get_current_member)):
     POSITION_LABEL_AR = {"1": "الأول", "2": "الثاني", "3": "الثالث", "participation": "مشاركة"}
     POSITION_LABEL_EN = {"1": "1st Place", "2": "2nd Place", "3": "3rd Place", "participation": "Participation"}
 
+    linked_ids_set = set(member.get("_linked_member_ids", [member["id"]]))
     tournaments = await db.tournaments.find(
-        {"participants.member_id": member["id"]},
+        {"participants.member_id": {"$in": list(linked_ids_set)}},
         {"_id": 0, "id": 1, "name": 1, "date": 1, "place": 1,
          "activity_name": 1, "status": 1, "participants": 1},
     ).sort("date", -1).to_list(200)
@@ -447,7 +521,7 @@ async def get_my_tournaments(member: dict = Depends(get_current_member)):
     level_ids = set()
     for t in tournaments:
         for p in t.get("participants", []) or []:
-            if p.get("member_id") == member["id"] and p.get("level_id"):
+            if p.get("member_id") in linked_ids_set and p.get("level_id"):
                 level_ids.add(p["level_id"])
 
     levels_map: Dict[str, dict] = {}
@@ -506,15 +580,20 @@ async def get_member_notifications(member: dict = Depends(get_current_member)):
     today = datetime.now(timezone.utc).strftime('%Y-%m-%d')
     notifications = []
     
-    # Check for expiring subscriptions (within 7 days)
+    linked_ids_list = member.get("_linked_member_ids", [member["id"]])
+
+    # Check for expiring subscriptions (within 7 days) — across all linked siblings
     invoices = await db.invoices.find(
-        {"member_id": member["id"], "status": {"$in": ["paid", "partial"]}},
+        {"member_id": {"$in": linked_ids_list}, "status": {"$in": ["paid", "partial"]}},
         {"_id": 0}
-    ).to_list(100)
-    
+    ).to_list(200)
+
     seven_days_later = (datetime.now(timezone.utc) + timedelta(days=7)).strftime('%Y-%m-%d')
-    
+    linked_meta = {m["id"]: m for m in member.get("_linked_members", [])}
+
     for inv in invoices:
+        owner = linked_meta.get(inv.get("member_id"))
+        owner_name = owner.get("name") if owner else ""
         for item in inv.get("items", []):
             if item.get("activity_id"):
                 end_date = item.get("end_date", "")
@@ -524,38 +603,37 @@ async def get_member_notifications(member: dict = Depends(get_current_member)):
                         parts = period.split(" - ")
                         if len(parts) == 2:
                             end_date = parts[1].strip()
-                
+
                 if end_date:
-                    # Expiring soon (within 7 days)
+                    name_prefix = f"{owner_name} - " if owner_name else ""
                     if today <= end_date <= seven_days_later:
                         notifications.append({
                             "id": str(uuid.uuid4()),
                             "type": "expiring_soon",
                             "title": "اشتراك على وشك الانتهاء",
-                            "message": f"اشتراك {item.get('activity_name')} سينتهي في {end_date}",
+                            "message": f"{name_prefix}اشتراك {item.get('activity_name')} سينتهي في {end_date}",
                             "activity_name": item.get("activity_name"),
                             "end_date": end_date,
                             "priority": "warning",
                             "created_at": datetime.now(timezone.utc).isoformat()
                         })
-                    # Already expired
                     elif end_date < today:
                         notifications.append({
                             "id": str(uuid.uuid4()),
                             "type": "expired",
                             "title": "اشتراك منتهي",
-                            "message": f"انتهى اشتراك {item.get('activity_name')} في {end_date}",
+                            "message": f"{name_prefix}انتهى اشتراك {item.get('activity_name')} في {end_date}",
                             "activity_name": item.get("activity_name"),
                             "end_date": end_date,
                             "priority": "danger",
                             "created_at": datetime.now(timezone.utc).isoformat()
                         })
-    
-    # Get general notifications/offers
+
+    # Get general notifications/offers (broadcast to any linked sibling)
     general_notifications = await db.notifications.find(
         {"$or": [
             {"target": "all_members"},
-            {"target_members": member["id"]}
+            {"target_members": {"$in": linked_ids_list}}
         ]},
         {"_id": 0}
     ).sort("created_at", -1).to_list(20)
@@ -619,14 +697,15 @@ async def get_member_notifications(member: dict = Depends(get_current_member)):
 @router.put("/notifications/mark-all-read")
 async def member_mark_all_notifications_read(member: dict = Depends(get_current_member)):
     """Mark all notifications as read for the current member"""
+    linked_ids_list = member.get("_linked_member_ids", [member["id"]])
     member_result = await db.member_notifications.update_many(
-        {"member_id": member["id"], "is_read": {"$ne": True}},
+        {"member_id": {"$in": linked_ids_list}, "is_read": {"$ne": True}},
         {"$set": {"is_read": True}}
     )
     general_result = await db.notifications.update_many(
         {"$or": [
             {"target": "all_members"},
-            {"target_members": member["id"]}
+            {"target_members": {"$in": linked_ids_list}}
         ], "is_read": {"$ne": True}},
         {"$set": {"is_read": True}}
     )
@@ -787,9 +866,9 @@ async def get_training_reminders(member: dict = Depends(get_current_member)):
                 })
     
     today_attendance = await db.attendance.find(
-        {"member_id": member["id"], "date": today},
+        {"member_id": {"$in": member.get("_linked_member_ids", [member["id"]])}, "date": today},
         {"_id": 0}
-    ).to_list(10)
+    ).to_list(20)
     
     attended_activities = {a.get("activity_id") for a in today_attendance}
     
@@ -809,12 +888,20 @@ async def get_training_reminders(member: dict = Depends(get_current_member)):
 
 @router.get("/attendance")
 async def get_member_attendance(member: dict = Depends(get_current_member)):
-    """Get attendance history for the member"""
+    """Get attendance history for the member (and any linked siblings)"""
+    linked_ids_list = member.get("_linked_member_ids", [member["id"]])
     attendance = await db.attendance.find(
-        {"member_id": member["id"]},
+        {"member_id": {"$in": linked_ids_list}},
         {"_id": 0}
-    ).sort("date", -1).to_list(100)
-    
+    ).sort("date", -1).to_list(200)
+
+    linked_meta = {m["id"]: m for m in member.get("_linked_members", [])}
+    for a in attendance:
+        owner = linked_meta.get(a.get("member_id"))
+        if owner:
+            a["_owner_name"] = owner.get("name", "")
+            a["_owner_member_code"] = owner.get("member_code", "")
+
     return {"attendance": attendance}
 
 
@@ -884,26 +971,28 @@ async def get_member_attendance_stats(
     first_day_last_month_str = first_day_last_month.strftime('%Y-%m-%d')
     last_day_last_month_str = last_month_dt.strftime('%Y-%m-%d')
     
-    # Get attendance for the target month
+    linked_ids_list = member.get("_linked_member_ids", [member["id"]])
+
+    # Get attendance for the target month (across all linked siblings)
     this_month_attendance = await db.attendance.find(
         {
-            "member_id": member["id"],
+            "member_id": {"$in": linked_ids_list},
             "date": {"$gte": first_day_str, "$lte": last_day_str}
         },
         {"_id": 0}
-    ).to_list(100)
-    
+    ).to_list(500)
+
     # Get attendance for last month
     last_month_attendance = await db.attendance.find(
         {
-            "member_id": member["id"],
+            "member_id": {"$in": linked_ids_list},
             "date": {"$gte": first_day_last_month_str, "$lte": last_day_last_month_str}
         },
         {"_id": 0}
-    ).to_list(100)
-    
+    ).to_list(500)
+
     # Get all-time attendance
-    total_attendance = await db.attendance.count_documents({"member_id": member["id"]})
+    total_attendance = await db.attendance.count_documents({"member_id": {"$in": linked_ids_list}})
     
     # Group by activity for this month
     activities_count = {}

@@ -421,6 +421,11 @@ const MemberInvoices = () => {
                             <span className={`text-xs px-2 py-0.5 rounded ${isForm ? 'bg-orange-100 text-orange-700' : 'bg-purple-100 text-purple-700'}`}>
                               {isForm ? 'استمارة' : 'فاتورة'}
                             </span>
+                            {item._owner_name && (
+                              <span className={`text-xs px-2 py-0.5 rounded font-bold ${darkMode ? 'bg-blue-900/40 text-blue-300' : 'bg-blue-100 text-blue-700'}`}>
+                                👤 {item._owner_name}
+                              </span>
+                            )}
                           </div>
                           
                           <p className={`text-sm mt-1 flex items-center gap-1 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>

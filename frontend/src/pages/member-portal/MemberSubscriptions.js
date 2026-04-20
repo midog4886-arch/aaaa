@@ -98,6 +98,11 @@ const MemberSubscriptions = () => {
                   <div key={idx} className={`p-4 rounded-lg border-2 ${darkMode ? 'bg-green-900/20 border-green-700' : 'bg-green-50 border-green-200'}`}>
                     <div className="flex items-start justify-between">
                       <div className="flex-1 min-w-0">
+                        {sub._owner_name && (
+                          <span className={`inline-block mb-1 px-2 py-0.5 rounded-full text-xs font-bold ${darkMode ? 'bg-blue-900/40 text-blue-300' : 'bg-blue-100 text-blue-700'}`}>
+                            👤 {sub._owner_name}
+                          </span>
+                        )}
                         <h3 className={`text-lg font-bold ${darkMode ? 'text-gray-100' : 'text-gray-800'}`}>{sub.activity_name}</h3>
                         <div className={`mt-2 space-y-1 text-sm ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
                           <p className="flex items-center gap-2">
@@ -148,6 +153,11 @@ const MemberSubscriptions = () => {
                   <div key={idx} className={`p-4 rounded-lg border-2 opacity-75 ${darkMode ? 'bg-red-900/20 border-red-700' : 'bg-red-50 border-red-200'}`}>
                     <div className="flex items-start justify-between">
                       <div>
+                        {sub._owner_name && (
+                          <span className={`inline-block mb-1 px-2 py-0.5 rounded-full text-xs font-bold ${darkMode ? 'bg-blue-900/40 text-blue-300' : 'bg-blue-100 text-blue-700'}`}>
+                            👤 {sub._owner_name}
+                          </span>
+                        )}
                         <h3 className={`text-lg font-bold ${darkMode ? 'text-gray-100' : 'text-gray-800'}`}>{sub.activity_name}</h3>
                         <div className={`mt-2 space-y-1 text-sm ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
                           <p className="flex items-center gap-2">

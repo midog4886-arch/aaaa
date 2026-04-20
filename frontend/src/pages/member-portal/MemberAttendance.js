@@ -751,7 +751,14 @@ const MemberAttendance = () => {
                         <CheckCircle className="w-5 h-5 text-green-600" />
                       </div>
                       <div>
-                        <p className={`font-medium text-sm ${darkMode ? 'text-white' : 'text-gray-800'}`}>{att.activity_name || (language === 'ar' ? 'نشاط' : 'Activity')}</p>
+                        <p className={`font-medium text-sm ${darkMode ? 'text-white' : 'text-gray-800'}`}>
+                          {att.activity_name || (language === 'ar' ? 'نشاط' : 'Activity')}
+                          {att._owner_name && (
+                            <span className={`ms-2 px-1.5 py-0.5 rounded text-[10px] font-bold ${darkMode ? 'bg-blue-900/40 text-blue-300' : 'bg-blue-100 text-blue-700'}`}>
+                              👤 {att._owner_name}
+                            </span>
+                          )}
+                        </p>
                         <p className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{att.time || ''}</p>
                       </div>
                     </div>
