@@ -1256,7 +1256,11 @@ ${slotTables}
     return a.end_date >= todayStr;
   };
 
+  const _seenAvail = new Set();
   const availableMembers = members.filter(m => {
+    if (!m || !m.id) return false;
+    if (_seenAvail.has(m.id)) return false;
+    _seenAvail.add(m.id);
     if (!selectedLevel) return true;
     return !(selectedLevel.members || []).includes(m.id);
   }).filter(m => {
@@ -1295,7 +1299,13 @@ ${slotTables}
 
   // Get members in level
   const getLevelMembers = (level) => {
-    return members.filter(m => (level.members || []).includes(m.id));
+    const ids = Array.from(new Set(level.members || []));
+    const seen = new Set();
+    return members.filter(m => {
+      if (!ids.includes(m.id) || seen.has(m.id)) return false;
+      seen.add(m.id);
+      return true;
+    });
   };
 
   if (loading) {
