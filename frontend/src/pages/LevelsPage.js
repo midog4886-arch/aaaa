@@ -188,6 +188,25 @@ export const LevelsPage = () => {
     setAssigning(true);
     try {
       await levelsAPI.addMember(level.id, assignTarget.member.id);
+      const assignedMemberId = assignTarget.member.id;
+      const assignedActName = assignTarget.activity?.activity_name || '';
+      const assignedActId = assignTarget.activity?.activity_id || '';
+      // Optimistically remove the just-assigned activity from the local
+      // unassigned list so the row disappears immediately. If the member
+      // had other unassigned activities, only that one entry is dropped;
+      // when no activities remain, the whole member row is removed.
+      setUnassignedData(prev => prev
+        .map(m => {
+          if (m.id !== assignedMemberId) return m;
+          const remaining = (m.unassigned_activities || []).filter(a => {
+            if (assignedActId && a.activity_id === assignedActId) return false;
+            if (assignedActName && a.activity_name === assignedActName) return false;
+            return true;
+          });
+          return { ...m, unassigned_activities: remaining };
+        })
+        .filter(m => (m.unassigned_activities || []).length > 0)
+      );
       toast.success(t('تم تعيين العضو للمستوى', 'Member assigned to level'));
       setAssignPickerOpen(false);
       setAssignTarget(null);
