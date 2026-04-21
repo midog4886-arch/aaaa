@@ -1009,7 +1009,7 @@ ${slotTables}
     // Check capacity
     const { mainActivity } = parseActivityName(targetLevel.activity_name);
     const currentCount = (targetLevel.members || []).length;
-    const maxCapacity = mainActivity === 'swimming' ? 6 : (targetLevel.capacity || 10);
+    const maxCapacity = targetLevel.capacity || (mainActivity === 'swimming' ? 6 : 10);
     
     if (currentCount >= maxCapacity) {
       toast.error(t(`المستوى ممتلئ (الحد الأقصى ${maxCapacity})`, `Level is full (max ${maxCapacity})`));
@@ -1173,7 +1173,7 @@ ${slotTables}
       if (!full) return acc;
       return (full.activities || []).some(isActivityNonExpired) ? acc + 1 : acc;
     }, 0);
-    const maxCapacity = mainActivity === 'swimming' ? 6 : (selectedLevel?.capacity || 10);
+    const maxCapacity = selectedLevel?.capacity || (mainActivity === 'swimming' ? 6 : 10);
 
     if (currentCount >= maxCapacity) {
       toast.error(t(`المستوى ممتلئ (الحد الأقصى ${maxCapacity} أعضاء)`, `Level is full (max ${maxCapacity} members)`));
@@ -1446,7 +1446,7 @@ ${slotTables}
   // Render a level card component with drag & drop support
   const renderLevelCard = (originalLevel, activityId) => {
     const level = getFilteredLevelForDay(originalLevel);
-    const maxCapacity = activityId === 'swimming' ? 6 : (originalLevel.capacity || 10);
+    const maxCapacity = originalLevel.capacity || (activityId === 'swimming' ? 6 : 10);
     // Hide members whose subscriptions have expired so they don't appear in
     // the level cards or count toward the displayed enrollment.
     const rawLevelMembers = (level.members_details || []).map(md => {
@@ -1852,7 +1852,7 @@ ${slotTables}
               const totalMembers = timeSlots.reduce((sum, slot) =>
                 sum + activityLevels[slot].reduce((s, l) => s + getFilteredLevelForDay(l).members.length, 0), 0);
               const totalCapacity = timeSlots.reduce((sum, slot) =>
-                sum + activityLevels[slot].reduce((s, l) => s + (baseActivity.id === 'swimming' ? 6 : (l.capacity || 10)), 0), 0);
+                sum + activityLevels[slot].reduce((s, l) => s + (l.capacity || (baseActivity.id === 'swimming' ? 6 : 10)), 0), 0);
               const fillPct = totalCapacity > 0 ? Math.round((totalMembers / totalCapacity) * 100) : 0;
               return { ...baseActivity, activity, timeSlots, totalLevels, totalMembers, totalCapacity, fillPct, type: 'main' };
             }),
@@ -1990,7 +1990,7 @@ ${slotTables}
                         </h2>
                         {card.id === 'swimming' && (
                           <Badge className="bg-white/20 text-white border-0 mt-2">
-                            {t('الحد الأقصى 6 لاعبين', 'Max 6 players')}
+                            {t('الافتراضي 6 لاعبين لكل مستوى', 'Default 6 players per level')}
                           </Badge>
                         )}
                         {/* Fill Percentage Badge */}
@@ -2089,7 +2089,7 @@ ${slotTables}
                   {timeSlots.map(timeSlot => {
                     const slotLevels = getLevelsForTimeSlot(selectedActivityId, timeSlot);
                     const slotMembers = slotLevels.reduce((sum, l) => sum + getFilteredLevelForDay(l).members.length, 0);
-                    const maxCapacity = slotLevels.reduce((sum, l) => sum + (selectedActivityId === 'swimming' ? 6 : (l.capacity || 10)), 0);
+                    const maxCapacity = slotLevels.reduce((sum, l) => sum + (l.capacity || (selectedActivityId === 'swimming' ? 6 : 10)), 0);
                     const fillPercentage = maxCapacity > 0 ? Math.round((slotMembers / maxCapacity) * 100) : 0;
                     
                     return (
@@ -2397,9 +2397,9 @@ ${slotTables}
                   onChange={(e) => setFormData({ ...formData, capacity: parseInt(e.target.value) || 10 })}
                 />
                 {formData.main_activity === 'swimming' && (
-                  <p className="text-xs text-orange-600 mt-1 flex items-center gap-1">
+                  <p className="text-xs text-gray-500 mt-1 flex items-center gap-1">
                     <AlertTriangle className="w-3 h-3" />
-                    {t('السباحة: الحد الأقصى 6 لاعبين لكل مستوى', 'Swimming: Max 6 players per level')}
+                    {t('الافتراضي للسباحة 6 لاعبين — يمكنك تغييره حسب الحاجة', 'Swimming default is 6 — you can change it as needed')}
                   </p>
                 )}
               </div>
@@ -2519,7 +2519,7 @@ ${slotTables}
               {/* Capacity Warning */}
               {selectedLevel && (
                 <div className={`mb-3 p-2 rounded-lg ${
-                  (selectedLevel.members || []).length >= (parseActivityName(selectedLevel.activity_name).mainActivity === 'swimming' ? 6 : selectedLevel.capacity || 10)
+                  (selectedLevel.members || []).length >= (selectedLevel.capacity || (parseActivityName(selectedLevel.activity_name).mainActivity === 'swimming' ? 6 : 10))
                     ? 'bg-red-50 border border-red-200'
                     : 'bg-green-50 border border-green-200'
                 }`}>
@@ -2529,7 +2529,7 @@ ${slotTables}
                     </span>
                     <span>
                       {t('السعة القصوى', 'Max Capacity')}: {
-                        parseActivityName(selectedLevel.activity_name).mainActivity === 'swimming' ? 6 : selectedLevel.capacity || 10
+                        selectedLevel.capacity || (parseActivityName(selectedLevel.activity_name).mainActivity === 'swimming' ? 6 : 10)
                       }
                     </span>
                   </div>
