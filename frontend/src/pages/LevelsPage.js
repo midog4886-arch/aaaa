@@ -1384,13 +1384,25 @@ ${slotTables}
     });
   });
 
-  // Get members in level
+  // Get members in level. We filter out stale entries whose subscription
+  // no longer matches the level's main activity (or whose subscription has
+  // expired) — these are legacy/orphan ids in level.members that should
+  // never show up in the manage-members dialog.
   const getLevelMembers = (level) => {
     const ids = Array.from(new Set(level.members || []));
     const seen = new Set();
+    const levelMain = parseActivityName(level.activity_name).mainActivity;
     return members.filter(m => {
       if (!ids.includes(m.id) || seen.has(m.id)) return false;
       seen.add(m.id);
+      const acts = (m.activities || []).filter(isActivityNonExpired);
+      if (acts.length === 0) return false;
+      // Keep only members whose active subscription matches the level's
+      // main activity (swimming/football/karate). Levels parsed as
+      // "other" keep their previous broad behavior.
+      if (levelMain && levelMain !== 'other') {
+        return acts.some(a => parseActivityName(a.activity_name).mainActivity === levelMain);
+      }
       return true;
     });
   };
