@@ -2567,12 +2567,16 @@ ${slotTables}
                   <div className="flex-1 overflow-y-auto p-2 space-y-1">
                     {getLevelMembers(selectedLevel || {}).map(member => {
                       const guardian = getGuardianDisplay(member);
+                      // Show every non-expired active subscription for the
+                      // member so admins can see exactly what they're enrolled
+                      // in (activity name, schedule/days, end date).
+                      const activeActs = (member.activities || []).filter(isActivityNonExpired);
                       return (
                       <div 
                         key={member.id}
-                        className="flex items-center gap-2 p-2 bg-gray-50 rounded hover:bg-gray-100"
+                        className="flex items-start gap-2 p-2 bg-gray-50 rounded hover:bg-gray-100"
                       >
-                        <div className={`w-8 h-8 rounded-full ${getLevelColor(selectedLevel?.level_number)} text-white flex items-center justify-center text-sm font-bold`}>
+                        <div className={`w-8 h-8 rounded-full ${getLevelColor(selectedLevel?.level_number)} text-white flex items-center justify-center text-sm font-bold flex-shrink-0`}>
                           {(member.name_ar || member.name || '?').charAt(0)}
                         </div>
                         <div className="flex-1 min-w-0">
@@ -2586,12 +2590,30 @@ ${slotTables}
                               {guardian.member_code && <span className="text-gray-400"> · #{guardian.member_code}</span>}
                             </p>
                           )}
-                          <p className="text-xs text-gray-500">#{member.member_code}</p>
+                          <p className="text-xs text-gray-500">#{member.member_code}{member.phone ? ` • ${member.phone}` : ''}</p>
+                          {activeActs.length > 0 && (
+                            <div className="mt-1 space-y-0.5">
+                              {activeActs.map((a, idx) => {
+                                const days = (a.training_days && a.training_days.length)
+                                  ? a.training_days.join('، ')
+                                  : '';
+                                const sched = a.schedule || '';
+                                const detail = days || sched;
+                                return (
+                                  <p key={idx} className="text-xs text-blue-600 truncate">
+                                    {a.activity_name}
+                                    {detail ? ` — ${detail}` : ''}
+                                    {a.end_date ? <span className="text-gray-400"> · {t('حتى', 'until')} {a.end_date}</span> : null}
+                                  </p>
+                                );
+                              })}
+                            </div>
+                          )}
                         </div>
                         <Button
                           size="icon"
                           variant="ghost"
-                          className="h-7 w-7 text-red-500 hover:bg-red-50"
+                          className="h-7 w-7 text-red-500 hover:bg-red-50 flex-shrink-0"
                           onClick={() => handleRemoveMember(member.id)}
                         >
                           <UserMinus className="w-4 h-4" />
