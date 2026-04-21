@@ -263,6 +263,7 @@ async def add_member_to_level(level_id: str, member_id: str, current_user: dict 
         match_aname = level.get("activity_name")
         member_doc = await db.members.find_one({"id": member_id}, {"_id": 0, "activities": 1})
         needs_heal = False
+        has_matching_activity = False
         if member_doc:
             activities = member_doc.get("activities", []) or []
             for act in activities:
@@ -271,6 +272,8 @@ async def add_member_to_level(level_id: str, member_id: str, current_user: dict 
                     matches = True
                 if not matches and match_aname and act.get("activity_name") == match_aname:
                     matches = True
+                if matches:
+                    has_matching_activity = True
                 if matches and not act.get("level_id"):
                     act["level_id"] = level["id"]
                     needs_heal = True
@@ -281,8 +284,16 @@ async def add_member_to_level(level_id: str, member_id: str, current_user: dict 
                 )
                 cache_invalidate("levels:")
                 return {"message": "Member activity re-linked to existing level membership", "healed": True}
-        # No desync to heal → genuine duplicate request, surface the error.
-        raise HTTPException(status_code=400, detail="العضو موجود مسبقاً في هذا المستوى")
+        # If the id is present in level.members but the member has no matching
+        # activity at all (member deleted, activity removed, or stale legacy
+        # data), the entry is stale. Quietly remove it and fall through so the
+        # normal add flow below can run cleanly.
+        if not has_matching_activity:
+            await db.levels.update_one({"id": level_id}, {"$pull": {"members": member_id}})
+            level["members"] = [mid for mid in level.get("members", []) if mid != member_id]
+        else:
+            # Genuine duplicate request, surface the error.
+            raise HTTPException(status_code=400, detail="العضو موجود مسبقاً في هذا المستوى")
 
     # Prevent the same member from being added to more than one level of the
     # same activity (whether matched by activity_id or activity_name).
