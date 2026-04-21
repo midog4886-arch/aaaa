@@ -1199,11 +1199,27 @@ ${slotTables}
           ? t('تمت إضافة العضو ونُقل من المستوى السابق', 'Member added and moved from previous level')
           : t('تمت إضافة العضو', 'Member added')
       );
-      loadData();
-      setSelectedLevel(prev => ({
-        ...prev,
-        members: [...(prev.members || []), memberId]
-      }));
+      // Refetch fresh data, then re-sync the open dialog's selectedLevel from
+      // the refreshed levels list so the right-side "Level Members" panel
+      // and members_details immediately reflect the addition.
+      const branchParams = selectedBranchId && selectedBranchId !== 'all' ? { branch_filter: selectedBranchId } : {};
+      try {
+        const [levelsRes, membersRes] = await Promise.all([
+          levelsAPI.getAll(branchParams),
+          membersAPI.getAll(branchParams),
+        ]);
+        setLevels(levelsRes.data);
+        setMembers(membersRes.data);
+        const fresh = (levelsRes.data || []).find(l => l.id === selectedLevel.id);
+        if (fresh) setSelectedLevel(fresh);
+      } catch (_) {
+        // Fallback: optimistic update so the UI still reflects the add.
+        setSelectedLevel(prev => ({
+          ...prev,
+          members: Array.from(new Set([...(prev.members || []), memberId]))
+        }));
+        loadData();
+      }
     } catch (error) {
       toast.error(error.response?.data?.detail || t('error', 'Error'));
     }
