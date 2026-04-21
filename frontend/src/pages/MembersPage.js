@@ -204,6 +204,18 @@ export const MembersPage = () => {
     loadData();
   }, [selectedBranchId]);
 
+  // When the global search (or any link) sends ?focus=<member_id>, open the
+  // member's view dialog directly once members are loaded.
+  useEffect(() => {
+    const focusId = searchParams.get('focus');
+    if (!focusId || !members || members.length === 0) return;
+    const target = members.find(m => m.id === focusId);
+    if (target) {
+      openViewDialog(target);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [members, searchParams]);
+
   const loadData = async () => {
     try {
       const branchParams = selectedBranchId && selectedBranchId !== 'all' ? { branch_filter: selectedBranchId } : {};

@@ -112,7 +112,7 @@ const GlobalSearch = () => {
                   {results.members.map((m) => (
                     <button
                       key={m.id}
-                      onClick={() => handleNavigate(`/admin/members?search=${encodeURIComponent(m.name)}`)}
+                      onClick={() => handleNavigate(`/admin/members?focus=${encodeURIComponent(m.id)}`)}
                       className="w-full text-start px-4 py-2.5 hover:bg-blue-50/50 transition-colors flex items-center gap-3 border-b last:border-b-0"
                     >
                       <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-blue-700 text-sm font-bold flex-shrink-0">
