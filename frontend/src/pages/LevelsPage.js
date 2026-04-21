@@ -2472,7 +2472,7 @@ ${slotTables}
 
         {/* Manage Members Dialog */}
         <Dialog open={isMembersDialogOpen} onOpenChange={setIsMembersDialogOpen}>
-          <DialogContent className="max-w-2xl max-h-[80vh] overflow-hidden flex flex-col">
+          <DialogContent className="max-w-6xl w-[95vw] max-h-[90vh] overflow-hidden flex flex-col">
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
                 <Users className="w-5 h-5" />
