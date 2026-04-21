@@ -1421,9 +1421,25 @@ export const MembersPage = () => {
                             const acts = member.activities || [];
                             const hasActive = acts.some(a => getActivityStatusFromDate(a) === 'active');
                             const allExpired = acts.length > 0 && acts.every(a => getActivityStatusFromDate(a) === 'expired');
-                            if (hasActive) return <CheckCircle className="w-5 h-5 text-green-500 inline" />;
-                            if (allExpired) return <XCircle className="w-5 h-5 text-red-500 inline" />;
-                            return <span className="text-gray-300">-</span>;
+                            const title = hasActive
+                              ? (language === 'ar' ? 'عرض تفاصيل العضو' : 'View member details')
+                              : allExpired
+                                ? (language === 'ar' ? 'منتهي - عرض التفاصيل' : 'Expired - view details')
+                                : (language === 'ar' ? 'لا توجد اشتراكات' : 'No subscriptions');
+                            const Icon = hasActive ? CheckCircle : allExpired ? XCircle : null;
+                            const cls = hasActive ? 'text-green-500' : allExpired ? 'text-red-500' : 'text-gray-300';
+                            if (!Icon) return <span className="text-gray-300">-</span>;
+                            return (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                title={title}
+                                className={`${cls} h-7 w-7 p-0`}
+                                onClick={() => openViewDialog(member)}
+                              >
+                                <Icon className="w-5 h-5" />
+                              </Button>
+                            );
                           })()}
                         </td>
                         <td className="font-mono text-primary font-bold hidden sm:table-cell">
