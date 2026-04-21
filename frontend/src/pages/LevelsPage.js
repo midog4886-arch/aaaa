@@ -360,6 +360,12 @@ export const LevelsPage = () => {
   const memberMatchesDay = (memberDetail, dayId) => {
     if (!dayId || !memberDetail?.schedule) return true;
     const schedule = memberDetail.schedule;
+    // If the schedule string doesn't reference ANY day name (e.g. time-only
+    // strings like "6:00 م"), treat it as matching every day rather than
+    // hiding the member from every day filter.
+    const allDayNames = Object.values(DAY_ARABIC_MAP).flat();
+    const mentionsAnyDay = allDayNames.some(name => schedule.includes(name));
+    if (!mentionsAnyDay) return true;
     const dayNames = DAY_ARABIC_MAP[dayId] || [];
     return dayNames.some(name => schedule.includes(name));
   };
