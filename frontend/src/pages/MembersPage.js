@@ -1446,25 +1446,37 @@ export const MembersPage = () => {
                           {member.member_code || '-'}
                         </td>
                         <td>
-                          <div className="font-medium">{language === 'ar' ? member.name_ar : member.name}</div>
-                          {(member.guardian_name_ar || member.guardian_name) && (
-                            <div className="text-xs text-gray-500">{language === 'ar' ? member.guardian_name_ar : member.guardian_name}</div>
-                          )}
-                          {member.member_code && (
-                            <div className="sm:hidden text-xs font-mono text-primary font-semibold mt-0.5">#{member.member_code}</div>
-                          )}
-                          {member.phone && (
-                            <div className={`sm:hidden text-xs mt-0.5 ${isSharedPhone ? 'text-amber-600 font-medium' : 'text-gray-500'}`} dir="ltr">
-                              {member.phone}{isSharedPhone && <span className="ms-1 text-xs bg-amber-100 text-amber-700 rounded px-1" dir="rtl">مشترك</span>}
-                            </div>
-                          )}
+                          <button
+                            type="button"
+                            onClick={() => openViewDialog(member)}
+                            className="text-start w-full hover:text-primary transition-colors"
+                            title={language === 'ar' ? 'عرض تفاصيل العضو' : 'View member details'}
+                          >
+                            <div className="font-medium">{language === 'ar' ? member.name_ar : member.name}</div>
+                            {(member.guardian_name_ar || member.guardian_name) && (
+                              <div className="text-xs text-gray-500">{language === 'ar' ? member.guardian_name_ar : member.guardian_name}</div>
+                            )}
+                            {member.member_code && (
+                              <div className="sm:hidden text-xs font-mono text-primary font-semibold mt-0.5">#{member.member_code}</div>
+                            )}
+                            {member.phone && (
+                              <div className={`sm:hidden text-xs mt-0.5 ${isSharedPhone ? 'text-amber-600 font-medium' : 'text-gray-500'}`} dir="ltr">
+                                {member.phone}{isSharedPhone && <span className="ms-1 text-xs bg-amber-100 text-amber-700 rounded px-1" dir="rtl">مشترك</span>}
+                              </div>
+                            )}
+                          </button>
                         </td>
                         <td dir="ltr" className="text-start">
                           <div className="flex items-center gap-1">
-                            <span className={isSharedPhone ? 'text-amber-600 font-medium' : ''} title={isSharedPhone ? (language === 'ar' ? 'رقم مشترك بين أكثر من عضو' : 'Shared phone number') : ''}>
+                            <button
+                              type="button"
+                              onClick={() => openViewDialog(member)}
+                              className={`hover:text-primary transition-colors ${isSharedPhone ? 'text-amber-600 font-medium' : ''}`}
+                              title={isSharedPhone ? (language === 'ar' ? 'رقم مشترك - اضغط لعرض التفاصيل' : 'Shared phone - click to view details') : (language === 'ar' ? 'عرض تفاصيل العضو' : 'View member details')}
+                            >
                               {member.phone}
                               {isSharedPhone && <span className="ms-1 text-xs bg-amber-100 text-amber-700 rounded px-1" dir="rtl">مشترك</span>}
-                            </span>
+                            </button>
                             {member.phone && (
                               <a
                                 href={`https://wa.me/966${member.phone?.replace(/^0/, '')}`}
