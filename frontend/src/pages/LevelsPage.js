@@ -2639,11 +2639,7 @@ ${slotTables}
                   </div>
                   <div className="flex-1 overflow-y-auto p-2 space-y-1">
                     {availableMembers.slice(0, 50).map(member => {
-                      const activeActivity = (member.activities || []).find(a => a.status === 'active');
-                      const activityLabel = activeActivity?.activity_name || '';
-                      const daysLabel = activeActivity?.training_days?.length
-                        ? activeActivity.training_days.join('، ')
-                        : activeActivity?.schedule || '';
+                      const memberActiveActs = (member.activities || []).filter(isActivityNonExpired);
                       const guardian = getGuardianDisplay(member);
                       return (
                         <div 
@@ -2665,10 +2661,26 @@ ${slotTables}
                               </p>
                             )}
                             <p className="text-xs text-gray-500">#{member.member_code} • {member.phone}</p>
-                            {(activityLabel || daysLabel) && (
-                              <p className="text-xs text-blue-600 truncate mt-0.5">
-                                {activityLabel}{activityLabel && daysLabel ? ' — ' : ''}{daysLabel}
-                              </p>
+                            {memberActiveActs.length > 0 && (
+                              <div className="mt-0.5 space-y-0.5">
+                                {memberActiveActs.map((a, idx) => {
+                                  const days = (a.training_days && a.training_days.length)
+                                    ? a.training_days.join('، ')
+                                    : '';
+                                  const sched = a.schedule || '';
+                                  const parts = [];
+                                  if (days) parts.push(days);
+                                  if (sched) parts.push(sched);
+                                  const detail = parts.join(' • ');
+                                  return (
+                                    <p key={idx} className="text-xs text-blue-600 truncate">
+                                      {a.activity_name}
+                                      {detail ? ` — ${detail}` : ''}
+                                      {a.end_date ? <span className="text-gray-400"> · {t('حتى', 'until')} {a.end_date}</span> : null}
+                                    </p>
+                                  );
+                                })}
+                              </div>
                             )}
                           </div>
                           <Button
