@@ -44,7 +44,9 @@ import {
   Package,
   Snowflake,
   PlayCircle,
-  Trophy
+  Trophy,
+  CheckCircle,
+  XCircle
 } from 'lucide-react';
 
 export const MembersPage = () => {
@@ -1389,6 +1391,7 @@ export const MembersPage = () => {
               <table className="data-table">
                 <thead>
                   <tr>
+                    <th className="w-8"></th>
                     <th className="hidden sm:table-cell">{language === 'ar' ? 'رقم العضوية' : 'Member ID'}</th>
                     <th>{language === 'ar' ? 'اسم العضو / ولي الأمر' : 'Member / Guardian'}</th>
                     <th>{t('phone')}</th>
@@ -1401,7 +1404,7 @@ export const MembersPage = () => {
                 <tbody>
                   {filteredMembers.length === 0 ? (
                     <tr>
-                      <td colSpan={7} className="text-center py-8 text-muted-foreground">
+                      <td colSpan={8} className="text-center py-8 text-muted-foreground">
                         {t('no_data')}
                       </td>
                     </tr>
@@ -1413,6 +1416,16 @@ export const MembersPage = () => {
                       const isSharedPhone = member.phone && (phoneCount[member.phone.trim()] || 0) > 1;
                       return (
                       <tr key={member.id} data-testid={`member-row-${member.id}`} className={member.activities?.some(a => { const d = getDaysRemaining(a.end_date); const s = getActivityStatusFromDate(a); return s === 'active' && d !== null && d <= 7 && d >= 0; }) ? 'bg-amber-50' : member.activities?.every(a => getActivityStatusFromDate(a) === 'expired') && member.activities?.length > 0 ? 'bg-red-50/50' : ''}>
+                        <td className="text-center">
+                          {(() => {
+                            const acts = member.activities || [];
+                            const hasActive = acts.some(a => getActivityStatusFromDate(a) === 'active');
+                            const allExpired = acts.length > 0 && acts.every(a => getActivityStatusFromDate(a) === 'expired');
+                            if (hasActive) return <CheckCircle className="w-5 h-5 text-green-500 inline" />;
+                            if (allExpired) return <XCircle className="w-5 h-5 text-red-500 inline" />;
+                            return <span className="text-gray-300">-</span>;
+                          })()}
+                        </td>
                         <td className="font-mono text-primary font-bold hidden sm:table-cell">
                           {member.member_code || '-'}
                         </td>
