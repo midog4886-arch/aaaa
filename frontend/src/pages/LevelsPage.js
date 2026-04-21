@@ -2598,7 +2598,10 @@ ${slotTables}
                                   ? a.training_days.join('، ')
                                   : '';
                                 const sched = a.schedule || '';
-                                const detail = days || sched;
+                                const parts = [];
+                                if (days) parts.push(days);
+                                if (sched) parts.push(sched);
+                                const detail = parts.join(' • ');
                                 return (
                                   <p key={idx} className="text-xs text-blue-600 truncate">
                                     {a.activity_name}
