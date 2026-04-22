@@ -50,6 +50,8 @@ const SocialPublisherPage = () => {
   const [editorOpen, setEditorOpen] = useState(false);
   const [trimOpen, setTrimOpen] = useState(false);
   const [videoCrop, setVideoCrop] = useState(null); // { crop:{x,y,width,height}, aspect }
+  const [videoEdits, setVideoEdits] = useState(null); // { filter, logo } applied via ffmpeg on publish
+  const [videoLogoFile, setVideoLogoFile] = useState(null); // pending File for custom video logo
 
   const [caption, setCaption] = useState('');
   const [overrides, setOverrides] = useState({}); // { platform: text }
@@ -238,6 +240,8 @@ const SocialPublisherPage = () => {
     setResults(null);
     setVideoDuration(null);
     setVideoCrop(null);
+    setVideoEdits(null);
+    setVideoLogoFile(null);
     const url = URL.createObjectURL(f);
     setPreviewUrl(url);
     if (f.type.startsWith('video/')) {
@@ -276,6 +280,14 @@ const SocialPublisherPage = () => {
     if (result.kind === 'image' && result.file) {
       adoptFile(result.file);
       toast.success('تم تطبيق التعديلات على الصورة');
+    } else if (result.kind === 'video') {
+      const edits = result.edits || {};
+      const hasAny = !!edits.filter || !!edits.logo;
+      setVideoEdits(hasAny ? edits : null);
+      setVideoLogoFile(result.logoFile || null);
+      toast.success(hasAny
+        ? 'تم حفظ تعديلات الفيديو، ستُطبَّق على الخادم عند النشر'
+        : 'تم مسح تعديلات الفيديو');
     }
   };
 
@@ -337,11 +349,25 @@ const SocialPublisherPage = () => {
         platform: p,
         caption_override: overrides[p] && overrides[p].trim() !== '' ? overrides[p] : null,
       }));
+      // If the user picked a custom logo for the video, upload it first so
+      // the backend can reference it by filename when running ffmpeg.
+      let videoEditsPayload = null;
+      if (uploaded.kind === 'video' && videoEdits) {
+        videoEditsPayload = { ...videoEdits };
+        if (videoEdits.logo && videoEdits.logo.source === 'custom' && videoLogoFile) {
+          const lr = await socialAPI.uploadMedia(videoLogoFile);
+          videoEditsPayload = {
+            ...videoEditsPayload,
+            logo: { ...videoEdits.logo, filename: lr.data.filename },
+          };
+        }
+      }
       const r = await socialAPI.publish({
         media_filename: uploaded.filename,
         caption,
         targets,
         video_crop: uploaded.kind === 'video' && videoCrop ? videoCrop.crop : null,
+        video_edits: videoEditsPayload,
       });
       setResults(r.data.results || []);
       const okCount = (r.data.results || []).filter(x => x.status === 'success').length;
@@ -387,6 +413,8 @@ const SocialPublisherPage = () => {
     setPreviewUrl('');
     setVideoDuration(null);
     setVideoCrop(null);
+    setVideoEdits(null);
+    setVideoLogoFile(null);
     setCaption('');
     setOverrides({});
     setShowOverride({});
@@ -655,6 +683,12 @@ const SocialPublisherPage = () => {
                           <Button size="sm" variant="outline" onClick={() => setCropOpen(true)}>
                             <CropIcon className="w-4 h-4 ml-1" />
                             {videoCrop ? `تأطير: ${videoCrop.aspect}` : 'تأطير وتغيير المقاس'}
+                          </Button>
+                        )}
+                        {!uploaded && file.type.startsWith('video/') && (
+                          <Button size="sm" variant="outline" onClick={() => setEditorOpen(true)}>
+                            <Wand2 className="w-4 h-4 ml-1" />
+                            {videoEdits ? 'فلاتر وشعار ✓' : 'فلاتر وشعار'}
                           </Button>
                         )}
                         {!uploaded && file.type.startsWith('video/') && videoDuration != null && (

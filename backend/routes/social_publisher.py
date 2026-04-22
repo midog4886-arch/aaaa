@@ -56,6 +56,33 @@ PLATFORM_MAX_VIDEO_SECONDS = {
 MAX_UPLOAD_VIDEO_SECONDS = max(PLATFORM_MAX_VIDEO_SECONDS.values())
 
 
+async def _probe_video_dimensions(path: Path) -> Optional[tuple]:
+    """Return (width, height) of the first video stream, or None on failure.
+
+    Used by the publish processor to express logo size as a pixel value
+    relative to the main video width without needing ffmpeg's scale2ref
+    (which produces a second output that must be sunk explicitly).
+    """
+    ffprobe = shutil.which("ffprobe")
+    if not ffprobe:
+        return None
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            ffprobe, "-v", "error", "-select_streams", "v:0",
+            "-show_entries", "stream=width,height",
+            "-of", "csv=s=x:p=0", str(path),
+            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=10)
+        text = (stdout or b"").decode().strip()
+        if "x" not in text:
+            return None
+        w_s, h_s = text.split("x", 1)
+        return int(w_s), int(h_s)
+    except Exception:
+        return None
+
+
 async def _probe_video_duration(path: Path) -> float:
     """Return the video duration in seconds via ffprobe.
 
@@ -400,50 +427,234 @@ class VideoCrop(BaseModel):
     height: int
 
 
+class VideoFilter(BaseModel):
+    # All percentages — 100 means "no change". hueRotate is in degrees.
+    brightness: int = 100
+    contrast: int = 100
+    saturate: int = 100
+    sepia: int = 0
+    grayscale: int = 0
+    hueRotate: int = 0
+
+
+class VideoLogo(BaseModel):
+    # 'default' uses the bundled academy logo; 'custom' references a previously
+    # uploaded image by `filename` (basename inside the social uploads dir).
+    source: str  # 'default' | 'custom'
+    filename: Optional[str] = None
+    size_percent: float = 20
+    x_percent: float = 95
+    y_percent: float = 95
+    opacity_percent: float = 80
+
+
+class VideoEdits(BaseModel):
+    filter: Optional[VideoFilter] = None
+    logo: Optional[VideoLogo] = None
+
+
 class PublishRequest(BaseModel):
     media_filename: str
     caption: str = ""
     targets: List[PublishTarget]
     video_crop: Optional[VideoCrop] = None
+    video_edits: Optional[VideoEdits] = None
 
 
-async def _ffmpeg_crop_video(src: Path, crop: VideoCrop) -> Path:
-    """Run ffmpeg to crop a video; returns the path of the cropped output.
+DEFAULT_LOGO_PATH = ROOT_DIR / "static" / "logo-new.png"
 
-    Raises HTTPException(500) on failure. Caller is responsible for unlinking
+
+def _build_video_filter_chain(vf: VideoFilter) -> List[str]:
+    """Build a list of ffmpeg filter expressions matching the CSS filter
+    semantics used by the editor: brightness/contrast/saturate as percentages,
+    plus optional sepia, grayscale, and hue-rotate.
+    """
+    chain: List[str] = []
+    # Match CSS filter semantics:
+    #   * brightness(B%) is multiplicative — multiply each channel by B/100.
+    #     ffmpeg's `eq=brightness` is an additive offset and does NOT match
+    #     CSS, so we use colorchannelmixer with a diagonal matrix instead.
+    #   * contrast(C%) and saturate(S%) are also multiplicative; ffmpeg's `eq`
+    #     contrast/saturation params are multipliers around 1.0, which lines
+    #     up with the CSS definition.
+    #   * grayscale(G%) collapses saturation; combine with the saturate slider.
+    b_mult = vf.brightness / 100.0
+    if abs(b_mult - 1.0) > 1e-3:
+        chain.append(
+            f"colorchannelmixer=rr={b_mult:.3f}:gg={b_mult:.3f}:bb={b_mult:.3f}"
+        )
+    sat_factor = (vf.saturate / 100.0) * (1.0 - max(0, min(100, vf.grayscale)) / 100.0)
+    contrast_mult = vf.contrast / 100.0
+    if abs(contrast_mult - 1.0) > 1e-3 or abs(sat_factor - 1.0) > 1e-3:
+        chain.append(f"eq=contrast={contrast_mult:.3f}:saturation={sat_factor:.3f}")
+    if vf.hueRotate:
+        chain.append(f"hue=h={vf.hueRotate}")
+    if vf.sepia:
+        a = max(0, min(100, vf.sepia)) / 100.0
+        # Mix the identity matrix with the canonical sepia matrix by `a`.
+        rr = (1 - a) + a * 0.393
+        rg = a * 0.769
+        rb = a * 0.189
+        gr = a * 0.349
+        gg = (1 - a) + a * 0.686
+        gb = a * 0.168
+        br = a * 0.272
+        bg = a * 0.534
+        bb = (1 - a) + a * 0.131
+        chain.append(
+            "colorchannelmixer="
+            f"rr={rr:.3f}:rg={rg:.3f}:rb={rb:.3f}:"
+            f"gr={gr:.3f}:gg={gg:.3f}:gb={gb:.3f}:"
+            f"br={br:.3f}:bg={bg:.3f}:bb={bb:.3f}"
+        )
+    return chain
+
+
+def _resolve_logo_path(logo: VideoLogo) -> Path:
+    """Resolve the actual path on disk for the requested logo, with the same
+    sandbox guarantees we use for the main media file."""
+    if logo.source == "default":
+        if not DEFAULT_LOGO_PATH.exists():
+            raise HTTPException(status_code=500, detail="ملف الشعار الافتراضي غير موجود.")
+        return DEFAULT_LOGO_PATH
+    if logo.source == "custom":
+        raw = logo.filename or ""
+        safe = os.path.basename(raw)
+        if not safe or safe in {".", ".."} or safe != raw:
+            raise HTTPException(status_code=400, detail="اسم ملف الشعار غير صالح.")
+        if Path(safe).suffix.lower() not in ALLOWED_IMAGE_EXT:
+            raise HTTPException(status_code=400, detail="نوع ملف الشعار غير مدعوم.")
+        path = (SOCIAL_UPLOAD_DIR / safe).resolve()
+        try:
+            path.relative_to(SOCIAL_UPLOAD_DIR.resolve())
+        except ValueError:
+            raise HTTPException(status_code=400, detail="مسار الشعار غير مسموح به.")
+        if not path.exists():
+            raise HTTPException(status_code=404, detail="ملف الشعار غير موجود.")
+        return path
+    raise HTTPException(status_code=400, detail="مصدر الشعار غير معروف.")
+
+
+async def _ffmpeg_process_video(
+    src: Path,
+    crop: Optional[VideoCrop] = None,
+    edits: Optional[VideoEdits] = None,
+) -> Path:
+    """Run ffmpeg to apply crop, color filters, and a logo overlay in a
+    single re-encode pass. Returns the path of the processed output.
+
+    Raises HTTPException on failure. Caller is responsible for unlinking
     the output file once done.
     """
     ffmpeg = shutil.which("ffmpeg")
     if not ffmpeg:
         raise HTTPException(status_code=500, detail="ffmpeg غير مثبت على الخادم.")
-    if crop.width <= 0 or crop.height <= 0:
+
+    has_crop = crop is not None
+    color_filter = edits.filter if (edits and edits.filter) else None
+    logo = edits.logo if (edits and edits.logo) else None
+    if not has_crop and not color_filter and not logo:
+        # Nothing to do — caller shouldn't call us, but be defensive.
+        return src
+
+    if has_crop and (crop.width <= 0 or crop.height <= 0):
         raise HTTPException(status_code=400, detail="أبعاد القص غير صالحة.")
-    out_path = src.with_name(f"{src.stem}-cropped-{uuid.uuid4().hex[:8]}{src.suffix}")
-    # Use even-aligned dimensions: most codecs require width/height divisible by 2.
-    w = max(2, crop.width - (crop.width % 2))
-    h = max(2, crop.height - (crop.height % 2))
-    x = max(0, crop.x)
-    y = max(0, crop.y)
-    filter_expr = f"crop={w}:{h}:{x}:{y}"
+
+    out_path = src.with_name(f"{src.stem}-edited-{uuid.uuid4().hex[:8]}{src.suffix}")
+
+    # Build the filter graph. Always operate on `[0:v]`. If a logo is present
+    # we need a filter_complex with a second input; otherwise -vf is enough.
+    main_filters: List[str] = []
+    if has_crop:
+        # Even-aligned dimensions: most codecs require width/height divisible by 2.
+        w = max(2, crop.width - (crop.width % 2))
+        h = max(2, crop.height - (crop.height % 2))
+        x = max(0, crop.x)
+        y = max(0, crop.y)
+        main_filters.append(f"crop={w}:{h}:{x}:{y}")
+    if color_filter:
+        main_filters.extend(_build_video_filter_chain(color_filter))
+
+    cmd = [ffmpeg, "-y", "-i", str(src)]
+
+    if logo:
+        logo_path = _resolve_logo_path(logo)
+        cmd.extend(["-i", str(logo_path)])
+        size = max(1.0, min(100.0, float(logo.size_percent)))
+        opacity = max(0.0, min(1.0, float(logo.opacity_percent) / 100.0))
+        x_pct = max(0.0, min(100.0, float(logo.x_percent))) / 100.0
+        y_pct = max(0.0, min(100.0, float(logo.y_percent))) / 100.0
+        main_chain = ",".join(main_filters) if main_filters else "null"
+        # The logo size is expressed as a percentage of the MAIN video width
+        # (matches the editor's CSS preview). Probe the input dimensions and
+        # compute an absolute pixel width so we can use a plain `scale` filter.
+        # If a crop is applied first, use the cropped width as the reference
+        # so what the user sees stays consistent.
+        if has_crop:
+            ref_w = max(2, crop.width - (crop.width % 2))
+        else:
+            dims = await _probe_video_dimensions(src)
+            if not dims:
+                raise HTTPException(
+                    status_code=500,
+                    detail="تعذر قراءة أبعاد الفيديو لتحديد حجم الشعار.",
+                )
+            ref_w = dims[0]
+        logo_w_px = max(2, int(round(ref_w * size / 100.0)))
+        # Even-aligned width keeps yuv420p encoders happy when the logo is
+        # used downstream.
+        if logo_w_px % 2:
+            logo_w_px += 1
+        logo_chain = (
+            f"[1:v]scale={logo_w_px}:-1,"
+            f"format=rgba,colorchannelmixer=aa={opacity:.3f}[lg]"
+        )
+        overlay_x = f"main_w*{x_pct:.4f}-overlay_w/2"
+        overlay_y = f"main_h*{y_pct:.4f}-overlay_h/2"
+        filter_complex = (
+            f"[0:v]{main_chain}[v0];{logo_chain};"
+            f"[v0][lg]overlay=x={overlay_x}:y={overlay_y}:format=auto[outv]"
+        )
+        cmd.extend(["-filter_complex", filter_complex, "-map", "[outv]", "-map", "0:a?"])
+    else:
+        if main_filters:
+            cmd.extend(["-vf", ",".join(main_filters)])
+        # When only color filters are applied (no overlay) audio can be copied.
+        cmd.extend(["-map", "0:v", "-map", "0:a?"])
+
+    cmd.extend([
+        "-c:a", "copy",
+        "-preset", "veryfast",
+        "-movflags", "+faststart",
+        str(out_path),
+    ])
+
     try:
         proc = await asyncio.create_subprocess_exec(
-            ffmpeg, "-y", "-i", str(src), "-vf", filter_expr,
-            "-c:a", "copy", "-preset", "veryfast", "-movflags", "+faststart",
-            str(out_path),
-            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+            *cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
         )
-        _, stderr = await asyncio.wait_for(proc.communicate(), timeout=300)
+        _, stderr = await asyncio.wait_for(proc.communicate(), timeout=600)
         if proc.returncode != 0:
-            logger.warning("ffmpeg crop failed: %s", (stderr or b"")[-400:].decode(errors="ignore"))
+            logger.warning(
+                "ffmpeg process failed: %s",
+                (stderr or b"")[-600:].decode(errors="ignore"),
+            )
             out_path.unlink(missing_ok=True)
-            raise HTTPException(status_code=400, detail="فشل قص الفيديو.")
+            raise HTTPException(status_code=400, detail="فشل تطبيق التعديلات على الفيديو.")
     except HTTPException:
         raise
     except Exception:
-        logger.exception("ffmpeg crop crashed")
+        logger.exception("ffmpeg process crashed")
         out_path.unlink(missing_ok=True)
-        raise HTTPException(status_code=500, detail="تعذر تنفيذ قص الفيديو.")
+        raise HTTPException(status_code=500, detail="تعذر تنفيذ معالجة الفيديو.")
     return out_path
+
+
+# Backwards-compat shim retained in case other modules import this name.
+async def _ffmpeg_crop_video(src: Path, crop: VideoCrop) -> Path:
+    return await _ffmpeg_process_video(src, crop=crop)
 
 
 @router.post("/posts")
@@ -500,10 +711,20 @@ async def publish_post(
                     + "، ".join(exceeded)
                 ),
             )
-        if payload.video_crop is not None:
-            cropped_temp = await _ffmpeg_crop_video(media_path, payload.video_crop)
-            publish_path = cropped_temp
-            publish_url = f"{base}/uploads/social/{cropped_temp.name}"
+        if payload.video_crop is not None or payload.video_edits is not None:
+            processed = await _ffmpeg_process_video(
+                media_path,
+                crop=payload.video_crop,
+                edits=payload.video_edits,
+            )
+            # Only treat the result as a derivative file when ffmpeg actually
+            # wrote a new file; if it returned the original source (no-op
+            # edits) we keep `cropped_temp` None so the persisted metadata
+            # accurately reflects that no derivative exists.
+            if processed != media_path:
+                cropped_temp = processed
+                publish_path = cropped_temp
+                publish_url = f"{base}/uploads/social/{cropped_temp.name}"
 
     post_doc = {
         "id": post_id,
@@ -513,6 +734,7 @@ async def publish_post(
         "public_url": public_url,
         "cropped_filename": cropped_temp.name if cropped_temp else None,
         "video_crop": payload.video_crop.model_dump() if payload.video_crop else None,
+        "video_edits": payload.video_edits.model_dump() if payload.video_edits else None,
         "created_by": current_user.get("user_id") or current_user.get("id"),
         "created_by_name": current_user.get("name") or current_user.get("username"),
         "created_at": datetime.now(timezone.utc).isoformat(),

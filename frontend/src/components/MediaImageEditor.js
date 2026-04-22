@@ -28,14 +28,25 @@ function loadImage(src) {
   });
 }
 
-function buildFilterString(f, extraBrightness, extraContrast, extraSaturate) {
-  const b = Math.round((f.brightness * (extraBrightness / 100)));
-  const c = Math.round((f.contrast * (extraContrast / 100)));
-  const s = Math.round((f.saturate * (extraSaturate / 100)));
-  return `brightness(${b}%) contrast(${c}%) saturate(${s}%) sepia(${f.sepia}%) grayscale(${f.grayscale}%) hue-rotate(${f.hueRotate}deg)`;
+function computeFinalFilter(presetFilter, extraBrightness, extraContrast, extraSaturate) {
+  return {
+    brightness: Math.round(presetFilter.brightness * (extraBrightness / 100)),
+    contrast: Math.round(presetFilter.contrast * (extraContrast / 100)),
+    saturate: Math.round(presetFilter.saturate * (extraSaturate / 100)),
+    sepia: presetFilter.sepia,
+    grayscale: presetFilter.grayscale,
+    hueRotate: presetFilter.hueRotate,
+  };
+}
+
+function buildCssFilterString(f) {
+  return `brightness(${f.brightness}%) contrast(${f.contrast}%) saturate(${f.saturate}%) sepia(${f.sepia}%) grayscale(${f.grayscale}%) hue-rotate(${f.hueRotate}deg)`;
 }
 
 const MediaImageEditor = ({ open, file, previewUrl, onClose, onApply }) => {
+  const isVideo = !!(file && file.type?.startsWith('video/'));
+  const isImage = !!(file && file.type?.startsWith('image/'));
+
   const [presetId, setPresetId] = useState('none');
   const [brightness, setBrightness] = useState(100);
   const [contrast, setContrast] = useState(100);
@@ -44,22 +55,32 @@ const MediaImageEditor = ({ open, file, previewUrl, onClose, onApply }) => {
   const [text, setText] = useState('');
   const [textColor, setTextColor] = useState('#ffffff');
   const [textSize, setTextSize] = useState(48);
-  const [textPos, setTextPos] = useState({ x: 50, y: 90 }); // % of width/height (bottom)
+  const [textPos, setTextPos] = useState({ x: 50, y: 90 });
 
+  // logoSource: '' (none) | 'default' | 'custom'
+  const [logoSource, setLogoSource] = useState('');
   const [logoUrl, setLogoUrl] = useState('');
-  const [logoSize, setLogoSize] = useState(20); // % of canvas width
-  const [logoPos, setLogoPos] = useState({ x: 95, y: 95 }); // % anchored to bottom-right
+  const [logoFile, setLogoFile] = useState(null);
+  const [logoSize, setLogoSize] = useState(20);
+  const [logoPos, setLogoPos] = useState({ x: 95, y: 95 });
   const [logoOpacity, setLogoOpacity] = useState(80);
 
   const [imgEl, setImgEl] = useState(null);
   const [logoEl, setLogoEl] = useState(null);
+  const [videoMeta, setVideoMeta] = useState({ w: 0, h: 0 });
   const [busy, setBusy] = useState(false);
 
   const canvasRef = useRef(null);
   const containerRef = useRef(null);
+  const videoRef = useRef(null);
   const dragRef = useRef(null);
 
   const preset = useMemo(() => PRESETS.find(p => p.id === presetId) || PRESETS[0], [presetId]);
+  const finalFilter = useMemo(
+    () => computeFinalFilter(preset.filter, brightness, contrast, saturate),
+    [preset, brightness, contrast, saturate],
+  );
+  const cssFilter = useMemo(() => buildCssFilterString(finalFilter), [finalFilter]);
 
   // Reset state when a new file opens
   useEffect(() => {
@@ -72,20 +93,23 @@ const MediaImageEditor = ({ open, file, previewUrl, onClose, onApply }) => {
     setTextColor('#ffffff');
     setTextSize(48);
     setTextPos({ x: 50, y: 90 });
+    setLogoSource('');
     setLogoUrl('');
+    setLogoFile(null);
     setLogoEl(null);
     setLogoSize(20);
     setLogoPos({ x: 95, y: 95 });
     setLogoOpacity(80);
+    setVideoMeta({ w: 0, h: 0 });
   }, [open, previewUrl]);
 
-  // Load source image
+  // Load source image (image only)
   useEffect(() => {
     let alive = true;
-    if (!previewUrl) { setImgEl(null); return; }
+    if (!previewUrl || !isImage) { setImgEl(null); return; }
     loadImage(previewUrl).then(img => { if (alive) setImgEl(img); }).catch(() => {});
     return () => { alive = false; };
-  }, [previewUrl]);
+  }, [previewUrl, isImage]);
 
   // Load logo image whenever URL changes
   useEffect(() => {
@@ -95,8 +119,9 @@ const MediaImageEditor = ({ open, file, previewUrl, onClose, onApply }) => {
     return () => { alive = false; };
   }, [logoUrl]);
 
-  // Render canvas
+  // Render canvas for image
   useEffect(() => {
+    if (!isImage) return;
     const canvas = canvasRef.current;
     if (!canvas || !imgEl) return;
     const w = imgEl.naturalWidth;
@@ -105,7 +130,7 @@ const MediaImageEditor = ({ open, file, previewUrl, onClose, onApply }) => {
     canvas.height = h;
     const ctx = canvas.getContext('2d');
     ctx.save();
-    ctx.filter = buildFilterString(preset.filter, brightness, contrast, saturate);
+    ctx.filter = cssFilter;
     ctx.drawImage(imgEl, 0, 0, w, h);
     ctx.restore();
 
@@ -136,7 +161,7 @@ const MediaImageEditor = ({ open, file, previewUrl, onClose, onApply }) => {
       ctx.fillText(text, tx, ty);
       ctx.restore();
     }
-  }, [imgEl, preset, brightness, contrast, saturate, logoEl, logoSize, logoPos, logoOpacity, text, textColor, textSize, textPos]);
+  }, [isImage, imgEl, cssFilter, logoEl, logoSize, logoPos, logoOpacity, text, textColor, textSize, textPos]);
 
   const revokeIfBlob = (url) => {
     if (url && url.startsWith('blob:')) {
@@ -149,10 +174,23 @@ const MediaImageEditor = ({ open, file, previewUrl, onClose, onApply }) => {
     if (!f) return;
     revokeIfBlob(logoUrl);
     setLogoUrl(URL.createObjectURL(f));
+    setLogoFile(f);
+    setLogoSource('custom');
   };
 
-  const useDefaultLogo = () => { revokeIfBlob(logoUrl); setLogoUrl(DEFAULT_LOGO); };
-  const removeLogo = () => { revokeIfBlob(logoUrl); setLogoUrl(''); setLogoEl(null); };
+  const useDefaultLogo = () => {
+    revokeIfBlob(logoUrl);
+    setLogoUrl(DEFAULT_LOGO);
+    setLogoFile(null);
+    setLogoSource('default');
+  };
+  const removeLogo = () => {
+    revokeIfBlob(logoUrl);
+    setLogoUrl('');
+    setLogoFile(null);
+    setLogoEl(null);
+    setLogoSource('');
+  };
 
   // Revoke any logo blob URL on unmount or when the dialog closes
   useEffect(() => {
@@ -185,27 +223,83 @@ const MediaImageEditor = ({ open, file, previewUrl, onClose, onApply }) => {
     onMouseMove({ clientX: e.touches[0].clientX, clientY: e.touches[0].clientY });
   };
 
+  const handleVideoLoaded = () => {
+    const v = videoRef.current;
+    if (v) setVideoMeta({ w: v.videoWidth || 0, h: v.videoHeight || 0 });
+  };
+
   const handleApply = async () => {
-    if (!canvasRef.current || !file) return;
+    if (!file) return;
     setBusy(true);
     try {
-      const outMime = file.type === 'image/png' ? 'image/png' : 'image/jpeg';
-      const quality = outMime === 'image/jpeg' ? 0.92 : undefined;
-      const blob = await new Promise((resolve, reject) => {
-        canvasRef.current.toBlob(b => (b ? resolve(b) : reject(new Error('toBlob null'))), outMime, quality);
-      });
-      const ext = outMime === 'image/png' ? 'png' : 'jpg';
-      const baseName = (file.name || 'image').replace(/\.[^.]+$/, '');
-      const newFile = new File([blob], `${baseName}-edited.${ext}`, { type: blob.type });
-      onApply({ kind: 'image', file: newFile });
+      if (isImage) {
+        if (!canvasRef.current) return;
+        const outMime = file.type === 'image/png' ? 'image/png' : 'image/jpeg';
+        const quality = outMime === 'image/jpeg' ? 0.92 : undefined;
+        const blob = await new Promise((resolve, reject) => {
+          canvasRef.current.toBlob(b => (b ? resolve(b) : reject(new Error('toBlob null'))), outMime, quality);
+        });
+        const ext = outMime === 'image/png' ? 'png' : 'jpg';
+        const baseName = (file.name || 'image').replace(/\.[^.]+$/, '');
+        const newFile = new File([blob], `${baseName}-edited.${ext}`, { type: blob.type });
+        onApply({ kind: 'image', file: newFile });
+      } else if (isVideo) {
+        // For videos we don't re-encode in the browser — that's expensive.
+        // Instead we hand the settings up to the page so they can be sent
+        // to the backend, which applies them with ffmpeg before publishing.
+        const hasFilter =
+          finalFilter.brightness !== 100 || finalFilter.contrast !== 100 ||
+          finalFilter.saturate !== 100 || finalFilter.sepia !== 0 ||
+          finalFilter.grayscale !== 0 || finalFilter.hueRotate !== 0;
+        const edits = {
+          filter: hasFilter ? finalFilter : null,
+          logo: logoSource ? {
+            source: logoSource, // 'default' | 'custom'
+            size_percent: logoSize,
+            x_percent: logoPos.x,
+            y_percent: logoPos.y,
+            opacity_percent: logoOpacity,
+          } : null,
+        };
+        onApply({
+          kind: 'video',
+          edits,
+          logoFile: logoSource === 'custom' ? logoFile : null,
+        });
+      }
     } catch (e) {
-      console.error('image edit failed', e);
+      console.error('media edit failed', e);
     } finally {
       setBusy(false);
     }
   };
 
-  if (!file || !file.type?.startsWith('image/')) return null;
+  if (!file || (!isImage && !isVideo)) return null;
+
+  // Aspect ratio for the preview container
+  const previewAspect = isImage && imgEl
+    ? `${imgEl.naturalWidth} / ${imgEl.naturalHeight}`
+    : (isVideo && videoMeta.w && videoMeta.h ? `${videoMeta.w} / ${videoMeta.h}` : '1 / 1');
+
+  // Logo preview overlay (shared between image canvas overlay and video overlay).
+  // For image preview the logo is baked into the canvas, so no overlay needed.
+  // For video preview we show an absolutely-positioned <img> on top of the video.
+  const logoOverlayForVideo = isVideo && logoEl ? (
+    <img
+      src={logoUrl}
+      alt=""
+      draggable={false}
+      style={{
+        position: 'absolute',
+        left: `${logoPos.x}%`,
+        top: `${logoPos.y}%`,
+        width: `${logoSize}%`,
+        opacity: Math.max(0, Math.min(1, logoOpacity / 100)),
+        transform: 'translate(-50%, -50%)',
+        pointerEvents: 'none',
+      }}
+    />
+  ) : null;
 
   return (
     <Dialog open={open} onOpenChange={(o) => { if (!o) onClose(); }}>
@@ -213,7 +307,9 @@ const MediaImageEditor = ({ open, file, previewUrl, onClose, onApply }) => {
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Wand2 className="w-4 h-4" />
-            تعديل الصورة: فلاتر، نص، شعار
+            {isVideo
+              ? 'تعديل الفيديو: فلاتر وشعار'
+              : 'تعديل الصورة: فلاتر، نص، شعار'}
           </DialogTitle>
         </DialogHeader>
 
@@ -223,7 +319,7 @@ const MediaImageEditor = ({ open, file, previewUrl, onClose, onApply }) => {
             ref={containerRef}
             className="relative w-full bg-black rounded overflow-hidden select-none"
             style={{
-              aspectRatio: imgEl ? `${imgEl.naturalWidth} / ${imgEl.naturalHeight}` : '1 / 1',
+              aspectRatio: previewAspect,
               maxHeight: '60vh',
               touchAction: 'none',
             }}
@@ -233,12 +329,28 @@ const MediaImageEditor = ({ open, file, previewUrl, onClose, onApply }) => {
             onTouchMove={onTouchMove}
             onTouchEnd={endDrag}
           >
-            <canvas
-              ref={canvasRef}
-              className="absolute inset-0 w-full h-full object-contain"
-            />
+            {isImage && (
+              <canvas
+                ref={canvasRef}
+                className="absolute inset-0 w-full h-full object-contain"
+              />
+            )}
+            {isVideo && (
+              <video
+                ref={videoRef}
+                src={previewUrl}
+                muted
+                loop
+                autoPlay
+                playsInline
+                onLoadedMetadata={handleVideoLoaded}
+                className="absolute inset-0 w-full h-full object-contain"
+                style={{ filter: cssFilter }}
+              />
+            )}
+            {logoOverlayForVideo}
             {/* Drag handles */}
-            {text && text.trim() !== '' && (
+            {isImage && text && text.trim() !== '' && (
               <button
                 type="button"
                 onMouseDown={(e) => startDrag('text', e)}
@@ -308,37 +420,39 @@ const MediaImageEditor = ({ open, file, previewUrl, onClose, onApply }) => {
               ))}
             </div>
 
-            <div className="border-t pt-3">
-              <Label className="text-xs font-semibold flex items-center gap-1">
-                <Type className="w-3.5 h-3.5" /> نص فوق الصورة
-              </Label>
-              <Input
-                value={text}
-                onChange={(e) => setText(e.target.value)}
-                placeholder="اكتب النص هنا"
-                className="mt-1 h-8"
-              />
-              {text && (
-                <div className="flex items-center gap-2 mt-2">
-                  <input
-                    type="color"
-                    value={textColor}
-                    onChange={(e) => setTextColor(e.target.value)}
-                    className="w-8 h-8 rounded cursor-pointer border"
-                    title="لون النص"
-                  />
-                  <span className="text-xs text-gray-600 w-10">حجم</span>
-                  <Slider
-                    min={3}
-                    max={15}
-                    step={1}
-                    value={[textSize / 5]}
-                    onValueChange={(v) => setTextSize(v[0] * 5)}
-                    className="flex-1"
-                  />
-                </div>
-              )}
-            </div>
+            {isImage && (
+              <div className="border-t pt-3">
+                <Label className="text-xs font-semibold flex items-center gap-1">
+                  <Type className="w-3.5 h-3.5" /> نص فوق الصورة
+                </Label>
+                <Input
+                  value={text}
+                  onChange={(e) => setText(e.target.value)}
+                  placeholder="اكتب النص هنا"
+                  className="mt-1 h-8"
+                />
+                {text && (
+                  <div className="flex items-center gap-2 mt-2">
+                    <input
+                      type="color"
+                      value={textColor}
+                      onChange={(e) => setTextColor(e.target.value)}
+                      className="w-8 h-8 rounded cursor-pointer border"
+                      title="لون النص"
+                    />
+                    <span className="text-xs text-gray-600 w-10">حجم</span>
+                    <Slider
+                      min={3}
+                      max={15}
+                      step={1}
+                      value={[textSize / 5]}
+                      onValueChange={(v) => setTextSize(v[0] * 5)}
+                      className="flex-1"
+                    />
+                  </div>
+                )}
+              </div>
+            )}
 
             <div className="border-t pt-3">
               <Label className="text-xs font-semibold flex items-center gap-1">
@@ -375,14 +489,16 @@ const MediaImageEditor = ({ open, file, previewUrl, onClose, onApply }) => {
             </div>
 
             <p className="text-[11px] text-gray-500 border-t pt-2">
-              يمكنك سحب النص أو الشعار على المعاينة لتحريكهما. تتم المعالجة في المتصفح.
+              {isVideo
+                ? 'يمكنك سحب الشعار على المعاينة لتحريكه. تتم معالجة الفيديو على الخادم عند النشر.'
+                : 'يمكنك سحب النص أو الشعار على المعاينة لتحريكهما. تتم المعالجة في المتصفح.'}
             </p>
           </div>
         </div>
 
         <DialogFooter className="mt-4 gap-2">
           <Button variant="outline" onClick={onClose} disabled={busy}>إلغاء</Button>
-          <Button onClick={handleApply} disabled={busy || !imgEl}>
+          <Button onClick={handleApply} disabled={busy || (isImage && !imgEl)}>
             {busy ? <Loader2 className="w-4 h-4 animate-spin ml-1" /> : <Wand2 className="w-4 h-4 ml-1" />}
             تطبيق التعديلات
           </Button>
