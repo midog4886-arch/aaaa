@@ -1,0 +1,603 @@
+نعم، ممكن جدًا عمل تطبيق ترفع فيه بوست أو فيديو مرة واحدة ثم ينشر على عدة منصات، لكن ليس كل المنصات بنفس السهولة أو بنفس صلاحيات النشر المباشر. بعض المنصات تدعم النشر عبر APIs الرسمية مثل Instagram/Facebook عبر Meta Graph API، وYouTube عبر YouTube Data API، وTikTok عبر Content Posting API، لكن كل منصة لها شروطها وحدودها الخاصة.
+
+كيف يكون الفكرة
+التطبيق يكون فيه:
+
+رفع الصورة أو الفيديو مرة واحدة.
+
+كتابة الكابشن.
+
+اختيار المنصات المطلوبة.
+
+تعديل بسيط لكل منصة إذا لزم، مثل طول النص أو الهاشتاقات.
+
+جدولة النشر أو النشر الفوري.
+أدوات الجدولة المعروفة أصلًا تعمل بهذه الطريقة، حيث تسمح بكتابة المحتوى مرة ثم تخصيصه لكل قناة قبل النشر.
+
+أهم القيود
+Instagram وFacebook يحتاجان حسابات مناسبة وصلاحيات وربط بحساب Business/Creator في كثير من الحالات.
+
+YouTube يسمح برفع الفيديوهات عبر API لكن يستهلك من quota يومية، ورفع الفيديو الواحد يكلف 1600 وحدة تقريبًا، لذلك يوجد حد عملي بعدد الرفعات يوميًا.
+
+TikTok يدعم النشر عبر API، لكن عادة يتطلب مراجعة للتطبيق وصلاحيات محددة، وبعض التدفقات تكون أكثر تعقيدًا من غيرها.
+
+بعض المنصات لا تسمح بنفس شكل النشر لكل أنواع المحتوى، لذلك أحيانًا تحتاج نسخة مختلفة للفيديو أو الوصف حسب المنصة.
+
+أفضل تصميم عملي
+الأفضل ليس “زر واحد ينشر كل شيء بدون تفكير”، بل نظام ذكي يعمل هكذا:
+
+يجهز نسخة أصلية من المحتوى.
+
+يحولها تلقائيًا لصيغ مناسبة لكل منصة.
+
+يضيف كابشن مختلف إذا احتاج.
+
+يتأكد من المقاسات والمدة.
+
+ثم ينشر أو يرسل للمراجعة قبل النشر.
+هذا يقلل الأخطاء ويجعل التطبيق أقرب للاستخدام الاحترافي بدل النشر العشوائي.
+
+هل هذا مناسب لك؟
+نعم، ومناسب جدًا خصوصًا لو هدفك إدارة محتوى لنشاط أو أكاديمية، لأنك تقدر توحّد النشر من مكان واحد وتوفر وقت كبير. والأفضل يبدأ التطبيق أولًا بمنصات محددة مثل Instagram + Facebook + YouTube Shorts، ثم تضيف TikTok بعد ذلك حسب الصلاحيات والتكامل.
+
+أقدر أيضًا أوضح لك تصميم التطبيق المناسب أو أرسم لك خطة تقنية كاملة: واجهات، قاعدة بيانات، وAPIs المطلوبة.
+
+تصميم التطبيق المناسب
+
+أكيد، وأفضل تصميم للتطبيق عندك هو يكون منصة إدارة محتوى واحدة وليست مجرد زر “نشر للجميع”. الفكرة العملية هي: ترفع البوست أو الفيديو مرة واحدة، ثم التطبيق يجهز نسخًا مناسبة لكل منصة، ويُرسل للنشر أو الجدولة حسب صلاحيات كل شبكة.
+
+شكل التطبيق
+واجهة التطبيق تكون بسيطة جدًا:
+
+��فحة إنشاء منشور.
+
+رفع صورة أو فيديو.
+
+كتابة النص الأساسي.
+
+اختيار المنصات: Instagram، Facebook، YouTube Shorts، TikTok.
+
+خيار “نشر الآن” أو “جدولة لاحقًا”.
+
+معاينة لكل منصة قبل الإرسال.
+هذا يطابق الطريقة التي تعمل بها أدوات النشر الاحترافية، لأنها تعتمد على إعداد المحتوى مرة ثم تخصيصه حسب كل قناة.
+
+المكونات الأساسية
+التطبيق يحتاج 4 أجزاء رئيسية:
+
+واجهة المستخدم لإضافة المحتوى واختيار المنصات.
+
+خادم Backend لإدارة الجداول والطلبات والربط مع APIs.
+
+مخزن وسائط لرفع الفيديو والصور على رابط عام قابل للوصول.
+
+وحدة نشر Platform Connectors لكل منصة على حدة.
+والسبب أن بعض المنصات لا تنشر مباشرة من ملف محلي، بل تحتاج رابطًا عامًا للوسيط قبل النشر.
+
+قيود المنصات
+Instagram/Facebook عبر Meta Graph API يحتاج عادة حساب Business أو Creator وصلاحيات صحيحة، والنشر يتم غالبًا على مرحلتين: إنشاء media container ثم publish.
+
+YouTube Data API يسمح برفع الفيديوهات، لكن الرفع يستهلك 1600 وحدة من quota لكل فيديو، مع حد افتراضي يومي 10,000 وحدة لكل مشروع، لذلك لازم نراعي السعة اليومية.
+
+TikTok عبر Content Posting API يدعم النشر المباشر للفيديو، لكن يحتاج App approval وOAuth، وبعض الحالات تكون للنشر الفوري فقط أو وضع draft حسب الصلاحية.
+
+أفضل نسخة تبدأ بها
+أنصح تبدأ بـ MVP بسيط يحتوي:
+
+تسجيل دخول للمسؤولين.
+
+رفع فيديو أو صورة.
+
+كتابة caption واحد.
+
+اختيار منصة أو أكثر.
+
+جدولة النشر.
+
+سجل حالة النشر: نجح، فشل، بانتظار المراجعة.
+بهذا الشكل تقدر تطلق المنتج بسرعة، ثم توسع الدعم لاحقًا لمنصات إضافية وميزات مثل AI لإعادة صياغة النص لكل منصة.
+
+اقتراح تقني
+لو هدفك تنفيذ سريع واحترافي، أفضل تركيبة غالبًا تكون:
+
+Frontend: Flutter أو Next.js.
+
+Backend: Node.js.
+
+Database: PostgreSQL.
+
+Storage: S3 أو Cloudinary.
+
+Jobs/Queue: Redis + worker للنشر المجدول.
+هذه البنية مناسبة جدًا لأن النشر على عدة منصات يحتاج مهام خلفية، محاولات إعادة، وتتبع حالات مختلفة لكل منصة.
+
+نموذج شاشة التشغيل
+مثال عملي:
+
+ترفع فيديو تمرين سباحة.
+
+تكتب: “حصص السباحة مفتوحة الآن”.
+
+تختار: Instagram + Facebook + TikTok + YouTube Shorts.
+
+التطبيق يولد 4 نسخ بسيطة من النص.
+
+ينشر فورًا أو في وقت محدد.
+
+يعرض لك تقرير نجاح أو خطأ لكل منصة.
+هذا هو الشكل الأنسب لو عندك أكاديمية أو إدارة محتوى تسويقي متكرر.
+
+أستطيع الآن أن أبني لك تصميم شاشات التطبيق خطوة بخطوة أو خطة تقنية كاملة مع قاعدة البيانات وواجهات الـAPI.
+
+نعم
+
+تمام، هذا التصميم المناسب كبداية لتطبيقك، بحيث يكون عملي وسهل التوسع.
+
+فكرة التطبيق
+التطبيق يكون Content Publisher: ترفع محتوى مرة واحدة، ثم تحدد المنصات، والتطبيق يجهز ويُرسل النشر أو الجدولة لكل منصة عبر الموصلات الخاصة بها. هذا أفضل من بناء “نسخة واحدة” لأن كل منصة لها شروط وأشكال نشر مختلفة، خصوصًا Instagram/Facebook وYouTube وTikTok.
+
+الشاشات الأساسية
+تسجيل الدخول وإدارة المستخدمين.
+
+لوحة التحكم الرئيسية.
+
+إنشاء منشور جديد.
+
+مكتبة الوسائط.
+
+شاشة اختيار المنصات.
+
+شاشة الجدولة.
+
+سجل النشر والتقارير.
+
+إعدادات الحسابات المرتبطة.
+هذا الشكل مناسب جدًا للتطبيقات التي تعتمد على نشر المحتوى وإدارته من مكان واحد.
+
+تدفق الاستخدام
+المستخدم يرفع صورة أو فيديو.
+
+يكتب النص الأساسي.
+
+يختار المنصات.
+
+التطبيق يقترح نسخة نصية مناسبة لكل منصة.
+
+يحدد “نشر الآن” أو “جدولة”.
+
+النظام يرسل المهمة إلى الـ backend.
+
+الـ backend ينشر عبر API لكل منصة ويعرض النتيجة.
+هذا التدفق يتوافق مع نمط أنظمة النشر الحديثة التي تعتمد على جدولة ومهام خلفية وتخصيص المحتوى لكل شبكة.
+
+البنية التقنية
+أفضل بنية لك:
+
+Frontend: Flutter أو Next.js.
+
+Backend: Node.js.
+
+Database: PostgreSQL.
+
+Media Storage: Cloudinary أو S3.
+
+Queue/Jobs: Redis + Worker.
+
+Integrations: Meta Graph API, YouTube Data API, TikTok API.
+هذه البنية مناسبة لأن رفع الفيديوهات والنشر المجدول يحتاج تخزين وسائط وإدارة مهام خلفية وليس مجرد شاشة إرسال واحدة.
+
+الجداول المهمة
+Users.
+
+SocialAccounts.
+
+Posts.
+
+PostAssets.
+
+PostTargets.
+
+PublishJobs.
+
+PublishLogs.
+
+Schedules.
+هذا التصميم يسمح لك بتتبع كل منشور على كل منصة بشكل منفصل، ومعرفة هل نجح أو فشل أو ما زال بانتظار التنفيذ.
+
+أفضل خصائص في النسخة الأولى
+رفع فيديو/صورة.
+
+كتابة caption واحد.
+
+اختيار 3 منصات في البداية.
+
+جدولة النشر.
+
+معاينة المحتوى.
+
+سجل الأخطاء والنجاح.
+ابدأ بهذه الميزات أولًا، لأن ربط كل المنصات دفعة واحدة قد يجعل المشروع معقدًا من البداية، بينما النسخة الأولى تضمن سرعة إطلاق واختبار واقعي.
+
+اقتراح عملي لك
+لأكاديمية أو نشاط مثل نشاطك، أنصح تبدأ بـ:
+
+Instagram.
+
+Facebook.
+
+YouTube Shorts.
+ثم تضيف TikTok بعد استقرار النظام وصلاحياته، لأن هذه الثلاثة عادة تعطيك أفضل عائد مبدئي مع تعقيد أقل نسبيًا.
+
+أقدر في الرسالة التالية أبني لك رسم هيكل التطبيق كامل: الصفحات + قاعدة البيانات + الـAPI endpoints + ترتيب التنفيذ.
+
+نعم
+
+ممتاز، هذا هو التصميم النهائي المقترح لك بشكل عملي وواضح، بحيث تقدر تبدأ به مباشرة وتطوره لاحقًا. Instagram يحتاج نشرًا عبر container ثم media_publish، ويوتيوب يستهلك 1600 وحدة لكل رفع فيديو، وتيك توك يعتمد على Content Posting API مع OAuth وصلاحيات نشر محددة.
+
+الهيكل العام
+التطبيق يكون من 3 طبقات:
+
+واجهة أمامية لإضافة المحتوى واختيار المنصات.
+
+Backend API لإدارة الحسابات والنشر والجدولة.
+
+Workers لتنفيذ النشر في الخلفية وإعادة المحاولة عند الفشل.
+هذا هو الشكل الأنسب لأن النشر على المنصات المختلفة يحتاج مهام غير متزامنة وتتبع حالة كل منصة بشكل مستقل.
+
+الشاشات المطلوبة
+تسجيل الدخول.
+
+لوحة التحكم.
+
+إنشاء منشور.
+
+اختيار المنصات.
+
+تعديل نسخة النص لكل منصة.
+
+جدولة النشر.
+
+سجل العمليات والنتائج.
+
+ربط الحسابات الاجتماعية.
+هذا التقسيم يجعل التطبيق سهل الاستخدام حتى لو كان يدعم أكثر من منصة وصيغة محتوى.
+
+قاعدة البيانات
+الجداول المقترحة:
+
+users
+
+social_accounts
+
+posts
+
+post_assets
+
+post_targets
+
+publish_jobs
+
+publish_logs
+
+schedules
+هذا التصميم يساعدك على حفظ المنشور مرة واحدة ثم ربطه بعدة منصات مع تتبع نتيجة كل منصة على حدة.
+
+مسار النشر
+المستخدم يرفع الفيديو أو الصورة.
+
+النظام يخزن الملف في Cloudinary أو S3.
+
+التطبيق ينشئ سجل Post.
+
+يختار المستخدم المنصات.
+
+الـ backend يرسل المهمة إلى worker.
+
+كل منصة تُنشر عبر connector خاص بها.
+
+تظهر النتيجة في سجل النشر.
+هذا المسار مناسب لأن بعض المنصات تتطلب ملفًا على رابط عام قبل الإرسال، وليس ملفًا محليًا فقط.
+
+التقنيات المناسبة
+أفضل تركيبة لك:
+
+Frontend: Flutter لو تريد موبايل + ويب، أو Next.js لو تريد ويب أولًا.
+
+Backend: Node.js.
+
+Database: PostgreSQL.
+
+Media Storage: Cloudinary أو S3.
+
+Queue: Redis + BullMQ أو أي نظام Jobs مشابه.
+
+Auth: OAuth لكل منصة.
+هذه البنية عملية جدًا لتطبيق يرسل محتوى لمنصات متعددة ويحتاج جدولة ومتابعة وأخطاء منفصلة لكل قناة.
+
+النسخة الأولى
+ابدأ بـ MVP يحتوي فقط على:
+
+رفع صورة أو فيديو.
+
+كتابة caption.
+
+اختيار Instagram وFacebook وYouTube Shorts.
+
+جدولة النشر.
+
+عرض حالة النجاح أو الفشل.
+بعدها أضف TikTok وميزات مثل إعادة صياغة النص أو اقتراح هاشتاقات مناسبة لكل منصة.
+
+الترتيب الأفضل للتنفيذ
+المرحلة 1: التصميم وقاعدة البيانات.
+
+المرحلة 2: واجهات الرفع والجدولة.
+
+المرحلة 3: ربط Instagram/Facebook.
+
+المرحلة 4: ربط YouTube.
+
+المرحلة 5: ربط TikTok.
+
+المرحلة 6: التقارير والتنبيهات.
+هذا الترتيب يقلل المخاطر لأن منصات Meta وYouTube وTikTok تختلف كثيرًا في الصلاحيات وحدود النشر.
+
+أستطيع الآن أن أكتب لك خريطة شاشات التطبيق Wireframe نصية أو تصميم قاعدة البيانات كامل بصيغة جاهزة للتنفيذ.
+
+تصميم قاعدة البيانات كامل بصيغة جاهزة للتنفيذ.
+
+أكيد. هذا تصميم قاعدة بيانات جاهز للتنفيذ لتطبيق نشر المحتوى على عدة منصات، مبني على فصل المنشور، الوسائط، المنصات المستهدفة، مهام النشر، والسجلات. وجود جدول مهام منفصل وسجل أخطاء/نجاح مهم لأن النشر على المنصات المختلفة يتم عادةً بشكل غير متزامن وبحالات تنفيذ متعددة.
+
+1) الفكرة العامة
+الهيكل الأفضل هو:
+
+users لإدارة المستخدمين.
+
+social_accounts لحفظ الحسابات المرتبطة بكل منصة.
+
+posts لتمثيل المنشور الأساسي.
+
+post_assets للصور والفيديو.
+
+post_targets لتحديد المنصات المختارة لكل منشور.
+
+publish_jobs لتنفيذ النشر في الخلفية.
+
+publish_logs لتسجيل كل محاولة ونتيجتها.
+
+schedules للجدولة الزمنية.
+هذا الشكل يناسب التطبيقات التي تنشر إلى أكثر من منصة وتحتاج تتبع حالة كل منصة بشكل منفصل.
+
+2) SQL الجاهز
+sql
+-- 1. Users
+CREATE TABLE users (
+  id BIGSERIAL PRIMARY KEY,
+  full_name VARCHAR(200) NOT NULL,
+  email VARCHAR(255) NOT NULL UNIQUE,
+  password_hash TEXT NOT NULL,
+  role VARCHAR(50) NOT NULL DEFAULT 'admin',
+  is_active BOOLEAN NOT NULL DEFAULT TRUE,
+  last_login_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- 2. Social accounts
+CREATE TABLE social_accounts (
+  id BIGSERIAL PRIMARY KEY,
+  user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  platform VARCHAR(50) NOT NULL, -- instagram, facebook, youtube, tiktok
+  platform_account_id VARCHAR(255),
+  account_name VARCHAR(255),
+  access_token TEXT,
+  refresh_token TEXT,
+  token_expires_at TIMESTAMPTZ,
+  permissions JSONB,
+  status VARCHAR(50) NOT NULL DEFAULT 'connected', -- connected, expired, revoked, error
+  metadata JSONB,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (user_id, platform, platform_account_id)
+);
+
+CREATE INDEX idx_social_accounts_user_id ON social_accounts(user_id);
+CREATE INDEX idx_social_accounts_platform ON social_accounts(platform);
+
+-- 3. Posts
+CREATE TABLE posts (
+  id BIGSERIAL PRIMARY KEY,
+  user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  title VARCHAR(255),
+  caption TEXT NOT NULL,
+  status VARCHAR(50) NOT NULL DEFAULT 'draft', -- draft, scheduled, publishing, published, failed, archived
+  post_type VARCHAR(50) NOT NULL DEFAULT 'video', -- video, image, reel, shorts, story
+  is_template BOOLEAN NOT NULL DEFAULT FALSE,
+  language VARCHAR(20) DEFAULT 'ar',
+  metadata JSONB,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  published_at TIMESTAMPTZ
+);
+
+CREATE INDEX idx_posts_user_id ON posts(user_id);
+CREATE INDEX idx_posts_status ON posts(status);
+CREATE INDEX idx_posts_created_at ON posts(created_at DESC);
+
+-- 4. Post assets
+CREATE TABLE post_assets (
+  id BIGSERIAL PRIMARY KEY,
+  post_id BIGINT NOT NULL REFERENCES posts(id) ON DELETE CASCADE,
+  asset_type VARCHAR(50) NOT NULL, -- image, video, thumbnail
+  storage_provider VARCHAR(50) NOT NULL DEFAULT 'cloudinary', -- cloudinary, s3, local
+  file_url TEXT NOT NULL,
+  file_path TEXT,
+  mime_type VARCHAR(100),
+  file_size_bytes BIGINT,
+  width INT,
+  height INT,
+  duration_seconds NUMERIC(10,2),
+  checksum VARCHAR(128),
+  sort_order INT NOT NULL DEFAULT 1,
+  metadata JSONB,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_post_assets_post_id ON post_assets(post_id);
+
+-- 5. Platforms target per post
+CREATE TABLE post_targets (
+  id BIGSERIAL PRIMARY KEY,
+  post_id BIGINT NOT NULL REFERENCES posts(id) ON DELETE CASCADE,
+  platform VARCHAR(50) NOT NULL, -- instagram, facebook, youtube, tiktok
+  social_account_id BIGINT REFERENCES social_accounts(id) ON DELETE SET NULL,
+  target_status VARCHAR(50) NOT NULL DEFAULT 'pending', -- pending, queued, publishing, published, failed, skipped
+  external_post_id VARCHAR(255),
+  external_url TEXT,
+  caption_override TEXT,
+  hashtags TEXT[],
+  scheduled_for TIMESTAMPTZ,
+  published_at TIMESTAMPTZ,
+  error_code VARCHAR(100),
+  error_message TEXT,
+  metadata JSONB,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (post_id, platform, social_account_id)
+);
+
+CREATE INDEX idx_post_targets_post_id ON post_targets(post_id);
+CREATE INDEX idx_post_targets_status ON post_targets(target_status);
+CREATE INDEX idx_post_targets_scheduled_for ON post_targets(scheduled_for);
+
+-- 6. Publish jobs
+CREATE TABLE publish_jobs (
+  id BIGSERIAL PRIMARY KEY,
+  post_target_id BIGINT NOT NULL REFERENCES post_targets(id) ON DELETE CASCADE,
+  job_type VARCHAR(50) NOT NULL DEFAULT 'publish', -- publish, retry, delete, update
+  queue_name VARCHAR(100) NOT NULL DEFAULT 'publish-queue',
+  status VARCHAR(50) NOT NULL DEFAULT 'queued', -- queued, running, completed, failed, cancelled
+  attempts INT NOT NULL DEFAULT 0,
+  max_attempts INT NOT NULL DEFAULT 3,
+  priority INT NOT NULL DEFAULT 5,
+  run_after TIMESTAMPTZ,
+  started_at TIMESTAMPTZ,
+  completed_at TIMESTAMPTZ,
+  locked_by VARCHAR(255),
+  locked_at TIMESTAMPTZ,
+  input_data JSONB,
+  output_data JSONB,
+  error_message TEXT,
+  error_stack TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_publish_jobs_status ON publish_jobs(status);
+CREATE INDEX idx_publish_jobs_run_after ON publish_jobs(run_after);
+CREATE INDEX idx_publish_jobs_post_target_id ON publish_jobs(post_target_id);
+
+-- 7. Publish logs
+CREATE TABLE publish_logs (
+  id BIGSERIAL PRIMARY KEY,
+  publish_job_id BIGINT REFERENCES publish_jobs(id) ON DELETE CASCADE,
+  post_target_id BIGINT NOT NULL REFERENCES post_targets(id) ON DELETE CASCADE,
+  log_level VARCHAR(20) NOT NULL DEFAULT 'info', -- info, warning, error, debug
+  event_name VARCHAR(100) NOT NULL, -- queued, started, api_request, api_response, success, failed, retry
+  message TEXT NOT NULL,
+  request_payload JSONB,
+  response_payload JSONB,
+  http_status INT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_publish_logs_publish_job_id ON publish_logs(publish_job_id);
+CREATE INDEX idx_publish_logs_post_target_id ON publish_logs(post_target_id);
+CREATE INDEX idx_publish_logs_created_at ON publish_logs(created_at DESC);
+
+-- 8. Schedules
+CREATE TABLE schedules (
+  id BIGSERIAL PRIMARY KEY,
+  post_id BIGINT NOT NULL REFERENCES posts(id) ON DELETE CASCADE,
+  schedule_type VARCHAR(50) NOT NULL DEFAULT 'one_time', -- one_time, recurring
+  timezone VARCHAR(100) NOT NULL DEFAULT 'Asia/Riyadh',
+  run_at TIMESTAMPTZ NOT NULL,
+  recurrence_rule TEXT,
+  status VARCHAR(50) NOT NULL DEFAULT 'active', -- active, paused, completed, cancelled
+  last_run_at TIMESTAMPTZ,
+  next_run_at TIMESTAMPTZ,
+  metadata JSONB,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_schedules_post_id ON schedules(post_id);
+CREATE INDEX idx_schedules_run_at ON schedules(run_at);
+CREATE INDEX idx_schedules_status ON schedules(status);
+
+-- 9. API integrations / app settings
+CREATE TABLE integration_accounts (
+  id BIGSERIAL PRIMARY KEY,
+  user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  provider VARCHAR(50) NOT NULL, -- meta, google, tiktok
+  provider_account_id VARCHAR(255),
+  access_token TEXT,
+  refresh_token TEXT,
+  token_expires_at TIMESTAMPTZ,
+  scopes TEXT[],
+  status VARCHAR(50) NOT NULL DEFAULT 'connected',
+  metadata JSONB,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_integration_accounts_user_id ON integration_accounts(user_id);
+CREATE INDEX idx_integration_accounts_provider ON integration_accounts(provider);
+3) العلاقات بين الجداول
+المستخدم الواحد يمكن أن يملك عدة حسابات اجتماعية.
+
+كل post يمكن أن يحتوي عدة ملفات وسائط.
+
+كل post يمكن أن يُرسل إلى عدة منصات عبر post_targets.
+
+كل post_target يمكن أن يمر بعدة publish_jobs عند إعادة المحاولة.
+
+كل publish_job يكتب سجلاته في publish_logs.
+هذا مهم لأن المنصات قد تنجح أو تفشل بشكل مستقل، وتحتاج تتبع منفصل لكل هدف نشر.
+
+4) حالات العمل المقترحة
+أنصح توحيد الحالات التالية:
+
+posts.status: draft, scheduled, publishing, published, failed, archived
+
+post_targets.target_status: pending, queued, publishing, published, failed, skipped
+
+publish_jobs.status: queued, running, completed, failed, cancelled
+وجود هذه الحالات يجعل لوحة التحكم واضحة ويمنع التباس المنشور الأساسي مع نتيجة كل منصة.
+
+5) ملاحظات تنفيذ مهمة
+اجعل كل ملف فيديو أو صورة يُرفع أولًا إلى S3 أو Cloudinary ثم خزّن الرابط في post_assets.
+
+استخدم publish_jobs مع Redis/BullMQ للمهام الخلفية، لأن النشر يحتاج retries وtimeouts ومراقبة حالة التنفيذ.
+
+خزّن request_payload وresponse_payload في publish_logs لتسهيل الدعم الفني لاحقًا.
+
+اجعل scheduled_for في post_targets هو المرجع الفعلي للنشر إن كانت لكل منصة وقت مختلف.
+
+لو عندك إعادة نشر تلقائية، استخدم recurrence_rule داخل schedules بصيغة نصية أو iCal RRULE.
+
+6) بداية التنفيذ
+أفضل ترتيب للتطبيق:
+
+أنشئ الجداول السابقة.
+
+اربط صفحة إنشاء المنشور بجدول posts.
+
+ارفع الوسائط إلى post_assets.
+
+أنشئ post_targets عند اختيار المنصات.
+
+عند الجدولة، أنشئ publish_jobs.
+
+worker ينفذ النشر ويحدّث publish_logs وpost_targets.
+هذا الترتيب يحول النظام من فكرة نظرية إلى نظام قابل للتشغيل والمراقبة من أول نسخة.
