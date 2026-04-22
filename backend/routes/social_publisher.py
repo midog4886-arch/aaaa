@@ -48,6 +48,13 @@ def _require_social_publisher(current_user: dict = Depends(get_current_user)) ->
     raise HTTPException(status_code=403, detail="غير مصرح لك بهذه العملية")
 
 
+def _require_admin(current_user: dict = Depends(get_current_user)) -> dict:
+    """OAuth app credentials are sensitive and only admins may read or edit them."""
+    if not current_user.get("is_admin", False):
+        raise HTTPException(status_code=403, detail="هذه الإعدادات للمسؤول فقط")
+    return current_user
+
+
 def _public_base_url(request: Request) -> str:
     """Return the base URL that external platforms can fetch /uploads from."""
     forced = os.environ.get("PUBLIC_BASE_URL", "").rstrip("/")
@@ -135,7 +142,7 @@ PROVIDER_FOR_PLATFORM = {"facebook": "meta", "instagram": "meta", "youtube": "yo
 
 
 @router.get("/config")
-async def get_oauth_config(current_user: dict = Depends(_require_social_publisher)):
+async def get_oauth_config(current_user: dict = Depends(_require_admin)):
     """Returns saved OAuth app credentials for each provider, including the
     schema so the UI can render the right form fields."""
     out = {}
@@ -156,7 +163,7 @@ class ConfigUpdate(BaseModel):
 async def save_oauth_config(
     provider: str,
     payload: ConfigUpdate,
-    current_user: dict = Depends(_require_social_publisher),
+    current_user: dict = Depends(_require_admin),
 ):
     if provider not in CONFIG_SCHEMA:
         raise HTTPException(status_code=400, detail="مزود غير معروف")

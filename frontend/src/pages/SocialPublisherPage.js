@@ -43,12 +43,13 @@ const SocialPublisherPage = () => {
   const [loadingHistory, setLoadingHistory] = useState(true);
   const fileInputRef = useRef(null);
 
-  // OAuth app credentials editable from the page.
+  // OAuth app credentials editable from the page (admin only).
   const [showSettings, setShowSettings] = useState(false);
   const [config, setConfig] = useState({}); // { provider: { schema, values } }
   const [configDraft, setConfigDraft] = useState({});
   const [savingProvider, setSavingProvider] = useState(null);
   const [revealed, setRevealed] = useState({}); // { 'provider:key': true }
+  const [canEditConfig, setCanEditConfig] = useState(false);
 
   const callbackBase = (() => {
     const o = window.location.origin;
@@ -62,8 +63,10 @@ const SocialPublisherPage = () => {
       const draft = {};
       Object.entries(r.data || {}).forEach(([prov, info]) => { draft[prov] = { ...info.values }; });
       setConfigDraft(draft);
+      setCanEditConfig(true);
     } catch (e) {
-      // silent — settings panel just stays empty
+      // 403 means the user isn't admin — hide the settings panel entirely.
+      setCanEditConfig(false);
     }
   };
 
@@ -252,14 +255,16 @@ const SocialPublisherPage = () => {
               ارفع صورة أو فيديو مرة واحدة وانشره على كل المنصات.
             </p>
           </div>
-          <Button variant="outline" size="sm" onClick={() => setShowSettings(s => !s)}>
-            <Settings className="w-4 h-4 ml-1" />
-            إعدادات OAuth
-          </Button>
+          {canEditConfig && (
+            <Button variant="outline" size="sm" onClick={() => setShowSettings(s => !s)}>
+              <Settings className="w-4 h-4 ml-1" />
+              إعدادات OAuth
+            </Button>
+          )}
         </div>
 
         {/* ── OAuth app credentials ─────────────────────────────────── */}
-        {showSettings && (
+        {canEditConfig && showSettings && (
           <Card className="border-amber-200 bg-amber-50/30">
             <CardHeader>
               <CardTitle className="text-base flex items-center gap-2">

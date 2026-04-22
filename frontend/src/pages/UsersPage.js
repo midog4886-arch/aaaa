@@ -38,6 +38,7 @@ const ALL_PERMISSIONS = [
   { key: 'tournaments', label_ar: 'البطولات', label_en: 'Tournaments' },
   { key: 'advertisements', label_ar: 'الإعلانات', label_en: 'Advertisements' },
   { key: 'daily-videos', label_ar: 'الفيديوهات', label_en: 'Daily Videos' },
+  { key: 'social-publisher', label_ar: 'النشر الاجتماعي', label_en: 'Social Publisher' },
   { key: 'loyalty', label_ar: 'نقاط الولاء', label_en: 'Loyalty' },
   { key: 'store', label_ar: 'المخزن', label_en: 'Store' },
   { key: 'accounting', label_ar: 'المحاسبة', label_en: 'Accounting' },

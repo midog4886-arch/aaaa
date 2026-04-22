@@ -66,12 +66,48 @@ class oauth:
             }
 
 
+async def _refresh_if_needed(account: dict) -> str:
+    """Refresh the TikTok access token if it's expired (or close to expiry)."""
+    if account.get("expires_at", 0) > int(time.time()) + 60:
+        return account.get("access_token")
+    refresh = account.get("refresh_token")
+    if not refresh:
+        return account.get("access_token")
+    c = await _cfg()
+    async with httpx.AsyncClient(timeout=30) as client:
+        r = await client.post(
+            "https://open.tiktokapis.com/v2/oauth/token/",
+            data={
+                "client_key": c.get("client_key"),
+                "client_secret": c.get("client_secret"),
+                "grant_type": "refresh_token",
+                "refresh_token": refresh,
+            },
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+        )
+        r.raise_for_status()
+        tok = r.json()
+        new_access = tok.get("access_token") or account.get("access_token")
+        update = {
+            "access_token": new_access,
+            "refresh_token": tok.get("refresh_token", refresh),
+            "expires_at": int(time.time()) + int(tok.get("expires_in", 86400)),
+        }
+        # Persist the rotated tokens.
+        from routes.common import db
+        await db.social_accounts.update_one({"platform": "tiktok"}, {"$set": update})
+        return new_access
+
+
 async def publish(account: dict, media_path: str, public_url: str, caption: str) -> dict:
     if not media_path.lower().endswith((".mp4", ".mov", ".m4v")):
         return {"success": False, "error": "TikTok only accepts video files"}
-    access_token = account.get("access_token")
-    if not access_token:
+    if not account.get("access_token"):
         return {"success": False, "error": "TikTok account not connected"}
+    try:
+        access_token = await _refresh_if_needed(account)
+    except Exception as e:
+        return {"success": False, "error": f"Token refresh failed: {e}"}
     try:
         async with httpx.AsyncClient(timeout=120) as client:
             # Initialize a PULL_FROM_URL post. TikTok will fetch the public URL.
