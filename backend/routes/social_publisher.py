@@ -1124,6 +1124,34 @@ async def get_uploads_cleanup_status(current_user: dict = Depends(_require_admin
     return await _get_uploads_cleanup_meta()
 
 
+def _compute_uploads_usage() -> Dict[str, int]:
+    """Return current disk usage for SOCIAL_UPLOAD_DIR as
+    ``{files_count, total_bytes}``. Symlinks and subdirectories are skipped
+    so the figure reflects only the regular media files we actually manage.
+    """
+    files_count = 0
+    total_bytes = 0
+    if SOCIAL_UPLOAD_DIR.exists():
+        for entry in SOCIAL_UPLOAD_DIR.iterdir():
+            try:
+                if not entry.is_file() or entry.is_symlink():
+                    continue
+                total_bytes += entry.stat().st_size
+                files_count += 1
+            except OSError:
+                # Race with cleanup or unreadable entry — just skip it.
+                continue
+    return {"files_count": files_count, "total_bytes": total_bytes}
+
+
+@router.get("/uploads-usage")
+async def get_uploads_usage(current_user: dict = Depends(_require_admin)):
+    """Return the current number of files and total bytes stored under the
+    social uploads directory. Used by the cleanup panel to show disk usage
+    before/after manual cleanup runs."""
+    return _compute_uploads_usage()
+
+
 class UploadsCleanupSettingsUpdate(BaseModel):
     retention_days: int
 

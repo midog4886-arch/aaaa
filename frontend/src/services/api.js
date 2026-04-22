@@ -106,6 +106,7 @@ export const socialAPI = {
   getUploadsCleanupStatus: () => axios.get(`${API}/social/uploads-cleanup`),
   runUploadsCleanupNow: () => axios.post(`${API}/social/uploads-cleanup`),
   updateUploadsCleanupSettings: (data) => axios.put(`${API}/social/uploads-cleanup-settings`, data),
+  getUploadsUsage: () => axios.get(`${API}/social/uploads-usage`),
   listDesignTemplates: () => axios.get(`${API}/social/design-templates`),
   createDesignTemplate: (name, settings) => axios.post(`${API}/social/design-templates`, { name, settings }),
   updateDesignTemplate: (id, payload) => axios.put(`${API}/social/design-templates/${id}`, payload),

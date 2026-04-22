@@ -29,6 +29,22 @@ const VIDEO_MAX_SECONDS = {
   facebook: 14400,
 };
 
+// Format a byte count as a human-readable string (KB / MB / GB) using the
+// same 1024-based units the rest of the upload UI uses.
+const formatBytes = (bytes) => {
+  if (bytes == null || !Number.isFinite(bytes)) return '—';
+  if (bytes < 1024) return `${bytes} B`;
+  const units = ['KB', 'MB', 'GB', 'TB'];
+  let value = bytes / 1024;
+  let i = 0;
+  while (value >= 1024 && i < units.length - 1) {
+    value /= 1024;
+    i += 1;
+  }
+  const decimals = value >= 100 ? 0 : value >= 10 ? 1 : 2;
+  return `${value.toFixed(decimals)} ${units[i]}`;
+};
+
 const PLATFORMS = [
   { id: 'facebook',  name: 'Facebook',   icon: Facebook,  color: 'bg-blue-600',    border: 'border-blue-200',    accepts: 'image+video' },
   { id: 'instagram', name: 'Instagram',  icon: Instagram, color: 'bg-pink-600',    border: 'border-pink-200',    accepts: 'image+video' },
@@ -67,6 +83,7 @@ const SocialPublisherPage = () => {
   const [insightsSettings, setInsightsSettings] = useState(null); // { enabled, interval_minutes, lookback_days, last_run_at, last_run_status }
   const [savingInsightsSettings, setSavingInsightsSettings] = useState(false);
   const [uploadsCleanup, setUploadsCleanup] = useState(null); // { last_run_at, last_run_deleted, last_run_status, retention_days, retention_days_min, retention_days_max }
+  const [uploadsUsage, setUploadsUsage] = useState(null); // { files_count, total_bytes }
   const [runningUploadsCleanup, setRunningUploadsCleanup] = useState(false);
   const [retentionDraft, setRetentionDraft] = useState('');
   const [savingRetention, setSavingRetention] = useState(false);
@@ -183,6 +200,15 @@ const SocialPublisherPage = () => {
     }
   };
 
+  const loadUploadsUsage = async () => {
+    try {
+      const r = await socialAPI.getUploadsUsage();
+      setUploadsUsage(r.data);
+    } catch (e) {
+      // 403 = not admin; just leave as null
+    }
+  };
+
   const handleSaveRetention = async () => {
     const rd = parseInt(retentionDraft, 10);
     const min = uploadsCleanup?.retention_days_min ?? 1;
@@ -211,6 +237,8 @@ const SocialPublisherPage = () => {
       setUploadsCleanup(r.data);
       const n = r.data?.deleted ?? 0;
       toast.success(n > 0 ? `تم حذف ${n} ملف` : 'لا توجد ملفات للتنظيف');
+      // Refresh disk usage so the panel reflects the post-cleanup state.
+      loadUploadsUsage();
     } catch (e) {
       toast.error(e?.response?.data?.detail || 'تعذر تشغيل التنظيف');
     } finally {
@@ -236,12 +264,14 @@ const SocialPublisherPage = () => {
     loadConfig();
     loadInsightsSettings();
     loadUploadsCleanup();
+    loadUploadsUsage();
     // Periodically refresh history + last-run metadata so the UI reflects
     // changes made by the background scheduler without manual reloads.
     const histTimer = setInterval(() => {
       loadHistory();
       loadInsightsSettings();
       loadUploadsCleanup();
+      loadUploadsUsage();
     }, 60 * 1000);
     const onMessage = (ev) => {
       if (ev?.data?.social_oauth) {
@@ -658,6 +688,20 @@ const SocialPublisherPage = () => {
                     الحد المسموح: من {uploadsCleanup.retention_days_min} إلى {uploadsCleanup.retention_days_max} يوماً
                     (الافتراضي {uploadsCleanup.retention_days_default}).
                   </p>
+                )}
+                {uploadsUsage && (
+                  <div className="text-xs text-gray-700 mt-2 flex flex-wrap items-center gap-x-3 gap-y-1">
+                    <span>
+                      حجم القرص المستخدم حالياً:{' '}
+                      <span className="font-bold" dir="ltr">
+                        {formatBytes(uploadsUsage.total_bytes)}
+                      </span>
+                    </span>
+                    <span>
+                      عدد الملفات المتبقية:{' '}
+                      <span className="font-bold">{uploadsUsage.files_count}</span>
+                    </span>
+                  </div>
                 )}
                 <div className="text-xs text-gray-600 mt-2">
                   {uploadsCleanup?.last_run_at ? (
