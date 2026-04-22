@@ -1421,14 +1421,23 @@ export const MembersPage = () => {
                             const acts = member.activities || [];
                             const hasActive = acts.some(a => getActivityStatusFromDate(a) === 'active');
                             const allExpired = acts.length > 0 && acts.every(a => getActivityStatusFromDate(a) === 'expired');
-                            const title = hasActive
-                              ? (language === 'ar' ? 'عرض تفاصيل العضو' : 'View member details')
-                              : allExpired
-                                ? (language === 'ar' ? 'منتهي - عرض التفاصيل' : 'Expired - view details')
-                                : (language === 'ar' ? 'لا توجد اشتراكات' : 'No subscriptions');
-                            const Icon = hasActive ? CheckCircle : allExpired ? XCircle : null;
-                            const cls = hasActive ? 'text-green-500' : allExpired ? 'text-red-500' : 'text-gray-300';
-                            if (!Icon) return <span className="text-gray-300">-</span>;
+                            // Active = green check (visual only, like paid invoices).
+                            if (hasActive) {
+                              return (
+                                <CheckCircle
+                                  className="w-5 h-5 text-green-500 inline"
+                                  title={language === 'ar' ? 'لديه اشتراك ساري' : 'Has active subscription'}
+                                />
+                              );
+                            }
+                            // Expired or no subscription = clickable empty
+                            // circle that opens member view so the admin can
+                            // renew/add an activity (mirrors the pending
+                            // invoice behaviour).
+                            const title = allExpired
+                              ? (language === 'ar' ? 'الاشتراك منتهي - اضغط لعرض/تجديد' : 'Expired - click to view/renew')
+                              : (language === 'ar' ? 'لا توجد اشتراكات - اضغط لإضافة' : 'No subscriptions - click to add');
+                            const cls = allExpired ? 'text-red-400 hover:text-red-600' : 'text-gray-300 hover:text-gray-500';
                             return (
                               <Button
                                 variant="ghost"
@@ -1437,7 +1446,7 @@ export const MembersPage = () => {
                                 className={`${cls} h-7 w-7 p-0`}
                                 onClick={() => openViewDialog(member)}
                               >
-                                <Icon className="w-5 h-5" />
+                                <Circle className="w-5 h-5" />
                               </Button>
                             );
                           })()}
