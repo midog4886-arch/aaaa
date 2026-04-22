@@ -1423,35 +1423,29 @@ export const MembersPage = () => {
                       <tr key={member.id} data-testid={`member-row-${member.id}`} className={member.activities?.some(a => { const d = getDaysRemaining(a.end_date); const s = getActivityStatusFromDate(a); return s === 'active' && d !== null && d <= 7 && d >= 0; }) ? 'bg-amber-50' : member.activities?.every(a => getActivityStatusFromDate(a) === 'expired') && member.activities?.length > 0 ? 'bg-red-50/50' : ''}>
                         <td className="text-center">
                           {(() => {
-                            const acts = member.activities || [];
-                            const hasActive = acts.some(a => getActivityStatusFromDate(a) === 'active');
-                            const allExpired = acts.length > 0 && acts.every(a => getActivityStatusFromDate(a) === 'expired');
-                            // Active = green check (visual only, like paid invoices).
-                            if (hasActive) {
-                              return (
-                                <CheckCircle
-                                  className="w-5 h-5 text-green-500 inline"
-                                  title={language === 'ar' ? 'لديه اشتراك ساري' : 'Has active subscription'}
-                                />
-                              );
-                            }
-                            // Expired or no subscription = clickable empty
-                            // circle that opens member view so the admin can
-                            // renew/add an activity (mirrors the pending
-                            // invoice behaviour).
-                            const title = allExpired
-                              ? (language === 'ar' ? 'الاشتراك منتهي - اضغط لعرض/تجديد' : 'Expired - click to view/renew')
-                              : (language === 'ar' ? 'لا توجد اشتراكات - اضغط لإضافة' : 'No subscriptions - click to add');
-                            const cls = allExpired ? 'text-red-400 hover:text-red-600' : 'text-gray-300 hover:text-gray-500';
+                            const isMarked = markedMemberIds.has(member.id);
+                            const toggle = () => {
+                              setMarkedMemberIds(prev => {
+                                const next = new Set(prev);
+                                if (next.has(member.id)) next.delete(member.id);
+                                else next.add(member.id);
+                                return next;
+                              });
+                            };
+                            const title = isMarked
+                              ? (language === 'ar' ? 'تم التحديد - اضغط لإلغاء' : 'Marked - click to unmark')
+                              : (language === 'ar' ? 'اضغط للتحديد اليدوي' : 'Click to mark');
                             return (
                               <Button
                                 variant="ghost"
                                 size="sm"
                                 title={title}
-                                className={`${cls} h-7 w-7 p-0`}
-                                onClick={() => openViewDialog(member)}
+                                className={`h-7 w-7 p-0 ${isMarked ? 'text-green-500' : 'text-gray-300 hover:text-gray-500'}`}
+                                onClick={toggle}
                               >
-                                <Circle className="w-5 h-5" />
+                                {isMarked
+                                  ? <CheckCircle className="w-5 h-5" />
+                                  : <Circle className="w-5 h-5" />}
                               </Button>
                             );
                           })()}
