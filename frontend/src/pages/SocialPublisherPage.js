@@ -66,8 +66,10 @@ const SocialPublisherPage = () => {
   const [refreshingInsights, setRefreshingInsights] = useState({}); // { post_id: true }
   const [insightsSettings, setInsightsSettings] = useState(null); // { enabled, interval_minutes, lookback_days, last_run_at, last_run_status }
   const [savingInsightsSettings, setSavingInsightsSettings] = useState(false);
-  const [uploadsCleanup, setUploadsCleanup] = useState(null); // { last_run_at, last_run_deleted, last_run_status, retention_days }
+  const [uploadsCleanup, setUploadsCleanup] = useState(null); // { last_run_at, last_run_deleted, last_run_status, retention_days, retention_days_min, retention_days_max }
   const [runningUploadsCleanup, setRunningUploadsCleanup] = useState(false);
+  const [retentionDraft, setRetentionDraft] = useState('');
+  const [savingRetention, setSavingRetention] = useState(false);
   const fileInputRef = useRef(null);
 
   // OAuth app credentials editable from the page (admin only).
@@ -171,8 +173,34 @@ const SocialPublisherPage = () => {
     try {
       const r = await socialAPI.getUploadsCleanupStatus();
       setUploadsCleanup(r.data);
+      setRetentionDraft((prev) =>
+        prev === '' && r.data?.retention_days != null
+          ? String(r.data.retention_days)
+          : prev,
+      );
     } catch (e) {
       // 403 = not admin; just leave as null
+    }
+  };
+
+  const handleSaveRetention = async () => {
+    const rd = parseInt(retentionDraft, 10);
+    const min = uploadsCleanup?.retention_days_min ?? 1;
+    const max = uploadsCleanup?.retention_days_max ?? 365;
+    if (!Number.isFinite(rd) || rd < min || rd > max) {
+      toast.error(`عدد الأيام يجب أن يكون بين ${min} و${max}`);
+      return;
+    }
+    setSavingRetention(true);
+    try {
+      const r = await socialAPI.updateUploadsCleanupSettings({ retention_days: rd });
+      setUploadsCleanup(r.data);
+      setRetentionDraft(String(r.data?.retention_days ?? rd));
+      toast.success('تم حفظ مدة الاحتفاظ');
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || 'تعذر حفظ مدة الاحتفاظ');
+    } finally {
+      setSavingRetention(false);
     }
   };
 
@@ -585,17 +613,52 @@ const SocialPublisherPage = () => {
                       تعمل تلقائياً مرة كل يوم — استخدم الزر للتشغيل الفوري.
                     </p>
                   </div>
-                  <Button
-                    size="sm"
-                    onClick={handleRunUploadsCleanup}
-                    disabled={runningUploadsCleanup}
-                  >
-                    {runningUploadsCleanup
-                      ? <Loader2 className="w-3 h-3 animate-spin ml-1" />
-                      : <Trash2 className="w-3 h-3 ml-1" />}
-                    تنظيف الآن
-                  </Button>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <label className="text-xs text-gray-700 inline-flex items-center gap-1">
+                      مدة الاحتفاظ (أيام):
+                      <input
+                        type="number"
+                        min={uploadsCleanup?.retention_days_min ?? 1}
+                        max={uploadsCleanup?.retention_days_max ?? 365}
+                        step={1}
+                        value={retentionDraft}
+                        onChange={(e) => setRetentionDraft(e.target.value)}
+                        disabled={!uploadsCleanup || savingRetention}
+                        className="w-16 border rounded px-2 py-1 text-xs"
+                      />
+                    </label>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={handleSaveRetention}
+                      disabled={
+                        !uploadsCleanup ||
+                        savingRetention ||
+                        retentionDraft === '' ||
+                        parseInt(retentionDraft, 10) === uploadsCleanup?.retention_days
+                      }
+                    >
+                      {savingRetention && <Loader2 className="w-3 h-3 animate-spin ml-1" />}
+                      حفظ
+                    </Button>
+                    <Button
+                      size="sm"
+                      onClick={handleRunUploadsCleanup}
+                      disabled={runningUploadsCleanup}
+                    >
+                      {runningUploadsCleanup
+                        ? <Loader2 className="w-3 h-3 animate-spin ml-1" />
+                        : <Trash2 className="w-3 h-3 ml-1" />}
+                      تنظيف الآن
+                    </Button>
+                  </div>
                 </div>
+                {uploadsCleanup && (
+                  <p className="text-[11px] text-gray-500 mt-1">
+                    الحد المسموح: من {uploadsCleanup.retention_days_min} إلى {uploadsCleanup.retention_days_max} يوماً
+                    (الافتراضي {uploadsCleanup.retention_days_default}).
+                  </p>
+                )}
                 <div className="text-xs text-gray-600 mt-2">
                   {uploadsCleanup?.last_run_at ? (
                     <div className="flex flex-wrap items-center gap-x-3 gap-y-1">

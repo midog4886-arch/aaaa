@@ -1104,13 +1104,17 @@ async def update_insights_settings(
 
 async def _get_uploads_cleanup_meta() -> dict:
     meta = await db.social_settings.find_one({"key": "uploads_cleanup"}, {"_id": 0}) or {}
+    retention = await _get_uploads_retention_days()
     return {
         "last_run_at": meta.get("last_run_at"),
         "last_run_deleted": meta.get("last_run_deleted"),
         "last_run_status": meta.get("last_run_status"),
         "last_run_error": meta.get("last_run_error"),
         "last_run_retention_days": meta.get("last_run_retention_days"),
-        "retention_days": UPLOADS_RETENTION_DAYS,
+        "retention_days": retention,
+        "retention_days_default": UPLOADS_RETENTION_DAYS,
+        "retention_days_min": UPLOADS_RETENTION_MIN_DAYS,
+        "retention_days_max": UPLOADS_RETENTION_MAX_DAYS,
     }
 
 
@@ -1120,11 +1124,48 @@ async def get_uploads_cleanup_status(current_user: dict = Depends(_require_admin
     return await _get_uploads_cleanup_meta()
 
 
+class UploadsCleanupSettingsUpdate(BaseModel):
+    retention_days: int
+
+
+@router.put("/uploads-cleanup-settings")
+async def update_uploads_cleanup_settings(
+    payload: UploadsCleanupSettingsUpdate,
+    current_user: dict = Depends(_require_admin),
+):
+    """Update the retention window (in days) used by both the scheduled and
+    on-demand uploads cleanup. Admin-only."""
+    try:
+        rd = int(payload.retention_days)
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=400, detail="قيمة غير صالحة لعدد الأيام")
+    if rd < UPLOADS_RETENTION_MIN_DAYS or rd > UPLOADS_RETENTION_MAX_DAYS:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"عدد أيام الاحتفاظ يجب أن يكون بين {UPLOADS_RETENTION_MIN_DAYS} "
+                f"و{UPLOADS_RETENTION_MAX_DAYS} يوماً"
+            ),
+        )
+    await db.social_settings.update_one(
+        {"key": "uploads_cleanup"},
+        {"$set": {
+            "key": "uploads_cleanup",
+            "retention_days": rd,
+            "retention_updated_at": datetime.now(timezone.utc).isoformat(),
+            "retention_updated_by": current_user.get("user_id") or current_user.get("id"),
+        }},
+        upsert=True,
+    )
+    return await _get_uploads_cleanup_meta()
+
+
 @router.post("/uploads-cleanup")
 async def run_uploads_cleanup_now(current_user: dict = Depends(_require_admin)):
     """Run the uploads cleanup job once on demand. Returns the deleted count."""
+    retention = await _get_uploads_retention_days()
     try:
-        deleted = await _cleanup_social_uploads_once(UPLOADS_RETENTION_DAYS)
+        deleted = await _cleanup_social_uploads_once(retention)
     except Exception as e:
         logger.exception("Manual uploads cleanup failed")
         try:
@@ -1135,7 +1176,7 @@ async def run_uploads_cleanup_now(current_user: dict = Depends(_require_admin)):
                     "last_run_at": datetime.now(timezone.utc).isoformat(),
                     "last_run_status": "error",
                     "last_run_error": str(e),
-                    "last_run_retention_days": UPLOADS_RETENTION_DAYS,
+                    "last_run_retention_days": retention,
                 }},
                 upsert=True,
             )
@@ -1429,9 +1470,35 @@ def start_insights_scheduler() -> None:
 # files older than UPLOADS_RETENTION_DAYS that aren't referenced by any
 # persisted post (original media, processed derivative, or custom logo).
 
-UPLOADS_RETENTION_DAYS = 7
+UPLOADS_RETENTION_DAYS = 7  # default when no admin override exists
+UPLOADS_RETENTION_MIN_DAYS = 1
+UPLOADS_RETENTION_MAX_DAYS = 365
 UPLOADS_CLEANUP_INTERVAL_SECONDS = 24 * 3600
 _uploads_cleanup_started = False
+
+
+async def _get_uploads_retention_days() -> int:
+    """Return the admin-configured retention window in days, falling back to
+    UPLOADS_RETENTION_DAYS when nothing is stored. Values outside the allowed
+    bounds are clamped so a stale/corrupt setting can't disable cleanup."""
+    try:
+        doc = await db.social_settings.find_one(
+            {"key": "uploads_cleanup"}, {"_id": 0, "retention_days": 1},
+        )
+    except Exception:
+        logger.exception("Failed to read uploads retention setting")
+        return UPLOADS_RETENTION_DAYS
+    if not doc or doc.get("retention_days") is None:
+        return UPLOADS_RETENTION_DAYS
+    try:
+        rd = int(doc["retention_days"])
+    except (TypeError, ValueError):
+        return UPLOADS_RETENTION_DAYS
+    if rd < UPLOADS_RETENTION_MIN_DAYS:
+        return UPLOADS_RETENTION_MIN_DAYS
+    if rd > UPLOADS_RETENTION_MAX_DAYS:
+        return UPLOADS_RETENTION_MAX_DAYS
+    return rd
 
 
 async def _collect_recent_post_filenames(max_age_days: int) -> set:
@@ -1536,14 +1603,15 @@ async def _cleanup_social_uploads_once(max_age_days: int = UPLOADS_RETENTION_DAY
 
 async def _uploads_cleanup_loop():
     logger.info(
-        "Social uploads cleanup scheduler started (retention=%d days, interval=%ds)",
+        "Social uploads cleanup scheduler started (default retention=%d days, interval=%ds)",
         UPLOADS_RETENTION_DAYS, UPLOADS_CLEANUP_INTERVAL_SECONDS,
     )
     # Stagger first run so it doesn't compete with startup work.
     await asyncio.sleep(300)
     while True:
         try:
-            await _cleanup_social_uploads_once(UPLOADS_RETENTION_DAYS)
+            retention = await _get_uploads_retention_days()
+            await _cleanup_social_uploads_once(retention)
         except asyncio.CancelledError:
             break
         except Exception:
