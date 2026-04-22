@@ -395,7 +395,7 @@ const SocialPublisherPage = () => {
                             className="mt-2 w-full"
                             onClick={() => handleConnect(p.id)}
                             disabled={!isConfigured}
-                            title={!isConfigured ? 'تطبيق المنصة غير مهيأ في الأسرار' : ''}
+                            title={!isConfigured ? 'إعدادات الربط لهذه المنصة لم تُكتمل بعد، أكملها من زر الإعدادات' : ''}
                           >
                             <Link2 className="w-3 h-3 ml-1" />
                             {isConfigured ? 'ربط الحساب' : 'غير مهيأ'}

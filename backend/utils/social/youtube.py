@@ -99,7 +99,21 @@ async def _refresh_if_needed(account: dict) -> str:
         )
         r.raise_for_status()
         tok = r.json()
-        return tok["access_token"]
+        new_access = tok["access_token"]
+        new_expires_at = int(time.time()) + int(tok.get("expires_in", 3600))
+        # Persist the rotated access token so subsequent calls don't re-refresh
+        # and so other workers see the latest token.
+        try:
+            from database import db
+            await db.social_accounts.update_one(
+                {"platform": "youtube"},
+                {"$set": {"access_token": new_access, "expires_at": new_expires_at}},
+            )
+            account["access_token"] = new_access
+            account["expires_at"] = new_expires_at
+        except Exception:
+            pass
+        return new_access
 
 
 async def publish(account: dict, media_path: str, public_url: str, caption: str) -> dict:

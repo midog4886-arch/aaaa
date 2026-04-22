@@ -36,7 +36,7 @@ SOCIAL_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
 ALLOWED_IMAGE_EXT = {".jpg", ".jpeg", ".png"}
 ALLOWED_VIDEO_EXT = {".mp4", ".mov", ".m4v"}
-MAX_UPLOAD_BYTES = 250 * 1024 * 1024  # ~250 MB
+MAX_UPLOAD_BYTES = 200 * 1024 * 1024  # 200 MB
 
 PLATFORMS = ("facebook", "instagram", "youtube", "tiktok")
 
@@ -119,7 +119,7 @@ async def upload_media(
             if total > MAX_UPLOAD_BYTES:
                 out.close()
                 dest.unlink(missing_ok=True)
-                raise HTTPException(status_code=413, detail="حجم الملف أكبر من 250 ميجا")
+                raise HTTPException(status_code=413, detail="حجم الملف أكبر من 200 ميجا")
             out.write(chunk)
     base = _public_base_url(request)
     return {
