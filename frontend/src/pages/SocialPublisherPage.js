@@ -12,7 +12,18 @@ import {
   Loader2, UploadCloud, Send, Link2, Unlink, CheckCircle2, XCircle,
   Image as ImageIcon, Video as VideoIcon, History, RefreshCw, ExternalLink,
   Facebook, Instagram, Youtube, Music2, Settings, Save, Eye, EyeOff, Copy,
+  Crop as CropIcon, AlertTriangle,
 } from 'lucide-react';
+import MediaCropEditor from '../components/MediaCropEditor';
+
+// Per-platform max video duration in seconds. Reels/Shorts/TikTok limits.
+// Keep in sync with PLATFORM_MAX_VIDEO_SECONDS in backend/routes/social_publisher.py
+const VIDEO_MAX_SECONDS = {
+  instagram: 60,
+  tiktok: 600,
+  youtube: 900,
+  facebook: 14400,
+};
 
 const PLATFORMS = [
   { id: 'facebook',  name: 'Facebook',   icon: Facebook,  color: 'bg-blue-600',    border: 'border-blue-200',    accepts: 'image+video' },
@@ -31,6 +42,9 @@ const SocialPublisherPage = () => {
   const [uploadProgress, setUploadProgress] = useState(0);
   const [uploaded, setUploaded] = useState(null); // { filename, kind, public_url }
   const [previewUrl, setPreviewUrl] = useState('');
+  const [videoDuration, setVideoDuration] = useState(null); // seconds, null until probed
+  const [cropOpen, setCropOpen] = useState(false);
+  const [videoCrop, setVideoCrop] = useState(null); // { crop:{x,y,width,height}, aspect }
 
   const [caption, setCaption] = useState('');
   const [overrides, setOverrides] = useState({}); // { platform: text }
@@ -158,13 +172,43 @@ const SocialPublisherPage = () => {
     }
   };
 
-  const handleFilePick = (e) => {
-    const f = e.target.files?.[0];
-    if (!f) return;
+  const probeVideoDuration = (url) => new Promise((resolve) => {
+    const v = document.createElement('video');
+    v.preload = 'metadata';
+    v.onloadedmetadata = () => resolve(Number.isFinite(v.duration) ? v.duration : null);
+    v.onerror = () => resolve(null);
+    v.src = url;
+  });
+
+  const adoptFile = async (f) => {
     setFile(f);
     setUploaded(null);
     setResults(null);
-    setPreviewUrl(URL.createObjectURL(f));
+    setVideoDuration(null);
+    setVideoCrop(null);
+    const url = URL.createObjectURL(f);
+    setPreviewUrl(url);
+    if (f.type.startsWith('video/')) {
+      const d = await probeVideoDuration(url);
+      setVideoDuration(d);
+    }
+  };
+
+  const handleFilePick = (e) => {
+    const f = e.target.files?.[0];
+    if (!f) return;
+    adoptFile(f);
+  };
+
+  const handleCropApplied = (result) => {
+    setCropOpen(false);
+    if (!result) return;
+    if (result.kind === 'image' && result.file) {
+      adoptFile(result.file);
+    } else if (result.kind === 'video') {
+      setVideoCrop({ crop: result.crop, aspect: result.aspect });
+      toast.success(`تم حفظ تأطير الفيديو (${result.aspect})`);
+    }
   };
 
   const handleUpload = async () => {
@@ -206,6 +250,18 @@ const SocialPublisherPage = () => {
         return;
       }
     }
+    if (uploaded.kind === 'video' && videoDuration != null) {
+      const tooLong = Array.from(selected).filter(
+        p => VIDEO_MAX_SECONDS[p] != null && videoDuration > VIDEO_MAX_SECONDS[p],
+      );
+      if (tooLong.length > 0) {
+        const desc = tooLong
+          .map(p => `${p} (الحد ${VIDEO_MAX_SECONDS[p]}ث)`)
+          .join('، ');
+        toast.error(`مدة الفيديو (${Math.round(videoDuration)}ث) أطول من الحد المسموح: ${desc}`);
+        return;
+      }
+    }
     setPublishing(true);
     setResults(null);
     try {
@@ -217,6 +273,7 @@ const SocialPublisherPage = () => {
         media_filename: uploaded.filename,
         caption,
         targets,
+        video_crop: uploaded.kind === 'video' && videoCrop ? videoCrop.crop : null,
       });
       setResults(r.data.results || []);
       const okCount = (r.data.results || []).filter(x => x.status === 'success').length;
@@ -236,6 +293,8 @@ const SocialPublisherPage = () => {
     setFile(null);
     setUploaded(null);
     setPreviewUrl('');
+    setVideoDuration(null);
+    setVideoCrop(null);
     setCaption('');
     setOverrides({});
     setShowOverride({});
@@ -244,6 +303,13 @@ const SocialPublisherPage = () => {
     setUploadProgress(0);
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
+
+  // Platforms whose video limit is exceeded by the current file (UI hint only).
+  const exceedingPlatforms = (file && file.type.startsWith('video/') && videoDuration != null)
+    ? PLATFORMS.filter(
+        p => VIDEO_MAX_SECONDS[p.id] != null && videoDuration > VIDEO_MAX_SECONDS[p.id],
+      ).map(p => p.id)
+    : [];
 
   return (
     <Layout>
@@ -451,7 +517,19 @@ const SocialPublisherPage = () => {
                       </div>
                       <div className="text-xs text-gray-400 mt-1">
                         {(file.size / (1024 * 1024)).toFixed(2)} MB
+                        {file.type.startsWith('video/') && videoDuration != null && (
+                          <> — مدة {Math.round(videoDuration)}ث</>
+                        )}
                       </div>
+                      {exceedingPlatforms.length > 0 && (
+                        <div className="mt-2 flex items-start gap-2 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded p-2">
+                          <AlertTriangle className="w-3 h-3 mt-0.5 flex-shrink-0" />
+                          <span>
+                            مدة الفيديو أطول من الحد المسموح في:{' '}
+                            {exceedingPlatforms.map(p => `${p} (${VIDEO_MAX_SECONDS[p]}ث)`).join('، ')}
+                          </span>
+                        </div>
+                      )}
                       {uploading && (
                         <div className="mt-2">
                           <div className="h-2 bg-gray-200 rounded">
@@ -460,7 +538,7 @@ const SocialPublisherPage = () => {
                           <div className="text-xs text-gray-500 mt-1">{uploadProgress}%</div>
                         </div>
                       )}
-                      <div className="flex gap-2 mt-2">
+                      <div className="flex gap-2 mt-2 flex-wrap">
                         {!uploaded ? (
                           <Button size="sm" onClick={handleUpload} disabled={uploading}>
                             {uploading ? <Loader2 className="w-4 h-4 animate-spin ml-1" /> : <UploadCloud className="w-4 h-4 ml-1" />}
@@ -470,6 +548,17 @@ const SocialPublisherPage = () => {
                           <Badge className="bg-green-100 text-green-700 border border-green-200">
                             <CheckCircle2 className="w-3 h-3 ml-1" /> تم الرفع
                           </Badge>
+                        )}
+                        {!uploaded && file.type.startsWith('image/') && (
+                          <Button size="sm" variant="outline" onClick={() => setCropOpen(true)}>
+                            <CropIcon className="w-4 h-4 ml-1" /> قص وتغيير المقاس
+                          </Button>
+                        )}
+                        {file.type.startsWith('video/') && (
+                          <Button size="sm" variant="outline" onClick={() => setCropOpen(true)}>
+                            <CropIcon className="w-4 h-4 ml-1" />
+                            {videoCrop ? `تأطير: ${videoCrop.aspect}` : 'تأطير وتغيير المقاس'}
+                          </Button>
                         )}
                         <Button size="sm" variant="outline" onClick={resetForm}>إلغاء</Button>
                       </div>
@@ -649,6 +738,14 @@ const SocialPublisherPage = () => {
             )}
           </CardContent>
         </Card>
+
+        <MediaCropEditor
+          open={cropOpen}
+          file={file}
+          previewUrl={previewUrl}
+          onClose={() => setCropOpen(false)}
+          onApply={handleCropApplied}
+        />
       </div>
     </Layout>
   );

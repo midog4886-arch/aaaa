@@ -14,6 +14,8 @@ import os
 import json
 import html
 import uuid
+import shutil
+import asyncio
 import logging
 from datetime import datetime, timezone
 from pathlib import Path
@@ -39,6 +41,51 @@ ALLOWED_VIDEO_EXT = {".mp4", ".mov", ".m4v"}
 MAX_UPLOAD_BYTES = 200 * 1024 * 1024  # 200 MB
 
 PLATFORMS = ("facebook", "instagram", "youtube", "tiktok")
+
+# Maximum video duration accepted by each platform (seconds).
+# Instagram Reels caps around 90s, TikTok 10min, YouTube Shorts 15min, FB much higher.
+PLATFORM_MAX_VIDEO_SECONDS = {
+    "instagram": 60,   # Reels limit per task spec
+    "tiktok": 600,
+    "youtube": 900,
+    "facebook": 14400,
+}
+
+# Hardest cap that applies to any platform we publish to. Used by the
+# upload endpoint, which doesn't know which targets the user will pick.
+MAX_UPLOAD_VIDEO_SECONDS = max(PLATFORM_MAX_VIDEO_SECONDS.values())
+
+
+async def _probe_video_duration(path: Path) -> float:
+    """Return the video duration in seconds via ffprobe.
+
+    Raises HTTPException(500) if ffprobe is unavailable or fails — the
+    duration check is a hard requirement for accepting uploaded videos,
+    not a best-effort hint.
+    """
+    ffprobe = shutil.which("ffprobe")
+    if not ffprobe:
+        raise HTTPException(
+            status_code=500,
+            detail="تعذر التحقق من مدة الفيديو: ffprobe غير مثبت على الخادم.",
+        )
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            ffprobe, "-v", "error", "-show_entries", "format=duration",
+            "-of", "default=noprint_wrappers=1:nokey=1", str(path),
+            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=10)
+        text = (stdout or b"").decode().strip()
+        if not text:
+            raise ValueError("empty ffprobe output")
+        return float(text)
+    except Exception as exc:
+        logger.warning("ffprobe failed for %s: %s", path, exc)
+        raise HTTPException(
+            status_code=400,
+            detail="تعذر قراءة مدة الفيديو. تأكد أن الملف صالح.",
+        )
 
 
 async def _require_social_publisher(current_user: dict = Depends(get_current_user)) -> dict:
@@ -121,11 +168,34 @@ async def upload_media(
                 dest.unlink(missing_ok=True)
                 raise HTTPException(status_code=413, detail="حجم الملف أكبر من 200 ميجا")
             out.write(chunk)
+    kind = "video" if ext in ALLOWED_VIDEO_EXT else "image"
+
+    # Hard duration check at upload time. We can't know which platforms the
+    # user will pick yet, so we enforce the maximum cap across all platforms
+    # here and rely on the publish endpoint for per-platform checks.
+    duration: Optional[float] = None
+    if kind == "video":
+        try:
+            duration = await _probe_video_duration(dest)
+        except HTTPException:
+            dest.unlink(missing_ok=True)
+            raise
+        if duration > MAX_UPLOAD_VIDEO_SECONDS:
+            dest.unlink(missing_ok=True)
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"مدة الفيديو ({int(duration)}ث) أطول من الحد الأقصى "
+                    f"المسموح به للنشر ({MAX_UPLOAD_VIDEO_SECONDS}ث)."
+                ),
+            )
+
     base = _public_base_url(request)
     return {
         "filename": name,
-        "kind": "video" if ext in ALLOWED_VIDEO_EXT else "image",
+        "kind": kind,
         "size": total,
+        "duration": duration,
         "public_url": f"{base}/uploads/social/{name}",
     }
 
@@ -323,10 +393,57 @@ class PublishTarget(BaseModel):
     caption_override: Optional[str] = None
 
 
+class VideoCrop(BaseModel):
+    x: int
+    y: int
+    width: int
+    height: int
+
+
 class PublishRequest(BaseModel):
     media_filename: str
     caption: str = ""
     targets: List[PublishTarget]
+    video_crop: Optional[VideoCrop] = None
+
+
+async def _ffmpeg_crop_video(src: Path, crop: VideoCrop) -> Path:
+    """Run ffmpeg to crop a video; returns the path of the cropped output.
+
+    Raises HTTPException(500) on failure. Caller is responsible for unlinking
+    the output file once done.
+    """
+    ffmpeg = shutil.which("ffmpeg")
+    if not ffmpeg:
+        raise HTTPException(status_code=500, detail="ffmpeg غير مثبت على الخادم.")
+    if crop.width <= 0 or crop.height <= 0:
+        raise HTTPException(status_code=400, detail="أبعاد القص غير صالحة.")
+    out_path = src.with_name(f"{src.stem}-cropped-{uuid.uuid4().hex[:8]}{src.suffix}")
+    # Use even-aligned dimensions: most codecs require width/height divisible by 2.
+    w = max(2, crop.width - (crop.width % 2))
+    h = max(2, crop.height - (crop.height % 2))
+    x = max(0, crop.x)
+    y = max(0, crop.y)
+    filter_expr = f"crop={w}:{h}:{x}:{y}"
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            ffmpeg, "-y", "-i", str(src), "-vf", filter_expr,
+            "-c:a", "copy", "-preset", "veryfast", "-movflags", "+faststart",
+            str(out_path),
+            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+        )
+        _, stderr = await asyncio.wait_for(proc.communicate(), timeout=300)
+        if proc.returncode != 0:
+            logger.warning("ffmpeg crop failed: %s", (stderr or b"")[-400:].decode(errors="ignore"))
+            out_path.unlink(missing_ok=True)
+            raise HTTPException(status_code=400, detail="فشل قص الفيديو.")
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception("ffmpeg crop crashed")
+        out_path.unlink(missing_ok=True)
+        raise HTTPException(status_code=500, detail="تعذر تنفيذ قص الفيديو.")
+    return out_path
 
 
 @router.post("/posts")
@@ -355,15 +472,47 @@ async def publish_post(
     payload.media_filename = safe_name
     base = _public_base_url(request)
     public_url = f"{base}/uploads/social/{payload.media_filename}"
+    # Path actually sent to the platform adapters; replaced with the cropped
+    # output below if a video crop is requested.
+    publish_path = media_path
+    publish_url = public_url
+    cropped_temp: Optional[Path] = None
 
     post_id = str(uuid.uuid4())
     media_kind = "video" if media_path.suffix.lower() in ALLOWED_VIDEO_EXT else "image"
+
+    # Per-platform duration check. The upload endpoint already enforced the
+    # global maximum, but each selected platform may have a stricter limit
+    # (e.g. Instagram Reels 60s). Re-probe here to keep this endpoint
+    # authoritative even when called independently of /uploads.
+    if media_kind == "video":
+        duration = await _probe_video_duration(media_path)
+        exceeded = []
+        for t in payload.targets:
+            limit = PLATFORM_MAX_VIDEO_SECONDS.get(t.platform)
+            if limit is not None and duration > limit:
+                exceeded.append(f"{t.platform} (الحد {limit}ث)")
+        if exceeded:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"مدة الفيديو ({int(duration)}ث) أطول من الحد المسموح في: "
+                    + "، ".join(exceeded)
+                ),
+            )
+        if payload.video_crop is not None:
+            cropped_temp = await _ffmpeg_crop_video(media_path, payload.video_crop)
+            publish_path = cropped_temp
+            publish_url = f"{base}/uploads/social/{cropped_temp.name}"
+
     post_doc = {
         "id": post_id,
         "caption": payload.caption,
         "media_filename": payload.media_filename,
         "media_kind": media_kind,
         "public_url": public_url,
+        "cropped_filename": cropped_temp.name if cropped_temp else None,
+        "video_crop": payload.video_crop.model_dump() if payload.video_crop else None,
         "created_by": current_user.get("user_id") or current_user.get("id"),
         "created_by_name": current_user.get("name") or current_user.get("username"),
         "created_at": datetime.now(timezone.utc).isoformat(),
@@ -404,7 +553,7 @@ async def publish_post(
 
         caption = t.caption_override if t.caption_override is not None else payload.caption
         try:
-            res = await adapter_fn(account, str(media_path), public_url, caption)
+            res = await adapter_fn(account, str(publish_path), publish_url, caption)
         except Exception as e:
             logger.exception("Publish failed for %s", t.platform)
             res = {"success": False, "error": str(e)}
@@ -418,6 +567,11 @@ async def publish_post(
         }
         await db.social_post_targets.update_one({"id": target_id}, {"$set": update})
         results.append({"platform": t.platform, **update})
+
+    # The cropped video file is intentionally NOT deleted here. Some platform
+    # adapters (notably TikTok and Meta video endpoints) ingest from the URL
+    # asynchronously after this request returns. The file lives in the same
+    # uploads directory as the original and is retained on the same lifecycle.
 
     return {"post_id": post_id, "results": results}
 
