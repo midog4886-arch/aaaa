@@ -12,10 +12,11 @@ import {
   Loader2, UploadCloud, Send, Link2, Unlink, CheckCircle2, XCircle,
   Image as ImageIcon, Video as VideoIcon, History, RefreshCw, ExternalLink,
   Facebook, Instagram, Youtube, Music2, Settings, Save, Eye, EyeOff, Copy,
-  Crop as CropIcon, AlertTriangle, BarChart3, Heart, MessageCircle, Wand2,
+  Crop as CropIcon, AlertTriangle, BarChart3, Heart, MessageCircle, Wand2, Scissors,
 } from 'lucide-react';
 import MediaCropEditor from '../components/MediaCropEditor';
 import MediaImageEditor from '../components/MediaImageEditor';
+import VideoTrimEditor from '../components/VideoTrimEditor';
 
 // Per-platform max video duration in seconds. Reels/Shorts/TikTok limits.
 // Keep in sync with PLATFORM_MAX_VIDEO_SECONDS in backend/routes/social_publisher.py
@@ -46,6 +47,7 @@ const SocialPublisherPage = () => {
   const [videoDuration, setVideoDuration] = useState(null); // seconds, null until probed
   const [cropOpen, setCropOpen] = useState(false);
   const [editorOpen, setEditorOpen] = useState(false);
+  const [trimOpen, setTrimOpen] = useState(false);
   const [videoCrop, setVideoCrop] = useState(null); // { crop:{x,y,width,height}, aspect }
 
   const [caption, setCaption] = useState('');
@@ -212,6 +214,13 @@ const SocialPublisherPage = () => {
       setVideoCrop({ crop: result.crop, aspect: result.aspect });
       toast.success(`تم حفظ تأطير الفيديو (${result.aspect})`);
     }
+  };
+
+  const handleTrimApplied = (result) => {
+    setTrimOpen(false);
+    if (!result || !result.file) return;
+    adoptFile(result.file);
+    toast.success(`تم قص الفيديو إلى ${Math.round(result.duration)}ث`);
   };
 
   const handleEditorApplied = (result) => {
@@ -601,6 +610,16 @@ const SocialPublisherPage = () => {
                             {videoCrop ? `تأطير: ${videoCrop.aspect}` : 'تأطير وتغيير المقاس'}
                           </Button>
                         )}
+                        {!uploaded && file.type.startsWith('video/') && videoDuration != null && (
+                          <Button
+                            size="sm"
+                            variant={exceedingPlatforms.length > 0 ? 'default' : 'outline'}
+                            onClick={() => setTrimOpen(true)}
+                            className={exceedingPlatforms.length > 0 ? 'bg-amber-600 hover:bg-amber-700 text-white' : ''}
+                          >
+                            <Scissors className="w-4 h-4 ml-1" /> قص الفيديو وضبط المدة
+                          </Button>
+                        )}
                         <Button size="sm" variant="outline" onClick={resetForm}>إلغاء</Button>
                       </div>
                     </div>
@@ -882,6 +901,17 @@ const SocialPublisherPage = () => {
           previewUrl={previewUrl}
           onClose={() => setEditorOpen(false)}
           onApply={handleEditorApplied}
+        />
+
+        <VideoTrimEditor
+          open={trimOpen}
+          file={file}
+          previewUrl={previewUrl}
+          duration={videoDuration}
+          maxByPlatform={VIDEO_MAX_SECONDS}
+          selectedPlatforms={Array.from(selected)}
+          onClose={() => setTrimOpen(false)}
+          onApply={handleTrimApplied}
         />
       </div>
     </Layout>

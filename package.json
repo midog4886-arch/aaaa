@@ -16,6 +16,8 @@
     "@capacitor/cli": "^7.5.0",
     "@capacitor/core": "^8.1.0",
     "@capacitor/push-notifications": "^8.0.2",
+    "@ffmpeg/ffmpeg": "^0.12.15",
+    "@ffmpeg/util": "^0.12.2",
     "firebase": "^12.10.0",
     "html5-qrcode": "^2.3.8"
   }
