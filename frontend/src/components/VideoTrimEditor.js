@@ -77,7 +77,10 @@ const VideoTrimEditor = ({ open, file, previewUrl, duration, maxByPlatform, sele
   const [recompress, setRecompress] = useState(false);
   const [quality, setQuality] = useState('medium');
   const [outputSize, setOutputSize] = useState(null);
+  const [thumbnails, setThumbnails] = useState([]);
+  const [thumbsLoading, setThumbsLoading] = useState(false);
   const totalRef = useRef(duration || 0);
+  const thumbsGenRef = useRef(0);
 
   useEffect(() => {
     if (open && Number.isFinite(duration) && duration > 0) {
@@ -88,8 +91,79 @@ const VideoTrimEditor = ({ open, file, previewUrl, duration, maxByPlatform, sele
       setProgress(0);
       setPhase('');
       setOutputSize(null);
+      setThumbnails([]);
     }
   }, [open, duration]);
+
+  // Generate ~10 thumbnails along the video using a hidden <video> + canvas.
+  useEffect(() => {
+    if (!open || !previewUrl) return;
+    const total = Number.isFinite(duration) && duration > 0 ? duration : 0;
+    if (total <= 0) return;
+    const genId = ++thumbsGenRef.current;
+    const COUNT = 10;
+    const v = document.createElement('video');
+    v.src = previewUrl;
+    v.crossOrigin = 'anonymous';
+    v.muted = true;
+    v.playsInline = true;
+    v.preload = 'auto';
+    const urls = [];
+    let cancelled = false;
+
+    const cleanup = () => {
+      cancelled = true;
+      try { v.removeAttribute('src'); v.load(); } catch (_) { /* ignore */ }
+    };
+
+    const onLoaded = async () => {
+      const dur = Number.isFinite(v.duration) && v.duration > 0 ? v.duration : total;
+      const W = 120;
+      const ratio = (v.videoWidth && v.videoHeight) ? (v.videoHeight / v.videoWidth) : (9 / 16);
+      const H = Math.max(40, Math.round(W * ratio));
+      const canvas = document.createElement('canvas');
+      canvas.width = W;
+      canvas.height = H;
+      const ctx = canvas.getContext('2d');
+      setThumbsLoading(true);
+      try {
+        const results = [];
+        for (let i = 0; i < COUNT; i++) {
+          if (cancelled || genId !== thumbsGenRef.current) return;
+          const t = (dur * (i + 0.5)) / COUNT;
+          await new Promise((resolve) => {
+            const onSeeked = () => { v.removeEventListener('seeked', onSeeked); resolve(); };
+            v.addEventListener('seeked', onSeeked);
+            try { v.currentTime = Math.max(0, Math.min(dur - 0.05, t)); }
+            catch (_) { v.removeEventListener('seeked', onSeeked); resolve(); }
+          });
+          if (cancelled || genId !== thumbsGenRef.current) return;
+          try {
+            ctx.drawImage(v, 0, 0, W, H);
+            const blob = await new Promise((res) => canvas.toBlob(res, 'image/jpeg', 0.6));
+            if (!blob) continue;
+            const url = URL.createObjectURL(blob);
+            urls.push(url);
+            results.push({ time: t, url });
+            if (genId === thumbsGenRef.current && !cancelled) {
+              setThumbnails([...results]);
+            }
+          } catch (_) { /* ignore frame errors */ }
+        }
+      } finally {
+        if (genId === thumbsGenRef.current) setThumbsLoading(false);
+      }
+    };
+
+    v.addEventListener('loadedmetadata', onLoaded, { once: true });
+    v.addEventListener('error', () => { setThumbsLoading(false); }, { once: true });
+
+    return () => {
+      cleanup();
+      // Revoke generated URLs after cleanup
+      setTimeout(() => urls.forEach((u) => { try { URL.revokeObjectURL(u); } catch (_) {} }), 0);
+    };
+  }, [open, previewUrl, duration]);
 
   useEffect(() => {
     const v = videoRef.current;
@@ -290,6 +364,54 @@ const VideoTrimEditor = ({ open, file, previewUrl, duration, maxByPlatform, sele
               style={{ left: `${total ? (current / total) * 100 : 0}%` }}
             />
           </div>
+          {/* Thumbnail strip for precise scrubbing */}
+          <div className="mt-3 relative">
+            {thumbnails.length === 0 && thumbsLoading && (
+              <div className="h-12 flex items-center justify-center text-xs text-gray-400 bg-gray-50 rounded border border-dashed">
+                <Loader2 className="w-3 h-3 animate-spin ml-1" />
+                جارٍ توليد اللقطات...
+              </div>
+            )}
+            {thumbnails.length > 0 && (
+              <div className="relative">
+                <div className="flex gap-px rounded overflow-hidden bg-gray-100 border">
+                  {thumbnails.map((thumb, i) => (
+                    <button
+                      key={i}
+                      type="button"
+                      onClick={() => seekTo(thumb.time)}
+                      disabled={busy}
+                      title={fmt(thumb.time)}
+                      className="flex-1 min-w-0 h-12 hover:opacity-80 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    >
+                      <img
+                        src={thumb.url}
+                        alt=""
+                        className="w-full h-full object-cover pointer-events-none"
+                        draggable={false}
+                      />
+                    </button>
+                  ))}
+                </div>
+                {total > 0 && (
+                  <>
+                    <div
+                      className="pointer-events-none absolute inset-y-0 border-2 border-blue-500 bg-blue-500/10 rounded"
+                      style={{
+                        left: `${(range[0] / total) * 100}%`,
+                        width: `${((range[1] - range[0]) / total) * 100}%`,
+                      }}
+                    />
+                    <div
+                      className="pointer-events-none absolute top-0 bottom-0 w-0.5 bg-red-500"
+                      style={{ left: `${(current / total) * 100}%` }}
+                    />
+                  </>
+                )}
+              </div>
+            )}
+          </div>
+
           <div className="mt-3">
             <Slider
               min={0}
