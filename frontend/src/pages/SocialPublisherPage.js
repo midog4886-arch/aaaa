@@ -12,9 +12,10 @@ import {
   Loader2, UploadCloud, Send, Link2, Unlink, CheckCircle2, XCircle,
   Image as ImageIcon, Video as VideoIcon, History, RefreshCw, ExternalLink,
   Facebook, Instagram, Youtube, Music2, Settings, Save, Eye, EyeOff, Copy,
-  Crop as CropIcon, AlertTriangle, BarChart3, Heart, MessageCircle,
+  Crop as CropIcon, AlertTriangle, BarChart3, Heart, MessageCircle, Wand2,
 } from 'lucide-react';
 import MediaCropEditor from '../components/MediaCropEditor';
+import MediaImageEditor from '../components/MediaImageEditor';
 
 // Per-platform max video duration in seconds. Reels/Shorts/TikTok limits.
 // Keep in sync with PLATFORM_MAX_VIDEO_SECONDS in backend/routes/social_publisher.py
@@ -44,6 +45,7 @@ const SocialPublisherPage = () => {
   const [previewUrl, setPreviewUrl] = useState('');
   const [videoDuration, setVideoDuration] = useState(null); // seconds, null until probed
   const [cropOpen, setCropOpen] = useState(false);
+  const [editorOpen, setEditorOpen] = useState(false);
   const [videoCrop, setVideoCrop] = useState(null); // { crop:{x,y,width,height}, aspect }
 
   const [caption, setCaption] = useState('');
@@ -209,6 +211,15 @@ const SocialPublisherPage = () => {
     } else if (result.kind === 'video') {
       setVideoCrop({ crop: result.crop, aspect: result.aspect });
       toast.success(`تم حفظ تأطير الفيديو (${result.aspect})`);
+    }
+  };
+
+  const handleEditorApplied = (result) => {
+    setEditorOpen(false);
+    if (!result) return;
+    if (result.kind === 'image' && result.file) {
+      adoptFile(result.file);
+      toast.success('تم تطبيق التعديلات على الصورة');
     }
   };
 
@@ -575,9 +586,14 @@ const SocialPublisherPage = () => {
                           </Badge>
                         )}
                         {!uploaded && file.type.startsWith('image/') && (
-                          <Button size="sm" variant="outline" onClick={() => setCropOpen(true)}>
-                            <CropIcon className="w-4 h-4 ml-1" /> قص وتغيير المقاس
-                          </Button>
+                          <>
+                            <Button size="sm" variant="outline" onClick={() => setCropOpen(true)}>
+                              <CropIcon className="w-4 h-4 ml-1" /> قص وتغيير المقاس
+                            </Button>
+                            <Button size="sm" variant="outline" onClick={() => setEditorOpen(true)}>
+                              <Wand2 className="w-4 h-4 ml-1" /> فلاتر ونص وشعار
+                            </Button>
+                          </>
                         )}
                         {file.type.startsWith('video/') && (
                           <Button size="sm" variant="outline" onClick={() => setCropOpen(true)}>
@@ -858,6 +874,14 @@ const SocialPublisherPage = () => {
           previewUrl={previewUrl}
           onClose={() => setCropOpen(false)}
           onApply={handleCropApplied}
+        />
+
+        <MediaImageEditor
+          open={editorOpen}
+          file={file}
+          previewUrl={previewUrl}
+          onClose={() => setEditorOpen(false)}
+          onApply={handleEditorApplied}
         />
       </div>
     </Layout>
