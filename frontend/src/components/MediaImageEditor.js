@@ -4,7 +4,7 @@ import { Button } from './ui/button';
 import { Slider } from './ui/slider';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
-import { Loader2, Wand2, Type, ImageIcon, Trash2, Upload, Save, BookmarkPlus } from 'lucide-react';
+import { Loader2, Wand2, Type, ImageIcon, Trash2, Upload, Save, BookmarkPlus, Eye } from 'lucide-react';
 import { socialAPI } from '../services/api';
 
 const PRESETS = [
@@ -44,7 +44,7 @@ function buildCssFilterString(f) {
   return `brightness(${f.brightness}%) contrast(${f.contrast}%) saturate(${f.saturate}%) sepia(${f.sepia}%) grayscale(${f.grayscale}%) hue-rotate(${f.hueRotate}deg)`;
 }
 
-const MediaImageEditor = ({ open, file, previewUrl, onClose, onApply }) => {
+const MediaImageEditor = ({ open, file, previewUrl, onClose, onApply, videoFilename, videoCrop, onUploadLogo }) => {
   const isVideo = !!(file && file.type?.startsWith('video/'));
   const isImage = !!(file && file.type?.startsWith('image/'));
 
@@ -79,6 +79,13 @@ const MediaImageEditor = ({ open, file, previewUrl, onClose, onApply }) => {
   const [savingTemplate, setSavingTemplate] = useState(false);
   const [templateError, setTemplateError] = useState('');
 
+  // Server-rendered preview of the video with the current edits applied.
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewError, setPreviewError] = useState('');
+  const [previewServerUrl, setPreviewServerUrl] = useState('');
+  const [previewExpiresAt, setPreviewExpiresAt] = useState(0);
+  const [previewOpen, setPreviewOpen] = useState(false);
+
   const canvasRef = useRef(null);
   const containerRef = useRef(null);
   const videoRef = useRef(null);
@@ -91,9 +98,9 @@ const MediaImageEditor = ({ open, file, previewUrl, onClose, onApply }) => {
   );
   const cssFilter = useMemo(() => buildCssFilterString(finalFilter), [finalFilter]);
 
-  // Reset state when a new file opens
+  // Reset state when a new file opens or when the dialog closes, so reopening
+  // never carries over stale preview/template state from a previous session.
   useEffect(() => {
-    if (!open) return;
     setPresetId('none');
     setBrightness(100);
     setContrast(100);
@@ -113,6 +120,10 @@ const MediaImageEditor = ({ open, file, previewUrl, onClose, onApply }) => {
     setSelectedTemplateId('');
     setTemplateName('');
     setTemplateError('');
+    setPreviewServerUrl('');
+    setPreviewError('');
+    setPreviewExpiresAt(0);
+    setPreviewOpen(false);
   }, [open, previewUrl]);
 
   // Load saved templates whenever dialog opens
@@ -345,6 +356,70 @@ const MediaImageEditor = ({ open, file, previewUrl, onClose, onApply }) => {
     if (v) setVideoMeta({ w: v.videoWidth || 0, h: v.videoHeight || 0 });
   };
 
+  const buildVideoEditsPayload = () => {
+    const hasFilter =
+      finalFilter.brightness !== 100 || finalFilter.contrast !== 100 ||
+      finalFilter.saturate !== 100 || finalFilter.sepia !== 0 ||
+      finalFilter.grayscale !== 0 || finalFilter.hueRotate !== 0;
+    return {
+      filter: hasFilter ? finalFilter : null,
+      logo: logoSource ? {
+        source: logoSource,
+        size_percent: logoSize,
+        x_percent: logoPos.x,
+        y_percent: logoPos.y,
+        opacity_percent: logoOpacity,
+      } : null,
+    };
+  };
+
+  const handleServerPreview = async () => {
+    if (!isVideo) return;
+    setPreviewError('');
+    if (!videoFilename) {
+      setPreviewError('ارفع الفيديو أولاً ثم جرّب المعاينة.');
+      return;
+    }
+    const edits = buildVideoEditsPayload();
+    if (!edits.filter && !edits.logo) {
+      setPreviewError('لا توجد تعديلات لمعاينتها.');
+      return;
+    }
+    setPreviewLoading(true);
+    try {
+      let logoForPayload = edits.logo;
+      if (logoForPayload && logoForPayload.source === 'custom') {
+        if (!onUploadLogo || !logoFile) {
+          setPreviewError('لا يمكن معاينة الشعار المخصص حالياً.');
+          setPreviewLoading(false);
+          return;
+        }
+        const customName = await onUploadLogo(logoFile);
+        if (!customName) {
+          setPreviewError('فشل رفع ملف الشعار للمعاينة.');
+          setPreviewLoading(false);
+          return;
+        }
+        logoForPayload = { ...logoForPayload, filename: customName };
+      }
+      const res = await socialAPI.previewVideo({
+        media_filename: videoFilename,
+        video_crop: videoCrop || null,
+        video_edits: { filter: edits.filter, logo: logoForPayload },
+      });
+      // Cache-bust query so re-previews don't show the old file.
+      const url = `${res.data.public_url}?t=${Date.now()}`;
+      setPreviewServerUrl(url);
+      const ttl = Number(res.data.expires_in) || 600;
+      setPreviewExpiresAt(Date.now() + ttl * 1000);
+      setPreviewOpen(true);
+    } catch (e) {
+      setPreviewError(e?.response?.data?.detail || 'تعذر توليد المعاينة.');
+    } finally {
+      setPreviewLoading(false);
+    }
+  };
+
   const handleApply = async () => {
     if (!file) return;
     setBusy(true);
@@ -364,20 +439,7 @@ const MediaImageEditor = ({ open, file, previewUrl, onClose, onApply }) => {
         // For videos we don't re-encode in the browser — that's expensive.
         // Instead we hand the settings up to the page so they can be sent
         // to the backend, which applies them with ffmpeg before publishing.
-        const hasFilter =
-          finalFilter.brightness !== 100 || finalFilter.contrast !== 100 ||
-          finalFilter.saturate !== 100 || finalFilter.sepia !== 0 ||
-          finalFilter.grayscale !== 0 || finalFilter.hueRotate !== 0;
-        const edits = {
-          filter: hasFilter ? finalFilter : null,
-          logo: logoSource ? {
-            source: logoSource, // 'default' | 'custom'
-            size_percent: logoSize,
-            x_percent: logoPos.x,
-            y_percent: logoPos.y,
-            opacity_percent: logoOpacity,
-          } : null,
-        };
+        const edits = buildVideoEditsPayload();
         onApply({
           kind: 'video',
           edits,
@@ -667,14 +729,64 @@ const MediaImageEditor = ({ open, file, previewUrl, onClose, onApply }) => {
           </div>
         </div>
 
+        {isVideo && previewError && (
+          <p className="text-xs text-red-600 mt-2">{previewError}</p>
+        )}
+
         <DialogFooter className="mt-4 gap-2">
-          <Button variant="outline" onClick={onClose} disabled={busy}>إلغاء</Button>
+          <Button variant="outline" onClick={onClose} disabled={busy || previewLoading}>إلغاء</Button>
+          {isVideo && (
+            <Button
+              type="button"
+              variant="outline"
+              onClick={handleServerPreview}
+              disabled={busy || previewLoading}
+              title={!videoFilename ? 'ارفع الفيديو أولاً' : 'يطلب من الخادم توليد فيديو معالج للمعاينة'}
+            >
+              {previewLoading
+                ? <Loader2 className="w-4 h-4 animate-spin ml-1" />
+                : <Eye className="w-4 h-4 ml-1" />}
+              معاينة بعد المعالجة
+            </Button>
+          )}
           <Button onClick={handleApply} disabled={busy || (isImage && !imgEl)}>
             {busy ? <Loader2 className="w-4 h-4 animate-spin ml-1" /> : <Wand2 className="w-4 h-4 ml-1" />}
             تطبيق التعديلات
           </Button>
         </DialogFooter>
       </DialogContent>
+
+      {/* Server-rendered preview dialog */}
+      <Dialog open={previewOpen} onOpenChange={setPreviewOpen}>
+        <DialogContent className="max-w-3xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Eye className="w-4 h-4" /> معاينة الفيديو بعد المعالجة
+            </DialogTitle>
+          </DialogHeader>
+          <div className="bg-black rounded overflow-hidden">
+            {previewServerUrl && (
+              <video
+                key={previewServerUrl}
+                src={previewServerUrl}
+                controls
+                autoPlay
+                playsInline
+                className="w-full max-h-[65vh] object-contain"
+              />
+            )}
+          </div>
+          <p className="text-[11px] text-gray-500 mt-2">
+            هذا الملف مؤقت ويُحذف تلقائياً من الخادم بعد فترة قصيرة
+            {previewExpiresAt
+              ? ` (حتى ${new Date(previewExpiresAt).toLocaleTimeString('ar-EG')})`
+              : ''}.
+          </p>
+          <DialogFooter className="mt-3">
+            <Button variant="outline" onClick={() => setPreviewOpen(false)}>إغلاق</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Dialog>
   );
 };

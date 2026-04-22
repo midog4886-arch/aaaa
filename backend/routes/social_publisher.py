@@ -657,6 +657,78 @@ async def _ffmpeg_crop_video(src: Path, crop: VideoCrop) -> Path:
     return await _ffmpeg_process_video(src, crop=crop)
 
 
+class VideoPreviewRequest(BaseModel):
+    media_filename: str
+    video_crop: Optional[VideoCrop] = None
+    video_edits: Optional[VideoEdits] = None
+
+
+# Temp preview videos live for this many seconds before being deleted in
+# the background. Long enough to watch through once or twice, short enough
+# that the uploads dir doesn't fill up if the user previews many times.
+PREVIEW_TTL_SECONDS = 600
+
+
+async def _delete_path_after(path: Path, delay_seconds: float) -> None:
+    """Background helper that sleeps then removes a file. Safe to fire and
+    forget — exceptions are logged, not re-raised."""
+    try:
+        await asyncio.sleep(delay_seconds)
+        path.unlink(missing_ok=True)
+    except Exception:
+        logger.exception("preview cleanup failed for %s", path)
+
+
+@router.post("/posts/preview")
+async def preview_video_edits(
+    payload: VideoPreviewRequest,
+    request: Request,
+    current_user: dict = Depends(_require_social_publisher),
+):
+    """Apply the requested crop / filters / logo to the uploaded video and
+    return a temporary public URL the browser can play. The output file is
+    deleted automatically after PREVIEW_TTL_SECONDS.
+    """
+    raw_name = payload.media_filename or ""
+    safe_name = os.path.basename(raw_name)
+    if not safe_name or safe_name in {".", ".."} or safe_name != raw_name:
+        raise HTTPException(status_code=400, detail="اسم الملف غير صالح")
+    if Path(safe_name).suffix.lower() not in ALLOWED_VIDEO_EXT:
+        raise HTTPException(status_code=400, detail="المعاينة متاحة للفيديو فقط")
+    src = (SOCIAL_UPLOAD_DIR / safe_name).resolve()
+    try:
+        src.relative_to(SOCIAL_UPLOAD_DIR.resolve())
+    except ValueError:
+        raise HTTPException(status_code=400, detail="مسار غير مسموح به")
+    if not src.exists():
+        raise HTTPException(status_code=404, detail="الملف المرفوع غير موجود")
+    if payload.video_crop is None and payload.video_edits is None:
+        raise HTTPException(status_code=400, detail="لا توجد تعديلات لمعاينتها")
+
+    processed = await _ffmpeg_process_video(
+        src, crop=payload.video_crop, edits=payload.video_edits,
+    )
+    if processed == src:
+        # No-op edits — nothing new to show.
+        raise HTTPException(status_code=400, detail="لا توجد تعديلات لمعاينتها")
+
+    # Tag the file so cleanup tools and ops can recognise it as a preview.
+    preview_path = processed.with_name(f"preview-{processed.name}")
+    try:
+        processed.rename(preview_path)
+    except OSError:
+        # Rename across-device shouldn't happen (same dir) but stay safe.
+        preview_path = processed
+
+    asyncio.create_task(_delete_path_after(preview_path, PREVIEW_TTL_SECONDS))
+    base = _public_base_url(request)
+    return {
+        "filename": preview_path.name,
+        "public_url": f"{base}/uploads/social/{preview_path.name}",
+        "expires_in": PREVIEW_TTL_SECONDS,
+    }
+
+
 @router.post("/posts")
 async def publish_post(
     payload: PublishRequest,

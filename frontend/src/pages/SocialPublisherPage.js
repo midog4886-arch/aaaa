@@ -1032,6 +1032,16 @@ const SocialPublisherPage = () => {
           previewUrl={previewUrl}
           onClose={() => setEditorOpen(false)}
           onApply={handleEditorApplied}
+          videoFilename={uploaded?.kind === 'video' ? uploaded.filename : null}
+          videoCrop={uploaded?.kind === 'video' && videoCrop ? videoCrop.crop : null}
+          onUploadLogo={async (logoFile) => {
+            try {
+              const r = await socialAPI.uploadMedia(logoFile);
+              return r.data?.filename || null;
+            } catch (e) {
+              return null;
+            }
+          }}
         />
 
         <VideoTrimEditor
