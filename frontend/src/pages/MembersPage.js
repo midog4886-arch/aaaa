@@ -56,6 +56,10 @@ export const MembersPage = () => {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const [members, setMembers] = useState([]);
+  // Manual selection set used by the empty-circle indicator on each
+  // member row. The admin clicks the circle to mark / unmark a member;
+  // the meaning of the mark is intentionally left to the admin.
+  const [markedMemberIds, setMarkedMemberIds] = useState(() => new Set());
   const [activities, setActivities] = useState([]);
   const [coaches, setCoaches] = useState([]);
   const [loading, setLoading] = useState(true);
