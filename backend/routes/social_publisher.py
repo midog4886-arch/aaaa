@@ -1330,6 +1330,134 @@ def start_insights_scheduler() -> None:
     asyncio.ensure_future(_insights_scheduler_loop())
 
 
+# ────────────────── Uploads cleanup scheduler ──────────────────
+#
+# The publish flow intentionally leaves processed videos and custom logo
+# uploads on disk because some platforms (notably Meta and TikTok) fetch
+# the public URL asynchronously after the API call returns. Without a
+# janitor, `uploads/social/` grows without bound. This scheduler removes
+# files older than UPLOADS_RETENTION_DAYS that aren't referenced by any
+# persisted post (original media, processed derivative, or custom logo).
+
+UPLOADS_RETENTION_DAYS = 7
+UPLOADS_CLEANUP_INTERVAL_SECONDS = 24 * 3600
+_uploads_cleanup_started = False
+
+
+async def _collect_recent_post_filenames(max_age_days: int) -> set:
+    """Return the set of filenames referenced by social posts created within
+    the last ``max_age_days``. Only these get protected from cleanup — files
+    tied to older posts are treated as expired temp artifacts (the platforms
+    have long since fetched them) and become eligible for deletion."""
+    cutoff_iso = (
+        datetime.now(timezone.utc) - timedelta(days=max_age_days)
+    ).isoformat()
+    referenced: set = set()
+    cursor = db.social_posts.find(
+        {"created_at": {"$gte": cutoff_iso}},
+        {"_id": 0, "media_filename": 1, "cropped_filename": 1, "video_edits": 1},
+    )
+    async for post in cursor:
+        for key in ("media_filename", "cropped_filename"):
+            name = post.get(key)
+            if isinstance(name, str) and name:
+                referenced.add(name)
+        edits = post.get("video_edits") or {}
+        logo = edits.get("logo") if isinstance(edits, dict) else None
+        if isinstance(logo, dict):
+            logo_name = logo.get("filename")
+            if isinstance(logo_name, str) and logo_name:
+                referenced.add(logo_name)
+    return referenced
+
+
+async def _cleanup_social_uploads_once(max_age_days: int = UPLOADS_RETENTION_DAYS) -> int:
+    """Delete files in SOCIAL_UPLOAD_DIR older than ``max_age_days`` that
+    aren't tied to a recent post. Files linked to posts created within the
+    retention window are kept so platforms that fetch the URL asynchronously
+    (Meta, TikTok) still find them. Older files — even those referenced by
+    older post records — are treated as expired and removed; the post row
+    itself stays in the database, just with a dead asset URL."""
+    if not SOCIAL_UPLOAD_DIR.exists():
+        return 0
+    cutoff_ts = datetime.now(timezone.utc).timestamp() - max_age_days * 86400
+    recent_referenced = await _collect_recent_post_filenames(max_age_days)
+    deleted = 0
+    deleted_old_linked = 0
+    kept_recent_post_linked = 0
+    kept_recent = 0
+    for entry in SOCIAL_UPLOAD_DIR.iterdir():
+        try:
+            if not entry.is_file():
+                continue
+            if entry.name in recent_referenced:
+                kept_recent_post_linked += 1
+                continue
+            try:
+                mtime = entry.stat().st_mtime
+            except OSError:
+                continue
+            if mtime > cutoff_ts:
+                kept_recent += 1
+                continue
+            # Track separately whether the deleted file was linked to an
+            # older post for operational visibility.
+            was_linked_to_old_post = False
+            try:
+                if await db.social_posts.find_one(
+                    {"$or": [
+                        {"media_filename": entry.name},
+                        {"cropped_filename": entry.name},
+                        {"video_edits.logo.filename": entry.name},
+                    ]},
+                    {"_id": 1},
+                ):
+                    was_linked_to_old_post = True
+            except Exception:
+                logger.exception("Failed to check post linkage for %s", entry.name)
+            entry.unlink()
+            deleted += 1
+            if was_linked_to_old_post:
+                deleted_old_linked += 1
+        except OSError:
+            logger.exception("Failed to delete old social upload %s", entry)
+    logger.info(
+        "Social uploads cleanup: deleted=%d (of which old-post-linked=%d), "
+        "kept_recent_post_linked=%d, kept_recent=%d (retention=%d days)",
+        deleted, deleted_old_linked, kept_recent_post_linked, kept_recent, max_age_days,
+    )
+    return deleted
+
+
+async def _uploads_cleanup_loop():
+    logger.info(
+        "Social uploads cleanup scheduler started (retention=%d days, interval=%ds)",
+        UPLOADS_RETENTION_DAYS, UPLOADS_CLEANUP_INTERVAL_SECONDS,
+    )
+    # Stagger first run so it doesn't compete with startup work.
+    await asyncio.sleep(300)
+    while True:
+        try:
+            await _cleanup_social_uploads_once(UPLOADS_RETENTION_DAYS)
+        except asyncio.CancelledError:
+            break
+        except Exception:
+            logger.exception("Social uploads cleanup tick failed")
+        try:
+            await asyncio.sleep(UPLOADS_CLEANUP_INTERVAL_SECONDS)
+        except asyncio.CancelledError:
+            break
+
+
+def start_uploads_cleanup_scheduler() -> None:
+    """Start the uploads cleanup loop once. Safe to call multiple times."""
+    global _uploads_cleanup_started
+    if _uploads_cleanup_started:
+        return
+    _uploads_cleanup_started = True
+    asyncio.ensure_future(_uploads_cleanup_loop())
+
+
 @router.get("/posts")
 async def list_posts(
     limit: int = 30,

@@ -8171,6 +8171,12 @@ async def create_default_admin():
         start_insights_scheduler()
     except Exception as e:
         print(f"Insights scheduler start failed: {e}")
+    # Start daily cleanup of old social uploads (processed videos / custom logos)
+    try:
+        from routes.social_publisher import start_uploads_cleanup_scheduler
+        start_uploads_cleanup_scheduler()
+    except Exception as e:
+        print(f"Social uploads cleanup scheduler start failed: {e}")
 
 @app.on_event("shutdown")
 async def shutdown_db_client():
