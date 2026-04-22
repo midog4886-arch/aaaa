@@ -22,6 +22,8 @@ from urllib.parse import urlencode
 
 import httpx
 
+from .config import get_config
+
 GRAPH = "https://graph.facebook.com/v19.0"
 SCOPES = [
     "pages_show_list",
@@ -33,24 +35,15 @@ SCOPES = [
 ]
 
 
-def _cfg():
-    return {
-        "app_id": os.environ.get("META_APP_ID", ""),
-        "app_secret": os.environ.get("META_APP_SECRET", ""),
-        "redirect_uri": os.environ.get("META_REDIRECT_URI", ""),
-    }
-
-
-def is_configured() -> bool:
-    c = _cfg()
-    return bool(c["app_id"] and c["app_secret"] and c["redirect_uri"])
+async def _cfg():
+    return await get_config("meta")
 
 
 class oauth:
     @staticmethod
-    def authorize_url(state: str) -> str:
-        c = _cfg()
-        if not is_configured():
+    async def authorize_url(state: str) -> str:
+        c = await _cfg()
+        if not (c.get("app_id") and c.get("app_secret") and c.get("redirect_uri")):
             raise RuntimeError("Meta OAuth not configured")
         params = {
             "client_id": c["app_id"],
@@ -63,7 +56,7 @@ class oauth:
 
     @staticmethod
     async def exchange_code(code: str) -> Dict[str, Any]:
-        c = _cfg()
+        c = await _cfg()
         async with httpx.AsyncClient(timeout=30) as client:
             r = await client.get(
                 f"{GRAPH}/oauth/access_token",

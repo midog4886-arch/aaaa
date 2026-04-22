@@ -17,27 +17,20 @@ from urllib.parse import urlencode
 
 import httpx
 
+from .config import get_config
+
 SCOPES = ["user.info.basic", "video.upload", "video.publish"]
 
 
-def _cfg():
-    return {
-        "client_key": os.environ.get("TIKTOK_CLIENT_KEY", ""),
-        "client_secret": os.environ.get("TIKTOK_CLIENT_SECRET", ""),
-        "redirect_uri": os.environ.get("TIKTOK_REDIRECT_URI", ""),
-    }
-
-
-def is_configured() -> bool:
-    c = _cfg()
-    return bool(c["client_key"] and c["client_secret"] and c["redirect_uri"])
+async def _cfg():
+    return await get_config("tiktok")
 
 
 class oauth:
     @staticmethod
-    def authorize_url(state: str) -> str:
-        c = _cfg()
-        if not is_configured():
+    async def authorize_url(state: str) -> str:
+        c = await _cfg()
+        if not (c.get("client_key") and c.get("client_secret") and c.get("redirect_uri")):
             raise RuntimeError("TikTok OAuth not configured")
         params = {
             "client_key": c["client_key"],
@@ -50,7 +43,7 @@ class oauth:
 
     @staticmethod
     async def exchange_code(code: str) -> Dict[str, Any]:
-        c = _cfg()
+        c = await _cfg()
         async with httpx.AsyncClient(timeout=30) as client:
             r = await client.post(
                 "https://open.tiktokapis.com/v2/oauth/token/",

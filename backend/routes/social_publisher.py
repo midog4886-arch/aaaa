@@ -23,6 +23,7 @@ from pydantic import BaseModel
 
 from .common import db, get_current_user
 from utils.social import meta as meta_adapter, youtube as yt_adapter, tiktok as tt_adapter
+from utils.social.config import SCHEMA as CONFIG_SCHEMA, get_config, is_provider_configured
 
 router = APIRouter(prefix="/social", tags=["Social Publisher"])
 logger = logging.getLogger("social_publisher")
@@ -60,13 +61,20 @@ def _public_base_url(request: Request) -> str:
     return str(request.base_url).rstrip("/")
 
 
-def _strip_secrets(account: dict) -> dict:
-    """Remove tokens before returning an account doc to the frontend."""
-    out = {k: v for k, v in account.items() if k not in {"_id", "access_token", "refresh_token"}}
-    page = out.get("page")
-    if isinstance(page, dict):
-        out["page"] = {k: v for k, v in page.items() if k != "access_token"}
-    return out
+_TOKEN_KEYS = {
+    "access_token", "refresh_token", "user_access_token", "id_token",
+    "token", "client_secret", "app_secret",
+}
+
+
+def _strip_secrets(value):
+    """Recursively strip any token-like fields from an account doc before
+    sending it to the browser. Operates on dicts and lists."""
+    if isinstance(value, dict):
+        return {k: _strip_secrets(v) for k, v in value.items() if k not in _TOKEN_KEYS and k != "_id"}
+    if isinstance(value, list):
+        return [_strip_secrets(v) for v in value]
+    return value
 
 
 # ────────────────── Uploads ──────────────────
@@ -108,16 +116,56 @@ async def upload_media(
 @router.get("/accounts")
 async def list_accounts(current_user: dict = Depends(_require_social_publisher)):
     accounts = await db.social_accounts.find({}, {"_id": 0}).to_list(50)
+    meta_ok = await is_provider_configured("meta")
     configured = {
-        "facebook": meta_adapter.is_configured(),
-        "instagram": meta_adapter.is_configured(),
-        "youtube": yt_adapter.is_configured(),
-        "tiktok": tt_adapter.is_configured(),
+        "facebook": meta_ok,
+        "instagram": meta_ok,
+        "youtube": await is_provider_configured("youtube"),
+        "tiktok": await is_provider_configured("tiktok"),
     }
     return {
         "accounts": [_strip_secrets(a) for a in accounts],
         "configured": configured,
     }
+
+
+# ────────────────── OAuth app credentials (editable from UI) ──────────────────
+
+PROVIDER_FOR_PLATFORM = {"facebook": "meta", "instagram": "meta", "youtube": "youtube", "tiktok": "tiktok"}
+
+
+@router.get("/config")
+async def get_oauth_config(current_user: dict = Depends(_require_social_publisher)):
+    """Returns saved OAuth app credentials for each provider, including the
+    schema so the UI can render the right form fields."""
+    out = {}
+    for provider in CONFIG_SCHEMA.keys():
+        cfg = await get_config(provider)
+        out[provider] = {
+            "schema": CONFIG_SCHEMA[provider],
+            "values": cfg,
+        }
+    return out
+
+
+class ConfigUpdate(BaseModel):
+    values: Dict[str, str]
+
+
+@router.put("/config/{provider}")
+async def save_oauth_config(
+    provider: str,
+    payload: ConfigUpdate,
+    current_user: dict = Depends(_require_social_publisher),
+):
+    if provider not in CONFIG_SCHEMA:
+        raise HTTPException(status_code=400, detail="مزود غير معروف")
+    valid_keys = {f["key"] for f in CONFIG_SCHEMA[provider]}
+    cleaned = {k: (v or "").strip() for k, v in payload.values.items() if k in valid_keys}
+    cleaned["provider"] = provider
+    cleaned["updated_at"] = datetime.now(timezone.utc).isoformat()
+    await db.social_config.replace_one({"provider": provider}, cleaned, upsert=True)
+    return {"saved": provider, "configured": await is_provider_configured(provider)}
 
 
 @router.delete("/accounts/{platform}")
@@ -146,19 +194,26 @@ async def connect_platform(
     current_user: dict = Depends(_require_social_publisher),
 ):
     adapter = _adapter_for(platform)
-    if not adapter.is_configured():
+    provider = PROVIDER_FOR_PLATFORM[platform]
+    if not await is_provider_configured(provider):
         raise HTTPException(
             status_code=503,
-            detail=f"إعدادات OAuth الخاصة بـ {platform} غير مهيأة. يرجى إضافة بيانات التطبيق في الأسرار.",
+            detail=f"إعدادات OAuth الخاصة بـ {platform} غير مكتملة. يرجى إكمالها من قسم الإعدادات أعلاه.",
         )
+    # Meta uses a single OAuth flow + single redirect URI. Both the Facebook
+    # and Instagram "connect" buttons hit the same authorize URL and the
+    # callback creates both accounts. Persist the state under 'facebook' so
+    # the canonical callback at /callback/facebook can look it up.
+    callback_platform = "facebook" if provider == "meta" else platform
     state = uuid.uuid4().hex
     await db.social_oauth_states.insert_one({
         "state": state,
-        "platform": platform,
+        "platform": callback_platform,
+        "provider": provider,
         "user_id": current_user.get("user_id") or current_user.get("id"),
         "created_at": datetime.now(timezone.utc).isoformat(),
     })
-    return {"authorize_url": adapter.oauth.authorize_url(state)}
+    return {"authorize_url": await adapter.oauth.authorize_url(state)}
 
 
 @router.get("/callback/{platform}")
@@ -185,7 +240,13 @@ async def oauth_callback(platform: str, code: Optional[str] = None, state: Optio
         return _page("فشل الربط", f"رفضت المنصة الطلب: {error}", ok=False)
     if not code or not state:
         return _page("رابط غير مكتمل", "لم يصل رمز التفويض من المنصة.", ok=False)
-    state_doc = await db.social_oauth_states.find_one({"state": state, "platform": platform})
+    # For Meta we accept the state regardless of which connect button was
+    # clicked, since the single Facebook callback writes both accounts.
+    expected_provider = PROVIDER_FOR_PLATFORM[platform]
+    state_doc = await db.social_oauth_states.find_one({
+        "state": state,
+        "provider": expected_provider,
+    })
     if not state_doc:
         return _page("جلسة غير صالحة", "انتهت صلاحية الجلسة، حاول مرة أخرى.", ok=False)
     await db.social_oauth_states.delete_one({"state": state})

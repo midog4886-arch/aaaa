@@ -11,7 +11,7 @@ import { toast } from 'sonner';
 import {
   Loader2, UploadCloud, Send, Link2, Unlink, CheckCircle2, XCircle,
   Image as ImageIcon, Video as VideoIcon, History, RefreshCw, ExternalLink,
-  Facebook, Instagram, Youtube, Music2,
+  Facebook, Instagram, Youtube, Music2, Settings, Save, Eye, EyeOff, Copy,
 } from 'lucide-react';
 
 const PLATFORMS = [
@@ -43,6 +43,55 @@ const SocialPublisherPage = () => {
   const [loadingHistory, setLoadingHistory] = useState(true);
   const fileInputRef = useRef(null);
 
+  // OAuth app credentials editable from the page.
+  const [showSettings, setShowSettings] = useState(false);
+  const [config, setConfig] = useState({}); // { provider: { schema, values } }
+  const [configDraft, setConfigDraft] = useState({});
+  const [savingProvider, setSavingProvider] = useState(null);
+  const [revealed, setRevealed] = useState({}); // { 'provider:key': true }
+
+  const callbackBase = (() => {
+    const o = window.location.origin;
+    return `${o}/api/social/callback`;
+  })();
+
+  const loadConfig = async () => {
+    try {
+      const r = await socialAPI.getConfig();
+      setConfig(r.data || {});
+      const draft = {};
+      Object.entries(r.data || {}).forEach(([prov, info]) => { draft[prov] = { ...info.values }; });
+      setConfigDraft(draft);
+    } catch (e) {
+      // silent — settings panel just stays empty
+    }
+  };
+
+  const updateDraft = (provider, key, value) => {
+    setConfigDraft(d => ({ ...d, [provider]: { ...(d[provider] || {}), [key]: value } }));
+  };
+
+  const handleSaveConfig = async (provider) => {
+    setSavingProvider(provider);
+    try {
+      await socialAPI.saveConfig(provider, configDraft[provider] || {});
+      toast.success('تم حفظ الإعدادات');
+      await loadConfig();
+      await loadAccounts();
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || 'فشل الحفظ');
+    } finally {
+      setSavingProvider(null);
+    }
+  };
+
+  const copyToClipboard = (text) => {
+    navigator.clipboard.writeText(text).then(
+      () => toast.success('تم النسخ'),
+      () => toast.error('فشل النسخ'),
+    );
+  };
+
   const loadAccounts = async () => {
     try {
       const r = await socialAPI.listAccounts();
@@ -69,6 +118,7 @@ const SocialPublisherPage = () => {
   useEffect(() => {
     loadAccounts();
     loadHistory();
+    loadConfig();
     const onMessage = (ev) => {
       if (ev?.data?.social_oauth) {
         if (ev.data.ok) toast.success(`تم ربط ${ev.data.platform}`);
@@ -195,12 +245,104 @@ const SocialPublisherPage = () => {
   return (
     <Layout>
       <div className="space-y-6 p-4 sm:p-6 max-w-6xl mx-auto">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-800 dark:text-white">النشر الاجتماعي</h1>
-          <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-            ارفع صورة أو فيديو مرة واحدة وانشره على كل المنصات.
-          </p>
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <h1 className="text-2xl font-bold text-gray-800 dark:text-white">النشر الاجتماعي</h1>
+            <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+              ارفع صورة أو فيديو مرة واحدة وانشره على كل المنصات.
+            </p>
+          </div>
+          <Button variant="outline" size="sm" onClick={() => setShowSettings(s => !s)}>
+            <Settings className="w-4 h-4 ml-1" />
+            إعدادات OAuth
+          </Button>
         </div>
+
+        {/* ── OAuth app credentials ─────────────────────────────────── */}
+        {showSettings && (
+          <Card className="border-amber-200 bg-amber-50/30">
+            <CardHeader>
+              <CardTitle className="text-base flex items-center gap-2">
+                <Settings className="w-4 h-4" /> إعدادات تطبيقات OAuth
+              </CardTitle>
+              <p className="text-xs text-gray-600 mt-1">
+                أدخل بيانات التطبيق لكل منصة. يمكنك تعديلها في أي وقت — الإعدادات تُحفظ في قاعدة البيانات.
+              </p>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              {[
+                { provider: 'meta',    title: 'Meta (Facebook + Instagram)', docs: 'https://developers.facebook.com/apps', cb: `${callbackBase}/facebook` },
+                { provider: 'youtube', title: 'YouTube',                     docs: 'https://console.cloud.google.com',     cb: `${callbackBase}/youtube` },
+                { provider: 'tiktok',  title: 'TikTok',                      docs: 'https://developers.tiktok.com',        cb: `${callbackBase}/tiktok` },
+              ].map(({ provider, title, docs, cb }) => {
+                const info = config[provider];
+                const draft = configDraft[provider] || {};
+                if (!info) return null;
+                return (
+                  <div key={provider} className="border rounded-lg p-4 bg-white">
+                    <div className="flex items-center justify-between gap-2 mb-3">
+                      <div>
+                        <h3 className="font-bold text-sm">{title}</h3>
+                        <a href={docs} target="_blank" rel="noreferrer" className="text-xs text-blue-600 hover:underline inline-flex items-center gap-1">
+                          <ExternalLink className="w-3 h-3" /> فتح لوحة التطوير
+                        </a>
+                      </div>
+                      <Button size="sm" onClick={() => handleSaveConfig(provider)} disabled={savingProvider === provider}>
+                        {savingProvider === provider
+                          ? <Loader2 className="w-3 h-3 animate-spin ml-1" />
+                          : <Save className="w-3 h-3 ml-1" />}
+                        حفظ
+                      </Button>
+                    </div>
+
+                    <div className="mb-3 p-2 bg-gray-50 border rounded">
+                      <Label className="text-xs">رابط الـ Callback لتسجيله في إعدادات التطبيق:</Label>
+                      <div className="flex items-center gap-2 mt-1">
+                        <code className="flex-1 text-xs bg-white border px-2 py-1 rounded truncate" dir="ltr">{cb}</code>
+                        <Button size="sm" variant="outline" onClick={() => copyToClipboard(cb)}>
+                          <Copy className="w-3 h-3" />
+                        </Button>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      {info.schema.map(field => {
+                        const tag = `${provider}:${field.key}`;
+                        const isSecret = field.secret;
+                        const show = revealed[tag] || !isSecret;
+                        return (
+                          <div key={field.key} className={field.key === 'redirect_uri' ? 'sm:col-span-2' : ''}>
+                            <Label className="text-xs">{field.label}</Label>
+                            <div className="flex items-center gap-1 mt-1">
+                              <Input
+                                type={show ? 'text' : 'password'}
+                                value={draft[field.key] || ''}
+                                onChange={(e) => updateDraft(provider, field.key, e.target.value)}
+                                placeholder={field.key === 'redirect_uri' ? cb : ''}
+                                dir="ltr"
+                                className="text-sm"
+                              />
+                              {isSecret && (
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="ghost"
+                                  onClick={() => setRevealed(r => ({ ...r, [tag]: !r[tag] }))}
+                                >
+                                  {show ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
+                                </Button>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
+            </CardContent>
+          </Card>
+        )}
 
         {/* ── Connected accounts ─────────────────────────────────── */}
         <Card>
