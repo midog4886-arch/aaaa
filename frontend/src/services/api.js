@@ -97,6 +97,7 @@ export const socialAPI = {
   },
   publish: (data) => axios.post(`${API}/social/posts`, data),
   history: (limit = 30) => axios.get(`${API}/social/posts`, { params: { limit } }),
+  refreshInsights: (postId) => axios.post(`${API}/social/posts/${postId}/refresh-insights`),
   getConfig: () => axios.get(`${API}/social/config`),
   saveConfig: (provider, values) => axios.put(`${API}/social/config/${provider}`, { values }),
 };

@@ -12,7 +12,7 @@ import {
   Loader2, UploadCloud, Send, Link2, Unlink, CheckCircle2, XCircle,
   Image as ImageIcon, Video as VideoIcon, History, RefreshCw, ExternalLink,
   Facebook, Instagram, Youtube, Music2, Settings, Save, Eye, EyeOff, Copy,
-  Crop as CropIcon, AlertTriangle,
+  Crop as CropIcon, AlertTriangle, BarChart3, Heart, MessageCircle,
 } from 'lucide-react';
 import MediaCropEditor from '../components/MediaCropEditor';
 
@@ -55,6 +55,7 @@ const SocialPublisherPage = () => {
 
   const [history, setHistory] = useState([]);
   const [loadingHistory, setLoadingHistory] = useState(true);
+  const [refreshingInsights, setRefreshingInsights] = useState({}); // { post_id: true }
   const fileInputRef = useRef(null);
 
   // OAuth app credentials editable from the page (admin only).
@@ -287,6 +288,30 @@ const SocialPublisherPage = () => {
     } finally {
       setPublishing(false);
     }
+  };
+
+  const handleRefreshInsights = async (postId) => {
+    setRefreshingInsights(s => ({ ...s, [postId]: true }));
+    try {
+      await socialAPI.refreshInsights(postId);
+      await loadHistory();
+      toast.success('تم تحديث الإحصائيات');
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || 'فشل تحديث الإحصائيات');
+    } finally {
+      setRefreshingInsights(s => {
+        const next = { ...s };
+        delete next[postId];
+        return next;
+      });
+    }
+  };
+
+  const formatMetric = (n) => {
+    if (n == null) return '—';
+    if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+    if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
+    return String(n);
   };
 
   const resetForm = () => {
@@ -700,40 +725,128 @@ const SocialPublisherPage = () => {
               <p className="text-center text-sm text-gray-400 py-6">لا توجد منشورات بعد</p>
             ) : (
               <div className="space-y-3">
-                {history.map(post => (
-                  <div key={post.id} className="border rounded p-3 flex gap-3">
-                    <div className="w-20 h-20 bg-gray-100 rounded overflow-hidden flex-shrink-0">
-                      {post.media_kind === 'image' ? (
-                        <img src={post.public_url} alt="" className="w-full h-full object-cover" />
-                      ) : (
-                        <video src={post.public_url} className="w-full h-full object-cover" />
-                      )}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="text-xs text-gray-400">
-                        {new Date(post.created_at).toLocaleString('ar-SA')}
-                        {post.created_by_name && ` — ${post.created_by_name}`}
+                {history.map(post => {
+                  const targets = post.target_results || [];
+                  const hasSuccess = targets.some(t => t.status === 'success' && t.platform_post_id);
+                  const isRefreshing = !!refreshingInsights[post.id];
+                  const lastUpdate = targets
+                    .map(t => t.insights_updated_at)
+                    .filter(Boolean)
+                    .sort()
+                    .pop();
+                  const maxByMetric = targets.reduce((acc, t) => {
+                    const ins = t.insights || {};
+                    ['views', 'likes', 'comments'].forEach(k => {
+                      if (typeof ins[k] === 'number' && ins[k] > (acc[k] || 0)) acc[k] = ins[k];
+                    });
+                    return acc;
+                  }, {});
+                  return (
+                    <div key={post.id} className="border rounded p-3 flex gap-3">
+                      <div className="w-20 h-20 bg-gray-100 rounded overflow-hidden flex-shrink-0">
+                        {post.media_kind === 'image' ? (
+                          <img src={post.public_url} alt="" className="w-full h-full object-cover" />
+                        ) : (
+                          <video src={post.public_url} className="w-full h-full object-cover" />
+                        )}
                       </div>
-                      <p className="text-sm mt-1 line-clamp-2">{post.caption || <span className="text-gray-400">بدون نص</span>}</p>
-                      <div className="flex flex-wrap gap-1 mt-2">
-                        {(post.target_results || []).map((t, i) => (
-                          <Badge
-                            key={i}
-                            className={t.status === 'success'
-                              ? 'bg-green-100 text-green-700 border border-green-200'
-                              : 'bg-red-100 text-red-700 border border-red-200'}
-                          >
-                            {t.status === 'success' ? <CheckCircle2 className="w-3 h-3 ml-1" /> : <XCircle className="w-3 h-3 ml-1" />}
-                            {t.platform}
-                            {t.public_post_url && (
-                              <a href={t.public_post_url} target="_blank" rel="noreferrer" className="mr-1 text-blue-600 underline">↗</a>
-                            )}
-                          </Badge>
-                        ))}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0">
+                            <div className="text-xs text-gray-400">
+                              {new Date(post.created_at).toLocaleString('ar-SA')}
+                              {post.created_by_name && ` — ${post.created_by_name}`}
+                            </div>
+                            <p className="text-sm mt-1 line-clamp-2">{post.caption || <span className="text-gray-400">بدون نص</span>}</p>
+                          </div>
+                          {hasSuccess && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => handleRefreshInsights(post.id)}
+                              disabled={isRefreshing}
+                              title={lastUpdate ? `آخر تحديث: ${new Date(lastUpdate).toLocaleString('ar-SA')}` : 'لم يُحدث بعد'}
+                            >
+                              {isRefreshing
+                                ? <Loader2 className="w-3 h-3 animate-spin ml-1" />
+                                : <BarChart3 className="w-3 h-3 ml-1" />}
+                              تحديث الإحصائيات
+                            </Button>
+                          )}
+                        </div>
+
+                        <div className="flex flex-wrap gap-1 mt-2">
+                          {targets.map((t, i) => (
+                            <Badge
+                              key={i}
+                              className={t.status === 'success'
+                                ? 'bg-green-100 text-green-700 border border-green-200'
+                                : 'bg-red-100 text-red-700 border border-red-200'}
+                            >
+                              {t.status === 'success' ? <CheckCircle2 className="w-3 h-3 ml-1" /> : <XCircle className="w-3 h-3 ml-1" />}
+                              {t.platform}
+                              {t.public_post_url && (
+                                <a href={t.public_post_url} target="_blank" rel="noreferrer" className="mr-1 text-blue-600 underline">↗</a>
+                              )}
+                            </Badge>
+                          ))}
+                        </div>
+
+                        {targets.some(t => t.insights || t.insights_error) && (
+                          <div className="mt-3 space-y-2">
+                            {targets.filter(t => t.insights || t.insights_error).map((t, i) => {
+                              const ins = t.insights || {};
+                              const bar = (val, max) => {
+                                if (typeof val !== 'number' || !max) return 0;
+                                return Math.max(2, Math.round((val / max) * 100));
+                              };
+                              return (
+                                <div key={i} className="border rounded p-2 bg-gray-50 dark:bg-gray-800/40">
+                                  <div className="flex items-center justify-between text-xs">
+                                    <span className="font-bold">{t.platform}</span>
+                                    {t.insights_updated_at && (
+                                      <span className="text-gray-400">
+                                        {new Date(t.insights_updated_at).toLocaleString('ar-SA')}
+                                      </span>
+                                    )}
+                                  </div>
+                                  {t.insights_error ? (
+                                    <div className="text-xs text-red-600 mt-1 flex items-start gap-1">
+                                      <AlertTriangle className="w-3 h-3 mt-0.5 flex-shrink-0" />
+                                      <span className="break-words">{t.insights_error}</span>
+                                    </div>
+                                  ) : (
+                                    <div className="mt-1 grid grid-cols-3 gap-2">
+                                      {[
+                                        { key: 'views',    label: 'مشاهدات', Icon: Eye,           color: 'bg-blue-500' },
+                                        { key: 'likes',    label: 'إعجابات', Icon: Heart,         color: 'bg-pink-500' },
+                                        { key: 'comments', label: 'تعليقات', Icon: MessageCircle, color: 'bg-emerald-500' },
+                                      ].map(({ key, label, Icon, color }) => (
+                                        <div key={key}>
+                                          <div className="flex items-center gap-1 text-xs text-gray-600 dark:text-gray-300">
+                                            <Icon className="w-3 h-3" />
+                                            <span>{label}</span>
+                                            <span className="font-bold mr-auto">{formatMetric(ins[key])}</span>
+                                          </div>
+                                          <div className="h-1.5 bg-gray-200 dark:bg-gray-700 rounded mt-1">
+                                            <div
+                                              className={`h-1.5 rounded ${color}`}
+                                              style={{ width: `${bar(ins[key], maxByMetric[key])}%` }}
+                                            />
+                                          </div>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
                       </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </CardContent>

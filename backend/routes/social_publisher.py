@@ -576,6 +576,77 @@ async def publish_post(
     return {"post_id": post_id, "results": results}
 
 
+@router.post("/posts/{post_id}/refresh-insights")
+async def refresh_post_insights(
+    post_id: str,
+    current_user: dict = Depends(_require_social_publisher),
+):
+    """Pull fresh views/likes/comments from each platform for a published post.
+
+    Iterates the post's successful targets, calls each platform's insights
+    adapter, and persists `insights` (views/likes/comments) and
+    `insights_updated_at` (plus an `insights_error` when the call failed)
+    onto the matching `social_post_targets` document.
+    """
+    post = await db.social_posts.find_one({"id": post_id}, {"_id": 0})
+    if not post:
+        raise HTTPException(status_code=404, detail="المنشور غير موجود")
+    targets = await db.social_post_targets.find(
+        {"post_id": post_id}, {"_id": 0},
+    ).to_list(50)
+    if not targets:
+        return {"results": []}
+
+    from utils.social import INSIGHTS_ADAPTERS
+    out = []
+    now = datetime.now(timezone.utc).isoformat()
+    for t in targets:
+        target_id = t.get("id")
+        platform = t.get("platform")
+        platform_post_id = t.get("platform_post_id")
+        # Only successful posts have a platform_post_id worth refreshing.
+        if t.get("status") != "success" or not platform_post_id:
+            out.append({
+                "id": target_id, "platform": platform,
+                "skipped": True, "reason": "no platform post id",
+            })
+            continue
+        account = await db.social_accounts.find_one({"platform": platform}, {"_id": 0})
+        if not account:
+            update = {
+                "insights_error": "الحساب غير مربوط",
+                "insights_updated_at": now,
+            }
+            await db.social_post_targets.update_one({"id": target_id}, {"$set": update})
+            out.append({"id": target_id, "platform": platform, **update})
+            continue
+        fn = INSIGHTS_ADAPTERS.get(platform)
+        if fn is None:
+            out.append({
+                "id": target_id, "platform": platform,
+                "skipped": True, "reason": "no insights adapter",
+            })
+            continue
+        try:
+            res = await fn(account, platform_post_id)
+        except Exception as e:
+            logger.exception("Insights failed for %s/%s", platform, platform_post_id)
+            res = {"success": False, "error": str(e)}
+        update: Dict[str, Any] = {"insights_updated_at": now}
+        if res.get("success"):
+            update["insights"] = {
+                "views": res.get("views"),
+                "likes": res.get("likes"),
+                "comments": res.get("comments"),
+            }
+            update["insights_error"] = None
+        else:
+            update["insights_error"] = res.get("error") or "تعذر جلب الإحصائيات"
+        await db.social_post_targets.update_one({"id": target_id}, {"$set": update})
+        out.append({"id": target_id, "platform": platform, **update})
+    return {"results": out}
+
+
 @router.get("/posts")
 async def list_posts(
     limit: int = 30,

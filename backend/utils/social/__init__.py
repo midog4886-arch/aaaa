@@ -8,6 +8,13 @@ ADAPTERS = {
     "tiktok": tiktok.publish,
 }
 
+INSIGHTS_ADAPTERS = {
+    "facebook": meta.insights_facebook,
+    "instagram": meta.insights_instagram,
+    "youtube": youtube.insights,
+    "tiktok": tiktok.insights,
+}
+
 OAUTH_HANDLERS = {
     "facebook": meta.oauth,
     "instagram": meta.oauth,

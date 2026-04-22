@@ -116,6 +116,45 @@ async def _refresh_if_needed(account: dict) -> str:
         return new_access
 
 
+async def insights(account: dict, platform_post_id: str) -> dict:
+    """Fetch view/like/comment counts for a YouTube video via Data API v3."""
+    if not platform_post_id:
+        return {"success": False, "error": "Missing video id"}
+    try:
+        access_token = await _refresh_if_needed(account)
+    except Exception as e:
+        return {"success": False, "error": f"Token refresh failed: {e}"}
+    try:
+        async with httpx.AsyncClient(timeout=30) as client:
+            r = await client.get(
+                "https://www.googleapis.com/youtube/v3/videos",
+                params={"part": "statistics", "id": platform_post_id},
+                headers={"Authorization": f"Bearer {access_token}"},
+            )
+            r.raise_for_status()
+            items = r.json().get("items", [])
+            if not items:
+                return {"success": False, "error": "Video not found"}
+            stats = items[0].get("statistics", {}) or {}
+
+            def _to_int(v):
+                try:
+                    return int(v) if v is not None else None
+                except (TypeError, ValueError):
+                    return None
+
+            return {
+                "success": True,
+                "views": _to_int(stats.get("viewCount")),
+                "likes": _to_int(stats.get("likeCount")),
+                "comments": _to_int(stats.get("commentCount")),
+            }
+    except httpx.HTTPStatusError as e:
+        return {"success": False, "error": f"{e.response.status_code}: {e.response.text[:200]}"}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
 async def publish(account: dict, media_path: str, public_url: str, caption: str) -> dict:
     """Resumable upload of a single video to YouTube."""
     if not media_path.lower().endswith((".mp4", ".mov", ".m4v")):

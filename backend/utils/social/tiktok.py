@@ -19,7 +19,7 @@ import httpx
 
 from .config import get_config
 
-SCOPES = ["user.info.basic", "video.upload", "video.publish"]
+SCOPES = ["user.info.basic", "video.upload", "video.publish", "video.list"]
 
 
 async def _cfg():
@@ -97,6 +97,80 @@ async def _refresh_if_needed(account: dict) -> str:
         from routes.common import db
         await db.social_accounts.update_one({"platform": "tiktok"}, {"$set": update})
         return new_access
+
+
+async def insights(account: dict, platform_post_id: str) -> dict:
+    """Fetch view/like/comment counts for a TikTok post.
+
+    `platform_post_id` is the publish_id we got back from the upload init.
+    We resolve the actual video id via the publish status endpoint, then
+    query video stats. This requires the `video.list` scope on the app —
+    if the scope is missing we return success: False with a clear message.
+    """
+    if not platform_post_id:
+        return {"success": False, "error": "Missing publish id"}
+    try:
+        access_token = await _refresh_if_needed(account)
+    except Exception as e:
+        return {"success": False, "error": f"Token refresh failed: {e}"}
+    if not access_token:
+        return {"success": False, "error": "TikTok account not connected"}
+    try:
+        async with httpx.AsyncClient(timeout=30) as client:
+            # Step 1: resolve publish_id -> video id (and check it actually published).
+            s = await client.post(
+                "https://open.tiktokapis.com/v2/post/publish/status/fetch/",
+                headers={
+                    "Authorization": f"Bearer {access_token}",
+                    "Content-Type": "application/json; charset=UTF-8",
+                },
+                json={"publish_id": platform_post_id},
+            )
+            s.raise_for_status()
+            sdata = (s.json() or {}).get("data", {}) or {}
+            status = sdata.get("status")
+            # TikTok has shipped this field both as a list of IDs and as a
+            # single string in different versions of their docs/responses.
+            # Accept either shape so we don't accidentally index into a
+            # string and grab one character.
+            raw_ids = sdata.get("publicaly_available_post_id") or sdata.get("publicly_available_post_id")
+            if isinstance(raw_ids, str):
+                video_id = raw_ids
+            elif isinstance(raw_ids, list) and raw_ids:
+                video_id = raw_ids[0]
+            else:
+                return {
+                    "success": False,
+                    "error": f"Video not yet public on TikTok (status: {status or 'unknown'})",
+                }
+
+            # Step 2: query stats. Requires video.list scope.
+            q = await client.post(
+                "https://open.tiktokapis.com/v2/video/query/",
+                headers={
+                    "Authorization": f"Bearer {access_token}",
+                    "Content-Type": "application/json; charset=UTF-8",
+                },
+                params={"fields": "id,view_count,like_count,comment_count,share_count"},
+                json={"filters": {"video_ids": [video_id]}},
+            )
+            if q.status_code == 403:
+                return {"success": False, "error": "TikTok app missing video.list scope"}
+            q.raise_for_status()
+            videos = ((q.json() or {}).get("data") or {}).get("videos") or []
+            if not videos:
+                return {"success": False, "error": "Video not found in TikTok response"}
+            v = videos[0]
+            return {
+                "success": True,
+                "views": v.get("view_count"),
+                "likes": v.get("like_count"),
+                "comments": v.get("comment_count"),
+            }
+    except httpx.HTTPStatusError as e:
+        return {"success": False, "error": f"{e.response.status_code}: {e.response.text[:200]}"}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
 
 
 async def publish(account: dict, media_path: str, public_url: str, caption: str) -> dict:

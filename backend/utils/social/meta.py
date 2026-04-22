@@ -132,6 +132,100 @@ async def publish_facebook(account: dict, media_path: str, public_url: str, capt
             return {"success": False, "error": str(e)}
 
 
+async def insights_facebook(account: dict, platform_post_id: str) -> dict:
+    """Fetch views/likes/comments for a Facebook Page post.
+
+    Returns {success, views, likes, comments, error?}. Missing metrics are
+    returned as None — most commonly when the Page lacks `read_insights`
+    permission, which only affects view counts (likes/comments work via
+    summary edges that need no extra scope).
+    """
+    page = account.get("page") or {}
+    page_token = page.get("access_token")
+    if not platform_post_id or not page_token:
+        return {"success": False, "error": "Missing post id or page token"}
+    out = {"success": True, "views": None, "likes": None, "comments": None}
+    async with httpx.AsyncClient(timeout=30) as client:
+        try:
+            r = await client.get(
+                f"{GRAPH}/{platform_post_id}",
+                params={
+                    "fields": "likes.summary(true).limit(0),comments.summary(true).limit(0),shares",
+                    "access_token": page_token,
+                },
+            )
+            r.raise_for_status()
+            data = r.json()
+            out["likes"] = (data.get("likes") or {}).get("summary", {}).get("total_count")
+            out["comments"] = (data.get("comments") or {}).get("summary", {}).get("total_count")
+        except httpx.HTTPStatusError as e:
+            return {"success": False, "error": f"{e.response.status_code}: {e.response.text[:200]}"}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+        # Views are best-effort — they need read_insights on the Page.
+        try:
+            r2 = await client.get(
+                f"{GRAPH}/{platform_post_id}/insights",
+                params={"metric": "post_impressions", "access_token": page_token},
+            )
+            if r2.status_code == 200:
+                for entry in r2.json().get("data", []):
+                    if entry.get("name") == "post_impressions":
+                        values = entry.get("values") or []
+                        if values:
+                            out["views"] = values[0].get("value")
+        except Exception:
+            pass
+    return out
+
+
+async def insights_instagram(account: dict, platform_post_id: str) -> dict:
+    """Fetch views/likes/comments for an Instagram media item."""
+    page = account.get("page") or {}
+    page_token = page.get("access_token")
+    if not platform_post_id or not page_token:
+        return {"success": False, "error": "Missing media id or page token"}
+    out = {"success": True, "views": None, "likes": None, "comments": None}
+    async with httpx.AsyncClient(timeout=30) as client:
+        try:
+            r = await client.get(
+                f"{GRAPH}/{platform_post_id}",
+                params={
+                    "fields": "like_count,comments_count,media_product_type,media_type",
+                    "access_token": page_token,
+                },
+            )
+            r.raise_for_status()
+            data = r.json()
+            out["likes"] = data.get("like_count")
+            out["comments"] = data.get("comments_count")
+            media_type = (data.get("media_type") or "").upper()
+            product_type = (data.get("media_product_type") or "").upper()
+        except httpx.HTTPStatusError as e:
+            return {"success": False, "error": f"{e.response.status_code}: {e.response.text[:200]}"}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+        # For Reels/videos use plays/views; for images use impressions.
+        if product_type == "REELS" or media_type == "VIDEO":
+            metric = "plays"
+        else:
+            metric = "impressions"
+        try:
+            r2 = await client.get(
+                f"{GRAPH}/{platform_post_id}/insights",
+                params={"metric": metric, "access_token": page_token},
+            )
+            if r2.status_code == 200:
+                for entry in r2.json().get("data", []):
+                    if entry.get("name") == metric:
+                        values = entry.get("values") or []
+                        if values:
+                            out["views"] = values[0].get("value")
+        except Exception:
+            pass
+    return out
+
+
 async def publish_instagram(account: dict, media_path: str, public_url: str, caption: str) -> dict:
     """Two-step Instagram publish: create container, then publish."""
     page = account.get("page") or {}
