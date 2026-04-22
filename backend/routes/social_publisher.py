@@ -627,6 +627,19 @@ async def _refresh_insights_for_targets(targets: List[dict], delay_between: floa
         else:
             update["insights_error"] = res.get("error") or "تعذر جلب الإحصائيات"
         await db.social_post_targets.update_one({"id": target_id}, {"$set": update})
+        # Append a historical snapshot for every successful refresh so we keep
+        # a time-series instead of overwriting the latest value only.
+        if res.get("success"):
+            await db.social_post_insights_history.insert_one({
+                "id": str(uuid.uuid4()),
+                "post_id": t.get("post_id"),
+                "target_id": target_id,
+                "platform": platform,
+                "views": res.get("views"),
+                "likes": res.get("likes"),
+                "comments": res.get("comments"),
+                "snapshot_at": now,
+            })
         out.append({"id": target_id, "platform": platform, **update})
         if delay_between and idx < len(targets) - 1:
             await asyncio.sleep(delay_between)
@@ -655,6 +668,32 @@ async def refresh_post_insights(
         return {"results": []}
     results = await _refresh_insights_for_targets(targets)
     return {"results": results}
+
+
+@router.get("/posts/{post_id}/insights-history")
+async def get_post_insights_history(
+    post_id: str,
+    platform: Optional[str] = None,
+    limit: int = 500,
+    current_user: dict = Depends(_require_social_publisher),
+):
+    """Return the time-series of insight snapshots captured for a post.
+
+    Optionally filter by `platform`. Results are ordered by `snapshot_at`
+    ascending so charts can render directly without resorting.
+    """
+    post = await db.social_posts.find_one({"id": post_id}, {"_id": 0, "id": 1})
+    if not post:
+        raise HTTPException(status_code=404, detail="المنشور غير موجود")
+    query: Dict[str, Any] = {"post_id": post_id}
+    if platform:
+        if platform not in PLATFORMS:
+            raise HTTPException(status_code=400, detail="منصة غير معروفة")
+        query["platform"] = platform
+    capped = max(1, min(int(limit or 500), 2000))
+    cursor = db.social_post_insights_history.find(query, {"_id": 0}).sort("snapshot_at", 1)
+    history = await cursor.to_list(capped)
+    return {"post_id": post_id, "history": history}
 
 
 # ────────────────── Auto-refresh insights scheduler ──────────────────
