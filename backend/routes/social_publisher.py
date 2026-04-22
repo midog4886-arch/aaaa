@@ -1105,6 +1105,7 @@ async def update_insights_settings(
 async def _get_uploads_cleanup_meta() -> dict:
     meta = await db.social_settings.find_one({"key": "uploads_cleanup"}, {"_id": 0}) or {}
     retention = await _get_uploads_retention_days()
+    interval = await _get_uploads_cleanup_interval_seconds()
     return {
         "last_run_at": meta.get("last_run_at"),
         "last_run_deleted": meta.get("last_run_deleted"),
@@ -1115,6 +1116,10 @@ async def _get_uploads_cleanup_meta() -> dict:
         "retention_days_default": UPLOADS_RETENTION_DAYS,
         "retention_days_min": UPLOADS_RETENTION_MIN_DAYS,
         "retention_days_max": UPLOADS_RETENTION_MAX_DAYS,
+        "interval_seconds": interval,
+        "interval_seconds_default": UPLOADS_CLEANUP_INTERVAL_SECONDS,
+        "interval_seconds_min": UPLOADS_CLEANUP_INTERVAL_MIN_SECONDS,
+        "interval_seconds_max": UPLOADS_CLEANUP_INTERVAL_MAX_SECONDS,
     }
 
 
@@ -1153,7 +1158,8 @@ async def get_uploads_usage(current_user: dict = Depends(_require_admin)):
 
 
 class UploadsCleanupSettingsUpdate(BaseModel):
-    retention_days: int
+    retention_days: Optional[int] = None
+    interval_seconds: Optional[int] = None
 
 
 @router.put("/uploads-cleanup-settings")
@@ -1161,28 +1167,53 @@ async def update_uploads_cleanup_settings(
     payload: UploadsCleanupSettingsUpdate,
     current_user: dict = Depends(_require_admin),
 ):
-    """Update the retention window (in days) used by both the scheduled and
-    on-demand uploads cleanup. Admin-only."""
-    try:
-        rd = int(payload.retention_days)
-    except (TypeError, ValueError):
-        raise HTTPException(status_code=400, detail="قيمة غير صالحة لعدد الأيام")
-    if rd < UPLOADS_RETENTION_MIN_DAYS or rd > UPLOADS_RETENTION_MAX_DAYS:
-        raise HTTPException(
-            status_code=400,
-            detail=(
-                f"عدد أيام الاحتفاظ يجب أن يكون بين {UPLOADS_RETENTION_MIN_DAYS} "
-                f"و{UPLOADS_RETENTION_MAX_DAYS} يوماً"
-            ),
-        )
+    """Update the retention window (in days) and/or the scheduled cleanup
+    interval (in seconds). Both fields are optional so the UI can update them
+    independently. Admin-only."""
+    if payload.retention_days is None and payload.interval_seconds is None:
+        raise HTTPException(status_code=400, detail="لم يتم تمرير أي قيمة للتحديث")
+
+    update_set: Dict[str, object] = {"key": "uploads_cleanup"}
+    now_iso = datetime.now(timezone.utc).isoformat()
+    actor = current_user.get("user_id") or current_user.get("id")
+
+    if payload.retention_days is not None:
+        try:
+            rd = int(payload.retention_days)
+        except (TypeError, ValueError):
+            raise HTTPException(status_code=400, detail="قيمة غير صالحة لعدد الأيام")
+        if rd < UPLOADS_RETENTION_MIN_DAYS or rd > UPLOADS_RETENTION_MAX_DAYS:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"عدد أيام الاحتفاظ يجب أن يكون بين {UPLOADS_RETENTION_MIN_DAYS} "
+                    f"و{UPLOADS_RETENTION_MAX_DAYS} يوماً"
+                ),
+            )
+        update_set["retention_days"] = rd
+        update_set["retention_updated_at"] = now_iso
+        update_set["retention_updated_by"] = actor
+
+    if payload.interval_seconds is not None:
+        try:
+            iv = int(payload.interval_seconds)
+        except (TypeError, ValueError):
+            raise HTTPException(status_code=400, detail="قيمة غير صالحة للفاصل الزمني")
+        if iv < UPLOADS_CLEANUP_INTERVAL_MIN_SECONDS or iv > UPLOADS_CLEANUP_INTERVAL_MAX_SECONDS:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"الفاصل الزمني يجب أن يكون بين {UPLOADS_CLEANUP_INTERVAL_MIN_SECONDS} "
+                    f"و{UPLOADS_CLEANUP_INTERVAL_MAX_SECONDS} ثانية"
+                ),
+            )
+        update_set["interval_seconds"] = iv
+        update_set["interval_updated_at"] = now_iso
+        update_set["interval_updated_by"] = actor
+
     await db.social_settings.update_one(
         {"key": "uploads_cleanup"},
-        {"$set": {
-            "key": "uploads_cleanup",
-            "retention_days": rd,
-            "retention_updated_at": datetime.now(timezone.utc).isoformat(),
-            "retention_updated_by": current_user.get("user_id") or current_user.get("id"),
-        }},
+        {"$set": update_set},
         upsert=True,
     )
     return await _get_uploads_cleanup_meta()
@@ -1501,8 +1532,34 @@ def start_insights_scheduler() -> None:
 UPLOADS_RETENTION_DAYS = 7  # default when no admin override exists
 UPLOADS_RETENTION_MIN_DAYS = 1
 UPLOADS_RETENTION_MAX_DAYS = 365
-UPLOADS_CLEANUP_INTERVAL_SECONDS = 24 * 3600
+UPLOADS_CLEANUP_INTERVAL_SECONDS = 24 * 3600  # default when no admin override exists
+UPLOADS_CLEANUP_INTERVAL_MIN_SECONDS = 3600          # 1 hour — lower bound to avoid hammering disk/db
+UPLOADS_CLEANUP_INTERVAL_MAX_SECONDS = 7 * 24 * 3600  # 7 days — upper bound so cleanup can't be effectively disabled
 _uploads_cleanup_started = False
+
+
+async def _get_uploads_cleanup_interval_seconds() -> int:
+    """Return the admin-configured cleanup interval (in seconds), falling back
+    to UPLOADS_CLEANUP_INTERVAL_SECONDS. Out-of-range / corrupt values are
+    clamped so a bad setting can't disable the scheduler entirely."""
+    try:
+        doc = await db.social_settings.find_one(
+            {"key": "uploads_cleanup"}, {"_id": 0, "interval_seconds": 1},
+        )
+    except Exception:
+        logger.exception("Failed to read uploads cleanup interval setting")
+        return UPLOADS_CLEANUP_INTERVAL_SECONDS
+    if not doc or doc.get("interval_seconds") is None:
+        return UPLOADS_CLEANUP_INTERVAL_SECONDS
+    try:
+        iv = int(doc["interval_seconds"])
+    except (TypeError, ValueError):
+        return UPLOADS_CLEANUP_INTERVAL_SECONDS
+    if iv < UPLOADS_CLEANUP_INTERVAL_MIN_SECONDS:
+        return UPLOADS_CLEANUP_INTERVAL_MIN_SECONDS
+    if iv > UPLOADS_CLEANUP_INTERVAL_MAX_SECONDS:
+        return UPLOADS_CLEANUP_INTERVAL_MAX_SECONDS
+    return iv
 
 
 async def _get_uploads_retention_days() -> int:
@@ -1631,7 +1688,7 @@ async def _cleanup_social_uploads_once(max_age_days: int = UPLOADS_RETENTION_DAY
 
 async def _uploads_cleanup_loop():
     logger.info(
-        "Social uploads cleanup scheduler started (default retention=%d days, interval=%ds)",
+        "Social uploads cleanup scheduler started (default retention=%d days, default interval=%ds)",
         UPLOADS_RETENTION_DAYS, UPLOADS_CLEANUP_INTERVAL_SECONDS,
     )
     # Stagger first run so it doesn't compete with startup work.
@@ -1644,8 +1701,15 @@ async def _uploads_cleanup_loop():
             break
         except Exception:
             logger.exception("Social uploads cleanup tick failed")
+        # Read interval each tick so admin changes take effect on the next
+        # sleep without requiring a server restart.
         try:
-            await asyncio.sleep(UPLOADS_CLEANUP_INTERVAL_SECONDS)
+            interval = await _get_uploads_cleanup_interval_seconds()
+        except Exception:
+            logger.exception("Failed to read uploads cleanup interval; using default")
+            interval = UPLOADS_CLEANUP_INTERVAL_SECONDS
+        try:
+            await asyncio.sleep(interval)
         except asyncio.CancelledError:
             break
 

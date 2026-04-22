@@ -87,6 +87,10 @@ const SocialPublisherPage = () => {
   const [runningUploadsCleanup, setRunningUploadsCleanup] = useState(false);
   const [retentionDraft, setRetentionDraft] = useState('');
   const [savingRetention, setSavingRetention] = useState(false);
+  // Cleanup-loop interval is stored in seconds on the server but exposed in
+  // the UI as hours so admins don't have to do the math.
+  const [intervalHoursDraft, setIntervalHoursDraft] = useState('');
+  const [savingInterval, setSavingInterval] = useState(false);
   const fileInputRef = useRef(null);
 
   // OAuth app credentials editable from the page (admin only).
@@ -195,6 +199,13 @@ const SocialPublisherPage = () => {
           ? String(r.data.retention_days)
           : prev,
       );
+      setIntervalHoursDraft((prev) => {
+        if (prev !== '' || r.data?.interval_seconds == null) return prev;
+        // Round to one decimal so common values (1h, 24h) stay clean while
+        // non-integer-hour overrides (e.g. 90 min) remain visible.
+        const hrs = r.data.interval_seconds / 3600;
+        return String(Number.isInteger(hrs) ? hrs : Math.round(hrs * 10) / 10);
+      });
     } catch (e) {
       // 403 = not admin; just leave as null
     }
@@ -227,6 +238,31 @@ const SocialPublisherPage = () => {
       toast.error(e?.response?.data?.detail || 'تعذر حفظ مدة الاحتفاظ');
     } finally {
       setSavingRetention(false);
+    }
+  };
+
+  const handleSaveInterval = async () => {
+    const hrs = parseFloat(intervalHoursDraft);
+    const minSec = uploadsCleanup?.interval_seconds_min ?? 3600;
+    const maxSec = uploadsCleanup?.interval_seconds_max ?? 7 * 24 * 3600;
+    const minHrs = minSec / 3600;
+    const maxHrs = maxSec / 3600;
+    if (!Number.isFinite(hrs) || hrs < minHrs || hrs > maxHrs) {
+      toast.error(`الفاصل الزمني يجب أن يكون بين ${minHrs} و${maxHrs} ساعة`);
+      return;
+    }
+    const seconds = Math.round(hrs * 3600);
+    setSavingInterval(true);
+    try {
+      const r = await socialAPI.updateUploadsCleanupSettings({ interval_seconds: seconds });
+      setUploadsCleanup(r.data);
+      const savedHrs = (r.data?.interval_seconds ?? seconds) / 3600;
+      setIntervalHoursDraft(String(Number.isInteger(savedHrs) ? savedHrs : Math.round(savedHrs * 10) / 10));
+      toast.success('تم حفظ الفاصل الزمني');
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || 'تعذر حفظ الفاصل الزمني');
+    } finally {
+      setSavingInterval(false);
     }
   };
 
@@ -640,7 +676,11 @@ const SocialPublisherPage = () => {
                       {uploadsCleanup?.retention_days != null && (
                         <> (الأقدم من {uploadsCleanup.retention_days} يوماً وغير المرتبطة بمنشورات حديثة)</>
                       )}.
-                      تعمل تلقائياً مرة كل يوم — استخدم الزر للتشغيل الفوري.
+                      {uploadsCleanup?.interval_seconds != null ? (
+                        <> تعمل تلقائياً كل {Math.round((uploadsCleanup.interval_seconds / 3600) * 10) / 10} ساعة — استخدم الزر للتشغيل الفوري.</>
+                      ) : (
+                        <> تعمل تلقائياً بشكل دوري — استخدم الزر للتشغيل الفوري.</>
+                      )}
                     </p>
                   </div>
                   <div className="flex items-center gap-2 flex-wrap">
@@ -671,6 +711,34 @@ const SocialPublisherPage = () => {
                       {savingRetention && <Loader2 className="w-3 h-3 animate-spin ml-1" />}
                       حفظ
                     </Button>
+                    <label className="text-xs text-gray-700 inline-flex items-center gap-1">
+                      تكرار التشغيل التلقائي (ساعات):
+                      <input
+                        type="number"
+                        min={(uploadsCleanup?.interval_seconds_min ?? 3600) / 3600}
+                        max={(uploadsCleanup?.interval_seconds_max ?? 7 * 24 * 3600) / 3600}
+                        step={1}
+                        value={intervalHoursDraft}
+                        onChange={(e) => setIntervalHoursDraft(e.target.value)}
+                        disabled={!uploadsCleanup || savingInterval}
+                        className="w-16 border rounded px-2 py-1 text-xs"
+                      />
+                    </label>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={handleSaveInterval}
+                      disabled={
+                        !uploadsCleanup ||
+                        savingInterval ||
+                        intervalHoursDraft === '' ||
+                        Math.round(parseFloat(intervalHoursDraft) * 3600) ===
+                          uploadsCleanup?.interval_seconds
+                      }
+                    >
+                      {savingInterval && <Loader2 className="w-3 h-3 animate-spin ml-1" />}
+                      حفظ التكرار
+                    </Button>
                     <Button
                       size="sm"
                       onClick={handleRunUploadsCleanup}
@@ -685,8 +753,17 @@ const SocialPublisherPage = () => {
                 </div>
                 {uploadsCleanup && (
                   <p className="text-[11px] text-gray-500 mt-1">
-                    الحد المسموح: من {uploadsCleanup.retention_days_min} إلى {uploadsCleanup.retention_days_max} يوماً
+                    مدة الاحتفاظ المسموحة: من {uploadsCleanup.retention_days_min} إلى {uploadsCleanup.retention_days_max} يوماً
                     (الافتراضي {uploadsCleanup.retention_days_default}).
+                    {uploadsCleanup.interval_seconds_min != null && uploadsCleanup.interval_seconds_max != null && (
+                      <>
+                        {' '}
+                        تكرار التشغيل المسموح: من {uploadsCleanup.interval_seconds_min / 3600} إلى {uploadsCleanup.interval_seconds_max / 3600} ساعة
+                        {uploadsCleanup.interval_seconds_default != null && (
+                          <> (الافتراضي {uploadsCleanup.interval_seconds_default / 3600} ساعة)</>
+                        )}.
+                      </>
+                    )}
                   </p>
                 )}
                 {uploadsUsage && (
