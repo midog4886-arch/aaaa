@@ -233,6 +233,7 @@ export const MembersPage = () => {
         levelsAPI.getAll()
       ]);
       setMembers(membersRes.data);
+      setMarkedMemberIds(new Set((membersRes.data || []).filter(m => m.marked).map(m => m.id)));
       setActivities(activitiesRes.data);
       setCoaches(coachesRes.data);
       setLevels(levelsRes.data);
@@ -1424,13 +1425,25 @@ export const MembersPage = () => {
                         <td className="text-center">
                           {(() => {
                             const isMarked = markedMemberIds.has(member.id);
-                            const toggle = () => {
+                            const toggle = async () => {
+                              const willMark = !isMarked;
                               setMarkedMemberIds(prev => {
                                 const next = new Set(prev);
-                                if (next.has(member.id)) next.delete(member.id);
-                                else next.add(member.id);
+                                if (willMark) next.add(member.id);
+                                else next.delete(member.id);
                                 return next;
                               });
+                              try {
+                                await membersAPI.setMarked(member.id, willMark);
+                              } catch (e) {
+                                setMarkedMemberIds(prev => {
+                                  const next = new Set(prev);
+                                  if (willMark) next.delete(member.id);
+                                  else next.add(member.id);
+                                  return next;
+                                });
+                                toast.error(t('error'));
+                              }
                             };
                             const title = isMarked
                               ? (language === 'ar' ? 'تم التحديد - اضغط لإلغاء' : 'Marked - click to unmark')

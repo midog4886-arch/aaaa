@@ -56,6 +56,7 @@ class MemberUpdate(BaseModel):
     guardian_phone: Optional[str] = None
     activities: Optional[List[MemberActivity]] = None
     notes: Optional[str] = None
+    marked: Optional[bool] = None
 
 class Member(BaseModel):
     id: str = ""
@@ -73,6 +74,7 @@ class Member(BaseModel):
     guardian_phone: Optional[str] = ""
     activities: List[MemberActivity] = []
     notes: Optional[str] = ""
+    marked: bool = False
     status: str = "active"
     branch_id: Optional[str] = None
     created_at: str = ""
@@ -197,6 +199,19 @@ async def update_member(member_id: str, member: MemberUpdate, current_user: dict
     if not result:
         raise HTTPException(status_code=404, detail="Member not found")
     return Member(**{k: v for k, v in result.items() if k != "_id"})
+
+@router.patch("/{member_id}/marked")
+async def set_member_marked(member_id: str, payload: dict, current_user: dict = Depends(get_current_user)):
+    """Set the manual `marked` flag for a member (used as a free-form admin tag)."""
+    marked = bool(payload.get("marked", False))
+    result = await db.members.find_one_and_update(
+        {"id": member_id},
+        {"$set": {"marked": marked}},
+        return_document=True
+    )
+    if not result:
+        raise HTTPException(status_code=404, detail="Member not found")
+    return {"id": member_id, "marked": marked}
 
 @router.delete("/{member_id}")
 async def delete_member(member_id: str, current_user: dict = Depends(get_current_user)):
