@@ -11,6 +11,8 @@ Endpoints (all under /api/social):
 """
 from __future__ import annotations
 import os
+import json
+import html
 import uuid
 import logging
 from datetime import datetime, timezone
@@ -238,23 +240,31 @@ async def oauth_callback(platform: str, code: Optional[str] = None, state: Optio
     """OAuth redirect target. Returns a small HTML page that the user closes."""
     adapter = _adapter_for(platform)
 
+    # Escape every dynamic value before interpolating into HTML to prevent
+    # reflected XSS via the `error`, `body`, or `platform` parameters.
     def _page(title: str, body: str, ok: bool) -> HTMLResponse:
         color = "#16a34a" if ok else "#dc2626"
+        safe_title = html.escape(title)
+        safe_body = html.escape(body)
+        # platform is one of {"facebook","instagram","youtube","tiktok"} but we
+        # still json-encode to safely embed in a JS string literal.
+        safe_platform_js = json.dumps(platform)
+        ok_js = "true" if ok else "false"
         return HTMLResponse(
             f"""<!doctype html><html dir="rtl" lang="ar"><head><meta charset="utf-8">
-            <title>{title}</title>
+            <title>{safe_title}</title>
             <style>body{{font-family:Tajawal,Arial,sans-serif;background:#f8fafc;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0}}
             .card{{background:white;border-radius:16px;padding:32px;max-width:420px;text-align:center;box-shadow:0 10px 30px rgba(0,0,0,.08)}}
             h2{{color:{color};margin-top:0}} button{{background:{color};color:white;border:0;border-radius:10px;padding:10px 20px;font-size:14px;cursor:pointer}}</style>
-            </head><body><div class="card"><h2>{title}</h2><p>{body}</p>
+            </head><body><div class="card"><h2>{safe_title}</h2><p>{safe_body}</p>
             <button onclick="window.close()">إغلاق النافذة</button>
-            <script>setTimeout(()=>{{try{{window.opener&&window.opener.postMessage({{social_oauth:true,platform:'{platform}',ok:{str(ok).lower()}}},'*');}}catch(e){{}};}},100);</script>
+            <script>setTimeout(function(){{try{{window.opener&&window.opener.postMessage({{social_oauth:true,platform:{safe_platform_js},ok:{ok_js}}},'*');}}catch(e){{}};}},100);</script>
             </div></body></html>""",
             status_code=200,
         )
 
     if error:
-        return _page("فشل الربط", f"رفضت المنصة الطلب: {error}", ok=False)
+        return _page("فشل الربط", "رفضت المنصة الطلب.", ok=False)
     if not code or not state:
         return _page("رابط غير مكتمل", "لم يصل رمز التفويض من المنصة.", ok=False)
     # For Meta we accept the state regardless of which connect button was
@@ -270,9 +280,9 @@ async def oauth_callback(platform: str, code: Optional[str] = None, state: Optio
 
     try:
         result = await adapter.oauth.exchange_code(code)
-    except Exception as e:
+    except Exception:
         logger.exception("OAuth exchange failed for %s", platform)
-        return _page("فشل الربط", f"تعذر إكمال الربط: {e}", ok=False)
+        return _page("فشل الربط", "تعذر إكمال الربط. راجع سجلات الخادم لمعرفة السبب.", ok=False)
 
     if platform in ("facebook", "instagram"):
         # Persist a single Meta connection that owns both Facebook & Instagram.
