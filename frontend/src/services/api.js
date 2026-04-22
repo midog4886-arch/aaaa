@@ -82,6 +82,23 @@ export const membersAPI = {
   setMarked: (id, marked) => axios.patch(`${API}/members/${id}/marked`, { marked }),
 };
 
+// Social Publisher API
+export const socialAPI = {
+  listAccounts: () => axios.get(`${API}/social/accounts`),
+  disconnect: (platform) => axios.delete(`${API}/social/accounts/${platform}`),
+  connect: (platform) => axios.get(`${API}/social/connect/${platform}`),
+  uploadMedia: (file, onUploadProgress) => {
+    const fd = new FormData();
+    fd.append('file', file);
+    return axios.post(`${API}/social/uploads`, fd, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+      onUploadProgress,
+    });
+  },
+  publish: (data) => axios.post(`${API}/social/posts`, data),
+  history: (limit = 30) => axios.get(`${API}/social/posts`, { params: { limit } }),
+};
+
 // Invoices API
 export const invoicesAPI = {
   getAll: (params = {}) => axios.get(`${API}/invoices`, { params }),

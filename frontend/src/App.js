@@ -75,6 +75,7 @@ import DailyLedgerPage from './pages/DailyLedgerPage';
 import DayExtensionsPage from './pages/DayExtensionsPage';
 import WhatsAppPage from './pages/WhatsAppPage';
 import TournamentsPage from './pages/TournamentsPage';
+import SocialPublisherPage from './pages/SocialPublisherPage';
 
 // Member Portal Pages
 import MemberLogin from './pages/member-portal/MemberLogin';
@@ -433,6 +434,14 @@ function AppRoutes() {
             <TournamentsPage />
           </ProtectedRoute>
         } 
+      />
+      <Route
+        path="/admin/social-publisher"
+        element={
+          <ProtectedRoute permission="social-publisher">
+            <SocialPublisherPage />
+          </ProtectedRoute>
+        }
       />
       
       {/* Catch-all redirect to member login */}
