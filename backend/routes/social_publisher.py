@@ -1110,6 +1110,11 @@ class DesignTemplateIn(BaseModel):
     settings: Dict[str, Any]
 
 
+class DesignTemplateUpdate(BaseModel):
+    name: Optional[str] = None
+    settings: Optional[Dict[str, Any]] = None
+
+
 def _template_owner_id(current_user: dict) -> str:
     owner = current_user.get("user_id") or current_user.get("id")
     if not owner:
@@ -1163,6 +1168,42 @@ async def create_design_template(
     await db.social_design_templates.insert_one(doc)
     doc.pop("_id", None)
     return doc
+
+
+@router.put("/design-templates/{template_id}")
+async def update_design_template(
+    template_id: str,
+    payload: DesignTemplateUpdate,
+    current_user: dict = Depends(_require_social_publisher),
+):
+    owner = _template_owner_id(current_user)
+    update_doc: Dict[str, Any] = {}
+    if payload.name is not None:
+        name = payload.name.strip()
+        if not name:
+            raise HTTPException(status_code=400, detail="اسم القالب مطلوب")
+        if len(name) > MAX_TEMPLATE_NAME_LEN:
+            raise HTTPException(
+                status_code=400,
+                detail=f"اسم القالب يجب ألا يتجاوز {MAX_TEMPLATE_NAME_LEN} حرفاً",
+            )
+        update_doc["name"] = name
+    if payload.settings is not None:
+        if not isinstance(payload.settings, dict):
+            raise HTTPException(status_code=400, detail="إعدادات القالب غير صالحة")
+        update_doc["settings"] = payload.settings
+    if not update_doc:
+        raise HTTPException(status_code=400, detail="لا يوجد تغييرات لحفظها")
+    update_doc["updated_at"] = datetime.now(timezone.utc).isoformat()
+    res = await db.social_design_templates.find_one_and_update(
+        {"id": template_id, "user_id": owner},
+        {"$set": update_doc},
+        return_document=True,
+        projection={"_id": 0},
+    )
+    if not res:
+        raise HTTPException(status_code=404, detail="القالب غير موجود")
+    return res
 
 
 @router.delete("/design-templates/{template_id}")

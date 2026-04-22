@@ -4,7 +4,7 @@ import { Button } from './ui/button';
 import { Slider } from './ui/slider';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
-import { Loader2, Wand2, Type, ImageIcon, Trash2, Upload, Save, BookmarkPlus, Eye } from 'lucide-react';
+import { Loader2, Wand2, Type, ImageIcon, Trash2, Upload, Save, BookmarkPlus, Eye, Pencil, RefreshCw, Check, X } from 'lucide-react';
 import { socialAPI } from '../services/api';
 
 const PRESETS = [
@@ -78,6 +78,10 @@ const MediaImageEditor = ({ open, file, previewUrl, onClose, onApply, videoFilen
   const [templateName, setTemplateName] = useState('');
   const [savingTemplate, setSavingTemplate] = useState(false);
   const [templateError, setTemplateError] = useState('');
+  const [updatingTemplate, setUpdatingTemplate] = useState(false);
+  const [renamingTemplate, setRenamingTemplate] = useState(false);
+  const [renameValue, setRenameValue] = useState('');
+  const [savingRename, setSavingRename] = useState(false);
 
   // Server-rendered preview of the video with the current edits applied.
   const [previewLoading, setPreviewLoading] = useState(false);
@@ -120,6 +124,8 @@ const MediaImageEditor = ({ open, file, previewUrl, onClose, onApply, videoFilen
     setSelectedTemplateId('');
     setTemplateName('');
     setTemplateError('');
+    setRenamingTemplate(false);
+    setRenameValue('');
     setPreviewServerUrl('');
     setPreviewError('');
     setPreviewExpiresAt(0);
@@ -191,9 +197,69 @@ const MediaImageEditor = ({ open, file, previewUrl, onClose, onApply, videoFilen
   const handleSelectTemplate = (id) => {
     setSelectedTemplateId(id);
     setTemplateError('');
+    setRenamingTemplate(false);
+    setRenameValue('');
     if (!id) return;
     const tpl = templates.find(t => t.id === id);
     if (tpl) applyTemplateSettings(tpl.settings || {});
+  };
+
+  const handleUpdateTemplate = async () => {
+    if (!selectedTemplateId) return;
+    setUpdatingTemplate(true);
+    setTemplateError('');
+    try {
+      const res = await socialAPI.updateDesignTemplate(selectedTemplateId, {
+        settings: buildCurrentSettings(),
+      });
+      const updated = res.data;
+      setTemplates(prev => {
+        const next = prev.filter(t => t.id !== updated.id);
+        return [updated, ...next];
+      });
+    } catch (e) {
+      setTemplateError(e.response?.data?.detail || 'تعذر تحديث القالب');
+    } finally {
+      setUpdatingTemplate(false);
+    }
+  };
+
+  const startRenameTemplate = () => {
+    if (!selectedTemplateId) return;
+    const tpl = templates.find(t => t.id === selectedTemplateId);
+    if (!tpl) return;
+    setRenameValue(tpl.name || '');
+    setRenamingTemplate(true);
+    setTemplateError('');
+  };
+
+  const cancelRenameTemplate = () => {
+    setRenamingTemplate(false);
+    setRenameValue('');
+  };
+
+  const handleConfirmRename = async () => {
+    if (!selectedTemplateId) return;
+    const newName = renameValue.trim();
+    if (!newName) {
+      setTemplateError('اسم القالب مطلوب');
+      return;
+    }
+    setSavingRename(true);
+    setTemplateError('');
+    try {
+      const res = await socialAPI.updateDesignTemplate(selectedTemplateId, {
+        name: newName,
+      });
+      const updated = res.data;
+      setTemplates(prev => prev.map(t => (t.id === updated.id ? updated : t)));
+      setRenamingTemplate(false);
+      setRenameValue('');
+    } catch (e) {
+      setTemplateError(e.response?.data?.detail || 'تعذر إعادة تسمية القالب');
+    } finally {
+      setSavingRename(false);
+    }
   };
 
   const handleSaveTemplate = async () => {
@@ -562,25 +628,71 @@ const MediaImageEditor = ({ open, file, previewUrl, onClose, onApply, videoFilen
                 <BookmarkPlus className="w-3.5 h-3.5" /> قوالب التصميم المحفوظة
               </Label>
               <div className="flex items-center gap-2 mt-1">
-                <select
-                  value={selectedTemplateId}
-                  onChange={(e) => handleSelectTemplate(e.target.value)}
-                  disabled={templatesLoading}
-                  className="flex-1 h-8 text-xs rounded border border-gray-300 bg-white px-2"
-                >
-                  <option value="">
-                    {templatesLoading
-                      ? 'جارٍ التحميل...'
-                      : (templates.length === 0 ? 'لا يوجد قوالب محفوظة' : 'اختر قالباً لتطبيقه')}
-                  </option>
-                  {templates.map(t => (
-                    <option key={t.id} value={t.id}>{t.name}</option>
-                  ))}
-                </select>
-                {selectedTemplateId && (
-                  <Button type="button" size="sm" variant="outline" onClick={handleDeleteTemplate} title="حذف القالب">
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </Button>
+                {renamingTemplate ? (
+                  <>
+                    <Input
+                      value={renameValue}
+                      onChange={(e) => setRenameValue(e.target.value)}
+                      placeholder="الاسم الجديد"
+                      className="h-8 text-xs flex-1"
+                      maxLength={60}
+                      autoFocus
+                    />
+                    <Button
+                      type="button"
+                      size="sm"
+                      onClick={handleConfirmRename}
+                      disabled={savingRename || !renameValue.trim()}
+                      title="حفظ الاسم"
+                    >
+                      {savingRename
+                        ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        : <Check className="w-3.5 h-3.5" />}
+                    </Button>
+                    <Button type="button" size="sm" variant="outline" onClick={cancelRenameTemplate} title="إلغاء">
+                      <X className="w-3.5 h-3.5" />
+                    </Button>
+                  </>
+                ) : (
+                  <>
+                    <select
+                      value={selectedTemplateId}
+                      onChange={(e) => handleSelectTemplate(e.target.value)}
+                      disabled={templatesLoading}
+                      className="flex-1 h-8 text-xs rounded border border-gray-300 bg-white px-2"
+                    >
+                      <option value="">
+                        {templatesLoading
+                          ? 'جارٍ التحميل...'
+                          : (templates.length === 0 ? 'لا يوجد قوالب محفوظة' : 'اختر قالباً لتطبيقه')}
+                      </option>
+                      {templates.map(t => (
+                        <option key={t.id} value={t.id}>{t.name}</option>
+                      ))}
+                    </select>
+                    {selectedTemplateId && (
+                      <>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          onClick={handleUpdateTemplate}
+                          disabled={updatingTemplate}
+                          title="تحديث القالب بالإعدادات الحالية"
+                        >
+                          {updatingTemplate
+                            ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                            : <RefreshCw className="w-3.5 h-3.5" />}
+                        </Button>
+                        <Button type="button" size="sm" variant="outline" onClick={startRenameTemplate} title="إعادة تسمية القالب">
+                          <Pencil className="w-3.5 h-3.5" />
+                        </Button>
+                        <Button type="button" size="sm" variant="outline" onClick={handleDeleteTemplate} title="حذف القالب">
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </Button>
+                      </>
+                    )}
+                  </>
                 )}
               </div>
               <div className="flex items-center gap-2 mt-2">

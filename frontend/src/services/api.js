@@ -105,6 +105,7 @@ export const socialAPI = {
   saveInsightsSettings: (data) => axios.put(`${API}/social/insights-settings`, data),
   listDesignTemplates: () => axios.get(`${API}/social/design-templates`),
   createDesignTemplate: (name, settings) => axios.post(`${API}/social/design-templates`, { name, settings }),
+  updateDesignTemplate: (id, payload) => axios.put(`${API}/social/design-templates/${id}`, payload),
   deleteDesignTemplate: (id) => axios.delete(`${API}/social/design-templates/${id}`),
 };
 
