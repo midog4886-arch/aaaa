@@ -2117,7 +2117,19 @@ export const MembersPage = () => {
                 <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
                   <User className="w-5 h-5 text-primary" />
                 </div>
-                {language === 'ar' ? selectedMember?.name_ar : selectedMember?.name}
+                <span className="flex-1">{language === 'ar' ? selectedMember?.name_ar : selectedMember?.name}</span>
+                {selectedMember && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="gap-1 me-6"
+                    onClick={() => { setIsViewDialogOpen(false); openEditDialog(selectedMember); }}
+                    title={language === 'ar' ? 'تعديل بيانات العضو (الاسم، الجوال، العمر...)' : 'Edit member info'}
+                  >
+                    <Edit className="w-4 h-4" />
+                    {language === 'ar' ? 'تعديل البيانات' : 'Edit Info'}
+                  </Button>
+                )}
               </DialogTitle>
             </DialogHeader>
             
