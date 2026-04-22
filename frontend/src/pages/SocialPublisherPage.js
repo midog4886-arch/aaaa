@@ -271,7 +271,17 @@ const SocialPublisherPage = () => {
     setTrimOpen(false);
     if (!result || !result.file) return;
     adoptFile(result.file);
-    toast.success(`تم قص الفيديو إلى ${Math.round(result.duration)}ث`);
+    if (result.recompressed && result.originalSize && result.outputSize) {
+      const delta = Math.round(((result.originalSize - result.outputSize) / result.originalSize) * 100);
+      const note = delta > 0
+        ? `توفير ${delta}% من الحجم`
+        : delta < 0
+          ? `زيادة ${Math.abs(delta)}% في الحجم`
+          : 'بدون تغيير في الحجم';
+      toast.success(`تم ضغط الفيديو إلى ${Math.round(result.duration)}ث (${note})`);
+    } else {
+      toast.success(`تم قص الفيديو إلى ${Math.round(result.duration)}ث`);
+    }
   };
 
   const handleEditorApplied = (result) => {
