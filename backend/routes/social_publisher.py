@@ -925,6 +925,9 @@ DEFAULT_AUTO_REFRESH = {
     "enabled": True,
     "interval_minutes": 60,
     "lookback_days": 30,
+    # Number of days to keep raw `social_post_insights_history` snapshots
+    # before they are purged by the scheduler to keep the collection bounded.
+    "history_retention_days": 90,
 }
 # Sane bounds the UI can write — keeps users from accidentally hammering
 # the platforms or starving the loop.
@@ -932,6 +935,8 @@ AUTO_REFRESH_MIN_INTERVAL = 15
 AUTO_REFRESH_MAX_INTERVAL = 24 * 60
 AUTO_REFRESH_MIN_LOOKBACK = 1
 AUTO_REFRESH_MAX_LOOKBACK = 365
+AUTO_REFRESH_MIN_RETENTION = 7
+AUTO_REFRESH_MAX_RETENTION = 3650
 # Per-call delay between successive platform requests inside the scheduler,
 # both for politeness and to spread API quota usage.
 AUTO_REFRESH_PLATFORM_DELAY_SECONDS = 1.0
@@ -945,6 +950,9 @@ async def _get_auto_refresh_settings() -> Dict[str, Any]:
         "enabled": bool(doc.get("enabled", DEFAULT_AUTO_REFRESH["enabled"])),
         "interval_minutes": int(doc.get("interval_minutes", DEFAULT_AUTO_REFRESH["interval_minutes"])),
         "lookback_days": int(doc.get("lookback_days", DEFAULT_AUTO_REFRESH["lookback_days"])),
+        "history_retention_days": int(doc.get(
+            "history_retention_days", DEFAULT_AUTO_REFRESH["history_retention_days"],
+        )),
     }
 
 
@@ -958,6 +966,10 @@ async def get_insights_settings(current_user: dict = Depends(_require_social_pub
         "last_run_at": meta.get("last_run_at"),
         "last_run_status": meta.get("last_run_status"),
         "last_run_refreshed": meta.get("last_run_refreshed"),
+        "last_purge_at": meta.get("last_purge_at"),
+        "last_purge_deleted": meta.get("last_purge_deleted"),
+        "last_purge_status": meta.get("last_purge_status"),
+        "last_purge_error": meta.get("last_purge_error"),
     }
 
 
@@ -965,6 +977,7 @@ class InsightsSettingsUpdate(BaseModel):
     enabled: Optional[bool] = None
     interval_minutes: Optional[int] = None
     lookback_days: Optional[int] = None
+    history_retention_days: Optional[int] = None
 
 
 @router.put("/insights-settings")
@@ -991,6 +1004,17 @@ async def update_insights_settings(
                 detail=f"عدد أيام التحديث يجب أن يكون بين {AUTO_REFRESH_MIN_LOOKBACK} و{AUTO_REFRESH_MAX_LOOKBACK}",
             )
         current["lookback_days"] = lb
+    if payload.history_retention_days is not None:
+        rd = int(payload.history_retention_days)
+        if rd < AUTO_REFRESH_MIN_RETENTION or rd > AUTO_REFRESH_MAX_RETENTION:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"مدة الاحتفاظ بسجلات الإحصائيات يجب أن تكون بين "
+                    f"{AUTO_REFRESH_MIN_RETENTION} و{AUTO_REFRESH_MAX_RETENTION} يوماً"
+                ),
+            )
+        current["history_retention_days"] = rd
     await db.social_settings.update_one(
         {"key": "auto_refresh_insights"},
         {"$set": {**current, "key": "auto_refresh_insights",
@@ -1120,6 +1144,25 @@ async def _run_auto_refresh_once(lookback_days: int) -> Dict[str, Any]:
     return {"posts": post_count, "targets": target_count}
 
 
+async def _purge_old_insights_history(retention_days: int) -> int:
+    """Delete `social_post_insights_history` entries older than the cutoff.
+
+    Snapshots are stored with an ISO-8601 timestamp string in `snapshot_at`,
+    which sorts lexicographically when in UTC, so a `$lt` string compare is
+    safe and uses no extra indexes beyond a single field index.
+    Returns the number of documents removed for logging purposes.
+    """
+    if retention_days <= 0:
+        return 0
+    cutoff_iso = (
+        datetime.now(timezone.utc) - timedelta(days=retention_days)
+    ).isoformat()
+    res = await db.social_post_insights_history.delete_many(
+        {"snapshot_at": {"$lt": cutoff_iso}},
+    )
+    return int(getattr(res, "deleted_count", 0) or 0)
+
+
 _insights_scheduler_started = False
 
 
@@ -1130,6 +1173,13 @@ async def _insights_scheduler_loop():
     after the user changes it, without restarting the server.
     """
     logger.info("Auto-refresh insights scheduler started")
+    # Ensure the purge query stays fast at scale by creating an index on
+    # the timestamp field once. Safe to call repeatedly — Mongo no-ops if
+    # the index already exists.
+    try:
+        await db.social_post_insights_history.create_index("snapshot_at")
+    except Exception:
+        logger.exception("Failed to create snapshot_at index")
     next_run_at: Optional[datetime] = None
     # Stagger first run to avoid coinciding with startup load.
     await asyncio.sleep(60)
@@ -1160,12 +1210,34 @@ async def _insights_scheduler_loop():
                 logger.exception("Auto-refresh insights run failed")
                 summary = {"error": str(e)}
                 status = "error"
+            # Purge stale history snapshots after each tick so the collection
+            # stays bounded even when the user never opens the settings page.
+            purge_deleted = 0
+            purge_status = "ok"
+            purge_error: Optional[str] = None
+            try:
+                purge_deleted = await _purge_old_insights_history(
+                    settings["history_retention_days"],
+                )
+                if purge_deleted:
+                    logger.info(
+                        "Purged %s old insights history snapshots (retention=%s days)",
+                        purge_deleted, settings["history_retention_days"],
+                    )
+            except Exception as pe:
+                logger.exception("Insights history purge failed")
+                purge_status = "error"
+                purge_error = str(pe)
             await db.social_settings.update_one(
                 {"key": "auto_refresh_insights"},
                 {"$set": {
                     "last_run_at": datetime.now(timezone.utc).isoformat(),
                     "last_run_status": status,
                     "last_run_refreshed": summary.get("targets", 0),
+                    "last_purge_at": datetime.now(timezone.utc).isoformat(),
+                    "last_purge_deleted": purge_deleted,
+                    "last_purge_status": purge_status,
+                    "last_purge_error": purge_error,
                 }},
                 upsert=True,
             )
