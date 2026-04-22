@@ -14,6 +14,7 @@ import {
   Image as ImageIcon, Video as VideoIcon, History, RefreshCw, ExternalLink,
   Facebook, Instagram, Youtube, Music2, Settings, Save, Eye, EyeOff, Copy,
   Crop as CropIcon, AlertTriangle, BarChart3, Heart, MessageCircle, Wand2, Scissors,
+  Trash2,
 } from 'lucide-react';
 import MediaCropEditor from '../components/MediaCropEditor';
 import MediaImageEditor from '../components/MediaImageEditor';
@@ -65,6 +66,8 @@ const SocialPublisherPage = () => {
   const [refreshingInsights, setRefreshingInsights] = useState({}); // { post_id: true }
   const [insightsSettings, setInsightsSettings] = useState(null); // { enabled, interval_minutes, lookback_days, last_run_at, last_run_status }
   const [savingInsightsSettings, setSavingInsightsSettings] = useState(false);
+  const [uploadsCleanup, setUploadsCleanup] = useState(null); // { last_run_at, last_run_deleted, last_run_status, retention_days }
+  const [runningUploadsCleanup, setRunningUploadsCleanup] = useState(false);
   const fileInputRef = useRef(null);
 
   // OAuth app credentials editable from the page (admin only).
@@ -164,6 +167,29 @@ const SocialPublisherPage = () => {
     }
   };
 
+  const loadUploadsCleanup = async () => {
+    try {
+      const r = await socialAPI.getUploadsCleanupStatus();
+      setUploadsCleanup(r.data);
+    } catch (e) {
+      // 403 = not admin; just leave as null
+    }
+  };
+
+  const handleRunUploadsCleanup = async () => {
+    setRunningUploadsCleanup(true);
+    try {
+      const r = await socialAPI.runUploadsCleanupNow();
+      setUploadsCleanup(r.data);
+      const n = r.data?.deleted ?? 0;
+      toast.success(n > 0 ? `تم حذف ${n} ملف` : 'لا توجد ملفات للتنظيف');
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || 'تعذر تشغيل التنظيف');
+    } finally {
+      setRunningUploadsCleanup(false);
+    }
+  };
+
   const handleChangeAutoRefreshInterval = async (interval_minutes) => {
     setSavingInsightsSettings(true);
     try {
@@ -181,11 +207,13 @@ const SocialPublisherPage = () => {
     loadHistory();
     loadConfig();
     loadInsightsSettings();
+    loadUploadsCleanup();
     // Periodically refresh history + last-run metadata so the UI reflects
     // changes made by the background scheduler without manual reloads.
     const histTimer = setInterval(() => {
       loadHistory();
       loadInsightsSettings();
+      loadUploadsCleanup();
     }, 60 * 1000);
     const onMessage = (ev) => {
       if (ev?.data?.social_oauth) {
@@ -541,6 +569,58 @@ const SocialPublisherPage = () => {
                   </div>
                 );
               })}
+
+              {/* Manual cleanup of stale upload files */}
+              <div className="border rounded-lg p-4 bg-white">
+                <div className="flex items-center justify-between gap-2 mb-2 flex-wrap">
+                  <div>
+                    <h3 className="font-bold text-sm flex items-center gap-2">
+                      <Trash2 className="w-4 h-4" /> تنظيف الملفات المؤقتة
+                    </h3>
+                    <p className="text-xs text-gray-600 mt-1">
+                      يحذف ملفات الفيديو/الصور القديمة من مجلد الرفع
+                      {uploadsCleanup?.retention_days != null && (
+                        <> (الأقدم من {uploadsCleanup.retention_days} يوماً وغير المرتبطة بمنشورات حديثة)</>
+                      )}.
+                      تعمل تلقائياً مرة كل يوم — استخدم الزر للتشغيل الفوري.
+                    </p>
+                  </div>
+                  <Button
+                    size="sm"
+                    onClick={handleRunUploadsCleanup}
+                    disabled={runningUploadsCleanup}
+                  >
+                    {runningUploadsCleanup
+                      ? <Loader2 className="w-3 h-3 animate-spin ml-1" />
+                      : <Trash2 className="w-3 h-3 ml-1" />}
+                    تنظيف الآن
+                  </Button>
+                </div>
+                <div className="text-xs text-gray-600 mt-2">
+                  {uploadsCleanup?.last_run_at ? (
+                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                      <span>
+                        آخر تشغيل:{' '}
+                        <span dir="ltr">
+                          {new Date(uploadsCleanup.last_run_at).toLocaleString('ar-EG')}
+                        </span>
+                      </span>
+                      <span>
+                        عدد الملفات المحذوفة:{' '}
+                        <span className="font-bold">{uploadsCleanup.last_run_deleted ?? 0}</span>
+                      </span>
+                      {uploadsCleanup.last_run_status === 'error' && (
+                        <span className="text-red-600 inline-flex items-center gap-1">
+                          <AlertTriangle className="w-3 h-3" />
+                          فشل: {uploadsCleanup.last_run_error || 'خطأ غير معروف'}
+                        </span>
+                      )}
+                    </div>
+                  ) : (
+                    <span className="text-gray-400">لم يُسجَّل أي تشغيل بعد.</span>
+                  )}
+                </div>
+              </div>
             </CardContent>
           </Card>
         )}

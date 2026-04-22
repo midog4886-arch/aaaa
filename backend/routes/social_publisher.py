@@ -1098,6 +1098,55 @@ async def update_insights_settings(
 
 
 # ----------------------------------------------------------------------------
+# Manual uploads cleanup (admin-only)
+# ----------------------------------------------------------------------------
+
+
+async def _get_uploads_cleanup_meta() -> dict:
+    meta = await db.social_settings.find_one({"key": "uploads_cleanup"}, {"_id": 0}) or {}
+    return {
+        "last_run_at": meta.get("last_run_at"),
+        "last_run_deleted": meta.get("last_run_deleted"),
+        "last_run_status": meta.get("last_run_status"),
+        "last_run_error": meta.get("last_run_error"),
+        "last_run_retention_days": meta.get("last_run_retention_days"),
+        "retention_days": UPLOADS_RETENTION_DAYS,
+    }
+
+
+@router.get("/uploads-cleanup")
+async def get_uploads_cleanup_status(current_user: dict = Depends(_require_admin)):
+    """Return last-run metadata for the social uploads cleanup job."""
+    return await _get_uploads_cleanup_meta()
+
+
+@router.post("/uploads-cleanup")
+async def run_uploads_cleanup_now(current_user: dict = Depends(_require_admin)):
+    """Run the uploads cleanup job once on demand. Returns the deleted count."""
+    try:
+        deleted = await _cleanup_social_uploads_once(UPLOADS_RETENTION_DAYS)
+    except Exception as e:
+        logger.exception("Manual uploads cleanup failed")
+        try:
+            await db.social_settings.update_one(
+                {"key": "uploads_cleanup"},
+                {"$set": {
+                    "key": "uploads_cleanup",
+                    "last_run_at": datetime.now(timezone.utc).isoformat(),
+                    "last_run_status": "error",
+                    "last_run_error": str(e),
+                    "last_run_retention_days": UPLOADS_RETENTION_DAYS,
+                }},
+                upsert=True,
+            )
+        except Exception:
+            logger.exception("Failed to record uploads cleanup failure")
+        raise HTTPException(status_code=500, detail=f"تعذر تشغيل التنظيف: {e}")
+    meta = await _get_uploads_cleanup_meta()
+    return {"deleted": deleted, **meta}
+
+
+# ----------------------------------------------------------------------------
 # Design templates (saved filter/logo/text presets per user)
 # ----------------------------------------------------------------------------
 
@@ -1467,6 +1516,21 @@ async def _cleanup_social_uploads_once(max_age_days: int = UPLOADS_RETENTION_DAY
         "kept_recent_post_linked=%d, kept_recent=%d (retention=%d days)",
         deleted, deleted_old_linked, kept_recent_post_linked, kept_recent, max_age_days,
     )
+    try:
+        await db.social_settings.update_one(
+            {"key": "uploads_cleanup"},
+            {"$set": {
+                "key": "uploads_cleanup",
+                "last_run_at": datetime.now(timezone.utc).isoformat(),
+                "last_run_deleted": deleted,
+                "last_run_status": "ok",
+                "last_run_error": None,
+                "last_run_retention_days": max_age_days,
+            }},
+            upsert=True,
+        )
+    except Exception:
+        logger.exception("Failed to record uploads cleanup last-run metadata")
     return deleted
 
 
