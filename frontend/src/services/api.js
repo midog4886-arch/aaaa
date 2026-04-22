@@ -100,6 +100,8 @@ export const socialAPI = {
   refreshInsights: (postId) => axios.post(`${API}/social/posts/${postId}/refresh-insights`),
   getConfig: () => axios.get(`${API}/social/config`),
   saveConfig: (provider, values) => axios.put(`${API}/social/config/${provider}`, { values }),
+  getInsightsSettings: () => axios.get(`${API}/social/insights-settings`),
+  saveInsightsSettings: (data) => axios.put(`${API}/social/insights-settings`, data),
 };
 
 // Invoices API

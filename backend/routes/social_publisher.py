@@ -17,7 +17,7 @@ import uuid
 import shutil
 import asyncio
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import Optional, List, Dict, Any
 
@@ -576,35 +576,19 @@ async def publish_post(
     return {"post_id": post_id, "results": results}
 
 
-@router.post("/posts/{post_id}/refresh-insights")
-async def refresh_post_insights(
-    post_id: str,
-    current_user: dict = Depends(_require_social_publisher),
-):
-    """Pull fresh views/likes/comments from each platform for a published post.
-
-    Iterates the post's successful targets, calls each platform's insights
-    adapter, and persists `insights` (views/likes/comments) and
-    `insights_updated_at` (plus an `insights_error` when the call failed)
-    onto the matching `social_post_targets` document.
+async def _refresh_insights_for_targets(targets: List[dict], delay_between: float = 0.0) -> List[dict]:
+    """Shared insights-refresh routine used by both the manual endpoint and
+    the background scheduler. Iterates targets and persists results on each
+    `social_post_targets` document. `delay_between` seconds are awaited
+    between consecutive platform calls to be gentle on rate limits.
     """
-    post = await db.social_posts.find_one({"id": post_id}, {"_id": 0})
-    if not post:
-        raise HTTPException(status_code=404, detail="المنشور غير موجود")
-    targets = await db.social_post_targets.find(
-        {"post_id": post_id}, {"_id": 0},
-    ).to_list(50)
-    if not targets:
-        return {"results": []}
-
     from utils.social import INSIGHTS_ADAPTERS
-    out = []
+    out: List[dict] = []
     now = datetime.now(timezone.utc).isoformat()
-    for t in targets:
+    for idx, t in enumerate(targets):
         target_id = t.get("id")
         platform = t.get("platform")
         platform_post_id = t.get("platform_post_id")
-        # Only successful posts have a platform_post_id worth refreshing.
         if t.get("status") != "success" or not platform_post_id:
             out.append({
                 "id": target_id, "platform": platform,
@@ -644,7 +628,221 @@ async def refresh_post_insights(
             update["insights_error"] = res.get("error") or "تعذر جلب الإحصائيات"
         await db.social_post_targets.update_one({"id": target_id}, {"$set": update})
         out.append({"id": target_id, "platform": platform, **update})
-    return {"results": out}
+        if delay_between and idx < len(targets) - 1:
+            await asyncio.sleep(delay_between)
+    return out
+
+
+@router.post("/posts/{post_id}/refresh-insights")
+async def refresh_post_insights(
+    post_id: str,
+    current_user: dict = Depends(_require_social_publisher),
+):
+    """Pull fresh views/likes/comments from each platform for a published post.
+
+    Iterates the post's successful targets, calls each platform's insights
+    adapter, and persists `insights` (views/likes/comments) and
+    `insights_updated_at` (plus an `insights_error` when the call failed)
+    onto the matching `social_post_targets` document.
+    """
+    post = await db.social_posts.find_one({"id": post_id}, {"_id": 0})
+    if not post:
+        raise HTTPException(status_code=404, detail="المنشور غير موجود")
+    targets = await db.social_post_targets.find(
+        {"post_id": post_id}, {"_id": 0},
+    ).to_list(50)
+    if not targets:
+        return {"results": []}
+    results = await _refresh_insights_for_targets(targets)
+    return {"results": results}
+
+
+# ────────────────── Auto-refresh insights scheduler ──────────────────
+
+# Defaults applied when no document exists yet in `social_settings`.
+DEFAULT_AUTO_REFRESH = {
+    "enabled": True,
+    "interval_minutes": 60,
+    "lookback_days": 30,
+}
+# Sane bounds the UI can write — keeps users from accidentally hammering
+# the platforms or starving the loop.
+AUTO_REFRESH_MIN_INTERVAL = 15
+AUTO_REFRESH_MAX_INTERVAL = 24 * 60
+AUTO_REFRESH_MIN_LOOKBACK = 1
+AUTO_REFRESH_MAX_LOOKBACK = 365
+# Per-call delay between successive platform requests inside the scheduler,
+# both for politeness and to spread API quota usage.
+AUTO_REFRESH_PLATFORM_DELAY_SECONDS = 1.0
+
+
+async def _get_auto_refresh_settings() -> Dict[str, Any]:
+    doc = await db.social_settings.find_one({"key": "auto_refresh_insights"}, {"_id": 0})
+    if not doc:
+        return dict(DEFAULT_AUTO_REFRESH)
+    return {
+        "enabled": bool(doc.get("enabled", DEFAULT_AUTO_REFRESH["enabled"])),
+        "interval_minutes": int(doc.get("interval_minutes", DEFAULT_AUTO_REFRESH["interval_minutes"])),
+        "lookback_days": int(doc.get("lookback_days", DEFAULT_AUTO_REFRESH["lookback_days"])),
+    }
+
+
+@router.get("/insights-settings")
+async def get_insights_settings(current_user: dict = Depends(_require_social_publisher)):
+    """Return the auto-refresh settings + last-run metadata."""
+    settings = await _get_auto_refresh_settings()
+    meta = await db.social_settings.find_one({"key": "auto_refresh_insights"}, {"_id": 0}) or {}
+    return {
+        **settings,
+        "last_run_at": meta.get("last_run_at"),
+        "last_run_status": meta.get("last_run_status"),
+        "last_run_refreshed": meta.get("last_run_refreshed"),
+    }
+
+
+class InsightsSettingsUpdate(BaseModel):
+    enabled: Optional[bool] = None
+    interval_minutes: Optional[int] = None
+    lookback_days: Optional[int] = None
+
+
+@router.put("/insights-settings")
+async def update_insights_settings(
+    payload: InsightsSettingsUpdate,
+    current_user: dict = Depends(_require_social_publisher),
+):
+    current = await _get_auto_refresh_settings()
+    if payload.enabled is not None:
+        current["enabled"] = bool(payload.enabled)
+    if payload.interval_minutes is not None:
+        iv = int(payload.interval_minutes)
+        if iv < AUTO_REFRESH_MIN_INTERVAL or iv > AUTO_REFRESH_MAX_INTERVAL:
+            raise HTTPException(
+                status_code=400,
+                detail=f"الفاصل الزمني يجب أن يكون بين {AUTO_REFRESH_MIN_INTERVAL} و{AUTO_REFRESH_MAX_INTERVAL} دقيقة",
+            )
+        current["interval_minutes"] = iv
+    if payload.lookback_days is not None:
+        lb = int(payload.lookback_days)
+        if lb < AUTO_REFRESH_MIN_LOOKBACK or lb > AUTO_REFRESH_MAX_LOOKBACK:
+            raise HTTPException(
+                status_code=400,
+                detail=f"عدد أيام التحديث يجب أن يكون بين {AUTO_REFRESH_MIN_LOOKBACK} و{AUTO_REFRESH_MAX_LOOKBACK}",
+            )
+        current["lookback_days"] = lb
+    await db.social_settings.update_one(
+        {"key": "auto_refresh_insights"},
+        {"$set": {**current, "key": "auto_refresh_insights",
+                  "updated_at": datetime.now(timezone.utc).isoformat(),
+                  "updated_by": current_user.get("user_id") or current_user.get("id")}},
+        upsert=True,
+    )
+    return current
+
+
+async def _run_auto_refresh_once(lookback_days: int) -> Dict[str, Any]:
+    """Refresh insights for every successful target on posts created in the
+    last `lookback_days` days. Returns a summary dict for logging.
+
+    Streams results from MongoDB instead of loading everything into memory at
+    once so the lookback window is fully covered even when there are tens of
+    thousands of historical posts/targets.
+    """
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=lookback_days)).isoformat()
+    post_count = 0
+    target_count = 0
+    batch: List[dict] = []
+    BATCH_SIZE = 200
+
+    async def _flush(current_batch: List[dict]):
+        if current_batch:
+            await _refresh_insights_for_targets(
+                current_batch, delay_between=AUTO_REFRESH_PLATFORM_DELAY_SECONDS,
+            )
+
+    cursor = db.social_posts.find({"created_at": {"$gte": cutoff}}, {"_id": 0, "id": 1})
+    async for post in cursor:
+        post_count += 1
+        post_id = post.get("id")
+        if not post_id:
+            continue
+        target_cursor = db.social_post_targets.find(
+            {"post_id": post_id, "status": "success"}, {"_id": 0},
+        )
+        async for t in target_cursor:
+            batch.append(t)
+            target_count += 1
+            if len(batch) >= BATCH_SIZE:
+                await _flush(batch)
+                batch = []
+    await _flush(batch)
+    return {"posts": post_count, "targets": target_count}
+
+
+_insights_scheduler_started = False
+
+
+async def _insights_scheduler_loop():
+    """Background loop that periodically refreshes insights for recent posts.
+
+    Sleeps in short ticks so the interval/enabled toggle takes effect quickly
+    after the user changes it, without restarting the server.
+    """
+    logger.info("Auto-refresh insights scheduler started")
+    next_run_at: Optional[datetime] = None
+    # Stagger first run to avoid coinciding with startup load.
+    await asyncio.sleep(60)
+    while True:
+        try:
+            settings = await _get_auto_refresh_settings()
+            if not settings["enabled"]:
+                next_run_at = None
+                await asyncio.sleep(60)
+                continue
+            interval = settings["interval_minutes"]
+            now = datetime.now(timezone.utc)
+            if next_run_at is None:
+                next_run_at = now  # first enabled tick triggers immediately
+            if now < next_run_at:
+                # Wake up at most every minute to react to settings changes.
+                wait = min(60, (next_run_at - now).total_seconds())
+                await asyncio.sleep(max(1, wait))
+                continue
+            try:
+                summary = await _run_auto_refresh_once(settings["lookback_days"])
+                status = "ok"
+                logger.info(
+                    "Auto-refresh insights run finished: %s posts / %s targets",
+                    summary["posts"], summary["targets"],
+                )
+            except Exception as e:
+                logger.exception("Auto-refresh insights run failed")
+                summary = {"error": str(e)}
+                status = "error"
+            await db.social_settings.update_one(
+                {"key": "auto_refresh_insights"},
+                {"$set": {
+                    "last_run_at": datetime.now(timezone.utc).isoformat(),
+                    "last_run_status": status,
+                    "last_run_refreshed": summary.get("targets", 0),
+                }},
+                upsert=True,
+            )
+            next_run_at = datetime.now(timezone.utc) + timedelta(minutes=interval)
+        except asyncio.CancelledError:
+            break
+        except Exception as e:
+            logger.exception("Insights scheduler tick crashed: %s", e)
+            await asyncio.sleep(60)
+
+
+def start_insights_scheduler() -> None:
+    """Start the background loop once. Safe to call multiple times."""
+    global _insights_scheduler_started
+    if _insights_scheduler_started:
+        return
+    _insights_scheduler_started = True
+    asyncio.ensure_future(_insights_scheduler_loop())
 
 
 @router.get("/posts")

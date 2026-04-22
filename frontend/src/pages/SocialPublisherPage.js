@@ -6,6 +6,7 @@ import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { Textarea } from '../components/ui/textarea';
 import { Badge } from '../components/ui/badge';
+import { Switch } from '../components/ui/switch';
 import { socialAPI } from '../services/api';
 import { toast } from 'sonner';
 import {
@@ -60,6 +61,8 @@ const SocialPublisherPage = () => {
   const [history, setHistory] = useState([]);
   const [loadingHistory, setLoadingHistory] = useState(true);
   const [refreshingInsights, setRefreshingInsights] = useState({}); // { post_id: true }
+  const [insightsSettings, setInsightsSettings] = useState(null); // { enabled, interval_minutes, lookback_days, last_run_at, last_run_status }
+  const [savingInsightsSettings, setSavingInsightsSettings] = useState(false);
   const fileInputRef = useRef(null);
 
   // OAuth app credentials editable from the page (admin only).
@@ -137,10 +140,51 @@ const SocialPublisherPage = () => {
     }
   };
 
+  const loadInsightsSettings = async () => {
+    try {
+      const r = await socialAPI.getInsightsSettings();
+      setInsightsSettings(r.data);
+    } catch (e) {
+      // silent
+    }
+  };
+
+  const handleToggleAutoRefresh = async (enabled) => {
+    setSavingInsightsSettings(true);
+    try {
+      const r = await socialAPI.saveInsightsSettings({ enabled });
+      setInsightsSettings((prev) => ({ ...(prev || {}), ...r.data }));
+      toast.success(enabled ? 'تم تفعيل التحديث التلقائي' : 'تم إيقاف التحديث التلقائي');
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || 'تعذر حفظ الإعداد');
+    } finally {
+      setSavingInsightsSettings(false);
+    }
+  };
+
+  const handleChangeAutoRefreshInterval = async (interval_minutes) => {
+    setSavingInsightsSettings(true);
+    try {
+      const r = await socialAPI.saveInsightsSettings({ interval_minutes });
+      setInsightsSettings((prev) => ({ ...(prev || {}), ...r.data }));
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || 'تعذر حفظ الفاصل الزمني');
+    } finally {
+      setSavingInsightsSettings(false);
+    }
+  };
+
   useEffect(() => {
     loadAccounts();
     loadHistory();
     loadConfig();
+    loadInsightsSettings();
+    // Periodically refresh history + last-run metadata so the UI reflects
+    // changes made by the background scheduler without manual reloads.
+    const histTimer = setInterval(() => {
+      loadHistory();
+      loadInsightsSettings();
+    }, 60 * 1000);
     const onMessage = (ev) => {
       if (ev?.data?.social_oauth) {
         if (ev.data.ok) toast.success(`تم ربط ${ev.data.platform}`);
@@ -149,7 +193,10 @@ const SocialPublisherPage = () => {
       }
     };
     window.addEventListener('message', onMessage);
-    return () => window.removeEventListener('message', onMessage);
+    return () => {
+      window.removeEventListener('message', onMessage);
+      clearInterval(histTimer);
+    };
   }, []);
 
   const accountFor = (platform) => accounts.find(a => a.platform === platform);
@@ -751,6 +798,46 @@ const SocialPublisherPage = () => {
               <RefreshCw className="w-4 h-4" />
             </Button>
           </CardHeader>
+          {insightsSettings && (
+            <div className="px-6 -mt-2 pb-3 border-b">
+              <div className="flex flex-wrap items-center justify-between gap-3 text-xs">
+                <div className="flex items-center gap-2">
+                  <Switch
+                    checked={!!insightsSettings.enabled}
+                    onCheckedChange={handleToggleAutoRefresh}
+                    disabled={savingInsightsSettings}
+                    id="auto-refresh-insights"
+                  />
+                  <Label htmlFor="auto-refresh-insights" className="cursor-pointer">
+                    تحديث الإحصائيات تلقائياً للمنشورات الحديثة
+                  </Label>
+                </div>
+                <div className="flex items-center gap-2 text-gray-500">
+                  <span>كل</span>
+                  <select
+                    className="border rounded px-2 py-1 text-xs bg-white"
+                    value={insightsSettings.interval_minutes || 60}
+                    onChange={(e) => handleChangeAutoRefreshInterval(Number(e.target.value))}
+                    disabled={savingInsightsSettings || !insightsSettings.enabled}
+                  >
+                    <option value={15}>15 دقيقة</option>
+                    <option value={30}>30 دقيقة</option>
+                    <option value={60}>ساعة</option>
+                    <option value={180}>3 ساعات</option>
+                    <option value={360}>6 ساعات</option>
+                    <option value={720}>12 ساعة</option>
+                    <option value={1440}>يومياً</option>
+                  </select>
+                  <span>· آخر {insightsSettings.lookback_days || 30} يوم</span>
+                  {insightsSettings.last_run_at && (
+                    <span title={`الحالة: ${insightsSettings.last_run_status || 'غير معروف'}`}>
+                      · آخر تحديث تلقائي: {new Date(insightsSettings.last_run_at).toLocaleString('ar-SA')}
+                    </span>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
           <CardContent>
             {loadingHistory ? (
               <div className="flex items-center justify-center py-6">
