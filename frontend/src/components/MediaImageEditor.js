@@ -4,7 +4,8 @@ import { Button } from './ui/button';
 import { Slider } from './ui/slider';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
-import { Loader2, Wand2, Type, ImageIcon, Trash2, Upload } from 'lucide-react';
+import { Loader2, Wand2, Type, ImageIcon, Trash2, Upload, Save, BookmarkPlus } from 'lucide-react';
+import { socialAPI } from '../services/api';
 
 const PRESETS = [
   { id: 'none',     label: 'بدون',   filter: { brightness: 100, contrast: 100, saturate: 100, sepia: 0, grayscale: 0, hueRotate: 0 } },
@@ -70,6 +71,14 @@ const MediaImageEditor = ({ open, file, previewUrl, onClose, onApply }) => {
   const [videoMeta, setVideoMeta] = useState({ w: 0, h: 0 });
   const [busy, setBusy] = useState(false);
 
+  // Saved design templates
+  const [templates, setTemplates] = useState([]);
+  const [selectedTemplateId, setSelectedTemplateId] = useState('');
+  const [templatesLoading, setTemplatesLoading] = useState(false);
+  const [templateName, setTemplateName] = useState('');
+  const [savingTemplate, setSavingTemplate] = useState(false);
+  const [templateError, setTemplateError] = useState('');
+
   const canvasRef = useRef(null);
   const containerRef = useRef(null);
   const videoRef = useRef(null);
@@ -101,7 +110,115 @@ const MediaImageEditor = ({ open, file, previewUrl, onClose, onApply }) => {
     setLogoPos({ x: 95, y: 95 });
     setLogoOpacity(80);
     setVideoMeta({ w: 0, h: 0 });
+    setSelectedTemplateId('');
+    setTemplateName('');
+    setTemplateError('');
   }, [open, previewUrl]);
+
+  // Load saved templates whenever dialog opens
+  useEffect(() => {
+    if (!open) return;
+    let alive = true;
+    setTemplatesLoading(true);
+    socialAPI.listDesignTemplates()
+      .then(res => { if (alive) setTemplates(res.data?.templates || []); })
+      .catch(() => { if (alive) setTemplates([]); })
+      .finally(() => { if (alive) setTemplatesLoading(false); });
+    return () => { alive = false; };
+  }, [open]);
+
+  const buildCurrentSettings = () => ({
+    preset_id: presetId,
+    brightness,
+    contrast,
+    saturate,
+    text,
+    text_color: textColor,
+    text_size: textSize,
+    text_pos: textPos,
+    logo: logoSource ? {
+      // Custom (uploaded) logos cannot be persisted in the template; the user
+      // will need to re-upload one if they want to reuse the position/size.
+      source: logoSource === 'custom' ? '' : logoSource,
+      size: logoSize,
+      pos: logoPos,
+      opacity: logoOpacity,
+    } : null,
+  });
+
+  const applyTemplateSettings = (s) => {
+    if (!s || typeof s !== 'object') return;
+    if (s.preset_id) setPresetId(s.preset_id);
+    if (typeof s.brightness === 'number') setBrightness(s.brightness);
+    if (typeof s.contrast === 'number') setContrast(s.contrast);
+    if (typeof s.saturate === 'number') setSaturate(s.saturate);
+    setText(typeof s.text === 'string' ? s.text : '');
+    if (s.text_color) setTextColor(s.text_color);
+    if (typeof s.text_size === 'number') setTextSize(s.text_size);
+    if (s.text_pos && typeof s.text_pos.x === 'number' && typeof s.text_pos.y === 'number') {
+      setTextPos({ x: s.text_pos.x, y: s.text_pos.y });
+    }
+    if (s.logo && s.logo.source === 'default') {
+      revokeIfBlob(logoUrl);
+      setLogoUrl(DEFAULT_LOGO);
+      setLogoFile(null);
+      setLogoSource('default');
+      if (typeof s.logo.size === 'number') setLogoSize(s.logo.size);
+      if (s.logo.pos) setLogoPos({ x: s.logo.pos.x, y: s.logo.pos.y });
+      if (typeof s.logo.opacity === 'number') setLogoOpacity(s.logo.opacity);
+    } else {
+      // Either no logo in template, or it referenced a custom upload we
+      // cannot restore — clear the current logo so the user knows.
+      revokeIfBlob(logoUrl);
+      setLogoUrl('');
+      setLogoFile(null);
+      setLogoEl(null);
+      setLogoSource('');
+    }
+  };
+
+  const handleSelectTemplate = (id) => {
+    setSelectedTemplateId(id);
+    setTemplateError('');
+    if (!id) return;
+    const tpl = templates.find(t => t.id === id);
+    if (tpl) applyTemplateSettings(tpl.settings || {});
+  };
+
+  const handleSaveTemplate = async () => {
+    const name = templateName.trim();
+    if (!name) {
+      setTemplateError('أدخل اسماً للقالب');
+      return;
+    }
+    setSavingTemplate(true);
+    setTemplateError('');
+    try {
+      const res = await socialAPI.createDesignTemplate(name, buildCurrentSettings());
+      const created = res.data;
+      setTemplates(prev => [created, ...prev.filter(t => t.id !== created.id)]);
+      setSelectedTemplateId(created.id);
+      setTemplateName('');
+    } catch (e) {
+      setTemplateError(e.response?.data?.detail || 'تعذر حفظ القالب');
+    } finally {
+      setSavingTemplate(false);
+    }
+  };
+
+  const handleDeleteTemplate = async () => {
+    if (!selectedTemplateId) return;
+    const tpl = templates.find(t => t.id === selectedTemplateId);
+    if (!tpl) return;
+    if (!window.confirm(`حذف القالب "${tpl.name}"؟`)) return;
+    try {
+      await socialAPI.deleteDesignTemplate(selectedTemplateId);
+      setTemplates(prev => prev.filter(t => t.id !== selectedTemplateId));
+      setSelectedTemplateId('');
+    } catch (e) {
+      setTemplateError(e.response?.data?.detail || 'تعذر حذف القالب');
+    }
+  };
 
   // Load source image (image only)
   useEffect(() => {
@@ -378,6 +495,60 @@ const MediaImageEditor = ({ open, file, previewUrl, onClose, onApply }) => {
 
           {/* Controls */}
           <div className="space-y-4 text-sm">
+            <div className="rounded border border-blue-100 bg-blue-50/40 p-2">
+              <Label className="text-xs font-semibold flex items-center gap-1">
+                <BookmarkPlus className="w-3.5 h-3.5" /> قوالب التصميم المحفوظة
+              </Label>
+              <div className="flex items-center gap-2 mt-1">
+                <select
+                  value={selectedTemplateId}
+                  onChange={(e) => handleSelectTemplate(e.target.value)}
+                  disabled={templatesLoading}
+                  className="flex-1 h-8 text-xs rounded border border-gray-300 bg-white px-2"
+                >
+                  <option value="">
+                    {templatesLoading
+                      ? 'جارٍ التحميل...'
+                      : (templates.length === 0 ? 'لا يوجد قوالب محفوظة' : 'اختر قالباً لتطبيقه')}
+                  </option>
+                  {templates.map(t => (
+                    <option key={t.id} value={t.id}>{t.name}</option>
+                  ))}
+                </select>
+                {selectedTemplateId && (
+                  <Button type="button" size="sm" variant="outline" onClick={handleDeleteTemplate} title="حذف القالب">
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </Button>
+                )}
+              </div>
+              <div className="flex items-center gap-2 mt-2">
+                <Input
+                  value={templateName}
+                  onChange={(e) => setTemplateName(e.target.value)}
+                  placeholder="اسم القالب الجديد"
+                  className="h-8 text-xs flex-1"
+                  maxLength={60}
+                />
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={handleSaveTemplate}
+                  disabled={savingTemplate || !templateName.trim()}
+                >
+                  {savingTemplate
+                    ? <Loader2 className="w-3.5 h-3.5 animate-spin ml-1" />
+                    : <Save className="w-3.5 h-3.5 ml-1" />}
+                  حفظ كقالب
+                </Button>
+              </div>
+              {templateError && (
+                <p className="text-[11px] text-red-600 mt-1">{templateError}</p>
+              )}
+              <p className="text-[10px] text-gray-500 mt-1">
+                ملاحظة: الشعارات المرفوعة لا تُحفظ مع القالب — احفظ بعد اختيار شعار الأكاديمية أو أعد رفع الشعار يدوياً.
+              </p>
+            </div>
+
             <div>
               <Label className="text-xs font-semibold">فلاتر جاهزة</Label>
               <div className="flex flex-wrap gap-1.5 mt-1">

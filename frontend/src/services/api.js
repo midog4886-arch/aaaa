@@ -102,6 +102,9 @@ export const socialAPI = {
   saveConfig: (provider, values) => axios.put(`${API}/social/config/${provider}`, { values }),
   getInsightsSettings: () => axios.get(`${API}/social/insights-settings`),
   saveInsightsSettings: (data) => axios.put(`${API}/social/insights-settings`, data),
+  listDesignTemplates: () => axios.get(`${API}/social/design-templates`),
+  createDesignTemplate: (name, settings) => axios.post(`${API}/social/design-templates`, { name, settings }),
+  deleteDesignTemplate: (id) => axios.delete(`${API}/social/design-templates/${id}`),
 };
 
 // Invoices API

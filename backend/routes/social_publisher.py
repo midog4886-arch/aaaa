@@ -1001,6 +1001,86 @@ async def update_insights_settings(
     return current
 
 
+# ----------------------------------------------------------------------------
+# Design templates (saved filter/logo/text presets per user)
+# ----------------------------------------------------------------------------
+
+MAX_TEMPLATE_NAME_LEN = 60
+MAX_TEMPLATES_PER_USER = 50
+
+
+class DesignTemplateIn(BaseModel):
+    name: str
+    settings: Dict[str, Any]
+
+
+def _template_owner_id(current_user: dict) -> str:
+    owner = current_user.get("user_id") or current_user.get("id")
+    if not owner:
+        raise HTTPException(status_code=400, detail="تعذر تحديد المستخدم")
+    return str(owner)
+
+
+@router.get("/design-templates")
+async def list_design_templates(current_user: dict = Depends(_require_social_publisher)):
+    owner = _template_owner_id(current_user)
+    items = await (
+        db.social_design_templates
+        .find({"user_id": owner}, {"_id": 0})
+        .sort("updated_at", -1)
+        .to_list(MAX_TEMPLATES_PER_USER)
+    )
+    return {"templates": items}
+
+
+@router.post("/design-templates")
+async def create_design_template(
+    payload: DesignTemplateIn,
+    current_user: dict = Depends(_require_social_publisher),
+):
+    owner = _template_owner_id(current_user)
+    name = (payload.name or "").strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="اسم القالب مطلوب")
+    if len(name) > MAX_TEMPLATE_NAME_LEN:
+        raise HTTPException(
+            status_code=400,
+            detail=f"اسم القالب يجب ألا يتجاوز {MAX_TEMPLATE_NAME_LEN} حرفاً",
+        )
+    if not isinstance(payload.settings, dict):
+        raise HTTPException(status_code=400, detail="إعدادات القالب غير صالحة")
+    count = await db.social_design_templates.count_documents({"user_id": owner})
+    if count >= MAX_TEMPLATES_PER_USER:
+        raise HTTPException(
+            status_code=400,
+            detail=f"وصلت الحد الأقصى من القوالب ({MAX_TEMPLATES_PER_USER}). احذف قالباً قديماً.",
+        )
+    now_iso = datetime.now(timezone.utc).isoformat()
+    doc = {
+        "id": str(uuid.uuid4()),
+        "user_id": owner,
+        "name": name,
+        "settings": payload.settings,
+        "created_at": now_iso,
+        "updated_at": now_iso,
+    }
+    await db.social_design_templates.insert_one(doc)
+    doc.pop("_id", None)
+    return doc
+
+
+@router.delete("/design-templates/{template_id}")
+async def delete_design_template(
+    template_id: str,
+    current_user: dict = Depends(_require_social_publisher),
+):
+    owner = _template_owner_id(current_user)
+    res = await db.social_design_templates.delete_one({"id": template_id, "user_id": owner})
+    if res.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="القالب غير موجود")
+    return {"success": True}
+
+
 async def _run_auto_refresh_once(lookback_days: int) -> Dict[str, Any]:
     """Refresh insights for every successful target on posts created in the
     last `lookback_days` days. Returns a summary dict for logging.
