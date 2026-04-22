@@ -39,12 +39,22 @@ MAX_UPLOAD_BYTES = 250 * 1024 * 1024  # ~250 MB
 PLATFORMS = ("facebook", "instagram", "youtube", "tiktok")
 
 
-def _require_social_publisher(current_user: dict = Depends(get_current_user)) -> dict:
+async def _require_social_publisher(current_user: dict = Depends(get_current_user)) -> dict:
+    """Allow either admin users or any user whose stored permissions contain
+    `social-publisher`. JWT payloads do not carry permissions, so we always
+    resolve the user document from the database."""
     if current_user.get("is_admin", False):
         return current_user
-    perms = current_user.get("permissions") or []
-    if "social-publisher" in perms:
-        return current_user
+    user_id = current_user.get("user_id")
+    if user_id:
+        user_doc = await db.users.find_one({"id": user_id}, {"_id": 0, "password": 0})
+        if user_doc:
+            if user_doc.get("is_admin", False):
+                return user_doc
+            perms = user_doc.get("permissions") or []
+            if "social-publisher" in perms:
+                # Merge DB record onto the JWT context so callers can use it.
+                return {**current_user, **user_doc}
     raise HTTPException(status_code=403, detail="غير مصرح لك بهذه العملية")
 
 
@@ -317,9 +327,22 @@ async def publish_post(
 ):
     if not payload.targets:
         raise HTTPException(status_code=400, detail="اختر منصة واحدة على الأقل")
-    media_path = SOCIAL_UPLOAD_DIR / payload.media_filename
+    # Sanitize filename: only allow a basename that exists inside the upload
+    # directory, no slashes, no traversal.
+    raw_name = payload.media_filename or ""
+    safe_name = os.path.basename(raw_name)
+    if not safe_name or safe_name in {".", ".."} or safe_name != raw_name:
+        raise HTTPException(status_code=400, detail="اسم الملف غير صالح")
+    if Path(safe_name).suffix.lower() not in (ALLOWED_IMAGE_EXT | ALLOWED_VIDEO_EXT):
+        raise HTTPException(status_code=400, detail="نوع الملف غير مدعوم")
+    media_path = (SOCIAL_UPLOAD_DIR / safe_name).resolve()
+    try:
+        media_path.relative_to(SOCIAL_UPLOAD_DIR.resolve())
+    except ValueError:
+        raise HTTPException(status_code=400, detail="مسار غير مسموح به")
     if not media_path.exists():
         raise HTTPException(status_code=404, detail="الملف المرفوع غير موجود")
+    payload.media_filename = safe_name
     base = _public_base_url(request)
     public_url = f"{base}/uploads/social/{payload.media_filename}"
 
