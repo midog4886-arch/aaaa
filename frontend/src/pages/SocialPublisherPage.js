@@ -763,6 +763,46 @@ const SocialPublisherPage = () => {
           )}
         </div>
 
+        {canEditConfig && uploadsCleanup?.enabled === false && (
+          <div
+            data-testid="cleanup-disabled-banner"
+            className="flex items-start sm:items-center justify-between gap-3 flex-wrap rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-amber-900"
+          >
+            <div className="flex items-start gap-2 text-sm">
+              <AlertTriangle className="w-4 h-4 mt-0.5 flex-shrink-0" />
+              <div>
+                <span className="font-bold">التنظيف التلقائي موقوف.</span>{' '}
+                <span className="text-amber-800">
+                  لن يتم حذف الملفات المؤقتة تلقائياً حتى يُعاد تفعيله — قد تتراكم الملفات على القرص.
+                </span>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  setShowSettings(true);
+                  setTimeout(() => {
+                    const el = document.getElementById('uploads-cleanup-section');
+                    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                  }, 50);
+                }}
+              >
+                فتح القسم
+              </Button>
+              <Button
+                size="sm"
+                onClick={() => handleToggleCleanupEnabled(true)}
+                disabled={savingCleanupEnabled}
+              >
+                {savingCleanupEnabled && <Loader2 className="w-3 h-3 animate-spin ml-1" />}
+                إعادة التفعيل
+              </Button>
+            </div>
+          </div>
+        )}
+
         {/* ── OAuth app credentials ─────────────────────────────────── */}
         {canEditConfig && showSettings && (
           <Card className="border-amber-200 bg-amber-50/30">
@@ -847,7 +887,7 @@ const SocialPublisherPage = () => {
               })}
 
               {/* Manual cleanup of stale upload files */}
-              <div className="border rounded-lg p-4 bg-white">
+              <div id="uploads-cleanup-section" className="border rounded-lg p-4 bg-white scroll-mt-20">
                 <div className="flex items-center justify-between gap-2 mb-2 flex-wrap">
                   <div>
                     <h3 className="font-bold text-sm flex items-center gap-2">
