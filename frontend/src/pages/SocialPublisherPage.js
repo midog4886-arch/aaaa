@@ -125,6 +125,7 @@ const SocialPublisherPage = () => {
   // the UI as hours so admins don't have to do the math.
   const [intervalHoursDraft, setIntervalHoursDraft] = useState('');
   const [savingInterval, setSavingInterval] = useState(false);
+  const [savingCleanupEnabled, setSavingCleanupEnabled] = useState(false);
   const fileInputRef = useRef(null);
 
   // OAuth app credentials editable from the page (admin only).
@@ -297,6 +298,19 @@ const SocialPublisherPage = () => {
       toast.error(e?.response?.data?.detail || 'تعذر حفظ الفاصل الزمني');
     } finally {
       setSavingInterval(false);
+    }
+  };
+
+  const handleToggleCleanupEnabled = async (next) => {
+    setSavingCleanupEnabled(true);
+    try {
+      const r = await socialAPI.updateUploadsCleanupSettings({ enabled: !!next });
+      setUploadsCleanup(r.data);
+      toast.success(next ? 'تم تفعيل التشغيل التلقائي' : 'تم إيقاف التشغيل التلقائي مؤقتاً');
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || 'تعذر تحديث حالة التشغيل التلقائي');
+    } finally {
+      setSavingCleanupEnabled(false);
     }
   };
 
@@ -782,7 +796,9 @@ const SocialPublisherPage = () => {
                       {uploadsCleanup?.retention_days != null && (
                         <> (الأقدم من {uploadsCleanup.retention_days} يوماً وغير المرتبطة بمنشورات حديثة)</>
                       )}.
-                      {uploadsCleanup?.interval_seconds != null ? (
+                      {uploadsCleanup?.enabled === false ? (
+                        <> التشغيل التلقائي موقوف حالياً — استخدم الزر للتشغيل الفوري.</>
+                      ) : uploadsCleanup?.interval_seconds != null ? (
                         <> تعمل تلقائياً كل {Math.round((uploadsCleanup.interval_seconds / 3600) * 10) / 10} ساعة — استخدم الزر للتشغيل الفوري.</>
                       ) : (
                         <> تعمل تلقائياً بشكل دوري — استخدم الزر للتشغيل الفوري.</>
@@ -790,6 +806,18 @@ const SocialPublisherPage = () => {
                     </p>
                   </div>
                   <div className="flex items-center gap-2 flex-wrap">
+                    <label className="text-xs text-gray-700 inline-flex items-center gap-2">
+                      التشغيل التلقائي:
+                      <Switch
+                        checked={uploadsCleanup?.enabled !== false}
+                        onCheckedChange={handleToggleCleanupEnabled}
+                        disabled={!uploadsCleanup || savingCleanupEnabled}
+                      />
+                      <span className={uploadsCleanup?.enabled === false ? 'text-amber-700' : 'text-green-700'}>
+                        {uploadsCleanup?.enabled === false ? 'موقوف' : 'مفعّل'}
+                      </span>
+                      {savingCleanupEnabled && <Loader2 className="w-3 h-3 animate-spin" />}
+                    </label>
                     <label className="text-xs text-gray-700 inline-flex items-center gap-1">
                       مدة الاحتفاظ (أيام):
                       <input
@@ -940,7 +968,12 @@ const SocialPublisherPage = () => {
                   ) : (
                     <span className="text-gray-400">لم يُسجَّل أي تشغيل بعد.</span>
                   )}
-                  {(() => {
+                  {uploadsCleanup?.enabled === false ? (
+                    <div className="mt-1 text-amber-700 inline-flex items-center gap-1">
+                      <AlertTriangle className="w-3 h-3" />
+                      التشغيل التلقائي موقوف — لن يعمل التنظيف الجدولي حتى يُعاد تفعيله.
+                    </div>
+                  ) : (() => {
                     const nextHint = formatNextCleanupRun(
                       uploadsCleanup?.last_run_at,
                       uploadsCleanup?.interval_seconds,

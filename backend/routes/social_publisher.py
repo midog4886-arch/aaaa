@@ -1106,6 +1106,7 @@ async def _get_uploads_cleanup_meta() -> dict:
     meta = await db.social_settings.find_one({"key": "uploads_cleanup"}, {"_id": 0}) or {}
     retention = await _get_uploads_retention_days()
     interval = await _get_uploads_cleanup_interval_seconds()
+    enabled = await _get_uploads_cleanup_enabled()
     return {
         "last_run_at": meta.get("last_run_at"),
         "last_run_deleted": meta.get("last_run_deleted"),
@@ -1120,6 +1121,10 @@ async def _get_uploads_cleanup_meta() -> dict:
         "interval_seconds_default": UPLOADS_CLEANUP_INTERVAL_SECONDS,
         "interval_seconds_min": UPLOADS_CLEANUP_INTERVAL_MIN_SECONDS,
         "interval_seconds_max": UPLOADS_CLEANUP_INTERVAL_MAX_SECONDS,
+        "enabled": enabled,
+        "enabled_default": True,
+        "enabled_updated_at": meta.get("enabled_updated_at"),
+        "enabled_updated_by": meta.get("enabled_updated_by"),
     }
 
 
@@ -1246,6 +1251,7 @@ async def delete_upload_file(
 class UploadsCleanupSettingsUpdate(BaseModel):
     retention_days: Optional[int] = None
     interval_seconds: Optional[int] = None
+    enabled: Optional[bool] = None
 
 
 @router.put("/uploads-cleanup-settings")
@@ -1256,7 +1262,11 @@ async def update_uploads_cleanup_settings(
     """Update the retention window (in days) and/or the scheduled cleanup
     interval (in seconds). Both fields are optional so the UI can update them
     independently. Admin-only."""
-    if payload.retention_days is None and payload.interval_seconds is None:
+    if (
+        payload.retention_days is None
+        and payload.interval_seconds is None
+        and payload.enabled is None
+    ):
         raise HTTPException(status_code=400, detail="لم يتم تمرير أي قيمة للتحديث")
 
     update_set: Dict[str, object] = {"key": "uploads_cleanup"}
@@ -1296,6 +1306,11 @@ async def update_uploads_cleanup_settings(
         update_set["interval_seconds"] = iv
         update_set["interval_updated_at"] = now_iso
         update_set["interval_updated_by"] = actor
+
+    if payload.enabled is not None:
+        update_set["enabled"] = bool(payload.enabled)
+        update_set["enabled_updated_at"] = now_iso
+        update_set["enabled_updated_by"] = actor
 
     await db.social_settings.update_one(
         {"key": "uploads_cleanup"},
@@ -1707,6 +1722,23 @@ async def _get_uploads_cleanup_interval_seconds() -> int:
     return iv
 
 
+async def _get_uploads_cleanup_enabled() -> bool:
+    """Return whether the scheduled uploads cleanup loop should run a tick.
+    Defaults to True when no admin override exists so existing installs keep
+    cleaning up automatically. Read errors also default to enabled so a
+    transient DB failure can't silently disable the safety net."""
+    try:
+        doc = await db.social_settings.find_one(
+            {"key": "uploads_cleanup"}, {"_id": 0, "enabled": 1},
+        )
+    except Exception:
+        logger.exception("Failed to read uploads cleanup enabled setting")
+        return True
+    if not doc or doc.get("enabled") is None:
+        return True
+    return bool(doc.get("enabled"))
+
+
 async def _get_uploads_retention_days() -> int:
     """Return the admin-configured retention window in days, falling back to
     UPLOADS_RETENTION_DAYS when nothing is stored. Values outside the allowed
@@ -1842,8 +1874,12 @@ async def _uploads_cleanup_loop():
     await asyncio.sleep(300)
     while True:
         try:
-            retention = await _get_uploads_retention_days()
-            await _cleanup_social_uploads_once(retention)
+            enabled = await _get_uploads_cleanup_enabled()
+            if enabled:
+                retention = await _get_uploads_retention_days()
+                await _cleanup_social_uploads_once(retention)
+            else:
+                logger.info("Social uploads cleanup tick skipped (disabled by admin)")
         except asyncio.CancelledError:
             break
         except Exception:
