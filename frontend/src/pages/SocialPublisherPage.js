@@ -14,7 +14,7 @@ import {
   Image as ImageIcon, Video as VideoIcon, History, RefreshCw, ExternalLink,
   Facebook, Instagram, Youtube, Music2, Settings, Save, Eye, EyeOff, Copy,
   Crop as CropIcon, AlertTriangle, BarChart3, Heart, MessageCircle, Wand2, Scissors,
-  Trash2,
+  Trash2, ChevronDown, ChevronUp,
 } from 'lucide-react';
 import MediaCropEditor from '../components/MediaCropEditor';
 import MediaImageEditor from '../components/MediaImageEditor';
@@ -87,6 +87,10 @@ const SocialPublisherPage = () => {
   const [runningUploadsCleanup, setRunningUploadsCleanup] = useState(false);
   const [previewingUploadsCleanup, setPreviewingUploadsCleanup] = useState(false);
   const [uploadsCleanupPreview, setUploadsCleanupPreview] = useState(null); // { retention_days, files_count, total_bytes }
+  const [showLargestFiles, setShowLargestFiles] = useState(false);
+  const [largestFiles, setLargestFiles] = useState(null); // { files, limit, retention_days, total_files_scanned }
+  const [loadingLargestFiles, setLoadingLargestFiles] = useState(false);
+  const [deletingFile, setDeletingFile] = useState(null); // filename being deleted
   const [retentionDraft, setRetentionDraft] = useState('');
   const [savingRetention, setSavingRetention] = useState(false);
   // Cleanup-loop interval is stored in seconds on the server but exposed in
@@ -290,6 +294,47 @@ const SocialPublisherPage = () => {
     }
   };
 
+  const loadLargestFiles = async () => {
+    setLoadingLargestFiles(true);
+    try {
+      const r = await socialAPI.getUploadsLargest(10);
+      setLargestFiles(r.data);
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || 'تعذر تحميل قائمة أكبر الملفات');
+    } finally {
+      setLoadingLargestFiles(false);
+    }
+  };
+
+  const handleToggleLargestFiles = () => {
+    const next = !showLargestFiles;
+    setShowLargestFiles(next);
+    if (next && !largestFiles && !loadingLargestFiles) {
+      loadLargestFiles();
+    }
+  };
+
+  const handleDeleteUploadFile = async (filename) => {
+    if (!filename) return;
+    const ok = window.confirm(`هل تريد حذف الملف "${filename}" نهائياً؟ لا يمكن التراجع.`);
+    if (!ok) return;
+    setDeletingFile(filename);
+    try {
+      const r = await socialAPI.deleteUploadFile(filename);
+      const freed = r?.data?.freed_bytes ?? 0;
+      toast.success(`تم حذف الملف${freed ? ` (تحرير ${formatBytes(freed)})` : ''}`);
+      // Refresh disk usage and largest-files list so numbers stay in sync.
+      loadUploadsUsage();
+      loadLargestFiles();
+      // Any saved preview no longer reflects what's on disk.
+      setUploadsCleanupPreview(null);
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || 'تعذر حذف الملف');
+    } finally {
+      setDeletingFile(null);
+    }
+  };
+
   const handleRunUploadsCleanup = async () => {
     setRunningUploadsCleanup(true);
     try {
@@ -299,6 +344,8 @@ const SocialPublisherPage = () => {
       toast.success(n > 0 ? `تم حذف ${n} ملف` : 'لا توجد ملفات للتنظيف');
       // Refresh disk usage so the panel reflects the post-cleanup state.
       loadUploadsUsage();
+      // Refresh the largest-files list if the admin has it open.
+      if (showLargestFiles) loadLargestFiles();
       // Preview is now stale (the files it counted just got deleted).
       setUploadsCleanupPreview(null);
     } catch (e) {
@@ -859,6 +906,101 @@ const SocialPublisherPage = () => {
                     </div>
                   ) : (
                     <span className="text-gray-400">لم يُسجَّل أي تشغيل بعد.</span>
+                  )}
+                </div>
+
+                {/* Largest files in the upload directory — collapsible */}
+                <div className="mt-3 border-t pt-3">
+                  <button
+                    type="button"
+                    onClick={handleToggleLargestFiles}
+                    className="flex items-center gap-1 text-xs font-bold text-gray-700 hover:text-gray-900"
+                  >
+                    {showLargestFiles
+                      ? <ChevronUp className="w-3 h-3" />
+                      : <ChevronDown className="w-3 h-3" />}
+                    أكبر الملفات حجماً (أكبر 10)
+                  </button>
+                  {showLargestFiles && (
+                    <div className="mt-2">
+                      {loadingLargestFiles && !largestFiles ? (
+                        <div className="flex items-center gap-2 text-xs text-gray-500 py-2">
+                          <Loader2 className="w-3 h-3 animate-spin" /> جاري التحميل…
+                        </div>
+                      ) : largestFiles && largestFiles.files?.length > 0 ? (
+                        <>
+                          <div className="flex items-center justify-between mb-1 flex-wrap gap-2">
+                            <p className="text-[11px] text-gray-500">
+                              عرض أكبر {largestFiles.files.length} من أصل {largestFiles.total_files_scanned} ملف.
+                              الملفات المرتبطة بمنشور حديث (آخر {largestFiles.retention_days} يوماً) محمية من التنظيف التلقائي.
+                            </p>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={loadLargestFiles}
+                              disabled={loadingLargestFiles}
+                              className="text-xs h-7"
+                            >
+                              {loadingLargestFiles
+                                ? <Loader2 className="w-3 h-3 animate-spin ml-1" />
+                                : <RefreshCw className="w-3 h-3 ml-1" />}
+                              تحديث
+                            </Button>
+                          </div>
+                          <div className="overflow-x-auto">
+                            <table className="w-full text-xs border-collapse">
+                              <thead>
+                                <tr className="bg-gray-50 text-gray-700">
+                                  <th className="text-right p-1.5 border">الاسم</th>
+                                  <th className="text-right p-1.5 border">الحجم</th>
+                                  <th className="text-right p-1.5 border">آخر تعديل</th>
+                                  <th className="text-right p-1.5 border">مرتبط بمنشور حديث</th>
+                                  <th className="text-right p-1.5 border">إجراء</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {largestFiles.files.map((f) => (
+                                  <tr key={f.filename} className="hover:bg-gray-50">
+                                    <td className="p-1.5 border break-all" dir="ltr">{f.filename}</td>
+                                    <td className="p-1.5 border whitespace-nowrap" dir="ltr">
+                                      {formatBytes(f.size_bytes)}
+                                    </td>
+                                    <td className="p-1.5 border whitespace-nowrap" dir="ltr">
+                                      {f.mtime ? new Date(f.mtime).toLocaleString('ar-EG') : '—'}
+                                    </td>
+                                    <td className="p-1.5 border">
+                                      {f.linked_to_recent_post ? (
+                                        <span className="inline-flex items-center gap-1 text-emerald-700">
+                                          <CheckCircle2 className="w-3 h-3" /> نعم
+                                        </span>
+                                      ) : (
+                                        <span className="text-gray-500">لا</span>
+                                      )}
+                                    </td>
+                                    <td className="p-1.5 border">
+                                      <Button
+                                        size="sm"
+                                        variant="outline"
+                                        onClick={() => handleDeleteUploadFile(f.filename)}
+                                        disabled={deletingFile === f.filename}
+                                        className="text-red-600 border-red-200 h-7 text-xs"
+                                      >
+                                        {deletingFile === f.filename
+                                          ? <Loader2 className="w-3 h-3 animate-spin ml-1" />
+                                          : <Trash2 className="w-3 h-3 ml-1" />}
+                                        حذف
+                                      </Button>
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        </>
+                      ) : (
+                        <p className="text-xs text-gray-500 py-2">لا توجد ملفات في مجلد الرفع.</p>
+                      )}
+                    </div>
                   )}
                 </div>
               </div>

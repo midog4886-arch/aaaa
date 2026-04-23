@@ -111,6 +111,10 @@ export const socialAPI = {
     }),
   updateUploadsCleanupSettings: (data) => axios.put(`${API}/social/uploads-cleanup-settings`, data),
   getUploadsUsage: () => axios.get(`${API}/social/uploads-usage`),
+  getUploadsLargest: (limit = 10) =>
+    axios.get(`${API}/social/uploads-largest`, { params: { limit } }),
+  deleteUploadFile: (filename) =>
+    axios.delete(`${API}/social/uploads/${encodeURIComponent(filename)}`),
   listDesignTemplates: () => axios.get(`${API}/social/design-templates`),
   createDesignTemplate: (name, settings) => axios.post(`${API}/social/design-templates`, { name, settings }),
   updateDesignTemplate: (id, payload) => axios.put(`${API}/social/design-templates/${id}`, payload),

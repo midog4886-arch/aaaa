@@ -1157,6 +1157,92 @@ async def get_uploads_usage(current_user: dict = Depends(_require_admin)):
     return _compute_uploads_usage()
 
 
+UPLOADS_LARGEST_DEFAULT = 10
+UPLOADS_LARGEST_MAX = 100
+
+
+@router.get("/uploads-largest")
+async def get_uploads_largest(
+    limit: int = UPLOADS_LARGEST_DEFAULT,
+    current_user: dict = Depends(_require_admin),
+):
+    """Return the largest ``limit`` files in SOCIAL_UPLOAD_DIR sorted by size
+    descending. Each entry includes filename, size in bytes, mtime ISO, and
+    whether it is referenced by a recent post (within the active retention
+    window). Used by the cleanup panel to surface the biggest space hogs so
+    admins can decide on manual deletes."""
+    try:
+        n = int(limit)
+    except (TypeError, ValueError):
+        n = UPLOADS_LARGEST_DEFAULT
+    if n < 1:
+        n = 1
+    if n > UPLOADS_LARGEST_MAX:
+        n = UPLOADS_LARGEST_MAX
+
+    entries: list = []
+    if SOCIAL_UPLOAD_DIR.exists():
+        for entry in SOCIAL_UPLOAD_DIR.iterdir():
+            try:
+                if not entry.is_file() or entry.is_symlink():
+                    continue
+                st = entry.stat()
+            except OSError:
+                continue
+            entries.append({
+                "filename": entry.name,
+                "size_bytes": st.st_size,
+                "mtime": datetime.fromtimestamp(st.st_mtime, tz=timezone.utc).isoformat(),
+            })
+
+    entries.sort(key=lambda e: e["size_bytes"], reverse=True)
+    top = entries[:n]
+
+    retention_days = await _get_uploads_retention_days()
+    recent_referenced = await _collect_recent_post_filenames(retention_days)
+    for e in top:
+        e["linked_to_recent_post"] = e["filename"] in recent_referenced
+
+    return {
+        "files": top,
+        "limit": n,
+        "retention_days": retention_days,
+        "total_files_scanned": len(entries),
+    }
+
+
+@router.delete("/uploads/{filename}")
+async def delete_upload_file(
+    filename: str,
+    current_user: dict = Depends(_require_admin),
+):
+    """Manually delete a single file from SOCIAL_UPLOAD_DIR. The filename is
+    sanitised so callers cannot escape the directory. Returns the freed size
+    so the UI can update its disk-usage figures."""
+    safe = os.path.basename(filename or "")
+    if not safe or safe in (".", ".."):
+        raise HTTPException(status_code=400, detail="اسم ملف غير صالح")
+    target = (SOCIAL_UPLOAD_DIR / safe).resolve()
+    try:
+        target.relative_to(SOCIAL_UPLOAD_DIR.resolve())
+    except ValueError:
+        raise HTTPException(status_code=400, detail="اسم ملف غير صالح")
+    if not target.exists() or not target.is_file() or target.is_symlink():
+        raise HTTPException(status_code=404, detail="الملف غير موجود")
+    try:
+        size = target.stat().st_size
+    except OSError:
+        size = 0
+    try:
+        target.unlink()
+    except OSError as e:
+        logger.exception("Manual delete failed for %s", safe)
+        raise HTTPException(status_code=500, detail=f"تعذر حذف الملف: {e}")
+    logger.info("Manual social upload delete: %s (%d bytes) by %s",
+                safe, size, current_user.get("user_id") or current_user.get("id"))
+    return {"deleted": True, "filename": safe, "freed_bytes": size}
+
+
 class UploadsCleanupSettingsUpdate(BaseModel):
     retention_days: Optional[int] = None
     interval_seconds: Optional[int] = None
