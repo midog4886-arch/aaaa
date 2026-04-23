@@ -105,6 +105,10 @@ export const socialAPI = {
   saveInsightsSettings: (data) => axios.put(`${API}/social/insights-settings`, data),
   getUploadsCleanupStatus: () => axios.get(`${API}/social/uploads-cleanup`),
   runUploadsCleanupNow: () => axios.post(`${API}/social/uploads-cleanup`),
+  previewUploadsCleanup: (retention_days) =>
+    axios.get(`${API}/social/uploads-cleanup-preview`, {
+      params: retention_days != null ? { retention_days } : {},
+    }),
   updateUploadsCleanupSettings: (data) => axios.put(`${API}/social/uploads-cleanup-settings`, data),
   getUploadsUsage: () => axios.get(`${API}/social/uploads-usage`),
   listDesignTemplates: () => axios.get(`${API}/social/design-templates`),

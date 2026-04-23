@@ -85,6 +85,8 @@ const SocialPublisherPage = () => {
   const [uploadsCleanup, setUploadsCleanup] = useState(null); // { last_run_at, last_run_deleted, last_run_status, retention_days, retention_days_min, retention_days_max }
   const [uploadsUsage, setUploadsUsage] = useState(null); // { files_count, total_bytes }
   const [runningUploadsCleanup, setRunningUploadsCleanup] = useState(false);
+  const [previewingUploadsCleanup, setPreviewingUploadsCleanup] = useState(false);
+  const [uploadsCleanupPreview, setUploadsCleanupPreview] = useState(null); // { retention_days, files_count, total_bytes }
   const [retentionDraft, setRetentionDraft] = useState('');
   const [savingRetention, setSavingRetention] = useState(false);
   // Cleanup-loop interval is stored in seconds on the server but exposed in
@@ -266,6 +268,28 @@ const SocialPublisherPage = () => {
     }
   };
 
+  const handlePreviewUploadsCleanup = async () => {
+    const min = uploadsCleanup?.retention_days_min ?? 1;
+    const max = uploadsCleanup?.retention_days_max ?? 365;
+    let rd = parseInt(retentionDraft, 10);
+    if (!Number.isFinite(rd)) {
+      rd = uploadsCleanup?.retention_days ?? null;
+    }
+    if (rd != null && (rd < min || rd > max)) {
+      toast.error(`عدد الأيام يجب أن يكون بين ${min} و${max}`);
+      return;
+    }
+    setPreviewingUploadsCleanup(true);
+    try {
+      const r = await socialAPI.previewUploadsCleanup(rd);
+      setUploadsCleanupPreview(r.data);
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || 'تعذر حساب المعاينة');
+    } finally {
+      setPreviewingUploadsCleanup(false);
+    }
+  };
+
   const handleRunUploadsCleanup = async () => {
     setRunningUploadsCleanup(true);
     try {
@@ -275,6 +299,8 @@ const SocialPublisherPage = () => {
       toast.success(n > 0 ? `تم حذف ${n} ملف` : 'لا توجد ملفات للتنظيف');
       // Refresh disk usage so the panel reflects the post-cleanup state.
       loadUploadsUsage();
+      // Preview is now stale (the files it counted just got deleted).
+      setUploadsCleanupPreview(null);
     } catch (e) {
       toast.error(e?.response?.data?.detail || 'تعذر تشغيل التنظيف');
     } finally {
@@ -741,6 +767,16 @@ const SocialPublisherPage = () => {
                     </Button>
                     <Button
                       size="sm"
+                      variant="outline"
+                      onClick={handlePreviewUploadsCleanup}
+                      disabled={previewingUploadsCleanup || !uploadsCleanup}
+                      title="احسب عدد الملفات وحجمها التي ستُحذف بناءً على مدة الاحتفاظ المعطاة، دون أي تعديل"
+                    >
+                      {previewingUploadsCleanup && <Loader2 className="w-3 h-3 animate-spin ml-1" />}
+                      معاينة
+                    </Button>
+                    <Button
+                      size="sm"
                       onClick={handleRunUploadsCleanup}
                       disabled={runningUploadsCleanup}
                     >
@@ -778,6 +814,27 @@ const SocialPublisherPage = () => {
                       عدد الملفات المتبقية:{' '}
                       <span className="font-bold">{uploadsUsage.files_count}</span>
                     </span>
+                  </div>
+                )}
+                {uploadsCleanupPreview && (
+                  <div className="text-xs mt-2 p-2 rounded border border-amber-200 bg-amber-50 text-amber-900 flex flex-wrap items-center gap-x-3 gap-y-1">
+                    <span className="font-bold">معاينة التنظيف</span>
+                    <span>
+                      بمدة احتفاظ{' '}
+                      <span className="font-bold">{uploadsCleanupPreview.retention_days}</span>{' '}
+                      يوماً سيُحذف{' '}
+                      <span className="font-bold">{uploadsCleanupPreview.files_count}</span>{' '}
+                      ملف
+                    </span>
+                    <span>
+                      الحجم المُسترد:{' '}
+                      <span className="font-bold" dir="ltr">
+                        {formatBytes(uploadsCleanupPreview.total_bytes)}
+                      </span>
+                    </span>
+                    {uploadsCleanupPreview.files_count === 0 && (
+                      <span className="text-amber-700">لا توجد ملفات مؤهلة للحذف بهذه المدة.</span>
+                    )}
                   </div>
                 )}
                 <div className="text-xs text-gray-600 mt-2">

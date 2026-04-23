@@ -1219,6 +1219,65 @@ async def update_uploads_cleanup_settings(
     return await _get_uploads_cleanup_meta()
 
 
+@router.get("/uploads-cleanup-preview")
+async def preview_uploads_cleanup(
+    retention_days: Optional[int] = None,
+    current_user: dict = Depends(_require_admin),
+):
+    """Dry-run preview of how many files would be deleted by the cleanup job
+    using the given ``retention_days`` (defaults to the saved value). Walks
+    the same logic as ``_cleanup_social_uploads_once`` but does not touch
+    any file. Returns counts and the total size that would be freed."""
+    if retention_days is None:
+        rd = await _get_uploads_retention_days()
+    else:
+        try:
+            rd = int(retention_days)
+        except (TypeError, ValueError):
+            raise HTTPException(status_code=400, detail="قيمة غير صالحة لعدد الأيام")
+        if rd < UPLOADS_RETENTION_MIN_DAYS or rd > UPLOADS_RETENTION_MAX_DAYS:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"عدد أيام الاحتفاظ يجب أن يكون بين {UPLOADS_RETENTION_MIN_DAYS} "
+                    f"و{UPLOADS_RETENTION_MAX_DAYS} يوماً"
+                ),
+            )
+
+    files_count = 0
+    total_bytes = 0
+    kept_recent = 0
+    kept_recent_post_linked = 0
+    if SOCIAL_UPLOAD_DIR.exists():
+        cutoff_ts = datetime.now(timezone.utc).timestamp() - rd * 86400
+        recent_referenced = await _collect_recent_post_filenames(rd)
+        for entry in SOCIAL_UPLOAD_DIR.iterdir():
+            try:
+                if not entry.is_file() or entry.is_symlink():
+                    continue
+                if entry.name in recent_referenced:
+                    kept_recent_post_linked += 1
+                    continue
+                try:
+                    st = entry.stat()
+                except OSError:
+                    continue
+                if st.st_mtime > cutoff_ts:
+                    kept_recent += 1
+                    continue
+                files_count += 1
+                total_bytes += st.st_size
+            except OSError:
+                continue
+    return {
+        "retention_days": rd,
+        "files_count": files_count,
+        "total_bytes": total_bytes,
+        "kept_recent": kept_recent,
+        "kept_recent_post_linked": kept_recent_post_linked,
+    }
+
+
 @router.post("/uploads-cleanup")
 async def run_uploads_cleanup_now(current_user: dict = Depends(_require_admin)):
     """Run the uploads cleanup job once on demand. Returns the deleted count."""
@@ -1630,7 +1689,9 @@ async def _cleanup_social_uploads_once(max_age_days: int = UPLOADS_RETENTION_DAY
     kept_recent = 0
     for entry in SOCIAL_UPLOAD_DIR.iterdir():
         try:
-            if not entry.is_file():
+            # Skip symlinks so the dry-run preview and the real cleanup
+            # agree on what's eligible (preview also skips symlinks).
+            if not entry.is_file() or entry.is_symlink():
                 continue
             if entry.name in recent_referenced:
                 kept_recent_post_linked += 1
