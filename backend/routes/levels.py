@@ -30,6 +30,7 @@ class LevelCreate(BaseModel):
     members: List[str] = []  # List of member IDs
     branch_id: Optional[str] = None
     coach_id: Optional[str] = None  # Coach assigned to this level
+    capacity: Optional[int] = None  # Max members allowed in this level
 
 class Level(BaseModel):
     id: str
@@ -207,6 +208,7 @@ async def create_level(level: LevelCreate, current_user: dict = Depends(get_curr
         "members": level.members,
         "branch_id": final_branch_id,
         "coach_id": level.coach_id or None,
+        "capacity": int(level.capacity) if level.capacity else None,
         "created_at": datetime.now(timezone.utc).isoformat()
     }
     await db.levels.insert_one(level_doc)
@@ -222,7 +224,10 @@ async def update_level(level_id: str, level: LevelCreate, current_user: dict = D
         "custom_name": level.custom_name or "",
         "description": level.description,
         "members": level.members,
-        "coach_id": level.coach_id or None
+        "coach_id": level.coach_id or None,
+        # capacity was previously dropped here, causing the "max capacity"
+        # field in the edit dialog to silently revert to the stored value.
+        "capacity": int(level.capacity) if level.capacity else None,
     }
     
     result = await db.levels.find_one_and_update(
