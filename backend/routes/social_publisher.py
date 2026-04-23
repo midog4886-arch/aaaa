@@ -1451,20 +1451,7 @@ async def run_uploads_cleanup_now(current_user: dict = Depends(_require_admin)):
         deleted = await _cleanup_social_uploads_once(retention)
     except Exception as e:
         logger.exception("Manual uploads cleanup failed")
-        try:
-            await db.social_settings.update_one(
-                {"key": "uploads_cleanup"},
-                {"$set": {
-                    "key": "uploads_cleanup",
-                    "last_run_at": datetime.now(timezone.utc).isoformat(),
-                    "last_run_status": "error",
-                    "last_run_error": str(e),
-                    "last_run_retention_days": retention,
-                }},
-                upsert=True,
-            )
-        except Exception:
-            logger.exception("Failed to record uploads cleanup failure")
+        await _record_cleanup_failure(str(e), retention, source="manual")
         raise HTTPException(status_code=500, detail=f"تعذر تشغيل التنظيف: {e}")
     meta = await _get_uploads_cleanup_meta()
     return {"deleted": deleted, **meta}
@@ -1921,12 +1908,107 @@ async def _cleanup_social_uploads_once(max_age_days: int = UPLOADS_RETENTION_DAY
                 "last_run_status": "ok",
                 "last_run_error": None,
                 "last_run_retention_days": max_age_days,
+                # Clear alert dedup tracking so the next failure (after a
+                # successful run) reliably notifies admins again.
+                "last_alert_error": None,
+                "last_alert_at": None,
             }},
             upsert=True,
         )
     except Exception:
         logger.exception("Failed to record uploads cleanup last-run metadata")
     return deleted
+
+
+async def _notify_admins_cleanup_failed(error_message: str) -> None:
+    """Insert an in-app notification for admins describing a cleanup failure.
+
+    The notification is written to ``db.notifications`` so it surfaces in the
+    existing admin notification bell (admins receive notifications without a
+    branch filter — see ``get_notifications``)."""
+    try:
+        snippet = (error_message or "").strip()
+        if len(snippet) > 400:
+            snippet = snippet[:400] + "…"
+        notification_doc = {
+            "id": str(uuid.uuid4()),
+            "type": "social_cleanup_failed",
+            "notification_type": "social_cleanup_failed",
+            "title": "فشل التشغيل التلقائي لتنظيف الملفات",
+            "message": (
+                "تعذّر إكمال آخر تشغيل تلقائي لمهمة تنظيف ملفات النشر الاجتماعي. "
+                f"السبب: {snippet}" if snippet else
+                "تعذّر إكمال آخر تشغيل تلقائي لمهمة تنظيف ملفات النشر الاجتماعي."
+            ),
+            "action_url": "/admin/social-publisher",
+            "is_read": False,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        }
+        await db.notifications.insert_one(notification_doc)
+    except Exception:
+        logger.exception("Failed to insert cleanup-failure admin notification")
+
+
+async def _record_cleanup_failure(
+    error_message: str, retention_days: int, *, source: str
+) -> None:
+    """Record a cleanup failure in ``social_settings`` and notify admins.
+
+    To avoid alert spam, a notification is only emitted when this is a *new*
+    failure — i.e. when the previous run was not in the same error state with
+    the same error message. Successful runs reset the dedup tracking (see
+    ``_cleanup_social_uploads_once``)."""
+    now_iso = datetime.now(timezone.utc).isoformat()
+    try:
+        prev = await db.social_settings.find_one(
+            {"key": "uploads_cleanup"}, {"_id": 0}
+        ) or {}
+    except Exception:
+        logger.exception("Failed to read previous uploads cleanup meta")
+        prev = {}
+
+    already_alerted = (
+        prev.get("last_run_status") == "error"
+        and prev.get("last_alert_error") == error_message
+        and prev.get("last_alert_at")
+    )
+
+    update_set: Dict[str, Any] = {
+        "key": "uploads_cleanup",
+        "last_run_at": now_iso,
+        "last_run_status": "error",
+        "last_run_error": error_message,
+        "last_run_retention_days": retention_days,
+        "last_run_source": source,
+    }
+    # Only scheduled runs participate in alert dedup tracking — manual
+    # failures shouldn't be able to suppress a later scheduled alert
+    # carrying the same error message.
+    if source == "scheduled" and not already_alerted:
+        update_set["last_alert_error"] = error_message
+        update_set["last_alert_at"] = now_iso
+
+    try:
+        await db.social_settings.update_one(
+            {"key": "uploads_cleanup"},
+            {"$set": update_set},
+            upsert=True,
+        )
+    except Exception:
+        logger.exception("Failed to record uploads cleanup failure")
+
+    # Only the automatic (scheduled) runs raise an admin alert — manual
+    # runs already surface the error to the admin who triggered them via
+    # the HTTP response, so re-notifying would be noisy and could also
+    # suppress a later identical scheduled-failure alert via dedup.
+    if source != "scheduled":
+        return
+    if not already_alerted:
+        await _notify_admins_cleanup_failed(error_message)
+    else:
+        logger.info(
+            "Skipping duplicate cleanup-failure notification (same error as last run)"
+        )
 
 
 async def _uploads_cleanup_loop():
@@ -1941,7 +2023,20 @@ async def _uploads_cleanup_loop():
             enabled = await _get_uploads_cleanup_enabled()
             if enabled:
                 retention = await _get_uploads_retention_days()
-                await _cleanup_social_uploads_once(retention)
+                try:
+                    await _cleanup_social_uploads_once(retention)
+                except asyncio.CancelledError:
+                    raise
+                except Exception as e:
+                    logger.exception("Scheduled uploads cleanup failed")
+                    try:
+                        await _record_cleanup_failure(
+                            str(e), retention, source="scheduled"
+                        )
+                    except Exception:
+                        logger.exception(
+                            "Failed to record scheduled cleanup failure"
+                        )
             else:
                 logger.info("Social uploads cleanup tick skipped (disabled by admin)")
         except asyncio.CancelledError:
