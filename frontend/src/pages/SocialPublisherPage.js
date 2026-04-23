@@ -1068,20 +1068,37 @@ const SocialPublisherPage = () => {
                         {formatBytes(uploadsCleanupPreview.total_bytes)}
                       </span>
                     </span>
-                    {uploadsUsage?.total_bytes != null && uploadsUsage.total_bytes > 0 && uploadsCleanupPreview.total_bytes != null && (
-                      <span>
-                        نسبة المساحة المُحررة:{' '}
-                        <span className="font-bold" dir="ltr">
-                          {(() => {
-                            const pct = (uploadsCleanupPreview.total_bytes / uploadsUsage.total_bytes) * 100;
-                            const clamped = Math.min(100, Math.max(0, pct));
-                            const decimals = clamped >= 10 || clamped === 0 ? 0 : 1;
-                            return `${clamped.toFixed(decimals)}%`;
-                          })()}
-                        </span>{' '}
-                        من الحجم الكلي
-                      </span>
-                    )}
+                    {uploadsUsage?.total_bytes != null && uploadsUsage.total_bytes > 0 && uploadsCleanupPreview.total_bytes != null && (() => {
+                      const pct = (uploadsCleanupPreview.total_bytes / uploadsUsage.total_bytes) * 100;
+                      const clamped = Math.min(100, Math.max(0, pct));
+                      const decimals = clamped >= 10 || clamped === 0 ? 0 : 1;
+                      const label = `${clamped.toFixed(decimals)}%`;
+                      const barColor =
+                        clamped >= 50 ? 'bg-red-500' : clamped >= 25 ? 'bg-amber-500' : 'bg-green-500';
+                      return (
+                        <span className="flex items-center gap-2 min-w-[200px] flex-1">
+                          <span className="whitespace-nowrap">
+                            نسبة المساحة المُحررة:{' '}
+                            <span className="font-bold" dir="ltr">{label}</span>{' '}
+                            من الحجم الكلي
+                          </span>
+                          <span
+                            className="relative h-2 flex-1 min-w-[80px] max-w-[180px] rounded-full bg-amber-200/70 overflow-hidden"
+                            role="progressbar"
+                            aria-label="نسبة المساحة المُحررة"
+                            aria-valuenow={Math.round(clamped)}
+                            aria-valuemin={0}
+                            aria-valuemax={100}
+                            data-testid="cleanup-freed-progress"
+                          >
+                            <span
+                              className={`absolute inset-y-0 right-0 ${barColor} transition-all duration-300 ease-out`}
+                              style={{ width: `${clamped}%` }}
+                            />
+                          </span>
+                        </span>
+                      );
+                    })()}
                     {uploadsCleanupPreview.files_count === 0 && (
                       <span className="text-amber-700">لا توجد ملفات مؤهلة للحذف بهذه المدة.</span>
                     )}
