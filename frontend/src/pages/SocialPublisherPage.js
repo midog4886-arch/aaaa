@@ -45,6 +45,33 @@ const formatBytes = (bytes) => {
   return `${value.toFixed(decimals)} ${units[i]}`;
 };
 
+// Format a "next automatic run" hint in Arabic based on the last run timestamp
+// and the configured interval (in seconds). Returns null when we don't have
+// enough info to compute the next run.
+const formatNextCleanupRun = (lastRunAt, intervalSeconds, nowMs) => {
+  if (!intervalSeconds || !Number.isFinite(intervalSeconds)) return null;
+  const lastMs = lastRunAt ? Date.parse(lastRunAt) : NaN;
+  if (!Number.isFinite(lastMs)) return null;
+  const nextMs = lastMs + intervalSeconds * 1000;
+  let diffSec = Math.round((nextMs - nowMs) / 1000);
+  if (diffSec <= 0) return 'مستحقة الآن';
+  if (diffSec < 60) return `خلال ${diffSec} ثانية`;
+  const mins = Math.round(diffSec / 60);
+  if (mins < 60) return `خلال ${mins} دقيقة`;
+  const hrs = Math.floor(mins / 60);
+  const remMin = mins % 60;
+  if (hrs < 24) {
+    return remMin > 0
+      ? `خلال ${hrs} ساعة و${remMin} دقيقة`
+      : `خلال ${hrs} ساعة`;
+  }
+  const days = Math.floor(hrs / 24);
+  const remHrs = hrs % 24;
+  return remHrs > 0
+    ? `خلال ${days} يوماً و${remHrs} ساعة`
+    : `خلال ${days} يوماً`;
+};
+
 const PLATFORMS = [
   { id: 'facebook',  name: 'Facebook',   icon: Facebook,  color: 'bg-blue-600',    border: 'border-blue-200',    accepts: 'image+video' },
   { id: 'instagram', name: 'Instagram',  icon: Instagram, color: 'bg-pink-600',    border: 'border-pink-200',    accepts: 'image+video' },
@@ -87,6 +114,7 @@ const SocialPublisherPage = () => {
   const [runningUploadsCleanup, setRunningUploadsCleanup] = useState(false);
   const [previewingUploadsCleanup, setPreviewingUploadsCleanup] = useState(false);
   const [uploadsCleanupPreview, setUploadsCleanupPreview] = useState(null); // { retention_days, files_count, total_bytes }
+  const [nowTick, setNowTick] = useState(() => Date.now());
   const [showLargestFiles, setShowLargestFiles] = useState(false);
   const [largestFiles, setLargestFiles] = useState(null); // { files, limit, retention_days, total_files_scanned }
   const [loadingLargestFiles, setLoadingLargestFiles] = useState(false);
@@ -366,6 +394,11 @@ const SocialPublisherPage = () => {
       setSavingInsightsSettings(false);
     }
   };
+
+  useEffect(() => {
+    const id = setInterval(() => setNowTick(Date.now()), 30000);
+    return () => clearInterval(id);
+  }, []);
 
   useEffect(() => {
     loadAccounts();
@@ -907,6 +940,19 @@ const SocialPublisherPage = () => {
                   ) : (
                     <span className="text-gray-400">لم يُسجَّل أي تشغيل بعد.</span>
                   )}
+                  {(() => {
+                    const nextHint = formatNextCleanupRun(
+                      uploadsCleanup?.last_run_at,
+                      uploadsCleanup?.interval_seconds,
+                      nowTick,
+                    );
+                    if (!nextHint) return null;
+                    return (
+                      <div className="mt-1 text-gray-700">
+                        التشغيل التلقائي التالي: <span className="font-bold">{nextHint}</span>
+                      </div>
+                    );
+                  })()}
                 </div>
 
                 {/* Largest files in the upload directory — collapsible */}
