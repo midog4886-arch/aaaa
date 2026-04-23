@@ -115,6 +115,8 @@ export const socialAPI = {
     axios.get(`${API}/social/uploads-largest`, { params: { limit } }),
   deleteUploadFile: (filename) =>
     axios.delete(`${API}/social/uploads/${encodeURIComponent(filename)}`),
+  bulkDeleteUploadFiles: (filenames) =>
+    axios.post(`${API}/social/uploads/bulk-delete`, { filenames }),
   listDesignTemplates: () => axios.get(`${API}/social/design-templates`),
   createDesignTemplate: (name, settings) => axios.post(`${API}/social/design-templates`, { name, settings }),
   updateDesignTemplate: (id, payload) => axios.put(`${API}/social/design-templates/${id}`, payload),

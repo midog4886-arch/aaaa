@@ -119,6 +119,8 @@ const SocialPublisherPage = () => {
   const [largestFiles, setLargestFiles] = useState(null); // { files, limit, retention_days, total_files_scanned }
   const [loadingLargestFiles, setLoadingLargestFiles] = useState(false);
   const [deletingFile, setDeletingFile] = useState(null); // filename being deleted
+  const [selectedLargest, setSelectedLargest] = useState(new Set()); // filenames checked for bulk delete
+  const [bulkDeleting, setBulkDeleting] = useState(false);
   const [retentionDraft, setRetentionDraft] = useState('');
   const [savingRetention, setSavingRetention] = useState(false);
   // Cleanup-loop interval is stored in seconds on the server but exposed in
@@ -341,6 +343,14 @@ const SocialPublisherPage = () => {
     try {
       const r = await socialAPI.getUploadsLargest(10);
       setLargestFiles(r.data);
+      // Drop any selections that no longer correspond to a listed file so
+      // the "حذف المحدد" counter stays accurate after a refresh.
+      const present = new Set((r.data?.files || []).map((f) => f.filename));
+      setSelectedLargest((prev) => {
+        const next = new Set();
+        prev.forEach((n) => { if (present.has(n)) next.add(n); });
+        return next;
+      });
     } catch (e) {
       toast.error(e?.response?.data?.detail || 'تعذر تحميل قائمة أكبر الملفات');
     } finally {
@@ -374,6 +384,58 @@ const SocialPublisherPage = () => {
       toast.error(e?.response?.data?.detail || 'تعذر حذف الملف');
     } finally {
       setDeletingFile(null);
+    }
+  };
+
+  const toggleSelectLargest = (filename) => {
+    setSelectedLargest((prev) => {
+      const next = new Set(prev);
+      if (next.has(filename)) next.delete(filename);
+      else next.add(filename);
+      return next;
+    });
+  };
+
+  const toggleSelectAllLargest = () => {
+    const all = largestFiles?.files || [];
+    setSelectedLargest((prev) => {
+      if (prev.size === all.length && all.length > 0) return new Set();
+      return new Set(all.map((f) => f.filename));
+    });
+  };
+
+  const handleBulkDeleteSelected = async () => {
+    const names = Array.from(selectedLargest);
+    if (names.length === 0) return;
+    const all = largestFiles?.files || [];
+    const totalBytes = all
+      .filter((f) => selectedLargest.has(f.filename))
+      .reduce((s, f) => s + (f.size_bytes || 0), 0);
+    const ok = window.confirm(
+      `هل تريد حذف ${names.length} ملف (${formatBytes(totalBytes)}) نهائياً؟ لا يمكن التراجع.`,
+    );
+    if (!ok) return;
+    setBulkDeleting(true);
+    try {
+      const r = await socialAPI.bulkDeleteUploadFiles(names);
+      const data = r?.data || {};
+      const okCount = data.deleted_count ?? 0;
+      const failCount = data.failed_count ?? 0;
+      const freed = data.freed_bytes ?? 0;
+      if (okCount > 0) {
+        toast.success(`تم حذف ${okCount} ملف (تحرير ${formatBytes(freed)})`);
+      }
+      if (failCount > 0) {
+        toast.error(`تعذر حذف ${failCount} ملف`);
+      }
+      setSelectedLargest(new Set());
+      loadUploadsUsage();
+      loadLargestFiles();
+      setUploadsCleanupPreview(null);
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || 'تعذر تنفيذ الحذف الجماعي');
+    } finally {
+      setBulkDeleting(false);
     }
   };
 
@@ -1027,23 +1089,65 @@ const SocialPublisherPage = () => {
                               عرض أكبر {largestFiles.files.length} من أصل {largestFiles.total_files_scanned} ملف.
                               الملفات المرتبطة بمنشور حديث (آخر {largestFiles.retention_days} يوماً) محمية من التنظيف التلقائي.
                             </p>
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              onClick={loadLargestFiles}
-                              disabled={loadingLargestFiles}
-                              className="text-xs h-7"
-                            >
-                              {loadingLargestFiles
-                                ? <Loader2 className="w-3 h-3 animate-spin ml-1" />
-                                : <RefreshCw className="w-3 h-3 ml-1" />}
-                              تحديث
-                            </Button>
+                            <div className="flex items-center gap-2">
+                              {(() => {
+                                const selectedBytes = largestFiles.files
+                                  .filter((f) => selectedLargest.has(f.filename))
+                                  .reduce((s, f) => s + (f.size_bytes || 0), 0);
+                                return (
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={handleBulkDeleteSelected}
+                                    disabled={bulkDeleting || selectedLargest.size === 0}
+                                    className="text-red-600 border-red-200 h-7 text-xs"
+                                  >
+                                    {bulkDeleting
+                                      ? <Loader2 className="w-3 h-3 animate-spin ml-1" />
+                                      : <Trash2 className="w-3 h-3 ml-1" />}
+                                    حذف المحدد
+                                    {selectedLargest.size > 0
+                                      ? ` (${selectedLargest.size} • ${formatBytes(selectedBytes)})`
+                                      : ''}
+                                  </Button>
+                                );
+                              })()}
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={loadLargestFiles}
+                                disabled={loadingLargestFiles}
+                                className="text-xs h-7"
+                              >
+                                {loadingLargestFiles
+                                  ? <Loader2 className="w-3 h-3 animate-spin ml-1" />
+                                  : <RefreshCw className="w-3 h-3 ml-1" />}
+                                تحديث
+                              </Button>
+                            </div>
                           </div>
                           <div className="overflow-x-auto">
                             <table className="w-full text-xs border-collapse">
                               <thead>
                                 <tr className="bg-gray-50 text-gray-700">
+                                  <th className="text-center p-1.5 border w-8">
+                                    <input
+                                      type="checkbox"
+                                      aria-label="تحديد الكل"
+                                      checked={
+                                        largestFiles.files.length > 0 &&
+                                        selectedLargest.size === largestFiles.files.length
+                                      }
+                                      ref={(el) => {
+                                        if (el) {
+                                          el.indeterminate =
+                                            selectedLargest.size > 0 &&
+                                            selectedLargest.size < largestFiles.files.length;
+                                        }
+                                      }}
+                                      onChange={toggleSelectAllLargest}
+                                    />
+                                  </th>
                                   <th className="text-right p-1.5 border">الاسم</th>
                                   <th className="text-right p-1.5 border">الحجم</th>
                                   <th className="text-right p-1.5 border">آخر تعديل</th>
@@ -1054,6 +1158,14 @@ const SocialPublisherPage = () => {
                               <tbody>
                                 {largestFiles.files.map((f) => (
                                   <tr key={f.filename} className="hover:bg-gray-50">
+                                    <td className="p-1.5 border text-center">
+                                      <input
+                                        type="checkbox"
+                                        aria-label={`تحديد ${f.filename}`}
+                                        checked={selectedLargest.has(f.filename)}
+                                        onChange={() => toggleSelectLargest(f.filename)}
+                                      />
+                                    </td>
                                     <td className="p-1.5 border break-all" dir="ltr">{f.filename}</td>
                                     <td className="p-1.5 border whitespace-nowrap" dir="ltr">
                                       {formatBytes(f.size_bytes)}

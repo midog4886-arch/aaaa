@@ -1248,6 +1248,70 @@ async def delete_upload_file(
     return {"deleted": True, "filename": safe, "freed_bytes": size}
 
 
+class UploadsBulkDeleteRequest(BaseModel):
+    filenames: List[str]
+
+
+@router.post("/uploads/bulk-delete")
+async def bulk_delete_upload_files(
+    payload: UploadsBulkDeleteRequest,
+    current_user: dict = Depends(_require_admin),
+):
+    """Delete multiple files from SOCIAL_UPLOAD_DIR in one request. Filenames
+    are sanitised and validated against the upload directory boundary so the
+    caller cannot escape it. Returns a per-file summary plus aggregate
+    counters so the UI can show a single toast for the whole operation."""
+    if not payload.filenames:
+        raise HTTPException(status_code=400, detail="لم يتم تحديد أي ملف")
+
+    base = SOCIAL_UPLOAD_DIR.resolve()
+    deleted: List[Dict[str, Any]] = []
+    failed: List[Dict[str, Any]] = []
+    total_freed = 0
+    seen: set = set()
+
+    for raw in payload.filenames:
+        safe = os.path.basename(raw or "")
+        if not safe or safe in (".", "..") or safe in seen:
+            failed.append({"filename": raw, "error": "اسم ملف غير صالح"})
+            continue
+        seen.add(safe)
+        target = (SOCIAL_UPLOAD_DIR / safe).resolve()
+        try:
+            target.relative_to(base)
+        except ValueError:
+            failed.append({"filename": safe, "error": "اسم ملف غير صالح"})
+            continue
+        if not target.exists() or not target.is_file() or target.is_symlink():
+            failed.append({"filename": safe, "error": "الملف غير موجود"})
+            continue
+        try:
+            size = target.stat().st_size
+        except OSError:
+            size = 0
+        try:
+            target.unlink()
+        except OSError as e:
+            logger.exception("Bulk delete failed for %s", safe)
+            failed.append({"filename": safe, "error": str(e)})
+            continue
+        deleted.append({"filename": safe, "freed_bytes": size})
+        total_freed += size
+
+    logger.info(
+        "Bulk social upload delete: %d deleted, %d failed, %d bytes freed by %s",
+        len(deleted), len(failed), total_freed,
+        current_user.get("user_id") or current_user.get("id"),
+    )
+    return {
+        "deleted": deleted,
+        "failed": failed,
+        "deleted_count": len(deleted),
+        "failed_count": len(failed),
+        "freed_bytes": total_freed,
+    }
+
+
 class UploadsCleanupSettingsUpdate(BaseModel):
     retention_days: Optional[int] = None
     interval_seconds: Optional[int] = None
