@@ -940,6 +940,20 @@ const SocialPublisherPage = () => {
                         {formatBytes(uploadsCleanupPreview.total_bytes)}
                       </span>
                     </span>
+                    {uploadsUsage?.total_bytes != null && uploadsUsage.total_bytes > 0 && uploadsCleanupPreview.total_bytes != null && (
+                      <span>
+                        نسبة المساحة المُحررة:{' '}
+                        <span className="font-bold" dir="ltr">
+                          {(() => {
+                            const pct = (uploadsCleanupPreview.total_bytes / uploadsUsage.total_bytes) * 100;
+                            const clamped = Math.min(100, Math.max(0, pct));
+                            const decimals = clamped >= 10 || clamped === 0 ? 0 : 1;
+                            return `${clamped.toFixed(decimals)}%`;
+                          })()}
+                        </span>{' '}
+                        من الحجم الكلي
+                      </span>
+                    )}
                     {uploadsCleanupPreview.files_count === 0 && (
                       <span className="text-amber-700">لا توجد ملفات مؤهلة للحذف بهذه المدة.</span>
                     )}
