@@ -1134,6 +1134,36 @@ async def get_uploads_cleanup_status(current_user: dict = Depends(_require_admin
     return await _get_uploads_cleanup_meta()
 
 
+@router.get("/uploads-cleanup-runs")
+async def get_uploads_cleanup_runs(
+    limit: int = 50,
+    current_user: dict = Depends(_require_admin),
+):
+    """Return the most recent cleanup runs (newest first) so admins can
+    review the scheduler's behaviour over time. Each entry includes the
+    timestamp, status (``ok`` / ``error`` / ``skipped``), source
+    (``scheduled`` / ``manual``), number of files deleted, and any error
+    message recorded for that run."""
+    try:
+        n = int(limit)
+    except (TypeError, ValueError):
+        n = UPLOADS_CLEANUP_RUNS_API_DEFAULT
+    if n < 1:
+        n = 1
+    if n > UPLOADS_CLEANUP_RUNS_API_MAX:
+        n = UPLOADS_CLEANUP_RUNS_API_MAX
+    try:
+        runs = (
+            await db.social_uploads_cleanup_runs.find({}, {"_id": 0})
+            .sort("ts", -1)
+            .to_list(n)
+        )
+    except Exception:
+        logger.exception("Failed to read uploads cleanup run history")
+        runs = []
+    return {"runs": runs, "limit": n, "keep": UPLOADS_CLEANUP_RUNS_KEEP}
+
+
 def _compute_uploads_usage() -> Dict[str, int]:
     """Return current disk usage for SOCIAL_UPLOAD_DIR as
     ``{files_count, total_bytes}``. Symlinks and subdirectories are skipped
@@ -1448,7 +1478,7 @@ async def run_uploads_cleanup_now(current_user: dict = Depends(_require_admin)):
     """Run the uploads cleanup job once on demand. Returns the deleted count."""
     retention = await _get_uploads_retention_days()
     try:
-        deleted = await _cleanup_social_uploads_once(retention)
+        deleted = await _cleanup_social_uploads_once(retention, source="manual")
     except Exception as e:
         logger.exception("Manual uploads cleanup failed")
         await _record_cleanup_failure(str(e), retention, source="manual")
@@ -1746,7 +1776,66 @@ UPLOADS_RETENTION_MAX_DAYS = 365
 UPLOADS_CLEANUP_INTERVAL_SECONDS = 24 * 3600  # default when no admin override exists
 UPLOADS_CLEANUP_INTERVAL_MIN_SECONDS = 3600          # 1 hour — lower bound to avoid hammering disk/db
 UPLOADS_CLEANUP_INTERVAL_MAX_SECONDS = 7 * 24 * 3600  # 7 days — upper bound so cleanup can't be effectively disabled
+# Cap how many cleanup-run history records we keep in
+# ``social_uploads_cleanup_runs``. Older entries are pruned on each insert so
+# the collection can't grow without bound on long-lived installs.
+UPLOADS_CLEANUP_RUNS_KEEP = 500
+# Max ``limit`` accepted by the runs-history API. Keeps response sizes
+# predictable for the admin panel.
+UPLOADS_CLEANUP_RUNS_API_MAX = 200
+UPLOADS_CLEANUP_RUNS_API_DEFAULT = 50
 _uploads_cleanup_started = False
+
+
+async def _record_cleanup_run(
+    *,
+    status: str,
+    source: str,
+    deleted: int = 0,
+    retention_days: Optional[int] = None,
+    error: Optional[str] = None,
+    duration_ms: Optional[int] = None,
+    skipped_reason: Optional[str] = None,
+) -> None:
+    """Append a single cleanup run to ``db.social_uploads_cleanup_runs`` so
+    admins can review the scheduler's behaviour over time. ``status`` is one
+    of ``ok`` / ``error`` / ``skipped``. Older entries beyond
+    ``UPLOADS_CLEANUP_RUNS_KEEP`` are pruned to keep the collection bounded.
+    Failures are swallowed (and logged) so logging never breaks cleanup."""
+    try:
+        snippet = (error or "").strip()
+        if len(snippet) > 500:
+            snippet = snippet[:500] + "…"
+        doc = {
+            "id": str(uuid.uuid4()),
+            "ts": datetime.now(timezone.utc).isoformat(),
+            "status": status,
+            "source": source,
+            "deleted": int(deleted or 0),
+            "retention_days": retention_days,
+            "error": snippet or None,
+            "duration_ms": duration_ms,
+            "skipped_reason": skipped_reason,
+        }
+        await db.social_uploads_cleanup_runs.insert_one(doc)
+    except Exception:
+        logger.exception("Failed to record uploads cleanup run history entry")
+        return
+    # Prune older entries beyond the retention cap.
+    try:
+        total = await db.social_uploads_cleanup_runs.count_documents({})
+        if total > UPLOADS_CLEANUP_RUNS_KEEP:
+            excess = total - UPLOADS_CLEANUP_RUNS_KEEP
+            cursor = db.social_uploads_cleanup_runs.find(
+                {}, {"_id": 1}
+            ).sort("ts", 1).limit(excess)
+            old_ids = [d["_id"] async for d in cursor]
+            if old_ids:
+                await db.social_uploads_cleanup_runs.delete_many(
+                    {"_id": {"$in": old_ids}}
+                )
+    except Exception:
+        logger.exception("Failed to prune uploads cleanup run history")
 
 
 async def _get_uploads_cleanup_interval_seconds() -> int:
@@ -1841,16 +1930,28 @@ async def _collect_recent_post_filenames(max_age_days: int) -> set:
     return referenced
 
 
-async def _cleanup_social_uploads_once(max_age_days: int = UPLOADS_RETENTION_DAYS) -> int:
+async def _cleanup_social_uploads_once(
+    max_age_days: int = UPLOADS_RETENTION_DAYS,
+    *,
+    source: str = "manual",
+) -> int:
     """Delete files in SOCIAL_UPLOAD_DIR older than ``max_age_days`` that
     aren't tied to a recent post. Files linked to posts created within the
     retention window are kept so platforms that fetch the URL asynchronously
     (Meta, TikTok) still find them. Older files — even those referenced by
     older post records — are treated as expired and removed; the post row
     itself stays in the database, just with a dead asset URL."""
+    started_at = datetime.now(timezone.utc)
     if not SOCIAL_UPLOAD_DIR.exists():
+        await _record_cleanup_run(
+            status="ok",
+            source=source,
+            deleted=0,
+            retention_days=max_age_days,
+            duration_ms=0,
+        )
         return 0
-    cutoff_ts = datetime.now(timezone.utc).timestamp() - max_age_days * 86400
+    cutoff_ts = started_at.timestamp() - max_age_days * 86400
     recent_referenced = await _collect_recent_post_filenames(max_age_days)
     deleted = 0
     deleted_old_linked = 0
@@ -1917,6 +2018,16 @@ async def _cleanup_social_uploads_once(max_age_days: int = UPLOADS_RETENTION_DAY
         )
     except Exception:
         logger.exception("Failed to record uploads cleanup last-run metadata")
+    duration_ms = int(
+        (datetime.now(timezone.utc) - started_at).total_seconds() * 1000
+    )
+    await _record_cleanup_run(
+        status="ok",
+        source=source,
+        deleted=deleted,
+        retention_days=max_age_days,
+        duration_ms=duration_ms,
+    )
     return deleted
 
 
@@ -1997,6 +2108,16 @@ async def _record_cleanup_failure(
     except Exception:
         logger.exception("Failed to record uploads cleanup failure")
 
+    # Append the failure to the run-history collection regardless of source so
+    # admins can review every failed attempt later.
+    await _record_cleanup_run(
+        status="error",
+        source=source,
+        deleted=0,
+        retention_days=retention_days,
+        error=error_message,
+    )
+
     # Only the automatic (scheduled) runs raise an admin alert — manual
     # runs already surface the error to the admin who triggered them via
     # the HTTP response, so re-notifying would be noisy and could also
@@ -2024,7 +2145,9 @@ async def _uploads_cleanup_loop():
             if enabled:
                 retention = await _get_uploads_retention_days()
                 try:
-                    await _cleanup_social_uploads_once(retention)
+                    await _cleanup_social_uploads_once(
+                        retention, source="scheduled"
+                    )
                 except asyncio.CancelledError:
                     raise
                 except Exception as e:
@@ -2039,6 +2162,16 @@ async def _uploads_cleanup_loop():
                         )
             else:
                 logger.info("Social uploads cleanup tick skipped (disabled by admin)")
+                try:
+                    await _record_cleanup_run(
+                        status="skipped",
+                        source="scheduled",
+                        skipped_reason="disabled_by_admin",
+                    )
+                except Exception:
+                    logger.exception(
+                        "Failed to record skipped cleanup tick"
+                    )
         except asyncio.CancelledError:
             break
         except Exception:

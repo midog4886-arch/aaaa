@@ -128,6 +128,9 @@ const SocialPublisherPage = () => {
   const [intervalHoursDraft, setIntervalHoursDraft] = useState('');
   const [savingInterval, setSavingInterval] = useState(false);
   const [savingCleanupEnabled, setSavingCleanupEnabled] = useState(false);
+  const [cleanupRuns, setCleanupRuns] = useState(null); // { runs, limit, keep }
+  const [loadingCleanupRuns, setLoadingCleanupRuns] = useState(false);
+  const [showCleanupRuns, setShowCleanupRuns] = useState(false);
   const fileInputRef = useRef(null);
 
   // OAuth app credentials editable from the page (admin only).
@@ -446,6 +449,9 @@ const SocialPublisherPage = () => {
       setUploadsCleanup(r.data);
       const n = r.data?.deleted ?? 0;
       toast.success(n > 0 ? `تم حذف ${n} ملف` : 'لا توجد ملفات للتنظيف');
+      if (showCleanupRuns) {
+        loadCleanupRuns();
+      }
       // Refresh disk usage so the panel reflects the post-cleanup state.
       loadUploadsUsage();
       // Refresh the largest-files list if the admin has it open.
@@ -456,6 +462,26 @@ const SocialPublisherPage = () => {
       toast.error(e?.response?.data?.detail || 'تعذر تشغيل التنظيف');
     } finally {
       setRunningUploadsCleanup(false);
+    }
+  };
+
+  const loadCleanupRuns = async () => {
+    setLoadingCleanupRuns(true);
+    try {
+      const r = await socialAPI.getUploadsCleanupRuns(50);
+      setCleanupRuns(r.data || { runs: [] });
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || 'تعذر تحميل سجل التشغيلات');
+    } finally {
+      setLoadingCleanupRuns(false);
+    }
+  };
+
+  const handleToggleCleanupRuns = async () => {
+    const next = !showCleanupRuns;
+    setShowCleanupRuns(next);
+    if (next && !cleanupRuns) {
+      await loadCleanupRuns();
     }
   };
 
@@ -1102,6 +1128,115 @@ const SocialPublisherPage = () => {
                       </div>
                     );
                   })()}
+                </div>
+
+                {/* Cleanup runs history — collapsible */}
+                <div className="mt-3 border-t pt-3">
+                  <div className="flex items-center justify-between gap-2 flex-wrap">
+                    <button
+                      type="button"
+                      onClick={handleToggleCleanupRuns}
+                      className="flex items-center gap-1 text-xs font-bold text-gray-700 hover:text-gray-900"
+                    >
+                      {showCleanupRuns
+                        ? <ChevronUp className="w-3 h-3" />
+                        : <ChevronDown className="w-3 h-3" />}
+                      سجل تشغيلات التنظيف
+                    </button>
+                    {showCleanupRuns && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={loadCleanupRuns}
+                        disabled={loadingCleanupRuns}
+                        className="h-7 text-xs"
+                      >
+                        {loadingCleanupRuns && <Loader2 className="w-3 h-3 animate-spin ml-1" />}
+                        تحديث
+                      </Button>
+                    )}
+                  </div>
+                  {showCleanupRuns && (
+                    <div className="mt-2">
+                      {loadingCleanupRuns && !cleanupRuns ? (
+                        <div className="flex items-center gap-2 text-xs text-gray-500 py-2">
+                          <Loader2 className="w-3 h-3 animate-spin" /> جاري التحميل…
+                        </div>
+                      ) : cleanupRuns && cleanupRuns.runs?.length > 0 ? (
+                        <>
+                          <p className="text-[11px] text-gray-500 mb-1">
+                            عرض آخر {cleanupRuns.runs.length} تشغيل
+                            {cleanupRuns.keep != null && (
+                              <> (يُحتفظ بآخر {cleanupRuns.keep} تشغيل كحد أقصى)</>
+                            )}.
+                          </p>
+                          <div className="overflow-x-auto">
+                            <table className="w-full text-[11px] border-collapse">
+                              <thead>
+                                <tr className="bg-gray-50 text-gray-700">
+                                  <th className="text-right px-2 py-1 border">التاريخ</th>
+                                  <th className="text-right px-2 py-1 border">الحالة</th>
+                                  <th className="text-right px-2 py-1 border">المصدر</th>
+                                  <th className="text-right px-2 py-1 border">المحذوف</th>
+                                  <th className="text-right px-2 py-1 border">مدة الاحتفاظ</th>
+                                  <th className="text-right px-2 py-1 border">المدة (مللي ثانية)</th>
+                                  <th className="text-right px-2 py-1 border">ملاحظات</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {cleanupRuns.runs.map((run) => {
+                                  const statusLabel =
+                                    run.status === 'ok' ? 'نجح'
+                                      : run.status === 'error' ? 'فشل'
+                                      : run.status === 'skipped' ? 'تخطّي'
+                                      : (run.status || '—');
+                                  const statusClass =
+                                    run.status === 'ok' ? 'text-green-700'
+                                      : run.status === 'error' ? 'text-red-600'
+                                      : run.status === 'skipped' ? 'text-amber-700'
+                                      : 'text-gray-700';
+                                  const sourceLabel =
+                                    run.source === 'scheduled' ? 'تلقائي'
+                                      : run.source === 'manual' ? 'يدوي'
+                                      : (run.source || '—');
+                                  const note = run.error
+                                    ? run.error
+                                    : run.skipped_reason === 'disabled_by_admin'
+                                      ? 'موقوف من المسؤول'
+                                      : run.skipped_reason || '';
+                                  return (
+                                    <tr key={run.id} className="hover:bg-gray-50">
+                                      <td className="px-2 py-1 border" dir="ltr">
+                                        {run.ts ? new Date(run.ts).toLocaleString('ar-EG') : '—'}
+                                      </td>
+                                      <td className={`px-2 py-1 border font-bold ${statusClass}`}>
+                                        {statusLabel}
+                                      </td>
+                                      <td className="px-2 py-1 border">{sourceLabel}</td>
+                                      <td className="px-2 py-1 border font-bold">{run.deleted ?? 0}</td>
+                                      <td className="px-2 py-1 border">
+                                        {run.retention_days != null ? `${run.retention_days} يوم` : '—'}
+                                      </td>
+                                      <td className="px-2 py-1 border" dir="ltr">
+                                        {run.duration_ms != null ? run.duration_ms : '—'}
+                                      </td>
+                                      <td className="px-2 py-1 border text-gray-700 max-w-xs truncate" title={note || ''}>
+                                        {note || '—'}
+                                      </td>
+                                    </tr>
+                                  );
+                                })}
+                              </tbody>
+                            </table>
+                          </div>
+                        </>
+                      ) : (
+                        <div className="text-xs text-gray-400 py-2">
+                          لا توجد تشغيلات مسجّلة بعد.
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
 
                 {/* Largest files in the upload directory — collapsible */}
