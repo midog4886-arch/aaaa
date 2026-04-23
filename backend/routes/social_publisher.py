@@ -554,13 +554,15 @@ async def manual_connect(
             logger.exception("YouTube manual-connect validation failed")
             raise HTTPException(status_code=502, detail="تعذر الاتصال بـ Google للتحقق من التوكن.")
 
+        # NOTE: do not persist client_id/client_secret on the account — the
+        # YouTube refresh logic in utils/social/youtube.py reads them from
+        # social_config. Duplicating them here only widens the secret surface
+        # (extra collection, backups, accidental dumps).
         doc = {
             "platform": "youtube",
             "display_name": channel_name,
             "access_token": access_token,
             "refresh_token": refresh,
-            "client_id": client_id,
-            "client_secret": client_secret,
             "expires_at": int(time.time()) + expires_in,
             "channel_id": channel_id,
             "connected_at": now_iso,
