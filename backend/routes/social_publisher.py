@@ -413,6 +413,203 @@ async def oauth_callback(platform: str, code: Optional[str] = None, state: Optio
     return _page("تم الربط بنجاح", f"تم ربط حساب {platform}. يمكنك إغلاق هذه النافذة الآن.", ok=True)
 
 
+# ────────────────── Manual token paste (alternative to OAuth) ──────────────────
+#
+# Power-users (and admins who don't want to set up the full OAuth redirect
+# dance) can paste tokens they've obtained from the platform's own tooling
+# (Graph API Explorer, Google OAuth Playground, TikTok Sandbox).
+#
+# The endpoint validates each token by making a single read call against the
+# platform's API, then writes the same `social_accounts` shape that the OAuth
+# callback would have produced. From this point on the publish flow is
+# identical regardless of how the account was connected.
+
+class ManualConnectPayload(BaseModel):
+    # Meta (facebook/instagram)
+    page_id: Optional[str] = None
+    page_access_token: Optional[str] = None
+    # YouTube — refresh_token is enough; client id/secret come from saved config
+    refresh_token: Optional[str] = None
+    # TikTok
+    access_token: Optional[str] = None
+    expires_in: Optional[int] = None
+
+
+@router.post("/manual-connect/{platform}")
+async def manual_connect(
+    platform: str,
+    payload: ManualConnectPayload,
+    current_user: dict = Depends(_require_social_publisher),
+):
+    """Connect an account by pasting tokens, bypassing the OAuth redirect.
+
+    Each platform validates its tokens against a single read endpoint
+    before persisting, so a bad/expired token fails fast with a clear
+    Arabic error instead of silently breaking the publish flow.
+    """
+    import time
+    import httpx
+
+    if platform not in PLATFORMS:
+        raise HTTPException(status_code=400, detail="منصة غير معروفة")
+
+    now_iso = datetime.now(timezone.utc).isoformat()
+
+    # ── Meta (facebook + instagram share one connection) ──
+    if platform in ("facebook", "instagram"):
+        page_id = (payload.page_id or "").strip()
+        page_token = (payload.page_access_token or "").strip()
+        if not page_id or not page_token:
+            raise HTTPException(status_code=400, detail="يرجى إدخال Page ID و Page Access Token.")
+        try:
+            async with httpx.AsyncClient(timeout=30) as client:
+                r = await client.get(
+                    f"https://graph.facebook.com/v19.0/{page_id}",
+                    params={
+                        "fields": "id,name,access_token,instagram_business_account{id,username}",
+                        "access_token": page_token,
+                    },
+                )
+            if r.status_code != 200:
+                detail = (r.json().get("error", {}) or {}).get("message", "تحقق التوكن فشل")
+                raise HTTPException(status_code=400, detail=f"فشل التحقق من Meta: {detail}")
+            data = r.json()
+        except HTTPException:
+            raise
+        except Exception:
+            logger.exception("Meta manual-connect validation failed")
+            raise HTTPException(status_code=502, detail="تعذر الاتصال بـ Meta للتحقق من التوكن.")
+
+        page = {
+            "id": data.get("id") or page_id,
+            "name": data.get("name") or "Facebook Page",
+            # Prefer the page_access_token returned by Graph (some pasted tokens are
+            # already page-scoped, in which case Graph echoes the same value).
+            "access_token": data.get("access_token") or page_token,
+            "instagram_business_account": data.get("instagram_business_account"),
+        }
+        pages = [page]
+        for plat in ("facebook", "instagram"):
+            doc = {
+                "platform": plat,
+                "display_name": page["name"],
+                "user_access_token": page_token,
+                "expires_at": None,  # pasted tokens — expiry unknown
+                "page": page,
+                "all_pages": pages,
+                "connected_at": now_iso,
+                "connected_via": "manual",
+            }
+            await db.social_accounts.replace_one({"platform": plat}, doc, upsert=True)
+        return {"connected": ["facebook", "instagram"], "page_name": page["name"]}
+
+    # ── YouTube — paste a refresh_token, we exchange + look up the channel ──
+    if platform == "youtube":
+        refresh = (payload.refresh_token or "").strip()
+        if not refresh:
+            raise HTTPException(status_code=400, detail="يرجى إدخال Refresh Token.")
+        cfg = await get_config("youtube")
+        client_id = (cfg.get("client_id") or "").strip()
+        client_secret = (cfg.get("client_secret") or "").strip()
+        if not (client_id and client_secret):
+            raise HTTPException(
+                status_code=400,
+                detail="يجب أولاً حفظ Google Client ID و Client Secret من قسم الإعدادات.",
+            )
+        try:
+            async with httpx.AsyncClient(timeout=30) as client:
+                tr = await client.post(
+                    "https://oauth2.googleapis.com/token",
+                    data={
+                        "client_id": client_id,
+                        "client_secret": client_secret,
+                        "refresh_token": refresh,
+                        "grant_type": "refresh_token",
+                    },
+                )
+            if tr.status_code != 200:
+                detail = (tr.json() or {}).get("error_description") or "تحقق التوكن فشل"
+                raise HTTPException(status_code=400, detail=f"فشل تجديد توكن YouTube: {detail}")
+            tok = tr.json()
+            access_token = tok.get("access_token")
+            expires_in = int(tok.get("expires_in") or 3600)
+
+            async with httpx.AsyncClient(timeout=30) as client:
+                cr = await client.get(
+                    "https://www.googleapis.com/youtube/v3/channels",
+                    params={"part": "snippet", "mine": "true"},
+                    headers={"Authorization": f"Bearer {access_token}"},
+                )
+            if cr.status_code != 200:
+                raise HTTPException(status_code=400, detail="تعذر جلب بيانات قناة YouTube بهذا التوكن.")
+            items = (cr.json() or {}).get("items") or []
+            if not items:
+                raise HTTPException(status_code=400, detail="هذا الحساب لا يملك قناة YouTube.")
+            ch = items[0]
+            channel_id = ch.get("id")
+            channel_name = ((ch.get("snippet") or {}).get("title")) or "YouTube channel"
+        except HTTPException:
+            raise
+        except Exception:
+            logger.exception("YouTube manual-connect validation failed")
+            raise HTTPException(status_code=502, detail="تعذر الاتصال بـ Google للتحقق من التوكن.")
+
+        doc = {
+            "platform": "youtube",
+            "display_name": channel_name,
+            "access_token": access_token,
+            "refresh_token": refresh,
+            "client_id": client_id,
+            "client_secret": client_secret,
+            "expires_at": int(time.time()) + expires_in,
+            "channel_id": channel_id,
+            "connected_at": now_iso,
+            "connected_via": "manual",
+        }
+        await db.social_accounts.replace_one({"platform": "youtube"}, doc, upsert=True)
+        return {"connected": ["youtube"], "channel_name": channel_name}
+
+    # ── TikTok — paste access_token + refresh_token, look up open_id/display_name ──
+    if platform == "tiktok":
+        access = (payload.access_token or "").strip()
+        refresh = (payload.refresh_token or "").strip()
+        if not access:
+            raise HTTPException(status_code=400, detail="يرجى إدخال Access Token.")
+        try:
+            async with httpx.AsyncClient(timeout=30) as client:
+                ur = await client.get(
+                    "https://open.tiktokapis.com/v2/user/info/",
+                    params={"fields": "open_id,display_name"},
+                    headers={"Authorization": f"Bearer {access}"},
+                )
+            if ur.status_code != 200:
+                raise HTTPException(status_code=400, detail="فشل التحقق من توكن TikTok.")
+            user = ((ur.json() or {}).get("data") or {}).get("user") or {}
+            open_id = user.get("open_id")
+            display_name = user.get("display_name") or "TikTok account"
+        except HTTPException:
+            raise
+        except Exception:
+            logger.exception("TikTok manual-connect validation failed")
+            raise HTTPException(status_code=502, detail="تعذر الاتصال بـ TikTok للتحقق من التوكن.")
+
+        expires_in = int(payload.expires_in or 86400)
+        doc = {
+            "platform": "tiktok",
+            "display_name": display_name,
+            "access_token": access,
+            "refresh_token": refresh or None,
+            "expires_at": int(time.time()) + expires_in,
+            "open_id": open_id,
+            "connected_at": now_iso,
+            "connected_via": "manual",
+        }
+        await db.social_accounts.replace_one({"platform": "tiktok"}, doc, upsert=True)
+        return {"connected": ["tiktok"], "display_name": display_name}
+
+    raise HTTPException(status_code=400, detail="منصة غير مدعومة للربط اليدوي.")
+
+
 # ────────────────── Publishing ──────────────────
 
 class PublishTarget(BaseModel):

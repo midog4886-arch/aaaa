@@ -20,6 +20,84 @@ import MediaCropEditor from '../components/MediaCropEditor';
 import MediaImageEditor from '../components/MediaImageEditor';
 import VideoTrimEditor from '../components/VideoTrimEditor';
 
+// ── Inline form for pasting platform tokens (alternative to OAuth) ──
+// Rendered inside each unconnected account card. Each platform exposes
+// a different set of fields and a guide link to where the user obtains
+// the token from the platform's own developer tooling.
+const ManualConnectForm = ({ platform, values, onChange, busy, onSubmit }) => {
+  const fieldClass = "text-xs h-8";
+  const labelClass = "text-[11px] text-gray-600 dark:text-gray-300";
+  let body = null;
+  let guideUrl = '';
+  let guideLines = [];
+  if (platform === 'facebook' || platform === 'instagram') {
+    guideUrl = 'https://developers.facebook.com/tools/explorer/';
+    guideLines = [
+      '١. افتح Graph API Explorer واختر تطبيقك.',
+      '٢. اطلب صلاحيات: pages_manage_posts، pages_read_engagement، instagram_basic، instagram_content_publish.',
+      '٣. من قائمة User Token اختر صفحتك ثم انسخ Page ID و Access Token.',
+      '٤. (اختياري) حوّل التوكن إلى طويل الأمد عبر أداة Access Token Debugger.',
+    ];
+    body = (
+      <>
+        <Label className={labelClass}>Page ID</Label>
+        <Input className={fieldClass} value={values.page_id || ''} onChange={e => onChange('page_id', e.target.value)} placeholder="123456789012345" />
+        <Label className={labelClass + ' mt-1'}>Page Access Token</Label>
+        <Input className={fieldClass} value={values.page_access_token || ''} onChange={e => onChange('page_access_token', e.target.value)} placeholder="EAAB..." />
+      </>
+    );
+  } else if (platform === 'youtube') {
+    guideUrl = 'https://developers.google.com/oauthplayground/';
+    guideLines = [
+      '١. احفظ Google Client ID و Client Secret من الإعدادات أعلاه.',
+      '٢. افتح OAuth Playground واضغط الترس، فعّل "Use your own OAuth credentials" وألصق نفس Client ID/Secret.',
+      '٣. اختر النطاق https://www.googleapis.com/auth/youtube.upload ثم Authorize.',
+      '٤. اضغط Exchange authorization code for tokens وانسخ refresh_token.',
+    ];
+    body = (
+      <>
+        <Label className={labelClass}>Refresh Token</Label>
+        <Input className={fieldClass} value={values.refresh_token || ''} onChange={e => onChange('refresh_token', e.target.value)} placeholder="1//0g..." />
+        <p className="text-[10px] text-gray-500 mt-1">يستخدم Client ID/Secret المحفوظ في الإعدادات لتجديد التوكن تلقائياً.</p>
+      </>
+    );
+  } else if (platform === 'tiktok') {
+    guideUrl = 'https://developers.tiktok.com/doc/login-kit-manual-token-management/';
+    guideLines = [
+      '١. من TikTok Developer Portal افتح تطبيقك ثم Sandbox.',
+      '٢. أضف حسابك كـ target user واستخدم زر Generate Access Token.',
+      '٣. انسخ access_token و refresh_token وألصقهما هنا.',
+    ];
+    body = (
+      <>
+        <Label className={labelClass}>Access Token</Label>
+        <Input className={fieldClass} value={values.access_token || ''} onChange={e => onChange('access_token', e.target.value)} placeholder="act.xxx..." />
+        <Label className={labelClass + ' mt-1'}>Refresh Token (اختياري)</Label>
+        <Input className={fieldClass} value={values.refresh_token || ''} onChange={e => onChange('refresh_token', e.target.value)} placeholder="rft.xxx..." />
+      </>
+    );
+  } else {
+    return null;
+  }
+  return (
+    <div className="mt-2 p-2 border border-dashed rounded bg-gray-50 dark:bg-gray-900 space-y-1">
+      {body}
+      <details className="mt-1">
+        <summary className="text-[11px] text-blue-600 cursor-pointer">كيف أحصل على التوكن؟</summary>
+        <ol className="text-[10px] text-gray-600 dark:text-gray-300 mt-1 space-y-0.5 list-none">
+          {guideLines.map((l, i) => <li key={i}>{l}</li>)}
+        </ol>
+        <a href={guideUrl} target="_blank" rel="noopener noreferrer" className="text-[11px] text-blue-600 underline inline-flex items-center gap-1 mt-1">
+          فتح أداة المنصة <ExternalLink className="w-3 h-3" />
+        </a>
+      </details>
+      <Button size="sm" className="w-full mt-1" onClick={onSubmit} disabled={busy}>
+        {busy ? <Loader2 className="w-3 h-3 animate-spin" /> : 'حفظ الربط'}
+      </Button>
+    </div>
+  );
+};
+
 // Per-platform max video duration in seconds. Reels/Shorts/TikTok limits.
 // Keep in sync with PLATFORM_MAX_VIDEO_SECONDS in backend/routes/social_publisher.py
 const VIDEO_MAX_SECONDS = {
@@ -542,6 +620,47 @@ const SocialPublisherPage = () => {
     } catch (e) {
       const msg = e?.response?.data?.detail || 'فشل بدء الربط';
       toast.error(msg);
+    }
+  };
+
+  // ── Manual token paste (alternative to OAuth) ───────────────────────────
+  // Per-platform open state + form values. Keyed by platform id.
+  const [manualOpen, setManualOpen] = useState({});
+  const [manualValues, setManualValues] = useState({});
+  const [manualBusy, setManualBusy] = useState({});
+
+  const setManualField = (platform, key, value) => {
+    setManualValues(prev => ({ ...prev, [platform]: { ...(prev[platform] || {}), [key]: value } }));
+  };
+
+  const handleManualConnect = async (platform) => {
+    const v = manualValues[platform] || {};
+    let payload;
+    if (platform === 'facebook' || platform === 'instagram') {
+      if (!v.page_id || !v.page_access_token) { toast.error('أدخل Page ID و Page Access Token'); return; }
+      payload = { page_id: v.page_id.trim(), page_access_token: v.page_access_token.trim() };
+    } else if (platform === 'youtube') {
+      if (!v.refresh_token) { toast.error('أدخل Refresh Token'); return; }
+      payload = { refresh_token: v.refresh_token.trim() };
+    } else if (platform === 'tiktok') {
+      if (!v.access_token) { toast.error('أدخل Access Token'); return; }
+      payload = {
+        access_token: v.access_token.trim(),
+        refresh_token: (v.refresh_token || '').trim() || undefined,
+      };
+    }
+    setManualBusy(prev => ({ ...prev, [platform]: true }));
+    try {
+      await socialAPI.manualConnect(platform, payload);
+      toast.success('تم الربط بنجاح');
+      setManualOpen(prev => ({ ...prev, [platform]: false }));
+      setManualValues(prev => ({ ...prev, [platform]: {} }));
+      loadAccounts();
+    } catch (e) {
+      const msg = e?.response?.data?.detail || 'فشل الربط اليدوي';
+      toast.error(msg);
+    } finally {
+      setManualBusy(prev => ({ ...prev, [platform]: false }));
     }
   };
 
@@ -1454,8 +1573,25 @@ const SocialPublisherPage = () => {
                             title={!isConfigured ? 'إعدادات الربط لهذه المنصة لم تُكتمل بعد، أكملها من زر الإعدادات' : ''}
                           >
                             <Link2 className="w-3 h-3 ml-1" />
-                            {isConfigured ? 'ربط الحساب' : 'غير مهيأ'}
+                            {isConfigured ? 'ربط بـ OAuth' : 'غير مهيأ'}
                           </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="mt-1 w-full text-xs"
+                            onClick={() => setManualOpen(prev => ({ ...prev, [p.id]: !prev[p.id] }))}
+                          >
+                            {manualOpen[p.id] ? 'إخفاء الإدخال اليدوي' : 'ألصق Token يدوياً'}
+                          </Button>
+                          {manualOpen[p.id] && (
+                            <ManualConnectForm
+                              platform={p.id}
+                              values={manualValues[p.id] || {}}
+                              onChange={(k, v) => setManualField(p.id, k, v)}
+                              busy={!!manualBusy[p.id]}
+                              onSubmit={() => handleManualConnect(p.id)}
+                            />
+                          )}
                         </>
                       )}
                     </div>

@@ -87,6 +87,7 @@ export const socialAPI = {
   listAccounts: () => axios.get(`${API}/social/accounts`),
   disconnect: (platform) => axios.delete(`${API}/social/accounts/${platform}`),
   connect: (platform) => axios.get(`${API}/social/connect/${platform}`),
+  manualConnect: (platform, payload) => axios.post(`${API}/social/manual-connect/${platform}`, payload),
   uploadMedia: (file, onUploadProgress) => {
     const fd = new FormData();
     fd.append('file', file);
