@@ -126,6 +126,10 @@ export const LevelsPage = () => {
 
   const levelNumbers = [1, 2, 3, 4, 5, 6];
 
+  // Default for new levels: all 7 days selected. Existing levels created
+  // before this feature have `days: null` in the DB, which the helper
+  // levelMatchesDay() treats as "all days" for back-compat.
+  const ALL_DAY_IDS = ['saturday','sunday','monday','tuesday','wednesday','thursday','friday'];
   const [formData, setFormData] = useState({
     level_number: 1,
     main_activity: '',
@@ -136,7 +140,8 @@ export const LevelsPage = () => {
     capacity: 10,
     members: [],
     branch_id: 'all',
-    coach_id: '__none__'
+    coach_id: '__none__',
+    days: [...ALL_DAY_IDS]
   });
   const [coaches, setCoaches] = useState([]);
 
@@ -396,6 +401,16 @@ export const LevelsPage = () => {
     return { ...level, members: filteredMembers, members_details: filteredDetails };
   };
 
+  // True iff the given level is configured to run on `dayId`.
+  // Levels created before the days feature have `level.days == null`,
+  // which we treat as "all days" so they keep showing up everywhere
+  // until an admin opens the editor and saves a specific selection.
+  const levelMatchesDay = (level, dayId) => {
+    if (!dayId) return true;
+    if (!Array.isArray(level?.days) || level.days.length === 0) return true;
+    return level.days.includes(dayId);
+  };
+
   // Group levels hierarchically: Main Activity -> Time Slot -> Levels
   const groupedLevels = levels.reduce((acc, level) => {
     const { mainActivity, timeSlot } = parseActivityName(level.activity_name);
@@ -526,10 +541,13 @@ export const LevelsPage = () => {
     return getMainActivityInfo(selectedActivityId);
   };
 
-  // Get time slots for selected activity
+  // Get time slots for selected activity. When `selectedDay` is set,
+  // hide slots whose levels are all configured for other days.
   const getTimeSlotsForActivity = (activityId) => {
     const activityLevels = groupedLevels[activityId] || {};
-    const slots = Object.keys(activityLevels);
+    const slots = Object.keys(activityLevels).filter(slot =>
+      activityLevels[slot].some(l => levelMatchesDay(l, selectedDay))
+    );
     // Sort by the hour number embedded in the slot name (e.g. "الساعة 4" → 4).
     // Slots without a number fall back to alphabetical order at the end.
     return slots.sort((a, b) => {
@@ -540,10 +558,11 @@ export const LevelsPage = () => {
     });
   };
 
-  // Get levels for selected time slot
+  // Get levels for selected time slot. Filtered by `selectedDay` when set.
   const getLevelsForTimeSlot = (activityId, timeSlot) => {
     const activityLevels = groupedLevels[activityId] || {};
-    return activityLevels[timeSlot] || [];
+    const slotLevels = activityLevels[timeSlot] || [];
+    return slotLevels.filter(l => levelMatchesDay(l, selectedDay));
   };
 
   // ========== Time Slot Edit/Delete Functions ==========
@@ -1129,7 +1148,10 @@ ${slotTables}
       capacity: level.capacity || 10,
       members: level.members || [],
       branch_id: level.branch_id || 'all',
-      coach_id: level.coach_id || '__none__'
+      coach_id: level.coach_id || '__none__',
+      // null/missing days on legacy levels => all 7 selected by default in the
+      // editor, so the user can simply uncheck what they don't want.
+      days: Array.isArray(level.days) && level.days.length > 0 ? [...level.days] : [...ALL_DAY_IDS]
     });
     setIsDialogOpen(true);
   };
@@ -1168,7 +1190,8 @@ ${slotTables}
       capacity: 10,
       members: [],
       branch_id: 'all',
-      coach_id: '__none__'
+      coach_id: '__none__',
+      days: [...ALL_DAY_IDS]
     });
   };
 
@@ -1870,6 +1893,7 @@ ${slotTables}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
               {WEEKDAYS.map((day) => {
                 const dayMembers = levels.reduce((sum, l) => {
+                  if (!levelMatchesDay(l, day.id)) return sum;
                   const filtered = (l.members_details || []).filter(m => memberMatchesDay(m, day.id));
                   return sum + filtered.length;
                 }, 0);
@@ -1899,7 +1923,14 @@ ${slotTables}
           const allActivityCards = [
             ...MAIN_ACTIVITIES.map(baseActivity => {
               const activity = getMainActivityInfo(baseActivity.id);
-              const activityLevels = groupedLevels[baseActivity.id] || {};
+              const rawActivityLevels = groupedLevels[baseActivity.id] || {};
+              // When viewing a specific day, hide time slots whose levels
+              // are not configured to run on that day.
+              const activityLevels = {};
+              Object.keys(rawActivityLevels).forEach(slot => {
+                const slotLvls = rawActivityLevels[slot].filter(l => levelMatchesDay(l, selectedDay));
+                if (slotLvls.length > 0) activityLevels[slot] = slotLvls;
+              });
               const timeSlots = Object.keys(activityLevels);
               const totalLevels = timeSlots.reduce((sum, slot) => sum + activityLevels[slot].length, 0);
               const totalMembers = timeSlots.reduce((sum, slot) =>
@@ -2455,6 +2486,56 @@ ${slotTables}
                     {t('الافتراضي للسباحة 6 لاعبين — يمكنك تغييره حسب الحاجة', 'Swimming default is 6 — you can change it as needed')}
                   </p>
                 )}
+              </div>
+
+              {/* Training days — controls which days this level appears on */}
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <Label>{t('أيام التدريب', 'Training Days')}</Label>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      className="text-xs text-blue-600 hover:underline"
+                      onClick={() => setFormData({ ...formData, days: [...ALL_DAY_IDS] })}
+                    >
+                      {t('تحديد الكل', 'Select all')}
+                    </button>
+                    <button
+                      type="button"
+                      className="text-xs text-gray-500 hover:underline"
+                      onClick={() => setFormData({ ...formData, days: [] })}
+                    >
+                      {t('إلغاء الكل', 'Clear')}
+                    </button>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 p-2 border rounded">
+                  {WEEKDAYS.map(d => {
+                    const checked = (formData.days || []).includes(d.id);
+                    return (
+                      <label
+                        key={d.id}
+                        className={`flex items-center gap-2 px-2 py-1.5 rounded cursor-pointer text-sm border ${checked ? 'bg-primary/10 border-primary' : 'border-gray-200 hover:bg-gray-50'}`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={(e) => {
+                            const cur = new Set(formData.days || []);
+                            if (e.target.checked) cur.add(d.id); else cur.delete(d.id);
+                            setFormData({ ...formData, days: Array.from(cur) });
+                          }}
+                          className="w-4 h-4"
+                        />
+                        <span>{language === 'ar' ? d.name_ar : d.name_en}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+                <p className="text-xs text-gray-500 mt-1">
+                  {t('اختر الأيام التي يعمل فيها هذا المستوى. لو ما اخترت أي يوم، لن يظهر المستوى تحت أي يوم.',
+                     'Pick the days this level runs on. If none are selected, the level will not appear under any day.')}
+                </p>
               </div>
 
               {/* Branch (Admin only) */}

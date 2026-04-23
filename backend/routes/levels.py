@@ -31,6 +31,9 @@ class LevelCreate(BaseModel):
     branch_id: Optional[str] = None
     coach_id: Optional[str] = None  # Coach assigned to this level
     capacity: Optional[int] = None  # Max members allowed in this level
+    # Weekday IDs the level is active on (e.g. ["saturday","monday"]).
+    # None or empty = treated as "all days" (back-compat with old levels).
+    days: Optional[List[str]] = None
 
 class Level(BaseModel):
     id: str
@@ -209,6 +212,7 @@ async def create_level(level: LevelCreate, current_user: dict = Depends(get_curr
         "branch_id": final_branch_id,
         "coach_id": level.coach_id or None,
         "capacity": int(level.capacity) if level.capacity else None,
+        "days": list(level.days) if level.days else None,
         "created_at": datetime.now(timezone.utc).isoformat()
     }
     await db.levels.insert_one(level_doc)
@@ -228,6 +232,7 @@ async def update_level(level_id: str, level: LevelCreate, current_user: dict = D
         # capacity was previously dropped here, causing the "max capacity"
         # field in the edit dialog to silently revert to the stored value.
         "capacity": int(level.capacity) if level.capacity else None,
+        "days": list(level.days) if level.days else None,
     }
     
     result = await db.levels.find_one_and_update(
