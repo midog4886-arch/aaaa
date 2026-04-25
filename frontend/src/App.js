@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, Suspense, lazy } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { LanguageProvider } from './contexts/LanguageContext';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
@@ -43,55 +43,62 @@ class ErrorBoundary extends React.Component {
   }
 }
 
-// Pages
-import LoginPage from './pages/LoginPage';
-import DashboardPage from './pages/DashboardPage';
-import MembersPage from './pages/MembersPage';
-import ActivitiesPage from './pages/ActivitiesPage';
-import LevelsPage from './pages/LevelsPage';
-import InvoicesPage from './pages/InvoicesPage';
-import ReportsPage from './pages/ReportsPage';
-import MessagesPage from './pages/MessagesPage';
-import SettingsPage from './pages/SettingsPage';
-import BranchesPage from './pages/BranchesPage';
-import UsersPage from './pages/UsersPage';
-import StorePage from './pages/StorePage';
-import AccountingPage from './pages/AccountingPage';
-import AttendancePage from './pages/AttendancePage';
-import SchedulePage from './pages/SchedulePage';
-import UnauthorizedPage from './pages/UnauthorizedPage';
-import MemberCardPage from './pages/MemberCardPage';
-import CoachRatingsPage from './pages/CoachRatingsPage';
-import CoachAttendancePage from './pages/CoachAttendancePage';
-import SupervisorsPage from './pages/SupervisorsPage';
-import AdvertisementsPage from './pages/AdvertisementsPage';
-import DailyVideosPage from './pages/DailyVideosPage';
-import LoyaltyPage from './pages/LoyaltyPage';
-import RenewalsPage from './pages/RenewalsPage';
-import BackupPage from './pages/BackupPage';
-import PushNotificationsPage from './pages/PushNotificationsPage';
-import PrivacyPolicyPage from './pages/PrivacyPolicyPage';
-import DailyLedgerPage from './pages/DailyLedgerPage';
-import DayExtensionsPage from './pages/DayExtensionsPage';
-import WhatsAppPage from './pages/WhatsAppPage';
-import TournamentsPage from './pages/TournamentsPage';
-import SocialPublisherPage from './pages/SocialPublisherPage';
+// Pages — lazy-loaded so each route ships in its own JS chunk
+// (initial load only downloads the bundle for the page being visited).
+const LoginPage = lazy(() => import('./pages/LoginPage'));
+const DashboardPage = lazy(() => import('./pages/DashboardPage'));
+const MembersPage = lazy(() => import('./pages/MembersPage'));
+const ActivitiesPage = lazy(() => import('./pages/ActivitiesPage'));
+const LevelsPage = lazy(() => import('./pages/LevelsPage'));
+const InvoicesPage = lazy(() => import('./pages/InvoicesPage'));
+const ReportsPage = lazy(() => import('./pages/ReportsPage'));
+// MessagesPage import retained (used as fallback redirect target previously)
+const SettingsPage = lazy(() => import('./pages/SettingsPage'));
+const BranchesPage = lazy(() => import('./pages/BranchesPage'));
+const UsersPage = lazy(() => import('./pages/UsersPage'));
+const StorePage = lazy(() => import('./pages/StorePage'));
+const AccountingPage = lazy(() => import('./pages/AccountingPage'));
+const AttendancePage = lazy(() => import('./pages/AttendancePage'));
+const SchedulePage = lazy(() => import('./pages/SchedulePage'));
+const UnauthorizedPage = lazy(() => import('./pages/UnauthorizedPage'));
+const MemberCardPage = lazy(() => import('./pages/MemberCardPage'));
+const CoachRatingsPage = lazy(() => import('./pages/CoachRatingsPage'));
+const CoachAttendancePage = lazy(() => import('./pages/CoachAttendancePage'));
+const SupervisorsPage = lazy(() => import('./pages/SupervisorsPage'));
+const AdvertisementsPage = lazy(() => import('./pages/AdvertisementsPage'));
+const DailyVideosPage = lazy(() => import('./pages/DailyVideosPage'));
+const LoyaltyPage = lazy(() => import('./pages/LoyaltyPage'));
+const RenewalsPage = lazy(() => import('./pages/RenewalsPage'));
+const BackupPage = lazy(() => import('./pages/BackupPage'));
+const PrivacyPolicyPage = lazy(() => import('./pages/PrivacyPolicyPage'));
+const DailyLedgerPage = lazy(() => import('./pages/DailyLedgerPage'));
+const DayExtensionsPage = lazy(() => import('./pages/DayExtensionsPage'));
+const WhatsAppPage = lazy(() => import('./pages/WhatsAppPage'));
+const TournamentsPage = lazy(() => import('./pages/TournamentsPage'));
+const SocialPublisherPage = lazy(() => import('./pages/SocialPublisherPage'));
 
 // Member Portal Pages
-import MemberLogin from './pages/member-portal/MemberLogin';
-import MemberDashboard from './pages/member-portal/MemberDashboard';
-import MemberSubscriptions from './pages/member-portal/MemberSubscriptions';
-import MemberSchedule from './pages/member-portal/MemberSchedule';
-import MemberQRCard from './pages/member-portal/MemberQRCard';
-import MemberNotifications from './pages/member-portal/MemberNotifications';
-import MemberAttendance from './pages/member-portal/MemberAttendance';
-import MemberRateCoach from './pages/member-portal/MemberRateCoach';
-import MemberDailyVideos from './pages/member-portal/MemberDailyVideos';
-import MemberLoyalty from './pages/member-portal/MemberLoyalty';
-import MemberSupport from './pages/member-portal/MemberSupport';
-import MemberTournaments from './pages/member-portal/MemberTournaments';
-import CoachProfile from './pages/member-portal/CoachProfile';
-import CoachQRPage from './pages/CoachQRPage';
+const MemberLogin = lazy(() => import('./pages/member-portal/MemberLogin'));
+const MemberDashboard = lazy(() => import('./pages/member-portal/MemberDashboard'));
+const MemberSubscriptions = lazy(() => import('./pages/member-portal/MemberSubscriptions'));
+const MemberSchedule = lazy(() => import('./pages/member-portal/MemberSchedule'));
+const MemberQRCard = lazy(() => import('./pages/member-portal/MemberQRCard'));
+const MemberNotifications = lazy(() => import('./pages/member-portal/MemberNotifications'));
+const MemberAttendance = lazy(() => import('./pages/member-portal/MemberAttendance'));
+const MemberRateCoach = lazy(() => import('./pages/member-portal/MemberRateCoach'));
+const MemberDailyVideos = lazy(() => import('./pages/member-portal/MemberDailyVideos'));
+const MemberLoyalty = lazy(() => import('./pages/member-portal/MemberLoyalty'));
+const MemberSupport = lazy(() => import('./pages/member-portal/MemberSupport'));
+const MemberTournaments = lazy(() => import('./pages/member-portal/MemberTournaments'));
+const CoachProfile = lazy(() => import('./pages/member-portal/CoachProfile'));
+const CoachQRPage = lazy(() => import('./pages/CoachQRPage'));
+
+// Lightweight fallback shown while a page chunk is being fetched
+const PageLoader = () => (
+  <div className="min-h-screen flex items-center justify-center bg-background">
+    <div className="spinner" />
+  </div>
+);
 
 import './App.css';
 
@@ -182,6 +189,7 @@ const PublicRoute = ({ children }) => {
 
 function AppRoutes() {
   return (
+    <Suspense fallback={<PageLoader />}>
     <Routes>
       {/* Public Routes */}
       <Route 
@@ -447,6 +455,7 @@ function AppRoutes() {
       {/* Catch-all redirect to member login */}
       <Route path="*" element={<Navigate to="/member-login" replace />} />
     </Routes>
+    </Suspense>
   );
 }
 
