@@ -12,7 +12,24 @@ from pathlib import Path
 import uuid
 
 from database import db
-from utils.auth import get_current_user
+from utils.auth import get_current_user, require_branch_scope, resolve_branch_filter
+
+
+def _branch_scope_filter(effective_branch: Optional[str]) -> dict:
+    """Build a Mongo sub-filter that pins records to the caller's branch.
+
+    Returns an empty dict for admins (no branch restriction). For non-admins,
+    matches records whose ``branch_id`` equals the caller's branch OR which
+    have no ``branch_id`` at all (legacy/unscoped records remain visible —
+    same convention used by ``coaches`` and other branch-scoped routes).
+    """
+    if not effective_branch:
+        return {}
+    return {"$or": [
+        {"branch_id": effective_branch},
+        {"branch_id": None},
+        {"branch_id": {"$exists": False}}
+    ]}
 
 
 def _get_openpyxl():
@@ -90,12 +107,12 @@ async def get_coach_attendance(
     if coach_id:
         query["coach_id"] = coach_id
 
-    if branch_filter and branch_filter != "all":
-        query["$or"] = [
-            {"branch_id": branch_filter},
-            {"branch_id": None},
-            {"branch_id": {"$exists": False}}
-        ]
+    # Branch filtering — fail-closed for non-admins without a branch_id.
+    # Admins may pass branch_filter (None/"all" = no restriction); non-admins
+    # are always pinned to their own branch regardless of what they send.
+    effective_branch = resolve_branch_filter(current_user, branch_filter)
+    if effective_branch:
+        query.update(_branch_scope_filter(effective_branch))
 
     records = await db.coach_attendance.find(query, {"_id": 0}).sort("check_in_time", 1).to_list(500)
     return records
@@ -110,9 +127,19 @@ async def check_in_coach(
     date = req.date or now.strftime("%Y-%m-%d")
     check_in_time = req.check_in_time or now.strftime("%H:%M")
 
+    # Fail-closed for non-admins without a branch_id (HTTP 403).
+    effective_branch = require_branch_scope(current_user)
+
     coach = await db.coaches.find_one({"id": req.coach_id}, {"_id": 0})
     if not coach:
         raise HTTPException(status_code=404, detail="Coach not found")
+
+    # Prevent IDOR: non-admins may only check in coaches in their own branch.
+    # Coaches with no branch_id (legacy) remain visible to any branch.
+    if effective_branch:
+        coach_branch = coach.get("branch_id")
+        if coach_branch and coach_branch != effective_branch:
+            raise HTTPException(status_code=404, detail="Coach not found")
 
     existing = await db.coach_attendance.find_one({
         "coach_id": req.coach_id,
@@ -202,9 +229,19 @@ async def mark_absent(
     now = get_saudi_now()
     date = req.date or now.strftime("%Y-%m-%d")
 
+    # Fail-closed for non-admins without a branch_id (HTTP 403).
+    effective_branch = require_branch_scope(current_user)
+
     coach = await db.coaches.find_one({"id": req.coach_id}, {"_id": 0})
     if not coach:
         raise HTTPException(status_code=404, detail="Coach not found")
+
+    # Prevent IDOR: non-admins may only mark coaches in their own branch.
+    # Coaches with no branch_id (legacy) remain visible to any branch.
+    if effective_branch:
+        coach_branch = coach.get("branch_id")
+        if coach_branch and coach_branch != effective_branch:
+            raise HTTPException(status_code=404, detail="Coach not found")
 
     existing = await db.coach_attendance.find_one({
         "coach_id": req.coach_id,
@@ -248,9 +285,19 @@ async def update_record(
     req: UpdateRecordRequest,
     current_user: dict = Depends(get_current_user)
 ):
+    # Fail-closed for non-admins without a branch_id (HTTP 403).
+    effective_branch = require_branch_scope(current_user)
+
     record = await db.coach_attendance.find_one({"id": record_id})
     if not record:
         raise HTTPException(status_code=404, detail="Record not found")
+
+    # Prevent IDOR: non-admins may only edit records in their own branch.
+    # Legacy records with no branch_id remain editable by any branch.
+    if effective_branch:
+        rec_branch = record.get("branch_id")
+        if rec_branch and rec_branch != effective_branch:
+            raise HTTPException(status_code=404, detail="Record not found")
 
     updates = {}
     if req.check_in_time is not None:
@@ -289,7 +336,21 @@ async def delete_record(
     record_id: str,
     current_user: dict = Depends(get_current_user)
 ):
-    result = await db.coach_attendance.delete_one({"id": record_id})
+    # Fail-closed for non-admins without a branch_id (HTTP 403).
+    effective_branch = require_branch_scope(current_user)
+
+    # Prevent IDOR: scope the delete query so non-admins cannot remove
+    # records from other branches. Legacy records with no branch_id remain
+    # deletable by any branch (matches read scoping convention).
+    delete_query: dict = {"id": record_id}
+    if effective_branch:
+        delete_query["$or"] = [
+            {"branch_id": effective_branch},
+            {"branch_id": None},
+            {"branch_id": {"$exists": False}},
+        ]
+
+    result = await db.coach_attendance.delete_one(delete_query)
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Record not found")
     return {"message": "Record deleted"}
@@ -302,23 +363,18 @@ async def monthly_report(
     late_threshold: str = "09:00",
     current_user: dict = Depends(get_current_user)
 ):
-    query = {"date": {"$regex": f"^{month}"}}
-    if branch_filter and branch_filter != "all":
-        query["$or"] = [
-            {"branch_id": branch_filter},
-            {"branch_id": None},
-            {"branch_id": {"$exists": False}}
-        ]
+    # Branch filtering — fail-closed for non-admins without a branch_id.
+    # Admins may pass branch_filter (None/"all" = no restriction); non-admins
+    # are always pinned to their own branch regardless of what they send.
+    effective_branch = resolve_branch_filter(current_user, branch_filter)
+
+    query: dict = {"date": {"$regex": f"^{month}"}}
+    if effective_branch:
+        query.update(_branch_scope_filter(effective_branch))
 
     records = await db.coach_attendance.find(query, {"_id": 0}).to_list(5000)
 
-    coach_query = {}
-    if branch_filter and branch_filter != "all":
-        coach_query = {"$or": [
-            {"branch_id": branch_filter},
-            {"branch_id": None},
-            {"branch_id": {"$exists": False}}
-        ]}
+    coach_query = _branch_scope_filter(effective_branch) if effective_branch else {}
     coaches = await db.coaches.find(coach_query, {"_id": 0}).to_list(100)
 
     # Parse late threshold once; fall back to 09:00 on invalid input
@@ -400,22 +456,18 @@ async def export_monthly_report(
     """Export monthly coach attendance report as Excel or PDF."""
     if format not in ("xlsx", "pdf"):
         raise HTTPException(status_code=400, detail="format يجب أن يكون xlsx أو pdf")
-    query = {"date": {"$regex": f"^{month}"}}
-    if branch_filter and branch_filter != "all":
-        query["$or"] = [
-            {"branch_id": branch_filter},
-            {"branch_id": None},
-            {"branch_id": {"$exists": False}}
-        ]
+
+    # Branch filtering — fail-closed for non-admins without a branch_id.
+    # Admins may pass branch_filter (None/"all" = no restriction); non-admins
+    # are always pinned to their own branch regardless of what they send.
+    effective_branch = resolve_branch_filter(current_user, branch_filter)
+
+    query: dict = {"date": {"$regex": f"^{month}"}}
+    if effective_branch:
+        query.update(_branch_scope_filter(effective_branch))
     records = await db.coach_attendance.find(query, {"_id": 0}).to_list(5000)
 
-    coach_query = {}
-    if branch_filter and branch_filter != "all":
-        coach_query = {"$or": [
-            {"branch_id": branch_filter},
-            {"branch_id": None},
-            {"branch_id": {"$exists": False}}
-        ]}
+    coach_query = _branch_scope_filter(effective_branch) if effective_branch else {}
     coaches = await db.coaches.find(coach_query, {"_id": 0}).to_list(100)
 
     try:
