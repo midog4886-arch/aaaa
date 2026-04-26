@@ -828,14 +828,30 @@ async def _aggregate_last_renewal_reminders(
                     "sent_by": {"$first": "$sent_by"},
                 }
             },
+            # Promote the composite _id back to top-level fields. The Atlas
+            # HTTP Data API does not include `_id` in aggregate results, so
+            # we project the grouped keys explicitly to remain driver-agnostic.
+            {
+                "$project": {
+                    "_id": 0,
+                    "member_id": "$_id.member_id",
+                    "activity_name": "$_id.activity_name",
+                    "last_sent": 1,
+                    "last_channel": 1,
+                    "channels": 1,
+                    "manual": 1,
+                    "days_before": 1,
+                    "sent_by": 1,
+                }
+            },
             {"$limit": 5000},
         ])
         cursor = _db["renewal_reminder_log"].aggregate(pipeline)
         results = []
         async for row in cursor:
             results.append({
-                "member_id": row["_id"].get("member_id"),
-                "activity_name": row["_id"].get("activity_name"),
+                "member_id": row.get("member_id"),
+                "activity_name": row.get("activity_name"),
                 "last_sent": row.get("last_sent"),
                 "last_channel": row.get("last_channel"),
                 "channels": row.get("channels", []),
