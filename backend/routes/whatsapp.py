@@ -668,51 +668,87 @@ async def get_target_count(current_user: dict = Depends(get_current_user)):
     if _db is None:
         return {"count": 0, "count_today": 0, "target_date": "", "count_2": 0, "count_today_2": 0, "target_date_2": ""}
     settings = await _get_settings()
-    days_before = int(settings.get("days_before", 3))
-    days_before_2 = int(settings.get("days_before_2", 1))
-    reminder_2_enabled = settings.get("reminder_2_enabled", True)
     today = datetime.now(RIYADH_TZ).date()
     today_str = today.strftime("%Y-%m-%d")
-    target_date = today + timedelta(days=days_before)
-    target_str = target_date.strftime("%Y-%m-%d")
-    target_date_2 = today + timedelta(days=days_before_2)
-    target_str_2 = target_date_2.strftime("%Y-%m-%d")
 
-    # Count members expiring within relevant windows
-    max_days = max(days_before, days_before_2)
-    max_date = (today + timedelta(days=max_days)).strftime("%Y-%m-%d")
+    # Resolve enabled offsets via the same normalization the scheduler uses.
+    # This keeps target-count aligned with what the daily reminder loop will
+    # actually send, and inherits backward-compat with legacy
+    # days_before/days_before_2/extra_offsets fields.
+    enabled_offsets = sorted({
+        int(it["days"]) for it in _normalize_offsets(settings) if it.get("enabled")
+    })
+    if not enabled_offsets:
+        enabled_offsets = [int(settings.get("days_before", 3))]
+
+    # Pre-compute the target date string for each offset.
+    offset_dates = {d: (today + timedelta(days=d)).strftime("%Y-%m-%d") for d in enabled_offsets}
+
     all_members = await _db["members"].find(
         {"activities": {"$elemMatch": {"status": "active"}}}
     ).to_list(length=10000)
 
+    # Per-offset counts (today only) + an overall window count covering all
+    # offsets up to the largest enabled value.
+    per_offset_today: dict = {d: 0 for d in enabled_offsets}
+    max_days = max(enabled_offsets)
+    max_date = (today + timedelta(days=max_days)).strftime("%Y-%m-%d")
     count_within = 0
-    count_today = 0
-    count_within_2 = 0
-    count_today_2 = 0
+    count_today_any = 0
 
     for m in all_members:
-        matched_1 = False
-        matched_2 = False
+        matched_window = False
+        matched_today = False
+        per_offset_matched: dict = {d: False for d in enabled_offsets}
         for a in m.get("activities", []):
             if a.get("status") != "active":
                 continue
             ed = a.get("end_date", "")
             if not ed:
                 continue
-            if not matched_1 and today_str <= ed <= target_str:
+            if not matched_window and today_str <= ed <= max_date:
                 count_within += 1
-                if ed.startswith(target_str):
-                    count_today += 1
-                matched_1 = True
-            if reminder_2_enabled and not matched_2 and ed.startswith(target_str_2):
-                count_within_2 += 1
-                count_today_2 += 1
-                matched_2 = True
+                matched_window = True
+            for d, target_str_d in offset_dates.items():
+                if not per_offset_matched[d] and ed.startswith(target_str_d):
+                    per_offset_today[d] += 1
+                    per_offset_matched[d] = True
+                    if not matched_today:
+                        count_today_any += 1
+                        matched_today = True
+
+    # Build per-offset breakdown for the new response.
+    offsets_breakdown = [
+        {"days": d, "target_date": offset_dates[d], "count_today": per_offset_today[d]}
+        for d in enabled_offsets
+    ]
+
+    # Backward-compat: keep the original field names. The first enabled offset
+    # is reported as the "primary" reminder; if a second exists it populates
+    # the legacy `*_2` triplet so older clients keep working.
+    primary = enabled_offsets[0]
+    secondary = enabled_offsets[1] if len(enabled_offsets) > 1 else None
+    target_str = offset_dates[primary]
+    count_today_primary = per_offset_today[primary]
+    if secondary is not None:
+        target_str_2 = offset_dates[secondary]
+        count_today_2 = per_offset_today[secondary]
+        reminder_2_enabled = True
+    else:
+        target_str_2 = ""
+        count_today_2 = 0
+        reminder_2_enabled = False
 
     return {
-        "count": count_within, "count_today": count_today, "target_date": target_str,
-        "count_2": count_within_2, "count_today_2": count_today_2, "target_date_2": target_str_2,
+        "count": count_within,
+        "count_today": count_today_primary,
+        "count_today_any": count_today_any,
+        "target_date": target_str,
+        "count_2": count_today_2,
+        "count_today_2": count_today_2,
+        "target_date_2": target_str_2,
         "reminder_2_enabled": reminder_2_enabled,
+        "offsets": offsets_breakdown,
     }
 
 

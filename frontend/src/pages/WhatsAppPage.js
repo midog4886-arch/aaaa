@@ -798,6 +798,15 @@ export default function WhatsAppPage() {
                 </button>
               </div>
 
+              {/* Legacy single/double-reminder controls — kept for backward
+                  compatibility with installs that haven't switched to the
+                  multi-offset model below. Hidden by default to avoid
+                  confusion now that "Reminder Offsets" is the primary UI. */}
+              <details className="border rounded-xl p-3 bg-muted/30">
+                <summary className="cursor-pointer text-sm font-medium text-muted-foreground select-none">
+                  {t('الإعدادات القديمة (تذكير أول/ثاني) — للتوافق فقط', 'Legacy reminder fields (1st / 2nd) — backward compatibility only')}
+                </summary>
+                <div className="mt-3 space-y-3">
               {/* Reminder 1 */}
               <div className="border rounded-xl p-4 space-y-2">
                 <p className="text-sm font-semibold text-primary">{t('التذكير الأول', 'First Reminder')}</p>
@@ -867,6 +876,8 @@ export default function WhatsAppPage() {
                   <p className="text-xs text-muted-foreground">{t('التذكير الثاني معطّل', 'Second reminder disabled')}</p>
                 )}
               </div>
+                </div>
+              </details>
 
               {/* Multi-offset reminders (T-7 / T-3 / T-1 / T-0 ...) */}
               <div className="border rounded-xl p-4 space-y-3">
