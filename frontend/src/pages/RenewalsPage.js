@@ -68,6 +68,25 @@ const RenewalsPage = () => {
     loadData();
   }, [days, selectedBranchId]);
 
+  // Auto-prune selections when filters/tabs change so the bulk action count
+  // never reflects items that are no longer visible.
+  useEffect(() => {
+    const visibleKeys = new Set(
+      [...expiringList, ...expiredList].map(it =>
+        `${it.member_id}|${it.activity_name || ''}|${it.end_date || ''}`
+      )
+    );
+    setSelectedKeys(prev => {
+      const pruned = new Set();
+      let changed = false;
+      prev.forEach(k => {
+        if (visibleKeys.has(k)) pruned.add(k);
+        else changed = true;
+      });
+      return changed ? pruned : prev;
+    });
+  }, [expiringList, expiredList]);
+
   useEffect(() => {
     // One-time template load. Uses the renewals-scoped endpoint so users
     // with `renewals` permission (but no `whatsapp` permission) can still
