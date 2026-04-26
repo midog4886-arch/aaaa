@@ -19,6 +19,22 @@ def _require_whatsapp_access(current_user: dict):
     if "whatsapp" not in (current_user.get("permissions") or []):
         raise HTTPException(status_code=403, detail="WhatsApp access required")
 
+
+def _require_renewals_or_whatsapp_access(current_user: dict):
+    """Allow access to reminder endpoints used by the Renewals page.
+
+    The Renewals admin tool needs to read the manual template, look up the
+    last-reminder log, and dispatch reminders without granting full
+    WhatsApp settings access. Admins, users with the existing `whatsapp`
+    permission, or users with the `renewals` permission may all proceed.
+    """
+    if current_user.get("is_admin", False):
+        return
+    perms = current_user.get("permissions") or []
+    if "whatsapp" in perms or "renewals" in perms:
+        return
+    raise HTTPException(status_code=403, detail="Renewals or WhatsApp access required")
+
 router = APIRouter(prefix="/whatsapp", tags=["whatsapp"])
 
 WA_SERVICE_URL = os.environ.get("WA_SERVICE_URL", "http://localhost:3001")
@@ -38,6 +54,10 @@ DEFAULT_SETTINGS = {
         {"days": 0, "enabled": True},
     ],
     "message_template": "مرحباً {name}،\nنذكركم بأن اشتراككم في نشاط {activity} سينتهي بعد {days} يوم/أيام.\nيرجى التواصل معنا للتجديد. 🏆",
+    # Per-offset overrides for the auto WhatsApp reminder text. Keys are
+    # stringified offset days (e.g. "0", "3", "7"); empty/missing values
+    # fall back to the shared `message_template`.
+    "templates": {},
     "manual_reminder_template": "السلام عليكم {name}،\nنود تذكيركم بأن اشتراك ({activity}) في شركة اداء الابطال العالمية للرياضة قارب على الانتهاء بتاريخ {end_date}.\nنرجو التواصل معنا للتجديد.\nشكراً لكم 🏆",
     "send_hour": 9,
     "push_enabled": True,
@@ -430,6 +450,7 @@ async def _do_daily_reminders():
         return
 
     template = settings.get("message_template", DEFAULT_SETTINGS["message_template"])
+    per_offset_templates = settings.get("templates") or {}
 
     wa_status = await _get_wa_status()
     wa_connected = wa_status.get("connected", False)
@@ -452,7 +473,9 @@ async def _do_daily_reminders():
             continue
 
         if wa_connected:
-            total_wa += await _send_wa_for_members(members_data, days, template)
+            # Per-offset override falls back to the shared template.
+            tpl_for_offset = per_offset_templates.get(str(days)) or template
+            total_wa += await _send_wa_for_members(members_data, days, tpl_for_offset)
 
         if push_enabled:
             try:
@@ -518,6 +541,9 @@ class WhatsAppSettings(BaseModel):
     # New offsets model: list of {days: 0..60, enabled: bool}.
     offsets: Optional[List[dict]] = None
     message_template: Optional[str] = None
+    # Per-offset overrides: {"<days>": "<template>"} — empty/missing falls
+    # back to the shared `message_template`.
+    templates: Optional[dict] = None
     manual_reminder_template: Optional[str] = None
     send_hour: Optional[int] = None
     push_enabled: Optional[bool] = None
@@ -541,6 +567,23 @@ async def update_settings(data: WhatsAppSettings, current_user: dict = Depends(g
         raise HTTPException(status_code=400, detail="message_template must not exceed 1000 characters")
     if data.manual_reminder_template is not None and len(data.manual_reminder_template) > 1000:
         raise HTTPException(status_code=400, detail="manual_reminder_template must not exceed 1000 characters")
+    if data.templates is not None:
+        cleaned_tpl: dict = {}
+        for k, v in data.templates.items():
+            try:
+                kd = int(k)
+            except Exception:
+                raise HTTPException(status_code=400, detail="templates keys must be integer offset days")
+            if not (0 <= kd <= 60):
+                raise HTTPException(status_code=400, detail="templates keys must be between 0 and 60")
+            if v is None or v == "":
+                continue  # Empty/missing -> falls back to shared template
+            if not isinstance(v, str):
+                raise HTTPException(status_code=400, detail="templates values must be strings")
+            if len(v) > 1000:
+                raise HTTPException(status_code=400, detail="templates entry must not exceed 1000 characters")
+            cleaned_tpl[str(kd)] = v
+        data.templates = cleaned_tpl
     if data.offsets is not None:
         cleaned: list = []
         seen: set = set()
@@ -701,7 +744,9 @@ async def _aggregate_last_renewal_reminders(
     filter_pairs: Optional[List[LastReminderFilterItem]] = None,
 ):
     """Shared aggregation used by both GET and POST variants."""
-    _require_whatsapp_access(current_user)
+    # Renewals page admins (with `renewals` permission) need this badge data
+    # without being granted full WhatsApp settings access.
+    _require_renewals_or_whatsapp_access(current_user)
     if _db is None:
         return []
 
@@ -802,6 +847,29 @@ async def post_last_renewal_reminders(
     return await _aggregate_last_renewal_reminders(current_user, payload.items)
 
 
+@router.get("/renewal-reminders/template")
+async def get_renewal_reminder_template(current_user: dict = Depends(get_current_user)):
+    """Return only the manual reminder template + per-offset overrides.
+
+    Renewals admins (with `renewals` permission) can read the manual template
+    used by the per-card "Remind" buttons without being granted full
+    WhatsApp settings access (which exposes WA tokens). Sensitive auto/push
+    configuration is intentionally NOT included in the response.
+    """
+    _require_renewals_or_whatsapp_access(current_user)
+    settings = await _get_settings()
+    return {
+        "manual_reminder_template": settings.get(
+            "manual_reminder_template",
+            DEFAULT_SETTINGS["manual_reminder_template"],
+        ),
+        "message_template": settings.get(
+            "message_template", DEFAULT_SETTINGS["message_template"]
+        ),
+        "templates": settings.get("templates") or {},
+    }
+
+
 @router.post("/renewal-reminders/send")
 async def send_bulk_renewal_reminders(
     payload: BulkReminderRequest,
@@ -818,7 +886,9 @@ async def send_bulk_renewal_reminders(
     record reminder log entries — used by the per-card "Remind" button which
     opens wa.me directly in the browser to avoid double sends.
     """
-    _require_whatsapp_access(current_user)
+    # Renewals page admins (with `renewals` permission) need to dispatch
+    # reminders without holding full WhatsApp settings access.
+    _require_renewals_or_whatsapp_access(current_user)
     if _db is None:
         raise HTTPException(status_code=503, detail="Database not available")
     if not payload.items:

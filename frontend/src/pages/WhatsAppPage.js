@@ -46,6 +46,7 @@ export default function WhatsAppPage() {
       { days: 0, enabled: true },
     ],
     message_template: 'مرحباً {name}،\nنذكركم بأن اشتراككم في نشاط {activity} سينتهي بعد {days} يوم/أيام.\nيرجى التواصل معنا للتجديد. 🏆',
+    templates: {},
     manual_reminder_template: 'السلام عليكم {name}،\nنود تذكيركم بأن اشتراك ({activity}) في شركة اداء الابطال العالمية للرياضة قارب على الانتهاء بتاريخ {end_date}.\nنرجو التواصل معنا للتجديد.\nشكراً لكم 🏆',
     send_hour: 9,
     push_enabled: true,
@@ -889,58 +890,98 @@ export default function WhatsAppPage() {
                 </div>
                 <p className="text-xs text-muted-foreground">{t('0 = يوم الانتهاء (T-0). كل صف يمكن تفعيله أو إيقافه دون حذفه.', '0 = day of expiry (T-0). Each row can be toggled on/off without deleting it.')}</p>
                 <div className="space-y-2">
-                  {(waSettings.offsets || []).map((o, i) => (
-                    <div key={i} className="flex items-center gap-2 bg-background border rounded-lg px-2 py-1.5">
-                      <input
-                        type="number"
-                        min={0}
-                        max={60}
-                        value={o.days}
-                        onChange={e => {
-                          const v = Math.max(0, Math.min(60, parseInt(e.target.value, 10) || 0));
-                          setWaSettings(s => {
-                            const next = [...(s.offsets || [])];
-                            next[i] = { ...next[i], days: v };
-                            return { ...s, offsets: next };
-                          });
-                        }}
-                        className="w-20 border rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
-                        dir="ltr"
-                      />
-                      <span className="text-xs text-muted-foreground flex-1">
-                        {Number(o.days) === 0
-                          ? t('يوم الانتهاء (T-0)', 'Day of expiry (T-0)')
-                          : t(`قبل ${o.days} يوم`, `${o.days} days before`)}
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setWaSettings(s => {
-                            const next = [...(s.offsets || [])];
-                            next[i] = { ...next[i], enabled: !next[i].enabled };
-                            return { ...s, offsets: next };
-                          });
-                        }}
-                        className={`relative w-9 h-5 rounded-full transition-colors ${o.enabled ? 'bg-green-500' : 'bg-gray-300'}`}
-                        title={o.enabled ? t('مفعّل', 'Enabled') : t('متوقف', 'Disabled')}
-                      >
-                        <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${o.enabled ? (isRTL ? 'right-0.5' : 'translate-x-[18px]') : (isRTL ? 'right-[18px]' : 'translate-x-0.5')}`} />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setWaSettings(s => {
-                            const next = (s.offsets || []).filter((_, j) => j !== i);
-                            return { ...s, offsets: next };
-                          });
-                        }}
-                        className="text-xs text-red-600 hover:bg-red-50 rounded px-2 py-1"
-                        title={t('حذف', 'Remove')}
-                      >
-                        ×
-                      </button>
-                    </div>
-                  ))}
+                  {(waSettings.offsets || []).map((o, i) => {
+                    const dayKey = String(Number(o.days));
+                    const tplMap = waSettings.templates || {};
+                    const overrideValue = tplMap[dayKey] || '';
+                    const hasOverride = overrideValue.length > 0;
+                    return (
+                      <div key={i} className="bg-background border rounded-lg px-2 py-1.5 space-y-1.5">
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="number"
+                            min={0}
+                            max={60}
+                            value={o.days}
+                            onChange={e => {
+                              const v = Math.max(0, Math.min(60, parseInt(e.target.value, 10) || 0));
+                              setWaSettings(s => {
+                                const next = [...(s.offsets || [])];
+                                next[i] = { ...next[i], days: v };
+                                return { ...s, offsets: next };
+                              });
+                            }}
+                            className="w-20 border rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+                            dir="ltr"
+                          />
+                          <span className="text-xs text-muted-foreground flex-1">
+                            {Number(o.days) === 0
+                              ? t('يوم الانتهاء (T-0)', 'Day of expiry (T-0)')
+                              : t(`قبل ${o.days} يوم`, `${o.days} days before`)}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setWaSettings(s => {
+                                const next = [...(s.offsets || [])];
+                                next[i] = { ...next[i], enabled: !next[i].enabled };
+                                return { ...s, offsets: next };
+                              });
+                            }}
+                            className={`relative w-9 h-5 rounded-full transition-colors ${o.enabled ? 'bg-green-500' : 'bg-gray-300'}`}
+                            title={o.enabled ? t('مفعّل', 'Enabled') : t('متوقف', 'Disabled')}
+                          >
+                            <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${o.enabled ? (isRTL ? 'right-0.5' : 'translate-x-[18px]') : (isRTL ? 'right-[18px]' : 'translate-x-0.5')}`} />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setWaSettings(s => {
+                                const next = (s.offsets || []).filter((_, j) => j !== i);
+                                // Also drop the matching override entry, if any.
+                                const nextTpl = { ...(s.templates || {}) };
+                                delete nextTpl[String(Number(o.days))];
+                                return { ...s, offsets: next, templates: nextTpl };
+                              });
+                            }}
+                            className="text-xs text-red-600 hover:bg-red-50 rounded px-2 py-1"
+                            title={t('حذف', 'Remove')}
+                          >
+                            ×
+                          </button>
+                        </div>
+                        <details className="text-xs" open={hasOverride}>
+                          <summary className="cursor-pointer text-muted-foreground hover:text-foreground select-none">
+                            {hasOverride
+                              ? t('قالب مخصص لهذا الموعد ✓', 'Custom template for this offset ✓')
+                              : t('استخدام قالب مخصص لهذا الموعد', 'Use a custom template for this offset')}
+                          </summary>
+                          <div className="mt-1.5 space-y-1">
+                            <textarea
+                              value={overrideValue}
+                              onChange={e => {
+                                const v = e.target.value;
+                                setWaSettings(s => {
+                                  const nextTpl = { ...(s.templates || {}) };
+                                  if (v === '') delete nextTpl[dayKey];
+                                  else nextTpl[dayKey] = v;
+                                  return { ...s, templates: nextTpl };
+                                });
+                              }}
+                              rows={3}
+                              maxLength={1000}
+                              placeholder={t('فارغ = استخدام القالب المشترك أدناه', 'Empty = falls back to the shared template below')}
+                              className="w-full border rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-primary bg-background"
+                              dir="auto"
+                            />
+                            <p className="text-[10px] text-muted-foreground">
+                              {t('المتغيرات المتاحة: {name} {activity} {days} {end_date} {fee}', 'Available variables: {name} {activity} {days} {end_date} {fee}')}
+                            </p>
+                          </div>
+                        </details>
+                      </div>
+                    );
+                  })}
                   {(!waSettings.offsets || waSettings.offsets.length === 0) && (
                     <p className="text-xs text-muted-foreground italic">{t('لا توجد مواعيد. أضف عرضاً واحداً على الأقل.', 'No offsets configured. Add at least one.')}</p>
                   )}

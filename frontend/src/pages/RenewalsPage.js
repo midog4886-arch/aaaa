@@ -69,12 +69,13 @@ const RenewalsPage = () => {
   }, [days, selectedBranchId]);
 
   useEffect(() => {
-    // One-time settings load (template). Last-reminder map is reloaded
-    // whenever the visible expiring/expired list changes — see effect below.
+    // One-time template load. Uses the renewals-scoped endpoint so users
+    // with `renewals` permission (but no `whatsapp` permission) can still
+    // load the manual reminder template without a 403.
     (async () => {
       try {
-        const settingsRes = await whatsappAPI.getSettings().catch(() => ({ data: {} }));
-        const tpl = settingsRes.data?.manual_reminder_template;
+        const res = await whatsappAPI.getReminderTemplate().catch(() => ({ data: {} }));
+        const tpl = res.data?.manual_reminder_template;
         if (tpl) setWaTemplate(tpl);
       } catch (e) {
         // Non-fatal
