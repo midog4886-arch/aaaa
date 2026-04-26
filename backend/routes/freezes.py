@@ -5,8 +5,52 @@ import uuid
 from datetime import datetime, timezone, timedelta
 
 from .common import db, get_current_user
+from .attendance import parse_schedule_days
 
 router = APIRouter(prefix="/freezes", tags=["freezes"])
+
+
+WEEKDAY_INDEX = {
+    "monday": 0, "tuesday": 1, "wednesday": 2, "thursday": 3,
+    "friday": 4, "saturday": 5, "sunday": 6,
+}
+
+
+def count_training_days_in_range(schedule_text: str, start_date: str, end_date: str) -> int:
+    """Count how many calendar days between start_date and end_date (inclusive)
+    fall on the weekdays defined in `schedule_text`. Returns 0 when the schedule
+    cannot be parsed (caller decides on a fallback)."""
+    try:
+        start_dt = datetime.strptime(start_date, "%Y-%m-%d")
+        end_dt = datetime.strptime(end_date, "%Y-%m-%d")
+    except ValueError:
+        return 0
+    if end_dt < start_dt:
+        return 0
+    days = parse_schedule_days(schedule_text or "")
+    if not days:
+        return 0
+    target_indices = {WEEKDAY_INDEX[d] for d in days if d in WEEKDAY_INDEX}
+    if not target_indices:
+        return 0
+    count = 0
+    cursor = start_dt
+    while cursor <= end_dt:
+        if cursor.weekday() in target_indices:
+            count += 1
+        cursor += timedelta(days=1)
+    return count
+
+
+def compute_activity_extension(activity: dict, start_date: str, end_date: str, fallback_days: int) -> int:
+    """Decide how many days to add to a single activity's end_date for a freeze
+    spanning [start_date, end_date]. Uses the activity's weekly schedule when
+    available; otherwise falls back to calendar days so the subscription is
+    never silently shortened."""
+    schedule_text = activity.get("schedule", "") if isinstance(activity, dict) else ""
+    if schedule_text and parse_schedule_days(schedule_text):
+        return count_training_days_in_range(schedule_text, start_date, end_date)
+    return fallback_days
 
 
 class FreezeCreate(BaseModel):
@@ -62,15 +106,28 @@ async def create_freeze(freeze: FreezeCreate, current_user: dict = Depends(get_c
         )
 
     activities = member.get("activities", [])
+    # Per-activity extension records keyed by position so duplicate activity_ids
+    # don't get their days collapsed together.
+    extension_records = []
     for i, act in enumerate(activities):
         act_end = act.get("end_date", "")
-        if act_end:
-            try:
-                act_end_dt = datetime.strptime(act_end, "%Y-%m-%d")
-                new_end_dt = act_end_dt + timedelta(days=duration_days)
-                activities[i]["end_date"] = new_end_dt.strftime("%Y-%m-%d")
-            except ValueError:
-                pass
+        if not act_end:
+            continue
+        try:
+            act_end_dt = datetime.strptime(act_end, "%Y-%m-%d")
+        except ValueError:
+            continue
+        ext_days = compute_activity_extension(act, freeze.start_date, freeze.end_date, duration_days)
+        if ext_days <= 0:
+            continue
+        new_end_dt = act_end_dt + timedelta(days=ext_days)
+        activities[i]["end_date"] = new_end_dt.strftime("%Y-%m-%d")
+        extension_records.append({
+            "index": i,
+            "activity_id": act.get("activity_id") or act.get("id") or "",
+            "schedule": act.get("schedule", ""),
+            "days": ext_days,
+        })
 
     await db.members.update_one(
         {"id": freeze.member_id},
@@ -79,6 +136,7 @@ async def create_freeze(freeze: FreezeCreate, current_user: dict = Depends(get_c
 
     freeze_id = str(uuid.uuid4())
     now = datetime.now(timezone.utc).isoformat()
+    total_extension = sum(r["days"] for r in extension_records)
     freeze_doc = {
         "id": freeze_id,
         "member_id": freeze.member_id,
@@ -86,6 +144,9 @@ async def create_freeze(freeze: FreezeCreate, current_user: dict = Depends(get_c
         "end_date": freeze.end_date,
         "reason": freeze.reason,
         "duration_days": duration_days,
+        "extension_records": extension_records,
+        "total_extension_days": total_extension,
+        "calculation_mode": "training_days",
         "status": "active",
         "created_by": current_user.get("username", current_user.get("name", "")),
         "created_at": now
@@ -99,15 +160,30 @@ async def create_freeze(freeze: FreezeCreate, current_user: dict = Depends(get_c
         "member_id": freeze.member_id,
         "type": "freeze",
         "title_ar": "تجميد العضوية",
-        "message_ar": f"تم تجميد عضويتك من {freeze.start_date} إلى {freeze.end_date} ({duration_days} يوم)",
+        "message_ar": f"تم تجميد عضويتك من {freeze.start_date} إلى {freeze.end_date} ({duration_days} يوم) — تم تمديد الاشتراك بـ {total_extension} يوم تدريب",
         "title_en": "Membership Frozen",
-        "message_en": f"Your membership has been frozen from {freeze.start_date} to {freeze.end_date} ({duration_days} days)",
+        "message_en": f"Your membership has been frozen from {freeze.start_date} to {freeze.end_date} ({duration_days} days) — subscription extended by {total_extension} training day(s)",
         "read": False,
         "created_at": now
     }
     await db.member_notifications.insert_one(notification)
 
     return {k: v for k, v in freeze_doc.items() if k != "_id"}
+
+
+def _legacy_restore_days(freeze_doc: dict, today_str: str) -> int:
+    """Backwards-compat: pre-existing freezes without per-activity extensions
+    still use the original calendar-day restore behavior."""
+    if today_str < freeze_doc["start_date"]:
+        return freeze_doc.get("duration_days", 0)
+    if today_str <= freeze_doc["end_date"]:
+        try:
+            end_dt = datetime.strptime(freeze_doc["end_date"], "%Y-%m-%d")
+            today_dt = datetime.strptime(today_str, "%Y-%m-%d")
+            return (end_dt - today_dt).days + 1
+        except ValueError:
+            return 0
+    return freeze_doc.get("duration_days", 0)
 
 
 @router.post("/{freeze_id}/cancel")
@@ -124,25 +200,96 @@ async def cancel_freeze(freeze_id: str, current_user: dict = Depends(get_current
     today_str = now.strftime("%Y-%m-%d")
 
     try:
-        end_dt = datetime.strptime(freeze_doc["end_date"], "%Y-%m-%d")
-        start_dt = datetime.strptime(freeze_doc["start_date"], "%Y-%m-%d")
+        datetime.strptime(freeze_doc["end_date"], "%Y-%m-%d")
+        datetime.strptime(freeze_doc["start_date"], "%Y-%m-%d")
     except ValueError:
         raise HTTPException(status_code=500, detail="Invalid freeze dates")
 
-    if today_str < freeze_doc["start_date"]:
-        # Freeze hasn't started yet — restore full duration
-        restore_days = freeze_doc["duration_days"]
-    elif today_str <= freeze_doc["end_date"]:
-        # Freeze is currently active — restore remaining days only
-        today_dt = datetime.strptime(today_str, "%Y-%m-%d")
-        restore_days = (end_dt - today_dt).days + 1
-    else:
-        # Freeze already ended — still restore full duration (undo original extension)
-        restore_days = freeze_doc["duration_days"]
+    member = await db.members.find_one({"id": freeze_doc["member_id"]}, {"_id": 0})
+    extension_records = freeze_doc.get("extension_records")
+    use_training_mode = (
+        isinstance(extension_records, list)
+        and freeze_doc.get("calculation_mode") == "training_days"
+    )
 
-    if restore_days > 0:
-        member = await db.members.find_one({"id": freeze_doc["member_id"]}, {"_id": 0})
-        if member:
+    if member and use_training_mode:
+        # New behavior: per-activity training-day restore. Each record was saved
+        # at create time with its position and (optional) activity_id, so we can
+        # restore precisely even if duplicate activities exist.
+        activities = member.get("activities", [])
+        before_start = today_str < freeze_doc["start_date"]
+        ongoing = freeze_doc["start_date"] <= today_str <= freeze_doc["end_date"]
+        used_indices = set()
+        for rec in extension_records:
+            applied = int(rec.get("days", 0) or 0)
+            if applied <= 0:
+                continue
+            target_idx = None
+            preferred_idx = rec.get("index")
+            rec_aid = rec.get("activity_id") or ""
+            # Prefer the original position if it still points at the same activity.
+            if (
+                isinstance(preferred_idx, int)
+                and 0 <= preferred_idx < len(activities)
+                and preferred_idx not in used_indices
+                and (not rec_aid or (
+                    activities[preferred_idx].get("activity_id")
+                    or activities[preferred_idx].get("id")
+                    or ""
+                ) == rec_aid)
+            ):
+                target_idx = preferred_idx
+            # Fall back to the first unused activity matching activity_id.
+            if target_idx is None and rec_aid:
+                for j, a in enumerate(activities):
+                    if j in used_indices:
+                        continue
+                    if (a.get("activity_id") or a.get("id") or "") == rec_aid:
+                        target_idx = j
+                        break
+            if target_idx is None:
+                continue
+            used_indices.add(target_idx)
+            act = activities[target_idx]
+            if before_start:
+                restore = applied
+            elif ongoing:
+                # Use the schedule we recorded at create time; if absent, fall
+                # back to the activity's current schedule.
+                schedule_for_calc = rec.get("schedule") or act.get("schedule", "")
+                restore = count_training_days_in_range(
+                    schedule_for_calc, today_str, freeze_doc["end_date"]
+                )
+                if restore <= 0 and not parse_schedule_days(schedule_for_calc or ""):
+                    # No usable schedule — fall back to the calendar-day remainder.
+                    try:
+                        end_dt = datetime.strptime(freeze_doc["end_date"], "%Y-%m-%d")
+                        today_dt = datetime.strptime(today_str, "%Y-%m-%d")
+                        restore = (end_dt - today_dt).days + 1
+                    except ValueError:
+                        restore = 0
+                restore = min(max(restore, 0), applied)
+            else:
+                restore = applied
+            if restore <= 0:
+                continue
+            act_end = act.get("end_date", "")
+            if not act_end:
+                continue
+            try:
+                act_end_dt = datetime.strptime(act_end, "%Y-%m-%d")
+            except ValueError:
+                continue
+            new_end_dt = act_end_dt - timedelta(days=restore)
+            activities[target_idx]["end_date"] = new_end_dt.strftime("%Y-%m-%d")
+        await db.members.update_one(
+            {"id": freeze_doc["member_id"]},
+            {"$set": {"activities": activities}}
+        )
+    elif member:
+        # Legacy calendar-day behavior for old freezes.
+        restore_days = _legacy_restore_days(freeze_doc, today_str)
+        if restore_days > 0:
             activities = member.get("activities", [])
             for i, act in enumerate(activities):
                 act_end = act.get("end_date", "")
