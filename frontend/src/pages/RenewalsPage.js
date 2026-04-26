@@ -569,20 +569,6 @@ const RenewalsPage = () => {
     }
   };
 
-  const handleRemind = async () => {
-    try {
-      const res = await notificationsAPI.checkRenewals();
-      if (res.data?.count > 0) {
-        toast.success(language === 'ar' ? `تم إرسال ${res.data.count} تذكير` : `${res.data.count} reminders sent`);
-      } else {
-        toast.info(language === 'ar' ? 'لا توجد اشتراكات تحتاج تذكير' : 'No subscriptions need reminders');
-      }
-    } catch (error) {
-      console.error('Failed to send reminders:', error);
-      toast.error(language === 'ar' ? 'حدث خطأ' : 'An error occurred');
-    }
-  };
-
   const currentList = activeTab === 'expiring' ? filterItems(expiringList) : activeTab === 'expired' ? filterItems(expiredList) : [];
 
   // Per-card renderer (shared between grouped-by-branch and flat layouts)
