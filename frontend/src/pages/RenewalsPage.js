@@ -69,33 +69,46 @@ const RenewalsPage = () => {
   }, [days, selectedBranchId]);
 
   useEffect(() => {
-    // Load last-reminder log + WhatsApp settings once
+    // One-time settings load (template). Last-reminder map is reloaded
+    // whenever the visible expiring/expired list changes — see effect below.
     (async () => {
       try {
-        const [remRes, settingsRes] = await Promise.all([
-          whatsappAPI.getLastReminders().catch(() => ({ data: [] })),
-          whatsappAPI.getSettings().catch(() => ({ data: {} })),
-        ]);
-        const map = {};
-        (remRes.data || []).forEach(r => {
-          if (!r.member_id) return;
-          const key = `${r.member_id}|${r.activity_name || ''}`;
-          map[key] = { last_sent: r.last_sent, channels: r.channels || [], manual: r.manual };
-        });
-        setLastReminders(map);
+        const settingsRes = await whatsappAPI.getSettings().catch(() => ({ data: {} }));
         const tpl = settingsRes.data?.manual_reminder_template;
         if (tpl) setWaTemplate(tpl);
       } catch (e) {
-        // Non-fatal; renewals still works
+        // Non-fatal
       }
     })();
   }, []);
 
-  const reloadLastReminders = async () => {
+  const reloadLastReminders = async (visibleItems) => {
     try {
-      const res = await whatsappAPI.getLastReminders();
+      // Prefer the filtered POST endpoint so the server only aggregates the
+      // (member, activity) pairs currently shown on the Renewals page.
+      // Falls back to the legacy GET if filtered fetch fails.
+      let data = [];
+      const list = Array.isArray(visibleItems) ? visibleItems : null;
+      if (list && list.length) {
+        const pairs = list.map(it => ({
+          member_id: it.member_id,
+          activity_name: it.activity_name || '',
+        }));
+        try {
+          const res = await whatsappAPI.getLastRemindersFiltered(pairs);
+          data = res.data || [];
+        } catch {
+          const res = await whatsappAPI.getLastReminders();
+          data = res.data || [];
+        }
+      } else if (list && list.length === 0) {
+        data = [];
+      } else {
+        const res = await whatsappAPI.getLastReminders();
+        data = res.data || [];
+      }
       const map = {};
-      (res.data || []).forEach(r => {
+      data.forEach(r => {
         if (!r.member_id) return;
         const key = `${r.member_id}|${r.activity_name || ''}`;
         map[key] = { last_sent: r.last_sent, channels: r.channels || [], manual: r.manual };
@@ -123,6 +136,8 @@ const RenewalsPage = () => {
 
       setExpiringList(expiring);
       setExpiredList(expired);
+      // Reload last-reminder badges only for the currently visible cards.
+      reloadLastReminders([...expiring, ...expired]);
     } catch (error) {
       console.error('Failed to load renewals data:', error);
       toast.error(language === 'ar' ? 'حدث خطأ في تحميل البيانات' : 'Failed to load data');
@@ -312,7 +327,7 @@ const RenewalsPage = () => {
         days_remaining: item.days_remaining,
         fee: item.fee ?? null,
       }], { logOnly: true });
-      reloadLastReminders();
+      reloadLastReminders([...expiringList, ...expiredList]);
     } catch (e) {
       // Already opened the chat; silent on log failure
     }
@@ -363,7 +378,7 @@ const RenewalsPage = () => {
         if (opened) toast.success(language === 'ar' ? `تم فتح ${opened} محادثة واتساب` : `Opened ${opened} WhatsApp chats`);
       }
       clearSelection();
-      await reloadLastReminders();
+      await reloadLastReminders([...expiringList, ...expiredList]);
     } catch (e) {
       console.error('Bulk reminder failed', e);
       toast.error(language === 'ar' ? 'فشل إرسال التذكيرات' : 'Failed to send reminders');
@@ -641,14 +656,20 @@ const RenewalsPage = () => {
               <Bell className="w-3 h-3" />
               {lastInfo
                 ? (
-                  <span>
+                  <span
+                    title={
+                      lastInfo.channels.length > 0
+                        ? (language === 'ar'
+                            ? `القنوات: ${lastInfo.channels.join('، ')}`
+                            : `Channels: ${lastInfo.channels.join(', ')}`)
+                        : (language === 'ar' ? 'لا توجد قنوات مسجلة' : 'No channel info')
+                    }
+                    className="cursor-help"
+                  >
                     {language === 'ar' ? 'آخر تذكير: ' : 'Last reminder: '}
                     {lastInfo.diff === 0
                       ? (language === 'ar' ? 'اليوم' : 'today')
                       : (language === 'ar' ? `قبل ${lastInfo.diff} يوم` : `${lastInfo.diff}d ago`)}
-                    {lastInfo.channels.length > 0 && (
-                      <span className="ms-1 opacity-70">({lastInfo.channels.join(', ')})</span>
-                    )}
                   </span>
                 )
                 : (

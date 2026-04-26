@@ -229,11 +229,25 @@ async def _record_renewal_reminder(
     days_before: Optional[int],
     manual: bool,
     success: bool,
+    sent_by: Optional[dict] = None,
 ):
-    """Insert an audit row into renewal_reminder_log for last-reminder tracking."""
+    """Insert an audit row into renewal_reminder_log for last-reminder tracking.
+
+    `sent_by` is the actor that triggered the reminder (admin user dict for
+    manual sends, or None/{"system": True} for the daily scheduler).
+    """
     if _db is None or not member_id:
         return
     try:
+        actor = None
+        if sent_by:
+            actor = {
+                "id": sent_by.get("id") or sent_by.get("_id"),
+                "username": sent_by.get("username"),
+                "name": sent_by.get("name") or sent_by.get("full_name"),
+            }
+        elif not manual:
+            actor = {"system": True}
         await _db["renewal_reminder_log"].insert_one({
             "member_id": member_id,
             "activity_name": activity_name or "",
@@ -241,6 +255,7 @@ async def _record_renewal_reminder(
             "days_before": days_before,
             "manual": bool(manual),
             "success": bool(success),
+            "sent_by": actor,
             "timestamp": datetime.now(RIYADH_TZ).isoformat(),
         })
     except Exception as e:
@@ -668,18 +683,24 @@ class BulkReminderItem(BaseModel):
     fee: Optional[float] = None
 
 
+class LastReminderFilterItem(BaseModel):
+    member_id: str
+    activity_name: Optional[str] = ""
+
+
+class LastReminderFilterRequest(BaseModel):
+    items: List[LastReminderFilterItem] = []
+
+
 class BulkReminderRequest(BaseModel):
     items: List[BulkReminderItem]
 
 
-@router.get("/renewal-reminders/last")
-async def get_last_renewal_reminders(current_user: dict = Depends(get_current_user)):
-    """Return the most-recent reminder timestamp per (member_id, activity_name).
-
-    Aggregates renewal_reminder_log into a flat list so the Renewals page can
-    show "آخر تذكير: قبل X يوم" badges on each card. Non-admin users are
-    restricted to reminders for members in their own branch.
-    """
+async def _aggregate_last_renewal_reminders(
+    current_user: dict,
+    filter_pairs: Optional[List[LastReminderFilterItem]] = None,
+):
+    """Shared aggregation used by both GET and POST variants."""
     _require_whatsapp_access(current_user)
     if _db is None:
         return []
@@ -704,7 +725,29 @@ async def get_last_renewal_reminders(current_user: dict = Depends(get_current_us
         if allowed_member_ids is not None:
             if not allowed_member_ids:
                 return []
-            match_stage = {"member_id": {"$in": list(allowed_member_ids)}}
+            match_stage["member_id"] = {"$in": list(allowed_member_ids)}
+
+        # Optional explicit pair filter — narrows the aggregation to just the
+        # cards visible on the Renewals page (cheaper than the global scan).
+        if filter_pairs:
+            pair_or = []
+            requested_member_ids = set()
+            for it in filter_pairs:
+                if not it.member_id:
+                    continue
+                # Re-enforce branch scoping per-pair when applicable.
+                if allowed_member_ids is not None and it.member_id not in allowed_member_ids:
+                    continue
+                requested_member_ids.add(it.member_id)
+                pair_or.append({
+                    "member_id": it.member_id,
+                    "activity_name": it.activity_name or "",
+                })
+            if not pair_or:
+                return []
+            # Use $or on full pairs so we only fetch rows we'll actually return.
+            match_stage = {"$and": [match_stage, {"$or": pair_or}]} if match_stage else {"$or": pair_or}
+
         pipeline = []
         if match_stage:
             pipeline.append({"$match": match_stage})
@@ -717,6 +760,7 @@ async def get_last_renewal_reminders(current_user: dict = Depends(get_current_us
                     "channels": {"$addToSet": "$channel"},
                     "manual": {"$first": "$manual"},
                     "days_before": {"$first": "$days_before"},
+                    "sent_by": {"$first": "$sent_by"},
                 }
             },
             {"$limit": 5000},
@@ -731,11 +775,31 @@ async def get_last_renewal_reminders(current_user: dict = Depends(get_current_us
                 "channels": row.get("channels", []),
                 "manual": row.get("manual"),
                 "days_before": row.get("days_before"),
+                "sent_by": row.get("sent_by"),
             })
         return results
     except Exception as e:
         logger.error(f"Failed to aggregate renewal reminder log: {e}")
         return []
+
+
+@router.get("/renewal-reminders/last")
+async def get_last_renewal_reminders(current_user: dict = Depends(get_current_user)):
+    """Return the most-recent reminder timestamp per (member_id, activity_name)."""
+    return await _aggregate_last_renewal_reminders(current_user)
+
+
+@router.post("/renewal-reminders/last")
+async def post_last_renewal_reminders(
+    payload: LastReminderFilterRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    """Filtered variant — returns only the (member_id, activity_name) pairs sent.
+
+    Lets the Renewals page request just the badges it actually needs to render,
+    avoiding a global scan of renewal_reminder_log on large deployments.
+    """
+    return await _aggregate_last_renewal_reminders(current_user, payload.items)
 
 
 @router.post("/renewal-reminders/send")
@@ -874,6 +938,7 @@ async def send_bulk_renewal_reminders(
                         days_before=days_calc,
                         manual=True,
                         success=ok,
+                        sent_by=current_user,
                     )
                 if ok:
                     wa_sent += 1
@@ -890,6 +955,7 @@ async def send_bulk_renewal_reminders(
                     days_before=days_calc,
                     manual=True,
                     success=True,
+                    sent_by=current_user,
                 )
 
         # ── Push ──
@@ -928,6 +994,7 @@ async def send_bulk_renewal_reminders(
                             days_before=days_calc,
                             manual=True,
                             success=any_ok,
+                            sent_by=current_user,
                         )
             except Exception as e:
                 logger.error(f"Manual push reminder error for {name}: {e}")
@@ -960,6 +1027,7 @@ async def send_bulk_renewal_reminders(
                         days_before=days_calc,
                         manual=True,
                         success=True,
+                        sent_by=current_user,
                     )
             except Exception as e:
                 logger.error(f"Manual portal reminder error for {name}: {e}")

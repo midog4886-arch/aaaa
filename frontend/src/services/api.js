@@ -544,6 +544,8 @@ export const whatsappAPI = {
   getLogs: (limit = 50) => axios.get(`${API}/whatsapp/logs?limit=${limit}`),
   getTargetCount: () => axios.get(`${API}/whatsapp/target-count`),
   getLastReminders: () => axios.get(`${API}/whatsapp/renewal-reminders/last`),
+  getLastRemindersFiltered: (items) =>
+    axios.post(`${API}/whatsapp/renewal-reminders/last`, { items: items || [] }),
   sendBulkReminders: (items, options = {}) => {
     const params = options.logOnly ? '?log_only=true' : '';
     return axios.post(`${API}/whatsapp/renewal-reminders/send${params}`, { items });
