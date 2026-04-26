@@ -8,7 +8,7 @@ import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Badge } from '../components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
-import { whatsappAPI } from '../services/api';
+import { whatsappAPI, branchesAPI } from '../services/api';
 import { toast } from 'sonner';
 import {
   History,
@@ -26,7 +26,7 @@ const PAGE_SIZE = 100;
 
 const RenewalsHistoryPage = () => {
   const { language } = useLanguage();
-  const { token } = useAuth();
+  const { token, isAdmin } = useAuth();
 
   const [loading, setLoading] = useState(true);
   const [rows, setRows] = useState([]);
@@ -37,6 +37,8 @@ const RenewalsHistoryPage = () => {
   const [activityFilter, setActivityFilter] = useState('');
   const [channelFilter, setChannelFilter] = useState('all');
   const [manualFilter, setManualFilter] = useState('all');
+  const [branchFilter, setBranchFilter] = useState('all');
+  const [branches, setBranches] = useState([]);
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [exporting, setExporting] = useState(false);
@@ -48,10 +50,11 @@ const RenewalsHistoryPage = () => {
     if (channelFilter !== 'all') filters.channel = channelFilter;
     if (manualFilter === 'manual') filters.manual = 'true';
     if (manualFilter === 'auto') filters.manual = 'false';
+    if (isAdmin && branchFilter && branchFilter !== 'all') filters.branch_id = branchFilter;
     if (startDate) filters.start_date = startDate;
     if (endDate) filters.end_date = endDate;
     return filters;
-  }, [memberFilter, activityFilter, channelFilter, manualFilter, startDate, endDate]);
+  }, [memberFilter, activityFilter, channelFilter, manualFilter, branchFilter, isAdmin, startDate, endDate]);
 
   const loadData = useCallback(async (newOffset = 0) => {
     setLoading(true);
@@ -73,6 +76,11 @@ const RenewalsHistoryPage = () => {
 
   useEffect(() => {
     loadData(0);
+    if (isAdmin) {
+      branchesAPI.getAll()
+        .then(r => setBranches(Array.isArray(r.data) ? r.data : (r.data?.branches || [])))
+        .catch(() => setBranches([]));
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -137,7 +145,8 @@ const RenewalsHistoryPage = () => {
   const channelLabel = (ch) => {
     if (ch === 'whatsapp') return language === 'ar' ? 'واتساب' : 'WhatsApp';
     if (ch === 'push') return language === 'ar' ? 'إشعار' : 'Push';
-    if (ch === 'sms') return 'SMS';
+    if (ch === 'portal') return language === 'ar' ? 'البوابة' : 'Portal';
+    if (ch === 'intent') return language === 'ar' ? 'محاولة' : 'Intent';
     return ch || '—';
   };
 
@@ -193,7 +202,8 @@ const RenewalsHistoryPage = () => {
                   <SelectItem value="all">{language === 'ar' ? 'كل القنوات' : 'All channels'}</SelectItem>
                   <SelectItem value="whatsapp">{language === 'ar' ? 'واتساب' : 'WhatsApp'}</SelectItem>
                   <SelectItem value="push">{language === 'ar' ? 'إشعار' : 'Push'}</SelectItem>
-                  <SelectItem value="sms">SMS</SelectItem>
+                  <SelectItem value="portal">{language === 'ar' ? 'البوابة' : 'Portal'}</SelectItem>
+                  <SelectItem value="intent">{language === 'ar' ? 'محاولة' : 'Intent'}</SelectItem>
                 </SelectContent>
               </Select>
               <Select value={manualFilter} onValueChange={setManualFilter}>
@@ -206,6 +216,21 @@ const RenewalsHistoryPage = () => {
                   <SelectItem value="auto">{language === 'ar' ? 'تلقائي' : 'Automatic'}</SelectItem>
                 </SelectContent>
               </Select>
+              {isAdmin && (
+                <Select value={branchFilter} onValueChange={setBranchFilter}>
+                  <SelectTrigger>
+                    <SelectValue placeholder={language === 'ar' ? 'الفرع' : 'Branch'} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">{language === 'ar' ? 'كل الفروع' : 'All branches'}</SelectItem>
+                    {branches.map(b => (
+                      <SelectItem key={b.id} value={b.id}>
+                        {(language === 'ar' && (b.name_ar || b.nameAr)) || b.name || b.id}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
               <div className="flex flex-col">
                 <label className="text-xs text-muted-foreground mb-1">
                   {language === 'ar' ? 'من تاريخ' : 'From date'}
