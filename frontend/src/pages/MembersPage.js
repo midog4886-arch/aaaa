@@ -47,7 +47,8 @@ import {
   Trophy,
   CheckCircle,
   XCircle,
-  Circle
+  Circle,
+  Bell
 } from 'lucide-react';
 
 export const MembersPage = () => {
