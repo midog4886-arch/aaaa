@@ -210,11 +210,14 @@ const RenewalsPage = () => {
     return Object.entries(counts).map(([name, count]) => `${name}: ${count}`).join('، ');
   };
 
+  // Urgency thresholds (spec): 0=red, 1–3=orange, 4–7=yellow, 8+=neutral.
+  // Already-expired keeps the existing red treatment.
   const getCardBorderColor = (daysRemaining) => {
     if (daysRemaining < 0) return 'border-s-red-500 bg-red-50/30';
-    if (daysRemaining <= 1) return 'border-s-red-500 bg-red-50/20';
-    if (daysRemaining <= 3) return 'border-s-orange-500 bg-orange-50/20';
-    return 'border-s-yellow-500';
+    if (daysRemaining === 0) return 'border-s-red-500 bg-red-50/20';
+    if (daysRemaining >= 1 && daysRemaining <= 3) return 'border-s-orange-500 bg-orange-50/20';
+    if (daysRemaining >= 4 && daysRemaining <= 7) return 'border-s-yellow-500';
+    return 'border-s-gray-300';
   };
 
   // ── Selection helpers ──
@@ -243,23 +246,41 @@ const RenewalsPage = () => {
   const buildReminderText = (item) => {
     const endRaw = item.end_date || '';
     const endFmt = endRaw.replace(/-/g, '/');
+    const feeNum = Number(item.fee ?? 0) || 0;
+    const feeStr = Number.isInteger(feeNum) ? String(feeNum) : feeNum.toFixed(2);
     return (waTemplate || '')
       .replace(/\{name\}/g, item.member_name || '')
       .replace(/\{activity\}/g, item.activity_name || '')
       .replace(/\{days\}/g, String(item.days_remaining ?? 0))
-      .replace(/\{end_date\}/g, endFmt);
+      .replace(/\{end_date\}/g, endFmt)
+      .replace(/\{fee\}/g, feeStr);
   };
 
-  // Likelihood-of-renewal badge based on last attendance recency
-  const getLikelihood = (item) => {
+  // Format the last-attendance date for the likelihood tooltip ("YYYY-MM-DD"
+  // or the localized "never attended" string).
+  const formatAttendanceDate = (item) => {
     const last = item.last_attendance_date;
-    if (!last) return { label: language === 'ar' ? 'منخفض' : 'Low', cls: 'bg-red-100 text-red-700 border-red-300', dot: '🔴' };
+    if (!last) return language === 'ar' ? 'لم يحضر مطلقاً' : 'Never attended';
+    const d = new Date(last);
+    if (isNaN(d.getTime())) return language === 'ar' ? 'لم يحضر مطلقاً' : 'Never attended';
+    return d.toISOString().slice(0, 10);
+  };
+
+  // Likelihood-of-renewal badge based on last attendance recency.
+  // Tooltip text includes the actual last-attendance date (or "never attended").
+  const getLikelihood = (item) => {
+    const dateLabel = formatAttendanceDate(item);
+    const tooltip = language === 'ar'
+      ? `آخر حضور: ${dateLabel}`
+      : `Last attendance: ${dateLabel}`;
+    const last = item.last_attendance_date;
+    if (!last) return { label: language === 'ar' ? 'منخفض' : 'Low', cls: 'bg-red-100 text-red-700 border-red-300', dot: '🔴', tooltip };
     const lastD = new Date(last);
-    if (isNaN(lastD.getTime())) return { label: language === 'ar' ? 'منخفض' : 'Low', cls: 'bg-red-100 text-red-700 border-red-300', dot: '🔴' };
+    if (isNaN(lastD.getTime())) return { label: language === 'ar' ? 'منخفض' : 'Low', cls: 'bg-red-100 text-red-700 border-red-300', dot: '🔴', tooltip };
     const diffDays = Math.floor((Date.now() - lastD.getTime()) / (1000 * 60 * 60 * 24));
-    if (diffDays <= 7) return { label: language === 'ar' ? 'مرتفع' : 'High', cls: 'bg-green-100 text-green-700 border-green-300', dot: '🟢' };
-    if (diffDays <= 13) return { label: language === 'ar' ? 'متوسط' : 'Medium', cls: 'bg-yellow-100 text-yellow-700 border-yellow-300', dot: '🟡' };
-    return { label: language === 'ar' ? 'منخفض' : 'Low', cls: 'bg-red-100 text-red-700 border-red-300', dot: '🔴' };
+    if (diffDays <= 7) return { label: language === 'ar' ? 'مرتفع' : 'High', cls: 'bg-green-100 text-green-700 border-green-300', dot: '🟢', tooltip };
+    if (diffDays <= 13) return { label: language === 'ar' ? 'متوسط' : 'Medium', cls: 'bg-yellow-100 text-yellow-700 border-yellow-300', dot: '🟡', tooltip };
+    return { label: language === 'ar' ? 'منخفض' : 'Low', cls: 'bg-red-100 text-red-700 border-red-300', dot: '🔴', tooltip };
   };
 
   // "Last reminder: X days ago" — returns null if never sent
@@ -289,6 +310,7 @@ const RenewalsPage = () => {
         activity_name: item.activity_name || '',
         end_date: item.end_date || '',
         days_remaining: item.days_remaining,
+        fee: item.fee ?? null,
       }], { logOnly: true });
       reloadLastReminders();
     } catch (e) {
@@ -313,6 +335,7 @@ const RenewalsPage = () => {
         activity_name: it.activity_name || '',
         end_date: it.end_date || '',
         days_remaining: it.days_remaining,
+        fee: it.fee ?? null,
       }));
       const res = await whatsappAPI.sendBulkReminders(payload);
       const data = res.data || {};
@@ -420,9 +443,6 @@ const RenewalsPage = () => {
     loadData();
   };
 
-  // Backwards-compat: existing button keeps name but routes through bulk-send
-  const handleBulkWhatsApp = () => handleBulkSendReminder();
-
   const openRenewalDialog = (item) => {
     const endDate = new Date(item.end_date);
     const newStartDate = new Date(endDate);
@@ -524,11 +544,14 @@ const RenewalsPage = () => {
     const isSelected = selectedKeys.has(k);
     const likelihood = getLikelihood(item);
     const lastInfo = getLastReminderInfo(item);
-    // Urgency gradient (richer than existing border-only)
-    let gradientCls = 'from-yellow-50 to-transparent';
-    if (item.days_remaining <= 1 || isExpired) gradientCls = 'from-red-100/60 via-red-50/30 to-transparent';
-    else if (item.days_remaining <= 3) gradientCls = 'from-orange-100/60 via-orange-50/30 to-transparent';
-    else if (item.days_remaining <= 7) gradientCls = 'from-yellow-100/60 via-yellow-50/30 to-transparent';
+    // Urgency gradient — spec: 0=red, 1–3=orange, 4–7=yellow, 8+=neutral.
+    // Already-expired keeps the existing red treatment.
+    const dr = item.days_remaining;
+    let gradientCls = '';
+    if (isExpired || dr === 0) gradientCls = 'from-red-100/60 via-red-50/30 to-transparent';
+    else if (dr >= 1 && dr <= 3) gradientCls = 'from-orange-100/60 via-orange-50/30 to-transparent';
+    else if (dr >= 4 && dr <= 7) gradientCls = 'from-yellow-100/60 via-yellow-50/30 to-transparent';
+    else gradientCls = 'from-transparent to-transparent';
     return (
       <Card
         key={idx}
@@ -554,16 +577,28 @@ const RenewalsPage = () => {
               </div>
             </div>
             <div className="flex flex-col items-end gap-1 flex-shrink-0">
-              <Badge className={isExpired ? 'bg-red-100 text-red-700 border-red-300' : item.days_remaining <= 1 ? 'bg-red-100 text-red-700 border-red-300' : item.days_remaining <= 3 ? 'bg-orange-100 text-orange-700 border-orange-300' : 'bg-yellow-100 text-yellow-700 border-yellow-300'}>
+              <Badge
+                className={
+                  isExpired
+                    ? 'bg-red-100 text-red-700 border-red-300'
+                    : item.days_remaining === 0
+                      ? 'bg-red-100 text-red-700 border-red-300'
+                      : item.days_remaining >= 1 && item.days_remaining <= 3
+                        ? 'bg-orange-100 text-orange-700 border-orange-300'
+                        : item.days_remaining >= 4 && item.days_remaining <= 7
+                          ? 'bg-yellow-100 text-yellow-700 border-yellow-300'
+                          : 'bg-gray-100 text-gray-700 border-gray-300'
+                }
+              >
                 {isExpired
                   ? (language === 'ar' ? 'منتهي' : 'Expired')
-                  : item.days_remaining <= 1
+                  : item.days_remaining === 0
                     ? (language === 'ar' ? 'ينتهي اليوم' : 'Expires Today')
                     : (language === 'ar' ? 'ينتهي قريباً' : 'Expiring')}
               </Badge>
               <Badge
                 className={`${likelihood.cls} text-[10px]`}
-                title={language === 'ar' ? 'احتمال التجديد بناءً على آخر حضور' : 'Renewal likelihood based on last attendance'}
+                title={likelihood.tooltip}
               >
                 <Activity className="w-3 h-3 me-1" />
                 {language === 'ar' ? 'احتمال التجديد:' : 'Likelihood:'} {likelihood.label}
@@ -713,14 +748,7 @@ const RenewalsPage = () => {
           <Button onClick={loadData} variant="outline" size="icon">
             <RefreshCcw className="w-4 h-4" />
           </Button>
-          <Button
-            onClick={handleBulkWhatsApp}
-            variant="outline"
-            className="text-green-600 border-green-300 hover:bg-green-50"
-          >
-            <svg className="w-4 h-4 me-1" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
-            {language === 'ar' ? 'تذكير جماعي' : 'Bulk Remind'}
-          </Button>
+          {/* Bulk reminders are now driven by selecting cards — see the sticky bar below. */}
         </div>
 
         <div className="flex gap-2 border-b overflow-x-auto items-end justify-between">
@@ -824,7 +852,7 @@ const RenewalsPage = () => {
               className="bg-green-600 hover:bg-green-700 text-white"
             >
               {bulkActing ? <Loader2 className="w-4 h-4 me-1 animate-spin" /> : <MessageCircle className="w-4 h-4 me-1" />}
-              {language === 'ar' ? 'تذكير المحددين' : 'Remind selected'}
+              {language === 'ar' ? `تذكير المحددين (${selectedKeys.size})` : `Remind selected (${selectedKeys.size})`}
             </Button>
             <Button
               onClick={handleBulkRenew}
@@ -833,7 +861,7 @@ const RenewalsPage = () => {
               className="bg-orange-500 hover:bg-orange-600 text-white"
             >
               {bulkActing ? <Loader2 className="w-4 h-4 me-1 animate-spin" /> : <RefreshCcw className="w-4 h-4 me-1" />}
-              {language === 'ar' ? 'تجديد المحددين' : 'Renew selected'}
+              {language === 'ar' ? `تجديد المحددين (${selectedKeys.size})` : `Renew selected (${selectedKeys.size})`}
             </Button>
           </div>
         </div>

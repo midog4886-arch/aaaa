@@ -29,7 +29,14 @@ DEFAULT_SETTINGS = {
     "days_before": 3,
     "days_before_2": 1,
     "reminder_2_enabled": True,
-    "extra_offsets": [],  # additional days-before offsets, e.g. [7, 14]
+    # Multi-offset list: each item {days: int, enabled: bool}.
+    # Includes T-0 (day of expiry) and longer offsets like T-7.
+    "offsets": [
+        {"days": 7, "enabled": True},
+        {"days": 3, "enabled": True},
+        {"days": 1, "enabled": True},
+        {"days": 0, "enabled": True},
+    ],
     "message_template": "مرحباً {name}،\nنذكركم بأن اشتراككم في نشاط {activity} سينتهي بعد {days} يوم/أيام.\nيرجى التواصل معنا للتجديد. 🏆",
     "manual_reminder_template": "السلام عليكم {name}،\nنود تذكيركم بأن اشتراك ({activity}) في شركة اداء الابطال العالمية للرياضة قارب على الانتهاء بتاريخ {end_date}.\nنرجو التواصل معنا للتجديد.\nشكراً لكم 🏆",
     "send_hour": 9,
@@ -38,6 +45,51 @@ DEFAULT_SETTINGS = {
     "push_title_template": "تنبيه: اشتراكك ينتهي قريباً 🔔",
     "push_body_template": "اشتراكك في {activity} ينتهي خلال {days} أيام ({end_date})",
 }
+
+
+def _normalize_offsets(settings: dict) -> List[dict]:
+    """Return a deduplicated, validated list of {days, enabled} for the scheduler.
+
+    Backwards-compat: if no `offsets` field is set in the stored doc, fall back
+    to the legacy `days_before`/`days_before_2`/`extra_offsets` fields so older
+    deployments keep working.
+    """
+    raw = settings.get("offsets")
+    items: list = []
+    if isinstance(raw, list) and raw:
+        for o in raw:
+            if isinstance(o, dict) and "days" in o:
+                try:
+                    d = int(o["days"])
+                except Exception:
+                    continue
+                if 0 <= d <= 60:
+                    items.append({"days": d, "enabled": bool(o.get("enabled", True))})
+    else:
+        # Legacy fallback
+        try:
+            items.append({"days": int(settings.get("days_before", 3)), "enabled": True})
+        except Exception:
+            pass
+        if settings.get("reminder_2_enabled", True):
+            try:
+                items.append({"days": int(settings.get("days_before_2", 1)), "enabled": True})
+            except Exception:
+                pass
+        for d in settings.get("extra_offsets", []) or []:
+            try:
+                items.append({"days": int(d), "enabled": True})
+            except Exception:
+                continue
+    # Dedupe by days, keep first occurrence
+    seen: set = set()
+    out: list = []
+    for it in items:
+        if it["days"] in seen:
+            continue
+        seen.add(it["days"])
+        out.append(it)
+    return out
 
 _db = None
 _scheduler_started = False
@@ -86,7 +138,14 @@ async def _get_settings() -> dict:
     doc = await coll.find_one({})
     if doc:
         doc.pop("_id", None)
-        return {**DEFAULT_SETTINGS, **doc}
+        # Merge defaults but DO NOT inject the default `offsets` for legacy
+        # docs that never stored that field — otherwise the legacy
+        # days_before/days_before_2/extra_offsets fallback in
+        # `_normalize_offsets` is silently overridden.
+        defaults = DEFAULT_SETTINGS.copy()
+        if "offsets" not in doc:
+            defaults.pop("offsets", None)
+        return {**defaults, **doc}
     return DEFAULT_SETTINGS.copy()
 
 
@@ -122,6 +181,7 @@ async def _get_expiring_members(days_before: int) -> list:
     results = []
     for member in members:
         expiring_activities = []
+        fees = []
         for act in member.get("activities", []):
             if act.get("status") != "active":
                 continue
@@ -129,16 +189,37 @@ async def _get_expiring_members(days_before: int) -> list:
             end_date = str(raw_end)[:10] if raw_end else ""
             if end_date == target_str:
                 expiring_activities.append(act.get("activity_name", ""))
+                fee_val = act.get("fee") or act.get("amount") or 0
+                try:
+                    fees.append(float(fee_val))
+                except Exception:
+                    fees.append(0.0)
         if not expiring_activities:
             continue
+        total_fee = sum(fees) if fees else 0.0
+        # Show as int when no decimals (most fees are whole-number SAR)
+        fee_str = str(int(total_fee)) if total_fee.is_integer() else f"{total_fee:.2f}"
         results.append({
             "member": member,
             "activity_name": "، ".join(filter(None, expiring_activities)),
             "expiring_activities": expiring_activities,
             "end_date_str": target_str,
             "end_date_fmt": target_fmt,
+            "fee_str": fee_str,
         })
     return results
+
+
+def _render_template(template: str, *, name: str, activity: str, days, end_date: str, fee: str = "") -> str:
+    """Interpolate the standard reminder placeholders, including {fee}."""
+    return (
+        (template or "")
+        .replace("{name}", name or "")
+        .replace("{activity}", activity or "")
+        .replace("{days}", str(days) if days is not None else "")
+        .replace("{end_date}", end_date or "")
+        .replace("{fee}", fee or "")
+    )
 
 
 async def _record_renewal_reminder(
@@ -177,11 +258,14 @@ async def _send_wa_for_members(members_data: list, days_before: int, template: s
         name = member.get("name", "")
         activity_name = item["activity_name"]
         end_date_fmt = item["end_date_fmt"]
-        message = (template
-                   .replace("{name}", name)
-                   .replace("{activity}", activity_name)
-                   .replace("{days}", str(days_before))
-                   .replace("{end_date}", end_date_fmt))
+        message = _render_template(
+            template,
+            name=name,
+            activity=activity_name,
+            days=days_before,
+            end_date=end_date_fmt,
+            fee=item.get("fee_str", ""),
+        )
         wa_phone = _format_phone(phone)
         if wa_phone:
             success = await _send_wa_message(wa_phone, message)
@@ -232,16 +316,11 @@ async def _send_push_for_members(members_data: list, days_before: int, settings:
         activity_name = item["activity_name"]
         end_date_fmt = item["end_date_fmt"]
 
-        title = (push_title_tmpl
-                 .replace("{name}", name)
-                 .replace("{activity}", activity_name)
-                 .replace("{days}", str(days_before))
-                 .replace("{end_date}", end_date_fmt))
-        body = (push_body_tmpl
-                .replace("{name}", name)
-                .replace("{activity}", activity_name)
-                .replace("{days}", str(days_before))
-                .replace("{end_date}", end_date_fmt))
+        fee_str = item.get("fee_str", "")
+        title = _render_template(push_title_tmpl, name=name, activity=activity_name,
+                                 days=days_before, end_date=end_date_fmt, fee=fee_str)
+        body = _render_template(push_body_tmpl, name=name, activity=activity_name,
+                                days=days_before, end_date=end_date_fmt, fee=fee_str)
 
         payload = NotificationPayload(
             title=title,
@@ -335,10 +414,6 @@ async def _do_daily_reminders():
     if not settings.get("enabled"):
         return
 
-    days_before = int(settings.get("days_before", 3))
-    days_before_2 = int(settings.get("days_before_2", 1))
-    reminder_2_enabled = settings.get("reminder_2_enabled", True)
-    extra_offsets = settings.get("extra_offsets", []) or []
     template = settings.get("message_template", DEFAULT_SETTINGS["message_template"])
 
     wa_status = await _get_wa_status()
@@ -349,17 +424,8 @@ async def _do_daily_reminders():
     if not wa_connected:
         logger.info("WhatsApp not connected — skipping WhatsApp channel (push/portal still active)")
 
-    days_set = [days_before]
-    if reminder_2_enabled and days_before_2 != days_before:
-        days_set.append(days_before_2)
-    # Append extra (deduplicated, valid range)
-    for d in extra_offsets:
-        try:
-            di = int(d)
-        except Exception:
-            continue
-        if 1 <= di <= 60 and di not in days_set:
-            days_set.append(di)
+    # Iterate every enabled offset (includes T-0 day-of-expiry)
+    days_set = [it["days"] for it in _normalize_offsets(settings) if it.get("enabled")]
 
     total_wa = 0
     total_push = 0
@@ -434,7 +500,8 @@ class WhatsAppSettings(BaseModel):
     days_before: Optional[int] = None
     days_before_2: Optional[int] = None
     reminder_2_enabled: Optional[bool] = None
-    extra_offsets: Optional[List[int]] = None
+    # New offsets model: list of {days: 0..60, enabled: bool}.
+    offsets: Optional[List[dict]] = None
     message_template: Optional[str] = None
     manual_reminder_template: Optional[str] = None
     send_hour: Optional[int] = None
@@ -459,20 +526,25 @@ async def update_settings(data: WhatsAppSettings, current_user: dict = Depends(g
         raise HTTPException(status_code=400, detail="message_template must not exceed 1000 characters")
     if data.manual_reminder_template is not None and len(data.manual_reminder_template) > 1000:
         raise HTTPException(status_code=400, detail="manual_reminder_template must not exceed 1000 characters")
-    if data.extra_offsets is not None:
-        cleaned = []
-        seen = set()
-        for d in data.extra_offsets:
+    if data.offsets is not None:
+        cleaned: list = []
+        seen: set = set()
+        for o in data.offsets:
+            if not isinstance(o, dict) or "days" not in o:
+                continue
             try:
-                di = int(d)
+                di = int(o["days"])
             except Exception:
                 continue
-            if 1 <= di <= 60 and di not in seen:
-                cleaned.append(di)
-                seen.add(di)
-            elif not (1 <= di <= 60):
-                raise HTTPException(status_code=400, detail="extra_offsets values must be between 1 and 60")
-        data.extra_offsets = cleaned[:10]  # cap at 10 offsets
+            if not (0 <= di <= 60):
+                raise HTTPException(status_code=400, detail="offsets.days must be between 0 and 60")
+            if di in seen:
+                continue
+            seen.add(di)
+            cleaned.append({"days": di, "enabled": bool(o.get("enabled", True))})
+        # Sort descending so longer offsets fire first (T-7, T-3, T-1, T-0)
+        cleaned.sort(key=lambda x: -x["days"])
+        data.offsets = cleaned[:10]  # cap at 10 offsets
     coll = _db["whatsapp_settings"]
     update = {k: v for k, v in data.dict().items() if v is not None}
     if not update:
@@ -593,6 +665,7 @@ class BulkReminderItem(BaseModel):
     activity_name: Optional[str] = ""
     end_date: Optional[str] = ""
     days_remaining: Optional[int] = None
+    fee: Optional[float] = None
 
 
 class BulkReminderRequest(BaseModel):
@@ -758,15 +831,28 @@ async def send_bulk_renewal_reminders(
         except Exception:
             days_calc = items[0].days_remaining if items[0].days_remaining is not None else 0
 
+        # Compute total fee for {fee} placeholder (sum of selected items' fees)
+        total_fee = 0.0
+        for it in items:
+            try:
+                if it.fee is not None:
+                    total_fee += float(it.fee)
+            except Exception:
+                pass
+        fee_str = str(int(total_fee)) if float(total_fee).is_integer() else f"{total_fee:.2f}"
+
         # ── WhatsApp ──
         if wa_connected and phone:
             wa_phone = _format_phone(phone)
             if wa_phone:
-                message = (template
-                           .replace("{name}", name)
-                           .replace("{activity}", activities_text)
-                           .replace("{days}", str(days_calc))
-                           .replace("{end_date}", end_date_fmt))
+                message = _render_template(
+                    template,
+                    name=name,
+                    activity=activities_text,
+                    days=days_calc,
+                    end_date=end_date_fmt,
+                    fee=fee_str,
+                )
                 ok = await _send_wa_message(wa_phone, message)
                 await _db["whatsapp_send_log"].insert_one({
                     "timestamp": datetime.now(RIYADH_TZ).isoformat(),
@@ -812,16 +898,10 @@ async def send_bulk_renewal_reminders(
                 from .push_notifications import send_push_notification, NotificationPayload
                 push_title_tmpl = settings.get("push_title_template", DEFAULT_SETTINGS["push_title_template"])
                 push_body_tmpl = settings.get("push_body_template", DEFAULT_SETTINGS["push_body_template"])
-                title = (push_title_tmpl
-                         .replace("{name}", name)
-                         .replace("{activity}", activities_text)
-                         .replace("{days}", str(days_calc))
-                         .replace("{end_date}", end_date_fmt))
-                body = (push_body_tmpl
-                        .replace("{name}", name)
-                        .replace("{activity}", activities_text)
-                        .replace("{days}", str(days_calc))
-                        .replace("{end_date}", end_date_fmt))
+                title = _render_template(push_title_tmpl, name=name, activity=activities_text,
+                                         days=days_calc, end_date=end_date_fmt, fee=fee_str)
+                body = _render_template(push_body_tmpl, name=name, activity=activities_text,
+                                        days=days_calc, end_date=end_date_fmt, fee=fee_str)
                 payload_obj = NotificationPayload(
                     title=title,
                     body=body,

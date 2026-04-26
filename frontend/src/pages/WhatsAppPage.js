@@ -39,7 +39,12 @@ export default function WhatsAppPage() {
   const [status, setStatus] = useState({ connected: false, qr: null, connecting: false });
   const [waSettings, setWaSettings] = useState({
     enabled: false, days_before: 3, days_before_2: 1, reminder_2_enabled: true,
-    extra_offsets: [],
+    offsets: [
+      { days: 7, enabled: true },
+      { days: 3, enabled: true },
+      { days: 1, enabled: true },
+      { days: 0, enabled: true },
+    ],
     message_template: 'مرحباً {name}،\nنذكركم بأن اشتراككم في نشاط {activity} سينتهي بعد {days} يوم/أيام.\nيرجى التواصل معنا للتجديد. 🏆',
     manual_reminder_template: 'السلام عليكم {name}،\nنود تذكيركم بأن اشتراك ({activity}) في شركة اداء الابطال العالمية للرياضة قارب على الانتهاء بتاريخ {end_date}.\nنرجو التواصل معنا للتجديد.\nشكراً لكم 🏆',
     send_hour: 9,
@@ -862,31 +867,84 @@ export default function WhatsAppPage() {
                 )}
               </div>
 
-              {/* Extra reminder offsets (multi-offset) */}
-              <div className="border rounded-xl p-4 space-y-2">
-                <p className="text-sm font-semibold text-primary">{t('تذكيرات إضافية', 'Additional Reminders')}</p>
-                <p className="text-xs text-muted-foreground">{t('أيام إضافية قبل الانتهاء (مفصولة بفواصل، مثل: 7,14,30)', 'Extra days-before offsets (comma-separated, e.g. 7,14,30)')}</p>
-                <input
-                  type="text"
-                  value={(waSettings.extra_offsets || []).join(',')}
-                  onChange={e => {
-                    const raw = e.target.value;
-                    const arr = raw.split(/[,\s]+/).map(s => s.trim()).filter(Boolean).map(s => parseInt(s, 10)).filter(n => !isNaN(n) && n >= 1 && n <= 60);
-                    setWaSettings(s => ({ ...s, extra_offsets: arr }));
-                  }}
-                  placeholder="7, 14, 30"
-                  dir="ltr"
-                  className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
-                />
-                {(waSettings.extra_offsets || []).length > 0 && (
-                  <div className="flex flex-wrap gap-1.5">
-                    {(waSettings.extra_offsets || []).map((d, i) => (
-                      <span key={i} className="px-2 py-0.5 bg-primary/10 text-primary text-xs rounded-full font-medium">
-                        {t(`قبل ${d} يوم`, `${d} days before`)}
+              {/* Multi-offset reminders (T-7 / T-3 / T-1 / T-0 ...) */}
+              <div className="border rounded-xl p-4 space-y-3">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-sm font-semibold text-primary">{t('مواعيد التذكيرات (قبل الانتهاء)', 'Reminder Offsets (days before expiry)')}</p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const cur = Array.isArray(waSettings.offsets) ? waSettings.offsets : [];
+                      const used = new Set(cur.map(o => Number(o.days)));
+                      let candidate = 0;
+                      while (used.has(candidate) && candidate <= 60) candidate += 1;
+                      if (candidate > 60) return;
+                      const next = [...cur, { days: candidate, enabled: true }].sort((a, b) => Number(b.days) - Number(a.days));
+                      setWaSettings(s => ({ ...s, offsets: next }));
+                    }}
+                    className="text-xs text-primary hover:underline"
+                  >
+                    + {t('إضافة', 'Add offset')}
+                  </button>
+                </div>
+                <p className="text-xs text-muted-foreground">{t('0 = يوم الانتهاء (T-0). كل صف يمكن تفعيله أو إيقافه دون حذفه.', '0 = day of expiry (T-0). Each row can be toggled on/off without deleting it.')}</p>
+                <div className="space-y-2">
+                  {(waSettings.offsets || []).map((o, i) => (
+                    <div key={i} className="flex items-center gap-2 bg-background border rounded-lg px-2 py-1.5">
+                      <input
+                        type="number"
+                        min={0}
+                        max={60}
+                        value={o.days}
+                        onChange={e => {
+                          const v = Math.max(0, Math.min(60, parseInt(e.target.value, 10) || 0));
+                          setWaSettings(s => {
+                            const next = [...(s.offsets || [])];
+                            next[i] = { ...next[i], days: v };
+                            return { ...s, offsets: next };
+                          });
+                        }}
+                        className="w-20 border rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+                        dir="ltr"
+                      />
+                      <span className="text-xs text-muted-foreground flex-1">
+                        {Number(o.days) === 0
+                          ? t('يوم الانتهاء (T-0)', 'Day of expiry (T-0)')
+                          : t(`قبل ${o.days} يوم`, `${o.days} days before`)}
                       </span>
-                    ))}
-                  </div>
-                )}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setWaSettings(s => {
+                            const next = [...(s.offsets || [])];
+                            next[i] = { ...next[i], enabled: !next[i].enabled };
+                            return { ...s, offsets: next };
+                          });
+                        }}
+                        className={`relative w-9 h-5 rounded-full transition-colors ${o.enabled ? 'bg-green-500' : 'bg-gray-300'}`}
+                        title={o.enabled ? t('مفعّل', 'Enabled') : t('متوقف', 'Disabled')}
+                      >
+                        <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${o.enabled ? (isRTL ? 'right-0.5' : 'translate-x-[18px]') : (isRTL ? 'right-[18px]' : 'translate-x-0.5')}`} />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setWaSettings(s => {
+                            const next = (s.offsets || []).filter((_, j) => j !== i);
+                            return { ...s, offsets: next };
+                          });
+                        }}
+                        className="text-xs text-red-600 hover:bg-red-50 rounded px-2 py-1"
+                        title={t('حذف', 'Remove')}
+                      >
+                        ×
+                      </button>
+                    </div>
+                  ))}
+                  {(!waSettings.offsets || waSettings.offsets.length === 0) && (
+                    <p className="text-xs text-muted-foreground italic">{t('لا توجد مواعيد. أضف عرضاً واحداً على الأقل.', 'No offsets configured. Add at least one.')}</p>
+                  )}
+                </div>
               </div>
 
               <div>
@@ -899,7 +957,7 @@ export default function WhatsAppPage() {
 
               <div>
                 <label className="block text-sm font-medium mb-1">{t('نص الرسالة (التذكير التلقائي)', 'Message Template (auto reminders)')}</label>
-                <p className="text-xs text-muted-foreground mb-2">{t('المتغيرات: {name} الاسم، {activity} النشاط، {days} الأيام، {end_date} تاريخ الانتهاء', 'Variables: {name}, {activity}, {days} days, {end_date} expiry date')}</p>
+                <p className="text-xs text-muted-foreground mb-2">{t('المتغيرات: {name} الاسم، {activity} النشاط، {days} الأيام، {end_date} تاريخ الانتهاء، {fee} المبلغ', 'Variables: {name}, {activity}, {days}, {end_date}, {fee}')}</p>
                 <textarea value={waSettings.message_template}
                   onChange={e => setWaSettings(s => ({ ...s, message_template: e.target.value }))}
                   rows={5} dir="auto"
@@ -919,7 +977,7 @@ export default function WhatsAppPage() {
               {/* Manual reminder template (used by Renewals page WA buttons) */}
               <div>
                 <label className="block text-sm font-medium mb-1">{t('نص الرسالة اليدوية (صفحة التجديدات)', 'Manual Reminder Template (Renewals page)')}</label>
-                <p className="text-xs text-muted-foreground mb-2">{t('يُستخدم عند الضغط على زر التذكير في صفحة التجديدات. نفس المتغيرات المتاحة.', 'Used when sending reminders from the Renewals page. Same variables apply.')}</p>
+                <p className="text-xs text-muted-foreground mb-2">{t('يُستخدم عند الضغط على زر التذكير في صفحة التجديدات. المتغيرات: {name}، {activity}، {days}، {end_date}، {fee}', 'Used when sending reminders from the Renewals page. Variables: {name}, {activity}, {days}, {end_date}, {fee}')}</p>
                 <textarea value={waSettings.manual_reminder_template}
                   onChange={e => setWaSettings(s => ({ ...s, manual_reminder_template: e.target.value }))}
                   rows={5} dir="auto"
