@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 import uuid
 
 from database import db
-from utils.auth import get_current_user
+from utils.auth import get_current_user, require_branch_scope, resolve_branch_filter
 from utils.cache import cache_get, cache_set, cache_invalidate
 
 router = APIRouter(prefix="/coaches", tags=["Coaches"])
@@ -61,26 +61,22 @@ async def get_coaches(
     current_user: dict = Depends(get_current_user)
 ):
     is_admin = current_user.get("is_admin", False)
-    branch_id = current_user.get("branch_id")
+    # Branch filtering — fail-closed for non-admins without a branch_id.
+    # Coaches without a branch (shared/legacy) are visible to everyone, hence the $or.
+    effective_branch = resolve_branch_filter(current_user, branch_filter)
 
-    cache_key = f"coaches:{'admin' if is_admin else 'user'}:{branch_filter or branch_id or 'all'}"
+    cache_key = f"coaches:{'admin' if is_admin else 'user'}:{effective_branch or 'all'}"
     cached = cache_get(cache_key)
     if cached is not None:
         return cached
 
-    if is_admin:
-        if branch_filter and branch_filter != "all":
-            coaches = await db.coaches.find(
-                {"$or": [{"branch_id": branch_filter}, {"branch_id": None}, {"branch_id": {"$exists": False}}]},
-                {"_id": 0}
-            ).to_list(100)
-        else:
-            coaches = await db.coaches.find({}, {"_id": 0}).to_list(100)
-    else:
+    if effective_branch:
         coaches = await db.coaches.find(
-            {"$or": [{"branch_id": branch_id}, {"branch_id": None}, {"branch_id": {"$exists": False}}]}, 
+            {"$or": [{"branch_id": effective_branch}, {"branch_id": None}, {"branch_id": {"$exists": False}}]},
             {"_id": 0}
         ).to_list(100)
+    else:
+        coaches = await db.coaches.find({}, {"_id": 0}).to_list(100)
     cache_set(cache_key, coaches, ttl=600)
     return coaches
 
@@ -101,12 +97,13 @@ async def create_coach(coach: CoachCreate, current_user: dict = Depends(get_curr
     _validate_photo(coach.photo)
     coach_id = str(uuid.uuid4())
     is_admin = current_user.get("is_admin", False)
-    
-    # Admin can specify branch, otherwise use user's branch
+
+    # Admin can specify branch, otherwise non-admin is locked to their own
+    # branch (require_branch_scope rejects non-admins without a branch_id).
     if is_admin and coach.branch_id:
         final_branch_id = coach.branch_id if coach.branch_id != "all" else None
     else:
-        final_branch_id = current_user.get("branch_id")
+        final_branch_id = require_branch_scope(current_user)
     
     employee_id = await get_next_employee_id()
     

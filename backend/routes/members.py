@@ -6,6 +6,7 @@ import uuid
 from datetime import datetime, timezone
 
 from .common import db, get_current_user
+from utils.auth import require_branch_scope, resolve_branch_filter
 from utils.sequences import get_branch_seq_start
 
 router = APIRouter(prefix="/members", tags=["members"])
@@ -91,16 +92,12 @@ async def get_members(
     current_user: dict = Depends(get_current_user)
 ):
     """Get all members with optional filters"""
-    is_admin = current_user.get("is_admin", False)
-    branch_id = current_user.get("branch_id")
-    
     query = {}
-    
-    # Branch filtering
-    if is_admin and branch_filter and branch_filter != "all":
-        query["branch_id"] = branch_filter
-    elif not is_admin and branch_id:
-        query["branch_id"] = branch_id
+
+    # Branch filtering — fail-closed for non-admins without a branch_id
+    effective_branch = resolve_branch_filter(current_user, branch_filter)
+    if effective_branch:
+        query["branch_id"] = effective_branch
     
     # Activity filter - only show members with active (non-expired) subscriptions
     if activity_id:
@@ -143,10 +140,24 @@ async def get_members(
     
     return members
 
+def _scoped_member_query(member_id: str, current_user: dict) -> dict:
+    """Build a member-id query scoped to the caller's branch for non-admins.
+
+    Fail-closed via ``resolve_branch_filter`` — a non-admin without a
+    branch_id receives 403 instead of being able to look up members from
+    other branches by ID (IDOR-style cross-branch exposure).
+    """
+    query = {"id": member_id}
+    effective_branch = resolve_branch_filter(current_user, None)
+    if effective_branch:
+        query["branch_id"] = effective_branch
+    return query
+
+
 @router.get("/{member_id}", response_model=Member)
 async def get_member(member_id: str, current_user: dict = Depends(get_current_user)):
-    """Get a single member by ID"""
-    member = await db.members.find_one({"id": member_id}, {"_id": 0})
+    """Get a single member by ID (branch-scoped for non-admins)"""
+    member = await db.members.find_one(_scoped_member_query(member_id, current_user), {"_id": 0})
     if not member:
         raise HTTPException(status_code=404, detail="Member not found")
     return member
@@ -155,7 +166,9 @@ async def get_member(member_id: str, current_user: dict = Depends(get_current_us
 async def create_member(member: MemberCreate, current_user: dict = Depends(get_current_user)):
     """Create a new member"""
     member_id = str(uuid.uuid4())
-    branch_id = current_user.get("branch_id")
+    # For non-admins, require a branch (fail-closed). Admins may create
+    # branch-less members (returns None).
+    branch_id = require_branch_scope(current_user) or current_user.get("branch_id")
     
     # Generate sequential member code – unique per branch (each branch owns a block)
     seq_start = await get_branch_seq_start(branch_id, "member")
@@ -192,7 +205,7 @@ async def update_member(member_id: str, member: MemberUpdate, current_user: dict
         raise HTTPException(status_code=400, detail="No data to update")
     
     result = await db.members.find_one_and_update(
-        {"id": member_id},
+        _scoped_member_query(member_id, current_user),
         {"$set": update_data},
         return_document=True
     )
@@ -205,7 +218,7 @@ async def set_member_marked(member_id: str, payload: dict, current_user: dict = 
     """Set the manual `marked` flag for a member (used as a free-form admin tag)."""
     marked = bool(payload.get("marked", False))
     result = await db.members.find_one_and_update(
-        {"id": member_id},
+        _scoped_member_query(member_id, current_user),
         {"$set": {"marked": marked}},
         return_document=True
     )
@@ -216,7 +229,7 @@ async def set_member_marked(member_id: str, payload: dict, current_user: dict = 
 @router.delete("/{member_id}")
 async def delete_member(member_id: str, current_user: dict = Depends(get_current_user)):
     """Delete a member"""
-    result = await db.members.delete_one({"id": member_id})
+    result = await db.members.delete_one(_scoped_member_query(member_id, current_user))
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Member not found")
     return {"message": "Member deleted"}
@@ -225,20 +238,22 @@ async def delete_member(member_id: str, current_user: dict = Depends(get_current
 async def add_member_activity(member_id: str, activity: MemberActivity, current_user: dict = Depends(get_current_user)):
     """Add an activity to a member"""
     result = await db.members.update_one(
-        {"id": member_id},
+        _scoped_member_query(member_id, current_user),
         {"$push": {"activities": activity.model_dump()}}
     )
-    if result.modified_count == 0:
+    if result.matched_count == 0:
         raise HTTPException(status_code=404, detail="Member not found")
     return {"message": "Activity added"}
 
 @router.put("/{member_id}/activities/{activity_id}")
 async def update_member_activity(member_id: str, activity_id: str, activity: MemberActivity, current_user: dict = Depends(get_current_user)):
     """Update a member's activity"""
+    scoped = _scoped_member_query(member_id, current_user)
+    scoped["activities.activity_id"] = activity_id
     result = await db.members.update_one(
-        {"id": member_id, "activities.activity_id": activity_id},
+        scoped,
         {"$set": {"activities.$": activity.model_dump()}}
     )
-    if result.modified_count == 0:
+    if result.matched_count == 0:
         raise HTTPException(status_code=404, detail="Member or activity not found")
     return {"message": "Activity updated"}

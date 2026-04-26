@@ -6,6 +6,7 @@ import uuid
 from datetime import datetime, timezone, timedelta
 
 from .common import db, get_current_user
+from utils.auth import require_branch_scope, resolve_branch_filter
 
 router = APIRouter(prefix="/daily-ledger", tags=["daily-ledger"])
 
@@ -45,9 +46,6 @@ async def get_daily_summary(
     branch_filter: Optional[str] = None,
     current_user: dict = Depends(get_current_user)
 ):
-    is_admin = current_user.get("is_admin", False)
-    branch_id = current_user.get("branch_id")
-
     date_start = date + "T00:00:00"
     date_end = date + "T23:59:59"
 
@@ -55,14 +53,12 @@ async def get_daily_summary(
     cn_query = {"created_at": {"$gte": date_start, "$lte": date_end}}
     exp_query = {"date": date}
 
-    if is_admin and branch_filter and branch_filter != "all":
-        inv_query["branch_id"] = branch_filter
-        cn_query["branch_id"] = branch_filter
-        exp_query["branch_id"] = branch_filter
-    elif not is_admin and branch_id:
-        inv_query["branch_id"] = branch_id
-        cn_query["branch_id"] = branch_id
-        exp_query["branch_id"] = branch_id
+    # Branch filtering — fail-closed for non-admins without a branch_id
+    effective_branch = resolve_branch_filter(current_user, branch_filter)
+    if effective_branch:
+        inv_query["branch_id"] = effective_branch
+        cn_query["branch_id"] = effective_branch
+        exp_query["branch_id"] = effective_branch
 
     invoices = await db.invoices.find(inv_query, {"_id": 0}).to_list(10000)
     credit_notes = await db.credit_notes.find(cn_query, {"_id": 0}).to_list(10000)
@@ -149,24 +145,21 @@ async def get_daily_comparison(
     yesterday = (target - timedelta(days=1)).strftime("%Y-%m-%d")
     last_week = (target - timedelta(days=7)).strftime("%Y-%m-%d")
 
+    # Resolve branch once outside the inner helper (also fail-closes early)
+    effective_branch = resolve_branch_filter(current_user, branch_filter)
+
     async def get_day_totals(d):
         d_start = d + "T00:00:00"
         d_end = d + "T23:59:59"
-        is_admin = current_user.get("is_admin", False)
-        branch_id = current_user.get("branch_id")
 
         inv_q = {"status": "paid", "paid_at": {"$gte": d_start, "$lte": d_end}}
         cn_q = {"created_at": {"$gte": d_start, "$lte": d_end}}
         exp_q = {"date": d}
 
-        if is_admin and branch_filter and branch_filter != "all":
-            inv_q["branch_id"] = branch_filter
-            cn_q["branch_id"] = branch_filter
-            exp_q["branch_id"] = branch_filter
-        elif not is_admin and branch_id:
-            inv_q["branch_id"] = branch_id
-            cn_q["branch_id"] = branch_id
-            exp_q["branch_id"] = branch_id
+        if effective_branch:
+            inv_q["branch_id"] = effective_branch
+            cn_q["branch_id"] = effective_branch
+            exp_q["branch_id"] = effective_branch
 
         invs = await db.invoices.find(inv_q, {"total": 1, "_id": 0}).to_list(10000)
         cns = await db.credit_notes.find(cn_q, {"refund_amount": 1, "_id": 0}).to_list(10000)
@@ -201,21 +194,16 @@ async def get_monthly_calendar(
     month_start = f"{month}-01T00:00:00"
     month_end = f"{month}-{days_in_month:02d}T23:59:59"
 
-    is_admin = current_user.get("is_admin", False)
-    branch_id = current_user.get("branch_id")
-
     inv_q = {"status": "paid", "paid_at": {"$gte": month_start, "$lte": month_end}}
     cn_q = {"created_at": {"$gte": month_start, "$lte": month_end}}
     exp_q = {"date": {"$gte": f"{month}-01", "$lte": f"{month}-{days_in_month:02d}"}}
 
-    if is_admin and branch_filter and branch_filter != "all":
-        inv_q["branch_id"] = branch_filter
-        cn_q["branch_id"] = branch_filter
-        exp_q["branch_id"] = branch_filter
-    elif not is_admin and branch_id:
-        inv_q["branch_id"] = branch_id
-        cn_q["branch_id"] = branch_id
-        exp_q["branch_id"] = branch_id
+    # Branch filtering — fail-closed for non-admins without a branch_id
+    effective_branch = resolve_branch_filter(current_user, branch_filter)
+    if effective_branch:
+        inv_q["branch_id"] = effective_branch
+        cn_q["branch_id"] = effective_branch
+        exp_q["branch_id"] = effective_branch
 
     invoices = await db.invoices.find(inv_q, {"_id": 0, "total": 1, "paid_at": 1}).to_list(50000)
     credit_notes = await db.credit_notes.find(cn_q, {"_id": 0, "refund_amount": 1, "created_at": 1}).to_list(50000)
@@ -275,9 +263,6 @@ async def list_expenses(
     branch_filter: Optional[str] = None,
     current_user: dict = Depends(get_current_user)
 ):
-    is_admin = current_user.get("is_admin", False)
-    branch_id = current_user.get("branch_id")
-
     query = {}
     if date:
         query["date"] = date
@@ -290,10 +275,10 @@ async def list_expenses(
     elif end_date:
         query["date"] = {"$lte": end_date}
 
-    if is_admin and branch_filter and branch_filter != "all":
-        query["branch_id"] = branch_filter
-    elif not is_admin and branch_id:
-        query["branch_id"] = branch_id
+    # Branch filtering — fail-closed for non-admins without a branch_id
+    effective_branch = resolve_branch_filter(current_user, branch_filter)
+    if effective_branch:
+        query["branch_id"] = effective_branch
 
     expenses = await db.expenses.find(query, {"_id": 0}).sort("created_at", -1).to_list(10000)
     return expenses
@@ -307,6 +292,10 @@ async def create_expense(
         raise HTTPException(status_code=400, detail=f"Invalid category. Must be one of: {', '.join(EXPENSE_CATEGORIES)}")
     if expense.amount <= 0:
         raise HTTPException(status_code=400, detail="Amount must be positive")
+
+    # Fail-closed: non-admins must have a branch (otherwise the expense would
+    # be created with branch_id="" and visible to all branch-less users).
+    require_branch_scope(current_user)
 
     new_expense = {
         "id": str(uuid.uuid4()),

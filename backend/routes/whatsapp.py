@@ -9,6 +9,7 @@ import httpx
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from .common import get_current_user
+from utils.auth import require_branch_scope, resolve_branch_filter
 
 logger = logging.getLogger("whatsapp")
 
@@ -768,15 +769,13 @@ async def _aggregate_last_renewal_reminders(
         return []
 
     # Branch scoping: non-admins only see reminders for their branch's members.
-    # Fail-closed: a non-admin without a branch_id is denied entirely.
-    is_admin = current_user.get("is_admin", False)
-    user_branch_id = current_user.get("branch_id")
+    # Fail-closed via resolve_branch_filter: a non-admin without a branch_id
+    # is denied entirely (HTTP 403).
+    effective_branch_id = resolve_branch_filter(current_user, None)
     allowed_member_ids: Optional[set] = None
-    if not is_admin:
-        if not user_branch_id:
-            raise HTTPException(status_code=403, detail="No branch assigned")
+    if effective_branch_id:
         try:
-            cursor_m = _db["members"].find({"branch_id": user_branch_id}, {"id": 1, "_id": 0})
+            cursor_m = _db["members"].find({"branch_id": effective_branch_id}, {"id": 1, "_id": 0})
             allowed_member_ids = {row["id"] async for row in cursor_m if row.get("id")}
         except Exception as e:
             logger.error(f"Branch scoping query failed: {e}")
@@ -1032,11 +1031,8 @@ async def _query_reminder_history(
     if _db is None:
         return [], 0
 
-    is_admin = current_user.get("is_admin", False)
-    user_branch_id = current_user.get("branch_id")
-    effective_branch_id = branch_id if (is_admin and branch_id) else (None if is_admin else user_branch_id)
-    if not is_admin and not user_branch_id:
-        raise HTTPException(status_code=403, detail="No branch assigned")
+    # Branch filtering — fail-closed for non-admins without a branch_id
+    effective_branch_id = resolve_branch_filter(current_user, branch_id)
 
     allowed_member_ids: Optional[set] = None
     if effective_branch_id:
@@ -1136,11 +1132,10 @@ async def send_bulk_renewal_reminders(
     wa_connected = wa_status.get("connected", False) and not log_only
 
     # Branch scoping: non-admins can only target members in their own branch.
-    # Fail-closed: a non-admin without a branch_id is denied entirely.
+    # Fail-closed via require_branch_scope: a non-admin without a branch_id
+    # is denied entirely (HTTP 403).
     is_admin = current_user.get("is_admin", False)
-    user_branch_id = current_user.get("branch_id")
-    if not is_admin and not user_branch_id:
-        raise HTTPException(status_code=403, detail="No branch assigned")
+    user_branch_id = require_branch_scope(current_user)
 
     # Build per-member groups so we send one WhatsApp message per phone covering
     # all selected activities (less spammy).

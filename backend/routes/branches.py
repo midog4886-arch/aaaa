@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 import uuid
 
 from database import db
-from utils.auth import get_current_user
+from utils.auth import get_current_user, resolve_branch_filter
 from utils.sequences import assign_seq_starts_for_new_branch
 from utils.cache import cache_get, cache_set, cache_invalidate
 
@@ -37,19 +37,24 @@ class Branch(BranchBase):
 
 @router.get("")
 async def get_branches(current_user: dict = Depends(get_current_user)):
-    """Get all branches - admin sees all, others see only their branch"""
-    is_admin = current_user.get("is_admin", False)
-    branch_id = current_user.get("branch_id")
+    """Get all branches - admin sees all, others see only their own branch.
 
-    cache_key = "branches:all" if is_admin else f"branches:one:{branch_id}"
+    Branch isolation centralized via ``resolve_branch_filter`` — a non-admin
+    without a branch_id is rejected with HTTP 403 (fail-closed). Without
+    this guard the legacy ``find({"id": None})`` would silently return an
+    empty list, masking a broken account.
+    """
+    effective_branch = resolve_branch_filter(current_user, None)
+
+    cache_key = "branches:all" if effective_branch is None else f"branches:one:{effective_branch}"
     cached = cache_get(cache_key)
     if cached is not None:
         return cached
 
-    if is_admin:
-        branches = await db.branches.find({}, {"_id": 0}).to_list(100)
+    if effective_branch:
+        branches = await db.branches.find({"id": effective_branch}, {"_id": 0}).to_list(100)
     else:
-        branches = await db.branches.find({"id": branch_id}, {"_id": 0}).to_list(100)
+        branches = await db.branches.find({}, {"_id": 0}).to_list(100)
     cache_set(cache_key, branches, ttl=600)  # 10 min
     return branches
 

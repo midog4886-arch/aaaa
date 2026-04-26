@@ -13,7 +13,7 @@ from pathlib import Path
 import uuid
 
 from database import db
-from utils.auth import get_current_user
+from utils.auth import get_current_user, require_branch_scope, resolve_branch_filter
 from utils.cache import cache_invalidate
 
 router = APIRouter(prefix="/tournaments", tags=["Tournaments"])
@@ -132,23 +132,23 @@ class ParticipantUpdate(BaseModel):
 # ============ HELPERS ============
 
 def _branch_query(current_user: dict, branch_filter: Optional[str]):
-    is_admin = current_user.get("is_admin", False)
-    branch_id = current_user.get("branch_id")
-    q = {}
-    if is_admin:
-        if branch_filter and branch_filter != "all":
-            q["$or"] = [
-                {"branch_id": branch_filter},
-                {"branch_id": None},
-                {"branch_id": {"$exists": False}},
-            ]
-    else:
-        q["$or"] = [
-            {"branch_id": branch_id},
+    """Build the branch-scoped Mongo query for tournament listings.
+
+    Branch isolation is centralized via ``resolve_branch_filter`` — a
+    non-admin without a branch_id is rejected with HTTP 403 (fail-closed).
+    Tournaments without a branch (shared) are visible to everyone, hence
+    the ``$or`` against ``None`` / missing field.
+    """
+    effective_branch = resolve_branch_filter(current_user, branch_filter)
+    if not effective_branch:
+        return {}
+    return {
+        "$or": [
+            {"branch_id": effective_branch},
             {"branch_id": None},
             {"branch_id": {"$exists": False}},
         ]
-    return q
+    }
 
 
 def _can_access(tournament: dict, current_user: dict) -> bool:
@@ -617,13 +617,8 @@ async def preview_announcement_recipients(
     broadcast for the given branch/activity. Mirrors the targeting logic
     used by `_broadcast_tournament_announcement` so the admin can see the
     audience before sending."""
-    is_admin = current_user.get("is_admin", False)
-    if is_admin:
-        # "all" or empty means no branch restriction
-        effective_branch = branch_id if (branch_id and branch_id != "all") else None
-    else:
-        # Non-admins are always scoped to their own branch
-        effective_branch = current_user.get("branch_id")
+    # Branch filtering — fail-closed for non-admins without a branch_id
+    effective_branch = resolve_branch_filter(current_user, branch_id)
 
     # Normalise activity inputs into a list.
     aid_list: List[str] = []
@@ -673,10 +668,12 @@ async def get_tournament(tournament_id: str, current_user: dict = Depends(requir
 @router.post("")
 async def create_tournament(payload: TournamentCreate, current_user: dict = Depends(require_tournaments_permission)):
     is_admin = current_user.get("is_admin", False)
+    # Admin can specify branch, otherwise non-admin is locked to their own
+    # branch (require_branch_scope rejects non-admins without a branch_id).
     if is_admin and payload.branch_id:
         final_branch_id = payload.branch_id if payload.branch_id != "all" else None
     else:
-        final_branch_id = current_user.get("branch_id")
+        final_branch_id = require_branch_scope(current_user)
 
     # Normalise the multi-activity inputs. We always persist `activity_ids`
     # (list) as the source of truth, and mirror the first one into the legacy

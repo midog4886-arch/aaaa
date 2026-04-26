@@ -28,6 +28,7 @@ def set_push_notify_function(func):
 
 # Use centralized database connection
 from database import db
+from utils.auth import resolve_branch_filter
 
 # Auth
 import jwt
@@ -148,19 +149,16 @@ async def get_all_daily_videos(
 ):
     """Get all daily videos (admin/coach)"""
     query = {}
-    
+
     if activity_id:
         query["activity_id"] = activity_id
-    
-    # Filter by branch for non-admin users
-    user_branch = current_user.get("branch_id")
-    is_admin = current_user.get("is_admin", False)
-    
-    if not is_admin and user_branch:
-        query["$or"] = [{"branch_id": user_branch}, {"branch_id": None}, {"branch_id": ""}]
-    elif branch_id and branch_id != "all":
-        query["branch_id"] = branch_id
-    
+
+    # Branch filtering — fail-closed for non-admins without a branch_id.
+    # Videos without a branch (shared/legacy) are visible to everyone, hence the $or.
+    effective_branch = resolve_branch_filter(current_user, branch_id)
+    if effective_branch:
+        query["$or"] = [{"branch_id": effective_branch}, {"branch_id": None}, {"branch_id": ""}]
+
     # Filter by month/year
     if month and year:
         start_date = f"{year}-{month:02d}-01"
@@ -546,14 +544,12 @@ async def get_videos_statistics(
 ):
     """Get daily videos statistics"""
     query = {}
-    
-    is_admin = current_user.get("is_admin", False)
-    user_branch = current_user.get("branch_id")
-    
-    if not is_admin and user_branch:
-        query["$or"] = [{"branch_id": user_branch}, {"branch_id": None}, {"branch_id": ""}]
-    elif branch_id and branch_id != "all":
-        query["branch_id"] = branch_id
+
+    # Branch filtering — fail-closed for non-admins without a branch_id.
+    # Videos without a branch (shared/legacy) are visible to everyone, hence the $or.
+    effective_branch = resolve_branch_filter(current_user, branch_id)
+    if effective_branch:
+        query["$or"] = [{"branch_id": effective_branch}, {"branch_id": None}, {"branch_id": ""}]
     
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     

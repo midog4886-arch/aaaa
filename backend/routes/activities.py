@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 import uuid
 
 from database import db
-from utils.auth import get_current_user
+from utils.auth import get_current_user, require_branch_scope, resolve_branch_filter
 from utils.cache import cache_get, cache_set, cache_invalidate
 
 router = APIRouter(prefix="/activities", tags=["Activities"])
@@ -41,27 +41,22 @@ async def get_activities(
     current_user: dict = Depends(get_current_user)
 ):
     is_admin = current_user.get("is_admin", False)
-    branch_id = current_user.get("branch_id")
+    # Branch filtering — fail-closed for non-admins without a branch_id.
+    # Activities without a branch (shared/legacy) are visible to everyone, hence the $or.
+    effective_branch = resolve_branch_filter(current_user, branch_filter)
 
-    cache_key = f"activities:{'admin' if is_admin else 'user'}:{branch_filter or branch_id or 'all'}"
+    cache_key = f"activities:{'admin' if is_admin else 'user'}:{effective_branch or 'all'}"
     cached = cache_get(cache_key)
     if cached is not None:
         return cached
 
-    if is_admin:
-        if branch_filter and branch_filter != "all":
-            activities = await db.activities.find(
-                {"$or": [{"branch_id": branch_filter}, {"branch_id": None}, {"branch_id": {"$exists": False}}]},
-                {"_id": 0}
-            ).to_list(100)
-        else:
-            activities = await db.activities.find({}, {"_id": 0}).to_list(100)
-    else:
-        # Get activities for user's branch or shared activities
+    if effective_branch:
         activities = await db.activities.find(
-            {"$or": [{"branch_id": branch_id}, {"branch_id": None}, {"branch_id": {"$exists": False}}]}, 
+            {"$or": [{"branch_id": effective_branch}, {"branch_id": None}, {"branch_id": {"$exists": False}}]},
             {"_id": 0}
         ).to_list(100)
+    else:
+        activities = await db.activities.find({}, {"_id": 0}).to_list(100)
     cache_set(cache_key, activities, ttl=600)
     return activities
 
@@ -70,12 +65,13 @@ async def get_activities(
 async def create_activity(activity: ActivityCreate, current_user: dict = Depends(get_current_user)):
     activity_id = str(uuid.uuid4())
     is_admin = current_user.get("is_admin", False)
-    
-    # Admin can specify branch, otherwise use user's branch
+
+    # Admin can specify branch, otherwise non-admin is locked to their own
+    # branch (require_branch_scope rejects non-admins without a branch_id).
     if is_admin and activity.branch_id:
         final_branch_id = activity.branch_id if activity.branch_id != "all" else None
     else:
-        final_branch_id = current_user.get("branch_id")
+        final_branch_id = require_branch_scope(current_user)
     
     activity_doc = {
         "id": activity_id,

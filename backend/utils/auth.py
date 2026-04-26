@@ -54,3 +54,48 @@ def require_admin(current_user: dict):
     if not current_user.get("is_admin", False):
         raise HTTPException(status_code=403, detail="Admin access required")
     return current_user
+
+
+def require_branch_scope(current_user: dict) -> Optional[str]:
+    """Return the caller's effective branch_id, enforcing branch isolation.
+
+    Centralizes the rule that non-admin users MUST be scoped to a branch.
+    Without this check, a non-admin user whose ``branch_id`` is missing or
+    empty would silently bypass branch filters (``not is_admin and branch_id``
+    evaluates to ``False``), leaking cross-branch data.
+
+    Behavior:
+      - Admins → returns ``None`` (caller may query across all branches).
+      - Non-admins with a ``branch_id`` → returns that branch id.
+      - Non-admins WITHOUT a ``branch_id`` → fail-closed with HTTP 403.
+    """
+    if current_user.get("is_admin", False):
+        return None
+    branch_id = current_user.get("branch_id")
+    if not branch_id:
+        raise HTTPException(status_code=403, detail="No branch assigned")
+    return branch_id
+
+
+def resolve_branch_filter(
+    current_user: dict, branch_filter: Optional[str] = None
+) -> Optional[str]:
+    """Resolve the effective branch_id used to filter list/aggregate queries.
+
+    Encodes the standard rule used across the app:
+      - Admins may pass ``branch_filter`` to target a specific branch
+        (``None`` or ``"all"`` means "no branch restriction").
+      - Non-admins ignore ``branch_filter`` and are always pinned to their own
+        ``branch_id``. Fail-closed with HTTP 403 if they don't have one
+        assigned (otherwise they would silently see every branch's data).
+
+    Returns the branch_id to filter by, or ``None`` to skip branch filtering.
+    """
+    if current_user.get("is_admin", False):
+        if branch_filter and branch_filter != "all":
+            return branch_filter
+        return None
+    branch_id = current_user.get("branch_id")
+    if not branch_id:
+        raise HTTPException(status_code=403, detail="No branch assigned")
+    return branch_id

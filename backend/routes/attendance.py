@@ -7,6 +7,7 @@ import math
 from datetime import datetime, timezone, timedelta
 
 from .common import db, get_current_user
+from utils.auth import resolve_branch_filter
 
 
 async def send_attendance_push(member_id: str, member_name: str, activity_name: str, check_in_time: str):
@@ -149,17 +150,13 @@ async def get_attendance(
     current_user: dict = Depends(get_current_user)
 ):
     """Get attendance records with optional filters"""
-    is_admin = current_user.get("is_admin", False)
-    branch_id = current_user.get("branch_id")
-    
     query = {}
-    
-    # Branch filtering
-    if is_admin and branch_filter and branch_filter != "all":
-        query["branch_id"] = branch_filter
-    elif not is_admin and branch_id:
-        query["branch_id"] = branch_id
-    
+
+    # Branch filtering — fail-closed for non-admins without a branch_id
+    effective_branch = resolve_branch_filter(current_user, branch_filter)
+    if effective_branch:
+        query["branch_id"] = effective_branch
+
     if date:
         query["date"] = date
     if activity_id:
@@ -427,15 +424,12 @@ async def get_session_quota_alerts(
     current_user: dict = Depends(get_current_user)
 ):
     """Get all members who have used up their session quota"""
-    is_admin = current_user.get("is_admin", False)
-    branch_id = current_user.get("branch_id")
-    
     query = {}
-    if is_admin and branch_filter and branch_filter != "all":
-        query["branch_id"] = branch_filter
-    elif not is_admin and branch_id:
-        query["branch_id"] = branch_id
-    
+    # Branch filtering — fail-closed for non-admins without a branch_id
+    effective_branch = resolve_branch_filter(current_user, branch_filter)
+    if effective_branch:
+        query["branch_id"] = effective_branch
+
     members = await db.members.find(query, {"_id": 0}).to_list(5000)
     
     alerts = []

@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 import uuid
 
 from database import db
-from utils.auth import get_current_user
+from utils.auth import get_current_user, require_branch_scope, resolve_branch_filter
 from utils.cache import cache_get, cache_set, cache_invalidate
 
 router = APIRouter(prefix="/levels", tags=["Levels"])
@@ -58,19 +58,18 @@ async def get_levels(
 ):
     import asyncio
     is_admin = current_user.get("is_admin", False)
-    branch_id = current_user.get("branch_id")
+    # Branch filtering — fail-closed for non-admins without a branch_id.
+    # Levels without a branch (shared/legacy) are visible to everyone, hence the $or.
+    effective_branch = resolve_branch_filter(current_user, branch_filter)
 
-    cache_key = f"levels:{'admin' if is_admin else 'user'}:{branch_filter or branch_id or 'all'}:{activity_id or '-'}:{activity_name or '-'}"
+    cache_key = f"levels:{'admin' if is_admin else 'user'}:{effective_branch or 'all'}:{activity_id or '-'}:{activity_name or '-'}"
     cached = cache_get(cache_key)
     if cached is not None:
         return cached
 
     query = {}
-    if is_admin:
-        if branch_filter and branch_filter != "all":
-            query["$or"] = [{"branch_id": branch_filter}, {"branch_id": None}, {"branch_id": {"$exists": False}}]
-    else:
-        query["$or"] = [{"branch_id": branch_id}, {"branch_id": None}, {"branch_id": {"$exists": False}}]
+    if effective_branch:
+        query["$or"] = [{"branch_id": effective_branch}, {"branch_id": None}, {"branch_id": {"$exists": False}}]
 
     if activity_id:
         query["activity_id"] = activity_id
@@ -195,11 +194,13 @@ async def get_levels(
 async def create_level(level: LevelCreate, current_user: dict = Depends(get_current_user)):
     level_id = str(uuid.uuid4())
     is_admin = current_user.get("is_admin", False)
-    
+
+    # Admin can specify branch, otherwise non-admin is locked to their own
+    # branch (require_branch_scope rejects non-admins without a branch_id).
     if is_admin and level.branch_id:
         final_branch_id = level.branch_id if level.branch_id != "all" else None
     else:
-        final_branch_id = current_user.get("branch_id")
+        final_branch_id = require_branch_scope(current_user)
     
     level_doc = {
         "id": level_id,
@@ -406,15 +407,12 @@ async def get_unassigned_members(
     current_user: dict = Depends(get_current_user)
 ):
     """Members with active subscriptions that are NOT yet assigned to any level."""
-    is_admin = current_user.get("is_admin", False)
-    branch_id = current_user.get("branch_id")
+    # Branch filtering — fail-closed for non-admins without a branch_id.
+    effective_branch = resolve_branch_filter(current_user, branch_filter)
 
     query = {}
-    if is_admin:
-        if branch_filter and branch_filter != "all":
-            query["$or"] = [{"branch_id": branch_filter}, {"branch_id": None}, {"branch_id": {"$exists": False}}]
-    else:
-        query["$or"] = [{"branch_id": branch_id}, {"branch_id": None}, {"branch_id": {"$exists": False}}]
+    if effective_branch:
+        query["$or"] = [{"branch_id": effective_branch}, {"branch_id": None}, {"branch_id": {"$exists": False}}]
 
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     members = await db.members.find(query, {"_id": 0}).to_list(10000)

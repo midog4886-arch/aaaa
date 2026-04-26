@@ -6,6 +6,7 @@ import uuid
 from datetime import datetime, timezone
 
 from .common import db, get_current_user
+from utils.auth import require_branch_scope, resolve_branch_filter
 
 router = APIRouter(prefix="/payment-vouchers", tags=["payment-vouchers"])
 
@@ -65,12 +66,15 @@ async def ensure_voucher_indexes():
 
 
 def _build_ownership_query(voucher_id: str, current_user: dict) -> dict:
-    """Return a query that scopes the voucher to the user's branch for non-admins."""
+    """Return a query that scopes the voucher to the user's branch for non-admins.
+
+    Fail-closed via ``resolve_branch_filter`` — a non-admin without a branch_id
+    receives 403 instead of silently matching every branch-less voucher.
+    """
     query = {"id": voucher_id}
-    if not current_user.get("is_admin", False):
-        branch_id = current_user.get("branch_id")
-        if branch_id:
-            query["branch_id"] = branch_id
+    effective_branch = resolve_branch_filter(current_user, None)
+    if effective_branch:
+        query["branch_id"] = effective_branch
     return query
 
 
@@ -89,6 +93,10 @@ async def create_payment_voucher(
         raise HTTPException(status_code=400, detail=f"طريقة الدفع غير صالحة. القيم المسموح بها: {', '.join(ALLOWED_PAYMENT_METHODS)}")
     if data.status not in ALLOWED_STATUSES:
         raise HTTPException(status_code=400, detail=f"حالة الدفع غير صالحة. القيم المسموح بها: {', '.join(ALLOWED_STATUSES)}")
+
+    # Fail-closed: non-admins must have a branch (otherwise the voucher would
+    # be created with branch_id="" and visible to all branch-less users).
+    require_branch_scope(current_user)
 
     voucher_number = await generate_voucher_number()
     now = datetime.now(timezone.utc).isoformat()
@@ -132,12 +140,10 @@ async def list_beneficiaries(
 ):
     """Return unique beneficiary names with aggregated payment stats."""
     query = {}
-    is_admin = current_user.get("is_admin", False)
-    branch_id = current_user.get("branch_id")
-    if is_admin and branch_filter and branch_filter != "all":
-        query["branch_id"] = branch_filter
-    elif not is_admin and branch_id:
-        query["branch_id"] = branch_id
+    # Branch filtering — fail-closed for non-admins without a branch_id
+    effective_branch = resolve_branch_filter(current_user, branch_filter)
+    if effective_branch:
+        query["branch_id"] = effective_branch
 
     pipeline = [
         {"$match": query},
@@ -200,12 +206,10 @@ async def list_payment_vouchers(
     if beneficiary_name:
         query["beneficiary_name"] = beneficiary_name
 
-    is_admin = current_user.get("is_admin", False)
-    branch_id = current_user.get("branch_id")
-    if is_admin and branch_filter and branch_filter != "all":
-        query["branch_id"] = branch_filter
-    elif not is_admin and branch_id:
-        query["branch_id"] = branch_id
+    # Branch filtering — fail-closed for non-admins without a branch_id
+    effective_branch = resolve_branch_filter(current_user, branch_filter)
+    if effective_branch:
+        query["branch_id"] = effective_branch
 
     sort_field = "payment_date" if beneficiary_name else "created_at"
     vouchers = await db.payment_vouchers.find(query, {"_id": 0}).sort(sort_field, -1).to_list(1000)

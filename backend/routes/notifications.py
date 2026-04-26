@@ -6,6 +6,7 @@ import uuid
 from datetime import datetime, timezone, timedelta
 
 from .common import db, get_current_user
+from utils.auth import resolve_branch_filter
 
 router = APIRouter(prefix="/notifications", tags=["notifications"])
 
@@ -36,26 +37,28 @@ async def get_notifications(
     current_user: dict = Depends(get_current_user)
 ):
     """Get notifications for the current user's branch"""
-    branch_id = current_user.get("branch_id")
-    
+    # Branch filtering — fail-closed for non-admins without a branch_id
+    effective_branch = resolve_branch_filter(current_user, None)
+
     query = {}
-    if branch_id:
-        query["branch_id"] = branch_id
+    if effective_branch:
+        query["branch_id"] = effective_branch
     if is_read is not None:
         query["is_read"] = is_read
-    
+
     notifications = await db.notifications.find(query, {"_id": 0}).sort("created_at", -1).to_list(limit)
     return notifications
 
 @router.get("/unread-count")
 async def get_unread_count(current_user: dict = Depends(get_current_user)):
     """Get count of unread notifications"""
-    branch_id = current_user.get("branch_id")
-    
+    # Branch filtering — fail-closed for non-admins without a branch_id
+    effective_branch = resolve_branch_filter(current_user, None)
+
     query = {"is_read": False}
-    if branch_id:
-        query["branch_id"] = branch_id
-    
+    if effective_branch:
+        query["branch_id"] = effective_branch
+
     count = await db.notifications.count_documents(query)
     return {"unread_count": count}
 
@@ -73,12 +76,13 @@ async def mark_notification_read(notification_id: str, current_user: dict = Depe
 @router.put("/mark-all-read")
 async def mark_all_notifications_read(current_user: dict = Depends(get_current_user)):
     """Mark all notifications as read for the current branch"""
-    branch_id = current_user.get("branch_id")
-    
+    # Branch filtering — fail-closed for non-admins without a branch_id
+    effective_branch = resolve_branch_filter(current_user, None)
+
     query = {}
-    if branch_id:
-        query["branch_id"] = branch_id
-    
+    if effective_branch:
+        query["branch_id"] = effective_branch
+
     result = await db.notifications.update_many(
         query,
         {"$set": {"is_read": True}}
@@ -96,12 +100,16 @@ async def delete_notification(notification_id: str, current_user: dict = Depends
 @router.post("/check-renewals")
 async def check_subscription_renewals(current_user: dict = Depends(get_current_user)):
     """Check for expiring subscriptions and create notifications"""
-    branch_id = current_user.get("branch_id")
+    # Branch filtering — fail-closed for non-admins without a branch_id.
+    # Notifications written below carry this branch_id, so admins running
+    # this check without an associated branch get global-scoped notifications.
+    effective_branch = resolve_branch_filter(current_user, None)
+    branch_id = effective_branch
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-    
+
     # Find members with activities expiring in the next 7 days
     week_later = (datetime.now(timezone.utc) + timedelta(days=7)).strftime("%Y-%m-%d")
-    
+
     query = {
         "activities": {
             "$elemMatch": {
@@ -177,16 +185,17 @@ async def get_expiring_subscriptions(
             }
         }
     }
-    # Branch scoping:
+    # Branch scoping centralized via ``resolve_branch_filter``:
     # - Non-admins are always locked to their own branch (branch_filter is ignored).
     #   A non-admin without a branch_id is denied entirely (fail-closed).
     # - Admins may use branch_filter to target a specific branch, or "all" to span branches.
-    if not is_admin:
-        if not user_branch_id:
-            raise HTTPException(status_code=403, detail="No branch assigned")
+    # - Special legacy behavior: an admin without an explicit branch_filter falls
+    #   back to their own assigned branch (if any) so a branch-attached admin
+    #   keeps seeing their branch by default.
+    if is_admin and not (branch_filter and branch_filter != "all") and user_branch_id:
         query["branch_id"] = user_branch_id
     else:
-        effective_branch = branch_filter if branch_filter and branch_filter != "all" else user_branch_id
+        effective_branch = resolve_branch_filter(current_user, branch_filter)
         if effective_branch:
             query["branch_id"] = effective_branch
 
@@ -244,17 +253,18 @@ async def get_expiring_subscriptions(
 @router.post("/check-ads-expiry")
 async def check_ads_expiry(current_user: dict = Depends(get_current_user)):
     """Check for expiring and expired advertisements and create notifications"""
-    is_admin = current_user.get("is_admin", False)
-    branch_id = current_user.get("branch_id")
+    # Branch filtering — fail-closed for non-admins without a branch_id.
+    # Ads without a branch (shared/legacy) are visible to everyone, hence the $or.
+    effective_branch = resolve_branch_filter(current_user, None)
+    branch_id = effective_branch  # used below when stamping new notifications
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-    
+
     # Date 3 days from now
     three_days_later = (datetime.now(timezone.utc) + timedelta(days=3)).strftime("%Y-%m-%d")
-    
-    # Query for active ads - admin sees all
+
     query = {"is_active": True}
-    if not is_admin and branch_id:
-        query["$or"] = [{"branch_id": branch_id}, {"branch_id": None}, {"branch_id": ""}]
+    if effective_branch:
+        query["$or"] = [{"branch_id": effective_branch}, {"branch_id": None}, {"branch_id": ""}]
     
     ads = await db.advertisements.find(query, {"_id": 0}).to_list(1000)
     
@@ -324,15 +334,15 @@ async def check_ads_expiry(current_user: dict = Depends(get_current_user)):
 @router.get("/ads-status")
 async def get_ads_status(current_user: dict = Depends(get_current_user)):
     """Get status of all advertisements (expiring soon, expired, active)"""
-    is_admin = current_user.get("is_admin", False)
-    branch_id = current_user.get("branch_id")
+    # Branch filtering — fail-closed for non-admins without a branch_id.
+    # Ads without a branch (shared/legacy) are visible to everyone, hence the $or.
+    effective_branch = resolve_branch_filter(current_user, None)
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     three_days_later = (datetime.now(timezone.utc) + timedelta(days=3)).strftime("%Y-%m-%d")
-    
-    # Admin sees all ads, non-admin sees only their branch
+
     query = {}
-    if not is_admin and branch_id:
-        query["$or"] = [{"branch_id": branch_id}, {"branch_id": None}, {"branch_id": ""}]
+    if effective_branch:
+        query["$or"] = [{"branch_id": effective_branch}, {"branch_id": None}, {"branch_id": ""}]
     
     ads = await db.advertisements.find(query, {"_id": 0}).to_list(1000)
     

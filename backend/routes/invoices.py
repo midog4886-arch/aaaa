@@ -9,6 +9,7 @@ from datetime import datetime, timezone
 logger = logging.getLogger(__name__)
 
 from .common import db, get_current_user
+from utils.auth import require_branch_scope, resolve_branch_filter
 from utils.sequences import get_branch_seq_start
 
 # Loyalty points function - will be set from server.py
@@ -106,16 +107,12 @@ async def get_invoices(
     current_user: dict = Depends(get_current_user)
 ):
     """Get all invoices with optional filters"""
-    is_admin = current_user.get("is_admin", False)
-    branch_id = current_user.get("branch_id")
-    
     query = {}
-    
-    # Branch filtering
-    if is_admin and branch_filter and branch_filter != "all":
-        query["branch_id"] = branch_filter
-    elif not is_admin and branch_id:
-        query["branch_id"] = branch_id
+
+    # Branch filtering — fail-closed for non-admins without a branch_id
+    effective_branch = resolve_branch_filter(current_user, branch_filter)
+    if effective_branch:
+        query["branch_id"] = effective_branch
     
     if member_id:
         query["member_id"] = member_id
@@ -159,14 +156,11 @@ async def search_invoices(
     current_user: dict = Depends(get_current_user)
 ):
     """Search invoices with member name"""
-    is_admin = current_user.get("is_admin", False)
-    branch_id = current_user.get("branch_id")
-    
     query = {}
-    if is_admin and branch_filter and branch_filter != "all":
-        query["branch_id"] = branch_filter
-    elif not is_admin and branch_id:
-        query["branch_id"] = branch_id
+    # Branch filtering — fail-closed for non-admins without a branch_id
+    effective_branch = resolve_branch_filter(current_user, branch_filter)
+    if effective_branch:
+        query["branch_id"] = effective_branch
     
     if q:
         query["$or"] = [
@@ -201,10 +195,24 @@ async def search_invoices(
     
     return invoices
 
+def _scoped_invoice_query(invoice_id: str, current_user: dict) -> dict:
+    """Build an invoice-id query scoped to the caller's branch for non-admins.
+
+    Fail-closed via ``resolve_branch_filter`` — a non-admin without a
+    branch_id receives 403 instead of being able to look up invoices from
+    other branches by ID (IDOR-style cross-branch exposure).
+    """
+    query = {"id": invoice_id}
+    effective_branch = resolve_branch_filter(current_user, None)
+    if effective_branch:
+        query["branch_id"] = effective_branch
+    return query
+
+
 @router.get("/{invoice_id}", response_model=Invoice)
 async def get_invoice(invoice_id: str, current_user: dict = Depends(get_current_user)):
-    """Get a single invoice by ID"""
-    invoice = await db.invoices.find_one({"id": invoice_id}, {"_id": 0})
+    """Get a single invoice by ID (branch-scoped for non-admins)"""
+    invoice = await db.invoices.find_one(_scoped_invoice_query(invoice_id, current_user), {"_id": 0})
     if not invoice:
         raise HTTPException(status_code=404, detail="Invoice not found")
     return invoice
@@ -214,6 +222,9 @@ async def create_invoice(invoice: InvoiceCreate, current_user: dict = Depends(ge
     """Create a new invoice"""
     invoice_id = str(uuid.uuid4())
     is_admin = current_user.get("is_admin", False)
+    # Fail-closed: non-admins must have a branch (otherwise the invoice would
+    # be created with branch_id=None and visible to all branch-less users).
+    require_branch_scope(current_user)
 
     # Get supervisor name
     user_doc = await db.users.find_one({"id": current_user["user_id"]}, {"_id": 0})
@@ -226,15 +237,26 @@ async def create_invoice(invoice: InvoiceCreate, current_user: dict = Depends(ge
     customer_name = invoice.customer_name_ar
     customer_phone = invoice.customer_phone
 
+    # Branch-scope member lookups for non-admins so a staff user cannot
+    # use a member_id from a different branch (cross-branch IDOR / data leak).
+    effective_branch = resolve_branch_filter(current_user, None)
+
+    def _scoped_member_filter(member_id: str) -> dict:
+        q = {"id": member_id}
+        if effective_branch:
+            q["branch_id"] = effective_branch
+        return q
+
     if invoice.member_id:
-        member = await db.members.find_one({"id": invoice.member_id}, {"_id": 0})
-        if member:
-            member_name = member.get("name_ar", member.get("name", ""))
-            member_code = member.get("member_code", "")
-            if not customer_name:
-                customer_name = member_name
-            if not customer_phone:
-                customer_phone = member.get("phone", "")
+        member = await db.members.find_one(_scoped_member_filter(invoice.member_id), {"_id": 0})
+        if not member:
+            raise HTTPException(status_code=404, detail="Member not found")
+        member_name = member.get("name_ar", member.get("name", ""))
+        member_code = member.get("member_code", "")
+        if not customer_name:
+            customer_name = member_name
+        if not customer_phone:
+            customer_phone = member.get("phone", "")
 
     # Determine branch: explicit admin choice > member's branch > current user's branch
     if is_admin and invoice.branch_id and invoice.branch_id != "all":
@@ -279,9 +301,11 @@ async def create_invoice(invoice: InvoiceCreate, current_user: dict = Depends(ge
     additional_members_info = []
     if invoice.additional_members:
         for am in invoice.additional_members:
-            am_member = await db.members.find_one({"id": am.member_id}, {"_id": 0})
-            am_name = am.member_name or (am_member.get("name_ar", am_member.get("name", "")) if am_member else "")
-            am_code = am.member_code or (am_member.get("member_code", "") if am_member else "")
+            am_member = await db.members.find_one(_scoped_member_filter(am.member_id), {"_id": 0})
+            if not am_member:
+                raise HTTPException(status_code=404, detail="Additional member not found")
+            am_name = am.member_name or am_member.get("name_ar", am_member.get("name", ""))
+            am_code = am.member_code or am_member.get("member_code", "")
             additional_members_info.append({"member_id": am.member_id, "member_name": am_name, "member_code": am_code})
             for item in am.items:
                 item_dict = item.model_dump()
@@ -358,8 +382,9 @@ async def create_invoice(invoice: InvoiceCreate, current_user: dict = Depends(ge
 
 @router.put("/{invoice_id}/pay")
 async def pay_invoice(invoice_id: str, current_user: dict = Depends(get_current_user)):
-    """Mark an invoice as paid"""
-    invoice = await db.invoices.find_one({"id": invoice_id})
+    """Mark an invoice as paid (branch-scoped for non-admins)"""
+    scoped_invoice_query = _scoped_invoice_query(invoice_id, current_user)
+    invoice = await db.invoices.find_one(scoped_invoice_query)
     if not invoice:
         raise HTTPException(status_code=404, detail="Invoice not found")
     
@@ -387,9 +412,10 @@ async def pay_invoice(invoice_id: str, current_user: dict = Depends(get_current_
             {"$inc": {"used_count": 1}}
         )
     
-    # Update invoice status
+    # Update invoice status (scoped filter — defence-in-depth in case of
+    # future refactors that move the existence check away from the write).
     await db.invoices.update_one(
-        {"id": invoice_id},
+        scoped_invoice_query,
         {"$set": {
             "status": "paid",
             "paid_at": datetime.now(timezone.utc).isoformat()
@@ -568,35 +594,38 @@ async def pay_invoice(invoice_id: str, current_user: dict = Depends(get_current_
 
 @router.put("/{invoice_id}/cancel")
 async def cancel_invoice(invoice_id: str, current_user: dict = Depends(get_current_user)):
-    """Cancel an invoice"""
+    """Cancel an invoice (branch-scoped for non-admins)"""
     result = await db.invoices.update_one(
-        {"id": invoice_id},
+        _scoped_invoice_query(invoice_id, current_user),
         {"$set": {"status": "cancelled"}}
     )
-    if result.modified_count == 0:
+    if result.matched_count == 0:
         raise HTTPException(status_code=404, detail="Invoice not found")
     return {"message": "Invoice cancelled"}
 
 @router.put("/{invoice_id}/restore")
 async def restore_invoice(invoice_id: str, current_user: dict = Depends(get_current_user)):
-    """Restore a cancelled invoice"""
+    """Restore a cancelled invoice (branch-scoped for non-admins)"""
+    scoped = _scoped_invoice_query(invoice_id, current_user)
+    scoped["status"] = "cancelled"
     result = await db.invoices.update_one(
-        {"id": invoice_id, "status": "cancelled"},
+        scoped,
         {"$set": {"status": "pending"}}
     )
-    if result.modified_count == 0:
+    if result.matched_count == 0:
         raise HTTPException(status_code=404, detail="Invoice not found or not cancelled")
     return {"message": "Invoice restored"}
 
 @router.delete("/{invoice_id}")
 async def delete_invoice(invoice_id: str, current_user: dict = Depends(get_current_user)):
-    """Delete an invoice"""
-    invoice = await db.invoices.find_one({"id": invoice_id})
+    """Delete an invoice (branch-scoped for non-admins)"""
+    scoped = _scoped_invoice_query(invoice_id, current_user)
+    invoice = await db.invoices.find_one(scoped)
     if not invoice:
         raise HTTPException(status_code=404, detail="Invoice not found")
-    
+
     if invoice.get("status") == "paid":
         raise HTTPException(status_code=400, detail="Cannot delete paid invoice")
-    
-    await db.invoices.delete_one({"id": invoice_id})
+
+    await db.invoices.delete_one(scoped)
     return {"message": "Invoice deleted"}
