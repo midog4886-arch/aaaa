@@ -801,7 +801,11 @@ async def _aggregate_last_renewal_reminders(
             {
                 "$group": {
                     "_id": {"member_id": "$member_id", "activity_name": "$activity_name"},
+                    # `last_*` fields capture the most recent reminder event
+                    # exactly, while `channels` aggregates the set of channels
+                    # ever used so the tooltip can list "via WhatsApp + push".
                     "last_sent": {"$first": "$timestamp"},
+                    "last_channel": {"$first": "$channel"},
                     "channels": {"$addToSet": "$channel"},
                     "manual": {"$first": "$manual"},
                     "days_before": {"$first": "$days_before"},
@@ -817,6 +821,7 @@ async def _aggregate_last_renewal_reminders(
                 "member_id": row["_id"].get("member_id"),
                 "activity_name": row["_id"].get("activity_name"),
                 "last_sent": row.get("last_sent"),
+                "last_channel": row.get("last_channel"),
                 "channels": row.get("channels", []),
                 "manual": row.get("manual"),
                 "days_before": row.get("days_before"),

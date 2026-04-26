@@ -112,7 +112,12 @@ const RenewalsPage = () => {
       data.forEach(r => {
         if (!r.member_id) return;
         const key = `${r.member_id}|${r.activity_name || ''}`;
-        map[key] = { last_sent: r.last_sent, channels: r.channels || [], manual: r.manual };
+        map[key] = {
+          last_sent: r.last_sent,
+          last_channel: r.last_channel || null,
+          channels: r.channels || [],
+          manual: r.manual,
+        };
       });
       setLastReminders(map);
     } catch {}
@@ -139,6 +144,15 @@ const RenewalsPage = () => {
       setExpiredList(expired);
       // Reload last-reminder badges only for the currently visible cards.
       reloadLastReminders([...expiring, ...expired]);
+      // Refresh the manual reminder template too — picks up edits made in
+      // the WhatsApp settings page without requiring a hard reload here.
+      try {
+        const tplRes = await whatsappAPI.getReminderTemplate();
+        const tpl = tplRes?.data?.manual_reminder_template;
+        if (tpl) setWaTemplate(tpl);
+      } catch {
+        // Non-fatal
+      }
     } catch (error) {
       console.error('Failed to load renewals data:', error);
       toast.error(language === 'ar' ? 'حدث خطأ في تحميل البيانات' : 'Failed to load data');
@@ -658,13 +672,25 @@ const RenewalsPage = () => {
               {lastInfo
                 ? (
                   <span
-                    title={
-                      lastInfo.channels.length > 0
-                        ? (language === 'ar'
-                            ? `القنوات: ${lastInfo.channels.join('، ')}`
-                            : `Channels: ${lastInfo.channels.join(', ')}`)
-                        : (language === 'ar' ? 'لا توجد قنوات مسجلة' : 'No channel info')
-                    }
+                    title={(() => {
+                      const lastCh = lastInfo.last_channel;
+                      const allCh = lastInfo.channels || [];
+                      const otherCh = allCh.filter(c => c && c !== lastCh);
+                      if (lastCh) {
+                        const base = language === 'ar' ? `آخر قناة: ${lastCh}` : `Last channel: ${lastCh}`;
+                        if (otherCh.length) {
+                          const list = otherCh.join(language === 'ar' ? '، ' : ', ');
+                          return language === 'ar' ? `${base} (سابقاً: ${list})` : `${base} (also: ${list})`;
+                        }
+                        return base;
+                      }
+                      if (allCh.length) {
+                        return language === 'ar'
+                          ? `القنوات: ${allCh.join('، ')}`
+                          : `Channels: ${allCh.join(', ')}`;
+                      }
+                      return language === 'ar' ? 'لا توجد قنوات مسجلة' : 'No channel info';
+                    })()}
                     className="cursor-help"
                   >
                     {language === 'ar' ? 'آخر تذكير: ' : 'Last reminder: '}
