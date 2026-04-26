@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/AuthContext';
 import { Layout } from '../components/Layout';
@@ -181,6 +182,10 @@ export const ActivitiesPage = () => {
     }
   };
 
+  const location = useLocation();
+  const navigate = useNavigate();
+  const handledViewIdRef = useRef(null);
+
   const openEditDialog = (activity) => {
     setSelectedActivity(activity);
     setFormData({
@@ -216,6 +221,24 @@ export const ActivitiesPage = () => {
       coach_id: ''
     });
   };
+
+  // Auto-open an activity when navigated here with ?view=<activity_id>
+  // (e.g. from the global search dropdown).
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const viewId = params.get('view');
+    if (!viewId || loading || !activities.length) return;
+    if (handledViewIdRef.current === viewId) return;
+    const target = activities.find(a => a.id === viewId);
+    if (!target) return;
+    handledViewIdRef.current = viewId;
+    openEditDialog(target);
+    // Clean the param so a refresh doesn't re-open the dialog.
+    params.delete('view');
+    const next = params.toString();
+    navigate({ pathname: location.pathname, search: next ? `?${next}` : '' }, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.search, loading, activities]);
 
   const getActivityIcon = (name) => {
     const n = (name || '').toLowerCase();

@@ -174,7 +174,7 @@ const GlobalSearch = () => {
                   {results.activities.map((a) => (
                     <button
                       key={a.id}
-                      onClick={() => handleNavigate('/admin/activities')}
+                      onClick={() => handleNavigate(`/admin/activities?view=${encodeURIComponent(a.id)}`)}
                       className="w-full text-start px-4 py-2.5 hover:bg-purple-50/50 transition-colors flex items-center gap-3 border-b last:border-b-0"
                     >
                       <div className="w-8 h-8 rounded-full bg-purple-100 flex items-center justify-center text-purple-700 flex-shrink-0">
