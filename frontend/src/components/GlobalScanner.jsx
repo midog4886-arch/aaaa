@@ -543,10 +543,21 @@ const GlobalScanner = ({ enabled = true, language = 'ar' }) => {
                             <div className="p-3.5 flex items-center justify-between gap-3">
                               <div className="min-w-0 flex-1">
                                 <p className="font-bold text-base truncate">{act.activity_name}</p>
-                                <div className="flex items-center gap-2 mt-1">
-                                  <span className="text-xs text-gray-400 flex items-center gap-1">
-                                    <Calendar className="w-3 h-3" />
-                                    {act.end_date || '-'}
+                                <div className="flex flex-col gap-1 mt-1">
+                                  {act.schedule ? (
+                                    <span className="text-xs text-gray-600 flex items-center gap-1">
+                                      <Clock className="w-3 h-3 text-blue-500 flex-shrink-0" />
+                                      <span className="truncate" title={act.schedule}>{act.schedule}</span>
+                                    </span>
+                                  ) : (
+                                    <span className="text-xs text-gray-400 flex items-center gap-1">
+                                      <Clock className="w-3 h-3 flex-shrink-0" />
+                                      {t('لا يوجد جدول', 'No schedule')}
+                                    </span>
+                                  )}
+                                  <span className="text-xs text-gray-500 flex items-center gap-1">
+                                    <Calendar className="w-3 h-3 text-emerald-500 flex-shrink-0" />
+                                    <span>{t('ينتهي:', 'Ends:')} {act.end_date || '-'}</span>
                                   </span>
                                 </div>
                               </div>
