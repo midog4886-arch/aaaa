@@ -142,17 +142,12 @@ const RenewalsPage = () => {
 
       setExpiringList(expiring);
       setExpiredList(expired);
-      // Reload last-reminder badges only for the currently visible cards.
       reloadLastReminders([...expiring, ...expired]);
-      // Refresh the manual reminder template too — picks up edits made in
-      // the WhatsApp settings page without requiring a hard reload here.
       try {
         const tplRes = await whatsappAPI.getReminderTemplate();
         const tpl = tplRes?.data?.manual_reminder_template;
         if (tpl) setWaTemplate(tpl);
-      } catch {
-        // Non-fatal
-      }
+      } catch {}
     } catch (error) {
       console.error('Failed to load renewals data:', error);
       toast.error(language === 'ar' ? 'حدث خطأ في تحميل البيانات' : 'Failed to load data');

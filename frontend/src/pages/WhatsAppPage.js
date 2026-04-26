@@ -798,10 +798,7 @@ export default function WhatsAppPage() {
                 </button>
               </div>
 
-              {/* Legacy single/double-reminder controls — kept for backward
-                  compatibility with installs that haven't switched to the
-                  multi-offset model below. Hidden by default to avoid
-                  confusion now that "Reminder Offsets" is the primary UI. */}
+              {/* Legacy reminder fields — collapsed; offsets below are primary */}
               <details className="border rounded-xl p-3 bg-muted/30">
                 <summary className="cursor-pointer text-sm font-medium text-muted-foreground select-none">
                   {t('الإعدادات القديمة (تذكير أول/ثاني) — للتوافق فقط', 'Legacy reminder fields (1st / 2nd) — backward compatibility only')}

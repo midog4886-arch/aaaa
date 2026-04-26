@@ -21,13 +21,7 @@ def _require_whatsapp_access(current_user: dict):
 
 
 def _require_renewals_or_whatsapp_access(current_user: dict):
-    """Allow access to reminder endpoints used by the Renewals page.
-
-    The Renewals admin tool needs to read the manual template, look up the
-    last-reminder log, and dispatch reminders without granting full
-    WhatsApp settings access. Admins, users with the existing `whatsapp`
-    permission, or users with the `renewals` permission may all proceed.
-    """
+    """Renewals page needs read/send without full WhatsApp settings access."""
     if current_user.get("is_admin", False):
         return
     perms = current_user.get("permissions") or []
@@ -54,9 +48,7 @@ DEFAULT_SETTINGS = {
         {"days": 0, "enabled": True},
     ],
     "message_template": "مرحباً {name}،\nنذكركم بأن اشتراككم في نشاط {activity} سينتهي بعد {days} يوم/أيام.\nيرجى التواصل معنا للتجديد. 🏆",
-    # Per-offset overrides for the auto WhatsApp reminder text. Keys are
-    # stringified offset days (e.g. "0", "3", "7"); empty/missing values
-    # fall back to the shared `message_template`.
+    # Per-offset overrides keyed by stringified days; empty falls back to message_template
     "templates": {},
     "manual_reminder_template": "السلام عليكم {name}،\nنود تذكيركم بأن اشتراك ({activity}) في شركة اداء الابطال العالمية للرياضة قارب على الانتهاء بتاريخ {end_date}.\nنرجو التواصل معنا للتجديد.\nشكراً لكم 🏆",
     "send_hour": 9,
@@ -70,23 +62,23 @@ DEFAULT_SETTINGS = {
 def _normalize_offsets(settings: dict) -> List[dict]:
     """Return a deduplicated, validated list of {days, enabled} for the scheduler.
 
-    Backwards-compat: if no `offsets` field is set in the stored doc, fall back
-    to the legacy `days_before`/`days_before_2`/`extra_offsets` fields so older
-    deployments keep working.
+    If the stored doc has no `offsets` key at all, fall back to the legacy
+    days_before/days_before_2/extra_offsets fields. An explicit empty list
+    means "no offsets enabled" and is honoured as-is.
     """
-    raw = settings.get("offsets")
     items: list = []
-    if isinstance(raw, list) and raw:
-        for o in raw:
-            if isinstance(o, dict) and "days" in o:
-                try:
-                    d = int(o["days"])
-                except Exception:
-                    continue
-                if 0 <= d <= 60:
-                    items.append({"days": d, "enabled": bool(o.get("enabled", True))})
+    if "offsets" in settings:
+        raw = settings.get("offsets") or []
+        if isinstance(raw, list):
+            for o in raw:
+                if isinstance(o, dict) and "days" in o:
+                    try:
+                        d = int(o["days"])
+                    except Exception:
+                        continue
+                    if 0 <= d <= 60:
+                        items.append({"days": d, "enabled": bool(o.get("enabled", True))})
     else:
-        # Legacy fallback
         try:
             items.append({"days": int(settings.get("days_before", 3)), "enabled": True})
         except Exception:
@@ -101,7 +93,6 @@ def _normalize_offsets(settings: dict) -> List[dict]:
                 items.append({"days": int(d), "enabled": True})
             except Exception:
                 continue
-    # Dedupe by days, keep first occurrence
     seen: set = set()
     out: list = []
     for it in items:
@@ -671,25 +662,18 @@ async def get_target_count(current_user: dict = Depends(get_current_user)):
     today = datetime.now(RIYADH_TZ).date()
     today_str = today.strftime("%Y-%m-%d")
 
-    # Resolve enabled offsets via the same normalization the scheduler uses.
-    # This keeps target-count aligned with what the daily reminder loop will
-    # actually send, and inherits backward-compat with legacy
-    # days_before/days_before_2/extra_offsets fields.
     enabled_offsets = sorted({
         int(it["days"]) for it in _normalize_offsets(settings) if it.get("enabled")
     })
     if not enabled_offsets:
         enabled_offsets = [int(settings.get("days_before", 3))]
 
-    # Pre-compute the target date string for each offset.
     offset_dates = {d: (today + timedelta(days=d)).strftime("%Y-%m-%d") for d in enabled_offsets}
 
     all_members = await _db["members"].find(
         {"activities": {"$elemMatch": {"status": "active"}}}
     ).to_list(length=10000)
 
-    # Per-offset counts (today only) + an overall window count covering all
-    # offsets up to the largest enabled value.
     per_offset_today: dict = {d: 0 for d in enabled_offsets}
     max_days = max(enabled_offsets)
     max_date = (today + timedelta(days=max_days)).strftime("%Y-%m-%d")
@@ -717,15 +701,12 @@ async def get_target_count(current_user: dict = Depends(get_current_user)):
                         count_today_any += 1
                         matched_today = True
 
-    # Build per-offset breakdown for the new response.
     offsets_breakdown = [
         {"days": d, "target_date": offset_dates[d], "count_today": per_offset_today[d]}
         for d in enabled_offsets
     ]
 
-    # Backward-compat: keep the original field names. The first enabled offset
-    # is reported as the "primary" reminder; if a second exists it populates
-    # the legacy `*_2` triplet so older clients keep working.
+    # Backward-compat: legacy fields use first/second enabled offset.
     primary = enabled_offsets[0]
     secondary = enabled_offsets[1] if len(enabled_offsets) > 1 else None
     target_str = offset_dates[primary]
@@ -993,10 +974,6 @@ async def send_bulk_renewal_reminders(
         if not member:
             skipped += len(items)
             continue
-        # Tracks whether *any* channel produced a per-activity log row for
-        # this member. If nothing logs (WA disconnected, push/portal off),
-        # we still write a fallback "intent" entry below so the Renewals
-        # page's "last reminder" badge updates deterministically.
         member_logged = False
         name = member.get("name_ar") or member.get("name") or ""
         phone = member.get("phone", "")
@@ -1045,7 +1022,6 @@ async def send_bulk_renewal_reminders(
                     "manual": True,
                     "type": "renewal_reminder",
                 })
-                # Log per-activity so each card updates
                 for it in items:
                     await _record_renewal_reminder(
                         member_id=mid,
@@ -1059,10 +1035,7 @@ async def send_bulk_renewal_reminders(
                 member_logged = True
                 if ok:
                     wa_sent += 1
-                # Preserve the existing 60-second WhatsApp pacing so accounts
-                # don't get flagged. Even though manual bulk sends are
-                # operator-initiated, large selections must throttle the same
-                # way the daily scheduler does.
+                # Match scheduler's 60s pacing to avoid account flagging.
                 await asyncio.sleep(60)
         elif log_only and phone:
             # In log-only mode the browser opens wa.me directly. We still record
@@ -1155,10 +1128,7 @@ async def send_bulk_renewal_reminders(
             except Exception as e:
                 logger.error(f"Manual portal reminder error for {name}: {e}")
 
-        # ── Fallback: nothing fired (WA disconnected, push/portal off) ──
-        # Still mark the bulk-remind intent so the per-card "last reminder"
-        # badge updates. Channel "intent" + success=False signals the operator
-        # tried but no delivery channel was available.
+        # Record bulk-remind intent if no channel logged (so the badge updates).
         if not member_logged:
             for it in items:
                 await _record_renewal_reminder(
