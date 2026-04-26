@@ -4,7 +4,7 @@ import os
 import uuid
 from datetime import datetime, timedelta, date
 from zoneinfo import ZoneInfo
-from typing import Optional
+from typing import Optional, List
 import httpx
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -29,7 +29,9 @@ DEFAULT_SETTINGS = {
     "days_before": 3,
     "days_before_2": 1,
     "reminder_2_enabled": True,
+    "extra_offsets": [],  # additional days-before offsets, e.g. [7, 14]
     "message_template": "مرحباً {name}،\nنذكركم بأن اشتراككم في نشاط {activity} سينتهي بعد {days} يوم/أيام.\nيرجى التواصل معنا للتجديد. 🏆",
+    "manual_reminder_template": "السلام عليكم {name}،\nنود تذكيركم بأن اشتراك ({activity}) في شركة اداء الابطال العالمية للرياضة قارب على الانتهاء بتاريخ {end_date}.\nنرجو التواصل معنا للتجديد.\nشكراً لكم 🏆",
     "send_hour": 9,
     "push_enabled": True,
     "portal_enabled": True,
@@ -132,13 +134,39 @@ async def _get_expiring_members(days_before: int) -> list:
         results.append({
             "member": member,
             "activity_name": "، ".join(filter(None, expiring_activities)),
+            "expiring_activities": expiring_activities,
             "end_date_str": target_str,
             "end_date_fmt": target_fmt,
         })
     return results
 
 
-async def _send_wa_for_members(members_data: list, days_before: int, template: str) -> int:
+async def _record_renewal_reminder(
+    member_id: str,
+    activity_name: str,
+    channel: str,
+    days_before: Optional[int],
+    manual: bool,
+    success: bool,
+):
+    """Insert an audit row into renewal_reminder_log for last-reminder tracking."""
+    if _db is None or not member_id:
+        return
+    try:
+        await _db["renewal_reminder_log"].insert_one({
+            "member_id": member_id,
+            "activity_name": activity_name or "",
+            "channel": channel,
+            "days_before": days_before,
+            "manual": bool(manual),
+            "success": bool(success),
+            "timestamp": datetime.now(RIYADH_TZ).isoformat(),
+        })
+    except Exception as e:
+        logger.error(f"Failed to record reminder log: {e}")
+
+
+async def _send_wa_for_members(members_data: list, days_before: int, template: str, manual: bool = False) -> int:
     """Send WhatsApp reminder messages. Returns count of successful sends."""
     sent_count = 0
     for item in members_data:
@@ -159,13 +187,27 @@ async def _send_wa_for_members(members_data: list, days_before: int, template: s
             success = await _send_wa_message(wa_phone, message)
             log_entry = {
                 "timestamp": datetime.now(RIYADH_TZ).isoformat(),
+                "member_id": member.get("id", ""),
                 "member_name": name,
                 "phone": phone,
                 "activities": activity_name,
                 "success": success,
                 "days_before": days_before,
+                "manual": manual,
+                "type": "renewal_reminder",
             }
             await _db["whatsapp_send_log"].insert_one(log_entry)
+            # Log per-individual-activity so the Renewals page can match
+            # last-reminder badges by (member_id, activity_name) precisely.
+            for act_name in (item.get("expiring_activities") or [activity_name]):
+                await _record_renewal_reminder(
+                    member_id=member.get("id", ""),
+                    activity_name=act_name,
+                    channel="whatsapp",
+                    days_before=days_before,
+                    manual=manual,
+                    success=success,
+                )
             if success:
                 sent_count += 1
                 logger.info(f"WhatsApp reminder ({days_before}d) sent to {name} ({phone})")
@@ -213,13 +255,25 @@ async def _send_push_for_members(members_data: list, days_before: int, settings:
             {"_id": 0}
         ).to_list(20)
 
+        any_ok = False
         for sub in subscriptions:
             try:
                 ok = await send_push_notification(sub, payload)
                 if ok:
                     sent_count += 1
+                    any_ok = True
             except Exception as e:
                 logger.error(f"Push expiry reminder failed for {name}: {e}")
+        if subscriptions:
+            for act_name in (item.get("expiring_activities") or [activity_name]):
+                await _record_renewal_reminder(
+                    member_id=member_id,
+                    activity_name=act_name,
+                    channel="push",
+                    days_before=days_before,
+                    manual=settings.get("_manual_run", False),
+                    success=any_ok,
+                )
     return sent_count
 
 
@@ -261,6 +315,15 @@ async def _send_portal_for_members(members_data: list, days_before: int, setting
             "created_at": datetime.now(RIYADH_TZ).isoformat(),
         }
         await _db["member_notifications"].insert_one(notification)
+        for act_name in (item.get("expiring_activities") or [activity_name]):
+            await _record_renewal_reminder(
+                member_id=member_id,
+                activity_name=act_name,
+                channel="portal",
+                days_before=days_before,
+                manual=settings.get("_manual_run", False),
+                success=True,
+            )
         inserted_count += 1
     return inserted_count
 
@@ -275,6 +338,7 @@ async def _do_daily_reminders():
     days_before = int(settings.get("days_before", 3))
     days_before_2 = int(settings.get("days_before_2", 1))
     reminder_2_enabled = settings.get("reminder_2_enabled", True)
+    extra_offsets = settings.get("extra_offsets", []) or []
     template = settings.get("message_template", DEFAULT_SETTINGS["message_template"])
 
     wa_status = await _get_wa_status()
@@ -288,6 +352,14 @@ async def _do_daily_reminders():
     days_set = [days_before]
     if reminder_2_enabled and days_before_2 != days_before:
         days_set.append(days_before_2)
+    # Append extra (deduplicated, valid range)
+    for d in extra_offsets:
+        try:
+            di = int(d)
+        except Exception:
+            continue
+        if 1 <= di <= 60 and di not in days_set:
+            days_set.append(di)
 
     total_wa = 0
     total_push = 0
@@ -362,7 +434,9 @@ class WhatsAppSettings(BaseModel):
     days_before: Optional[int] = None
     days_before_2: Optional[int] = None
     reminder_2_enabled: Optional[bool] = None
+    extra_offsets: Optional[List[int]] = None
     message_template: Optional[str] = None
+    manual_reminder_template: Optional[str] = None
     send_hour: Optional[int] = None
     push_enabled: Optional[bool] = None
     portal_enabled: Optional[bool] = None
@@ -383,6 +457,22 @@ async def update_settings(data: WhatsAppSettings, current_user: dict = Depends(g
         raise HTTPException(status_code=400, detail="send_hour must be between 0 and 23")
     if data.message_template is not None and len(data.message_template) > 1000:
         raise HTTPException(status_code=400, detail="message_template must not exceed 1000 characters")
+    if data.manual_reminder_template is not None and len(data.manual_reminder_template) > 1000:
+        raise HTTPException(status_code=400, detail="manual_reminder_template must not exceed 1000 characters")
+    if data.extra_offsets is not None:
+        cleaned = []
+        seen = set()
+        for d in data.extra_offsets:
+            try:
+                di = int(d)
+            except Exception:
+                continue
+            if 1 <= di <= 60 and di not in seen:
+                cleaned.append(di)
+                seen.add(di)
+            elif not (1 <= di <= 60):
+                raise HTTPException(status_code=400, detail="extra_offsets values must be between 1 and 60")
+        data.extra_offsets = cleaned[:10]  # cap at 10 offsets
     coll = _db["whatsapp_settings"]
     update = {k: v for k, v in data.dict().items() if v is not None}
     if not update:
@@ -493,4 +583,313 @@ async def get_target_count(current_user: dict = Depends(get_current_user)):
         "count": count_within, "count_today": count_today, "target_date": target_str,
         "count_2": count_within_2, "count_today_2": count_today_2, "target_date_2": target_str_2,
         "reminder_2_enabled": reminder_2_enabled,
+    }
+
+
+# ===================== Renewal-reminder log endpoints =====================
+
+class BulkReminderItem(BaseModel):
+    member_id: str
+    activity_name: Optional[str] = ""
+    end_date: Optional[str] = ""
+    days_remaining: Optional[int] = None
+
+
+class BulkReminderRequest(BaseModel):
+    items: List[BulkReminderItem]
+
+
+@router.get("/renewal-reminders/last")
+async def get_last_renewal_reminders(current_user: dict = Depends(get_current_user)):
+    """Return the most-recent reminder timestamp per (member_id, activity_name).
+
+    Aggregates renewal_reminder_log into a flat list so the Renewals page can
+    show "آخر تذكير: قبل X يوم" badges on each card. Non-admin users are
+    restricted to reminders for members in their own branch.
+    """
+    _require_whatsapp_access(current_user)
+    if _db is None:
+        return []
+
+    # Branch scoping: non-admins only see reminders for their branch's members.
+    # Fail-closed: a non-admin without a branch_id is denied entirely.
+    is_admin = current_user.get("is_admin", False)
+    user_branch_id = current_user.get("branch_id")
+    allowed_member_ids: Optional[set] = None
+    if not is_admin:
+        if not user_branch_id:
+            raise HTTPException(status_code=403, detail="No branch assigned")
+        try:
+            cursor_m = _db["members"].find({"branch_id": user_branch_id}, {"id": 1, "_id": 0})
+            allowed_member_ids = {row["id"] async for row in cursor_m if row.get("id")}
+        except Exception as e:
+            logger.error(f"Branch scoping query failed: {e}")
+            allowed_member_ids = set()
+
+    try:
+        match_stage: dict = {}
+        if allowed_member_ids is not None:
+            if not allowed_member_ids:
+                return []
+            match_stage = {"member_id": {"$in": list(allowed_member_ids)}}
+        pipeline = []
+        if match_stage:
+            pipeline.append({"$match": match_stage})
+        pipeline.extend([
+            {"$sort": {"timestamp": -1}},
+            {
+                "$group": {
+                    "_id": {"member_id": "$member_id", "activity_name": "$activity_name"},
+                    "last_sent": {"$first": "$timestamp"},
+                    "channels": {"$addToSet": "$channel"},
+                    "manual": {"$first": "$manual"},
+                    "days_before": {"$first": "$days_before"},
+                }
+            },
+            {"$limit": 5000},
+        ])
+        cursor = _db["renewal_reminder_log"].aggregate(pipeline)
+        results = []
+        async for row in cursor:
+            results.append({
+                "member_id": row["_id"].get("member_id"),
+                "activity_name": row["_id"].get("activity_name"),
+                "last_sent": row.get("last_sent"),
+                "channels": row.get("channels", []),
+                "manual": row.get("manual"),
+                "days_before": row.get("days_before"),
+            })
+        return results
+    except Exception as e:
+        logger.error(f"Failed to aggregate renewal reminder log: {e}")
+        return []
+
+
+@router.post("/renewal-reminders/send")
+async def send_bulk_renewal_reminders(
+    payload: BulkReminderRequest,
+    log_only: bool = False,
+    current_user: dict = Depends(get_current_user),
+):
+    """Send manual renewal reminders for an explicit list of (member, activity) pairs.
+
+    Sends WhatsApp (if connected), push (if enabled), and creates portal
+    notifications (if enabled). Always logs into renewal_reminder_log so the
+    Renewals page can update its "last reminder" indicator.
+
+    Set ``log_only=true`` to skip all dispatch (WhatsApp/push/portal) and only
+    record reminder log entries — used by the per-card "Remind" button which
+    opens wa.me directly in the browser to avoid double sends.
+    """
+    _require_whatsapp_access(current_user)
+    if _db is None:
+        raise HTTPException(status_code=503, detail="Database not available")
+    if not payload.items:
+        raise HTTPException(status_code=400, detail="No items provided")
+
+    settings = await _get_settings()
+    settings = {**settings, "_manual_run": True}
+    template = settings.get("manual_reminder_template", DEFAULT_SETTINGS["manual_reminder_template"])
+    push_enabled = settings.get("push_enabled", True)
+    portal_enabled = settings.get("portal_enabled", True)
+
+    wa_status = await _get_wa_status()
+    wa_connected = wa_status.get("connected", False) and not log_only
+
+    # Branch scoping: non-admins can only target members in their own branch.
+    # Fail-closed: a non-admin without a branch_id is denied entirely.
+    is_admin = current_user.get("is_admin", False)
+    user_branch_id = current_user.get("branch_id")
+    if not is_admin and not user_branch_id:
+        raise HTTPException(status_code=403, detail="No branch assigned")
+
+    # Build per-member groups so we send one WhatsApp message per phone covering
+    # all selected activities (less spammy).
+    member_ids = list({i.member_id for i in payload.items if i.member_id})
+    members_by_id: dict = {}
+    if member_ids:
+        async for m in _db["members"].find({"id": {"$in": member_ids}}):
+            members_by_id[m["id"]] = m
+
+    # Hard-reject cross-branch member IDs for non-admin callers (no silent drops).
+    if not is_admin:
+        offenders = [
+            mid for mid, m in members_by_id.items()
+            if m.get("branch_id") != user_branch_id
+        ]
+        # Also flag any requested ids that don't exist (treated as forbidden too)
+        missing = [mid for mid in member_ids if mid not in members_by_id]
+        if offenders or missing:
+            raise HTTPException(
+                status_code=403,
+                detail={
+                    "error": "Cross-branch member IDs not allowed",
+                    "out_of_branch": offenders,
+                    "missing": missing,
+                },
+            )
+
+    today = datetime.now(RIYADH_TZ).date()
+    wa_sent = 0
+    push_sent = 0
+    portal_inserted = 0
+    skipped = 0
+
+    # Group by member_id for WhatsApp
+    groups: dict = {}
+    for it in payload.items:
+        groups.setdefault(it.member_id, []).append(it)
+
+    for mid, items in groups.items():
+        member = members_by_id.get(mid)
+        if not member:
+            skipped += len(items)
+            continue
+        name = member.get("name_ar") or member.get("name") or ""
+        phone = member.get("phone", "")
+        activities_text = "، ".join(filter(None, [i.activity_name for i in items]))
+        # Use earliest end date for display
+        end_dates = sorted([i.end_date for i in items if i.end_date])
+        end_date_raw = end_dates[0] if end_dates else ""
+        end_date_fmt = end_date_raw.replace("-", "/") if end_date_raw else ""
+        # Compute days remaining for placeholder
+        try:
+            days_calc = (datetime.strptime(end_date_raw[:10], "%Y-%m-%d").date() - today).days
+        except Exception:
+            days_calc = items[0].days_remaining if items[0].days_remaining is not None else 0
+
+        # ── WhatsApp ──
+        if wa_connected and phone:
+            wa_phone = _format_phone(phone)
+            if wa_phone:
+                message = (template
+                           .replace("{name}", name)
+                           .replace("{activity}", activities_text)
+                           .replace("{days}", str(days_calc))
+                           .replace("{end_date}", end_date_fmt))
+                ok = await _send_wa_message(wa_phone, message)
+                await _db["whatsapp_send_log"].insert_one({
+                    "timestamp": datetime.now(RIYADH_TZ).isoformat(),
+                    "member_id": mid,
+                    "member_name": name,
+                    "phone": phone,
+                    "activities": activities_text,
+                    "success": ok,
+                    "days_before": days_calc,
+                    "manual": True,
+                    "type": "renewal_reminder",
+                })
+                # Log per-activity so each card updates
+                for it in items:
+                    await _record_renewal_reminder(
+                        member_id=mid,
+                        activity_name=it.activity_name or "",
+                        channel="whatsapp",
+                        days_before=days_calc,
+                        manual=True,
+                        success=ok,
+                    )
+                if ok:
+                    wa_sent += 1
+                # gentle throttle (manual sends may be smaller batches)
+                await asyncio.sleep(2)
+        elif log_only and phone:
+            # In log-only mode the browser opens wa.me directly. We still record
+            # the manual reminder so the "Last reminder" badge updates.
+            for it in items:
+                await _record_renewal_reminder(
+                    member_id=mid,
+                    activity_name=it.activity_name or "",
+                    channel="whatsapp",
+                    days_before=days_calc,
+                    manual=True,
+                    success=True,
+                )
+
+        # ── Push ──
+        if push_enabled and not log_only:
+            try:
+                from .push_notifications import send_push_notification, NotificationPayload
+                push_title_tmpl = settings.get("push_title_template", DEFAULT_SETTINGS["push_title_template"])
+                push_body_tmpl = settings.get("push_body_template", DEFAULT_SETTINGS["push_body_template"])
+                title = (push_title_tmpl
+                         .replace("{name}", name)
+                         .replace("{activity}", activities_text)
+                         .replace("{days}", str(days_calc))
+                         .replace("{end_date}", end_date_fmt))
+                body = (push_body_tmpl
+                        .replace("{name}", name)
+                        .replace("{activity}", activities_text)
+                        .replace("{days}", str(days_calc))
+                        .replace("{end_date}", end_date_fmt))
+                payload_obj = NotificationPayload(
+                    title=title,
+                    body=body,
+                    url="/portal/notifications",
+                    tag=f"manual-renewal-{mid}-{end_date_raw}",
+                )
+                subs = await _db["push_subscriptions"].find(
+                    {"member_id": mid, "is_active": True}, {"_id": 0}
+                ).to_list(20)
+                any_ok = False
+                for sub in subs:
+                    try:
+                        if await send_push_notification(sub, payload_obj):
+                            push_sent += 1
+                            any_ok = True
+                    except Exception as e:
+                        logger.error(f"Manual push reminder failed for {name}: {e}")
+                if subs:
+                    for it in items:
+                        await _record_renewal_reminder(
+                            member_id=mid,
+                            activity_name=it.activity_name or "",
+                            channel="push",
+                            days_before=days_calc,
+                            manual=True,
+                            success=any_ok,
+                        )
+            except Exception as e:
+                logger.error(f"Manual push reminder error for {name}: {e}")
+
+        # ── Portal (member_notifications) ──
+        if portal_enabled and not log_only:
+            try:
+                title_ar = "🔔 تذكير بتجديد الاشتراك"
+                msg_ar = f"اشتراكك في {activities_text} سينتهي بتاريخ {end_date_raw}. نرجو التواصل معنا للتجديد."
+                dedup_key = f"manual-renewal-{mid}-{end_date_raw}-{datetime.now(RIYADH_TZ).strftime('%Y%m%d%H%M')}"
+                await _db["member_notifications"].insert_one({
+                    "id": str(uuid.uuid4()),
+                    "member_id": mid,
+                    "type": "expiry_reminder",
+                    "title_ar": title_ar,
+                    "title": title_ar,
+                    "message_ar": msg_ar,
+                    "message": msg_ar,
+                    "priority": "warning",
+                    "dedup_key": dedup_key,
+                    "is_read": False,
+                    "created_at": datetime.now(RIYADH_TZ).isoformat(),
+                })
+                portal_inserted += 1
+                for it in items:
+                    await _record_renewal_reminder(
+                        member_id=mid,
+                        activity_name=it.activity_name or "",
+                        channel="portal",
+                        days_before=days_calc,
+                        manual=True,
+                        success=True,
+                    )
+            except Exception as e:
+                logger.error(f"Manual portal reminder error for {name}: {e}")
+
+    return {
+        "success": True,
+        "wa_sent": wa_sent,
+        "push_sent": push_sent,
+        "portal_inserted": portal_inserted,
+        "skipped": skipped,
+        "wa_connected": wa_connected,
+        "groups_processed": len(groups),
     }

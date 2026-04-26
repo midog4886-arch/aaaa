@@ -9,7 +9,7 @@ import { Badge } from '../components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '../components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Textarea } from '../components/ui/textarea';
-import { notificationsAPI, invoicesAPI, membersAPI, branchesAPI } from '../services/api';
+import { notificationsAPI, invoicesAPI, membersAPI, branchesAPI, whatsappAPI } from '../services/api';
 import { toast } from 'sonner';
 import {
   RefreshCcw,
@@ -22,7 +22,11 @@ import {
   User,
   Loader2,
   MessageCircle,
-  Filter
+  Filter,
+  X,
+  CheckSquare,
+  Square,
+  Activity,
 } from 'lucide-react';
 
 const RenewalsPage = () => {
@@ -49,9 +53,56 @@ const RenewalsPage = () => {
     payment_method: 'cash'
   });
 
+  // Multi-select state
+  const [selectedKeys, setSelectedKeys] = useState(new Set());
+  const [bulkActing, setBulkActing] = useState(false);
+
+  // Last-reminder map: { "memberId|activityName": { last_sent, channels } }
+  const [lastReminders, setLastReminders] = useState({});
+  // WhatsApp settings (manual template)
+  const [waTemplate, setWaTemplate] = useState(
+    'السلام عليكم {name}،\nنود تذكيركم بأن اشتراك ({activity}) في شركة اداء الابطال العالمية للرياضة قارب على الانتهاء بتاريخ {end_date}.\nنرجو التواصل معنا للتجديد.\nشكراً لكم 🏆'
+  );
+
   useEffect(() => {
     loadData();
   }, [days, selectedBranchId]);
+
+  useEffect(() => {
+    // Load last-reminder log + WhatsApp settings once
+    (async () => {
+      try {
+        const [remRes, settingsRes] = await Promise.all([
+          whatsappAPI.getLastReminders().catch(() => ({ data: [] })),
+          whatsappAPI.getSettings().catch(() => ({ data: {} })),
+        ]);
+        const map = {};
+        (remRes.data || []).forEach(r => {
+          if (!r.member_id) return;
+          const key = `${r.member_id}|${r.activity_name || ''}`;
+          map[key] = { last_sent: r.last_sent, channels: r.channels || [], manual: r.manual };
+        });
+        setLastReminders(map);
+        const tpl = settingsRes.data?.manual_reminder_template;
+        if (tpl) setWaTemplate(tpl);
+      } catch (e) {
+        // Non-fatal; renewals still works
+      }
+    })();
+  }, []);
+
+  const reloadLastReminders = async () => {
+    try {
+      const res = await whatsappAPI.getLastReminders();
+      const map = {};
+      (res.data || []).forEach(r => {
+        if (!r.member_id) return;
+        const key = `${r.member_id}|${r.activity_name || ''}`;
+        map[key] = { last_sent: r.last_sent, channels: r.channels || [], manual: r.manual };
+      });
+      setLastReminders(map);
+    } catch {}
+  };
 
   const loadData = async () => {
     setLoading(true);
@@ -166,25 +217,211 @@ const RenewalsPage = () => {
     return 'border-s-yellow-500';
   };
 
-  const handleBulkWhatsApp = () => {
-    const items = filterItems(activeTab === 'expiring' ? expiringList : expiredList);
-    if (items.length === 0) {
-      toast.info(language === 'ar' ? 'لا توجد اشتراكات لإرسال تذكير' : 'No subscriptions to remind');
+  // ── Selection helpers ──
+  const getKey = (item) => `${item.member_id}|${item.activity_name || ''}|${item.end_date || ''}`;
+  const toggleSelect = (item) => {
+    const k = getKey(item);
+    setSelectedKeys(prev => {
+      const next = new Set(prev);
+      if (next.has(k)) next.delete(k); else next.add(k);
+      return next;
+    });
+  };
+  const selectAllVisible = (items) => {
+    setSelectedKeys(prev => {
+      const next = new Set(prev);
+      items.forEach(it => next.add(getKey(it)));
+      return next;
+    });
+  };
+  const clearSelection = () => setSelectedKeys(new Set());
+
+  // Pull selected items out of the current visible list
+  const getSelectedItems = (visible) => visible.filter(it => selectedKeys.has(getKey(it)));
+
+  // Build manual reminder text using the editable WhatsApp template
+  const buildReminderText = (item) => {
+    const endRaw = item.end_date || '';
+    const endFmt = endRaw.replace(/-/g, '/');
+    return (waTemplate || '')
+      .replace(/\{name\}/g, item.member_name || '')
+      .replace(/\{activity\}/g, item.activity_name || '')
+      .replace(/\{days\}/g, String(item.days_remaining ?? 0))
+      .replace(/\{end_date\}/g, endFmt);
+  };
+
+  // Likelihood-of-renewal badge based on last attendance recency
+  const getLikelihood = (item) => {
+    const last = item.last_attendance_date;
+    if (!last) return { label: language === 'ar' ? 'منخفض' : 'Low', cls: 'bg-red-100 text-red-700 border-red-300', dot: '🔴' };
+    const lastD = new Date(last);
+    if (isNaN(lastD.getTime())) return { label: language === 'ar' ? 'منخفض' : 'Low', cls: 'bg-red-100 text-red-700 border-red-300', dot: '🔴' };
+    const diffDays = Math.floor((Date.now() - lastD.getTime()) / (1000 * 60 * 60 * 24));
+    if (diffDays <= 7) return { label: language === 'ar' ? 'مرتفع' : 'High', cls: 'bg-green-100 text-green-700 border-green-300', dot: '🟢' };
+    if (diffDays <= 13) return { label: language === 'ar' ? 'متوسط' : 'Medium', cls: 'bg-yellow-100 text-yellow-700 border-yellow-300', dot: '🟡' };
+    return { label: language === 'ar' ? 'منخفض' : 'Low', cls: 'bg-red-100 text-red-700 border-red-300', dot: '🔴' };
+  };
+
+  // "Last reminder: X days ago" — returns null if never sent
+  const getLastReminderInfo = (item) => {
+    const key = `${item.member_id}|${item.activity_name || ''}`;
+    const rec = lastReminders[key];
+    if (!rec || !rec.last_sent) return null;
+    const sentAt = new Date(rec.last_sent);
+    if (isNaN(sentAt.getTime())) return null;
+    const diff = Math.floor((Date.now() - sentAt.getTime()) / (1000 * 60 * 60 * 24));
+    return { diff, channels: rec.channels || [] };
+  };
+
+  // Open one WhatsApp chat (per-card "Remind" button)
+  const handleSingleRemind = async (item) => {
+    if (!item.phone) {
+      toast.error(language === 'ar' ? 'لا يوجد رقم جوال' : 'No phone number');
       return;
     }
-    const phoneList = [...new Set(items.map(i => i.phone).filter(Boolean))];
-    let sent = 0;
-    phoneList.forEach((phone, idx) => {
-      const memberItems = items.filter(i => i.phone === phone);
-      const memberName = memberItems[0]?.member_name || '';
-      const activitiesText = memberItems.map(i => i.activity_name).join('، ');
-      const msg = `السلام عليكم ${memberName}،\nنود تذكيركم بأن اشتراك (${activitiesText}) في شركة اداء الابطال العالمية للرياضة قارب على الانتهاء.\nنرجو التواصل معنا للتجديد.\nشكراً لكم 🏆`;
-      const url = `https://wa.me/966${phone.replace(/^0/, '')}?text=${encodeURIComponent(msg)}`;
-      setTimeout(() => window.open(url, '_blank'), idx * 500);
-      sent++;
-    });
-    toast.success(language === 'ar' ? `تم فتح ${sent} محادثة واتساب` : `Opened ${sent} WhatsApp chats`);
+    const msg = buildReminderText(item);
+    const url = `https://wa.me/966${item.phone.replace(/^0/, '')}?text=${encodeURIComponent(msg)}`;
+    window.open(url, '_blank');
+    // Log only — do NOT trigger backend dispatch (would double-send when WA is connected)
+    try {
+      await whatsappAPI.sendBulkReminders([{
+        member_id: item.member_id,
+        activity_name: item.activity_name || '',
+        end_date: item.end_date || '',
+        days_remaining: item.days_remaining,
+      }], { logOnly: true });
+      reloadLastReminders();
+    } catch (e) {
+      // Already opened the chat; silent on log failure
+    }
   };
+
+  // Send reminders to selected (or all visible) members.
+  // Posts to backend (logs + push + portal + WhatsApp if connected) and also
+  // opens chat windows as a fallback to ensure something happens locally.
+  const handleBulkSendReminder = async () => {
+    const visible = filterItems(activeTab === 'expiring' ? expiringList : expiredList);
+    const target = selectedKeys.size > 0 ? getSelectedItems(visible) : visible;
+    if (target.length === 0) {
+      toast.info(language === 'ar' ? 'لا توجد اشتراكات للتذكير' : 'No subscriptions to remind');
+      return;
+    }
+    setBulkActing(true);
+    try {
+      const payload = target.map(it => ({
+        member_id: it.member_id,
+        activity_name: it.activity_name || '',
+        end_date: it.end_date || '',
+        days_remaining: it.days_remaining,
+      }));
+      const res = await whatsappAPI.sendBulkReminders(payload);
+      const data = res.data || {};
+      const parts = [];
+      if (data.wa_sent) parts.push(`${data.wa_sent} ${language === 'ar' ? 'واتساب' : 'WhatsApp'}`);
+      if (data.push_sent) parts.push(`${data.push_sent} ${language === 'ar' ? 'إشعار' : 'push'}`);
+      if (data.portal_inserted) parts.push(`${data.portal_inserted} ${language === 'ar' ? 'بوابة' : 'portal'}`);
+      if (parts.length) {
+        toast.success(language === 'ar' ? `تم إرسال التذكيرات: ${parts.join('، ')}` : `Reminders sent: ${parts.join(', ')}`);
+      }
+      // Fallback: if WhatsApp wasn't connected, open chat windows manually
+      if (!data.wa_connected) {
+        const phoneSeen = new Set();
+        let opened = 0;
+        target.forEach((it, idx) => {
+          if (!it.phone || phoneSeen.has(it.phone)) return;
+          phoneSeen.add(it.phone);
+          const sameMember = target.filter(x => x.phone === it.phone);
+          const activitiesText = sameMember.map(x => x.activity_name).join('، ');
+          const msg = buildReminderText({ ...it, activity_name: activitiesText });
+          const url = `https://wa.me/966${it.phone.replace(/^0/, '')}?text=${encodeURIComponent(msg)}`;
+          setTimeout(() => window.open(url, '_blank'), opened * 400);
+          opened++;
+        });
+        if (opened) toast.success(language === 'ar' ? `تم فتح ${opened} محادثة واتساب` : `Opened ${opened} WhatsApp chats`);
+      }
+      clearSelection();
+      await reloadLastReminders();
+    } catch (e) {
+      console.error('Bulk reminder failed', e);
+      toast.error(language === 'ar' ? 'فشل إرسال التذكيرات' : 'Failed to send reminders');
+    } finally {
+      setBulkActing(false);
+    }
+  };
+
+  // Bulk renew: confirms then renews each selected item with default 1-month period
+  const handleBulkRenew = async () => {
+    const visible = filterItems(activeTab === 'expiring' ? expiringList : expiredList);
+    const target = getSelectedItems(visible);
+    if (target.length === 0) {
+      toast.info(language === 'ar' ? 'حدد اشتراكات للتجديد أولاً' : 'Select subscriptions to renew first');
+      return;
+    }
+    const ok = window.confirm(
+      language === 'ar'
+        ? `سيتم تجديد ${target.length} اشتراك لمدة شهر واحد بالقيمة الحالية لكل اشتراك. هل تريد المتابعة؟`
+        : `${target.length} subscriptions will be renewed for 1 month using each subscription's current fee. Continue?`
+    );
+    if (!ok) return;
+    setBulkActing(true);
+    let success = 0;
+    let failed = 0;
+    for (const item of target) {
+      try {
+        const endDate = new Date(item.end_date);
+        const newStart = new Date(endDate);
+        newStart.setDate(newStart.getDate() + 1);
+        const newEnd = new Date(newStart);
+        newEnd.setMonth(newEnd.getMonth() + 1);
+        const fee = parseFloat(item.fee || 0);
+        const vat = Math.round(fee * 0.15 * 100) / 100;
+        const total = Math.round((fee + vat) * 100) / 100;
+        const invoiceData = {
+          member_id: item.member_id,
+          customer_name_ar: item.member_name,
+          customer_name: item.member_name,
+          customer_phone: item.phone,
+          items: [{
+            activity_id: item.activity_id || '',
+            activity_name: item.activity_name,
+            fee,
+            period: `${newStart.toISOString().split('T')[0]} - ${newEnd.toISOString().split('T')[0]}`,
+            start_date: newStart.toISOString().split('T')[0],
+            end_date: newEnd.toISOString().split('T')[0],
+            schedule: '',
+            is_product: false,
+          }],
+          subtotal: fee, vat, total, discount: 0,
+          status: 'paid', payment_method: 'cash',
+          notes: language === 'ar' ? `تجديد جماعي - ${item.activity_name}` : `Bulk renewal - ${item.activity_name}`,
+        };
+        const invRes = await invoicesAPI.create(invoiceData);
+        await membersAPI.addActivity(item.member_id, {
+          activity_id: item.activity_id || '',
+          activity_name: item.activity_name,
+          start_date: newStart.toISOString().split('T')[0],
+          end_date: newEnd.toISOString().split('T')[0],
+          fee,
+          status: 'active',
+          coach_id: item.coach_id || '',
+          invoice_id: invRes.data?.id,
+          renewed_from: item.end_date,
+        });
+        success++;
+      } catch (e) {
+        console.error('Bulk renew failed for', item.member_name, e);
+        failed++;
+      }
+    }
+    setBulkActing(false);
+    if (success) toast.success(language === 'ar' ? `تم تجديد ${success} اشتراك` : `${success} subscriptions renewed`);
+    if (failed) toast.error(language === 'ar' ? `فشل تجديد ${failed} اشتراك` : `${failed} renewals failed`);
+    clearSelection();
+    loadData();
+  };
+
+  // Backwards-compat: existing button keeps name but routes through bulk-send
+  const handleBulkWhatsApp = () => handleBulkSendReminder();
 
   const openRenewalDialog = (item) => {
     const endDate = new Date(item.end_date);
@@ -280,6 +517,127 @@ const RenewalsPage = () => {
 
   const currentList = activeTab === 'expiring' ? filterItems(expiringList) : activeTab === 'expired' ? filterItems(expiredList) : [];
 
+  // Per-card renderer (shared between grouped-by-branch and flat layouts)
+  const renderCard = (item, idx) => {
+    const isExpired = item.days_remaining < 0;
+    const k = getKey(item);
+    const isSelected = selectedKeys.has(k);
+    const likelihood = getLikelihood(item);
+    const lastInfo = getLastReminderInfo(item);
+    // Urgency gradient (richer than existing border-only)
+    let gradientCls = 'from-yellow-50 to-transparent';
+    if (item.days_remaining <= 1 || isExpired) gradientCls = 'from-red-100/60 via-red-50/30 to-transparent';
+    else if (item.days_remaining <= 3) gradientCls = 'from-orange-100/60 via-orange-50/30 to-transparent';
+    else if (item.days_remaining <= 7) gradientCls = 'from-yellow-100/60 via-yellow-50/30 to-transparent';
+    return (
+      <Card
+        key={idx}
+        className={`overflow-hidden border-s-4 ${getCardBorderColor(item.days_remaining)} bg-gradient-to-bl ${gradientCls} ${isSelected ? 'ring-2 ring-primary' : ''}`}
+      >
+        <CardContent className="p-4 space-y-3">
+          <div className="flex items-start justify-between gap-2">
+            <div className="flex items-center gap-2 min-w-0">
+              <button
+                type="button"
+                onClick={() => toggleSelect(item)}
+                className="text-primary hover:text-primary/80 flex-shrink-0"
+                aria-label={language === 'ar' ? 'تحديد' : 'Select'}
+              >
+                {isSelected ? <CheckSquare className="w-5 h-5" /> : <Square className="w-5 h-5" />}
+              </button>
+              <div className="w-9 h-9 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
+                <User className="w-4 h-4 text-primary" />
+              </div>
+              <div className="min-w-0">
+                <p className="font-semibold text-sm truncate">{item.member_name}</p>
+                <p className="text-xs text-muted-foreground">#{item.member_code}</p>
+              </div>
+            </div>
+            <div className="flex flex-col items-end gap-1 flex-shrink-0">
+              <Badge className={isExpired ? 'bg-red-100 text-red-700 border-red-300' : item.days_remaining <= 1 ? 'bg-red-100 text-red-700 border-red-300' : item.days_remaining <= 3 ? 'bg-orange-100 text-orange-700 border-orange-300' : 'bg-yellow-100 text-yellow-700 border-yellow-300'}>
+                {isExpired
+                  ? (language === 'ar' ? 'منتهي' : 'Expired')
+                  : item.days_remaining <= 1
+                    ? (language === 'ar' ? 'ينتهي اليوم' : 'Expires Today')
+                    : (language === 'ar' ? 'ينتهي قريباً' : 'Expiring')}
+              </Badge>
+              <Badge
+                className={`${likelihood.cls} text-[10px]`}
+                title={language === 'ar' ? 'احتمال التجديد بناءً على آخر حضور' : 'Renewal likelihood based on last attendance'}
+              >
+                <Activity className="w-3 h-3 me-1" />
+                {language === 'ar' ? 'احتمال التجديد:' : 'Likelihood:'} {likelihood.label}
+              </Badge>
+            </div>
+          </div>
+          <div className="space-y-1.5 text-sm">
+            {item.phone && (
+              <div className="flex items-center gap-2 text-muted-foreground">
+                <Phone className="w-3.5 h-3.5" />
+                <span>{item.phone}</span>
+                <a
+                  href={`https://wa.me/966${item.phone.replace(/^0/, '')}?text=${encodeURIComponent(buildReminderText(item))}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-green-600 hover:text-green-700 p-0.5 rounded hover:bg-green-50 transition-colors"
+                  title={language === 'ar' ? 'واتساب' : 'WhatsApp'}
+                >
+                  <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z" /></svg>
+                </a>
+              </div>
+            )}
+            <div className="flex items-center gap-2 text-muted-foreground">
+              <RefreshCcw className="w-3.5 h-3.5" />
+              <span>{item.activity_name}</span>
+            </div>
+            <div className="flex items-center gap-2 text-muted-foreground">
+              <Calendar className="w-3.5 h-3.5" />
+              <span>{item.end_date}</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <Clock className="w-3.5 h-3.5" />
+              <span className={`font-medium ${isExpired ? 'text-red-600' : item.days_remaining <= 3 ? 'text-orange-600' : 'text-yellow-600'}`}>
+                {isExpired
+                  ? (language === 'ar' ? `منتهي منذ ${Math.abs(item.days_remaining)} يوم` : `Expired ${Math.abs(item.days_remaining)} days ago`)
+                  : (language === 'ar' ? `${item.days_remaining} يوم متبقي` : `${item.days_remaining} days remaining`)}
+              </span>
+            </div>
+            <div className="flex items-center gap-2 text-xs text-muted-foreground pt-1 border-t">
+              <Bell className="w-3 h-3" />
+              {lastInfo
+                ? (
+                  <span>
+                    {language === 'ar' ? 'آخر تذكير: ' : 'Last reminder: '}
+                    {lastInfo.diff === 0
+                      ? (language === 'ar' ? 'اليوم' : 'today')
+                      : (language === 'ar' ? `قبل ${lastInfo.diff} يوم` : `${lastInfo.diff}d ago`)}
+                    {lastInfo.channels.length > 0 && (
+                      <span className="ms-1 opacity-70">({lastInfo.channels.join(', ')})</span>
+                    )}
+                  </span>
+                )
+                : (
+                  <span className="italic opacity-70">
+                    {language === 'ar' ? 'لم يُرسل تذكير بعد' : 'No reminder sent yet'}
+                  </span>
+                )}
+            </div>
+          </div>
+          <div className="flex gap-2 pt-2">
+            <Button size="sm" className="flex-1 bg-orange-500 hover:bg-orange-600 text-white" onClick={() => openRenewalDialog(item)}>
+              <RefreshCcw className="w-3.5 h-3.5 me-1" />
+              {language === 'ar' ? 'تجديد' : 'Renew'}
+            </Button>
+            <Button size="sm" variant="outline" className="flex-1" onClick={() => handleSingleRemind(item)}>
+              <Bell className="w-3.5 h-3.5 me-1" />
+              {language === 'ar' ? 'تذكير' : 'Remind'}
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  };
+
   const tabs = [
     { key: 'expiring', label: language === 'ar' ? 'تنتهي قريباً' : 'Expiring Soon', count: expiringList.length, breakdown: getActivityBreakdown(expiringList) },
     { key: 'expired', label: language === 'ar' ? 'منتهية' : 'Expired', count: expiredList.length, breakdown: getActivityBreakdown(expiredList) },
@@ -365,24 +723,47 @@ const RenewalsPage = () => {
           </Button>
         </div>
 
-        <div className="flex gap-2 border-b overflow-x-auto">
-          {tabs.map((tab) => (
-            <button
-              key={tab.key}
-              onClick={() => setActiveTab(tab.key)}
-              className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
-                activeTab === tab.key
-                  ? 'border-primary text-primary'
-                  : 'border-transparent text-muted-foreground hover:text-foreground'
-              }`}
-              title={tab.breakdown || ''}
-            >
-              {tab.label} ({tab.count})
-              {tab.breakdown && activeTab === tab.key && (
-                <span className="block text-[10px] text-muted-foreground font-normal mt-0.5">{tab.breakdown}</span>
+        <div className="flex gap-2 border-b overflow-x-auto items-end justify-between">
+          <div className="flex gap-2">
+            {tabs.map((tab) => (
+              <button
+                key={tab.key}
+                onClick={() => setActiveTab(tab.key)}
+                className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
+                  activeTab === tab.key
+                    ? 'border-primary text-primary'
+                    : 'border-transparent text-muted-foreground hover:text-foreground'
+                }`}
+                title={tab.breakdown || ''}
+              >
+                {tab.label} ({tab.count})
+                {tab.breakdown && activeTab === tab.key && (
+                  <span className="block text-[10px] text-muted-foreground font-normal mt-0.5">{tab.breakdown}</span>
+                )}
+              </button>
+            ))}
+          </div>
+          {currentList.length > 0 && (activeTab === 'expiring' || activeTab === 'expired') && (
+            <div className="flex gap-2 pb-1.5">
+              <button
+                onClick={() => selectAllVisible(currentList)}
+                className="text-xs text-primary hover:underline flex items-center gap-1"
+                title={language === 'ar' ? 'تحديد كل المعروض' : 'Select all visible'}
+              >
+                <CheckSquare className="w-3.5 h-3.5" />
+                {language === 'ar' ? 'تحديد الكل' : 'Select all'}
+              </button>
+              {selectedKeys.size > 0 && (
+                <button
+                  onClick={clearSelection}
+                  className="text-xs text-muted-foreground hover:underline flex items-center gap-1"
+                >
+                  <X className="w-3.5 h-3.5" />
+                  {language === 'ar' ? `إلغاء (${selectedKeys.size})` : `Clear (${selectedKeys.size})`}
+                </button>
               )}
-            </button>
-          ))}
+            </div>
+          )}
         </div>
 
         {loading ? (
@@ -404,143 +785,59 @@ const RenewalsPage = () => {
                   <span className="text-sm opacity-70 font-medium">({items.length})</span>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {items.map((item, idx) => {
-                    const isExpired = item.days_remaining < 0;
-                    return (
-                      <Card key={idx} className={`overflow-hidden border-s-4 ${getCardBorderColor(item.days_remaining)}`}>
-                        <CardContent className="p-4 space-y-3">
-                          <div className="flex items-start justify-between">
-                            <div className="flex items-center gap-2">
-                              <div className="w-9 h-9 rounded-full bg-primary/10 flex items-center justify-center">
-                                <User className="w-4 h-4 text-primary" />
-                              </div>
-                              <div>
-                                <p className="font-semibold text-sm">{item.member_name}</p>
-                                <p className="text-xs text-muted-foreground">#{item.member_code}</p>
-                              </div>
-                            </div>
-                            <Badge className={isExpired ? 'bg-red-100 text-red-700 border-red-300' : item.days_remaining <= 1 ? 'bg-red-100 text-red-700 border-red-300' : item.days_remaining <= 3 ? 'bg-orange-100 text-orange-700 border-orange-300' : 'bg-yellow-100 text-yellow-700 border-yellow-300'}>
-                              {isExpired
-                                ? (language === 'ar' ? 'منتهي' : 'Expired')
-                                : item.days_remaining <= 1
-                                  ? (language === 'ar' ? 'ينتهي اليوم' : 'Expires Today')
-                                  : (language === 'ar' ? 'ينتهي قريباً' : 'Expiring')}
-                            </Badge>
-                          </div>
-                          <div className="space-y-1.5 text-sm">
-                            {item.phone && (
-                              <div className="flex items-center gap-2 text-muted-foreground">
-                                <Phone className="w-3.5 h-3.5" />
-                                <span>{item.phone}</span>
-                                <a href={`https://wa.me/966${item.phone.replace(/^0/, '')}?text=${encodeURIComponent(`السلام عليكم ${item.member_name}،\nنود تذكيركم بأن اشتراك (${item.activity_name}) في شركة اداء الابطال العالمية للرياضة ${isExpired ? 'قد انتهى' : 'قارب على الانتهاء'}.\nنرجو التواصل معنا للتجديد.\nشكراً لكم 🏆`)}`} target="_blank" rel="noopener noreferrer" className="text-green-600 hover:text-green-700 p-0.5 rounded hover:bg-green-50 transition-colors" title={language === 'ar' ? 'واتساب' : 'WhatsApp'}>
-                                  <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
-                                </a>
-                              </div>
-                            )}
-                            <div className="flex items-center gap-2 text-muted-foreground">
-                              <RefreshCcw className="w-3.5 h-3.5" />
-                              <span>{item.activity_name}</span>
-                            </div>
-                            <div className="flex items-center gap-2 text-muted-foreground">
-                              <Calendar className="w-3.5 h-3.5" />
-                              <span>{item.end_date}</span>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <Clock className="w-3.5 h-3.5" />
-                              <span className={`font-medium ${isExpired ? 'text-red-600' : item.days_remaining <= 3 ? 'text-orange-600' : 'text-yellow-600'}`}>
-                                {isExpired
-                                  ? (language === 'ar' ? `منتهي منذ ${Math.abs(item.days_remaining)} يوم` : `Expired ${Math.abs(item.days_remaining)} days ago`)
-                                  : (language === 'ar' ? `${item.days_remaining} يوم متبقي` : `${item.days_remaining} days remaining`)}
-                              </span>
-                            </div>
-                          </div>
-                          <div className="flex gap-2 pt-2">
-                            <Button size="sm" className="flex-1 bg-orange-500 hover:bg-orange-600 text-white" onClick={() => openRenewalDialog(item)}>
-                              <RefreshCcw className="w-3.5 h-3.5 me-1" />
-                              {language === 'ar' ? 'تجديد' : 'Renew'}
-                            </Button>
-                            <Button size="sm" variant="outline" className="flex-1" onClick={handleRemind}>
-                              <Bell className="w-3.5 h-3.5 me-1" />
-                              {language === 'ar' ? 'تذكير' : 'Remind'}
-                            </Button>
-                          </div>
-                        </CardContent>
-                      </Card>
-                    );
-                  })}
+                  {items.map((item, idx) => renderCard(item, idx))}
                 </div>
               </div>
             ))}
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {currentList.map((item, idx) => {
-              const isExpired = item.days_remaining < 0;
-              return (
-                <Card key={idx} className={`overflow-hidden border-s-4 ${getCardBorderColor(item.days_remaining)}`}>
-                  <CardContent className="p-4 space-y-3">
-                    <div className="flex items-start justify-between">
-                      <div className="flex items-center gap-2">
-                        <div className="w-9 h-9 rounded-full bg-primary/10 flex items-center justify-center">
-                          <User className="w-4 h-4 text-primary" />
-                        </div>
-                        <div>
-                          <p className="font-semibold text-sm">{item.member_name}</p>
-                          <p className="text-xs text-muted-foreground">#{item.member_code}</p>
-                        </div>
-                      </div>
-                      <Badge className={isExpired ? 'bg-red-100 text-red-700 border-red-300' : item.days_remaining <= 1 ? 'bg-red-100 text-red-700 border-red-300' : item.days_remaining <= 3 ? 'bg-orange-100 text-orange-700 border-orange-300' : 'bg-yellow-100 text-yellow-700 border-yellow-300'}>
-                        {isExpired
-                          ? (language === 'ar' ? 'منتهي' : 'Expired')
-                          : item.days_remaining <= 1
-                            ? (language === 'ar' ? 'ينتهي اليوم' : 'Expires Today')
-                            : (language === 'ar' ? 'ينتهي قريباً' : 'Expiring')}
-                      </Badge>
-                    </div>
-                    <div className="space-y-1.5 text-sm">
-                      {item.phone && (
-                        <div className="flex items-center gap-2 text-muted-foreground">
-                          <Phone className="w-3.5 h-3.5" />
-                          <span>{item.phone}</span>
-                          <a href={`https://wa.me/966${item.phone.replace(/^0/, '')}?text=${encodeURIComponent(`السلام عليكم ${item.member_name}،\nنود تذكيركم بأن اشتراك (${item.activity_name}) في شركة اداء الابطال العالمية للرياضة ${isExpired ? 'قد انتهى' : 'قارب على الانتهاء'}.\nنرجو التواصل معنا للتجديد.\nشكراً لكم 🏆`)}`} target="_blank" rel="noopener noreferrer" className="text-green-600 hover:text-green-700 p-0.5 rounded hover:bg-green-50 transition-colors" title={language === 'ar' ? 'واتساب' : 'WhatsApp'}>
-                            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
-                          </a>
-                        </div>
-                      )}
-                      <div className="flex items-center gap-2 text-muted-foreground">
-                        <RefreshCcw className="w-3.5 h-3.5" />
-                        <span>{item.activity_name}</span>
-                      </div>
-                      <div className="flex items-center gap-2 text-muted-foreground">
-                        <Calendar className="w-3.5 h-3.5" />
-                        <span>{item.end_date}</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <Clock className="w-3.5 h-3.5" />
-                        <span className={`font-medium ${isExpired ? 'text-red-600' : item.days_remaining <= 3 ? 'text-orange-600' : 'text-yellow-600'}`}>
-                          {isExpired
-                            ? (language === 'ar' ? `منتهي منذ ${Math.abs(item.days_remaining)} يوم` : `Expired ${Math.abs(item.days_remaining)} days ago`)
-                            : (language === 'ar' ? `${item.days_remaining} يوم متبقي` : `${item.days_remaining} days remaining`)}
-                        </span>
-                      </div>
-                    </div>
-                    <div className="flex gap-2 pt-2">
-                      <Button size="sm" className="flex-1 bg-orange-500 hover:bg-orange-600 text-white" onClick={() => openRenewalDialog(item)}>
-                        <RefreshCcw className="w-3.5 h-3.5 me-1" />
-                        {language === 'ar' ? 'تجديد' : 'Renew'}
-                      </Button>
-                      <Button size="sm" variant="outline" className="flex-1" onClick={handleRemind}>
-                        <Bell className="w-3.5 h-3.5 me-1" />
-                        {language === 'ar' ? 'تذكير' : 'Remind'}
-                      </Button>
-                    </div>
-                  </CardContent>
-                </Card>
-              );
-            })}
+            {currentList.map((item, idx) => renderCard(item, idx))}
           </div>
         )}
+
+        {/* Add bottom padding so sticky bar doesn't cover last row */}
+        {selectedKeys.size > 0 && <div className="h-20" />}
       </div>
+
+      {/* Sticky bulk-action bar */}
+      {selectedKeys.size > 0 && (activeTab === 'expiring' || activeTab === 'expired') && (
+        <div className="fixed bottom-0 inset-x-0 z-40 bg-white dark:bg-gray-900 border-t shadow-lg p-3 flex items-center justify-between gap-3">
+          <div className="text-sm font-medium">
+            {language === 'ar'
+              ? `تم تحديد ${selectedKeys.size} اشتراك`
+              : `${selectedKeys.size} selected`}
+          </div>
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              onClick={clearSelection}
+              disabled={bulkActing}
+              size="sm"
+            >
+              {language === 'ar' ? 'إلغاء' : 'Cancel'}
+            </Button>
+            <Button
+              onClick={handleBulkSendReminder}
+              disabled={bulkActing}
+              size="sm"
+              className="bg-green-600 hover:bg-green-700 text-white"
+            >
+              {bulkActing ? <Loader2 className="w-4 h-4 me-1 animate-spin" /> : <MessageCircle className="w-4 h-4 me-1" />}
+              {language === 'ar' ? 'تذكير المحددين' : 'Remind selected'}
+            </Button>
+            <Button
+              onClick={handleBulkRenew}
+              disabled={bulkActing}
+              size="sm"
+              className="bg-orange-500 hover:bg-orange-600 text-white"
+            >
+              {bulkActing ? <Loader2 className="w-4 h-4 me-1 animate-spin" /> : <RefreshCcw className="w-4 h-4 me-1" />}
+              {language === 'ar' ? 'تجديد المحددين' : 'Renew selected'}
+            </Button>
+          </div>
+        </div>
+      )}
 
       <Dialog open={isRenewalDialogOpen} onOpenChange={setIsRenewalDialogOpen}>
         <DialogContent className="max-w-md">

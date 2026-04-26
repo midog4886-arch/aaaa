@@ -39,7 +39,9 @@ export default function WhatsAppPage() {
   const [status, setStatus] = useState({ connected: false, qr: null, connecting: false });
   const [waSettings, setWaSettings] = useState({
     enabled: false, days_before: 3, days_before_2: 1, reminder_2_enabled: true,
+    extra_offsets: [],
     message_template: 'مرحباً {name}،\nنذكركم بأن اشتراككم في نشاط {activity} سينتهي بعد {days} يوم/أيام.\nيرجى التواصل معنا للتجديد. 🏆',
+    manual_reminder_template: 'السلام عليكم {name}،\nنود تذكيركم بأن اشتراك ({activity}) في شركة اداء الابطال العالمية للرياضة قارب على الانتهاء بتاريخ {end_date}.\nنرجو التواصل معنا للتجديد.\nشكراً لكم 🏆',
     send_hour: 9,
     push_enabled: true,
     portal_enabled: true,
@@ -860,6 +862,33 @@ export default function WhatsAppPage() {
                 )}
               </div>
 
+              {/* Extra reminder offsets (multi-offset) */}
+              <div className="border rounded-xl p-4 space-y-2">
+                <p className="text-sm font-semibold text-primary">{t('تذكيرات إضافية', 'Additional Reminders')}</p>
+                <p className="text-xs text-muted-foreground">{t('أيام إضافية قبل الانتهاء (مفصولة بفواصل، مثل: 7,14,30)', 'Extra days-before offsets (comma-separated, e.g. 7,14,30)')}</p>
+                <input
+                  type="text"
+                  value={(waSettings.extra_offsets || []).join(',')}
+                  onChange={e => {
+                    const raw = e.target.value;
+                    const arr = raw.split(/[,\s]+/).map(s => s.trim()).filter(Boolean).map(s => parseInt(s, 10)).filter(n => !isNaN(n) && n >= 1 && n <= 60);
+                    setWaSettings(s => ({ ...s, extra_offsets: arr }));
+                  }}
+                  placeholder="7, 14, 30"
+                  dir="ltr"
+                  className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                />
+                {(waSettings.extra_offsets || []).length > 0 && (
+                  <div className="flex flex-wrap gap-1.5">
+                    {(waSettings.extra_offsets || []).map((d, i) => (
+                      <span key={i} className="px-2 py-0.5 bg-primary/10 text-primary text-xs rounded-full font-medium">
+                        {t(`قبل ${d} يوم`, `${d} days before`)}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+
               <div>
                 <label className="block text-sm font-medium mb-2">{t('ساعة الإرسال اليومي', 'Daily Send Time')}</label>
                 <select value={waSettings.send_hour} onChange={e => setWaSettings(s => ({ ...s, send_hour: parseInt(e.target.value) }))}
@@ -869,7 +898,7 @@ export default function WhatsAppPage() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium mb-1">{t('نص الرسالة', 'Message Template')}</label>
+                <label className="block text-sm font-medium mb-1">{t('نص الرسالة (التذكير التلقائي)', 'Message Template (auto reminders)')}</label>
                 <p className="text-xs text-muted-foreground mb-2">{t('المتغيرات: {name} الاسم، {activity} النشاط، {days} الأيام، {end_date} تاريخ الانتهاء', 'Variables: {name}, {activity}, {days} days, {end_date} expiry date')}</p>
                 <textarea value={waSettings.message_template}
                   onChange={e => setWaSettings(s => ({ ...s, message_template: e.target.value }))}
@@ -885,6 +914,16 @@ export default function WhatsAppPage() {
                     {messagePreview}
                   </div>
                 )}
+              </div>
+
+              {/* Manual reminder template (used by Renewals page WA buttons) */}
+              <div>
+                <label className="block text-sm font-medium mb-1">{t('نص الرسالة اليدوية (صفحة التجديدات)', 'Manual Reminder Template (Renewals page)')}</label>
+                <p className="text-xs text-muted-foreground mb-2">{t('يُستخدم عند الضغط على زر التذكير في صفحة التجديدات. نفس المتغيرات المتاحة.', 'Used when sending reminders from the Renewals page. Same variables apply.')}</p>
+                <textarea value={waSettings.manual_reminder_template}
+                  onChange={e => setWaSettings(s => ({ ...s, manual_reminder_template: e.target.value }))}
+                  rows={5} dir="auto"
+                  className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary resize-none" />
               </div>
 
               {/* Push & Portal notification channels */}

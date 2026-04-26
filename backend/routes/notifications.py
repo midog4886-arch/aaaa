@@ -149,45 +149,95 @@ async def check_subscription_renewals(current_user: dict = Depends(get_current_u
 @router.get("/expiring-subscriptions")
 async def get_expiring_subscriptions(
     days: int = 7,
+    branch_filter: Optional[str] = None,
+    include_expired: bool = True,
     current_user: dict = Depends(get_current_user)
 ):
-    """Get list of subscriptions expiring within specified days"""
-    branch_id = current_user.get("branch_id")
-    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-    future_date = (datetime.now(timezone.utc) + timedelta(days=days)).strftime("%Y-%m-%d")
-    
+    """Get list of subscriptions expiring within specified days.
+
+    Also includes already-expired subscriptions (negative days_remaining) so the
+    Renewals page can display both tabs from a single request. Each item is
+    enriched with last_attendance_date (used to compute renewal-likelihood
+    badges client-side), activity_id, fee, and branch_id.
+    """
+    user_branch_id = current_user.get("branch_id")
+    is_admin = current_user.get("is_admin", False)
+    today_dt = datetime.now(timezone.utc).replace(tzinfo=None)
+    today = today_dt.strftime("%Y-%m-%d")
+    future_date = (today_dt + timedelta(days=days)).strftime("%Y-%m-%d")
+    # Look back up to 90 days for already-expired subscriptions when requested
+    past_date = (today_dt - timedelta(days=90)).strftime("%Y-%m-%d")
+    lower_bound = past_date if include_expired else today
+
     query = {
         "activities": {
             "$elemMatch": {
                 "status": "active",
-                "end_date": {"$gte": today, "$lte": future_date}
+                "end_date": {"$gte": lower_bound, "$lte": future_date},
             }
         }
     }
-    if branch_id:
-        query["branch_id"] = branch_id
-    
-    members = await db.members.find(query, {"_id": 0}).to_list(1000)
-    
+    # Branch scoping:
+    # - Non-admins are always locked to their own branch (branch_filter is ignored).
+    #   A non-admin without a branch_id is denied entirely (fail-closed).
+    # - Admins may use branch_filter to target a specific branch, or "all" to span branches.
+    if not is_admin:
+        if not user_branch_id:
+            raise HTTPException(status_code=403, detail="No branch assigned")
+        query["branch_id"] = user_branch_id
+    else:
+        effective_branch = branch_filter if branch_filter and branch_filter != "all" else user_branch_id
+        if effective_branch:
+            query["branch_id"] = effective_branch
+
+    members = await db.members.find(query, {"_id": 0}).to_list(2000)
+
+    member_ids = [m["id"] for m in members if m.get("id")]
+
+    # Bulk-fetch each member's latest attendance date in one aggregation
+    last_attendance_map: dict = {}
+    if member_ids:
+        try:
+            cursor = db.attendance.aggregate([
+                {"$match": {"member_id": {"$in": member_ids}}},
+                {"$group": {"_id": "$member_id", "last": {"$max": "$date"}}},
+            ])
+            async for row in cursor:
+                if row.get("_id"):
+                    last_attendance_map[row["_id"]] = row.get("last")
+        except Exception:
+            last_attendance_map = {}
+
     expiring = []
     for member in members:
         for activity in member.get("activities", []):
-            if activity.get("status") == "active":
-                end_date = activity.get("end_date", "")
-                if today <= end_date <= future_date:
-                    expiring.append({
-                        "member_id": member["id"],
-                        "member_name": member.get("name_ar", member.get("name", "")),
-                        "member_code": member.get("member_code", ""),
-                        "phone": member.get("phone", ""),
-                        "activity_name": activity.get("activity_name", ""),
-                        "end_date": end_date,
-                        "days_remaining": (datetime.strptime(end_date, "%Y-%m-%d") - datetime.now(timezone.utc).replace(tzinfo=None)).days
-                    })
-    
-    # Sort by days remaining
+            if activity.get("status") != "active":
+                continue
+            end_date = activity.get("end_date", "")
+            if not end_date or not (lower_bound <= end_date <= future_date):
+                continue
+            try:
+                days_remaining = (datetime.strptime(end_date[:10], "%Y-%m-%d") - today_dt).days
+            except Exception:
+                days_remaining = 0
+            expiring.append({
+                "member_id": member["id"],
+                "member_name": member.get("name_ar", member.get("name", "")),
+                "member_code": member.get("member_code", ""),
+                "phone": member.get("phone", ""),
+                "branch_id": member.get("branch_id"),
+                "activity_id": activity.get("activity_id", ""),
+                "activity_name": activity.get("activity_name", ""),
+                "fee": activity.get("fee", 0),
+                "coach_id": activity.get("coach_id", ""),
+                "end_date": end_date,
+                "days_remaining": days_remaining,
+                "last_attendance_date": last_attendance_map.get(member["id"]),
+            })
+
+    # Sort by days remaining (ascending: most urgent first)
     expiring.sort(key=lambda x: x.get("days_remaining", 999))
-    
+
     return expiring
 
 
