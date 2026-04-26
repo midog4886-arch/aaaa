@@ -91,6 +91,7 @@ const RenewalsHistoryPage = () => {
     setActivityFilter('');
     setChannelFilter('all');
     setManualFilter('all');
+    setBranchFilter('all');
     setStartDate('');
     setEndDate('');
     setSearchTerm('');
