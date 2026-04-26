@@ -69,6 +69,7 @@ const AdvertisementsPage = lazy(() => import('./pages/AdvertisementsPage'));
 const DailyVideosPage = lazy(() => import('./pages/DailyVideosPage'));
 const LoyaltyPage = lazy(() => import('./pages/LoyaltyPage'));
 const RenewalsPage = lazy(() => import('./pages/RenewalsPage'));
+const RenewalsHistoryPage = lazy(() => import('./pages/RenewalsHistoryPage'));
 const BackupPage = lazy(() => import('./pages/BackupPage'));
 const PrivacyPolicyPage = lazy(() => import('./pages/PrivacyPolicyPage'));
 const DailyLedgerPage = lazy(() => import('./pages/DailyLedgerPage'));
@@ -409,6 +410,14 @@ function AppRoutes() {
             <RenewalsPage />
           </ProtectedRoute>
         } 
+      />
+      <Route
+        path="/admin/renewals/history"
+        element={
+          <ProtectedRoute permission="renewals">
+            <RenewalsHistoryPage />
+          </ProtectedRoute>
+        }
       />
       <Route 
         path="/admin/backup" 

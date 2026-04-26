@@ -552,4 +552,18 @@ export const whatsappAPI = {
     const params = options.logOnly ? '?log_only=true' : '';
     return axios.post(`${API}/whatsapp/renewal-reminders/send${params}`, { items });
   },
+  getReminderHistory: (filters = {}) => {
+    const params = new URLSearchParams();
+    Object.entries(filters).forEach(([k, v]) => {
+      if (v !== undefined && v !== null && v !== '') params.append(k, v);
+    });
+    return axios.get(`${API}/whatsapp/renewal-reminders/history?${params.toString()}`);
+  },
+  reminderHistoryExportUrl: (filters = {}) => {
+    const params = new URLSearchParams();
+    Object.entries(filters).forEach(([k, v]) => {
+      if (v !== undefined && v !== null && v !== '') params.append(k, v);
+    });
+    return `${API}/whatsapp/renewal-reminders/history/export?${params.toString()}`;
+  },
 };

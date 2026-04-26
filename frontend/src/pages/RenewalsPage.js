@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/AuthContext';
 import { Layout } from '../components/Layout';
@@ -27,6 +28,7 @@ import {
   CheckSquare,
   Square,
   Activity,
+  History,
 } from 'lucide-react';
 
 const RenewalsPage = () => {
@@ -800,6 +802,12 @@ const RenewalsPage = () => {
           <Button onClick={loadData} variant="outline" size="icon">
             <RefreshCcw className="w-4 h-4" />
           </Button>
+          <Link to="/admin/renewals/history">
+            <Button variant="outline" size="sm" title={language === 'ar' ? 'سجل التذكيرات' : 'Reminders log'}>
+              <History className="w-4 h-4 me-1" />
+              {language === 'ar' ? 'سجل التذكيرات' : 'Reminders log'}
+            </Button>
+          </Link>
           {/* Bulk reminders are now driven by selecting cards — see the sticky bar below. */}
         </div>
 

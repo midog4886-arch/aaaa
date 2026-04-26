@@ -892,6 +892,216 @@ async def get_renewal_reminder_template(current_user: dict = Depends(get_current
     }
 
 
+@router.get("/renewal-reminders/history")
+async def get_renewal_reminder_history(
+    member_id: Optional[str] = None,
+    activity_name: Optional[str] = None,
+    channel: Optional[str] = None,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    manual: Optional[str] = None,
+    branch_id: Optional[str] = None,
+    limit: int = 100,
+    offset: int = 0,
+    current_user: dict = Depends(get_current_user),
+):
+    """Paginated audit log of every renewal reminder. Used by the history page."""
+    eff_limit = max(1, min(int(limit), 500))
+    eff_offset = max(0, int(offset))
+    rows, total = await _query_reminder_history(
+        current_user=current_user,
+        member_id=member_id,
+        activity_name=activity_name,
+        channel=channel,
+        start_date=start_date,
+        end_date=end_date,
+        manual=manual,
+        branch_id=branch_id,
+        limit=eff_limit,
+        offset=eff_offset,
+    )
+    return {"rows": rows, "total": total, "limit": eff_limit, "offset": eff_offset}
+
+
+@router.get("/renewal-reminders/history/export")
+async def export_renewal_reminder_history(
+    member_id: Optional[str] = None,
+    activity_name: Optional[str] = None,
+    channel: Optional[str] = None,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    manual: Optional[str] = None,
+    branch_id: Optional[str] = None,
+    current_user: dict = Depends(get_current_user),
+):
+    """Excel export of the same filtered history list (no pagination)."""
+    from io import BytesIO
+    from fastapi.responses import StreamingResponse
+
+    rows, _ = await _query_reminder_history(
+        current_user=current_user,
+        member_id=member_id,
+        activity_name=activity_name,
+        channel=channel,
+        start_date=start_date,
+        end_date=end_date,
+        manual=manual,
+        branch_id=branch_id,
+        limit=10000,
+        offset=0,
+    )
+
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, Alignment, PatternFill
+
+    def _safe_excel_cell(value):
+        """Defuse Excel/CSV formula injection on string cells.
+
+        If a cell starts with `=`, `+`, `-`, `@`, tab or CR/LF, prefix with `'`
+        so spreadsheet apps treat it as text. Non-strings are returned as-is.
+        """
+        if not isinstance(value, str) or not value:
+            return value
+        if value[0] in ("=", "+", "-", "@", "\t", "\r", "\n"):
+            return "'" + value
+        return value
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Renewal Reminders"
+
+    headers = [
+        "التاريخ والوقت", "اسم العضو", "النشاط", "القناة",
+        "أيام قبل الانتهاء", "يدوي/تلقائي", "ناجح", "أُرسل بواسطة",
+    ]
+    ws.append(headers)
+    header_fill = PatternFill("solid", fgColor="F97316")
+    header_font = Font(bold=True, color="FFFFFF")
+    center = Alignment(horizontal='center', vertical='center', wrap_text=True)
+    for col_idx in range(1, len(headers) + 1):
+        c = ws.cell(row=1, column=col_idx)
+        c.fill = header_fill
+        c.font = header_font
+        c.alignment = center
+
+    for r in rows:
+        sent_by = r.get("sent_by") or {}
+        if isinstance(sent_by, dict) and sent_by.get("system"):
+            sender = "النظام"
+        else:
+            sender = (sent_by.get("name") or sent_by.get("username") or "") if isinstance(sent_by, dict) else ""
+        ws.append([
+            _safe_excel_cell(r.get("timestamp", "")),
+            _safe_excel_cell(r.get("member_name", "")),
+            _safe_excel_cell(r.get("activity_name", "")),
+            _safe_excel_cell(r.get("channel", "")),
+            r.get("days_before") if r.get("days_before") is not None else "",
+            "يدوي" if r.get("manual") else "تلقائي",
+            "نعم" if r.get("success") else "لا",
+            _safe_excel_cell(sender),
+        ])
+
+    for letter, width in zip(['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'], [22, 26, 22, 14, 16, 12, 8, 24]):
+        ws.column_dimensions[letter].width = width
+
+    buf = BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    filename = f"renewal_reminders_{datetime.now(RIYADH_TZ).strftime('%Y%m%d_%H%M')}.xlsx"
+    return StreamingResponse(
+        buf,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )
+
+
+async def _query_reminder_history(
+    current_user: dict,
+    member_id: Optional[str],
+    activity_name: Optional[str],
+    channel: Optional[str],
+    start_date: Optional[str],
+    end_date: Optional[str],
+    manual: Optional[str],
+    branch_id: Optional[str],
+    limit: int,
+    offset: int,
+):
+    """Shared query/enrichment used by both JSON and Excel history endpoints."""
+    _require_renewals_or_whatsapp_access(current_user)
+    if _db is None:
+        return [], 0
+
+    is_admin = current_user.get("is_admin", False)
+    user_branch_id = current_user.get("branch_id")
+    effective_branch_id = branch_id if (is_admin and branch_id) else (None if is_admin else user_branch_id)
+    if not is_admin and not user_branch_id:
+        raise HTTPException(status_code=403, detail="No branch assigned")
+
+    allowed_member_ids: Optional[set] = None
+    if effective_branch_id:
+        try:
+            cursor_m = _db["members"].find(
+                {"branch_id": effective_branch_id}, {"id": 1, "_id": 0}
+            )
+            allowed_member_ids = {row["id"] async for row in cursor_m if row.get("id")}
+        except Exception as e:
+            logger.error(f"Branch scoping query failed: {e}")
+            allowed_member_ids = set()
+        if not allowed_member_ids:
+            return [], 0
+
+    match: dict = {}
+    if allowed_member_ids is not None:
+        match["member_id"] = {"$in": list(allowed_member_ids)}
+    if member_id:
+        if allowed_member_ids is not None and member_id not in allowed_member_ids:
+            return [], 0
+        match["member_id"] = member_id
+    if activity_name:
+        match["activity_name"] = activity_name
+    if channel:
+        match["channel"] = channel
+    if manual in ("true", "True", "1"):
+        match["manual"] = True
+    elif manual in ("false", "False", "0"):
+        match["manual"] = False
+    ts_clause: dict = {}
+    if start_date:
+        ts_clause["$gte"] = start_date
+    if end_date:
+        ts_clause["$lte"] = end_date + "T23:59:59"
+    if ts_clause:
+        match["timestamp"] = ts_clause
+
+    coll = _db["renewal_reminder_log"]
+    try:
+        total = await coll.count_documents(match)
+        cursor = coll.find(match, {"_id": 0}).sort("timestamp", -1).skip(offset).limit(limit)
+        rows = await cursor.to_list(length=limit)
+    except Exception as e:
+        logger.error(f"Reminder history query failed: {e}")
+        return [], 0
+
+    member_ids = list({r.get("member_id") for r in rows if r.get("member_id")})
+    name_by_id: dict = {}
+    if member_ids:
+        try:
+            cursor_n = _db["members"].find(
+                {"id": {"$in": member_ids}},
+                {"id": 1, "name": 1, "name_ar": 1, "_id": 0},
+            )
+            async for m in cursor_n:
+                name_by_id[m["id"]] = m.get("name_ar") or m.get("name") or ""
+        except Exception as e:
+            logger.error(f"Member name lookup failed: {e}")
+
+    for r in rows:
+        r["member_name"] = name_by_id.get(r.get("member_id"), "")
+
+    return rows, total
+
+
 @router.post("/renewal-reminders/send")
 async def send_bulk_renewal_reminders(
     payload: BulkReminderRequest,

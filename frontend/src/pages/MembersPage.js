@@ -14,7 +14,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { Popover, PopoverContent, PopoverTrigger } from '../components/ui/popover';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '../components/ui/command';
 import { Textarea } from '../components/ui/textarea';
-import { membersAPI, activitiesAPI, coachesAPI, exportAPI, invoicesAPI, attendanceAPI, levelsAPI, productInvoicesAPI, freezesAPI, tournamentsAPI } from '../services/api';
+import { membersAPI, activitiesAPI, coachesAPI, exportAPI, invoicesAPI, attendanceAPI, levelsAPI, productInvoicesAPI, freezesAPI, tournamentsAPI, whatsappAPI } from '../services/api';
 import { toast } from 'sonner';
 import { 
   Plus, 
@@ -117,7 +117,9 @@ export const MembersPage = () => {
   const [memberSessionQuota, setMemberSessionQuota] = useState([]);
   const [expandedQuotaIdx, setExpandedQuotaIdx] = useState(new Set());
   const [registeringDate, setRegisteringDate] = useState(null);
-  const [viewTab, setViewTab] = useState('info'); // info, activities, invoices, history, attendance
+  const [viewTab, setViewTab] = useState('info'); // info, activities, invoices, history, attendance, reminders, freeze
+  const [memberReminders, setMemberReminders] = useState([]);
+  const [memberRemindersLoading, setMemberRemindersLoading] = useState(false);
   const [editingActivityId, setEditingActivityId] = useState(null);
   const [editActivityForm, setEditActivityForm] = useState({});
   const [editActivitySaving, setEditActivitySaving] = useState(false);
@@ -2251,6 +2253,34 @@ export const MembersPage = () => {
                     </button>
                   )}
                   <button
+                    onClick={async () => {
+                      setViewTab('reminders');
+                      if (selectedMember) {
+                        setMemberRemindersLoading(true);
+                        try {
+                          const r = await whatsappAPI.getReminderHistory({
+                            member_id: selectedMember.id,
+                            limit: 200,
+                          });
+                          setMemberReminders(r.data?.rows || []);
+                        } catch (e) {
+                          console.error('Failed to load reminder history:', e);
+                          setMemberReminders([]);
+                        } finally {
+                          setMemberRemindersLoading(false);
+                        }
+                      }
+                    }}
+                    className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+                      viewTab === 'reminders'
+                        ? 'border-primary text-primary'
+                        : 'border-transparent text-muted-foreground hover:text-foreground'
+                    }`}
+                  >
+                    <Bell className="w-4 h-4 inline me-1" />
+                    {language === 'ar' ? 'سجل التذكيرات' : 'Reminders'}
+                  </button>
+                  <button
                     onClick={() => {
                       setViewTab('freeze');
                       if (selectedMember) {
@@ -3214,6 +3244,83 @@ export const MembersPage = () => {
                           </Card>
                         );
                       })
+                    )}
+                  </div>
+                )}
+
+                {viewTab === 'reminders' && (
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <h4 className="font-semibold flex items-center gap-2">
+                        <Bell className="w-4 h-4" />
+                        {language === 'ar' ? 'سجل تذكيرات التجديد' : 'Renewal Reminders Log'}
+                      </h4>
+                      <Badge variant="outline">
+                        {language === 'ar'
+                          ? `${memberReminders.length} سجل`
+                          : `${memberReminders.length} record(s)`}
+                      </Badge>
+                    </div>
+                    {memberRemindersLoading ? (
+                      <div className="text-center py-8 text-sm text-muted-foreground">
+                        {language === 'ar' ? 'جارٍ التحميل...' : 'Loading...'}
+                      </div>
+                    ) : memberReminders.length === 0 ? (
+                      <p className="text-sm text-muted-foreground text-center py-6">
+                        {language === 'ar' ? 'لم يتم إرسال أي تذكيرات لهذا العضو بعد.' : 'No reminders have been sent to this member yet.'}
+                      </p>
+                    ) : (
+                      <div className="border rounded-lg overflow-hidden">
+                        <table className="w-full text-sm">
+                          <thead className="bg-muted/40 text-xs">
+                            <tr>
+                              <th className="px-2 py-1.5 text-start">{language === 'ar' ? 'التاريخ' : 'When'}</th>
+                              <th className="px-2 py-1.5 text-start">{language === 'ar' ? 'النشاط' : 'Activity'}</th>
+                              <th className="px-2 py-1.5 text-center">{language === 'ar' ? 'القناة' : 'Channel'}</th>
+                              <th className="px-2 py-1.5 text-center">{language === 'ar' ? 'النوع' : 'Type'}</th>
+                              <th className="px-2 py-1.5 text-center">{language === 'ar' ? 'النتيجة' : 'Result'}</th>
+                              <th className="px-2 py-1.5 text-start">{language === 'ar' ? 'بواسطة' : 'By'}</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {memberReminders.map((r, idx) => {
+                              const sentBy = r.sent_by || {};
+                              const sender = sentBy.system
+                                ? (language === 'ar' ? 'النظام' : 'System')
+                                : (sentBy.name || sentBy.username || '—');
+                              const ts = r.timestamp ? new Date(r.timestamp) : null;
+                              const tsLabel = ts && !isNaN(ts.getTime())
+                                ? ts.toLocaleString(language === 'ar' ? 'ar-SA' : 'en-GB', {
+                                    year: 'numeric', month: '2-digit', day: '2-digit',
+                                    hour: '2-digit', minute: '2-digit',
+                                  })
+                                : (r.timestamp || '—');
+                              return (
+                                <tr key={idx} className="border-t">
+                                  <td className="px-2 py-1.5 whitespace-nowrap text-xs">{tsLabel}</td>
+                                  <td className="px-2 py-1.5">{r.activity_name || '—'}</td>
+                                  <td className="px-2 py-1.5 text-center">
+                                    <Badge variant="secondary" className="text-[10px]">{r.channel || '—'}</Badge>
+                                  </td>
+                                  <td className="px-2 py-1.5 text-center">
+                                    <Badge variant={r.manual ? 'default' : 'outline'} className="text-[10px]">
+                                      {r.manual ? (language === 'ar' ? 'يدوي' : 'Manual') : (language === 'ar' ? 'تلقائي' : 'Auto')}
+                                    </Badge>
+                                  </td>
+                                  <td className="px-2 py-1.5 text-center">
+                                    {r.success ? (
+                                      <span className="text-green-600 text-xs">{language === 'ar' ? 'نجح' : 'Sent'}</span>
+                                    ) : (
+                                      <span className="text-red-600 text-xs">{language === 'ar' ? 'فشل' : 'Failed'}</span>
+                                    )}
+                                  </td>
+                                  <td className="px-2 py-1.5 text-xs">{sender}</td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
                     )}
                   </div>
                 )}
