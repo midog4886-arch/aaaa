@@ -139,7 +139,7 @@ const GlobalSearch = () => {
                   {results.invoices.map((inv) => (
                     <button
                       key={inv.id}
-                      onClick={() => handleNavigate(`/admin/invoices?search=${encodeURIComponent(inv.invoice_number || inv.member_name)}`)}
+                      onClick={() => handleNavigate(`/admin/invoices?view=${encodeURIComponent(inv.id)}`)}
                       className="w-full text-start px-4 py-2.5 hover:bg-green-50/50 transition-colors flex items-center gap-3 border-b last:border-b-0"
                     >
                       <div className="w-8 h-8 rounded-full bg-green-100 flex items-center justify-center text-green-700 flex-shrink-0">

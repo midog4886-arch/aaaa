@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/AuthContext';
 import { Layout } from '../components/Layout';
@@ -92,6 +93,10 @@ export const InvoicesPage = () => {
 
   useEffect(() => { loadData(); }, [selectedBranchId]);
 
+  const location = useLocation();
+  const navigate = useNavigate();
+  const handledViewIdRef = useRef(null);
+
   const getBranchName = (branchId) => {
     if (!branchId) return language === 'ar' ? 'الفرع الرئيسي' : 'Main Branch';
     const branch = branches.find(b => b.id === branchId);
@@ -167,6 +172,22 @@ export const InvoicesPage = () => {
   } = invoiceForm;
 
   const { savingPdf, sharingWhatsApp, handleSaveAsPdfOnly, handleSaveAsPdf, handleShareWhatsApp, handleSendWhatsApp, handlePrint, handlePrintRegistrationForm } = viewHandlers;
+
+  // Auto-open an invoice when navigated here with ?view=<invoice_id> (e.g. from global search).
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const viewId = params.get('view');
+    if (!viewId || loading || !invoices.length) return;
+    if (handledViewIdRef.current === viewId) return;
+    const inv = invoices.find(i => i.id === viewId || String(i.invoice_number) === String(viewId));
+    if (!inv) return;
+    handledViewIdRef.current = viewId;
+    handleViewInvoice(inv);
+    // Clean the param so refreshing the page doesn't re-open the dialog.
+    params.delete('view');
+    const next = params.toString();
+    navigate({ pathname: location.pathname, search: next ? `?${next}` : '' }, { replace: true });
+  }, [location.search, loading, invoices, handleViewInvoice, navigate, location.pathname]);
 
   const { isRegistrationFormDialogOpen, setIsRegistrationFormDialogOpen, isViewRegFormDialogOpen, setIsViewRegFormDialogOpen,
     isEditRegFormDialogOpen, setIsEditRegFormDialogOpen, selectedRegForm, editRegFormId, regFormData, setRegFormData,
