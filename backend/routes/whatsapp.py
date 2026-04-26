@@ -957,6 +957,11 @@ async def send_bulk_renewal_reminders(
         if not member:
             skipped += len(items)
             continue
+        # Tracks whether *any* channel produced a per-activity log row for
+        # this member. If nothing logs (WA disconnected, push/portal off),
+        # we still write a fallback "intent" entry below so the Renewals
+        # page's "last reminder" badge updates deterministically.
+        member_logged = False
         name = member.get("name_ar") or member.get("name") or ""
         phone = member.get("phone", "")
         activities_text = "، ".join(filter(None, [i.activity_name for i in items]))
@@ -1015,6 +1020,7 @@ async def send_bulk_renewal_reminders(
                         success=ok,
                         sent_by=current_user,
                     )
+                member_logged = True
                 if ok:
                     wa_sent += 1
                 # Preserve the existing 60-second WhatsApp pacing so accounts
@@ -1035,6 +1041,7 @@ async def send_bulk_renewal_reminders(
                     success=True,
                     sent_by=current_user,
                 )
+            member_logged = True
 
         # ── Push ──
         if push_enabled and not log_only:
@@ -1074,6 +1081,7 @@ async def send_bulk_renewal_reminders(
                             success=any_ok,
                             sent_by=current_user,
                         )
+                    member_logged = True
             except Exception as e:
                 logger.error(f"Manual push reminder error for {name}: {e}")
 
@@ -1107,8 +1115,25 @@ async def send_bulk_renewal_reminders(
                         success=True,
                         sent_by=current_user,
                     )
+                member_logged = True
             except Exception as e:
                 logger.error(f"Manual portal reminder error for {name}: {e}")
+
+        # ── Fallback: nothing fired (WA disconnected, push/portal off) ──
+        # Still mark the bulk-remind intent so the per-card "last reminder"
+        # badge updates. Channel "intent" + success=False signals the operator
+        # tried but no delivery channel was available.
+        if not member_logged:
+            for it in items:
+                await _record_renewal_reminder(
+                    member_id=mid,
+                    activity_name=it.activity_name or "",
+                    channel="intent",
+                    days_before=days_calc,
+                    manual=True,
+                    success=False,
+                    sent_by=current_user,
+                )
 
     return {
         "success": True,
