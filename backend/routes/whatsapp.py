@@ -1017,8 +1017,11 @@ async def send_bulk_renewal_reminders(
                     )
                 if ok:
                     wa_sent += 1
-                # gentle throttle (manual sends may be smaller batches)
-                await asyncio.sleep(2)
+                # Preserve the existing 60-second WhatsApp pacing so accounts
+                # don't get flagged. Even though manual bulk sends are
+                # operator-initiated, large selections must throttle the same
+                # way the daily scheduler does.
+                await asyncio.sleep(60)
         elif log_only and phone:
             # In log-only mode the browser opens wa.me directly. We still record
             # the manual reminder so the "Last reminder" badge updates.

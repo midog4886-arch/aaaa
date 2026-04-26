@@ -321,7 +321,11 @@ const RenewalsPage = () => {
     const sentAt = new Date(rec.last_sent);
     if (isNaN(sentAt.getTime())) return null;
     const diff = Math.floor((Date.now() - sentAt.getTime()) / (1000 * 60 * 60 * 24));
-    return { diff, channels: rec.channels || [] };
+    return {
+      diff,
+      channels: rec.channels || [],
+      last_channel: rec.last_channel || null,
+    };
   };
 
   // Open one WhatsApp chat (per-card "Remind" button)
