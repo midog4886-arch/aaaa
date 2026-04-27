@@ -16,7 +16,7 @@ import { toast } from 'sonner';
 import { 
   Plus, Edit, Trash2, Loader2, Layers, Users, Dumbbell, UserPlus, UserMinus, UserX, Search,
   ChevronDown, ChevronUp, ChevronRight, Clock, AlertTriangle, ArrowRight, ArrowLeft, Home,
-  GripVertical, Move, ArrowUpDown, SlidersHorizontal, TrendingUp, BarChart3, CheckCircle, Circle, UserCheck, Printer, RefreshCw
+  GripVertical, Move, ArrowUpDown, SlidersHorizontal, TrendingUp, BarChart3, CheckCircle, Circle, UserCheck, Printer, RefreshCw, Wand2
 } from 'lucide-react';
 
 // Main activity types with Arabic names
@@ -114,6 +114,57 @@ export const LevelsPage = () => {
   const [assignPickerOpen, setAssignPickerOpen] = useState(false);
   const [assignTarget, setAssignTarget] = useState(null); // { member, activity }
   const [assigning, setAssigning] = useState(false);
+
+  // Auto-assign dialog
+  const [isAutoAssignOpen, setIsAutoAssignOpen] = useState(false);
+  const [autoAssignLoading, setAutoAssignLoading] = useState(false);
+  const [autoAssignConfirming, setAutoAssignConfirming] = useState(false);
+  const [autoAssignPlan, setAutoAssignPlan] = useState(null);
+  const [autoAssignExpanded, setAutoAssignExpanded] = useState({});
+  const [autoAssignShowUnmatched, setAutoAssignShowUnmatched] = useState(false);
+
+  const openAutoAssignDialog = async () => {
+    setIsAutoAssignOpen(true);
+    setAutoAssignPlan(null);
+    setAutoAssignExpanded({});
+    setAutoAssignShowUnmatched(false);
+    setAutoAssignLoading(true);
+    try {
+      const branchParams = selectedBranchId && selectedBranchId !== 'all' ? { branch_filter: selectedBranchId } : {};
+      const res = await levelsAPI.autoAssign(true, branchParams);
+      setAutoAssignPlan(res.data || null);
+    } catch (e) {
+      toast.error(t('فشل تحضير خطة الإسناد', 'Failed to prepare assignment plan'));
+      setIsAutoAssignOpen(false);
+    } finally {
+      setAutoAssignLoading(false);
+    }
+  };
+
+  const confirmAutoAssign = async () => {
+    if (!autoAssignPlan || !autoAssignPlan.totals?.would_assign) return;
+    setAutoAssignConfirming(true);
+    try {
+      const branchParams = selectedBranchId && selectedBranchId !== 'all' ? { branch_filter: selectedBranchId } : {};
+      const res = await levelsAPI.autoAssign(false, branchParams);
+      const applied = res.data?.applied || 0;
+      toast.success(t(`تم إسناد ${applied} عضو إلى المستويات`, `Assigned ${applied} member(s) to levels`));
+      setIsAutoAssignOpen(false);
+      setAutoAssignPlan(null);
+      await Promise.all([loadData(), loadUnassignedCount()]);
+    } catch (e) {
+      toast.error(t('فشل تنفيذ الإسناد', 'Failed to perform assignment'));
+    } finally {
+      setAutoAssignConfirming(false);
+    }
+  };
+
+  const sourceLabel = (s) => {
+    if (s === 'member_activities') return t('من سجل العضو', 'Member record');
+    if (s === 'invoices') return t('من الفواتير', 'Invoices');
+    if (s === 'registration_forms') return t('من نماذج التسجيل', 'Registration forms');
+    return s || '';
+  };
   
   // Search, filter, sort for main activities view
   const [levelSearchTerm, setLevelSearchTerm] = useState('');
@@ -1820,6 +1871,17 @@ ${slotTables}
                   )}
                 </Button>
               )}
+              {currentView === 'days' && (
+                <Button
+                  variant="outline"
+                  className="gap-2 border-emerald-300 text-emerald-700 hover:bg-emerald-50"
+                  onClick={openAutoAssignDialog}
+                  data-testid="open-auto-assign-btn"
+                >
+                  <Wand2 className="w-4 h-4" />
+                  {t('إسناد تلقائي للمستويات', 'Auto-assign members')}
+                </Button>
+              )}
               <Button
                 variant="outline"
                 className="gap-2"
@@ -3163,6 +3225,171 @@ ${slotTables}
               <Button onClick={handleAddNewTimeSlot} disabled={saving}>
                 {saving && <Loader2 className="w-4 h-4 me-2 animate-spin" />}
                 {t('إضافة', 'Add')}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Auto-Assign Members Dialog */}
+        <Dialog open={isAutoAssignOpen} onOpenChange={(o) => { if (!autoAssignConfirming) setIsAutoAssignOpen(o); }}>
+          <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <Wand2 className="w-5 h-5 text-emerald-600" />
+                {t('إسناد تلقائي للأعضاء على المستويات', 'Auto-assign members to levels')}
+              </DialogTitle>
+            </DialogHeader>
+
+            {autoAssignLoading && (
+              <div className="flex items-center justify-center py-12">
+                <Loader2 className="w-8 h-8 animate-spin text-emerald-600" />
+                <span className="ms-3 text-gray-600">{t('جاري تحضير خطة الإسناد...', 'Preparing assignment plan...')}</span>
+              </div>
+            )}
+
+            {!autoAssignLoading && autoAssignPlan && (
+              <div className="space-y-4">
+                <p className="text-sm text-gray-600">
+                  {t(
+                    'النظام سيقرأ اشتراكات الأعضاء من سجلاتهم والفواتير ونماذج التسجيل، ويسند كل عضو لأقل مستوى رقماً متاحاً للنشاط الذي اشترك فيه.',
+                    'The system reads each member\'s subscriptions from their record, invoices, and registration forms, and assigns each member to the lowest available level for their activity.'
+                  )}
+                </p>
+
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  <div className="p-3 rounded-lg bg-emerald-50 border border-emerald-200 text-center">
+                    <div className="text-2xl font-bold text-emerald-700">{autoAssignPlan.totals?.would_assign || 0}</div>
+                    <div className="text-xs text-emerald-600 mt-1">{t('سيتم إسنادهم', 'Will be assigned')}</div>
+                  </div>
+                  <div className="p-3 rounded-lg bg-amber-50 border border-amber-200 text-center">
+                    <div className="text-2xl font-bold text-amber-700">{autoAssignPlan.totals?.unmatched || 0}</div>
+                    <div className="text-xs text-amber-600 mt-1">{t('بدون مستوى مطابق', 'No matching level')}</div>
+                  </div>
+                  <div className="p-3 rounded-lg bg-blue-50 border border-blue-200 text-center">
+                    <div className="text-2xl font-bold text-blue-700">{autoAssignPlan.totals?.already_correct || 0}</div>
+                    <div className="text-xs text-blue-600 mt-1">{t('مُسندون مسبقاً', 'Already assigned')}</div>
+                  </div>
+                  <div className="p-3 rounded-lg bg-gray-50 border border-gray-200 text-center">
+                    <div className="text-2xl font-bold text-gray-700">{autoAssignPlan.totals?.candidate_levels || 0}</div>
+                    <div className="text-xs text-gray-600 mt-1">{t('مستويات متاحة', 'Available levels')}</div>
+                  </div>
+                </div>
+
+                {autoAssignPlan.by_source && (
+                  <div className="text-xs text-gray-600 flex flex-wrap gap-3 px-1">
+                    <span>{t('المصدر:', 'Source:')}</span>
+                    <span>{sourceLabel('member_activities')}: <strong>{autoAssignPlan.by_source.member_activities || 0}</strong></span>
+                    <span>·</span>
+                    <span>{sourceLabel('invoices')}: <strong>{autoAssignPlan.by_source.invoices || 0}</strong></span>
+                    <span>·</span>
+                    <span>{sourceLabel('registration_forms')}: <strong>{autoAssignPlan.by_source.registration_forms || 0}</strong></span>
+                  </div>
+                )}
+
+                {(autoAssignPlan.by_activity || []).length > 0 && (
+                  <div>
+                    <h3 className="font-semibold text-gray-800 mb-2">
+                      {t('الإسنادات المقترحة حسب النشاط', 'Proposed assignments by activity')}
+                    </h3>
+                    <div className="space-y-2">
+                      {autoAssignPlan.by_activity.map((bucket) => {
+                        const isOpen = !!autoAssignExpanded[bucket.activity_name];
+                        return (
+                          <div key={bucket.activity_name} className="border border-gray-200 rounded-lg overflow-hidden">
+                            <button
+                              type="button"
+                              className="w-full flex items-center justify-between px-4 py-2 bg-gray-50 hover:bg-gray-100 text-start"
+                              onClick={() => setAutoAssignExpanded(prev => ({ ...prev, [bucket.activity_name]: !isOpen }))}
+                            >
+                              <span className="font-medium text-gray-800">{bucket.activity_name}</span>
+                              <span className="flex items-center gap-2">
+                                <span className="text-xs px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 font-bold">{bucket.count}</span>
+                                {isOpen ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                              </span>
+                            </button>
+                            {isOpen && (
+                              <div className="divide-y divide-gray-100">
+                                {bucket.assignments.map((a, idx) => (
+                                  <div key={`${a.member_id}-${idx}`} className="px-4 py-2 flex items-center justify-between text-sm">
+                                    <div className="flex-1 min-w-0">
+                                      <div className="font-medium text-gray-800 truncate">{a.member_name}</div>
+                                      <div className="text-xs text-gray-500 truncate">
+                                        {a.phone || ''}{a.member_code ? ` · ${a.member_code}` : ''}
+                                        {a.schedule ? ` · ${a.schedule}` : ''}
+                                      </div>
+                                    </div>
+                                    <div className="text-end ms-3">
+                                      <div className="font-semibold text-emerald-700">{a.level_name}</div>
+                                      <div className="text-[10px] text-gray-400">{sourceLabel(a.source)}</div>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {(autoAssignPlan.unmatched || []).length > 0 && (
+                  <div className="border border-amber-200 rounded-lg overflow-hidden">
+                    <button
+                      type="button"
+                      className="w-full flex items-center justify-between px-4 py-2 bg-amber-50 hover:bg-amber-100 text-start"
+                      onClick={() => setAutoAssignShowUnmatched(v => !v)}
+                    >
+                      <span className="font-medium text-amber-800 flex items-center gap-2">
+                        <AlertTriangle className="w-4 h-4" />
+                        {t('أعضاء لم يتم إسنادهم', 'Unmatched members')}
+                      </span>
+                      <span className="flex items-center gap-2">
+                        <span className="text-xs px-2 py-0.5 rounded-full bg-amber-200 text-amber-800 font-bold">
+                          {autoAssignPlan.unmatched.length}
+                        </span>
+                        {autoAssignShowUnmatched ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                      </span>
+                    </button>
+                    {autoAssignShowUnmatched && (
+                      <div className="divide-y divide-amber-100 max-h-72 overflow-y-auto">
+                        {autoAssignPlan.unmatched.map((u, idx) => (
+                          <div key={`${u.member_id}-${idx}`} className="px-4 py-2 text-sm">
+                            <div className="flex items-center justify-between">
+                              <div className="font-medium text-gray-800">{u.member_name}</div>
+                              <div className="text-xs text-amber-700">{language === 'ar' ? u.reason : (u.reason_en || u.reason)}</div>
+                            </div>
+                            <div className="text-xs text-gray-500 mt-0.5">
+                              {u.activity_name}{u.schedule ? ` · ${u.schedule}` : ''}{u.phone ? ` · ${u.phone}` : ''}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {(!autoAssignPlan.totals?.would_assign && !autoAssignPlan.totals?.unmatched) && (
+                  <div className="text-center py-6 text-gray-500">
+                    {t('لا توجد اشتراكات تحتاج إسناد حالياً', 'No subscriptions need assignment right now')}
+                  </div>
+                )}
+              </div>
+            )}
+
+            <DialogFooter className="gap-2">
+              <Button variant="outline" onClick={() => setIsAutoAssignOpen(false)} disabled={autoAssignConfirming}>
+                {t('إلغاء', 'Cancel')}
+              </Button>
+              <Button
+                onClick={confirmAutoAssign}
+                disabled={autoAssignConfirming || autoAssignLoading || !autoAssignPlan?.totals?.would_assign}
+                className="bg-emerald-600 hover:bg-emerald-700 text-white gap-2"
+                data-testid="confirm-auto-assign-btn"
+              >
+                {autoAssignConfirming && <Loader2 className="w-4 h-4 animate-spin" />}
+                {t('تأكيد الإسناد', 'Confirm assignment')}
+                {autoAssignPlan?.totals?.would_assign ? ` (${autoAssignPlan.totals.would_assign})` : ''}
               </Button>
             </DialogFooter>
           </DialogContent>

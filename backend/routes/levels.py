@@ -477,6 +477,524 @@ async def get_level_member_count(level_id: str, current_user: dict = Depends(get
     }
 
 
+def _extract_hour_12(text: str):
+    """Extract the leading hour from a time-bearing string and return it as a
+    12h integer in 1..12. Handles all the formats used in this app:
+    - Arabic free-text: "الساعة 6", "السبت والإثنين 6:00 م", "الساعة 5:30"
+    - English/digits:   "6:00 PM", "18:00", "6"
+    Returns None if no usable hour can be parsed.
+
+    Why 12h: every level slot in the UI ("الساعة 3" .. "الساعة 8") is a bare
+    hour with no AM/PM, while invoice/registration schedules are written as
+    "6:00 م". Comparing modulo 12 lets these match without forcing the admin
+    to re-enter every slot in 24h notation. Sports training is afternoon/
+    evening, so 12h granularity is enough to distinguish slots in practice.
+    """
+    if not text:
+        return None
+    import re as _re
+    m = _re.search(r"(\d{1,2})", str(text))
+    if not m:
+        return None
+    h = int(m.group(1))
+    if 0 <= h <= 23:
+        if h == 0:
+            return 12
+        if h <= 12:
+            return h
+        return h - 12
+    return None
+
+
+def _times_match(level_slot: str, schedule_text: str) -> bool:
+    """Return True if the level's `time_slot` is compatible with the schedule
+    string the member is registered for. Empty `level_slot` (or one with no
+    parseable hour) matches anything — we don't want to over-filter when a
+    level was created without a slot. Otherwise both sides must resolve to
+    the same 12h hour."""
+    if not level_slot:
+        return True
+    lh = _extract_hour_12(level_slot)
+    if lh is None:
+        return True
+    sh = _extract_hour_12(schedule_text or "")
+    if sh is None:
+        return False
+    return lh == sh
+
+
+def _branches_compatible(level_branch, member_branch) -> bool:
+    """Levels with branch_id None are shared and match every member.
+    Otherwise both must match. A member without branch_id is treated as
+    matching shared (None) levels and any specific level when admin runs the
+    job (admin-scope already passes the right candidate set)."""
+    if not level_branch:
+        return True
+    if not member_branch:
+        return True
+    return level_branch == member_branch
+
+
+@router.post("/auto-assign")
+async def auto_assign_members_to_levels(
+    dry_run: bool = True,
+    branch_filter: Optional[str] = None,
+    current_user: dict = Depends(get_current_user),
+):
+    """Auto-assign every active member to the most appropriate existing level.
+
+    Reads each member's active activities (priority 1: member.activities,
+    priority 2: paid/partial invoice items, priority 3: pending registration
+    form items — deduped by (member_id, activity_id|activity_name)). For each
+    (member, activity) pair, finds candidate levels by activity match,
+    branch compatibility, weekday overlap, and time-slot compatibility, then
+    picks the lowest-numbered level that still has remaining capacity.
+
+    `dry_run=True` (default) only returns the plan; `dry_run=False` performs
+    the writes (push to `level.members[]`, set `activities[].level_id` on the
+    member document) and invalidates the levels cache.
+    """
+    from routes.attendance import parse_schedule_days
+
+    effective_branch = resolve_branch_filter(current_user, branch_filter)
+
+    level_query = {}
+    if effective_branch:
+        level_query["$or"] = [
+            {"branch_id": effective_branch},
+            {"branch_id": None},
+            {"branch_id": {"$exists": False}},
+        ]
+    levels = await db.levels.find(level_query, {"_id": 0}).sort("level_number", 1).to_list(1000)
+
+    member_query = {}
+    if effective_branch:
+        member_query["$or"] = [
+            {"branch_id": effective_branch},
+            {"branch_id": None},
+            {"branch_id": {"$exists": False}},
+        ]
+    members = await db.members.find(member_query, {"_id": 0}).to_list(20000)
+    member_ids = [m.get("id") for m in members if m.get("id")]
+    members_by_id = {m["id"]: m for m in members if m.get("id")}
+
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+    invoices = []
+    if member_ids:
+        invoices = await db.invoices.find(
+            {
+                "member_id": {"$in": member_ids},
+                "status": {"$in": ["paid", "partial"]},
+            },
+            {"_id": 0, "member_id": 1, "items": 1, "created_at": 1, "branch_id": 1},
+        ).sort("created_at", -1).to_list(50000)
+
+    phones = list({m.get("phone") for m in members if m.get("phone")})
+    reg_forms = []
+    if phones:
+        # Only "pending" registration forms count as a current subscription
+        # (converted/cancelled forms have already been turned into invoices and
+        # would otherwise produce duplicate work). We also re-apply the branch
+        # filter so a phone reused across branches doesn't cross-leak.
+        rf_query = {"customer_phone": {"$in": phones}, "status": "pending"}
+        if effective_branch:
+            rf_query["$or"] = [
+                {"branch_id": effective_branch},
+                {"branch_id": None},
+                {"branch_id": {"$exists": False}},
+            ]
+        reg_forms = await db.registration_forms.find(
+            rf_query,
+            {"_id": 0, "customer_phone": 1, "items": 1, "created_at": 1, "branch_id": 1, "status": 1},
+        ).sort("created_at", -1).to_list(50000)
+    members_by_phone = {}
+    for m in members:
+        ph = m.get("phone")
+        if ph:
+            members_by_phone.setdefault(ph, m)
+
+    def _normalize_subs():
+        """Yield dicts {member_id, activity_id, activity_name, schedule,
+        end_date, start_date, source} from all three sources, deduped by
+        (member_id, activity_id or activity_name lowercased)."""
+        seen = set()
+        out = []
+        for m in members:
+            mid = m.get("id")
+            if not mid:
+                continue
+            for a in (m.get("activities") or []):
+                if a.get("status") and a.get("status") != "active":
+                    continue
+                end_d = a.get("end_date") or ""
+                if end_d and end_d < today:
+                    continue
+                aid = a.get("activity_id") or ""
+                aname = a.get("activity_name") or ""
+                if not aid and not aname:
+                    continue
+                key = (mid, (aid or aname.strip().lower()))
+                if key in seen:
+                    continue
+                seen.add(key)
+                out.append({
+                    "member_id": mid,
+                    "activity_id": aid,
+                    "activity_name": aname,
+                    "schedule": a.get("schedule") or "",
+                    "start_date": a.get("start_date") or "",
+                    "end_date": end_d,
+                    "level_id": a.get("level_id") or "",
+                    "source": "member_activities",
+                })
+        for inv in invoices:
+            mid = inv.get("member_id")
+            if not mid or mid not in members_by_id:
+                continue
+            for it in inv.get("items", []) or []:
+                if it.get("is_product"):
+                    continue
+                aid = it.get("activity_id") or ""
+                aname = it.get("activity_name") or ""
+                if not aid and not aname:
+                    continue
+                key = (mid, (aid or aname.strip().lower()))
+                if key in seen:
+                    continue
+                end_d = it.get("end_date") or ""
+                if not end_d and it.get("period") and " - " in it["period"]:
+                    end_d = it["period"].split(" - ")[-1].strip()
+                # For invoice / registration sources we require an explicit
+                # end_date >= today. Undated line-items can be years old or
+                # one-off product purchases mislabelled as services, and we'd
+                # rather skip than over-assign stale records.
+                if not end_d or end_d < today:
+                    continue
+                seen.add(key)
+                out.append({
+                    "member_id": mid,
+                    "activity_id": aid,
+                    "activity_name": aname,
+                    "schedule": it.get("schedule") or "",
+                    "start_date": it.get("start_date") or "",
+                    "end_date": end_d,
+                    "level_id": "",
+                    "source": "invoices",
+                })
+        for rf in reg_forms:
+            ph = rf.get("customer_phone")
+            m = members_by_phone.get(ph) if ph else None
+            if not m:
+                continue
+            mid = m.get("id")
+            if not mid:
+                continue
+            for it in rf.get("items", []) or []:
+                if it.get("is_product"):
+                    continue
+                aid = it.get("activity_id") or ""
+                aname = it.get("activity_name") or ""
+                if not aid and not aname:
+                    continue
+                key = (mid, (aid or aname.strip().lower()))
+                if key in seen:
+                    continue
+                end_d = it.get("end_date") or ""
+                if not end_d and it.get("period") and " - " in it["period"]:
+                    end_d = it["period"].split(" - ")[-1].strip()
+                if not end_d or end_d < today:
+                    continue
+                seen.add(key)
+                out.append({
+                    "member_id": mid,
+                    "activity_id": aid,
+                    "activity_name": aname,
+                    "schedule": it.get("schedule") or "",
+                    "start_date": it.get("start_date") or "",
+                    "end_date": end_d,
+                    "level_id": "",
+                    "source": "registration_forms",
+                })
+        return out
+
+    subs = _normalize_subs()
+
+    candidates_by_aid = {}
+    candidates_by_aname = {}
+    for lvl in levels:
+        aid = lvl.get("activity_id")
+        aname = (lvl.get("activity_name") or "").strip().lower()
+        if aid:
+            candidates_by_aid.setdefault(aid, []).append(lvl)
+        if aname:
+            candidates_by_aname.setdefault(aname, []).append(lvl)
+
+    for bucket in (candidates_by_aid, candidates_by_aname):
+        for k in bucket:
+            bucket[k].sort(key=lambda l: (l.get("level_number") or 999))
+
+    capacity_used = {l["id"]: len(l.get("members") or []) for l in levels}
+    capacity_max = {l["id"]: (int(l.get("capacity")) if l.get("capacity") else None) for l in levels}
+    pending_writes_per_member = {}
+
+    would_assign = []
+    unmatched = []
+    already_correct = []
+    by_source = {"member_activities": 0, "invoices": 0, "registration_forms": 0}
+
+    for sub in subs:
+        mid = sub["member_id"]
+        member = members_by_id.get(mid)
+        if not member:
+            continue
+        member_branch = member.get("branch_id")
+        aid = sub["activity_id"]
+        aname = (sub["activity_name"] or "").strip()
+        sched = sub["schedule"]
+        sched_days = parse_schedule_days(sched)
+
+        existing_lid = sub.get("level_id")
+        if existing_lid:
+            already_correct.append({
+                "member_id": mid,
+                "member_name": member.get("name_ar") or member.get("name") or "",
+                "activity_name": aname,
+                "level_id": existing_lid,
+            })
+            continue
+
+        candidates = []
+        if aid and aid in candidates_by_aid:
+            candidates = list(candidates_by_aid[aid])
+        elif aname and aname.lower() in candidates_by_aname:
+            candidates = list(candidates_by_aname[aname.lower()])
+
+        if not candidates:
+            unmatched.append({
+                "member_id": mid,
+                "member_name": member.get("name_ar") or member.get("name") or "",
+                "phone": member.get("phone") or "",
+                "activity_name": aname,
+                "schedule": sched,
+                "source": sub["source"],
+                "reason": "لا يوجد مستوى لهذا النشاط",
+                "reason_en": "No level exists for this activity",
+            })
+            continue
+
+        chosen = None
+        chosen_reason = ""
+        for lvl in candidates:
+            if not _branches_compatible(lvl.get("branch_id"), member_branch):
+                chosen_reason = chosen_reason or "branch_mismatch"
+                continue
+            lvl_days = lvl.get("days") or []
+            if lvl_days and sched_days:
+                if not any(d in lvl_days for d in sched_days):
+                    chosen_reason = chosen_reason or "days_mismatch"
+                    continue
+            if not _times_match(lvl.get("time_slot") or "", sched):
+                chosen_reason = chosen_reason or "time_mismatch"
+                continue
+            cap_max = capacity_max.get(lvl["id"])
+            cap_used = capacity_used.get(lvl["id"], 0)
+            if cap_max is not None and cap_used >= cap_max:
+                chosen_reason = chosen_reason or "level_full"
+                continue
+            if mid in pending_writes_per_member.get(lvl["id"], set()):
+                continue
+            chosen = lvl
+            break
+
+        if not chosen:
+            reason_map = {
+                "branch_mismatch": ("الفرع غير مطابق", "Branch mismatch"),
+                "days_mismatch": ("أيام التدريب غير مطابقة للمستوى", "Schedule days don't match any level"),
+                "time_mismatch": ("التوقيت غير مطابق للمستوى", "Time slot doesn't match any level"),
+                "level_full": ("جميع المستويات المطابقة ممتلئة", "All matching levels are full"),
+            }
+            ar, en = reason_map.get(chosen_reason or "", ("لم يتم العثور على مستوى مطابق", "No matching level found"))
+            unmatched.append({
+                "member_id": mid,
+                "member_name": member.get("name_ar") or member.get("name") or "",
+                "phone": member.get("phone") or "",
+                "activity_name": aname,
+                "schedule": sched,
+                "source": sub["source"],
+                "reason": ar,
+                "reason_en": en,
+            })
+            continue
+
+        capacity_used[chosen["id"]] = capacity_used.get(chosen["id"], 0) + 1
+        pending_writes_per_member.setdefault(chosen["id"], set()).add(mid)
+        by_source[sub["source"]] = by_source.get(sub["source"], 0) + 1
+        would_assign.append({
+            "member_id": mid,
+            "member_name": member.get("name_ar") or member.get("name") or "",
+            "phone": member.get("phone") or "",
+            "member_code": member.get("member_code") or "",
+            "activity_id": aid,
+            "activity_name": aname or chosen.get("activity_name") or "",
+            "schedule": sched,
+            "level_id": chosen["id"],
+            "level_number": chosen.get("level_number"),
+            "level_name": chosen.get("custom_name") or f"المستوى {chosen.get('level_number', '')}",
+            "level_time_slot": chosen.get("time_slot") or "",
+            "source": sub["source"],
+        })
+
+    by_activity = {}
+    for w in would_assign:
+        key = w["activity_name"] or "(غير مسمى)"
+        by_activity.setdefault(key, []).append(w)
+
+    response = {
+        "dry_run": dry_run,
+        "totals": {
+            "would_assign": len(would_assign),
+            "unmatched": len(unmatched),
+            "already_correct": len(already_correct),
+            "candidate_levels": len(levels),
+            "members_scanned": len(members),
+            "subscriptions_scanned": len(subs),
+        },
+        "by_source": by_source,
+        "by_activity": [
+            {"activity_name": k, "count": len(v), "assignments": v}
+            for k, v in sorted(by_activity.items(), key=lambda kv: (-len(kv[1]), kv[0]))
+        ],
+        "unmatched": unmatched,
+        "already_correct_count": len(already_correct),
+    }
+
+    if dry_run or not would_assign:
+        return response
+
+    # Atomic, per-assignment commit. For each (member, level) pair:
+    # 1. Update the level with a filter that re-checks capacity & non-membership
+    #    in one operation. If modified_count is 0, the slot was filled (or the
+    #    member was already there) by another writer between dry-run and now.
+    # 2. Only after the level update succeeds, link the level on the member
+    #    document. We update one activity entry per write so a partial failure
+    #    affects at most one (member, activity) pair.
+    applied = 0
+    capacity_skipped = []
+    member_link_failures = []
+    member_doc_cache = {}
+
+    async def _link_member_activity(mid: str, aid: str, aname: str, target_lid: str) -> bool:
+        mdoc = member_doc_cache.get(mid)
+        if mdoc is None:
+            mdoc = await db.members.find_one({"id": mid}, {"_id": 0, "activities": 1})
+            if not mdoc:
+                return False
+            member_doc_cache[mid] = mdoc
+        acts = mdoc.get("activities", []) or []
+        target_aname_l = (aname or "").strip().lower()
+        matched = False
+        # Match by activity_id OR by normalized activity_name. A lot of legacy
+        # member.activities entries only carry activity_name (no id), so we
+        # mirror the manual add_member_to_level behavior and accept either.
+        for act in acts:
+            if act.get("level_id"):
+                continue
+            a_aid = act.get("activity_id") or ""
+            a_aname = (act.get("activity_name") or "").strip().lower()
+            id_match = bool(aid) and bool(a_aid) and a_aid == aid
+            name_match = bool(target_aname_l) and a_aname == target_aname_l
+            if id_match or name_match:
+                act["level_id"] = target_lid
+                matched = True
+                break
+        if not matched:
+            acts.append({
+                "activity_id": aid or "",
+                "activity_name": aname or "",
+                "status": "active",
+                "level_id": target_lid,
+            })
+        await db.members.update_one({"id": mid}, {"$set": {"activities": acts}})
+        mdoc["activities"] = acts
+        return True
+
+    for w in would_assign:
+        lid = w["level_id"]
+        mid = w["member_id"]
+        cap_max = capacity_max.get(lid)
+
+        # Build a filter that ONLY matches if (a) the member isn't already in
+        # the level and (b) capacity wouldn't be exceeded by this write. This
+        # is the race-safety guarantee: even if another admin assigned members
+        # in parallel, $size + $lt makes the write a no-op when full.
+        update_filter = {"id": lid, "members": {"$ne": mid}}
+        if cap_max is not None:
+            update_filter["$expr"] = {
+                "$lt": [{"$size": {"$ifNull": ["$members", []]}}, cap_max]
+            }
+        try:
+            res = await db.levels.update_one(
+                update_filter,
+                {"$addToSet": {"members": mid}},
+            )
+            modified = getattr(res, "modified_count", 0) or 0
+        except Exception as e:
+            member_link_failures.append({
+                "member_id": mid, "level_id": lid, "stage": "level_update", "error": str(e),
+            })
+            continue
+
+        if modified == 0:
+            # Either the member is already in level.members (counts as success
+            # for idempotency), or the level filled up. Verify which.
+            current = await db.levels.find_one({"id": lid}, {"_id": 0, "members": 1})
+            already_in = current and mid in (current.get("members") or [])
+            if already_in:
+                # Backfill the member's level_id even if level.members was
+                # already correct — this is the same self-healing the manual
+                # add_member_to_level performs.
+                try:
+                    await _link_member_activity(mid, w["activity_id"], w["activity_name"], lid)
+                except Exception as e:
+                    member_link_failures.append({
+                        "member_id": mid, "level_id": lid, "stage": "member_link", "error": str(e),
+                    })
+                continue
+            capacity_skipped.append({
+                "member_id": mid,
+                "member_name": w.get("member_name") or "",
+                "activity_name": w.get("activity_name") or "",
+                "level_id": lid,
+                "level_name": w.get("level_name") or "",
+                "reason": "امتلأ المستوى أثناء التنفيذ",
+                "reason_en": "Level filled up during commit",
+            })
+            continue
+
+        try:
+            ok = await _link_member_activity(mid, w["activity_id"], w["activity_name"], lid)
+            if not ok:
+                member_link_failures.append({
+                    "member_id": mid, "level_id": lid, "stage": "member_link", "error": "member_not_found",
+                })
+        except Exception as e:
+            member_link_failures.append({
+                "member_id": mid, "level_id": lid, "stage": "member_link", "error": str(e),
+            })
+
+        applied += 1
+
+    cache_invalidate("levels:")
+
+    response["applied"] = applied
+    if capacity_skipped:
+        response["capacity_skipped"] = capacity_skipped
+    if member_link_failures:
+        response["member_link_failures"] = member_link_failures
+    return response
+
+
 @router.post("/cleanup-expired")
 async def cleanup_expired_subscriptions(current_user: dict = Depends(get_current_user)):
     """Remove members from levels whose subscriptions have expired"""

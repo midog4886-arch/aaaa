@@ -46,6 +46,8 @@ export const levelsAPI = {
   getMemberCount: (levelId) => axios.get(`${API}/levels/${levelId}/count`),
   getUnassignedMembers: (params = {}) => axios.get(`${API}/levels/unassigned-members`, { params }),
   getUnassignedCount: (params = {}) => axios.get(`${API}/levels/unassigned-count`, { params }),
+  autoAssign: (dryRun = true, params = {}) =>
+    axios.post(`${API}/levels/auto-assign`, null, { params: { dry_run: dryRun, ...params } }),
 };
 
 // Tournaments API
