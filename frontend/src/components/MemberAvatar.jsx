@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 
 const SIZE_PRESETS = {
   xs: 'w-6 h-6 text-[10px]',
@@ -17,6 +17,10 @@ export default function MemberAvatar({
   textClass = 'text-blue-700',
 }) {
   const [errored, setErrored] = useState(false);
+
+  useEffect(() => {
+    setErrored(false);
+  }, [photo]);
 
   const sizeClass = SIZE_PRESETS[size] || SIZE_PRESETS.md;
 

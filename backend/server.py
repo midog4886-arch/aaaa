@@ -2129,6 +2129,7 @@ async def get_expiring_subscriptions(
                         "member_id": member["id"],
                         "member_code": member.get("member_code", ""),
                         "member_name": member.get("name_ar", member.get("name", "")),
+                        "member_photo": member.get("photo", ""),
                         "phone": member.get("phone", ""),
                         "branch_id": member.get("branch_id", ""),
                         "activity_name": activity.get("activity_name", ""),

@@ -11,6 +11,7 @@ import { Checkbox } from '../components/ui/checkbox';
 import { Badge } from '../components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { membersAPI, activitiesAPI, branchesAPI, messagesAPI } from '../services/api';
+import MemberAvatar from '../components/MemberAvatar';
 import { toast } from 'sonner';
 import { 
   MessageSquare, 
@@ -56,29 +57,17 @@ const getInitials = (name) => {
   );
 };
 
-const SenderAvatar = ({ photo, name, size = 'md', className = '' }) => {
-  const sizeClass = size === 'sm' ? 'w-8 h-8 text-[10px]' : 'w-10 h-10 text-xs';
-  const [imgFailed, setImgFailed] = React.useState(false);
-  React.useEffect(() => { setImgFailed(false); }, [photo]);
-  const showPhoto = !!photo && !imgFailed;
-  return (
-    <div className={`relative ${sizeClass} flex-shrink-0 ${className}`}>
-      <div
-        className={`${sizeClass} rounded-full bg-primary/10 text-primary font-semibold flex items-center justify-center`}
-      >
-        {getInitials(name)}
-      </div>
-      {showPhoto && (
-        <img
-          src={photo}
-          alt={name || ''}
-          onError={() => setImgFailed(true)}
-          className={`absolute inset-0 ${sizeClass} rounded-full object-cover border border-primary/20`}
-        />
-      )}
-    </div>
-  );
-};
+const SenderAvatar = ({ photo, name, size = 'md', className = '' }) => (
+  <MemberAvatar
+    photo={photo}
+    name={name}
+    size={size}
+    className={className}
+    borderClass="border-primary/20"
+    bgClass="bg-primary/10"
+    textClass="text-primary"
+  />
+);
 
 const AdminAvatar = ({ photo, name, size = 'md', className = '' }) => {
   const sizeClass = size === 'sm' ? 'w-8 h-8' : 'w-10 h-10';

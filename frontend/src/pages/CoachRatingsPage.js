@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import Layout from '../components/Layout';
+import MemberAvatar from '../components/MemberAvatar';
 import axios from 'axios';
 
 const API_URL = '';
@@ -86,49 +87,30 @@ const CoachRatingsPage = () => {
     return map;
   }, [coaches]);
 
-  const MemberAvatar = ({ memberPhoto, memberName, size = 'md' }) => {
-    const initials = (memberName || '?').split(' ').map(w => w[0]).slice(0, 2).join('');
-    const sizeClass = size === 'lg' ? 'w-14 h-14 text-base' : size === 'sm' ? 'w-6 h-6 text-xs' : 'w-12 h-12 text-sm';
-    const [imgError, setImgError] = React.useState(false);
-
-    if (memberPhoto && !imgError) {
-      return (
-        <img
-          src={memberPhoto}
-          alt={memberName}
-          className={`${sizeClass} rounded-full object-cover border-2 border-white shadow`}
-          onError={() => setImgError(true)}
-        />
-      );
-    }
-    return (
-      <div className={`${sizeClass} rounded-full flex items-center justify-center font-bold bg-gradient-to-br from-orange-400 to-orange-600 text-white border-2 border-white shadow`}>
-        {initials}
-      </div>
-    );
-  };
+  const RatingMemberAvatar = ({ memberPhoto, memberName, size = 'md' }) => (
+    <MemberAvatar
+      photo={memberPhoto}
+      name={memberName}
+      size={size}
+      borderClass="border-white"
+      bgClass="bg-gradient-to-br from-orange-400 to-orange-600"
+      textClass="text-white"
+      className="shadow"
+    />
+  );
 
   const CoachAvatar = ({ coachId, coachName, size = 'md' }) => {
     const coach = coachMap[coachId];
-    const photo = coach?.photo;
-    const initials = (coachName || '?').split(' ').map(w => w[0]).slice(0, 2).join('');
-    const sizeClass = size === 'lg' ? 'w-14 h-14 text-base' : size === 'sm' ? 'w-6 h-6 text-xs' : 'w-10 h-10 text-sm';
-    const [imgError, setImgError] = React.useState(false);
-
-    if (photo && !imgError) {
-      return (
-        <img
-          src={photo}
-          alt={coachName}
-          className={`${sizeClass} rounded-full object-cover border-2 border-white shadow`}
-          onError={() => setImgError(true)}
-        />
-      );
-    }
     return (
-      <div className={`${sizeClass} rounded-full flex items-center justify-center font-bold bg-gradient-to-br from-blue-400 to-indigo-600 text-white border-2 border-white shadow`}>
-        {initials}
-      </div>
+      <MemberAvatar
+        photo={coach?.photo}
+        name={coachName}
+        size={size}
+        borderClass="border-white"
+        bgClass="bg-gradient-to-br from-blue-400 to-indigo-600"
+        textClass="text-white"
+        className="shadow"
+      />
     );
   };
 
@@ -342,7 +324,7 @@ const CoachRatingsPage = () => {
                   >
                     <div className="flex items-start justify-between">
                       <div className="flex items-start gap-4">
-                        <MemberAvatar memberPhoto={rating.member_photo} memberName={rating.member_name} size="md" />
+                        <RatingMemberAvatar memberPhoto={rating.member_photo} memberName={rating.member_name} size="md" />
                         <div>
                           <div className="flex items-center gap-2">
                             <p className="font-bold text-gray-800">{rating.member_name || 'عضو'}</p>

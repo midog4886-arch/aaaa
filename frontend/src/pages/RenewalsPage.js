@@ -11,6 +11,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Textarea } from '../components/ui/textarea';
 import { notificationsAPI, invoicesAPI, membersAPI, branchesAPI, whatsappAPI } from '../services/api';
+import MemberAvatar from '../components/MemberAvatar';
 import { toast } from 'sonner';
 import {
   RefreshCcw,
@@ -20,7 +21,6 @@ import {
   Clock,
   Calendar,
   Phone,
-  User,
   Loader2,
   MessageCircle,
   Filter,
@@ -608,9 +608,14 @@ const RenewalsPage = () => {
               >
                 {isSelected ? <CheckSquare className="w-5 h-5" /> : <Square className="w-5 h-5" />}
               </button>
-              <div className="w-9 h-9 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
-                <User className="w-4 h-4 text-primary" />
-              </div>
+              <MemberAvatar
+                photo={item.member_photo}
+                name={item.member_name}
+                size="sm"
+                borderClass="border-primary/20"
+                bgClass="bg-primary/10"
+                textClass="text-primary"
+              />
               <div className="min-w-0">
                 <p className="font-semibold text-sm truncate">{item.member_name}</p>
                 <p className="text-xs text-muted-foreground">#{item.member_code}</p>
