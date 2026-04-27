@@ -1866,6 +1866,86 @@ class MemberMessageReply(BaseModel):
     body: str
 
 
+PROFILE_CHANGE_FIELDS = {
+    "name": ("الاسم", "Name"),
+    "phone": ("رقم الجوال", "Phone"),
+    "date_of_birth": ("تاريخ الميلاد", "Date of birth"),
+}
+
+
+class ProfileChangeRequest(BaseModel):
+    field: str
+    new_value: str
+    reason: Optional[str] = None
+
+
+@router.post("/profile/change-request")
+async def submit_profile_change_request(
+    data: ProfileChangeRequest,
+    member: dict = Depends(get_current_member),
+):
+    """Let a member request an admin change one of their locked profile fields
+    (name / phone / date of birth). Creates a message in the admin inbox; the
+    member's profile is NOT mutated by this call."""
+    field = (data.field or "").strip()
+    if field not in PROFILE_CHANGE_FIELDS:
+        raise HTTPException(status_code=400, detail="حقل غير مدعوم للتعديل")
+
+    new_value = (data.new_value or "").strip()
+    if not new_value:
+        raise HTTPException(status_code=400, detail="الرجاء إدخال القيمة الجديدة")
+    if len(new_value) > 200:
+        raise HTTPException(status_code=400, detail="القيمة الجديدة طويلة جداً")
+
+    reason = (data.reason or "").strip()
+    if len(reason) > 500:
+        raise HTTPException(status_code=400, detail="السبب طويل جداً")
+
+    label_ar, label_en = PROFILE_CHANGE_FIELDS[field]
+    if field == "name":
+        current_value = member.get("name_ar") or member.get("name") or ""
+    else:
+        current_value = member.get(field) or ""
+
+    body_lines = [
+        f"طلب تعديل {label_ar}",
+        f"القيمة الحالية: {current_value or '—'}",
+        f"القيمة المطلوبة: {new_value}",
+    ]
+    if reason:
+        body_lines.append(f"السبب: {reason}")
+    body = "\n".join(body_lines)
+
+    msg_id = str(uuid.uuid4())
+    message = {
+        "id": msg_id,
+        "thread_id": member["id"],
+        "sender_type": "member",
+        "sender_id": member["id"],
+        "sender_name": member.get("name_ar") or member.get("name") or "",
+        "recipient_member_id": member["id"],
+        "recipient_name": "الإدارة",
+        "subject": f"طلب تعديل {label_ar}",
+        "body": body,
+        "is_broadcast": False,
+        "read_by_member": True,
+        "read_by_admin": False,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "kind": "profile_change_request",
+        "change_request": {
+            "field": field,
+            "field_label_ar": label_ar,
+            "field_label_en": label_en,
+            "current_value": current_value,
+            "new_value": new_value,
+            "reason": reason,
+        },
+    }
+
+    await db.messages.insert_one(message)
+    return {"success": True, "id": msg_id, "message": "تم إرسال طلب التعديل إلى الإدارة"}
+
+
 @router.get("/member/messages")
 async def get_member_messages(member: dict = Depends(get_current_member)):
     messages = await db.messages.find(

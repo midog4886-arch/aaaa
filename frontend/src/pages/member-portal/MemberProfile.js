@@ -5,9 +5,13 @@ import { Input } from '../../components/ui/input';
 import { Label } from '../../components/ui/label';
 import {
   User, Mail, MapPin, Phone, Calendar, Hash, ImagePlus,
-  X, Save, Loader2, AlertTriangle, ShieldCheck
+  X, Save, Loader2, AlertTriangle, ShieldCheck, Pencil, Send
 } from 'lucide-react';
 import { toast } from 'sonner';
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription,
+} from '../../components/ui/dialog';
+import { Textarea } from '../../components/ui/textarea';
 import MemberLayout, { memberAPI, getDarkMode, getLanguage, getMemberData } from './MemberLayout';
 
 const fileToBase64 = (file) =>
@@ -19,7 +23,7 @@ const fileToBase64 = (file) =>
   });
 
 const formatDate = (dateStr, language) => {
-  if (!dateStr) return '—';
+  if (!dateStr) return '\u2014';
   try {
     const d = new Date(dateStr);
     if (Number.isNaN(d.getTime())) return dateStr;
@@ -34,7 +38,7 @@ const formatDate = (dateStr, language) => {
 };
 
 const initialsFor = (name) => {
-  if (!name) return '؟';
+  if (!name) return '\u061F';
   const parts = name.trim().split(/\s+/);
   if (parts.length === 1) return parts[0].slice(0, 2);
   return (parts[0][0] || '') + (parts[1][0] || '');
@@ -55,6 +59,15 @@ const MemberProfile = () => {
   const [imgError, setImgError] = useState(false);
   const fileInputRef = useRef(null);
 
+  // "Request a change" flow for the read-only fields. Members can't directly
+  // edit name/phone/date_of_birth (billing & identity implications); instead
+  // they file a request that lands in the admin messages inbox so the academy
+  // can verify and apply it.
+  const [requestField, setRequestField] = useState(null);
+  const [requestValue, setRequestValue] = useState('');
+  const [requestReason, setRequestReason] = useState('');
+  const [submittingRequest, setSubmittingRequest] = useState(false);
+
   const fetchProfile = async () => {
     try {
       const res = await memberAPI.get('/api/member-portal/profile');
@@ -67,7 +80,7 @@ const MemberProfile = () => {
       setImgError(false);
     } catch (err) {
       console.error('Failed to load profile', err);
-      toast.error(t('فشل تحميل الملف الشخصي', 'Failed to load profile'));
+      toast.error(t('\u0641\u0634\u0644 \u062A\u062D\u0645\u064A\u0644 \u0627\u0644\u0645\u0644\u0641 \u0627\u0644\u0634\u062E\u0635\u064A', 'Failed to load profile'));
     } finally {
       setLoading(false);
     }
@@ -143,6 +156,78 @@ const MemberProfile = () => {
     }
   };
 
+  const fieldMeta = {
+    name: {
+      label: t('الاسم', 'Name'),
+      placeholder: t('الاسم الكامل الصحيح', 'Correct full name'),
+      type: 'text',
+      dir: language === 'ar' ? 'rtl' : 'ltr',
+    },
+    phone: {
+      label: t('رقم الجوال', 'Phone'),
+      placeholder: '05xxxxxxxx',
+      type: 'tel',
+      dir: 'ltr',
+    },
+    date_of_birth: {
+      label: t('تاريخ الميلاد', 'Date of birth'),
+      placeholder: 'YYYY-MM-DD',
+      type: 'date',
+      dir: 'ltr',
+    },
+  };
+
+  const currentValueFor = (field) => {
+    if (!profile) return '';
+    if (field === 'name') return profile.name_ar || profile.name || '';
+    if (field === 'phone') return profile.phone || '';
+    if (field === 'date_of_birth') return profile.date_of_birth || '';
+    return '';
+  };
+
+  const openChangeRequest = (field) => {
+    setRequestField(field);
+    setRequestValue('');
+    setRequestReason('');
+  };
+
+  const closeChangeRequest = (open) => {
+    if (open) return;
+    if (submittingRequest) return;
+    setRequestField(null);
+    setRequestValue('');
+    setRequestReason('');
+  };
+
+  const submitChangeRequest = async () => {
+    if (!requestField) return;
+    const newValue = requestValue.trim();
+    if (!newValue) {
+      toast.error(t('الرجاء إدخال القيمة الجديدة', 'Please enter the new value'));
+      return;
+    }
+    setSubmittingRequest(true);
+    try {
+      await memberAPI.post('/api/member-portal/profile/change-request', {
+        field: requestField,
+        new_value: newValue,
+        reason: requestReason.trim(),
+      });
+      toast.success(
+        t('تم إرسال طلب التعديل إلى الإدارة', 'Your change request was sent to the academy')
+      );
+      setRequestField(null);
+      setRequestValue('');
+      setRequestReason('');
+    } catch (err) {
+      console.error('Failed to submit change request', err);
+      const detail = err.response?.data?.detail;
+      toast.error(detail || t('فشل إرسال الطلب', 'Failed to send request'));
+    } finally {
+      setSubmittingRequest(false);
+    }
+  };
+
   const cardClass = `border-2 shadow-lg overflow-hidden ${
     darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'
   }`;
@@ -154,8 +239,26 @@ const MemberProfile = () => {
   const inputClass = `mt-1 ${
     darkMode ? 'bg-gray-900 border-gray-700 text-white placeholder-gray-500' : ''
   }`;
+  const requestBtnClass = `inline-flex items-center gap-1 text-xs font-medium rounded px-1.5 py-0.5 transition-colors ${
+    darkMode
+      ? 'text-amber-300 hover:text-amber-200 hover:bg-amber-900/30'
+      : 'text-amber-600 hover:text-amber-700 hover:bg-amber-50'
+  }`;
 
   const displayName = profile?.name_ar || profile?.name || '';
+
+  const renderRequestButton = (field) => (
+    <button
+      type="button"
+      onClick={() => openChangeRequest(field)}
+      className={requestBtnClass}
+      data-testid={`request-change-${field}-btn`}
+      title={t('طلب تعديل', 'Request change')}
+    >
+      <Pencil className="w-3 h-3" />
+      <span>{t('طلب تعديل', 'Request change')}</span>
+    </button>
+  );
 
   return (
     <MemberLayout>
@@ -254,29 +357,38 @@ const MemberProfile = () => {
               <CardContent className="p-6 space-y-4">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
-                    <p className={labelClass}>{t('الاسم', 'Name')}</p>
-                    <p className={readonlyValueClass}>{displayName || '—'}</p>
+                    <div className="flex items-center justify-between gap-2">
+                      <p className={labelClass}>{t('الاسم', 'Name')}</p>
+                      {renderRequestButton('name')}
+                    </div>
+                    <p className={readonlyValueClass}>{displayName || '\u2014'}</p>
                   </div>
                   <div>
                     <p className={labelClass}>{t('رقم العضوية', 'Member Code')}</p>
                     <p className={readonlyValueClass} dir="ltr">
                       <span className="inline-flex items-center gap-1">
                         <Hash className="w-4 h-4 opacity-60" />
-                        {profile?.member_code || '—'}
+                        {profile?.member_code || '\u2014'}
                       </span>
                     </p>
                   </div>
                   <div>
-                    <p className={labelClass}>{t('رقم الجوال', 'Phone')}</p>
+                    <div className="flex items-center justify-between gap-2">
+                      <p className={labelClass}>{t('رقم الجوال', 'Phone')}</p>
+                      {renderRequestButton('phone')}
+                    </div>
                     <p className={readonlyValueClass} dir="ltr">
                       <span className="inline-flex items-center gap-1">
                         <Phone className="w-4 h-4 opacity-60" />
-                        {profile?.phone || '—'}
+                        {profile?.phone || '\u2014'}
                       </span>
                     </p>
                   </div>
                   <div>
-                    <p className={labelClass}>{t('تاريخ الميلاد', 'Date of Birth')}</p>
+                    <div className="flex items-center justify-between gap-2">
+                      <p className={labelClass}>{t('تاريخ الميلاد', 'Date of Birth')}</p>
+                      {renderRequestButton('date_of_birth')}
+                    </div>
                     <p className={readonlyValueClass}>
                       <span className="inline-flex items-center gap-1">
                         <Calendar className="w-4 h-4 opacity-60" />
@@ -295,8 +407,8 @@ const MemberProfile = () => {
                   <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" />
                   <p>
                     {t(
-                      'لتعديل الاسم أو رقم الجوال أو تاريخ الميلاد، يرجى التواصل مع إدارة الأكاديمية.',
-                      'To change your name, phone or date of birth, please contact the academy administration.'
+                      'لتعديل الاسم أو رقم الجوال أو تاريخ الميلاد، اضغط "طلب تعديل" بجانب الحقل وسيتم إرسال طلبك إلى الإدارة.',
+                      'To change your name, phone or date of birth, tap "Request change" next to the field and your request will be sent to the academy.'
                     )}
                   </p>
                 </div>
@@ -389,6 +501,115 @@ const MemberProfile = () => {
             </div>
           </>
         )}
+
+        {/* Change-request dialog */}
+        <Dialog open={!!requestField} onOpenChange={closeChangeRequest}>
+          <DialogContent
+            className={`max-w-md ${darkMode ? 'bg-gray-800 text-white border-gray-700' : ''}`}
+            dir={language === 'ar' ? 'rtl' : 'ltr'}
+          >
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <Pencil className="w-5 h-5 text-amber-500" />
+                {requestField
+                  ? t(
+                      `طلب تعديل ${fieldMeta[requestField].label}`,
+                      `Request change: ${fieldMeta[requestField].label}`
+                    )
+                  : ''}
+              </DialogTitle>
+              <DialogDescription className={darkMode ? 'text-gray-400' : 'text-gray-500'}>
+                {t(
+                  'سيتم إرسال هذا الطلب إلى إدارة الأكاديمية لمراجعته وتطبيق التعديل.',
+                  'This request will be sent to the academy for review and approval.'
+                )}
+              </DialogDescription>
+            </DialogHeader>
+
+            {requestField && (
+              <div className="space-y-4">
+                <div>
+                  <p className={`text-xs ${subtleClass}`}>
+                    {t('القيمة الحالية', 'Current value')}
+                  </p>
+                  <p
+                    className={`mt-1 text-sm font-semibold break-all ${
+                      darkMode ? 'text-gray-200' : 'text-gray-800'
+                    }`}
+                    dir={fieldMeta[requestField].dir}
+                  >
+                    {requestField === 'date_of_birth'
+                      ? formatDate(currentValueFor('date_of_birth'), language) || '\u2014'
+                      : currentValueFor(requestField) || '\u2014'}
+                  </p>
+                </div>
+
+                <div>
+                  <Label htmlFor="request-new-value" className={labelClass}>
+                    {t('القيمة الجديدة', 'New value')}
+                  </Label>
+                  <Input
+                    id="request-new-value"
+                    type={fieldMeta[requestField].type}
+                    dir={fieldMeta[requestField].dir}
+                    value={requestValue}
+                    onChange={(e) => setRequestValue(e.target.value)}
+                    placeholder={fieldMeta[requestField].placeholder}
+                    className={inputClass}
+                    maxLength={200}
+                    data-testid="request-new-value-input"
+                  />
+                </div>
+
+                <div>
+                  <Label htmlFor="request-reason" className={labelClass}>
+                    {t('السبب (اختياري)', 'Reason (optional)')}
+                  </Label>
+                  <Textarea
+                    id="request-reason"
+                    value={requestReason}
+                    onChange={(e) => setRequestReason(e.target.value)}
+                    placeholder={t(
+                      'مثلاً: تصحيح خطأ إملائي، تغيير رقم الجوال، إلخ',
+                      'e.g. typo correction, phone number changed, etc.'
+                    )}
+                    className={`mt-1 ${
+                      darkMode ? 'bg-gray-900 border-gray-700 text-white placeholder-gray-500' : ''
+                    }`}
+                    rows={3}
+                    maxLength={500}
+                    data-testid="request-reason-input"
+                  />
+                </div>
+              </div>
+            )}
+
+            <DialogFooter className="gap-2 sm:gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => closeChangeRequest(false)}
+                disabled={submittingRequest}
+              >
+                {t('إلغاء', 'Cancel')}
+              </Button>
+              <Button
+                type="button"
+                onClick={submitChangeRequest}
+                disabled={submittingRequest || !requestValue.trim()}
+                className="gap-2 bg-gradient-to-r from-amber-500 to-yellow-600 hover:from-amber-600 hover:to-yellow-700 text-gray-900 font-bold"
+                data-testid="submit-change-request-btn"
+              >
+                {submittingRequest ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Send className="w-4 h-4" />
+                )}
+                {t('إرسال الطلب', 'Send request')}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
     </MemberLayout>
   );
