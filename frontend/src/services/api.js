@@ -82,6 +82,8 @@ export const membersAPI = {
   setMarked: (id, marked) => axios.patch(`${API}/members/${id}/marked`, { marked }),
   applyChangeRequest: (memberId, messageId) =>
     axios.post(`${API}/members/${memberId}/apply-change-request/${messageId}`),
+  rejectChangeRequest: (memberId, messageId, reason = '') =>
+    axios.post(`${API}/members/${memberId}/reject-change-request/${messageId}`, { reason }),
 };
 
 // Social Publisher API

@@ -1954,15 +1954,19 @@ async def get_pending_profile_change_requests(
     profile page can show a "request pending" badge next to each locked field.
 
     A request is considered pending until an admin has read it (i.e.
-    `read_by_admin` is False on the original member-sent message). We keep at
-    most one entry per field — the most recent unread one — because it's the
-    only one the member would care about."""
+    `read_by_admin` is False on the original member-sent message) AND it has
+    not been resolved by the admin (status is neither "applied" nor
+    "rejected"). The status guard catches the edge case where an admin
+    rejects/applies a request that another admin already marked read. We
+    keep at most one entry per field — the most recent unresolved one —
+    because it's the only one the member would care about."""
     cursor = db.messages.find(
         {
             "sender_type": "member",
             "sender_id": member["id"],
             "kind": "profile_change_request",
             "read_by_admin": False,
+            "change_request_status": {"$nin": ["applied", "rejected"]},
         },
         {"_id": 0},
     ).sort("created_at", -1)

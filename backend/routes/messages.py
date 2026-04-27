@@ -168,7 +168,10 @@ async def get_conversations(current_user: dict = Depends(get_current_user)):
                 "$cond": [
                     {"$and": [
                         {"$eq": ["$kind", "profile_change_request"]},
-                        {"$ne": ["$change_request_status", "applied"]}
+                        {"$not": [{"$in": [
+                            "$change_request_status",
+                            ["applied", "rejected"]
+                        ]}]}
                     ]},
                     1, 0
                 ]

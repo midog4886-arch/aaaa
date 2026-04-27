@@ -36,7 +36,9 @@ import {
   User,
   UserCog,
   CheckCircle2,
-  Check
+  Check,
+  X,
+  XCircle
 } from 'lucide-react';
 
 const PROFILE_FIELD_LABELS = {
@@ -92,14 +94,17 @@ const AdminAvatar = ({ photo, name, size = 'md', className = '' }) => {
   );
 };
 
-const ChangeRequestCard = ({ msg, language, onApply, disabled }) => {
+const ChangeRequestCard = ({ msg, language, onApply, onReject, disabled }) => {
   const cr = msg.change_request || {};
   const fieldKey = cr.field;
   const fieldLabel =
     language === 'ar'
       ? cr.field_label_ar || (PROFILE_FIELD_LABELS[fieldKey] || {}).ar || fieldKey
       : cr.field_label_en || (PROFILE_FIELD_LABELS[fieldKey] || {}).en || fieldKey;
-  const isApplied = msg.change_request_status === 'applied';
+  const status = msg.change_request_status;
+  const isApplied = status === 'applied';
+  const isRejected = status === 'rejected';
+  const isResolved = isApplied || isRejected;
   const dash = '—';
 
   return (
@@ -127,7 +132,7 @@ const ChangeRequestCard = ({ msg, language, onApply, disabled }) => {
           {cr.reason}
         </p>
       )}
-      {isApplied ? (
+      {isApplied && (
         <div className="flex items-center gap-2 text-xs text-green-800 bg-green-100 border border-green-200 rounded-md px-2 py-1">
           <CheckCircle2 className="w-3.5 h-3.5" />
           <span>
@@ -139,17 +144,54 @@ const ChangeRequestCard = ({ msg, language, onApply, disabled }) => {
             )}
           </span>
         </div>
-      ) : (
-        <Button
-          size="sm"
-          onClick={() => onApply(msg)}
-          disabled={disabled}
-          className="gap-1 h-8"
-          data-testid={`button-apply-change-${msg.id}`}
-        >
-          <Check className="w-3.5 h-3.5" />
-          {language === 'ar' ? 'تطبيق التعديل' : 'Apply change'}
-        </Button>
+      )}
+      {isRejected && (
+        <div className="flex flex-col gap-1 text-xs text-red-800 bg-red-100 border border-red-200 rounded-md px-2 py-1">
+          <div className="flex items-center gap-2">
+            <XCircle className="w-3.5 h-3.5" />
+            <span>
+              {language === 'ar' ? 'تم رفض الطلب' : 'Request rejected'}
+              {msg.change_request_rejected_at && (
+                <span className="text-muted-foreground ms-1">
+                  · {new Date(msg.change_request_rejected_at).toLocaleString('ar-SA')}
+                </span>
+              )}
+            </span>
+          </div>
+          {msg.change_request_rejection_reason && (
+            <p className="text-xs">
+              <span className="font-semibold">
+                {language === 'ar' ? 'السبب: ' : 'Reason: '}
+              </span>
+              {msg.change_request_rejection_reason}
+            </p>
+          )}
+        </div>
+      )}
+      {!isResolved && (
+        <div className="flex flex-wrap gap-2">
+          <Button
+            size="sm"
+            onClick={() => onApply(msg)}
+            disabled={disabled}
+            className="gap-1 h-8"
+            data-testid={`button-apply-change-${msg.id}`}
+          >
+            <Check className="w-3.5 h-3.5" />
+            {language === 'ar' ? 'تطبيق التعديل' : 'Apply change'}
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => onReject(msg)}
+            disabled={disabled}
+            className="gap-1 h-8 border-red-300 text-red-700 hover:bg-red-50 hover:text-red-800"
+            data-testid={`button-reject-change-${msg.id}`}
+          >
+            <X className="w-3.5 h-3.5" />
+            {language === 'ar' ? 'رفض الطلب' : 'Reject'}
+          </Button>
+        </div>
       )}
     </div>
   );
@@ -467,6 +509,40 @@ export const MessagesPage = () => {
     } catch (error) {
       const detail = error?.response?.data?.detail;
       toast.error(detail || (language === 'ar' ? 'فشل تطبيق التعديل' : 'Failed to apply change'));
+    } finally {
+      setSendingMsg(false);
+    }
+  };
+
+  const handleRejectChangeRequest = async (msg) => {
+    if (!selectedThread || !msg?.id) return;
+    const cr = msg.change_request || {};
+    const fieldLabel = (PROFILE_FIELD_LABELS[cr.field] || {})[language] || cr.field || '';
+    const confirmText = language === 'ar'
+      ? `رفض طلب تعديل ${fieldLabel}؟\nلن يتم تحديث بيانات العضو وسيتم اعتبار الطلب منتهياً.`
+      : `Reject the change request for ${fieldLabel}?\nThe member record will not be updated and the request will be marked resolved.`;
+    if (!window.confirm(confirmText)) return;
+
+    const reasonPrompt = language === 'ar'
+      ? 'سبب الرفض (اختياري) — سيُرسل للعضو كرسالة:'
+      : 'Reason for rejecting (optional) — will be sent to the member as a reply:';
+    const rawReason = window.prompt(reasonPrompt, '');
+    // window.prompt returns null if the admin cancels — abort the whole action.
+    if (rawReason === null) return;
+    const reason = rawReason.trim();
+    if (reason.length > 500) {
+      toast.error(language === 'ar' ? 'السبب طويل جداً' : 'Reason is too long');
+      return;
+    }
+
+    setSendingMsg(true);
+    try {
+      await membersAPI.rejectChangeRequest(selectedThread, msg.id, reason);
+      toast.success(language === 'ar' ? 'تم رفض الطلب' : 'Request rejected');
+      await openThread(selectedThread);
+    } catch (error) {
+      const detail = error?.response?.data?.detail;
+      toast.error(detail || (language === 'ar' ? 'فشل رفض الطلب' : 'Failed to reject request'));
     } finally {
       setSendingMsg(false);
     }
@@ -1273,6 +1349,15 @@ export const MessagesPage = () => {
                                     {language === 'ar' ? 'تم التطبيق' : 'Applied'}
                                   </Badge>
                                 )}
+                                {isChangeRequest && msg.change_request_status === 'rejected' && (
+                                  <Badge
+                                    variant="secondary"
+                                    className="text-[10px] px-1.5 py-0.5 gap-1 bg-red-100 text-red-900 border border-red-300 hover:bg-red-100"
+                                  >
+                                    <XCircle className="w-3 h-3" />
+                                    {language === 'ar' ? 'تم الرفض' : 'Rejected'}
+                                  </Badge>
+                                )}
                                 <span className="text-xs text-muted-foreground">
                                   {new Date(msg.created_at).toLocaleString('ar-SA')}
                                 </span>
@@ -1282,6 +1367,7 @@ export const MessagesPage = () => {
                                   msg={msg}
                                   language={language}
                                   onApply={handleApplyChangeRequest}
+                                  onReject={handleRejectChangeRequest}
                                   disabled={sendingMsg}
                                 />
                               ) : (

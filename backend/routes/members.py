@@ -1,7 +1,7 @@
 """Members routes"""
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, Body
 from pydantic import BaseModel, Field
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 import uuid
 from datetime import datetime, timezone
 
@@ -279,8 +279,11 @@ async def apply_profile_change_request(
     # sending an arbitrary message_id that points at a different member).
     if msg.get("recipient_member_id") != member_id and msg.get("sender_id") != member_id:
         raise HTTPException(status_code=400, detail="طلب التعديل لا يخص هذا العضو")
-    if msg.get("change_request_status") == "applied":
+    existing_status = msg.get("change_request_status")
+    if existing_status == "applied":
         raise HTTPException(status_code=400, detail="تم تطبيق هذا الطلب من قبل")
+    if existing_status == "rejected":
+        raise HTTPException(status_code=400, detail="تم رفض هذا الطلب من قبل")
 
     cr = msg.get("change_request") or {}
     field = cr.get("field")
@@ -317,6 +320,110 @@ async def apply_profile_change_request(
         "new_value": new_value,
         "applied_at": now,
         "member": Member(**{k: v for k, v in member_result.items() if k != "_id"}),
+    }
+
+
+@router.post("/{member_id}/reject-change-request/{message_id}")
+async def reject_profile_change_request(
+    member_id: str,
+    message_id: str,
+    payload: Optional[Dict[str, Any]] = Body(default=None),
+    current_user: dict = Depends(get_current_user),
+):
+    """Mark a member's pending profile change request as rejected without
+    touching the member record.
+
+    Mirrors :func:`apply_profile_change_request` but records
+    ``change_request_status = "rejected"`` instead. The optional ``reason``
+    in the body, if provided, is sent back to the member as a regular admin
+    reply so they understand why the request was dismissed. The original
+    request message is also marked ``read_by_admin=True`` so it disappears
+    from the pending count and from the member's "request pending" indicator.
+    """
+    msg = await db.messages.find_one(
+        {"id": message_id, "kind": "profile_change_request"},
+        {"_id": 0},
+    )
+    if not msg:
+        raise HTTPException(status_code=404, detail="طلب التعديل غير موجود")
+    if msg.get("recipient_member_id") != member_id and msg.get("sender_id") != member_id:
+        raise HTTPException(status_code=400, detail="طلب التعديل لا يخص هذا العضو")
+    status = msg.get("change_request_status")
+    if status == "applied":
+        raise HTTPException(status_code=400, detail="تم تطبيق هذا الطلب من قبل")
+    if status == "rejected":
+        raise HTTPException(status_code=400, detail="تم رفض هذا الطلب من قبل")
+
+    # Confirm the member exists & is in scope before touching anything else.
+    member_doc = await db.members.find_one(
+        _scoped_member_query(member_id, current_user),
+        {"_id": 0, "id": 1, "name_ar": 1, "name": 1},
+    )
+    if not member_doc:
+        raise HTTPException(status_code=404, detail="Member not found")
+
+    raw_reason = ""
+    if isinstance(payload, dict):
+        raw_reason = (payload.get("reason") or "").strip()
+    if len(raw_reason) > 500:
+        raise HTTPException(status_code=400, detail="السبب طويل جداً")
+
+    now = datetime.now(timezone.utc).isoformat()
+    rejected_by = current_user.get("user_id", current_user.get("sub", ""))
+    update_fields: Dict[str, Any] = {
+        "change_request_status": "rejected",
+        "change_request_rejected_at": now,
+        "change_request_rejected_by": rejected_by,
+        "read_by_admin": True,
+    }
+    if raw_reason:
+        update_fields["change_request_rejection_reason"] = raw_reason
+
+    await db.messages.update_one(
+        {"id": message_id},
+        {"$set": update_fields},
+    )
+
+    reply_id: Optional[str] = None
+    if raw_reason:
+        cr = msg.get("change_request") or {}
+        field_label = cr.get("field_label_ar") or cr.get("field") or ""
+        subject = (
+            f"رفض طلب تعديل {field_label}".strip()
+            if field_label
+            else "رفض طلب التعديل"
+        )
+        body_lines = ["تم رفض طلب التعديل."]
+        if field_label:
+            body_lines[0] = f"تم رفض طلب تعديل {field_label}."
+        body_lines.append(f"السبب: {raw_reason}")
+
+        reply_id = str(uuid.uuid4())
+        await db.messages.insert_one({
+            "id": reply_id,
+            "thread_id": member_id,
+            "sender_type": "admin",
+            "sender_id": rejected_by,
+            "sender_name": current_user.get(
+                "name", current_user.get("username", "الإدارة")
+            ),
+            "recipient_member_id": member_id,
+            "recipient_name": member_doc.get("name_ar") or member_doc.get("name") or "",
+            "subject": subject,
+            "body": "\n".join(body_lines),
+            "is_broadcast": False,
+            "read_by_member": False,
+            "read_by_admin": True,
+            "created_at": now,
+        })
+
+    return {
+        "success": True,
+        "message_id": message_id,
+        "rejected_at": now,
+        "rejected_by": rejected_by,
+        "reason": raw_reason,
+        "reply_id": reply_id,
     }
 
 
