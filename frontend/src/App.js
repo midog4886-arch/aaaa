@@ -92,6 +92,7 @@ const MemberLoyalty = lazy(() => import('./pages/member-portal/MemberLoyalty'));
 const MemberSupport = lazy(() => import('./pages/member-portal/MemberSupport'));
 const MemberTournaments = lazy(() => import('./pages/member-portal/MemberTournaments'));
 const CoachProfile = lazy(() => import('./pages/member-portal/CoachProfile'));
+const MemberProfile = lazy(() => import('./pages/member-portal/MemberProfile'));
 const CoachQRPage = lazy(() => import('./pages/CoachQRPage'));
 
 // Lightweight fallback shown while a page chunk is being fetched
@@ -224,6 +225,7 @@ function AppRoutes() {
       <Route path="/member-messages" element={<MemberNotifications />} />
       <Route path="/my-tournaments" element={<MemberTournaments />} />
       <Route path="/coach-profile/:coachId" element={<CoachProfile />} />
+      <Route path="/member-profile" element={<MemberProfile />} />
       
       {/* Admin Protected Routes - under /admin prefix */}
       <Route 

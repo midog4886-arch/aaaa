@@ -3,7 +3,7 @@ import { useNavigate, Link, useLocation } from 'react-router-dom';
 import { 
   Trophy, Home, CreditCard, Calendar, Bell, QrCode,
   LogOut, Menu, X, Clock, CheckCircle, AlertTriangle,
-  Moon, Sun, Star, Activity, Video, Languages, Download, Smartphone, Phone, Mail
+  Moon, Sun, Star, Activity, Video, Languages, Download, Smartphone, Phone, Mail, User
 } from 'lucide-react';
 import { Button } from '../../components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../../components/ui/dialog';
@@ -290,6 +290,7 @@ const MemberLayout = ({ children }) => {
     { to: '/card', icon: QrCode, labelKey: 'memberCard' },
     { to: '/rate-coach', icon: Star, labelKey: 'rateCoaches' },
     { to: '/notifications', icon: Bell, labelKey: 'notifications', badge: (notifications.unread_count || 0) + (msgUnreadCount || 0) },
+    { to: '/member-profile', icon: User, labelKey: 'profile' },
     { to: '/support', icon: Phone, labelKey: 'support' },
   ];
 
@@ -307,6 +308,7 @@ const MemberLayout = ({ children }) => {
       rateCoaches: { ar: 'تقييم المدربين', en: 'Rate Coaches' },
       messages: { ar: 'الرسائل', en: 'Messages' },
       notifications: { ar: 'الإشعارات والرسائل', en: 'Notifications & Messages' },
+      profile: { ar: 'الملف الشخصي', en: 'My Profile' },
       support: { ar: 'خدمة العملاء', en: 'Support' },
       memberPortal: { ar: 'بوابة الأعضاء', en: 'Member Portal' },
       academy: { ar: 'شركة اداء الابطال العالمية للرياضة', en: 'Champions Academy' },
@@ -410,10 +412,14 @@ const MemberLayout = ({ children }) => {
                 {darkMode ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
               </Button>
               
-              <div className="hidden sm:block text-left">
+              <Link
+                to="/member-profile"
+                className="hidden sm:block text-left hover:opacity-80 transition-opacity"
+                title={getText('profile')}
+              >
                 <p className="text-sm font-medium">{member.name_ar}</p>
                 <p className="text-xs text-gray-300">#{member.member_code}</p>
-              </div>
+              </Link>
               <Button 
                 variant="ghost" 
                 size="icon"

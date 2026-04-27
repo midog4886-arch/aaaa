@@ -11,6 +11,7 @@ from pydantic import BaseModel
 from typing import Optional, List, Dict, Any
 from datetime import datetime, timezone, timedelta
 import os
+import re
 import jwt
 import uuid
 
@@ -212,8 +213,119 @@ async def get_member_profile(member: dict = Depends(get_current_member)):
         "gender": member.get("gender"),
         "address": member.get("address"),
         "emergency_contact": member.get("emergency_contact"),
+        "photo": member.get("photo", ""),
         "created_at": member.get("created_at"),
         "dark_mode": member.get("preferences", {}).get("dark_mode", False)
+    }
+
+
+# ~2MB actual file after base64 overhead (~33%); matches the 2MB file-size
+# check applied on the upload form, mirroring the coach-photo validation in
+# routes/coaches.py.
+MAX_PROFILE_PHOTO_BYTES = 3 * 1024 * 1024
+
+
+class MemberProfileUpdate(BaseModel):
+    """Editable subset of the member profile from the member portal.
+    Phone, name, member_code, date_of_birth, gender remain admin-only."""
+    email: Optional[str] = None
+    address: Optional[str] = None
+    emergency_contact: Optional[str] = None
+    photo: Optional[str] = None  # base64 data URL, "" to clear
+
+
+# Lightweight format / length guards for member-editable text fields.
+# We keep the email regex deliberately permissive (RFC-style validation is
+# brittle and noisy); the real check is "does it look like local@domain.tld".
+_EMAIL_RE = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
+MAX_EMAIL_LEN = 254          # RFC 5321 practical cap
+MAX_ADDRESS_LEN = 300        # plenty for street + city + postal
+MAX_EMERGENCY_LEN = 200      # name + phone fits comfortably
+
+
+@router.put("/profile")
+async def update_member_profile(
+    data: MemberProfileUpdate,
+    member: dict = Depends(get_current_member)
+):
+    """Allow a logged-in member to update their own contact details and
+    profile picture. Only fields included in the payload are updated, so the
+    same endpoint handles partial saves (e.g. avatar-only)."""
+    update_fields: Dict[str, Any] = {}
+
+    if data.email is not None:
+        email = data.email.strip()
+        if email:
+            if len(email) > MAX_EMAIL_LEN:
+                raise HTTPException(
+                    status_code=400,
+                    detail="البريد الإلكتروني طويل جداً"
+                )
+            if not _EMAIL_RE.match(email):
+                raise HTTPException(
+                    status_code=400,
+                    detail="صيغة البريد الإلكتروني غير صحيحة"
+                )
+        update_fields["email"] = email
+
+    if data.address is not None:
+        address = data.address.strip()
+        if len(address) > MAX_ADDRESS_LEN:
+            raise HTTPException(
+                status_code=400,
+                detail="العنوان طويل جداً"
+            )
+        update_fields["address"] = address
+
+    if data.emergency_contact is not None:
+        emergency = data.emergency_contact.strip()
+        if len(emergency) > MAX_EMERGENCY_LEN:
+            raise HTTPException(
+                status_code=400,
+                detail="جهة الاتصال للطوارئ طويلة جداً"
+            )
+        update_fields["emergency_contact"] = emergency
+
+    if data.photo is not None:
+        photo = data.photo
+        if photo == "":
+            update_fields["photo"] = ""
+        else:
+            if not photo.startswith("data:image/"):
+                raise HTTPException(
+                    status_code=400,
+                    detail="نوع الملف غير مدعوم، يجب أن تكون صورة"
+                )
+            if len(photo.encode()) > MAX_PROFILE_PHOTO_BYTES:
+                raise HTTPException(
+                    status_code=400,
+                    detail="حجم الصورة كبير جداً، الحد الأقصى 2 ميجابايت"
+                )
+            update_fields["photo"] = photo
+
+    if update_fields:
+        await db.members.update_one(
+            {"id": member["id"]},
+            {"$set": update_fields}
+        )
+
+    updated = await db.members.find_one({"id": member["id"]}, {"_id": 0})
+    return {
+        "success": True,
+        "profile": {
+            "id": updated["id"],
+            "name": updated.get("name"),
+            "name_ar": updated.get("name_ar"),
+            "phone": updated.get("phone"),
+            "email": updated.get("email"),
+            "member_code": updated.get("member_code"),
+            "date_of_birth": updated.get("date_of_birth"),
+            "gender": updated.get("gender"),
+            "address": updated.get("address"),
+            "emergency_contact": updated.get("emergency_contact"),
+            "photo": updated.get("photo", ""),
+            "created_at": updated.get("created_at"),
+        }
     }
 
 

@@ -26,6 +26,7 @@ The system employs a full-stack architecture with distinct components for the ba
 
 **Technical Implementations & Feature Specifications:**
 - **Member Management:** Comprehensive CRUD operations for member profiles, including subscription details, attendance records, and communication.
+- **Member Self-Service Profile:** Members can visit `/member-profile` from the portal nav (or by tapping their name in the header) to view their basic info (name, member code, phone, date of birth — read-only) and edit their email, address, emergency contact, and profile picture. The avatar is stored as a base64 data URL in `members.photo` (≤2MB, validated by `routes/member_portal.py::update_member_profile`, mirroring the coach-photo pattern). The endpoint is `PUT /api/member-portal/profile` and accepts a partial payload, so avatar-only saves and contact-only saves both work.
 - **Invoicing:** Generation and management of invoices, with PDF and Excel export capabilities. WhatsApp sharing of invoice images is supported. InvoicesPage has been refactored: the original 6,615-line file is now split into 5 hooks (`useInvoiceForm`, `useViewInvoiceHandlers`, `useQRCardPrint`, `useMemberCardPrint`, `useRegFormState`) under `invoices/hooks/`, and 12 dialog components under `invoices/components/dialogs/`. The main `InvoicesPage.js` is now 531 lines (orchestrator only).
 - **Attendance Tracking:**
     - **Member Attendance:** QR code-based check-in with schedule validation, instant notifications, and session quota monitoring.
