@@ -13,6 +13,11 @@ import {
 import { Plus, Pencil, Trash2, UserCog, Loader2, ImagePlus, X } from 'lucide-react';
 import { toast } from 'sonner';
 import Layout from '../components/Layout';
+import {
+  compressImageFile,
+  estimateDataUrlBytes,
+  PROFILE_PHOTO_HARD_CAP_BYTES,
+} from '../utils/imageCompression';
 
 const API = process.env.REACT_APP_BACKEND_URL || '';
 
@@ -42,14 +47,6 @@ const SupervisorAvatar = ({ supervisor, size = 'w-16 h-16', textSize = 'text-lg'
     </div>
   );
 };
-
-const fileToBase64 = (file) =>
-  new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result);
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
-  });
 
 const SupervisorsPage = () => {
   const [loading, setLoading] = useState(true);
@@ -97,12 +94,16 @@ const SupervisorsPage = () => {
   const handlePhotoChange = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (file.size > 2 * 1024 * 1024) {
-      toast.error('حجم الصورة كبير جداً (الحد الأقصى 2 ميجا)');
+    if (!file.type?.startsWith('image/')) {
+      toast.error('يرجى اختيار صورة');
       return;
     }
     try {
-      const base64 = await fileToBase64(file);
+      const base64 = await compressImageFile(file);
+      if (estimateDataUrlBytes(base64) > PROFILE_PHOTO_HARD_CAP_BYTES) {
+        toast.error('تعذّر تصغير الصورة بما يكفي، يرجى اختيار صورة أصغر');
+        return;
+      }
       setPhoto(base64);
     } catch (err) {
       toast.error('فشل قراءة الصورة');

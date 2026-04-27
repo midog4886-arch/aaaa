@@ -13,14 +13,11 @@ import {
 } from '../../components/ui/dialog';
 import { Textarea } from '../../components/ui/textarea';
 import MemberLayout, { memberAPI, getDarkMode, getLanguage, getMemberData } from './MemberLayout';
-
-const fileToBase64 = (file) =>
-  new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result);
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
-  });
+import {
+  compressImageFile,
+  estimateDataUrlBytes,
+  PROFILE_PHOTO_HARD_CAP_BYTES,
+} from '../../utils/imageCompression';
 
 const formatDate = (dateStr, language) => {
   if (!dateStr) return '\u2014';
@@ -96,14 +93,18 @@ const MemberProfile = () => {
     if (!file) return;
     if (!file.type.startsWith('image/')) {
       toast.error(t('يرجى اختيار صورة', 'Please choose an image'));
-      return;
-    }
-    if (file.size > 2 * 1024 * 1024) {
-      toast.error(t('حجم الصورة كبير جداً (الحد الأقصى 2 ميجا)', 'Image too large (2MB max)'));
+      if (fileInputRef.current) fileInputRef.current.value = '';
       return;
     }
     try {
-      const base64 = await fileToBase64(file);
+      const base64 = await compressImageFile(file);
+      if (estimateDataUrlBytes(base64) > PROFILE_PHOTO_HARD_CAP_BYTES) {
+        toast.error(t(
+          'تعذّر تصغير الصورة بما يكفي، يرجى اختيار صورة أصغر',
+          'Could not shrink the image enough, please choose a smaller photo'
+        ));
+        return;
+      }
       setPhoto(base64);
       setImgError(false);
     } catch (err) {

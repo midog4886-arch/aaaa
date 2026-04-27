@@ -8,6 +8,11 @@ import {
 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import axios from 'axios';
+import {
+  compressImageFile,
+  estimateDataUrlBytes,
+  PROFILE_PHOTO_HARD_CAP_BYTES,
+} from '../utils/imageCompression';
 
 const CoachAttendancePage = () => {
   const [coaches, setCoaches] = useState([]);
@@ -181,13 +186,6 @@ const CoachAttendancePage = () => {
     const days = ['الأحد', 'الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'];
     return `${days[d.getDay()]} ${d.toLocaleDateString('ar-SA')}`;
   };
-
-  const fileToBase64 = (file) => new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result);
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
-  });
 
   const handleAddCoach = async () => {
     if (!addCoachForm.name.trim()) {
@@ -441,9 +439,17 @@ const CoachAttendancePage = () => {
                         onChange={async (e) => {
                           const file = e.target.files[0];
                           if (!file) return;
-                          if (file.size > 2 * 1024 * 1024) { showToast('حجم الصورة يجب أن يكون أقل من 2 ميغابايت', 'error'); return; }
-                          const b64 = await fileToBase64(file);
-                          setAddCoachForm({...addCoachForm, photo: b64});
+                          if (!file.type?.startsWith('image/')) { showToast('يرجى اختيار صورة', 'error'); return; }
+                          try {
+                            const b64 = await compressImageFile(file);
+                            if (estimateDataUrlBytes(b64) > PROFILE_PHOTO_HARD_CAP_BYTES) {
+                              showToast('تعذّر تصغير الصورة بما يكفي، يرجى اختيار صورة أصغر', 'error');
+                              return;
+                            }
+                            setAddCoachForm({...addCoachForm, photo: b64});
+                          } catch (err) {
+                            showToast('فشل قراءة الصورة', 'error');
+                          }
                         }}
                       />
                     </label>
@@ -570,9 +576,17 @@ const CoachAttendancePage = () => {
                         onChange={async (e) => {
                           const file = e.target.files[0];
                           if (!file) return;
-                          if (file.size > 2 * 1024 * 1024) { showToast('حجم الصورة يجب أن يكون أقل من 2 ميغابايت', 'error'); return; }
-                          const b64 = await fileToBase64(file);
-                          setEditCoachForm({...editCoachForm, photo: b64});
+                          if (!file.type?.startsWith('image/')) { showToast('يرجى اختيار صورة', 'error'); return; }
+                          try {
+                            const b64 = await compressImageFile(file);
+                            if (estimateDataUrlBytes(b64) > PROFILE_PHOTO_HARD_CAP_BYTES) {
+                              showToast('تعذّر تصغير الصورة بما يكفي، يرجى اختيار صورة أصغر', 'error');
+                              return;
+                            }
+                            setEditCoachForm({...editCoachForm, photo: b64});
+                          } catch (err) {
+                            showToast('فشل قراءة الصورة', 'error');
+                          }
                         }}
                       />
                     </label>
