@@ -42,6 +42,7 @@ const RenewalsPage = () => {
   const [days, setDays] = useState('7');
   const [activeTab, setActiveTab] = useState('expiring');
   const [filterActivity, setFilterActivity] = useState('all');
+  const [endDateFilter, setEndDateFilter] = useState('');
   const [branches, setBranches] = useState([]);
 
   const [isRenewalDialogOpen, setIsRenewalDialogOpen] = useState(false);
@@ -223,6 +224,9 @@ const RenewalsPage = () => {
         if (filter === 'كاراتيه') return name.includes('كارات') || name.includes('karate');
         return name === filter;
       });
+    }
+    if (endDateFilter) {
+      filtered = filtered.filter(item => (item.end_date || '') === endDateFilter);
     }
     filtered.sort((a, b) => a.days_remaining - b.days_remaining);
     return filtered;
@@ -799,6 +803,28 @@ const RenewalsPage = () => {
               ))}
             </SelectContent>
           </Select>
+          <div className="relative">
+            <Calendar className="absolute top-1/2 -translate-y-1/2 start-2.5 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
+            <Input
+              type="date"
+              value={endDateFilter}
+              onChange={(e) => setEndDateFilter(e.target.value)}
+              title={language === 'ar' ? 'تاريخ الانتهاء' : 'End Date'}
+              aria-label={language === 'ar' ? 'تاريخ الانتهاء' : 'End Date'}
+              className={`w-[170px] ps-8 ${endDateFilter ? 'pe-8' : ''}`}
+            />
+            {endDateFilter && (
+              <button
+                type="button"
+                onClick={() => setEndDateFilter('')}
+                className="absolute top-1/2 -translate-y-1/2 end-2 p-0.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground"
+                title={language === 'ar' ? 'مسح التاريخ' : 'Clear date'}
+                aria-label={language === 'ar' ? 'مسح التاريخ' : 'Clear date'}
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
           <Button onClick={loadData} variant="outline" size="icon">
             <RefreshCcw className="w-4 h-4" />
           </Button>
