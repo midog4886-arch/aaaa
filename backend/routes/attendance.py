@@ -129,6 +129,7 @@ class AttendanceRecord(BaseModel):
     member_id: str
     member_name: Optional[str] = ""
     member_code: Optional[str] = ""
+    member_photo: Optional[str] = ""
     phone: Optional[str] = ""
     activity_id: str
     activity_name: Optional[str] = ""
@@ -165,6 +166,19 @@ async def get_attendance(
         query["member_id"] = member_id
     
     records = await db.attendance.find(query, {"_id": 0}).sort("created_at", -1).to_list(1000)
+
+    # Enrich records with member photo (batch lookup) for any record missing it
+    member_ids = {r.get("member_id") for r in records if r.get("member_id") and not r.get("member_photo")}
+    if member_ids:
+        members_with_photo = await db.members.find(
+            {"id": {"$in": list(member_ids)}},
+            {"_id": 0, "id": 1, "photo": 1}
+        ).to_list(len(member_ids))
+        photo_map = {m["id"]: m.get("photo", "") for m in members_with_photo}
+        for r in records:
+            if not r.get("member_photo"):
+                r["member_photo"] = photo_map.get(r.get("member_id"), "")
+
     return records
 
 @router.post("")
@@ -217,6 +231,7 @@ async def create_attendance(
         "member_id": attendance.member_id,
         "member_name": member.get("name_ar", member.get("name", "")),
         "member_code": member.get("member_code", ""),
+        "member_photo": member.get("photo", ""),
         "phone": member.get("phone", ""),
         "activity_id": attendance.activity_id,
         "activity_name": activity_name,
@@ -493,6 +508,7 @@ async def qr_checkin(
             "member": {
                 "name": member.get("name_ar", member.get("name", "")),
                 "member_code": member.get("member_code", ""),
+                "photo": member.get("photo", ""),
                 "phone": member.get("phone", "")
             },
             "freeze_end_date": active_freeze["end_date"]
@@ -527,6 +543,7 @@ async def qr_checkin(
             "member": {
                 "name": member.get("name_ar", member.get("name", "")),
                 "member_code": member.get("member_code", ""),
+                "photo": member.get("photo", ""),
                 "activity": activity_name
             }
         }
@@ -552,6 +569,7 @@ async def qr_checkin(
             "member": {
                 "name": member.get("name_ar", member.get("name", "")),
                 "member_code": member.get("member_code", ""),
+                "photo": member.get("photo", ""),
                 "activity": activity_name
             }
         }
@@ -562,6 +580,7 @@ async def qr_checkin(
         "member_id": member["id"],
         "member_name": member.get("name_ar", member.get("name", "")),
         "member_code": member.get("member_code", ""),
+        "member_photo": member.get("photo", ""),
         "phone": member.get("phone", ""),
         "activity_id": target_activity_id,
         "activity_name": activity_name,
@@ -618,6 +637,7 @@ async def qr_checkin(
         "member": {
             "name": member.get("name_ar", member.get("name", "")),
             "member_code": member.get("member_code", ""),
+            "photo": member.get("photo", ""),
             "activity": activity_name
         }
     }

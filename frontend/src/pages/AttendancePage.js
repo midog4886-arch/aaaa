@@ -20,6 +20,41 @@ const ACTIVITY_CATEGORIES = [
   { id: 'gymnastics', name: '🤸 الجمباز', keywords: ['جمباز', 'gym'] },
 ];
 
+function MemberAvatar({ photo, name, size = 'md', className = '', borderClass = 'border-blue-300' }) {
+  const [errored, setErrored] = useState(false);
+  const sizes = {
+    sm: 'w-8 h-8 text-xs',
+    md: 'w-12 h-12 text-base',
+    lg: 'w-16 h-16 text-xl',
+  };
+  const sizeClass = sizes[size] || sizes.md;
+  const initials = (name || '')
+    .trim()
+    .split(/\s+/)
+    .slice(0, 2)
+    .map(w => w[0] || '')
+    .join('')
+    .toUpperCase() || '?';
+
+  if (photo && !errored) {
+    return (
+      <img
+        src={photo}
+        alt={name || 'member'}
+        onError={() => setErrored(true)}
+        className={`${sizeClass} rounded-full object-cover border-2 ${borderClass} flex-shrink-0 ${className}`}
+      />
+    );
+  }
+  return (
+    <div
+      className={`${sizeClass} rounded-full flex items-center justify-center font-bold border-2 ${borderClass} bg-blue-100 text-blue-700 flex-shrink-0 ${className}`}
+    >
+      {initials}
+    </div>
+  );
+}
+
 export default function AttendancePage() {
   const { language } = useLanguage();
   const { user } = useAuth();
@@ -574,6 +609,7 @@ export default function AttendancePage() {
           error: false,
           message: t('تم تسجيل الحضور مسبقاً ✓', 'Already checked in ✓'),
           member_name: qrMemberData.name_ar,
+          member_photo: qrMemberData.photo || res.data.member_photo || '',
           activity_name: activityName,
           check_in_time: new Date().toLocaleTimeString('ar-SA')
         });
@@ -582,6 +618,7 @@ export default function AttendancePage() {
           error: false,
           message: t('تم تسجيل الحضور بنجاح ✓', 'Check-in successful ✓'),
           member_name: qrMemberData.name_ar,
+          member_photo: qrMemberData.photo || res.data.member_photo || '',
           activity_name: activityName,
           check_in_time: new Date().toLocaleTimeString('ar-SA')
         });
@@ -686,6 +723,7 @@ export default function AttendancePage() {
             setKioskLastScan({
               success: false,
               memberName: res.data.member?.name || memberCode,
+              memberPhoto: res.data.member?.photo || '',
               message: t('⚠️ مسجل مسبقاً اليوم', '⚠️ Already checked in today'),
               time: new Date().toLocaleTimeString('ar-SA')
             });
@@ -693,7 +731,8 @@ export default function AttendancePage() {
             playSound('success');
             setKioskLastScan({
               success: true,
-              memberName: res.data.member_name || memberCode,
+              memberName: res.data.member?.name || res.data.member_name || memberCode,
+              memberPhoto: res.data.member?.photo || '',
               message: t('✅ تم تسجيل الحضور', '✅ Check-in successful'),
               time: new Date().toLocaleTimeString('ar-SA')
             });
@@ -1024,6 +1063,7 @@ export default function AttendancePage() {
                       onClick={() => selectMemberFromResults(member)}
                       className="flex items-center gap-3 p-3 bg-gray-50 hover:bg-blue-50 rounded-lg cursor-pointer transition-colors border hover:border-blue-300"
                     >
+                      <MemberAvatar photo={member.photo} name={member.name_ar || member.name} size="sm" />
                       <span className="font-mono text-primary font-bold">#{member.member_code}</span>
                       <span className="font-medium">{member.name_ar || member.name}</span>
                       <span className="text-gray-500 text-sm">{member.phone}</span>
@@ -1043,10 +1083,14 @@ export default function AttendancePage() {
               <div className="bg-white border-2 border-green-300 rounded-xl p-6 shadow-lg animate-in fade-in duration-300">
                 <div className="flex items-center justify-between mb-4">
                   <div className="flex items-center gap-4">
-                    <div className="w-16 h-16 rounded-full bg-green-100 flex items-center justify-center">
-                      <span className="text-2xl font-bold text-green-600">#{quickSearchResult.member_code}</span>
-                    </div>
+                    <MemberAvatar
+                      photo={quickSearchResult.photo}
+                      name={quickSearchResult.name_ar || quickSearchResult.name}
+                      size="lg"
+                      borderClass="border-green-300"
+                    />
                     <div>
+                      <p className="text-sm font-bold text-green-600">#{quickSearchResult.member_code}</p>
                       <h3 className="text-xl font-bold text-gray-800">
                         {quickSearchResult.name_ar || quickSearchResult.name}
                       </h3>
@@ -1291,6 +1335,7 @@ export default function AttendancePage() {
                         <span className="w-8 h-8 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center text-sm font-bold">
                           {idx + 1}
                         </span>
+                        <MemberAvatar photo={member.member_photo} name={member.member_name} size="sm" />
                         <div>
                           <div className="font-medium flex items-center gap-2">
                             {member.member_code && (
@@ -1433,15 +1478,23 @@ export default function AttendancePage() {
                       <span>{qrScanResult.message}</span>
                     </div>
                   ) : (
-                    <div>
-                      <div className="flex items-center gap-2 mb-2">
-                        <Check className="w-5 h-5" />
-                        <span className="font-bold">{qrScanResult.message}</span>
-                      </div>
-                      <div className="text-sm">
-                        <p>{t('العضو', 'Member')}: {qrScanResult.member_name}</p>
-                        <p>{t('النشاط', 'Activity')}: {qrScanResult.activity_name}</p>
-                        <p>{t('الوقت', 'Time')}: {qrScanResult.check_in_time}</p>
+                    <div className="flex items-start gap-3">
+                      <MemberAvatar
+                        photo={qrScanResult.member_photo}
+                        name={qrScanResult.member_name}
+                        size="md"
+                        borderClass="border-green-300"
+                      />
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-2">
+                          <Check className="w-5 h-5" />
+                          <span className="font-bold">{qrScanResult.message}</span>
+                        </div>
+                        <div className="text-sm">
+                          <p>{t('العضو', 'Member')}: {qrScanResult.member_name}</p>
+                          <p>{t('النشاط', 'Activity')}: {qrScanResult.activity_name}</p>
+                          <p>{t('الوقت', 'Time')}: {qrScanResult.check_in_time}</p>
+                        </div>
                       </div>
                     </div>
                   )}
@@ -1504,10 +1557,18 @@ export default function AttendancePage() {
               ) : qrMemberData ? (
                 <div className="space-y-4">
                   {/* Member Info */}
-                  <div className="bg-blue-50 p-4 rounded-lg text-center">
-                    <p className="text-xl font-bold text-gray-800">{qrMemberData.name_ar}</p>
-                    <p className="text-lg text-blue-600 font-bold">#{qrMemberData.member_code}</p>
-                    {qrMemberData.phone && <p className="text-sm text-gray-500" dir="ltr">{qrMemberData.phone}</p>}
+                  <div className="bg-blue-50 p-4 rounded-lg flex items-center gap-4">
+                    <MemberAvatar
+                      photo={qrMemberData.photo}
+                      name={qrMemberData.name_ar || qrMemberData.name}
+                      size="lg"
+                      borderClass="border-blue-300"
+                    />
+                    <div className="text-right flex-1">
+                      <p className="text-xl font-bold text-gray-800">{qrMemberData.name_ar}</p>
+                      <p className="text-lg text-blue-600 font-bold">#{qrMemberData.member_code}</p>
+                      {qrMemberData.phone && <p className="text-sm text-gray-500" dir="ltr">{qrMemberData.phone}</p>}
+                    </div>
                   </div>
 
                   {/* Member Notes - shown prominently for supervisor */}
@@ -1726,13 +1787,21 @@ export default function AttendancePage() {
               {kioskLastScan && (
                 <div className={`mt-6 p-6 rounded-2xl border-2 ${kioskLastScan.success ? 'bg-green-50 border-green-300' : 'bg-red-50 border-red-300'}`}>
                   <div className="flex items-center justify-between">
-                    <div>
-                      <p className={`text-2xl font-bold ${kioskLastScan.success ? 'text-green-700' : 'text-red-700'}`}>
-                        {kioskLastScan.memberName}
-                      </p>
-                      <p className={`text-lg ${kioskLastScan.success ? 'text-green-600' : 'text-red-600'}`}>
-                        {kioskLastScan.message}
-                      </p>
+                    <div className="flex items-center gap-4">
+                      <MemberAvatar
+                        photo={kioskLastScan.memberPhoto}
+                        name={kioskLastScan.memberName}
+                        size="lg"
+                        borderClass={kioskLastScan.success ? 'border-green-400' : 'border-red-400'}
+                      />
+                      <div>
+                        <p className={`text-2xl font-bold ${kioskLastScan.success ? 'text-green-700' : 'text-red-700'}`}>
+                          {kioskLastScan.memberName}
+                        </p>
+                        <p className={`text-lg ${kioskLastScan.success ? 'text-green-600' : 'text-red-600'}`}>
+                          {kioskLastScan.message}
+                        </p>
+                      </div>
                     </div>
                     <div className={`w-16 h-16 rounded-full flex items-center justify-center ${kioskLastScan.success ? 'bg-green-500' : 'bg-red-500'}`}>
                       {kioskLastScan.success ? <Check className="w-8 h-8 text-white" /> : <X className="w-8 h-8 text-white" />}

@@ -326,6 +326,7 @@ async def get_member_card_public(search_term: str):
         "name_ar": member.get("name_ar"),
         "member_code": member.get("member_code"),
         "phone": member.get("phone"),
+        "photo": member.get("photo", ""),
         "activities": activities,
         "active_activities": [a for a in activities if a.get("status") == "active"],
         "qr_data": {
@@ -5119,6 +5120,7 @@ async def get_attendance_by_activity(
                 "member_id": member["id"],
                 "member_code": member.get("member_code", ""),
                 "member_name": member.get("name_ar") or member.get("name", ""),
+                "member_photo": member.get("photo", ""),
                 "phone": member.get("phone", ""),
                 "activity_id": activity_id,
                 "activity_name": activity.get("name_ar") or activity.get("name", ""),
@@ -5238,6 +5240,7 @@ async def quick_search_member(
         "name": member.get("name", ""),
         "name_ar": member.get("name_ar", ""),
         "phone": member.get("phone", ""),
+        "photo": member.get("photo", ""),
         "activities": unique_activities,
         "today_attendance": today_records
     }
@@ -5288,6 +5291,7 @@ async def quick_search_members_multi(
             "name": member.get("name", ""),
             "name_ar": member.get("name_ar", ""),
             "phone": member.get("phone", ""),
+            "photo": member.get("photo", ""),
             "activities": member_activities,
             "today_attendance": today_records
         })
@@ -5413,6 +5417,7 @@ async def quick_attendance(
             "message": f"تم تسجيل الحضور مسبقاً اليوم في نشاط: {existing.get('activity_name', '')}",
             "already_recorded": True,
             "member_name": member.get("name_ar") or member.get("name", ""),
+            "member_photo": member.get("photo", ""),
             "record": {k: v for k, v in existing.items() if k != "_id"}
         }
     
@@ -5423,6 +5428,7 @@ async def quick_attendance(
         "member_id": member["id"],
         "member_code": member.get("member_code", ""),
         "member_name": member.get("name_ar") or member.get("name", ""),
+        "member_photo": member.get("photo", ""),
         "activity_id": activity_id,
         "activity_name": activity.get("name_ar") or activity.get("name", ""),
         "date": today,
@@ -5439,6 +5445,7 @@ async def quick_attendance(
         "message": "تم تسجيل الحضور بنجاح ✓",
         "already_recorded": False,
         "member_name": member.get("name_ar") or member.get("name", ""),
+        "member_photo": member.get("photo", ""),
         "record": {k: v for k, v in record_doc.items() if k != "_id"}
     }
 
