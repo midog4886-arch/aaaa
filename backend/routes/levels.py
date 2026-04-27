@@ -743,6 +743,33 @@ async def auto_assign_members_to_levels(
     already_correct = []
     by_source = {"member_activities": 0, "invoices": 0, "registration_forms": 0}
 
+    levels_by_id = {l["id"]: l for l in levels}
+
+    def _level_matches_subscription(lvl, _aid, _aname_l, member_branch_id, _sched_days, _sched):
+        """Verify a given level is a valid placement for this subscription.
+        Used both for picking a candidate and for validating an "already
+        assigned" subscription so we don't lazily report a stale/wrong link
+        as already_correct."""
+        if not lvl:
+            return False
+        l_aid = lvl.get("activity_id") or ""
+        l_aname = (lvl.get("activity_name") or "").strip().lower()
+        if _aid and l_aid:
+            if l_aid != _aid:
+                return False
+        elif _aname_l and l_aname:
+            if l_aname != _aname_l:
+                return False
+        if not _branches_compatible(lvl.get("branch_id"), member_branch_id):
+            return False
+        l_days = lvl.get("days") or []
+        if l_days and _sched_days:
+            if not any(d in l_days for d in _sched_days):
+                return False
+        if not _times_match(lvl.get("time_slot") or "", _sched):
+            return False
+        return True
+
     for sub in subs:
         mid = sub["member_id"]
         member = members_by_id.get(mid)
@@ -751,24 +778,62 @@ async def auto_assign_members_to_levels(
         member_branch = member.get("branch_id")
         aid = sub["activity_id"]
         aname = (sub["activity_name"] or "").strip()
+        aname_l = aname.lower()
         sched = sub["schedule"]
         sched_days = parse_schedule_days(sched)
 
         existing_lid = sub.get("level_id")
         if existing_lid:
-            already_correct.append({
+            existing_lvl = levels_by_id.get(existing_lid)
+            # Only treat as already_correct if the existing level actually
+            # matches this subscription on activity / branch / schedule.
+            # Otherwise the stale link will be ignored and re-evaluated below.
+            if _level_matches_subscription(existing_lvl, aid, aname_l, member_branch, sched_days, sched):
+                already_correct.append({
+                    "member_id": mid,
+                    "member_name": member.get("name_ar") or member.get("name") or "",
+                    "activity_name": aname,
+                    "level_id": existing_lid,
+                })
+                continue
+            # Stale level_id (level deleted, or activity/branch/schedule
+            # changed). Do NOT auto-rewrite — surface as unmatched so an
+            # admin reviews it. The auto-assign tool only writes net-new
+            # placements; mutating existing links is out of scope.
+            unmatched.append({
                 "member_id": mid,
                 "member_name": member.get("name_ar") or member.get("name") or "",
+                "phone": member.get("phone") or "",
                 "activity_name": aname,
-                "level_id": existing_lid,
+                "schedule": sched,
+                "source": sub["source"],
+                "reason": "المستوى الحالي لا يطابق النشاط/التوقيت — يتطلب مراجعة يدوية",
+                "reason_en": "Existing level no longer matches activity/schedule — needs manual review",
+            })
+            continue
+
+        # Schedule must be parseable for any source that depends on it. We
+        # only require parseable days when the candidate level itself has
+        # restrictive days set; this keeps "any-day" levels working with
+        # legacy un-parseable schedule strings.
+        if not sched_days and not sched:
+            unmatched.append({
+                "member_id": mid,
+                "member_name": member.get("name_ar") or member.get("name") or "",
+                "phone": member.get("phone") or "",
+                "activity_name": aname,
+                "schedule": sched,
+                "source": sub["source"],
+                "reason": "لا يوجد جدول للنشاط",
+                "reason_en": "No schedule on subscription",
             })
             continue
 
         candidates = []
         if aid and aid in candidates_by_aid:
             candidates = list(candidates_by_aid[aid])
-        elif aname and aname.lower() in candidates_by_aname:
-            candidates = list(candidates_by_aname[aname.lower()])
+        elif aname and aname_l in candidates_by_aname:
+            candidates = list(candidates_by_aname[aname_l])
 
         if not candidates:
             unmatched.append({
@@ -780,6 +845,24 @@ async def auto_assign_members_to_levels(
                 "source": sub["source"],
                 "reason": "لا يوجد مستوى لهذا النشاط",
                 "reason_en": "No level exists for this activity",
+            })
+            continue
+
+        # If the candidate set has any day-restricted level AND we couldn't
+        # parse the schedule's days, treat as schedule-parse failure rather
+        # than silently assigning to whatever level survives. This is the
+        # explicit "schedule could not be parsed" reporting the spec asks for.
+        any_day_restricted = any((lvl.get("days") or []) for lvl in candidates)
+        if any_day_restricted and sched and not sched_days:
+            unmatched.append({
+                "member_id": mid,
+                "member_name": member.get("name_ar") or member.get("name") or "",
+                "phone": member.get("phone") or "",
+                "activity_name": aname,
+                "schedule": sched,
+                "source": sub["source"],
+                "reason": "تعذّر قراءة أيام الجدول",
+                "reason_en": "Could not parse schedule days",
             })
             continue
 
@@ -885,6 +968,16 @@ async def auto_assign_members_to_levels(
     member_doc_cache = {}
 
     async def _link_member_activity(mid: str, aid: str, aname: str, target_lid: str) -> bool:
+        """Set level_id on the member's matching activities[] entry.
+
+        Returns True only if an existing entry was found and updated. We
+        deliberately do NOT append a new activity row here — the auto-assign
+        tool's contract is to make safe writes (level.members[] +
+        activities[].level_id), and synthesizing activities would create
+        phantom subscriptions for invoice / registration_form sources where
+        the member.activities list hasn't been built yet. Such cases are
+        reported to the caller as a member_link_failures entry.
+        """
         mdoc = member_doc_cache.get(mid)
         if mdoc is None:
             mdoc = await db.members.find_one({"id": mid}, {"_id": 0, "activities": 1})
@@ -893,10 +986,9 @@ async def auto_assign_members_to_levels(
             member_doc_cache[mid] = mdoc
         acts = mdoc.get("activities", []) or []
         target_aname_l = (aname or "").strip().lower()
-        matched = False
-        # Match by activity_id OR by normalized activity_name. A lot of legacy
+        # Match by activity_id OR by normalized activity_name. Many legacy
         # member.activities entries only carry activity_name (no id), so we
-        # mirror the manual add_member_to_level behavior and accept either.
+        # mirror manual add_member_to_level and accept either.
         for act in acts:
             if act.get("level_id"):
                 continue
@@ -906,18 +998,10 @@ async def auto_assign_members_to_levels(
             name_match = bool(target_aname_l) and a_aname == target_aname_l
             if id_match or name_match:
                 act["level_id"] = target_lid
-                matched = True
-                break
-        if not matched:
-            acts.append({
-                "activity_id": aid or "",
-                "activity_name": aname or "",
-                "status": "active",
-                "level_id": target_lid,
-            })
-        await db.members.update_one({"id": mid}, {"$set": {"activities": acts}})
-        mdoc["activities"] = acts
-        return True
+                await db.members.update_one({"id": mid}, {"$set": {"activities": acts}})
+                mdoc["activities"] = acts
+                return True
+        return False
 
     for w in would_assign:
         lid = w["level_id"]
