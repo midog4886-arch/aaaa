@@ -122,7 +122,19 @@ const MemberLayout = ({ children }) => {
     fetchNotifications();
     fetchMsgUnread();
     fetchTournamentsCount();
-    
+
+    // Refresh the cached member (incl. avatar) when other parts of the
+    // portal update it — e.g. after the profile page saves a new photo.
+    const refreshFromCache = () => {
+      const fresh = getMemberData();
+      if (fresh) setMember(fresh);
+    };
+    const onStorage = (e) => {
+      if (e.key === 'member_data') refreshFromCache();
+    };
+    window.addEventListener('member-data-updated', refreshFromCache);
+    window.addEventListener('storage', onStorage);
+
     // Update document title and manifest for member portal PWA
     document.title = language === 'ar' ? 'بوابة الأعضاء - شركة اداء الابطال العالمية للرياضة' : 'Member Portal - Champions Academy';
     
@@ -137,6 +149,11 @@ const MemberLayout = ({ children }) => {
     if (appleTitleMeta) {
       appleTitleMeta.content = language === 'ar' ? 'بوابة الأعضاء' : 'Member Portal';
     }
+
+    return () => {
+      window.removeEventListener('member-data-updated', refreshFromCache);
+      window.removeEventListener('storage', onStorage);
+    };
   }, [navigate, language]);
 
   // PWA Install prompt handler
@@ -414,11 +431,30 @@ const MemberLayout = ({ children }) => {
               
               <Link
                 to="/member-profile"
-                className="hidden sm:block text-left hover:opacity-80 transition-opacity"
+                className="flex items-center gap-2 hover:opacity-80 transition-opacity"
                 title={getText('profile')}
               >
-                <p className="text-sm font-medium">{member.name_ar}</p>
-                <p className="text-xs text-gray-300">#{member.member_code}</p>
+                {member.photo ? (
+                  <img
+                    src={member.photo}
+                    alt={member.name_ar || member.name || ''}
+                    onError={(e) => {
+                      e.currentTarget.style.display = 'none';
+                      if (e.currentTarget.nextSibling) e.currentTarget.nextSibling.style.display = 'flex';
+                    }}
+                    className="w-9 h-9 rounded-full object-cover border-2 border-amber-400 shadow"
+                  />
+                ) : null}
+                <div
+                  className="w-9 h-9 rounded-full bg-gradient-to-br from-amber-400 to-yellow-600 items-center justify-center text-gray-900 text-xs font-black border-2 border-amber-300 shadow"
+                  style={{ display: member.photo ? 'none' : 'flex' }}
+                >
+                  {((member.name_ar || member.name || '?').trim().split(/\s+/).slice(0, 2).map(w => w[0]).join('')) || '?'}
+                </div>
+                <div className="hidden sm:block text-left">
+                  <p className="text-sm font-medium leading-tight">{member.name_ar}</p>
+                  <p className="text-xs text-gray-300 leading-tight">#{member.member_code}</p>
+                </div>
               </Link>
               <Button 
                 variant="ghost" 

@@ -99,8 +99,20 @@ const MemberSubscriptions = () => {
                     <div className="flex items-start justify-between">
                       <div className="flex-1 min-w-0">
                         {sub._owner_name && (
-                          <span className={`inline-block mb-1 px-2 py-0.5 rounded-full text-xs font-bold ${darkMode ? 'bg-blue-900/40 text-blue-300' : 'bg-blue-100 text-blue-700'}`}>
-                            👤 {sub._owner_name}
+                          <span className={`inline-flex items-center gap-1 mb-1 ps-0.5 pe-2 py-0.5 rounded-full text-xs font-bold ${darkMode ? 'bg-blue-900/40 text-blue-300' : 'bg-blue-100 text-blue-700'}`}>
+                            {sub._owner_photo ? (
+                              <img
+                                src={sub._owner_photo}
+                                alt={sub._owner_name}
+                                onError={(e) => {
+                                  e.currentTarget.style.display = 'none';
+                                  if (e.currentTarget.nextSibling) e.currentTarget.nextSibling.style.display = 'inline';
+                                }}
+                                className="w-4 h-4 rounded-full object-cover"
+                              />
+                            ) : null}
+                            <span aria-hidden style={{ display: sub._owner_photo ? 'none' : 'inline' }}>👤</span>
+                            {sub._owner_name}
                           </span>
                         )}
                         <h3 className={`text-lg font-bold ${darkMode ? 'text-gray-100' : 'text-gray-800'}`}>{sub.activity_name}</h3>
@@ -154,8 +166,20 @@ const MemberSubscriptions = () => {
                     <div className="flex items-start justify-between">
                       <div>
                         {sub._owner_name && (
-                          <span className={`inline-block mb-1 px-2 py-0.5 rounded-full text-xs font-bold ${darkMode ? 'bg-blue-900/40 text-blue-300' : 'bg-blue-100 text-blue-700'}`}>
-                            👤 {sub._owner_name}
+                          <span className={`inline-flex items-center gap-1 mb-1 ps-0.5 pe-2 py-0.5 rounded-full text-xs font-bold ${darkMode ? 'bg-blue-900/40 text-blue-300' : 'bg-blue-100 text-blue-700'}`}>
+                            {sub._owner_photo ? (
+                              <img
+                                src={sub._owner_photo}
+                                alt={sub._owner_name}
+                                onError={(e) => {
+                                  e.currentTarget.style.display = 'none';
+                                  if (e.currentTarget.nextSibling) e.currentTarget.nextSibling.style.display = 'inline';
+                                }}
+                                className="w-4 h-4 rounded-full object-cover"
+                              />
+                            ) : null}
+                            <span aria-hidden style={{ display: sub._owner_photo ? 'none' : 'inline' }}>👤</span>
+                            {sub._owner_name}
                           </span>
                         )}
                         <h3 className={`text-lg font-bold ${darkMode ? 'text-gray-100' : 'text-gray-800'}`}>{sub.activity_name}</h3>

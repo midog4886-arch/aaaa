@@ -413,9 +413,23 @@ const MemberCard = () => {
                           : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'
                     }`}
                   >
-                    <span className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-black ${
-                      active ? 'bg-gray-900 text-amber-400' : 'bg-amber-100 text-amber-700'
-                    }`}>
+                    {c.photo ? (
+                      <img
+                        src={c.photo}
+                        alt={c.name_ar || c.name || ''}
+                        onError={(e) => {
+                          e.currentTarget.style.display = 'none';
+                          if (e.currentTarget.nextSibling) e.currentTarget.nextSibling.style.display = 'flex';
+                        }}
+                        className="w-7 h-7 rounded-full object-cover border border-amber-300"
+                      />
+                    ) : null}
+                    <span
+                      className={`w-7 h-7 rounded-full items-center justify-center text-xs font-black ${
+                        active ? 'bg-gray-900 text-amber-400' : 'bg-amber-100 text-amber-700'
+                      }`}
+                      style={{ display: c.photo ? 'none' : 'flex' }}
+                    >
                       {getInitials(c.name_ar || c.name || '')}
                     </span>
                     <span className="flex flex-col items-start leading-tight">
@@ -488,7 +502,21 @@ const MemberCard = () => {
 
             {/* Avatar + Info */}
             <div className="flex items-center gap-4 mb-4">
-              <div className="w-20 h-20 bg-gradient-to-br from-amber-400 to-yellow-600 rounded-2xl flex items-center justify-center flex-shrink-0 shadow-lg shadow-amber-500/30">
+              {currentCard?.photo ? (
+                <img
+                  src={currentCard.photo}
+                  alt={name}
+                  onError={(e) => {
+                    e.currentTarget.style.display = 'none';
+                    if (e.currentTarget.nextSibling) e.currentTarget.nextSibling.style.display = 'flex';
+                  }}
+                  className="w-20 h-20 rounded-2xl object-cover flex-shrink-0 shadow-lg shadow-amber-500/30 border-2 border-amber-400"
+                />
+              ) : null}
+              <div
+                className="w-20 h-20 bg-gradient-to-br from-amber-400 to-yellow-600 rounded-2xl items-center justify-center flex-shrink-0 shadow-lg shadow-amber-500/30"
+                style={{ display: currentCard?.photo ? 'none' : 'flex' }}
+              >
                 <span className="text-gray-900 font-black text-2xl leading-none">{getInitials(name)}</span>
               </div>
               <div className="flex-1 min-w-0">

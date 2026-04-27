@@ -404,8 +404,22 @@ const MemberDashboard = () => {
             <Card className="bg-gradient-to-br from-gray-950 via-gray-900 to-gray-950 text-white border border-amber-500/10 overflow-hidden">
               <CardContent className="p-5">
                 <div className="flex items-center gap-4">
-                  {/* Initials Avatar */}
-                  <div className="w-14 h-14 sm:w-16 sm:h-16 bg-gradient-to-br from-amber-400 to-yellow-600 rounded-full flex items-center justify-center flex-shrink-0 shadow-lg shadow-amber-500/30">
+                  {/* Avatar (photo with initials fallback) */}
+                  {member?.photo ? (
+                    <img
+                      src={member.photo}
+                      alt={member?.name_ar || member?.name || ''}
+                      onError={(e) => {
+                        e.currentTarget.style.display = 'none';
+                        if (e.currentTarget.nextSibling) e.currentTarget.nextSibling.style.display = 'flex';
+                      }}
+                      className="w-14 h-14 sm:w-16 sm:h-16 rounded-full object-cover flex-shrink-0 shadow-lg shadow-amber-500/30 border-2 border-amber-400"
+                    />
+                  ) : null}
+                  <div
+                    className="w-14 h-14 sm:w-16 sm:h-16 bg-gradient-to-br from-amber-400 to-yellow-600 rounded-full items-center justify-center flex-shrink-0 shadow-lg shadow-amber-500/30"
+                    style={{ display: member?.photo ? 'none' : 'flex' }}
+                  >
                     <span className="text-gray-900 font-black text-xl sm:text-2xl leading-none">
                       {getInitials(member?.name_ar || member?.name)}
                     </span>

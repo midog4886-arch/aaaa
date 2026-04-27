@@ -128,6 +128,9 @@ const MemberProfile = () => {
             photo: updated.photo,
           };
           localStorage.setItem('member_data', JSON.stringify(merged));
+          // Notify other mounted portal screens (e.g. MemberLayout header)
+          // so the avatar updates immediately without requiring navigation.
+          window.dispatchEvent(new Event('member-data-updated'));
         } catch (_) {}
       }
       toast.success(t('تم حفظ التغييرات', 'Changes saved'));

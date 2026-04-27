@@ -103,11 +103,12 @@ async def get_current_member(credentials: HTTPAuthorizationCredentials = Depends
             "id": member["id"],
             "name": member.get("name_ar") or member.get("name") or "",
             "member_code": member.get("member_code", ""),
+            "photo": member.get("photo", ""),
         }]
         if phone:
             sibling_docs = await db.members.find(
                 {"phone": phone, "id": {"$ne": member["id"]}},
-                {"_id": 0, "id": 1, "name": 1, "name_ar": 1, "member_code": 1, "activities": 1}
+                {"_id": 0, "id": 1, "name": 1, "name_ar": 1, "member_code": 1, "photo": 1, "activities": 1}
             ).to_list(20)
             for sib in sibling_docs:
                 linked_ids.append(sib["id"])
@@ -116,6 +117,7 @@ async def get_current_member(credentials: HTTPAuthorizationCredentials = Depends
                     "id": sib["id"],
                     "name": sib_name,
                     "member_code": sib.get("member_code", ""),
+                    "photo": sib.get("photo", ""),
                 })
                 # Tag and merge sibling activities into the primary member's list
                 primary_acts = member.get("activities") or []
@@ -124,10 +126,12 @@ async def get_current_member(credentials: HTTPAuthorizationCredentials = Depends
                     a.setdefault("_owner_id", member["id"])
                     a.setdefault("_owner_name", member.get("name_ar") or member.get("name") or "")
                     a.setdefault("_owner_member_code", member.get("member_code", ""))
+                    a.setdefault("_owner_photo", member.get("photo", ""))
                 for a in (sib.get("activities") or []):
                     a["_owner_id"] = sib["id"]
                     a["_owner_name"] = sib_name
                     a["_owner_member_code"] = sib.get("member_code", "")
+                    a["_owner_photo"] = sib.get("photo", "")
                     primary_acts.append(a)
                 member["activities"] = primary_acts
 
@@ -137,6 +141,7 @@ async def get_current_member(credentials: HTTPAuthorizationCredentials = Depends
                 a.setdefault("_owner_id", member["id"])
                 a.setdefault("_owner_name", member.get("name_ar") or member.get("name") or "")
                 a.setdefault("_owner_member_code", member.get("member_code", ""))
+                a.setdefault("_owner_photo", member.get("photo", ""))
 
         member["_linked_member_ids"] = linked_ids
         member["_linked_members"] = linked_meta
@@ -169,16 +174,18 @@ async def member_login(data: MemberLogin):
         "id": member["id"],
         "name": member.get("name_ar") or member.get("name") or "",
         "member_code": member.get("member_code", ""),
+        "photo": member.get("photo", ""),
     }]
     sibling_docs = await db.members.find(
         {"phone": phone, "id": {"$ne": member["id"]}},
-        {"_id": 0, "id": 1, "name": 1, "name_ar": 1, "member_code": 1}
+        {"_id": 0, "id": 1, "name": 1, "name_ar": 1, "member_code": 1, "photo": 1}
     ).to_list(20)
     for sib in sibling_docs:
         linked.append({
             "id": sib["id"],
             "name": sib.get("name_ar") or sib.get("name") or "",
             "member_code": sib.get("member_code", ""),
+            "photo": sib.get("photo", ""),
         })
 
     return {
@@ -191,6 +198,7 @@ async def member_login(data: MemberLogin):
             "phone": member.get("phone"),
             "member_code": member.get("member_code"),
             "email": member.get("email"),
+            "photo": member.get("photo", ""),
             "dark_mode": member.get("preferences", {}).get("dark_mode", False),
             "linked_members": linked,
         }
@@ -435,6 +443,7 @@ async def get_member_subscriptions(member: dict = Depends(get_current_member)):
             "_owner_id": activity.get("_owner_id", ""),
             "_owner_name": activity.get("_owner_name", ""),
             "_owner_member_code": activity.get("_owner_member_code", ""),
+            "_owner_photo": activity.get("_owner_photo", ""),
         }
         
         # Check if active or expired
@@ -522,6 +531,7 @@ async def get_member_invoices(member: dict = Depends(get_current_member)):
         if owner:
             inv["_owner_name"] = owner.get("name", "")
             inv["_owner_member_code"] = owner.get("member_code", "")
+            inv["_owner_photo"] = owner.get("photo", "")
 
     return {"invoices": invoices}
 
@@ -584,7 +594,7 @@ async def get_qr_card_data(member: dict = Depends(get_current_member)):
     linked_docs = await db.members.find(
         {"id": {"$in": linked_ids}},
         {"_id": 0, "id": 1, "name": 1, "name_ar": 1, "member_code": 1,
-         "phone": 1, "activities": 1}
+         "phone": 1, "photo": 1, "activities": 1}
     ).to_list(len(linked_ids))
     docs_by_id = {d["id"]: d for d in linked_docs}
 
@@ -695,6 +705,7 @@ async def get_qr_card_data(member: dict = Depends(get_current_member)):
             "name_ar": name_ar,
             "member_code": doc.get("member_code") or lm.get("member_code", ""),
             "phone": doc.get("phone"),
+            "photo": doc.get("photo", "") or lm.get("photo", ""),
             "active_activities": active_activities,
             "qr_data": {
                 "type": "WCPA_MEMBER",
@@ -1114,6 +1125,7 @@ async def get_member_attendance(member: dict = Depends(get_current_member)):
         if owner:
             a["_owner_name"] = owner.get("name", "")
             a["_owner_member_code"] = owner.get("member_code", "")
+            a["_owner_photo"] = owner.get("photo", "")
 
     return {"attendance": attendance}
 
@@ -1249,11 +1261,20 @@ async def get_member_attendance_stats(
             days = _count_scheduled_days(schedule_text)
             scheduled_per_week += days
     
-    # Recent attendance (last 10)
+    # Recent attendance (last 10) — span linked siblings so the badge shows
+    # which member each row belongs to (and renders their photo).
+    linked_ids_list = member.get("_linked_member_ids", [member["id"]])
     recent_attendance = await db.attendance.find(
-        {"member_id": member["id"]},
+        {"member_id": {"$in": linked_ids_list}},
         {"_id": 0}
     ).sort("date", -1).to_list(10)
+    linked_meta_map = {m["id"]: m for m in member.get("_linked_members", [])}
+    for a in recent_attendance:
+        owner = linked_meta_map.get(a.get("member_id"))
+        if owner:
+            a["_owner_name"] = owner.get("name", "")
+            a["_owner_member_code"] = owner.get("member_code", "")
+            a["_owner_photo"] = owner.get("photo", "")
     
     return {
         "this_month": {

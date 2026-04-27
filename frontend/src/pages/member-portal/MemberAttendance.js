@@ -754,8 +754,20 @@ const MemberAttendance = () => {
                         <p className={`font-medium text-sm ${darkMode ? 'text-white' : 'text-gray-800'}`}>
                           {att.activity_name || (language === 'ar' ? 'نشاط' : 'Activity')}
                           {att._owner_name && (
-                            <span className={`ms-2 px-1.5 py-0.5 rounded text-[10px] font-bold ${darkMode ? 'bg-blue-900/40 text-blue-300' : 'bg-blue-100 text-blue-700'}`}>
-                              👤 {att._owner_name}
+                            <span className={`ms-2 inline-flex items-center gap-1 ps-0.5 pe-1.5 py-0.5 rounded-full text-[10px] font-bold ${darkMode ? 'bg-blue-900/40 text-blue-300' : 'bg-blue-100 text-blue-700'}`}>
+                              {att._owner_photo ? (
+                                <img
+                                  src={att._owner_photo}
+                                  alt={att._owner_name}
+                                  onError={(e) => {
+                                    e.currentTarget.style.display = 'none';
+                                    if (e.currentTarget.nextSibling) e.currentTarget.nextSibling.style.display = 'inline';
+                                  }}
+                                  className="w-4 h-4 rounded-full object-cover"
+                                />
+                              ) : null}
+                              <span aria-hidden style={{ display: att._owner_photo ? 'none' : 'inline' }}>👤</span>
+                              {att._owner_name}
                             </span>
                           )}
                         </p>

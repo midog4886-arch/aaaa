@@ -422,8 +422,20 @@ const MemberInvoices = () => {
                               {isForm ? 'استمارة' : 'فاتورة'}
                             </span>
                             {item._owner_name && (
-                              <span className={`text-xs px-2 py-0.5 rounded font-bold ${darkMode ? 'bg-blue-900/40 text-blue-300' : 'bg-blue-100 text-blue-700'}`}>
-                                👤 {item._owner_name}
+                              <span className={`text-xs ps-0.5 pe-2 py-0.5 rounded-full font-bold inline-flex items-center gap-1 ${darkMode ? 'bg-blue-900/40 text-blue-300' : 'bg-blue-100 text-blue-700'}`}>
+                                {item._owner_photo ? (
+                                  <img
+                                    src={item._owner_photo}
+                                    alt={item._owner_name}
+                                    onError={(e) => {
+                                      e.currentTarget.style.display = 'none';
+                                      if (e.currentTarget.nextSibling) e.currentTarget.nextSibling.style.display = 'inline';
+                                    }}
+                                    className="w-4 h-4 rounded-full object-cover"
+                                  />
+                                ) : null}
+                                <span aria-hidden style={{ display: item._owner_photo ? 'none' : 'inline' }}>👤</span>
+                                {item._owner_name}
                               </span>
                             )}
                           </div>
