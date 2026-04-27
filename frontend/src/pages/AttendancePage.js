@@ -12,6 +12,7 @@ import { activitiesAPI, attendanceAPI, branchesAPI, schedulesAPI, levelsAPI } fr
 import { QRCodeSVG } from 'qrcode.react';
 import { Html5QrcodeScanner } from 'html5-qrcode';
 import { Check, X, Users, Calendar, QrCode, FileSpreadsheet, FileText, Search, Clock, UserCheck, UserX, CalendarDays, Zap, Hash, Camera, CameraOff, Scan, Volume2, VolumeX } from 'lucide-react';
+import MemberAvatar from '../components/MemberAvatar';
 
 const ACTIVITY_CATEGORIES = [
   { id: 'swimming', name: '🏊 السباحة', keywords: ['سباح', 'swim'] },
@@ -19,41 +20,6 @@ const ACTIVITY_CATEGORIES = [
   { id: 'karate', name: '🥋 الكاراتيه', keywords: ['كارات', 'karate'] },
   { id: 'gymnastics', name: '🤸 الجمباز', keywords: ['جمباز', 'gym'] },
 ];
-
-function MemberAvatar({ photo, name, size = 'md', className = '', borderClass = 'border-blue-300' }) {
-  const [errored, setErrored] = useState(false);
-  const sizes = {
-    sm: 'w-8 h-8 text-xs',
-    md: 'w-12 h-12 text-base',
-    lg: 'w-16 h-16 text-xl',
-  };
-  const sizeClass = sizes[size] || sizes.md;
-  const initials = (name || '')
-    .trim()
-    .split(/\s+/)
-    .slice(0, 2)
-    .map(w => w[0] || '')
-    .join('')
-    .toUpperCase() || '?';
-
-  if (photo && !errored) {
-    return (
-      <img
-        src={photo}
-        alt={name || 'member'}
-        onError={() => setErrored(true)}
-        className={`${sizeClass} rounded-full object-cover border-2 ${borderClass} flex-shrink-0 ${className}`}
-      />
-    );
-  }
-  return (
-    <div
-      className={`${sizeClass} rounded-full flex items-center justify-center font-bold border-2 ${borderClass} bg-blue-100 text-blue-700 flex-shrink-0 ${className}`}
-    >
-      {initials}
-    </div>
-  );
-}
 
 export default function AttendancePage() {
   const { language } = useLanguage();
@@ -1969,7 +1935,16 @@ export default function AttendancePage() {
                         {reportData.member_stats?.map(stat => (
                           <tr key={stat.member_id} className="hover:bg-gray-50">
                             <td className="p-3 font-mono text-primary font-bold">{stat.member_code || '-'}</td>
-                            <td className="p-3">{stat.member_name}</td>
+                            <td className="p-3">
+                              <div className="flex items-center gap-2">
+                                <MemberAvatar
+                                  photo={stat.member_photo}
+                                  name={stat.member_name}
+                                  size="sm"
+                                />
+                                <span>{stat.member_name}</span>
+                              </div>
+                            </td>
                             <td className="p-3 text-center text-green-600 font-medium">{stat.present}</td>
                             <td className="p-3 text-center text-red-600 font-medium">{stat.absent}</td>
                             <td className="p-3 text-center">{stat.total}</td>

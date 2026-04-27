@@ -8,6 +8,7 @@ from starlette.middleware.gzip import GZipMiddleware
 import os
 import logging
 import io
+from io import BytesIO
 import csv
 import base64
 import shutil
@@ -17,16 +18,20 @@ import json
 def _get_reportlab():
     from reportlab.lib import colors
     from reportlab.lib.pagesizes import A4, landscape
-    from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+    from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image as RLImage
     from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
     from reportlab.lib.units import mm
     from reportlab.pdfbase import pdfmetrics
     from reportlab.pdfbase.ttfonts import TTFont
+    # Wrap plain functions in staticmethod so they aren't bound when accessed
+    # as attributes on the dummy class instance returned below.
     return type('RL', (), {
         'colors': colors, 'A4': A4, 'landscape': landscape,
         'SimpleDocTemplate': SimpleDocTemplate, 'Table': Table,
         'TableStyle': TableStyle, 'Paragraph': Paragraph, 'Spacer': Spacer,
-        'getSampleStyleSheet': getSampleStyleSheet, 'ParagraphStyle': ParagraphStyle,
+        'Image': RLImage,
+        'getSampleStyleSheet': staticmethod(getSampleStyleSheet),
+        'ParagraphStyle': ParagraphStyle,
         'mm': mm, 'pdfmetrics': pdfmetrics, 'TTFont': TTFont,
     })()
 
@@ -34,10 +39,28 @@ def _get_reportlab():
 def _get_openpyxl():
     from openpyxl import Workbook
     from openpyxl.styles import Font, Alignment, Border, Side, PatternFill
+    from openpyxl.drawing.image import Image as XLImage
     return type('XL', (), {
         'Workbook': Workbook, 'Font': Font, 'Alignment': Alignment,
         'Border': Border, 'Side': Side, 'PatternFill': PatternFill,
+        'Image': XLImage,
     })()
+
+
+def _decode_photo_data_url(photo):
+    """Decode a base64 data URL (e.g. 'data:image/png;base64,...') into raw bytes.
+
+    Returns ``None`` when the input is empty, malformed, or not a data URL.
+    """
+    if not photo or not isinstance(photo, str):
+        return None
+    if not photo.startswith("data:image/"):
+        return None
+    try:
+        _, b64 = photo.split(",", 1)
+        return base64.b64decode(b64)
+    except Exception:
+        return None
 
 
 def _get_qrcode():
@@ -5734,13 +5757,14 @@ async def get_activity_attendance_report(
     
     records = await db.attendance.find(query, {"_id": 0}).sort("date", -1).to_list(5000)
     
-    # Get member codes
+    # Get member codes and photos
     member_ids = list(set(r["member_id"] for r in records))
     members_data = await db.members.find(
         {"id": {"$in": member_ids}}, 
-        {"_id": 0, "id": 1, "member_code": 1}
+        {"_id": 0, "id": 1, "member_code": 1, "photo": 1}
     ).to_list(1000)
     member_codes = {m["id"]: m.get("member_code", "") for m in members_data}
+    member_photos = {m["id"]: m.get("photo", "") for m in members_data}
     
     # Group by member
     member_stats = {}
@@ -5751,6 +5775,7 @@ async def get_activity_attendance_report(
                 "member_id": mid,
                 "member_code": member_codes.get(mid, ""),
                 "member_name": r["member_name"],
+                "member_photo": member_photos.get(mid, "") or r.get("member_photo", ""),
                 "present": 0,
                 "absent": 0,
                 "total": 0
@@ -5868,6 +5893,7 @@ async def export_attendance_excel(
     from collections import defaultdict
     member_map = defaultdict(lambda: {
         "member_name": "", "member_code": "", "activity_name": "",
+        "member_photo": "",
         "dates": [], "session_count": 0
     })
     for r in records:
@@ -5881,10 +5907,24 @@ async def export_attendance_excel(
             entry["member_code"] = r.get("member_code", "")
         if not entry["activity_name"]:
             entry["activity_name"] = r.get("activity_name", "")
+        if not entry["member_photo"] and r.get("member_photo"):
+            entry["member_photo"] = r.get("member_photo", "")
         d = r.get("date", "")
         if d:
             entry["dates"].append(d)
         entry["session_count"] += 1
+
+    # Fill in any missing photos from members collection (records may pre-date photo enrichment)
+    member_ids_for_photo = [mid for mid, e in member_map.items() if not e["member_photo"]]
+    if member_ids_for_photo:
+        photo_docs = await db.members.find(
+            {"id": {"$in": member_ids_for_photo}},
+            {"_id": 0, "id": 1, "photo": 1}
+        ).to_list(len(member_ids_for_photo))
+        for d in photo_docs:
+            mid = d.get("id")
+            if mid in member_map:
+                member_map[mid]["member_photo"] = d.get("photo", "") or ""
 
     rows = []
     for idx, (mid, entry) in enumerate(sorted(member_map.items(), key=lambda x: x[1]["member_name"]), 1):
@@ -5894,6 +5934,7 @@ async def export_attendance_excel(
             "idx": idx,
             "member_code": entry["member_code"],
             "member_name": entry["member_name"],
+            "member_photo": entry["member_photo"],
             "activity_name": entry["activity_name"],
             "level_name": per_member_level,
             "session_count": entry["session_count"],
@@ -5923,6 +5964,7 @@ async def export_attendance_excel(
         Spacer = rl.Spacer; getSampleStyleSheet = rl.getSampleStyleSheet
         ParagraphStyle = rl.ParagraphStyle; mm = rl.mm
         pdfmetrics = rl.pdfmetrics; TTFont = rl.TTFont
+        RLImage = rl.Image
 
         buffer = BytesIO()
         doc = SimpleDocTemplate(buffer, pagesize=A4,
@@ -5965,7 +6007,18 @@ async def export_attendance_excel(
         elements.append(Paragraph("  |  ".join(subtitle_parts), sub_style))
         elements.append(Spacer(1, 5*mm))
 
-        headers_pdf = ["آخر حضور", "أول حضور", "الجلسات", "المستوى", "النشاط", "الاسم", "رقم العضوية", "م"]
+        def _photo_cell(photo_data_url):
+            """Build a small Image flowable from a base64 data URL, or return empty Paragraph."""
+            raw = _decode_photo_data_url(photo_data_url)
+            if not raw:
+                return Paragraph("", cell_style)
+            try:
+                img = RLImage(BytesIO(raw), width=10*mm, height=10*mm)
+                return img
+            except Exception:
+                return Paragraph("", cell_style)
+
+        headers_pdf = ["آخر حضور", "أول حضور", "الجلسات", "المستوى", "النشاط", "الاسم", "صورة", "رقم العضوية", "م"]
         header_row = [Paragraph(h, hdr_style) for h in headers_pdf]
         data = [header_row]
         for r in rows:
@@ -5976,11 +6029,12 @@ async def export_attendance_excel(
                 Paragraph(r["level_name"], cell_style),
                 Paragraph(r["activity_name"], cell_style),
                 Paragraph(r["member_name"], cell_style),
+                _photo_cell(r.get("member_photo", "")),
                 Paragraph(str(r["member_code"]), cell_style),
                 Paragraph(str(r["idx"]), cell_style),
             ])
 
-        col_widths = [24*mm, 24*mm, 16*mm, 28*mm, 32*mm, 40*mm, 20*mm, 8*mm]
+        col_widths = [22*mm, 22*mm, 14*mm, 24*mm, 30*mm, 36*mm, 14*mm, 16*mm, 8*mm]
         table = Table(data, colWidths=col_widths, repeatRows=1)
         table.setStyle(TableStyle([
             ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#F97316')),
@@ -6006,6 +6060,7 @@ async def export_attendance_excel(
     xl = _get_openpyxl()
     Workbook = xl.Workbook; Font = xl.Font; PatternFill = xl.PatternFill
     Border = xl.Border; Side = xl.Side; Alignment = xl.Alignment
+    XLImage = xl.Image
     wb = Workbook()
     ws = wb.active
     ws.title = "كشف الحضور"
@@ -6035,7 +6090,7 @@ async def export_attendance_excel(
     ws.append(["  |  ".join(info_parts)])
     ws.append([])
 
-    headers_xl = ["م", "رقم العضوية", "الاسم", "النشاط", "المستوى", "عدد الجلسات", "أول حضور", "آخر حضور"]
+    headers_xl = ["م", "صورة", "رقم العضوية", "الاسم", "النشاط", "المستوى", "عدد الجلسات", "أول حضور", "آخر حضور"]
     ws.append(headers_xl)
     hdr_row = ws.max_row
     for col_idx, cell in enumerate(ws[hdr_row], 1):
@@ -6044,13 +6099,14 @@ async def export_attendance_excel(
         cell.alignment = center
         cell.border = border
 
-    col_widths_xl = [6, 14, 25, 22, 18, 14, 14, 14]
+    col_widths_xl = [6, 8, 14, 25, 22, 18, 14, 14, 14]
     for i, w in enumerate(col_widths_xl, 1):
         ws.column_dimensions[ws.cell(row=1, column=i).column_letter].width = w
 
+    PHOTO_COL_LETTER = ws.cell(row=1, column=2).column_letter  # "صورة" column
     for r_idx, r in enumerate(rows):
         ws.append([
-            r["idx"], r["member_code"], r["member_name"],
+            r["idx"], "", r["member_code"], r["member_name"],
             r["activity_name"], r["level_name"], r["session_count"],
             r["first_date"], r["last_date"],
         ])
@@ -6061,6 +6117,19 @@ async def export_attendance_excel(
             cell.border = border
             if fill:
                 cell.fill = fill
+
+        # Embed the member photo thumbnail in the photo column
+        raw_photo = _decode_photo_data_url(r.get("member_photo", ""))
+        if raw_photo:
+            try:
+                img = XLImage(BytesIO(raw_photo))
+                img.width = 36
+                img.height = 36
+                ws.row_dimensions[row_num].height = 30
+                ws.add_image(img, f"{PHOTO_COL_LETTER}{row_num}")
+            except Exception:
+                # Fallback silently if the image format is unsupported
+                pass
 
     # Summary row
     ws.append([])
