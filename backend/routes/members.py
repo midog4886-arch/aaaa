@@ -251,6 +251,12 @@ _PROFILE_CHANGE_FIELD_MAP = {
     "date_of_birth": "date_of_birth",
 }
 
+_PROFILE_CHANGE_FIELD_LABELS = {
+    "name": ("الاسم", "Name"),
+    "phone": ("رقم الجوال", "Phone"),
+    "date_of_birth": ("تاريخ الميلاد", "Date of birth"),
+}
+
 
 @router.post("/{member_id}/apply-change-request/{message_id}")
 async def apply_profile_change_request(
@@ -312,6 +318,45 @@ async def apply_profile_change_request(
         }},
     )
 
+    # Notify the member: append an admin->member confirmation in the same
+    # thread so the change is visible in the messages tab, and fire a push
+    # notification on their registered devices. Failures here must not roll
+    # back the actual profile update.
+    label_ar, label_en = _PROFILE_CHANGE_FIELD_LABELS[field]
+    subject_ar = f"تم تحديث {label_ar}"
+    subject_en = f"Your {label_en.lower()} has been updated"
+    body_ar = f"تم تحديث {label_ar} إلى {new_value}."
+    body_en = f"Your {label_en.lower()} has been updated to {new_value}."
+    confirm_subject = f"{subject_ar} / {subject_en}"
+    confirm_body = f"{body_ar}\n{body_en}"
+
+    confirm_id = str(uuid.uuid4())
+    await db.messages.insert_one({
+        "id": confirm_id,
+        "thread_id": member_id,
+        "sender_type": "admin",
+        "sender_id": applied_by,
+        "sender_name": current_user.get(
+            "name", current_user.get("username", "الإدارة")
+        ),
+        "recipient_member_id": member_id,
+        "recipient_name": member_result.get("name_ar")
+        or member_result.get("name")
+        or "",
+        "subject": confirm_subject,
+        "body": confirm_body,
+        "is_broadcast": False,
+        "read_by_member": False,
+        "read_by_admin": True,
+        "created_at": now,
+    })
+
+    try:
+        from .messages import send_message_push
+        await send_message_push(member_id, confirm_subject, confirm_body)
+    except Exception as e:
+        print(f"apply_profile_change_request push error: {e}")
+
     return {
         "success": True,
         "message_id": message_id,
@@ -319,6 +364,7 @@ async def apply_profile_change_request(
         "target_field": target_field,
         "new_value": new_value,
         "applied_at": now,
+        "confirmation_message_id": confirm_id,
         "member": Member(**{k: v for k, v in member_result.items() if k != "_id"}),
     }
 
