@@ -1946,6 +1946,46 @@ async def submit_profile_change_request(
     return {"success": True, "id": msg_id, "message": "تم إرسال طلب التعديل إلى الإدارة"}
 
 
+@router.get("/profile/change-requests")
+async def get_pending_profile_change_requests(
+    member: dict = Depends(get_current_member),
+):
+    """Return the member's currently-pending profile change requests so the
+    profile page can show a "request pending" badge next to each locked field.
+
+    A request is considered pending until an admin has read it (i.e.
+    `read_by_admin` is False on the original member-sent message). We keep at
+    most one entry per field — the most recent unread one — because it's the
+    only one the member would care about."""
+    cursor = db.messages.find(
+        {
+            "sender_type": "member",
+            "sender_id": member["id"],
+            "kind": "profile_change_request",
+            "read_by_admin": False,
+        },
+        {"_id": 0},
+    ).sort("created_at", -1)
+    rows = await cursor.to_list(100)
+
+    by_field: Dict[str, Dict[str, Any]] = {}
+    for msg in rows:
+        cr = msg.get("change_request") or {}
+        field = cr.get("field")
+        if not field or field not in PROFILE_CHANGE_FIELDS or field in by_field:
+            continue
+        by_field[field] = {
+            "id": msg.get("id"),
+            "field": field,
+            "new_value": cr.get("new_value", ""),
+            "current_value": cr.get("current_value", ""),
+            "reason": cr.get("reason", ""),
+            "created_at": msg.get("created_at"),
+        }
+
+    return {"pending": list(by_field.values())}
+
+
 @router.get("/member/messages")
 async def get_member_messages(member: dict = Depends(get_current_member)):
     messages = await db.messages.find(

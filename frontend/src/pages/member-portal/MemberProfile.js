@@ -5,7 +5,7 @@ import { Input } from '../../components/ui/input';
 import { Label } from '../../components/ui/label';
 import {
   User, Mail, MapPin, Phone, Calendar, Hash, ImagePlus,
-  X, Save, Loader2, AlertTriangle, ShieldCheck, Pencil, Send
+  X, Save, Loader2, AlertTriangle, ShieldCheck, Pencil, Send, Clock
 } from 'lucide-react';
 import { toast } from 'sonner';
 import {
@@ -65,6 +65,11 @@ const MemberProfile = () => {
   const [requestReason, setRequestReason] = useState('');
   const [submittingRequest, setSubmittingRequest] = useState(false);
 
+  // Pending change requests keyed by field (name / phone / date_of_birth) so
+  // the locked-fields card can show a "request pending" badge with the value
+  // the member already asked for.
+  const [pendingByField, setPendingByField] = useState({});
+
   const fetchProfile = async () => {
     try {
       const res = await memberAPI.get('/api/member-portal/profile');
@@ -83,8 +88,27 @@ const MemberProfile = () => {
     }
   };
 
+  const fetchPendingRequests = async () => {
+    try {
+      const res = await memberAPI.get('/api/member-portal/profile/change-requests');
+      const list = Array.isArray(res.data?.pending) ? res.data.pending : [];
+      const byField = {};
+      list.forEach((item) => {
+        if (item && item.field && !byField[item.field]) {
+          byField[item.field] = item;
+        }
+      });
+      setPendingByField(byField);
+    } catch (err) {
+      // Non-fatal: the badge just won't show. Don't toast — the page is
+      // still usable without it and the request itself succeeded earlier.
+      console.error('Failed to load pending change requests', err);
+    }
+  };
+
   useEffect(() => {
     fetchProfile();
+    fetchPendingRequests();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -188,8 +212,11 @@ const MemberProfile = () => {
 
   const openChangeRequest = (field) => {
     setRequestField(field);
-    setRequestValue('');
-    setRequestReason('');
+    // If a request is already pending for this field, prefill the dialog with
+    // it so the member can tweak/resubmit without retyping from scratch.
+    const pending = pendingByField[field];
+    setRequestValue(pending?.new_value || '');
+    setRequestReason(pending?.reason || '');
   };
 
   const closeChangeRequest = (open) => {
@@ -220,6 +247,8 @@ const MemberProfile = () => {
       setRequestField(null);
       setRequestValue('');
       setRequestReason('');
+      // Refresh badges so the new pending request shows up immediately.
+      fetchPendingRequests();
     } catch (err) {
       console.error('Failed to submit change request', err);
       const detail = err.response?.data?.detail;
@@ -245,21 +274,63 @@ const MemberProfile = () => {
       ? 'text-amber-300 hover:text-amber-200 hover:bg-amber-900/30'
       : 'text-amber-600 hover:text-amber-700 hover:bg-amber-50'
   }`;
+  const pendingBadgeClass = `inline-flex items-center gap-1 text-[11px] font-semibold rounded-full px-2 py-0.5 border ${
+    darkMode
+      ? 'bg-amber-900/40 text-amber-200 border-amber-700/60'
+      : 'bg-amber-100 text-amber-800 border-amber-300'
+  }`;
 
   const displayName = profile?.name_ar || profile?.name || '';
 
-  const renderRequestButton = (field) => (
-    <button
-      type="button"
-      onClick={() => openChangeRequest(field)}
-      className={requestBtnClass}
-      data-testid={`request-change-${field}-btn`}
-      title={t('طلب تعديل', 'Request change')}
-    >
-      <Pencil className="w-3 h-3" />
-      <span>{t('طلب تعديل', 'Request change')}</span>
-    </button>
-  );
+  const formatPendingValue = (field, value) => {
+    if (!value) return '\u2014';
+    if (field === 'date_of_birth') return formatDate(value, language);
+    return value;
+  };
+
+  const renderRequestButton = (field) => {
+    const isPending = !!pendingByField[field];
+    return (
+      <button
+        type="button"
+        onClick={() => openChangeRequest(field)}
+        className={requestBtnClass}
+        data-testid={`request-change-${field}-btn`}
+        title={isPending
+          ? t('تعديل الطلب المعلّق', 'Update pending request')
+          : t('طلب تعديل', 'Request change')}
+      >
+        <Pencil className="w-3 h-3" />
+        <span>
+          {isPending
+            ? t('تعديل الطلب', 'Update request')
+            : t('طلب تعديل', 'Request change')}
+        </span>
+      </button>
+    );
+  };
+
+  const renderPendingBadge = (field) => {
+    const pending = pendingByField[field];
+    if (!pending) return null;
+    return (
+      <div className="mt-1.5 flex flex-wrap items-center gap-1.5" data-testid={`pending-badge-${field}`}>
+        <span className={pendingBadgeClass}>
+          <Clock className="w-3 h-3" />
+          {t('بانتظار الموافقة', 'Pending review')}
+        </span>
+        <span
+          className={`text-xs ${subtleClass}`}
+          dir={fieldMeta[field]?.dir || (language === 'ar' ? 'rtl' : 'ltr')}
+        >
+          {t('طلبت:', 'You requested:')}{' '}
+          <span className={`font-semibold ${darkMode ? 'text-amber-200' : 'text-amber-700'}`}>
+            {formatPendingValue(field, pending.new_value)}
+          </span>
+        </span>
+      </div>
+    );
+  };
 
   return (
     <MemberLayout>
@@ -363,6 +434,7 @@ const MemberProfile = () => {
                       {renderRequestButton('name')}
                     </div>
                     <p className={readonlyValueClass}>{displayName || '\u2014'}</p>
+                    {renderPendingBadge('name')}
                   </div>
                   <div>
                     <p className={labelClass}>{t('رقم العضوية', 'Member Code')}</p>
@@ -384,6 +456,7 @@ const MemberProfile = () => {
                         {profile?.phone || '\u2014'}
                       </span>
                     </p>
+                    {renderPendingBadge('phone')}
                   </div>
                   <div>
                     <div className="flex items-center justify-between gap-2">
@@ -396,6 +469,7 @@ const MemberProfile = () => {
                         {formatDate(profile?.date_of_birth, language)}
                       </span>
                     </p>
+                    {renderPendingBadge('date_of_birth')}
                   </div>
                 </div>
                 <div
