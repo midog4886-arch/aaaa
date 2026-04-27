@@ -80,6 +80,8 @@ export const membersAPI = {
   addActivity: (memberId, activity) => axios.post(`${API}/members/${memberId}/activities`, activity),
   updateActivity: (memberId, activityId, activity) => axios.put(`${API}/members/${memberId}/activities/${activityId}`, activity),
   setMarked: (id, marked) => axios.patch(`${API}/members/${id}/marked`, { marked }),
+  applyChangeRequest: (memberId, messageId) =>
+    axios.post(`${API}/members/${memberId}/apply-change-request/${messageId}`),
 };
 
 // Social Publisher API

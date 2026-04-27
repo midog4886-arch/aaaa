@@ -245,6 +245,81 @@ async def add_member_activity(member_id: str, activity: MemberActivity, current_
         raise HTTPException(status_code=404, detail="Member not found")
     return {"message": "Activity added"}
 
+_PROFILE_CHANGE_FIELD_MAP = {
+    "name": "name_ar",
+    "phone": "phone",
+    "date_of_birth": "date_of_birth",
+}
+
+
+@router.post("/{member_id}/apply-change-request/{message_id}")
+async def apply_profile_change_request(
+    member_id: str,
+    message_id: str,
+    current_user: dict = Depends(get_current_user),
+):
+    """Apply a member's pending profile change request and mark the source
+    message resolved.
+
+    The request is created by `POST /member-portal/profile/change-request`
+    and stored as a regular admin-inbox message tagged with
+    ``kind="profile_change_request"`` plus a structured ``change_request``
+    payload (field, current_value, new_value, reason). This endpoint lets an
+    admin apply the requested value to the member record in one click and
+    records that the request has been resolved so it stops appearing as
+    pending in the inbox and on the member's profile page.
+    """
+    msg = await db.messages.find_one(
+        {"id": message_id, "kind": "profile_change_request"},
+        {"_id": 0},
+    )
+    if not msg:
+        raise HTTPException(status_code=404, detail="طلب التعديل غير موجود")
+    # Validate the message belongs to the targeted member (defends against
+    # sending an arbitrary message_id that points at a different member).
+    if msg.get("recipient_member_id") != member_id and msg.get("sender_id") != member_id:
+        raise HTTPException(status_code=400, detail="طلب التعديل لا يخص هذا العضو")
+    if msg.get("change_request_status") == "applied":
+        raise HTTPException(status_code=400, detail="تم تطبيق هذا الطلب من قبل")
+
+    cr = msg.get("change_request") or {}
+    field = cr.get("field")
+    new_value = (cr.get("new_value") or "").strip()
+    if field not in _PROFILE_CHANGE_FIELD_MAP or not new_value:
+        raise HTTPException(status_code=400, detail="بيانات الطلب غير صالحة")
+
+    target_field = _PROFILE_CHANGE_FIELD_MAP[field]
+    member_result = await db.members.find_one_and_update(
+        _scoped_member_query(member_id, current_user),
+        {"$set": {target_field: new_value}},
+        return_document=True,
+    )
+    if not member_result:
+        raise HTTPException(status_code=404, detail="Member not found")
+
+    now = datetime.now(timezone.utc).isoformat()
+    applied_by = current_user.get("user_id", current_user.get("sub", ""))
+    await db.messages.update_one(
+        {"id": message_id},
+        {"$set": {
+            "change_request_status": "applied",
+            "change_request_applied_at": now,
+            "change_request_applied_by": applied_by,
+            "read_by_admin": True,
+        }},
+    )
+
+    return {
+        "success": True,
+        "message_id": message_id,
+        "field": field,
+        "target_field": target_field,
+        "new_value": new_value,
+        "applied_at": now,
+        "member": Member(**{k: v for k, v in member_result.items() if k != "_id"}),
+    }
+
+
 @router.put("/{member_id}/activities/{activity_id}")
 async def update_member_activity(member_id: str, activity_id: str, activity: MemberActivity, current_user: dict = Depends(get_current_user)):
     """Update a member's activity"""

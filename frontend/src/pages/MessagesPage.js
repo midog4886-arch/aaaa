@@ -32,8 +32,17 @@ import {
   ArrowRight,
   ArrowLeft,
   RefreshCcw,
-  User
+  User,
+  UserCog,
+  CheckCircle2,
+  Check
 } from 'lucide-react';
+
+const PROFILE_FIELD_LABELS = {
+  name: { ar: 'الاسم', en: 'Name' },
+  phone: { ar: 'رقم الجوال', en: 'Phone' },
+  date_of_birth: { ar: 'تاريخ الميلاد', en: 'Date of birth' },
+};
 
 const getInitials = (name) => {
   const trimmed = (name || '').trim();
@@ -89,6 +98,69 @@ const AdminAvatar = ({ photo, name, size = 'md', className = '' }) => {
           onError={() => setImgFailed(true)}
           className={`absolute inset-0 ${sizeClass} rounded-full object-cover border border-primary/20`}
         />
+      )}
+    </div>
+  );
+};
+
+const ChangeRequestCard = ({ msg, language, onApply, disabled }) => {
+  const cr = msg.change_request || {};
+  const fieldKey = cr.field;
+  const fieldLabel =
+    language === 'ar'
+      ? cr.field_label_ar || (PROFILE_FIELD_LABELS[fieldKey] || {}).ar || fieldKey
+      : cr.field_label_en || (PROFILE_FIELD_LABELS[fieldKey] || {}).en || fieldKey;
+  const isApplied = msg.change_request_status === 'applied';
+  const dash = '—';
+
+  return (
+    <div className="space-y-2 min-w-[260px]">
+      <p className="text-sm font-medium">
+        {language === 'ar' ? `طلب تعديل ${fieldLabel}` : `Requested change: ${fieldLabel}`}
+      </p>
+      <div className="grid grid-cols-2 gap-2">
+        <div className="rounded-md border border-amber-200 bg-white/60 p-2">
+          <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
+            {language === 'ar' ? 'القيمة الحالية' : 'Current value'}
+          </p>
+          <p className="text-sm break-words">{cr.current_value || dash}</p>
+        </div>
+        <div className="rounded-md border border-amber-300 bg-amber-100/70 p-2">
+          <p className="text-[10px] uppercase tracking-wide text-amber-800">
+            {language === 'ar' ? 'القيمة المطلوبة' : 'Requested value'}
+          </p>
+          <p className="text-sm font-medium break-words">{cr.new_value || dash}</p>
+        </div>
+      </div>
+      {cr.reason && (
+        <p className="text-xs text-muted-foreground">
+          <span className="font-semibold">{language === 'ar' ? 'السبب: ' : 'Reason: '}</span>
+          {cr.reason}
+        </p>
+      )}
+      {isApplied ? (
+        <div className="flex items-center gap-2 text-xs text-green-800 bg-green-100 border border-green-200 rounded-md px-2 py-1">
+          <CheckCircle2 className="w-3.5 h-3.5" />
+          <span>
+            {language === 'ar' ? 'تم تطبيق التعديل' : 'Change applied'}
+            {msg.change_request_applied_at && (
+              <span className="text-muted-foreground ms-1">
+                · {new Date(msg.change_request_applied_at).toLocaleString('ar-SA')}
+              </span>
+            )}
+          </span>
+        </div>
+      ) : (
+        <Button
+          size="sm"
+          onClick={() => onApply(msg)}
+          disabled={disabled}
+          className="gap-1 h-8"
+          data-testid={`button-apply-change-${msg.id}`}
+        >
+          <Check className="w-3.5 h-3.5" />
+          {language === 'ar' ? 'تطبيق التعديل' : 'Apply change'}
+        </Button>
       )}
     </div>
   );
@@ -383,6 +455,29 @@ export const MessagesPage = () => {
       loadConversations();
     } catch (error) {
       toast.error(language === 'ar' ? 'فشل إرسال الرسالة' : 'Failed to send message');
+    } finally {
+      setSendingMsg(false);
+    }
+  };
+
+  const handleApplyChangeRequest = async (msg) => {
+    if (!selectedThread || !msg?.id) return;
+    const cr = msg.change_request || {};
+    const fieldLabel = (PROFILE_FIELD_LABELS[cr.field] || {})[language] || cr.field || '';
+    const confirmText = language === 'ar'
+      ? `تأكيد تطبيق التعديل على ${fieldLabel}؟\nسيتم تحديث بيانات العضو واعتبار الطلب منتهياً.`
+      : `Apply the requested change to ${fieldLabel}?\nThe member record will be updated and the request marked resolved.`;
+    if (!window.confirm(confirmText)) return;
+
+    setSendingMsg(true);
+    try {
+      await membersAPI.applyChangeRequest(selectedThread, msg.id);
+      toast.success(language === 'ar' ? 'تم تطبيق التعديل' : 'Change applied');
+      // Refresh thread + conversation list so the resolved badge shows up.
+      await openThread(selectedThread);
+    } catch (error) {
+      const detail = error?.response?.data?.detail;
+      toast.error(detail || (language === 'ar' ? 'فشل تطبيق التعديل' : 'Failed to apply change'));
     } finally {
       setSendingMsg(false);
     }
@@ -1068,10 +1163,22 @@ export const MessagesPage = () => {
                                 name={conv.member_name || conv.recipient_name}
                               />
                               <div className="flex-1 min-w-0">
-                                <div className="flex items-center gap-2">
+                                <div className="flex items-center gap-2 flex-wrap">
                                   <p className="font-semibold truncate">{conv.member_name || conv.recipient_name}</p>
                                   {conv.member_code && (
                                     <Badge variant="outline" className="text-xs">#{conv.member_code}</Badge>
+                                  )}
+                                  {conv.pending_change_requests > 0 && (
+                                    <Badge
+                                      variant="secondary"
+                                      className="text-[10px] px-1.5 py-0.5 gap-1 bg-amber-100 text-amber-900 border border-amber-300 hover:bg-amber-100"
+                                      data-testid="badge-pending-change-request"
+                                    >
+                                      <UserCog className="w-3 h-3" />
+                                      {language === 'ar'
+                                        ? `طلب تعديل بيانات${conv.pending_change_requests > 1 ? ` (${conv.pending_change_requests})` : ''}`
+                                        : `Profile change${conv.pending_change_requests > 1 ? ` (${conv.pending_change_requests})` : ''}`}
+                                    </Badge>
                                   )}
                                 </div>
                                 <p className="text-sm text-muted-foreground truncate">
@@ -1125,6 +1232,7 @@ export const MessagesPage = () => {
                     ) : (
                       threadMessages.map((msg) => {
                         const fromAdmin = msg.sender_type === 'admin';
+                        const isChangeRequest = msg.kind === 'profile_change_request' && msg.change_request;
                         return (
                           <div
                             key={msg.id}
@@ -1146,23 +1254,55 @@ export const MessagesPage = () => {
                             )}
                             <div
                               className={`p-3 rounded-lg ${
-                                fromAdmin
+                                isChangeRequest
+                                  ? 'bg-amber-50 border border-amber-300'
+                                  : fromAdmin
                                   ? 'bg-primary/10 border border-primary/20'
                                   : 'bg-accent border border-border'
                               }`}
+                              data-testid={isChangeRequest ? `change-request-${msg.id}` : undefined}
                             >
-                              <div className="flex items-center gap-2 mb-1">
+                              <div className="flex items-center gap-2 mb-1 flex-wrap">
                                 <span className="text-xs font-semibold">
                                   {fromAdmin ? (language === 'ar' ? 'الإدارة' : 'Admin') : msg.sender_name}
                                 </span>
+                                {isChangeRequest && (
+                                  <Badge
+                                    variant="secondary"
+                                    className="text-[10px] px-1.5 py-0.5 gap-1 bg-amber-100 text-amber-900 border border-amber-300 hover:bg-amber-100"
+                                  >
+                                    <UserCog className="w-3 h-3" />
+                                    {language === 'ar' ? 'طلب تعديل بيانات' : 'Profile change request'}
+                                  </Badge>
+                                )}
+                                {isChangeRequest && msg.change_request_status === 'applied' && (
+                                  <Badge
+                                    variant="secondary"
+                                    className="text-[10px] px-1.5 py-0.5 gap-1 bg-green-100 text-green-900 border border-green-300 hover:bg-green-100"
+                                  >
+                                    <CheckCircle2 className="w-3 h-3" />
+                                    {language === 'ar' ? 'تم التطبيق' : 'Applied'}
+                                  </Badge>
+                                )}
                                 <span className="text-xs text-muted-foreground">
                                   {new Date(msg.created_at).toLocaleString('ar-SA')}
                                 </span>
                               </div>
-                              {msg.subject && (
-                                <p className="text-sm font-medium mb-1">{msg.subject}</p>
+                              {isChangeRequest ? (
+                                <ChangeRequestCard
+                                  msg={msg}
+                                  language={language}
+                                  onApply={handleApplyChangeRequest}
+                                  disabled={sendingMsg}
+                                />
+                              ) : (
+                                <>
+                                  {msg.subject && (
+                                    <p className="text-sm font-medium mb-1">{msg.subject}</p>
+                                  )}
+                                  <p className="text-sm whitespace-pre-wrap">{msg.body}</p>
+                                </>
                               )}
-                              <p className="text-sm whitespace-pre-wrap">{msg.body}</p>
                             </div>
                           </div>
                         );

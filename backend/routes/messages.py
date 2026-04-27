@@ -163,6 +163,15 @@ async def get_conversations(current_user: dict = Depends(get_current_user)):
                     ]},
                     1, 0
                 ]
+            }},
+            "pending_change_requests": {"$sum": {
+                "$cond": [
+                    {"$and": [
+                        {"$eq": ["$kind", "profile_change_request"]},
+                        {"$ne": ["$change_request_status", "applied"]}
+                    ]},
+                    1, 0
+                ]
             }}
         }},
         {"$sort": {"last_date": -1}}
