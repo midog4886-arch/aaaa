@@ -744,6 +744,14 @@ async def auto_assign_members_to_levels(
     by_source = {"member_activities": 0, "invoices": 0, "registration_forms": 0}
 
     levels_by_id = {l["id"]: l for l in levels}
+    # Reverse index: which levels each member is already a direct member of.
+    # Used to mark (member, activity) pairs as already_correct even when the
+    # activities[].level_id link is missing (recovery after a previous partial
+    # link failure), so reruns don't re-propose existing memberships.
+    member_levels_index = {}
+    for lvl in levels:
+        for m_id in (lvl.get("members") or []):
+            member_levels_index.setdefault(m_id, set()).add(lvl["id"])
 
     def _level_matches_subscription(lvl, _aid, _aname_l, member_branch_id, _sched_days, _sched):
         """Verify a given level is a valid placement for this subscription.
@@ -834,6 +842,27 @@ async def auto_assign_members_to_levels(
             candidates = list(candidates_by_aid[aid])
         elif aname and aname_l in candidates_by_aname:
             candidates = list(candidates_by_aname[aname_l])
+
+        # Recovery from a previous partial commit: if the member is already
+        # listed in the .members[] of one of the candidate levels for this
+        # activity, skip — they're effectively already placed even though the
+        # activities[].level_id link is missing. This keeps reruns idempotent.
+        already_in_levels = member_levels_index.get(mid, set())
+        recovered = None
+        for lvl in candidates:
+            if lvl["id"] in already_in_levels and _level_matches_subscription(
+                lvl, aid, aname_l, member_branch, sched_days, sched
+            ):
+                recovered = lvl
+                break
+        if recovered:
+            already_correct.append({
+                "member_id": mid,
+                "member_name": member.get("name_ar") or member.get("name") or "",
+                "activity_name": aname,
+                "level_id": recovered["id"],
+            })
+            continue
 
         if not candidates:
             unmatched.append({
