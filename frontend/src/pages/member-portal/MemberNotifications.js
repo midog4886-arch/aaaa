@@ -6,6 +6,48 @@ import {
 } from 'lucide-react';
 import MemberLayout, { memberAPI, getLanguage } from './MemberLayout';
 
+const getInitials = (name) => {
+  const trimmed = (name || '').trim();
+  if (!trimmed) return '';
+  return (
+    trimmed
+      .split(/\s+/)
+      .slice(0, 2)
+      .map((w) => w[0])
+      .join('') || ''
+  );
+};
+
+const ChatAvatar = ({ photo, name, tone = 'member' }) => {
+  const [imgFailed, setImgFailed] = React.useState(false);
+  React.useEffect(() => { setImgFailed(false); }, [photo]);
+  const initials = getInitials(name);
+  const showPhoto = !!photo && !imgFailed;
+  const baseFallback =
+    tone === 'admin'
+      ? 'bg-gray-300 dark:bg-gray-600 text-gray-700 dark:text-gray-100'
+      : 'bg-blue-500 text-white';
+  const ringClass =
+    tone === 'admin'
+      ? 'border border-gray-300 dark:border-gray-600'
+      : 'border border-blue-300 dark:border-blue-700';
+  return (
+    <div className="relative w-8 h-8 flex-shrink-0">
+      <div className={`w-8 h-8 rounded-full flex items-center justify-center text-[11px] font-bold ${baseFallback}`}>
+        {initials || (tone === 'admin' ? <Mail className="w-4 h-4" /> : '?')}
+      </div>
+      {showPhoto && (
+        <img
+          src={photo}
+          alt={name || ''}
+          onError={() => setImgFailed(true)}
+          className={`absolute inset-0 w-8 h-8 rounded-full object-cover ${ringClass}`}
+        />
+      )}
+    </div>
+  );
+};
+
 const MemberNotifications = () => {
   const navigate = useNavigate();
   const location = useLocation();
@@ -30,6 +72,8 @@ const MemberNotifications = () => {
   const [markingAll, setMarkingAll] = useState(false);
 
   const [messages, setMessages] = useState([]);
+  const [memberPhoto, setMemberPhoto] = useState('');
+  const [memberName, setMemberName] = useState('');
   const [msgLoading, setMsgLoading] = useState(true);
   const [msgUnreadCount, setMsgUnreadCount] = useState(0);
   const [replyText, setReplyText] = useState('');
@@ -62,12 +106,17 @@ const MemberNotifications = () => {
 
   const loadMessages = async () => {
     try {
-      const [msgRes, unreadRes] = await Promise.all([
+      const [msgRes, unreadRes, profileRes] = await Promise.all([
         memberAPI.get('/api/member-portal/member/messages'),
         memberAPI.get('/api/member-portal/member/messages/unread-count'),
+        memberAPI.get('/api/member-portal/profile').catch(() => null),
       ]);
       setMessages(msgRes.data.messages || []);
       setMsgUnreadCount(unreadRes.data.unread_count || 0);
+      const photoFromMessages = msgRes.data.member_photo || '';
+      const profile = profileRes?.data || {};
+      setMemberPhoto(photoFromMessages || profile.photo || '');
+      setMemberName(profile.name_ar || profile.name || '');
     } catch (error) {
       console.error('Failed to load messages:', error);
     } finally {
@@ -350,13 +399,30 @@ const MemberNotifications = () => {
                     <div className="space-y-3">
                       {[...messages].reverse().map((msg) => {
                         const isAdmin = msg.sender_type === 'admin';
+                        const adminPhoto = msg.sender_photo || '';
+                        const adminName = msg.sender_name || '';
+                        const memberAvatar = (
+                          <ChatAvatar
+                            photo={memberPhoto}
+                            name={memberName || msg.sender_name}
+                            tone="member"
+                          />
+                        );
+                        const adminAvatar = (
+                          <ChatAvatar
+                            photo={adminPhoto}
+                            name={adminName}
+                            tone="admin"
+                          />
+                        );
                         return (
                           <div
                             key={msg.id}
-                            className={`flex ${isAdmin ? 'justify-start' : 'justify-end'}`}
+                            className={`flex items-end gap-2 ${isAdmin ? 'justify-start' : 'justify-end flex-row-reverse'}`}
                           >
+                            {isAdmin ? adminAvatar : memberAvatar}
                             <div
-                              className={`max-w-[80%] rounded-2xl px-4 py-2 shadow-sm ${
+                              className={`max-w-[75%] rounded-2xl px-4 py-2 shadow-sm ${
                                 isAdmin
                                   ? 'bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-100 rounded-bl-sm'
                                   : 'bg-blue-600 text-white rounded-br-sm'

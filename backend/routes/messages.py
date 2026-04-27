@@ -174,12 +174,13 @@ async def get_conversations(current_user: dict = Depends(get_current_user)):
         conv["member_id"] = conv.pop("_id")
         member = await db.members.find_one(
             {"id": conv["member_id"]},
-            {"_id": 0, "name_ar": 1, "name": 1, "phone": 1, "member_code": 1}
+            {"_id": 0, "name_ar": 1, "name": 1, "phone": 1, "member_code": 1, "photo": 1}
         )
         if member:
             conv["member_name"] = member.get("name_ar", member.get("name", ""))
             conv["member_phone"] = member.get("phone", "")
             conv["member_code"] = member.get("member_code", "")
+            conv["member_photo"] = member.get("photo", "") or ""
 
     return conversations
 
@@ -196,7 +197,33 @@ async def get_thread(member_id: str, current_user: dict = Depends(get_current_us
         {"$set": {"read_by_admin": True}}
     )
 
-    member = await db.members.find_one({"id": member_id}, {"_id": 0, "name_ar": 1, "name": 1, "phone": 1, "member_code": 1})
+    member = await db.members.find_one(
+        {"id": member_id},
+        {"_id": 0, "name_ar": 1, "name": 1, "phone": 1, "member_code": 1, "photo": 1}
+    )
+
+    member_photo = (member.get("photo", "") if member else "") or ""
+
+    # Look up admin sender photos in one batch (admins don't always have a
+    # `photo` field; this is forward-compatible — `sender_photo` is "" today
+    # and the avatar UI falls back to initials/icon).
+    admin_sender_ids = list({
+        msg.get("sender_id") for msg in messages
+        if msg.get("sender_type") == "admin" and msg.get("sender_id")
+    })
+    admin_photos = {}
+    if admin_sender_ids:
+        admin_users = await db.users.find(
+            {"id": {"$in": admin_sender_ids}},
+            {"_id": 0, "id": 1, "photo": 1}
+        ).to_list(len(admin_sender_ids))
+        admin_photos = {u["id"]: (u.get("photo", "") or "") for u in admin_users}
+
+    for msg in messages:
+        if msg.get("sender_type") == "member":
+            msg["sender_photo"] = member_photo
+        else:
+            msg["sender_photo"] = admin_photos.get(msg.get("sender_id", ""), "")
 
     return {
         "messages": messages,
@@ -204,7 +231,8 @@ async def get_thread(member_id: str, current_user: dict = Depends(get_current_us
             "id": member_id,
             "name": member.get("name_ar", member.get("name", "")) if member else "",
             "phone": member.get("phone", "") if member else "",
-            "member_code": member.get("member_code", "") if member else ""
+            "member_code": member.get("member_code", "") if member else "",
+            "photo": member_photo,
         } if member else None
     }
 

@@ -1958,7 +1958,38 @@ async def get_member_messages(member: dict = Depends(get_current_member)):
         {"$set": {"read_by_member": True}}
     )
 
-    return {"messages": messages}
+    member_photo = member.get("photo", "") or ""
+
+    # Look up admin sender photos in one batch so admin bubbles can also
+    # show a photo when the admin user has one. Admins don't always have a
+    # `photo` field today — `sender_photo` is "" in that case and the UI
+    # falls back to initials.
+    admin_sender_ids = list({
+        msg.get("sender_id") for msg in messages
+        if msg.get("sender_type") == "admin" and msg.get("sender_id")
+    })
+    admin_info = {}
+    if admin_sender_ids:
+        admin_users = await db.users.find(
+            {"id": {"$in": admin_sender_ids}},
+            {"_id": 0, "id": 1, "photo": 1, "name": 1}
+        ).to_list(len(admin_sender_ids))
+        admin_info = {
+            u["id"]: {"photo": u.get("photo", "") or "", "name": u.get("name", "") or ""}
+            for u in admin_users
+        }
+
+    for msg in messages:
+        if msg.get("sender_type") == "member":
+            msg["sender_photo"] = member_photo
+        else:
+            info = admin_info.get(msg.get("sender_id", ""), {})
+            msg["sender_photo"] = info.get("photo", "")
+
+    return {
+        "messages": messages,
+        "member_photo": member_photo,
+    }
 
 
 @router.post("/member/messages/reply")

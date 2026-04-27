@@ -35,6 +35,65 @@ import {
   User
 } from 'lucide-react';
 
+const getInitials = (name) => {
+  const trimmed = (name || '').trim();
+  if (!trimmed) return '?';
+  return (
+    trimmed
+      .split(/\s+/)
+      .slice(0, 2)
+      .map((w) => w[0])
+      .join('') || '?'
+  );
+};
+
+const SenderAvatar = ({ photo, name, size = 'md', className = '' }) => {
+  const sizeClass = size === 'sm' ? 'w-8 h-8 text-[10px]' : 'w-10 h-10 text-xs';
+  const [imgFailed, setImgFailed] = React.useState(false);
+  React.useEffect(() => { setImgFailed(false); }, [photo]);
+  const showPhoto = !!photo && !imgFailed;
+  return (
+    <div className={`relative ${sizeClass} flex-shrink-0 ${className}`}>
+      <div
+        className={`${sizeClass} rounded-full bg-primary/10 text-primary font-semibold flex items-center justify-center`}
+      >
+        {getInitials(name)}
+      </div>
+      {showPhoto && (
+        <img
+          src={photo}
+          alt={name || ''}
+          onError={() => setImgFailed(true)}
+          className={`absolute inset-0 ${sizeClass} rounded-full object-cover border border-primary/20`}
+        />
+      )}
+    </div>
+  );
+};
+
+const AdminAvatar = ({ photo, name, size = 'md', className = '' }) => {
+  const sizeClass = size === 'sm' ? 'w-8 h-8' : 'w-10 h-10';
+  const iconClass = size === 'sm' ? 'w-4 h-4' : 'w-5 h-5';
+  const [imgFailed, setImgFailed] = React.useState(false);
+  React.useEffect(() => { setImgFailed(false); }, [photo]);
+  const showPhoto = !!photo && !imgFailed;
+  return (
+    <div className={`relative ${sizeClass} flex-shrink-0 ${className}`}>
+      <div className={`${sizeClass} rounded-full bg-primary/10 text-primary flex items-center justify-center`}>
+        {name ? <span className="font-semibold text-xs">{getInitials(name)}</span> : <User className={iconClass} />}
+      </div>
+      {showPhoto && (
+        <img
+          src={photo}
+          alt={name || ''}
+          onError={() => setImgFailed(true)}
+          className={`absolute inset-0 ${sizeClass} rounded-full object-cover border border-primary/20`}
+        />
+      )}
+    </div>
+  );
+};
+
 export const MessagesPage = () => {
   const { t, language } = useLanguage();
   const { user, selectedBranchId } = useAuth();
@@ -1004,9 +1063,10 @@ export const MessagesPage = () => {
                         >
                           <div className="flex items-center justify-between">
                             <div className="flex items-center gap-3 flex-1 min-w-0">
-                              <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
-                                <User className="w-5 h-5 text-primary" />
-                              </div>
+                              <SenderAvatar
+                                photo={conv.member_photo}
+                                name={conv.member_name || conv.recipient_name}
+                              />
                               <div className="flex-1 min-w-0">
                                 <div className="flex items-center gap-2">
                                   <p className="font-semibold truncate">{conv.member_name || conv.recipient_name}</p>
@@ -1042,7 +1102,11 @@ export const MessagesPage = () => {
               <Card>
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
-                    <User className="w-5 h-5 text-primary" />
+                    <SenderAvatar
+                      photo={threadMember?.photo}
+                      name={threadMember?.name}
+                      size="sm"
+                    />
                     {threadMember?.name || ''}
                     {threadMember?.member_code && (
                       <Badge variant="outline" className="text-xs">#{threadMember.member_code}</Badge>
@@ -1059,29 +1123,50 @@ export const MessagesPage = () => {
                         <p>{language === 'ar' ? 'لا توجد رسائل' : 'No messages'}</p>
                       </div>
                     ) : (
-                      threadMessages.map((msg) => (
-                        <div
-                          key={msg.id}
-                          className={`p-3 rounded-lg max-w-[80%] ${
-                            msg.sender_type === 'admin'
-                              ? 'bg-primary/10 border border-primary/20 mr-auto'
-                              : 'bg-accent border border-border ml-auto'
-                          }`}
-                        >
-                          <div className="flex items-center gap-2 mb-1">
-                            <span className="text-xs font-semibold">
-                              {msg.sender_type === 'admin' ? (language === 'ar' ? 'الإدارة' : 'Admin') : msg.sender_name}
-                            </span>
-                            <span className="text-xs text-muted-foreground">
-                              {new Date(msg.created_at).toLocaleString('ar-SA')}
-                            </span>
+                      threadMessages.map((msg) => {
+                        const fromAdmin = msg.sender_type === 'admin';
+                        return (
+                          <div
+                            key={msg.id}
+                            className={`flex items-end gap-2 ${fromAdmin ? 'mr-auto' : 'ml-auto flex-row-reverse'}`}
+                            style={{ maxWidth: '85%' }}
+                          >
+                            {fromAdmin ? (
+                              <AdminAvatar
+                                photo={msg.sender_photo}
+                                name={msg.sender_name}
+                                size="sm"
+                              />
+                            ) : (
+                              <SenderAvatar
+                                photo={msg.sender_photo || threadMember?.photo}
+                                name={msg.sender_name || threadMember?.name}
+                                size="sm"
+                              />
+                            )}
+                            <div
+                              className={`p-3 rounded-lg ${
+                                fromAdmin
+                                  ? 'bg-primary/10 border border-primary/20'
+                                  : 'bg-accent border border-border'
+                              }`}
+                            >
+                              <div className="flex items-center gap-2 mb-1">
+                                <span className="text-xs font-semibold">
+                                  {fromAdmin ? (language === 'ar' ? 'الإدارة' : 'Admin') : msg.sender_name}
+                                </span>
+                                <span className="text-xs text-muted-foreground">
+                                  {new Date(msg.created_at).toLocaleString('ar-SA')}
+                                </span>
+                              </div>
+                              {msg.subject && (
+                                <p className="text-sm font-medium mb-1">{msg.subject}</p>
+                              )}
+                              <p className="text-sm whitespace-pre-wrap">{msg.body}</p>
+                            </div>
                           </div>
-                          {msg.subject && (
-                            <p className="text-sm font-medium mb-1">{msg.subject}</p>
-                          )}
-                          <p className="text-sm whitespace-pre-wrap">{msg.body}</p>
-                        </div>
-                      ))
+                        );
+                      })
                     )}
                   </div>
 
