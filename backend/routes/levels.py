@@ -188,6 +188,7 @@ async def get_levels(
     for level in levels:
         cn = level.get("custom_name") or ""
         level["display_name"] = cn.strip() if cn.strip() else f"المستوى {level.get('level_number', '')}"
+        level["hour"] = _extract_hour_12(level.get("time_slot") or level.get("activity_name") or "")
 
     cache_set(cache_key, levels, ttl=300)  # 5 min (members can change more often)
     return levels
@@ -512,16 +513,18 @@ def _extract_hour_12(text: str):
 
 
 def _times_match(level_slot: str, schedule_text: str) -> bool:
-    """Return True if the level's `time_slot` is compatible with the schedule
-    string the member is registered for. Empty `level_slot` (or one with no
-    parseable hour) matches anything — we don't want to over-filter when a
-    level was created without a slot. Otherwise both sides must resolve to
-    the same 12h hour."""
-    if not level_slot:
-        return True
+    """Return True only if BOTH the level's `time_slot` and the subscription
+    schedule resolve to the same 12h hour.
+
+    Hour is now a required matching signal (see Task #177): with activity
+    treated as a soft tiebreaker, an unslotted level can no longer be a
+    catch-all match for every subscription — that would over-assign across
+    activities. Levels without a parseable hour (legacy, missing time_slot)
+    therefore won't match anything until the admin places them in the
+    Schedule Builder."""
     lh = _extract_hour_12(level_slot)
     if lh is None:
-        return True
+        return False
     sh = _extract_hour_12(schedule_text or "")
     if sh is None:
         return False
@@ -771,6 +774,181 @@ async def apply_levels_cleanup_bulk(
     }
 
 
+@router.get("/schedule-snapshot")
+async def get_levels_schedule_snapshot(
+    branch_filter: Optional[str] = None,
+    current_user: dict = Depends(get_current_user),
+):
+    """Return all levels in scope already bucketed by (weekday, hour) so the
+    schedule-builder UI can render directly without client-side bucketing.
+
+    Shape:
+        {
+          "days_order": ["saturday", ..., "friday"],
+          "days": {
+            "saturday": { "hours": { "5": [<level>, ...], "6": [...] } },
+            ...
+          },
+          "unscheduled": [<level>, ...],   # levels missing days[] or hour
+          "activity_options": [...],       # for the optional activity tag
+          "totals": {"total_levels", "scheduled", "unscheduled"}
+        }
+    A level appears once under each weekday it's active on, at its single
+    hour cell. This mirrors the user's mental model: same hour, multiple days.
+    """
+    require_branch_scope(current_user)
+    effective_branch = resolve_branch_filter(current_user, branch_filter)
+
+    query = {}
+    if effective_branch:
+        query["$or"] = [
+            {"branch_id": effective_branch},
+            {"branch_id": None},
+            {"branch_id": {"$exists": False}},
+        ]
+
+    levels = await db.levels.find(query, {"_id": 0}).sort("level_number", 1).to_list(1000)
+    activities = await db.activities.find(
+        {}, {"_id": 0, "id": 1, "name": 1, "name_ar": 1, "branch_id": 1}
+    ).to_list(200)
+
+    days_order = ["saturday", "sunday", "monday", "tuesday", "wednesday", "thursday", "friday"]
+    days = {d: {"hours": {}} for d in days_order}
+    unscheduled = []
+
+    def _level_card(lvl, hour):
+        return {
+            "id": lvl.get("id"),
+            "level_number": lvl.get("level_number"),
+            "activity_name": lvl.get("activity_name") or "",
+            "custom_name": lvl.get("custom_name") or "",
+            "activity_id": lvl.get("activity_id") or None,
+            "branch_id": lvl.get("branch_id"),
+            "time_slot": lvl.get("time_slot") or "",
+            "hour": hour,
+            "days": list(lvl.get("days") or []),
+            "capacity": int(lvl.get("capacity")) if lvl.get("capacity") else None,
+            "members_count": len(lvl.get("members") or []),
+            "coach_id": lvl.get("coach_id") or None,
+        }
+
+    for lvl in levels:
+        hour = _extract_hour_12(lvl.get("time_slot") or "") or _extract_hour_12(lvl.get("activity_name") or "")
+        lvl_days = lvl.get("days") or []
+        info = _level_card(lvl, hour)
+        if not hour or not lvl_days:
+            unscheduled.append(info)
+            continue
+        for d in lvl_days:
+            if d not in days:
+                continue
+            days[d]["hours"].setdefault(str(hour), []).append(info)
+
+    for d_data in days.values():
+        for hour_key in d_data["hours"]:
+            d_data["hours"][hour_key].sort(key=lambda x: (x.get("level_number") or 999))
+
+    activity_options = [
+        {
+            "id": a.get("id"),
+            "name": a.get("name_ar") or a.get("name") or "",
+            "branch_id": a.get("branch_id"),
+        }
+        for a in activities
+        if (a.get("name_ar") or a.get("name"))
+    ]
+    activity_options.sort(key=lambda x: x["name"])
+
+    return {
+        "days_order": days_order,
+        "days": days,
+        "unscheduled": unscheduled,
+        "activity_options": activity_options,
+        "totals": {
+            "total_levels": len(levels),
+            "scheduled": len(levels) - len(unscheduled),
+            "unscheduled": len(unscheduled),
+        },
+    }
+
+
+class LevelSlotUpdate(BaseModel):
+    level_id: str
+    days_to_add: Optional[List[str]] = None
+    days_to_remove: Optional[List[str]] = None
+    hour: Optional[int] = None
+    activity_id: Optional[str] = None
+
+
+@router.post("/schedule-slot")
+async def update_level_schedule_slot(
+    payload: LevelSlotUpdate,
+    current_user: dict = Depends(get_current_user),
+):
+    """Update a single level's (days, hour) placement in the weekly schedule.
+
+    - `days_to_add` / `days_to_remove`: weekday ids merged into level.days[].
+    - `hour`: 1..12, written as `time_slot = "الساعة <h>"`.
+    - `activity_id`: only set if explicitly provided (optional tag).
+
+    Branch-scoped: non-admins can only edit levels in their own branch
+    (or shared branchless levels). Foreign-branch IDs return 403.
+    """
+    require_branch_scope(current_user)
+
+    user_branch = None
+    if not (current_user or {}).get("is_admin", False):
+        user_branch = (current_user or {}).get("branch_id")
+
+    filter_doc = {"id": payload.level_id}
+    if user_branch:
+        filter_doc["$or"] = [
+            {"branch_id": user_branch},
+            {"branch_id": None},
+            {"branch_id": {"$exists": False}},
+        ]
+
+    lvl = await db.levels.find_one(filter_doc, {"_id": 0})
+    if not lvl:
+        exists = await db.levels.find_one({"id": payload.level_id}, {"_id": 0, "id": 1})
+        if exists:
+            raise HTTPException(status_code=403, detail="forbidden")
+        raise HTTPException(status_code=404, detail="Level not found")
+
+    valid_days = ["saturday", "sunday", "monday", "tuesday", "wednesday", "thursday", "friday"]
+    cur_set = set(lvl.get("days") or [])
+    for d in (payload.days_to_remove or []):
+        cur_set.discard(d)
+    for d in (payload.days_to_add or []):
+        if d in valid_days:
+            cur_set.add(d)
+    new_days = [d for d in valid_days if d in cur_set]
+
+    update = {"days": new_days if new_days else None}
+
+    if payload.hour is not None:
+        h = int(payload.hour)
+        if h < 1 or h > 12:
+            raise HTTPException(status_code=400, detail="hour must be between 1 and 12")
+        update["time_slot"] = f"الساعة {h}"
+
+    if payload.activity_id is not None:
+        update["activity_id"] = payload.activity_id or None
+
+    # Re-apply the same branch-scoped filter on the write so a non-admin
+    # can't race a foreign-branch level into their scope between the read
+    # check above and the update (mirrors the cleanup-bulk safety pattern).
+    await db.levels.update_one(filter_doc, {"$set": update})
+    cache_invalidate("levels:")
+
+    refreshed = await db.levels.find_one({"id": payload.level_id}, {"_id": 0})
+    if refreshed:
+        refreshed["hour"] = _extract_hour_12(
+            refreshed.get("time_slot") or refreshed.get("activity_name") or ""
+        )
+    return {"status": "ok", "level": refreshed}
+
+
 @router.post("/auto-assign")
 async def auto_assign_members_to_levels(
     dry_run: bool = True,
@@ -956,20 +1134,6 @@ async def auto_assign_members_to_levels(
 
     subs = _normalize_subs()
 
-    candidates_by_aid = {}
-    candidates_by_aname = {}
-    for lvl in levels:
-        aid = lvl.get("activity_id")
-        aname = (lvl.get("activity_name") or "").strip().lower()
-        if aid:
-            candidates_by_aid.setdefault(aid, []).append(lvl)
-        if aname:
-            candidates_by_aname.setdefault(aname, []).append(lvl)
-
-    for bucket in (candidates_by_aid, candidates_by_aname):
-        for k in bucket:
-            bucket[k].sort(key=lambda l: (l.get("level_number") or 999))
-
     capacity_used = {l["id"]: len(l.get("members") or []) for l in levels}
     capacity_max = {l["id"]: (int(l.get("capacity")) if l.get("capacity") else None) for l in levels}
     pending_writes_per_member = {}
@@ -991,19 +1155,15 @@ async def auto_assign_members_to_levels(
 
     def _level_matches_subscription(lvl, _aid, _aname_l, member_branch_id, _sched_days, _sched):
         """Verify a given level is a valid placement for this subscription.
-        Used both for picking a candidate and for validating an "already
-        assigned" subscription so we don't lazily report a stale/wrong link
-        as already_correct."""
+        Branch + day overlap + hour are REQUIRED. Activity is intentionally
+        NOT checked here — many real slots host multiple activities at the
+        same (day, hour), and the same activity name appears at many hours,
+        so activity is treated only as a soft tiebreaker during candidate
+        ranking. This helper is also used to re-validate "already assigned"
+        subscriptions, so dropping the activity gate prevents legacy levels
+        with missing activity metadata from being flagged as stale."""
         if not lvl:
             return False
-        l_aid = lvl.get("activity_id") or ""
-        l_aname = (lvl.get("activity_name") or "").strip().lower()
-        if _aid and l_aid:
-            if l_aid != _aid:
-                return False
-        elif _aname_l and l_aname:
-            if l_aname != _aname_l:
-                return False
         if not _branches_compatible(lvl.get("branch_id"), member_branch_id):
             return False
         l_days = lvl.get("days") or []
@@ -1073,16 +1233,27 @@ async def auto_assign_members_to_levels(
             })
             continue
 
-        candidates = []
-        if aid and aid in candidates_by_aid:
-            candidates = list(candidates_by_aid[aid])
-        elif aname and aname_l in candidates_by_aname:
-            candidates = list(candidates_by_aname[aname_l])
+        # Candidate pool: every level in scope. Activity is no longer a hard
+        # filter — branch + day overlap + hour are the required signals.
+        # Activity match is folded into the ranking below as a tiebreaker so
+        # that, when several levels share the same (day, hour), the one
+        # tagged with this subscription's activity wins.
+        def _rank(lvl):
+            l_aid = lvl.get("activity_id") or ""
+            l_aname = (lvl.get("activity_name") or "").strip().lower()
+            activity_match = 0
+            if aid and l_aid and l_aid == aid:
+                activity_match = 2
+            elif aname_l and l_aname and l_aname == aname_l:
+                activity_match = 1
+            return (-activity_match, lvl.get("level_number") or 999)
+        candidates = sorted(levels, key=_rank)
 
         # Recovery from a previous partial commit: if the member is already
-        # listed in the .members[] of one of the candidate levels for this
-        # activity, skip — they're effectively already placed even though the
-        # activities[].level_id link is missing. This keeps reruns idempotent.
+        # listed in the .members[] of one of the candidate levels and that
+        # level still passes branch/day/hour, skip — they're effectively
+        # already placed even though the activities[].level_id link is
+        # missing. This keeps reruns idempotent.
         already_in_levels = member_levels_index.get(mid, set())
         recovered = None
         for lvl in candidates:
@@ -1108,8 +1279,8 @@ async def auto_assign_members_to_levels(
                 "activity_name": aname,
                 "schedule": sched,
                 "source": sub["source"],
-                "reason": "لا يوجد مستوى لهذا النشاط",
-                "reason_en": "No level exists for this activity",
+                "reason": "لا توجد مستويات بعد — استخدم \"جدولة المستويات\" أولاً",
+                "reason_en": "No levels exist yet — use the schedule builder first",
             })
             continue
 

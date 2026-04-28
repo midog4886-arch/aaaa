@@ -50,6 +50,8 @@ export const levelsAPI = {
     axios.post(`${API}/levels/auto-assign`, null, { params: { dry_run: dryRun, ...params } }),
   cleanupSuggestions: (params = {}) => axios.get(`${API}/levels/cleanup-suggestions`, { params }),
   cleanupBulk: (items) => axios.post(`${API}/levels/cleanup/bulk`, { items }),
+  scheduleSnapshot: (params = {}) => axios.get(`${API}/levels/schedule-snapshot`, { params }),
+  scheduleSlot: (payload) => axios.post(`${API}/levels/schedule-slot`, payload),
 };
 
 // Tournaments API

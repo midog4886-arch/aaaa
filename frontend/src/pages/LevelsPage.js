@@ -14,6 +14,7 @@ import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, Command
 import { levelsAPI, membersAPI, branchesAPI, activitiesAPI, attendanceAPI, coachesAPI } from '../services/api';
 import { toast } from 'sonner';
 import LevelsCleanupDialog from '../components/levels/LevelsCleanupDialog';
+import LevelsScheduleBuilderDialog from '../components/levels/LevelsScheduleBuilderDialog';
 import { 
   Plus, Edit, Trash2, Loader2, Layers, Users, Dumbbell, UserPlus, UserMinus, UserX, Search,
   ChevronDown, ChevronUp, ChevronRight, Clock, AlertTriangle, ArrowRight, ArrowLeft, Home,
@@ -124,6 +125,7 @@ export const LevelsPage = () => {
   const [autoAssignExpanded, setAutoAssignExpanded] = useState({});
   const [autoAssignShowUnmatched, setAutoAssignShowUnmatched] = useState(false);
   const [cleanupOpen, setCleanupOpen] = useState(false);
+  const [scheduleBuilderOpen, setScheduleBuilderOpen] = useState(false);
 
   const openAutoAssignDialog = async () => {
     setIsAutoAssignOpen(true);
@@ -1886,12 +1888,22 @@ ${slotTables}
                   </Button>
                   <Button
                     variant="outline"
+                    className="gap-2 border-blue-300 text-blue-700 hover:bg-blue-50"
+                    onClick={() => setScheduleBuilderOpen(true)}
+                    data-testid="open-levels-schedule-builder-btn"
+                  >
+                    <SlidersHorizontal className="w-4 h-4" />
+                    {t('جدولة المستويات', 'Schedule builder')}
+                  </Button>
+                  <Button
+                    variant="outline"
                     className="gap-2 border-amber-300 text-amber-700 hover:bg-amber-50"
                     onClick={() => setCleanupOpen(true)}
                     data-testid="open-levels-cleanup-btn"
+                    title={t('الأداة القديمة (تعديل النشاط لكل مستوى يدوياً)', 'Legacy tool (per-level activity editing)')}
                   >
-                    <SlidersHorizontal className="w-4 h-4" />
-                    {t('تنظيف بيانات المستويات', 'Clean up level data')}
+                    <SlidersHorizontal className="w-4 h-4 opacity-60" />
+                    {t('تنظيف يدوي (أداة قديمة)', 'Manual cleanup (legacy)')}
                   </Button>
                 </>
               )}
@@ -3482,6 +3494,14 @@ ${slotTables}
           onOpenChange={setCleanupOpen}
           branchFilter={selectedBranchId}
           onApplied={loadData}
+          t={t}
+        />
+        <LevelsScheduleBuilderDialog
+          open={scheduleBuilderOpen}
+          onOpenChange={setScheduleBuilderOpen}
+          branchFilter={selectedBranchId}
+          onApplied={loadData}
+          onLaunchAutoAssign={openAutoAssignDialog}
           t={t}
         />
       </div>
