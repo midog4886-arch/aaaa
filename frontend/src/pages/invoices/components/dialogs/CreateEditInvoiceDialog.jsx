@@ -357,7 +357,6 @@ export const CreateEditInvoiceDialog = ({
                               )}
                               {levelSelectorState[idx].step === 'level' && (
                                 <div className="p-2 space-y-1 max-h-48 overflow-y-auto">
-                                  {/* IIFE_PRIMARY_LEVEL_PICKER */}
                                   {(_grouped[levelSelectorState[idx].selectedActivity]?.[levelSelectorState[idx].selectedTime] || []).sort((a, b) => a.level_number - b.level_number).map(level => {
                                     const _days = item.training_days || [];
                                     const memberCount = (_days.length > 0 && (level.members_details || []).length > 0) ? Math.max(..._days.map(day => (level.members_details || []).filter(m => m.schedule && m.schedule.includes(day)).length), 0) : (level.members || []).length;
