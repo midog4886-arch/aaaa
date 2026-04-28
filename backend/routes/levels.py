@@ -1254,6 +1254,21 @@ async def auto_assign_members_to_levels(
     already_correct = []
     by_source = {"member_activities": 0, "invoices": 0, "registration_forms": 0}
 
+    # Levels without an hour cannot be picked under the post-Task-#177 matching
+    # rule (branch + day + hour all required). Surface them so the UI can prompt
+    # the admin to open the schedule builder and finish the setup.
+    levels_without_time_slot = [
+        {
+            "id": lvl.get("id"),
+            "level_number": lvl.get("level_number"),
+            "activity_name": lvl.get("activity_name") or "",
+            "custom_name": lvl.get("custom_name") or "",
+            "branch_id": lvl.get("branch_id"),
+        }
+        for lvl in levels
+        if not (lvl.get("time_slot") or "").strip()
+    ]
+
     levels_by_id = {l["id"]: l for l in levels}
     # Reverse index: which levels each member is already a direct member of.
     # Used to mark (member, activity) pairs as already_correct even when the
@@ -1324,6 +1339,7 @@ async def auto_assign_members_to_levels(
                 "source": sub["source"],
                 "reason": "المستوى الحالي لا يطابق النشاط/التوقيت — يتطلب مراجعة يدوية",
                 "reason_en": "Existing level no longer matches activity/schedule — needs manual review",
+                "reason_key": "stale_link",
             })
             continue
 
@@ -1341,6 +1357,7 @@ async def auto_assign_members_to_levels(
                 "source": sub["source"],
                 "reason": "لا يوجد جدول للنشاط",
                 "reason_en": "No schedule on subscription",
+                "reason_key": "no_schedule",
             })
             continue
 
@@ -1392,6 +1409,7 @@ async def auto_assign_members_to_levels(
                 "source": sub["source"],
                 "reason": "لا توجد مستويات بعد — استخدم \"جدولة المستويات\" أولاً",
                 "reason_en": "No levels exist yet — use the schedule builder first",
+                "reason_key": "no_levels",
             })
             continue
 
@@ -1410,6 +1428,7 @@ async def auto_assign_members_to_levels(
                 "source": sub["source"],
                 "reason": "تعذّر قراءة أيام الجدول",
                 "reason_en": "Could not parse schedule days",
+                "reason_key": "unparseable_days",
             })
             continue
 
@@ -1454,6 +1473,7 @@ async def auto_assign_members_to_levels(
                 "source": sub["source"],
                 "reason": ar,
                 "reason_en": en,
+                "reason_key": chosen_reason or "no_match",
             })
             continue
 
@@ -1480,6 +1500,13 @@ async def auto_assign_members_to_levels(
         key = w["activity_name"] or "(غير مسمى)"
         by_activity.setdefault(key, []).append(w)
 
+    # Aggregate unmatched by reason_key so the UI can call out the dominant
+    # cause (especially "time_mismatch" — the post-Task-#177 hour rule).
+    by_reason = {}
+    for u in unmatched:
+        rk = u.get("reason_key") or "no_match"
+        by_reason[rk] = by_reason.get(rk, 0) + 1
+
     response = {
         "dry_run": dry_run,
         "totals": {
@@ -1489,14 +1516,17 @@ async def auto_assign_members_to_levels(
             "candidate_levels": len(levels),
             "members_scanned": len(members),
             "subscriptions_scanned": len(subs),
+            "levels_without_time_slot": len(levels_without_time_slot),
         },
         "by_source": by_source,
+        "by_reason": by_reason,
         "by_activity": [
             {"activity_name": k, "count": len(v), "assignments": v}
             for k, v in sorted(by_activity.items(), key=lambda kv: (-len(kv[1]), kv[0]))
         ],
         "unmatched": unmatched,
         "already_correct_count": len(already_correct),
+        "levels_without_time_slot": levels_without_time_slot,
     }
 
     if dry_run or not would_assign:

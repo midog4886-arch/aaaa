@@ -33,7 +33,7 @@ const arDay = (id) => (DAYS.find((d) => d.id === id) || {}).ar || id;
 const arHour = (h) => `الساعة ${h}`;
 
 export default function LevelsScheduleBuilderDialog({
-  open, onOpenChange, branchFilter, onApplied, onLaunchAutoAssign, t,
+  open, onOpenChange, branchFilter, onApplied, onLaunchAutoAssign, focusLevelId, t,
 }) {
   const tt = t || ((ar) => ar);
   const [loading, setLoading] = useState(false);
@@ -47,6 +47,10 @@ export default function LevelsScheduleBuilderDialog({
   const [addPickerSearch, setAddPickerSearch] = useState({});
   const [movePickerOpen, setMovePickerOpen] = useState({});
   const [editPickerOpen, setEditPickerOpen] = useState({});
+  // Visual highlight for a level the caller asked to focus (e.g. opened from
+  // a "بحاجة لجدولة" badge). Cleared after a short flash so it doesn't
+  // permanently mark the row.
+  const [highlightLevelId, setHighlightLevelId] = useState('');
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -70,8 +74,41 @@ export default function LevelsScheduleBuilderDialog({
       setNewHourInput({});
       setAddPickerOpen({});
       setMovePickerOpen({});
+      setHighlightLevelId(focusLevelId || '');
     }
-  }, [open, load]);
+  }, [open, load, focusLevelId]);
+
+  // Once data has loaded and we have a focus target, switch to the day where
+  // it lives, scroll the row into view, and clear the highlight after a flash.
+  useEffect(() => {
+    if (!open || !focusLevelId || !data) return;
+    let foundDay = '';
+    for (const d of DAYS) {
+      const hours = data.days?.[d.id]?.hours || {};
+      for (const arr of Object.values(hours)) {
+        if (arr.some((l) => l.id === focusLevelId)) {
+          foundDay = d.id;
+          break;
+        }
+      }
+      if (foundDay) break;
+    }
+    if (foundDay) {
+      setActiveDay(foundDay);
+    }
+    // Scroll to the element after the day tab content is rendered.
+    const scrollTimer = setTimeout(() => {
+      const el = document.querySelector(`[data-level-row="${focusLevelId}"]`);
+      if (el && typeof el.scrollIntoView === 'function') {
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+    }, 250);
+    const clearTimer = setTimeout(() => setHighlightLevelId(''), 4000);
+    return () => {
+      clearTimeout(scrollTimer);
+      clearTimeout(clearTimer);
+    };
+  }, [open, focusLevelId, data]);
 
   const allLevels = useMemo(() => {
     if (!data) return [];
@@ -266,7 +303,12 @@ export default function LevelsScheduleBuilderDialog({
           ) : levels.map((lvl) => (
             <div
               key={lvl.id}
-              className="flex items-center justify-between gap-2 p-2 border rounded bg-gray-50/60"
+              data-level-row={lvl.id}
+              className={`flex items-center justify-between gap-2 p-2 border rounded transition-colors ${
+                highlightLevelId === lvl.id
+                  ? 'bg-amber-50 border-amber-400 ring-2 ring-amber-300 animate-pulse'
+                  : 'bg-gray-50/60'
+              }`}
             >
               <div className="min-w-0 flex-1">
                 <div className="font-medium text-gray-900 truncate">
@@ -456,9 +498,28 @@ export default function LevelsScheduleBuilderDialog({
             </Tabs>
 
             {(data.unscheduled || []).length > 0 && (
-              <div className="border-t pt-2 text-xs text-gray-500">
-                {tt('مستويات بدون جدولة (بدون يوم أو ساعة):', 'Unscheduled levels (no day or hour):')}{' '}
-                {(data.unscheduled || []).length}
+              <div className="border-t pt-2 mt-1">
+                <div className="text-xs text-amber-700 font-medium mb-1 flex items-center gap-1">
+                  <AlertTriangle className="w-3.5 h-3.5" />
+                  {tt('مستويات بحاجة لجدولة (بدون يوم أو ساعة):', 'Levels needing scheduling (no day or hour):')}{' '}
+                  {(data.unscheduled || []).length}
+                </div>
+                <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto">
+                  {(data.unscheduled || []).map((lvl) => (
+                    <span
+                      key={lvl.id}
+                      data-level-row={lvl.id}
+                      className={`text-xs px-2 py-1 rounded border ${
+                        highlightLevelId === lvl.id
+                          ? 'bg-amber-100 border-amber-400 ring-2 ring-amber-300 animate-pulse text-amber-900'
+                          : 'bg-amber-50 border-amber-200 text-amber-800'
+                      }`}
+                    >
+                      {tt('المستوى', 'Level')} {lvl.level_number}
+                      {lvl.activity_name ? ` — ${lvl.activity_name}` : ''}
+                    </span>
+                  ))}
+                </div>
               </div>
             )}
           </>

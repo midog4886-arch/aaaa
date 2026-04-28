@@ -136,6 +136,15 @@ export const LevelsPage = () => {
   const [autoAssignShowUnmatched, setAutoAssignShowUnmatched] = useState(false);
   const [cleanupOpen, setCleanupOpen] = useState(false);
   const [scheduleBuilderOpen, setScheduleBuilderOpen] = useState(false);
+  // When opening the schedule builder from a level card's "needs scheduling"
+  // badge, pass the target level id so the dialog can scroll to it and flash
+  // a highlight. Cleared when the dialog closes.
+  const [scheduleBuilderFocusLevelId, setScheduleBuilderFocusLevelId] = useState('');
+
+  const openScheduleBuilderForLevel = (levelId) => {
+    setScheduleBuilderFocusLevelId(levelId || '');
+    setScheduleBuilderOpen(true);
+  };
 
   const openAutoAssignDialog = async () => {
     setIsAutoAssignOpen(true);
@@ -1716,7 +1725,36 @@ ${slotTables}
             </Button>
           </div>
         </div>
-        
+
+        {/* "Needs scheduling" alert: a level without a time_slot won't be
+            picked by the post-Task-#177 auto-assign rule, so surface a quick
+            shortcut into the schedule builder pre-focused on this level. */}
+        {!(originalLevel.time_slot || '').trim() && (
+          <div className="px-3 pt-3">
+            <div
+              className="flex items-center justify-between gap-2 p-2 rounded-lg border border-amber-300 bg-amber-50 text-amber-800"
+              data-testid={`needs-scheduling-${originalLevel.id}`}
+            >
+              <div className="flex items-center gap-2 min-w-0">
+                <AlertTriangle className="w-4 h-4 shrink-0" />
+                <span className="text-xs font-medium truncate">
+                  {t('بحاجة لجدولة — لن يُختار في الإسناد التلقائي', 'Needs scheduling — won\'t be picked by auto-assign')}
+                </span>
+              </div>
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-7 px-2 text-xs border-amber-400 text-amber-800 hover:bg-amber-100 shrink-0"
+                onClick={() => openScheduleBuilderForLevel(originalLevel.id)}
+                data-testid={`open-scheduler-${originalLevel.id}`}
+              >
+                <Clock className="w-3 h-3 me-1" />
+                {t('افتح أداة الجدولة', 'Open scheduler')}
+              </Button>
+            </div>
+          </div>
+        )}
+
         {/* Level Content */}
         <div className="p-3">
           {/* Capacity Bar */}
@@ -3407,6 +3445,67 @@ ${slotTables}
                   )}
                 </p>
 
+                {/* Banner: levels without a time_slot can't be picked by the
+                    post-Task-#177 matching rule. Offer a one-click jump into
+                    the schedule builder so the admin can finish the setup. */}
+                {(autoAssignPlan.levels_without_time_slot || []).length > 0 && (
+                  <div
+                    className="p-3 rounded-lg border border-amber-300 bg-amber-50 flex items-start gap-3"
+                    data-testid="levels-need-scheduling-banner"
+                  >
+                    <AlertTriangle className="w-5 h-5 text-amber-600 mt-0.5 shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <div className="font-semibold text-amber-800 text-sm">
+                        {t(
+                          `يوجد ${autoAssignPlan.levels_without_time_slot.length} مستوى بدون ساعة محددة`,
+                          `${autoAssignPlan.levels_without_time_slot.length} level(s) without an hour set`
+                        )}
+                      </div>
+                      <div className="text-xs text-amber-700 mt-0.5">
+                        {t(
+                          'هذه المستويات لن تُختار من الإسناد التلقائي حتى تُحدّد لها ساعة. افتح أداة الجدولة لإكمال الإعداد.',
+                          'These levels will be skipped by auto-assign until an hour is set. Open the schedule builder to finish the setup.'
+                        )}
+                      </div>
+                      <div className="mt-2 flex flex-wrap gap-1.5">
+                        {(autoAssignPlan.levels_without_time_slot || []).slice(0, 6).map((lvl) => (
+                          <button
+                            key={lvl.id}
+                            type="button"
+                            onClick={() => {
+                              setIsAutoAssignOpen(false);
+                              openScheduleBuilderForLevel(lvl.id);
+                            }}
+                            className="text-[11px] px-2 py-1 rounded border border-amber-300 bg-white text-amber-800 hover:bg-amber-100"
+                          >
+                            {t('المستوى', 'Level')} {lvl.level_number}
+                            {lvl.activity_name ? ` — ${lvl.activity_name}` : ''}
+                          </button>
+                        ))}
+                        {(autoAssignPlan.levels_without_time_slot || []).length > 6 && (
+                          <span className="text-[11px] px-2 py-1 text-amber-700">
+                            +{autoAssignPlan.levels_without_time_slot.length - 6}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    <Button
+                      size="sm"
+                      className="bg-amber-600 hover:bg-amber-700 text-white gap-1 shrink-0"
+                      onClick={() => {
+                        setIsAutoAssignOpen(false);
+                        openScheduleBuilderForLevel(
+                          (autoAssignPlan.levels_without_time_slot || [])[0]?.id || ''
+                        );
+                      }}
+                      data-testid="open-scheduler-from-auto-assign"
+                    >
+                      <Clock className="w-4 h-4" />
+                      {t('افتح أداة الجدولة الآن', 'Open scheduler now')}
+                    </Button>
+                  </div>
+                )}
+
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                   <div className="p-3 rounded-lg bg-emerald-50 border border-emerald-200 text-center">
                     <div className="text-2xl font-bold text-emerald-700">{autoAssignPlan.totals?.would_assign || 0}</div>
@@ -3486,6 +3585,59 @@ ${slotTables}
 
                 {(autoAssignPlan.unmatched || []).length > 0 && (
                   <div className="border border-amber-200 rounded-lg overflow-hidden">
+                    {/* Reason breakdown — surfaces the dominant cause for
+                        unmatched members so admins know whether to fix
+                        schedules, hours, capacities, etc. The "no matching
+                        hour" counter is highlighted because it's the new
+                        post-Task-#177 strict rule. */}
+                    {autoAssignPlan.by_reason && Object.keys(autoAssignPlan.by_reason).length > 0 && (
+                      <div className="px-4 py-2 bg-amber-50/60 border-b border-amber-200 flex flex-wrap gap-2">
+                        {(() => {
+                          const labels = {
+                            time_mismatch: t('لم يجد ساعة مطابقة', 'No matching hour'),
+                            branch_mismatch: t('فرع غير مطابق', 'Branch mismatch'),
+                            days_mismatch: t('أيام غير مطابقة', 'Days mismatch'),
+                            level_full: t('مستويات ممتلئة', 'Levels full'),
+                            no_levels: t('لا توجد مستويات', 'No levels'),
+                            no_schedule: t('بدون جدول', 'No schedule'),
+                            unparseable_days: t('تعذّر قراءة الأيام', 'Could not parse days'),
+                            stale_link: t('رابط مستوى قديم', 'Stale level link'),
+                            no_match: t('بدون تطابق', 'No match'),
+                          };
+                          // Sort with time_mismatch first so the "صار المستوى
+                          // بدون time_slot لا يُختار" cause is the most visible.
+                          const entries = Object.entries(autoAssignPlan.by_reason).sort((a, b) => {
+                            if (a[0] === 'time_mismatch') return -1;
+                            if (b[0] === 'time_mismatch') return 1;
+                            return b[1] - a[1];
+                          });
+                          return entries.map(([key, count]) => {
+                            const isTime = key === 'time_mismatch';
+                            return (
+                              <span
+                                key={key}
+                                className={`text-xs px-2 py-1 rounded-full border ${
+                                  isTime
+                                    ? 'bg-amber-200 border-amber-400 text-amber-900 font-semibold'
+                                    : 'bg-white border-amber-200 text-amber-800'
+                                }`}
+                                data-testid={`unmatched-reason-${key}`}
+                              >
+                                {labels[key] || key}: {count}
+                              </span>
+                            );
+                          });
+                        })()}
+                        {(autoAssignPlan.by_reason.time_mismatch || 0) > 0 && (
+                          <span className="text-[11px] text-amber-700 w-full mt-1">
+                            {t(
+                              'تذكير: المستويات بدون ساعة لن تُختار من الإسناد التلقائي.',
+                              'Reminder: levels without an hour will not be picked by auto-assign.'
+                            )}
+                          </span>
+                        )}
+                      </div>
+                    )}
                     <button
                       type="button"
                       className="w-full flex items-center justify-between px-4 py-2 bg-amber-50 hover:bg-amber-100 text-start"
@@ -3624,10 +3776,14 @@ ${slotTables}
         />
         <LevelsScheduleBuilderDialog
           open={scheduleBuilderOpen}
-          onOpenChange={setScheduleBuilderOpen}
+          onOpenChange={(o) => {
+            setScheduleBuilderOpen(o);
+            if (!o) setScheduleBuilderFocusLevelId('');
+          }}
           branchFilter={selectedBranchId}
           onApplied={loadData}
           onLaunchAutoAssign={openAutoAssignDialog}
+          focusLevelId={scheduleBuilderFocusLevelId}
           t={t}
         />
       </div>
