@@ -126,6 +126,7 @@ export const LevelsPage = () => {
   const [unassignedData, setUnassignedData] = useState([]);
   const [unassignedLoading, setUnassignedLoading] = useState(false);
   const [unassignedSearch, setUnassignedSearch] = useState('');
+  const [unassignedTab, setUnassignedTab] = useState('pending');
   const [recentlyAssigned, setRecentlyAssigned] = useState({});
   const [unassignedActivityFilter, setUnassignedActivityFilter] = useState('');
   const [unassignedCount, setUnassignedCount] = useState(0);
@@ -260,6 +261,7 @@ export const LevelsPage = () => {
     setIsUnassignedDialogOpen(true);
     setUnassignedSearch('');
     setUnassignedActivityFilter('');
+    setUnassignedTab('pending');
     setRecentlyAssigned({});
     loadUnassigned();
   };
