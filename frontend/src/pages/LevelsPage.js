@@ -29,6 +29,50 @@ const _actKey = (act) => act?.activity_id || act?.activity_name || '';
 const _recentKey = (memberId, act) =>
   `${memberId}::${_actKey(act)}::${act?.schedule || ''}::${act?.end_date || ''}`;
 
+// Pure helper that returns levels matching the given (member, activity)
+// using the same logic as the in-dialog assign picker:
+//   1) Exact activity_name match (schedule is encoded in the level name).
+//   2) Fallback by activity-group keywords + matching time slot.
+// Branch is enforced when both sides expose one.
+const _matchingLevelsFor = (member, act, levels, activityGroups) => {
+  if (!act || !Array.isArray(levels) || levels.length === 0) return [];
+  const actName = act.activity_name || '';
+  const actSchedule = act.schedule || '';
+  const memberBranch = member?.branch_id || null;
+  const branchOk = (l) => !memberBranch || !l.branch_id || l.branch_id === memberBranch;
+
+  const exact = levels.filter(l => branchOk(l) && (l.activity_name || '') === actName);
+  if (exact.length > 0) {
+    return exact.slice().sort((a, b) => (a.level_number || 0) - (b.level_number || 0));
+  }
+
+  const norm = (s) => (s || '').replace(/\s+/g, ' ').trim();
+  const targetSlot = norm(actSchedule);
+  return levels
+    .filter(l => {
+      if (!branchOk(l)) return false;
+      const ln = l.activity_name || '';
+      let groupMatch = false;
+      for (const g of activityGroups) {
+        if (g.keywords.some(k => actName.includes(k)) && g.keywords.some(k => ln.includes(k))) {
+          groupMatch = true; break;
+        }
+      }
+      if (!groupMatch) return false;
+      const lvlSlot = norm(l.time_slot || l.schedule || '');
+      if (targetSlot && lvlSlot && targetSlot !== lvlSlot) return false;
+      return true;
+    })
+    .sort((a, b) => (a.level_number || 0) - (b.level_number || 0));
+};
+
+const _formatLevelLabel = (lvl) => {
+  if (!lvl) return '';
+  const display = lvl.custom_name || lvl.name || lvl.activity_name || '';
+  const num = lvl.level_number ? `#${lvl.level_number}` : '';
+  return display ? `${display} ${num}`.trim() : `المستوى ${lvl.level_number || ''}`.trim();
+};
+
 // Main activity types with Arabic names
 const MAIN_ACTIVITIES = [
   { id: 'swimming', name_ar: 'السباحة', name_en: 'Swimming', icon: '🏊', color: 'bg-blue-500', maxCapacity: 6 },
@@ -381,6 +425,22 @@ export const LevelsPage = () => {
   }, [unassignedData, recentlyAssigned]);
 
   const recentTabCount = Object.keys(recentlyAssigned).length;
+
+  // Pre-compute the suggested level (and any siblings) for every visible
+  // unassigned activity row. We build a single Map keyed by recentKey so
+  // the card render loop is O(1) per row. Recomputed only when the data
+  // changes, not on every keystroke / search-input update.
+  const suggestedLevelsByRow = useMemo(() => {
+    const out = new Map();
+    if (!Array.isArray(levels) || levels.length === 0) return out;
+    unassignedData.forEach(m => {
+      (m.unassigned_activities || []).forEach(a => {
+        const k = _recentKey(m.id, a);
+        out.set(k, _matchingLevelsFor(m, a, levels, ACTIVITY_GROUPS));
+      });
+    });
+    return out;
+  }, [unassignedData, levels]);
 
   // Available levels matching the assignTarget activity (branch-scoped).
   // Strategy: prefer EXACT activity_name match (which already encodes the
@@ -3130,15 +3190,20 @@ ${slotTables}
                               {(member.unassigned_activities || [])
                                 .filter(a => !unassignedActivityFilter || matchesGroup(a.activity_name, unassignedActivityFilter))
                                 .map((act, idx) => {
-                                  const recentEntry = recentlyAssigned[_recentKey(member.id, act)];
+                                  const rowKey = _recentKey(member.id, act);
+                                  const recentEntry = recentlyAssigned[rowKey];
                                   const isAssigned = !!recentEntry;
+                                  const matches = suggestedLevelsByRow.get(rowKey) || [];
+                                  const primaryMatch = matches[0];
+                                  const extraMatches = Math.max(0, matches.length - 1);
                                   const containerCls = isAssigned
                                     ? 'flex items-center justify-between gap-2 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2'
                                     : 'flex items-center justify-between gap-2 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2';
                                   const titleCls = isAssigned ? 'text-sm font-medium text-emerald-900 truncate' : 'text-sm font-medium text-amber-900 truncate';
                                   const subCls = isAssigned ? 'text-xs text-emerald-700 truncate' : 'text-xs text-amber-700 truncate';
+                                  const slotLabel = primaryMatch ? (primaryMatch.time_slot || primaryMatch.schedule || '') : '';
                                   return (
-                                    <div key={idx} className={containerCls}>
+                                    <div key={rowKey} className={containerCls}>
                                       <div className="min-w-0 flex-1">
                                         <p className={titleCls}>
                                           {act.activity_name || t('نشاط', 'Activity')}
@@ -3152,6 +3217,27 @@ ${slotTables}
                                             </span>
                                           )}
                                         </p>
+                                        {!isAssigned && (
+                                          <p className="text-xs mt-1 truncate" data-testid={`suggested-level-${member.id}-${idx}`}>
+                                            {primaryMatch ? (
+                                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-100 text-blue-800 border border-blue-200 font-medium">
+                                                <Layers className="w-3 h-3" />
+                                                {t('المستوى المقترح', 'Suggested level')}: {_formatLevelLabel(primaryMatch)}
+                                                {slotLabel && (
+                                                  <span className="text-blue-600 font-normal">• {slotLabel}</span>
+                                                )}
+                                                {extraMatches > 0 && (
+                                                  <span className="text-blue-600 font-normal">+{extraMatches}</span>
+                                                )}
+                                              </span>
+                                            ) : (
+                                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-gray-100 text-gray-700 border border-gray-200">
+                                                <AlertTriangle className="w-3 h-3" />
+                                                {t('لا يوجد مستوى مطابق — أنشئ مستوى أو عيِّن يدوياً', 'No matching level — create one or assign manually')}
+                                              </span>
+                                            )}
+                                          </p>
+                                        )}
                                       </div>
                                       {isAssigned ? (
                                         <Button
