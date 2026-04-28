@@ -29,43 +29,6 @@ const _actKey = (act) => act?.activity_id || act?.activity_name || '';
 const _recentKey = (memberId, act) =>
   `${memberId}::${_actKey(act)}::${act?.schedule || ''}::${act?.end_date || ''}`;
 
-// Pure helper that returns levels matching the given (member, activity)
-// using the same logic as the in-dialog assign picker:
-//   1) Exact activity_name match (schedule is encoded in the level name).
-//   2) Fallback by activity-group keywords + matching time slot.
-// Branch is enforced when both sides expose one.
-const _matchingLevelsFor = (member, act, levels, activityGroups) => {
-  if (!act || !Array.isArray(levels) || levels.length === 0) return [];
-  const actName = act.activity_name || '';
-  const actSchedule = act.schedule || '';
-  const memberBranch = member?.branch_id || null;
-  const branchOk = (l) => !memberBranch || !l.branch_id || l.branch_id === memberBranch;
-
-  const exact = levels.filter(l => branchOk(l) && (l.activity_name || '') === actName);
-  if (exact.length > 0) {
-    return exact.slice().sort((a, b) => (a.level_number || 0) - (b.level_number || 0));
-  }
-
-  const norm = (s) => (s || '').replace(/\s+/g, ' ').trim();
-  const targetSlot = norm(actSchedule);
-  return levels
-    .filter(l => {
-      if (!branchOk(l)) return false;
-      const ln = l.activity_name || '';
-      let groupMatch = false;
-      for (const g of activityGroups) {
-        if (g.keywords.some(k => actName.includes(k)) && g.keywords.some(k => ln.includes(k))) {
-          groupMatch = true; break;
-        }
-      }
-      if (!groupMatch) return false;
-      const lvlSlot = norm(l.time_slot || l.schedule || '');
-      if (targetSlot && lvlSlot && targetSlot !== lvlSlot) return false;
-      return true;
-    })
-    .sort((a, b) => (a.level_number || 0) - (b.level_number || 0));
-};
-
 const _formatLevelLabel = (lvl) => {
   if (!lvl) return '';
   const display = lvl.custom_name || lvl.name || lvl.activity_name || '';
@@ -332,51 +295,61 @@ export const LevelsPage = () => {
     }
   };
 
+  const _doAssign = async (member, activity, level) => {
+    await levelsAPI.addMember(level.id, member.id);
+    const key = _recentKey(member.id, activity);
+    const levelName = level.activity_name
+      || level.custom_name
+      || `${t('المستوى', 'Level')} ${level.level_number}`;
+    const entry = {
+      level_id: level.id,
+      level_name: levelName,
+      level_number: level.level_number,
+      member,
+      activity,
+      assigned_at: Date.now(),
+    };
+    setRecentlyAssigned(prev => ({ ...prev, [key]: entry }));
+    loadData();
+    loadUnassignedCount();
+    toast.success(
+      t(
+        `تم تعيين ${member.name_ar || member.name} إلى "${levelName}"`,
+        `${member.name_ar || member.name} assigned to "${levelName}"`
+      ),
+      {
+        duration: 7000,
+        action: {
+          label: t('تراجع', 'Undo'),
+          onClick: () => undoAssignment(key, entry),
+        },
+      }
+    );
+  };
+
   const handleAssignToLevel = async (level) => {
     if (!assignTarget) return;
     setAssigning(true);
     try {
-      await levelsAPI.addMember(level.id, assignTarget.member.id);
-      const member = assignTarget.member;
-      const activity = assignTarget.activity;
-      const key = _recentKey(member.id, activity);
-      const levelName = level.activity_name
-        || level.custom_name
-        || `${t('المستوى', 'Level')} ${level.level_number}`;
-      const entry = {
-        level_id: level.id,
-        level_name: levelName,
-        level_number: level.level_number,
-        member,
-        activity,
-        assigned_at: Date.now(),
-      };
-      // Track this assignment locally so the user can either tap the
-      // toast's "تراجع" button or jump to the "معيَّنون مؤخراً" tab and
-      // remove it. We deliberately keep the activity row in the local
-      // unassigned list (instead of filtering it out) so the same card
-      // can render a red "إزالة من المستوى" toggle in place of the
-      // orange "تعيين لمستوى" button.
-      setRecentlyAssigned(prev => ({ ...prev, [key]: entry }));
+      await _doAssign(assignTarget.member, assignTarget.activity, level);
       setAssignPickerOpen(false);
       setAssignTarget(null);
-      loadData();
-      loadUnassignedCount();
-      toast.success(
-        t(
-          `تم تعيين ${member.name_ar || member.name} إلى "${levelName}"`,
-          `${member.name_ar || member.name} assigned to "${levelName}"`
-        ),
-        {
-          duration: 7000,
-          action: {
-            label: t('تراجع', 'Undo'),
-            // Pass the entry directly so the toast click is not affected
-            // by the stale-closure trap on `recentlyAssigned`.
-            onClick: () => undoAssignment(key, entry),
-          },
-        }
-      );
+    } catch (e) {
+      const msg = e.response?.data?.detail || '';
+      toast.error(msg || t('فشل التعيين', 'Assignment failed'));
+    } finally {
+      setAssigning(false);
+    }
+  };
+
+  // One-click confirmation flow: assign the member directly to the level
+  // that was already recorded on their invoice, without opening the
+  // picker dialog. Used by the "تأكيد التعيين" button on each card.
+  const confirmInvoiceAssignment = async (member, activity, level) => {
+    if (!member || !activity || !level) return;
+    setAssigning(true);
+    try {
+      await _doAssign(member, activity, level);
     } catch (e) {
       const msg = e.response?.data?.detail || '';
       toast.error(msg || t('فشل التعيين', 'Assignment failed'));
@@ -426,17 +399,28 @@ export const LevelsPage = () => {
 
   const recentTabCount = Object.keys(recentlyAssigned).length;
 
-  // Pre-compute the suggested level (and any siblings) for every visible
-  // unassigned activity row. We build a single Map keyed by recentKey so
-  // the card render loop is O(1) per row. Recomputed only when the data
-  // changes, not on every keystroke / search-input update.
-  const suggestedLevelsByRow = useMemo(() => {
+  // For each visible unassigned row, look up the level that was recorded
+  // on the member's invoice (enriched by the backend) and pair it with
+  // the live level object from the levels collection. The picker is
+  // bypassed entirely when the invoice level still exists; the operator
+  // just confirms in one click.
+  const invoiceLevelByRow = useMemo(() => {
     const out = new Map();
-    if (!Array.isArray(levels) || levels.length === 0) return out;
+    const levelById = new Map((levels || []).map(l => [l.id, l]));
     unassignedData.forEach(m => {
       (m.unassigned_activities || []).forEach(a => {
         const k = _recentKey(m.id, a);
-        out.set(k, _matchingLevelsFor(m, a, levels, ACTIVITY_GROUPS));
+        const lid = a.invoice_level_id || '';
+        const lname = a.invoice_level_name || '';
+        if (!lid && !lname) {
+          out.set(k, { hasInvoiceLevel: false, level: null, level_name: '' });
+          return;
+        }
+        out.set(k, {
+          hasInvoiceLevel: true,
+          level: lid ? (levelById.get(lid) || null) : null,
+          level_name: lname,
+        });
       });
     });
     return out;
@@ -3193,15 +3177,15 @@ ${slotTables}
                                   const rowKey = _recentKey(member.id, act);
                                   const recentEntry = recentlyAssigned[rowKey];
                                   const isAssigned = !!recentEntry;
-                                  const matches = suggestedLevelsByRow.get(rowKey) || [];
-                                  const primaryMatch = matches[0];
-                                  const extraMatches = Math.max(0, matches.length - 1);
+                                  const info = !isAssigned
+                                    ? (invoiceLevelByRow.get(rowKey) || { hasInvoiceLevel: false, level: null, level_name: '' })
+                                    : null;
+                                  const canConfirm = !!(info && info.hasInvoiceLevel && info.level);
                                   const containerCls = isAssigned
                                     ? 'flex items-center justify-between gap-2 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2'
                                     : 'flex items-center justify-between gap-2 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2';
                                   const titleCls = isAssigned ? 'text-sm font-medium text-emerald-900 truncate' : 'text-sm font-medium text-amber-900 truncate';
                                   const subCls = isAssigned ? 'text-xs text-emerald-700 truncate' : 'text-xs text-amber-700 truncate';
-                                  const slotLabel = primaryMatch ? (primaryMatch.time_slot || primaryMatch.schedule || '') : '';
                                   return (
                                     <div key={rowKey} className={containerCls}>
                                       <div className="min-w-0 flex-1">
@@ -3218,22 +3202,24 @@ ${slotTables}
                                           )}
                                         </p>
                                         {!isAssigned && (
-                                          <p className="text-xs mt-1 truncate" data-testid={`suggested-level-${member.id}-${idx}`}>
-                                            {primaryMatch ? (
+                                          <p className="text-xs mt-1 truncate" data-testid={`invoice-level-${member.id}-${idx}`}>
+                                            {canConfirm ? (
                                               <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-100 text-blue-800 border border-blue-200 font-medium">
                                                 <Layers className="w-3 h-3" />
-                                                {t('المستوى المقترح', 'Suggested level')}: {_formatLevelLabel(primaryMatch)}
-                                                {slotLabel && (
-                                                  <span className="text-blue-600 font-normal">• {slotLabel}</span>
+                                                {t('المستوى من الفاتورة', 'Level from invoice')}: {_formatLevelLabel(info.level)}
+                                                {(info.level.time_slot || info.level.schedule) && (
+                                                  <span className="text-blue-600 font-normal">• {info.level.time_slot || info.level.schedule}</span>
                                                 )}
-                                                {extraMatches > 0 && (
-                                                  <span className="text-blue-600 font-normal">+{extraMatches}</span>
-                                                )}
+                                              </span>
+                                            ) : info.hasInvoiceLevel ? (
+                                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 border border-amber-300 font-medium">
+                                                <AlertTriangle className="w-3 h-3" />
+                                                {t('المستوى من الفاتورة', 'Level from invoice')}: {info.level_name || t('غير معروف', 'unknown')} — {t('غير موجود حالياً', 'no longer exists')}
                                               </span>
                                             ) : (
                                               <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-gray-100 text-gray-700 border border-gray-200">
                                                 <AlertTriangle className="w-3 h-3" />
-                                                {t('لا يوجد مستوى مطابق — أنشئ مستوى أو عيِّن يدوياً', 'No matching level — create one or assign manually')}
+                                                {t('لا يوجد مستوى مسجَّل في الفاتورة', 'No level recorded on invoice')}
                                               </span>
                                             )}
                                           </p>
@@ -3250,6 +3236,18 @@ ${slotTables}
                                         >
                                           <Undo2 className="w-3.5 h-3.5" />
                                           {t('إزالة من المستوى', 'Remove from level')}
+                                        </Button>
+                                      ) : canConfirm ? (
+                                        <Button
+                                          size="sm"
+                                          disabled={assigning}
+                                          className="gap-1 flex-shrink-0 bg-emerald-600 hover:bg-emerald-700 text-white"
+                                          onClick={() => confirmInvoiceAssignment(member, act, info.level)}
+                                          data-testid={`confirm-invoice-${member.id}-${idx}`}
+                                          title={t('تأكيد التعيين كما في الفاتورة', 'Confirm assignment as on invoice')}
+                                        >
+                                          <CheckCircle className="w-3.5 h-3.5" />
+                                          {t('تأكيد التعيين', 'Confirm')}
                                         </Button>
                                       ) : (
                                         <Button

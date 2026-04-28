@@ -446,8 +446,16 @@ async def get_unassigned_members(
     branch_filter: Optional[str] = None,
     current_user: dict = Depends(get_current_user)
 ):
-    """Members with active subscriptions that are NOT yet assigned to any level."""
-    # Branch filtering — fail-closed for non-admins without a branch_id.
+    """Members with active subscriptions that are NOT yet assigned to any level.
+
+    Each unassigned activity is enriched with `invoice_level_id` and
+    `invoice_level_name` taken from the most recent invoice item that
+    matches the activity (by `activity_id`, falling back to
+    `activity_name`) and carries a non-empty `level_id`. The UI uses this
+    to show the level the member was originally registered for so the
+    operator can confirm the assignment in one click instead of picking
+    again.
+    """
     effective_branch = resolve_branch_filter(current_user, branch_filter)
 
     query = {}
@@ -457,7 +465,7 @@ async def get_unassigned_members(
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     members = await db.members.find(query, {"_id": 0}).to_list(10000)
 
-    result = []
+    pre_result = []
     for m in members:
         unassigned_acts = []
         for a in (m.get("activities") or []):
@@ -474,9 +482,11 @@ async def get_unassigned_members(
                     "schedule": a.get("schedule"),
                     "start_date": a.get("start_date"),
                     "end_date": a.get("end_date"),
+                    "invoice_level_id": "",
+                    "invoice_level_name": "",
                 })
         if unassigned_acts:
-            result.append({
+            pre_result.append({
                 "id": m.get("id"),
                 "name": m.get("name_ar") or m.get("name"),
                 "name_ar": m.get("name_ar"),
@@ -486,7 +496,59 @@ async def get_unassigned_members(
                 "unassigned_activities": unassigned_acts,
             })
 
-    return {"count": len(result), "members": result}
+    member_ids = [m["id"] for m in pre_result if m.get("id")]
+    invoices_by_member: dict = {}
+    if member_ids:
+        # `items.level_id: {$nin: [null, ""]}` is unsafe on an array field —
+        # it would EXCLUDE any invoice whose items array contains *any*
+        # element with a missing or empty level_id, even if other items in
+        # the same invoice have a valid one. We need element-level matching
+        # via $elemMatch so the predicate runs per item and matches the
+        # invoice if at least one item has a non-empty level_id.
+        inv_query = {
+            "member_id": {"$in": member_ids},
+            "items": {"$elemMatch": {"level_id": {"$exists": True, "$nin": [None, ""]}}},
+        }
+        inv_cursor = db.invoices.find(
+            inv_query,
+            {"_id": 0, "member_id": 1, "items": 1, "created_at": 1, "paid_at": 1, "status": 1},
+        )
+        all_invs = await inv_cursor.to_list(20000)
+        for inv in all_invs:
+            mid = inv.get("member_id")
+            if not mid:
+                continue
+            invoices_by_member.setdefault(mid, []).append(inv)
+        for mid, lst in invoices_by_member.items():
+            lst.sort(key=lambda i: (i.get("paid_at") or i.get("created_at") or ""), reverse=True)
+
+    for m in pre_result:
+        invs = invoices_by_member.get(m["id"], [])
+        for a in m["unassigned_activities"]:
+            target_aid = a.get("activity_id") or ""
+            target_aname = a.get("activity_name") or ""
+            chosen_lid = ""
+            chosen_lname = ""
+            for inv in invs:
+                for it in (inv.get("items") or []):
+                    lid = (it.get("level_id") or "").strip()
+                    if not lid:
+                        continue
+                    matches = False
+                    if target_aid and (it.get("activity_id") or "") == target_aid:
+                        matches = True
+                    if not matches and target_aname and (it.get("activity_name") or "") == target_aname:
+                        matches = True
+                    if matches:
+                        chosen_lid = lid
+                        chosen_lname = (it.get("level_name") or "").strip()
+                        break
+                if chosen_lid:
+                    break
+            a["invoice_level_id"] = chosen_lid
+            a["invoice_level_name"] = chosen_lname
+
+    return {"count": len(pre_result), "members": pre_result}
 
 
 @router.get("/unassigned-count")
