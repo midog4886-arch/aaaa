@@ -949,6 +949,83 @@ async def update_level_schedule_slot(
     return {"status": "ok", "level": refreshed}
 
 
+class LevelDetailsUpdate(BaseModel):
+    level_id: str
+    activity_id: Optional[str] = None
+    activity_name: Optional[str] = None
+    capacity: Optional[int] = None
+    custom_name: Optional[str] = None
+    coach_id: Optional[str] = None
+
+
+@router.patch("/details")
+async def update_level_details(
+    payload: LevelDetailsUpdate,
+    current_user: dict = Depends(get_current_user),
+):
+    """Partial update of a level's metadata from inside the Schedule Builder.
+
+    Updates only the supplied non-None fields. Crucially this does NOT
+    touch `members`, `days`, or `time_slot` — the slot endpoint owns those
+    and we don't want to wipe member rosters when an admin just wants to
+    rename the activity tag or change the capacity.
+
+    Branch-scoped (mirrors schedule-slot): non-admins are limited to their
+    own branch (or shared/branchless levels).
+    """
+    require_branch_scope(current_user)
+
+    user_branch = None
+    if not (current_user or {}).get("is_admin", False):
+        user_branch = (current_user or {}).get("branch_id")
+
+    filter_doc = {"id": payload.level_id}
+    if user_branch:
+        filter_doc["$or"] = [
+            {"branch_id": user_branch},
+            {"branch_id": None},
+            {"branch_id": {"$exists": False}},
+        ]
+
+    lvl = await db.levels.find_one(filter_doc, {"_id": 0})
+    if not lvl:
+        exists = await db.levels.find_one({"id": payload.level_id}, {"_id": 0, "id": 1})
+        if exists:
+            raise HTTPException(status_code=403, detail="forbidden")
+        raise HTTPException(status_code=404, detail="Level not found")
+
+    update = {}
+    if payload.activity_id is not None:
+        update["activity_id"] = payload.activity_id or None
+    if payload.activity_name is not None:
+        update["activity_name"] = payload.activity_name
+    if payload.custom_name is not None:
+        update["custom_name"] = payload.custom_name
+    if payload.coach_id is not None:
+        update["coach_id"] = payload.coach_id or None
+    if payload.capacity is not None:
+        try:
+            cap = int(payload.capacity)
+            if cap < 0:
+                raise ValueError
+            update["capacity"] = cap if cap > 0 else None
+        except (ValueError, TypeError):
+            raise HTTPException(status_code=400, detail="capacity must be a non-negative integer")
+
+    if not update:
+        return {"status": "noop", "level": lvl}
+
+    await db.levels.update_one(filter_doc, {"$set": update})
+    cache_invalidate("levels:")
+
+    refreshed = await db.levels.find_one({"id": payload.level_id}, {"_id": 0})
+    if refreshed:
+        refreshed["hour"] = _extract_hour_12(
+            refreshed.get("time_slot") or refreshed.get("activity_name") or ""
+        )
+    return {"status": "ok", "level": refreshed}
+
+
 @router.post("/auto-assign")
 async def auto_assign_members_to_levels(
     dry_run: bool = True,

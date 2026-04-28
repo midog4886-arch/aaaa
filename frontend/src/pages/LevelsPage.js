@@ -1896,14 +1896,17 @@ ${slotTables}
                     {t('جدولة المستويات', 'Schedule builder')}
                   </Button>
                   <Button
-                    variant="outline"
-                    className="gap-2 border-amber-300 text-amber-700 hover:bg-amber-50"
+                    variant="ghost"
+                    size="sm"
+                    className="gap-1 text-gray-400 hover:text-gray-600 hover:bg-gray-100 text-xs underline-offset-2 hover:underline"
                     onClick={() => setCleanupOpen(true)}
                     data-testid="open-levels-cleanup-btn"
-                    title={t('الأداة القديمة (تعديل النشاط لكل مستوى يدوياً)', 'Legacy tool (per-level activity editing)')}
+                    title={t(
+                      'احتياطي: الأداة القديمة لتعديل النشاط لكل مستوى يدوياً. استخدم "جدولة المستويات" أعلاه.',
+                      'Fallback only: legacy per-level activity editor. Prefer "Schedule builder" above.'
+                    )}
                   >
-                    <SlidersHorizontal className="w-4 h-4 opacity-60" />
-                    {t('تنظيف يدوي (أداة قديمة)', 'Manual cleanup (legacy)')}
+                    {t('احتياطي قديم', 'Legacy fallback')}
                   </Button>
                 </>
               )}

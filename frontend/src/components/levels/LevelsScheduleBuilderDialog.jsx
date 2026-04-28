@@ -13,7 +13,7 @@ import {
 } from '../ui/popover';
 import {
   Loader2, AlertTriangle, Plus, Trash2, ArrowRightLeft, RotateCcw, Wand2,
-  Clock, CalendarDays, Users,
+  Clock, CalendarDays, Users, Pencil,
 } from 'lucide-react';
 import { levelsAPI } from '../../services/api';
 
@@ -46,6 +46,7 @@ export default function LevelsScheduleBuilderDialog({
   const [addPickerOpen, setAddPickerOpen] = useState({});
   const [addPickerSearch, setAddPickerSearch] = useState({});
   const [movePickerOpen, setMovePickerOpen] = useState({});
+  const [editPickerOpen, setEditPickerOpen] = useState({});
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -129,6 +130,20 @@ export default function LevelsScheduleBuilderDialog({
     callSlot(payload);
     setAddPickerOpen((p) => ({ ...p, [`${dayId}-${hour}`]: false }));
     setAddPickerSearch((p) => ({ ...p, [`${dayId}-${hour}`]: '' }));
+  };
+
+  const saveDetails = async (level, edits) => {
+    setBusyLevelId(level.id);
+    try {
+      await levelsAPI.updateDetails({ level_id: level.id, ...edits });
+      await load();
+      if (onApplied) onApplied();
+      setEditPickerOpen((p) => ({ ...p, [level.id]: false }));
+    } catch (e) {
+      setError(e?.response?.data?.detail || e.message || 'فشل حفظ التفاصيل');
+    } finally {
+      setBusyLevelId('');
+    }
   };
 
   const moveLevel = (oldDay, level, newDay, newHour) => {
@@ -271,6 +286,32 @@ export default function LevelsScheduleBuilderDialog({
               </div>
               <div className="flex items-center gap-1 shrink-0">
                 <Popover
+                  open={!!editPickerOpen[lvl.id]}
+                  onOpenChange={(v) => setEditPickerOpen((p) => ({ ...p, [lvl.id]: v }))}
+                >
+                  <PopoverTrigger asChild>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="text-amber-600 hover:bg-amber-50 h-8 px-2"
+                      disabled={busyLevelId === lvl.id}
+                      title={tt('تعديل التفاصيل (نشاط، سعة، اسم)', 'Edit details (activity, capacity, name)')}
+                    >
+                      <Pencil className="w-3.5 h-3.5" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-80 p-3" align="end" dir="rtl">
+                    <div className="text-sm font-medium mb-2">{tt('تعديل تفاصيل المستوى', 'Edit level details')}</div>
+                    <EditDetailsForm
+                      level={lvl}
+                      activityOptions={data?.activity_options || []}
+                      onSubmit={(edits) => saveDetails(lvl, edits)}
+                      busy={busyLevelId === lvl.id}
+                      tt={tt}
+                    />
+                  </PopoverContent>
+                </Popover>
+                <Popover
                   open={!!movePickerOpen[`${dayId}-${lvl.id}`]}
                   onOpenChange={(v) => setMovePickerOpen((p) => ({ ...p, [`${dayId}-${lvl.id}`]: v }))}
                 >
@@ -280,6 +321,7 @@ export default function LevelsScheduleBuilderDialog({
                       variant="ghost"
                       className="text-blue-600 hover:bg-blue-50 h-8 px-2"
                       disabled={busyLevelId === lvl.id}
+                      title={tt('نقل إلى يوم/ساعة أخرى', 'Move to another day/hour')}
                     >
                       <ArrowRightLeft className="w-3.5 h-3.5" />
                     </Button>
@@ -465,6 +507,100 @@ function AddHourInline({ dayId, value, onChange, onAdd, tt, compact }) {
       <Button size="sm" variant="outline" onClick={onAdd} className="gap-1 h-8">
         <Plus className="w-3 h-3" />
         {tt('أضف', 'Add')}
+      </Button>
+    </div>
+  );
+}
+
+function EditDetailsForm({ level, activityOptions, onSubmit, busy, tt }) {
+  const [activityId, setActivityId] = useState(level.activity_id || '');
+  const [activityName, setActivityName] = useState(level.activity_name || '');
+  const [capacity, setCapacity] = useState(
+    level.capacity != null ? String(level.capacity) : ''
+  );
+  const [customName, setCustomName] = useState(level.custom_name || '');
+
+  const handleActivityChange = (val) => {
+    if (val === '__none__') {
+      setActivityId('');
+      setActivityName('');
+    } else {
+      setActivityId(val);
+      const found = (activityOptions || []).find((a) => a.id === val);
+      if (found && found.name) setActivityName(found.name);
+    }
+  };
+
+  const submit = () => {
+    const edits = {};
+    if ((activityId || '') !== (level.activity_id || '')) {
+      edits.activity_id = activityId || '';
+    }
+    if (activityName !== (level.activity_name || '')) {
+      edits.activity_name = activityName;
+    }
+    if (customName !== (level.custom_name || '')) {
+      edits.custom_name = customName;
+    }
+    const curCap = level.capacity != null ? String(level.capacity) : '';
+    if (capacity !== curCap) {
+      const trimmed = (capacity || '').trim();
+      if (trimmed === '') {
+        edits.capacity = 0;
+      } else {
+        const n = parseInt(trimmed, 10);
+        if (Number.isFinite(n)) {
+          edits.capacity = n;
+        }
+      }
+    }
+    onSubmit(edits);
+  };
+
+  return (
+    <div className="space-y-2">
+      <div>
+        <Label className="text-xs">{tt('النشاط (وسم اختياري)', 'Activity (optional tag)')}</Label>
+        <Select value={activityId || '__none__'} onValueChange={handleActivityChange}>
+          <SelectTrigger className="bg-white h-8">
+            <SelectValue placeholder={tt('بدون نشاط', 'None')} />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="__none__">{tt('بدون نشاط', 'None')}</SelectItem>
+            {(activityOptions || []).map((a) => (
+              <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+      <div>
+        <Label className="text-xs">{tt('اسم المستوى المخصّص', 'Custom name')}</Label>
+        <Input
+          value={customName}
+          onChange={(e) => setCustomName(e.target.value)}
+          className="h-8"
+          placeholder={tt('اختياري', 'optional')}
+        />
+      </div>
+      <div>
+        <Label className="text-xs">{tt('السعة القصوى', 'Capacity')}</Label>
+        <Input
+          type="number"
+          min="0"
+          value={capacity}
+          onChange={(e) => setCapacity(e.target.value)}
+          className="h-8"
+          placeholder={tt('بدون حد', 'no limit')}
+        />
+      </div>
+      <Button
+        size="sm"
+        className="w-full bg-amber-600 hover:bg-amber-700 text-white"
+        onClick={submit}
+        disabled={busy}
+      >
+        {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" /> : null}
+        {tt('حفظ التفاصيل', 'Save details')}
       </Button>
     </div>
   );

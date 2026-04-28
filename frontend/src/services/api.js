@@ -52,6 +52,7 @@ export const levelsAPI = {
   cleanupBulk: (items) => axios.post(`${API}/levels/cleanup/bulk`, { items }),
   scheduleSnapshot: (params = {}) => axios.get(`${API}/levels/schedule-snapshot`, { params }),
   scheduleSlot: (payload) => axios.post(`${API}/levels/schedule-slot`, payload),
+  updateDetails: (payload) => axios.patch(`${API}/levels/details`, payload),
 };
 
 // Tournaments API
