@@ -312,6 +312,7 @@ export const LevelsPage = () => {
     setRecentlyAssigned(prev => ({ ...prev, [key]: entry }));
     loadData();
     loadUnassignedCount();
+    loadUnassigned();
     toast.success(
       t(
         `تم تعيين ${member.name_ar || member.name} إلى "${levelName}"`,
@@ -364,13 +365,39 @@ export const LevelsPage = () => {
   //   - 'recent'   → only activities just assigned in this session
   // We strip non-matching activities from each member then drop members
   // who end up with zero matching activities.
+  // Synthesize a member-grouped view of recently assigned activities so the
+  // "recent" tab can render even after `unassignedData` is refreshed (which
+  // strips the assigned activity from the backend payload).
+  const recentShadowData = useMemo(() => {
+    const byMember = {};
+    Object.values(recentlyAssigned).forEach(entry => {
+      const m = entry.member;
+      if (!m || !m.id) return;
+      if (!byMember[m.id]) {
+        byMember[m.id] = {
+          id: m.id,
+          name: m.name,
+          name_ar: m.name_ar,
+          phone: m.phone,
+          member_code: m.member_code,
+          branch_id: m.branch_id,
+          unassigned_activities: [],
+        };
+      }
+      byMember[m.id].unassigned_activities.push(entry.activity);
+    });
+    return Object.values(byMember);
+  }, [recentlyAssigned]);
+
   const filteredUnassigned = useMemo(() => {
-    return unassignedData
+    const sourceData = unassignedTab === 'recent' ? recentShadowData : unassignedData;
+    return sourceData
       .map(m => {
         const acts = (m.unassigned_activities || []).filter(a => {
-          const isRecent = !!recentlyAssigned[_recentKey(m.id, a)];
-          if (unassignedTab === 'pending' && isRecent) return false;
-          if (unassignedTab === 'recent' && !isRecent) return false;
+          if (unassignedTab === 'pending') {
+            const isRecent = !!recentlyAssigned[_recentKey(m.id, a)];
+            if (isRecent) return false;
+          }
           if (unassignedActivityFilter && !matchesGroup(a.activity_name, unassignedActivityFilter)) return false;
           return true;
         });
@@ -385,7 +412,7 @@ export const LevelsPage = () => {
         const code = (m.member_code || '').toLowerCase();
         return name.includes(q) || phone.includes(q) || code.includes(q);
       });
-  }, [unassignedData, unassignedSearch, unassignedActivityFilter, unassignedTab, recentlyAssigned]);
+  }, [unassignedData, recentShadowData, unassignedSearch, unassignedActivityFilter, unassignedTab, recentlyAssigned]);
 
   const pendingTabCount = useMemo(() => {
     let n = 0;
