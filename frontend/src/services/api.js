@@ -48,6 +48,8 @@ export const levelsAPI = {
   getUnassignedCount: (params = {}) => axios.get(`${API}/levels/unassigned-count`, { params }),
   autoAssign: (dryRun = true, params = {}) =>
     axios.post(`${API}/levels/auto-assign`, null, { params: { dry_run: dryRun, ...params } }),
+  cleanupSuggestions: (params = {}) => axios.get(`${API}/levels/cleanup-suggestions`, { params }),
+  cleanupBulk: (items) => axios.post(`${API}/levels/cleanup/bulk`, { items }),
 };
 
 // Tournaments API

@@ -13,6 +13,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '../components/ui/popove
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '../components/ui/command';
 import { levelsAPI, membersAPI, branchesAPI, activitiesAPI, attendanceAPI, coachesAPI } from '../services/api';
 import { toast } from 'sonner';
+import LevelsCleanupDialog from '../components/levels/LevelsCleanupDialog';
 import { 
   Plus, Edit, Trash2, Loader2, Layers, Users, Dumbbell, UserPlus, UserMinus, UserX, Search,
   ChevronDown, ChevronUp, ChevronRight, Clock, AlertTriangle, ArrowRight, ArrowLeft, Home,
@@ -122,6 +123,7 @@ export const LevelsPage = () => {
   const [autoAssignPlan, setAutoAssignPlan] = useState(null);
   const [autoAssignExpanded, setAutoAssignExpanded] = useState({});
   const [autoAssignShowUnmatched, setAutoAssignShowUnmatched] = useState(false);
+  const [cleanupOpen, setCleanupOpen] = useState(false);
 
   const openAutoAssignDialog = async () => {
     setIsAutoAssignOpen(true);
@@ -1872,15 +1874,26 @@ ${slotTables}
                 </Button>
               )}
               {currentView === 'days' && (
-                <Button
-                  variant="outline"
-                  className="gap-2 border-emerald-300 text-emerald-700 hover:bg-emerald-50"
-                  onClick={openAutoAssignDialog}
-                  data-testid="open-auto-assign-btn"
-                >
-                  <Wand2 className="w-4 h-4" />
-                  {t('إسناد تلقائي للمستويات', 'Auto-assign members')}
-                </Button>
+                <>
+                  <Button
+                    variant="outline"
+                    className="gap-2 border-emerald-300 text-emerald-700 hover:bg-emerald-50"
+                    onClick={openAutoAssignDialog}
+                    data-testid="open-auto-assign-btn"
+                  >
+                    <Wand2 className="w-4 h-4" />
+                    {t('إسناد تلقائي للمستويات', 'Auto-assign members')}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    className="gap-2 border-amber-300 text-amber-700 hover:bg-amber-50"
+                    onClick={() => setCleanupOpen(true)}
+                    data-testid="open-levels-cleanup-btn"
+                  >
+                    <SlidersHorizontal className="w-4 h-4" />
+                    {t('تنظيف بيانات المستويات', 'Clean up level data')}
+                  </Button>
+                </>
               )}
               <Button
                 variant="outline"

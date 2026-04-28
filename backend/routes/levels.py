@@ -34,6 +34,9 @@ class LevelCreate(BaseModel):
     # Weekday IDs the level is active on (e.g. ["saturday","monday"]).
     # None or empty = treated as "all days" (back-compat with old levels).
     days: Optional[List[str]] = None
+    # Free-text time slot (e.g. "الساعة 4", "5:00 م"). Used by auto-assign
+    # to match member subscription schedules.
+    time_slot: Optional[str] = None
 
 class Level(BaseModel):
     id: str
@@ -226,6 +229,7 @@ async def update_level(level_id: str, level: LevelCreate, current_user: dict = D
     update_data = {
         "level_number": level.level_number,
         "activity_name": level.activity_name,
+        "activity_id": level.activity_id or None,
         "custom_name": level.custom_name or "",
         "description": level.description,
         "members": level.members,
@@ -234,6 +238,7 @@ async def update_level(level_id: str, level: LevelCreate, current_user: dict = D
         # field in the edit dialog to silently revert to the stored value.
         "capacity": int(level.capacity) if level.capacity else None,
         "days": list(level.days) if level.days else None,
+        "time_slot": level.time_slot or None,
     }
     
     result = await db.levels.find_one_and_update(
@@ -533,6 +538,237 @@ def _branches_compatible(level_branch, member_branch) -> bool:
     if not member_branch:
         return True
     return level_branch == member_branch
+
+
+_TIME_PATTERN_TOKENS = (
+    "الساعه", "الساعة", "ساعه", "ساعة",
+    "صباحاً", "صباحا", "صباحًا", "مساءً", "مساءا", "مساء",
+    "ص", "م", "AM", "PM", "am", "pm",
+)
+
+
+def _strip_time_from_name(text: str) -> str:
+    """Best-effort: remove ONLY time-related tokens/numbers from a level name
+    so we can show a cleaner activity-only label. We deliberately keep digits
+    that look like activity identifiers (e.g. 'السباحة 2 يوم') and only strip
+    digits that are clearly part of a time expression (e.g. 'الساعه 4',
+    '5:30 PM', '7 ص').
+    Example: 'سباحة - الساعه 4' -> 'سباحة'.
+             'السباحة 2 يوم في الاسبوع' -> 'السباحة 2 يوم في الاسبوع'."""
+    if not text:
+        return ""
+    import re as _re
+    s = str(text)
+    hour_token = r"\d{1,2}(?:[:.]\d{1,2})?"
+    pre_tokens = [t for t in _TIME_PATTERN_TOKENS if any(c.isalpha() for c in t) and any('\u0600' <= c <= '\u06FF' for c in t)]
+    suf_tokens = ["صباحاً", "صباحا", "صباحًا", "مساءً", "مساءا", "مساء", "AM", "PM", "am", "pm", "ص", "م"]
+    if pre_tokens:
+        pre_pat = "|".join(_re.escape(t) for t in pre_tokens)
+        s = _re.sub(rf"(?:{pre_pat})\s*{hour_token}", " ", s)
+    if suf_tokens:
+        suf_pat = "|".join(_re.escape(t) for t in suf_tokens)
+        s = _re.sub(rf"{hour_token}\s*(?:{suf_pat})\b", " ", s)
+    for tok in _TIME_PATTERN_TOKENS:
+        s = _re.sub(rf"\b{_re.escape(tok)}\b", " ", s)
+    s = _re.sub(r"[\-–—]+", " ", s)
+    s = _re.sub(r"\s+", " ", s).strip()
+    return s
+
+
+def _suggest_activity_for_level(level_name: str, activities: list) -> Optional[str]:
+    """Return the best matching activity_id for a level name, or None.
+    Strategy: start from the cleaned (time-stripped) activity-token of the
+    level, then prefer the activity whose name_ar contains that token (or vice
+    versa). When ties exist we don't guess — the admin must pick explicitly."""
+    if not activities:
+        return None
+    token = _strip_time_from_name(level_name).lower()
+    if not token:
+        return None
+    candidates = []
+    for act in activities:
+        aname = (act.get("name_ar") or act.get("name") or "").strip().lower()
+        if not aname:
+            continue
+        if token in aname or aname in token:
+            candidates.append(act)
+        else:
+            # Word-by-word overlap on the leading word (e.g. "سباحة" in "السباحة 2 يوم")
+            tk_words = [w for w in token.split() if w]
+            an_words = [w for w in aname.split() if w]
+            if tk_words and an_words:
+                # Match on stem-like presence: any token word appears as
+                # substring of any activity word (catches "كرة قدم" vs "كرة القدم").
+                for tw in tk_words:
+                    if any(tw in aw or aw in tw for aw in an_words):
+                        candidates.append(act)
+                        break
+    if not candidates:
+        return None
+    # Prefer the activity with the shortest name_ar (more specific match wins
+    # for ties: e.g. exact "سباحه" beats "السباحة 2 يوم في الاسبوع").
+    candidates.sort(key=lambda a: len(a.get("name_ar") or a.get("name") or ""))
+    return candidates[0].get("id")
+
+
+@router.get("/cleanup-suggestions")
+async def get_levels_cleanup_suggestions(
+    branch_filter: Optional[str] = None,
+    current_user: dict = Depends(get_current_user),
+):
+    """Return every level with auto-extracted activity_id / time_slot / clean
+    name suggestions. The frontend renders these as pre-filled defaults the
+    admin can accept or override before saving."""
+    require_branch_scope(current_user)
+    effective_branch = resolve_branch_filter(current_user, branch_filter)
+
+    query = {}
+    if effective_branch:
+        query["$or"] = [
+            {"branch_id": effective_branch},
+            {"branch_id": None},
+            {"branch_id": {"$exists": False}},
+        ]
+
+    levels = await db.levels.find(query, {"_id": 0}).sort("level_number", 1).to_list(500)
+
+    activities = await db.activities.find(
+        {}, {"_id": 0, "id": 1, "name": 1, "name_ar": 1, "branch_id": 1}
+    ).to_list(200)
+
+    activity_index = {a["id"]: a for a in activities if a.get("id")}
+
+    out = []
+    incomplete = 0
+    for lvl in levels:
+        current_aid = lvl.get("activity_id") or None
+        current_slot = lvl.get("time_slot") or None
+        current_days = lvl.get("days") or []
+
+        is_complete = bool(current_aid) and bool(current_slot)
+        if not is_complete:
+            incomplete += 1
+
+        suggested_aid = current_aid or _suggest_activity_for_level(
+            lvl.get("activity_name") or "", activities
+        )
+        hour = _extract_hour_12(lvl.get("activity_name") or "")
+        suggested_slot = current_slot or (f"الساعة {hour}" if hour else "")
+        clean_name = _strip_time_from_name(lvl.get("activity_name") or "")
+
+        out.append({
+            "id": lvl.get("id"),
+            "level_number": lvl.get("level_number"),
+            "activity_name": lvl.get("activity_name") or "",
+            "custom_name": lvl.get("custom_name") or "",
+            "branch_id": lvl.get("branch_id"),
+            "members_count": len(lvl.get("members") or []),
+            "current": {
+                "activity_id": current_aid,
+                "time_slot": current_slot,
+                "days": current_days,
+            },
+            "suggested": {
+                "activity_id": suggested_aid,
+                "time_slot": suggested_slot,
+                "clean_name": clean_name,
+            },
+            "is_complete": is_complete,
+        })
+
+    activity_options = [
+        {
+            "id": a.get("id"),
+            "name": a.get("name_ar") or a.get("name") or "",
+            "branch_id": a.get("branch_id"),
+        }
+        for a in activities
+        if (a.get("name_ar") or a.get("name"))
+    ]
+    activity_options.sort(key=lambda x: x["name"])
+
+    return {
+        "totals": {
+            "total": len(levels),
+            "complete": len(levels) - incomplete,
+            "incomplete": incomplete,
+        },
+        "levels": out,
+        "activity_options": activity_options,
+    }
+
+
+class LevelCleanupItem(BaseModel):
+    id: str
+    activity_id: Optional[str] = None
+    time_slot: Optional[str] = None
+    days: Optional[List[str]] = None
+    activity_name: Optional[str] = None  # if admin chose a "clean name", use it
+
+
+class LevelCleanupBulk(BaseModel):
+    items: List[LevelCleanupItem]
+
+
+@router.post("/cleanup/bulk")
+async def apply_levels_cleanup_bulk(
+    payload: LevelCleanupBulk,
+    current_user: dict = Depends(get_current_user),
+):
+    """Apply cleanup edits (activity_id, time_slot, days, optional renamed
+    activity_name) to many levels in one call. Each item is updated with $set
+    so unspecified fields are preserved. For non-admin users, the update is
+    constrained to levels in their own branch (or shared branchless levels);
+    foreign-branch IDs return `forbidden`. Returns per-item status."""
+    require_branch_scope(current_user)
+
+    user_branch = None
+    if not (current_user or {}).get("is_admin", False):
+        user_branch = (current_user or {}).get("branch_id")
+
+    results = []
+    for it in payload.items:
+        update_doc = {}
+        if it.activity_id is not None:
+            update_doc["activity_id"] = it.activity_id or None
+        if it.time_slot is not None:
+            update_doc["time_slot"] = it.time_slot or None
+        if it.days is not None:
+            update_doc["days"] = list(it.days) if it.days else None
+        if it.activity_name is not None and it.activity_name.strip():
+            update_doc["activity_name"] = it.activity_name.strip()
+        if not update_doc:
+            results.append({"id": it.id, "status": "noop"})
+            continue
+
+        filter_doc = {"id": it.id}
+        if user_branch:
+            filter_doc["$or"] = [
+                {"branch_id": user_branch},
+                {"branch_id": None},
+                {"branch_id": {"$exists": False}},
+            ]
+
+        try:
+            res = await db.levels.update_one(filter_doc, {"$set": update_doc})
+            if getattr(res, "matched_count", 0) == 0:
+                exists = await db.levels.find_one({"id": it.id}, {"_id": 0, "id": 1})
+                if exists and user_branch:
+                    results.append({"id": it.id, "status": "forbidden"})
+                else:
+                    results.append({"id": it.id, "status": "not_found"})
+            else:
+                results.append({"id": it.id, "status": "ok"})
+        except Exception as e:
+            results.append({"id": it.id, "status": "error", "error": str(e)})
+
+    cache_invalidate("levels:")
+    ok = sum(1 for r in results if r["status"] == "ok")
+    return {
+        "applied": ok,
+        "total": len(results),
+        "results": results,
+    }
 
 
 @router.post("/auto-assign")
