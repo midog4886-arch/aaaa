@@ -3476,6 +3476,14 @@ ${slotTables}
             </DialogFooter>
           </DialogContent>
         </Dialog>
+
+        <LevelsCleanupDialog
+          open={cleanupOpen}
+          onOpenChange={setCleanupOpen}
+          branchFilter={selectedBranchId}
+          onApplied={loadData}
+          t={t}
+        />
       </div>
     </Layout>
   );
