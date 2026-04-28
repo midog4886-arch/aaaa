@@ -1893,7 +1893,7 @@ ${slotTables}
                     data-testid="open-levels-schedule-builder-btn"
                   >
                     <SlidersHorizontal className="w-4 h-4" />
-                    {t('جدولة المستويات', 'Schedule builder')}
+                    {t('جدولة المستويات حسب اليوم والساعة', 'Schedule levels by day and hour')}
                   </Button>
                   <Button
                     variant="ghost"
