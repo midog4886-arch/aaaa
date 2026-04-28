@@ -496,6 +496,54 @@ async def get_unassigned_members(
                 "unassigned_activities": unassigned_acts,
             })
 
+    # Drop activities for members who are already in a level of the same
+    # activity group (swimming/football/karate), even when the activity_name
+    # on the member record does not exactly match the level's activity_name.
+    # This handles the case where the level uses naming like "سباحة - ساعه 6"
+    # while the member's activity is named "السباحة 2 يوم في الاسبوع".
+    def _activity_group(name):
+        s = (name or "").strip()
+        if not s:
+            return ""
+        if "سباحة" in s or "سباحه" in s:
+            return "swimming"
+        if "قدم" in s or "كره" in s or "كرة" in s:
+            return "football"
+        if "كارات" in s:
+            return "karate"
+        return ""
+
+    member_ids = [m["id"] for m in pre_result if m.get("id")]
+    member_existing_groups = {}
+    if member_ids:
+        existing_levels_cursor = db.levels.find(
+            {"members": {"$in": member_ids}},
+            {"_id": 0, "activity_name": 1, "members": 1},
+        )
+        existing_levels = await existing_levels_cursor.to_list(20000)
+        for lvl in existing_levels:
+            grp = _activity_group(lvl.get("activity_name"))
+            if not grp:
+                continue
+            for mid in (lvl.get("members") or []):
+                if mid in member_ids:
+                    member_existing_groups.setdefault(mid, set()).add(grp)
+
+    cleaned_result = []
+    for m in pre_result:
+        existing_groups = member_existing_groups.get(m["id"], set())
+        if existing_groups:
+            kept = []
+            for a in m["unassigned_activities"]:
+                grp = _activity_group(a.get("activity_name"))
+                if grp and grp in existing_groups:
+                    continue
+                kept.append(a)
+            m["unassigned_activities"] = kept
+        if m["unassigned_activities"]:
+            cleaned_result.append(m)
+    pre_result = cleaned_result
+
     member_ids = [m["id"] for m in pre_result if m.get("id")]
     invoices_by_member: dict = {}
     if member_ids:
