@@ -11,6 +11,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Popover, PopoverContent, PopoverTrigger } from '../components/ui/popover';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '../components/ui/command';
+import { Tabs, TabsList, TabsTrigger } from '../components/ui/tabs';
 import { levelsAPI, membersAPI, branchesAPI, activitiesAPI, attendanceAPI, coachesAPI } from '../services/api';
 import { toast } from 'sonner';
 import LevelsCleanupDialog from '../components/levels/LevelsCleanupDialog';
@@ -18,8 +19,15 @@ import LevelsScheduleBuilderDialog from '../components/levels/LevelsScheduleBuil
 import { 
   Plus, Edit, Trash2, Loader2, Layers, Users, Dumbbell, UserPlus, UserMinus, UserX, Search,
   ChevronDown, ChevronUp, ChevronRight, Clock, AlertTriangle, ArrowRight, ArrowLeft, Home,
-  GripVertical, Move, ArrowUpDown, SlidersHorizontal, TrendingUp, BarChart3, CheckCircle, Circle, UserCheck, Printer, RefreshCw, Wand2
+  GripVertical, Move, ArrowUpDown, SlidersHorizontal, TrendingUp, BarChart3, CheckCircle, Circle, UserCheck, Printer, RefreshCw, Wand2, Undo2
 } from 'lucide-react';
+
+const _actKey = (act) => act?.activity_id || act?.activity_name || '';
+// Include schedule + end_date as tiebreakers so a member with two active
+// subscriptions to the same activity (e.g. legacy entries with no
+// activity_id but different schedules) does not collide on a single key.
+const _recentKey = (memberId, act) =>
+  `${memberId}::${_actKey(act)}::${act?.schedule || ''}::${act?.end_date || ''}`;
 
 // Main activity types with Arabic names
 const MAIN_ACTIVITIES = [
@@ -111,6 +119,8 @@ export const LevelsPage = () => {
   const [unassignedData, setUnassignedData] = useState([]);
   const [unassignedLoading, setUnassignedLoading] = useState(false);
   const [unassignedSearch, setUnassignedSearch] = useState('');
+  const [unassignedTab, setUnassignedTab] = useState('pending');
+  const [recentlyAssigned, setRecentlyAssigned] = useState({});
   const [unassignedActivityFilter, setUnassignedActivityFilter] = useState('');
   const [unassignedCount, setUnassignedCount] = useState(0);
   const [assignPickerOpen, setAssignPickerOpen] = useState(false);
@@ -235,6 +245,8 @@ export const LevelsPage = () => {
     setIsUnassignedDialogOpen(true);
     setUnassignedSearch('');
     setUnassignedActivityFilter('');
+    setUnassignedTab('pending');
+    setRecentlyAssigned({});
     loadUnassigned();
   };
 
@@ -243,34 +255,75 @@ export const LevelsPage = () => {
     setAssignPickerOpen(true);
   };
 
+  // Accepts the assignment key plus an optional explicit entry. The toast
+  // "تراجع" button captures the closure of the render that PRECEDED the
+  // setRecentlyAssigned() call, so when the user clicks it the lookup
+  // `recentlyAssigned[key]` would still see the stale empty map and
+  // silently no-op. Passing the entry through bypasses that closure trap.
+  const undoAssignment = async (key, entryOverride) => {
+    const entry = entryOverride || recentlyAssigned[key];
+    if (!entry) return;
+    try {
+      await levelsAPI.removeMember(entry.level_id, entry.member.id);
+      setRecentlyAssigned(prev => {
+        const copy = { ...prev };
+        delete copy[key];
+        return copy;
+      });
+      toast.success(t('تم التراجع عن التعيين', 'Assignment undone'));
+      loadData();
+      loadUnassignedCount();
+    } catch (e) {
+      const msg = e.response?.data?.detail || '';
+      toast.error(msg || t('فشل التراجع عن التعيين', 'Undo failed'));
+    }
+  };
+
   const handleAssignToLevel = async (level) => {
     if (!assignTarget) return;
     setAssigning(true);
     try {
       await levelsAPI.addMember(level.id, assignTarget.member.id);
-      const assignedMemberId = assignTarget.member.id;
-      const assignedActName = assignTarget.activity?.activity_name || '';
-      const assignedActId = assignTarget.activity?.activity_id || '';
-      // Optimistically remove the just-assigned activity from the local
-      // unassigned list so the row disappears immediately. If the member
-      // had other unassigned activities, only that one entry is dropped;
-      // when no activities remain, the whole member row is removed.
-      setUnassignedData(prev => prev
-        .map(m => {
-          if (m.id !== assignedMemberId) return m;
-          const remaining = (m.unassigned_activities || []).filter(a => {
-            if (assignedActId && a.activity_id === assignedActId) return false;
-            if (assignedActName && a.activity_name === assignedActName) return false;
-            return true;
-          });
-          return { ...m, unassigned_activities: remaining };
-        })
-        .filter(m => (m.unassigned_activities || []).length > 0)
-      );
-      toast.success(t('تم تعيين العضو للمستوى', 'Member assigned to level'));
+      const member = assignTarget.member;
+      const activity = assignTarget.activity;
+      const key = _recentKey(member.id, activity);
+      const levelName = level.activity_name
+        || level.custom_name
+        || `${t('المستوى', 'Level')} ${level.level_number}`;
+      const entry = {
+        level_id: level.id,
+        level_name: levelName,
+        level_number: level.level_number,
+        member,
+        activity,
+        assigned_at: Date.now(),
+      };
+      // Track this assignment locally so the user can either tap the
+      // toast's "تراجع" button or jump to the "معيَّنون مؤخراً" tab and
+      // remove it. We deliberately keep the activity row in the local
+      // unassigned list (instead of filtering it out) so the same card
+      // can render a red "إزالة من المستوى" toggle in place of the
+      // orange "تعيين لمستوى" button.
+      setRecentlyAssigned(prev => ({ ...prev, [key]: entry }));
       setAssignPickerOpen(false);
       setAssignTarget(null);
-      await Promise.all([loadUnassigned(), loadData()]);
+      loadData();
+      loadUnassignedCount();
+      toast.success(
+        t(
+          `تم تعيين ${member.name_ar || member.name} إلى "${levelName}"`,
+          `${member.name_ar || member.name} assigned to "${levelName}"`
+        ),
+        {
+          duration: 7000,
+          action: {
+            label: t('تراجع', 'Undo'),
+            // Pass the entry directly so the toast click is not affected
+            // by the stale-closure trap on `recentlyAssigned`.
+            onClick: () => undoAssignment(key, entry),
+          },
+        }
+      );
     } catch (e) {
       const msg = e.response?.data?.detail || '';
       toast.error(msg || t('فشل التعيين', 'Assignment failed'));
@@ -279,27 +332,46 @@ export const LevelsPage = () => {
     }
   };
 
-  // Filter unassigned data based on search and activity filter
+  // Filter unassigned data based on tab + search + activity filter.
+  // Tab semantics:
+  //   - 'pending'  → activities NOT yet assigned in this session
+  //   - 'recent'   → only activities just assigned in this session
+  // We strip non-matching activities from each member then drop members
+  // who end up with zero matching activities.
   const filteredUnassigned = useMemo(() => {
-    return unassignedData.filter(m => {
-      // Activity filter
-      if (unassignedActivityFilter) {
-        const hasMatch = (m.unassigned_activities || []).some(a =>
-          matchesGroup(a.activity_name, unassignedActivityFilter)
-        );
-        if (!hasMatch) return false;
-      }
-      // Search filter
-      if (unassignedSearch) {
+    return unassignedData
+      .map(m => {
+        const acts = (m.unassigned_activities || []).filter(a => {
+          const isRecent = !!recentlyAssigned[_recentKey(m.id, a)];
+          if (unassignedTab === 'pending' && isRecent) return false;
+          if (unassignedTab === 'recent' && !isRecent) return false;
+          if (unassignedActivityFilter && !matchesGroup(a.activity_name, unassignedActivityFilter)) return false;
+          return true;
+        });
+        return { ...m, unassigned_activities: acts };
+      })
+      .filter(m => (m.unassigned_activities || []).length > 0)
+      .filter(m => {
+        if (!unassignedSearch) return true;
         const q = unassignedSearch.toLowerCase();
         const name = (m.name_ar || m.name || '').toLowerCase();
         const phone = (m.phone || '').toLowerCase();
         const code = (m.member_code || '').toLowerCase();
         return name.includes(q) || phone.includes(q) || code.includes(q);
-      }
-      return true;
+      });
+  }, [unassignedData, unassignedSearch, unassignedActivityFilter, unassignedTab, recentlyAssigned]);
+
+  const pendingTabCount = useMemo(() => {
+    let n = 0;
+    unassignedData.forEach(m => {
+      (m.unassigned_activities || []).forEach(a => {
+        if (!recentlyAssigned[_recentKey(m.id, a)]) n++;
+      });
     });
-  }, [unassignedData, unassignedSearch, unassignedActivityFilter]);
+    return n;
+  }, [unassignedData, recentlyAssigned]);
+
+  const recentTabCount = Object.keys(recentlyAssigned).length;
 
   // Available levels matching the assignTarget activity (branch-scoped).
   // Strategy: prefer EXACT activity_name match (which already encodes the
@@ -2921,7 +2993,12 @@ ${slotTables}
               <DialogTitle className="flex items-center gap-2">
                 <UserX className="w-5 h-5 text-red-500" />
                 {t('أعضاء بدون مستوى', 'Members without level')}
-                <Badge variant="destructive" className="ms-2">{filteredUnassigned.length}</Badge>
+                <Badge
+                  variant={unassignedTab === 'recent' ? 'secondary' : 'destructive'}
+                  className="ms-2"
+                >
+                  {filteredUnassigned.length}
+                </Badge>
                 <Button
                   variant="ghost"
                   size="icon"
@@ -2936,6 +3013,24 @@ ${slotTables}
             </DialogHeader>
 
             <div className="flex-1 overflow-hidden flex flex-col">
+              {/* Tabs: pending vs recently-assigned */}
+              <Tabs
+                value={unassignedTab}
+                onValueChange={setUnassignedTab}
+                className="mb-3"
+              >
+                <TabsList className="w-full grid grid-cols-2">
+                  <TabsTrigger value="pending" data-testid="tab-pending">
+                    {t('بدون مستوى', 'Without level')}
+                    <Badge variant="secondary" className="ms-2">{pendingTabCount}</Badge>
+                  </TabsTrigger>
+                  <TabsTrigger value="recent" data-testid="tab-recent">
+                    {t('معيَّنون مؤخراً', 'Recently assigned')}
+                    <Badge variant="secondary" className="ms-2">{recentTabCount}</Badge>
+                  </TabsTrigger>
+                </TabsList>
+              </Tabs>
+
               {/* Filters */}
               <div className="flex flex-col sm:flex-row gap-2 mb-3">
                 <div className="relative flex-1">
@@ -2996,28 +3091,56 @@ ${slotTables}
                             <div className="mt-2 space-y-1.5">
                               {(member.unassigned_activities || [])
                                 .filter(a => !unassignedActivityFilter || matchesGroup(a.activity_name, unassignedActivityFilter))
-                                .map((act, idx) => (
-                                <div key={idx} className="flex items-center justify-between gap-2 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
-                                  <div className="min-w-0 flex-1">
-                                    <p className="text-sm font-medium text-amber-900 truncate">
-                                      {act.activity_name || t('نشاط', 'Activity')}
-                                    </p>
-                                    <p className="text-xs text-amber-700 truncate">
-                                      {act.schedule && <span>⏰ {act.schedule}</span>}
-                                      {act.end_date && <span className="ms-2">🗓️ {t('حتى', 'until')} {act.end_date}</span>}
-                                    </p>
-                                  </div>
-                                  <Button
-                                    size="sm"
-                                    className="gap-1 flex-shrink-0 bg-primary hover:bg-primary/90"
-                                    onClick={() => openAssignPicker(member, act)}
-                                    data-testid={`assign-${member.id}-${idx}`}
-                                  >
-                                    <UserPlus className="w-3.5 h-3.5" />
-                                    {t('تعيين لمستوى', 'Assign to level')}
-                                  </Button>
-                                </div>
-                              ))}
+                                .map((act, idx) => {
+                                  const recentEntry = recentlyAssigned[_recentKey(member.id, act)];
+                                  const isAssigned = !!recentEntry;
+                                  const containerCls = isAssigned
+                                    ? 'flex items-center justify-between gap-2 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2'
+                                    : 'flex items-center justify-between gap-2 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2';
+                                  const titleCls = isAssigned ? 'text-sm font-medium text-emerald-900 truncate' : 'text-sm font-medium text-amber-900 truncate';
+                                  const subCls = isAssigned ? 'text-xs text-emerald-700 truncate' : 'text-xs text-amber-700 truncate';
+                                  return (
+                                    <div key={idx} className={containerCls}>
+                                      <div className="min-w-0 flex-1">
+                                        <p className={titleCls}>
+                                          {act.activity_name || t('نشاط', 'Activity')}
+                                        </p>
+                                        <p className={subCls}>
+                                          {act.schedule && <span>⏰ {act.schedule}</span>}
+                                          {act.end_date && <span className="ms-2">🗓️ {t('حتى', 'until')} {act.end_date}</span>}
+                                          {isAssigned && (
+                                            <span className="ms-2 font-semibold">
+                                              ✓ {t('في', 'in')} {recentEntry.level_name}
+                                            </span>
+                                          )}
+                                        </p>
+                                      </div>
+                                      {isAssigned ? (
+                                        <Button
+                                          size="sm"
+                                          variant="destructive"
+                                          className="gap-1 flex-shrink-0"
+                                          onClick={() => undoAssignment(_recentKey(member.id, act), recentEntry)}
+                                          data-testid={`undo-${member.id}-${idx}`}
+                                          title={t('إزالة من المستوى', 'Remove from level')}
+                                        >
+                                          <Undo2 className="w-3.5 h-3.5" />
+                                          {t('إزالة من المستوى', 'Remove from level')}
+                                        </Button>
+                                      ) : (
+                                        <Button
+                                          size="sm"
+                                          className="gap-1 flex-shrink-0 bg-primary hover:bg-primary/90"
+                                          onClick={() => openAssignPicker(member, act)}
+                                          data-testid={`assign-${member.id}-${idx}`}
+                                        >
+                                          <UserPlus className="w-3.5 h-3.5" />
+                                          {t('تعيين لمستوى', 'Assign to level')}
+                                        </Button>
+                                      )}
+                                    </div>
+                                  );
+                                })}
                             </div>
                           </div>
                         </div>

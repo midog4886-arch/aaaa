@@ -396,13 +396,47 @@ async def add_member_to_level(level_id: str, member_id: str, current_user: dict 
 
 @router.delete("/{level_id}/members/{member_id}")
 async def remove_member_from_level(level_id: str, member_id: str, current_user: dict = Depends(get_current_user)):
-    """Remove a member from a level"""
+    """Remove a member from a level.
+
+    Mirrors `add_member_to_level`: in addition to pulling the member id out of
+    `levels.members[]`, we also clear `level_id` on the member's matching
+    activity entry. Without this, /levels/unassigned-members keeps treating
+    the activity as assigned (because it has a stale `level_id`), so undoing
+    or removing an assignment would not restore the row to the unassigned
+    list. We look up the level first to know which activity to clear.
+    """
+    level = await db.levels.find_one({"id": level_id}, {"_id": 0, "id": 1, "activity_id": 1, "activity_name": 1})
+    if not level:
+        raise HTTPException(status_code=404, detail="Level not found")
+
     result = await db.levels.update_one(
         {"id": level_id},
         {"$pull": {"members": member_id}}
     )
     if result.modified_count == 0:
         raise HTTPException(status_code=404, detail="Member not found in level")
+
+    match_aid = level.get("activity_id")
+    match_aname = level.get("activity_name")
+    member_doc = await db.members.find_one({"id": member_id}, {"_id": 0, "activities": 1})
+    if member_doc:
+        activities = member_doc.get("activities", []) or []
+        changed = False
+        for act in activities:
+            matches = False
+            if match_aid and act.get("activity_id") == match_aid:
+                matches = True
+            if not matches and match_aname and act.get("activity_name") == match_aname:
+                matches = True
+            if matches and act.get("level_id") == level_id:
+                act["level_id"] = ""
+                changed = True
+        if changed:
+            await db.members.update_one(
+                {"id": member_id},
+                {"$set": {"activities": activities}}
+            )
+
     cache_invalidate("levels:")
     return {"message": "Member removed from level"}
 
