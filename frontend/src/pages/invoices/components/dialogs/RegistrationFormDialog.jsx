@@ -36,6 +36,7 @@ export const RegistrationFormDialog = ({
   closeRegistrationFormDialog, handleSaveRegistrationFormOnly, handlePrintNewRegistrationForm,
   calcEndDate,
   groupedLevelsForSelector,
+  getGroupedLevelsForDays,
   setAddMemberSource, setIsAddMemberDialogOpen, setMembers,
   language, t
 }) => {
@@ -212,7 +213,9 @@ export const RegistrationFormDialog = ({
                                 </Button>
                               )}
                             </div>
-                          ) : (
+                          ) : (() => {
+                            const _grouped = getGroupedLevelsForDays(item.training_days || []);
+                            return (
                             <div className="border rounded-lg overflow-hidden bg-white shadow-sm">
                               <div className="flex items-center justify-between p-2 bg-gray-100 border-b">
                                 <div className="flex items-center gap-2">
@@ -228,7 +231,7 @@ export const RegistrationFormDialog = ({
                               {regFormLevelSelectorState[idx].step === 'activity' && (
                                 <div className="p-2 space-y-1 max-h-48 overflow-y-auto">
                                   {MAIN_ACTIVITIES_FOR_LEVELS.map(activity => {
-                                    const activityLevels = groupedLevelsForSelector[activity.id] || {};
+                                    const activityLevels = _grouped[activity.id] || {};
                                     const timeCount = Object.keys(activityLevels).length;
                                     if (timeCount === 0) return null;
                                     return (
@@ -238,7 +241,7 @@ export const RegistrationFormDialog = ({
                                       </button>
                                     );
                                   })}
-                                  {groupedLevelsForSelector['other'] && Object.keys(groupedLevelsForSelector['other']).length > 0 && (
+                                  {_grouped["other"] && Object.keys(_grouped["other"]).length > 0 && (
                                     <button type="button" className="w-full flex items-center justify-between p-2 rounded-lg hover:bg-gray-100 transition-colors bg-gray-100" onClick={() => selectRegFormLevelActivity(idx, 'other')}>
                                       <div className="flex items-center gap-2"><span className="text-xl">📋</span><span className="font-medium">{language === 'ar' ? 'أخرى' : 'Other'}</span></div>
                                       <span>{language === 'ar' ? '←' : '→'}</span>
@@ -248,7 +251,7 @@ export const RegistrationFormDialog = ({
                               )}
                               {regFormLevelSelectorState[idx].step === 'time' && (
                                 <div className="p-2 space-y-1 max-h-48 overflow-y-auto">
-                                  {Object.entries(groupedLevelsForSelector[regFormLevelSelectorState[idx].selectedActivity] || {}).map(([timeSlot, timeLevels]) => {
+                                  {Object.entries(_grouped[regFormLevelSelectorState[idx].selectedActivity] || {}).map(([timeSlot, timeLevels]) => {
                                     const _itemDays = item.training_days || [];
                                     const totalMembers = timeLevels.reduce((sum, l) => {
                                       if (_itemDays.length > 0 && (l.members_details || []).length > 0) { const det = l.members_details || []; const perDay = _itemDays.map(day => det.filter(m => m.schedule && m.schedule.includes(day)).length); return sum + Math.max(...perDay, 0); }
@@ -266,7 +269,7 @@ export const RegistrationFormDialog = ({
                               )}
                               {regFormLevelSelectorState[idx].step === 'level' && (
                                 <div className="p-2 space-y-1 max-h-48 overflow-y-auto">
-                                  {(groupedLevelsForSelector[regFormLevelSelectorState[idx].selectedActivity]?.[regFormLevelSelectorState[idx].selectedTime] || []).sort((a, b) => a.level_number - b.level_number).map(level => {
+                                  {(_grouped[regFormLevelSelectorState[idx].selectedActivity]?.[regFormLevelSelectorState[idx].selectedTime] || []).sort((a, b) => a.level_number - b.level_number).map(level => {
                                     const _days = item.training_days || [];
                                     const memberCount = (_days.length > 0 && (level.members_details || []).length > 0) ? Math.max(..._days.map(day => (level.members_details || []).filter(m => m.schedule && m.schedule.includes(day)).length), 0) : (level.members || []).length;
                                     const maxCapacity = level.capacity || 10;
@@ -297,7 +300,8 @@ export const RegistrationFormDialog = ({
                                 </div>
                               )}
                             </div>
-                          )}
+                            );
+                          })()}
                           {regFormLevelWarnings[idx]?.isFull && !regFormLevelWarnings[idx]?.isAccepted && (
                             <div className="mt-2 p-2 bg-orange-50 border border-orange-300 rounded-lg">
                               <p className="text-xs text-orange-700 font-medium mb-2">⚠️ {regFormLevelWarnings[idx].message}</p>

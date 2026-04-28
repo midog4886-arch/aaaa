@@ -164,7 +164,7 @@ export const InvoicesPage = () => {
     notes, setNotes, paymentMethod, setPaymentMethod, saving, setSaving, couponCode, setCouponCode, appliedCoupon, setAppliedCoupon,
     couponDiscount, setCouponDiscount, validatingCoupon, itemType, setItemType, feeEditUnlocked, additionalMembers, setAdditionalMembers,
     additionalMemberNewForm, setAdditionalMemberNewForm, levelCapacityWarnings, levelSelectorState, customerNameAr, setCustomerNameAr,
-    customerPhone, setCustomerPhone, customerAddress, setCustomerAddress, MAIN_ACTIVITIES_FOR_LEVELS, groupedLevelsForSelector,
+    customerPhone, setCustomerPhone, customerAddress, setCustomerAddress, MAIN_ACTIVITIES_FOR_LEVELS, groupedLevelsForSelector, getGroupedLevelsForDays,
     parseActivityForLevel, subtotal, vatAmount, totalBeforeDiscount, totalDiscount, total, handleMemberSelect, addProductToInvoice,
     addActivityToInvoice, validateCoupon, removeCoupon, updateItemFee, updateItemDate, updateItemWeeks, removeItem, updateItemSchedule,
     updateItemLevel, handleAcceptFullLevel, handleRejectFullLevel, initLevelSelector, selectLevelActivity, selectLevelTime,
@@ -456,7 +456,7 @@ export const InvoicesPage = () => {
           saving={saving} additionalMembers={additionalMembers} setAdditionalMembers={setAdditionalMembers}
           additionalMemberNewForm={additionalMemberNewForm} setAdditionalMemberNewForm={setAdditionalMemberNewForm}
           levelSelectorState={levelSelectorState} levelCapacityWarnings={levelCapacityWarnings}
-          feeEditUnlocked={feeEditUnlocked} groupedLevelsForSelector={groupedLevelsForSelector}
+          feeEditUnlocked={feeEditUnlocked} groupedLevelsForSelector={groupedLevelsForSelector} getGroupedLevelsForDays={getGroupedLevelsForDays}
           addActivityToInvoice={addActivityToInvoice} addProductToInvoice={addProductToInvoice} removeItem={removeItem}
           updateItemDate={updateItemDate} updateItemWeeks={updateItemWeeks} updateItemFee={updateItemFee}
           initLevelSelector={initLevelSelector} goBackLevelSelector={goBackLevelSelector} resetLevelSelector={resetLevelSelector}
@@ -527,7 +527,7 @@ export const InvoicesPage = () => {
           closeRegistrationFormDialog={closeRegistrationFormDialog}
           handleSaveRegistrationFormOnly={handleSaveRegistrationFormOnly}
           handlePrintNewRegistrationForm={handlePrintNewRegistrationForm}
-          calcEndDate={calcEndDate} groupedLevelsForSelector={groupedLevelsForSelector}
+          calcEndDate={calcEndDate} groupedLevelsForSelector={groupedLevelsForSelector} getGroupedLevelsForDays={getGroupedLevelsForDays}
           setAddMemberSource={setAddMemberSource} setIsAddMemberDialogOpen={setIsAddMemberDialogOpen} setMembers={setMembers}
           coaches={coaches}
           language={language} t={t}

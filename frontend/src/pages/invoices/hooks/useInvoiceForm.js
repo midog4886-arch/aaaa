@@ -77,9 +77,9 @@ export const useInvoiceForm = ({
     return 'other';
   };
 
-  const groupedLevelsForSelector = useMemo(() => {
+  const buildGroupedLevels = (sourceLevels) => {
     const grouped = {};
-    levels.forEach(level => {
+    sourceLevels.forEach(level => {
       const mainActivity = parseActivityForLevel(level.activity_name);
       if (!grouped[mainActivity]) grouped[mainActivity] = {};
       let timeSlot = level.activity_name;
@@ -90,7 +90,36 @@ export const useInvoiceForm = ({
       grouped[mainActivity][timeSlot].push(level);
     });
     return grouped;
-  }, [levels]);
+  };
+
+  const groupedLevelsForSelector = useMemo(() => buildGroupedLevels(levels), [levels]);
+
+  const AR_TO_EN_DAY = {
+    'الأحد': 'sunday',
+    'الإثنين': 'monday',
+    'الاثنين': 'monday',
+    'الثلاثاء': 'tuesday',
+    'الأربعاء': 'wednesday',
+    'الاربعاء': 'wednesday',
+    'الخميس': 'thursday',
+    'الجمعة': 'friday',
+    'السبت': 'saturday',
+  };
+
+  const filterLevelsByDays = (sourceLevels, trainingDays) => {
+    if (!trainingDays || trainingDays.length === 0) return sourceLevels;
+    const wanted = trainingDays.map(d => AR_TO_EN_DAY[d]).filter(Boolean);
+    if (wanted.length === 0) return sourceLevels;
+    return sourceLevels.filter(level => {
+      const lvlDays = level.days;
+      if (!lvlDays || !Array.isArray(lvlDays) || lvlDays.length === 0) return true;
+      return lvlDays.some(d => wanted.includes(d));
+    });
+  };
+
+  const getGroupedLevelsForDays = (trainingDays) => {
+    return buildGroupedLevels(filterLevelsByDays(levels, trainingDays));
+  };
 
   const calculateTotals = () => {
     const primarySubtotal = invoiceItems.reduce((sum, item) => sum + item.fee, 0);
@@ -322,7 +351,7 @@ export const useInvoiceForm = ({
     additionalMembers, setAdditionalMembers, additionalMemberNewForm, setAdditionalMemberNewForm,
     levelCapacityWarnings, setLevelCapacityWarnings, levelSelectorState, setLevelSelectorState,
     customerNameAr, setCustomerNameAr, customerPhone, setCustomerPhone, customerAddress, setCustomerAddress,
-    MAIN_ACTIVITIES_FOR_LEVELS, groupedLevelsForSelector, parseActivityForLevel,
+    MAIN_ACTIVITIES_FOR_LEVELS, groupedLevelsForSelector, getGroupedLevelsForDays, parseActivityForLevel,
     subtotal, vatAmount, totalBeforeDiscount, totalDiscount, total,
     handleMemberSelect, addProductToInvoice, addActivityToInvoice, validateCoupon, removeCoupon,
     updateItemFee, updateItemDate, updateItemWeeks, removeItem, updateItemSchedule, updateItemLevel,
