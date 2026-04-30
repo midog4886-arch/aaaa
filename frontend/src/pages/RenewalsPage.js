@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/AuthContext';
 import { Layout } from '../components/Layout';
@@ -31,9 +31,32 @@ import {
   History,
 } from 'lucide-react';
 
+const extractSessionsPerWeek = (name) => {
+  const m = (name || '').match(/(\d+)\s*(?:ايام|أيام|يوم|ساعات|ساعة|ساعه)/);
+  return m ? parseInt(m[1], 10) : 0;
+};
+
+const formatRemainingSessions = (daysRemaining, activityName, language) => {
+  const sessionsPerWeek = extractSessionsPerWeek(activityName);
+  if (!sessionsPerWeek || daysRemaining <= 0) {
+    return language === 'ar'
+      ? `${Math.max(0, daysRemaining)} حصة متبقية`
+      : `${Math.max(0, daysRemaining)} sessions remaining`;
+  }
+  const sessions = Math.max(1, Math.ceil((daysRemaining * sessionsPerWeek) / 7));
+  if (language === 'ar') {
+    if (sessions === 1) return 'حصة واحدة متبقية';
+    if (sessions === 2) return 'حصتان متبقيتان';
+    if (sessions >= 3 && sessions <= 10) return `${sessions} حصص متبقية`;
+    return `${sessions} حصة متبقية`;
+  }
+  return `${sessions} session${sessions === 1 ? '' : 's'} remaining`;
+};
+
 const RenewalsPage = () => {
   const { t, language } = useLanguage();
   const { selectedBranchId } = useAuth();
+  const navigate = useNavigate();
 
   const [loading, setLoading] = useState(true);
   const [expiringList, setExpiringList] = useState([]);
@@ -592,17 +615,25 @@ const RenewalsPage = () => {
     else if (dr >= 1 && dr <= 3) gradientCls = 'from-orange-100/60 via-orange-50/30 to-transparent';
     else if (dr >= 4 && dr <= 7) gradientCls = 'from-yellow-100/60 via-yellow-50/30 to-transparent';
     else gradientCls = 'from-transparent to-transparent';
+    const goToMember = () => {
+      if (item.member_id) navigate(`/admin/members?focus=${item.member_id}`);
+    };
+    const stopAndCall = (fn) => (e) => { e.stopPropagation(); fn(e); };
     return (
       <Card
         key={idx}
-        className={`overflow-hidden border-s-4 ${getCardBorderColor(item.days_remaining)} bg-gradient-to-bl ${gradientCls} ${isSelected ? 'ring-2 ring-primary' : ''}`}
+        onClick={goToMember}
+        role="button"
+        tabIndex={0}
+        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); goToMember(); } }}
+        className={`overflow-hidden border-s-4 ${getCardBorderColor(item.days_remaining)} bg-gradient-to-bl ${gradientCls} ${isSelected ? 'ring-2 ring-primary' : ''} cursor-pointer hover:shadow-md transition-shadow`}
       >
         <CardContent className="p-4 space-y-3">
           <div className="flex items-start justify-between gap-2">
             <div className="flex items-center gap-2 min-w-0">
               <button
                 type="button"
-                onClick={() => toggleSelect(item)}
+                onClick={stopAndCall(() => toggleSelect(item))}
                 className="text-primary hover:text-primary/80 flex-shrink-0"
                 aria-label={language === 'ar' ? 'تحديد' : 'Select'}
               >
@@ -659,6 +690,7 @@ const RenewalsPage = () => {
                   href={`https://wa.me/966${item.phone.replace(/^0/, '')}?text=${encodeURIComponent(buildReminderText(item))}`}
                   target="_blank"
                   rel="noopener noreferrer"
+                  onClick={(e) => e.stopPropagation()}
                   className="text-green-600 hover:text-green-700 p-0.5 rounded hover:bg-green-50 transition-colors"
                   title={language === 'ar' ? 'واتساب' : 'WhatsApp'}
                 >
@@ -679,7 +711,7 @@ const RenewalsPage = () => {
               <span className={`font-medium ${isExpired ? 'text-red-600' : item.days_remaining <= 3 ? 'text-orange-600' : 'text-yellow-600'}`}>
                 {isExpired
                   ? (language === 'ar' ? `منتهي منذ ${Math.abs(item.days_remaining)} يوم` : `Expired ${Math.abs(item.days_remaining)} days ago`)
-                  : (language === 'ar' ? `${item.days_remaining} يوم متبقي` : `${item.days_remaining} days remaining`)}
+                  : formatRemainingSessions(item.days_remaining, item.activity_name, language)}
               </span>
             </div>
             <div className="flex items-center gap-2 text-xs text-muted-foreground pt-1 border-t">
@@ -722,11 +754,11 @@ const RenewalsPage = () => {
             </div>
           </div>
           <div className="flex gap-2 pt-2">
-            <Button size="sm" className="flex-1 bg-orange-500 hover:bg-orange-600 text-white" onClick={() => openRenewalDialog(item)}>
+            <Button size="sm" className="flex-1 bg-orange-500 hover:bg-orange-600 text-white" onClick={stopAndCall(() => openRenewalDialog(item))}>
               <RefreshCcw className="w-3.5 h-3.5 me-1" />
               {language === 'ar' ? 'تجديد' : 'Renew'}
             </Button>
-            <Button size="sm" variant="outline" className="flex-1" onClick={() => handleSingleRemind(item)}>
+            <Button size="sm" variant="outline" className="flex-1" onClick={stopAndCall(() => handleSingleRemind(item))}>
               <Bell className="w-3.5 h-3.5 me-1" />
               {language === 'ar' ? 'تذكير' : 'Remind'}
             </Button>
