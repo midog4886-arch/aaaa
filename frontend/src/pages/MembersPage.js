@@ -2134,7 +2134,15 @@ export const MembersPage = () => {
         </Dialog>
 
         {/* View Member Dialog */}
-        <Dialog open={isViewDialogOpen} onOpenChange={setIsViewDialogOpen}>
+        <Dialog open={isViewDialogOpen} onOpenChange={(open) => {
+          setIsViewDialogOpen(open);
+          if (!open) {
+            const fromParam = searchParams.get('from');
+            if (fromParam === 'renewals') {
+              navigate('/admin/renewals');
+            }
+          }
+        }}>
           <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle className="flex items-center gap-3">

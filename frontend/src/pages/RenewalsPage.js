@@ -616,7 +616,7 @@ const RenewalsPage = () => {
     else if (dr >= 4 && dr <= 7) gradientCls = 'from-yellow-100/60 via-yellow-50/30 to-transparent';
     else gradientCls = 'from-transparent to-transparent';
     const goToMember = () => {
-      if (item.member_id) navigate(`/admin/members?focus=${item.member_id}`);
+      if (item.member_id) navigate(`/admin/members?focus=${item.member_id}&from=renewals`);
     };
     const stopAndCall = (fn) => (e) => { e.stopPropagation(); fn(e); };
     return (
