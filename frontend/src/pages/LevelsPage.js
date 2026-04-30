@@ -29,9 +29,15 @@ const _actKey = (act) => act?.activity_id || act?.activity_name || '';
 const _recentKey = (memberId, act) =>
   `${memberId}::${_actKey(act)}::${act?.schedule || ''}::${act?.end_date || ''}`;
 
+const _cleanLevelName = (raw) => {
+  const s = (raw || '').toString();
+  if (!s) return '';
+  return s.replace(/\s*[\/\\\-|]+\s*(?:كابتن|الكابتن|كوتش|coach)\b.*$/i, '').trim();
+};
+
 const _formatLevelLabel = (lvl) => {
   if (!lvl) return '';
-  const display = lvl.custom_name || lvl.name || lvl.activity_name || '';
+  const display = _cleanLevelName(lvl.custom_name) || _cleanLevelName(lvl.name) || lvl.activity_name || '';
   const num = lvl.level_number ? `#${lvl.level_number}` : '';
   return display ? `${display} ${num}`.trim() : `المستوى ${lvl.level_number || ''}`.trim();
 };
@@ -1040,7 +1046,7 @@ export const LevelsPage = () => {
     const renderLevelHeader = (lvl) => {
       const n = lvl.level_number || 0;
       const color = levelColors[n] || '#555';
-      const customName = lvl.custom_name || lvl.name || '';
+      const customName = _cleanLevelName(lvl.custom_name || lvl.name || '');
       const titleText = customName ? customName : `المستوى ${n}`;
       const subLine = customName
         ? `<div style="font-size:12px;font-weight:normal;opacity:0.85;margin-top:2px;">المستوى ${n}</div>`
@@ -1762,7 +1768,7 @@ ${slotTables}
               <span className="text-2xl font-bold">{level.level_number}</span>
             </div>
             <div>
-              <span className="text-sm opacity-90">{level.custom_name ? level.custom_name : t('المستوى', 'Level')}</span>
+              <span className="text-sm opacity-90">{_cleanLevelName(level.custom_name) || t('المستوى', 'Level')}</span>
               <p className="text-xs opacity-75">{level.activity_name}</p>
               {(() => {
                 const lvCoach = level.coach_id ? coaches.find(c => c.id === level.coach_id) : null;
@@ -3353,7 +3359,7 @@ ${slotTables}
                               {t('مستوى', 'Lv')} {level.level_number}
                             </Badge>
                             <div className="min-w-0">
-                              <p className="font-medium text-sm truncate">{level.custom_name || level.activity_name}</p>
+                              <p className="font-medium text-sm truncate">{_cleanLevelName(level.custom_name) || level.activity_name}</p>
                               <p className="text-xs text-gray-500 truncate">{level.activity_name}</p>
                               {(level.time_slot || level.schedule) && (
                                 <p className="text-xs font-bold text-amber-700 mt-1 flex items-center gap-1">
