@@ -53,20 +53,32 @@ const formatRemainingSessions = (daysRemaining, activityName, language) => {
   return `${sessions} session${sessions === 1 ? '' : 's'} remaining`;
 };
 
+const _renewalsCache = {
+  key: null,
+  expiring: null,
+  expired: null,
+  branches: null,
+  ts: 0,
+};
+const _cacheKey = (days, branchId) => `${days || ''}::${branchId || 'all'}`;
+
 const RenewalsPage = () => {
   const { t, language } = useLanguage();
   const { selectedBranchId } = useAuth();
   const navigate = useNavigate();
 
-  const [loading, setLoading] = useState(true);
-  const [expiringList, setExpiringList] = useState([]);
-  const [expiredList, setExpiredList] = useState([]);
+  const _initialKey = _cacheKey('7', selectedBranchId);
+  const _hasCache = _renewalsCache.key === _initialKey && Array.isArray(_renewalsCache.expiring);
+
+  const [loading, setLoading] = useState(!_hasCache);
+  const [expiringList, setExpiringList] = useState(_hasCache ? _renewalsCache.expiring : []);
+  const [expiredList, setExpiredList] = useState(_hasCache ? _renewalsCache.expired : []);
   const [searchTerm, setSearchTerm] = useState('');
   const [days, setDays] = useState('7');
   const [activeTab, setActiveTab] = useState('expiring');
   const [filterActivity, setFilterActivity] = useState('all');
   const [endDateFilter, setEndDateFilter] = useState('');
-  const [branches, setBranches] = useState([]);
+  const [branches, setBranches] = useState(_hasCache && Array.isArray(_renewalsCache.branches) ? _renewalsCache.branches : []);
 
   const [isRenewalDialogOpen, setIsRenewalDialogOpen] = useState(false);
   const [selectedItem, setSelectedItem] = useState(null);
@@ -169,7 +181,16 @@ const RenewalsPage = () => {
   };
 
   const loadData = async () => {
-    setLoading(true);
+    const key = _cacheKey(days, selectedBranchId);
+    const cacheHit = _renewalsCache.key === key && Array.isArray(_renewalsCache.expiring);
+    if (cacheHit) {
+      setExpiringList(_renewalsCache.expiring);
+      setExpiredList(_renewalsCache.expired);
+      if (Array.isArray(_renewalsCache.branches)) setBranches(_renewalsCache.branches);
+      setLoading(false);
+    } else {
+      setLoading(true);
+    }
     try {
       const params = { days: parseInt(days) };
       if (selectedBranchId && selectedBranchId !== 'all') {
@@ -180,13 +201,21 @@ const RenewalsPage = () => {
         branchesAPI.getAll()
       ]);
       const allItems = res.data || [];
-      setBranches(branchRes.data || []);
+      const branchesData = branchRes.data || [];
+      setBranches(branchesData);
 
       const expiring = allItems.filter(item => item.days_remaining >= 0);
       const expired = allItems.filter(item => item.days_remaining < 0);
 
       setExpiringList(expiring);
       setExpiredList(expired);
+
+      _renewalsCache.key = key;
+      _renewalsCache.expiring = expiring;
+      _renewalsCache.expired = expired;
+      _renewalsCache.branches = branchesData;
+      _renewalsCache.ts = Date.now();
+
       reloadLastReminders([...expiring, ...expired]);
       try {
         const tplRes = await whatsappAPI.getReminderTemplate();
@@ -195,7 +224,9 @@ const RenewalsPage = () => {
       } catch {}
     } catch (error) {
       console.error('Failed to load renewals data:', error);
-      toast.error(language === 'ar' ? 'حدث خطأ في تحميل البيانات' : 'Failed to load data');
+      if (!cacheHit) {
+        toast.error(language === 'ar' ? 'حدث خطأ في تحميل البيانات' : 'Failed to load data');
+      }
     } finally {
       setLoading(false);
     }
