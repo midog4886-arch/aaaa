@@ -282,7 +282,11 @@ const RenewalsPage = () => {
     if (endDateFilter) {
       filtered = filtered.filter(item => (item.end_date || '') === endDateFilter);
     }
-    filtered.sort((a, b) => a.days_remaining - b.days_remaining);
+    if (activeTab === 'expired') {
+      filtered.sort((a, b) => b.days_remaining - a.days_remaining);
+    } else {
+      filtered.sort((a, b) => a.days_remaining - b.days_remaining);
+    }
     return filtered;
   };
 
