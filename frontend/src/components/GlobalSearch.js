@@ -95,7 +95,7 @@ const GlobalSearch = () => {
       </div>
 
       {isOpen && results && (
-        <div className="absolute top-full mt-2 end-0 w-[min(calc(100vw-1rem),28rem)] sm:w-full bg-white rounded-xl shadow-2xl border z-50 overflow-hidden max-h-[70vh] overflow-y-auto">
+        <div className="fixed top-[60px] inset-x-2 sm:absolute sm:top-full sm:inset-x-auto sm:start-0 sm:end-0 sm:mt-2 sm:w-full bg-white rounded-xl shadow-2xl border z-50 overflow-hidden max-h-[70vh] overflow-y-auto">
           {totalResults === 0 ? (
             <div className="p-6 text-center text-muted-foreground">
               <Search className="w-8 h-8 mx-auto mb-2 opacity-30" />
