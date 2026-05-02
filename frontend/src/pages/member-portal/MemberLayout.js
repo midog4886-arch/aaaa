@@ -23,6 +23,7 @@ export const getMemberData = () => {
 export const memberLogout = () => {
   localStorage.removeItem('member_token');
   localStorage.removeItem('member_data');
+  try { localStorage.removeItem('member_dashboard_cache_v1'); } catch {}
 };
 
 // Dark mode helper - reads from member_data (DB-synced) first, falls back to localStorage

@@ -307,17 +307,42 @@ const LoadingSkeleton = ({ darkMode }) => (
 
 // ── Main Component ────────────────────────────────────────────────────────────
 
+const DASH_CACHE_KEY = 'member_dashboard_cache_v1';
+const _readDashCache = (memberId) => {
+  try {
+    const raw = localStorage.getItem(DASH_CACHE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed || parsed.member_id !== memberId) return null;
+    return parsed;
+  } catch { return null; }
+};
+const _writeDashCache = (memberId, payload) => {
+  try {
+    const existing = _readDashCache(memberId) || { member_id: memberId };
+    const next = { ...existing, ...payload, member_id: memberId, ts: Date.now() };
+    localStorage.setItem(DASH_CACHE_KEY, JSON.stringify(next));
+  } catch {}
+};
+
 const MemberDashboard = () => {
-  const [loading, setLoading] = useState(true);
+  const member = getMemberData();
+  const _initialCache = _readDashCache(member?.id);
+  const _hasCache = !!_initialCache;
+
+  const [loading, setLoading] = useState(!_hasCache);
   const [refreshing, setRefreshing] = useState(false);
   const [refreshToken, setRefreshToken] = useState(0);
-  const [subscriptions, setSubscriptions] = useState({ active: [], expired: [], total_active: 0, total_expired: 0 });
-  const [notifications, setNotifications] = useState({ notifications: [], unread_count: 0 });
-  const [attendanceStats, setAttendanceStats] = useState(null);
-  const [loyaltyData, setLoyaltyData] = useState(null);
-  const [myTournaments, setMyTournaments] = useState(null);
+  const [subscriptions, setSubscriptions] = useState(
+    _initialCache?.subscriptions || { active: [], expired: [], total_active: 0, total_expired: 0 }
+  );
+  const [notifications, setNotifications] = useState(
+    _initialCache?.notifications || { notifications: [], unread_count: 0 }
+  );
+  const [attendanceStats, setAttendanceStats] = useState(_initialCache?.attendanceStats || null);
+  const [loyaltyData, setLoyaltyData] = useState(_initialCache?.loyaltyData || null);
+  const [myTournaments, setMyTournaments] = useState(_initialCache?.myTournaments || null);
 
-  const member = getMemberData();
   const darkMode = getDarkMode();
   const language = getLanguage();
   const today = new Date().toISOString().slice(0, 10);
@@ -325,32 +350,49 @@ const MemberDashboard = () => {
   useEffect(() => { fetchData(); }, []);
 
   const fetchData = useCallback(async (showToast = false) => {
-    // Fire all requests in parallel and update state as each resolves
-    // (don't block the entire UI on the slowest endpoint)
+    const memberId = member?.id;
     const subsP = memberAPI.get('/api/member-portal/subscriptions')
-      .then(res => { setSubscriptions(res.data); return { ok: true }; })
+      .then(res => {
+        setSubscriptions(res.data);
+        _writeDashCache(memberId, { subscriptions: res.data });
+        return { ok: true };
+      })
       .catch(() => ({ ok: false }));
 
     const notifP = memberAPI.get('/api/member-portal/notifications')
-      .then(res => { setNotifications(res.data); return { ok: true }; })
+      .then(res => {
+        setNotifications(res.data);
+        _writeDashCache(memberId, { notifications: res.data });
+        return { ok: true };
+      })
       .catch(() => ({ ok: false }));
 
     const attP = memberAPI.get('/api/member-portal/attendance-stats')
-      .then(res => { setAttendanceStats(res.data); return { ok: true }; })
+      .then(res => {
+        setAttendanceStats(res.data);
+        _writeDashCache(memberId, { attendanceStats: res.data });
+        return { ok: true };
+      })
       .catch(() => ({ ok: false }));
 
-    const loyaltyP = member?.id
-      ? memberAPI.get(`/api/loyalty/members/${member.id}/points`)
-          .then(res => { setLoyaltyData(res.data); return { ok: true }; })
+    const loyaltyP = memberId
+      ? memberAPI.get(`/api/loyalty/members/${memberId}/points`)
+          .then(res => {
+            setLoyaltyData(res.data);
+            _writeDashCache(memberId, { loyaltyData: res.data });
+            return { ok: true };
+          })
           .catch(() => ({ ok: false }))
       : Promise.resolve({ ok: true });
 
     const tournamentsP = memberAPI.get('/api/member-portal/my-tournaments')
-      .then(res => { setMyTournaments(res.data); return { ok: true }; })
+      .then(res => {
+        setMyTournaments(res.data);
+        _writeDashCache(memberId, { myTournaments: res.data });
+        return { ok: true };
+      })
       .catch(() => ({ ok: false }));
 
-    // Show the page as soon as the FASTEST core endpoint returns,
-    // remaining sections fill in shortly after.
     Promise.race([subsP, notifP, attP]).then(() => setLoading(false));
 
     const [subsR, notifR] = await Promise.all([subsP, notifP, attP, loyaltyP, tournamentsP]);
