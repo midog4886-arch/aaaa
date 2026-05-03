@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Wallet, Plus, Trash2, FileText, CheckCircle, RotateCcw, Save, Loader, X, AlertTriangle } from 'lucide-react';
+import { Wallet, Plus, Trash2, FileText, CheckCircle, RotateCcw, Save, Loader, X, AlertTriangle, BarChart3, Download, FileSpreadsheet, ChevronDown, ChevronLeft } from 'lucide-react';
 import { coachSalariesAPI, coachAdvancesAPI, coachesAPI } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -34,6 +34,16 @@ const CoachSalariesPage = () => {
   const [advances, setAdvances] = useState([]);
   const [coaches, setCoaches] = useState([]);
   const [loading, setLoading] = useState(false);
+  const defaultFromMonth = () => {
+    const d = new Date();
+    d.setMonth(d.getMonth() - 5);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+  };
+  const [reportFrom, setReportFrom] = useState(defaultFromMonth());
+  const [reportTo, setReportTo] = useState(todayMonth());
+  const [reportData, setReportData] = useState(null);
+  const [reportLoading, setReportLoading] = useState(false);
+  const [expandedCoach, setExpandedCoach] = useState(null);
   const [savingId, setSavingId] = useState(null);
   const [editing, setEditing] = useState(null);
   const [advanceForm, setAdvanceForm] = useState({ coach_id: '', advance_date: todayDate(), amount: '', payment_method: 'cash', notes: '' });
@@ -74,8 +84,55 @@ const CoachSalariesPage = () => {
     } catch (e) {}
   };
 
+  const fetchReport = async () => {
+    setReportLoading(true);
+    try {
+      const res = await coachSalariesAPI.report({
+        from_month: reportFrom,
+        to_month: reportTo,
+        branch_filter: branchFilter,
+      });
+      setReportData(res.data);
+    } catch (e) {
+      showToast(e.response?.data?.detail || 'تعذّر تحميل التقرير', 'error');
+    } finally {
+      setReportLoading(false);
+    }
+  };
+
+  const downloadReport = (format) => {
+    const token = localStorage.getItem('token');
+    const url = coachSalariesAPI.reportExportUrl({
+      from_month: reportFrom,
+      to_month: reportTo,
+      branch_filter: branchFilter,
+      format,
+    });
+    fetch(url, { headers: { Authorization: `Bearer ${token}` } })
+      .then(async r => {
+        if (!r.ok) {
+          const err = await r.json().catch(() => ({}));
+          throw new Error(err.detail || 'فشل التصدير');
+        }
+        return r.blob();
+      })
+      .then(blob => {
+        const u = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = u;
+        a.download = `coach_salaries_report_${reportFrom}_${reportTo}.${format}`;
+        a.click();
+        URL.revokeObjectURL(u);
+      })
+      .catch(e => showToast(e.message || 'فشل التصدير', 'error'));
+  };
+
   useEffect(() => { fetchCoaches(); fetchAdvances(); }, []);
   useEffect(() => { fetchSalaries(); }, [month]);
+  useEffect(() => {
+    if (tab === 'reports') fetchReport();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab]);
 
   const openEditor = (row) => {
     setEditing({
@@ -311,6 +368,10 @@ const CoachSalariesPage = () => {
           className={`px-4 py-2 text-sm font-medium ${tab === 'advances' ? 'border-b-2 border-orange-500 text-orange-600' : 'text-gray-500'}`}>
           السُلف ({pendingAdvances.length})
         </button>
+        <button onClick={() => setTab('reports')}
+          className={`px-4 py-2 text-sm font-medium flex items-center gap-1 ${tab === 'reports' ? 'border-b-2 border-orange-500 text-orange-600' : 'text-gray-500'}`}>
+          <BarChart3 className="w-4 h-4" /> تقارير
+        </button>
       </div>
 
       {tab === 'salaries' && (
@@ -457,6 +518,191 @@ const CoachSalariesPage = () => {
             </table>
           </div>
         </div>
+      )}
+
+      {tab === 'reports' && (
+        <>
+          <div className="bg-white border rounded-xl p-4 mb-4">
+            <div className="flex flex-wrap items-end gap-3">
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">من شهر</label>
+                <input type="month" value={reportFrom} onChange={e => setReportFrom(e.target.value)}
+                  className="border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-orange-500" />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">إلى شهر</label>
+                <input type="month" value={reportTo} onChange={e => setReportTo(e.target.value)}
+                  className="border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-orange-500" />
+              </div>
+              <button onClick={fetchReport} disabled={reportLoading}
+                className="bg-orange-500 hover:bg-orange-600 text-white px-4 py-2 rounded-lg text-sm flex items-center gap-2 disabled:opacity-50">
+                {reportLoading ? <Loader className="w-4 h-4 animate-spin" /> : <BarChart3 className="w-4 h-4" />}
+                عرض التقرير
+              </button>
+              <div className="flex gap-2 mr-auto">
+                <button onClick={() => downloadReport('xlsx')}
+                  disabled={!reportData || reportLoading}
+                  className="bg-green-600 hover:bg-green-700 text-white px-3 py-2 rounded-lg text-sm flex items-center gap-2 disabled:opacity-50">
+                  <FileSpreadsheet className="w-4 h-4" /> تصدير Excel
+                </button>
+                <button onClick={() => downloadReport('pdf')}
+                  disabled={!reportData || reportLoading}
+                  className="bg-red-600 hover:bg-red-700 text-white px-3 py-2 rounded-lg text-sm flex items-center gap-2 disabled:opacity-50">
+                  <Download className="w-4 h-4" /> تصدير PDF
+                </button>
+              </div>
+            </div>
+            {reportData && (
+              <p className="text-xs text-gray-500 mt-3">
+                الفترة: {reportData.from} → {reportData.to} ({reportData.months?.length || 0} شهر) — {reportData.totals?.coaches_count || 0} مدرّب
+              </p>
+            )}
+          </div>
+
+          {reportLoading ? (
+            <div className="text-center p-8 text-gray-400"><Loader className="w-6 h-6 animate-spin inline" /></div>
+          ) : reportData ? (
+            <>
+              <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-4">
+                <div className="bg-white border rounded-lg p-3">
+                  <p className="text-xs text-gray-500">إجمالي الراتب الأساسي</p>
+                  <p className="text-lg font-bold text-gray-800">{fmt(reportData.totals.total_base)} ر.س</p>
+                </div>
+                <div className="bg-white border rounded-lg p-3">
+                  <p className="text-xs text-gray-500">إجمالي الخصومات</p>
+                  <p className="text-lg font-bold text-red-600">{fmt(reportData.totals.total_deductions)} ر.س</p>
+                </div>
+                <div className="bg-white border rounded-lg p-3">
+                  <p className="text-xs text-gray-500">سُلف مخصومة</p>
+                  <p className="text-lg font-bold text-amber-600">{fmt(reportData.totals.total_advances_repaid)} ر.س</p>
+                </div>
+                <div className="bg-white border rounded-lg p-3">
+                  <p className="text-xs text-gray-500">إجمالي المصروف فعلياً</p>
+                  <p className="text-lg font-bold text-green-600">{fmt(reportData.totals.total_net_disbursed)} ر.س</p>
+                </div>
+                <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
+                  <p className="text-xs text-amber-700">سُلف معلّقة (إجمالي)</p>
+                  <p className="text-lg font-bold text-amber-700">{fmt(reportData.totals.pending_advances_total)} ر.س</p>
+                </div>
+              </div>
+
+              <div className="bg-white rounded-xl border shadow-sm overflow-hidden">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead className="bg-gray-50 border-b">
+                      <tr>
+                        <th className="text-right p-3 font-semibold text-gray-700">المدرب</th>
+                        <th className="text-right p-3 font-semibold text-gray-700">أشهر مسجّلة</th>
+                        <th className="text-right p-3 font-semibold text-gray-700">أشهر مصروفة</th>
+                        <th className="text-right p-3 font-semibold text-gray-700">إجمالي الراتب</th>
+                        <th className="text-right p-3 font-semibold text-gray-700">الخصومات</th>
+                        <th className="text-right p-3 font-semibold text-gray-700">سُلف مخصومة</th>
+                        <th className="text-right p-3 font-semibold text-gray-700">إجمالي المصروف</th>
+                        <th className="text-right p-3 font-semibold text-gray-700">سُلف معلّقة</th>
+                        <th className="text-right p-3 font-semibold text-gray-700">أيام غياب</th>
+                        <th className="text-right p-3 font-semibold text-gray-700">متوسط دقائق التأخر</th>
+                        <th className="text-center p-3 font-semibold text-gray-700">السجل</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(reportData.coaches || []).length === 0 ? (
+                        <tr><td colSpan="11" className="p-8 text-center text-gray-400">لا توجد بيانات</td></tr>
+                      ) : reportData.coaches.map(c => {
+                        const open = expandedCoach === c.coach_id;
+                        return (
+                          <React.Fragment key={c.coach_id}>
+                            <tr className="border-b hover:bg-gray-50">
+                              <td className="p-3 font-medium text-gray-800">{c.coach_name}</td>
+                              <td className="p-3">{c.months_recorded}</td>
+                              <td className="p-3 text-green-700">{c.months_disbursed}</td>
+                              <td className="p-3">{fmt(c.total_base)}</td>
+                              <td className="p-3 text-red-600">{fmt(c.total_deductions)}</td>
+                              <td className="p-3 text-amber-600">{fmt(c.total_advances_repaid)}</td>
+                              <td className="p-3 font-bold text-green-700">{fmt(c.total_net_disbursed)}</td>
+                              <td className="p-3">
+                                {c.pending_advances_total > 0 ? (
+                                  <span className="bg-amber-100 text-amber-800 px-2 py-1 rounded text-xs font-semibold">
+                                    {fmt(c.pending_advances_total)} ({c.pending_advances_count})
+                                  </span>
+                                ) : <span className="text-gray-400 text-xs">—</span>}
+                              </td>
+                              <td className="p-3 text-red-600">{c.absent_days_total}</td>
+                              <td className="p-3">{c.late_minutes_avg}</td>
+                              <td className="p-3 text-center">
+                                <button
+                                  onClick={() => setExpandedCoach(open ? null : c.coach_id)}
+                                  className="text-blue-600 hover:text-blue-800 inline-flex items-center gap-1 text-xs">
+                                  {open ? <ChevronDown className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
+                                  {open ? 'إخفاء' : 'عرض'}
+                                </button>
+                              </td>
+                            </tr>
+                            {open && (
+                              <tr className="bg-orange-50/40">
+                                <td colSpan="11" className="p-3">
+                                  {(c.history || []).length === 0 ? (
+                                    <p className="text-center text-gray-400 text-sm py-3">لا توجد سجلات في هذه الفترة</p>
+                                  ) : (
+                                    <div className="overflow-x-auto">
+                                      <table className="w-full text-xs">
+                                        <thead className="bg-white border-b">
+                                          <tr>
+                                            <th className="text-right p-2">الشهر</th>
+                                            <th className="text-right p-2">الراتب</th>
+                                            <th className="text-right p-2">خصم غياب</th>
+                                            <th className="text-right p-2">خصم تأخر</th>
+                                            <th className="text-right p-2">علاوة</th>
+                                            <th className="text-right p-2">سُلف مخصومة</th>
+                                            <th className="text-right p-2">حضور / غياب</th>
+                                            <th className="text-right p-2">دقائق التأخر</th>
+                                            <th className="text-right p-2">الصافي</th>
+                                            <th className="text-right p-2">الحالة</th>
+                                            <th className="text-right p-2">تاريخ الصرف</th>
+                                          </tr>
+                                        </thead>
+                                        <tbody>
+                                          {c.history.map(h => (
+                                            <tr key={h.year_month} className="border-b">
+                                              <td className="p-2 font-semibold">{h.year_month}</td>
+                                              <td className="p-2">{fmt(h.base_salary)}</td>
+                                              <td className="p-2 text-red-600">-{fmt(h.deduction_absent)}</td>
+                                              <td className="p-2 text-red-600">-{fmt(h.deduction_late)}</td>
+                                              <td className="p-2 text-green-600">+{fmt(h.bonus)}</td>
+                                              <td className="p-2 text-amber-600">-{fmt(h.advances_repaid_total)}</td>
+                                              <td className="p-2"><span className="text-green-600">{h.present_days}</span> / <span className="text-red-600">{h.absent_days}</span></td>
+                                              <td className="p-2">{h.late_minutes}</td>
+                                              <td className="p-2 font-bold text-blue-700">{fmt(h.net_amount)}</td>
+                                              <td className="p-2">
+                                                {h.status === 'disbursed' ? (
+                                                  <span className="bg-green-100 text-green-700 px-2 py-0.5 rounded text-[11px] font-semibold">مصروف</span>
+                                                ) : h.status === 'draft' ? (
+                                                  <span className="bg-yellow-100 text-yellow-700 px-2 py-0.5 rounded text-[11px] font-semibold">مسودة</span>
+                                                ) : (
+                                                  <span className="bg-gray-100 text-gray-600 px-2 py-0.5 rounded text-[11px]">{h.status || '—'}</span>
+                                                )}
+                                              </td>
+                                              <td className="p-2 text-gray-500">{h.disbursed_at ? h.disbursed_at.slice(0, 10) : '—'}</td>
+                                            </tr>
+                                          ))}
+                                        </tbody>
+                                      </table>
+                                    </div>
+                                  )}
+                                </td>
+                              </tr>
+                            )}
+                          </React.Fragment>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </>
+          ) : (
+            <div className="text-center p-8 text-gray-400">اختر نطاق التواريخ ثم اضغط "عرض التقرير"</div>
+          )}
+        </>
       )}
 
       {editing && (

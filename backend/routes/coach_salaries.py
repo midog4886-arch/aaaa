@@ -624,6 +624,437 @@ async def bulk_disburse(
     return {"disbursed": disbursed, "errors": errors, "disbursed_count": len(disbursed), "error_count": len(errors)}
 
 
+def _months_between(from_ym: str, to_ym: str) -> List[str]:
+    import re
+    if not (isinstance(from_ym, str) and isinstance(to_ym, str)
+            and re.fullmatch(r"\d{4}-\d{2}", from_ym)
+            and re.fullmatch(r"\d{4}-\d{2}", to_ym)):
+        raise HTTPException(status_code=400, detail="from/to يجب أن يكون بصيغة YYYY-MM")
+    fy, fm = (int(x) for x in from_ym.split("-"))
+    ty, tm = (int(x) for x in to_ym.split("-"))
+    if not (1 <= fm <= 12 and 1 <= tm <= 12):
+        raise HTTPException(status_code=400, detail="رقم الشهر يجب أن يكون بين 1 و 12")
+    if not (1900 <= fy <= 2999 and 1900 <= ty <= 2999):
+        raise HTTPException(status_code=400, detail="السنة خارج النطاق المسموح")
+    start = fy * 12 + (fm - 1)
+    end = ty * 12 + (tm - 1)
+    if end < start:
+        raise HTTPException(status_code=400, detail="نطاق التاريخ غير صحيح: 'إلى' قبل 'من'")
+    if (end - start) > 35:
+        raise HTTPException(status_code=400, detail="النطاق كبير جداً (الحد الأقصى 36 شهراً)")
+    out: List[str] = []
+    for k in range(start, end + 1):
+        y, m0 = divmod(k, 12)
+        out.append(f"{y:04d}-{m0 + 1:02d}")
+    return out
+
+
+@router.get("/report")
+async def salaries_report(
+    from_month: str,
+    to_month: str,
+    branch_filter: Optional[str] = None,
+    format: str = "json",
+    current_user: dict = Depends(get_current_user)
+):
+    """تقرير شامل عبر عدة أشهر — per-coach aggregates + per-month history.
+
+    Returns JSON by default; ``format=xlsx`` / ``format=pdf`` stream a file.
+    """
+    await require_permission(current_user, "salaries")
+    if format not in ("json", "xlsx", "pdf"):
+        raise HTTPException(status_code=400, detail="format يجب أن يكون json أو xlsx أو pdf")
+
+    months = _months_between(from_month, to_month)
+    effective_branch = resolve_branch_filter(current_user, branch_filter)
+
+    coach_query = _branch_scope_filter(effective_branch) if effective_branch else {}
+    coaches = await db.coaches.find(coach_query, {"_id": 0}).to_list(500)
+    coaches_by_id = {c["id"]: c for c in coaches}
+
+    sal_query: dict = {"year_month": {"$in": months}}
+    if effective_branch:
+        sal_query.update(_branch_scope_filter(effective_branch))
+    salaries = await db.coach_salaries.find(sal_query, {"_id": 0}).to_list(20000)
+
+    pending_query: dict = {"status": "pending"}
+    if effective_branch:
+        pending_query.update(_branch_scope_filter(effective_branch))
+    pending_advances = await db.coach_advances.find(pending_query, {"_id": 0}).to_list(10000)
+    pending_by_coach: Dict[str, float] = {}
+    pending_count_by_coach: Dict[str, int] = {}
+    for a in pending_advances:
+        cid = a.get("coach_id")
+        pending_by_coach[cid] = pending_by_coach.get(cid, 0.0) + float(a.get("amount") or 0)
+        pending_count_by_coach[cid] = pending_count_by_coach.get(cid, 0) + 1
+
+    rows_by_coach: Dict[str, Dict[str, Any]] = {}
+    for s in salaries:
+        cid = s.get("coach_id")
+        if cid not in coaches_by_id:
+            continue
+        bucket = rows_by_coach.setdefault(cid, {
+            "coach_id": cid,
+            "coach_name": s.get("coach_name") or coaches_by_id[cid].get("name_ar") or coaches_by_id[cid].get("name", ""),
+            "branch_id": s.get("branch_id") or coaches_by_id[cid].get("branch_id"),
+            "total_base": 0.0,
+            "total_deduction_absent": 0.0,
+            "total_deduction_late": 0.0,
+            "total_manual_deductions": 0.0,
+            "total_bonus": 0.0,
+            "total_advances_repaid": 0.0,
+            "total_net_disbursed": 0.0,
+            "total_net_all": 0.0,
+            "absent_days_total": 0,
+            "present_days_total": 0,
+            "leave_days_total": 0,
+            "late_minutes_total": 0,
+            "months_recorded": 0,
+            "months_disbursed": 0,
+            "history": [],
+        })
+        manual_total = sum(float(m.get("amount") or 0) for m in (s.get("manual_deductions") or []))
+        net = float(s.get("net_amount") or 0)
+        is_disbursed = s.get("status") == "disbursed"
+        bucket["total_base"] += float(s.get("base_salary") or 0)
+        bucket["total_deduction_absent"] += float(s.get("deduction_absent") or 0)
+        bucket["total_deduction_late"] += float(s.get("deduction_late") or 0)
+        bucket["total_manual_deductions"] += manual_total
+        bucket["total_bonus"] += float(s.get("bonus") or 0)
+        bucket["total_advances_repaid"] += float(s.get("advances_repaid_total") or 0)
+        bucket["total_net_all"] += net
+        if is_disbursed:
+            bucket["total_net_disbursed"] += net
+            bucket["months_disbursed"] += 1
+        bucket["absent_days_total"] += int(s.get("absent_days") or 0)
+        bucket["present_days_total"] += int(s.get("present_days") or 0)
+        bucket["leave_days_total"] += int(s.get("leave_days") or 0)
+        bucket["late_minutes_total"] += int(s.get("late_minutes") or 0)
+        bucket["months_recorded"] += 1
+        bucket["history"].append({
+            "year_month": s.get("year_month"),
+            "base_salary": float(s.get("base_salary") or 0),
+            "deduction_absent": float(s.get("deduction_absent") or 0),
+            "deduction_late": float(s.get("deduction_late") or 0),
+            "manual_deductions_total": manual_total,
+            "bonus": float(s.get("bonus") or 0),
+            "advances_repaid_total": float(s.get("advances_repaid_total") or 0),
+            "absent_days": int(s.get("absent_days") or 0),
+            "present_days": int(s.get("present_days") or 0),
+            "late_minutes": int(s.get("late_minutes") or 0),
+            "net_amount": net,
+            "status": s.get("status"),
+            "disbursed_at": s.get("disbursed_at"),
+        })
+
+    # ensure every in-scope coach appears even if no records
+    for c in coaches:
+        cid = c["id"]
+        if cid not in rows_by_coach:
+            rows_by_coach[cid] = {
+                "coach_id": cid,
+                "coach_name": c.get("name_ar") or c.get("name", ""),
+                "branch_id": c.get("branch_id"),
+                "total_base": 0.0, "total_deduction_absent": 0.0, "total_deduction_late": 0.0,
+                "total_manual_deductions": 0.0, "total_bonus": 0.0, "total_advances_repaid": 0.0,
+                "total_net_disbursed": 0.0, "total_net_all": 0.0,
+                "absent_days_total": 0, "present_days_total": 0, "leave_days_total": 0,
+                "late_minutes_total": 0, "months_recorded": 0, "months_disbursed": 0,
+                "history": [],
+            }
+
+    coach_rows: List[Dict[str, Any]] = []
+    for cid, b in rows_by_coach.items():
+        b["history"].sort(key=lambda h: h.get("year_month") or "")
+        b["pending_advances_total"] = round(pending_by_coach.get(cid, 0.0), 2)
+        b["pending_advances_count"] = pending_count_by_coach.get(cid, 0)
+        b["total_deductions"] = round(
+            b["total_deduction_absent"] + b["total_deduction_late"] + b["total_manual_deductions"], 2
+        )
+        b["late_minutes_avg"] = round(
+            b["late_minutes_total"] / b["months_recorded"], 1
+        ) if b["months_recorded"] else 0.0
+        for k in ("total_base", "total_deduction_absent", "total_deduction_late",
+                  "total_manual_deductions", "total_bonus", "total_advances_repaid",
+                  "total_net_disbursed", "total_net_all"):
+            b[k] = round(b[k], 2)
+        coach_rows.append(b)
+
+    coach_rows.sort(key=lambda r: r["coach_name"] or "")
+
+    totals = {
+        "total_base": round(sum(r["total_base"] for r in coach_rows), 2),
+        "total_deductions": round(sum(r["total_deductions"] for r in coach_rows), 2),
+        "total_advances_repaid": round(sum(r["total_advances_repaid"] for r in coach_rows), 2),
+        "total_net_disbursed": round(sum(r["total_net_disbursed"] for r in coach_rows), 2),
+        "total_net_all": round(sum(r["total_net_all"] for r in coach_rows), 2),
+        "pending_advances_total": round(sum(r["pending_advances_total"] for r in coach_rows), 2),
+        "absent_days_total": sum(r["absent_days_total"] for r in coach_rows),
+        "late_minutes_total": sum(r["late_minutes_total"] for r in coach_rows),
+        "coaches_count": len(coach_rows),
+        "months_count": len(months),
+    }
+
+    if format == "json":
+        return {
+            "from": from_month,
+            "to": to_month,
+            "months": months,
+            "coaches": coach_rows,
+            "totals": totals,
+        }
+
+    export_date = datetime.now().strftime("%Y-%m-%d")
+    period_label = f"{from_month} → {to_month}"
+
+    if format == "xlsx":
+        from openpyxl import Workbook
+        from openpyxl.styles import Font, Alignment, Border, Side, PatternFill
+
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "ملخص المدربين"
+
+        orange_fill = PatternFill("solid", fgColor="F97316")
+        white_on_orange = Font(bold=True, color="FFFFFF")
+        alt_fill = PatternFill("solid", fgColor="FFF7ED")
+        thin = Side(style='thin', color='DDDDDD')
+        border = Border(left=thin, right=thin, top=thin, bottom=thin)
+        center = Alignment(horizontal='center', vertical='center', wrap_text=True)
+        right_align = Alignment(horizontal='right', vertical='center', wrap_text=True)
+
+        ws.append(["شركة اداء الابطال العالمية للرياضة"])
+        ws.append([f"تقرير رواتب وسُلف المدربين — {period_label}"])
+        ws.append([f"تاريخ التصدير: {export_date}"])
+        ws.append([])
+
+        headers_row = [
+            "م", "المدرب", "أشهر مسجّلة", "أشهر مصروفة",
+            "إجمالي الراتب الأساسي", "إجمالي الخصومات",
+            "إجمالي السُلف المخصومة", "إجمالي المصروف",
+            "السُلف المعلّقة", "أيام الغياب", "متوسط دقائق التأخر",
+        ]
+        for col_idx in range(1, len(headers_row) + 1):
+            ws.cell(row=1, column=col_idx).font = Font(bold=True, size=13)
+        ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=len(headers_row))
+        ws.merge_cells(start_row=2, start_column=1, end_row=2, end_column=len(headers_row))
+        ws.merge_cells(start_row=3, start_column=1, end_row=3, end_column=len(headers_row))
+        ws['A1'].alignment = right_align
+        ws['A2'].alignment = right_align
+        ws['A3'].alignment = right_align
+
+        ws.append(headers_row)
+        header_row_num = 5
+        for col_idx in range(1, len(headers_row) + 1):
+            cell = ws.cell(row=header_row_num, column=col_idx)
+            cell.fill = orange_fill
+            cell.font = white_on_orange
+            cell.alignment = center
+            cell.border = border
+
+        for i, r in enumerate(coach_rows, 1):
+            ws.append([
+                i,
+                r["coach_name"],
+                r["months_recorded"],
+                r["months_disbursed"],
+                r["total_base"],
+                r["total_deductions"],
+                r["total_advances_repaid"],
+                r["total_net_disbursed"],
+                r["pending_advances_total"],
+                r["absent_days_total"],
+                r["late_minutes_avg"],
+            ])
+            row_num = header_row_num + i
+            for col_idx in range(1, len(headers_row) + 1):
+                cell = ws.cell(row=row_num, column=col_idx)
+                if i % 2 == 0:
+                    cell.fill = alt_fill
+                cell.border = border
+                cell.alignment = center if col_idx != 2 else right_align
+
+        # Totals row
+        totals_row = [
+            "", "الإجمالي", "", "",
+            totals["total_base"], totals["total_deductions"],
+            totals["total_advances_repaid"], totals["total_net_disbursed"],
+            totals["pending_advances_total"], totals["absent_days_total"], "",
+        ]
+        ws.append(totals_row)
+        tot_row_num = header_row_num + len(coach_rows) + 1
+        bold = Font(bold=True)
+        for col_idx in range(1, len(headers_row) + 1):
+            cell = ws.cell(row=tot_row_num, column=col_idx)
+            cell.font = bold
+            cell.fill = PatternFill("solid", fgColor="FEF3C7")
+            cell.border = border
+            cell.alignment = center if col_idx != 2 else right_align
+
+        widths = [5, 26, 12, 14, 18, 16, 18, 16, 16, 12, 18]
+        for idx, w in enumerate(widths, 1):
+            ws.column_dimensions[ws.cell(row=1, column=idx).column_letter].width = w
+
+        # Per-coach history sheets — one combined sheet with sections
+        ws2 = wb.create_sheet("سجل تاريخي")
+        ws2.append([f"السجل التاريخي للرواتب — {period_label}"])
+        ws2.merge_cells(start_row=1, start_column=1, end_row=1, end_column=8)
+        ws2['A1'].font = Font(bold=True, size=13)
+        ws2['A1'].alignment = right_align
+        ws2.append([])
+
+        hist_headers = ["الشهر", "الراتب", "خصم غياب", "خصم تأخر", "علاوة", "سُلف مخصومة", "الصافي", "الحالة"]
+        for r in coach_rows:
+            ws2.append([r["coach_name"]])
+            name_row = ws2.max_row
+            ws2.cell(row=name_row, column=1).font = Font(bold=True, color="FFFFFF")
+            ws2.cell(row=name_row, column=1).fill = orange_fill
+            ws2.merge_cells(start_row=name_row, start_column=1, end_row=name_row, end_column=8)
+            ws2.cell(row=name_row, column=1).alignment = right_align
+
+            ws2.append(hist_headers)
+            hdr = ws2.max_row
+            for col_idx in range(1, 9):
+                c = ws2.cell(row=hdr, column=col_idx)
+                c.fill = PatternFill("solid", fgColor="FFF7ED")
+                c.font = Font(bold=True)
+                c.border = border
+                c.alignment = center
+
+            if not r["history"]:
+                ws2.append(["لا توجد سجلات في هذه الفترة"])
+                ws2.merge_cells(start_row=ws2.max_row, start_column=1, end_row=ws2.max_row, end_column=8)
+                ws2.cell(row=ws2.max_row, column=1).alignment = center
+            else:
+                for h in r["history"]:
+                    ws2.append([
+                        h["year_month"],
+                        h["base_salary"],
+                        h["deduction_absent"],
+                        h["deduction_late"],
+                        h["bonus"],
+                        h["advances_repaid_total"],
+                        h["net_amount"],
+                        "مصروف" if h["status"] == "disbursed" else ("مسودة" if h["status"] == "draft" else "—"),
+                    ])
+                    rn = ws2.max_row
+                    for col_idx in range(1, 9):
+                        ws2.cell(row=rn, column=col_idx).border = border
+                        ws2.cell(row=rn, column=col_idx).alignment = center
+            ws2.append([])
+
+        for idx, w in enumerate([14, 14, 14, 14, 14, 14, 14, 12], 1):
+            ws2.column_dimensions[ws2.cell(row=1, column=idx).column_letter].width = w
+
+        buffer = BytesIO()
+        wb.save(buffer)
+        buffer.seek(0)
+        filename = f"coach_salaries_report_{from_month}_{to_month}.xlsx"
+        return StreamingResponse(
+            buffer,
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": f"attachment; filename={filename}"}
+        )
+
+    # PDF
+    from reportlab.lib import colors
+    from reportlab.lib.pagesizes import A4, landscape
+    from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+    from reportlab.lib.styles import ParagraphStyle
+    from reportlab.lib.units import mm
+    from reportlab.pdfbase import pdfmetrics
+    from reportlab.pdfbase.ttfonts import TTFont
+
+    font_name = "Helvetica"
+    for fp in [
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+        "/usr/share/fonts/TTF/DejaVuSans.ttf",
+        "/nix/store/dejavu-fonts/share/fonts/truetype/DejaVuSans.ttf",
+    ]:
+        try:
+            if Path(fp).exists():
+                pdfmetrics.registerFont(TTFont('ArabicFont', fp))
+                font_name = 'ArabicFont'
+                break
+        except Exception:
+            continue
+
+    title_style = ParagraphStyle('T', fontName=font_name, fontSize=13, leading=18, alignment=2)
+    sub_style = ParagraphStyle('S', fontName=font_name, fontSize=9, leading=13,
+                               textColor=colors.HexColor('#555555'), alignment=2)
+    cell_style = ParagraphStyle('C', fontName=font_name, fontSize=8, leading=11, alignment=1)
+    hdr_style = ParagraphStyle('H', fontName=font_name, fontSize=8, leading=11,
+                               textColor=colors.white, alignment=1)
+
+    buffer = BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=landscape(A4),
+                            topMargin=12*mm, bottomMargin=12*mm,
+                            leftMargin=10*mm, rightMargin=10*mm)
+    elements = []
+    elements.append(Paragraph("شركة اداء الابطال العالمية للرياضة", title_style))
+    elements.append(Paragraph(f"تقرير رواتب وسُلف المدربين — {period_label}", title_style))
+    elements.append(Paragraph(f"تاريخ التصدير: {export_date} — عدد المدربين: {totals['coaches_count']}", sub_style))
+    elements.append(Spacer(1, 4*mm))
+
+    pdf_headers = [
+        "متوسط دقائق التأخر", "أيام الغياب", "السُلف المعلّقة",
+        "إجمالي المصروف", "إجمالي السُلف", "إجمالي الخصومات",
+        "إجمالي الراتب", "أشهر مصروفة", "أشهر مسجّلة", "المدرب", "م",
+    ]
+    data = [[Paragraph(h, hdr_style) for h in pdf_headers]]
+    for i, r in enumerate(coach_rows, 1):
+        data.append([
+            Paragraph(f"{r['late_minutes_avg']}", cell_style),
+            Paragraph(str(r["absent_days_total"]), cell_style),
+            Paragraph(f"{r['pending_advances_total']:,.2f}", cell_style),
+            Paragraph(f"{r['total_net_disbursed']:,.2f}", cell_style),
+            Paragraph(f"{r['total_advances_repaid']:,.2f}", cell_style),
+            Paragraph(f"{r['total_deductions']:,.2f}", cell_style),
+            Paragraph(f"{r['total_base']:,.2f}", cell_style),
+            Paragraph(str(r["months_disbursed"]), cell_style),
+            Paragraph(str(r["months_recorded"]), cell_style),
+            Paragraph(r["coach_name"], cell_style),
+            Paragraph(str(i), cell_style),
+        ])
+    data.append([
+        Paragraph("", cell_style),
+        Paragraph(str(totals["absent_days_total"]), cell_style),
+        Paragraph(f"{totals['pending_advances_total']:,.2f}", cell_style),
+        Paragraph(f"{totals['total_net_disbursed']:,.2f}", cell_style),
+        Paragraph(f"{totals['total_advances_repaid']:,.2f}", cell_style),
+        Paragraph(f"{totals['total_deductions']:,.2f}", cell_style),
+        Paragraph(f"{totals['total_base']:,.2f}", cell_style),
+        Paragraph("", cell_style),
+        Paragraph("", cell_style),
+        Paragraph("الإجمالي", cell_style),
+        Paragraph("", cell_style),
+    ])
+
+    col_widths_pdf = [22*mm, 18*mm, 24*mm, 26*mm, 24*mm, 26*mm, 26*mm, 18*mm, 18*mm, 42*mm, 8*mm]
+    table = Table(data, colWidths=col_widths_pdf, repeatRows=1)
+    table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#F97316')),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('GRID', (0, 0), (-1, -1), 0.4, colors.HexColor('#DDDDDD')),
+        ('ROWBACKGROUNDS', (0, 1), (-1, -2), [colors.white, colors.HexColor('#FFF7ED')]),
+        ('BACKGROUND', (0, -1), (-1, -1), colors.HexColor('#FEF3C7')),
+        ('TOPPADDING', (0, 0), (-1, -1), 4),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+    ]))
+    elements.append(table)
+
+    doc.build(elements)
+    buffer.seek(0)
+    filename_pdf = f"coach_salaries_report_{from_month}_{to_month}.pdf"
+    return StreamingResponse(
+        buffer,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f"attachment; filename={filename_pdf}"}
+    )
+
+
 @router.get("/{salary_id}/payslip.pdf")
 async def payslip_pdf(
     salary_id: str,

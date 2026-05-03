@@ -53,6 +53,11 @@ export const coachSalariesAPI = {
   cancelDisburse: (id) => axios.post(`${API}/coach-salaries/${id}/cancel-disburse`),
   delete: (id) => axios.delete(`${API}/coach-salaries/${id}`),
   payslipUrl: (id) => `${API}/coach-salaries/${id}/payslip.pdf`,
+  report: (params = {}) => axios.get(`${API}/coach-salaries/report`, { params }),
+  reportExportUrl: (params = {}) => {
+    const qs = new URLSearchParams(params).toString();
+    return `${API}/coach-salaries/report?${qs}`;
+  },
 };
 
 // Levels API
