@@ -10,6 +10,74 @@ from utils.auth import resolve_branch_filter
 
 router = APIRouter(prefix="/notifications", tags=["notifications"])
 
+
+async def send_to_coach(
+    coach_id: str,
+    title: str,
+    message: str,
+    notif_type: str = "info",
+    link: Optional[str] = None,
+    branch_id: Optional[str] = None,
+    tag: Optional[str] = None,
+) -> dict:
+    """Notify a coach via in-app notification + push (FCM/Web Push).
+
+    Stores a record in ``db.notifications`` (with ``coach_id``) and best-effort
+    sends a push notification to any active ``push_subscriptions`` registered
+    for ``member_id == coach_id`` (coaches reuse the member subscription
+    channel keyed by their id).
+
+    Failures are swallowed so the caller's main operation cannot fail because
+    of notification delivery problems. Returns a small dict describing what
+    happened (useful for tests / debugging).
+    """
+    import logging
+    logger = logging.getLogger(__name__)
+    result = {"in_app": False, "push_sent": 0, "push_failed": 0}
+
+    try:
+        await db.notifications.insert_one({
+            "id": str(uuid.uuid4()),
+            "title": title,
+            "message": message,
+            "type": notif_type,
+            "link": link,
+            "coach_id": coach_id,
+            "branch_id": branch_id,
+            "is_read": False,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        })
+        result["in_app"] = True
+    except Exception as exc:
+        logger.error(f"send_to_coach: failed to insert notification: {exc}")
+
+    try:
+        from .push_notifications import send_push_notification, NotificationPayload
+        payload = NotificationPayload(
+            title=title,
+            body=message,
+            url=link or "/",
+            tag=tag or f"coach-{coach_id}-{uuid.uuid4()}",
+            data={"type": notif_type, "coach_id": coach_id},
+        )
+        subs = await db.push_subscriptions.find(
+            {"member_id": coach_id, "is_active": True}, {"_id": 0}
+        ).to_list(50)
+        for sub in subs:
+            try:
+                ok = await send_push_notification(sub, payload)
+                if ok:
+                    result["push_sent"] += 1
+                else:
+                    result["push_failed"] += 1
+            except Exception as exc:
+                result["push_failed"] += 1
+                logger.error(f"send_to_coach: push send failed: {exc}")
+    except Exception as exc:
+        logger.error(f"send_to_coach: push pipeline error: {exc}")
+
+    return result
+
 # ============ MODELS ============
 
 class NotificationCreate(BaseModel):

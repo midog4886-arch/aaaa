@@ -484,6 +484,22 @@ async def disburse_salary(
         raise HTTPException(status_code=500, detail=f"فشل إنشاء سجل المصروف — تم التراجع: {exc}")
 
     updated = await db.coach_salaries.find_one({"id": salary_id}, {"_id": 0})
+
+    try:
+        from .notifications import send_to_coach
+        await send_to_coach(
+            coach_id=salary.get("coach_id"),
+            title="تم صرف الراتب",
+            message=f"تم صرف راتب شهر {salary['year_month']} بقيمة {float(net):,.2f} ريال",
+            notif_type="salary_disbursed",
+            link=f"/coach-salaries/{salary_id}/payslip.pdf",
+            branch_id=salary.get("branch_id"),
+            tag=f"salary-{salary_id}",
+        )
+    except Exception:
+        import logging
+        logging.getLogger(__name__).exception("Failed to notify coach of salary disbursement")
+
     return updated
 
 

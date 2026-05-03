@@ -145,6 +145,22 @@ async def create_advance(
     }
     await db.coach_advances.insert_one(advance_doc)
     advance_doc.pop("_id", None)
+
+    try:
+        from .notifications import send_to_coach
+        await send_to_coach(
+            coach_id=data.coach_id,
+            title="تم تسجيل سلفة",
+            message=f"تم تسجيل سلفة بقيمة {float(data.amount):,.2f} ريال بتاريخ {data.advance_date}",
+            notif_type="advance_recorded",
+            link="/coach-advances",
+            branch_id=branch_id,
+            tag=f"advance-{advance_id}",
+        )
+    except Exception:
+        import logging
+        logging.getLogger(__name__).exception("Failed to notify coach of advance")
+
     return advance_doc
 
 
