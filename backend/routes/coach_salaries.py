@@ -9,7 +9,7 @@ from pathlib import Path
 import uuid
 
 from .common import db, get_current_user
-from utils.auth import require_branch_scope, resolve_branch_filter
+from utils.auth import require_branch_scope, resolve_branch_filter, require_permission
 
 router = APIRouter(prefix="/coach-salaries", tags=["coach-salaries"])
 
@@ -108,6 +108,7 @@ async def list_salaries(
 ):
     """Return computed salary rows for every coach in scope, merged with saved
     drafts/disbursed records for the given month."""
+    await require_permission(current_user, "salaries")
     await _ensure_indexes()
 
     effective_branch = resolve_branch_filter(current_user, branch_filter)
@@ -245,6 +246,7 @@ async def save_salary_draft(
     data: SalarySave,
     current_user: dict = Depends(get_current_user)
 ):
+    await require_permission(current_user, "salaries")
     await _ensure_indexes()
     effective_branch = require_branch_scope(current_user)
 
@@ -366,6 +368,7 @@ async def disburse_salary(
     salary_id: str,
     current_user: dict = Depends(get_current_user)
 ):
+    await require_permission(current_user, "salaries")
     effective_branch = resolve_branch_filter(current_user, None)
     query: dict = {"id": salary_id}
     if effective_branch:
@@ -467,6 +470,7 @@ async def cancel_disburse(
     salary_id: str,
     current_user: dict = Depends(get_current_user)
 ):
+    await require_permission(current_user, "salaries")
     if not current_user.get("is_admin", False):
         raise HTTPException(status_code=403, detail="صلاحية الأدمن مطلوبة لإلغاء الصرف")
 
@@ -508,6 +512,7 @@ async def delete_salary(
     salary_id: str,
     current_user: dict = Depends(get_current_user)
 ):
+    await require_permission(current_user, "salaries")
     effective_branch = resolve_branch_filter(current_user, None)
     query: dict = {"id": salary_id}
     if effective_branch:
@@ -523,11 +528,77 @@ async def delete_salary(
     return {"message": "تم الحذف"}
 
 
+class BulkSalaryItem(BaseModel):
+    coach_id: str
+    bonus: Optional[float] = 0
+    manual_deductions: List[ManualDeduction] = []
+    advances_repaid: List[str] = []
+    notes: Optional[str] = ""
+
+
+class BulkSaveRequest(BaseModel):
+    year_month: str
+    items: List[BulkSalaryItem]
+
+
+@router.post("/bulk-save")
+async def bulk_save_drafts(
+    data: BulkSaveRequest,
+    current_user: dict = Depends(get_current_user)
+):
+    """حفظ الكل كمسودة - save drafts for many coaches at once."""
+    await require_permission(current_user, "salaries")
+    saved = []
+    errors = []
+    for item in data.items:
+        try:
+            payload = SalarySave(
+                year_month=data.year_month,
+                coach_id=item.coach_id,
+                bonus=item.bonus,
+                manual_deductions=item.manual_deductions,
+                advances_repaid=item.advances_repaid,
+                notes=item.notes,
+            )
+            res = await save_salary_draft(payload, current_user)
+            saved.append(res)
+        except HTTPException as e:
+            errors.append({"coach_id": item.coach_id, "error": e.detail})
+        except Exception as e:
+            errors.append({"coach_id": item.coach_id, "error": str(e)})
+    return {"saved": saved, "errors": errors, "saved_count": len(saved), "error_count": len(errors)}
+
+
+class BulkDisburseRequest(BaseModel):
+    salary_ids: List[str]
+
+
+@router.post("/bulk-disburse")
+async def bulk_disburse(
+    data: BulkDisburseRequest,
+    current_user: dict = Depends(get_current_user)
+):
+    """صرف الكل - disburse multiple salaries at once."""
+    await require_permission(current_user, "salaries")
+    disbursed = []
+    errors = []
+    for sid in data.salary_ids:
+        try:
+            res = await disburse_salary(sid, current_user)
+            disbursed.append(res)
+        except HTTPException as e:
+            errors.append({"salary_id": sid, "error": e.detail})
+        except Exception as e:
+            errors.append({"salary_id": sid, "error": str(e)})
+    return {"disbursed": disbursed, "errors": errors, "disbursed_count": len(disbursed), "error_count": len(errors)}
+
+
 @router.get("/{salary_id}/payslip.pdf")
 async def payslip_pdf(
     salary_id: str,
     current_user: dict = Depends(get_current_user)
 ):
+    await require_permission(current_user, "salaries")
     effective_branch = resolve_branch_filter(current_user, None)
     query: dict = {"id": salary_id}
     if effective_branch:
@@ -572,37 +643,39 @@ async def payslip_pdf(
                             leftMargin=15*mm, rightMargin=15*mm)
     elements = []
     elements.append(Paragraph("شركة اداء الابطال العالمية للرياضة", title_style))
-    elements.append(Paragraph("قسيمة راتب", title_style))
+    elements.append(Paragraph("Champions Academy", title_style))
+    elements.append(Paragraph("قسيمة راتب — Payslip", title_style))
     elements.append(Spacer(1, 3*mm))
-    elements.append(Paragraph(f"الشهر: {salary['year_month']}", sub_style))
-    elements.append(Paragraph(f"المدرب: {salary.get('coach_name', '')}", sub_style))
-    elements.append(Paragraph(f"الحالة: {'مصروف' if salary.get('status') == 'disbursed' else 'مسودة'}", sub_style))
+    elements.append(Paragraph(f"الشهر / Month: {salary['year_month']}", sub_style))
+    elements.append(Paragraph(f"المدرب / Coach: {salary.get('coach_name', '')}", sub_style))
+    status_label = 'مصروف / Disbursed' if salary.get('status') == 'disbursed' else 'مسودة / Draft'
+    elements.append(Paragraph(f"الحالة / Status: {status_label}", sub_style))
     if salary.get("disbursed_at"):
-        elements.append(Paragraph(f"تاريخ الصرف: {salary['disbursed_at'][:10]}", sub_style))
+        elements.append(Paragraph(f"تاريخ الصرف / Disbursed at: {salary['disbursed_at'][:10]}", sub_style))
     elements.append(Spacer(1, 5*mm))
 
     rows = [
-        [Paragraph("القيمة (ر.س)", hdr_style), Paragraph("البند", hdr_style)],
-        [Paragraph(f"{salary.get('base_salary', 0):,.2f}", cell_center), Paragraph("الراتب الأساسي", cell_style)],
-        [Paragraph(f"{salary.get('present_days', 0)}", cell_center), Paragraph("أيام الحضور", cell_style)],
-        [Paragraph(f"{salary.get('absent_days', 0)}", cell_center), Paragraph("أيام الغياب", cell_style)],
-        [Paragraph(f"-{salary.get('deduction_absent', 0):,.2f}", cell_center), Paragraph("خصم الغياب", cell_style)],
-        [Paragraph(f"{salary.get('late_minutes', 0)}", cell_center), Paragraph("دقائق التأخير", cell_style)],
-        [Paragraph(f"-{salary.get('deduction_late', 0):,.2f}", cell_center), Paragraph("خصم التأخير", cell_style)],
-        [Paragraph(f"+{salary.get('bonus', 0):,.2f}", cell_center), Paragraph("علاوة", cell_style)],
+        [Paragraph("Amount (SAR) / القيمة", hdr_style), Paragraph("Item / البند", hdr_style)],
+        [Paragraph(f"{salary.get('base_salary', 0):,.2f}", cell_center), Paragraph("الراتب الأساسي / Base Salary", cell_style)],
+        [Paragraph(f"{salary.get('present_days', 0)}", cell_center), Paragraph("أيام الحضور / Present Days", cell_style)],
+        [Paragraph(f"{salary.get('absent_days', 0)}", cell_center), Paragraph("أيام الغياب / Absent Days", cell_style)],
+        [Paragraph(f"-{salary.get('deduction_absent', 0):,.2f}", cell_center), Paragraph("خصم الغياب / Absence Deduction", cell_style)],
+        [Paragraph(f"{salary.get('late_minutes', 0)}", cell_center), Paragraph("دقائق التأخير / Late Minutes", cell_style)],
+        [Paragraph(f"-{salary.get('deduction_late', 0):,.2f}", cell_center), Paragraph("خصم التأخير / Late Deduction", cell_style)],
+        [Paragraph(f"+{salary.get('bonus', 0):,.2f}", cell_center), Paragraph("علاوة / Bonus", cell_style)],
     ]
     for m in (salary.get("manual_deductions") or []):
         rows.append([
             Paragraph(f"-{float(m.get('amount', 0)):,.2f}", cell_center),
-            Paragraph(f"خصم: {m.get('description', '')}", cell_style),
+            Paragraph(f"خصم / Deduction: {m.get('description', '')}", cell_style),
         ])
     rows.append([
         Paragraph(f"-{salary.get('advances_repaid_total', 0):,.2f}", cell_center),
-        Paragraph("خصم سُلف", cell_style),
+        Paragraph("خصم سُلف / Advances Repaid", cell_style),
     ])
     rows.append([
         Paragraph(f"<b>{salary.get('net_amount', 0):,.2f}</b>", cell_center),
-        Paragraph("<b>الصافي المستحق</b>", cell_style),
+        Paragraph("<b>الصافي المستحق / Net Payable</b>", cell_style),
     ])
 
     t = Table(rows, colWidths=[60*mm, 110*mm])
@@ -617,7 +690,7 @@ async def payslip_pdf(
     elements.append(Spacer(1, 10*mm))
 
     sig = Table(
-        [[Paragraph("توقيع المستلم", cell_center), Paragraph("توقيع المدير", cell_center)],
+        [[Paragraph("توقيع المستلم / Recipient Signature", cell_center), Paragraph("توقيع المدير / Manager Signature", cell_center)],
          [Paragraph("____________________", cell_center), Paragraph("____________________", cell_center)]],
         colWidths=[85*mm, 85*mm]
     )

@@ -272,6 +272,36 @@ const CoachSalariesPage = () => {
         </div>
       </div>
 
+      {tab === 'salaries' && rows.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2 mb-3 p-3 bg-orange-50 border border-orange-200 rounded-lg">
+          <span className="text-sm text-gray-700 font-medium">إجراءات جماعية:</span>
+          <button onClick={async () => {
+            const items = rows.filter(r => r.status !== 'disbursed' && r.base_salary > 0).map(r => ({
+              coach_id: r.coach_id,
+              bonus: r.bonus || 0,
+              manual_deductions: r.manual_deductions || [],
+              advances_repaid: r.advances_repaid || [],
+              notes: r.notes || '',
+            }));
+            if (items.length === 0) { showToast('لا توجد رواتب قابلة للحفظ', 'error'); return; }
+            try {
+              const res = await coachSalariesAPI.bulkSave({ year_month: month, items });
+              showToast(`تم حفظ ${res.data.saved_count} مسودة${res.data.error_count ? ` (فشل ${res.data.error_count})` : ''}`);
+              fetchSalaries();
+            } catch (e) { showToast(e.response?.data?.detail || 'فشل الحفظ الجماعي', 'error'); }
+          }} className="bg-blue-500 hover:bg-blue-600 text-white px-3 py-1.5 rounded text-sm flex items-center gap-1">
+            <Save className="w-3.5 h-3.5" /> حفظ الكل كمسودة
+          </button>
+          <button onClick={() => setConfirmAction({ type: 'bulk-disburse' })}
+            className="bg-green-500 hover:bg-green-600 text-white px-3 py-1.5 rounded text-sm flex items-center gap-1">
+            <CheckCircle className="w-3.5 h-3.5" /> صرف الكل
+          </button>
+          <span className="text-xs text-gray-500 mr-auto">
+            قابل للصرف: {rows.filter(r => r.status !== 'disbursed' && r.base_salary > 0).length} مدرّب
+          </span>
+        </div>
+      )}
+
       <div className="flex gap-2 mb-4 border-b">
         <button onClick={() => setTab('salaries')}
           className={`px-4 py-2 text-sm font-medium ${tab === 'salaries' ? 'border-b-2 border-orange-500 text-orange-600' : 'text-gray-500'}`}>
@@ -591,13 +621,35 @@ const CoachSalariesPage = () => {
               {confirmAction.type === 'cancel' && `سيتم إلغاء صرف راتب ${confirmAction.coach} وحذف المصروف الداخلي المرتبط. متابعة؟`}
               {confirmAction.type === 'delete-salary' && `سيتم حذف مسودة راتب ${confirmAction.coach}. متابعة؟`}
               {confirmAction.type === 'delete-advance' && `سيتم حذف سلفة ${confirmAction.coach} وحذف المصروف الداخلي المرتبط. متابعة؟`}
+              {confirmAction.type === 'bulk-disburse' && `سيتم صرف رواتب جميع المدربين القابلة للصرف (${rows.filter(r => r.status !== 'disbursed' && r.base_salary > 0).length} مدرّب). الصرف للسجلات المحفوظة كمسودات أولاً. متابعة؟`}
             </p>
             <div className="flex gap-2">
-              <button onClick={() => {
+              <button onClick={async () => {
                 if (confirmAction.type === 'disburse') handleDisburse(confirmAction.row);
                 else if (confirmAction.type === 'cancel') handleCancelDisburse(confirmAction.id);
                 else if (confirmAction.type === 'delete-salary') handleDeleteSalary(confirmAction.id);
                 else if (confirmAction.type === 'delete-advance') handleDeleteAdvance(confirmAction.id);
+                else if (confirmAction.type === 'bulk-disburse') {
+                  try {
+                    const eligible = rows.filter(r => r.status !== 'disbursed' && r.base_salary > 0);
+                    const items = eligible.map(r => ({
+                      coach_id: r.coach_id,
+                      bonus: r.bonus || 0,
+                      manual_deductions: r.manual_deductions || [],
+                      advances_repaid: r.advances_repaid || [],
+                      notes: r.notes || '',
+                    }));
+                    const saveRes = await coachSalariesAPI.bulkSave({ year_month: month, items });
+                    const ids = (saveRes.data.saved || []).map(s => s.id).filter(Boolean);
+                    const disbRes = await coachSalariesAPI.bulkDisburse({ salary_ids: ids });
+                    showToast(`تم صرف ${disbRes.data.disbursed_count} راتب${disbRes.data.error_count ? ` (فشل ${disbRes.data.error_count})` : ''}`);
+                    setConfirmAction(null);
+                    fetchSalaries();
+                    fetchAdvances();
+                  } catch (e) {
+                    showToast(e.response?.data?.detail || 'فشل الصرف الجماعي', 'error');
+                  }
+                }
               }} className="flex-1 bg-red-500 hover:bg-red-600 text-white py-2 rounded-lg">تأكيد</button>
               <button onClick={() => setConfirmAction(null)} className="px-4 py-2 border rounded-lg">إلغاء</button>
             </div>

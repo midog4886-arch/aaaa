@@ -39,6 +39,7 @@ export const coachesAPI = {
 export const coachAdvancesAPI = {
   getAll: (params = {}) => axios.get(`${API}/coach-advances`, { params }),
   create: (data) => axios.post(`${API}/coach-advances`, data),
+  update: (id, data) => axios.put(`${API}/coach-advances/${id}`, data),
   delete: (id) => axios.delete(`${API}/coach-advances/${id}`),
 };
 
@@ -46,7 +47,9 @@ export const coachAdvancesAPI = {
 export const coachSalariesAPI = {
   getAll: (params = {}) => axios.get(`${API}/coach-salaries`, { params }),
   save: (data) => axios.post(`${API}/coach-salaries/save`, data),
+  bulkSave: (data) => axios.post(`${API}/coach-salaries/bulk-save`, data),
   disburse: (id) => axios.post(`${API}/coach-salaries/${id}/disburse`),
+  bulkDisburse: (data) => axios.post(`${API}/coach-salaries/bulk-disburse`, data),
   cancelDisburse: (id) => axios.post(`${API}/coach-salaries/${id}/cancel-disburse`),
   delete: (id) => axios.delete(`${API}/coach-salaries/${id}`),
   payslipUrl: (id) => `${API}/coach-salaries/${id}/payslip.pdf`,

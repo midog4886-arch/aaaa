@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 import uuid
 
 from .common import db, get_current_user
-from utils.auth import require_branch_scope, resolve_branch_filter
+from utils.auth import require_branch_scope, resolve_branch_filter, require_permission
 
 router = APIRouter(prefix="/coach-advances", tags=["coach-advances"])
 
@@ -61,6 +61,7 @@ async def list_advances(
     branch_filter: Optional[str] = None,
     current_user: dict = Depends(get_current_user)
 ):
+    await require_permission(current_user, "salaries")
     query: dict = {}
     if coach_id:
         query["coach_id"] = coach_id
@@ -82,6 +83,7 @@ async def create_advance(
     data: AdvanceCreate,
     current_user: dict = Depends(get_current_user)
 ):
+    await require_permission(current_user, "salaries")
     if data.amount <= 0:
         raise HTTPException(status_code=400, detail="المبلغ يجب أن يكون أكبر من صفر")
 
@@ -146,11 +148,68 @@ async def create_advance(
     return advance_doc
 
 
+class AdvanceUpdate(BaseModel):
+    advance_date: Optional[str] = None
+    amount: Optional[float] = None
+    payment_method: Optional[str] = None
+    notes: Optional[str] = None
+
+
+@router.put("/{advance_id}")
+async def update_advance(
+    advance_id: str,
+    data: AdvanceUpdate,
+    current_user: dict = Depends(get_current_user)
+):
+    await require_permission(current_user, "salaries")
+    effective_branch = resolve_branch_filter(current_user, None)
+    query: dict = {"id": advance_id}
+    if effective_branch:
+        query.update(_branch_scope_filter(effective_branch))
+
+    advance = await db.coach_advances.find_one(query, {"_id": 0})
+    if not advance:
+        raise HTTPException(status_code=404, detail="السلفة غير موجودة")
+    if advance.get("status") == "repaid":
+        raise HTTPException(status_code=400, detail="لا يمكن تعديل سلفة تم خصمها من راتب مصروف")
+
+    update_doc: dict = {}
+    if data.amount is not None:
+        if data.amount <= 0:
+            raise HTTPException(status_code=400, detail="المبلغ يجب أن يكون أكبر من صفر")
+        update_doc["amount"] = float(data.amount)
+    if data.advance_date is not None:
+        update_doc["advance_date"] = data.advance_date
+    if data.payment_method is not None:
+        update_doc["payment_method"] = data.payment_method
+    if data.notes is not None:
+        update_doc["notes"] = data.notes
+
+    if update_doc:
+        await db.coach_advances.update_one({"id": advance_id}, {"$set": update_doc})
+        if advance.get("expense_id"):
+            exp_set: dict = {}
+            if "amount" in update_doc:
+                exp_set["amount"] = update_doc["amount"]
+            if "advance_date" in update_doc:
+                exp_set["expense_date"] = update_doc["advance_date"]
+            if "payment_method" in update_doc:
+                exp_set["payment_method"] = update_doc["payment_method"]
+            if "notes" in update_doc:
+                exp_set["notes"] = update_doc["notes"]
+            if exp_set:
+                await db.internal_expenses.update_one({"id": advance["expense_id"]}, {"$set": exp_set})
+
+    updated = await db.coach_advances.find_one({"id": advance_id}, {"_id": 0})
+    return updated
+
+
 @router.delete("/{advance_id}")
 async def delete_advance(
     advance_id: str,
     current_user: dict = Depends(get_current_user)
 ):
+    await require_permission(current_user, "salaries")
     effective_branch = resolve_branch_filter(current_user, None)
     query: dict = {"id": advance_id}
     if effective_branch:

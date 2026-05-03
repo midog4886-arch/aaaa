@@ -53,6 +53,21 @@ def require_admin(current_user: dict):
     """Check if current user is admin"""
     if not current_user.get("is_admin", False):
         raise HTTPException(status_code=403, detail="Admin access required")
+
+
+async def require_permission(current_user: dict, permission_key: str):
+    """Verify the authenticated user has the given permission key.
+
+    Admins bypass the check. Non-admins must have ``permission_key`` listed
+    on their user document. Fails closed with HTTP 403 otherwise.
+    """
+    if current_user.get("is_admin", False):
+        return
+    from database import db
+    user_doc = await db.users.find_one({"id": current_user.get("user_id")}, {"_id": 0, "permissions": 1})
+    perms = (user_doc or {}).get("permissions") or []
+    if permission_key not in perms:
+        raise HTTPException(status_code=403, detail=f"الصلاحية '{permission_key}' مطلوبة")
     return current_user
 
 
