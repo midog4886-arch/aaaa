@@ -473,11 +473,19 @@ export const MembersPage = () => {
     
     const qrData = `${memberCardData.member_code || memberCardData.id}`;
 
-    // Get first activity dates
-    const firstActivity = (memberCardData.activities || [])[0];
-    const startDate = firstActivity?.start_date || '';
-    const endDate = firstActivity?.end_date || '';
-    const schedule = firstActivity?.schedule || '';
+    const _allActs = memberCardData.activities || [];
+    const _today = new Date();
+    const _parseEnd = (a) => {
+      if (!a?.end_date) return 0;
+      const t = new Date(a.end_date).getTime();
+      return isNaN(t) ? 0 : t;
+    };
+    const _activeActs = _allActs.filter(a => a?.end_date && new Date(a.end_date) >= _today);
+    const _pool = _activeActs.length ? _activeActs : _allActs;
+    const latestActivity = [..._pool].sort((a, b) => _parseEnd(b) - _parseEnd(a))[0] || _allActs[0];
+    const startDate = latestActivity?.start_date || '';
+    const endDate = latestActivity?.end_date || '';
+    const schedule = latestActivity?.schedule || '';
 
     // Build activities HTML
     const activitiesHtml = (memberCardData.activities || []).map(act => {
