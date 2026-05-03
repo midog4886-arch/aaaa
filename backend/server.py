@@ -6342,7 +6342,7 @@ async def create_internal_expense(
     }
     
     await db.internal_expenses.insert_one(expense_data)
-    del expense_data["_id"]
+    expense_data.pop("_id", None)
     
     return expense_data
 
