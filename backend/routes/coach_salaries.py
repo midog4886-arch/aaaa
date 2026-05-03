@@ -459,10 +459,41 @@ async def disburse_salary(
         "coach_id": salary.get("coach_id"),
         "coach_salary_id": salary_id,
     }
-    await db.internal_expenses.insert_one(expense_doc)
+    try:
+        await db.internal_expenses.insert_one(expense_doc)
+    except Exception as exc:
+        await db.coach_salaries.update_one(
+            {"id": salary_id},
+            {"$set": {
+                "status": "draft",
+                "expense_id": None,
+                "disbursed_at": None,
+                "disbursed_by": None,
+                "updated_at": now_iso,
+            }}
+        )
+        if advances_repaid:
+            await db.coach_advances.update_many(
+                {"repaid_in_salary_id": salary_id, "repaid_at": now_iso},
+                {"$set": {
+                    "status": "pending",
+                    "repaid_in_salary_id": None,
+                    "repaid_at": None,
+                }}
+            )
+        raise HTTPException(status_code=500, detail=f"فشل إنشاء سجل المصروف — تم التراجع: {exc}")
 
     updated = await db.coach_salaries.find_one({"id": salary_id}, {"_id": 0})
     return updated
+
+
+@router.get("/compute")
+async def compute_salaries_alias(
+    month: str,
+    branch_filter: Optional[str] = None,
+    current_user: dict = Depends(get_current_user)
+):
+    return await get_salaries(month=month, branch_filter=branch_filter, current_user=current_user)
 
 
 @router.post("/{salary_id}/cancel-disburse")
