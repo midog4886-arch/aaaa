@@ -53,6 +53,7 @@ const ALL_PERMISSIONS = [
   { key: 'backup', label_ar: 'النسخ الاحتياطي', label_en: 'Backup' },
   { key: 'push-notifications', label_ar: 'الإشعارات', label_en: 'Push Notifications' },
   { key: 'member-card', label_ar: 'بطاقة العضو', label_en: 'Member Card' },
+  { key: 'salaries', label_ar: 'رواتب المدربين', label_en: 'Coach Salaries' },
 ];
 
 const UsersPage = () => {

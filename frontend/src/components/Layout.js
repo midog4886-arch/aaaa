@@ -155,6 +155,7 @@ export const Sidebar = ({ isOpen, onClose }) => {
         { to: '/admin/daily-ledger', icon: BookOpen, label: 'daily_ledger', permission: 'daily-ledger' },
         { to: '/admin/day-extensions', icon: CalendarOff, label: 'day_extensions', permission: 'day-extensions' },
         { to: '/admin/accounting', icon: Calculator, label: 'accounting', permission: 'accounting' },
+        { to: '/admin/coach-salaries', icon: Wallet, label: 'coach_salaries', permission: 'salaries' },
         { to: '/admin/store', icon: Package, label: 'store', permission: 'store' },
       ]
     },

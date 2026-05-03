@@ -100,6 +100,8 @@ from routes.freezes import router as freezes_router
 from routes.coach_attendance import router as coach_attendance_router
 from routes.supervisors import router as supervisors_router
 from routes.payment_vouchers import router as payment_vouchers_router
+from routes.coach_advances import router as coach_advances_router
+from routes.coach_salaries import router as coach_salaries_router
 from routes.whatsapp import router as whatsapp_router, set_database as set_whatsapp_db, start_scheduler as start_whatsapp_scheduler
 from routes.tournaments import router as tournaments_router
 from routes.social_publisher import router as social_publisher_router
@@ -146,6 +148,8 @@ api_router.include_router(freezes_router)
 api_router.include_router(coach_attendance_router)
 api_router.include_router(supervisors_router)
 api_router.include_router(payment_vouchers_router)
+api_router.include_router(coach_advances_router)
+api_router.include_router(coach_salaries_router)
 api_router.include_router(whatsapp_router)
 api_router.include_router(tournaments_router)
 api_router.include_router(social_publisher_router)
@@ -6160,6 +6164,8 @@ EXPENSE_TYPES = [
     {"value": "equipment", "label": "معدات"},
     {"value": "marketing", "label": "تسويق"},
     {"value": "training", "label": "تدريب"},
+    {"value": "coach_salary", "label": "رواتب المدربين"},
+    {"value": "coach_advance", "label": "سُلف المدربين"},
     {"value": "other", "label": "أخرى"}
 ]
 

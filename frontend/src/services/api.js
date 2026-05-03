@@ -35,6 +35,23 @@ export const coachesAPI = {
   delete: (id) => axios.delete(`${API}/coaches/${id}`),
 };
 
+// Coach Advances API
+export const coachAdvancesAPI = {
+  getAll: (params = {}) => axios.get(`${API}/coach-advances`, { params }),
+  create: (data) => axios.post(`${API}/coach-advances`, data),
+  delete: (id) => axios.delete(`${API}/coach-advances/${id}`),
+};
+
+// Coach Salaries API
+export const coachSalariesAPI = {
+  getAll: (params = {}) => axios.get(`${API}/coach-salaries`, { params }),
+  save: (data) => axios.post(`${API}/coach-salaries/save`, data),
+  disburse: (id) => axios.post(`${API}/coach-salaries/${id}/disburse`),
+  cancelDisburse: (id) => axios.post(`${API}/coach-salaries/${id}/cancel-disburse`),
+  delete: (id) => axios.delete(`${API}/coach-salaries/${id}`),
+  payslipUrl: (id) => `${API}/coach-salaries/${id}/payslip.pdf`,
+};
+
 // Levels API
 export const levelsAPI = {
   getAll: (params = {}) => axios.get(`${API}/levels`, { params }),

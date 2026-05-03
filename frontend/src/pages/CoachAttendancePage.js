@@ -29,10 +29,10 @@ const CoachAttendancePage = () => {
   const [absentStatus, setAbsentStatus] = useState('absent');
   const [toast, setToast] = useState(null);
   const [showAddCoach, setShowAddCoach] = useState(false);
-  const [addCoachForm, setAddCoachForm] = useState({ name: '', phone: '', email: '', specialization: '', name_en: '', expected_checkin_time: '', photo: '' });
+  const [addCoachForm, setAddCoachForm] = useState({ name: '', phone: '', email: '', specialization: '', name_en: '', expected_checkin_time: '', photo: '', base_salary: '', daily_deduction_rate: '', late_minute_rate: '' });
   const [addingCoach, setAddingCoach] = useState(false);
   const [editingCoach, setEditingCoach] = useState(null);
-  const [editCoachForm, setEditCoachForm] = useState({ name: '', phone: '', email: '', specialization: '', name_en: '', expected_checkin_time: '', photo: '' });
+  const [editCoachForm, setEditCoachForm] = useState({ name: '', phone: '', email: '', specialization: '', name_en: '', expected_checkin_time: '', photo: '', base_salary: '', daily_deduction_rate: '', late_minute_rate: '' });
   const [savingCoach, setSavingCoach] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState(null);
   const [qrCoach, setQrCoach] = useState(null); // coach whose QR is being shown
@@ -210,11 +210,14 @@ const CoachAttendancePage = () => {
         notes: '',
         branch_id: branchId,
         expected_checkin_time: addCoachForm.expected_checkin_time || null,
-        photo: addCoachForm.photo || null
+        photo: addCoachForm.photo || null,
+        base_salary: parseFloat(addCoachForm.base_salary) || 0,
+        daily_deduction_rate: parseFloat(addCoachForm.daily_deduction_rate) || 0,
+        late_minute_rate: parseFloat(addCoachForm.late_minute_rate) || 0
       }, { headers: { Authorization: `Bearer ${token}` } });
       showToast('تم إضافة المدرب بنجاح');
       setShowAddCoach(false);
-      setAddCoachForm({ name: '', phone: '', email: '', specialization: '', name_en: '', expected_checkin_time: '', photo: '' });
+      setAddCoachForm({ name: '', phone: '', email: '', specialization: '', name_en: '', expected_checkin_time: '', photo: '', base_salary: '', daily_deduction_rate: '', late_minute_rate: '' });
       fetchData();
     } catch (error) {
       showToast(error.response?.data?.detail || 'حدث خطأ أثناء إضافة المدرب', 'error');
@@ -232,7 +235,10 @@ const CoachAttendancePage = () => {
       email: coach.email || '',
       specialization: coach.specialization || '',
       expected_checkin_time: coach.expected_checkin_time || '',
-      photo: coach.photo || ''
+      photo: coach.photo || '',
+      base_salary: coach.base_salary != null ? String(coach.base_salary) : '',
+      daily_deduction_rate: coach.daily_deduction_rate != null ? String(coach.daily_deduction_rate) : '',
+      late_minute_rate: coach.late_minute_rate != null ? String(coach.late_minute_rate) : ''
     });
   };
 
@@ -254,7 +260,10 @@ const CoachAttendancePage = () => {
         notes: editingCoach.notes || '',
         branch_id: editingCoach.branch_id || null,
         expected_checkin_time: editCoachForm.expected_checkin_time || null,
-        photo: editCoachForm.photo || null
+        photo: editCoachForm.photo || null,
+        base_salary: parseFloat(editCoachForm.base_salary) || 0,
+        daily_deduction_rate: parseFloat(editCoachForm.daily_deduction_rate) || 0,
+        late_minute_rate: parseFloat(editCoachForm.late_minute_rate) || 0
       }, { headers: { Authorization: `Bearer ${token}` } });
       showToast('تم تعديل بيانات المدرب بنجاح');
       setEditingCoach(null);
@@ -424,6 +433,32 @@ const CoachAttendancePage = () => {
                     className="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
                   />
                 </div>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3 p-3 bg-orange-50 border border-orange-200 rounded-lg">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">الراتب الأساسي (ر.س)</label>
+                    <input type="number" min="0" step="0.01"
+                      value={addCoachForm.base_salary}
+                      onChange={e => setAddCoachForm({...addCoachForm, base_salary: e.target.value})}
+                      className="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+                      placeholder="0" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">خصم اليوم الواحد (ر.س)</label>
+                    <input type="number" min="0" step="0.01"
+                      value={addCoachForm.daily_deduction_rate}
+                      onChange={e => setAddCoachForm({...addCoachForm, daily_deduction_rate: e.target.value})}
+                      className="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+                      placeholder="0" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">خصم الدقيقة (تأخر) ر.س</label>
+                    <input type="number" min="0" step="0.01"
+                      value={addCoachForm.late_minute_rate}
+                      onChange={e => setAddCoachForm({...addCoachForm, late_minute_rate: e.target.value})}
+                      className="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+                      placeholder="0" />
+                  </div>
+                </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">صورة المدرب (اختياري)</label>
                   <div className="flex items-center gap-3">
@@ -560,6 +595,32 @@ const CoachAttendancePage = () => {
                   {editingCoach?.expected_checkin_time && (
                     <p className="text-xs text-gray-400 mt-1">الوقت الحالي: {editingCoach.expected_checkin_time}</p>
                   )}
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">الراتب الأساسي (ر.س)</label>
+                    <input type="number" min="0" step="0.01"
+                      value={editCoachForm.base_salary}
+                      onChange={e => setEditCoachForm({...editCoachForm, base_salary: e.target.value})}
+                      className="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      placeholder="0" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">خصم اليوم الواحد (ر.س)</label>
+                    <input type="number" min="0" step="0.01"
+                      value={editCoachForm.daily_deduction_rate}
+                      onChange={e => setEditCoachForm({...editCoachForm, daily_deduction_rate: e.target.value})}
+                      className="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      placeholder="0" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">خصم الدقيقة (تأخر) ر.س</label>
+                    <input type="number" min="0" step="0.01"
+                      value={editCoachForm.late_minute_rate}
+                      onChange={e => setEditCoachForm({...editCoachForm, late_minute_rate: e.target.value})}
+                      className="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      placeholder="0" />
+                  </div>
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">صورة المدرب (اختياري)</label>

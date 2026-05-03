@@ -64,6 +64,7 @@ const UnauthorizedPage = lazy(() => import('./pages/UnauthorizedPage'));
 const MemberCardPage = lazy(() => import('./pages/MemberCardPage'));
 const CoachRatingsPage = lazy(() => import('./pages/CoachRatingsPage'));
 const CoachAttendancePage = lazy(() => import('./pages/CoachAttendancePage'));
+const CoachSalariesPage = lazy(() => import('./pages/CoachSalariesPage'));
 const SupervisorsPage = lazy(() => import('./pages/SupervisorsPage'));
 const AdvertisementsPage = lazy(() => import('./pages/AdvertisementsPage'));
 const DailyVideosPage = lazy(() => import('./pages/DailyVideosPage'));
@@ -370,6 +371,14 @@ function AppRoutes() {
         element={
           <ProtectedRoute permission="coach-attendance">
             <CoachAttendancePage />
+          </ProtectedRoute>
+        } 
+      />
+      <Route 
+        path="/admin/coach-salaries" 
+        element={
+          <ProtectedRoute permission="salaries">
+            <CoachSalariesPage />
           </ProtectedRoute>
         } 
       />

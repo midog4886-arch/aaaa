@@ -26,6 +26,9 @@ class CoachBase(BaseModel):
     notes: Optional[str] = ""
     expected_checkin_time: Optional[str] = None  # e.g. "09:00", per-coach late threshold
     photo: Optional[str] = None  # base64 encoded image string
+    base_salary: Optional[float] = 0
+    daily_deduction_rate: Optional[float] = 0
+    late_minute_rate: Optional[float] = 0
 
 class CoachCreate(CoachBase):
     branch_id: Optional[str] = None
