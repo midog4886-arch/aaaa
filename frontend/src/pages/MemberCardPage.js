@@ -49,13 +49,19 @@ const MemberCardPage = () => {
     const printWindow = window.open('', '_blank', 'width=800,height=600');
     const qrData = getQRData();
     
-    // Get first activity dates for display under QR
-    const firstActivity = member?.activities?.[0];
-    const startDate = firstActivity?.start_date || '';
-    const endDate = firstActivity?.end_date || '';
-    
-    // Get schedule info
-    const schedule = firstActivity?.schedule || '';
+    const _allActs = member?.activities || [];
+    const _today = new Date();
+    const _parseEnd = (a) => {
+      if (!a?.end_date) return 0;
+      const t = new Date(a.end_date).getTime();
+      return isNaN(t) ? 0 : t;
+    };
+    const _activeActs = _allActs.filter(a => a?.end_date && new Date(a.end_date) >= _today);
+    const _pool = _activeActs.length ? _activeActs : _allActs;
+    const latestActivity = [..._pool].sort((a, b) => _parseEnd(b) - _parseEnd(a))[0] || _allActs[0];
+    const startDate = latestActivity?.start_date || '';
+    const endDate = latestActivity?.end_date || '';
+    const schedule = latestActivity?.schedule || '';
     
     // Get activities list
     const activitiesHtml = member?.activities?.map(act => `
@@ -357,20 +363,33 @@ const MemberCardPage = () => {
                       />
                     </div>
                     {/* Dates under QR */}
-                    {member.activities && member.activities[0] && (
-                      <div className="mt-3 text-center">
-                        <div className="text-lg font-bold text-gray-800">
-                          <span>من: {member.activities[0].start_date || '----'}</span>
-                          <span className="mx-2">|</span>
-                          <span>إلى: {member.activities[0].end_date || '----'}</span>
-                        </div>
-                        {member.activities[0].schedule && (
-                          <div className="mt-2 px-4 py-2 bg-orange-50 rounded-lg text-orange-600 font-semibold">
-                            📅 {member.activities[0].schedule}
+                    {(() => {
+                      const all = member?.activities || [];
+                      if (!all.length) return null;
+                      const today = new Date();
+                      const parseEnd = (a) => {
+                        if (!a?.end_date) return 0;
+                        const t = new Date(a.end_date).getTime();
+                        return isNaN(t) ? 0 : t;
+                      };
+                      const actives = all.filter(a => a?.end_date && new Date(a.end_date) >= today);
+                      const pool = actives.length ? actives : all;
+                      const latest = [...pool].sort((a, b) => parseEnd(b) - parseEnd(a))[0] || all[0];
+                      return (
+                        <div className="mt-3 text-center">
+                          <div className="text-lg font-bold text-gray-800">
+                            <span>من: {latest.start_date || '----'}</span>
+                            <span className="mx-2">|</span>
+                            <span>إلى: {latest.end_date || '----'}</span>
                           </div>
-                        )}
-                      </div>
-                    )}
+                          {latest.schedule && (
+                            <div className="mt-2 px-4 py-2 bg-orange-50 rounded-lg text-orange-600 font-semibold">
+                              📅 {latest.schedule}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()}
                   </div>
                   
                   {/* Member Info */}

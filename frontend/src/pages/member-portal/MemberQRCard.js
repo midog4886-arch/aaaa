@@ -33,10 +33,16 @@ const remainingColor = (days) => {
 
 const buildStickerHtml = (cardData) => {
   const qrData = cardData?.member_code?.toString() || '';
-  const firstActivity = cardData?.active_activities?.[0];
-  const startDate = firstActivity?.start_date || '';
-  const endDate = firstActivity?.end_date || '';
-  const schedule = firstActivity?.schedule || '';
+  const _allActs = cardData?.active_activities || [];
+  const _parseEnd = (a) => {
+    if (!a?.end_date) return 0;
+    const t = new Date(a.end_date).getTime();
+    return isNaN(t) ? 0 : t;
+  };
+  const latestActivity = [..._allActs].sort((a, b) => _parseEnd(b) - _parseEnd(a))[0];
+  const startDate = latestActivity?.start_date || '';
+  const endDate = latestActivity?.end_date || '';
+  const schedule = latestActivity?.schedule || '';
 
   const activitiesHtml = cardData?.active_activities?.map(act => `
     <div class="activity-item active">
