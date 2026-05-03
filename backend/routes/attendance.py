@@ -610,17 +610,19 @@ async def qr_checkin(
     session_quota_warning = None
     try:
         quotas = await check_member_session_quota(member["id"], target_activity_id)
+        chosen = None
         for q in quotas:
             if q["exceeded"]:
-                session_quota_warning = {
+                chosen = {
                     "message": f"⚠️ استنفد حصصه! ({q['used_sessions']}/{q['total_allowed']})",
                     "used": q["used_sessions"],
                     "total": q["total_allowed"],
+                    "remaining": q.get("remaining", 0),
                     "activity": q["activity_name"]
                 }
                 break
             elif q["remaining"] <= 2:
-                session_quota_warning = {
+                chosen = {
                     "message": f"⚠️ متبقي {q['remaining']} حصص فقط ({q['used_sessions']}/{q['total_allowed']})",
                     "used": q["used_sessions"],
                     "total": q["total_allowed"],
@@ -628,6 +630,27 @@ async def qr_checkin(
                     "activity": q["activity_name"]
                 }
                 break
+        if not chosen:
+            for q in quotas:
+                if q.get("activity_id") == target_activity_id:
+                    chosen = {
+                        "message": "",
+                        "used": q["used_sessions"],
+                        "total": q["total_allowed"],
+                        "remaining": q.get("remaining", 0),
+                        "activity": q["activity_name"]
+                    }
+                    break
+            if not chosen and quotas:
+                q = quotas[0]
+                chosen = {
+                    "message": "",
+                    "used": q["used_sessions"],
+                    "total": q["total_allowed"],
+                    "remaining": q.get("remaining", 0),
+                    "activity": q["activity_name"]
+                }
+        session_quota_warning = chosen
     except Exception as e:
         print(f"Error checking session quota: {e}")
     

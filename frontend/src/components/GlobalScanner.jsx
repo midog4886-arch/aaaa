@@ -636,13 +636,15 @@ const GlobalScanner = ({ enabled = true, language = 'ar' }) => {
                               </div>
                             )}
 
-                            {/* Session Quota Warning */}
+                            {/* Session Quota */}
                             {isRecorded && state.sessionQuotaWarning && (
                               <div className="px-3.5 pb-3.5">
                                 <div className="bg-amber-100/80 p-3 rounded-lg border border-amber-200">
-                                  <p className="text-amber-900 font-bold text-sm mb-2">
-                                    {state.sessionQuotaWarning.message}
-                                  </p>
+                                  {state.sessionQuotaWarning.message && (
+                                    <p className="text-amber-900 font-bold text-sm mb-2">
+                                      {state.sessionQuotaWarning.message}
+                                    </p>
+                                  )}
                                   <div className="grid grid-cols-3 gap-2 text-center">
                                     <div className="bg-white/60 rounded-md p-1.5">
                                       <p className="text-lg font-bold text-amber-700">{state.sessionQuotaWarning.used}</p>
