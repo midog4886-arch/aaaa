@@ -531,13 +531,14 @@ const RenewalsPage = () => {
           notes: language === 'ar' ? `تجديد جماعي - ${item.activity_name}` : `Bulk renewal - ${item.activity_name}`,
         };
         const invRes = await invoicesAPI.create(invoiceData);
-        await membersAPI.addActivity(item.member_id, {
+        await membersAPI.updateActivity(item.member_id, item.activity_id, {
           activity_id: item.activity_id || '',
           activity_name: item.activity_name,
           start_date: newStart.toISOString().split('T')[0],
           end_date: newEnd.toISOString().split('T')[0],
           fee,
           status: 'active',
+          schedule: item.schedule || '',
           coach_id: item.coach_id || '',
           invoice_id: invRes.data?.id,
           renewed_from: item.end_date,
@@ -608,19 +609,20 @@ const RenewalsPage = () => {
 
       const invoiceRes = await invoicesAPI.create(invoiceData);
 
-      const newActivityPeriod = {
+      const updatedActivity = {
         activity_id: selectedItem.activity_id || '',
         activity_name: selectedItem.activity_name,
         start_date: renewalForm.start_date,
         end_date: renewalForm.end_date,
         fee: parseFloat(renewalForm.fee),
         status: 'active',
+        schedule: selectedItem.schedule || '',
         coach_id: selectedItem.coach_id || '',
         invoice_id: invoiceRes.data?.id,
         renewed_from: selectedItem.end_date
       };
 
-      await membersAPI.addActivity(selectedItem.member_id, newActivityPeriod);
+      await membersAPI.updateActivity(selectedItem.member_id, selectedItem.activity_id, updatedActivity);
 
       toast.success(language === 'ar' ? 'تم تجديد الاشتراك بنجاح' : 'Subscription renewed successfully');
       setIsRenewalDialogOpen(false);
