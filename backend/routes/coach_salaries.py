@@ -150,13 +150,9 @@ async def list_salaries(
         base_salary = float(coach.get("base_salary") or 0)
         daily_rate = float(coach.get("daily_deduction_rate") or 0)
         late_rate = float(coach.get("late_minute_rate") or 0)
-        contract_type = coach.get("contract_type") or "full_time"
-        try:
-            monthly_work_days = max(1, min(int(coach.get("monthly_work_days") or 30), 31))
-        except (ValueError, TypeError):
-            monthly_work_days = 30
-
         stats = _compute_attendance_stats(coach, attendance)
+        contract_type = stats["contract_type"]
+        monthly_work_days = stats["monthly_work_days"]
         deduction_absent = round(stats["absent_days"] * daily_rate, 2)
         deduction_late = round(stats["late_minutes"] * late_rate, 2)
 
