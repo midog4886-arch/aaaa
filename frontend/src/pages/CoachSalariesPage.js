@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Wallet, Plus, Trash2, FileText, CheckCircle, RotateCcw, Save, Loader, X, AlertTriangle, BarChart3, Download, FileSpreadsheet, ChevronDown, ChevronLeft } from 'lucide-react';
 import { coachSalariesAPI, coachAdvancesAPI, coachesAPI } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
+import { Layout } from '../components/Layout';
 
 const todayMonth = () => {
   const d = new Date();
@@ -306,6 +307,7 @@ const CoachSalariesPage = () => {
   };
 
   return (
+    <Layout title="رواتب وسُلف المدربين">
     <div className="p-4 md:p-6" dir="rtl">
       <Toast {...toast} onClose={() => setToast(null)} />
 
@@ -903,6 +905,7 @@ const CoachSalariesPage = () => {
         </div>
       )}
     </div>
+    </Layout>
   );
 };
 
