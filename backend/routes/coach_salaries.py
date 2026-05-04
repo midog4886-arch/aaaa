@@ -71,10 +71,18 @@ def _compute_attendance_stats(coach: dict, attendance_records: List[dict]) -> Di
         threshold_dt = datetime.strptime("09:00", "%H:%M")
         threshold_str = "09:00"
 
+    try:
+        monthly_work_days = max(1, min(int(coach.get("monthly_work_days") or 30), 31))
+    except (ValueError, TypeError):
+        monthly_work_days = 30
+    contract_type = coach.get("contract_type") or "full_time"
+    if contract_type not in ("full_time", "part_time"):
+        contract_type = "full_time"
+
     coach_records = [r for r in attendance_records if r.get("coach_id") == coach["id"]]
     present_days = len([r for r in coach_records if r.get("status") in ("present", "checked_out")])
-    absent_days = len([r for r in coach_records if r.get("status") == "absent"])
     leave_days = len([r for r in coach_records if r.get("status") == "leave"])
+    absent_days = max(0, monthly_work_days - present_days - leave_days)
 
     late_minutes_total = 0
     for r in coach_records:
@@ -95,6 +103,8 @@ def _compute_attendance_stats(coach: dict, attendance_records: List[dict]) -> Di
         "present_days": present_days,
         "absent_days": absent_days,
         "leave_days": leave_days,
+        "monthly_work_days": monthly_work_days,
+        "contract_type": contract_type,
         "late_minutes": int(round(late_minutes_total)),
         "threshold": threshold_str,
     }
@@ -140,6 +150,8 @@ async def list_salaries(
         base_salary = float(coach.get("base_salary") or 0)
         daily_rate = float(coach.get("daily_deduction_rate") or 0)
         late_rate = float(coach.get("late_minute_rate") or 0)
+        contract_type = coach.get("contract_type") or "full_time"
+        monthly_work_days = int(coach.get("monthly_work_days") or 30)
 
         stats = _compute_attendance_stats(coach, attendance)
         deduction_absent = round(stats["absent_days"] * daily_rate, 2)
@@ -149,6 +161,25 @@ async def list_salaries(
             a for a in advances
             if a.get("coach_id") == cid and a.get("status") == "pending"
         ]
+
+        common_fields = {
+            "year_month": month,
+            "coach_id": cid,
+            "coach_name": coach.get("name_ar") or coach.get("name", ""),
+            "branch_id": coach.get("branch_id"),
+            "base_salary": base_salary,
+            "daily_deduction_rate": daily_rate,
+            "late_minute_rate": late_rate,
+            "contract_type": contract_type,
+            "monthly_work_days": monthly_work_days,
+            "present_days": stats["present_days"],
+            "absent_days": stats["absent_days"],
+            "leave_days": stats["leave_days"],
+            "late_minutes": stats["late_minutes"],
+            "deduction_absent": deduction_absent,
+            "deduction_late": deduction_late,
+            "available_advances": coach_advances,
+        }
 
         existing = saved_by_coach.get(cid)
         if existing:
@@ -163,25 +194,12 @@ async def list_salaries(
                 2
             )
             rows.append({
+                **common_fields,
                 "id": existing.get("id"),
-                "year_month": month,
-                "coach_id": cid,
-                "coach_name": coach.get("name_ar") or coach.get("name", ""),
-                "branch_id": coach.get("branch_id"),
-                "base_salary": base_salary,
-                "daily_deduction_rate": daily_rate,
-                "late_minute_rate": late_rate,
-                "present_days": stats["present_days"],
-                "absent_days": stats["absent_days"],
-                "leave_days": stats["leave_days"],
-                "late_minutes": stats["late_minutes"],
-                "deduction_absent": deduction_absent,
-                "deduction_late": deduction_late,
                 "bonus": bonus,
                 "manual_deductions": manual_deductions,
                 "advances_repaid": advances_repaid_ids,
                 "advances_repaid_total": advances_repaid_total,
-                "available_advances": coach_advances,
                 "net_amount": existing.get("net_amount", net) if existing.get("status") == "disbursed" else net,
                 "status": existing.get("status", "draft"),
                 "expense_id": existing.get("expense_id"),
@@ -196,25 +214,12 @@ async def list_salaries(
                 2
             )
             rows.append({
+                **common_fields,
                 "id": None,
-                "year_month": month,
-                "coach_id": cid,
-                "coach_name": coach.get("name_ar") or coach.get("name", ""),
-                "branch_id": coach.get("branch_id"),
-                "base_salary": base_salary,
-                "daily_deduction_rate": daily_rate,
-                "late_minute_rate": late_rate,
-                "present_days": stats["present_days"],
-                "absent_days": stats["absent_days"],
-                "leave_days": stats["leave_days"],
-                "late_minutes": stats["late_minutes"],
-                "deduction_absent": deduction_absent,
-                "deduction_late": deduction_late,
                 "bonus": 0,
                 "manual_deductions": [],
                 "advances_repaid": [a["id"] for a in coach_advances],
                 "advances_repaid_total": advances_total,
-                "available_advances": coach_advances,
                 "net_amount": net,
                 "status": "new",
                 "expense_id": None,
@@ -306,6 +311,8 @@ async def save_salary_draft(
                 "base_salary": base_salary,
                 "daily_deduction_rate": daily_rate,
                 "late_minute_rate": late_rate,
+                "contract_type": coach.get("contract_type") or "full_time",
+                "monthly_work_days": int(coach.get("monthly_work_days") or 30),
                 "present_days": stats["present_days"],
                 "absent_days": stats["absent_days"],
                 "leave_days": stats["leave_days"],
@@ -332,6 +339,8 @@ async def save_salary_draft(
             "base_salary": base_salary,
             "daily_deduction_rate": daily_rate,
             "late_minute_rate": late_rate,
+            "contract_type": coach.get("contract_type") or "full_time",
+            "monthly_work_days": int(coach.get("monthly_work_days") or 30),
             "present_days": stats["present_days"],
             "absent_days": stats["absent_days"],
             "leave_days": stats["leave_days"],
@@ -1126,6 +1135,10 @@ async def payslip_pdf(
     elements.append(Spacer(1, 3*mm))
     elements.append(Paragraph(f"الشهر / Month: {salary['year_month']}", sub_style))
     elements.append(Paragraph(f"المدرب / Coach: {salary.get('coach_name', '')}", sub_style))
+    ct = salary.get('contract_type', 'full_time')
+    ct_label = 'دوام جزئي / Part-time' if ct == 'part_time' else 'دوام كامل / Full-time'
+    elements.append(Paragraph(f"نوع التعاقد / Contract: {ct_label}", sub_style))
+    elements.append(Paragraph(f"أيام العمل الشهرية / Monthly Work Days: {salary.get('monthly_work_days', 30)}", sub_style))
     status_label = 'مصروف / Disbursed' if salary.get('status') == 'disbursed' else 'مسودة / Draft'
     elements.append(Paragraph(f"الحالة / Status: {status_label}", sub_style))
     if salary.get("disbursed_at"):
@@ -1135,8 +1148,9 @@ async def payslip_pdf(
     rows = [
         [Paragraph("Amount (SAR) / القيمة", hdr_style), Paragraph("Item / البند", hdr_style)],
         [Paragraph(f"{salary.get('base_salary', 0):,.2f}", cell_center), Paragraph("الراتب الأساسي / Base Salary", cell_style)],
+        [Paragraph(f"{salary.get('monthly_work_days', 30)}", cell_center), Paragraph("أيام العمل المطلوبة / Required Work Days", cell_style)],
         [Paragraph(f"{salary.get('present_days', 0)}", cell_center), Paragraph("أيام الحضور / Present Days", cell_style)],
-        [Paragraph(f"{salary.get('absent_days', 0)}", cell_center), Paragraph("أيام الغياب / Absent Days", cell_style)],
+        [Paragraph(f"{salary.get('absent_days', 0)}", cell_center), Paragraph("أيام الغياب (تلقائي) / Absent Days (Auto)", cell_style)],
         [Paragraph(f"-{salary.get('deduction_absent', 0):,.2f}", cell_center), Paragraph("خصم الغياب / Absence Deduction", cell_style)],
         [Paragraph(f"{salary.get('late_minutes', 0)}", cell_center), Paragraph("دقائق التأخير / Late Minutes", cell_style)],
         [Paragraph(f"-{salary.get('deduction_late', 0):,.2f}", cell_center), Paragraph("خصم التأخير / Late Deduction", cell_style)],

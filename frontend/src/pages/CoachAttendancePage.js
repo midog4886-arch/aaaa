@@ -29,10 +29,10 @@ const CoachAttendancePage = () => {
   const [absentStatus, setAbsentStatus] = useState('absent');
   const [toast, setToast] = useState(null);
   const [showAddCoach, setShowAddCoach] = useState(false);
-  const [addCoachForm, setAddCoachForm] = useState({ name: '', phone: '', email: '', specialization: '', name_en: '', expected_checkin_time: '', photo: '', base_salary: '', daily_deduction_rate: '', late_minute_rate: '' });
+  const [addCoachForm, setAddCoachForm] = useState({ name: '', phone: '', email: '', specialization: '', name_en: '', expected_checkin_time: '', photo: '', base_salary: '', daily_deduction_rate: '', late_minute_rate: '', contract_type: 'full_time', monthly_work_days: '30' });
   const [addingCoach, setAddingCoach] = useState(false);
   const [editingCoach, setEditingCoach] = useState(null);
-  const [editCoachForm, setEditCoachForm] = useState({ name: '', phone: '', email: '', specialization: '', name_en: '', expected_checkin_time: '', photo: '', base_salary: '', daily_deduction_rate: '', late_minute_rate: '' });
+  const [editCoachForm, setEditCoachForm] = useState({ name: '', phone: '', email: '', specialization: '', name_en: '', expected_checkin_time: '', photo: '', base_salary: '', daily_deduction_rate: '', late_minute_rate: '', contract_type: 'full_time', monthly_work_days: '30' });
   const [savingCoach, setSavingCoach] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState(null);
   const [qrCoach, setQrCoach] = useState(null); // coach whose QR is being shown
@@ -213,11 +213,13 @@ const CoachAttendancePage = () => {
         photo: addCoachForm.photo || null,
         base_salary: parseFloat(addCoachForm.base_salary) || 0,
         daily_deduction_rate: parseFloat(addCoachForm.daily_deduction_rate) || 0,
-        late_minute_rate: parseFloat(addCoachForm.late_minute_rate) || 0
+        late_minute_rate: parseFloat(addCoachForm.late_minute_rate) || 0,
+        contract_type: addCoachForm.contract_type || 'full_time',
+        monthly_work_days: parseInt(addCoachForm.monthly_work_days) || 30
       }, { headers: { Authorization: `Bearer ${token}` } });
       showToast('تم إضافة المدرب بنجاح');
       setShowAddCoach(false);
-      setAddCoachForm({ name: '', phone: '', email: '', specialization: '', name_en: '', expected_checkin_time: '', photo: '', base_salary: '', daily_deduction_rate: '', late_minute_rate: '' });
+      setAddCoachForm({ name: '', phone: '', email: '', specialization: '', name_en: '', expected_checkin_time: '', photo: '', base_salary: '', daily_deduction_rate: '', late_minute_rate: '', contract_type: 'full_time', monthly_work_days: '30' });
       fetchData();
     } catch (error) {
       showToast(error.response?.data?.detail || 'حدث خطأ أثناء إضافة المدرب', 'error');
@@ -238,7 +240,9 @@ const CoachAttendancePage = () => {
       photo: coach.photo || '',
       base_salary: coach.base_salary != null ? String(coach.base_salary) : '',
       daily_deduction_rate: coach.daily_deduction_rate != null ? String(coach.daily_deduction_rate) : '',
-      late_minute_rate: coach.late_minute_rate != null ? String(coach.late_minute_rate) : ''
+      late_minute_rate: coach.late_minute_rate != null ? String(coach.late_minute_rate) : '',
+      contract_type: coach.contract_type || 'full_time',
+      monthly_work_days: coach.monthly_work_days != null ? String(coach.monthly_work_days) : '30'
     });
   };
 
@@ -263,7 +267,9 @@ const CoachAttendancePage = () => {
         photo: editCoachForm.photo || null,
         base_salary: parseFloat(editCoachForm.base_salary) || 0,
         daily_deduction_rate: parseFloat(editCoachForm.daily_deduction_rate) || 0,
-        late_minute_rate: parseFloat(editCoachForm.late_minute_rate) || 0
+        late_minute_rate: parseFloat(editCoachForm.late_minute_rate) || 0,
+        contract_type: editCoachForm.contract_type || 'full_time',
+        monthly_work_days: parseInt(editCoachForm.monthly_work_days) || 30
       }, { headers: { Authorization: `Bearer ${token}` } });
       showToast('تم تعديل بيانات المدرب بنجاح');
       setEditingCoach(null);
@@ -433,6 +439,27 @@ const CoachAttendancePage = () => {
                     className="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
                   />
                 </div>
+                <div className="grid grid-cols-2 gap-3 p-3 bg-green-50 border border-green-200 rounded-lg">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">نوع التعاقد</label>
+                    <select
+                      value={addCoachForm.contract_type}
+                      onChange={e => setAddCoachForm({...addCoachForm, contract_type: e.target.value})}
+                      className="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+                    >
+                      <option value="full_time">دوام كامل</option>
+                      <option value="part_time">دوام جزئي</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">أيام العمل الشهرية</label>
+                    <input type="number" min="1" max="31"
+                      value={addCoachForm.monthly_work_days}
+                      onChange={e => setAddCoachForm({...addCoachForm, monthly_work_days: e.target.value})}
+                      className="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+                      placeholder="30" />
+                  </div>
+                </div>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-3 p-3 bg-orange-50 border border-orange-200 rounded-lg">
                   <div>
                     <label className="block text-xs font-medium text-gray-700 mb-1">الراتب الأساسي (ر.س)</label>
@@ -595,6 +622,27 @@ const CoachAttendancePage = () => {
                   {editingCoach?.expected_checkin_time && (
                     <p className="text-xs text-gray-400 mt-1">الوقت الحالي: {editingCoach.expected_checkin_time}</p>
                   )}
+                </div>
+                <div className="grid grid-cols-2 gap-3 p-3 bg-green-50 border border-green-200 rounded-lg">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">نوع التعاقد</label>
+                    <select
+                      value={editCoachForm.contract_type}
+                      onChange={e => setEditCoachForm({...editCoachForm, contract_type: e.target.value})}
+                      className="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    >
+                      <option value="full_time">دوام كامل</option>
+                      <option value="part_time">دوام جزئي</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">أيام العمل الشهرية</label>
+                    <input type="number" min="1" max="31"
+                      value={editCoachForm.monthly_work_days}
+                      onChange={e => setEditCoachForm({...editCoachForm, monthly_work_days: e.target.value})}
+                      className="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      placeholder="30" />
+                  </div>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
                   <div>

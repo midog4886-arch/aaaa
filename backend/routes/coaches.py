@@ -3,8 +3,8 @@ Coaches API Routes
 Handles coaches/trainers management
 """
 from fastapi import APIRouter, HTTPException, Depends
-from pydantic import BaseModel
-from typing import Optional, List
+from pydantic import BaseModel, field_validator
+from typing import Optional, List, Literal
 from datetime import datetime, timezone
 import uuid
 
@@ -29,6 +29,17 @@ class CoachBase(BaseModel):
     base_salary: Optional[float] = 0
     daily_deduction_rate: Optional[float] = 0
     late_minute_rate: Optional[float] = 0
+    contract_type: Optional[Literal["full_time", "part_time"]] = "full_time"
+    monthly_work_days: Optional[int] = 30
+
+    @field_validator("monthly_work_days", mode="before")
+    @classmethod
+    def clamp_work_days(cls, v):
+        try:
+            v = int(v) if v is not None else 30
+        except (ValueError, TypeError):
+            return 30
+        return max(1, min(v, 31))
 
 class CoachCreate(CoachBase):
     branch_id: Optional[str] = None

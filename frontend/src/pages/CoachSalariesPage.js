@@ -407,7 +407,9 @@ const CoachSalariesPage = () => {
                 <thead className="bg-gray-50 border-b">
                   <tr>
                     <th className="text-right p-3 font-semibold text-gray-700">المدرب</th>
+                    <th className="text-right p-3 font-semibold text-gray-700">التعاقد</th>
                     <th className="text-right p-3 font-semibold text-gray-700">الراتب</th>
+                    <th className="text-right p-3 font-semibold text-gray-700">أيام العمل</th>
                     <th className="text-right p-3 font-semibold text-gray-700">حضور / غياب</th>
                     <th className="text-right p-3 font-semibold text-gray-700">دقائق التأخر</th>
                     <th className="text-right p-3 font-semibold text-gray-700">خصومات</th>
@@ -419,13 +421,19 @@ const CoachSalariesPage = () => {
                 </thead>
                 <tbody>
                   {loading ? (
-                    <tr><td colSpan="9" className="p-8 text-center text-gray-400"><Loader className="w-6 h-6 animate-spin inline" /></td></tr>
+                    <tr><td colSpan="11" className="p-8 text-center text-gray-400"><Loader className="w-6 h-6 animate-spin inline" /></td></tr>
                   ) : rows.length === 0 ? (
-                    <tr><td colSpan="9" className="p-8 text-center text-gray-400">لا توجد بيانات</td></tr>
+                    <tr><td colSpan="11" className="p-8 text-center text-gray-400">لا توجد بيانات</td></tr>
                   ) : rows.map(r => (
                     <tr key={r.coach_id} className="border-b hover:bg-gray-50">
                       <td className="p-3 font-medium text-gray-800">{r.coach_name}</td>
+                      <td className="p-3">
+                        <span className={`px-1.5 py-0.5 rounded text-[11px] font-medium ${r.contract_type === 'part_time' ? 'bg-purple-100 text-purple-700' : 'bg-blue-100 text-blue-700'}`}>
+                          {r.contract_type === 'part_time' ? 'جزئي' : 'كامل'}
+                        </span>
+                      </td>
                       <td className="p-3">{fmt(r.base_salary)}</td>
+                      <td className="p-3 text-gray-600">{r.monthly_work_days || 30}</td>
                       <td className="p-3"><span className="text-green-600 font-semibold">{r.present_days}</span> / <span className="text-red-600 font-semibold">{r.absent_days}</span></td>
                       <td className="p-3">{r.late_minutes}</td>
                       <td className="p-3 text-red-600">{fmt((r.deduction_absent || 0) + (r.deduction_late || 0) + (r.manual_deductions || []).reduce((s, m) => s + (m.amount || 0), 0))}</td>

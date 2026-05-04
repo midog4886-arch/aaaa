@@ -27,7 +27,7 @@ The system employs a full-stack architecture with distinct components for the ba
 - **Invoicing:** Generation and management of invoices with PDF and Excel export capabilities. WhatsApp sharing of invoice images is supported.
 - **Attendance Tracking:**
     - **Member Attendance:** QR code-based check-in with schedule validation, instant notifications, and session quota monitoring. Member photos are included in attendance reports (XLSX and PDF exports).
-    - **Coach Attendance:** Tracking check-in/check-out times, work hours calculation, and monthly reports.
+    - **Coach Attendance:** Tracking check-in/check-out times, work hours calculation, and monthly reports. Coaches have `contract_type` (full_time/part_time) and `monthly_work_days` fields. Absent days are calculated automatically as `monthly_work_days - present_days - leave_days` (min 0) instead of counting explicit "absent" records.
 - **Activity & Training Management:** Management of training schedules, activities, and levels, with day-based navigation for level management. The primary scheduling tool is the **Levels Schedule Builder** (day tabs → hour groups → level cards) which writes `days[]` and a single `time_slot` per level. Auto-assignment matches members on **branch + day + hour** (activity is only an optional tiebreaker). The legacy per-level Cleanup Tool is still available as a fallback for one release.
 - **Communication:** Internal messaging system for direct and broadcast messages, and push notifications for announcements and attendance.
 - **Financial Management:**
