@@ -335,7 +335,7 @@ export const CreateEditInvoiceDialog = ({
                               )}
                               {levelSelectorState[idx].step === 'time' && (
                                 <div className="p-2 space-y-1 max-h-48 overflow-y-auto">
-                                  {Object.entries(_grouped[levelSelectorState[idx].selectedActivity] || {}).sort(([a], [b]) => { const na = parseInt((a.match(/\d+/) || [])[0]) || 0; const nb = parseInt((b.match(/\d+/) || [])[0]) || 0; return na - nb; }).map(([timeSlot, timeLevels]) => {
+                                  {Object.entries(_grouped[levelSelectorState[idx].selectedActivity] || {}).filter(([ts]) => { const h = item.training_time_hour; if (!h) return true; const tsNum = (ts.match(/\d+/) || [])[0]; return tsNum === String(h); }).sort(([a], [b]) => { const na = parseInt((a.match(/\d+/) || [])[0]) || 0; const nb = parseInt((b.match(/\d+/) || [])[0]) || 0; return na - nb; }).map(([timeSlot, timeLevels]) => {
                                     const _itemDays = item.training_days || [];
                                     const totalMembers = timeLevels.reduce((sum, l) => {
                                       const activeDet = (l.members_details || []).filter(m => m.has_active_sub !== false);
@@ -666,7 +666,7 @@ export const CreateEditInvoiceDialog = ({
                                                 )}
                                                 {levelSelectorState[selKey].step === 'time' && (
                                                   <div className="p-2 space-y-1 max-h-48 overflow-y-auto">
-                                                    {Object.entries(_grouped[levelSelectorState[selKey].selectedActivity] || {}).sort(([a], [b]) => { const na = parseInt((a.match(/\d+/) || [])[0]) || 0; const nb = parseInt((b.match(/\d+/) || [])[0]) || 0; return na - nb; }).map(([timeSlot, timeLevels]) => {
+                                                    {Object.entries(_grouped[levelSelectorState[selKey].selectedActivity] || {}).filter(([ts]) => { const h = item.training_time_hour; if (!h) return true; const tsNum = (ts.match(/\d+/) || [])[0]; return tsNum === String(h); }).sort(([a], [b]) => { const na = parseInt((a.match(/\d+/) || [])[0]) || 0; const nb = parseInt((b.match(/\d+/) || [])[0]) || 0; return na - nb; }).map(([timeSlot, timeLevels]) => {
                                                       const _itemDays = item.training_days || [];
                                                       const totalMembers = timeLevels.reduce((sum, l) => {
                                                         const activeDet = (l.members_details || []).filter(m => m.has_active_sub !== false);
