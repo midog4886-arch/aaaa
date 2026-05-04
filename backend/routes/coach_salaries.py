@@ -162,7 +162,8 @@ async def list_salaries(
         stats = _compute_attendance_stats(coach, attendance)
         contract_type = stats["contract_type"]
         monthly_work_days = stats["monthly_work_days"]
-        deduction_absent = round(stats["absent_days"] * daily_rate, 2)
+        effective_daily_rate = daily_rate if daily_rate > 0 else (round(base_salary / monthly_work_days, 2) if monthly_work_days > 0 else 0)
+        deduction_absent = round(stats["absent_days"] * effective_daily_rate, 2)
         deduction_late = round(stats["late_minutes"] * late_rate, 2)
 
         coach_advances = [
@@ -285,7 +286,9 @@ async def save_salary_draft(
     att_query = {"date": {"$regex": f"^{data.year_month}"}, "coach_id": data.coach_id}
     attendance = await db.coach_attendance.find(att_query, {"_id": 0}).to_list(5000)
     stats = _compute_attendance_stats(coach, attendance)
-    deduction_absent = round(stats["absent_days"] * daily_rate, 2)
+    monthly_work_days = stats["monthly_work_days"]
+    effective_daily_rate = daily_rate if daily_rate > 0 else (round(base_salary / monthly_work_days, 2) if monthly_work_days > 0 else 0)
+    deduction_absent = round(stats["absent_days"] * effective_daily_rate, 2)
     deduction_late = round(stats["late_minutes"] * late_rate, 2)
 
     advances_total = 0.0
