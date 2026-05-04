@@ -218,6 +218,7 @@ async def create_level(level: LevelCreate, current_user: dict = Depends(get_curr
         "coach_id": level.coach_id or None,
         "capacity": int(level.capacity) if level.capacity else None,
         "days": list(level.days) if level.days else None,
+        "time_slot": level.time_slot or None,
         "created_at": datetime.now(timezone.utc).isoformat()
     }
     await db.levels.insert_one(level_doc)

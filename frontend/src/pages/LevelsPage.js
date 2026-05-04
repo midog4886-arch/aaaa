@@ -1209,8 +1209,10 @@ ${slotTables}
       const newLevel = {
         level_number: nextLevelNumber,
         activity_name: activityName,
+        time_slot: selectedTimeSlotKey,
         branch_id: selectedBranchId || 'all',
         capacity: selectedActivityId === 'swimming' ? 6 : 10,
+        days: [...ALL_DAY_IDS],
         members: []
       };
       
@@ -1276,16 +1278,20 @@ ${slotTables}
     }
     
     try {
-      // Remove from old level
       await levelsAPI.removeMember(draggedFromLevel.id, draggedMember.id);
-      // Add to new level
-      await levelsAPI.addMember(targetLevel.id, draggedMember.id);
+      try {
+        await levelsAPI.addMember(targetLevel.id, draggedMember.id);
+      } catch (addError) {
+        await levelsAPI.addMember(draggedFromLevel.id, draggedMember.id);
+        throw addError;
+      }
       
       toast.success(t(`تم نقل ${draggedMember.name_ar || draggedMember.name} إلى المستوى ${targetLevel.level_number}`,
                       `Moved ${draggedMember.name_ar || draggedMember.name} to Level ${targetLevel.level_number}`));
       loadData();
     } catch (error) {
       toast.error(t('فشل في نقل العضو', 'Failed to move member'));
+      loadData();
     } finally {
       setDraggedMember(null);
       setDraggedFromLevel(null);
