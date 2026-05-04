@@ -7160,6 +7160,11 @@ async def get_expiring_subscriptions(
             days_until_expiry = (end_date - today).days
             
             if 0 <= days_until_expiry <= days:
+                schedule = activity.get("schedule", "")
+                if not schedule and activity.get("training_days"):
+                    days_str = " و ".join(activity["training_days"])
+                    time_str = activity.get("training_time", "")
+                    schedule = f"{days_str} - {time_str}" if time_str else days_str
                 expiring.append({
                     "member_id": member["id"],
                     "member_name": member.get("name_ar", member.get("name", "")),
@@ -7171,6 +7176,7 @@ async def get_expiring_subscriptions(
                     "days_remaining": days_until_expiry,
                     "fee": activity.get("fee", 0),
                     "branch_id": member.get("branch_id"),
+                    "schedule": schedule,
                     "status": "expired" if days_until_expiry <= 0 else "expiring_soon"
                 })
     

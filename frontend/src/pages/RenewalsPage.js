@@ -523,7 +523,7 @@ const RenewalsPage = () => {
             period: `${newStart.toISOString().split('T')[0]} - ${newEnd.toISOString().split('T')[0]}`,
             start_date: newStart.toISOString().split('T')[0],
             end_date: newEnd.toISOString().split('T')[0],
-            schedule: '',
+            schedule: item.schedule || '',
             is_product: false,
           }],
           subtotal: fee, vat, total, discount: 0,
@@ -594,7 +594,7 @@ const RenewalsPage = () => {
           period: `${renewalForm.start_date} - ${renewalForm.end_date}`,
           start_date: renewalForm.start_date,
           end_date: renewalForm.end_date,
-          schedule: '',
+          schedule: selectedItem.schedule || '',
           is_product: false
         }],
         subtotal: subtotal,
