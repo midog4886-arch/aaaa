@@ -151,7 +151,10 @@ async def list_salaries(
         daily_rate = float(coach.get("daily_deduction_rate") or 0)
         late_rate = float(coach.get("late_minute_rate") or 0)
         contract_type = coach.get("contract_type") or "full_time"
-        monthly_work_days = int(coach.get("monthly_work_days") or 30)
+        try:
+            monthly_work_days = max(1, min(int(coach.get("monthly_work_days") or 30), 31))
+        except (ValueError, TypeError):
+            monthly_work_days = 30
 
         stats = _compute_attendance_stats(coach, attendance)
         deduction_absent = round(stats["absent_days"] * daily_rate, 2)
@@ -311,8 +314,8 @@ async def save_salary_draft(
                 "base_salary": base_salary,
                 "daily_deduction_rate": daily_rate,
                 "late_minute_rate": late_rate,
-                "contract_type": coach.get("contract_type") or "full_time",
-                "monthly_work_days": int(coach.get("monthly_work_days") or 30),
+                "contract_type": stats["contract_type"],
+                "monthly_work_days": stats["monthly_work_days"],
                 "present_days": stats["present_days"],
                 "absent_days": stats["absent_days"],
                 "leave_days": stats["leave_days"],
@@ -339,8 +342,8 @@ async def save_salary_draft(
             "base_salary": base_salary,
             "daily_deduction_rate": daily_rate,
             "late_minute_rate": late_rate,
-            "contract_type": coach.get("contract_type") or "full_time",
-            "monthly_work_days": int(coach.get("monthly_work_days") or 30),
+            "contract_type": stats["contract_type"],
+            "monthly_work_days": stats["monthly_work_days"],
             "present_days": stats["present_days"],
             "absent_days": stats["absent_days"],
             "leave_days": stats["leave_days"],

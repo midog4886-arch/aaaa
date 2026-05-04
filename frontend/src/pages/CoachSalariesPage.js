@@ -140,6 +140,8 @@ const CoachSalariesPage = () => {
       coach_id: row.coach_id,
       coach_name: row.coach_name,
       base_salary: row.base_salary,
+      contract_type: row.contract_type || 'full_time',
+      monthly_work_days: row.monthly_work_days || 30,
       present_days: row.present_days,
       absent_days: row.absent_days,
       late_minutes: row.late_minutes,
@@ -725,6 +727,13 @@ const CoachSalariesPage = () => {
             <div className="p-5 space-y-4">
               <div className="grid grid-cols-2 gap-3 text-sm">
                 <div className="bg-gray-50 p-3 rounded"><span className="text-gray-500">الراتب الأساسي:</span> <strong>{fmt(editing.base_salary)}</strong></div>
+                <div className="bg-gray-50 p-3 rounded">
+                  <span className="text-gray-500">نوع التعاقد:</span>{' '}
+                  <span className={`px-1.5 py-0.5 rounded text-[11px] font-medium ${editing.contract_type === 'part_time' ? 'bg-purple-100 text-purple-700' : 'bg-blue-100 text-blue-700'}`}>
+                    {editing.contract_type === 'part_time' ? 'دوام جزئي' : 'دوام كامل'}
+                  </span>
+                </div>
+                <div className="bg-gray-50 p-3 rounded"><span className="text-gray-500">أيام العمل المطلوبة:</span> <strong>{editing.monthly_work_days}</strong></div>
                 <div className="bg-gray-50 p-3 rounded"><span className="text-gray-500">حضور/غياب:</span> <strong>{editing.present_days}/{editing.absent_days}</strong></div>
                 <div className="bg-red-50 p-3 rounded"><span className="text-gray-500">خصم الغياب:</span> <strong className="text-red-600">-{fmt(editing.deduction_absent)}</strong></div>
                 <div className="bg-red-50 p-3 rounded"><span className="text-gray-500">خصم التأخر ({editing.late_minutes} د):</span> <strong className="text-red-600">-{fmt(editing.deduction_late)}</strong></div>
