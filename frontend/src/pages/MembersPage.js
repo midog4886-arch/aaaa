@@ -382,6 +382,7 @@ export const MembersPage = () => {
       // Refresh selected member
       const updated = await membersAPI.getById(selectedMember.id);
       setSelectedMember(updated.data);
+      setMembers(prev => prev.map(m => m.id === selectedMember.id ? { ...m, ...updated.data } : m));
     } catch (error) {
       console.error('Failed to add activity:', error);
       toast.error(t('error'));
@@ -430,6 +431,7 @@ export const MembersPage = () => {
       toast.success(language === 'ar' ? 'تم تحديث النشاط' : 'Activity updated');
       const updated = await membersAPI.getById(selectedMember.id);
       setSelectedMember(updated.data);
+      setMembers(prev => prev.map(m => m.id === selectedMember.id ? { ...m, ...updated.data } : m));
       setEditingActivityId(null);
       setEditActivityForm({});
       setEditMemberLevelSelectorState(null);
@@ -449,6 +451,7 @@ export const MembersPage = () => {
       await membersAPI.update(selectedMember.id, { notes: notesValue });
       const updated = await membersAPI.getById(selectedMember.id);
       setSelectedMember(updated.data);
+      setMembers(prev => prev.map(m => m.id === selectedMember.id ? { ...m, ...updated.data } : m));
       setEditingNotes(false);
       toast.success(language === 'ar' ? 'تم حفظ الملاحظات' : 'Notes saved');
     } catch {
