@@ -157,11 +157,17 @@ async def get_levels(
                         # Priority 3: invoice-based fallback
                         if not schedule:
                             schedule = invoice_schedules.get(mid, "")
+                        today_str = datetime.now().strftime("%Y-%m-%d")
+                        has_active = any(
+                            a.get("status") == "active" and (not a.get("end_date") or a["end_date"] >= today_str)
+                            for a in activities
+                        )
                         members_details.append({
                             "member_id": member["id"],
                             "member_name": member.get("name_ar") or member.get("name", ""),
                             "phone": member.get("phone", ""),
-                            "schedule": schedule
+                            "schedule": schedule,
+                            "has_active_sub": has_active
                         })
                 level["members_details"] = members_details
                 # Sync members array to only valid IDs (remove stale/deleted member refs)
