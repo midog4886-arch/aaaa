@@ -654,12 +654,15 @@ const CoachSalariesPage = () => {
                                 <td colSpan="11" className="p-3">
                                   {(c.history || []).length === 0 ? (
                                     <p className="text-center text-gray-400 text-sm py-3">لا توجد سجلات في هذه الفترة</p>
+
                                   ) : (
                                     <div className="overflow-x-auto">
                                       <table className="w-full text-xs">
                                         <thead className="bg-white border-b">
                                           <tr>
                                             <th className="text-right p-2">الشهر</th>
+                                            <th className="text-right p-2">التعاقد</th>
+                                            <th className="text-right p-2">أيام العمل</th>
                                             <th className="text-right p-2">الراتب</th>
                                             <th className="text-right p-2">خصم غياب</th>
                                             <th className="text-right p-2">خصم تأخر</th>
@@ -676,6 +679,12 @@ const CoachSalariesPage = () => {
                                           {c.history.map(h => (
                                             <tr key={h.year_month} className="border-b">
                                               <td className="p-2 font-semibold">{h.year_month}</td>
+                                              <td className="p-2">
+                                                <span className={`px-1.5 py-0.5 rounded text-[11px] font-medium ${h.contract_type === 'part_time' ? 'bg-purple-100 text-purple-700' : 'bg-blue-100 text-blue-700'}`}>
+                                                  {h.contract_type === 'part_time' ? 'جزئي' : 'كامل'}
+                                                </span>
+                                              </td>
+                                              <td className="p-2">{h.monthly_work_days || 30}</td>
                                               <td className="p-2">{fmt(h.base_salary)}</td>
                                               <td className="p-2 text-red-600">-{fmt(h.deduction_absent)}</td>
                                               <td className="p-2 text-red-600">-{fmt(h.deduction_late)}</td>

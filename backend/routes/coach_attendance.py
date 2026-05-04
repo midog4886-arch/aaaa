@@ -428,9 +428,19 @@ async def monthly_report(
         # Sort late records by date
         late_records.sort(key=lambda x: x["date"])
 
+        contract_type = coach.get("contract_type") or "full_time"
+        if contract_type not in ("full_time", "part_time"):
+            contract_type = "full_time"
+        try:
+            monthly_work_days = max(1, min(int(coach.get("monthly_work_days") or 30), 31))
+        except (ValueError, TypeError):
+            monthly_work_days = 30
+
         report[cid] = {
             "coach_id": cid,
             "coach_name": coach.get("name_ar", coach.get("name", "")),
+            "contract_type": contract_type,
+            "monthly_work_days": monthly_work_days,
             "present_days": present_days,
             "absent_days": absent_days,
             "leave_days": leave_days,
@@ -509,9 +519,19 @@ async def export_monthly_report(
             except Exception:
                 pass
 
+        contract_type = coach.get("contract_type") or "full_time"
+        if contract_type not in ("full_time", "part_time"):
+            contract_type = "full_time"
+        try:
+            monthly_work_days = max(1, min(int(coach.get("monthly_work_days") or 30), 31))
+        except (ValueError, TypeError):
+            monthly_work_days = 30
+
         rows.append({
             "idx": idx,
             "coach_name": coach.get("name_ar", coach.get("name", "")),
+            "contract_type": contract_type,
+            "monthly_work_days": monthly_work_days,
             "present_days": present_days,
             "absent_days": absent_days,
             "leave_days": leave_days,
@@ -521,7 +541,7 @@ async def export_monthly_report(
         })
 
     export_date = datetime.now().strftime("%Y-%m-%d")
-    headers_row = ["م", "المدرب", "أيام الحضور", "أيام الغياب", "أيام الإجازة", "إجمالي الساعات", "أيام التأخر", "دقائق التأخر"]
+    headers_row = ["م", "المدرب", "نوع التعاقد", "أيام العمل", "أيام الحضور", "أيام الغياب", "أيام الإجازة", "إجمالي الساعات", "أيام التأخر", "دقائق التأخر"]
 
     # ── Excel ──────────────────────────────────────────
     if format == "xlsx":
@@ -549,11 +569,13 @@ async def export_monthly_report(
         ws.append([f"تاريخ التصدير: {export_date}"])
         ws.append([])
 
-        for col in range(1, 9):
+        col_count = len(headers_row)
+        last_col_letter = chr(ord('A') + col_count - 1)
+        for col in range(1, col_count + 1):
             ws.cell(row=1, column=col).font = Font(bold=True, size=13)
-        ws.merge_cells('A1:H1')
-        ws.merge_cells('A2:H2')
-        ws.merge_cells('A3:H3')
+        ws.merge_cells(f'A1:{last_col_letter}1')
+        ws.merge_cells(f'A2:{last_col_letter}2')
+        ws.merge_cells(f'A3:{last_col_letter}3')
         ws['A1'].alignment = right_align
         ws['A2'].alignment = right_align
         ws['A3'].alignment = right_align
@@ -567,22 +589,25 @@ async def export_monthly_report(
             cell.alignment = center
             cell.border = border
 
+        contract_labels = {"full_time": "دوام كامل", "part_time": "دوام جزئي"}
         for data_idx, r in enumerate(rows):
-            ws.append([r["idx"], r["coach_name"], r["present_days"], r["absent_days"],
+            ws.append([r["idx"], r["coach_name"],
+                       contract_labels.get(r["contract_type"], r["contract_type"]),
+                       r["monthly_work_days"],
+                       r["present_days"], r["absent_days"],
                        r["leave_days"], r["total_hours"], r["late_days"], r["late_minutes"]])
             row_num = header_row_num + 1 + data_idx
             use_alt = data_idx % 2 == 1
-            for col_idx in range(1, 9):
+            for col_idx in range(1, col_count + 1):
                 cell = ws.cell(row=row_num, column=col_idx)
                 if use_alt:
                     cell.fill = alt_fill
                 cell.border = border
                 cell.alignment = center if col_idx != 2 else right_align
 
-        col_widths = [6, 28, 14, 14, 14, 16, 14, 16]
-        col_letters = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H']
-        for letter, width in zip(col_letters, col_widths):
-            ws.column_dimensions[letter].width = width
+        col_widths = [6, 28, 14, 12, 14, 14, 14, 16, 14, 16]
+        for idx_w, w in enumerate(col_widths, 1):
+            ws.column_dimensions[ws.cell(row=1, column=idx_w).column_letter].width = w
 
         buffer = BytesIO()
         wb.save(buffer)
@@ -636,7 +661,8 @@ async def export_monthly_report(
     elements.append(Paragraph(f"تاريخ التصدير: {export_date}", sub_style))
     elements.append(Spacer(1, 5*mm))
 
-    pdf_headers = ["دقائق التأخر", "أيام التأخر", "الساعات", "الإجازة", "الغياب", "الحضور", "المدرب", "م"]
+    contract_labels = {"full_time": "دوام كامل", "part_time": "دوام جزئي"}
+    pdf_headers = ["دقائق التأخر", "أيام التأخر", "الساعات", "الإجازة", "الغياب", "الحضور", "أيام العمل", "التعاقد", "المدرب", "م"]
     header_row_pdf = [Paragraph(h, hdr_style) for h in pdf_headers]
     data = [header_row_pdf]
     for r in rows:
@@ -647,11 +673,13 @@ async def export_monthly_report(
             Paragraph(str(r["leave_days"]), cell_style),
             Paragraph(str(r["absent_days"]), cell_style),
             Paragraph(str(r["present_days"]), cell_style),
+            Paragraph(str(r["monthly_work_days"]), cell_style),
+            Paragraph(contract_labels.get(r["contract_type"], r["contract_type"]), cell_style),
             Paragraph(r["coach_name"], cell_style),
             Paragraph(str(r["idx"]), cell_style),
         ])
 
-    col_widths_pdf = [22*mm, 18*mm, 18*mm, 18*mm, 18*mm, 18*mm, 48*mm, 10*mm]
+    col_widths_pdf = [18*mm, 15*mm, 15*mm, 15*mm, 15*mm, 15*mm, 15*mm, 18*mm, 36*mm, 8*mm]
     table = Table(data, colWidths=col_widths_pdf, repeatRows=1)
     table.setStyle(TableStyle([
         ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#F97316')),

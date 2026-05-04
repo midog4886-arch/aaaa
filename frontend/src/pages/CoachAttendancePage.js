@@ -295,9 +295,10 @@ const CoachAttendancePage = () => {
 
   const exportCSV = () => {
     if (!monthlyReport) return;
-    const rows = [['المدرب', 'أيام الحضور', 'أيام الغياب', 'أيام الإجازة', 'إجمالي الساعات', 'أيام التأخر', 'إجمالي دقائق التأخر']];
+    const contractLabels = { full_time: 'دوام كامل', part_time: 'دوام جزئي' };
+    const rows = [['المدرب', 'نوع التعاقد', 'أيام العمل', 'أيام الحضور', 'أيام الغياب', 'أيام الإجازة', 'إجمالي الساعات', 'أيام التأخر', 'إجمالي دقائق التأخر']];
     monthlyReport.report.forEach(r => {
-      rows.push([r.coach_name, r.present_days, r.absent_days, r.leave_days, r.total_hours, r.late_days || 0, r.late_minutes || 0]);
+      rows.push([r.coach_name, contractLabels[r.contract_type] || r.contract_type || 'دوام كامل', r.monthly_work_days || 30, r.present_days, r.absent_days, r.leave_days, r.total_hours, r.late_days || 0, r.late_minutes || 0]);
     });
     const csv = '\uFEFF' + rows.map(r => r.join(',')).join('\n');
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
@@ -1139,6 +1140,8 @@ const CoachAttendancePage = () => {
                       <thead>
                         <tr className="bg-gray-50 border-b">
                           <th className="px-4 py-3 text-right font-medium text-gray-600">المدرب</th>
+                          <th className="px-4 py-3 text-center font-medium text-gray-600">التعاقد</th>
+                          <th className="px-4 py-3 text-center font-medium text-gray-600">أيام العمل</th>
                           <th className="px-4 py-3 text-center font-medium text-green-600">أيام الحضور</th>
                           <th className="px-4 py-3 text-center font-medium text-red-600">أيام الغياب</th>
                           <th className="px-4 py-3 text-center font-medium text-yellow-600">أيام الإجازة</th>
@@ -1151,6 +1154,12 @@ const CoachAttendancePage = () => {
                         {monthlyReport.report.map(r => (
                           <tr key={r.coach_id} className="border-b hover:bg-gray-50">
                             <td className="px-4 py-3 font-medium">{r.coach_name}</td>
+                            <td className="px-4 py-3 text-center">
+                              <span className={`px-1.5 py-0.5 rounded text-[11px] font-medium ${r.contract_type === 'part_time' ? 'bg-purple-100 text-purple-700' : 'bg-blue-100 text-blue-700'}`}>
+                                {r.contract_type === 'part_time' ? 'جزئي' : 'كامل'}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3 text-center text-gray-600">{r.monthly_work_days || 30}</td>
                             <td className="px-4 py-3 text-center">
                               <span className="bg-green-100 text-green-700 px-2 py-0.5 rounded-full text-xs font-bold">
                                 {r.present_days}

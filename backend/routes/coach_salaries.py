@@ -14,6 +14,13 @@ from utils.auth import require_branch_scope, resolve_branch_filter, require_perm
 router = APIRouter(prefix="/coach-salaries", tags=["coach-salaries"])
 
 
+def _safe_work_days(val) -> int:
+    try:
+        return max(1, min(int(val), 31))
+    except (ValueError, TypeError):
+        return 30
+
+
 def _branch_scope_filter(effective_branch: Optional[str]) -> dict:
     if not effective_branch:
         return {}
@@ -757,6 +764,8 @@ async def salaries_report(
         bucket["months_recorded"] += 1
         bucket["history"].append({
             "year_month": s.get("year_month"),
+            "contract_type": s.get("contract_type") if s.get("contract_type") in ("full_time", "part_time") else "full_time",
+            "monthly_work_days": _safe_work_days(s.get("monthly_work_days")),
             "base_salary": float(s.get("base_salary") or 0),
             "deduction_absent": float(s.get("deduction_absent") or 0),
             "deduction_late": float(s.get("deduction_late") or 0),
@@ -922,23 +931,25 @@ async def salaries_report(
         # Per-coach history sheets — one combined sheet with sections
         ws2 = wb.create_sheet("سجل تاريخي")
         ws2.append([f"السجل التاريخي للرواتب — {period_label}"])
-        ws2.merge_cells(start_row=1, start_column=1, end_row=1, end_column=8)
+        ws2.merge_cells(start_row=1, start_column=1, end_row=1, end_column=10)
         ws2['A1'].font = Font(bold=True, size=13)
         ws2['A1'].alignment = right_align
         ws2.append([])
 
-        hist_headers = ["الشهر", "الراتب", "خصم غياب", "خصم تأخر", "علاوة", "سُلف مخصومة", "الصافي", "الحالة"]
+        contract_labels = {"full_time": "دوام كامل", "part_time": "دوام جزئي"}
+        hist_headers = ["الشهر", "التعاقد", "أيام العمل", "الراتب", "خصم غياب", "خصم تأخر", "علاوة", "سُلف مخصومة", "الصافي", "الحالة"]
+        hist_col_count = len(hist_headers)
         for r in coach_rows:
             ws2.append([r["coach_name"]])
             name_row = ws2.max_row
             ws2.cell(row=name_row, column=1).font = Font(bold=True, color="FFFFFF")
             ws2.cell(row=name_row, column=1).fill = orange_fill
-            ws2.merge_cells(start_row=name_row, start_column=1, end_row=name_row, end_column=8)
+            ws2.merge_cells(start_row=name_row, start_column=1, end_row=name_row, end_column=hist_col_count)
             ws2.cell(row=name_row, column=1).alignment = right_align
 
             ws2.append(hist_headers)
             hdr = ws2.max_row
-            for col_idx in range(1, 9):
+            for col_idx in range(1, hist_col_count + 1):
                 c = ws2.cell(row=hdr, column=col_idx)
                 c.fill = PatternFill("solid", fgColor="FFF7ED")
                 c.font = Font(bold=True)
@@ -947,12 +958,15 @@ async def salaries_report(
 
             if not r["history"]:
                 ws2.append(["لا توجد سجلات في هذه الفترة"])
-                ws2.merge_cells(start_row=ws2.max_row, start_column=1, end_row=ws2.max_row, end_column=8)
+                ws2.merge_cells(start_row=ws2.max_row, start_column=1, end_row=ws2.max_row, end_column=hist_col_count)
                 ws2.cell(row=ws2.max_row, column=1).alignment = center
             else:
                 for h in r["history"]:
+                    ct = h.get("contract_type") or "full_time"
                     ws2.append([
                         h["year_month"],
+                        contract_labels.get(ct, ct),
+                        h.get("monthly_work_days") or 30,
                         h["base_salary"],
                         h["deduction_absent"],
                         h["deduction_late"],
@@ -962,12 +976,12 @@ async def salaries_report(
                         "مصروف" if h["status"] == "disbursed" else ("مسودة" if h["status"] == "draft" else "—"),
                     ])
                     rn = ws2.max_row
-                    for col_idx in range(1, 9):
+                    for col_idx in range(1, hist_col_count + 1):
                         ws2.cell(row=rn, column=col_idx).border = border
                         ws2.cell(row=rn, column=col_idx).alignment = center
             ws2.append([])
 
-        for idx, w in enumerate([14, 14, 14, 14, 14, 14, 14, 12], 1):
+        for idx, w in enumerate([14, 14, 12, 14, 14, 14, 14, 14, 14, 12], 1):
             ws2.column_dimensions[ws2.cell(row=1, column=idx).column_letter].width = w
 
         buffer = BytesIO()
