@@ -106,6 +106,11 @@ const InvoicesTable = ({
                       <span className="font-medium">
                         {invoice.customer_name_ar || invoice.member_name || '-'}
                       </span>
+                      {invoice.guardian_name_ar && (
+                        <span className="block text-xs text-blue-600">
+                          {language === 'ar' ? 'ولي الأمر' : 'Guardian'}: {invoice.guardian_name_ar}
+                        </span>
+                      )}
                       {invoice.customer_phone && (
                         <span className="block text-sm text-muted-foreground" dir="ltr">
                           {invoice.customer_phone}

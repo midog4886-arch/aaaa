@@ -134,14 +134,16 @@ async def get_invoices(
     
     invoices = await db.invoices.find(query, {"_id": 0}).sort("created_at", -1).to_list(1000)
     
-    # Enrich invoices with member_code for legacy invoices that don't have it
-    member_ids = list(set([inv.get("member_id") for inv in invoices if inv.get("member_id") and not inv.get("member_code")]))
+    member_ids = list(set([inv.get("member_id") for inv in invoices if inv.get("member_id")]))
     if member_ids:
-        members = await db.members.find({"id": {"$in": member_ids}}, {"id": 1, "member_code": 1, "_id": 0}).to_list(len(member_ids))
-        member_codes = {m["id"]: m.get("member_code", "") for m in members}
+        members = await db.members.find({"id": {"$in": member_ids}}, {"id": 1, "member_code": 1, "guardian_name_ar": 1, "_id": 0}).to_list(len(member_ids))
+        members_map = {m["id"]: m for m in members}
         for inv in invoices:
-            if inv.get("member_id") and not inv.get("member_code"):
-                inv["member_code"] = member_codes.get(inv["member_id"], "")
+            mid = inv.get("member_id")
+            if mid and mid in members_map:
+                if not inv.get("member_code"):
+                    inv["member_code"] = members_map[mid].get("member_code", "")
+                inv["guardian_name_ar"] = members_map[mid].get("guardian_name_ar", "")
     
     return invoices
 
@@ -184,14 +186,16 @@ async def search_invoices(
     
     invoices = await db.invoices.find(query, {"_id": 0}).sort("created_at", -1).to_list(1000)
     
-    # Enrich invoices with member_code
-    member_ids = list(set([inv.get("member_id") for inv in invoices if inv.get("member_id") and not inv.get("member_code")]))
+    member_ids = list(set([inv.get("member_id") for inv in invoices if inv.get("member_id")]))
     if member_ids:
-        members = await db.members.find({"id": {"$in": member_ids}}, {"id": 1, "member_code": 1, "_id": 0}).to_list(len(member_ids))
-        member_codes = {m["id"]: m.get("member_code", "") for m in members}
+        members = await db.members.find({"id": {"$in": member_ids}}, {"id": 1, "member_code": 1, "guardian_name_ar": 1, "_id": 0}).to_list(len(member_ids))
+        members_map = {m["id"]: m for m in members}
         for inv in invoices:
-            if inv.get("member_id") and not inv.get("member_code"):
-                inv["member_code"] = member_codes.get(inv["member_id"], "")
+            mid = inv.get("member_id")
+            if mid and mid in members_map:
+                if not inv.get("member_code"):
+                    inv["member_code"] = members_map[mid].get("member_code", "")
+                inv["guardian_name_ar"] = members_map[mid].get("guardian_name_ar", "")
     
     return invoices
 
