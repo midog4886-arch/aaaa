@@ -138,11 +138,11 @@ class TestComputeAttendanceStatsUnit:
         result = _compute_attendance_stats(coach, records)
         assert result["monthly_work_days"] == 30
 
-    def test_monthly_work_days_zero_treated_as_default(self):
+    def test_monthly_work_days_zero_clamped_to_1(self):
         coach = self._make_coach(monthly_work_days=0)
         records = self._make_records(present=0)
         result = _compute_attendance_stats(coach, records)
-        assert result["monthly_work_days"] == 30
+        assert result["monthly_work_days"] == 1
 
     def test_monthly_work_days_clamped_to_maximum_31(self):
         coach = self._make_coach(monthly_work_days=50)

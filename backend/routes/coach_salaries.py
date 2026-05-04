@@ -79,7 +79,9 @@ def _compute_attendance_stats(coach: dict, attendance_records: List[dict]) -> Di
         threshold_str = "09:00"
 
     try:
-        monthly_work_days = max(1, min(int(coach.get("monthly_work_days") or 30), 31))
+        raw = coach.get("monthly_work_days")
+        monthly_work_days = int(raw) if raw is not None else 30
+        monthly_work_days = max(1, min(monthly_work_days, 31))
     except (ValueError, TypeError):
         monthly_work_days = 30
     contract_type = coach.get("contract_type") or "full_time"
