@@ -87,6 +87,9 @@ const InvoiceList = ({
               <td className="px-4 py-3">
                 <div>
                   <p className="font-medium">{invoice.customer_name_ar || invoice.member_name || '-'}</p>
+                  {invoice.guardian_name_ar && (
+                    <p className="text-xs text-blue-600">{language === 'ar' ? 'ولي الأمر' : 'Guardian'}: {invoice.guardian_name_ar}</p>
+                  )}
                   <p className="text-sm text-gray-500">{invoice.customer_phone || '-'}</p>
                 </div>
               </td>
