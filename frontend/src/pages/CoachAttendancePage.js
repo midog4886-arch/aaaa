@@ -357,8 +357,8 @@ const CoachAttendancePage = () => {
 
         {showAddCoach && (
           <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setShowAddCoach(false)}>
-            <div className="bg-white rounded-xl shadow-2xl w-full max-w-md" onClick={e => e.stopPropagation()}>
-              <div className="flex items-center justify-between p-5 border-b">
+            <div className="bg-white rounded-xl shadow-2xl w-full max-w-md max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
+              <div className="flex items-center justify-between p-5 border-b shrink-0">
                 <h2 className="text-lg font-bold text-gray-800 flex items-center gap-2">
                   <UserPlus className="w-5 h-5 text-orange-500" />
                   إضافة مدرب جديد
@@ -367,7 +367,7 @@ const CoachAttendancePage = () => {
                   <X className="w-5 h-5" />
                 </button>
               </div>
-              <div className="p-5 space-y-4">
+              <div className="p-5 space-y-4 overflow-y-auto flex-1">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">اسم المدرب (عربي) *</label>
                   <input
@@ -522,7 +522,7 @@ const CoachAttendancePage = () => {
                   </div>
                 </div>
               </div>
-              <div className="flex gap-3 p-5 border-t bg-gray-50 rounded-b-xl">
+              <div className="flex gap-3 p-5 border-t bg-gray-50 rounded-b-xl shrink-0">
                 <button
                   onClick={handleAddCoach}
                   disabled={addingCoach}
@@ -548,8 +548,8 @@ const CoachAttendancePage = () => {
 
         {editingCoach && (
           <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setEditingCoach(null)}>
-            <div className="bg-white rounded-xl shadow-2xl w-full max-w-md" onClick={e => e.stopPropagation()}>
-              <div className="flex items-center justify-between p-5 border-b">
+            <div className="bg-white rounded-xl shadow-2xl w-full max-w-md max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
+              <div className="flex items-center justify-between p-5 border-b shrink-0">
                 <h2 className="text-lg font-bold text-gray-800 flex items-center gap-2">
                   <Edit2 className="w-5 h-5 text-blue-500" />
                   تعديل بيانات المدرب
@@ -558,7 +558,7 @@ const CoachAttendancePage = () => {
                   <X className="w-5 h-5" />
                 </button>
               </div>
-              <div className="p-5 space-y-4">
+              <div className="p-5 space-y-4 overflow-y-auto flex-1">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">اسم المدرب (عربي) *</label>
                   <input
@@ -706,7 +706,7 @@ const CoachAttendancePage = () => {
                   </div>
                 </div>
               </div>
-              <div className="flex gap-3 p-5 border-t bg-gray-50 rounded-b-xl">
+              <div className="flex gap-3 p-5 border-t bg-gray-50 rounded-b-xl shrink-0">
                 <button
                   onClick={handleEditCoach}
                   disabled={savingCoach}
