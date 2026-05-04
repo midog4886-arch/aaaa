@@ -1,8 +1,21 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useLanguage } from '../contexts/LanguageContext';
 import { globalSearchAPI } from '../services/api';
-import { Search, Users, Receipt, Dumbbell, X, Loader2 } from 'lucide-react';
+import { Search, Users, Receipt, Dumbbell, X, Loader2, Clock, Trash2 } from 'lucide-react';
+
+const HISTORY_KEY = 'global_search_history';
+const MAX_HISTORY = 10;
+
+const getSearchHistory = () => {
+  try {
+    return JSON.parse(localStorage.getItem(HISTORY_KEY)) || [];
+  } catch { return []; }
+};
+
+const saveSearchHistory = (history) => {
+  localStorage.setItem(HISTORY_KEY, JSON.stringify(history.slice(0, MAX_HISTORY)));
+};
 
 const GlobalSearch = () => {
   const { language } = useLanguage();
@@ -11,9 +24,33 @@ const GlobalSearch = () => {
   const [results, setResults] = useState(null);
   const [loading, setLoading] = useState(false);
   const [isOpen, setIsOpen] = useState(false);
+  const [history, setHistory] = useState(getSearchHistory);
   const inputRef = useRef(null);
   const containerRef = useRef(null);
   const debounceRef = useRef(null);
+
+  const addToHistory = useCallback((item) => {
+    setHistory(prev => {
+      const filtered = prev.filter(h => h.path !== item.path);
+      const updated = [item, ...filtered].slice(0, MAX_HISTORY);
+      saveSearchHistory(updated);
+      return updated;
+    });
+  }, []);
+
+  const removeFromHistory = useCallback((path, e) => {
+    e.stopPropagation();
+    setHistory(prev => {
+      const updated = prev.filter(h => h.path !== path);
+      saveSearchHistory(updated);
+      return updated;
+    });
+  }, []);
+
+  const clearHistory = useCallback(() => {
+    setHistory([]);
+    saveSearchHistory([]);
+  }, []);
 
   useEffect(() => {
     const handleClickOutside = (e) => {
@@ -62,7 +99,8 @@ const GlobalSearch = () => {
     }, 300);
   };
 
-  const handleNavigate = (path) => {
+  const handleNavigate = (path, label, type) => {
+    addToHistory({ path, label, type, timestamp: Date.now() });
     setIsOpen(false);
     setQuery('');
     setResults(null);
@@ -82,7 +120,7 @@ const GlobalSearch = () => {
           type="text"
           value={query}
           onChange={(e) => handleSearch(e.target.value)}
-          onFocus={() => { if (results) setIsOpen(true); }}
+          onFocus={() => { setIsOpen(true); }}
           placeholder={language === 'ar' ? 'بحث في الأعضاء، الفواتير، الأنشطة... (Ctrl+K)' : 'Search members, invoices, activities... (Ctrl+K)'}
           className="w-full h-9 ps-9 pe-9 rounded-lg border bg-muted/50 text-sm outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all placeholder:text-muted-foreground/60"
         />
@@ -93,6 +131,49 @@ const GlobalSearch = () => {
           </button>
         )}
       </div>
+
+      {isOpen && !results && !query && history.length > 0 && (
+        <div className="fixed top-[60px] inset-x-2 sm:absolute sm:top-full sm:inset-x-auto sm:start-0 sm:end-0 sm:mt-2 sm:w-full bg-white rounded-xl shadow-2xl border z-50 overflow-hidden max-h-[70vh] overflow-y-auto">
+          <div className="px-3 py-2 bg-gray-50 text-xs font-semibold text-gray-600 flex items-center gap-2 sticky top-0">
+            <Clock className="w-3.5 h-3.5" />
+            <span className="flex-1">{language === 'ar' ? 'عمليات البحث الأخيرة' : 'Recent searches'}</span>
+            <button onClick={clearHistory} className="text-red-400 hover:text-red-600 flex items-center gap-1 text-xs">
+              <Trash2 className="w-3 h-3" />
+              {language === 'ar' ? 'مسح الكل' : 'Clear all'}
+            </button>
+          </div>
+          {history.map((h) => {
+            const iconMap = {
+              member: { icon: Users, bg: 'bg-blue-100', color: 'text-blue-700', hoverBg: 'hover:bg-blue-50/50', label: language === 'ar' ? 'عضو' : 'Member' },
+              invoice: { icon: Receipt, bg: 'bg-green-100', color: 'text-green-700', hoverBg: 'hover:bg-green-50/50', label: language === 'ar' ? 'فاتورة' : 'Invoice' },
+              activity: { icon: Dumbbell, bg: 'bg-purple-100', color: 'text-purple-700', hoverBg: 'hover:bg-purple-50/50', label: language === 'ar' ? 'نشاط' : 'Activity' },
+            };
+            const cfg = iconMap[h.type] || iconMap.member;
+            const Icon = cfg.icon;
+            return (
+              <button
+                key={h.path}
+                onClick={() => { navigate(h.path); setIsOpen(false); }}
+                className={`w-full text-start px-4 py-2.5 ${cfg.hoverBg} transition-colors flex items-center gap-3 border-b last:border-b-0 group`}
+              >
+                <div className={`w-8 h-8 rounded-full ${cfg.bg} flex items-center justify-center ${cfg.color} flex-shrink-0`}>
+                  <Icon className="w-4 h-4" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium truncate">{h.label}</p>
+                  <p className="text-xs text-muted-foreground">{cfg.label}</p>
+                </div>
+                <button
+                  onClick={(e) => removeFromHistory(h.path, e)}
+                  className="opacity-0 group-hover:opacity-100 transition-opacity p-1 hover:bg-red-100 rounded"
+                >
+                  <X className="w-3.5 h-3.5 text-red-400" />
+                </button>
+              </button>
+            );
+          })}
+        </div>
+      )}
 
       {isOpen && results && (
         <div className="fixed top-[60px] inset-x-2 sm:absolute sm:top-full sm:inset-x-auto sm:start-0 sm:end-0 sm:mt-2 sm:w-full bg-white rounded-xl shadow-2xl border z-50 overflow-hidden max-h-[70vh] overflow-y-auto">
@@ -112,7 +193,7 @@ const GlobalSearch = () => {
                   {results.members.map((m) => (
                     <button
                       key={m.id}
-                      onClick={() => handleNavigate(`/admin/members?focus=${encodeURIComponent(m.id)}`)}
+                      onClick={() => handleNavigate(`/admin/members?focus=${encodeURIComponent(m.id)}`, m.name, 'member')}
                       className="w-full text-start px-4 py-2.5 hover:bg-blue-50/50 transition-colors flex items-center gap-3 border-b last:border-b-0"
                     >
                       <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-blue-700 text-sm font-bold flex-shrink-0">
@@ -139,7 +220,7 @@ const GlobalSearch = () => {
                   {results.invoices.map((inv) => (
                     <button
                       key={inv.id}
-                      onClick={() => handleNavigate(`/admin/invoices?view=${encodeURIComponent(inv.id)}`)}
+                      onClick={() => handleNavigate(`/admin/invoices?view=${encodeURIComponent(inv.id)}`, `#${inv.invoice_number} - ${inv.member_name}`, 'invoice')}
                       className="w-full text-start px-4 py-2.5 hover:bg-green-50/50 transition-colors flex items-center gap-3 border-b last:border-b-0"
                     >
                       <div className="w-8 h-8 rounded-full bg-green-100 flex items-center justify-center text-green-700 flex-shrink-0">
@@ -174,7 +255,7 @@ const GlobalSearch = () => {
                   {results.activities.map((a) => (
                     <button
                       key={a.id}
-                      onClick={() => handleNavigate(`/admin/activities?view=${encodeURIComponent(a.id)}`)}
+                      onClick={() => handleNavigate(`/admin/activities?view=${encodeURIComponent(a.id)}`, a.name, 'activity')}
                       className="w-full text-start px-4 py-2.5 hover:bg-purple-50/50 transition-colors flex items-center gap-3 border-b last:border-b-0"
                     >
                       <div className="w-8 h-8 rounded-full bg-purple-100 flex items-center justify-center text-purple-700 flex-shrink-0">
