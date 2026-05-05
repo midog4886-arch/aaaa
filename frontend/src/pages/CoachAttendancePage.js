@@ -91,23 +91,23 @@ const CoachAttendancePage = () => {
     else fetchMonthlyReport();
   }, [view, fetchData, fetchMonthlyReport]);
 
-  const openCoachReport = async (coach) => {
+  const openCoachReport = async (coach, monthArg) => {
     try {
-      const month = new Date().toISOString().slice(0, 7);
+      const month = monthArg || new Date().toISOString().slice(0, 7);
       const res = await axios.get('/api/coach-attendance/monthly-report', {
         params: { month, branch_filter: branchFilter, late_threshold: lateThreshold }
       });
       const row = (res.data?.report || []).find(r => r.coach_id === coach.id);
+      setSelectedMonth(month);
       if (row) {
-        setSelectedMonth(month);
-        setDetailCoach(row);
+        setDetailCoach({ ...row, _coach_ref: coach });
       } else {
-        setSelectedMonth(month);
         setDetailCoach({
           coach_id: coach.id,
           coach_name: coach.name_ar || coach.name,
           present_days: 0, absent_days: 0, leave_days: 0, total_hours: 0,
-          records: []
+          records: [],
+          _coach_ref: coach
         });
       }
     } catch (err) {
@@ -1295,11 +1295,20 @@ const CoachAttendancePage = () => {
         {detailCoach && (
           <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={() => setDetailCoach(null)}>
             <div className="bg-white rounded-xl w-full max-w-2xl shadow-2xl" dir="rtl" onClick={(e) => e.stopPropagation()}>
-              <div className="bg-blue-600 text-white px-5 py-4 rounded-t-xl flex items-center justify-between">
-                <div>
+              <div className="bg-blue-600 text-white px-5 py-4 rounded-t-xl flex items-center justify-between gap-3">
+                <div className="min-w-0 flex-1">
                   <h3 className="font-bold text-lg">تفاصيل الأيام الشهرية</h3>
-                  <p className="text-blue-100 text-sm mt-0.5">{detailCoach.coach_name} — {selectedMonth}</p>
+                  <p className="text-blue-100 text-sm mt-0.5 truncate">{detailCoach.coach_name}</p>
                 </div>
+                {detailCoach._coach_ref && (
+                  <input
+                    type="month"
+                    value={selectedMonth}
+                    onChange={(e) => openCoachReport(detailCoach._coach_ref, e.target.value)}
+                    className="bg-white/20 text-white border border-white/30 rounded-lg px-2 py-1 text-sm focus:outline-none focus:bg-white/30"
+                    style={{ colorScheme: 'dark' }}
+                  />
+                )}
                 <button onClick={() => setDetailCoach(null)} className="text-white hover:text-blue-200 transition-colors">
                   <X className="w-5 h-5" />
                 </button>
