@@ -91,6 +91,30 @@ const CoachAttendancePage = () => {
     else fetchMonthlyReport();
   }, [view, fetchData, fetchMonthlyReport]);
 
+  const openCoachReport = async (coach) => {
+    try {
+      const month = new Date().toISOString().slice(0, 7);
+      const res = await axios.get('/api/coach-attendance/monthly-report', {
+        params: { month, branch_filter: branchFilter, late_threshold: lateThreshold }
+      });
+      const row = (res.data?.report || []).find(r => r.coach_id === coach.id);
+      if (row) {
+        setSelectedMonth(month);
+        setDetailCoach(row);
+      } else {
+        setSelectedMonth(month);
+        setDetailCoach({
+          coach_id: coach.id,
+          coach_name: coach.name_ar || coach.name,
+          present_days: 0, absent_days: 0, leave_days: 0, total_hours: 0,
+          records: []
+        });
+      }
+    } catch (err) {
+      showToast('حدث خطأ في تحميل تقرير المدرب', 'error');
+    }
+  };
+
   const handleCheckIn = async (coachId) => {
     try {
       await axios.post('/api/coach-attendance/check-in', {
@@ -869,8 +893,13 @@ const CoachAttendancePage = () => {
                             }`}>
                               {(coach.name_ar || coach.name || '؟')[0]}
                             </div>
-                            <div>
-                              <p className="font-bold text-gray-800">{coach.name_ar || coach.name}</p>
+                            <button
+                              type="button"
+                              onClick={() => openCoachReport(coach)}
+                              className="text-right hover:bg-gray-50 rounded-lg px-2 py-1 -mx-2 -my-1 transition-colors cursor-pointer"
+                              title="عرض تقرير الحضور الشهري"
+                            >
+                              <p className="font-bold text-gray-800 hover:text-blue-600">{coach.name_ar || coach.name}</p>
                               {coach.specialization && (
                                 <p className="text-xs text-orange-500 font-medium">{coach.specialization}</p>
                               )}
@@ -878,7 +907,7 @@ const CoachAttendancePage = () => {
                               {coach.employee_id && (
                                 <p className="text-xs text-orange-500 font-semibold">#{coach.employee_id}</p>
                               )}
-                            </div>
+                            </button>
                             <div className="flex items-center gap-1 mr-2">
                               <button
                                 onClick={() => setQrCoach(coach)}
