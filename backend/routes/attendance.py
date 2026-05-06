@@ -493,10 +493,13 @@ async def get_today_summary(
         {**query, "date": today_str}, {"_id": 0}
     ).sort("created_at", -1).to_list(5000)
 
+    members = await db.members.find(query, {"_id": 0}).to_list(10000)
+    active_member_ids = {m.get("id") for m in members if m.get("id") and m.get("status", "active") == "active"}
+
     present_by_member = {}
     for r in today_records:
         mid = r.get("member_id")
-        if not mid:
+        if not mid or mid not in active_member_ids:
             continue
         if mid not in present_by_member:
             present_by_member[mid] = {
@@ -518,7 +521,6 @@ async def get_today_summary(
         })
         present_by_member[mid]["records"].append(r)
 
-    members = await db.members.find(query, {"_id": 0}).to_list(10000)
     member_ids = [m.get("id") for m in members if m.get("id")]
 
     invoices_by_member = {}
@@ -542,9 +544,9 @@ async def get_today_summary(
 
     expected = []
     for m in members:
-        if m.get("status") and m.get("status") != "active":
-            continue
         mid = m.get("id")
+        if mid not in active_member_ids:
+            continue
         if mid in active_freezes:
             continue
 
@@ -609,6 +611,8 @@ async def get_today_summary(
     by_branch = {}
     by_activity = {}
     for r in today_records:
+        if r.get("member_id") not in active_member_ids:
+            continue
         b = r.get("branch_id", "")
         by_branch[b] = by_branch.get(b, 0) + 1
         a = r.get("activity_name", "")
@@ -623,7 +627,7 @@ async def get_today_summary(
         "expected_count": len(expected),
         "absent_count": len(absent),
         "present": list(present_by_member.values()),
-        "present_records": today_records,
+        "present_records": [r for r in today_records if r.get("member_id") in active_member_ids],
         "expected": expected,
         "absent": absent,
         "by_branch": by_branch,
