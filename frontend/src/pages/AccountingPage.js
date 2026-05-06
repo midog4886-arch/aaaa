@@ -166,6 +166,7 @@ export default function AccountingPage() {
   const [isPostToAccountingDialogOpen, setIsPostToAccountingDialogOpen] = useState(false);
   const [supplierStatement, setSupplierStatement] = useState(null);
   const [supplierStatementLoading, setSupplierStatementLoading] = useState(false);
+  const [pendingPurchaseInvoices, setPendingPurchaseInvoices] = useState([]);
   
   // Form states
   const [editingAccount, setEditingAccount] = useState(null);
@@ -3408,7 +3409,16 @@ export default function AccountingPage() {
       {/* Payment Dialog */}
       <Dialog open={isPaymentDialogOpen} onOpenChange={(open) => {
         setIsPaymentDialogOpen(open);
-        if (open) fetchPurchaseInvoices();
+        if (open) {
+          purchaseInvoicesAPI.getAll({}).then(res => {
+            setPendingPurchaseInvoices(
+              (res.data || []).filter(inv =>
+                (inv.status === 'pending' || inv.status === 'partial') &&
+                (inv.remaining_amount ?? (inv.total - (inv.paid_amount || 0))) > 0
+              )
+            );
+          }).catch(() => setPendingPurchaseInvoices([]));
+        }
       }}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
@@ -3419,29 +3429,28 @@ export default function AccountingPage() {
               <label className="text-sm font-medium">الفاتورة المستحقة *</label>
               <select value={paymentForm.purchase_invoice_id || ''} onChange={e => {
                 const invId = e.target.value;
-                const inv = purchaseInvoices.find(i => i.id === invId);
+                const inv = pendingPurchaseInvoices.find(i => i.id === invId);
                 if (inv) {
+                  const remaining = inv.remaining_amount ?? (inv.total - (inv.paid_amount || 0));
                   setPaymentForm(prev => ({
                     ...prev,
                     purchase_invoice_id: invId,
                     supplier_id: inv.supplier_id,
-                    amount: inv.remaining_amount || (inv.total - (inv.paid_amount || 0))
+                    amount: remaining
                   }));
                 } else {
                   setPaymentForm(prev => ({ ...prev, purchase_invoice_id: '', supplier_id: '', amount: 0 }));
                 }
               }} className="w-full border rounded p-2">
                 <option value="">اختر فاتورة مستحقة</option>
-                {purchaseInvoices
-                  .filter(inv => (inv.status === 'pending' || inv.status === 'partial') && (inv.remaining_amount || (inv.total - (inv.paid_amount || 0))) > 0)
-                  .map(inv => {
-                    const remaining = inv.remaining_amount || (inv.total - (inv.paid_amount || 0));
-                    return (
-                      <option key={inv.id} value={inv.id}>
-                        {inv.invoice_number} — {inv.supplier_name} — {inv.invoice_date} — متبقي: {remaining.toLocaleString()} ر.س
-                      </option>
-                    );
-                  })}
+                {pendingPurchaseInvoices.map(inv => {
+                  const remaining = inv.remaining_amount ?? (inv.total - (inv.paid_amount || 0));
+                  return (
+                    <option key={inv.id} value={inv.id}>
+                      {inv.invoice_number} — {inv.supplier_name} — {inv.invoice_date} — متبقي: {remaining.toLocaleString()} ر.س
+                    </option>
+                  );
+                })}
               </select>
             </div>
             <div className="grid grid-cols-2 gap-4">
