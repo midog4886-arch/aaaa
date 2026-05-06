@@ -3406,19 +3406,42 @@ export default function AccountingPage() {
       </Dialog>
       
       {/* Payment Dialog */}
-      <Dialog open={isPaymentDialogOpen} onOpenChange={setIsPaymentDialogOpen}>
+      <Dialog open={isPaymentDialogOpen} onOpenChange={(open) => {
+        setIsPaymentDialogOpen(open);
+        if (open) fetchPurchaseInvoices();
+      }}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
             <DialogTitle>تسجيل سداد للمورد</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
             <div>
-              <label className="text-sm font-medium">المورد *</label>
-              <select value={paymentForm.supplier_id} onChange={e => {
-                setPaymentForm(prev => ({ ...prev, supplier_id: e.target.value }));
+              <label className="text-sm font-medium">الفاتورة المستحقة *</label>
+              <select value={paymentForm.purchase_invoice_id || ''} onChange={e => {
+                const invId = e.target.value;
+                const inv = purchaseInvoices.find(i => i.id === invId);
+                if (inv) {
+                  setPaymentForm(prev => ({
+                    ...prev,
+                    purchase_invoice_id: invId,
+                    supplier_id: inv.supplier_id,
+                    amount: inv.remaining_amount || (inv.total - (inv.paid_amount || 0))
+                  }));
+                } else {
+                  setPaymentForm(prev => ({ ...prev, purchase_invoice_id: '', supplier_id: '', amount: 0 }));
+                }
               }} className="w-full border rounded p-2">
-                <option value="">اختر المورد</option>
-                {suppliers.map(s => <option key={s.id} value={s.id}>{s.name_ar} (المستحق: {s.balance?.toLocaleString()} ر.س)</option>)}
+                <option value="">اختر فاتورة مستحقة</option>
+                {purchaseInvoices
+                  .filter(inv => (inv.status === 'pending' || inv.status === 'partial') && (inv.remaining_amount || (inv.total - (inv.paid_amount || 0))) > 0)
+                  .map(inv => {
+                    const remaining = inv.remaining_amount || (inv.total - (inv.paid_amount || 0));
+                    return (
+                      <option key={inv.id} value={inv.id}>
+                        {inv.invoice_number} — {inv.supplier_name} — {inv.invoice_date} — متبقي: {remaining.toLocaleString()} ر.س
+                      </option>
+                    );
+                  })}
               </select>
             </div>
             <div className="grid grid-cols-2 gap-4">
