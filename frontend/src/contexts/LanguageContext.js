@@ -34,6 +34,7 @@ const translations = {
     store: 'المخزن',
     schedule: 'الجدول',
     attendance: 'الحضور',
+    today_attendance: 'حضور اليوم',
     member_card: 'بطاقة العضوية',
     coach_ratings: 'تقييمات المدربين',
     coach_attendance: 'حضور المدربين',
@@ -222,6 +223,7 @@ const translations = {
     store: 'Store',
     schedule: 'Schedule',
     attendance: 'Attendance',
+    today_attendance: "Today's Attendance",
     accounting: 'Accounting',
     
     // Dashboard

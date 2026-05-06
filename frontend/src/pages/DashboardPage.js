@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import { Badge } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
 // eslint-disable-next-line react-hooks/exhaustive-deps
-import { dashboardAPI, reportsAPI, membersAPI, activitiesAPI, invoicesAPI, discountsAPI, activityNotesAPI, tournamentsAPI } from '../services/api';
+import { dashboardAPI, reportsAPI, membersAPI, activitiesAPI, invoicesAPI, discountsAPI, activityNotesAPI, tournamentsAPI, attendanceAPI } from '../services/api';
 import { toast } from 'sonner';
 import { 
   Users, 
@@ -35,7 +35,9 @@ import {
   ChevronUp,
   ChevronDown,
   EyeIcon,
-  Trophy
+  Trophy,
+  CheckCheck,
+  UserX
 } from 'lucide-react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from 'recharts';
 
@@ -45,6 +47,7 @@ const DEFAULT_WIDGETS = [
   { id: 'expiring', visible: true },
   { id: 'notes', visible: true },
   { id: 'champions', visible: false },
+  { id: 'today_attendance', visible: true },
 ];
 
 const WIDGET_LABELS = {
@@ -53,6 +56,7 @@ const WIDGET_LABELS = {
   expiring: { ar: 'الاشتراكات المنتهية', en: 'Expiring Subscriptions' },
   notes: { ar: 'آخر الملاحظات', en: 'Recent Notes' },
   champions: { ar: 'أبطال البطولات الأخيرة', en: 'Recent Champions' },
+  today_attendance: { ar: 'حضور اليوم', en: "Today's Attendance" },
 };
 
 const MEDAL_STYLES = {
@@ -69,6 +73,7 @@ export const DashboardPage = () => {
   const [discounts, setDiscounts] = useState([]);
   const [recentNotes, setRecentNotes] = useState([]);
   const [recentChampions, setRecentChampions] = useState([]);
+  const [todayAttendance, setTodayAttendance] = useState(null);
   const [loading, setLoading] = useState(true);
   
   const [statsUnlocked, setStatsUnlocked] = useState(false);
@@ -142,18 +147,20 @@ export const DashboardPage = () => {
   const loadData = async () => {
     try {
       const branchParams = selectedBranchId && selectedBranchId !== 'all' ? { branch_filter: selectedBranchId } : {};
-      const [statsRes, expiringRes, discountsRes, notesRes, championsRes] = await Promise.all([
+      const [statsRes, expiringRes, discountsRes, notesRes, championsRes, todayRes] = await Promise.all([
         dashboardAPI.getStats(branchParams),
         reportsAPI.getExpiringSubscriptions(7, selectedBranchId),
         discountsAPI.getAll(branchParams),
         activityNotesAPI.getRecent(5),
         tournamentsAPI.getRecentMedalists({ limit: 5, ...branchParams }).catch(() => ({ data: [] })),
+        attendanceAPI.getTodaySummary(branchParams).catch(() => ({ data: null })),
       ]);
       setStats(statsRes.data);
       setExpiring(expiringRes.data);
       setDiscounts(discountsRes.data);
       setRecentNotes(notesRes.data || []);
       setRecentChampions(championsRes.data || []);
+      setTodayAttendance(todayRes.data);
     } catch (error) {
       console.error('Failed to load dashboard data:', error);
     } finally {
@@ -876,6 +883,60 @@ export const DashboardPage = () => {
                 <div className="empty-state">
                   <StickyNote className="empty-state-icon" />
                   <p>{language === 'ar' ? 'لا توجد ملاحظات' : 'No notes yet'}</p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+          );
+
+          if (widget.id === 'today_attendance') return (
+          <Card key="today_attendance" data-testid="today-attendance-widget">
+            <CardHeader>
+              <CardTitle className="flex items-center justify-between">
+                <span className="flex items-center gap-2">
+                  <CheckCheck className="w-5 h-5 text-green-600" />
+                  {language === 'ar' ? 'حضور اليوم' : "Today's Attendance"}
+                </span>
+                <Button size="sm" variant="outline" onClick={() => window.location.href = '/admin/today-attendance'} className="text-green-700 border-green-500/30 hover:bg-green-500/10">
+                  <ExternalLink className="w-4 h-4 me-1" />
+                  {language === 'ar' ? 'عرض التفاصيل' : 'View All'}
+                </Button>
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-3 gap-3 mb-4">
+                <div className="p-3 bg-green-50 border border-green-200 rounded-lg text-center">
+                  <div className="text-2xl font-bold text-green-600">{todayAttendance?.present_count || 0}</div>
+                  <div className="text-xs text-muted-foreground">{language === 'ar' ? 'حاضر' : 'Present'}</div>
+                </div>
+                <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg text-center">
+                  <div className="text-2xl font-bold text-blue-600">{todayAttendance?.expected_count || 0}</div>
+                  <div className="text-xs text-muted-foreground">{language === 'ar' ? 'متوقع' : 'Expected'}</div>
+                </div>
+                <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-center">
+                  <div className="text-2xl font-bold text-amber-600">{todayAttendance?.absent_count || 0}</div>
+                  <div className="text-xs text-muted-foreground">{language === 'ar' ? 'غائب' : 'Absent'}</div>
+                </div>
+              </div>
+              {todayAttendance?.present?.length > 0 ? (
+                <div className="space-y-2 max-h-[260px] overflow-y-auto">
+                  {todayAttendance.present.slice(0, 6).map((r, idx) => (
+                    <div key={r.member_id || idx} className="flex items-center gap-3 p-2 bg-muted/30 rounded-lg">
+                      {r.member_photo ? <img src={r.member_photo} alt="" className="w-9 h-9 rounded-full object-cover" /> : <div className="w-9 h-9 rounded-full bg-muted flex items-center justify-center"><Users className="w-4 h-4 text-muted-foreground" /></div>}
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium truncate">{r.member_name}</p>
+                        <p className="text-xs text-muted-foreground truncate">{(r.activities || []).map(a => a.activity_name).join(' / ')}</p>
+                      </div>
+                      <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200 text-xs">
+                        <Calendar className="w-3 h-3 me-1" />{r.first_check_in}
+                      </Badge>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="empty-state">
+                  <UserX className="empty-state-icon" />
+                  <p>{language === 'ar' ? 'لم يسجل أحد الحضور اليوم بعد' : 'No attendance recorded yet today'}</p>
                 </div>
               )}
             </CardContent>

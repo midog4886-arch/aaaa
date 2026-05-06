@@ -198,7 +198,8 @@ async def create_attendance(
     branch_id = member.get("branch_id") or current_user.get("branch_id")
     
     # Check if member has active freeze
-    record_date_check = attendance.date or datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    saudi_tz_w = timezone(timedelta(hours=3))
+    record_date_check = attendance.date or datetime.now(saudi_tz_w).strftime("%Y-%m-%d")
     active_freeze = await db.member_freezes.find_one({
         "member_id": attendance.member_id,
         "status": "active",
@@ -212,9 +213,9 @@ async def create_attendance(
     activity = await db.activities.find_one({"id": attendance.activity_id}, {"_id": 0})
     activity_name = activity.get("name_ar", "") if activity else ""
     
-    # Use provided date or today
-    record_date = attendance.date or datetime.now(timezone.utc).strftime("%Y-%m-%d")
-    check_in_time = attendance.check_in_time or datetime.now(timezone.utc).strftime("%H:%M")
+    # Use provided date or today (Saudi tz to align with reports)
+    record_date = attendance.date or datetime.now(saudi_tz_w).strftime("%Y-%m-%d")
+    check_in_time = attendance.check_in_time or datetime.now(saudi_tz_w).strftime("%H:%M")
     
     # Check if already checked in today for this activity
     existing = await db.attendance.find_one({
@@ -471,6 +472,165 @@ async def get_session_quota_alerts(
     return alerts
 
 
+@router.get("/today-summary")
+async def get_today_summary(
+    branch_filter: Optional[str] = None,
+    current_user: dict = Depends(get_current_user)
+):
+    """Returns present/expected/absent members for today (Saudi tz)."""
+    saudi_tz = timezone(timedelta(hours=3))
+    now_saudi = datetime.now(saudi_tz)
+    today_str = now_saudi.strftime("%Y-%m-%d")
+    today_day = now_saudi.strftime("%A").lower()
+    today_day_ar = ENGLISH_TO_ARABIC_DAY.get(today_day, today_day)
+
+    query = {}
+    effective_branch = resolve_branch_filter(current_user, branch_filter)
+    if effective_branch:
+        query["branch_id"] = effective_branch
+
+    today_records = await db.attendance.find(
+        {**query, "date": today_str}, {"_id": 0}
+    ).sort("created_at", -1).to_list(5000)
+
+    present_by_member = {}
+    for r in today_records:
+        mid = r.get("member_id")
+        if not mid:
+            continue
+        if mid not in present_by_member:
+            present_by_member[mid] = {
+                "member_id": mid,
+                "member_name": r.get("member_name", ""),
+                "member_code": r.get("member_code", ""),
+                "member_photo": r.get("member_photo", ""),
+                "phone": r.get("phone", ""),
+                "branch_id": r.get("branch_id", ""),
+                "first_check_in": r.get("check_in_time", ""),
+                "recorded_by": r.get("recorded_by", ""),
+                "activities": [],
+                "records": [],
+            }
+        present_by_member[mid]["activities"].append({
+            "activity_id": r.get("activity_id", ""),
+            "activity_name": r.get("activity_name", ""),
+            "check_in_time": r.get("check_in_time", ""),
+        })
+        present_by_member[mid]["records"].append(r)
+
+    members = await db.members.find(query, {"_id": 0}).to_list(10000)
+    member_ids = [m.get("id") for m in members if m.get("id")]
+
+    invoices_by_member = {}
+    if member_ids:
+        invoices_cursor = db.invoices.find(
+            {"member_id": {"$in": member_ids}, "status": {"$in": ["paid", "partial"]}},
+            {"_id": 0, "member_id": 1, "items": 1}
+        )
+        async for inv in invoices_cursor:
+            invoices_by_member.setdefault(inv.get("member_id"), []).append(inv)
+
+    active_freezes = set()
+    if member_ids:
+        freezes_cursor = db.member_freezes.find(
+            {"member_id": {"$in": member_ids}, "status": "active",
+             "start_date": {"$lte": today_str}, "end_date": {"$gte": today_str}},
+            {"_id": 0, "member_id": 1}
+        )
+        async for f in freezes_cursor:
+            active_freezes.add(f.get("member_id"))
+
+    expected = []
+    for m in members:
+        if m.get("status") and m.get("status") != "active":
+            continue
+        mid = m.get("id")
+        if mid in active_freezes:
+            continue
+
+        scheduled_activities = []
+
+        for act in (m.get("activities") or []):
+            if act.get("status", "active") != "active":
+                continue
+            start_date = act.get("start_date", "")
+            end_date = act.get("end_date", "")
+            if start_date and start_date > today_str:
+                continue
+            if end_date and end_date < today_str:
+                continue
+            days = parse_schedule_days(act.get("schedule", ""))
+            if today_day in days:
+                scheduled_activities.append({
+                    "activity_id": act.get("activity_id", ""),
+                    "activity_name": act.get("activity_name", ""),
+                    "schedule": act.get("schedule", ""),
+                })
+
+        for inv in invoices_by_member.get(mid, []):
+            for item in inv.get("items", []):
+                start_date = item.get("start_date", "")
+                end_date = item.get("end_date", "")
+                if start_date and start_date > today_str:
+                    continue
+                if end_date and end_date < today_str:
+                    continue
+                days = parse_schedule_days(item.get("schedule", ""))
+                if today_day in days:
+                    scheduled_activities.append({
+                        "activity_id": item.get("activity_id", ""),
+                        "activity_name": item.get("activity_name", ""),
+                        "schedule": item.get("schedule", ""),
+                    })
+
+        seen_act = set()
+        unique_acts = []
+        for a in scheduled_activities:
+            key = a.get("activity_id") or a.get("activity_name")
+            if key in seen_act:
+                continue
+            seen_act.add(key)
+            unique_acts.append(a)
+
+        if unique_acts:
+            expected.append({
+                "member_id": mid,
+                "member_name": m.get("name_ar", m.get("name", "")),
+                "member_code": m.get("member_code", ""),
+                "member_photo": m.get("photo", ""),
+                "phone": m.get("phone", ""),
+                "branch_id": m.get("branch_id", ""),
+                "activities": unique_acts,
+                "is_present": mid in present_by_member,
+            })
+
+    absent = [e for e in expected if not e["is_present"]]
+
+    by_branch = {}
+    by_activity = {}
+    for r in today_records:
+        b = r.get("branch_id", "")
+        by_branch[b] = by_branch.get(b, 0) + 1
+        a = r.get("activity_name", "")
+        by_activity[a] = by_activity.get(a, 0) + 1
+
+    return {
+        "date": today_str,
+        "day_name": today_day,
+        "day_name_ar": today_day_ar,
+        "present_count": len(present_by_member),
+        "records_count": len(today_records),
+        "expected_count": len(expected),
+        "absent_count": len(absent),
+        "present": list(present_by_member.values()),
+        "present_records": today_records,
+        "expected": expected,
+        "absent": absent,
+        "by_branch": by_branch,
+        "by_activity": by_activity,
+    }
+
+
 @router.post("/qr-checkin")
 async def qr_checkin(
     member_code: str,
@@ -491,8 +651,9 @@ async def qr_checkin(
     # Use member's branch first, fall back to current user's branch
     branch_id = member.get("branch_id") or current_user.get("branch_id")
     
-    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-    check_in_time = datetime.now(timezone.utc).strftime("%H:%M")
+    saudi_tz_q = timezone(timedelta(hours=3))
+    today = datetime.now(saudi_tz_q).strftime("%Y-%m-%d")
+    check_in_time = datetime.now(saudi_tz_q).strftime("%H:%M")
     
     # Check if member has active freeze
     active_freeze = await db.member_freezes.find_one({

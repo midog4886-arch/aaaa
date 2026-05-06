@@ -59,6 +59,7 @@ const UsersPage = lazy(() => import('./pages/UsersPage'));
 const StorePage = lazy(() => import('./pages/StorePage'));
 const AccountingPage = lazy(() => import('./pages/AccountingPage'));
 const AttendancePage = lazy(() => import('./pages/AttendancePage'));
+const TodayAttendancePage = lazy(() => import('./pages/TodayAttendancePage'));
 const SchedulePage = lazy(() => import('./pages/SchedulePage'));
 const UnauthorizedPage = lazy(() => import('./pages/UnauthorizedPage'));
 const MemberCardPage = lazy(() => import('./pages/MemberCardPage'));
@@ -347,6 +348,14 @@ function AppRoutes() {
         element={
           <ProtectedRoute permission="attendance">
             <AttendancePage />
+          </ProtectedRoute>
+        } 
+      />
+      <Route 
+        path="/admin/today-attendance" 
+        element={
+          <ProtectedRoute permission="attendance">
+            <TodayAttendancePage />
           </ProtectedRoute>
         } 
       />
