@@ -235,10 +235,13 @@ export const useRegFormState = ({
     let formattedPhone = phone.replace(/\D/g, '');
     if (formattedPhone.startsWith('0')) formattedPhone = '966' + formattedPhone.slice(1);
     const itemsList = form.items?.map(item => {
+      const startDate = item.start_date || ((item.period || '').split(' - ')[0] || '').trim();
+      const startTs = startDate ? new Date(startDate).getTime() : NaN;
+      const startLine = !isNaN(startTs) ? `\n  ▶️ تاريخ البداية: ${new Date(startTs).toLocaleDateString('ar-SA')}` : '';
       const endDate = item.end_date || ((item.period || '').split(' - ')[1] || '').trim();
       const endTs = endDate ? new Date(endDate).getTime() : NaN;
       const endLine = !isNaN(endTs) ? `\n  ⏳ تاريخ الانتهاء: ${new Date(endTs).toLocaleDateString('ar-SA')}` : '';
-      return `• ${item.activity_name}${item.is_product ? ` (كمية: ${item.quantity || 1})` : ''}: ${((item.fee || 0) * (item.quantity || 1)).toFixed(2)} ر.س${item.schedule ? `\n  🕐 ${item.schedule}` : ''}${item.period ? `\n  📅 ${item.period}` : ''}${endLine}`;
+      return `• ${item.activity_name}${item.is_product ? ` (كمية: ${item.quantity || 1})` : ''}: ${((item.fee || 0) * (item.quantity || 1)).toFixed(2)} ر.س${item.schedule ? `\n  🕐 ${item.schedule}` : ''}${startLine}${endLine}`;
     }).join('\n') || '';
     const paymentText = form.payment_method === 'cash' ? 'نقداً' : form.payment_method === 'card' ? 'بطاقة' : form.payment_method === 'transfer' ? 'تحويل بنكي' : (form.payment_method || '');
     const message = `📲 *لتحميل أيقونة تطبيق الأعضاء اندرويد اضغط على الرابط:*\nhttps://play.google.com/store/apps/details?id=com.champions.academy.member\n🍎 *لتحميل الأيفون اضغط على الرابط:*\nhttps://adaa-alabtal.replit.app/member-login\n👥 *انضم لمجموعتنا على الواتساب:*\nhttps://chat.whatsapp.com/JDf5d5mwAcxBy6nXA9gvhs\n━━━━━━━━━━━━━━\n🏆 *${COMPANY_INFO.name_ar}*\n━━━━━━━━━━━━━━\n📋 *استمارة تسجيل رقم:* #${form.form_number}\n📅 *التاريخ:* ${new Date(form.created_at).toLocaleDateString('ar-SA')}\n👤 *العميل:* ${form.customer_name}\n━━━━━━━━━━━━━━\n*الأنشطة والمواعيد:*\n${itemsList}\n━━━━━━━━━━━━━━`;
