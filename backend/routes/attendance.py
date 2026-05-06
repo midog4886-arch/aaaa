@@ -551,10 +551,31 @@ async def get_today_summary(
         if mid in active_freezes:
             continue
 
+        active_invoice_activity_ids = set()
+        has_any_active_invoice = False
+        for inv in invoices_by_member.get(mid, []):
+            for item in inv.get("items", []):
+                start_date = item.get("start_date", "")
+                end_date = item.get("end_date", "")
+                if start_date and start_date > today_str:
+                    continue
+                if end_date and end_date < today_str:
+                    continue
+                has_any_active_invoice = True
+                aid = item.get("activity_id", "")
+                if aid:
+                    active_invoice_activity_ids.add(aid)
+
+        if not has_any_active_invoice:
+            continue
+
         scheduled_activities = []
 
         for act in (m.get("activities") or []):
             if act.get("status", "active") != "active":
+                continue
+            aid = act.get("activity_id", "")
+            if active_invoice_activity_ids and aid and aid not in active_invoice_activity_ids:
                 continue
             start_date = act.get("start_date", "")
             end_date = act.get("end_date", "")
@@ -565,7 +586,7 @@ async def get_today_summary(
             days = parse_schedule_days(act.get("schedule", ""))
             if today_day in days:
                 scheduled_activities.append({
-                    "activity_id": act.get("activity_id", ""),
+                    "activity_id": aid,
                     "activity_name": act.get("activity_name", ""),
                     "schedule": act.get("schedule", ""),
                 })
