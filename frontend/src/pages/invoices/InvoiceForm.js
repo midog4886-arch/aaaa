@@ -36,7 +36,7 @@ const InvoiceForm = ({
   const [items, setItems] = useState([]);
   const [discount, setDiscount] = useState(0);
   const [notes, setNotes] = useState('');
-  const [paymentMethod, setPaymentMethod] = useState('cash');
+  const [paymentMethod, setPaymentMethod] = useState('card');
   const [saving, setSaving] = useState(false);
 
   // Initialize form when opened
@@ -51,7 +51,7 @@ const InvoiceForm = ({
         setItems([]);
         setDiscount(0);
         setNotes('');
-        setPaymentMethod('cash');
+        setPaymentMethod('card');
       }
     }
   }, [isOpen, initialData]);

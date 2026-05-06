@@ -329,13 +329,13 @@ export const useInvoiceForm = ({
       training_time_hour: item.training_time_hour || '', level_id: item.level_id || '', level_name: item.level_name || '',
       weeks: item.weeks ?? (() => { const sd = item.start_date || (item.period || '').split(' - ')[0] || ''; const ed = item.end_date || (item.period || '').split(' - ')[1] || ''; if (sd && ed) { const diff = Math.round((new Date(ed) - new Date(sd)) / (7 * 24 * 60 * 60 * 1000)); return diff > 0 ? diff : 4; } return 4; })()
     })));
-    setDiscount(invoice.discount || 0); setNotes(invoice.notes || ''); setPaymentMethod(invoice.payment_method || 'cash');
+    setDiscount(invoice.discount || 0); setNotes(invoice.notes || ''); setPaymentMethod(invoice.payment_method || 'card');
     setCustomerNameAr(invoice.customer_name_ar || ''); setCustomerPhone(invoice.customer_phone || ''); setCustomerAddress(invoice.customer_address || '');
     setIsCreateDialogOpen(true); setIsViewDialogOpen(false);
   };
 
   const closeCreateDialog = () => {
-    setIsCreateDialogOpen(false); setSelectedMember(null); setInvoiceItems([]); setDiscount(0); setNotes(''); setPaymentMethod('cash');
+    setIsCreateDialogOpen(false); setSelectedMember(null); setInvoiceItems([]); setDiscount(0); setNotes(''); setPaymentMethod('card');
     setCustomerNameAr(''); setCustomerPhone(''); setCustomerAddress(''); setIsEditMode(false); setEditingInvoiceId(null);
     setCouponCode(''); setAppliedCoupon(null); setCouponDiscount(0); setItemType('activity'); setFeeEditUnlocked(false);
     setAdditionalMembers([]); setAdditionalMemberNewForm({ show: false, index: -1, data: { name_ar: '', name: '', age: '', guardian_name_ar: '', guardian_name: '', phone: '' } });

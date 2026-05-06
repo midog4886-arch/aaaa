@@ -88,7 +88,7 @@ const RenewalsPage = () => {
     end_date: '',
     fee: 0,
     notes: '',
-    payment_method: 'cash'
+    payment_method: 'card'
   });
 
   // Multi-select state
@@ -527,7 +527,7 @@ const RenewalsPage = () => {
             is_product: false,
           }],
           subtotal: fee, vat, total, discount: 0,
-          status: 'paid', payment_method: 'cash',
+          status: 'paid', payment_method: 'card',
           notes: language === 'ar' ? `تجديد جماعي - ${item.activity_name}` : `Bulk renewal - ${item.activity_name}`,
         };
         const invRes = await invoicesAPI.create(invoiceData);
@@ -569,7 +569,7 @@ const RenewalsPage = () => {
       end_date: newEndDate.toISOString().split('T')[0],
       fee: item.fee || 0,
       notes: '',
-      payment_method: 'cash'
+      payment_method: 'card'
     });
     setIsRenewalDialogOpen(true);
   };

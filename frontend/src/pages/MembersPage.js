@@ -139,7 +139,7 @@ export const MembersPage = () => {
     end_date: '',
     fee: 0,
     notes: '',
-    payment_method: 'cash'
+    payment_method: 'card'
   });
 
   const [formData, setFormData] = useState({
@@ -946,7 +946,7 @@ export const MembersPage = () => {
       end_date: newEndDate.toISOString().split('T')[0],
       fee: activity.fee || 0,
       notes: '',
-      payment_method: 'cash'
+      payment_method: 'card'
     });
     setIsRenewalDialogOpen(true);
   };
