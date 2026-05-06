@@ -164,6 +164,8 @@ export default function AccountingPage() {
   const [isViewInvoiceDialogOpen, setIsViewInvoiceDialogOpen] = useState(false);
   const [isExpenseDialogOpen, setIsExpenseDialogOpen] = useState(false);
   const [isPostToAccountingDialogOpen, setIsPostToAccountingDialogOpen] = useState(false);
+  const [supplierStatement, setSupplierStatement] = useState(null);
+  const [supplierStatementLoading, setSupplierStatementLoading] = useState(false);
   
   // Form states
   const [editingAccount, setEditingAccount] = useState(null);
@@ -622,6 +624,20 @@ export default function AccountingPage() {
       fetchSuppliers();
     } catch (error) {
       toast.error(error.response?.data?.detail || 'لا يمكن حذف المورد');
+    }
+  };
+
+  const openSupplierStatement = async (supplier) => {
+    setSupplierStatementLoading(true);
+    setSupplierStatement({ supplier, statement: [], total_invoices: 0, total_payments: 0, closing_balance: 0 });
+    try {
+      const res = await suppliersAPI.getStatement(supplier.id);
+      setSupplierStatement(res.data);
+    } catch (error) {
+      toast.error('تعذّر تحميل كشف حساب المورد');
+      setSupplierStatement(null);
+    } finally {
+      setSupplierStatementLoading(false);
     }
   };
 
@@ -1632,7 +1648,14 @@ export default function AccountingPage() {
           <tbody>
             {suppliers.map(supplier => (
               <tr key={supplier.id} className="border-t hover:bg-gray-50">
-                <td className="p-3 font-semibold">{supplier.name_ar}</td>
+                <td className="p-3 font-semibold">
+                  <button
+                    onClick={() => openSupplierStatement(supplier)}
+                    className="text-blue-600 hover:text-blue-800 hover:underline text-right"
+                  >
+                    {supplier.name_ar}
+                  </button>
+                </td>
                 <td className="p-3" dir="ltr">{supplier.phone}</td>
                 <td className="p-3">{supplier.tax_number || '-'}</td>
                 <td className="p-3">{(supplier.total_purchases || 0).toLocaleString()} ر.س</td>
@@ -4185,6 +4208,70 @@ export default function AccountingPage() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Supplier Statement Modal */}
+      {supplierStatement && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={() => setSupplierStatement(null)}>
+          <div className="bg-white rounded-xl w-full max-w-4xl shadow-2xl max-h-[90vh] overflow-hidden flex flex-col" dir="rtl" onClick={(e) => e.stopPropagation()}>
+            <div className="bg-blue-600 text-white px-5 py-4 rounded-t-xl flex items-center justify-between">
+              <div>
+                <h3 className="font-bold text-lg">كشف حساب المورد</h3>
+                <p className="text-blue-100 text-sm mt-0.5">{supplierStatement.supplier?.name_ar}</p>
+              </div>
+              <button onClick={() => setSupplierStatement(null)} className="text-white hover:text-blue-200 text-2xl leading-none">×</button>
+            </div>
+            <div className="p-5 overflow-y-auto">
+              {supplierStatementLoading ? (
+                <div className="text-center py-12 text-gray-500">جاري التحميل...</div>
+              ) : (
+                <>
+                  <div className="grid grid-cols-3 gap-3 mb-4">
+                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-center">
+                      <div className="text-xs text-gray-600">إجمالي المشتريات</div>
+                      <div className="text-lg font-bold text-blue-700">{(supplierStatement.total_invoices || 0).toLocaleString()} ر.س</div>
+                    </div>
+                    <div className="bg-green-50 border border-green-200 rounded-lg p-3 text-center">
+                      <div className="text-xs text-gray-600">إجمالي المسدد</div>
+                      <div className="text-lg font-bold text-green-700">{(supplierStatement.total_payments || 0).toLocaleString()} ر.س</div>
+                    </div>
+                    <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-center">
+                      <div className="text-xs text-gray-600">المستحق المتبقي</div>
+                      <div className="text-lg font-bold text-red-700">{(supplierStatement.closing_balance || 0).toLocaleString()} ر.س</div>
+                    </div>
+                  </div>
+                  <table className="w-full border rounded-lg text-sm">
+                    <thead className="bg-gray-100">
+                      <tr>
+                        <th className="p-2 text-right">التاريخ</th>
+                        <th className="p-2 text-right">البيان</th>
+                        <th className="p-2 text-right">المرجع</th>
+                        <th className="p-2 text-center">مدين</th>
+                        <th className="p-2 text-center">دائن</th>
+                        <th className="p-2 text-center">الرصيد</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(supplierStatement.statement || []).map((row, idx) => (
+                        <tr key={idx} className={`border-t ${row.type === 'invoice' ? 'bg-red-50/30' : 'bg-green-50/30'}`}>
+                          <td className="p-2">{row.date}</td>
+                          <td className="p-2">{row.description}</td>
+                          <td className="p-2">{row.reference || '-'}</td>
+                          <td className="p-2 text-center text-green-700">{row.debit ? row.debit.toLocaleString() : '-'}</td>
+                          <td className="p-2 text-center text-red-700">{row.credit ? row.credit.toLocaleString() : '-'}</td>
+                          <td className="p-2 text-center font-semibold">{(row.balance || 0).toLocaleString()}</td>
+                        </tr>
+                      ))}
+                      {(supplierStatement.statement || []).length === 0 && (
+                        <tr><td colSpan="6" className="p-6 text-center text-gray-500">لا توجد حركات</td></tr>
+                      )}
+                    </tbody>
+                  </table>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
     </Layout>
   );
