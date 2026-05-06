@@ -34,13 +34,8 @@ export const COMPANY_INFO = {
 export const PAYMENT_METHODS = [
   { value: 'cash', label: 'نقدي', labelEn: 'Cash', fee: 0 },
   { value: 'card', label: 'بطاقة', labelEn: 'Card', fee: 0 },
-  { value: 'شبكة', label: 'شبكة', labelEn: 'Network', fee: 0 },
-  { value: 'مدى', label: 'مدى', labelEn: 'Mada', fee: 0 },
-  { value: 'فيزا', label: 'فيزا', labelEn: 'Visa', fee: 0 },
-  { value: 'transfer', label: 'تحويل', labelEn: 'Transfer', fee: 0 },
   { value: 'تابي', label: 'تابي', labelEn: 'Tabby', fee: 7.5 },
-  { value: 'تمارة', label: 'تمارة', labelEn: 'Tamara', fee: 7.5 },
-  { value: 'stripe', label: 'أونلاين', labelEn: 'Online', fee: 0 }
+  { value: 'تمارة', label: 'تمارا', labelEn: 'Tamara', fee: 7.5 }
 ];
 
 // Invoice statuses
