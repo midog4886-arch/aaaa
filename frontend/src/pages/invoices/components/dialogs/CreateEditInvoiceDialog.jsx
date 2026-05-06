@@ -739,14 +739,10 @@ export const CreateEditInvoiceDialog = ({
             <Select value={paymentMethod} onValueChange={setPaymentMethod}>
               <SelectTrigger><SelectValue /></SelectTrigger>
               <SelectContent>
-                <SelectItem value="cash">{t('cash')}</SelectItem>
+                <SelectItem value="cash">{language === 'ar' ? 'نقدي' : 'Cash'}</SelectItem>
                 <SelectItem value="card">{language === 'ar' ? 'بطاقة' : 'Card'}</SelectItem>
-                <SelectItem value="شبكة">{language === 'ar' ? 'شبكة' : 'Network'}</SelectItem>
-                <SelectItem value="مدى">{language === 'ar' ? 'مدى' : 'Mada'}</SelectItem>
-                <SelectItem value="فيزا">{language === 'ar' ? 'فيزا' : 'Visa'}</SelectItem>
-                <SelectItem value="transfer">{t('transfer')}</SelectItem>
                 <SelectItem value="تابي">{language === 'ar' ? 'تابي' : 'Tabby'}</SelectItem>
-                <SelectItem value="تمارة">{language === 'ar' ? 'تمارة' : 'Tamara'}</SelectItem>
+                <SelectItem value="تمارة">{language === 'ar' ? 'تمارا' : 'Tamara'}</SelectItem>
               </SelectContent>
             </Select>
           </div>

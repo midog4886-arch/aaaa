@@ -326,11 +326,10 @@ export const RegistrationFormDialog = ({
             <Select value={regFormPaymentMethod} onValueChange={setRegFormPaymentMethod}>
               <SelectTrigger><SelectValue /></SelectTrigger>
               <SelectContent>
-                <SelectItem value="cash">{language === 'ar' ? 'نقداً' : 'Cash'}</SelectItem>
+                <SelectItem value="cash">{language === 'ar' ? 'نقدي' : 'Cash'}</SelectItem>
                 <SelectItem value="card">{language === 'ar' ? 'بطاقة' : 'Card'}</SelectItem>
-                <SelectItem value="transfer">{language === 'ar' ? 'تحويل بنكي' : 'Bank Transfer'}</SelectItem>
-                <SelectItem value="tabby">{language === 'ar' ? 'تابي' : 'Tabby'}</SelectItem>
-                <SelectItem value="tamara">{language === 'ar' ? 'تمارا' : 'Tamara'}</SelectItem>
+                <SelectItem value="تابي">{language === 'ar' ? 'تابي' : 'Tabby'}</SelectItem>
+                <SelectItem value="تمارة">{language === 'ar' ? 'تمارا' : 'Tamara'}</SelectItem>
               </SelectContent>
             </Select>
           </div>
