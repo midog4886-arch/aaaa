@@ -495,6 +495,7 @@ async def get_today_summary(
 
     members = await db.members.find(query, {"_id": 0}).to_list(10000)
     active_member_ids = {m.get("id") for m in members if m.get("id") and m.get("status", "active") == "active"}
+    member_created_at = {m.get("id"): (m.get("created_at") or "") for m in members if m.get("id")}
 
     present_by_member = {}
     for r in today_records:
@@ -604,9 +605,17 @@ async def get_today_summary(
                 "branch_id": m.get("branch_id", ""),
                 "activities": unique_acts,
                 "is_present": mid in present_by_member,
+                "created_at": m.get("created_at", ""),
             })
 
+    expected.sort(key=lambda e: str(e.get("created_at") or ""), reverse=True)
     absent = [e for e in expected if not e["is_present"]]
+
+    present_list = sorted(
+        present_by_member.values(),
+        key=lambda p: str(member_created_at.get(p.get("member_id"), "") or ""),
+        reverse=True,
+    )
 
     by_branch = {}
     by_activity = {}
@@ -626,7 +635,7 @@ async def get_today_summary(
         "records_count": len(today_records),
         "expected_count": len(expected),
         "absent_count": len(absent),
-        "present": list(present_by_member.values()),
+        "present": present_list,
         "present_records": [r for r in today_records if r.get("member_id") in active_member_ids],
         "expected": expected,
         "absent": absent,
