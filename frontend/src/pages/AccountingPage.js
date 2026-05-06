@@ -547,6 +547,18 @@ export default function AccountingPage() {
     if (selectedBeneficiary) fetchBeneficiaryVouchers(selectedBeneficiary);
   }, [selectedBeneficiary, fetchBeneficiaryVouchers]);
 
+  useEffect(() => {
+    if (!isPaymentDialogOpen) return;
+    purchaseInvoicesAPI.getAll({}).then(res => {
+      setPendingPurchaseInvoices(
+        (res.data || []).filter(inv =>
+          (inv.status === 'pending' || inv.status === 'partial') &&
+          (inv.remaining_amount ?? (inv.total - (inv.paid_amount || 0))) > 0
+        )
+      );
+    }).catch(() => setPendingPurchaseInvoices([]));
+  }, [isPaymentDialogOpen]);
+
   // Update date filter when month/year changes for bank report
   useEffect(() => {
     if (activeTab === TABS.REPORTS) {
@@ -3407,19 +3419,7 @@ export default function AccountingPage() {
       </Dialog>
       
       {/* Payment Dialog */}
-      <Dialog open={isPaymentDialogOpen} onOpenChange={(open) => {
-        setIsPaymentDialogOpen(open);
-        if (open) {
-          purchaseInvoicesAPI.getAll({}).then(res => {
-            setPendingPurchaseInvoices(
-              (res.data || []).filter(inv =>
-                (inv.status === 'pending' || inv.status === 'partial') &&
-                (inv.remaining_amount ?? (inv.total - (inv.paid_amount || 0))) > 0
-              )
-            );
-          }).catch(() => setPendingPurchaseInvoices([]));
-        }
-      }}>
+      <Dialog open={isPaymentDialogOpen} onOpenChange={setIsPaymentDialogOpen}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
             <DialogTitle>تسجيل سداد للمورد</DialogTitle>
