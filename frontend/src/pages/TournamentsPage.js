@@ -1288,60 +1288,148 @@ const TournamentDetail = ({ tid, onBack }) => {
     <Layout>
       <div className="p-4 md:p-6 space-y-4">
         {!manageCtx && (<>
-        {/* Top bar */}
-        <div className="flex items-center justify-between flex-wrap gap-3 print:hidden">
-          <Button variant="outline" onClick={onBack}>
-            <ArrowRight className="w-4 h-4 ms-1" />
-            {language === 'ar' ? 'رجوع للبطولات' : 'Back to tournaments'}
-          </Button>
-          <div className="flex flex-wrap gap-2">
-            <Button onClick={openAdd} className="bg-orange-500 hover:bg-orange-600 text-white">
-              <UserPlus className="w-4 h-4 ms-1" />
-              {language === 'ar' ? 'إضافة مشارك' : 'Add participant'}
+        {/* ───── HEADER (LevelsPage hour-view style) ───── */}
+        <div className="bg-white rounded-xl shadow-sm border p-4 md:p-6 mb-2 print:hidden">
+          {/* Breadcrumb */}
+          <div className="flex items-center gap-2 text-sm mb-4 flex-wrap">
+            <Button variant="ghost" size="sm" onClick={onBack} className="gap-1 text-gray-600 hover:text-primary">
+              <Trophy className="w-4 h-4" />
+              {language === 'ar' ? 'البطولات' : 'Tournaments'}
             </Button>
-            <Button variant="outline" onClick={handlePrint}>
-              <FileText className="w-4 h-4 ms-1" />
-              {language === 'ar' ? 'طباعة' : 'Print'}
-            </Button>
-            <Button variant="outline" onClick={handleExportPdf}>
-              <FileText className="w-4 h-4 ms-1" />
-              PDF
-            </Button>
-            <Button variant="outline" onClick={handleExportXlsx}>
-              <FileSpreadsheet className="w-4 h-4 ms-1" />
-              Excel
-            </Button>
-            <Button variant="outline" onClick={handleWhatsAppShare} className="bg-green-50 hover:bg-green-100 text-green-700 border-green-300">
-              <Share2 className="w-4 h-4 ms-1" />
-              {language === 'ar' ? 'واتساب' : 'WhatsApp'}
-            </Button>
-            <Button
-              variant="outline"
-              onClick={handleResendAnnouncement}
-              disabled={resendingAnnouncement}
-              className="bg-amber-50 hover:bg-amber-100 text-amber-700 border-amber-300"
-              title={language === 'ar' ? 'إعادة إرسال إشعار البطولة لجميع الأعضاء المؤهلين' : 'Re-broadcast tournament announcement'}
-            >
-              {resendingAnnouncement
-                ? <Loader2 className="w-4 h-4 animate-spin ms-1" />
-                : <Bell className="w-4 h-4 ms-1" />}
-              {language === 'ar' ? 'إعادة إرسال الإشعار' : 'Resend announcement'}
-            </Button>
-            <Button
-              variant="outline"
-              onClick={openLogs}
-              title={language === 'ar' ? 'سجل الإشعارات' : 'Notification log'}
-            >
-              <History className="w-4 h-4 ms-1" />
-              {language === 'ar' ? 'سجل الإشعارات' : 'Notification log'}
-            </Button>
+            <ChevronRight className="w-4 h-4 text-gray-400 rtl:rotate-180" />
+            {hasSubcategories && selectedSubcategory ? (
+              <>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setSelectedSubcategory('')}
+                  className="gap-1 text-gray-600 hover:text-primary"
+                >
+                  {tournament.name}
+                </Button>
+                <ChevronRight className="w-4 h-4 text-gray-400 rtl:rotate-180" />
+                <span className="font-medium text-primary flex items-center gap-1">
+                  <Calendar className="w-4 h-4" />
+                  {selectedSubcategory}
+                </span>
+              </>
+            ) : (
+              <span className="font-medium text-primary flex items-center gap-1">
+                {tournament.name}
+              </span>
+            )}
+          </div>
+
+          {/* Main Header */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={hasSubcategories && selectedSubcategory ? () => setSelectedSubcategory('') : onBack}
+                className="shrink-0"
+              >
+                <ArrowRight className="w-4 h-4" />
+              </Button>
+              <div>
+                <h1 className="text-xl md:text-2xl font-bold text-gray-800 flex items-center gap-2">
+                  <Trophy className="w-6 h-6 text-orange-500" />
+                  {hasSubcategories && selectedSubcategory ? selectedSubcategory : tournament.name}
+                </h1>
+                <p className="text-gray-500 text-sm mt-1">
+                  {language === 'ar' ? 'إدارة اللاعبين في كل مستوى' : 'Manage players in each level'}
+                </p>
+                <div className="flex flex-wrap gap-3 mt-2 text-xs text-gray-500">
+                  {tournament.date && <span className="flex items-center gap-1"><Calendar className="w-3.5 h-3.5" /> {tournament.date}</span>}
+                  {tournament.place && <span className="flex items-center gap-1"><MapPin className="w-3.5 h-3.5" /> {tournament.place}</span>}
+                  {tournamentActivityNames.length > 0 && (
+                    <span className="flex items-center gap-1">
+                      <Activity className="w-3.5 h-3.5" /> {tournamentActivityNames.join(' + ')}
+                    </span>
+                  )}
+                </div>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 flex-wrap">
+              <Button onClick={openAdd} className="bg-orange-500 hover:bg-orange-600 text-white gap-1">
+                <UserPlus className="w-4 h-4" />
+                {language === 'ar' ? 'إضافة مشارك' : 'Add participant'}
+              </Button>
+              <Button variant="outline" onClick={handlePrint} className="gap-1">
+                <FileText className="w-4 h-4" />
+                {language === 'ar' ? 'طباعة' : 'Print'}
+              </Button>
+              <Button variant="outline" onClick={handleExportPdf} className="gap-1">
+                <FileText className="w-4 h-4" />
+                PDF
+              </Button>
+              <Button variant="outline" onClick={handleExportXlsx} className="gap-1">
+                <FileSpreadsheet className="w-4 h-4" />
+                Excel
+              </Button>
+              <Button variant="outline" onClick={handleWhatsAppShare} className="gap-1 bg-green-50 hover:bg-green-100 text-green-700 border-green-300">
+                <Share2 className="w-4 h-4" />
+                {language === 'ar' ? 'واتساب' : 'WhatsApp'}
+              </Button>
+              <Button
+                variant="outline"
+                onClick={handleResendAnnouncement}
+                disabled={resendingAnnouncement}
+                className="gap-1 bg-amber-50 hover:bg-amber-100 text-amber-700 border-amber-300"
+              >
+                {resendingAnnouncement
+                  ? <Loader2 className="w-4 h-4 animate-spin" />
+                  : <Bell className="w-4 h-4" />}
+                {language === 'ar' ? 'إعادة إرسال الإشعار' : 'Resend announcement'}
+              </Button>
+              <Button variant="outline" onClick={openLogs} className="gap-1">
+                <History className="w-4 h-4" />
+                {language === 'ar' ? 'سجل الإشعارات' : 'Notification log'}
+              </Button>
+            </div>
+          </div>
+
+          {/* Stats Cards */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-6">
+            <Card className="bg-gradient-to-br from-orange-50 to-orange-100 border-orange-200">
+              <CardContent className="p-4 text-center">
+                <Layers className="w-8 h-8 text-orange-600 mx-auto mb-2" />
+                <div className="text-2xl font-bold text-orange-700">{tournamentLevels.length}</div>
+                <div className="text-xs text-orange-600">{language === 'ar' ? 'إجمالي المستويات' : 'Total Levels'}</div>
+              </CardContent>
+            </Card>
+            <Card className="bg-gradient-to-br from-green-50 to-green-100 border-green-200">
+              <CardContent className="p-4 text-center">
+                <Users className="w-8 h-8 text-green-600 mx-auto mb-2" />
+                <div className="text-2xl font-bold text-green-700">{totalParticipants}</div>
+                <div className="text-xs text-green-600">{language === 'ar' ? 'إجمالي اللاعبين' : 'Total Players'}</div>
+              </CardContent>
+            </Card>
+            <Card className="bg-gradient-to-br from-blue-50 to-blue-100 border-blue-200">
+              <CardContent className="p-4 text-center">
+                <Calendar className="w-8 h-8 text-blue-600 mx-auto mb-2" />
+                <div className="text-2xl font-bold text-blue-700">{tournamentSubcategories.length || 1}</div>
+                <div className="text-xs text-blue-600">{language === 'ar' ? 'التوقيتات' : 'Time Slots'}</div>
+              </CardContent>
+            </Card>
+            <Card className="bg-gradient-to-br from-purple-50 to-purple-100 border-purple-200">
+              <CardContent className="p-4 text-center">
+                <Trophy className="w-8 h-8 text-purple-600 mx-auto mb-2" />
+                <div className="text-2xl font-bold text-purple-700">
+                  {tournamentLevels.length > 0 && subCapacity > 0
+                    ? Math.min(100, Math.round((totalParticipants / (tournamentLevels.length * subCapacity * (tournamentSubcategories.length || 1))) * 100))
+                    : 0}%
+                </div>
+                <div className="text-xs text-purple-600">{language === 'ar' ? 'نسبة الامتلاء' : 'Occupancy'}</div>
+              </CardContent>
+            </Card>
           </div>
         </div>
 
         {/* Printable area */}
         <div ref={printRef} className="bg-white p-4 rounded-lg space-y-4">
-          {/* Tournament header */}
-          <Card className="border-2 border-orange-300">
+          {/* Tournament header (print-only — screen uses LevelsPage-style header above) */}
+          <Card className="border-2 border-orange-300 hidden print:block">
             <CardContent className="p-5">
               <div className="flex items-start justify-between gap-3 flex-wrap">
                 <div className="flex items-start gap-3">
