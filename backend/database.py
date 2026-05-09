@@ -15,8 +15,10 @@ load_dotenv(ROOT_DIR / '.env', override=True)
 ATLAS_APP_ID = os.environ.get('ATLAS_APP_ID', '')
 ATLAS_API_KEY = os.environ.get('ATLAS_API_KEY', '')
 DB_NAME = os.environ.get('DB_NAME', 'champions_academy')
+USE_ATLAS_PROXY = os.environ.get('USE_ATLAS_PROXY', '').lower() in ('1', 'true', 'yes')
+MONGO_URL = os.environ.get('MONGO_URL', '')
 
-if ATLAS_APP_ID and ATLAS_API_KEY:
+if ATLAS_APP_ID and ATLAS_API_KEY and (USE_ATLAS_PROXY or not MONGO_URL):
     logger.info("Using Atlas Data API (HTTPS) for database connection")
     from atlas_http_client import AtlasClient
     _client = AtlasClient(
