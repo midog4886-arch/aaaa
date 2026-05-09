@@ -136,14 +136,17 @@ async def get_invoices(
     
     member_ids = list(set([inv.get("member_id") for inv in invoices if inv.get("member_id")]))
     if member_ids:
-        members = await db.members.find({"id": {"$in": member_ids}}, {"id": 1, "member_code": 1, "guardian_name_ar": 1, "_id": 0}).to_list(len(member_ids))
+        members = await db.members.find({"id": {"$in": member_ids}}, {"id": 1, "member_code": 1, "guardian_name_ar": 1, "guardian_name": 1, "_id": 0}).to_list(len(member_ids))
         members_map = {m["id"]: m for m in members}
         for inv in invoices:
             mid = inv.get("member_id")
             if mid and mid in members_map:
                 if not inv.get("member_code"):
                     inv["member_code"] = members_map[mid].get("member_code", "")
-                inv["guardian_name_ar"] = members_map[mid].get("guardian_name_ar", "")
+                if not inv.get("guardian_name_ar"):
+                    inv["guardian_name_ar"] = members_map[mid].get("guardian_name_ar", "")
+                if not inv.get("guardian_name"):
+                    inv["guardian_name"] = members_map[mid].get("guardian_name", "")
     
     return invoices
 
@@ -188,14 +191,17 @@ async def search_invoices(
     
     member_ids = list(set([inv.get("member_id") for inv in invoices if inv.get("member_id")]))
     if member_ids:
-        members = await db.members.find({"id": {"$in": member_ids}}, {"id": 1, "member_code": 1, "guardian_name_ar": 1, "_id": 0}).to_list(len(member_ids))
+        members = await db.members.find({"id": {"$in": member_ids}}, {"id": 1, "member_code": 1, "guardian_name_ar": 1, "guardian_name": 1, "_id": 0}).to_list(len(member_ids))
         members_map = {m["id"]: m for m in members}
         for inv in invoices:
             mid = inv.get("member_id")
             if mid and mid in members_map:
                 if not inv.get("member_code"):
                     inv["member_code"] = members_map[mid].get("member_code", "")
-                inv["guardian_name_ar"] = members_map[mid].get("guardian_name_ar", "")
+                if not inv.get("guardian_name_ar"):
+                    inv["guardian_name_ar"] = members_map[mid].get("guardian_name_ar", "")
+                if not inv.get("guardian_name"):
+                    inv["guardian_name"] = members_map[mid].get("guardian_name", "")
     
     return invoices
 

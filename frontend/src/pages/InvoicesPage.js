@@ -309,6 +309,9 @@ export const InvoicesPage = () => {
                           </td>
                           <td className="p-3">
                             <div className="font-medium">{inv.customer_name_ar || inv.member_name}</div>
+                            {(inv.guardian_name_ar || inv.guardian_name) && (
+                              <div className="text-xs text-blue-600">{language === 'ar' ? 'ولي الأمر' : 'Guardian'}: {inv.guardian_name_ar || inv.guardian_name}</div>
+                            )}
                             <div className="text-xs text-muted-foreground">{inv.customer_phone}</div>
                           </td>
                           <td className="p-3 font-semibold">{inv.total?.toFixed(2)} {language === 'ar' ? 'ر.س' : 'SAR'}</td>
