@@ -86,6 +86,8 @@ class Invoice(BaseModel):
     customer_name_ar: Optional[str] = ""
     customer_phone: Optional[str] = ""
     customer_address: Optional[str] = ""
+    guardian_name_ar: Optional[str] = ""
+    guardian_name: Optional[str] = ""
     supervisor_name: Optional[str] = ""
     tax_number: str = COMPANY_TAX_NUMBER
     commercial_reg: str = COMPANY_COMMERCIAL_REG
