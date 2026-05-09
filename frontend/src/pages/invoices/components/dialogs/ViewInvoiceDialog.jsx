@@ -52,6 +52,9 @@ export const ViewInvoiceDialog = ({
                   )}
                 </p>
                 <p><strong>{t('phone')}:</strong> <span dir="ltr">{selectedInvoice.customer_phone || '-'}</span></p>
+                {(selectedInvoice.guardian_name_ar || selectedInvoice.guardian_name) && (
+                  <p className="col-span-2"><strong>{language === 'ar' ? 'ولي الأمر' : 'Guardian'}:</strong> <span className="text-blue-700">{selectedInvoice.guardian_name_ar || selectedInvoice.guardian_name}</span></p>
+                )}
                 {selectedInvoice.customer_address && <p className="col-span-2"><strong>{language === 'ar' ? 'العنوان' : 'Address'}:</strong> {selectedInvoice.customer_address}</p>}
               </div>
             </div>
