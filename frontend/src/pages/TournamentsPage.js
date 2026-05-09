@@ -924,31 +924,31 @@ const TournamentDetail = ({ tid, onBack }) => {
     return map;
   }, [tournamentActivityIds, tournamentActivityNames]);
 
-  // Levels filtered to the participant-form's selected activity (or to ANY
-  // of the tournament's activities when none is specifically chosen).
+  // Levels for the participant-form: show ALL levels belonging to any of
+  // the tournament's activities (same behavior as LevelsPage — not filtered
+  // by the participant's specific activity).
   const tournamentLevels = useMemo(() => {
     if (!tournament) return [];
-    const targetIds = partForm.activity_id ? [partForm.activity_id] : tournamentActivityIds;
     return levels
       .filter(l => {
-        if (targetIds.length === 0) return true;
-        return targetIds.includes(l.activity_id);
+        if (tournamentActivityIds.length === 0) return true;
+        return tournamentActivityIds.includes(l.activity_id);
       })
       .sort((a, b) => (a.level_number || 0) - (b.level_number || 0));
-  }, [tournament, levels, tournamentActivityIds, partForm.activity_id]);
+  }, [tournament, levels, tournamentActivityIds]);
 
-  // Levels available when EDITING a participant (filtered to that
-  // participant's chosen activity if multi-activity tournament).
+  // Levels available when EDITING a participant: show ALL levels belonging
+  // to any of the tournament's activities (same behavior as LevelsPage —
+  // not filtered by the participant's specific activity).
   const editLevels = useMemo(() => {
     if (!tournament) return [];
-    const targetIds = editForm.activity_id ? [editForm.activity_id] : tournamentActivityIds;
     return levels
       .filter(l => {
-        if (targetIds.length === 0) return true;
-        return targetIds.includes(l.activity_id);
+        if (tournamentActivityIds.length === 0) return true;
+        return tournamentActivityIds.includes(l.activity_id);
       })
       .sort((a, b) => (a.level_number || 0) - (b.level_number || 0));
-  }, [tournament, levels, tournamentActivityIds, editForm.activity_id]);
+  }, [tournament, levels, tournamentActivityIds]);
 
   // Eligible members for the tournament's activities (or ALL members if no
   // activity restriction). When the user picks a specific activity in the
