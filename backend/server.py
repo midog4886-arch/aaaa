@@ -8158,6 +8158,11 @@ async def create_default_admin():
     import asyncio
     async def _init():
         try:
+            from db_indexes import ensure_indexes
+            await ensure_indexes()
+        except Exception as e:
+            print(f"Index creation error: {str(e)}")
+        try:
             users_count = await db.users.count_documents({})
             if users_count == 0:
                 hashed_password = bcrypt.hashpw("123456".encode('utf-8'), bcrypt.gensalt())
