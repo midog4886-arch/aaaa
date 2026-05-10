@@ -60,7 +60,9 @@ export default function DayExtensionsPage() {
   const [previewResult, setPreviewResult] = useState(null);
   const [previewing, setPreviewing] = useState(false);
   const [waMessage, setWaMessage] = useState('');
-  const [sendingWa, setSendingWa] = useState(false);
+  const [sendingWa] = useState(false);
+  const [waQueue, setWaQueue] = useState([]);
+  const [waQueueIdx, setWaQueueIdx] = useState(0);
 
   const loadData = useCallback(async () => {
     try {
@@ -205,9 +207,7 @@ export default function DayExtensionsPage() {
       toast.error(t('لا يوجد أرقام جوال', 'No phone numbers'));
       return;
     }
-    setSendingWa(true);
-    let opened = 0;
-    for (const m of recipients) {
+    const queue = recipients.map(m => {
       const det = (m.details && m.details[0]) || {};
       const personalized = waMessage
         .replace(/\{name\}/g, m.name || '')
@@ -218,14 +218,38 @@ export default function DayExtensionsPage() {
       let phone = (m.phone || '').replace(/\D/g, '');
       if (phone.startsWith('00')) phone = phone.slice(2);
       if (phone.startsWith('0')) phone = '966' + phone.slice(1);
-      const url = `https://wa.me/${phone}?text=${encodeURIComponent(personalized)}`;
-      window.open(url, '_blank');
-      opened++;
-      await sleep(800);
+      return { name: m.name || phone, phone, link: `https://wa.me/${phone}?text=${encodeURIComponent(personalized)}` };
+    });
+    window.open(queue[0].link, '_blank');
+    if (queue.length === 1) {
+      toast.success(t('تم فتح واتساب', 'WhatsApp opened'));
+      return;
     }
-    setSendingWa(false);
-    toast.success(t(`تم فتح ${opened} محادثة واتساب`, `Opened ${opened} WhatsApp chats`));
+    setWaQueue(queue);
+    setWaQueueIdx(1);
+    toast.success(t(`تم فتح 1 من ${queue.length}. اضغط "التالي" للمتابعة`, `Opened 1 of ${queue.length}. Click "Next" to continue`));
   };
+
+  const sendNextInQueue = () => {
+    const next = waQueue[waQueueIdx];
+    if (!next) { setWaQueue([]); setWaQueueIdx(0); return; }
+    window.open(next.link, '_blank');
+    const newIdx = waQueueIdx + 1;
+    if (newIdx >= waQueue.length) {
+      setWaQueue([]); setWaQueueIdx(0);
+      toast.success(t('اكتمل الإرسال', 'Sending completed'));
+    } else {
+      setWaQueueIdx(newIdx);
+    }
+  };
+
+  const skipNextInQueue = () => {
+    const newIdx = waQueueIdx + 1;
+    if (newIdx >= waQueue.length) { setWaQueue([]); setWaQueueIdx(0); }
+    else setWaQueueIdx(newIdx);
+  };
+
+  const cancelQueue = () => { setWaQueue([]); setWaQueueIdx(0); };
 
   const handleConfirmApplyFromPreview = async () => {
     if (!previewClosure) return;
@@ -304,6 +328,25 @@ export default function DayExtensionsPage() {
 
   return (
     <Layout>
+      {waQueue.length > 0 && (
+        <div className="fixed bottom-4 inset-x-4 z-50 mx-auto max-w-md bg-card border-2 border-primary shadow-2xl rounded-xl p-3" dir={language === 'ar' ? 'rtl' : 'ltr'}>
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-sm font-bold">{t('قائمة إرسال واتساب', 'WhatsApp send queue')}</span>
+            <span className="text-xs text-muted-foreground">{waQueueIdx} / {waQueue.length}</span>
+          </div>
+          <div className="text-xs text-muted-foreground mb-2 truncate">
+            {t('التالي:', 'Next:')} <span className="font-medium text-foreground">{waQueue[waQueueIdx]?.name}</span> — {waQueue[waQueueIdx]?.phone}
+          </div>
+          <div className="flex gap-2">
+            <Button size="sm" onClick={sendNextInQueue} className="flex-1 gap-1">
+              <Send className="w-3.5 h-3.5" />
+              {t('فتح التالي', 'Open Next')}
+            </Button>
+            <Button size="sm" variant="outline" onClick={skipNextInQueue}>{t('تخطي', 'Skip')}</Button>
+            <Button size="sm" variant="ghost" onClick={cancelQueue}>{t('إلغاء', 'Cancel')}</Button>
+          </div>
+        </div>
+      )}
       <div className="p-4 md:p-6 space-y-6">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>

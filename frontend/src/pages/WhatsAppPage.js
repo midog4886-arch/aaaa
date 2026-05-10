@@ -81,6 +81,8 @@ export default function WhatsAppPage() {
   const [filterDays, setFilterDays] = useState([]);
   const [selectAll, setSelectAll] = useState(false);
   const [expandedBranches, setExpandedBranches] = useState({});
+  const [waQueue, setWaQueue] = useState([]);
+  const [waQueueIdx, setWaQueueIdx] = useState(0);
 
   // ── Portal Notifications State ──
   const [portalNotifications, setPortalNotifications] = useState([]);
@@ -471,14 +473,49 @@ export default function WhatsAppPage() {
     const encoded = encodeURIComponent(waMessage);
     const selected = members.filter(m => selectedMembers.includes(m.id));
     if (selected.length === 0) return;
-    // Open each recipient's WhatsApp link with a small delay to avoid popup blocking
-    selected.forEach((m, idx) => {
-      const phone = m.phone.replace(/\D/g, '').replace(/^0/, '966');
-      const link = `https://wa.me/${phone}?text=${encoded}`;
-      setTimeout(() => window.open(link, '_blank'), idx * 600);
-    });
-    toast.success(t(`تم فتح واتساب لـ ${selected.length} مستلم`, `Opened WhatsApp for ${selected.length} recipients`));
+    const queue = selected
+      .filter(m => m.phone)
+      .map(m => {
+        let phone = (m.phone || '').replace(/\D/g, '');
+        if (phone.startsWith('00')) phone = phone.slice(2);
+        if (phone.startsWith('0')) phone = '966' + phone.slice(1);
+        return {
+          name: (isRTL ? (m.name_ar || m.name) : (m.name || m.name_ar)) || m.phone,
+          phone,
+          link: `https://wa.me/${phone}?text=${encoded}`
+        };
+      });
+    if (queue.length === 0) { toast.error(t('لا توجد أرقام جوال', 'No phone numbers')); return; }
+    window.open(queue[0].link, '_blank');
+    if (queue.length === 1) {
+      toast.success(t('تم فتح واتساب', 'WhatsApp opened'));
+      return;
+    }
+    setWaQueue(queue);
+    setWaQueueIdx(1);
+    toast.success(t(`تم فتح 1 من ${queue.length}. اضغط "التالي" للمتابعة`, `Opened 1 of ${queue.length}. Click "Next" to continue`));
   };
+
+  const sendNextInQueue = () => {
+    const next = waQueue[waQueueIdx];
+    if (!next) { setWaQueue([]); setWaQueueIdx(0); return; }
+    window.open(next.link, '_blank');
+    const newIdx = waQueueIdx + 1;
+    if (newIdx >= waQueue.length) {
+      setWaQueue([]); setWaQueueIdx(0);
+      toast.success(t('اكتمل الإرسال', 'Sending completed'));
+    } else {
+      setWaQueueIdx(newIdx);
+    }
+  };
+
+  const skipNextInQueue = () => {
+    const newIdx = waQueueIdx + 1;
+    if (newIdx >= waQueue.length) { setWaQueue([]); setWaQueueIdx(0); }
+    else setWaQueueIdx(newIdx);
+  };
+
+  const cancelQueue = () => { setWaQueue([]); setWaQueueIdx(0); };
 
   const [sendingToSelected, setSendingToSelected] = useState(false);
   const [sendToSelectedProgress, setSendToSelectedProgress] = useState({ done: 0, total: 0 });
@@ -783,6 +820,25 @@ export default function WhatsAppPage() {
 
   return (
     <Layout title={t('التواصل', 'Communications')}>
+      {waQueue.length > 0 && (
+        <div className="fixed bottom-4 inset-x-4 z-50 mx-auto max-w-md bg-card border-2 border-primary shadow-2xl rounded-xl p-3" dir={isRTL ? 'rtl' : 'ltr'}>
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-sm font-bold">{t('قائمة إرسال واتساب', 'WhatsApp send queue')}</span>
+            <span className="text-xs text-muted-foreground">{waQueueIdx} / {waQueue.length}</span>
+          </div>
+          <div className="text-xs text-muted-foreground mb-2 truncate">
+            {t('التالي:', 'Next:')} <span className="font-medium text-foreground">{waQueue[waQueueIdx]?.name}</span> — {waQueue[waQueueIdx]?.phone}
+          </div>
+          <div className="flex gap-2">
+            <Button size="sm" onClick={sendNextInQueue} className="flex-1 gap-1">
+              <Send className="w-3.5 h-3.5" />
+              {t('فتح التالي', 'Open Next')}
+            </Button>
+            <Button size="sm" variant="outline" onClick={skipNextInQueue}>{t('تخطي', 'Skip')}</Button>
+            <Button size="sm" variant="ghost" onClick={cancelQueue}>{t('إلغاء', 'Cancel')}</Button>
+          </div>
+        </div>
+      )}
       <div className="p-4 space-y-4" dir={isRTL ? 'rtl' : 'ltr'}>
 
         {/* ── Tabs ── */}
