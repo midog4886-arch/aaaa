@@ -8,11 +8,12 @@ import { Label } from '../components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Badge } from '../components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '../components/ui/dialog';
+import { Textarea } from '../components/ui/textarea';
 import api, { membersAPI, branchesAPI, activitiesAPI } from '../services/api';
 import { toast } from 'sonner';
 import {
   CalendarOff, Plus, Trash2, Play, Clock, User, Users,
-  CalendarDays, CheckCircle, History, Loader2
+  CalendarDays, CheckCircle, History, Loader2, MessageCircle, Send
 } from 'lucide-react';
 
 const REASON_LABELS = {
@@ -54,6 +55,12 @@ export default function DayExtensionsPage() {
   const [showResultDialog, setShowResultDialog] = useState(false);
   const [applyResult, setApplyResult] = useState(null);
   const [availableTimes, setAvailableTimes] = useState([]);
+  const [showPreviewDialog, setShowPreviewDialog] = useState(false);
+  const [previewClosure, setPreviewClosure] = useState(null);
+  const [previewResult, setPreviewResult] = useState(null);
+  const [previewing, setPreviewing] = useState(false);
+  const [waMessage, setWaMessage] = useState('');
+  const [sendingWa, setSendingWa] = useState(false);
 
   const loadData = useCallback(async () => {
     try {
@@ -146,6 +153,100 @@ export default function DayExtensionsPage() {
         skipped_count: result.skipped_count || 0,
         skipped_members: result.skipped_members || []
       });
+      setShowResultDialog(true);
+      loadData();
+    } catch (error) {
+      toast.error(t('خطأ في الترحيل', 'Error applying extension'));
+    } finally {
+      setApplying(false);
+    }
+  };
+
+  const buildDefaultMessage = (closure) => {
+    const title = closure.title_ar || closure.title_en || '';
+    return `السلام عليكم {name}،\nنود إفادتكم بأنه نظراً لـ "${title}" بتاريخ ${closure.start_date} → ${closure.end_date}، تم ترحيل اشتراككم {days} يوم/أيام.\nتاريخ الانتهاء الجديد: {new_end}\nشكراً لكم 🏆\nأكاديمية أداء الأبطال`;
+  };
+
+  const handlePreviewExtension = async (closure) => {
+    setPreviewClosure(closure);
+    setPreviewResult(null);
+    setWaMessage(buildDefaultMessage(closure));
+    setShowPreviewDialog(true);
+    setPreviewing(true);
+    try {
+      const res = await api.dayExtensions.applyExtension({
+        closure_id: closure.id,
+        days: closure.days,
+        branch_id: applyBranch,
+        dry_run: true
+      });
+      setPreviewResult(res.data || res);
+    } catch (error) {
+      toast.error(t('خطأ في المعاينة', 'Preview error'));
+      setShowPreviewDialog(false);
+    } finally {
+      setPreviewing(false);
+    }
+  };
+
+  const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+
+  const handleSendWhatsAppFromPreview = async () => {
+    if (!previewResult || !previewResult.extended_members?.length) {
+      toast.error(t('لا يوجد مستلمون', 'No recipients'));
+      return;
+    }
+    if (!waMessage.trim()) {
+      toast.error(t('أدخل نص الرسالة', 'Enter message text'));
+      return;
+    }
+    const recipients = previewResult.extended_members.filter(m => m.phone);
+    if (recipients.length === 0) {
+      toast.error(t('لا يوجد أرقام جوال', 'No phone numbers'));
+      return;
+    }
+    setSendingWa(true);
+    let opened = 0;
+    for (const m of recipients) {
+      const det = (m.details && m.details[0]) || {};
+      const personalized = waMessage
+        .replace(/\{name\}/g, m.name || '')
+        .replace(/\{days\}/g, det.missed_sessions || previewClosure?.days || '')
+        .replace(/\{new_end\}/g, det.new_end || '')
+        .replace(/\{old_end\}/g, det.old_end || '')
+        .replace(/\{activity\}/g, det.activity || '');
+      let phone = (m.phone || '').replace(/\D/g, '');
+      if (phone.startsWith('00')) phone = phone.slice(2);
+      if (phone.startsWith('0')) phone = '966' + phone.slice(1);
+      const url = `https://wa.me/${phone}?text=${encodeURIComponent(personalized)}`;
+      window.open(url, '_blank');
+      opened++;
+      await sleep(800);
+    }
+    setSendingWa(false);
+    toast.success(t(`تم فتح ${opened} محادثة واتساب`, `Opened ${opened} WhatsApp chats`));
+  };
+
+  const handleConfirmApplyFromPreview = async () => {
+    if (!previewClosure) return;
+    setApplying(true);
+    try {
+      const res = await api.dayExtensions.applyExtension({
+        closure_id: previewClosure.id,
+        days: previewClosure.days,
+        branch_id: applyBranch,
+        dry_run: false
+      });
+      const result = res.data || res;
+      setApplyResult({
+        days: previewClosure.days,
+        closureTitle: previewClosure.title_ar || previewClosure.title_en || '',
+        extended_count: result.extended_count || 0,
+        extended_members: result.extended_members || [],
+        skipped_count: result.skipped_count || 0,
+        skipped_members: result.skipped_members || []
+      });
+      setShowPreviewDialog(false);
       setShowResultDialog(true);
       loadData();
     } catch (error) {
@@ -322,6 +423,10 @@ export default function DayExtensionsPage() {
                       <div className="flex gap-2">
                         {!closure.applied && (
                           <>
+                            <Button onClick={() => handlePreviewExtension(closure)} disabled={applying || previewing} variant="outline" className="border-blue-500 text-blue-700 hover:bg-blue-50">
+                              <Users className="w-4 h-4 me-1" />
+                              {t('معاينة وإرسال واتساب', 'Preview & WhatsApp')}
+                            </Button>
                             <Button onClick={() => handleApplyExtension(closure)} disabled={applying} className="bg-green-600 hover:bg-green-700">
                               {applying ? <Loader2 className="w-4 h-4 me-1 animate-spin" /> : <Play className="w-4 h-4 me-1" />}
                               {t('ترحيل للجميع', 'Apply to All')}
@@ -395,6 +500,108 @@ export default function DayExtensionsPage() {
               ))
             )}
           </div>
+        )}
+
+        {showPreviewDialog && (
+          <Dialog open={showPreviewDialog} onOpenChange={(o) => { if (!o) { setShowPreviewDialog(false); setPreviewClosure(null); setPreviewResult(null); } }}>
+            <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2">
+                  <Users className="w-5 h-5 text-blue-600" />
+                  {t('معاينة الترحيل وإرسال واتساب', 'Preview Extension & Send WhatsApp')}
+                </DialogTitle>
+              </DialogHeader>
+
+              {previewing ? (
+                <div className="py-12 text-center">
+                  <Loader2 className="w-8 h-8 animate-spin text-primary mx-auto" />
+                  <p className="text-sm text-muted-foreground mt-2">{t('جارٍ حساب المشتركين المتأثرين...', 'Calculating affected members...')}</p>
+                </div>
+              ) : previewResult ? (
+                <div className="space-y-4">
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                    <div className="p-3 rounded-lg bg-blue-50 border border-blue-200 text-center">
+                      <p className="text-xs text-muted-foreground">{t('سيتم ترحيلهم', 'Will be extended')}</p>
+                      <p className="text-2xl font-bold text-blue-700">{previewResult.extended_count || 0}</p>
+                    </div>
+                    <div className="p-3 rounded-lg bg-green-50 border border-green-200 text-center">
+                      <p className="text-xs text-muted-foreground">{t('لديهم رقم جوال', 'With phone')}</p>
+                      <p className="text-2xl font-bold text-green-700">{(previewResult.extended_members || []).filter(m => m.phone).length}</p>
+                    </div>
+                    <div className="p-3 rounded-lg bg-orange-50 border border-orange-200 text-center">
+                      <p className="text-xs text-muted-foreground">{t('تم استثناؤهم', 'Skipped')}</p>
+                      <p className="text-2xl font-bold text-orange-700">{previewResult.skipped_count || 0}</p>
+                    </div>
+                  </div>
+
+                  <div>
+                    <Label className="text-sm font-medium flex items-center gap-2">
+                      <MessageCircle className="w-4 h-4 text-green-600" />
+                      {t('نص رسالة الواتساب', 'WhatsApp Message')}
+                    </Label>
+                    <Textarea
+                      value={waMessage}
+                      onChange={(e) => setWaMessage(e.target.value)}
+                      rows={6}
+                      className="mt-1 text-sm"
+                      placeholder={t('أدخل نص الرسالة...', 'Enter message...')}
+                    />
+                    <p className="text-xs text-muted-foreground mt-1">
+                      {t('متغيرات متاحة:', 'Available variables:')} <code className="bg-muted px-1">{'{name}'}</code> <code className="bg-muted px-1">{'{days}'}</code> <code className="bg-muted px-1">{'{new_end}'}</code> <code className="bg-muted px-1">{'{old_end}'}</code> <code className="bg-muted px-1">{'{activity}'}</code>
+                    </p>
+                  </div>
+
+                  <div>
+                    <Label className="text-sm font-medium">{t('قائمة المشتركين', 'Members List')}</Label>
+                    <div className="mt-1 max-h-[240px] overflow-y-auto border rounded-lg divide-y">
+                      {(previewResult.extended_members || []).length === 0 ? (
+                        <p className="p-4 text-center text-sm text-muted-foreground">{t('لا يوجد مشتركون متأثرون', 'No affected members')}</p>
+                      ) : (
+                        (previewResult.extended_members || []).map((m, idx) => {
+                          const det = (m.details && m.details[0]) || {};
+                          return (
+                            <div key={idx} className="flex items-center justify-between p-2 text-sm hover:bg-muted/30">
+                              <div className="flex-1">
+                                <p className="font-medium">{m.name || '-'}</p>
+                                <p className="text-xs text-muted-foreground">
+                                  {det.activity ? `${det.activity} · ` : ''}
+                                  {det.old_end && det.new_end ? `${det.old_end} → ${det.new_end}` : ''}
+                                  {det.missed_sessions ? ` (${det.missed_sessions} ${t('يوم', 'd')})` : ''}
+                                </p>
+                              </div>
+                              <span className="text-xs text-muted-foreground" dir="ltr">{m.phone || t('بدون جوال', 'no phone')}</span>
+                            </div>
+                          );
+                        })
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+
+              <DialogFooter className="flex-col sm:flex-row gap-2">
+                <Button variant="outline" onClick={() => setShowPreviewDialog(false)} disabled={sendingWa || applying}>
+                  {t('إغلاق', 'Close')}
+                </Button>
+                <Button
+                  onClick={handleSendWhatsAppFromPreview}
+                  disabled={previewing || sendingWa || !previewResult || !(previewResult.extended_members || []).some(m => m.phone)}
+                  className="bg-green-600 hover:bg-green-700"
+                >
+                  {sendingWa ? <Loader2 className="w-4 h-4 me-1 animate-spin" /> : <Send className="w-4 h-4 me-1" />}
+                  {t('إرسال واتساب للجميع', 'Send WhatsApp to All')}
+                </Button>
+                <Button
+                  onClick={handleConfirmApplyFromPreview}
+                  disabled={previewing || applying || !previewResult || !previewResult.extended_count}
+                  className="bg-primary"
+                >
+                  {applying ? <Loader2 className="w-4 h-4 me-1 animate-spin" /> : <Play className="w-4 h-4 me-1" />}
+                  {t('تأكيد الترحيل', 'Confirm Extension')}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
         )}
 
         {showCreateDialog && (

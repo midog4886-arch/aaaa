@@ -169,6 +169,7 @@ class ExtensionApply(BaseModel):
     closure_id: str
     days: float
     branch_id: Optional[str] = None
+    dry_run: Optional[bool] = False
 
 class ManualExtension(BaseModel):
     member_id: str
@@ -391,10 +392,11 @@ async def apply_extension(data: ExtensionApply, user=Depends(get_current_user)):
                 pass
 
         if updated:
-            await db.members.update_one(
-                {"id": member["id"]},
-                {"$set": {"activities": activities}}
-            )
+            if not data.dry_run:
+                await db.members.update_one(
+                    {"id": member["id"]},
+                    {"$set": {"activities": activities}}
+                )
 
             sub_query = {"member_id": member["id"]}
             if scope == "specific" and activity_ids:
@@ -417,10 +419,11 @@ async def apply_extension(data: ExtensionApply, user=Depends(get_current_user)):
                                 continue
                         else:
                             new_sub_end = sub_end + timedelta(days=int(round(fallback_days)))
-                        await db.level_subscriptions.update_one(
-                            {"_id": sub["_id"]},
-                            {"$set": {"end_date": new_sub_end.strftime('%Y-%m-%d')}}
-                        )
+                        if not data.dry_run:
+                            await db.level_subscriptions.update_one(
+                                {"_id": sub["_id"]},
+                                {"$set": {"end_date": new_sub_end.strftime('%Y-%m-%d')}}
+                            )
                     except Exception:
                         pass
 
@@ -455,6 +458,16 @@ async def apply_extension(data: ExtensionApply, user=Depends(get_current_user)):
                     "member_time": f"الساعة {member_t}" if member_t else "",
                     "reason": skip_reason
                 })
+
+    if data.dry_run:
+        return {
+            "message": f"Preview: would extend {extended_count} members",
+            "dry_run": True,
+            "extended_count": extended_count,
+            "extended_members": extended_members,
+            "skipped_count": len(skipped_members),
+            "skipped_members": skipped_members
+        }
 
     await db.closures.update_one(
         {"id": data.closure_id},
