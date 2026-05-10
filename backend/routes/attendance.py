@@ -511,9 +511,9 @@ async def get_today_summary(
             for item in inv.get("items", []):
                 start_date = item.get("start_date", "")
                 end_date = item.get("end_date", "")
-                if start_date and start_date > today_str:
+                if not end_date or end_date < today_str:
                     continue
-                if end_date and end_date < today_str:
+                if start_date and start_date > today_str:
                     continue
                 return True
         return False
@@ -574,9 +574,9 @@ async def get_today_summary(
             for item in inv.get("items", []):
                 start_date = item.get("start_date", "")
                 end_date = item.get("end_date", "")
-                if start_date and start_date > today_str:
+                if not end_date or end_date < today_str:
                     continue
-                if end_date and end_date < today_str:
+                if start_date and start_date > today_str:
                     continue
                 has_any_active_invoice = True
                 aid = item.get("activity_id", "")
@@ -596,9 +596,9 @@ async def get_today_summary(
                 continue
             start_date = act.get("start_date", "")
             end_date = act.get("end_date", "")
-            if start_date and start_date > today_str:
+            if not end_date or end_date < today_str:
                 continue
-            if end_date and end_date < today_str:
+            if start_date and start_date > today_str:
                 continue
             days = parse_schedule_days(act.get("schedule", ""))
             if today_day in days:
@@ -612,9 +612,9 @@ async def get_today_summary(
             for item in inv.get("items", []):
                 start_date = item.get("start_date", "")
                 end_date = item.get("end_date", "")
-                if start_date and start_date > today_str:
+                if not end_date or end_date < today_str:
                     continue
-                if end_date and end_date < today_str:
+                if start_date and start_date > today_str:
                     continue
                 days = parse_schedule_days(item.get("schedule", ""))
                 if today_day in days:
