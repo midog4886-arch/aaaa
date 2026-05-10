@@ -77,6 +77,7 @@ export default function WhatsAppPage() {
   const [messageType, setMessageType] = useState('custom');
   const [filterActivity, setFilterActivity] = useState('all');
   const [filterBranch, setFilterBranch] = useState('all');
+  const [filterDay, setFilterDay] = useState('all');
   const [selectAll, setSelectAll] = useState(false);
   const [expandedBranches, setExpandedBranches] = useState({});
 
@@ -583,12 +584,37 @@ export default function WhatsAppPage() {
     return { label, color: 'text-muted-foreground' };
   };
 
+  const DAY_OPTIONS = [
+    { id: 'saturday', ar: 'السبت', en: 'Saturday', kw: ['السبت'] },
+    { id: 'sunday', ar: 'الأحد', en: 'Sunday', kw: ['الأحد', 'الاحد'] },
+    { id: 'monday', ar: 'الإثنين', en: 'Monday', kw: ['الإثنين', 'الاثنين', 'الأثنين'] },
+    { id: 'tuesday', ar: 'الثلاثاء', en: 'Tuesday', kw: ['الثلاثاء'] },
+    { id: 'wednesday', ar: 'الأربعاء', en: 'Wednesday', kw: ['الأربعاء', 'الاربعاء'] },
+    { id: 'thursday', ar: 'الخميس', en: 'Thursday', kw: ['الخميس'] },
+    { id: 'friday', ar: 'الجمعة', en: 'Friday', kw: ['الجمعة'] },
+  ];
+
+  const activityHasDay = (a, dayId) => {
+    if (!dayId || dayId === 'all') return true;
+    const opt = DAY_OPTIONS.find(d => d.id === dayId);
+    if (!opt) return true;
+    if (Array.isArray(a.days) && a.days.length > 0) return a.days.includes(dayId);
+    const text = `${a.schedule || ''} ${a.time_slot || ''} ${a.activity_name || ''}`;
+    return opt.kw.some(k => text.includes(k));
+  };
+
   const filteredMembers = members.filter(m => {
     const hasActive = m.activities?.some(a => isSubscriptionActive(a));
     if (!hasActive) return false;
-    const actMatch = filterActivity === 'all' || m.activities?.some(a => a.activity_id === filterActivity && isSubscriptionActive(a));
+    const matchActDay = m.activities?.some(a => {
+      if (!isSubscriptionActive(a)) return false;
+      if (filterActivity !== 'all' && a.activity_id !== filterActivity) return false;
+      if (!activityHasDay(a, filterDay)) return false;
+      return true;
+    });
+    if (!matchActDay) return false;
     const brMatch = filterBranch === 'all' || m.branch_id === filterBranch;
-    return actMatch && brMatch;
+    return brMatch;
   });
 
   const membersByBranch = {};
@@ -1135,6 +1161,13 @@ export default function WhatsAppPage() {
                       {activities.filter(a => a.id).map(a => <SelectItem key={a.id} value={a.id}>{isRTL ? a.name_ar : a.name}</SelectItem>)}
                     </SelectContent>
                   </Select>
+                  <Select value={filterDay} onValueChange={setFilterDay}>
+                    <SelectTrigger className="flex-1 min-w-[120px] h-9 text-sm"><SelectValue placeholder={t('جميع الأيام', 'All Days')} /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">{t('جميع الأيام', 'All Days')}</SelectItem>
+                      {DAY_OPTIONS.map(d => <SelectItem key={d.id} value={d.id}>{isRTL ? d.ar : d.en}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
                   {isAdmin && branches.length > 0 && (
                     <Select value={filterBranch} onValueChange={setFilterBranch}>
                       <SelectTrigger className="flex-1 min-w-[140px] h-9 text-sm"><SelectValue placeholder={t('جميع الفروع', 'All Branches')} /></SelectTrigger>
@@ -1396,6 +1429,13 @@ export default function WhatsAppPage() {
                       <SelectContent>
                         <SelectItem value="all">{t('جميع الأنشطة', 'All Activities')}</SelectItem>
                         {activities.filter(a => a.id).map(a => <SelectItem key={a.id} value={a.id}>{isRTL ? a.name_ar : a.name}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                    <Select value={filterDay} onValueChange={setFilterDay}>
+                      <SelectTrigger className="flex-1 min-w-[120px]"><SelectValue placeholder={t('الأيام', 'Days')} /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">{t('جميع الأيام', 'All Days')}</SelectItem>
+                        {DAY_OPTIONS.map(d => <SelectItem key={d.id} value={d.id}>{isRTL ? d.ar : d.en}</SelectItem>)}
                       </SelectContent>
                     </Select>
                     {isAdmin && branches.length > 0 && (
