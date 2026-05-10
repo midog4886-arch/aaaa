@@ -497,10 +497,35 @@ async def get_today_summary(
     active_member_ids = {m.get("id") for m in members if m.get("id") and m.get("status", "active") == "active"}
     member_created_at = {m.get("id"): (m.get("created_at") or "") for m in members if m.get("id")}
 
+    member_ids_all = [m.get("id") for m in members if m.get("id")]
+    invoices_by_member_pre = {}
+    if member_ids_all:
+        async for inv in db.invoices.find(
+            {"member_id": {"$in": member_ids_all}, "status": {"$in": ["paid", "partial"]}},
+            {"_id": 0, "member_id": 1, "items": 1}
+        ):
+            invoices_by_member_pre.setdefault(inv.get("member_id"), []).append(inv)
+
+    def _has_active_subscription(mid):
+        for inv in invoices_by_member_pre.get(mid, []):
+            for item in inv.get("items", []):
+                start_date = item.get("start_date", "")
+                end_date = item.get("end_date", "")
+                if start_date and start_date > today_str:
+                    continue
+                if end_date and end_date < today_str:
+                    continue
+                return True
+        return False
+
+    members_with_active_sub = {mid for mid in active_member_ids if _has_active_subscription(mid)}
+
     present_by_member = {}
     for r in today_records:
         mid = r.get("member_id")
         if not mid or mid not in active_member_ids:
+            continue
+        if mid not in members_with_active_sub:
             continue
         if mid not in present_by_member:
             present_by_member[mid] = {
@@ -522,16 +547,8 @@ async def get_today_summary(
         })
         present_by_member[mid]["records"].append(r)
 
-    member_ids = [m.get("id") for m in members if m.get("id")]
-
-    invoices_by_member = {}
-    if member_ids:
-        invoices_cursor = db.invoices.find(
-            {"member_id": {"$in": member_ids}, "status": {"$in": ["paid", "partial"]}},
-            {"_id": 0, "member_id": 1, "items": 1}
-        )
-        async for inv in invoices_cursor:
-            invoices_by_member.setdefault(inv.get("member_id"), []).append(inv)
+    member_ids = member_ids_all
+    invoices_by_member = invoices_by_member_pre
 
     active_freezes = set()
     if member_ids:
@@ -641,7 +658,7 @@ async def get_today_summary(
     by_branch = {}
     by_activity = {}
     for r in today_records:
-        if r.get("member_id") not in active_member_ids:
+        if r.get("member_id") not in members_with_active_sub:
             continue
         b = r.get("branch_id", "")
         by_branch[b] = by_branch.get(b, 0) + 1
@@ -657,7 +674,7 @@ async def get_today_summary(
         "expected_count": len(expected),
         "absent_count": len(absent),
         "present": present_list,
-        "present_records": [r for r in today_records if r.get("member_id") in active_member_ids],
+        "present_records": [r for r in today_records if r.get("member_id") in members_with_active_sub],
         "expected": expected,
         "absent": absent,
         "by_branch": by_branch,
