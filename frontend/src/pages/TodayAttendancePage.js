@@ -180,7 +180,14 @@ const TodayAttendancePage = () => {
                       <td className="p-3 flex items-center gap-2">
                         {r.member_photo ? <img src={r.member_photo} alt="" className="w-8 h-8 rounded-full object-cover" /> : <div className="w-8 h-8 rounded-full bg-muted" />}
                         <div>
-                          <div className="font-medium">{r.member_name}</div>
+                          <div className="font-medium">
+                            {r.member_name}
+                            {r.guardian_name_ar && (
+                              <span className="text-xs text-muted-foreground font-normal ms-2">
+                                · {ar ? 'ولي الأمر:' : 'Guardian:'} {r.guardian_name_ar}
+                              </span>
+                            )}
+                          </div>
                           {r.phone && <div className="text-xs text-muted-foreground">{r.phone}</div>}
                         </div>
                       </td>
@@ -223,7 +230,14 @@ const TodayAttendancePage = () => {
                       <td className="p-3 flex items-center gap-2">
                         {r.member_photo ? <img src={r.member_photo} alt="" className="w-8 h-8 rounded-full object-cover" /> : <div className="w-8 h-8 rounded-full bg-muted" />}
                         <div>
-                          <div className="font-medium">{r.member_name}</div>
+                          <div className="font-medium">
+                            {r.member_name}
+                            {r.guardian_name_ar && (
+                              <span className="text-xs text-muted-foreground font-normal ms-2">
+                                · {ar ? 'ولي الأمر:' : 'Guardian:'} {r.guardian_name_ar}
+                              </span>
+                            )}
+                          </div>
                           {r.phone && <div className="text-xs text-muted-foreground">{r.phone}</div>}
                         </div>
                       </td>

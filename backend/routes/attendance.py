@@ -519,6 +519,7 @@ async def get_today_summary(
         return False
 
     members_with_active_sub = {mid for mid in active_member_ids if _has_active_subscription(mid)}
+    members_by_id = {m.get("id"): m for m in members if m.get("id")}
 
     present_by_member = {}
     for r in today_records:
@@ -528,9 +529,12 @@ async def get_today_summary(
         if mid not in members_with_active_sub:
             continue
         if mid not in present_by_member:
+            m_doc = members_by_id.get(mid, {})
             present_by_member[mid] = {
                 "member_id": mid,
                 "member_name": r.get("member_name", ""),
+                "guardian_name_ar": m_doc.get("guardian_name_ar", "") or m_doc.get("guardian_name", ""),
+                "guardian_name": m_doc.get("guardian_name", ""),
                 "member_code": r.get("member_code", ""),
                 "member_photo": r.get("member_photo", ""),
                 "phone": r.get("phone", ""),
@@ -637,6 +641,8 @@ async def get_today_summary(
             expected.append({
                 "member_id": mid,
                 "member_name": m.get("name_ar", m.get("name", "")),
+                "guardian_name_ar": m.get("guardian_name_ar", "") or m.get("guardian_name", ""),
+                "guardian_name": m.get("guardian_name", ""),
                 "member_code": m.get("member_code", ""),
                 "member_photo": m.get("photo", ""),
                 "phone": m.get("phone", ""),

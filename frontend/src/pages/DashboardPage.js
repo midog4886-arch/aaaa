@@ -924,7 +924,14 @@ export const DashboardPage = () => {
                     <div key={r.member_id || idx} className="flex items-center gap-3 p-2 bg-muted/30 rounded-lg">
                       {r.member_photo ? <img src={r.member_photo} alt="" className="w-9 h-9 rounded-full object-cover" /> : <div className="w-9 h-9 rounded-full bg-muted flex items-center justify-center"><Users className="w-4 h-4 text-muted-foreground" /></div>}
                       <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium truncate">{r.member_name}</p>
+                        <p className="text-sm font-medium truncate">
+                          {r.member_name}
+                          {r.guardian_name_ar && (
+                            <span className="text-xs text-muted-foreground font-normal ms-2">
+                              · {language === 'ar' ? 'ولي الأمر:' : 'Guardian:'} {r.guardian_name_ar}
+                            </span>
+                          )}
+                        </p>
                         <p className="text-xs text-muted-foreground truncate">{(r.activities || []).map(a => a.activity_name).join(' / ')}</p>
                       </div>
                       <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200 text-xs">
