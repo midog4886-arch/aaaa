@@ -9,6 +9,7 @@ import { Input } from '../components/ui/input';
 import { Textarea } from '../components/ui/textarea';
 import { Checkbox } from '../components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
+import { Popover, PopoverContent, PopoverTrigger } from '../components/ui/popover';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../components/ui/dialog';
 import { toast } from 'sonner';
 import { whatsappAPI, membersAPI, activitiesAPI, branchesAPI, messagesAPI, pushNotificationsAPI, levelsAPI } from '../services/api';
@@ -75,9 +76,9 @@ export default function WhatsAppPage() {
   const [selectedMembers, setSelectedMembers] = useState([]);
   const [waMessage, setWaMessage] = useState('');
   const [messageType, setMessageType] = useState('custom');
-  const [filterActivity, setFilterActivity] = useState('all');
+  const [filterActivities, setFilterActivities] = useState([]);
   const [filterBranch, setFilterBranch] = useState('all');
-  const [filterDay, setFilterDay] = useState('all');
+  const [filterDays, setFilterDays] = useState([]);
   const [selectAll, setSelectAll] = useState(false);
   const [expandedBranches, setExpandedBranches] = useState({});
 
@@ -603,13 +604,60 @@ export default function WhatsAppPage() {
     return opt.kw.some(k => text.includes(k));
   };
 
+  const MultiSelectPopover = ({ values, options, onChange, allLabel, placeholder, minWidth = 140 }) => {
+    const toggle = (id) => {
+      if (values.includes(id)) onChange(values.filter(v => v !== id));
+      else onChange([...values, id]);
+    };
+    const label = values.length === 0
+      ? allLabel
+      : values.length === 1
+        ? (options.find(o => o.id === values[0])?.label || values[0])
+        : `${values.length} ${t('محدد', 'selected')}`;
+    return (
+      <Popover>
+        <PopoverTrigger asChild>
+          <Button variant="outline" className={`flex-1 justify-between font-normal h-9 text-sm`} style={{ minWidth }}>
+            <span className="truncate">{label}</span>
+            <ChevronDown className="w-4 h-4 opacity-50 ms-2 flex-shrink-0" />
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent className="w-64 p-2 max-h-[300px] overflow-y-auto" align="start">
+          <div className="flex items-center justify-between px-2 py-1 border-b mb-1">
+            <button type="button" className="text-xs text-primary hover:underline" onClick={() => onChange([])}>
+              {t('الكل', 'All')}
+            </button>
+            {values.length > 0 && (
+              <button type="button" className="text-xs text-muted-foreground hover:underline" onClick={() => onChange([])}>
+                {t('مسح', 'Clear')}
+              </button>
+            )}
+          </div>
+          {options.length === 0 ? (
+            <p className="text-xs text-muted-foreground p-2">{placeholder || t('لا توجد خيارات', 'No options')}</p>
+          ) : options.map(o => (
+            <div key={o.id} className="flex items-center gap-2 px-2 py-1.5 hover:bg-muted/40 rounded cursor-pointer" onClick={() => toggle(o.id)}>
+              <Checkbox checked={values.includes(o.id)} onCheckedChange={() => toggle(o.id)} onClick={e => e.stopPropagation()} />
+              <span className="text-sm">{o.label}</span>
+            </div>
+          ))}
+        </PopoverContent>
+      </Popover>
+    );
+  };
+
+  const activityHasAnyDay = (a, dayIds) => {
+    if (!dayIds || dayIds.length === 0) return true;
+    return dayIds.some(d => activityHasDay(a, d));
+  };
+
   const filteredMembers = members.filter(m => {
     const hasActive = m.activities?.some(a => isSubscriptionActive(a));
     if (!hasActive) return false;
     const matchActDay = m.activities?.some(a => {
       if (!isSubscriptionActive(a)) return false;
-      if (filterActivity !== 'all' && a.activity_id !== filterActivity) return false;
-      if (!activityHasDay(a, filterDay)) return false;
+      if (filterActivities.length > 0 && !filterActivities.includes(a.activity_id)) return false;
+      if (!activityHasAnyDay(a, filterDays)) return false;
       return true;
     });
     if (!matchActDay) return false;
@@ -1154,20 +1202,20 @@ export default function WhatsAppPage() {
                 {/* Filters */}
                 <div className="flex gap-2 flex-wrap">
                   <Filter className="w-4 h-4 text-muted-foreground self-center" />
-                  <Select value={filterActivity} onValueChange={setFilterActivity}>
-                    <SelectTrigger className="flex-1 min-w-[140px] h-9 text-sm"><SelectValue placeholder={t('جميع الأنشطة', 'All Activities')} /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">{t('جميع الأنشطة', 'All Activities')}</SelectItem>
-                      {activities.filter(a => a.id).map(a => <SelectItem key={a.id} value={a.id}>{isRTL ? a.name_ar : a.name}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
-                  <Select value={filterDay} onValueChange={setFilterDay}>
-                    <SelectTrigger className="flex-1 min-w-[120px] h-9 text-sm"><SelectValue placeholder={t('جميع الأيام', 'All Days')} /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">{t('جميع الأيام', 'All Days')}</SelectItem>
-                      {DAY_OPTIONS.map(d => <SelectItem key={d.id} value={d.id}>{isRTL ? d.ar : d.en}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
+                  <MultiSelectPopover
+                    values={filterActivities}
+                    onChange={setFilterActivities}
+                    options={activities.filter(a => a.id).map(a => ({ id: a.id, label: isRTL ? a.name_ar : a.name }))}
+                    allLabel={t('جميع الأنشطة', 'All Activities')}
+                    minWidth={140}
+                  />
+                  <MultiSelectPopover
+                    values={filterDays}
+                    onChange={setFilterDays}
+                    options={DAY_OPTIONS.map(d => ({ id: d.id, label: isRTL ? d.ar : d.en }))}
+                    allLabel={t('جميع الأيام', 'All Days')}
+                    minWidth={120}
+                  />
                   {isAdmin && branches.length > 0 && (
                     <Select value={filterBranch} onValueChange={setFilterBranch}>
                       <SelectTrigger className="flex-1 min-w-[140px] h-9 text-sm"><SelectValue placeholder={t('جميع الفروع', 'All Branches')} /></SelectTrigger>
@@ -1424,20 +1472,20 @@ export default function WhatsAppPage() {
                 <CardContent className="space-y-3">
                   <div className="flex gap-2 flex-wrap">
                     <Filter className="w-4 h-4 text-muted-foreground self-center" />
-                    <Select value={filterActivity} onValueChange={setFilterActivity}>
-                      <SelectTrigger className="flex-1 min-w-[140px]"><SelectValue placeholder={t('الأنشطة', 'Activities')} /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">{t('جميع الأنشطة', 'All Activities')}</SelectItem>
-                        {activities.filter(a => a.id).map(a => <SelectItem key={a.id} value={a.id}>{isRTL ? a.name_ar : a.name}</SelectItem>)}
-                      </SelectContent>
-                    </Select>
-                    <Select value={filterDay} onValueChange={setFilterDay}>
-                      <SelectTrigger className="flex-1 min-w-[120px]"><SelectValue placeholder={t('الأيام', 'Days')} /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">{t('جميع الأيام', 'All Days')}</SelectItem>
-                        {DAY_OPTIONS.map(d => <SelectItem key={d.id} value={d.id}>{isRTL ? d.ar : d.en}</SelectItem>)}
-                      </SelectContent>
-                    </Select>
+                    <MultiSelectPopover
+                      values={filterActivities}
+                      onChange={setFilterActivities}
+                      options={activities.filter(a => a.id).map(a => ({ id: a.id, label: isRTL ? a.name_ar : a.name }))}
+                      allLabel={t('جميع الأنشطة', 'All Activities')}
+                      minWidth={140}
+                    />
+                    <MultiSelectPopover
+                      values={filterDays}
+                      onChange={setFilterDays}
+                      options={DAY_OPTIONS.map(d => ({ id: d.id, label: isRTL ? d.ar : d.en }))}
+                      allLabel={t('جميع الأيام', 'All Days')}
+                      minWidth={120}
+                    />
                     {isAdmin && branches.length > 0 && (
                       <Select value={filterBranch} onValueChange={setFilterBranch}>
                         <SelectTrigger className="flex-1 min-w-[140px]"><SelectValue placeholder={t('الفروع', 'Branches')} /></SelectTrigger>
