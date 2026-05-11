@@ -63,6 +63,7 @@ export default function DayExtensionsPage() {
   const [sendingWa] = useState(false);
   const [waQueue, setWaQueue] = useState([]);
   const [waQueueIdx, setWaQueueIdx] = useState(0);
+  const [excludedMemberIds, setExcludedMemberIds] = useState([]);
 
   const loadData = useCallback(async () => {
     try {
@@ -172,6 +173,7 @@ export default function DayExtensionsPage() {
   const handlePreviewExtension = async (closure) => {
     setPreviewClosure(closure);
     setPreviewResult(null);
+    setExcludedMemberIds([]);
     setWaMessage(buildDefaultMessage(closure));
     setShowPreviewDialog(true);
     setPreviewing(true);
@@ -202,7 +204,7 @@ export default function DayExtensionsPage() {
       toast.error(t('أدخل نص الرسالة', 'Enter message text'));
       return;
     }
-    const recipients = previewResult.extended_members.filter(m => m.phone);
+    const recipients = previewResult.extended_members.filter(m => m.phone && !excludedMemberIds.includes(m.member_id));
     if (recipients.length === 0) {
       toast.error(t('لا يوجد أرقام جوال', 'No phone numbers'));
       return;
@@ -259,7 +261,8 @@ export default function DayExtensionsPage() {
         closure_id: previewClosure.id,
         days: previewClosure.days,
         branch_id: applyBranch,
-        dry_run: false
+        dry_run: false,
+        excluded_member_ids: excludedMemberIds
       });
       const result = res.data || res;
       setApplyResult({
@@ -546,7 +549,7 @@ export default function DayExtensionsPage() {
         )}
 
         {showPreviewDialog && (
-          <Dialog open={showPreviewDialog} onOpenChange={(o) => { if (!o) { setShowPreviewDialog(false); setPreviewClosure(null); setPreviewResult(null); } }}>
+          <Dialog open={showPreviewDialog} onOpenChange={(o) => { if (!o) { setShowPreviewDialog(false); setPreviewClosure(null); setPreviewResult(null); setExcludedMemberIds([]); } }}>
             <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
               <DialogHeader>
                 <DialogTitle className="flex items-center gap-2">
@@ -562,20 +565,31 @@ export default function DayExtensionsPage() {
                 </div>
               ) : previewResult ? (
                 <div className="space-y-4">
-                  <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                    <div className="p-3 rounded-lg bg-blue-50 border border-blue-200 text-center">
-                      <p className="text-xs text-muted-foreground">{t('سيتم ترحيلهم', 'Will be extended')}</p>
-                      <p className="text-2xl font-bold text-blue-700">{previewResult.extended_count || 0}</p>
-                    </div>
-                    <div className="p-3 rounded-lg bg-green-50 border border-green-200 text-center">
-                      <p className="text-xs text-muted-foreground">{t('لديهم رقم جوال', 'With phone')}</p>
-                      <p className="text-2xl font-bold text-green-700">{(previewResult.extended_members || []).filter(m => m.phone).length}</p>
-                    </div>
-                    <div className="p-3 rounded-lg bg-orange-50 border border-orange-200 text-center">
-                      <p className="text-xs text-muted-foreground">{t('تم استثناؤهم', 'Skipped')}</p>
-                      <p className="text-2xl font-bold text-orange-700">{previewResult.skipped_count || 0}</p>
-                    </div>
-                  </div>
+                  {(() => {
+                    const allMembers = previewResult.extended_members || [];
+                    const activeMembers = allMembers.filter(m => !excludedMemberIds.includes(m.member_id));
+                    const excludedCount = excludedMemberIds.length;
+                    return (
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                        <div className="p-3 rounded-lg bg-blue-50 border border-blue-200 text-center">
+                          <p className="text-xs text-muted-foreground">{t('سيتم ترحيلهم', 'Will be extended')}</p>
+                          <p className="text-2xl font-bold text-blue-700">{activeMembers.length}</p>
+                        </div>
+                        <div className="p-3 rounded-lg bg-green-50 border border-green-200 text-center">
+                          <p className="text-xs text-muted-foreground">{t('لديهم رقم جوال', 'With phone')}</p>
+                          <p className="text-2xl font-bold text-green-700">{activeMembers.filter(m => m.phone).length}</p>
+                        </div>
+                        <div className="p-3 rounded-lg bg-red-50 border border-red-200 text-center">
+                          <p className="text-xs text-muted-foreground">{t('مستبعدون يدوياً', 'Manually excluded')}</p>
+                          <p className="text-2xl font-bold text-red-700">{excludedCount}</p>
+                        </div>
+                        <div className="p-3 rounded-lg bg-orange-50 border border-orange-200 text-center">
+                          <p className="text-xs text-muted-foreground">{t('تم استثناؤهم', 'Skipped')}</p>
+                          <p className="text-2xl font-bold text-orange-700">{previewResult.skipped_count || 0}</p>
+                        </div>
+                      </div>
+                    );
+                  })()}
 
                   <div>
                     <Label className="text-sm font-medium flex items-center gap-2">
@@ -595,24 +609,46 @@ export default function DayExtensionsPage() {
                   </div>
 
                   <div>
-                    <Label className="text-sm font-medium">{t('قائمة المشتركين', 'Members List')}</Label>
-                    <div className="mt-1 max-h-[240px] overflow-y-auto border rounded-lg divide-y">
+                    <div className="flex items-center justify-between mb-1">
+                      <Label className="text-sm font-medium">{t('قائمة المشتركين', 'Members List')}</Label>
+                      {excludedMemberIds.length > 0 && (
+                        <button type="button" className="text-xs text-primary hover:underline" onClick={() => setExcludedMemberIds([])}>
+                          {t('استعادة المستبعدين', 'Restore excluded')} ({excludedMemberIds.length})
+                        </button>
+                      )}
+                    </div>
+                    <div className="max-h-[240px] overflow-y-auto border rounded-lg divide-y">
                       {(previewResult.extended_members || []).length === 0 ? (
                         <p className="p-4 text-center text-sm text-muted-foreground">{t('لا يوجد مشتركون متأثرون', 'No affected members')}</p>
                       ) : (
                         (previewResult.extended_members || []).map((m, idx) => {
                           const det = (m.details && m.details[0]) || {};
+                          const isExcluded = excludedMemberIds.includes(m.member_id);
+                          const toggleExclude = () => {
+                            setExcludedMemberIds(prev => prev.includes(m.member_id)
+                              ? prev.filter(x => x !== m.member_id)
+                              : [...prev, m.member_id]);
+                          };
                           return (
-                            <div key={idx} className="flex items-center justify-between p-2 text-sm hover:bg-muted/30">
-                              <div className="flex-1">
-                                <p className="font-medium">{m.name || '-'}</p>
-                                <p className="text-xs text-muted-foreground">
+                            <div key={idx} className={`flex items-center justify-between p-2 text-sm hover:bg-muted/30 ${isExcluded ? 'opacity-50 bg-red-50/40' : ''}`}>
+                              <div className="flex-1 min-w-0">
+                                <p className={`font-medium ${isExcluded ? 'line-through text-muted-foreground' : ''}`}>{m.name || '-'}</p>
+                                <p className="text-xs text-muted-foreground truncate">
                                   {det.activity ? `${det.activity} · ` : ''}
                                   {det.old_end && det.new_end ? `${det.old_end} → ${det.new_end}` : ''}
                                   {det.missed_sessions ? ` (${det.missed_sessions} ${t('يوم', 'd')})` : ''}
                                 </p>
                               </div>
-                              <span className="text-xs text-muted-foreground" dir="ltr">{m.phone || t('بدون جوال', 'no phone')}</span>
+                              <span className="text-xs text-muted-foreground mx-2" dir="ltr">{m.phone || t('بدون جوال', 'no phone')}</span>
+                              {isExcluded ? (
+                                <Button size="sm" variant="ghost" className="h-7 px-2 text-xs text-primary" onClick={toggleExclude}>
+                                  {t('استعادة', 'Restore')}
+                                </Button>
+                              ) : (
+                                <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-red-600 hover:bg-red-100 hover:text-red-700" onClick={toggleExclude} title={t('استبعاد', 'Exclude')}>
+                                  <Trash2 className="w-4 h-4" />
+                                </Button>
+                              )}
                             </div>
                           );
                         })

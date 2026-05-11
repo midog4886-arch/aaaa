@@ -170,6 +170,7 @@ class ExtensionApply(BaseModel):
     days: float
     branch_id: Optional[str] = None
     dry_run: Optional[bool] = False
+    excluded_member_ids: Optional[List[str]] = []
 
 class ManualExtension(BaseModel):
     member_id: str
@@ -300,7 +301,10 @@ async def apply_extension(data: ExtensionApply, user=Depends(get_current_user)):
                 if gen_key not in member_schedules:
                     member_schedules[gen_key] = schedule
 
+    excluded_ids = set(data.excluded_member_ids or [])
     for member in members:
+        if member.get("id") in excluded_ids:
+            continue
         activities = member.get("activities", [])
         updated = False
         old_end_dates = {}
