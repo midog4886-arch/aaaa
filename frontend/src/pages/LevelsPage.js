@@ -1597,6 +1597,19 @@ ${slotTables}
     return a.end_date >= todayStr;
   };
 
+  const memberLevelsMap = (() => {
+    const map = {};
+    (levels || []).forEach(lv => {
+      const ids = Array.from(new Set(lv.members || []));
+      const label = `${lv.activity_name || ''}${lv.time_slot ? ` · ${lv.time_slot}` : ''} — ${t('المستوى', 'Level')} ${lv.level_number}`;
+      ids.forEach(id => {
+        if (!map[id]) map[id] = [];
+        map[id].push({ id: lv.id, label, levelNumber: lv.level_number });
+      });
+    });
+    return map;
+  })();
+
   const _seenAvail = new Set();
   const availableMembers = members.filter(m => {
     if (!m || !m.id) return false;
@@ -3054,6 +3067,7 @@ ${slotTables}
                     {availableMembers.slice(0, 50).map(member => {
                       const memberActiveActs = (member.activities || []).filter(isActivityNonExpired);
                       const guardian = getGuardianDisplay(member);
+                      const otherLevels = (memberLevelsMap[member.id] || []).filter(lv => !selectedLevel || lv.id !== selectedLevel.id);
                       return (
                         <div 
                           key={member.id}
@@ -3074,6 +3088,20 @@ ${slotTables}
                               </p>
                             )}
                             <p className="text-xs text-gray-500">#{member.member_code} • {member.phone}</p>
+                            {otherLevels.length > 0 && (
+                              <div className="mt-0.5 flex flex-wrap gap-1">
+                                {otherLevels.map(lv => (
+                                  <span
+                                    key={lv.id}
+                                    className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 border border-amber-200 text-[10px]"
+                                    title={t('مضاف بالفعل في هذا المستوى', 'Already in this level')}
+                                  >
+                                    <Layers className="w-3 h-3" />
+                                    {lv.label}
+                                  </span>
+                                ))}
+                              </div>
+                            )}
                             {memberActiveActs.length > 0 && (
                               <div className="mt-0.5 space-y-0.5">
                                 {memberActiveActs.map((a, idx) => {
