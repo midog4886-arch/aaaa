@@ -2958,30 +2958,24 @@ ${slotTables}
               </div>
 
               {/* Capacity Warning */}
-              {selectedLevel && (
-                <div className={`mb-3 p-2 rounded-lg ${
-                  (selectedLevel.members || []).length >= (selectedLevel.capacity || (parseActivityName(selectedLevel.activity_name).mainActivity === 'swimming' ? 6 : 10))
-                    ? 'bg-red-50 border border-red-200'
-                    : 'bg-green-50 border border-green-200'
-                }`}>
-                  <div className="flex items-center justify-between text-sm">
-                    <span>
-                      {t('الأعضاء الحاليون', 'Current Members')}: {(selectedLevel.members || []).length}
-                    </span>
-                    <span>
-                      {t('السعة القصوى', 'Max Capacity')}: {
-                        selectedLevel.capacity || (parseActivityName(selectedLevel.activity_name).mainActivity === 'swimming' ? 6 : 10)
-                      }
-                    </span>
+              {selectedLevel && (() => {
+                const currentMembersCount = getLevelMembers(selectedLevel).length;
+                const maxCap = selectedLevel.capacity || (parseActivityName(selectedLevel.activity_name).mainActivity === 'swimming' ? 6 : 10);
+                return (
+                  <div className={`mb-3 p-2 rounded-lg ${currentMembersCount >= maxCap ? 'bg-red-50 border border-red-200' : 'bg-green-50 border border-green-200'}`}>
+                    <div className="flex items-center justify-between text-sm">
+                      <span>{t('الأعضاء الحاليون', 'Current Members')}: {currentMembersCount}</span>
+                      <span>{t('السعة القصوى', 'Max Capacity')}: {maxCap}</span>
+                    </div>
                   </div>
-                </div>
-              )}
+                );
+              })()}
 
               <div className="grid grid-cols-2 gap-4 flex-1 overflow-hidden">
                 {/* Current Members */}
                 <div className="border rounded-lg overflow-hidden flex flex-col">
                   <div className="bg-primary text-white p-2 text-sm font-bold">
-                    {t('أعضاء المستوى', 'Level Members')} ({(selectedLevel?.members || []).length})
+                    {t('أعضاء المستوى', 'Level Members')} ({getLevelMembers(selectedLevel || {}).length})
                   </div>
                   <div className="flex-1 overflow-y-auto p-2 space-y-1">
                     {getLevelMembers(selectedLevel || {}).map(member => {
