@@ -632,12 +632,20 @@ export default function DayExtensionsPage() {
                           return (
                             <div key={idx} className={`flex items-center justify-between p-2 text-sm hover:bg-muted/30 ${isExcluded ? 'opacity-50 bg-red-50/40' : ''}`}>
                               <div className="flex-1 min-w-0">
-                                <p className={`font-medium ${isExcluded ? 'line-through text-muted-foreground' : ''}`}>{m.name || '-'}</p>
+                                <p className={`font-medium ${isExcluded ? 'line-through text-muted-foreground' : ''}`}>
+                                  {m.name || '-'}
+                                  {m.guardian_name ? <span className="text-xs text-muted-foreground font-normal ms-2">· {t('ولي الأمر:', 'Guardian:')} {m.guardian_name}</span> : null}
+                                </p>
                                 <p className="text-xs text-muted-foreground truncate">
                                   {det.activity ? `${det.activity} · ` : ''}
                                   {det.old_end && det.new_end ? `${det.old_end} → ${det.new_end}` : ''}
                                   {det.missed_sessions ? ` (${det.missed_sessions} ${t('يوم', 'd')})` : ''}
                                 </p>
+                                {det.training_days ? (
+                                  <p className="text-xs text-blue-700 mt-0.5">
+                                    {t('أيام الاشتراك:', 'Training days:')} {det.training_days}
+                                  </p>
+                                ) : null}
                               </div>
                               <span className="text-xs text-muted-foreground mx-2" dir="ltr">{m.phone || t('بدون جوال', 'no phone')}</span>
                               {isExcluded ? (

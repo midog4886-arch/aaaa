@@ -436,6 +436,7 @@ async def apply_extension(data: ExtensionApply, user=Depends(get_current_user)):
                 "name": member.get("name_ar", member.get("name", "")),
                 "phone": member.get("phone", ""),
                 "member_id": member.get("id", ""),
+                "guardian_name": member.get("guardian_name_ar") or member.get("guardian_name") or "",
             }
             details = []
             for a_name in new_end_dates:
