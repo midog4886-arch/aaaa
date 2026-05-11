@@ -201,6 +201,10 @@ export default function AccountingPage() {
   const [savedBankReports, setSavedBankReports] = useState([]);
   const [savingBankReport, setSavingBankReport] = useState(false);
   const [showSavedReportsDialog, setShowSavedReportsDialog] = useState(false);
+  const [cardMonthlyTotals, setCardMonthlyTotals] = useState([]);
+  const [cardMonthlyLoading, setCardMonthlyLoading] = useState(false);
+  const [cardRangeFrom, setCardRangeFrom] = useState(1);
+  const [cardRangeTo, setCardRangeTo] = useState(currentDate.getMonth() + 1);
   
   // Temporary expenses state (local only - not saved to DB)
   const [tempExpenses, setTempExpenses] = useState([]);
@@ -307,6 +311,34 @@ export default function AccountingPage() {
       console.error('Error fetching products:', error);
     }
   }, [selectedBranchId]);
+
+  const fetchCardMonthlyTotals = useCallback(async () => {
+    try {
+      setCardMonthlyLoading(true);
+      const requests = [];
+      for (let m = 1; m <= 12; m++) {
+        const startDate = `${bankReportYear}-${String(m).padStart(2, '0')}-01`;
+        const lastDay = new Date(bankReportYear, m, 0).getDate();
+        const endDate = `${bankReportYear}-${String(m).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+        const params = { start_date: startDate, end_date: endDate };
+        if (selectedBranchId && selectedBranchId !== 'all') params.branch_filter = selectedBranchId;
+        requests.push(accountingReportsAPI.getSalesReport(params).then(r => r.data).catch(() => null));
+      }
+      const results = await Promise.all(requests);
+      const monthly = results.map((rep, idx) => {
+        const pm = rep?.by_payment_method || {};
+        const card = (pm['بطاقة']?.total || 0) + (pm['card']?.total || 0) +
+                     (pm['شبكة']?.total || 0) + (pm['مدى']?.total || 0) +
+                     (pm['فيزا']?.total || 0);
+        return { month: idx + 1, card };
+      });
+      setCardMonthlyTotals(monthly);
+    } catch (e) {
+      console.error('Error fetching card monthly totals:', e);
+    } finally {
+      setCardMonthlyLoading(false);
+    }
+  }, [bankReportYear, selectedBranchId]);
 
   const fetchSalesReport = useCallback(async () => {
     try {
@@ -530,11 +562,15 @@ export default function AccountingPage() {
   useEffect(() => {
     if (activeTab === TABS.PURCHASES) fetchPurchaseInvoices();
     if (activeTab === TABS.JOURNAL) fetchJournalEntries();
-    if (activeTab === TABS.REPORTS) { fetchSalesReport(); fetchFinancialReport(); fetchSavedBankReports(); loadSavedBankReport(); }
+    if (activeTab === TABS.REPORTS) { fetchSalesReport(); fetchFinancialReport(); fetchSavedBankReports(); loadSavedBankReport(); fetchCardMonthlyTotals(); }
     if (activeTab === TABS.VAT) fetchVatReport();
     if (activeTab === TABS.EXPENSES) { fetchInternalExpenses(); fetchExpensesSummary(); fetchExpensePayments(); }
     if (activeTab === TABS.VOUCHERS) { fetchPaymentVouchers(); fetchBeneficiaries(); }
-  }, [activeTab, fetchPurchaseInvoices, fetchJournalEntries, fetchSalesReport, fetchVatReport, fetchFinancialReport, fetchInternalExpenses, fetchExpensesSummary, fetchExpensePayments, fetchSavedBankReports, loadSavedBankReport, fetchPaymentVouchers, fetchBeneficiaries]);
+  }, [activeTab, fetchPurchaseInvoices, fetchJournalEntries, fetchSalesReport, fetchVatReport, fetchFinancialReport, fetchInternalExpenses, fetchExpensesSummary, fetchExpensePayments, fetchSavedBankReports, loadSavedBankReport, fetchPaymentVouchers, fetchBeneficiaries, fetchCardMonthlyTotals]);
+
+  useEffect(() => {
+    if (activeTab === TABS.REPORTS) fetchCardMonthlyTotals();
+  }, [bankReportYear, selectedBranchId, activeTab, fetchCardMonthlyTotals]);
 
   useEffect(() => {
     if (activeTab === TABS.VOUCHERS) {
@@ -2388,6 +2424,107 @@ export default function AccountingPage() {
             </div>
           )}
         </div>
+      </div>
+
+      {/* Card Payments Aggregated by Months */}
+      <div className="mt-4 border rounded-lg p-6 bg-white">
+        <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
+          <h3 className="text-lg font-bold text-blue-800 flex items-center gap-2">
+            💳 الدفع بالبطاقة (كامل) — مجمّع للشهور
+          </h3>
+          <div className="flex items-center gap-2">
+            <Select value={String(bankReportYear)} onValueChange={(v) => setBankReportYear(parseInt(v))}>
+              <SelectTrigger className="w-28"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {[2024, 2025, 2026, 2027].map(year => (
+                  <SelectItem key={year} value={String(year)}>{year}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Button variant="outline" size="sm" onClick={fetchCardMonthlyTotals} disabled={cardMonthlyLoading}>
+              {cardMonthlyLoading ? '⏳' : '🔄'} تحديث
+            </Button>
+          </div>
+        </div>
+
+        {(() => {
+          const yearTotal = cardMonthlyTotals.reduce((s, r) => s + (r.card || 0), 0);
+          const rangeTotal = cardMonthlyTotals
+            .filter(r => r.month >= cardRangeFrom && r.month <= cardRangeTo)
+            .reduce((s, r) => s + (r.card || 0), 0);
+          return (
+            <>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
+                <div className="bg-gradient-to-r from-emerald-500 to-emerald-600 text-white rounded-lg p-4">
+                  <div className="text-emerald-100 text-sm">💎 إجمالي السنة {bankReportYear}</div>
+                  <div className="text-2xl font-bold mt-1">{yearTotal.toLocaleString()} ر.س</div>
+                </div>
+                <div className="bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-lg p-4">
+                  <div className="text-blue-100 text-sm flex items-center justify-between gap-2 flex-wrap">
+                    <span>📅 إجمالي الفترة المخصصة</span>
+                    <div className="flex items-center gap-1">
+                      <Select value={String(cardRangeFrom)} onValueChange={(v) => setCardRangeFrom(parseInt(v))}>
+                        <SelectTrigger className="w-24 h-7 text-gray-800 bg-white"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          {Object.entries(ARABIC_MONTHS).map(([num, name]) => (
+                            <SelectItem key={num} value={num}>{name}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <span className="text-white">→</span>
+                      <Select value={String(cardRangeTo)} onValueChange={(v) => setCardRangeTo(parseInt(v))}>
+                        <SelectTrigger className="w-24 h-7 text-gray-800 bg-white"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          {Object.entries(ARABIC_MONTHS).map(([num, name]) => (
+                            <SelectItem key={num} value={num}>{name}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                  <div className="text-2xl font-bold mt-2">{rangeTotal.toLocaleString()} ر.س</div>
+                </div>
+              </div>
+
+              <div className="overflow-x-auto border rounded-lg">
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-100">
+                    <tr>
+                      <th className="p-2 text-right">الشهر</th>
+                      <th className="p-2 text-right">إجمالي البطاقة</th>
+                      <th className="p-2 text-right">% من السنة</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {cardMonthlyTotals.map(r => {
+                      const pct = yearTotal > 0 ? ((r.card / yearTotal) * 100).toFixed(1) : '0.0';
+                      const inRange = r.month >= cardRangeFrom && r.month <= cardRangeTo;
+                      return (
+                        <tr key={r.month} className={`border-t ${inRange ? 'bg-blue-50' : ''}`}>
+                          <td className="p-2 font-medium">{ARABIC_MONTHS[r.month]}</td>
+                          <td className="p-2 text-emerald-700 font-semibold">{r.card.toLocaleString()} ر.س</td>
+                          <td className="p-2 text-gray-600">{pct}%</td>
+                        </tr>
+                      );
+                    })}
+                    {cardMonthlyTotals.length === 0 && (
+                      <tr><td colSpan="3" className="text-center p-4 text-gray-400">{cardMonthlyLoading ? '⏳ جاري التحميل...' : 'لا توجد بيانات'}</td></tr>
+                    )}
+                  </tbody>
+                  {cardMonthlyTotals.length > 0 && (
+                    <tfoot className="bg-emerald-50 font-bold">
+                      <tr>
+                        <td className="p-2">الإجمالي السنوي</td>
+                        <td className="p-2 text-emerald-700">{yearTotal.toLocaleString()} ر.س</td>
+                        <td className="p-2">100%</td>
+                      </tr>
+                    </tfoot>
+                  )}
+                </table>
+              </div>
+            </>
+          );
+        })()}
       </div>
 
       {/* Refunds Section */}
