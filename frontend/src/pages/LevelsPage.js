@@ -2094,6 +2094,25 @@ ${slotTables}
                     {t('جدولة المستويات حسب اليوم والساعة', 'Schedule levels by day and hour')}
                   </Button>
                   <Button
+                    variant="outline"
+                    className="gap-2 border-amber-300 text-amber-700 hover:bg-amber-50"
+                    onClick={async () => {
+                      if (!window.confirm(t('سيتم حذف الأعضاء المكررين من جميع المستويات نهائياً. هل تريد المتابعة؟', 'Duplicate member entries will be permanently removed from all levels. Continue?'))) return;
+                      try {
+                        const res = await levelsAPI.cleanupDuplicates();
+                        const d = res.data || res;
+                        toast.success(t(`تم تنظيف ${d.levels_cleaned} مستوى وإزالة ${d.duplicates_removed} تكرار`, `Cleaned ${d.levels_cleaned} levels, removed ${d.duplicates_removed} duplicates`));
+                        loadData();
+                      } catch (e) {
+                        toast.error(t('فشل تنظيف المكررات', 'Failed to clean duplicates'));
+                      }
+                    }}
+                    data-testid="open-levels-cleanup-duplicates-btn"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                    {t('تنظيف الأعضاء المكررين', 'Clean duplicate members')}
+                  </Button>
+                  <Button
                     variant="ghost"
                     size="sm"
                     className="gap-1 text-gray-400 hover:text-gray-600 hover:bg-gray-100 text-xs underline-offset-2 hover:underline"

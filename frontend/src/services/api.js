@@ -75,6 +75,7 @@ export const levelsAPI = {
     axios.post(`${API}/levels/auto-assign`, null, { params: { dry_run: dryRun, ...params } }),
   cleanupSuggestions: (params = {}) => axios.get(`${API}/levels/cleanup-suggestions`, { params }),
   cleanupBulk: (items) => axios.post(`${API}/levels/cleanup/bulk`, { items }),
+  cleanupDuplicates: () => axios.post(`${API}/levels/cleanup-duplicates`),
   scheduleSnapshot: (params = {}) => axios.get(`${API}/levels/schedule-snapshot`, { params }),
   scheduleSlot: (payload) => axios.post(`${API}/levels/schedule-slot`, payload),
   updateDetails: (payload) => axios.patch(`${API}/levels/details`, payload),

@@ -1773,6 +1773,52 @@ async def auto_assign_members_to_levels(
     return response
 
 
+@router.post("/cleanup-duplicates")
+async def cleanup_duplicate_members(current_user: dict = Depends(get_current_user)):
+    """Remove duplicate member entries from every level (members[] + members_details[])."""
+    if not current_user.get("is_admin", False):
+        raise HTTPException(status_code=403, detail="Admin access required")
+
+    levels_cleaned = 0
+    duplicates_removed = 0
+    cursor = db.levels.find({})
+    async for lvl in cursor:
+        members = lvl.get("members") or []
+        details = lvl.get("members_details") or []
+
+        seen_m = set()
+        new_members = []
+        for mid in members:
+            if not mid or mid in seen_m:
+                continue
+            seen_m.add(mid)
+            new_members.append(mid)
+
+        seen_d = set()
+        new_details = []
+        for md in details:
+            mid = (md or {}).get("member_id") or (md or {}).get("id")
+            if not mid or mid in seen_d:
+                continue
+            seen_d.add(mid)
+            new_details.append(md)
+
+        removed_here = (len(members) - len(new_members)) + (len(details) - len(new_details))
+        if removed_here > 0:
+            await db.levels.update_one(
+                {"id": lvl.get("id")},
+                {"$set": {"members": new_members, "members_details": new_details}}
+            )
+            levels_cleaned += 1
+            duplicates_removed += removed_here
+
+    return {
+        "message": f"تم تنظيف {levels_cleaned} مستوى وإزالة {duplicates_removed} تكرار",
+        "levels_cleaned": levels_cleaned,
+        "duplicates_removed": duplicates_removed,
+    }
+
+
 @router.post("/cleanup-expired")
 async def cleanup_expired_subscriptions(current_user: dict = Depends(get_current_user)):
     """Remove members from levels whose subscriptions have expired"""
