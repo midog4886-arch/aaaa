@@ -1744,10 +1744,15 @@ ${slotTables}
     const maxCapacity = originalLevel.capacity || (activityId === 'swimming' ? 6 : 10);
     // Hide members whose subscriptions have expired so they don't appear in
     // the level cards or count toward the displayed enrollment.
-    const rawLevelMembers = (level.members_details || []).map(md => {
-      const fullMember = members.find(m => m.id === md.member_id);
-      return fullMember || { id: md.member_id, name_ar: md.member_name, phone: md.phone, _stub: true };
-    });
+    const seenMemberIds = new Set();
+    const rawLevelMembers = (level.members_details || []).reduce((acc, md) => {
+      const mid = md.member_id || md.id;
+      if (!mid || seenMemberIds.has(mid)) return acc;
+      seenMemberIds.add(mid);
+      const fullMember = members.find(m => m.id === mid);
+      acc.push(fullMember || { id: mid, name_ar: md.member_name, phone: md.phone, _stub: true });
+      return acc;
+    }, []);
     const levelMembers = rawLevelMembers.filter(m => {
       if (m._stub) return false;
       return (m.activities || []).some(isActivityNonExpired);
