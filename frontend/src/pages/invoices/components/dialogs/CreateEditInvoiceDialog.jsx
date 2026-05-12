@@ -6,12 +6,86 @@ import { Label } from '../../../../components/ui/label';
 import { Badge } from '../../../../components/ui/badge';
 import { Card } from '../../../../components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../../../components/ui/select';
+import { Popover, PopoverContent, PopoverTrigger } from '../../../../components/ui/popover';
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '../../../../components/ui/command';
 import { Textarea } from '../../../../components/ui/textarea';
-import { CheckCircle, Loader2, Lock, Package, Percent, Receipt, Tag, Trash2, UserPlus, Users, X } from 'lucide-react';
+import { CheckCircle, ChevronsUpDown, Loader2, Lock, Package, Percent, Receipt, Tag, Trash2, UserPlus, Users, X } from 'lucide-react';
 import { COMPANY_INFO } from '../../constants';
 import { MAIN_ACTIVITIES_FOR_LEVELS } from '../../constants';
 import { membersAPI, levelsAPI } from '../../../../services/api';
 import { toast } from 'sonner';
+
+const MemberCombobox = ({ members, selectedMember, handleMemberSelect, language }) => {
+  const [open, setOpen] = React.useState(false);
+  const list = (members || []).filter(m => m.id);
+  const labelFor = (m) => `${m.member_id ? `#${m.member_id} ` : ''}${(language === 'ar' ? m.name_ar : m.name) || ''} - ${m.phone || ''}`;
+  const triggerLabel = selectedMember?.id
+    ? labelFor(selectedMember)
+    : (language === 'ar' ? '-- بدون عضو --' : '-- No member --');
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          type="button"
+          variant="outline"
+          role="combobox"
+          aria-expanded={open}
+          className="w-full justify-between font-normal"
+          data-testid="member-combobox-trigger"
+        >
+          <span className="truncate text-start">{triggerLabel}</span>
+          <ChevronsUpDown className="w-4 h-4 opacity-50 shrink-0 ms-2" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
+        <Command
+          filter={(value, search) => {
+            if (!search) return 1;
+            return value.toLowerCase().includes(search.toLowerCase()) ? 1 : 0;
+          }}
+        >
+          <CommandInput
+            placeholder={language === 'ar' ? 'بحث بالاسم أو الجوال أو الرقم...' : 'Search by name, phone, or ID...'}
+            className="h-9"
+          />
+          <CommandList className="max-h-72">
+            <CommandEmpty>{language === 'ar' ? 'لا توجد نتائج' : 'No results'}</CommandEmpty>
+            <CommandGroup>
+              <CommandItem
+                value="__none__"
+                onSelect={() => { handleMemberSelect('none'); setOpen(false); }}
+              >
+                {language === 'ar' ? '-- بدون عضو --' : '-- No member --'}
+              </CommandItem>
+              <CommandItem
+                value="__new__"
+                onSelect={() => { handleMemberSelect('new'); setOpen(false); }}
+                className="text-primary font-medium"
+              >
+                <UserPlus className="w-4 h-4 inline me-2" />
+                {language === 'ar' ? 'إضافة عضو جديد' : 'Add new member'}
+              </CommandItem>
+              {list.map(m => {
+                const search = `${m.member_id || ''} ${m.name_ar || ''} ${m.name || ''} ${m.phone || ''}`;
+                return (
+                  <CommandItem
+                    key={m.id}
+                    value={search}
+                    onSelect={() => { handleMemberSelect(m.id); setOpen(false); }}
+                  >
+                    {m.member_id && <span className="font-mono text-primary font-semibold me-1">#{m.member_id}</span>}
+                    {(language === 'ar' ? m.name_ar : m.name) || ''} - {m.phone}
+                    {selectedMember?.id === m.id && <CheckCircle className="w-4 h-4 text-emerald-600 ms-auto" />}
+                  </CommandItem>
+                );
+              })}
+            </CommandGroup>
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
+  );
+};
 
 export const CreateEditInvoiceDialog = ({
   isOpen, onOpenChange,
@@ -52,14 +126,12 @@ export const CreateEditInvoiceDialog = ({
         <DialogHeader><DialogTitle>{isEditMode ? (language === 'ar' ? 'تعديل الفاتورة' : 'Edit Invoice') : t('create_invoice')}</DialogTitle></DialogHeader>
         <div className="space-y-4">
           <div className="space-y-2"><Label>{language === 'ar' ? 'اختر العضو' : 'Select member'}</Label>
-            <Select value={selectedMember?.id || 'none'} onValueChange={handleMemberSelect}>
-              <SelectTrigger><SelectValue placeholder={t('member_name')} /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="none">{language === 'ar' ? '-- بدون عضو --' : '-- No member --'}</SelectItem>
-                <SelectItem value="new" className="text-primary font-medium"><UserPlus className="w-4 h-4 inline me-2" />{language === 'ar' ? 'إضافة عضو جديد' : 'Add new member'}</SelectItem>
-                {(members || []).filter(m => m.id).map(m => <SelectItem key={m.id} value={m.id}>{m.member_id && <span className="font-mono text-primary font-semibold me-1">#{m.member_id}</span>}{language === 'ar' ? m.name_ar : m.name} - {m.phone}</SelectItem>)}
-              </SelectContent>
-            </Select>
+            <MemberCombobox
+              members={members}
+              selectedMember={selectedMember}
+              handleMemberSelect={handleMemberSelect}
+              language={language}
+            />
           </div>
 
           <Card className="p-4 border-primary/20 bg-primary/5">
