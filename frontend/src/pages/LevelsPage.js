@@ -1267,7 +1267,8 @@ ${slotTables}
     
     // Check capacity
     const { mainActivity } = parseActivityName(targetLevel.activity_name);
-    const currentCount = (targetLevel.members || []).length;
+    const _rawIds = (targetLevel.members || []).map(m => typeof m === 'string' ? m : (m?.id || m?.member_id)).filter(Boolean);
+    const currentCount = new Set(_rawIds).size;
     const maxCapacity = targetLevel.capacity || (mainActivity === 'swimming' ? 6 : 10);
     
     if (currentCount >= maxCapacity) {
