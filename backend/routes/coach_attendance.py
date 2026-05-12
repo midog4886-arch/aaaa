@@ -436,11 +436,14 @@ async def monthly_report(
         except (ValueError, TypeError):
             monthly_work_days = 30
 
+        attendance_percentage = round((present_days / monthly_work_days) * 100) if monthly_work_days > 0 else 0
+
         report[cid] = {
             "coach_id": cid,
             "coach_name": coach.get("name_ar", coach.get("name", "")),
             "contract_type": contract_type,
             "monthly_work_days": monthly_work_days,
+            "attendance_percentage": attendance_percentage,
             "present_days": present_days,
             "absent_days": absent_days,
             "leave_days": leave_days,
@@ -527,11 +530,14 @@ async def export_monthly_report(
         except (ValueError, TypeError):
             monthly_work_days = 30
 
+        attendance_percentage = round((present_days / monthly_work_days) * 100) if monthly_work_days > 0 else 0
+
         rows.append({
             "idx": idx,
             "coach_name": coach.get("name_ar", coach.get("name", "")),
             "contract_type": contract_type,
             "monthly_work_days": monthly_work_days,
+            "attendance_percentage": attendance_percentage,
             "present_days": present_days,
             "absent_days": absent_days,
             "leave_days": leave_days,
@@ -541,7 +547,7 @@ async def export_monthly_report(
         })
 
     export_date = datetime.now().strftime("%Y-%m-%d")
-    headers_row = ["م", "المدرب", "نوع التعاقد", "أيام العمل", "أيام الحضور", "أيام الغياب", "أيام الإجازة", "إجمالي الساعات", "أيام التأخر", "دقائق التأخر"]
+    headers_row = ["م", "المدرب", "نوع التعاقد", "أيام العمل", "أيام الحضور", "نسبة الحضور", "أيام الغياب", "أيام الإجازة", "إجمالي الساعات", "أيام التأخر", "دقائق التأخر"]
 
     # ── Excel ──────────────────────────────────────────
     if format == "xlsx":
@@ -590,11 +596,15 @@ async def export_monthly_report(
             cell.border = border
 
         contract_labels = {"full_time": "دوام كامل", "part_time": "دوام جزئي"}
+        green_pct_font = Font(bold=True, color="166534")
+        yellow_pct_font = Font(bold=True, color="92400E")
+        red_pct_font = Font(bold=True, color="991B1B")
         for data_idx, r in enumerate(rows):
+            pct = r["attendance_percentage"]
             ws.append([r["idx"], r["coach_name"],
                        contract_labels.get(r["contract_type"], r["contract_type"]),
                        r["monthly_work_days"],
-                       r["present_days"], r["absent_days"],
+                       r["present_days"], f"{pct}%", r["absent_days"],
                        r["leave_days"], r["total_hours"], r["late_days"], r["late_minutes"]])
             row_num = header_row_num + 1 + data_idx
             use_alt = data_idx % 2 == 1
@@ -604,8 +614,15 @@ async def export_monthly_report(
                     cell.fill = alt_fill
                 cell.border = border
                 cell.alignment = center if col_idx != 2 else right_align
+            pct_cell = ws.cell(row=row_num, column=6)
+            if pct >= 80:
+                pct_cell.font = green_pct_font
+            elif pct >= 50:
+                pct_cell.font = yellow_pct_font
+            else:
+                pct_cell.font = red_pct_font
 
-        col_widths = [6, 28, 14, 12, 14, 14, 14, 16, 14, 16]
+        col_widths = [6, 28, 14, 12, 14, 14, 14, 14, 16, 14, 16]
         for idx_w, w in enumerate(col_widths, 1):
             ws.column_dimensions[ws.cell(row=1, column=idx_w).column_letter].width = w
 
@@ -662,16 +679,26 @@ async def export_monthly_report(
     elements.append(Spacer(1, 5*mm))
 
     contract_labels = {"full_time": "دوام كامل", "part_time": "دوام جزئي"}
-    pdf_headers = ["دقائق التأخر", "أيام التأخر", "الساعات", "الإجازة", "الغياب", "الحضور", "أيام العمل", "التعاقد", "المدرب", "م"]
+    pdf_headers = ["دقائق التأخر", "أيام التأخر", "الساعات", "الإجازة", "الغياب", "نسبة الحضور", "الحضور", "أيام العمل", "التعاقد", "المدرب", "م"]
     header_row_pdf = [Paragraph(h, hdr_style) for h in pdf_headers]
     data = [header_row_pdf]
-    for r in rows:
+    for row_idx, r in enumerate(rows, start=1):
+        pct = r["attendance_percentage"]
+        if pct >= 80:
+            pct_hex = '#166534'
+        elif pct >= 50:
+            pct_hex = '#92400E'
+        else:
+            pct_hex = '#991B1B'
+        pct_style = ParagraphStyle(f'P{row_idx}', fontName=font_name, fontSize=8, leading=11,
+                                    alignment=1, textColor=colors.HexColor(pct_hex))
         data.append([
             Paragraph(str(r["late_minutes"]), cell_style),
             Paragraph(str(r["late_days"]), cell_style),
             Paragraph(str(r["total_hours"]), cell_style),
             Paragraph(str(r["leave_days"]), cell_style),
             Paragraph(str(r["absent_days"]), cell_style),
+            Paragraph(f"<b>{pct}%</b>", pct_style),
             Paragraph(str(r["present_days"]), cell_style),
             Paragraph(str(r["monthly_work_days"]), cell_style),
             Paragraph(contract_labels.get(r["contract_type"], r["contract_type"]), cell_style),
@@ -679,7 +706,7 @@ async def export_monthly_report(
             Paragraph(str(r["idx"]), cell_style),
         ])
 
-    col_widths_pdf = [18*mm, 15*mm, 15*mm, 15*mm, 15*mm, 15*mm, 15*mm, 18*mm, 36*mm, 8*mm]
+    col_widths_pdf = [16*mm, 14*mm, 14*mm, 14*mm, 14*mm, 16*mm, 14*mm, 14*mm, 16*mm, 32*mm, 8*mm]
     table = Table(data, colWidths=col_widths_pdf, repeatRows=1)
     table.setStyle(TableStyle([
         ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#F97316')),

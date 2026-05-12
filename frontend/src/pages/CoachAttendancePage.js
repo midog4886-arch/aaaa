@@ -320,9 +320,11 @@ const CoachAttendancePage = () => {
   const exportCSV = () => {
     if (!monthlyReport) return;
     const contractLabels = { full_time: 'دوام كامل', part_time: 'دوام جزئي' };
-    const rows = [['المدرب', 'نوع التعاقد', 'أيام العمل', 'أيام الحضور', 'أيام الغياب', 'أيام الإجازة', 'إجمالي الساعات', 'أيام التأخر', 'إجمالي دقائق التأخر']];
+    const rows = [['المدرب', 'نوع التعاقد', 'أيام العمل', 'أيام الحضور', 'نسبة الحضور', 'أيام الغياب', 'أيام الإجازة', 'إجمالي الساعات', 'أيام التأخر', 'إجمالي دقائق التأخر']];
     monthlyReport.report.forEach(r => {
-      rows.push([r.coach_name, contractLabels[r.contract_type] || r.contract_type || 'دوام كامل', r.monthly_work_days || 30, r.present_days, r.absent_days, r.leave_days, r.total_hours, r.late_days || 0, r.late_minutes || 0]);
+      const workDays = r.monthly_work_days || 30;
+      const pct = r.attendance_percentage != null ? r.attendance_percentage : (workDays > 0 ? Math.round((r.present_days / workDays) * 100) : 0);
+      rows.push([r.coach_name, contractLabels[r.contract_type] || r.contract_type || 'دوام كامل', workDays, r.present_days, `${pct}%`, r.absent_days, r.leave_days, r.total_hours, r.late_days || 0, r.late_minutes || 0]);
     });
     const csv = '\uFEFF' + rows.map(r => r.join(',')).join('\n');
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
@@ -1172,6 +1174,7 @@ const CoachAttendancePage = () => {
                           <th className="px-4 py-3 text-center font-medium text-gray-600">التعاقد</th>
                           <th className="px-4 py-3 text-center font-medium text-gray-600">أيام العمل</th>
                           <th className="px-4 py-3 text-center font-medium text-green-600">أيام الحضور</th>
+                          <th className="px-4 py-3 text-center font-medium text-emerald-600">نسبة الحضور</th>
                           <th className="px-4 py-3 text-center font-medium text-red-600">أيام الغياب</th>
                           <th className="px-4 py-3 text-center font-medium text-yellow-600">أيام الإجازة</th>
                           <th className="px-4 py-3 text-center font-medium text-blue-600">إجمالي الساعات</th>
@@ -1193,6 +1196,20 @@ const CoachAttendancePage = () => {
                               <span className="bg-green-100 text-green-700 px-2 py-0.5 rounded-full text-xs font-bold">
                                 {r.present_days}
                               </span>
+                            </td>
+                            <td className="px-4 py-3 text-center">
+                              {(() => {
+                                const workDays = r.monthly_work_days || 30;
+                                const pct = r.attendance_percentage != null ? r.attendance_percentage : (workDays > 0 ? Math.round((r.present_days / workDays) * 100) : 0);
+                                const cls = pct >= 80
+                                  ? 'bg-green-100 text-green-700'
+                                  : pct >= 50
+                                    ? 'bg-yellow-100 text-yellow-700'
+                                    : 'bg-red-100 text-red-700';
+                                return (
+                                  <span className={`${cls} px-2 py-0.5 rounded-full text-xs font-bold`}>{pct}%</span>
+                                );
+                              })()}
                             </td>
                             <td className="px-4 py-3 text-center">
                               <span className="bg-red-100 text-red-700 px-2 py-0.5 rounded-full text-xs font-bold">
