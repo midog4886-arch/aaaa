@@ -409,8 +409,19 @@ export const CreateEditInvoiceDialog = ({
                                 <div className="p-2 space-y-1 max-h-48 overflow-y-auto">
                                   {Object.entries(_grouped[levelSelectorState[idx].selectedActivity] || {}).filter(([ts]) => { const h = item.training_time_hour; if (!h) return true; const tsNum = (ts.match(/\d+/) || [])[0]; return tsNum === String(h); }).sort(([a], [b]) => { const na = parseInt((a.match(/\d+/) || [])[0]) || 0; const nb = parseInt((b.match(/\d+/) || [])[0]) || 0; return na - nb; }).map(([timeSlot, timeLevels]) => {
                                     const _itemDays = item.training_days || [];
+                                    const _startDateT = item.start_date || '';
+                                    const _isActiveAtStartT = (mid, lvlId) => {
+                                      if (!_startDateT) return true;
+                                      const mem = (members || []).find(mm => mm.id === mid);
+                                      if (!mem) return true;
+                                      const acts = mem.activities || [];
+                                      const levelActs = acts.filter(a => a.level_id === lvlId);
+                                      const candidates = levelActs.length > 0 ? levelActs : acts;
+                                      return candidates.some(a => !a.end_date || a.end_date >= _startDateT);
+                                    };
                                     const totalMembers = timeLevels.reduce((sum, l) => {
-                                      const activeDet = (l.members_details || []).filter(m => m.has_active_sub !== false).filter((m, i, arr) => arr.findIndex(x => (x.id || x.member_id) === (m.id || m.member_id)) === i);
+                                      let activeDet = (l.members_details || []).filter(m => m.has_active_sub !== false).filter((m, i, arr) => arr.findIndex(x => (x.id || x.member_id) === (m.id || m.member_id)) === i);
+                                      activeDet = activeDet.filter(m => _isActiveAtStartT(m.member_id || m.id, l.id));
                                       if (_itemDays.length > 0 && activeDet.length > 0) {
                                         const perDay = _itemDays.map(day => activeDet.filter(m => m.schedule && m.schedule.includes(day)).length);
                                         return sum + Math.max(...perDay, 0);
@@ -431,7 +442,18 @@ export const CreateEditInvoiceDialog = ({
                                 <div className="p-2 space-y-1 max-h-48 overflow-y-auto">
                                   {(_grouped[levelSelectorState[idx].selectedActivity]?.[levelSelectorState[idx].selectedTime] || []).sort((a, b) => a.level_number - b.level_number).map(level => {
                                     const _days = item.training_days || [];
-                                    const _activeDet = (level.members_details || []).filter(m => m.has_active_sub !== false).filter((m, i, arr) => arr.findIndex(x => (x.id || x.member_id) === (m.id || m.member_id)) === i);
+                                    const _startDateLv = item.start_date || '';
+                                    const _isActiveAtStartLv = (mid) => {
+                                      if (!_startDateLv) return true;
+                                      const mem = (members || []).find(mm => mm.id === mid);
+                                      if (!mem) return true;
+                                      const acts = mem.activities || [];
+                                      const levelActs = acts.filter(a => a.level_id === level.id);
+                                      const candidates = levelActs.length > 0 ? levelActs : acts;
+                                      return candidates.some(a => !a.end_date || a.end_date >= _startDateLv);
+                                    };
+                                    const _activeDetRaw = (level.members_details || []).filter(m => m.has_active_sub !== false).filter((m, i, arr) => arr.findIndex(x => (x.id || x.member_id) === (m.id || m.member_id)) === i);
+                                    const _activeDet = _activeDetRaw.filter(m => _isActiveAtStartLv(m.member_id || m.id));
                                     const memberCount = (_days.length > 0 && _activeDet.length > 0) ? Math.max(..._days.map(day => _activeDet.filter(m => m.schedule && m.schedule.includes(day)).length), 0) : _activeDet.length;
                                     const maxCapacity = level.capacity || 10;
                                     const isFull = memberCount >= maxCapacity;
@@ -740,8 +762,19 @@ export const CreateEditInvoiceDialog = ({
                                                   <div className="p-2 space-y-1 max-h-48 overflow-y-auto">
                                                     {Object.entries(_grouped[levelSelectorState[selKey].selectedActivity] || {}).filter(([ts]) => { const h = item.training_time_hour; if (!h) return true; const tsNum = (ts.match(/\d+/) || [])[0]; return tsNum === String(h); }).sort(([a], [b]) => { const na = parseInt((a.match(/\d+/) || [])[0]) || 0; const nb = parseInt((b.match(/\d+/) || [])[0]) || 0; return na - nb; }).map(([timeSlot, timeLevels]) => {
                                                       const _itemDays = item.training_days || [];
+                                                      const _startDateAm = item.start_date || '';
+                                                      const _isActiveAtStartAm = (mid, lvlId) => {
+                                                        if (!_startDateAm) return true;
+                                                        const mem = (members || []).find(mm => mm.id === mid);
+                                                        if (!mem) return true;
+                                                        const acts = mem.activities || [];
+                                                        const levelActs = acts.filter(a => a.level_id === lvlId);
+                                                        const candidates = levelActs.length > 0 ? levelActs : acts;
+                                                        return candidates.some(a => !a.end_date || a.end_date >= _startDateAm);
+                                                      };
                                                       const totalMembers = timeLevels.reduce((sum, l) => {
-                                                        const activeDet = (l.members_details || []).filter(m => m.has_active_sub !== false).filter((m, i, arr) => arr.findIndex(x => (x.id || x.member_id) === (m.id || m.member_id)) === i);
+                                                        let activeDet = (l.members_details || []).filter(m => m.has_active_sub !== false).filter((m, i, arr) => arr.findIndex(x => (x.id || x.member_id) === (m.id || m.member_id)) === i);
+                                                        activeDet = activeDet.filter(m => _isActiveAtStartAm(m.member_id || m.id, l.id));
                                                         if (_itemDays.length > 0 && activeDet.length > 0) {
                                                           const perDay = _itemDays.map(day => activeDet.filter(m => m.schedule && m.schedule.includes(day)).length);
                                                           return sum + Math.max(...perDay, 0);
@@ -762,7 +795,18 @@ export const CreateEditInvoiceDialog = ({
                                                   <div className="p-2 space-y-1 max-h-48 overflow-y-auto">
                                                     {(_grouped[levelSelectorState[selKey].selectedActivity]?.[levelSelectorState[selKey].selectedTime] || []).sort((a, b) => a.level_number - b.level_number).map(level => {
                                                       const _days = item.training_days || [];
-                                                      const _activeDet = (level.members_details || []).filter(m => m.has_active_sub !== false).filter((m, i, arr) => arr.findIndex(x => (x.id || x.member_id) === (m.id || m.member_id)) === i);
+                                                      const _startDateAmL = item.start_date || '';
+                                                      const _isActiveAtStartAmL = (mid) => {
+                                                        if (!_startDateAmL) return true;
+                                                        const mem = (members || []).find(mm => mm.id === mid);
+                                                        if (!mem) return true;
+                                                        const acts = mem.activities || [];
+                                                        const levelActs = acts.filter(a => a.level_id === level.id);
+                                                        const candidates = levelActs.length > 0 ? levelActs : acts;
+                                                        return candidates.some(a => !a.end_date || a.end_date >= _startDateAmL);
+                                                      };
+                                                      const _activeDetRaw = (level.members_details || []).filter(m => m.has_active_sub !== false).filter((m, i, arr) => arr.findIndex(x => (x.id || x.member_id) === (m.id || m.member_id)) === i);
+                                                      const _activeDet = _activeDetRaw.filter(m => _isActiveAtStartAmL(m.member_id || m.id));
                                                       const memberCount = (_days.length > 0 && _activeDet.length > 0) ? Math.max(..._days.map(day => _activeDet.filter(m => m.schedule && m.schedule.includes(day)).length), 0) : _activeDet.length;
                                                       const maxCapacity = level.capacity || 10;
                                                       const isFull = memberCount >= maxCapacity;

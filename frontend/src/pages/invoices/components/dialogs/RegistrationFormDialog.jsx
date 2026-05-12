@@ -306,9 +306,20 @@ export const RegistrationFormDialog = ({
                                 <div className="p-2 space-y-1 max-h-48 overflow-y-auto">
                                   {Object.entries(_grouped[regFormLevelSelectorState[idx].selectedActivity] || {}).map(([timeSlot, timeLevels]) => {
                                     const _itemDays = item.training_days || [];
+                                    const _startDate = item.start_date || '';
+                                    const _isActiveAtStart = (mid, lvlId) => {
+                                      if (!_startDate) return true;
+                                      const mem = (members || []).find(mm => mm.id === mid);
+                                      if (!mem) return true;
+                                      const acts = mem.activities || [];
+                                      const levelActs = acts.filter(a => a.level_id === lvlId);
+                                      const candidates = levelActs.length > 0 ? levelActs : acts;
+                                      return candidates.some(a => !a.end_date || a.end_date >= _startDate);
+                                    };
                                     const _dedupCount = (arr) => new Set((arr || []).map(m => typeof m === 'string' ? m : (m?.id || m?.member_id)).filter(Boolean)).size;
                                     const totalMembers = timeLevels.reduce((sum, l) => {
-                                      const det = (l.members_details || []).filter((m, i, arr) => arr.findIndex(x => (x.id || x.member_id) === (m.id || m.member_id)) === i);
+                                      let det = (l.members_details || []).filter((m, i, arr) => arr.findIndex(x => (x.id || x.member_id) === (m.id || m.member_id)) === i);
+                                      det = det.filter(m => _isActiveAtStart(m.member_id || m.id, l.id));
                                       if (_itemDays.length > 0 && det.length > 0) { const perDay = _itemDays.map(day => det.filter(m => m.schedule && m.schedule.includes(day)).length); return sum + Math.max(...perDay, 0); }
                                       return sum + (det.length > 0 ? det.length : _dedupCount(l.members));
                                     }, 0);
@@ -326,8 +337,19 @@ export const RegistrationFormDialog = ({
                                 <div className="p-2 space-y-1 max-h-48 overflow-y-auto">
                                   {(_grouped[regFormLevelSelectorState[idx].selectedActivity]?.[regFormLevelSelectorState[idx].selectedTime] || []).sort((a, b) => a.level_number - b.level_number).map(level => {
                                     const _days = item.training_days || [];
-                                    const _dedup = (level.members_details || []).filter((m, i, arr) => arr.findIndex(x => (x.id || x.member_id) === (m.id || m.member_id)) === i);
-                                    const _dedupMembersCount = new Set(((level.members) || []).map(m => typeof m === 'string' ? m : (m?.id || m?.member_id)).filter(Boolean)).size;
+                                    const _startDateLv = item.start_date || '';
+                                    const _isActiveAtStartLv = (mid) => {
+                                      if (!_startDateLv) return true;
+                                      const mem = (members || []).find(mm => mm.id === mid);
+                                      if (!mem) return true;
+                                      const acts = mem.activities || [];
+                                      const levelActs = acts.filter(a => a.level_id === level.id);
+                                      const candidates = levelActs.length > 0 ? levelActs : acts;
+                                      return candidates.some(a => !a.end_date || a.end_date >= _startDateLv);
+                                    };
+                                    const _dedupRaw = (level.members_details || []).filter((m, i, arr) => arr.findIndex(x => (x.id || x.member_id) === (m.id || m.member_id)) === i);
+                                    const _dedup = _dedupRaw.filter(m => _isActiveAtStartLv(m.member_id || m.id));
+                                    const _dedupMembersCount = new Set(((level.members) || []).map(m => typeof m === 'string' ? m : (m?.id || m?.member_id)).filter(Boolean).filter(mid => _isActiveAtStartLv(mid))).size;
                                     const memberCount = (_days.length > 0 && _dedup.length > 0) ? Math.max(..._days.map(day => _dedup.filter(m => m.schedule && m.schedule.includes(day)).length), 0) : (_dedup.length > 0 ? _dedup.length : _dedupMembersCount);
                                     const maxCapacity = level.capacity || 10;
                                     const isFull = memberCount >= maxCapacity;
