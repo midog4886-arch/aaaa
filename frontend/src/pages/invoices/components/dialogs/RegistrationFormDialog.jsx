@@ -306,9 +306,11 @@ export const RegistrationFormDialog = ({
                                 <div className="p-2 space-y-1 max-h-48 overflow-y-auto">
                                   {Object.entries(_grouped[regFormLevelSelectorState[idx].selectedActivity] || {}).map(([timeSlot, timeLevels]) => {
                                     const _itemDays = item.training_days || [];
+                                    const _dedupCount = (arr) => new Set((arr || []).map(m => typeof m === 'string' ? m : (m?.id || m?.member_id)).filter(Boolean)).size;
                                     const totalMembers = timeLevels.reduce((sum, l) => {
-                                      if (_itemDays.length > 0 && (l.members_details || []).length > 0) { const det = l.members_details || []; const perDay = _itemDays.map(day => det.filter(m => m.schedule && m.schedule.includes(day)).length); return sum + Math.max(...perDay, 0); }
-                                      return sum + (l.members || []).length;
+                                      const det = (l.members_details || []).filter((m, i, arr) => arr.findIndex(x => (x.id || x.member_id) === (m.id || m.member_id)) === i);
+                                      if (_itemDays.length > 0 && det.length > 0) { const perDay = _itemDays.map(day => det.filter(m => m.schedule && m.schedule.includes(day)).length); return sum + Math.max(...perDay, 0); }
+                                      return sum + (det.length > 0 ? det.length : _dedupCount(l.members));
                                     }, 0);
                                     const totalCapacity = timeLevels.reduce((sum, l) => sum + (l.capacity || 10), 0);
                                     return (
@@ -324,7 +326,9 @@ export const RegistrationFormDialog = ({
                                 <div className="p-2 space-y-1 max-h-48 overflow-y-auto">
                                   {(_grouped[regFormLevelSelectorState[idx].selectedActivity]?.[regFormLevelSelectorState[idx].selectedTime] || []).sort((a, b) => a.level_number - b.level_number).map(level => {
                                     const _days = item.training_days || [];
-                                    const memberCount = (_days.length > 0 && (level.members_details || []).length > 0) ? Math.max(..._days.map(day => (level.members_details || []).filter(m => m.schedule && m.schedule.includes(day)).length), 0) : (level.members || []).length;
+                                    const _dedup = (level.members_details || []).filter((m, i, arr) => arr.findIndex(x => (x.id || x.member_id) === (m.id || m.member_id)) === i);
+                                    const _dedupMembersCount = new Set(((level.members) || []).map(m => typeof m === 'string' ? m : (m?.id || m?.member_id)).filter(Boolean)).size;
+                                    const memberCount = (_days.length > 0 && _dedup.length > 0) ? Math.max(..._days.map(day => _dedup.filter(m => m.schedule && m.schedule.includes(day)).length), 0) : (_dedup.length > 0 ? _dedup.length : _dedupMembersCount);
                                     const maxCapacity = level.capacity || 10;
                                     const isFull = memberCount >= maxCapacity;
                                     const fillPercent = Math.round((memberCount / maxCapacity) * 100);

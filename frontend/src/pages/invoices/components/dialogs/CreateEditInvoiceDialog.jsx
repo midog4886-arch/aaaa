@@ -410,7 +410,7 @@ export const CreateEditInvoiceDialog = ({
                                   {Object.entries(_grouped[levelSelectorState[idx].selectedActivity] || {}).filter(([ts]) => { const h = item.training_time_hour; if (!h) return true; const tsNum = (ts.match(/\d+/) || [])[0]; return tsNum === String(h); }).sort(([a], [b]) => { const na = parseInt((a.match(/\d+/) || [])[0]) || 0; const nb = parseInt((b.match(/\d+/) || [])[0]) || 0; return na - nb; }).map(([timeSlot, timeLevels]) => {
                                     const _itemDays = item.training_days || [];
                                     const totalMembers = timeLevels.reduce((sum, l) => {
-                                      const activeDet = (l.members_details || []).filter(m => m.has_active_sub !== false);
+                                      const activeDet = (l.members_details || []).filter(m => m.has_active_sub !== false).filter((m, i, arr) => arr.findIndex(x => (x.id || x.member_id) === (m.id || m.member_id)) === i);
                                       if (_itemDays.length > 0 && activeDet.length > 0) {
                                         const perDay = _itemDays.map(day => activeDet.filter(m => m.schedule && m.schedule.includes(day)).length);
                                         return sum + Math.max(...perDay, 0);
@@ -431,7 +431,7 @@ export const CreateEditInvoiceDialog = ({
                                 <div className="p-2 space-y-1 max-h-48 overflow-y-auto">
                                   {(_grouped[levelSelectorState[idx].selectedActivity]?.[levelSelectorState[idx].selectedTime] || []).sort((a, b) => a.level_number - b.level_number).map(level => {
                                     const _days = item.training_days || [];
-                                    const _activeDet = (level.members_details || []).filter(m => m.has_active_sub !== false);
+                                    const _activeDet = (level.members_details || []).filter(m => m.has_active_sub !== false).filter((m, i, arr) => arr.findIndex(x => (x.id || x.member_id) === (m.id || m.member_id)) === i);
                                     const memberCount = (_days.length > 0 && _activeDet.length > 0) ? Math.max(..._days.map(day => _activeDet.filter(m => m.schedule && m.schedule.includes(day)).length), 0) : _activeDet.length;
                                     const maxCapacity = level.capacity || 10;
                                     const isFull = memberCount >= maxCapacity;
@@ -741,7 +741,7 @@ export const CreateEditInvoiceDialog = ({
                                                     {Object.entries(_grouped[levelSelectorState[selKey].selectedActivity] || {}).filter(([ts]) => { const h = item.training_time_hour; if (!h) return true; const tsNum = (ts.match(/\d+/) || [])[0]; return tsNum === String(h); }).sort(([a], [b]) => { const na = parseInt((a.match(/\d+/) || [])[0]) || 0; const nb = parseInt((b.match(/\d+/) || [])[0]) || 0; return na - nb; }).map(([timeSlot, timeLevels]) => {
                                                       const _itemDays = item.training_days || [];
                                                       const totalMembers = timeLevels.reduce((sum, l) => {
-                                                        const activeDet = (l.members_details || []).filter(m => m.has_active_sub !== false);
+                                                        const activeDet = (l.members_details || []).filter(m => m.has_active_sub !== false).filter((m, i, arr) => arr.findIndex(x => (x.id || x.member_id) === (m.id || m.member_id)) === i);
                                                         if (_itemDays.length > 0 && activeDet.length > 0) {
                                                           const perDay = _itemDays.map(day => activeDet.filter(m => m.schedule && m.schedule.includes(day)).length);
                                                           return sum + Math.max(...perDay, 0);
@@ -762,7 +762,7 @@ export const CreateEditInvoiceDialog = ({
                                                   <div className="p-2 space-y-1 max-h-48 overflow-y-auto">
                                                     {(_grouped[levelSelectorState[selKey].selectedActivity]?.[levelSelectorState[selKey].selectedTime] || []).sort((a, b) => a.level_number - b.level_number).map(level => {
                                                       const _days = item.training_days || [];
-                                                      const _activeDet = (level.members_details || []).filter(m => m.has_active_sub !== false);
+                                                      const _activeDet = (level.members_details || []).filter(m => m.has_active_sub !== false).filter((m, i, arr) => arr.findIndex(x => (x.id || x.member_id) === (m.id || m.member_id)) === i);
                                                       const memberCount = (_days.length > 0 && _activeDet.length > 0) ? Math.max(..._days.map(day => _activeDet.filter(m => m.schedule && m.schedule.includes(day)).length), 0) : _activeDet.length;
                                                       const maxCapacity = level.capacity || 10;
                                                       const isFull = memberCount >= maxCapacity;
