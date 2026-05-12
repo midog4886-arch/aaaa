@@ -2035,21 +2035,23 @@ ${slotTables}
           )}
           
           {/* Main Header */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <div className="flex items-center gap-3">
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 lg:gap-4">
+            <div className="flex items-center gap-3 min-w-0">
               {currentView !== 'days' && (
                 <Button
                   variant="outline"
                   size="icon"
                   onClick={goBack}
                   className="shrink-0"
+                  aria-label={t('رجوع', 'Back')}
+                  title={t('رجوع', 'Back')}
                   data-testid="back-button"
                 >
                   {language === 'ar' ? <ArrowRight className="w-4 h-4" /> : <ArrowLeft className="w-4 h-4" />}
                 </Button>
               )}
-              <div>
-                <h1 className="text-xl md:text-2xl font-bold text-gray-800 flex items-center gap-2">
+              <div className="min-w-0">
+                <h1 className="text-lg md:text-xl lg:text-2xl font-bold text-gray-800 flex items-center gap-2 truncate">
                   <Layers className="w-6 h-6 text-primary" />
                   {currentView === 'days' && t('المستويات', 'Levels')}
                   {currentView === 'activities' && selectedDay && (language === 'ar' ? WEEKDAYS.find(d => d.id === selectedDay)?.name_ar : WEEKDAYS.find(d => d.id === selectedDay)?.name_en)}
@@ -2069,18 +2071,20 @@ ${slotTables}
                 </p>
               </div>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center flex-wrap gap-2 w-full lg:w-auto lg:justify-end">
               {currentView === 'days' && (
                 <Button
                   variant="outline"
-                  className="gap-2 relative border-red-300 text-red-700 hover:bg-red-50"
+                  size="sm"
+                  className="gap-1.5 relative border-red-300 text-red-700 hover:bg-red-50 text-xs sm:text-sm"
                   onClick={openUnassignedDialog}
                   data-testid="open-unassigned-btn"
                 >
-                  <UserX className="w-4 h-4" />
-                  {t('أعضاء بدون مستوى', 'Members without level')}
+                  <UserX className="w-4 h-4 shrink-0" />
+                  <span className="hidden sm:inline">{t('أعضاء بدون مستوى', 'Members without level')}</span>
+                  <span className="sm:hidden">{t('بدون مستوى', 'No level')}</span>
                   {unassignedCount > 0 && (
-                    <span className="ms-1 inline-flex items-center justify-center min-w-[22px] h-5 px-1.5 rounded-full bg-red-500 text-white text-[11px] font-bold">
+                    <span className="ms-1 inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full bg-red-500 text-white text-[11px] font-bold">
                       {unassignedCount > 99 ? '99+' : unassignedCount}
                     </span>
                   )}
@@ -2090,25 +2094,30 @@ ${slotTables}
                 <>
                   <Button
                     variant="outline"
-                    className="gap-2 border-emerald-300 text-emerald-700 hover:bg-emerald-50"
+                    size="sm"
+                    className="gap-1.5 border-emerald-300 text-emerald-700 hover:bg-emerald-50 text-xs sm:text-sm"
                     onClick={openAutoAssignDialog}
                     data-testid="open-auto-assign-btn"
                   >
-                    <Wand2 className="w-4 h-4" />
-                    {t('إسناد تلقائي للمستويات', 'Auto-assign members')}
+                    <Wand2 className="w-4 h-4 shrink-0" />
+                    <span className="hidden sm:inline">{t('إسناد تلقائي للمستويات', 'Auto-assign members')}</span>
+                    <span className="sm:hidden">{t('إسناد تلقائي', 'Auto-assign')}</span>
                   </Button>
                   <Button
                     variant="outline"
-                    className="gap-2 border-blue-300 text-blue-700 hover:bg-blue-50"
+                    size="sm"
+                    className="gap-1.5 border-blue-300 text-blue-700 hover:bg-blue-50 text-xs sm:text-sm"
                     onClick={() => setScheduleBuilderOpen(true)}
                     data-testid="open-levels-schedule-builder-btn"
                   >
-                    <SlidersHorizontal className="w-4 h-4" />
-                    {t('جدولة المستويات حسب اليوم والساعة', 'Schedule levels by day and hour')}
+                    <SlidersHorizontal className="w-4 h-4 shrink-0" />
+                    <span className="hidden sm:inline">{t('جدولة المستويات حسب اليوم والساعة', 'Schedule levels by day and hour')}</span>
+                    <span className="sm:hidden">{t('جدولة', 'Schedule')}</span>
                   </Button>
                   <Button
                     variant="outline"
-                    className="gap-2 border-amber-300 text-amber-700 hover:bg-amber-50"
+                    size="sm"
+                    className="gap-1.5 border-amber-300 text-amber-700 hover:bg-amber-50 text-xs sm:text-sm"
                     onClick={async () => {
                       if (!window.confirm(t('سيتم حذف الأعضاء المكررين من جميع المستويات نهائياً. هل تريد المتابعة؟', 'Duplicate member entries will be permanently removed from all levels. Continue?'))) return;
                       try {
@@ -2122,13 +2131,14 @@ ${slotTables}
                     }}
                     data-testid="open-levels-cleanup-duplicates-btn"
                   >
-                    <Trash2 className="w-4 h-4" />
-                    {t('تنظيف الأعضاء المكررين', 'Clean duplicate members')}
+                    <Trash2 className="w-4 h-4 shrink-0" />
+                    <span className="hidden sm:inline">{t('تنظيف الأعضاء المكررين', 'Clean duplicate members')}</span>
+                    <span className="sm:hidden">{t('تنظيف المكررات', 'Dedupe')}</span>
                   </Button>
                   <Button
                     variant="ghost"
                     size="sm"
-                    className="gap-1 text-gray-400 hover:text-gray-600 hover:bg-gray-100 text-xs underline-offset-2 hover:underline"
+                    className="gap-1 text-gray-400 hover:text-gray-600 hover:bg-gray-100 text-[11px] sm:text-xs underline-offset-2 hover:underline"
                     onClick={() => setCleanupOpen(true)}
                     data-testid="open-levels-cleanup-btn"
                     title={t(
@@ -2142,29 +2152,33 @@ ${slotTables}
               )}
               <Button
                 variant="outline"
-                className="gap-2"
+                size="sm"
+                className="gap-1.5 text-xs sm:text-sm"
                 onClick={() => setIsPrintDialogOpen(true)}
               >
-                <Printer className="w-4 h-4" />
-                {t('طباعة الجدول', 'Print Schedule')}
+                <Printer className="w-4 h-4 shrink-0" />
+                <span className="hidden sm:inline">{t('طباعة الجدول', 'Print Schedule')}</span>
+                <span className="sm:hidden">{t('طباعة', 'Print')}</span>
               </Button>
               {currentView === 'activities' && (
                 <Button
+                  size="sm"
                   onClick={() => openAddTimeSlotDialog()}
-                  className="gap-2"
+                  className="gap-1.5 text-xs sm:text-sm"
                   data-testid="add-activity-btn"
                 >
-                  <Plus className="w-4 h-4" />
+                  <Plus className="w-4 h-4 shrink-0" />
                   {t('إضافة نشاط', 'Add Activity')}
                 </Button>
               )}
               {currentView === 'times' && (
                 <Button
+                  size="sm"
                   onClick={() => openAddTimeSlotDialog(selectedActivityId)}
-                  className="gap-2"
+                  className="gap-1.5 text-xs sm:text-sm"
                   data-testid="add-timeslot-btn"
                 >
-                  <Plus className="w-4 h-4" />
+                  <Plus className="w-4 h-4 shrink-0" />
                   {t('إضافة ساعة', 'Add Time Slot')}
                 </Button>
               )}
