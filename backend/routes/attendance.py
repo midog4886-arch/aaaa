@@ -526,8 +526,6 @@ async def get_today_summary(
         mid = r.get("member_id")
         if not mid or mid not in active_member_ids:
             continue
-        if mid not in members_with_active_sub:
-            continue
         if mid not in present_by_member:
             m_doc = members_by_id.get(mid, {})
             present_by_member[mid] = {
@@ -664,7 +662,7 @@ async def get_today_summary(
     by_branch = {}
     by_activity = {}
     for r in today_records:
-        if r.get("member_id") not in members_with_active_sub:
+        if r.get("member_id") not in active_member_ids:
             continue
         b = r.get("branch_id", "")
         by_branch[b] = by_branch.get(b, 0) + 1
@@ -680,7 +678,7 @@ async def get_today_summary(
         "expected_count": len(expected),
         "absent_count": len(absent),
         "present": present_list,
-        "present_records": [r for r in today_records if r.get("member_id") in members_with_active_sub],
+        "present_records": [r for r in today_records if r.get("member_id") in active_member_ids],
         "expected": expected,
         "absent": absent,
         "by_branch": by_branch,
