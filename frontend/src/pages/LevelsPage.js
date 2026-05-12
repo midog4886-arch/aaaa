@@ -1265,11 +1265,28 @@ ${slotTables}
       return;
     }
     
-    // Check capacity
+    // Check capacity — mirror the renderLevelCard logic so we count the
+    // same active, deduped enrollments that the user sees on the card
+    // (members_details deduped by member_id, then drop expired/stub).
     const { mainActivity } = parseActivityName(targetLevel.activity_name);
-    const _rawIds = (targetLevel.members || []).map(m => typeof m === 'string' ? m : (m?.id || m?.member_id)).filter(Boolean);
-    const currentCount = new Set(_rawIds).size;
+    const _seen = new Set();
+    const _activeIds = [];
+    for (const md of (targetLevel.members_details || [])) {
+      const mid = md?.member_id || md?.id;
+      if (!mid || _seen.has(mid)) continue;
+      _seen.add(mid);
+      const full = members.find(m => m.id === mid);
+      if (!full) continue;
+      if ((full.activities || []).some(isActivityNonExpired)) _activeIds.push(mid);
+    }
+    const currentCount = _activeIds.length;
     const maxCapacity = targetLevel.capacity || (mainActivity === 'swimming' ? 6 : 10);
+    if (_activeIds.includes(draggedMember.id)) {
+      toast.info(t('اللاعب موجود بالفعل في هذا المستوى', 'Player already in this level'));
+      setDraggedMember(null);
+      setDraggedFromLevel(null);
+      return;
+    }
     
     if (currentCount >= maxCapacity) {
       toast.error(t(`المستوى ممتلئ (الحد الأقصى ${maxCapacity})`, `Level is full (max ${maxCapacity})`));
