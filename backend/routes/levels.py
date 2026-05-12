@@ -618,19 +618,42 @@ async def get_unassigned_count(
 
 @router.get("/{level_id}/count")
 async def get_level_member_count(level_id: str, current_user: dict = Depends(get_current_user)):
-    """Get the count of members in a level"""
-    level = await db.levels.find_one({"id": level_id}, {"_id": 0, "members": 1, "level_number": 1, "activity_name": 1})
+    """Get the count of members in a level (deduplicated, using actual capacity)."""
+    level = await db.levels.find_one(
+        {"id": level_id},
+        {"_id": 0, "members": 1, "level_number": 1, "activity_name": 1, "capacity": 1}
+    )
     if not level:
         raise HTTPException(status_code=404, detail="Level not found")
-    
-    member_count = len(level.get("members", []))
+
+    raw_members = level.get("members", []) or []
+    seen = set()
+    for m in raw_members:
+        if isinstance(m, str):
+            key = m
+        elif isinstance(m, dict):
+            key = m.get("id") or m.get("member_id")
+        else:
+            key = None
+        if not key or key in seen:
+            continue
+        seen.add(key)
+    member_count = len(seen)
+
+    activity_name = (level.get("activity_name") or "").lower()
+    default_capacity = 6 if "swim" in activity_name or "سباح" in activity_name else 10
+    try:
+        max_capacity = int(level.get("capacity") or default_capacity)
+    except (TypeError, ValueError):
+        max_capacity = default_capacity
+
     return {
         "level_id": level_id,
         "level_number": level.get("level_number"),
         "activity_name": level.get("activity_name"),
         "member_count": member_count,
-        "is_full": member_count >= 7,
-        "max_capacity": 7
+        "is_full": member_count >= max_capacity,
+        "max_capacity": max_capacity,
     }
 
 
