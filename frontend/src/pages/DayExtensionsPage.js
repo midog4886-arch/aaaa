@@ -227,9 +227,10 @@ export default function DayExtensionsPage() {
       toast.success(t('تم فتح واتساب', 'WhatsApp opened'));
       return;
     }
+    setShowPreviewDialog(false);
     setWaQueue(queue);
     setWaQueueIdx(1);
-    toast.success(t(`تم فتح 1 من ${queue.length}. اضغط "التالي" للمتابعة`, `Opened 1 of ${queue.length}. Click "Next" to continue`));
+    toast.success(t(`تم فتح 1 من ${queue.length}. اضغط "فتح التالي" بالأسفل للمتابعة`, `Opened 1 of ${queue.length}. Click "Open Next" at the bottom to continue`));
   };
 
   const sendNextInQueue = () => {
@@ -332,7 +333,7 @@ export default function DayExtensionsPage() {
   return (
     <Layout>
       {waQueue.length > 0 && (
-        <div className="fixed bottom-4 inset-x-4 z-50 mx-auto max-w-md bg-card border-2 border-primary shadow-2xl rounded-xl p-3" dir={language === 'ar' ? 'rtl' : 'ltr'}>
+        <div className="fixed bottom-4 inset-x-4 z-[100] mx-auto max-w-md bg-card border-2 border-primary shadow-2xl rounded-xl p-3" dir={language === 'ar' ? 'rtl' : 'ltr'}>
           <div className="flex items-center justify-between mb-2">
             <span className="text-sm font-bold">{t('قائمة إرسال واتساب', 'WhatsApp send queue')}</span>
             <span className="text-xs text-muted-foreground">{waQueueIdx} / {waQueue.length}</span>
