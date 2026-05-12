@@ -6,11 +6,74 @@ import { Label } from '../../../../components/ui/label';
 import { Badge } from '../../../../components/ui/badge';
 import { Card } from '../../../../components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../../../components/ui/select';
+import { Popover, PopoverContent, PopoverTrigger } from '../../../../components/ui/popover';
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '../../../../components/ui/command';
 import { Textarea } from '../../../../components/ui/textarea';
-import { FileText, Plus, Printer, Trash2, UserPlus, X } from 'lucide-react';
+import { CheckCircle, ChevronsUpDown, FileText, Plus, Printer, Trash2, UserPlus, X } from 'lucide-react';
 import { MAIN_ACTIVITIES_FOR_LEVELS } from '../../constants';
 import { membersAPI } from '../../../../services/api';
 import { toast } from 'sonner';
+
+const MemberCombobox = ({ members, selectedLabel, onSelect, onAddNew, language }) => {
+  const [open, setOpen] = React.useState(false);
+  const list = (members || []).filter(m => m.id);
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          type="button"
+          variant="outline"
+          role="combobox"
+          aria-expanded={open}
+          className="w-full flex-1 justify-between font-normal"
+          data-testid="regform-member-combobox-trigger"
+        >
+          <span className="truncate text-start">{selectedLabel || (language === 'ar' ? 'اختر عضو...' : 'Select member...')}</span>
+          <ChevronsUpDown className="w-4 h-4 opacity-50 shrink-0 ms-2" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
+        <Command
+          filter={(value, search) => {
+            if (!search) return 1;
+            return value.toLowerCase().includes(search.toLowerCase()) ? 1 : 0;
+          }}
+        >
+          <CommandInput
+            placeholder={language === 'ar' ? 'بحث بالاسم أو الجوال أو الرقم...' : 'Search by name, phone, or ID...'}
+            className="h-9"
+          />
+          <CommandList className="max-h-72">
+            <CommandEmpty>{language === 'ar' ? 'لا توجد نتائج' : 'No results'}</CommandEmpty>
+            <CommandGroup>
+              <CommandItem
+                value="__new__"
+                onSelect={() => { onAddNew(); setOpen(false); }}
+                className="text-primary font-medium"
+              >
+                <Plus className="w-4 h-4 inline me-2" />
+                {language === 'ar' ? '+ إضافة عضو جديد' : '+ Add New Member'}
+              </CommandItem>
+              {list.map(m => {
+                const search = `${m.member_id || ''} ${m.name_ar || ''} ${m.name || ''} ${m.phone || ''}`;
+                return (
+                  <CommandItem
+                    key={m.id}
+                    value={search}
+                    onSelect={() => { onSelect(m); setOpen(false); }}
+                  >
+                    {m.member_id && <span className="font-mono text-primary font-semibold me-1">#{m.member_id}</span>}
+                    {(language === 'ar' ? (m.name_ar || m.name) : (m.name || m.name_ar)) || ''} - {m.phone}
+                  </CommandItem>
+                );
+              })}
+            </CommandGroup>
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
+  );
+};
 
 export const RegistrationFormDialog = ({
   isOpen, onOpenChange,
@@ -54,23 +117,13 @@ export const RegistrationFormDialog = ({
             <div className="space-y-2">
               <Label>{language === 'ar' ? 'اسم المشترك *' : 'Customer Name *'}</Label>
               <div className="flex gap-2">
-                <Select onValueChange={(val) => {
-                  if (val === 'new') { setAddMemberSource('registration'); setIsAddMemberDialogOpen(true); }
-                  else {
-                    const member = members.find(m => m.id === val);
-                    if (member) setRegFormData({ ...regFormData, customer_name: member.name_ar || member.name, customer_phone: member.phone || '' });
-                  }
-                }}>
-                  <SelectTrigger className="flex-1">
-                    <SelectValue placeholder={regFormData.customer_name || (language === 'ar' ? 'اختر عضو...' : 'Select member...')} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="new" className="text-primary font-semibold">
-                      <span className="flex items-center gap-2"><Plus className="w-4 h-4" />{language === 'ar' ? '+ إضافة عضو جديد' : '+ Add New Member'}</span>
-                    </SelectItem>
-                    {(members || []).map(m => <SelectItem key={m.id} value={m.id}>{m.member_id && <span className="font-mono text-primary font-semibold me-1">#{m.member_id}</span>}{m.name_ar || m.name} - {m.phone}</SelectItem>)}
-                  </SelectContent>
-                </Select>
+                <MemberCombobox
+                  members={members}
+                  selectedLabel={regFormData.customer_name}
+                  onSelect={(member) => setRegFormData({ ...regFormData, customer_name: member.name_ar || member.name, customer_phone: member.phone || '' })}
+                  onAddNew={() => { setAddMemberSource('registration'); setIsAddMemberDialogOpen(true); }}
+                  language={language}
+                />
               </div>
             </div>
             <div className="space-y-2">
