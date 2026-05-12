@@ -21,6 +21,39 @@ def _safe_work_days(val) -> int:
         return 30
 
 
+def _safe_non_negative_float(val, default: float = 0.0) -> float:
+    """Coerce a raw DB value to a non-negative float.
+
+    Accepts numbers and numeric strings; returns ``default`` for None,
+    invalid strings, or any non-coercible type. Negative values are
+    clamped to 0 so unexpected raw data cannot inflate or invert the
+    salary calculation.
+    """
+    if val is None:
+        return default
+    try:
+        result = float(val)
+    except (ValueError, TypeError):
+        return default
+    if result != result or result in (float("inf"), float("-inf")):
+        return default
+    if result < 0:
+        return 0.0
+    return result
+
+
+def _safe_checkin_threshold(val) -> str:
+    """Return a valid ``HH:MM`` threshold string, defaulting to ``09:00``."""
+    if val is None:
+        return "09:00"
+    try:
+        s = str(val)
+        datetime.strptime(s, "%H:%M")
+        return s
+    except (ValueError, TypeError):
+        return "09:00"
+
+
 def _branch_scope_filter(effective_branch: Optional[str]) -> dict:
     if not effective_branch:
         return {}
@@ -71,12 +104,8 @@ async def _ensure_indexes():
 
 
 def _compute_attendance_stats(coach: dict, attendance_records: List[dict]) -> Dict[str, Any]:
-    threshold_str = coach.get("expected_checkin_time") or "09:00"
-    try:
-        threshold_dt = datetime.strptime(threshold_str, "%H:%M")
-    except Exception:
-        threshold_dt = datetime.strptime("09:00", "%H:%M")
-        threshold_str = "09:00"
+    threshold_str = _safe_checkin_threshold(coach.get("expected_checkin_time"))
+    threshold_dt = datetime.strptime(threshold_str, "%H:%M")
 
     try:
         raw = coach.get("monthly_work_days")
@@ -156,9 +185,9 @@ async def list_salaries(
     rows: List[dict] = []
     for coach in coaches:
         cid = coach["id"]
-        base_salary = float(coach.get("base_salary") or 0)
-        daily_rate = float(coach.get("daily_deduction_rate") or 0)
-        late_rate = float(coach.get("late_minute_rate") or 0)
+        base_salary = _safe_non_negative_float(coach.get("base_salary"))
+        daily_rate = _safe_non_negative_float(coach.get("daily_deduction_rate"))
+        late_rate = _safe_non_negative_float(coach.get("late_minute_rate"))
         stats = _compute_attendance_stats(coach, attendance)
         contract_type = stats["contract_type"]
         monthly_work_days = stats["monthly_work_days"]
@@ -279,9 +308,9 @@ async def save_salary_draft(
     if existing and existing.get("status") == "disbursed":
         raise HTTPException(status_code=400, detail="هذا الراتب مصروف بالفعل ولا يمكن تعديله. ألغِ الصرف أولاً.")
 
-    base_salary = float(coach.get("base_salary") or 0)
-    daily_rate = float(coach.get("daily_deduction_rate") or 0)
-    late_rate = float(coach.get("late_minute_rate") or 0)
+    base_salary = _safe_non_negative_float(coach.get("base_salary"))
+    daily_rate = _safe_non_negative_float(coach.get("daily_deduction_rate"))
+    late_rate = _safe_non_negative_float(coach.get("late_minute_rate"))
 
     att_query = {"date": {"$regex": f"^{data.year_month}"}, "coach_id": data.coach_id}
     attendance = await db.coach_attendance.find(att_query, {"_id": 0}).to_list(5000)

@@ -11,7 +11,11 @@ import uuid
 from datetime import datetime
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-from routes.coach_salaries import _compute_attendance_stats
+from routes.coach_salaries import (
+    _compute_attendance_stats,
+    _safe_non_negative_float,
+    _safe_checkin_threshold,
+)
 from routes.coaches import CoachBase
 
 
@@ -408,6 +412,104 @@ class TestSalaryDeductionCalculation:
         assert stats["absent_days"] == 22
         assert deduction_absent == 4400
         assert net == 600
+
+    def test_base_salary_none_treated_as_zero(self):
+        coach = {
+            "id": "c1",
+            "expected_checkin_time": "09:00",
+            "monthly_work_days": 26,
+            "contract_type": "full_time",
+            "base_salary": None,
+            "daily_deduction_rate": 100,
+            "late_minute_rate": 0,
+        }
+        records = [{"coach_id": "c1", "status": "present"} for _ in range(20)]
+        stats = _compute_attendance_stats(coach, records)
+        base = _safe_non_negative_float(coach["base_salary"])
+        daily_rate = _safe_non_negative_float(coach["daily_deduction_rate"])
+        net = base - stats["absent_days"] * daily_rate
+        assert base == 0.0
+        assert net == -600
+
+    def test_base_salary_negative_clamped_to_zero(self):
+        assert _safe_non_negative_float(-5000) == 0.0
+
+    def test_base_salary_invalid_string_defaults_to_zero(self):
+        assert _safe_non_negative_float("not-a-number") == 0.0
+
+    def test_base_salary_numeric_string_parsed(self):
+        assert _safe_non_negative_float("4500") == 4500.0
+        assert _safe_non_negative_float("4500.50") == 4500.50
+
+    def test_daily_rate_negative_clamped(self):
+        assert _safe_non_negative_float(-25) == 0.0
+
+    def test_daily_rate_invalid_string_defaults_to_zero(self):
+        assert _safe_non_negative_float("abc") == 0.0
+
+    def test_late_rate_none_defaults_to_zero(self):
+        assert _safe_non_negative_float(None) == 0.0
+
+    def test_late_rate_invalid_string_defaults_to_zero(self):
+        assert _safe_non_negative_float("xx") == 0.0
+
+    def test_late_rate_negative_clamped(self):
+        assert _safe_non_negative_float(-2.5) == 0.0
+
+    def test_safe_float_nan_defaults(self):
+        assert _safe_non_negative_float(float("nan")) == 0.0
+
+    def test_safe_float_infinity_defaults(self):
+        assert _safe_non_negative_float(float("inf")) == 0.0
+        assert _safe_non_negative_float(float("-inf")) == 0.0
+
+    def test_safe_float_zero_passthrough(self):
+        assert _safe_non_negative_float(0) == 0.0
+        assert _safe_non_negative_float(0.0) == 0.0
+
+    def test_safe_float_custom_default(self):
+        assert _safe_non_negative_float(None, default=100.0) == 100.0
+        assert _safe_non_negative_float("bad", default=100.0) == 100.0
+
+    def test_expected_checkin_none_defaults_to_0900(self):
+        assert _safe_checkin_threshold(None) == "09:00"
+
+    def test_expected_checkin_empty_string_defaults_to_0900(self):
+        assert _safe_checkin_threshold("") == "09:00"
+
+    def test_expected_checkin_invalid_string_defaults(self):
+        assert _safe_checkin_threshold("not-a-time") == "09:00"
+
+    def test_expected_checkin_non_string_type_defaults(self):
+        assert _safe_checkin_threshold(900) == "09:00"
+        assert _safe_checkin_threshold([]) == "09:00"
+
+    def test_expected_checkin_valid_passes_through(self):
+        assert _safe_checkin_threshold("08:30") == "08:30"
+
+    def test_compute_stats_with_none_checkin_threshold(self):
+        coach = {
+            "id": "c1",
+            "expected_checkin_time": None,
+            "monthly_work_days": 26,
+            "contract_type": "full_time",
+        }
+        records = [{"coach_id": "c1", "status": "present", "check_in_time": "09:30"}]
+        stats = _compute_attendance_stats(coach, records)
+        assert stats["threshold"] == "09:00"
+        assert stats["late_minutes"] == 30
+
+    def test_compute_stats_with_invalid_checkin_threshold_type(self):
+        coach = {
+            "id": "c1",
+            "expected_checkin_time": 900,
+            "monthly_work_days": 26,
+            "contract_type": "full_time",
+        }
+        records = [{"coach_id": "c1", "status": "present", "check_in_time": "09:15"}]
+        stats = _compute_attendance_stats(coach, records)
+        assert stats["threshold"] == "09:00"
+        assert stats["late_minutes"] == 15
 
     def test_late_deduction_combined_with_absence(self):
         coach = {
