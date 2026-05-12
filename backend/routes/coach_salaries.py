@@ -833,6 +833,16 @@ async def salaries_report(
     coach_rows: List[Dict[str, Any]] = []
     for cid, b in rows_by_coach.items():
         b["history"].sort(key=lambda h: h.get("year_month") or "")
+        coach_doc = coaches_by_id.get(cid) or {}
+        ct_coach = coach_doc.get("contract_type") if coach_doc.get("contract_type") in ("full_time", "part_time") else None
+        if b["history"]:
+            ct_latest = b["history"][-1].get("contract_type")
+            wd_latest = b["history"][-1].get("monthly_work_days")
+        else:
+            ct_latest = None
+            wd_latest = None
+        b["contract_type"] = ct_latest or ct_coach or "full_time"
+        b["monthly_work_days"] = wd_latest or _safe_work_days(coach_doc.get("monthly_work_days"))
         b["pending_advances_total"] = round(pending_by_coach.get(cid, 0.0), 2)
         b["pending_advances_count"] = pending_count_by_coach.get(cid, 0)
         b["total_deductions"] = round(
@@ -896,11 +906,13 @@ async def salaries_report(
         ws.append([])
 
         headers_row = [
-            "م", "المدرب", "أشهر مسجّلة", "أشهر مصروفة",
+            "م", "المدرب", "نوع التعاقد", "أيام العمل الشهرية",
+            "أشهر مسجّلة", "أشهر مصروفة",
             "إجمالي الراتب الأساسي", "إجمالي الخصومات",
             "إجمالي السُلف المخصومة", "إجمالي المصروف",
             "السُلف المعلّقة", "أيام الغياب", "متوسط دقائق التأخر",
         ]
+        contract_labels_summary = {"full_time": "دوام كامل", "part_time": "دوام جزئي"}
         for col_idx in range(1, len(headers_row) + 1):
             ws.cell(row=1, column=col_idx).font = Font(bold=True, size=13)
         ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=len(headers_row))
@@ -923,6 +935,8 @@ async def salaries_report(
             ws.append([
                 i,
                 r["coach_name"],
+                contract_labels_summary.get(r.get("contract_type") or "full_time", r.get("contract_type") or ""),
+                r.get("monthly_work_days") or 30,
                 r["months_recorded"],
                 r["months_disbursed"],
                 r["total_base"],
@@ -943,7 +957,7 @@ async def salaries_report(
 
         # Totals row
         totals_row = [
-            "", "الإجمالي", "", "",
+            "", "الإجمالي", "", "", "", "",
             totals["total_base"], totals["total_deductions"],
             totals["total_advances_repaid"], totals["total_net_disbursed"],
             totals["pending_advances_total"], totals["absent_days_total"], "",
@@ -958,7 +972,7 @@ async def salaries_report(
             cell.border = border
             cell.alignment = center if col_idx != 2 else right_align
 
-        widths = [5, 26, 12, 14, 18, 16, 18, 16, 16, 12, 18]
+        widths = [5, 26, 14, 14, 12, 14, 18, 16, 18, 16, 16, 12, 18]
         for idx, w in enumerate(widths, 1):
             ws.column_dimensions[ws.cell(row=1, column=idx).column_letter].width = w
 
@@ -1071,10 +1085,13 @@ async def salaries_report(
     pdf_headers = [
         "متوسط دقائق التأخر", "أيام الغياب", "السُلف المعلّقة",
         "إجمالي المصروف", "إجمالي السُلف", "إجمالي الخصومات",
-        "إجمالي الراتب", "أشهر مصروفة", "أشهر مسجّلة", "المدرب", "م",
+        "إجمالي الراتب", "أشهر مصروفة", "أشهر مسجّلة",
+        "أيام العمل", "نوع التعاقد", "المدرب", "م",
     ]
+    contract_labels_pdf = {"full_time": "دوام كامل", "part_time": "دوام جزئي"}
     data = [[Paragraph(h, hdr_style) for h in pdf_headers]]
     for i, r in enumerate(coach_rows, 1):
+        ct = r.get("contract_type") or "full_time"
         data.append([
             Paragraph(f"{r['late_minutes_avg']}", cell_style),
             Paragraph(str(r["absent_days_total"]), cell_style),
@@ -1085,6 +1102,8 @@ async def salaries_report(
             Paragraph(f"{r['total_base']:,.2f}", cell_style),
             Paragraph(str(r["months_disbursed"]), cell_style),
             Paragraph(str(r["months_recorded"]), cell_style),
+            Paragraph(str(r.get("monthly_work_days") or 30), cell_style),
+            Paragraph(contract_labels_pdf.get(ct, ct), cell_style),
             Paragraph(r["coach_name"], cell_style),
             Paragraph(str(i), cell_style),
         ])
@@ -1098,11 +1117,13 @@ async def salaries_report(
         Paragraph(f"{totals['total_base']:,.2f}", cell_style),
         Paragraph("", cell_style),
         Paragraph("", cell_style),
+        Paragraph("", cell_style),
+        Paragraph("", cell_style),
         Paragraph("الإجمالي", cell_style),
         Paragraph("", cell_style),
     ])
 
-    col_widths_pdf = [22*mm, 18*mm, 24*mm, 26*mm, 24*mm, 26*mm, 26*mm, 18*mm, 18*mm, 42*mm, 8*mm]
+    col_widths_pdf = [20*mm, 16*mm, 22*mm, 24*mm, 22*mm, 24*mm, 24*mm, 16*mm, 16*mm, 14*mm, 18*mm, 38*mm, 8*mm]
     table = Table(data, colWidths=col_widths_pdf, repeatRows=1)
     table.setStyle(TableStyle([
         ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#F97316')),
