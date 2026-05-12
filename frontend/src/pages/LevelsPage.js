@@ -1266,12 +1266,15 @@ ${slotTables}
     }
     
     // Check capacity — mirror the renderLevelCard logic so we count the
-    // same active, deduped enrollments that the user sees on the card
-    // (members_details deduped by member_id, then drop expired/stub).
+    // same active, deduped enrollments that the user sees on the card.
+    // renderLevelCard runs the level through getFilteredLevelForDay first,
+    // so capacity is evaluated against the currently-selected day's
+    // members only (not the all-days roster).
     const { mainActivity } = parseActivityName(targetLevel.activity_name);
+    const _filteredTarget = getFilteredLevelForDay(targetLevel);
     const _seen = new Set();
     const _activeIds = [];
-    for (const md of (targetLevel.members_details || [])) {
+    for (const md of (_filteredTarget.members_details || [])) {
       const mid = md?.member_id || md?.id;
       if (!mid || _seen.has(mid)) continue;
       _seen.add(mid);
