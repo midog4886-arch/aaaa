@@ -3028,10 +3028,8 @@ ${slotTables}
                   <div className="flex-1 overflow-y-auto p-2 space-y-1">
                     {getLevelMembers(selectedLevel || {}).map(member => {
                       const guardian = getGuardianDisplay(member);
-                      // Show every non-expired active subscription for the
-                      // member so admins can see exactly what they're enrolled
-                      // in (activity name, schedule/days, end date).
                       const activeActs = (member.activities || []).filter(isActivityNonExpired);
+                      const memberAllLevels = (memberLevelsMap[member.id] || []);
                       return (
                       <div 
                         key={member.id}
@@ -3052,6 +3050,22 @@ ${slotTables}
                             </p>
                           )}
                           <p className="text-xs text-gray-500">#{member.member_code}{member.phone ? ` • ${member.phone}` : ''}</p>
+                          {memberAllLevels.length > 0 && (
+                            <div className="mt-0.5 flex flex-wrap gap-1">
+                              {memberAllLevels.map(lv => {
+                                const isCurrent = selectedLevel && lv.id === selectedLevel.id;
+                                return (
+                                  <span
+                                    key={lv.id}
+                                    className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded border text-[10px] ${isCurrent ? 'bg-orange-100 text-orange-800 border-orange-300' : 'bg-amber-100 text-amber-800 border-amber-200'}`}
+                                  >
+                                    <Layers className="w-3 h-3" />
+                                    {lv.label}
+                                  </span>
+                                );
+                              })}
+                            </div>
+                          )}
                           {activeActs.length > 0 && (
                             <div className="mt-1 space-y-0.5">
                               {activeActs.map((a, idx) => {
