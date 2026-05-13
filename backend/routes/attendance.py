@@ -521,6 +521,17 @@ async def get_today_summary(
     members_with_active_sub = {mid for mid in active_member_ids if _has_active_subscription(mid)}
     members_by_id = {m.get("id"): m for m in members if m.get("id")}
 
+    member_activity_schedule = {}
+    for m in members:
+        mid_m = m.get("id")
+        if not mid_m:
+            continue
+        for act in (m.get("activities") or []):
+            aid = act.get("activity_id", "")
+            sch = act.get("schedule", "")
+            if aid and sch:
+                member_activity_schedule[(mid_m, aid)] = sch
+
     present_by_member = {}
     for r in today_records:
         mid = r.get("member_id")
@@ -546,6 +557,7 @@ async def get_today_summary(
             "activity_id": r.get("activity_id", ""),
             "activity_name": r.get("activity_name", ""),
             "check_in_time": r.get("check_in_time", ""),
+            "schedule": member_activity_schedule.get((mid, r.get("activity_id", "")), ""),
         })
         present_by_member[mid]["records"].append(r)
 
