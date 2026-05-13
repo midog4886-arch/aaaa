@@ -521,7 +521,36 @@ async def get_today_summary(
     members_with_active_sub = {mid for mid in active_member_ids if _has_active_subscription(mid)}
     members_by_id = {m.get("id"): m for m in members if m.get("id")}
 
+    def _hour_12(text):
+        if not text:
+            return None
+        import re as _re
+        s = str(text)
+        s = s.translate(str.maketrans("٠١٢٣٤٥٦٧٨٩", "0123456789"))
+        mt = _re.search(r"(\d{1,2})", s)
+        if not mt:
+            return None
+        h = int(mt.group(1))
+        if not (0 <= h <= 23):
+            return None
+        if h == 0:
+            return 12
+        if h <= 12:
+            return h
+        return h - 12
+
+    levels_docs = await db.levels.find({}, {"_id": 0, "id": 1, "time_slot": 1, "activity_name": 1, "name": 1}).to_list(2000)
+    level_hour_by_id = {}
+    for lv in levels_docs:
+        lvid = lv.get("id")
+        if not lvid:
+            continue
+        h = _hour_12(lv.get("time_slot")) or _hour_12(lv.get("activity_name")) or _hour_12(lv.get("name"))
+        if h is not None:
+            level_hour_by_id[lvid] = h
+
     member_activity_schedule = {}
+    member_activity_levelid = {}
     for m in members:
         mid_m = m.get("id")
         if not mid_m:
@@ -529,8 +558,17 @@ async def get_today_summary(
         for act in (m.get("activities") or []):
             aid = act.get("activity_id", "")
             sch = act.get("schedule", "")
+            lvid = act.get("level_id", "")
             if aid and sch:
                 member_activity_schedule[(mid_m, aid)] = sch
+            if aid and lvid:
+                member_activity_levelid[(mid_m, aid)] = lvid
+
+    def _activity_hour(mid_, aid_, sched_=""):
+        lvid = member_activity_levelid.get((mid_, aid_))
+        if lvid and lvid in level_hour_by_id:
+            return level_hour_by_id[lvid]
+        return _hour_12(sched_)
 
     present_by_member = {}
     for r in today_records:
@@ -553,11 +591,14 @@ async def get_today_summary(
                 "activities": [],
                 "records": [],
             }
+        aid_p = r.get("activity_id", "")
+        sched_p = member_activity_schedule.get((mid, aid_p), "")
         present_by_member[mid]["activities"].append({
-            "activity_id": r.get("activity_id", ""),
+            "activity_id": aid_p,
             "activity_name": r.get("activity_name", ""),
             "check_in_time": r.get("check_in_time", ""),
-            "schedule": member_activity_schedule.get((mid, r.get("activity_id", "")), ""),
+            "schedule": sched_p,
+            "hour": _activity_hour(mid, aid_p, sched_p),
         })
         present_by_member[mid]["records"].append(r)
 
@@ -620,6 +661,7 @@ async def get_today_summary(
                     "activity_id": aid,
                     "activity_name": act.get("activity_name", ""),
                     "schedule": act.get("schedule", ""),
+                    "hour": _activity_hour(mid, aid, act.get("schedule", "")),
                 })
 
         for inv in invoices_by_member.get(mid, []):
@@ -632,10 +674,13 @@ async def get_today_summary(
                     continue
                 days = parse_schedule_days(item.get("schedule", ""))
                 if today_day in days:
+                    iaid = item.get("activity_id", "")
+                    isch = item.get("schedule", "")
                     scheduled_activities.append({
-                        "activity_id": item.get("activity_id", ""),
+                        "activity_id": iaid,
                         "activity_name": item.get("activity_name", ""),
-                        "schedule": item.get("schedule", ""),
+                        "schedule": isch,
+                        "hour": _activity_hour(mid, iaid, isch),
                     })
 
         seen_act = set()

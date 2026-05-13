@@ -27,17 +27,16 @@ const TodayAttendancePage = () => {
   const ARABIC_DIGITS = { '٠':'0','١':'1','٢':'2','٣':'3','٤':'4','٥':'5','٦':'6','٧':'7','٨':'8','٩':'9' };
   const normalizeDigits = (s) => (s || '').replace(/[٠-٩]/g, d => ARABIC_DIGITS[d] || d);
 
-  const extractHourLabel = (sched) => {
-    const s = normalizeDigits(sched);
-    const m = s.match(/(\d{1,2})\s*[:.]?\s*(\d{0,2})?\s*(ص|م|am|pm|AM|PM)?/);
-    if (!m) return '';
-    const hour = parseInt(m[1], 10);
-    if (isNaN(hour)) return '';
-    const period = (m[3] || '').toLowerCase();
-    let suffix = '';
-    if (period === 'م' || period === 'pm') suffix = ar ? 'م' : 'PM';
-    else if (period === 'ص' || period === 'am') suffix = ar ? 'ص' : 'AM';
-    return suffix ? `${hour}:00 ${suffix}` : `${hour}:00`;
+  const hourLabel = (h) => {
+    if (h === null || h === undefined || h === '') return '';
+    const n = parseInt(h, 10);
+    if (isNaN(n) || n < 1 || n > 12) return '';
+    return ar ? `الساعة ${n}` : `Hour ${n}`;
+  };
+
+  const activityHour = (a) => {
+    if (a && (a.hour !== null && a.hour !== undefined && a.hour !== '')) return parseInt(a.hour, 10);
+    return null;
   };
 
   const formatSchedule = (sched) => normalizeDigits(sched || '').trim();
@@ -77,23 +76,19 @@ const TodayAttendancePage = () => {
     if (!data) return [];
     const set = new Set();
     const collect = (list) => (list || []).forEach(r => (r.activities || []).forEach(a => {
-      const h = extractHourLabel(a.schedule);
+      const h = activityHour(a);
       if (h) set.add(h);
     }));
     collect(data.present);
     collect(data.expected);
     collect(data.absent);
-    return Array.from(set).sort((a, b) => {
-      const ha = parseInt(a, 10) || 0;
-      const hb = parseInt(b, 10) || 0;
-      return ha - hb;
-    });
+    return Array.from(set).sort((a, b) => a - b);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [data, ar]);
+  }, [data]);
 
   const filterText = (txt) => !search || (txt || '').toLowerCase().includes(search.toLowerCase());
 
-  const matchHour = (r) => !hourFilter || (r.activities || []).some(a => extractHourLabel(a.schedule) === hourFilter);
+  const matchHour = (r) => !hourFilter || (r.activities || []).some(a => String(activityHour(a)) === String(hourFilter));
 
   const presentList = useMemo(() => {
     if (!data) return [];
@@ -118,9 +113,9 @@ const TodayAttendancePage = () => {
   const exportCSV = () => {
     const rows = tab === 'present'
       ? [['الكود','الاسم','الجوال','الأنشطة','الموعد','وقت الدخول','الفرع','المسجل'],
-         ...presentList.map(r => [r.member_code, r.member_name, r.phone, (r.activities||[]).map(a=>a.activity_name).join(' / '), (r.activities||[]).map(a=>formatSchedule(a.schedule)).join(' / '), (r.activities||[]).map(a=>a.check_in_time).join(' / '), branchName(r.branch_id), r.recorded_by])]
+         ...presentList.map(r => [r.member_code, r.member_name, r.phone, (r.activities||[]).map(a=>a.activity_name).join(' / '), (r.activities||[]).map(a=>hourLabel(activityHour(a)) || formatSchedule(a.schedule)).join(' / '), (r.activities||[]).map(a=>a.check_in_time).join(' / '), branchName(r.branch_id), r.recorded_by])]
       : [['الكود','الاسم','الجوال','الأنشطة المتوقعة','الموعد','الفرع'],
-         ...absentList.map(r => [r.member_code, r.member_name, r.phone, (r.activities||[]).map(a=>a.activity_name).join(' / '), (r.activities||[]).map(a=>formatSchedule(a.schedule)).join(' / '), branchName(r.branch_id)])];
+         ...absentList.map(r => [r.member_code, r.member_name, r.phone, (r.activities||[]).map(a=>a.activity_name).join(' / '), (r.activities||[]).map(a=>hourLabel(activityHour(a)) || formatSchedule(a.schedule)).join(' / '), branchName(r.branch_id)])];
     const csv = '\ufeff' + rows.map(r => r.map(c => `"${(c ?? '').toString().replace(/"/g,'""')}"`).join(',')).join('\n');
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
@@ -195,7 +190,7 @@ const TodayAttendancePage = () => {
           </select>
           <select value={hourFilter} onChange={e => setHourFilter(e.target.value)} className="border rounded px-3 py-2 text-sm bg-white">
             <option value="">{ar ? 'كل الساعات' : 'All hours'}</option>
-            {hourOptions.map(h => <option key={h} value={h}>{h}</option>)}
+            {hourOptions.map(h => <option key={h} value={h}>{hourLabel(h)}</option>)}
           </select>
           {(activityFilter || hourFilter || search) && (
             <Button variant="ghost" size="sm" onClick={() => { setActivityFilter(''); setHourFilter(''); setSearch(''); }}>
@@ -249,8 +244,8 @@ const TodayAttendancePage = () => {
                       <td className="p-3 text-xs">
                         <div className="flex flex-wrap gap-1">
                           {(r.activities || []).map((a, i) => {
-                            const sched = formatSchedule(a.schedule);
-                            return sched ? <Badge key={i} variant="outline" className="bg-blue-50 text-blue-700 text-xs">{sched}</Badge> : null;
+                            const label = hourLabel(activityHour(a)) || formatSchedule(a.schedule);
+                            return label ? <Badge key={i} variant="outline" className="bg-blue-50 text-blue-700 text-xs">{label}</Badge> : null;
                           })}
                         </div>
                       </td>
@@ -308,8 +303,8 @@ const TodayAttendancePage = () => {
                       <td className="p-3 text-xs">
                         <div className="flex flex-wrap gap-1">
                           {(r.activities || []).map((a, i) => {
-                            const sched = formatSchedule(a.schedule);
-                            return sched ? <Badge key={i} variant="outline" className="bg-amber-50 text-amber-700 text-xs">{sched}</Badge> : null;
+                            const label = hourLabel(activityHour(a)) || formatSchedule(a.schedule);
+                            return label ? <Badge key={i} variant="outline" className="bg-amber-50 text-amber-700 text-xs">{label}</Badge> : null;
                           })}
                         </div>
                       </td>
