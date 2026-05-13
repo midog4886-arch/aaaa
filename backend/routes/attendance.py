@@ -539,8 +539,9 @@ async def get_today_summary(
             return h
         return h - 12
 
-    levels_docs = await db.levels.find({}, {"_id": 0, "id": 1, "time_slot": 1, "activity_name": 1, "name": 1}).to_list(2000)
+    levels_docs = await db.levels.find({}, {"_id": 0, "id": 1, "time_slot": 1, "activity_name": 1, "name": 1, "days": 1}).to_list(2000)
     level_hour_by_id = {}
+    level_days_by_id = {}
     for lv in levels_docs:
         lvid = lv.get("id")
         if not lvid:
@@ -548,6 +549,9 @@ async def get_today_summary(
         h = _hour_12(lv.get("time_slot")) or _hour_12(lv.get("activity_name")) or _hour_12(lv.get("name"))
         if h is not None:
             level_hour_by_id[lvid] = h
+        d = lv.get("days") or []
+        if d:
+            level_days_by_id[lvid] = [str(x).lower() for x in d]
 
     member_activity_schedule = {}
     member_activity_levelid = {}
@@ -656,7 +660,9 @@ async def get_today_summary(
             if start_date and start_date > today_str:
                 continue
             days = parse_schedule_days(act.get("schedule", ""))
-            if today_day in days:
+            lvid_act = act.get("level_id", "")
+            level_days = level_days_by_id.get(lvid_act, [])
+            if today_day in days or today_day in level_days:
                 scheduled_activities.append({
                     "activity_id": aid,
                     "activity_name": act.get("activity_name", ""),
