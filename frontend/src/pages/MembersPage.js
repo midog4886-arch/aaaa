@@ -2809,7 +2809,12 @@ export const MembersPage = () => {
                     {memberInvoices.length > 0 ? (
                       <div className="space-y-2">
                         {memberInvoices.map((invoice) => (
-                          <Card key={invoice.id} className="p-3">
+                          <Card
+                            key={invoice.id}
+                            className="p-3 cursor-pointer hover:bg-muted/50 transition-colors"
+                            onClick={() => navigate(`/admin/invoices?view=${invoice.id}`)}
+                            title={language === 'ar' ? 'فتح الفاتورة' : 'Open invoice'}
+                          >
                             <div className="flex items-center justify-between">
                               <div>
                                 <p className="font-mono text-sm">#{invoice.id.slice(0, 8)}</p>
