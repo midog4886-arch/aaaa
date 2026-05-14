@@ -53,6 +53,7 @@ const translations = {
     backup: 'النسخ الاحتياطي',
     push_notifications: 'إشعارات Push',
     whatsapp: 'واتساب',
+    whatsapp_bulk: 'واتساب جماعي',
     branches: 'الفروع',
     users: 'المستخدمين',
     
@@ -208,6 +209,7 @@ const translations = {
     backup: 'Backup',
     push_notifications: 'Push Notifications',
     whatsapp: 'WhatsApp',
+    whatsapp_bulk: 'Bulk WhatsApp',
     branches: 'Branches',
     users: 'Users',
     member_card: 'Member Card',

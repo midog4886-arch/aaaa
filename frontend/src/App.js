@@ -77,6 +77,7 @@ const PrivacyPolicyPage = lazy(() => import('./pages/PrivacyPolicyPage'));
 const DailyLedgerPage = lazy(() => import('./pages/DailyLedgerPage'));
 const DayExtensionsPage = lazy(() => import('./pages/DayExtensionsPage'));
 const WhatsAppPage = lazy(() => import('./pages/WhatsAppPage'));
+const WhatsAppBulkPage = lazy(() => import('./pages/WhatsAppBulkPage'));
 const TournamentsPage = lazy(() => import('./pages/TournamentsPage'));
 const SocialPublisherPage = lazy(() => import('./pages/SocialPublisherPage'));
 
@@ -461,6 +462,14 @@ function AppRoutes() {
         element={
           <ProtectedRoute permission="messages">
             <WhatsAppPage />
+          </ProtectedRoute>
+        } 
+      />
+      <Route 
+        path="/admin/whatsapp-bulk" 
+        element={
+          <ProtectedRoute permission="messages">
+            <WhatsAppBulkPage />
           </ProtectedRoute>
         } 
       />
