@@ -331,6 +331,91 @@ async def update_ops_alerts_settings(
     }
 
 
+_OPS_ALERTS_VALID_STATUSES = {"pending", "retrying", "delivered", "exhausted"}
+
+
+@router.get("/ops-alerts")
+async def list_ops_alerts(
+    delivery_status: Optional[str] = None,
+    limit: int = 50,
+    current_user: dict = Depends(get_current_user),
+):
+    """Admin-only: return the most recent ops_alerts rows with their
+    per-channel delivery state. Optional ``delivery_status`` filter
+    accepts ``pending``, ``retrying``, ``delivered``, or ``exhausted``.
+    """
+    if not current_user.get("is_admin"):
+        raise HTTPException(status_code=403, detail="Admin access required")
+    try:
+        cap = max(1, min(int(limit), 200))
+    except (TypeError, ValueError):
+        cap = 50
+    query: dict = {}
+    if delivery_status:
+        if delivery_status not in _OPS_ALERTS_VALID_STATUSES:
+            raise HTTPException(
+                status_code=400,
+                detail="delivery_status must be one of: " + ", ".join(sorted(_OPS_ALERTS_VALID_STATUSES)),
+            )
+        query["delivery_status"] = delivery_status
+    try:
+        rows = await db.ops_alerts.find(query, {"_id": 0}).sort("created_at", -1).to_list(cap)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to read ops_alerts: {e}")
+    # Normalise legacy rows that pre-date the delivery-bookkeeping fields
+    # so the UI can render them without per-row defensive defaults.
+    for r in rows:
+        r.setdefault("attempts", 0)
+        r.setdefault("delivered_email", False)
+        r.setdefault("delivered_whatsapp", False)
+        r.setdefault("last_error", "")
+        r.setdefault("delivery_status", "delivered" if r.get("acknowledged") else "pending")
+        r.setdefault("next_attempt_at", None)
+        r.setdefault("last_attempt_at", None)
+    return {"items": rows, "count": len(rows)}
+
+
+@router.post("/ops-alerts/{alert_id}/retry")
+async def retry_ops_alert(alert_id: str, current_user: dict = Depends(get_current_user)):
+    """Admin-only: re-queue an ops_alerts row so the delivery worker
+    picks it up on its next tick. Resets ``acknowledged``, ``attempts``,
+    ``last_error`` and sets ``next_attempt_at`` to now.
+    """
+    if not current_user.get("is_admin"):
+        raise HTTPException(status_code=403, detail="Admin access required")
+    now_iso = datetime.now(timezone.utc).isoformat()
+    try:
+        result = await db.ops_alerts.update_one(
+            {"id": alert_id},
+            {"$set": {
+                "acknowledged": False,
+                "attempts": 0,
+                "next_attempt_at": now_iso,
+                "last_error": "",
+                "delivery_status": "pending",
+                # Re-attempt every channel regardless of prior delivery so
+                # transient failures the admin is investigating get retried.
+                "delivered_email": False,
+                "delivered_whatsapp": False,
+            }, "$unset": {"acknowledged_at": ""}},
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to retry alert: {e}")
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Ops alert not found")
+    try:
+        from utils.audit import log_audit
+        await log_audit(
+            actor=current_user,
+            action="ops_alerts.retry",
+            entity_type="ops_alert",
+            entity_id=alert_id,
+        )
+    except Exception:
+        pass
+    return {"ok": True, "id": alert_id, "next_attempt_at": now_iso}
+
+
 @router.post("/daily-checks-run")
 async def run_daily_checks_now(current_user: dict = Depends(get_current_user)):
     """Admin-only: trigger the daily renewal & ad-expiry checks on demand.

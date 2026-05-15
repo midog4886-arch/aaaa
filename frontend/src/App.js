@@ -91,6 +91,7 @@ const SignupPage = lazy(() => import('./pages/SignupPage'));
 const TermsPage = lazy(() => import('./pages/TermsPage'));
 const RefundPolicyPage = lazy(() => import('./pages/RefundPolicyPage'));
 const SupportPage = lazy(() => import('./pages/SupportPage'));
+const OpsAlertsPage = lazy(() => import('./pages/OpsAlertsPage'));
 import ExpiredTenantGuard from './components/ExpiredTenantGuard';
 
 const SuperGuard = ({ children }) => {
@@ -503,6 +504,14 @@ function AppRoutes() {
         element={
           <ProtectedRoute permission="settings">
             <SupportPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/admin/ops-alerts"
+        element={
+          <ProtectedRoute permission="settings">
+            <OpsAlertsPage />
           </ProtectedRoute>
         }
       />

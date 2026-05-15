@@ -277,6 +277,8 @@ export const notificationsSettingsAPI = {
   ),
   getDailyChecksStatus: () => axios.get(`${API}/notifications/daily-checks-status`),
   runDailyChecksNow: () => axios.post(`${API}/notifications/daily-checks-run`),
+  listOpsAlerts: (params = {}) => axios.get(`${API}/notifications/ops-alerts`, { params }),
+  retryOpsAlert: (id) => axios.post(`${API}/notifications/ops-alerts/${id}/retry`),
 };
 
 export const tenantAPI = {
