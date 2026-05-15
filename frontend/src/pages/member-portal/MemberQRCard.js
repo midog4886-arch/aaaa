@@ -8,7 +8,7 @@ import {
 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import MemberLayout, { memberAPI, getMemberData, getDarkMode, getLanguage } from './MemberLayout';
-import { getPrimaryColor, useBrandColor } from '../../services/branding';
+import { useBrandColor } from '../../services/branding';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -32,9 +32,9 @@ const remainingColor = (days) => {
 
 // ── Print / Download Logic (unchanged from original) ──────────────────────────
 
-const buildStickerHtml = (cardData) => {
+const buildStickerHtml = (cardData, brand) => {
   const qrData = cardData?.member_code?.toString() || '';
-  const _brand = getPrimaryColor();
+  const _brand = brand || '';
   const _headerBg = _brand || 'linear-gradient(135deg, #F97316, #F59E0B)';
   const _accent = _brand || '#F97316';
   const _allActs = cardData?.active_activities || [];
@@ -316,7 +316,7 @@ const MemberCard = () => {
   const handleStickerPrint = () => {
     setShowPrintDialog(false);
     const printWindow = window.open('', '_blank', 'width=800,height=600');
-    printWindow.document.write(buildStickerHtml(currentCard));
+    printWindow.document.write(buildStickerHtml(currentCard, primary));
     printWindow.document.close();
   };
 
@@ -329,7 +329,7 @@ const MemberCard = () => {
     const ctx = canvas.getContext('2d');
     ctx.fillStyle = 'white';
     ctx.fillRect(0, 0, 400, 450);
-    const brandColor = getPrimaryColor() || '#F97316';
+    const brandColor = primary || '#F97316';
     ctx.fillStyle = brandColor;
     ctx.font = 'bold 18px Tajawal, sans-serif';
     ctx.textAlign = 'center';

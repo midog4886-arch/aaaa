@@ -155,22 +155,20 @@ const MemberLogin = () => {
     }
   }, [navigate]);
 
-  // Pull tenant branding (logo) and react to updates
+  // Pull tenant branding (logo). Re-render on color changes via useBrandColor()
+  // also refreshes the logo from the cached branding payload.
   useEffect(() => {
     let cancelled = false;
     loadBranding().then(() => {
       if (cancelled) return;
       setLogo(resolveAcademyLogo());
     }).catch(() => {});
-    const onUpdate = () => {
-      setLogo(resolveAcademyLogo());
-    };
-    window.addEventListener('branding:updated', onUpdate);
-    return () => {
-      cancelled = true;
-      window.removeEventListener('branding:updated', onUpdate);
-    };
+    return () => { cancelled = true; };
   }, []);
+
+  useEffect(() => {
+    setLogo(resolveAcademyLogo());
+  }, [primary]);
 
   const handleSplashComplete = () => {
     setShowSplash(false);
