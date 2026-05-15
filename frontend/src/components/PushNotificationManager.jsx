@@ -5,7 +5,7 @@ import { Button } from './ui/button';
 import { toast } from 'sonner';
 import axios from 'axios';
 import { API_URL } from '../config/api';
-import { LanguageContext } from '../contexts/LanguageContext';
+import LanguageContext from '../contexts/LanguageContext';
 
 // Read the user's chosen UI language. Falls back to localStorage when the
 // context is not in scope (e.g. unit tests) so push subscribe still includes
