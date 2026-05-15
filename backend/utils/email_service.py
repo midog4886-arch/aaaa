@@ -92,6 +92,7 @@ async def _log_send(
     provider: str,
     error: str = "",
     provider_id: str = "",
+    ctx: Optional[Dict] = None,
 ) -> None:
     try:
         await control_db.email_log.insert_one({
@@ -104,6 +105,7 @@ async def _log_send(
             "provider": provider,
             "provider_id": provider_id,
             "error": error[:500] if error else "",
+            "ctx": ctx or {},
             "sent_at": datetime.now(timezone.utc).isoformat(),
         })
         # Best-effort cap: trim oldest beyond EMAIL_LOG_MAX.
@@ -157,14 +159,16 @@ async def send_email(
     """
     if not to or "@" not in (to or ""):
         await _log_send(kind=kind, to=to or "", tenant_slug=tenant_slug,
-                        subject="", status="skipped", provider="", error="missing recipient")
+                        subject="", status="skipped", provider="",
+                        error="missing recipient", ctx=ctx)
         return {"status": "skipped", "error": "missing recipient"}
 
     try:
         subject, html, text = render(kind, ctx or {})
     except Exception as e:
         await _log_send(kind=kind, to=to, tenant_slug=tenant_slug,
-                        subject="", status="failed", provider="", error=f"template error: {e}")
+                        subject="", status="failed", provider="",
+                        error=f"template error: {e}", ctx=ctx)
         return {"status": "failed", "error": str(e)}
 
     settings = await get_email_settings()
@@ -172,7 +176,7 @@ async def send_email(
     if not settings.get("enabled") or not provider:
         await _log_send(kind=kind, to=to, tenant_slug=tenant_slug,
                         subject=subject, status="skipped", provider=provider,
-                        error="provider not configured")
+                        error="provider not configured", ctx=ctx)
         return {"status": "skipped", "error": "provider not configured"}
 
     from_email = settings.get("from_email") or DEFAULT_FROM_EMAIL
@@ -218,15 +222,15 @@ async def send_email(
             pass
         err = f"HTTP {e.response.status_code}: {body}"
         await _log_send(kind=kind, to=to, tenant_slug=tenant_slug, subject=subject,
-                        status="failed", provider=provider, error=err)
+                        status="failed", provider=provider, error=err, ctx=ctx)
         return {"status": "failed", "error": err}
     except Exception as e:
         await _log_send(kind=kind, to=to, tenant_slug=tenant_slug, subject=subject,
-                        status="failed", provider=provider, error=str(e))
+                        status="failed", provider=provider, error=str(e), ctx=ctx)
         return {"status": "failed", "error": str(e)}
 
     await _log_send(kind=kind, to=to, tenant_slug=tenant_slug, subject=subject,
-                    status="sent", provider=provider, provider_id=provider_id)
+                    status="sent", provider=provider, provider_id=provider_id, ctx=ctx)
     return {"status": "sent", "id": provider_id}
 
 

@@ -65,6 +65,7 @@ export const SettingsPage = () => {
   const [contactBilling, setContactBilling] = React.useState('');
   const [emailLog, setEmailLog] = React.useState([]);
   const [emailLogLoading, setEmailLogLoading] = React.useState(false);
+  const [emailLogResendingId, setEmailLogResendingId] = React.useState('');
   const [testEmailSending, setTestEmailSending] = React.useState(false);
   const [emailLogStatus, setEmailLogStatus] = React.useState('');
   const [emailLogKind, setEmailLogKind] = React.useState('');
@@ -165,6 +166,37 @@ export const SettingsPage = () => {
         : 'Failed to send test email'));
     } finally {
       setTestEmailSending(false);
+      reloadEmailLog();
+    }
+  };
+
+  const handleResendEmailLog = async (row) => {
+    if (!row || !row.id) return;
+    setEmailLogResendingId(row.id);
+    try {
+      const res = await billingAPI.resendEmailLog(row.id);
+      const status = res?.data?.result?.status;
+      const to = res?.data?.to || row.to || '';
+      if (status === 'sent') {
+        toast.success(language === 'ar'
+          ? `تم إعادة إرسال الإيميل إلى ${to}`
+          : `Email resent to ${to}`);
+      } else if (status === 'skipped') {
+        const reason = res?.data?.result?.error || '';
+        toast.info(language === 'ar'
+          ? `لم يتم الإرسال${reason ? ': ' + reason : ''}`
+          : `Not sent${reason ? ': ' + reason : ''}`);
+      } else {
+        toast.error(language === 'ar'
+          ? `فشل إعادة الإرسال: ${res?.data?.result?.error || ''}`
+          : `Resend failed: ${res?.data?.result?.error || ''}`);
+      }
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || (language === 'ar'
+        ? 'تعذر إعادة إرسال الإيميل'
+        : 'Failed to resend email'));
+    } finally {
+      setEmailLogResendingId('');
       reloadEmailLog();
     }
   };
@@ -904,6 +936,7 @@ export const SettingsPage = () => {
                               <th className="py-2 text-start">{language === 'ar' ? 'إلى' : 'To'}</th>
                               <th className="py-2 text-start">{language === 'ar' ? 'الموضوع' : 'Subject'}</th>
                               <th className="py-2 text-start">{language === 'ar' ? 'الحالة' : 'Status'}</th>
+                              <th className="py-2 text-start">{language === 'ar' ? 'إجراء' : 'Action'}</th>
                             </tr>
                           </thead>
                           <tbody>
@@ -919,6 +952,23 @@ export const SettingsPage = () => {
                                   )}
                                 </td>
                                 <td className="py-2">{renderEmailStatusBadge(row.status)}</td>
+                                <td className="py-2">
+                                  {row.status === 'failed' && row.id ? (
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      onClick={() => handleResendEmailLog(row)}
+                                      disabled={emailLogResendingId === row.id}
+                                      data-testid={`billing-email-log-resend-btn-${row.id}`}
+                                    >
+                                      {emailLogResendingId === row.id
+                                        ? (language === 'ar' ? 'جارٍ الإرسال...' : 'Resending...')
+                                        : (language === 'ar' ? 'إعادة إرسال' : 'Resend')}
+                                    </Button>
+                                  ) : (
+                                    <span className="text-xs text-muted-foreground">—</span>
+                                  )}
+                                </td>
                               </tr>
                             ))}
                           </tbody>

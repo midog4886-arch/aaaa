@@ -309,6 +309,7 @@ export const billingAPI = {
   cancelPendingEmail: (role = 'owner') => axios.delete(`${API}/billing/contact/pending`, { params: { role } }),
   emailLog: (params = {}) => axios.get(`${API}/billing/email-log`, { params }),
   sendTestWelcome: () => axios.post(`${API}/billing/email-log/test-welcome`),
+  resendEmailLog: (id) => axios.post(`${API}/billing/email-log/${id}/resend`),
 };
 
 // Branches API

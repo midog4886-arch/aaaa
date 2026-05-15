@@ -901,6 +901,34 @@ async def get_billing_email_log(
     return {"items": items}
 
 
+@router.post("/email-log/{log_id}/resend")
+async def resend_email_log_entry(
+    log_id: str,
+    current_user: dict = Depends(get_current_user),
+):
+    """Re-send a previously logged email (typically one that failed).
+
+    Uses the persisted ``kind``, ``to`` and ``ctx`` so the rendered content
+    matches the original attempt. Scoped to the current academy so admins
+    can only resend entries that belong to their tenant.
+    """
+    if not current_user.get("is_admin", False):
+        raise HTTPException(status_code=403, detail="صلاحية مسؤول الأكاديمية مطلوبة")
+    slug = get_current_tenant_slug() or DEFAULT_TENANT_SLUG
+    row = await control_db.email_log.find_one({"id": log_id}, {"_id": 0})
+    if not row:
+        raise HTTPException(status_code=404, detail="سجل البريد غير موجود")
+    if (row.get("tenant_slug") or "") != slug:
+        raise HTTPException(status_code=404, detail="سجل البريد غير موجود")
+    kind = row.get("kind") or ""
+    to = row.get("to") or ""
+    if not kind or not to:
+        raise HTTPException(status_code=400, detail="السجل لا يحتوي على بيانات كافية لإعادة الإرسال")
+    ctx = row.get("ctx") or {}
+    result = await send_email(kind=kind, to=to, tenant_slug=slug, ctx=ctx)
+    return {"to": to, "kind": kind, "result": result}
+
+
 @router.post("/email-log/test-welcome")
 async def send_test_welcome_email(current_user: dict = Depends(get_current_user)):
     """Send a one-off welcome email to the academy owner address.
