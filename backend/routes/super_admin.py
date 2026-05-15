@@ -6,6 +6,8 @@ Lives outside the tenant middleware (paths under ``/super`` are bypassed by
 """
 import os
 import uuid
+import secrets
+import string
 import logging
 from datetime import datetime, timezone, timedelta
 from typing import Optional, List
@@ -18,6 +20,7 @@ from pydantic import BaseModel, Field
 from database import JWT_SECRET, JWT_ALGORITHM, _raw_client
 from control_db import control_db
 from utils.tenant import slug_to_db_name, DEFAULT_TENANT_SLUG
+from utils.auth import hash_password
 
 logger = logging.getLogger("super_admin")
 
@@ -56,6 +59,74 @@ class TenantCreate(BaseModel):
     max_members: Optional[int] = 100
     features: Optional[List[str]] = []
     owner_email: Optional[str] = ""
+    admin_username: Optional[str] = "admin"
+    admin_password: Optional[str] = ""
+    branch_name: Optional[str] = "الفرع الرئيسي"
+
+
+def _generate_password(length: int = 12) -> str:
+    alphabet = string.ascii_letters + string.digits
+    return "".join(secrets.choice(alphabet) for _ in range(length))
+
+
+async def _seed_new_tenant_db(
+    db_name: str,
+    tenant_name: str,
+    admin_username: str,
+    admin_password: str,
+    branch_name: str,
+) -> dict:
+    tdb = _raw_client[db_name]
+    now = datetime.now(timezone.utc).isoformat()
+    seeded = {"branch": False, "user": False, "loyalty": False}
+
+    existing_branch_count = await tdb.branches.count_documents({})
+    if existing_branch_count == 0:
+        branch_doc = {
+            "id": str(uuid.uuid4()),
+            "name": branch_name,
+            "name_ar": branch_name,
+            "phone": "",
+            "manager_name": "",
+            "manager_name_ar": "",
+            "address": "",
+            "address_ar": "",
+            "is_active": True,
+            "created_at": now,
+        }
+        await tdb.branches.insert_one(branch_doc)
+        seeded["branch"] = True
+        branch_id = branch_doc["id"]
+    else:
+        first = await tdb.branches.find_one({}, {"_id": 0, "id": 1})
+        branch_id = (first or {}).get("id")
+
+    existing_user = await tdb.users.find_one({"username": admin_username}, {"_id": 0})
+    if not existing_user:
+        user_doc = {
+            "id": str(uuid.uuid4()),
+            "username": admin_username,
+            "password": hash_password(admin_password),
+            "name": f"مدير {tenant_name}",
+            "branch_id": branch_id,
+            "is_admin": True,
+            "created_at": now,
+        }
+        await tdb.users.insert_one(user_doc)
+        seeded["user"] = True
+
+    loyalty_existing = await tdb.loyalty_settings.find_one({"type": "points"}, {"_id": 0})
+    if not loyalty_existing:
+        await tdb.loyalty_settings.insert_one({
+            "type": "points",
+            "points_per_invoice": 1,
+            "points_per_attendance": 1,
+            "points_per_referral": 10,
+            "created_at": now,
+        })
+        seeded["loyalty"] = True
+
+    return seeded
 
 
 class TenantUpdate(BaseModel):
@@ -120,7 +191,36 @@ async def create_tenant(payload: TenantCreate, _=Depends(_require_super)):
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
     await control_db.tenants.insert_one(doc)
-    return {k: v for k, v in doc.items() if k != "_id"}
+
+    admin_username = (payload.admin_username or "admin").strip() or "admin"
+    provided_password = (payload.admin_password or "").strip()
+    generated_password = "" if provided_password else _generate_password()
+    admin_password = provided_password or generated_password
+    branch_name = (payload.branch_name or "الفرع الرئيسي").strip() or "الفرع الرئيسي"
+
+    seed_result: dict = {}
+    seed_error: str = ""
+    try:
+        seed_result = await _seed_new_tenant_db(
+            db_name=doc["db_name"],
+            tenant_name=doc["name"],
+            admin_username=admin_username,
+            admin_password=admin_password,
+            branch_name=branch_name,
+        )
+    except Exception as e:
+        seed_error = str(e)
+        logger.exception("Failed to seed tenant %s", slug)
+
+    response = {k: v for k, v in doc.items() if k != "_id"}
+    response["seed"] = {
+        "ok": not seed_error,
+        "error": seed_error or None,
+        "created": seed_result,
+        "admin_username": admin_username,
+        "admin_password": generated_password or None,
+    }
+    return response
 
 
 @router.patch("/tenants/{tenant_id}")

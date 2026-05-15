@@ -46,6 +46,9 @@ function TenantForm({ initial, onSubmit, onCancel, isEdit }) {
     features: initial?.features || [],
     owner_email: initial?.owner_email || '',
     status: initial?.status || 'active',
+    admin_username: 'admin',
+    admin_password: '',
+    branch_name: 'الفرع الرئيسي',
   });
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
@@ -128,6 +131,25 @@ function TenantForm({ initial, onSubmit, onCancel, isEdit }) {
           <label style={sx.label}>إيميل المالك (اختياري)</label>
           <input type="email" style={sx.input} value={form.owner_email} onChange={(e) => setF('owner_email', e.target.value)} />
         </div>
+        {!isEdit && (
+          <div style={{ marginTop: 18, paddingTop: 14, borderTop: '1px dashed #cbd5e1' }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: '#0f172a', marginBottom: 10 }}>الإعداد الافتتاحي</div>
+            <div style={sx.field}>
+              <label style={sx.label}>اسم الفرع الأول</label>
+              <input style={sx.input} value={form.branch_name} onChange={(e) => setF('branch_name', e.target.value)} />
+            </div>
+            <div style={sx.row}>
+              <div style={{ ...sx.field, flex: 1 }}>
+                <label style={sx.label}>اسم مستخدم المدير</label>
+                <input style={sx.input} value={form.admin_username} onChange={(e) => setF('admin_username', e.target.value)} />
+              </div>
+              <div style={{ ...sx.field, flex: 1 }}>
+                <label style={sx.label}>كلمة المرور (اتركها فارغة لتوليد عشوائية)</label>
+                <input style={sx.input} value={form.admin_password} onChange={(e) => setF('admin_password', e.target.value)} placeholder="تلقائية" />
+              </div>
+            </div>
+          </div>
+        )}
         {isEdit && (
           <div style={sx.field}>
             <label style={sx.label}>الحالة</label>
@@ -154,6 +176,7 @@ export default function SuperTenants() {
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState(null);
   const [stats, setStats] = useState({});
+  const [seedInfo, setSeedInfo] = useState(null);
 
   const auth = () => ({ headers: { Authorization: `Bearer ${localStorage.getItem('super_token') || ''}` } });
 
@@ -187,8 +210,11 @@ export default function SuperTenants() {
   };
 
   const create = async (data) => {
-    await axios.post('/super/tenants', data, auth());
+    const res = await axios.post('/super/tenants', data, auth());
     setCreating(false);
+    if (res?.data?.seed) {
+      setSeedInfo({ tenant: res.data, seed: res.data.seed });
+    }
     await load();
   };
 
@@ -285,6 +311,48 @@ export default function SuperTenants() {
 
       {creating && <TenantForm onSubmit={create} onCancel={() => setCreating(false)} />}
       {editing && <TenantForm initial={editing} onSubmit={(d) => update(editing.id, d)} onCancel={() => setEditing(null)} isEdit />}
+
+      {seedInfo && (
+        <div style={sx.modalBg} onClick={() => setSeedInfo(null)}>
+          <div style={sx.modal} onClick={(e) => e.stopPropagation()}>
+            <h2 style={{ margin: 0, marginBottom: 14, fontSize: 18, fontWeight: 700, color: '#15803d' }}>
+              ✓ تم إنشاء الأكاديمية "{seedInfo.tenant.name}"
+            </h2>
+            {seedInfo.seed.ok ? (
+              <>
+                <div style={{ fontSize: 13, color: '#475569', marginBottom: 10 }}>
+                  تم تجهيز قاعدة البيانات بفرع افتراضي ومستخدم مدير وإعدادات أساسية.
+                </div>
+                <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8, padding: 12, marginBottom: 12, fontSize: 13 }}>
+                  <div style={{ marginBottom: 6 }}><b>اسم المستخدم:</b> <code>{seedInfo.seed.admin_username}</code></div>
+                  {seedInfo.seed.admin_password ? (
+                    <>
+                      <div style={{ marginBottom: 6 }}>
+                        <b>كلمة المرور المُولّدة:</b> <code style={{ background: '#fef3c7', padding: '2px 6px', borderRadius: 4 }}>{seedInfo.seed.admin_password}</code>
+                      </div>
+                      <div style={{ fontSize: 12, color: '#a16207' }}>
+                        ⚠ احفظ كلمة المرور الآن — لن تظهر مرة أخرى. أرسلها للمالك بأمان.
+                      </div>
+                    </>
+                  ) : (
+                    <div style={{ fontSize: 12, color: '#64748b' }}>كلمة المرور التي أدخلتها مُحفوظة بأمان.</div>
+                  )}
+                </div>
+                <div style={{ fontSize: 12, color: '#64748b' }}>
+                  للدخول: استخدم النطاق الفرعي للأكاديمية أو ضع <code>tenant_slug = {seedInfo.tenant.slug}</code> في إعدادات الجهاز.
+                </div>
+              </>
+            ) : (
+              <div style={{ background: '#fef2f2', color: '#b91c1c', padding: 10, borderRadius: 6, fontSize: 13 }}>
+                تم إنشاء الأكاديمية لكن فشل تجهيز البيانات الافتتاحية: {seedInfo.seed.error}
+              </div>
+            )}
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 14 }}>
+              <button style={sx.btnPrimary} onClick={() => setSeedInfo(null)}>تم</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
