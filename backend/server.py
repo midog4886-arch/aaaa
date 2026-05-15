@@ -3922,6 +3922,11 @@ async def _run_tenant_auto_purge() -> dict:
             if owner_email:
                 try:
                     from utils.email_service import send_email as _send_email
+                    from routes.super_admin import build_cancel_delete_url as _build_cancel_url
+                    try:
+                        cancel_url = _build_cancel_url(tid)
+                    except Exception:
+                        cancel_url = ""
                     result = await _send_email(
                         kind="final_purge_warning",
                         to=owner_email,
@@ -3929,6 +3934,7 @@ async def _run_tenant_auto_purge() -> dict:
                         ctx={
                             "academy_name": tenant.get("name", "") or slug,
                             "purge_at": purge_at.isoformat(),
+                            "cancel_url": cancel_url,
                         },
                     )
                     print(

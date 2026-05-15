@@ -15,7 +15,8 @@ import re
 from typing import Optional, List
 
 import jwt
-from fastapi import APIRouter, HTTPException, Depends, Body
+from fastapi import APIRouter, HTTPException, Depends, Body, Request
+from fastapi.responses import HTMLResponse
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel, Field
 
@@ -641,10 +642,110 @@ async def check_expired(_=Depends(_require_super)):
 
 _GRACE_PERIOD_DAYS = 7
 
+SUPPORT_EMAIL_FOR_CANCEL = "support@champions-academy.app"
+
+# Self-service cancel link tokens. Tied to a tenant id, signed with the
+# server JWT secret, and time-limited so a leaked link cannot indefinitely
+# revive a long-deleted tenant. TTL covers the 7-day grace window plus the
+# ~24h final-warning window with a comfortable safety margin.
+CANCEL_DELETE_TOKEN_SCOPE = "tenant_cancel_delete"
+CANCEL_DELETE_TOKEN_TTL_HOURS = 24 * 14
+
+
+def make_cancel_delete_token(tenant_id: str, *, ttl_hours: int = CANCEL_DELETE_TOKEN_TTL_HOURS) -> str:
+    """Mint a signed, time-limited token authorising self-service cancel."""
+    now = datetime.now(timezone.utc)
+    payload = {
+        "scope": CANCEL_DELETE_TOKEN_SCOPE,
+        "tid": tenant_id,
+        "iat": int(now.timestamp()),
+        "exp": int((now + timedelta(hours=ttl_hours)).timestamp()),
+    }
+    return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
+
+
+def build_cancel_delete_url(tenant_id: str, *, request: Optional[Request] = None) -> str:
+    """Public URL the academy owner can click to cancel a pending deletion."""
+    base = (os.environ.get("APP_BASE_URL") or "").strip().rstrip("/")
+    if not base and request is not None:
+        try:
+            base = str(request.base_url).rstrip("/")
+        except Exception:
+            base = ""
+    token = make_cancel_delete_token(tenant_id)
+    return f"{base}/super/tenants/cancel-delete-public?token={token}"
+
+
+# In-process IP rate limiter for the public cancel-delete endpoint. Keeps
+# the endpoint cheap to defend against token-guessing or replay floods.
+_CANCEL_DELETE_RATE_LIMIT = 10  # requests
+_CANCEL_DELETE_RATE_WINDOW_SECONDS = 60
+_cancel_delete_rate_buckets: dict = {}
+
+
+def _cancel_delete_rate_check(client_ip: str) -> bool:
+    """Return False if this IP has exceeded the cancel-link rate limit."""
+    now = datetime.now(timezone.utc).timestamp()
+    bucket = _cancel_delete_rate_buckets.get(client_ip) or []
+    bucket = [t for t in bucket if (now - t) < _CANCEL_DELETE_RATE_WINDOW_SECONDS]
+    if len(bucket) >= _CANCEL_DELETE_RATE_LIMIT:
+        _cancel_delete_rate_buckets[client_ip] = bucket
+        return False
+    bucket.append(now)
+    _cancel_delete_rate_buckets[client_ip] = bucket
+    return True
+
+
+async def _apply_cancel_tenant_delete(tenant_id: str, *, actor: dict, source: str) -> dict:
+    """Shared cancel-delete worker used by both the super-admin and self-
+    service public endpoints. Clears ``deletion_purge_at`` and
+    ``final_purge_alert_sent_at`` exactly like the existing super-admin path,
+    flips status back to ``active``, and writes an audit row tagged with the
+    invocation ``source`` (``super_admin`` or ``owner_email_link``).
+    """
+    existing = await control_db.tenants.find_one({"id": tenant_id}, {"_id": 0})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Tenant not found")
+    await control_db.tenants.update_one(
+        {"id": tenant_id},
+        {"$set": {"status": "active"},
+         "$unset": {
+            "deletion_scheduled_at": "",
+            "deletion_purge_at": "",
+            "deletion_reason": "",
+            # Clear per-cycle warning state so a future schedule-delete
+            # always re-warns before the auto-purge scheduler drops this
+            # tenant.
+            "final_purge_alert_sent_at": "",
+            "deletion_last_error": "",
+            "deletion_last_error_at": "",
+         }},
+    )
+    refreshed = await control_db.tenants.find_one({"id": tenant_id}, {"_id": 0})
+    try:
+        from utils.audit import log_audit
+        await log_audit(
+            actor=actor,
+            action="tenant.cancel_delete",
+            entity_type="tenant",
+            entity_id=tenant_id,
+            entity_name=existing.get("name", ""),
+            before={
+                "status": existing.get("status"),
+                "deletion_purge_at": existing.get("deletion_purge_at"),
+            },
+            after={"status": (refreshed or {}).get("status")},
+            extra={"source": source},
+        )
+    except Exception:
+        pass
+    return refreshed or {}
+
 
 @router.post("/tenants/{tenant_id}/schedule-delete")
 async def schedule_tenant_delete(
     tenant_id: str,
+    request: Request,
     payload: Optional[dict] = Body(default=None),
     super_payload: dict = Depends(_require_super),
 ):
@@ -713,6 +814,7 @@ async def schedule_tenant_delete(
                 ctx={
                     "academy_name": (refreshed or {}).get("name", ""),
                     "purge_at": purge_at.isoformat(),
+                    "cancel_url": build_cancel_delete_url(tenant_id, request=request),
                 },
             )
     except Exception:
@@ -723,42 +825,147 @@ async def schedule_tenant_delete(
 
 @router.post("/tenants/{tenant_id}/cancel-delete")
 async def cancel_tenant_delete(tenant_id: str, super_payload: dict = Depends(_require_super)):
-    existing = await control_db.tenants.find_one({"id": tenant_id}, {"_id": 0})
-    if not existing:
-        raise HTTPException(status_code=404, detail="Tenant not found")
-    await control_db.tenants.update_one(
-        {"id": tenant_id},
-        {"$set": {"status": "active"},
-         "$unset": {
-            "deletion_scheduled_at": "",
-            "deletion_purge_at": "",
-            "deletion_reason": "",
-            # Clear per-cycle warning state so a future schedule-delete
-            # always re-warns before the auto-purge scheduler drops this
-            # tenant.
-            "final_purge_alert_sent_at": "",
-            "deletion_last_error": "",
-            "deletion_last_error_at": "",
-         }},
+    refreshed = await _apply_cancel_tenant_delete(
+        tenant_id,
+        actor=_super_actor(super_payload),
+        source="super_admin",
     )
-    refreshed = await control_db.tenants.find_one({"id": tenant_id}, {"_id": 0})
-    try:
-        from utils.audit import log_audit
-        await log_audit(
-            actor=_super_actor(super_payload),
-            action="tenant.cancel_delete",
-            entity_type="tenant",
-            entity_id=tenant_id,
-            entity_name=existing.get("name", ""),
-            before={
-                "status": existing.get("status"),
-                "deletion_purge_at": existing.get("deletion_purge_at"),
-            },
-            after={"status": (refreshed or {}).get("status")},
-        )
-    except Exception:
-        pass
     return {"ok": True, "tenant": refreshed}
+
+
+def _cancel_result_html(*, ok: bool, title_ar: str, body_ar: str, title_en: str, body_en: str) -> str:
+    color = "#16a34a" if ok else "#dc2626"
+    return f"""<!doctype html><html><head><meta charset="utf-8"><title>{title_en}</title></head>
+<body style="font-family:Arial,Helvetica,sans-serif;max-width:560px;margin:48px auto;padding:24px;text-align:center;color:#111;">
+<h2 style="color:{color};">{title_en}</h2>
+<p>{body_en}</p>
+<hr style="border:none;border-top:1px solid #eee;margin:24px 0;"/>
+<div dir="rtl">
+<h2 style="color:{color};">{title_ar}</h2>
+<p>{body_ar}</p>
+</div>
+</body></html>"""
+
+
+@router.get("/tenants/cancel-delete-public", response_class=HTMLResponse)
+async def cancel_tenant_delete_public(token: str, request: Request):
+    """Self-service cancel link for academy owners.
+
+    Validates a signed, time-limited token (minted when the deletion was
+    scheduled or when the final warning was sent) and runs the same
+    cancel-delete logic as the super-admin endpoint. Rate-limited per IP
+    and audit-logged with ``source=owner_email_link`` so abuse is visible.
+    Returns a small bilingual HTML page rather than JSON because the link
+    is opened in a browser from an email client.
+    """
+    client_ip = (request.client.host if request.client else "") or "unknown"
+    if not _cancel_delete_rate_check(client_ip):
+        return HTMLResponse(
+            _cancel_result_html(
+                ok=False,
+                title_ar="محاولات كثيرة جداً",
+                body_ar="تم تجاوز الحد المسموح به من المحاولات. يرجى المحاولة بعد قليل.",
+                title_en="Too many attempts",
+                body_en="You've exceeded the allowed number of attempts. Please try again shortly.",
+            ),
+            status_code=429,
+        )
+
+    try:
+        payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+    except jwt.ExpiredSignatureError:
+        return HTMLResponse(
+            _cancel_result_html(
+                ok=False,
+                title_ar="انتهت صلاحية الرابط",
+                body_ar=(
+                    "انتهت صلاحية رابط إلغاء الحذف. يرجى التواصل مع الدعم "
+                    f"على {SUPPORT_EMAIL_FOR_CANCEL} لإلغاء الحذف."
+                ),
+                title_en="Link expired",
+                body_en=(
+                    "This cancel-deletion link has expired. Please contact "
+                    f"support at {SUPPORT_EMAIL_FOR_CANCEL} to cancel the deletion."
+                ),
+            ),
+            status_code=400,
+        )
+    except jwt.InvalidTokenError:
+        return HTMLResponse(
+            _cancel_result_html(
+                ok=False,
+                title_ar="رابط غير صالح",
+                body_ar="رابط إلغاء الحذف غير صالح.",
+                title_en="Invalid link",
+                body_en="This cancel-deletion link is invalid.",
+            ),
+            status_code=400,
+        )
+
+    if payload.get("scope") != CANCEL_DELETE_TOKEN_SCOPE:
+        return HTMLResponse(
+            _cancel_result_html(
+                ok=False,
+                title_ar="رابط غير صالح",
+                body_ar="رابط إلغاء الحذف غير صالح.",
+                title_en="Invalid link",
+                body_en="This cancel-deletion link is invalid.",
+            ),
+            status_code=400,
+        )
+
+    tenant_id = (payload.get("tid") or "").strip()
+    if not tenant_id:
+        return HTMLResponse(
+            _cancel_result_html(
+                ok=False,
+                title_ar="رابط غير صالح",
+                body_ar="الرابط لا يحتوي على معرف أكاديمية صالح.",
+                title_en="Invalid link",
+                body_en="The link is missing a valid academy identifier.",
+            ),
+            status_code=400,
+        )
+
+    actor = {
+        "user_id": f"owner-link:{client_ip}",
+        "username": "academy-owner-cancel-link",
+        "is_admin": False,
+    }
+    try:
+        refreshed = await _apply_cancel_tenant_delete(
+            tenant_id, actor=actor, source="owner_email_link",
+        )
+    except HTTPException as e:
+        if e.status_code == 404:
+            return HTMLResponse(
+                _cancel_result_html(
+                    ok=False,
+                    title_ar="الأكاديمية غير موجودة",
+                    body_ar="لم يتم العثور على أكاديمية مرتبطة بهذا الرابط.",
+                    title_en="Academy not found",
+                    body_en="No academy could be found for this link.",
+                ),
+                status_code=404,
+            )
+        raise
+
+    name = (refreshed.get("name") or refreshed.get("slug") or "").strip()
+    return HTMLResponse(
+        _cancel_result_html(
+            ok=True,
+            title_ar="تم إلغاء الحذف بنجاح",
+            body_ar=(
+                f"تم إلغاء جدولة حذف أكاديمية <b>{name}</b> وعاد الحساب إلى "
+                "الحالة النشطة. بياناتك آمنة."
+            ),
+            title_en="Deletion cancelled",
+            body_en=(
+                f"The scheduled deletion of <b>{name}</b> has been cancelled "
+                "and the account is active again. Your data is safe."
+            ),
+        ),
+    )
 
 
 @router.delete("/tenants/{tenant_id}")

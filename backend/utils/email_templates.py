@@ -155,27 +155,61 @@ def _suspended(ctx: Dict) -> Tuple[str, str, str]:
     return subject, _wrap(ar, en), text
 
 
+def _cancel_button(cancel_url: str, label_ar: str, label_en: str) -> Tuple[str, str, str]:
+    if not cancel_url:
+        return "", "", ""
+    btn_ar = (
+        f'<p style="margin-top:18px;"><a href="{cancel_url}" '
+        'style="display:inline-block;background:#dc2626;color:#fff;padding:10px 18px;'
+        f'border-radius:6px;text-decoration:none;font-weight:bold;">{label_ar}</a></p>'
+        '<p style="color:#666;font-size:13px;">إذا لم يعمل الزر، انسخ هذا الرابط في المتصفح:<br/>'
+        f'<span style="word-break:break-all;">{cancel_url}</span></p>'
+    )
+    btn_en = (
+        f'<p style="margin-top:18px;"><a href="{cancel_url}" '
+        'style="display:inline-block;background:#dc2626;color:#fff;padding:10px 18px;'
+        f'border-radius:6px;text-decoration:none;font-weight:bold;">{label_en}</a></p>'
+        '<p style="color:#666;font-size:13px;">If the button does not work, copy this link into your browser:<br/>'
+        f'<span style="word-break:break-all;">{cancel_url}</span></p>'
+    )
+    return btn_ar, btn_en, f" Cancel link: {cancel_url}"
+
+
 def _cancelled(ctx: Dict) -> Tuple[str, str, str]:
     name = ctx.get("academy_name", "")
     purge_at = _fmt_date(ctx.get("purge_at", ""))
+    cancel_url = (ctx.get("cancel_url") or "").strip()
+    btn_ar, btn_en, txt_extra = _cancel_button(
+        cancel_url,
+        "إلغاء الحذف الآن",
+        "Cancel deletion now",
+    )
     subject = f"جدولة حذف حساب أكاديميتك / Your academy is scheduled for deletion"
     ar = f"""
 <h2>تم جدولة حذف الحساب</h2>
 <p>عزيزي {name}، تمت جدولة حذف حسابك في <b>{purge_at}</b> (فترة سماح 7 أيام).</p>
-<p>إذا كان هذا غير مقصود، يرجى التواصل معنا فوراً لإلغاء الحذف.</p>
+<p>إذا كان هذا غير مقصود، يمكنك إلغاء الحذف بنقرة واحدة من الزر أدناه أو التواصل معنا فوراً.</p>
+{btn_ar}
 """
     en = f"""
 <h2>Deletion scheduled</h2>
 <p>Hello {name}, your academy account is scheduled for deletion on <b>{purge_at}</b> (7-day grace period).</p>
-<p>If this was not intended, please contact us immediately to cancel.</p>
+<p>If this was not intended, you can cancel the deletion in one click using the button below, or contact us immediately.</p>
+{btn_en}
 """
-    text = f"Account scheduled for deletion on {purge_at}."
+    text = f"Account scheduled for deletion on {purge_at}.{txt_extra}"
     return subject, _wrap(ar, en), text
 
 
 def _final_purge_warning(ctx: Dict) -> Tuple[str, str, str]:
     name = ctx.get("academy_name", "")
     purge_at = _fmt_date(ctx.get("purge_at", ""))
+    cancel_url = (ctx.get("cancel_url") or "").strip()
+    btn_ar, btn_en, txt_extra = _cancel_button(
+        cancel_url,
+        "إلغاء الحذف الآن — احفظ بياناتي",
+        "Cancel deletion now — keep my data",
+    )
     subject = (
         f"تحذير نهائي: سيتم حذف بيانات أكاديميتك خلال 24 ساعة / "
         f"Final warning: your academy data will be permanently erased in 24 hours"
@@ -184,8 +218,10 @@ def _final_purge_warning(ctx: Dict) -> Tuple[str, str, str]:
 <h2>تحذير نهائي قبل الحذف الدائم</h2>
 <p>عزيزي {name}، انتهت فترة السماح لحساب أكاديميتك وسيتم حذف قاعدة بياناتك بشكل
 نهائي ولا يمكن التراجع عنه خلال <b>24 ساعة تقريباً</b> (في موعد أقصاه {purge_at}).</p>
-<p>إذا كنت ترغب في الحفاظ على بياناتك أو إلغاء الحذف، يرجى التواصل معنا فوراً
-على <a href="mailto:{SUPPORT_EMAIL}">{SUPPORT_EMAIL}</a> قبل انتهاء المهلة.</p>
+<p>لإلغاء الحذف فوراً والاحتفاظ ببياناتك، اضغط على الزر أدناه. يمكنك أيضاً
+التواصل معنا على <a href="mailto:{SUPPORT_EMAIL}">{SUPPORT_EMAIL}</a> قبل
+انتهاء المهلة.</p>
+{btn_ar}
 <p>بعد تنفيذ الحذف، لن يكون من الممكن استعادة الأعضاء أو الفواتير أو السجلات.</p>
 """
     en = f"""
@@ -193,15 +229,16 @@ def _final_purge_warning(ctx: Dict) -> Tuple[str, str, str]:
 <p>Hello {name}, your academy's grace period has elapsed and your database is
 scheduled to be <b>permanently and irreversibly erased within ~24 hours</b>
 (no later than {purge_at}).</p>
-<p>If you want to keep your data or cancel the deletion, please contact us
-immediately at <a href="mailto:{SUPPORT_EMAIL}">{SUPPORT_EMAIL}</a> before the
-deadline.</p>
+<p>To cancel the deletion immediately and keep your data, click the button
+below. You can also contact us at
+<a href="mailto:{SUPPORT_EMAIL}">{SUPPORT_EMAIL}</a> before the deadline.</p>
+{btn_en}
 <p>Once the deletion runs, members, invoices and records cannot be recovered.</p>
 """
     text = (
         f"FINAL WARNING: {name}'s academy database will be permanently erased "
         f"within ~24 hours (by {purge_at}). Contact {SUPPORT_EMAIL} immediately "
-        f"to cancel."
+        f"to cancel.{txt_extra}"
     )
     return subject, _wrap(ar, en), text
 
