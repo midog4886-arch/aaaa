@@ -2,6 +2,7 @@
 from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 from typing import Any, List, Optional
+import os
 import uuid
 from datetime import datetime, timezone, timedelta
 
@@ -278,6 +279,8 @@ async def get_ops_alerts_settings(current_user: dict = Depends(get_current_user)
     return {
         "email_enabled": bool(doc.get("email_enabled", True)),
         "whatsapp_enabled": bool(doc.get("whatsapp_enabled", True)),
+        "email_destination_configured": bool((os.environ.get("OPS_ALERT_EMAIL_TO") or "").strip()),
+        "whatsapp_destination_configured": bool((os.environ.get("OPS_ALERT_WHATSAPP_TO") or "").strip()),
         "updated_at": doc.get("updated_at"),
     }
 

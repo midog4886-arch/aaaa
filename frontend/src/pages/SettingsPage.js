@@ -48,6 +48,8 @@ export const SettingsPage = () => {
   const [dailyChecksRunning, setDailyChecksRunning] = React.useState(false);
   const [opsAlertsEmailEnabled, setOpsAlertsEmailEnabled] = React.useState(true);
   const [opsAlertsWhatsappEnabled, setOpsAlertsWhatsappEnabled] = React.useState(true);
+  const [opsAlertsEmailConfigured, setOpsAlertsEmailConfigured] = React.useState(true);
+  const [opsAlertsWhatsappConfigured, setOpsAlertsWhatsappConfigured] = React.useState(true);
   const [opsAlertsLoading, setOpsAlertsLoading] = React.useState(false);
   const [opsAlertsSaving, setOpsAlertsSaving] = React.useState(false);
   const [billing, setBilling] = React.useState(null);
@@ -251,6 +253,8 @@ export const SettingsPage = () => {
         const data = res.data || {};
         if (typeof data.email_enabled === 'boolean') setOpsAlertsEmailEnabled(data.email_enabled);
         if (typeof data.whatsapp_enabled === 'boolean') setOpsAlertsWhatsappEnabled(data.whatsapp_enabled);
+        if (typeof data.email_destination_configured === 'boolean') setOpsAlertsEmailConfigured(data.email_destination_configured);
+        if (typeof data.whatsapp_destination_configured === 'boolean') setOpsAlertsWhatsappConfigured(data.whatsapp_destination_configured);
       })
       .catch(() => { /* keep defaults (both ON) */ })
       .finally(() => { if (!cancelled) setOpsAlertsLoading(false); });
@@ -1144,17 +1148,40 @@ export const SettingsPage = () => {
                   ? 'تحكم في القنوات التي تُرسَل عبرها تنبيهات التشغيل (أعطال الفحص اليومي، فشل الإرسال، إلخ).'
                   : 'Choose which transports outbound ops alerts (daily-check failures, delivery errors, etc.) are sent over.'}
               </p>
-              <div className="flex items-center justify-between gap-3 pt-2 border-t">
+              <div className={`flex items-center justify-between gap-3 pt-2 border-t ${opsAlertsEmailConfigured ? '' : 'opacity-60'}`}>
                 <div>
                   <Label htmlFor="ops-alerts-email-toggle" className="font-medium">
                     {language === 'ar'
                       ? 'إرسال تنبيهات التشغيل بالبريد الإلكتروني'
                       : 'Send ops alerts by email'}
                   </Label>
-                  <p className="text-sm text-muted-foreground">
-                    {language === 'ar'
-                      ? 'يتطلب ضبط متغير البيئة OPS_ALERT_EMAIL_TO حتى يصبح للمفتاح أثر.'
-                      : 'Requires the OPS_ALERT_EMAIL_TO env var to be configured for the toggle to have any effect.'}
+                  <div className="mt-1">
+                    {opsAlertsEmailConfigured ? (
+                      <span
+                        className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-green-100 text-green-700"
+                        data-testid="ops-alerts-email-configured-badge"
+                      >
+                        <CheckCircle2 className="w-3 h-3" />
+                        {language === 'ar' ? 'مهيّأ' : 'Configured'}
+                      </span>
+                    ) : (
+                      <span
+                        className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-amber-100 text-amber-700"
+                        data-testid="ops-alerts-email-unconfigured-badge"
+                      >
+                        <AlertCircle className="w-3 h-3" />
+                        {language === 'ar' ? 'غير مهيّأ' : 'Not configured'}
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    {opsAlertsEmailConfigured
+                      ? (language === 'ar'
+                          ? 'يتطلب ضبط متغير البيئة OPS_ALERT_EMAIL_TO حتى يصبح للمفتاح أثر.'
+                          : 'Requires the OPS_ALERT_EMAIL_TO env var to be configured for the toggle to have any effect.')
+                      : (language === 'ar'
+                          ? 'لن يصل أي بريد حتى يضبط مسؤول الخادم متغير البيئة OPS_ALERT_EMAIL_TO.'
+                          : 'No email will be sent until a server admin sets the OPS_ALERT_EMAIL_TO env var.')}
                   </p>
                 </div>
                 <Switch
@@ -1165,17 +1192,40 @@ export const SettingsPage = () => {
                   onCheckedChange={(v) => handleSaveOpsAlertsSetting('email_enabled', !!v)}
                 />
               </div>
-              <div className="flex items-center justify-between gap-3 pt-3 border-t">
+              <div className={`flex items-center justify-between gap-3 pt-3 border-t ${opsAlertsWhatsappConfigured ? '' : 'opacity-60'}`}>
                 <div>
                   <Label htmlFor="ops-alerts-whatsapp-toggle" className="font-medium">
                     {language === 'ar'
                       ? 'إرسال تنبيهات التشغيل عبر واتساب'
                       : 'Send ops alerts by WhatsApp'}
                   </Label>
-                  <p className="text-sm text-muted-foreground">
-                    {language === 'ar'
-                      ? 'يتطلب ضبط متغير البيئة OPS_ALERT_WHATSAPP_TO حتى يصبح للمفتاح أثر.'
-                      : 'Requires the OPS_ALERT_WHATSAPP_TO env var to be configured for the toggle to have any effect.'}
+                  <div className="mt-1">
+                    {opsAlertsWhatsappConfigured ? (
+                      <span
+                        className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-green-100 text-green-700"
+                        data-testid="ops-alerts-whatsapp-configured-badge"
+                      >
+                        <CheckCircle2 className="w-3 h-3" />
+                        {language === 'ar' ? 'مهيّأ' : 'Configured'}
+                      </span>
+                    ) : (
+                      <span
+                        className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-amber-100 text-amber-700"
+                        data-testid="ops-alerts-whatsapp-unconfigured-badge"
+                      >
+                        <AlertCircle className="w-3 h-3" />
+                        {language === 'ar' ? 'غير مهيّأ' : 'Not configured'}
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    {opsAlertsWhatsappConfigured
+                      ? (language === 'ar'
+                          ? 'يتطلب ضبط متغير البيئة OPS_ALERT_WHATSAPP_TO حتى يصبح للمفتاح أثر.'
+                          : 'Requires the OPS_ALERT_WHATSAPP_TO env var to be configured for the toggle to have any effect.')
+                      : (language === 'ar'
+                          ? 'لن تصل أي رسالة واتساب حتى يضبط مسؤول الخادم متغير البيئة OPS_ALERT_WHATSAPP_TO.'
+                          : 'No WhatsApp message will be sent until a server admin sets the OPS_ALERT_WHATSAPP_TO env var.')}
                   </p>
                 </div>
                 <Switch
