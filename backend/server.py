@@ -3535,6 +3535,27 @@ async def _run_daily_renewal_and_ads_checks(trigger: str = "scheduler") -> dict:
         errors.append(msg)
         print(f"Daily checks: {msg}")
 
+    # 6) Daily digest of any ops_alerts that ended in delivery_status=exhausted
+    # in the last 24h, so admins are proactively notified about outages even
+    # if they never visit /admin/ops-alerts.
+    digest_sent = False
+    digest_count = 0
+    try:
+        digest_sent, digest_count = await _send_ops_alerts_daily_digest()
+        if digest_sent:
+            print(f"Daily checks: ops-alerts digest emailed ({digest_count} exhausted alert(s))")
+        elif digest_count == 0:
+            print("Daily checks: ops-alerts digest skipped (no exhausted alerts in last 24h)")
+        else:
+            print(
+                f"Daily checks: ops-alerts digest skipped (smtp not configured; "
+                f"{digest_count} exhausted alert(s) would have been included)"
+            )
+    except Exception as e:
+        msg = f"ops-alerts digest failed: {e}"
+        errors.append(msg)
+        print(f"Daily checks: {msg}")
+
     success = len(errors) == 0
     await _persist_daily_checks_status(
         started_at=started_at,
@@ -3566,7 +3587,119 @@ async def _run_daily_renewal_and_ads_checks(trigger: str = "scheduler") -> dict:
         "renewals_created": renewals_created,
         "ads_flagged": ads_flagged,
         "errors": errors,
+        "ops_alerts_digest_sent": digest_sent,
+        "ops_alerts_digest_count": digest_count,
     }
+
+
+_OPS_ALERTS_DIGEST_DISPLAY_CAP = 100
+
+
+async def _send_ops_alerts_daily_digest() -> tuple:
+    """Email admins a once-a-day summary of ops_alerts that **ended** in
+    ``delivery_status="exhausted"`` in the last 24h, so admins are
+    proactively notified about delivery outages even when they don't
+    visit /admin/ops-alerts.
+
+    Selection uses ``acknowledged_at`` (set by the delivery worker when
+    it gives up) rather than ``created_at`` so an alert created earlier
+    that only exhausted recently is still included. Returns
+    ``(sent, count)`` where ``count`` is the *true* total of exhausted
+    alerts in the window (not capped) so the caller can log accurately.
+
+    Skip semantics:
+      * ``(False, 0)`` — nothing to report.
+      * ``(False, n)`` with ``n > 0`` — there were exhausted alerts but
+        SMTP is not configured (``SMTP_HOST`` / ``OPS_ALERT_EMAIL_TO`` /
+        ``SMTP_FROM`` missing), so no email could be sent. Caller logs
+        a "skipped (smtp not configured)" line.
+      * ``(True, n)`` — SMTP attempt was made (``_send_ops_email``
+        completed without raising).
+
+    Raises on SMTP send failure so the caller records the error in the
+    daily-checks status doc and the existing ``daily_checks.failure``
+    ops-alert path fires.
+    """
+    cutoff = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
+    query = {
+        "delivery_status": "exhausted",
+        "acknowledged_at": {"$gte": cutoff},
+    }
+    try:
+        total = await db.ops_alerts.count_documents(query)
+    except Exception as e:
+        raise RuntimeError(f"failed to count exhausted ops_alerts: {e}")
+    if total == 0:
+        return False, 0
+
+    # Short-circuit when SMTP isn't configured: ``_send_ops_email`` would
+    # silently no-op, which would mislead the caller into reporting the
+    # digest as "sent". Mirror its env-var checks here so the return value
+    # accurately reflects whether an SMTP attempt actually happened.
+    if not (
+        os.environ.get("SMTP_HOST")
+        and os.environ.get("OPS_ALERT_EMAIL_TO")
+        and (os.environ.get("SMTP_FROM") or os.environ.get("SMTP_USER"))
+    ):
+        return False, total
+
+    try:
+        rows = await db.ops_alerts.find(
+            query,
+            {"_id": 0, "id": 1, "kind": 1, "title": 1, "body": 1,
+             "severity": 1, "created_at": 1, "acknowledged_at": 1,
+             "attempts": 1, "last_error": 1},
+        ).sort("acknowledged_at", -1).to_list(_OPS_ALERTS_DIGEST_DISPLAY_CAP)
+    except Exception as e:
+        raise RuntimeError(f"failed to query exhausted ops_alerts: {e}")
+
+    base = (os.environ.get("APP_BASE_URL") or "").strip().rstrip("/")
+    link = f"{base}/admin/ops-alerts" if base else "/admin/ops-alerts"
+
+    truncated = total > len(rows)
+    header = (
+        f"{total} ops alert(s) stopped retrying in the last 24h "
+        f"(delivery_status=exhausted)."
+    )
+    lines = [header, "", f"Review them: {link}", ""]
+    if truncated:
+        lines.append(
+            f"Showing the {len(rows)} most recent below; "
+            f"{total - len(rows)} additional exhausted alert(s) omitted "
+            "for brevity — see the link above for the full list."
+        )
+        lines.append("")
+    lines.append("Details:")
+    for r in rows:
+        title = (r.get("title") or r.get("kind") or "ops_alert").strip()
+        kind = (r.get("kind") or "").strip()
+        sev = (r.get("severity") or "error").strip()
+        created = (r.get("created_at") or "").strip()
+        exhausted_at = (r.get("acknowledged_at") or "").strip()
+        attempts = r.get("attempts", 0)
+        last_err = (r.get("last_error") or "").strip()
+        body = (r.get("body") or "").strip()
+        lines.append(f"  • [{sev}] {title}")
+        if kind and kind != title:
+            lines.append(f"      kind: {kind}")
+        if created:
+            lines.append(f"      created_at: {created}")
+        if exhausted_at:
+            lines.append(f"      exhausted_at: {exhausted_at}")
+        lines.append(f"      attempts: {attempts}")
+        if body:
+            lines.append(f"      body: {body[:300]}")
+        if last_err:
+            lines.append(f"      last_error: {last_err[:300]}")
+        lines.append("")
+
+    subject_suffix = f" (showing {len(rows)})" if truncated else ""
+    subject = (
+        f"[Ops Alerts] Daily digest — {total} failed alert(s) "
+        f"in last 24h{subject_suffix}"
+    )
+    await _send_ops_email(subject, "\n".join(lines))
+    return True, total
 
 
 async def _persist_daily_checks_status(
