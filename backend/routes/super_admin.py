@@ -683,24 +683,24 @@ def build_cancel_delete_url(tenant_id: str, *, request: Optional[Request] = None
     return f"{base}/super/tenants/cancel-delete-public?token={token}"
 
 
-# In-process IP rate limiter for the public cancel-delete endpoint. Keeps
-# the endpoint cheap to defend against token-guessing or replay floods.
+# Per-IP rate limit for the public cancel-delete endpoint. Backed by the
+# shared MongoDB limiter (see utils/rate_limit.py) so the cap holds across
+# Gunicorn workers and horizontally scaled replicas — an in-process
+# counter would let attackers get N× the limit on multi-worker deploys.
 _CANCEL_DELETE_RATE_LIMIT = 10  # requests
 _CANCEL_DELETE_RATE_WINDOW_SECONDS = 60
-_cancel_delete_rate_buckets: dict = {}
+_CANCEL_DELETE_RATE_SCOPE = "cancel_delete_public"
 
 
-def _cancel_delete_rate_check(client_ip: str) -> bool:
+async def _cancel_delete_rate_check(client_ip: str) -> bool:
     """Return False if this IP has exceeded the cancel-link rate limit."""
-    now = datetime.now(timezone.utc).timestamp()
-    bucket = _cancel_delete_rate_buckets.get(client_ip) or []
-    bucket = [t for t in bucket if (now - t) < _CANCEL_DELETE_RATE_WINDOW_SECONDS]
-    if len(bucket) >= _CANCEL_DELETE_RATE_LIMIT:
-        _cancel_delete_rate_buckets[client_ip] = bucket
-        return False
-    bucket.append(now)
-    _cancel_delete_rate_buckets[client_ip] = bucket
-    return True
+    from utils.rate_limit import check_rate_limit
+    return await check_rate_limit(
+        _CANCEL_DELETE_RATE_SCOPE,
+        client_ip,
+        limit=_CANCEL_DELETE_RATE_LIMIT,
+        window_seconds=_CANCEL_DELETE_RATE_WINDOW_SECONDS,
+    )
 
 
 async def _apply_cancel_tenant_delete(tenant_id: str, *, actor: dict, source: str) -> dict:
@@ -926,7 +926,7 @@ async def cancel_tenant_delete_public(token: str, request: Request):
     is opened in a browser from an email client.
     """
     client_ip = (request.client.host if request.client else "") or "unknown"
-    if not _cancel_delete_rate_check(client_ip):
+    if not await _cancel_delete_rate_check(client_ip):
         return HTMLResponse(
             _cancel_result_html(
                 ok=False,

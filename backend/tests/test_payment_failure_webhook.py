@@ -337,6 +337,41 @@ def test_webhook_rejects_unknown_provider(webhook_client):
     assert r.status_code == 404
 
 
+def test_webhook_rate_limited_per_ip(webhook_client, monkeypatch):
+    """Once the per-IP cap is exceeded the endpoint short-circuits with
+    429 — *before* signature verification, so a flood of bogus signatures
+    can't keep the worker busy. Adopting the shared limiter (Task #278)
+    means the cap holds across Gunicorn workers / replicas."""
+    client, _state, _email = webhook_client
+
+    calls = {"count": 0}
+
+    async def fake_check(scope, key, *, limit, window_seconds, control_db_override=None):
+        assert scope == "payment_webhook"
+        # Allow the first call, deny everything after it. We don't care
+        # about the actual cap here — only that the route consults the
+        # shared limiter and honors a False return.
+        calls["count"] += 1
+        return calls["count"] == 1
+
+    monkeypatch.setattr("utils.rate_limit.check_rate_limit", fake_check, raising=True)
+
+    body = b'{"type":"invoice.payment_failed"}'
+    sig = _stripe_signature(body, WEBHOOK_SECRET)
+    headers = {"Stripe-Signature": sig, "Content-Type": "application/json"}
+
+    # First call goes through the limiter and proceeds (signature still
+    # validated downstream — the response code doesn't matter, only that
+    # it's not 429).
+    r1 = client.post("/api/billing/webhook/stripe", content=body, headers=headers)
+    assert r1.status_code != 429
+    # Second call from the same IP is denied by the limiter.
+    r2 = client.post("/api/billing/webhook/stripe", content=body, headers=headers)
+    assert r2.status_code == 429
+    assert "rate limit" in r2.json().get("detail", "").lower()
+    assert calls["count"] == 2
+
+
 def test_webhook_rejects_bad_signature(webhook_client):
     client, state, _ = webhook_client
     body = b'{"type":"invoice.payment_failed"}'

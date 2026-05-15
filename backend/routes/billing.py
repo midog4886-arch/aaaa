@@ -149,6 +149,11 @@ async def _resolve_tenant(tenant_id: Optional[str], tenant_slug: Optional[str]) 
     return None
 
 
+_WEBHOOK_RATE_LIMIT = 240  # requests per IP per window
+_WEBHOOK_RATE_WINDOW_SECONDS = 60
+_WEBHOOK_RATE_SCOPE = "payment_webhook"
+
+
 @router.post("/webhook/{provider}")
 async def payment_webhook(provider: str, request: Request):
     """Receive a payment-provider webhook (Stripe / Moyasar / Tap).
@@ -158,7 +163,22 @@ async def payment_webhook(provider: str, request: Request):
     ``/super/payment/settings``). Tenant middleware is bypassed here in
     practice because the tenant is resolved from the event's ``metadata``
     rather than the request host.
+
+    Per-IP rate-limited via the shared MongoDB limiter *before* signature
+    verification so an attacker can't flood the endpoint with bogus
+    signatures (each verify is HMAC-SHA256 + a write to ``webhook_events``).
+    The cap is generous (240/min) so legitimate provider retries from a
+    single source IP never trip it.
     """
+    from utils.rate_limit import check_rate_limit
+    client_ip = (request.client.host if request.client else "") or "unknown"
+    if not await check_rate_limit(
+        _WEBHOOK_RATE_SCOPE,
+        client_ip,
+        limit=_WEBHOOK_RATE_LIMIT,
+        window_seconds=_WEBHOOK_RATE_WINDOW_SECONDS,
+    ):
+        raise HTTPException(status_code=429, detail="rate limit exceeded")
     settings = await get_payment_settings()
     cfg_provider = (settings.get("provider") or "").lower()
     incoming_provider = (provider or "").lower()
@@ -783,15 +803,43 @@ async def cancel_pending_email_change(
     return {"ok": True, "role": role, "cancelled_email": pending}
 
 
+_CONFIRM_EMAIL_RATE_LIMIT = 20  # requests
+_CONFIRM_EMAIL_RATE_WINDOW_SECONDS = 60
+_CONFIRM_EMAIL_RATE_SCOPE = "confirm_email_public"
+
+
 @router.get("/confirm-email", response_class=HTMLResponse)
-async def confirm_email_change(token: str):
+async def confirm_email_change(token: str, request: Request):
     """Public endpoint hit from the confirmation email link.
 
     The token format is ``{role}-{random}`` so we know which role to apply
     without leaking the tenant slug in the URL. We look up the tenant by the
     token field directly, so possession of the token is the only proof
     required.
+
+    Rate-limited per client IP via the shared MongoDB limiter so the cap
+    holds across Gunicorn workers / replicas (an in-process counter would
+    let an attacker brute-force tokens at N× the limit on multi-worker
+    deploys).
     """
+    from utils.rate_limit import check_rate_limit
+    client_ip = (request.client.host if request.client else "") or "unknown"
+    if not await check_rate_limit(
+        _CONFIRM_EMAIL_RATE_SCOPE,
+        client_ip,
+        limit=_CONFIRM_EMAIL_RATE_LIMIT,
+        window_seconds=_CONFIRM_EMAIL_RATE_WINDOW_SECONDS,
+    ):
+        return HTMLResponse(
+            _confirmation_html(
+                "محاولات كثيرة جداً",
+                "تم تجاوز الحد المسموح به من المحاولات. يرجى المحاولة بعد قليل.",
+                "Too many attempts",
+                "You've exceeded the allowed number of attempts. Please try again shortly.",
+                ok=False,
+            ),
+            status_code=429,
+        )
     if not token or "-" not in token:
         return HTMLResponse(
             _confirmation_html(

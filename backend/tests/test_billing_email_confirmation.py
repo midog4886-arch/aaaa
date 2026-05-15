@@ -50,8 +50,60 @@ class _FakeControlDb:
 
 
 class _FakeRequest:
-    def __init__(self):
+    def __init__(self, ip="1.2.3.4"):
+        class _Client:
+            host = ip
         self.base_url = "http://testserver/"
+        self.client = _Client()
+
+
+class _FakeRateColl:
+    """In-memory stand-in for the rate-limit collection so tests don't
+    need MongoDB. Implements just enough of the motor API used by
+    ``utils.rate_limit.check_rate_limit``."""
+
+    def __init__(self):
+        self.docs = {}
+
+    async def create_index(self, *args, **kwargs):
+        return None
+
+    async def update_one(self, flt, update, upsert=False):
+        doc_id = flt.get("_id")
+        doc = self.docs.get(doc_id)
+        if doc is None:
+            if not upsert:
+                return None
+            doc = {"_id": doc_id, "hits": []}
+            self.docs[doc_id] = doc
+        pull = (update.get("$pull") or {}).get("hits") or {}
+        if pull:
+            cutoff = pull.get("$lt")
+            if cutoff is not None:
+                doc["hits"] = [t for t in doc.get("hits", []) if t >= cutoff]
+        push = (update.get("$push") or {}).get("hits")
+        if push is not None:
+            doc.setdefault("hits", []).append(push)
+        for k, v in (update.get("$set") or {}).items():
+            doc[k] = v
+
+    async def find_one(self, flt, _projection=None):
+        doc = self.docs.get(flt.get("_id"))
+        return dict(doc) if doc else None
+
+    async def delete_one(self, flt):
+        self.docs.pop(flt.get("_id"), None)
+
+
+class _FakeControlDbWithRate(_FakeControlDb):
+    def __init__(self, tenants):
+        super().__init__(tenants)
+        self._rate = _FakeRateColl()
+
+    def __getitem__(self, name):
+        if name == "rate_limit_buckets":
+            return self._rate
+        raise KeyError(name)
 
 
 ADMIN_USER = {"id": "u1", "username": "owner", "is_admin": True}
@@ -69,9 +121,14 @@ def billing_module(monkeypatch):
         "owner_email": "owner@example.com",
         "billing_email": "billing@example.com",
     }])
-    fake_control = _FakeControlDb(tenants)
+    fake_control = _FakeControlDbWithRate(tenants)
 
+    import control_db as control_db_mod
+    import utils.rate_limit as rate_limit_mod
+
+    monkeypatch.setattr(control_db_mod, "control_db", fake_control, raising=True)
     monkeypatch.setattr(billing_mod, "control_db", fake_control, raising=True)
+    monkeypatch.setattr(rate_limit_mod, "_indexes_ready", False, raising=True)
     monkeypatch.setattr(
         tenant_mod, "get_current_tenant_slug", lambda: "academy-one", raising=True
     )
@@ -187,7 +244,7 @@ def test_confirm_email_link_applies_pending_change(billing_module):
     )
     token = tenants.rows[0]["pending_owner_email_token"]
 
-    resp = asyncio.run(billing_mod.confirm_email_change(token))
+    resp = asyncio.run(billing_mod.confirm_email_change(token, _FakeRequest()))
 
     assert resp.status_code == 200
     row = tenants.rows[0]
@@ -213,7 +270,7 @@ def test_expired_token_is_rejected_and_cleared(billing_module):
         datetime.now(timezone.utc) - timedelta(hours=1)
     ).isoformat()
 
-    resp = asyncio.run(billing_mod.confirm_email_change(token))
+    resp = asyncio.run(billing_mod.confirm_email_change(token, _FakeRequest()))
 
     assert resp.status_code == 410
     row = tenants.rows[0]
@@ -229,13 +286,13 @@ def test_malformed_token_is_rejected(billing_module):
     billing_mod, tenants, _sent = billing_module
 
     # Valid shape, unknown random part → no tenant matched → 410.
-    resp = asyncio.run(billing_mod.confirm_email_change("owner-deadbeef"))
+    resp = asyncio.run(billing_mod.confirm_email_change("owner-deadbeef", _FakeRequest()))
     assert resp.status_code == 410
     # Bare-string with no role prefix → 400.
-    resp2 = asyncio.run(billing_mod.confirm_email_change("bogus"))
+    resp2 = asyncio.run(billing_mod.confirm_email_change("bogus", _FakeRequest()))
     assert resp2.status_code == 400
     # Known prefix shape but unknown role → 400.
-    resp3 = asyncio.run(billing_mod.confirm_email_change("hacker-deadbeef"))
+    resp3 = asyncio.run(billing_mod.confirm_email_change("hacker-deadbeef", _FakeRequest()))
     assert resp3.status_code == 400
     assert tenants.rows[0]["owner_email"] == "owner@example.com"
 

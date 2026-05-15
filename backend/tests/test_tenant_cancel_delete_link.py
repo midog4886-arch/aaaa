@@ -42,9 +42,49 @@ class _FakeTenants:
                 break
 
 
+class _FakeRateColl:
+    def __init__(self):
+        self.docs = {}
+
+    async def create_index(self, *args, **kwargs):
+        return None
+
+    async def update_one(self, flt, update, upsert=False):
+        doc_id = flt.get("_id")
+        doc = self.docs.get(doc_id)
+        if doc is None:
+            if not upsert:
+                return None
+            doc = {"_id": doc_id, "hits": []}
+            self.docs[doc_id] = doc
+        pull = (update.get("$pull") or {}).get("hits") or {}
+        if pull:
+            cutoff = pull.get("$lt")
+            if cutoff is not None:
+                doc["hits"] = [t for t in doc.get("hits", []) if t >= cutoff]
+        push = (update.get("$push") or {}).get("hits")
+        if push is not None:
+            doc.setdefault("hits", []).append(push)
+        for k, v in (update.get("$set") or {}).items():
+            doc[k] = v
+
+    async def find_one(self, flt, _projection=None):
+        doc = self.docs.get(flt.get("_id"))
+        return dict(doc) if doc else None
+
+    async def delete_one(self, flt):
+        self.docs.pop(flt.get("_id"), None)
+
+
 class _FakeControlDb:
     def __init__(self, tenants):
         self.tenants = tenants
+        self._rate = _FakeRateColl()
+
+    def __getitem__(self, name):
+        if name == "rate_limit_buckets":
+            return self._rate
+        raise KeyError(name)
 
 
 class _FakeAuditLogs:
@@ -86,10 +126,12 @@ def super_admin_module(monkeypatch):
     fake_control = _FakeControlDb(tenants)
     fake_db = _FakeDb()
 
+    import utils.rate_limit as rate_limit_mod
+
     monkeypatch.setattr(control_db_mod, "control_db", fake_control, raising=True)
     monkeypatch.setattr(sa, "control_db", fake_control, raising=True)
     monkeypatch.setattr(audit_mod, "db", fake_db, raising=True)
-    sa._cancel_delete_rate_buckets.clear()
+    monkeypatch.setattr(rate_limit_mod, "_indexes_ready", False, raising=True)
     return sa, tenants, fake_db
 
 
