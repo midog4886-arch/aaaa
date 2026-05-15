@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { useEffect, useState } from 'react';
 
 const KEY_PREFIX = 'tenant_branding:';
 const FALLBACK_LOGO = '/images/academy-logo.png';
@@ -75,13 +76,36 @@ export function applyTheme(primaryHex) {
       root.style.removeProperty('--primary');
       root.style.removeProperty('--primary-foreground');
       root.style.removeProperty('--ring');
+      root.style.removeProperty('--brand');
       return;
     }
     const { h, s, l } = _hexToHslComponents(primaryHex);
     root.style.setProperty('--primary', `${h} ${s}% ${l}%`);
     root.style.setProperty('--primary-foreground', _foregroundFor(primaryHex));
     root.style.setProperty('--ring', `${h} ${s}% ${l}%`);
+    root.style.setProperty('--brand', primaryHex);
   } catch (e) {}
+}
+
+/**
+ * React hook that returns the live tenant primary color (hex string),
+ * or '' when no tenant brand color is set. Re-renders on `branding:updated`.
+ *
+ * Usage:
+ *   const primary = useBrandColor();
+ *   <span style={primary ? { color: primary } : undefined} className={primary ? '' : 'text-amber-600'} />
+ *
+ * For pure CSS-based usage prefer the `--brand` custom property on `:root`,
+ * e.g. `style={{ color: 'var(--brand, #d97706)' }}`.
+ */
+export function useBrandColor() {
+  const [primary, setPrimary] = useState(getPrimaryColor());
+  useEffect(() => {
+    const onUpdate = () => setPrimary(getPrimaryColor());
+    window.addEventListener('branding:updated', onUpdate);
+    return () => window.removeEventListener('branding:updated', onUpdate);
+  }, []);
+  return primary;
 }
 
 export function getAcademyLogoUrl() {

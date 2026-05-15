@@ -8,7 +8,7 @@ import {
 import { toast } from 'sonner';
 import { motion } from 'framer-motion';
 import MemberLayout, { memberAPI, getMemberData, getDarkMode, getLanguage } from './MemberLayout';
-import { getPrimaryColor } from '../../services/branding';
+import { useBrandColor } from '../../services/branding';
 import { HeroBannerAds, InlineAds, PopupAd } from './MemberAds';
 import PullToRefresh from '../../components/PullToRefresh';
 import TrainingReminder from '../../components/TrainingReminder';
@@ -351,13 +351,7 @@ const MemberDashboard = () => {
   const darkMode = getDarkMode();
   const language = getLanguage();
   const today = new Date().toISOString().slice(0, 10);
-  const [primary, setPrimary] = useState(getPrimaryColor());
-
-  useEffect(() => {
-    const onUpdate = () => setPrimary(getPrimaryColor());
-    window.addEventListener('branding:updated', onUpdate);
-    return () => window.removeEventListener('branding:updated', onUpdate);
-  }, []);
+  const primary = useBrandColor();
 
   useEffect(() => { fetchData(); }, []);
 

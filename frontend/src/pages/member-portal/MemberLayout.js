@@ -9,7 +9,7 @@ import { Button } from '../../components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../../components/ui/dialog';
 import axios from 'axios';
 import API_URL from '../../config/api';
-import { getAcademyLogoUrl, getPrimaryColor, getAcademyName } from '../../services/branding';
+import { getAcademyLogoUrl, getAcademyName, useBrandColor } from '../../services/branding';
 
 // Default member-portal logo (used when tenant has not uploaded a custom logo).
 const MEMBER_PORTAL_DEFAULT_LOGO = '/logo-new.png';
@@ -84,14 +84,14 @@ const MemberLayout = ({ children }) => {
   const [darkMode, setDarkModeState] = useState(getDarkMode());
   const [language, setLanguageState] = useState(getLanguage());
   const [tenantLogo, setTenantLogo] = useState(_resolveAcademyLogo());
-  const [primary, setPrimary] = useState(getPrimaryColor());
+  const primary = useBrandColor();
   const [tenantName, setTenantName] = useState(getAcademyName());
 
-  // React to tenant branding updates (logo + colors loaded from /api/tenant/branding)
+  // React to tenant branding updates for non-color fields (logo + name).
+  // Primary color is handled by the `useBrandColor()` hook above.
   useEffect(() => {
     const onUpdate = () => {
       setTenantLogo(_resolveAcademyLogo());
-      setPrimary(getPrimaryColor());
       setTenantName(getAcademyName());
     };
     window.addEventListener('branding:updated', onUpdate);
