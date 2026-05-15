@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { useAuth } from '../contexts/AuthContext';
@@ -34,6 +34,7 @@ const OnboardingPage = () => {
 
   const [coachForm, setCoachForm] = useState({ name: '', specialty: '', phone: '' });
   const [skipCoach, setSkipCoach] = useState(false);
+  const branchOriginalRef = useRef(null);
 
   useEffect(() => {
     if (!isAdmin) {
@@ -61,6 +62,7 @@ const OnboardingPage = () => {
         if (bs.length > 0) {
           const b = bs[0];
           setBranchId(b.id);
+          branchOriginalRef.current = b;
           setBranchForm({
             name: b.name || '',
             name_ar: b.name_ar || b.name || '',
@@ -128,14 +130,16 @@ const OnboardingPage = () => {
       return false;
     }
     try {
+      const original = branchOriginalRef.current || {};
       await branchesAPI.update(branchId, {
+        ...original,
         name: nameEn,
         name_ar: nameAr || nameEn,
         address: branchForm.address || '',
         phone: branchForm.phone || '',
-        email: '',
-        manager_name: '',
-        is_active: true,
+        email: original.email || '',
+        manager_name: original.manager_name || '',
+        is_active: original.is_active !== false,
       });
       return true;
     } catch (e) {
