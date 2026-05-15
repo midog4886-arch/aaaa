@@ -291,10 +291,12 @@ export const publicAPI = {
   getPlans: () => axios.get(`${API}/public/plans`),
   checkSlug: (slug) => axios.get(`${API}/public/check-slug/${encodeURIComponent(slug)}`),
   signup: (data) => axios.post(`${API}/public/signup`, data),
+  contact: (data) => axios.post(`${API}/public/contact`, data),
 };
 
 export const billingAPI = {
   get: () => axios.get(`${API}/billing`),
+  invoices: () => axios.get(`${API}/billing/invoices`),
 };
 
 // Branches API

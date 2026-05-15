@@ -16,6 +16,47 @@ from routes.public_signup import _load_plans
 router = APIRouter(prefix="/billing", tags=["billing"])
 
 
+def _build_invoices(tenant: dict, plans: list) -> list:
+    history = tenant.get("renewal_history") or []
+    fallback_plan_id = tenant.get("plan", "starter")
+    fallback_cycle = tenant.get("billing_cycle", "monthly")
+    plans_by_id = {p.get("id"): p for p in plans if p.get("id")}
+    items = []
+    for idx, h in enumerate(history):
+        rec_plan_id = h.get("plan_id") or fallback_plan_id
+        rec_cycle = h.get("cycle") or fallback_cycle
+        rec_plan = plans_by_id.get(rec_plan_id) or {}
+        amount = h.get("amount")
+        if amount is None:
+            amount = rec_plan.get("price_yearly") if rec_cycle == "yearly" else rec_plan.get("price_monthly")
+        items.append({
+            "id": h.get("id") or f"renewal-{idx + 1}",
+            "issued_at": h.get("renewed_at") or h.get("date") or "",
+            "period_start": h.get("period_start", ""),
+            "period_end": h.get("period_end", ""),
+            "plan_id": rec_plan_id,
+            "plan_name_ar": h.get("plan_name_ar") or rec_plan.get("name_ar", rec_plan_id),
+            "plan_name_en": h.get("plan_name_en") or rec_plan.get("name_en", rec_plan_id),
+            "cycle": rec_cycle,
+            "amount": amount,
+            "currency": "SAR",
+            "status": h.get("status", "paid"),
+            "method": h.get("method", "manual"),
+        })
+    items.sort(key=lambda x: x.get("issued_at") or "", reverse=True)
+    return items
+
+
+@router.get("/invoices")
+async def list_invoices(current_user: dict = Depends(get_current_user)):
+    if not current_user.get("is_admin", False):
+        raise HTTPException(status_code=403, detail="صلاحية مسؤول الأكاديمية مطلوبة")
+    slug = get_current_tenant_slug() or DEFAULT_TENANT_SLUG
+    tenant = await control_db.tenants.find_one({"slug": slug}, {"_id": 0}) or {}
+    plans = await _load_plans()
+    return {"items": _build_invoices(tenant, plans)}
+
+
 def _days_remaining(end_at_iso):
     if not end_at_iso:
         return None

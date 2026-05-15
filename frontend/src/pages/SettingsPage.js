@@ -22,6 +22,10 @@ import {
   RefreshCw,
   CreditCard,
   Mail,
+  FileText,
+  XCircle,
+  Repeat,
+  ArrowUpCircle,
 } from 'lucide-react';
 
 export const SettingsPage = () => {
@@ -42,6 +46,8 @@ export const SettingsPage = () => {
   const [dailyChecksRunning, setDailyChecksRunning] = React.useState(false);
   const [billing, setBilling] = React.useState(null);
   const [billingLoading, setBillingLoading] = React.useState(false);
+  const [invoices, setInvoices] = React.useState([]);
+  const [invoicesLoading, setInvoicesLoading] = React.useState(false);
   const ALL_DAYS = React.useMemo(() => ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'], []);
   const [dailyChecksDays, setDailyChecksDays] = React.useState(ALL_DAYS);
   const DAY_LABELS = React.useMemo(() => ({
@@ -53,12 +59,60 @@ export const SettingsPage = () => {
     if (!isAdmin) return;
     let cancelled = false;
     setBillingLoading(true);
+    setInvoicesLoading(true);
     billingAPI.get()
       .then((res) => { if (!cancelled) setBilling(res.data || null); })
       .catch(() => { if (!cancelled) setBilling(null); })
       .finally(() => { if (!cancelled) setBillingLoading(false); });
+    billingAPI.invoices()
+      .then((res) => { if (!cancelled) setInvoices(res.data?.items || []); })
+      .catch(() => { if (!cancelled) setInvoices([]); })
+      .finally(() => { if (!cancelled) setInvoicesLoading(false); });
     return () => { cancelled = true; };
   }, [isAdmin]);
+
+  const buildMailto = (subjectAr, subjectEn, bodyAr, bodyEn) => {
+    const subject = encodeURIComponent(language === 'ar' ? subjectAr : subjectEn);
+    const slug = billing?.slug || '';
+    const planLabel = language === 'ar' ? (billing?.plan_name_ar || billing?.plan) : (billing?.plan_name_en || billing?.plan);
+    const sigAr = `\n\n---\nالأكاديمية: ${slug}\nالخطة الحالية: ${planLabel || '—'}`;
+    const sigEn = `\n\n---\nAcademy: ${slug}\nCurrent plan: ${planLabel || '—'}`;
+    const body = encodeURIComponent((language === 'ar' ? bodyAr : bodyEn) + (language === 'ar' ? sigAr : sigEn));
+    return `mailto:billing@championsacademy.app?subject=${subject}&body=${body}`;
+  };
+
+  const formatInvoiceDate = (iso) => {
+    if (!iso) return '—';
+    try {
+      return new Date(iso).toLocaleDateString(language === 'ar' ? 'ar-SA' : 'en-GB', { dateStyle: 'medium' });
+    } catch { return iso; }
+  };
+
+  const printInvoice = (inv) => {
+    const isAr = language === 'ar';
+    const w = window.open('', '_blank', 'width=720,height=900');
+    if (!w) return;
+    const planName = isAr ? inv.plan_name_ar : inv.plan_name_en;
+    const cycle = inv.cycle === 'yearly' ? (isAr ? 'سنوي' : 'Yearly') : (isAr ? 'شهري' : 'Monthly');
+    const status = inv.status === 'paid' ? (isAr ? 'مدفوعة' : 'Paid') : inv.status;
+    const html = `<!doctype html><html dir="${isAr ? 'rtl' : 'ltr'}" lang="${isAr ? 'ar' : 'en'}"><head><meta charset="utf-8"><title>${isAr ? 'فاتورة' : 'Invoice'} ${inv.id}</title>
+<style>body{font-family:system-ui,-apple-system,Segoe UI,Tahoma,sans-serif;padding:40px;color:#0f172a}h1{margin:0 0 6px}h2{margin:24px 0 8px;font-size:18px;border-bottom:2px solid #f1f5f9;padding-bottom:6px}table{width:100%;border-collapse:collapse;margin-top:8px}td{padding:8px 4px;border-bottom:1px solid #e2e8f0;font-size:14px}.right{text-align:${isAr ? 'left' : 'right'};font-weight:bold}.total{font-size:22px;color:#0f172a}.muted{color:#64748b;font-size:13px}.brand{display:flex;align-items:center;gap:12px;margin-bottom:24px}.brand .logo{width:48px;height:48px;border-radius:12px;background:#f97316;color:white;display:flex;align-items:center;justify-content:center;font-weight:bold;font-size:24px}@media print{body{padding:20px}}</style></head><body>
+<div class="brand"><div class="logo">★</div><div><div style="font-weight:bold">${isAr ? 'منصة الأبطال للأكاديميات' : 'Champions Academy Platform'}</div><div class="muted">${isAr ? 'إيصال اشتراك' : 'Subscription receipt'}</div></div></div>
+<h1>${isAr ? 'إيصال رقم' : 'Receipt #'} ${inv.id}</h1>
+<div class="muted">${isAr ? 'تاريخ الإصدار:' : 'Issued:'} ${formatInvoiceDate(inv.issued_at)}</div>
+<h2>${isAr ? 'تفاصيل الأكاديمية' : 'Academy details'}</h2>
+<table><tr><td class="muted">${isAr ? 'الأكاديمية' : 'Academy'}</td><td class="right">${billing?.name || billing?.slug || ''}</td></tr><tr><td class="muted">${isAr ? 'البريد الإلكتروني' : 'Email'}</td><td class="right">${billing?.owner_email || ''}</td></tr></table>
+<h2>${isAr ? 'تفاصيل الاشتراك' : 'Subscription details'}</h2>
+<table><tr><td class="muted">${isAr ? 'الخطة' : 'Plan'}</td><td class="right">${planName || ''}</td></tr><tr><td class="muted">${isAr ? 'الدورة' : 'Cycle'}</td><td class="right">${cycle}</td></tr>${inv.period_start ? `<tr><td class="muted">${isAr ? 'الفترة' : 'Period'}</td><td class="right">${formatInvoiceDate(inv.period_start)} → ${formatInvoiceDate(inv.period_end)}</td></tr>` : ''}<tr><td class="muted">${isAr ? 'طريقة الدفع' : 'Method'}</td><td class="right">${inv.method}</td></tr><tr><td class="muted">${isAr ? 'الحالة' : 'Status'}</td><td class="right">${status}</td></tr></table>
+<h2>${isAr ? 'الإجمالي' : 'Total'}</h2>
+<table><tr><td class="muted">${isAr ? 'المبلغ' : 'Amount'}</td><td class="right total">${inv.amount != null ? `${inv.amount} ${isAr ? 'ر.س' : 'SAR'}` : '—'}</td></tr></table>
+<p class="muted" style="margin-top:32px">${isAr ? 'هذا إيصال إلكتروني للاشتراك في خدمات منصة الأبطال للأكاديميات.' : 'This is an electronic receipt for subscription to the Champions Academy Platform services.'}</p>
+<script>window.onload=()=>{setTimeout(()=>window.print(),300)};</script>
+</body></html>`;
+    w.document.open();
+    w.document.write(html);
+    w.document.close();
+  };
 
   const fetchDailyChecksStatus = React.useCallback(async () => {
     try {
@@ -256,19 +310,103 @@ export const SettingsPage = () => {
                       <p className="font-medium">{billing.end_at ? new Date(billing.end_at).toLocaleDateString(language === 'ar' ? 'ar-SA' : 'en-GB') : '—'}</p>
                     </div>
                   </div>
-                  <div className="pt-3 border-t flex flex-col sm:flex-row gap-2">
-                    <a href="mailto:sales@championsacademy.app?subject=Renew%20or%20upgrade%20subscription" className="flex-1">
-                      <Button className="w-full" data-testid="billing-contact-btn">
-                        <Mail className="w-4 h-4 me-2" />
-                        {language === 'ar' ? 'تواصل لتجديد أو ترقية الخطة' : 'Contact to renew or upgrade'}
+                  <div className="pt-3 border-t grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    <a href={buildMailto(
+                      'طلب تجديد الاشتراك', 'Renew subscription request',
+                      'مرحباً، أرغب في تجديد اشتراك أكاديميتي.', 'Hi, I would like to renew my academy subscription.'
+                    )}>
+                      <Button className="w-full" data-testid="billing-renew-btn">
+                        <Repeat className="w-4 h-4 me-2" />
+                        {language === 'ar' ? 'تجديد الاشتراك' : 'Renew subscription'}
+                      </Button>
+                    </a>
+                    <a href={buildMailto(
+                      'طلب تغيير الخطة', 'Change plan request',
+                      'مرحباً، أرغب في الترقية أو تغيير خطتي الحالية. يرجى تزويدي بالتفاصيل.',
+                      'Hi, I would like to upgrade or change my current plan. Please send me the details.'
+                    )}>
+                      <Button className="w-full" variant="outline" data-testid="billing-change-plan-btn">
+                        <ArrowUpCircle className="w-4 h-4 me-2" />
+                        {language === 'ar' ? 'تغيير الخطة' : 'Change plan'}
+                      </Button>
+                    </a>
+                    <a href={buildMailto(
+                      'تحديث طريقة الدفع', 'Update payment method',
+                      'مرحباً، أرغب في تحديث طريقة الدفع الخاصة باشتراكي.',
+                      'Hi, I would like to update the payment method for my subscription.'
+                    )}>
+                      <Button className="w-full" variant="outline" data-testid="billing-update-card-btn">
+                        <CreditCard className="w-4 h-4 me-2" />
+                        {language === 'ar' ? 'تحديث طريقة الدفع' : 'Update payment method'}
+                      </Button>
+                    </a>
+                    <a href={buildMailto(
+                      'طلب إلغاء الاشتراك', 'Cancel subscription request',
+                      'مرحباً، أرغب في إلغاء اشتراكي. يرجى التواصل معي لتأكيد التفاصيل.',
+                      'Hi, I would like to cancel my subscription. Please contact me to confirm the details.'
+                    )}>
+                      <Button className="w-full" variant="outline" data-testid="billing-cancel-btn">
+                        <XCircle className="w-4 h-4 me-2" />
+                        {language === 'ar' ? 'إلغاء الاشتراك' : 'Cancel subscription'}
                       </Button>
                     </a>
                   </div>
                   <p className="text-xs text-muted-foreground">
                     {language === 'ar'
-                      ? 'الدفع الإلكتروني المباشر سيكون متاحاً قريباً. حالياً، يرجى التواصل معنا للتجديد أو ترقية الخطة.'
-                      : 'Direct online payment is coming soon. For now, contact us to renew or upgrade.'}
+                      ? 'الدفع الإلكتروني المباشر سيكون متاحاً قريباً. حالياً، يتم التجديد وتغيير الخطة عبر فريق الفوترة.'
+                      : 'Direct online payment is coming soon. For now, renewals and plan changes go through our billing team.'}
                   </p>
+
+                  <div className="pt-4 border-t" data-testid="billing-invoices">
+                    <div className="flex items-center justify-between mb-2">
+                      <h4 className="font-bold flex items-center gap-2">
+                        <FileText className="w-4 h-4 text-primary" />
+                        {language === 'ar' ? 'سجل الفواتير' : 'Invoice history'}
+                      </h4>
+                    </div>
+                    {invoicesLoading ? (
+                      <p className="text-sm text-muted-foreground">{language === 'ar' ? 'جارٍ التحميل...' : 'Loading...'}</p>
+                    ) : invoices.length === 0 ? (
+                      <p className="text-sm text-muted-foreground" data-testid="billing-no-invoices">
+                        {language === 'ar'
+                          ? 'لا توجد فواتير سابقة. ستظهر هنا بعد أول تجديد مدفوع.'
+                          : 'No invoices yet. They will appear here after your first paid renewal.'}
+                      </p>
+                    ) : (
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-sm">
+                          <thead>
+                            <tr className="text-start text-muted-foreground border-b">
+                              <th className="py-2 text-start">{language === 'ar' ? 'التاريخ' : 'Date'}</th>
+                              <th className="py-2 text-start">{language === 'ar' ? 'الخطة' : 'Plan'}</th>
+                              <th className="py-2 text-start">{language === 'ar' ? 'المبلغ' : 'Amount'}</th>
+                              <th className="py-2 text-start">{language === 'ar' ? 'الحالة' : 'Status'}</th>
+                              <th className="py-2"></th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {invoices.map((inv) => (
+                              <tr key={inv.id} className="border-b last:border-0">
+                                <td className="py-2">{formatInvoiceDate(inv.issued_at)}</td>
+                                <td className="py-2">{language === 'ar' ? inv.plan_name_ar : inv.plan_name_en} <span className="text-xs text-muted-foreground">({inv.cycle === 'yearly' ? (language === 'ar' ? 'سنوي' : 'yearly') : (language === 'ar' ? 'شهري' : 'monthly')})</span></td>
+                                <td className="py-2 font-semibold">{inv.amount != null ? `${inv.amount} ${language === 'ar' ? 'ر.س' : 'SAR'}` : '—'}</td>
+                                <td className="py-2">
+                                  <span className={`text-xs px-2 py-0.5 rounded-full ${inv.status === 'paid' ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-700'}`}>
+                                    {inv.status === 'paid' ? (language === 'ar' ? 'مدفوعة' : 'Paid') : inv.status}
+                                  </span>
+                                </td>
+                                <td className="py-2 text-end">
+                                  <Button size="sm" variant="ghost" onClick={() => printInvoice(inv)} data-testid={`billing-print-${inv.id}`}>
+                                    {language === 'ar' ? 'طباعة' : 'Print'}
+                                  </Button>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
                 </>
               )}
             </CardContent>

@@ -5,9 +5,11 @@ import { useAuth } from '../contexts/AuthContext';
 import { Button } from '../components/ui/button';
 import { Card, CardContent } from '../components/ui/card';
 import { publicAPI } from '../services/api';
+import { toast } from 'sonner';
 import {
   Trophy, Languages, Check, Users, Calendar, Receipt, MessageCircle,
   BarChart3, Smartphone, ShieldCheck, Loader2, Sparkles, ArrowLeft, ArrowRight,
+  Send,
 } from 'lucide-react';
 
 const FEATURE_ICONS = [Users, Calendar, Receipt, BarChart3, MessageCircle, Smartphone];
@@ -20,6 +22,9 @@ export default function LandingPage() {
   const [trialDays, setTrialDays] = useState(30);
   const [loading, setLoading] = useState(true);
   const [billingCycle, setBillingCycle] = useState('monthly');
+  const [contactForm, setContactForm] = useState({ name: '', email: '', phone: '', academy_name: '', subject: 'general', message: '' });
+  const [contactSending, setContactSending] = useState(false);
+  const [contactSent, setContactSent] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -49,6 +54,26 @@ export default function LandingPage() {
   const handleStart = () => {
     if (isAuthenticated && isAdmin) navigate('/admin/dashboard');
     else navigate('/signup');
+  };
+
+  const handleContactSubmit = async (e) => {
+    e.preventDefault();
+    if (!contactForm.name.trim() || !contactForm.email.trim() || contactForm.message.trim().length < 5) {
+      toast.error(isAr ? 'يرجى تعبئة الاسم والبريد ورسالة واضحة (5 أحرف على الأقل).' : 'Please fill name, email, and a message (5+ characters).');
+      return;
+    }
+    setContactSending(true);
+    try {
+      await publicAPI.contact(contactForm);
+      setContactSent(true);
+      setContactForm({ name: '', email: '', phone: '', academy_name: '', subject: 'general', message: '' });
+      toast.success(isAr ? 'تم استلام رسالتك، سنرد خلال يوم عمل.' : 'Message received — we will reply within one business day.');
+    } catch (err) {
+      const msg = err?.response?.data?.detail || (isAr ? 'تعذر إرسال الرسالة، حاول لاحقاً.' : 'Failed to send message, please try again.');
+      toast.error(msg);
+    } finally {
+      setContactSending(false);
+    }
   };
 
   const formatPrice = (plan) => {
@@ -243,6 +268,113 @@ export default function LandingPage() {
         </Card>
       </section>
 
+      {/* Contact form */}
+      <section id="contact" className="max-w-3xl mx-auto px-4 py-16">
+        <Card className="border-slate-200 dark:border-slate-800">
+          <CardContent className="p-6 sm:p-10">
+            <h2 className="text-2xl sm:text-3xl font-bold mb-2 text-center">
+              {isAr ? 'تواصل معنا' : 'Get in touch'}
+            </h2>
+            <p className="text-center text-slate-600 dark:text-slate-400 mb-8">
+              {isAr ? 'عندك سؤال أو تحتاج عرض مخصص؟ راسلنا وسنرد خلال يوم عمل.' : 'Got a question or need a custom quote? Send us a note and we will reply within one business day.'}
+            </p>
+            {contactSent ? (
+              <div className="text-center py-8" data-testid="contact-success">
+                <div className="w-16 h-16 mx-auto rounded-full bg-green-100 text-green-600 flex items-center justify-center mb-4">
+                  <Check className="w-8 h-8" />
+                </div>
+                <p className="font-bold text-lg">{isAr ? 'تم إرسال رسالتك!' : 'Your message was sent!'}</p>
+                <p className="text-sm text-slate-500 mt-2">{isAr ? 'سنتواصل معك على البريد الإلكتروني الذي قدمته.' : 'We will reach out to you on the email you provided.'}</p>
+                <Button variant="outline" className="mt-6" onClick={() => setContactSent(false)}>
+                  {isAr ? 'إرسال رسالة أخرى' : 'Send another message'}
+                </Button>
+              </div>
+            ) : (
+              <form onSubmit={handleContactSubmit} className="grid grid-cols-1 sm:grid-cols-2 gap-4" data-testid="contact-form">
+                <div>
+                  <label className="block text-sm font-semibold mb-1">{isAr ? 'الاسم *' : 'Name *'}</label>
+                  <input
+                    type="text"
+                    required
+                    value={contactForm.name}
+                    onChange={(e) => setContactForm({ ...contactForm, name: e.target.value })}
+                    className="w-full border rounded-md px-3 py-2 bg-background"
+                    data-testid="contact-name"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold mb-1">{isAr ? 'البريد الإلكتروني *' : 'Email *'}</label>
+                  <input
+                    type="email"
+                    required
+                    value={contactForm.email}
+                    onChange={(e) => setContactForm({ ...contactForm, email: e.target.value })}
+                    className="w-full border rounded-md px-3 py-2 bg-background"
+                    data-testid="contact-email"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold mb-1">{isAr ? 'رقم الجوال' : 'Phone'}</label>
+                  <input
+                    type="tel"
+                    value={contactForm.phone}
+                    onChange={(e) => setContactForm({ ...contactForm, phone: e.target.value })}
+                    className="w-full border rounded-md px-3 py-2 bg-background"
+                    data-testid="contact-phone"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold mb-1">{isAr ? 'اسم الأكاديمية' : 'Academy name'}</label>
+                  <input
+                    type="text"
+                    value={contactForm.academy_name}
+                    onChange={(e) => setContactForm({ ...contactForm, academy_name: e.target.value })}
+                    className="w-full border rounded-md px-3 py-2 bg-background"
+                    data-testid="contact-academy"
+                  />
+                </div>
+                <div className="sm:col-span-2">
+                  <label className="block text-sm font-semibold mb-1">{isAr ? 'موضوع الاستفسار' : 'Topic'}</label>
+                  <select
+                    value={contactForm.subject}
+                    onChange={(e) => setContactForm({ ...contactForm, subject: e.target.value })}
+                    className="w-full border rounded-md px-3 py-2 bg-background"
+                    data-testid="contact-subject"
+                  >
+                    <option value="general">{isAr ? 'استفسار عام' : 'General inquiry'}</option>
+                    <option value="sales">{isAr ? 'مبيعات وأسعار' : 'Sales & pricing'}</option>
+                    <option value="enterprise">{isAr ? 'خطة المؤسسات' : 'Enterprise plan'}</option>
+                    <option value="support">{isAr ? 'دعم فني' : 'Technical support'}</option>
+                    <option value="billing">{isAr ? 'فوترة' : 'Billing'}</option>
+                  </select>
+                </div>
+                <div className="sm:col-span-2">
+                  <label className="block text-sm font-semibold mb-1">{isAr ? 'رسالتك *' : 'Your message *'}</label>
+                  <textarea
+                    required
+                    minLength={5}
+                    rows={5}
+                    value={contactForm.message}
+                    onChange={(e) => setContactForm({ ...contactForm, message: e.target.value })}
+                    className="w-full border rounded-md px-3 py-2 bg-background"
+                    data-testid="contact-message"
+                  />
+                </div>
+                <div className="sm:col-span-2 flex justify-end">
+                  <Button type="submit" disabled={contactSending} data-testid="contact-submit">
+                    {contactSending ? (
+                      <><Loader2 className="w-4 h-4 me-2 animate-spin" />{isAr ? 'جارٍ الإرسال...' : 'Sending...'}</>
+                    ) : (
+                      <><Send className="w-4 h-4 me-2" />{isAr ? 'إرسال الرسالة' : 'Send message'}</>
+                    )}
+                  </Button>
+                </div>
+              </form>
+            )}
+          </CardContent>
+        </Card>
+      </section>
+
       {/* Final CTA */}
       <section className="max-w-3xl mx-auto px-4 py-16 sm:py-24 text-center">
         <h2 className="text-3xl sm:text-5xl font-bold mb-6">
@@ -267,10 +399,13 @@ export default function LandingPage() {
             <Link to="/privacy" className="hover:text-primary">
               {isAr ? 'سياسة الخصوصية' : 'Privacy policy'}
             </Link>
-            <Link to="/privacy" className="hover:text-primary">
-              {isAr ? 'الشروط والاسترداد' : 'Terms & refunds'}
+            <Link to="/terms" className="hover:text-primary">
+              {isAr ? 'شروط الاستخدام' : 'Terms of service'}
             </Link>
-            <a href="mailto:sales@championsacademy.app" className="hover:text-primary">
+            <Link to="/refund-policy" className="hover:text-primary">
+              {isAr ? 'سياسة الاسترجاع' : 'Refund policy'}
+            </Link>
+            <a href="#contact" className="hover:text-primary">
               {isAr ? 'تواصل معنا' : 'Contact us'}
             </a>
             <Link to="/login" className="hover:text-primary">

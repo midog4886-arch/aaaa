@@ -165,6 +165,10 @@ api_router.include_router(public_signup_router)
 from routes.billing import router as billing_router
 api_router.include_router(billing_router)
 
+from routes.contact import router as contact_router, super_router as contact_super_router
+api_router.include_router(contact_router)
+app.include_router(contact_super_router)
+
 app.include_router(super_admin_router)
 
 # Set database for loyalty router

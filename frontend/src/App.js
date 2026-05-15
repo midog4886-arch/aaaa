@@ -86,6 +86,9 @@ const SuperTenants = lazy(() => import('./pages/SuperTenants'));
 const OnboardingPage = lazy(() => import('./pages/OnboardingPage'));
 const LandingPage = lazy(() => import('./pages/LandingPage'));
 const SignupPage = lazy(() => import('./pages/SignupPage'));
+const TermsPage = lazy(() => import('./pages/TermsPage'));
+const RefundPolicyPage = lazy(() => import('./pages/RefundPolicyPage'));
+const SupportPage = lazy(() => import('./pages/SupportPage'));
 import ExpiredTenantGuard from './components/ExpiredTenantGuard';
 
 const SuperGuard = ({ children }) => {
@@ -224,6 +227,8 @@ function AppRoutes() {
       
       {/* Privacy Policy - Public page */}
       <Route path="/privacy" element={<PrivacyPolicyPage />} />
+      <Route path="/terms" element={<TermsPage />} />
+      <Route path="/refund-policy" element={<RefundPolicyPage />} />
 
       {/* Public self-signup */}
       <Route path="/signup" element={<SignupPage />} />
@@ -481,6 +486,14 @@ function AppRoutes() {
             <BackupPage />
           </ProtectedRoute>
         } 
+      />
+      <Route
+        path="/admin/support"
+        element={
+          <ProtectedRoute permission="settings">
+            <SupportPage />
+          </ProtectedRoute>
+        }
       />
       <Route path="/admin/push-notifications" element={<Navigate to="/admin/whatsapp" replace />} />
       <Route 
