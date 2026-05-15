@@ -1345,6 +1345,62 @@ async def tenant_purge_digest_settings_put(
         raise HTTPException(status_code=400, detail=str(e))
 
 
+@router.get("/tenant-purge-digest/history")
+async def tenant_purge_digest_history(
+    limit: int = 30,
+    _=Depends(_require_super),
+):
+    """Return the most recent tenant auto-purge digest alerts (newest first).
+
+    Reads from ``db.ops_alerts`` (the same collection ``_emit_ops_alert``
+    writes to) filtered by ``kind == 'tenant.auto_purge_digest'`` so the
+    super-admin tenants page can show a rolling audit of which warning
+    emails were emitted, even after the email has been filed away.
+
+    Each row also exposes a parsed list of tenant slugs found in the body so
+    the frontend can deep-link rows to the matching tenant in the
+    pending-purge panel when still applicable.
+    """
+    from database import db
+    try:
+        n = max(1, min(int(limit or 30), 100))
+    except Exception:
+        n = 30
+    try:
+        rows = await db.ops_alerts.find(
+            {"kind": "tenant.auto_purge_digest"},
+            {"_id": 0, "id": 1, "title": 1, "body": 1, "severity": 1, "created_at": 1},
+        ).sort("created_at", -1).to_list(n)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"failed to query ops_alerts: {e}")
+
+    slug_re = re.compile(r"^- (\S+) \(id=([^)]*)\)", re.MULTILINE)
+    tenant_count_re = re.compile(r"following\s+(\d+)\s+tenant", re.IGNORECASE)
+    items = []
+    for r in rows:
+        body = r.get("body") or ""
+        slugs = []
+        for m in slug_re.finditer(body):
+            slug = m.group(1)
+            tid = m.group(2) or ""
+            slugs.append({"slug": slug, "tenant_id": tid})
+        count_match = tenant_count_re.search(body)
+        try:
+            tenant_count = int(count_match.group(1)) if count_match else len(slugs)
+        except Exception:
+            tenant_count = len(slugs)
+        items.append({
+            "id": r.get("id"),
+            "title": r.get("title") or "",
+            "body": body,
+            "severity": r.get("severity") or "warning",
+            "created_at": r.get("created_at"),
+            "tenant_count": tenant_count,
+            "tenants": slugs,
+        })
+    return {"items": items}
+
+
 # ── Payment provider (Stripe / Moyasar / Tap) webhook config ────────────
 
 class PaymentSettingsIn(BaseModel):

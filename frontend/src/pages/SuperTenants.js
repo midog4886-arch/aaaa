@@ -630,6 +630,8 @@ export default function SuperTenants() {
   const [editing, setEditing] = useState(null);
   const [renewing, setRenewing] = useState(null);
   const [seedInfo, setSeedInfo] = useState(null);
+  const [purgeDigests, setPurgeDigests] = useState([]);
+  const [expandedDigest, setExpandedDigest] = useState(null);
 
   const auth = () => ({ headers: { Authorization: `Bearer ${localStorage.getItem('super_token') || ''}` } });
 
@@ -654,6 +656,17 @@ export default function SuperTenants() {
   }, [navigate]);
 
   useEffect(() => { load(); }, [load]);
+
+  const loadPurgeDigests = useCallback(async () => {
+    try {
+      const res = await axios.get('/super/tenant-purge-digest/history?limit=30', auth());
+      setPurgeDigests(res.data?.items || []);
+    } catch {
+      setPurgeDigests([]);
+    }
+  }, []);
+
+  useEffect(() => { loadPurgeDigests(); }, [loadPurgeDigests]);
 
   // Tick once a minute so the "time remaining" column on the
   // pending-auto-purge panel stays live without reloading the whole page.
@@ -863,7 +876,7 @@ export default function SuperTenants() {
                     const t = r.tenant;
                     const alertSent = !!t.final_purge_alert_sent_at;
                     return (
-                      <tr key={t.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                      <tr key={t.id} id={`pending-${t.slug}`} style={{ borderBottom: '1px solid #f1f5f9' }}>
                         <td style={{ padding: '8px 10px', fontFamily: 'monospace', color: '#0f172a' }}>@{t.slug}</td>
                         <td style={{ padding: '8px 10px', color: '#0f172a' }}>{t.name}</td>
                         <td style={{ padding: '8px 10px', color: '#475569' }}>
@@ -899,6 +912,121 @@ export default function SuperTenants() {
                 </tbody>
               </table>
             </div>
+          </div>
+        );
+      })()}
+
+      {!loading && (() => {
+        const pendingSlugs = new Set(
+          rows
+            .filter((r) => r.tenant?.status === 'pending_delete')
+            .map((r) => r.tenant.slug)
+            .filter(Boolean)
+        );
+        return (
+          <div style={{ background: 'white', border: '1px solid #e2e8f0', borderRadius: 12, padding: 16, marginBottom: 16 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10, flexWrap: 'wrap', gap: 8 }}>
+              <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: '#0f172a' }}>
+                ✉️ سجل تنبيهات الحذف التلقائي ({purgeDigests.length})
+              </h2>
+              <span style={{ fontSize: 11, color: '#64748b' }}>
+                آخر {purgeDigests.length || 30} ملخص يومي تم إرساله للمشرفين بشأن الأكاديميات المجدولة للحذف.
+              </span>
+            </div>
+            {purgeDigests.length === 0 ? (
+              <div style={{ textAlign: 'center', color: '#94a3b8', padding: 24, fontSize: 13 }}>
+                لم يُرسل أي ملخص بعد.
+              </div>
+            ) : (
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                  <thead>
+                    <tr style={{ background: '#f8fafc', color: '#475569' }}>
+                      <th style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 600 }}>التاريخ</th>
+                      <th style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 600 }}>عدد الأكاديميات</th>
+                      <th style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 600 }}>الأكاديميات</th>
+                      <th style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 600 }}>مقتطف</th>
+                      <th style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 600 }}>التفاصيل</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {purgeDigests.map((d, idx) => {
+                      const rowKey = d.id || `${d.created_at || 'row'}-${idx}`;
+                      const isOpen = expandedDigest === rowKey;
+                      const bodyPreview = (d.body || '')
+                        .replace(/\s+/g, ' ')
+                        .trim()
+                        .slice(0, 160);
+                      return (
+                        <React.Fragment key={rowKey}>
+                          <tr style={{ borderBottom: '1px solid #f1f5f9' }}>
+                            <td style={{ padding: '8px 10px', color: '#475569', whiteSpace: 'nowrap' }}>
+                              {d.created_at ? new Date(d.created_at).toLocaleString('ar-EG') : '—'}
+                            </td>
+                            <td style={{ padding: '8px 10px', color: '#0f172a', fontWeight: 600 }}>{d.tenant_count}</td>
+                            <td style={{ padding: '8px 10px' }}>
+                              <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                                {(d.tenants || []).slice(0, 6).map((tn) => {
+                                  const stillPending = pendingSlugs.has(tn.slug);
+                                  return stillPending ? (
+                                    <a
+                                      key={tn.slug + (tn.tenant_id || '')}
+                                      href={`#pending-${tn.slug}`}
+                                      onClick={(e) => {
+                                        e.preventDefault();
+                                        const el = document.getElementById(`pending-${tn.slug}`);
+                                        if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                                      }}
+                                      style={{ fontSize: 11, padding: '2px 8px', background: '#fef3c7', color: '#92400e', borderRadius: 99, fontWeight: 600, fontFamily: 'monospace', textDecoration: 'none' }}
+                                      title="ما زالت مجدولة — اضغط للانتقال"
+                                    >
+                                      @{tn.slug}
+                                    </a>
+                                  ) : (
+                                    <span
+                                      key={tn.slug + (tn.tenant_id || '')}
+                                      style={{ fontSize: 11, padding: '2px 8px', background: '#f1f5f9', color: '#64748b', borderRadius: 99, fontFamily: 'monospace' }}
+                                      title="لم تعد في قائمة الانتظار"
+                                    >
+                                      @{tn.slug}
+                                    </span>
+                                  );
+                                })}
+                                {(d.tenants || []).length > 6 && (
+                                  <span style={{ fontSize: 11, color: '#64748b' }}>+{d.tenants.length - 6}</span>
+                                )}
+                              </div>
+                            </td>
+                            <td style={{ padding: '8px 10px', color: '#475569', maxWidth: 320, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                              title={bodyPreview}>
+                              {bodyPreview || '—'}
+                            </td>
+                            <td style={{ padding: '8px 10px' }}>
+                              <button
+                                style={sx.btnEdit}
+                                onClick={() => setExpandedDigest(isOpen ? null : rowKey)}
+                              >
+                                {isOpen ? 'إخفاء' : 'عرض'}
+                              </button>
+                            </td>
+                          </tr>
+                          {isOpen && (
+                            <tr>
+                              <td colSpan={5} style={{ padding: '8px 10px', background: '#f8fafc' }}>
+                                <div style={{ fontSize: 12, color: '#0f172a', fontWeight: 600, marginBottom: 4 }}>{d.title}</div>
+                                <pre style={{ margin: 0, whiteSpace: 'pre-wrap', fontFamily: 'inherit', fontSize: 12, color: '#475569', background: 'white', padding: 10, borderRadius: 6, border: '1px solid #e2e8f0' }}>
+                                  {d.body}
+                                </pre>
+                              </td>
+                            </tr>
+                          )}
+                        </React.Fragment>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
         );
       })()}
