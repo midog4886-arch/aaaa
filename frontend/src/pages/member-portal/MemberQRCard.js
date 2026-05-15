@@ -329,7 +329,8 @@ const MemberCard = () => {
     const ctx = canvas.getContext('2d');
     ctx.fillStyle = 'white';
     ctx.fillRect(0, 0, 400, 450);
-    ctx.fillStyle = '#F97316';
+    const brandColor = getPrimaryColor() || '#F97316';
+    ctx.fillStyle = brandColor;
     ctx.font = 'bold 18px Tajawal, sans-serif';
     ctx.textAlign = 'center';
     ctx.fillText('🏆 شركة اداء الابطال العالمية للرياضة', 200, 35);
@@ -340,7 +341,7 @@ const MemberCard = () => {
       ctx.fillStyle = '#1f2937';
       ctx.font = 'bold 20px Tajawal, sans-serif';
       ctx.fillText(cardData?.name_ar || '', 200, 300);
-      ctx.fillStyle = '#F97316';
+      ctx.fillStyle = brandColor;
       ctx.font = 'bold 24px Tajawal, sans-serif';
       ctx.fillText(`#${cardData?.member_code || ''}`, 200, 340);
       const activities = cardData?.active_activities || [];
