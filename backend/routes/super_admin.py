@@ -1314,6 +1314,37 @@ async def email_run_trial_checks(_=Depends(_require_super)):
     return await send_trial_ending_emails()
 
 
+# ── Tenant auto-purge daily digest schedule ─────────────────────────────
+
+class TenantPurgeDigestSettingsIn(BaseModel):
+    hour: int = Field(7, ge=0, le=23, description="Hour of day in Asia/Riyadh (0–23)")
+    minute: int = Field(30, ge=0, le=59, description="Minute of hour (0–59)")
+    window_hours: int = Field(72, ge=1, le=720, description="Look-ahead window in hours (1–720)")
+
+
+@router.get("/tenant-purge-digest/settings")
+async def tenant_purge_digest_settings_get(_=Depends(_require_super)):
+    from server import get_tenant_purge_digest_settings
+    return await get_tenant_purge_digest_settings()
+
+
+@router.put("/tenant-purge-digest/settings")
+async def tenant_purge_digest_settings_put(
+    payload: TenantPurgeDigestSettingsIn,
+    super_payload: dict = Depends(_require_super),
+):
+    from server import update_tenant_purge_digest_settings
+    try:
+        return await update_tenant_purge_digest_settings(
+            hour=payload.hour,
+            minute=payload.minute,
+            window_hours=payload.window_hours,
+            actor=_super_actor(super_payload),
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
 # ── Payment provider (Stripe / Moyasar / Tap) webhook config ────────────
 
 class PaymentSettingsIn(BaseModel):

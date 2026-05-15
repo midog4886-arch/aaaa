@@ -33,6 +33,10 @@ export default function SuperEmails() {
   const [settings, setSettings] = useState(null);
   const [draft, setDraft] = useState({ provider: '', from_email: '', from_name: '', enabled: true });
   const [savingSettings, setSavingSettings] = useState(false);
+  const [digest, setDigest] = useState(null);
+  const [digestDraft, setDigestDraft] = useState({ hour: 7, minute: 30, window_hours: 72 });
+  const [savingDigest, setSavingDigest] = useState(false);
+  const [digestMsg, setDigestMsg] = useState('');
   const [items, setItems] = useState([]);
   const [filterKind, setFilterKind] = useState('');
   const [filterStatus, setFilterStatus] = useState('');
@@ -48,12 +52,13 @@ export default function SuperEmails() {
     setLoading(true);
     setErr('');
     try {
-      const [s, log] = await Promise.all([
+      const [s, log, d] = await Promise.all([
         axios.get('/super/email/settings', auth()),
         axios.get('/super/email/log', {
           ...auth(),
           params: { limit: 200, kind: filterKind, status: filterStatus, tenant_slug: filterTenant },
         }),
+        axios.get('/super/tenant-purge-digest/settings', auth()),
       ]);
       setSettings(s.data);
       setDraft({
@@ -63,6 +68,12 @@ export default function SuperEmails() {
         enabled: !!s.data.enabled,
       });
       setItems(log.data?.items || []);
+      setDigest(d.data);
+      setDigestDraft({
+        hour: Number.isInteger(d.data?.hour) ? d.data.hour : 7,
+        minute: Number.isInteger(d.data?.minute) ? d.data.minute : 30,
+        window_hours: Number.isInteger(d.data?.window_hours) ? d.data.window_hours : 72,
+      });
     } catch (e) {
       if (e?.response?.status === 401) {
         navigate('/super/login', { replace: true });
@@ -86,6 +97,26 @@ export default function SuperEmails() {
       setErr(e?.response?.data?.detail || 'تعذر حفظ الإعدادات');
     } finally {
       setSavingSettings(false);
+    }
+  };
+
+  const saveDigest = async () => {
+    setSavingDigest(true);
+    setDigestMsg('');
+    setErr('');
+    try {
+      const payload = {
+        hour: parseInt(digestDraft.hour, 10),
+        minute: parseInt(digestDraft.minute, 10),
+        window_hours: parseInt(digestDraft.window_hours, 10),
+      };
+      const res = await axios.put('/super/tenant-purge-digest/settings', payload, auth());
+      setDigest(res.data);
+      setDigestMsg('تم الحفظ — سيُطبَّق على دورة المجدول التالية');
+    } catch (e) {
+      setErr(e?.response?.data?.detail || 'تعذر حفظ إعدادات التقرير');
+    } finally {
+      setSavingDigest(false);
     }
   };
 
@@ -170,6 +201,55 @@ export default function SuperEmails() {
               <span style={{ fontSize: 13, color: settings.has_api_key ? '#059669' : '#b91c1c' }}>
                 {settings.has_api_key ? '✓ مفتاح API موجود في الـ secrets' : '⚠️ المفتاح مفقود — أضف ' + (draft.provider === 'sendgrid' ? 'SENDGRID_API_KEY' : 'RESEND_API_KEY') + ' في الـ secrets'}
               </span>
+            )}
+          </div>
+        </div>
+
+        <div style={card}>
+          <h2 style={{ fontSize: 16, fontWeight: 700, marginTop: 0, marginBottom: 4 }}>تقرير الحذف اليومي للأكاديميات</h2>
+          <p style={{ fontSize: 13, color: '#64748b', marginTop: 0, marginBottom: 12 }}>
+            وقت إرسال التقرير اليومي بتوقيت الرياض، ومدى التنبيه المسبق (بالساعات) قبل موعد الحذف النهائي. تُطبَّق التغييرات على الدورة التالية للمجدول.
+          </p>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12, marginBottom: 12 }}>
+            <div>
+              <label style={label}>الساعة (0–23)</label>
+              <input
+                type="number" min={0} max={23}
+                value={digestDraft.hour}
+                onChange={(e) => setDigestDraft({ ...digestDraft, hour: e.target.value })}
+                style={input}
+              />
+            </div>
+            <div>
+              <label style={label}>الدقيقة (0–59)</label>
+              <input
+                type="number" min={0} max={59}
+                value={digestDraft.minute}
+                onChange={(e) => setDigestDraft({ ...digestDraft, minute: e.target.value })}
+                style={input}
+              />
+            </div>
+            <div>
+              <label style={label}>نافذة التنبيه (ساعة)</label>
+              <input
+                type="number" min={1} max={720}
+                value={digestDraft.window_hours}
+                onChange={(e) => setDigestDraft({ ...digestDraft, window_hours: e.target.value })}
+                style={input}
+              />
+            </div>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+            <button onClick={saveDigest} disabled={savingDigest} style={btn()}>
+              {savingDigest ? 'جارٍ الحفظ...' : 'حفظ جدول التقرير'}
+            </button>
+            {digest?.updated_at && (
+              <span style={{ fontSize: 12, color: '#64748b' }}>
+                آخر تحديث: {fmt(digest.updated_at)}
+              </span>
+            )}
+            {digestMsg && (
+              <span style={{ fontSize: 13, color: '#059669' }}>{digestMsg}</span>
             )}
           </div>
         </div>

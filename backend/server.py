@@ -4166,11 +4166,105 @@ def start_tenant_purge_scheduler():
 # delivery pipeline (recipient: ``OPS_ALERT_EMAIL_TO``). On days where no
 # tenant is pending in the window, no email is sent.
 _tenant_purge_digest_started = False
-# Run at 07:30 Riyadh — a few hours before the 02:00 purge tick of the next
-# day, so super-admins have a working window to react before any drop.
+# Defaults: run at 07:30 Riyadh — a few hours before the 02:00 purge tick of
+# the next day, so super-admins have a working window to react before any
+# drop. These can be overridden per-deployment by super-admins through the
+# control_db.platform_settings document with key="tenant_purge_digest"; the
+# scheduler reloads them on every loop iteration.
 _TENANT_PURGE_DIGEST_HOUR_RIYADH = 7
 _TENANT_PURGE_DIGEST_MINUTE_RIYADH = 30
 _TENANT_PURGE_DIGEST_WINDOW_HOURS = 72
+
+
+def _coerce_digest_int(value, *, default: int, lo: int, hi: int) -> int:
+    try:
+        n = int(value)
+    except (TypeError, ValueError):
+        return default
+    if n < lo or n > hi:
+        return default
+    return n
+
+
+async def get_tenant_purge_digest_settings() -> dict:
+    """Read scheduler config from ``control_db.platform_settings``.
+
+    Always returns valid defaults so the loop never breaks if the document
+    is missing or contains junk values.
+    """
+    from control_db import control_db as _control_db
+    try:
+        doc = await _control_db.platform_settings.find_one(
+            {"key": "tenant_purge_digest"}, {"_id": 0}
+        ) or {}
+    except Exception as e:
+        print(f"Tenant purge digest: failed to load settings: {e}")
+        doc = {}
+    return {
+        "hour": _coerce_digest_int(
+            doc.get("hour"),
+            default=_TENANT_PURGE_DIGEST_HOUR_RIYADH, lo=0, hi=23,
+        ),
+        "minute": _coerce_digest_int(
+            doc.get("minute"),
+            default=_TENANT_PURGE_DIGEST_MINUTE_RIYADH, lo=0, hi=59,
+        ),
+        "window_hours": _coerce_digest_int(
+            doc.get("window_hours"),
+            default=_TENANT_PURGE_DIGEST_WINDOW_HOURS, lo=1, hi=720,
+        ),
+        "updated_at": doc.get("updated_at"),
+    }
+
+
+async def update_tenant_purge_digest_settings(
+    *, hour: int, minute: int, window_hours: int, actor: Optional[dict] = None
+) -> dict:
+    from control_db import control_db as _control_db
+    h = _coerce_digest_int(
+        hour, default=-1, lo=0, hi=23,
+    )
+    m = _coerce_digest_int(
+        minute, default=-1, lo=0, hi=59,
+    )
+    w = _coerce_digest_int(
+        window_hours, default=-1, lo=1, hi=720,
+    )
+    if h < 0:
+        raise ValueError("hour must be 0–23")
+    if m < 0:
+        raise ValueError("minute must be 0–59")
+    if w < 0:
+        raise ValueError("window_hours must be 1–720")
+    before = await get_tenant_purge_digest_settings()
+    now_iso = datetime.now(timezone.utc).isoformat()
+    await _control_db.platform_settings.update_one(
+        {"key": "tenant_purge_digest"},
+        {"$set": {
+            "key": "tenant_purge_digest",
+            "hour": h,
+            "minute": m,
+            "window_hours": w,
+            "updated_at": now_iso,
+        }},
+        upsert=True,
+    )
+    after = await get_tenant_purge_digest_settings()
+    try:
+        from utils.audit import log_audit
+        actor_doc = actor or {"user_id": "system", "username": "system", "is_admin": False}
+        await log_audit(
+            actor=actor_doc,
+            action="settings.tenant_purge_digest.update",
+            entity_type="settings",
+            entity_id="tenant_purge_digest",
+            entity_name="tenant_purge_digest_settings",
+            before=before,
+            after=after,
+        )
+    except Exception:
+        pass
+    return after
 
 
 def _format_purge_remaining(delta: timedelta) -> str:
@@ -4201,7 +4295,9 @@ async def _run_tenant_purge_digest() -> dict:
 
     summary = {"sent": False, "tenants": 0}
     now = datetime.now(timezone.utc)
-    horizon = now + timedelta(hours=_TENANT_PURGE_DIGEST_WINDOW_HOURS)
+    cfg = await get_tenant_purge_digest_settings()
+    window_hours = cfg["window_hours"]
+    horizon = now + timedelta(hours=window_hours)
 
     try:
         candidates = await _control_db.tenants.find(
@@ -4229,7 +4325,7 @@ async def _run_tenant_purge_digest() -> dict:
     if not upcoming:
         print(
             "Tenant purge digest: no tenants pending auto-purge in next "
-            f"{_TENANT_PURGE_DIGEST_WINDOW_HOURS}h; skipping email"
+            f"{window_hours}h; skipping email"
         )
         return summary
 
@@ -4246,7 +4342,7 @@ async def _run_tenant_purge_digest() -> dict:
     body = (
         f"The following {len(upcoming)} tenant(s) are scheduled for "
         f"permanent auto-purge within the next "
-        f"{_TENANT_PURGE_DIGEST_WINDOW_HOURS} hours.\n\n"
+        f"{window_hours} hours.\n\n"
         + "\n".join(lines)
         + "\n\nTo cancel a deletion, call "
         "POST /super/tenants/{id}/cancel-delete before its purge_at "
@@ -4273,16 +4369,15 @@ async def tenant_purge_digest_loop():
     _tenant_purge_digest_started = True
     print(
         "Tenant purge digest scheduler started "
-        f"(timezone: Asia/Riyadh, runs daily at "
-        f"{_TENANT_PURGE_DIGEST_HOUR_RIYADH:02d}:"
-        f"{_TENANT_PURGE_DIGEST_MINUTE_RIYADH:02d})"
+        "(timezone: Asia/Riyadh; schedule loaded from control_db on each tick)"
     )
     while True:
         try:
+            cfg = await get_tenant_purge_digest_settings()
             now = datetime.now(_RIYADH_TZ)
             next_run = now.replace(
-                hour=_TENANT_PURGE_DIGEST_HOUR_RIYADH,
-                minute=_TENANT_PURGE_DIGEST_MINUTE_RIYADH,
+                hour=cfg["hour"],
+                minute=cfg["minute"],
                 second=0,
                 microsecond=0,
             )
