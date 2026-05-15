@@ -57,6 +57,11 @@ DEFAULT_SETTINGS = {
     "portal_enabled": True,
     "push_title_template": "تنبيه: اشتراكك ينتهي قريباً 🔔",
     "push_body_template": "اشتراكك في {activity} ينتهي خلال {days} أيام ({end_date})",
+    # English copies of the renewal-reminder push templates. send_push_notification
+    # swaps these in for recipients whose saved language is 'en'. Admins can
+    # override either language via the WhatsApp settings panel.
+    "push_title_template_en": "Reminder: your subscription expires soon 🔔",
+    "push_body_template_en": "Your {activity} subscription expires in {days} days ({end_date})",
 }
 
 
@@ -332,6 +337,8 @@ async def _send_push_for_members(members_data: list, days_before: int, settings:
 
     push_title_tmpl = settings.get("push_title_template", DEFAULT_SETTINGS["push_title_template"])
     push_body_tmpl = settings.get("push_body_template", DEFAULT_SETTINGS["push_body_template"])
+    push_title_tmpl_en = settings.get("push_title_template_en", DEFAULT_SETTINGS["push_title_template_en"])
+    push_body_tmpl_en = settings.get("push_body_template_en", DEFAULT_SETTINGS["push_body_template_en"])
 
     sent_count = 0
     for item in members_data:
@@ -348,10 +355,19 @@ async def _send_push_for_members(members_data: list, days_before: int, settings:
                                  days=days_before, end_date=end_date_fmt, fee=fee_str)
         body = _render_template(push_body_tmpl, name=name, activity=activity_name,
                                 days=days_before, end_date=end_date_fmt, fee=fee_str)
+        # Render English variants too — send_push_notification swaps them in
+        # for subscribers whose saved language is 'en'. Falls back to the
+        # Arabic copy when the recipient's language is unknown.
+        title_en = _render_template(push_title_tmpl_en, name=name, activity=activity_name,
+                                    days=days_before, end_date=end_date_fmt, fee=fee_str)
+        body_en = _render_template(push_body_tmpl_en, name=name, activity=activity_name,
+                                   days=days_before, end_date=end_date_fmt, fee=fee_str)
 
         payload = NotificationPayload(
             title=title,
             body=body,
+            title_en=title_en,
+            body_en=body_en,
             url="/portal/notifications",
             tag=f"expiry-{member_id}-{item['end_date_str']}",
         )
@@ -1279,13 +1295,23 @@ async def send_bulk_renewal_reminders(
                 from .push_notifications import send_push_notification, NotificationPayload
                 push_title_tmpl = settings.get("push_title_template", DEFAULT_SETTINGS["push_title_template"])
                 push_body_tmpl = settings.get("push_body_template", DEFAULT_SETTINGS["push_body_template"])
+                push_title_tmpl_en = settings.get("push_title_template_en", DEFAULT_SETTINGS["push_title_template_en"])
+                push_body_tmpl_en = settings.get("push_body_template_en", DEFAULT_SETTINGS["push_body_template_en"])
                 title = _render_template(push_title_tmpl, name=name, activity=activities_text,
                                          days=days_calc, end_date=end_date_fmt, fee=fee_str)
                 body = _render_template(push_body_tmpl, name=name, activity=activities_text,
                                         days=days_calc, end_date=end_date_fmt, fee=fee_str)
+                # English variants used when the recipient's saved push
+                # language is 'en'. Arabic remains the fallback otherwise.
+                title_en = _render_template(push_title_tmpl_en, name=name, activity=activities_text,
+                                            days=days_calc, end_date=end_date_fmt, fee=fee_str)
+                body_en = _render_template(push_body_tmpl_en, name=name, activity=activities_text,
+                                           days=days_calc, end_date=end_date_fmt, fee=fee_str)
                 payload_obj = NotificationPayload(
                     title=title,
                     body=body,
+                    title_en=title_en,
+                    body_en=body_en,
                     url="/portal/notifications",
                     tag=f"manual-renewal-{mid}-{end_date_raw}",
                 )

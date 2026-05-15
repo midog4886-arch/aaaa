@@ -241,9 +241,16 @@ async def create_advertisement(
             from routes.push_notifications import send_notification_to_all_members, NotificationPayload
             notif_title = ad.title_ar or ad.title or "إعلان جديد"
             notif_body = ad.description_ar or ad.description or "تم إضافة إعلان جديد في بوابة الأعضاء"
+            # English fallbacks: prefer explicit English fields, then the
+            # generic ones, then the Arabic copy. send_push_notification will
+            # only swap to English when the recipient's saved language is en.
+            notif_title_en = getattr(ad, "title_en", None) or ad.title or notif_title
+            notif_body_en = getattr(ad, "description_en", None) or ad.description or "A new advertisement has been added to the member portal"
             payload = NotificationPayload(
                 title=f"📢 {notif_title}",
                 body=notif_body,
+                title_en=f"📢 {notif_title_en}",
+                body_en=notif_body_en,
                 url="/",
                 tag=f"ad-{ad_id}",
                 data={"type": "new_ad", "ad_id": ad_id}

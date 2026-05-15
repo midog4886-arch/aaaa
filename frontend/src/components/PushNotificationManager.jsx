@@ -1,10 +1,22 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useContext } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Bell, BellOff, Loader2, Check, X } from 'lucide-react';
 import { Button } from './ui/button';
 import { toast } from 'sonner';
 import axios from 'axios';
 import { API_URL } from '../config/api';
+import { LanguageContext } from '../contexts/LanguageContext';
+
+// Read the user's chosen UI language. Falls back to localStorage when the
+// context is not in scope (e.g. unit tests) so push subscribe still includes
+// a sensible language hint.
+const getCurrentLanguage = () => {
+  try {
+    return localStorage.getItem('language') || 'ar';
+  } catch (e) {
+    return 'ar';
+  }
+};
 
 const isNativeApp = () => {
   return window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform();
@@ -40,6 +52,10 @@ const PushNotificationManager = ({ memberId, compact = false }) => {
   const [isSubscribed, setIsSubscribed] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [permission, setPermission] = useState('default');
+  // Read the user's chosen language from context when available; falls back
+  // to localStorage when this component is mounted outside a LanguageProvider.
+  const langCtx = useContext(LanguageContext);
+  const language = langCtx?.language || getCurrentLanguage();
 
   // Auto-registers FCM token - requests permission automatically if not yet decided
   const autoRegisterNativeIfGranted = useCallback(async (memberIdArg) => {
@@ -54,6 +70,7 @@ const PushNotificationManager = ({ memberId, compact = false }) => {
         try {
           await axios.post(`${API_URL}/api/push-notifications/subscribe`, {
             member_id: mid,
+            language: getCurrentLanguage(),
             subscription: {
               endpoint: `fcm://${token.value}`,
               keys: { fcm_token: token.value, platform: 'android' }
@@ -157,6 +174,27 @@ const PushNotificationManager = ({ memberId, compact = false }) => {
     checkSubscription();
   }, [isSupported, memberId]);
 
+  // Whenever the user toggles the UI language, push the new preference to
+  // the backend so subsequent pushes (FCM/Web Push) are delivered in the
+  // language they actually want. Best-effort — failures are silent because
+  // the user is mid-task and the next push will simply use the older saved
+  // language until they retry.
+  useEffect(() => {
+    if (!memberId || !isSubscribed) return;
+    const controller = new AbortController();
+    axios
+      .post(
+        `${API_URL}/api/push-notifications/language`,
+        { member_id: memberId, language },
+        { signal: controller.signal }
+      )
+      .catch((error) => {
+        if (axios.isCancel?.(error)) return;
+        console.warn('Failed to sync push language preference:', error?.message || error);
+      });
+    return () => controller.abort();
+  }, [memberId, isSubscribed, language]);
+
   const urlBase64ToUint8Array = (base64String) => {
     const padding = '='.repeat((4 - base64String.length % 4) % 4);
     const base64 = (base64String + padding)
@@ -217,6 +255,7 @@ const PushNotificationManager = ({ memberId, compact = false }) => {
           try {
             await axios.post(`${API_URL}/api/push-notifications/subscribe`, {
               member_id: memberId,
+              language: getCurrentLanguage(),
               subscription: {
                 endpoint: `fcm://${token.value}`,
                 keys: {
@@ -289,6 +328,7 @@ const PushNotificationManager = ({ memberId, compact = false }) => {
 
       await axios.post(`${API_URL}/api/push-notifications/subscribe`, {
         member_id: memberId,
+        language: getCurrentLanguage(),
         subscription: {
           endpoint: subscription.endpoint,
           keys: {

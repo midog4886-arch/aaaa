@@ -3,6 +3,8 @@ Push Notifications API - نظام إشعارات Push
 Web Push + Firebase Cloud Messaging for Android
 """
 from fastapi import APIRouter, HTTPException, Depends
+
+from .common import get_current_user
 from pydantic import BaseModel
 from typing import List, Optional
 from datetime import datetime, timezone
@@ -78,6 +80,7 @@ class PushSubscription(BaseModel):
 class SubscriptionCreate(BaseModel):
     member_id: str
     subscription: PushSubscription
+    language: Optional[str] = None  # 'ar' or 'en' — recipient's chosen UI language
 
 
 class NotificationPayload(BaseModel):
@@ -89,6 +92,40 @@ class NotificationPayload(BaseModel):
     url: Optional[str] = "/portal/daily-videos"
     tag: Optional[str] = None
     data: Optional[dict] = None
+    # Optional English variants. When the recipient's saved language is 'en'
+    # and these are populated, send_push_notification swaps them in for the
+    # default (Arabic) ``title``/``body``. Falls back to Arabic when missing.
+    title_en: Optional[str] = None
+    body_en: Optional[str] = None
+
+
+def _normalize_language(lang: Optional[str]) -> str:
+    """Normalize a language code to the 'ar'/'en' set used across the app.
+
+    Anything we don't recognise (including ``None``) falls back to Arabic so
+    existing subscribers keep receiving Arabic pushes — Arabic is the product's
+    default language and the safest choice when the preference is unknown.
+    """
+    if not lang:
+        return "ar"
+    code = str(lang).strip().lower()
+    if code.startswith("en"):
+        return "en"
+    return "ar"
+
+
+def _localize_payload(payload: NotificationPayload, language: Optional[str]) -> NotificationPayload:
+    """Return a copy of ``payload`` with title/body swapped to the requested
+    language when an English variant is available. Always returns a new
+    payload so the caller's object is not mutated (it may be reused across
+    many subscriptions with different language preferences)."""
+    lang = _normalize_language(language)
+    if lang != "en":
+        # Arabic / unknown — keep payload as-is (defaults are Arabic).
+        return payload.copy()
+    title = payload.title_en or payload.title
+    body = payload.body_en or payload.body
+    return payload.copy(update={"title": title, "body": body})
 
 
 @router.get("/vapid-public-key")
@@ -102,12 +139,17 @@ async def subscribe_to_push(data: SubscriptionCreate):
         is_fcm = data.subscription.endpoint.startswith('fcm://')
         platform = data.subscription.keys.get('platform', 'web')
         
+        # Persist the recipient's chosen UI language so push notifications
+        # can be delivered in their preferred language. Defaults to Arabic
+        # when not provided (matches the product default).
+        sub_language = _normalize_language(data.language)
         subscription_data = {
             "id": str(uuid.uuid4()),
             "member_id": data.member_id,
             "endpoint": data.subscription.endpoint,
             "keys": data.subscription.keys,
             "platform": platform if is_fcm else "web",
+            "language": sub_language,
             "created_at": datetime.now(timezone.utc).isoformat(),
             "is_active": True
         }
@@ -131,6 +173,7 @@ async def subscribe_to_push(data: SubscriptionCreate):
                     "endpoint": data.subscription.endpoint,
                     "keys": data.subscription.keys,
                     "platform": platform if is_fcm else "web",
+                    "language": sub_language,
                     "updated_at": datetime.now(timezone.utc).isoformat(),
                     "is_active": True
                 }}
@@ -142,6 +185,36 @@ async def subscribe_to_push(data: SubscriptionCreate):
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"فشل في حفظ الاشتراك: {str(e)}")
+
+
+class LanguageUpdate(BaseModel):
+    member_id: str
+    language: str
+
+
+@router.post("/language")
+async def update_subscription_language(
+    data: LanguageUpdate,
+    current_user: dict = Depends(get_current_user),
+):
+    """Update the saved UI language for all of a member's active push
+    subscriptions. The frontend calls this whenever the user toggles the
+    language so subsequent pushes are delivered in the new language.
+
+    Auth: only the owner of the subscription (matching ``member_id``) or an
+    admin may update the language preference. This prevents one logged-in
+    user from flipping someone else's push language as a prank or to hide
+    alerts from them.
+    """
+    caller_id = current_user.get("id") or current_user.get("user_id") or current_user.get("member_id")
+    if not (current_user.get("is_admin") or caller_id == data.member_id):
+        raise HTTPException(status_code=403, detail="Not allowed to update this subscription")
+    lang = _normalize_language(data.language)
+    result = await db.push_subscriptions.update_many(
+        {"member_id": data.member_id, "is_active": True},
+        {"$set": {"language": lang, "updated_at": datetime.now(timezone.utc).isoformat()}},
+    )
+    return {"updated": result.modified_count, "language": lang}
 
 
 @router.post("/unsubscribe")
@@ -248,7 +321,12 @@ async def test_send_notification():
 
 async def send_push_notification(subscription: dict, payload: NotificationPayload):
     platform = subscription.get("platform", "web")
-    
+
+    # Pick the right language variant based on the recipient's saved
+    # preference (stored on the subscription doc when they subscribed).
+    # Falls back to Arabic for unknown / legacy subscriptions.
+    payload = _localize_payload(payload, subscription.get("language"))
+
     if platform in ["android", "ios"]:
         fcm_token = subscription.get("keys", {}).get("fcm_token")
         if fcm_token:
@@ -286,6 +364,80 @@ async def send_push_notification(subscription: dict, payload: NotificationPayloa
                 {"$set": {"is_active": False}}
             )
         return False
+
+
+async def send_push_to_admins(payload: NotificationPayload, branch_id: Optional[str] = None) -> dict:
+    """Send a push notification to every admin user (optionally restricted to
+    one branch). Admin push subscriptions are stored in
+    ``push_subscriptions`` keyed by ``member_id == user_id`` (the same channel
+    the onboarding-welcome push uses), so we resolve admin user ids first and
+    then fan out via ``send_push_notification`` so each recipient gets the
+    payload in their saved language. Best-effort — failures are swallowed."""
+    import logging
+    logger = logging.getLogger(__name__)
+    try:
+        query = {"is_admin": True}
+        if branch_id:
+            # Branch-scoped: include admins explicitly assigned to the branch
+            # plus global admins (no branch_id) so cross-branch admins still
+            # receive the alert.
+            query = {
+                "is_admin": True,
+                "$or": [{"branch_id": branch_id}, {"branch_id": None}, {"branch_id": ""}],
+            }
+        admins = await db.users.find(query, {"_id": 0, "id": 1}).to_list(500)
+        admin_ids = [u["id"] for u in admins if u.get("id")]
+        if not admin_ids:
+            return {"total": 0, "success": 0, "failed": 0}
+        subs = await db.push_subscriptions.find(
+            {"member_id": {"$in": admin_ids}, "is_active": True}, {"_id": 0}
+        ).to_list(2000)
+        success_count = 0
+        fail_count = 0
+        for sub in subs:
+            try:
+                ok = await send_push_notification(sub, payload)
+                if ok:
+                    success_count += 1
+                else:
+                    fail_count += 1
+            except Exception as exc:
+                fail_count += 1
+                logger.error(f"send_push_to_admins: push send failed: {exc}")
+        return {"total": len(subs), "success": success_count, "failed": fail_count}
+    except Exception as exc:
+        logger.error(f"send_push_to_admins: pipeline error: {exc}")
+        return {"total": 0, "success": 0, "failed": 0}
+
+
+async def send_push_to_members(payload: NotificationPayload, member_ids: List[str]) -> dict:
+    """Send a push notification to a specific list of member ids. Each
+    recipient's saved language is honoured by ``send_push_notification``.
+    Best-effort — failures are swallowed."""
+    import logging
+    logger = logging.getLogger(__name__)
+    if not member_ids:
+        return {"total": 0, "success": 0, "failed": 0}
+    try:
+        subs = await db.push_subscriptions.find(
+            {"member_id": {"$in": list(member_ids)}, "is_active": True}, {"_id": 0}
+        ).to_list(10000)
+        success_count = 0
+        fail_count = 0
+        for sub in subs:
+            try:
+                ok = await send_push_notification(sub, payload)
+                if ok:
+                    success_count += 1
+                else:
+                    fail_count += 1
+            except Exception as exc:
+                fail_count += 1
+                logger.error(f"send_push_to_members: push send failed: {exc}")
+        return {"total": len(subs), "success": success_count, "failed": fail_count}
+    except Exception as exc:
+        logger.error(f"send_push_to_members: pipeline error: {exc}")
+        return {"total": 0, "success": 0, "failed": 0}
 
 
 async def send_notification_to_all_members(payload: NotificationPayload, branch_id: Optional[str] = None):

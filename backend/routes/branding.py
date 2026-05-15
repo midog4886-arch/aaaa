@@ -215,6 +215,8 @@ async def _send_onboarding_welcome_notification(current_user: dict, tenant_name:
         payload = NotificationPayload(
             title=title_ar,
             body=message_ar,
+            title_en=title_en,
+            body_en=message_en,
             url="/admin/members",
             tag=f"onboarding-welcome-{notification_id}",
             data={"type": "onboarding_welcome"},

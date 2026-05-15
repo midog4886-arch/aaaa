@@ -7134,7 +7134,44 @@ async def create_member_notification(data: MemberNotificationCreate, current_use
     }
 
     await db.notifications.insert_one(notification)
-    
+
+    # Best-effort push notification to the targeted members so they hear about
+    # the alert on their device — localized per recipient via the saved push
+    # subscription language. Failures are swallowed; the in-app bell entry
+    # already provides the bilingual fallback.
+    try:
+        from routes.push_notifications import send_push_to_members, NotificationPayload
+        recipients = target_members if target_members else None
+        if recipients:
+            await send_push_to_members(
+                NotificationPayload(
+                    title=title_ar,
+                    body=message_ar,
+                    title_en=title_en,
+                    body_en=message_en,
+                    url="/portal/notifications",
+                    tag=f"member-notif-{notification['id']}",
+                    data={"type": data.notification_type, "notification_id": notification["id"]},
+                ),
+                recipients,
+            )
+        elif data.target == "all_members":
+            from routes.push_notifications import send_notification_to_all_members
+            await send_notification_to_all_members(
+                NotificationPayload(
+                    title=title_ar,
+                    body=message_ar,
+                    title_en=title_en,
+                    body_en=message_en,
+                    url="/portal/notifications",
+                    tag=f"member-notif-{notification['id']}",
+                    data={"type": data.notification_type, "notification_id": notification["id"]},
+                )
+            )
+    except Exception:
+        import logging
+        logging.getLogger(__name__).exception("member-notification push failed")
+
     return {
         "message": "تم إرسال الإشعار بنجاح",
         "notification_id": notification["id"],

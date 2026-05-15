@@ -66,6 +66,8 @@ async def send_to_coach(
         payload = NotificationPayload(
             title=title,
             body=message,
+            title_en=title_en or title,
+            body_en=message_en or message,
             url=link or "/",
             tag=tag or f"coach-{coach_id}-{uuid.uuid4()}",
             data={"type": notif_type, "coach_id": coach_id},
@@ -406,6 +408,21 @@ async def check_ads_expiry(current_user: dict = Depends(get_current_user)):
                     "created_at": datetime.now(timezone.utc).isoformat()
                 })
                 notifications_created += 1
+                # Best-effort push to admins in the same language they prefer.
+                try:
+                    from .push_notifications import send_push_to_admins, NotificationPayload
+                    await send_push_to_admins(
+                        NotificationPayload(
+                            title=title_ar, body=message_ar,
+                            title_en=title_en, body_en=message_en,
+                            url="/advertisements", tag=f"ad-expired-{ad_id}",
+                            data={"type": "ad_expired", "ad_id": ad_id},
+                        ),
+                        branch_id=branch_id,
+                    )
+                except Exception:
+                    import logging
+                    logging.getLogger(__name__).exception("ad-expired push failed")
         
         # Check if ad expires within 3 days
         elif today <= end_date <= three_days_later:
@@ -441,6 +458,21 @@ async def check_ads_expiry(current_user: dict = Depends(get_current_user)):
                     "created_at": datetime.now(timezone.utc).isoformat()
                 })
                 notifications_created += 1
+                # Best-effort push to admins, localized per recipient.
+                try:
+                    from .push_notifications import send_push_to_admins, NotificationPayload
+                    await send_push_to_admins(
+                        NotificationPayload(
+                            title=title_ar, body=message_ar,
+                            title_en=title_en, body_en=message_en,
+                            url="/advertisements", tag=f"ad-expiring-{ad_id}",
+                            data={"type": "ad_expiring_soon", "ad_id": ad_id},
+                        ),
+                        branch_id=branch_id,
+                    )
+                except Exception:
+                    import logging
+                    logging.getLogger(__name__).exception("ad-expiring push failed")
     
     return {"message": f"تم إنشاء {notifications_created} إشعار للإعلانات", "notifications_created": notifications_created}
 

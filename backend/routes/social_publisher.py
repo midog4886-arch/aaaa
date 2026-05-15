@@ -2271,6 +2271,24 @@ async def _notify_admins_cleanup_failed(error_message: str) -> None:
             "created_at": datetime.now(timezone.utc).isoformat(),
         }
         await db.notifications.insert_one(notification_doc)
+        # Best-effort push to admins so they hear about the failure on their
+        # device, in their saved language. Failures are swallowed to avoid
+        # masking the original cleanup error.
+        try:
+            from routes.push_notifications import send_push_to_admins, NotificationPayload
+            await send_push_to_admins(
+                NotificationPayload(
+                    title=title_ar,
+                    body=message_ar,
+                    title_en=title_en,
+                    body_en=message_en,
+                    url="/admin/social-publisher",
+                    tag="social-cleanup-failed",
+                    data={"type": "social_cleanup_failed"},
+                )
+            )
+        except Exception:
+            logger.exception("Failed to push cleanup-failure admin notification")
     except Exception:
         logger.exception("Failed to insert cleanup-failure admin notification")
 
