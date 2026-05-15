@@ -3781,6 +3781,37 @@ async def _run_tenant_auto_purge() -> dict:
                 )
             except Exception as e:
                 print(f"Tenant purge scheduler: failed to stamp warning for {slug}: {e}")
+            # Best-effort: also email the academy owner so the actual customer
+            # (not just super-admins) gets a final chance to object before the
+            # next tick irreversibly drops their database. Failures here must
+            # never block the purge flow.
+            owner_email = (tenant.get("owner_email") or "").strip()
+            if owner_email:
+                try:
+                    from utils.email_service import send_email as _send_email
+                    result = await _send_email(
+                        kind="final_purge_warning",
+                        to=owner_email,
+                        tenant_slug=slug,
+                        ctx={
+                            "academy_name": tenant.get("name", "") or slug,
+                            "purge_at": purge_at.isoformat(),
+                        },
+                    )
+                    print(
+                        f"Tenant purge scheduler: final_purge_warning email to "
+                        f"{owner_email} for {slug}: {result.get('status')}"
+                    )
+                except Exception as e:
+                    print(
+                        f"Tenant purge scheduler: final_purge_warning email "
+                        f"failed for {slug} ({owner_email}): {e}"
+                    )
+            else:
+                print(
+                    f"Tenant purge scheduler: no owner_email for {slug}; "
+                    "skipping final warning email"
+                )
             summary["warned"] += 1
             continue
 

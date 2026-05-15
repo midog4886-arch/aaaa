@@ -4,13 +4,14 @@ Each template is a function that returns ``(subject, html_body, text_body)``
 given a ``ctx`` dict. Templates are intentionally minimal HTML so they render
 well in any inbox (no external CSS, no images, RTL handled inline).
 
-Six template kinds (matches task #229):
+Template kinds:
   - welcome
   - trial_ending
   - payment_success
   - payment_failed
   - suspended
   - cancelled
+  - final_purge_warning
 """
 from datetime import datetime
 from typing import Dict, Tuple, Callable
@@ -171,6 +172,39 @@ def _cancelled(ctx: Dict) -> Tuple[str, str, str]:
     return subject, _wrap(ar, en), text
 
 
+def _final_purge_warning(ctx: Dict) -> Tuple[str, str, str]:
+    name = ctx.get("academy_name", "")
+    purge_at = _fmt_date(ctx.get("purge_at", ""))
+    subject = (
+        f"تحذير نهائي: سيتم حذف بيانات أكاديميتك خلال 24 ساعة / "
+        f"Final warning: your academy data will be permanently erased in 24 hours"
+    )
+    ar = f"""
+<h2>تحذير نهائي قبل الحذف الدائم</h2>
+<p>عزيزي {name}، انتهت فترة السماح لحساب أكاديميتك وسيتم حذف قاعدة بياناتك بشكل
+نهائي ولا يمكن التراجع عنه خلال <b>24 ساعة تقريباً</b> (في موعد أقصاه {purge_at}).</p>
+<p>إذا كنت ترغب في الحفاظ على بياناتك أو إلغاء الحذف، يرجى التواصل معنا فوراً
+على <a href="mailto:{SUPPORT_EMAIL}">{SUPPORT_EMAIL}</a> قبل انتهاء المهلة.</p>
+<p>بعد تنفيذ الحذف، لن يكون من الممكن استعادة الأعضاء أو الفواتير أو السجلات.</p>
+"""
+    en = f"""
+<h2>Final warning before permanent deletion</h2>
+<p>Hello {name}, your academy's grace period has elapsed and your database is
+scheduled to be <b>permanently and irreversibly erased within ~24 hours</b>
+(no later than {purge_at}).</p>
+<p>If you want to keep your data or cancel the deletion, please contact us
+immediately at <a href="mailto:{SUPPORT_EMAIL}">{SUPPORT_EMAIL}</a> before the
+deadline.</p>
+<p>Once the deletion runs, members, invoices and records cannot be recovered.</p>
+"""
+    text = (
+        f"FINAL WARNING: {name}'s academy database will be permanently erased "
+        f"within ~24 hours (by {purge_at}). Contact {SUPPORT_EMAIL} immediately "
+        f"to cancel."
+    )
+    return subject, _wrap(ar, en), text
+
+
 TEMPLATES: Dict[str, Callable[[Dict], Tuple[str, str, str]]] = {
     "welcome": _welcome,
     "trial_ending": _trial_ending,
@@ -178,6 +212,7 @@ TEMPLATES: Dict[str, Callable[[Dict], Tuple[str, str, str]]] = {
     "payment_failed": _payment_failed,
     "suspended": _suspended,
     "cancelled": _cancelled,
+    "final_purge_warning": _final_purge_warning,
 }
 
 
