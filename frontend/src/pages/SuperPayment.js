@@ -66,6 +66,108 @@ const fmt = (iso) => {
 const statusLabel = (s) =>
   (EVENT_STATUSES.find((x) => x.value === s) || {}).label || s || '—';
 
+const FAILURE_STATUSES = ['signature_invalid', 'tenant_not_found', 'secret_missing', 'error', 'invalid_payload'];
+const SUCCESS_STATUSES = ['recorded', 'renewed'];
+const NEUTRAL_STATUSES = ['received', 'duplicate', 'ignored', 'provider_disabled'];
+
+const STAT_STYLES = {
+  total: { bg: '#f1f5f9', fg: '#0f172a', border: '#cbd5e1' },
+  success: { bg: '#dcfce7', fg: '#166534', border: '#86efac' },
+  failure: { bg: '#fef2f2', fg: '#b91c1c', border: '#fecaca' },
+  neutral: { bg: '#fff7ed', fg: '#9a3412', border: '#fed7aa' },
+};
+
+const WINDOW_OPTIONS = [
+  { value: 1, label: 'آخر ساعة' },
+  { value: 6, label: 'آخر 6 ساعات' },
+  { value: 24, label: 'آخر 24 ساعة' },
+  { value: 24 * 7, label: 'آخر 7 أيام' },
+];
+
+function StatPill({ kind, label, count }) {
+  const s = STAT_STYLES[kind] || STAT_STYLES.neutral;
+  return (
+    <div style={{
+      background: s.bg,
+      color: s.fg,
+      border: `1px solid ${s.border}`,
+      borderRadius: 8,
+      padding: '8px 12px',
+      display: 'flex',
+      flexDirection: 'column',
+      alignItems: 'flex-start',
+      minWidth: 110,
+    }}>
+      <div style={{ fontSize: 22, fontWeight: 800, lineHeight: 1.1 }}>{count}</div>
+      <div style={{ fontSize: 12, fontWeight: 600, opacity: 0.85, marginTop: 2 }}>{label}</div>
+    </div>
+  );
+}
+
+function WebhookStatsStrip({ stats, loading, err, windowHours, onWindowChange }) {
+  const byStatus = (stats && stats.by_status) || {};
+  const total = (stats && stats.total) || 0;
+  const successCount = SUCCESS_STATUSES.reduce((acc, s) => acc + (byStatus[s] || 0), 0);
+  const failureBuckets = FAILURE_STATUSES
+    .map((s) => ({ status: s, count: byStatus[s] || 0 }))
+    .filter((b) => b.count > 0);
+  const failureTotal = failureBuckets.reduce((acc, b) => acc + b.count, 0);
+  const neutralCount = NEUTRAL_STATUSES.reduce((acc, s) => acc + (byStatus[s] || 0), 0);
+
+  return (
+    <div style={{
+      background: '#f8fafc',
+      border: '1px solid #e2e8f0',
+      borderRadius: 8,
+      padding: 12,
+      marginBottom: 12,
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8, marginBottom: 10 }}>
+        <div style={{ fontSize: 13, fontWeight: 700, color: '#334155' }}>📊 ملخص صحة الاستلام</div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <label style={{ fontSize: 12, color: '#64748b' }}>النافذة:</label>
+          <select
+            value={windowHours}
+            onChange={(e) => onWindowChange(parseInt(e.target.value, 10))}
+            style={{ padding: '4px 8px', border: '1px solid #cbd5e1', borderRadius: 6, fontSize: 12, background: 'white' }}
+          >
+            {WINDOW_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value}>{o.label}</option>
+            ))}
+          </select>
+        </div>
+      </div>
+      {err ? (
+        <div style={{ fontSize: 12, color: '#b91c1c' }}>{err}</div>
+      ) : loading && !stats ? (
+        <div style={{ fontSize: 12, color: '#64748b' }}>جارٍ الحساب…</div>
+      ) : total === 0 ? (
+        <div style={{ fontSize: 13, color: '#64748b' }}>
+          لم تصل أي webhooks في هذه النافذة الزمنية.
+        </div>
+      ) : (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+          <StatPill kind="total" label="إجمالي" count={total} />
+          <StatPill kind="success" label="نجحت (تجديد/تسجيل)" count={successCount} />
+          {failureBuckets.length === 0 ? (
+            <StatPill kind="failure" label="فشل" count={0} />
+          ) : (
+            <>
+              <StatPill kind="failure" label={`فشل إجمالي`} count={failureTotal} />
+              {failureBuckets.map((b) => (
+                <StatPill key={b.status} kind="failure" label={statusLabel(b.status)} count={b.count} />
+              ))}
+            </>
+          )}
+          {neutralCount > 0 && (
+            <StatPill kind="neutral" label="أخرى/مكررة" count={neutralCount} />
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function SuperPayment() {
   const navigate = useNavigate();
   const [settings, setSettings] = useState(null);
@@ -87,6 +189,10 @@ export default function SuperPayment() {
   const [deliveryAlerts, setDeliveryAlerts] = useState([]);
   const [deliveryThreshold, setDeliveryThreshold] = useState(3);
   const [expandedEvent, setExpandedEvent] = useState(null);
+  const [stats, setStats] = useState(null);
+  const [statsLoading, setStatsLoading] = useState(false);
+  const [statsErr, setStatsErr] = useState('');
+  const [statsWindowHours, setStatsWindowHours] = useState(24);
 
   const reloadDeliveryAlerts = useCallback(async () => {
     try {
@@ -129,6 +235,31 @@ export default function SuperPayment() {
   }, [eventStatus, eventProvider, eventOutcome, navigate]);
 
   useEffect(() => { reloadEvents(eventStatus, eventProvider, eventOutcome); }, [reloadEvents, eventStatus, eventProvider, eventOutcome]);
+
+  const reloadStats = useCallback(async (
+    windowHours = statsWindowHours,
+    providerFilter = eventProvider,
+  ) => {
+    setStatsLoading(true);
+    setStatsErr('');
+    try {
+      const params = { window_seconds: Math.max(1, parseInt(windowHours, 10) || 24) * 3600 };
+      if (providerFilter && providerFilter !== 'all') params.provider = providerFilter;
+      const res = await axios.get('/super/payment/events/stats', { ...auth(), params });
+      setStats(res.data || null);
+    } catch (e) {
+      if (e?.response?.status === 401) {
+        navigate('/super/login', { replace: true });
+        return;
+      }
+      setStatsErr(e?.response?.data?.detail || 'تعذر تحميل ملخص الأحداث');
+      setStats(null);
+    } finally {
+      setStatsLoading(false);
+    }
+  }, [statsWindowHours, eventProvider, navigate]);
+
+  useEffect(() => { reloadStats(statsWindowHours, eventProvider); }, [reloadStats, statsWindowHours, eventProvider]);
 
   const reload = useCallback(async () => {
     setLoading(true);
@@ -431,7 +562,7 @@ export default function SuperPayment() {
                 ))}
               </select>
               <button
-                onClick={() => reloadEvents(eventStatus, eventProvider, eventOutcome)}
+                onClick={() => { reloadEvents(eventStatus, eventProvider, eventOutcome); reloadStats(statsWindowHours, eventProvider); }}
                 disabled={eventsLoading}
                 style={{ ...btn('#475569'), padding: '6px 12px', fontSize: 13 }}
               >
@@ -447,6 +578,13 @@ export default function SuperPayment() {
               </button>
             </div>
           </div>
+          <WebhookStatsStrip
+            stats={stats}
+            loading={statsLoading}
+            err={statsErr}
+            windowHours={statsWindowHours}
+            onWindowChange={setStatsWindowHours}
+          />
           <div style={{ fontSize: 12, color: '#64748b', marginBottom: 12, lineHeight: 1.6 }}>
             يحتفظ النظام بآخر {maxRetained || 200} حدث وارد إلى <code style={{ fontFamily: 'monospace', background: '#f1f5f9', padding: '1px 6px', borderRadius: 4 }}>/api/billing/webhook/&lt;مزود&gt;</code> — مفيد لتشخيص ما إذا كانت الـ webhooks تصل وما إذا كانت تُقبل أو تُرفض.
           </div>

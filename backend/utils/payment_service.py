@@ -621,6 +621,67 @@ async def list_webhook_events(
         rows.append(r)
     return rows
 
+async def aggregate_webhook_event_stats(
+    *,
+    window_seconds: int = 24 * 60 * 60,
+    provider: Optional[str] = None,
+) -> Dict:
+    """Return webhook delivery counts grouped by status over a recent window.
+
+    Used by the super-admin payment page to surface a glanceable health
+    strip ("last 24h: X received, Y signature_invalid, …") without making
+    them scroll the paginated event log.
+
+    Returns ``{"window_seconds", "since", "until", "provider", "total",
+    "by_status": {status: count, …}, "by_outcome": {outcome: count, …}}``.
+    Statuses with zero hits in the window are omitted from ``by_status`` so
+    callers can iterate just the buckets that fired.
+    """
+    try:
+        window = int(window_seconds)
+    except (TypeError, ValueError):
+        window = 24 * 60 * 60
+    # Clamp to a sane range: 5 minutes minimum, 30 days maximum.
+    window = max(5 * 60, min(window, 30 * 24 * 60 * 60))
+    now = datetime.now(timezone.utc)
+    since = now - timedelta(seconds=window)
+    query: Dict = {"received_at": {"$gte": since}}
+    provider_lc = ""
+    if provider:
+        p = str(provider).strip().lower()
+        if p and p != "all":
+            provider_lc = p
+            query["provider"] = p
+    by_status: Dict[str, int] = {}
+    by_outcome: Dict[str, int] = {"processed": 0, "duplicate": 0, "ignored": 0}
+    total = 0
+    try:
+        cursor = control_db.webhook_events.aggregate([
+            {"$match": query},
+            {"$group": {"_id": "$status", "count": {"$sum": 1}}},
+        ])
+        async for row in cursor:
+            status = (row.get("_id") or "").lower() or "error"
+            count = int(row.get("count") or 0)
+            if count <= 0:
+                continue
+            by_status[status] = by_status.get(status, 0) + count
+            total += count
+            outcome = _derive_outcome(status)
+            by_outcome[outcome] = by_outcome.get(outcome, 0) + count
+    except Exception:
+        logger.exception("aggregate_webhook_event_stats failed")
+    return {
+        "window_seconds": window,
+        "since": since.isoformat(),
+        "until": now.isoformat(),
+        "provider": provider_lc,
+        "total": total,
+        "by_status": by_status,
+        "by_outcome": by_outcome,
+    }
+
+
 # Retain the processed-event fingerprint long enough to cover the longest
 # automatic retry window of any supported provider (Stripe retries for up to
 # ~3 days). 30 days provides a comfortable safety margin while still keeping

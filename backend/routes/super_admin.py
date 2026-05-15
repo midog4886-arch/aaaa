@@ -34,6 +34,7 @@ from utils.email_service import (
 )
 from utils.payment_service import (
     DELIVERY_FAILURE_STREAK_THRESHOLD,
+    aggregate_webhook_event_stats,
     get_payment_settings,
     list_active_delivery_alerts,
     list_webhook_events,
@@ -1446,6 +1447,23 @@ async def payment_delivery_alerts(_=Depends(_require_super)):
         "alerts": alerts,
         "threshold": DELIVERY_FAILURE_STREAK_THRESHOLD,
     }
+
+
+@router.get("/payment/events/stats")
+async def payment_events_stats(
+    window_seconds: int = 24 * 60 * 60,
+    provider: Optional[str] = None,
+    _=Depends(_require_super),
+):
+    """Return webhook delivery counts grouped by status over a recent window.
+
+    Used by the SuperPayment page to render a glanceable health strip
+    above the paginated event log so super-admins can see at once whether
+    deliveries are arriving and how many are failing.
+    """
+    return await aggregate_webhook_event_stats(
+        window_seconds=window_seconds, provider=provider,
+    )
 
 
 @router.get("/payment/events")
