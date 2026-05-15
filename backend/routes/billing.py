@@ -25,6 +25,7 @@ from utils.tenant import get_current_tenant_slug, DEFAULT_TENANT_SLUG
 from utils.auth import get_current_user
 from utils.email_service import send_email, list_email_log
 from utils.payment_service import (
+    DELIVERY_FAILURE_STREAK_THRESHOLD,
     SIGNATURE_FAILURE_ALERT_COOLDOWN_SECONDS,
     SIGNATURE_FAILURE_THRESHOLD,
     SIGNATURE_FAILURE_WINDOW_SECONDS,
@@ -139,6 +140,58 @@ async def _alert_super_admin_signature_failures(
         )
 
 
+async def _alert_super_admin_delivery_failures(
+    *, provider: str, delivery: dict, secret_env: str,
+) -> None:
+    """Email the super-admin when consecutive webhook delivery failures
+    cross the streak threshold. No-op when ``SUPER_ADMIN_ALERT_EMAIL`` is
+    unset so dev environments stay quiet.
+    """
+    recipient = (os.environ.get("SUPER_ADMIN_ALERT_EMAIL") or "").strip()
+    if not recipient:
+        logger.warning(
+            "payment webhook: delivery failures crossed streak threshold for "
+            "%s (streak=%s) but SUPER_ADMIN_ALERT_EMAIL is not set; "
+            "skipping alert", provider, delivery.get("streak"),
+        )
+        return
+    try:
+        await send_email(
+            kind="super_admin_delivery_failures",
+            to=recipient,
+            tenant_slug=None,
+            ctx={
+                "provider": provider,
+                "streak": int(delivery.get("streak") or 0),
+                "threshold": DELIVERY_FAILURE_STREAK_THRESHOLD,
+                "last_status": delivery.get("last_status") or "",
+                "last_reason": delivery.get("last_reason") or "",
+                "last_tenant_slug": delivery.get("last_tenant_slug") or "",
+                "since": delivery.get("since") or "",
+                "secret_env": secret_env,
+            },
+        )
+    except Exception:
+        logger.exception(
+            "payment webhook: super-admin delivery-failure alert email failed",
+        )
+
+
+async def _maybe_alert_delivery(record_result, *, provider: str, secret_env: str) -> None:
+    """Inspect a ``record_webhook_event`` return value and email the
+    super-admin when the consecutive-failure streak just crossed the
+    threshold. Tolerates a None / non-dict result so existing call sites
+    that ignore the return value remain safe.
+    """
+    if not isinstance(record_result, dict):
+        return
+    delivery = record_result.get("delivery") or {}
+    if delivery.get("should_alert"):
+        await _alert_super_admin_delivery_failures(
+            provider=provider, delivery=delivery, secret_env=secret_env,
+        )
+
+
 async def _resolve_tenant(tenant_id: Optional[str], tenant_slug: Optional[str]) -> Optional[dict]:
     if tenant_id:
         doc = await control_db.tenants.find_one({"id": tenant_id}, {"_id": 0})
@@ -213,7 +266,7 @@ async def payment_webhook(provider: str, request: Request):
         # Track repeated failures so a misconfigured/rotated secret surfaces
         # to the super-admin instead of silently 401'ing every retry.
         failure_state = await record_signature_failure(cfg_provider)
-        await record_webhook_event(
+        rec = await record_webhook_event(
             provider=cfg_provider,
             status="signature_invalid",
             reason=(
@@ -227,6 +280,7 @@ async def payment_webhook(provider: str, request: Request):
                 count=int(failure_state.get("count") or 0),
                 secret_env=secret_env,
             )
+        await _maybe_alert_delivery(rec, provider=cfg_provider, secret_env=secret_env)
         raise HTTPException(status_code=401, detail="invalid signature")
 
     # Successful verification clears the rolling failure window so the next
@@ -278,7 +332,7 @@ async def payment_webhook(provider: str, request: Request):
             tenant = await _resolve_tenant(failure.get("tenant_id"), failure.get("tenant_slug"))
             if not tenant:
                 logger.warning("payment webhook: tenant not found for ref=%s", failure.get("provider_ref"))
-                await record_webhook_event(
+                rec = await record_webhook_event(
                     provider=cfg_provider,
                     status="tenant_not_found",
                     reason=f"failure event ref={failure.get('provider_ref') or ''}",
@@ -286,6 +340,7 @@ async def payment_webhook(provider: str, request: Request):
                     tenant_slug=failure.get("tenant_slug"),
                     event_id=event_id,
                 )
+                await _maybe_alert_delivery(rec, provider=cfg_provider, secret_env=secret_env)
                 raise HTTPException(status_code=404, detail="tenant not found in event metadata")
             result = await apply_payment_failure(
                 tenant=tenant,
@@ -317,7 +372,7 @@ async def payment_webhook(provider: str, request: Request):
             tenant = await _resolve_tenant(success.get("tenant_id"), success.get("tenant_slug"))
             if not tenant:
                 logger.warning("payment webhook: tenant not found for ref=%s", success.get("provider_ref"))
-                await record_webhook_event(
+                rec = await record_webhook_event(
                     provider=cfg_provider,
                     status="tenant_not_found",
                     reason=f"success event ref={success.get('provider_ref') or ''}",
@@ -325,6 +380,7 @@ async def payment_webhook(provider: str, request: Request):
                     tenant_slug=success.get("tenant_slug"),
                     event_id=event_id,
                 )
+                await _maybe_alert_delivery(rec, provider=cfg_provider, secret_env=secret_env)
                 raise HTTPException(status_code=404, detail="tenant not found in event metadata")
             months = success.get("months") or 0
             days = success.get("days") or 0
@@ -350,7 +406,7 @@ async def payment_webhook(provider: str, request: Request):
                 )
             except ValueError as e:
                 logger.error("payment webhook renewal rejected: %s", e)
-                await record_webhook_event(
+                rec = await record_webhook_event(
                     provider=cfg_provider,
                     status="error",
                     reason=f"renewal rejected: {e}",
@@ -358,6 +414,7 @@ async def payment_webhook(provider: str, request: Request):
                     tenant_slug=tenant.get("slug"),
                     event_id=event_id,
                 )
+                await _maybe_alert_delivery(rec, provider=cfg_provider, secret_env=secret_env)
                 raise HTTPException(status_code=400, detail=str(e))
             if event_id:
                 await confirm_event(cfg_provider, event_id)
@@ -396,12 +453,13 @@ async def payment_webhook(provider: str, request: Request):
     except Exception as e:
         if event_id:
             await release_event(cfg_provider, event_id)
-        await record_webhook_event(
+        rec = await record_webhook_event(
             provider=cfg_provider,
             status="error",
             reason=str(e)[:500],
             event_id=event_id,
         )
+        await _maybe_alert_delivery(rec, provider=cfg_provider, secret_env=secret_env)
         raise
 
 

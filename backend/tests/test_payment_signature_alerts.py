@@ -215,7 +215,9 @@ def test_webhook_alerts_super_admin_after_threshold(webhook_alert_client):
     client, store, email_calls = webhook_alert_client
     body = b'{"type":"invoice.payment_failed"}'
 
-    # Below threshold: 401 each time, no alert email yet.
+    sig_calls = lambda: [c for c in email_calls if c["kind"] == "super_admin_signature_failures"]
+
+    # Below threshold: 401 each time, no signature alert email yet.
     for _ in range(SIGNATURE_FAILURE_THRESHOLD - 1):
         r = client.post(
             "/api/billing/webhook/stripe", content=body,
@@ -223,18 +225,17 @@ def test_webhook_alerts_super_admin_after_threshold(webhook_alert_client):
                      "Content-Type": "application/json"},
         )
         assert r.status_code == 401
-    assert email_calls == []
+    assert sig_calls() == []
 
-    # Crossing the threshold triggers exactly one super-admin alert.
+    # Crossing the threshold triggers exactly one super-admin signature alert.
     r = client.post(
         "/api/billing/webhook/stripe", content=body,
         headers={"Stripe-Signature": "t=1,v1=deadbeef",
                  "Content-Type": "application/json"},
     )
     assert r.status_code == 401
-    assert len(email_calls) == 1
-    call = email_calls[0]
-    assert call["kind"] == "super_admin_signature_failures"
+    assert len(sig_calls()) == 1
+    call = sig_calls()[0]
     assert call["to"] == "ops@example.com"
     assert call["ctx"]["provider"] == "stripe"
     assert call["ctx"]["count"] == SIGNATURE_FAILURE_THRESHOLD
@@ -247,7 +248,7 @@ def test_webhook_alerts_super_admin_after_threshold(webhook_alert_client):
                  "Content-Type": "application/json"},
     )
     assert r.status_code == 401
-    assert len(email_calls) == 1
+    assert len(sig_calls()) == 1
 
 
 def test_webhook_resets_counter_on_valid_signature(webhook_alert_client):

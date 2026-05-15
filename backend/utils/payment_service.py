@@ -155,6 +155,189 @@ async def reset_signature_failures(provider: str) -> None:
     except Exception:
         logger.exception("reset_signature_failures persistence failed")
 
+# Consecutive-failure streak alerting (task #285). Distinct from the
+# rolling-window signature tracker above: this watches *all* failure modes
+# that indicate a regression in webhook delivery — bad signatures, missing
+# tenant metadata, or unhandled exceptions — and surfaces a banner +
+# debounced email when ``DELIVERY_FAILURE_STREAK_THRESHOLD`` failures occur
+# back-to-back without any successful delivery in between. A single
+# ``recorded`` or ``renewed`` delivery clears the streak (and the banner).
+DELIVERY_FAILURE_STATUSES = {"signature_invalid", "tenant_not_found", "error"}
+DELIVERY_SUCCESS_STATUSES = {"recorded", "renewed"}
+DELIVERY_FAILURE_STREAK_THRESHOLD = 3
+DELIVERY_FAILURE_ALERT_COOLDOWN_SECONDS = 60 * 60  # don't re-email within 1h
+_DELIVERY_FAILURE_KEY_PREFIX = "payment_delivery_failures:"
+
+
+def _delivery_failure_key(provider: str) -> str:
+    return f"{_DELIVERY_FAILURE_KEY_PREFIX}{(provider or '').lower()}"
+
+
+async def _update_delivery_streak(
+    provider: str,
+    status: str,
+    reason: str,
+    tenant_slug: Optional[str],
+) -> Dict:
+    """Update the per-provider consecutive-failure streak after one webhook
+    delivery and decide whether the super-admin should be alerted.
+
+    Returns ``{"streak", "should_alert", "active_alert", "threshold",
+    "last_status", "last_reason", "last_failure_at", "since",
+    "last_tenant_slug", "cleared"}``.
+
+    * ``cleared`` — True when this delivery cleared a previously-active
+      banner (i.e. a successful delivery after a failure streak).
+    * ``should_alert`` — True iff the threshold was just crossed by this
+      delivery AND we haven't already alerted within the cooldown.
+    * ``active_alert`` — True while a banner should be shown.
+
+    Best-effort: any persistence error is logged and swallowed so a
+    diagnostic-side bug never breaks webhook processing.
+    """
+    provider_lc = (provider or "").lower()
+    status_lc = (status or "").lower()
+    is_failure = status_lc in DELIVERY_FAILURE_STATUSES
+    is_success = status_lc in DELIVERY_SUCCESS_STATUSES
+    # Neutral statuses (provider_disabled, secret_missing, invalid_payload,
+    # duplicate, ignored, received) neither extend nor break the streak —
+    # they tell us nothing about whether real delivery is healthy.
+    if not is_failure and not is_success:
+        return {
+            "streak": 0,
+            "should_alert": False,
+            "active_alert": False,
+            "threshold": DELIVERY_FAILURE_STREAK_THRESHOLD,
+            "cleared": False,
+        }
+    key = _delivery_failure_key(provider_lc)
+    now = datetime.now(timezone.utc)
+    cooldown_start = now - timedelta(seconds=DELIVERY_FAILURE_ALERT_COOLDOWN_SECONDS)
+    try:
+        doc = await control_db.platform_settings.find_one({"key": key}, {"_id": 0}) or {}
+        prev_streak = int(doc.get("streak") or 0)
+        prev_active = bool(doc.get("active_alert"))
+        last_alerted = _parse_iso(doc.get("alerted_at") or "")
+        previously_alerted_recently = bool(last_alerted and last_alerted >= cooldown_start)
+
+        if is_success:
+            update = {
+                "key": key,
+                "provider": provider_lc,
+                "streak": 0,
+                "active_alert": False,
+                "last_status": status_lc,
+                "last_reason": (reason or "")[:500],
+                "last_tenant_slug": (tenant_slug or "")[:80],
+                "last_success_at": now.isoformat(),
+                "updated_at": now.isoformat(),
+                # Reset cooldown so the next genuine streak can alert.
+                "alerted_at": "",
+                "last_alert_count": 0,
+            }
+            # Preserve the most recent failure trail for diagnostics.
+            if "last_failure_at" in doc:
+                update["last_failure_at"] = doc.get("last_failure_at")
+            if "since" in doc:
+                update["since"] = doc.get("since")
+            await control_db.platform_settings.update_one(
+                {"key": key}, {"$set": update}, upsert=True,
+            )
+            return {
+                "streak": 0,
+                "should_alert": False,
+                "active_alert": False,
+                "threshold": DELIVERY_FAILURE_STREAK_THRESHOLD,
+                "cleared": prev_active,
+                "last_status": status_lc,
+            }
+
+        # Failure path: extend the streak.
+        new_streak = prev_streak + 1
+        since = doc.get("since") if prev_streak > 0 else now.isoformat()
+        should_alert = (
+            new_streak >= DELIVERY_FAILURE_STREAK_THRESHOLD
+            and not previously_alerted_recently
+        )
+        update = {
+            "key": key,
+            "provider": provider_lc,
+            "streak": new_streak,
+            "active_alert": new_streak >= DELIVERY_FAILURE_STREAK_THRESHOLD,
+            "last_status": status_lc,
+            "last_reason": (reason or "")[:500],
+            "last_tenant_slug": (tenant_slug or "")[:80],
+            "last_failure_at": now.isoformat(),
+            "since": since or now.isoformat(),
+            "updated_at": now.isoformat(),
+        }
+        if should_alert:
+            update["alerted_at"] = now.isoformat()
+            update["last_alert_count"] = new_streak
+        else:
+            # Preserve prior alert metadata across non-alerting writes so
+            # the cooldown is honored.
+            if "alerted_at" in doc:
+                update["alerted_at"] = doc.get("alerted_at")
+            if "last_alert_count" in doc:
+                update["last_alert_count"] = doc.get("last_alert_count")
+        await control_db.platform_settings.update_one(
+            {"key": key}, {"$set": update}, upsert=True,
+        )
+        return {
+            "streak": new_streak,
+            "should_alert": should_alert,
+            "active_alert": update["active_alert"],
+            "threshold": DELIVERY_FAILURE_STREAK_THRESHOLD,
+            "cleared": False,
+            "last_status": status_lc,
+            "last_reason": update["last_reason"],
+            "last_failure_at": update["last_failure_at"],
+            "since": update["since"],
+            "last_tenant_slug": update["last_tenant_slug"],
+        }
+    except Exception:
+        logger.exception("_update_delivery_streak persistence failed")
+        return {
+            "streak": 0,
+            "should_alert": False,
+            "active_alert": False,
+            "threshold": DELIVERY_FAILURE_STREAK_THRESHOLD,
+            "cleared": False,
+        }
+
+
+async def list_active_delivery_alerts() -> list:
+    """Return the active delivery-failure banners across all providers.
+
+    Each entry: ``{"provider", "streak", "threshold", "since",
+    "last_failure_at", "last_status", "last_reason", "last_tenant_slug"}``.
+    Empty list means no banner should be shown.
+    """
+    try:
+        cursor = control_db.platform_settings.find(
+            {"key": {"$regex": f"^{_DELIVERY_FAILURE_KEY_PREFIX}"}, "active_alert": True},
+            {"_id": 0},
+        )
+        out = []
+        async for doc in cursor:
+            out.append({
+                "provider": doc.get("provider") or "",
+                "streak": int(doc.get("streak") or 0),
+                "threshold": DELIVERY_FAILURE_STREAK_THRESHOLD,
+                "since": doc.get("since") or "",
+                "last_failure_at": doc.get("last_failure_at") or "",
+                "last_status": doc.get("last_status") or "",
+                "last_reason": doc.get("last_reason") or "",
+                "last_tenant_slug": doc.get("last_tenant_slug") or "",
+            })
+        out.sort(key=lambda r: r.get("last_failure_at") or "", reverse=True)
+        return out
+    except Exception:
+        logger.exception("list_active_delivery_alerts failed")
+        return []
+
+
 # Diagnostics: how many recent webhook deliveries to retain for super-admin
 # inspection. Each delivery is one row regardless of whether it was accepted,
 # rejected by signature, deduplicated, or otherwise ignored.
@@ -192,17 +375,25 @@ async def record_webhook_event(
     Self-trims to the most recent ``WEBHOOK_EVENTS_MAX`` rows so the
     collection stays bounded. Best-effort: any failure is logged and
     swallowed (we never want diagnostics to break webhook processing).
+
+    Also updates the consecutive-failure streak (task #285) and returns a
+    ``{"delivery": {...}}`` dict describing the streak state so the caller
+    can fire the super-admin alert email when the threshold is crossed.
+    Existing callers that ignore the return value continue to work.
     """
+    normalized_status = (status or "").strip().lower()
+    if normalized_status not in VALID_WEBHOOK_EVENT_STATUSES:
+        normalized_status = "error"
+    provider_lc = (provider or "").strip().lower()[:40]
+    reason_clean = (reason or "").strip()[:500]
+    tenant_slug_clean = (tenant_slug or "").strip().lower()[:80] if tenant_slug else ""
     try:
-        normalized_status = (status or "").strip().lower()
-        if normalized_status not in VALID_WEBHOOK_EVENT_STATUSES:
-            normalized_status = "error"
         doc = {
-            "provider": (provider or "").strip().lower()[:40],
+            "provider": provider_lc,
             "status": normalized_status,
-            "reason": (reason or "").strip()[:500],
+            "reason": reason_clean,
             "tenant_id": (tenant_id or "").strip()[:80] if tenant_id else "",
-            "tenant_slug": (tenant_slug or "").strip().lower()[:80] if tenant_slug else "",
+            "tenant_slug": tenant_slug_clean,
             "event_id": (event_id or "").strip()[:200] if event_id else "",
             "received_at": datetime.now(timezone.utc),
         }
@@ -219,6 +410,10 @@ async def record_webhook_event(
                 await control_db.webhook_events.delete_many({"_id": {"$in": stale_ids}})
     except Exception:
         logger.exception("record_webhook_event failed")
+    delivery = await _update_delivery_streak(
+        provider_lc, normalized_status, reason_clean, tenant_slug_clean,
+    )
+    return {"delivery": delivery}
 
 
 # Maps the granular per-row ``status`` to the coarse ``outcome`` bucket the

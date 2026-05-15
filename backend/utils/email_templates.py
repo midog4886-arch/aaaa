@@ -383,6 +383,50 @@ inspect recent webhook deliveries.</p>
     return subject, _wrap(ar, en), text
 
 
+def _super_admin_delivery_failures(ctx: Dict) -> Tuple[str, str, str]:
+    provider = (ctx.get("provider") or "").strip() or "unknown"
+    streak = ctx.get("streak", 0)
+    threshold = ctx.get("threshold", 3)
+    last_status = (ctx.get("last_status") or "").strip() or "—"
+    last_reason = (ctx.get("last_reason") or "").strip() or "—"
+    since = (ctx.get("since") or "").strip() or "—"
+    last_tenant_slug = (ctx.get("last_tenant_slug") or "").strip()
+    subject = (
+        f"[Champions Academy] Payment webhook deliveries failing: {provider}"
+    )
+    en = f"""
+<h2>Payment webhook deliveries failing</h2>
+<p>The <b>{provider}</b> payment provider has had <b>{streak}</b> consecutive
+failed deliveries (threshold: {threshold}) since <b>{since}</b>.</p>
+<p>Most recent failure status: <code>{last_status}</code><br>
+Most recent reason: {last_reason}<br>
+Most recent tenant: {last_tenant_slug or '—'}</p>
+<p>Common causes: rotated signing secret, missing tenant metadata in the
+event payload, or an unhandled exception while applying the renewal.</p>
+<p>Open <b>Super Admin → Payment Settings</b> to inspect the recent
+deliveries. The banner clears automatically once a successful delivery is
+recorded.</p>
+"""
+    ar = f"""
+<h2>فشل متتالي في توصيل ويب-هوك الدفع</h2>
+<p>سجل مزود الدفع <b>{provider}</b> عدد <b>{streak}</b> محاولات توصيل
+فاشلة متتالية (الحد: {threshold}) منذ <b>{since}</b>.</p>
+<p>آخر حالة فشل: <code>{last_status}</code><br>
+آخر سبب: {last_reason}<br>
+آخر أكاديمية: {last_tenant_slug or '—'}</p>
+<p>الأسباب الشائعة: تدوير سر التوقيع، أو غياب بيانات الأكاديمية في
+حمولة الحدث، أو استثناء غير معالَج عند تطبيق التجديد.</p>
+<p>افتح <b>لوحة المشرف الأعلى ← إعدادات الدفع</b> لمراجعة آخر العمليات.
+سيختفي الإنذار تلقائياً بمجرد تسجيل عملية ناجحة.</p>
+"""
+    text = (
+        f"Payment webhook delivery failing for {provider}: {streak} "
+        f"consecutive failures (threshold {threshold}) since {since}. "
+        f"Last status: {last_status}. Last reason: {last_reason}."
+    )
+    return subject, _wrap(ar, en), text
+
+
 TEMPLATES: Dict[str, Callable[[Dict], Tuple[str, str, str]]] = {
     "welcome": _welcome,
     "trial_ending": _trial_ending,
@@ -395,6 +439,7 @@ TEMPLATES: Dict[str, Callable[[Dict], Tuple[str, str, str]]] = {
     "email_confirmation": _email_confirmation,
     "email_confirmation_expired": _email_confirmation_expired,
     "super_admin_signature_failures": _super_admin_signature_failures,
+    "super_admin_delivery_failures": _super_admin_delivery_failures,
 }
 
 

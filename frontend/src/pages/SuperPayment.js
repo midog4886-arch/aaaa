@@ -84,6 +84,21 @@ export default function SuperPayment() {
   const [eventOutcome, setEventOutcome] = useState('all');
   const [maxRetained, setMaxRetained] = useState(0);
   const [exporting, setExporting] = useState(false);
+  const [deliveryAlerts, setDeliveryAlerts] = useState([]);
+  const [deliveryThreshold, setDeliveryThreshold] = useState(3);
+
+  const reloadDeliveryAlerts = useCallback(async () => {
+    try {
+      const res = await axios.get('/super/payment/delivery-alerts', auth());
+      setDeliveryAlerts(Array.isArray(res.data?.alerts) ? res.data.alerts : []);
+      if (typeof res.data?.threshold === 'number') setDeliveryThreshold(res.data.threshold);
+    } catch (e) {
+      if (e?.response?.status === 401) {
+        navigate('/super/login', { replace: true });
+      }
+      // Silent on other errors — banner is a best-effort signal.
+    }
+  }, [navigate]);
 
   const reloadEvents = useCallback(async (
     statusFilter = eventStatus,
@@ -100,6 +115,7 @@ export default function SuperPayment() {
       const res = await axios.get('/super/payment/events', { ...auth(), params });
       setEvents(Array.isArray(res.data?.items) ? res.data.items : []);
       if (typeof res.data?.max_retained === 'number') setMaxRetained(res.data.max_retained);
+      reloadDeliveryAlerts();
     } catch (e) {
       if (e?.response?.status === 401) {
         navigate('/super/login', { replace: true });
@@ -136,6 +152,7 @@ export default function SuperPayment() {
   }, [navigate]);
 
   useEffect(() => { reload(); }, [reload]);
+  useEffect(() => { reloadDeliveryAlerts(); }, [reloadDeliveryAlerts]);
 
   const exportEventsCsv = async () => {
     setExporting(true);
@@ -226,6 +243,27 @@ export default function SuperPayment() {
           <Link to="/super/tenants" style={{ color: '#0ea5e9', textDecoration: 'none', fontSize: 14 }}>← العودة للأكاديميات</Link>
         </div>
 
+        {deliveryAlerts.length > 0 && (
+          <div style={{ background: '#fef2f2', color: '#7f1d1d', border: '1px solid #fecaca', padding: 14, borderRadius: 8, marginBottom: 16, fontSize: 14 }}>
+            <div style={{ fontWeight: 700, marginBottom: 6, fontSize: 15 }}>
+              🚨 توقّف وصول الـ webhooks
+            </div>
+            {deliveryAlerts.map((a, i) => (
+              <div key={i} style={{ marginTop: i ? 8 : 0, lineHeight: 1.7 }}>
+                المزود <b>{a.provider || '—'}</b> سجّل <b>{a.streak}</b> محاولة فاشلة متتالية
+                (الحد: {a.threshold || deliveryThreshold}) منذ {fmt(a.since)}.
+                <div style={{ fontSize: 13, color: '#991b1b', marginTop: 2 }}>
+                  آخر حالة: <code style={{ fontFamily: 'monospace' }}>{a.last_status || '—'}</code>
+                  {a.last_reason ? <> · {a.last_reason}</> : null}
+                  {a.last_tenant_slug ? <> · أكاديمية: {a.last_tenant_slug}</> : null}
+                </div>
+              </div>
+            ))}
+            <div style={{ fontSize: 12, color: '#991b1b', marginTop: 8 }}>
+              سيختفي هذا التنبيه تلقائياً بمجرد تسجيل أول عملية ناجحة.
+            </div>
+          </div>
+        )}
         {err && (
           <div style={{ background: '#fef2f2', color: '#b91c1c', padding: 12, borderRadius: 8, marginBottom: 16, fontSize: 14 }}>{err}</div>
         )}

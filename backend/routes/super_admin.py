@@ -33,7 +33,9 @@ from utils.email_service import (
     send_email,
 )
 from utils.payment_service import (
+    DELIVERY_FAILURE_STREAK_THRESHOLD,
     get_payment_settings,
+    list_active_delivery_alerts,
     list_webhook_events,
     update_payment_settings,
     verify_signature,
@@ -1428,6 +1430,22 @@ async def payment_settings_put(payload: PaymentSettingsIn, super_payload: dict =
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     return result
+
+
+@router.get("/payment/delivery-alerts")
+async def payment_delivery_alerts(_=Depends(_require_super)):
+    """Return any active webhook-delivery banners (task #285).
+
+    Surfaced on the super-admin Payment Settings page so a regression in
+    webhook delivery (rotated secret, broken tenant metadata, repeated
+    server-side error) is visible the moment the page loads — without
+    waiting for the email to arrive.
+    """
+    alerts = await list_active_delivery_alerts()
+    return {
+        "alerts": alerts,
+        "threshold": DELIVERY_FAILURE_STREAK_THRESHOLD,
+    }
 
 
 @router.get("/payment/events")
