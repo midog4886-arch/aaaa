@@ -9,7 +9,7 @@ import { Button } from '../../components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../../components/ui/dialog';
 import axios from 'axios';
 import API_URL from '../../config/api';
-import { getAcademyLogoUrl, getPrimaryColor } from '../../services/branding';
+import { getAcademyLogoUrl, getPrimaryColor, getAcademyName } from '../../services/branding';
 
 // Default member-portal logo (used when tenant has not uploaded a custom logo).
 const MEMBER_PORTAL_DEFAULT_LOGO = '/logo-new.png';
@@ -85,12 +85,14 @@ const MemberLayout = ({ children }) => {
   const [language, setLanguageState] = useState(getLanguage());
   const [tenantLogo, setTenantLogo] = useState(_resolveAcademyLogo());
   const [primary, setPrimary] = useState(getPrimaryColor());
+  const [tenantName, setTenantName] = useState(getAcademyName());
 
   // React to tenant branding updates (logo + colors loaded from /api/tenant/branding)
   useEffect(() => {
     const onUpdate = () => {
       setTenantLogo(_resolveAcademyLogo());
       setPrimary(getPrimaryColor());
+      setTenantName(getAcademyName());
     };
     window.addEventListener('branding:updated', onUpdate);
     return () => window.removeEventListener('branding:updated', onUpdate);
@@ -158,7 +160,10 @@ const MemberLayout = ({ children }) => {
     window.addEventListener('storage', onStorage);
 
     // Update document title and manifest for member portal PWA
-    document.title = language === 'ar' ? 'بوابة الأعضاء - شركة اداء الابطال العالمية للرياضة' : 'Member Portal - Champions Academy';
+    const defaultAcademy = language === 'ar' ? 'شركة اداء الابطال العالمية للرياضة' : 'Champions Academy';
+    const academyName = (getAcademyName() || '').trim() || defaultAcademy;
+    const portalLabel = language === 'ar' ? 'بوابة الأعضاء' : 'Member Portal';
+    document.title = `${portalLabel} - ${academyName}`;
     
     // Update manifest link for portal
     const manifestLink = document.getElementById('pwa-manifest');
@@ -166,17 +171,17 @@ const MemberLayout = ({ children }) => {
       manifestLink.href = '/manifest-portal.json';
     }
     
-    // Update apple-mobile-web-app-title
+    // Update apple-mobile-web-app-title to tenant academy name when available
     let appleTitleMeta = document.querySelector('meta[name="apple-mobile-web-app-title"]');
     if (appleTitleMeta) {
-      appleTitleMeta.content = language === 'ar' ? 'بوابة الأعضاء' : 'Member Portal';
+      appleTitleMeta.content = academyName;
     }
 
     return () => {
       window.removeEventListener('member-data-updated', refreshFromCache);
       window.removeEventListener('storage', onStorage);
     };
-  }, [navigate, language]);
+  }, [navigate, language, tenantName]);
 
   // PWA Install prompt handler
   useEffect(() => {
@@ -398,7 +403,7 @@ const MemberLayout = ({ children }) => {
               </div>
               <div className="hidden sm:block">
                 <p className="font-bold">{getText('memberPortal')}</p>
-                <p className="text-xs text-gray-300">{getText('academy')}</p>
+                <p className="text-xs text-gray-300">{(tenantName && tenantName.trim()) || getText('academy')}</p>
               </div>
             </div>
 
