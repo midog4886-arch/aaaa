@@ -1,19 +1,162 @@
-"""Per-tenant billing view (admin only).
+"""Per-tenant billing view (admin only) + payment-provider webhook.
 
 Read-only summary of the tenant's current plan + trial / subscription state
-that the admin sees inside Settings → Subscription & Billing. Real upgrade
-flow (Stripe / Moyasar / Tap) is deferred to Phase 2; for now the UI shows
-a "Contact sales" CTA.
+that the admin sees inside Settings → Subscription & Billing.
+
+Phase 2: when a payment provider (Stripe / Moyasar / Tap) is connected via
+``/super/payment/settings``, it pushes events to ``POST /api/billing/webhook/
+{provider}``. Failure events are signature-verified, recorded in
+``tenant.renewal_history`` with status='failed', and trigger the
+``payment_failed`` transactional email — without requiring any super-admin
+JWT.
 """
+import logging
+import os
+import uuid
 from datetime import datetime, timezone
-from fastapi import APIRouter, Depends, HTTPException
+from typing import Optional
+
+from fastapi import APIRouter, Depends, HTTPException, Request
 
 from utils.tenant import get_current_tenant_slug, DEFAULT_TENANT_SLUG
 from utils.auth import get_current_user
+from utils.email_service import send_email
+from utils.payment_service import (
+    get_payment_settings,
+    parse_failure_event,
+    verify_signature,
+)
 from control_db import control_db
 from routes.public_signup import _load_plans
 
+logger = logging.getLogger("billing")
+
 router = APIRouter(prefix="/billing", tags=["billing"])
+
+
+async def apply_payment_failure(
+    *,
+    tenant: dict,
+    reason: str,
+    amount: Optional[float],
+    currency: str,
+    provider: str,
+    provider_ref: str,
+) -> dict:
+    """Record a failed renewal payment + fire the ``payment_failed`` email.
+
+    Shared by the manual super-admin endpoint and the provider webhook.
+    Returns ``{"tenant", "failure", "email"}``.
+    """
+    if not tenant or not tenant.get("id"):
+        raise ValueError("tenant with id is required")
+    now = datetime.now(timezone.utc)
+    history_entry = {
+        "id": f"fail-{uuid.uuid4()}",
+        "renewed_at": now.isoformat(),
+        "status": "failed",
+        "reason": (reason or "").strip()[:500] or "unknown",
+        "amount": amount,
+        "currency": (currency or "SAR").upper(),
+        "method": (provider or "manual").lower(),
+        "provider_ref": (provider_ref or "").strip()[:200],
+    }
+    await control_db.tenants.update_one(
+        {"id": tenant["id"]},
+        {"$set": {"last_payment_failure_at": now.isoformat()},
+         "$push": {"renewal_history": history_entry}},
+    )
+    refreshed = await control_db.tenants.find_one({"id": tenant["id"]}, {"_id": 0}) or tenant
+
+    email_result = {"status": "skipped", "error": "no owner_email"}
+    try:
+        owner_email = (refreshed or {}).get("owner_email") or ""
+        if owner_email:
+            email_result = await send_email(
+                kind="payment_failed",
+                to=owner_email,
+                tenant_slug=(refreshed or {}).get("slug"),
+                ctx={
+                    "academy_name": (refreshed or {}).get("name", ""),
+                    "reason": history_entry["reason"],
+                    "amount": amount,
+                    "currency": history_entry["currency"],
+                },
+            )
+    except Exception as e:
+        logger.exception("payment_failed email failed for %s", (refreshed or {}).get("slug"))
+        email_result = {"status": "failed", "error": str(e)}
+
+    return {"tenant": refreshed, "failure": history_entry, "email": email_result}
+
+
+async def _resolve_tenant(tenant_id: Optional[str], tenant_slug: Optional[str]) -> Optional[dict]:
+    if tenant_id:
+        doc = await control_db.tenants.find_one({"id": tenant_id}, {"_id": 0})
+        if doc:
+            return doc
+    if tenant_slug:
+        return await control_db.tenants.find_one({"slug": tenant_slug.lower()}, {"_id": 0})
+    return None
+
+
+@router.post("/webhook/{provider}")
+async def payment_webhook(provider: str, request: Request):
+    """Receive a payment-provider webhook (Stripe / Moyasar / Tap).
+
+    Auth is via the provider's own signature scheme (HMAC-SHA256 of the raw
+    body using the secret in the env var configured at
+    ``/super/payment/settings``). Tenant middleware is bypassed here in
+    practice because the tenant is resolved from the event's ``metadata``
+    rather than the request host.
+    """
+    settings = await get_payment_settings()
+    cfg_provider = (settings.get("provider") or "").lower()
+    if not settings.get("enabled") or not cfg_provider:
+        raise HTTPException(status_code=503, detail="payment provider not configured")
+    if (provider or "").lower() != cfg_provider:
+        raise HTTPException(status_code=404, detail="provider not enabled")
+
+    secret_env = settings.get("secret_env") or "PAYMENT_WEBHOOK_SECRET"
+    secret = os.environ.get(secret_env, "")
+    if not secret:
+        logger.error("payment webhook: secret env %s is empty", secret_env)
+        raise HTTPException(status_code=503, detail="webhook secret not set")
+
+    body = await request.body()
+    if not verify_signature(cfg_provider, body, request.headers.raw, secret):
+        raise HTTPException(status_code=401, detail="invalid signature")
+
+    try:
+        payload = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="invalid json body")
+
+    failure = parse_failure_event(cfg_provider, payload)
+    if not failure:
+        # Non-failure events (e.g. payment_succeeded) are accepted but ignored
+        # here; success-side handling is owned by ``renew_tenant``.
+        return {"status": "ignored", "reason": "not a failure event"}
+
+    tenant = await _resolve_tenant(failure.get("tenant_id"), failure.get("tenant_slug"))
+    if not tenant:
+        logger.warning("payment webhook: tenant not found for ref=%s", failure.get("provider_ref"))
+        raise HTTPException(status_code=404, detail="tenant not found in event metadata")
+
+    result = await apply_payment_failure(
+        tenant=tenant,
+        reason=failure["reason"],
+        amount=failure.get("amount"),
+        currency=failure.get("currency") or "SAR",
+        provider=cfg_provider,
+        provider_ref=failure.get("provider_ref") or "",
+    )
+    return {
+        "status": "recorded",
+        "tenant_slug": (result.get("tenant") or {}).get("slug"),
+        "failure_id": (result.get("failure") or {}).get("id"),
+        "email": result.get("email"),
+    }
 
 
 def _build_invoices(tenant: dict, plans: list) -> list:

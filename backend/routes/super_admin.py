@@ -27,6 +27,10 @@ from utils.email_service import (
     list_email_log,
     send_email,
 )
+from utils.payment_service import (
+    get_payment_settings,
+    update_payment_settings,
+)
 from utils.tenant import slug_to_db_name, DEFAULT_TENANT_SLUG
 from utils.auth import hash_password
 
@@ -497,44 +501,15 @@ async def record_payment_failure(
     existing = await control_db.tenants.find_one({"id": tenant_id}, {"_id": 0})
     if not existing:
         raise HTTPException(status_code=404, detail="Tenant not found")
-    now = datetime.now(timezone.utc)
-    history_entry = {
-        "id": f"fail-{uuid.uuid4()}",
-        "renewed_at": now.isoformat(),
-        "status": "failed",
-        "reason": (payload.reason or "").strip()[:500],
-        "amount": payload.amount,
-        "currency": (payload.currency or "SAR").upper(),
-        "method": (payload.provider or "manual").lower(),
-        "provider_ref": (payload.provider_ref or "").strip()[:200],
-    }
-    await control_db.tenants.update_one(
-        {"id": tenant_id},
-        {"$set": {"last_payment_failure_at": now.isoformat()},
-         "$push": {"renewal_history": history_entry}},
+    from routes.billing import apply_payment_failure
+    return await apply_payment_failure(
+        tenant=existing,
+        reason=payload.reason or "",
+        amount=payload.amount,
+        currency=payload.currency or "SAR",
+        provider=payload.provider or "manual",
+        provider_ref=payload.provider_ref or "",
     )
-    refreshed = await control_db.tenants.find_one({"id": tenant_id}, {"_id": 0})
-
-    email_result = {"status": "skipped", "error": "no owner_email"}
-    try:
-        owner_email = (refreshed or {}).get("owner_email") or ""
-        if owner_email:
-            email_result = await send_email(
-                kind="payment_failed",
-                to=owner_email,
-                tenant_slug=(refreshed or {}).get("slug"),
-                ctx={
-                    "academy_name": (refreshed or {}).get("name", ""),
-                    "reason": history_entry["reason"],
-                    "amount": payload.amount,
-                    "currency": history_entry["currency"],
-                },
-            )
-    except Exception as e:
-        logger.exception("payment_failed email failed for %s", (refreshed or {}).get("slug"))
-        email_result = {"status": "failed", "error": str(e)}
-
-    return {"tenant": refreshed, "failure": history_entry, "email": email_result}
 
 
 @router.post("/check_expired")
@@ -891,3 +866,28 @@ async def email_test_send(payload: EmailTestIn, _=Depends(_require_super)):
 async def email_run_trial_checks(_=Depends(_require_super)):
     """Manually trigger the daily trial-ending email sweep (also runs on schedule)."""
     return await send_trial_ending_emails()
+
+
+# ── Payment provider (Stripe / Moyasar / Tap) webhook config ────────────
+
+class PaymentSettingsIn(BaseModel):
+    provider: str = Field("", description="'stripe', 'moyasar', 'tap', or '' to disable")
+    enabled: Optional[bool] = False
+    secret_env: Optional[str] = "PAYMENT_WEBHOOK_SECRET"
+
+
+@router.get("/payment/settings")
+async def payment_settings_get(_=Depends(_require_super)):
+    return await get_payment_settings()
+
+
+@router.put("/payment/settings")
+async def payment_settings_put(payload: PaymentSettingsIn, _=Depends(_require_super)):
+    try:
+        return await update_payment_settings(
+            provider=payload.provider or "",
+            enabled=bool(payload.enabled),
+            secret_env=payload.secret_env or "PAYMENT_WEBHOOK_SECRET",
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
