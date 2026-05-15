@@ -8,7 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import { Button } from '../components/ui/button';
 import { Switch } from '../components/ui/switch';
 import { Label } from '../components/ui/label';
-import { tenantAPI, notificationsSettingsAPI } from '../services/api';
+import { tenantAPI, notificationsSettingsAPI, billingAPI } from '../services/api';
 import {
   Languages,
   Moon,
@@ -19,7 +19,9 @@ import {
   Clock,
   CheckCircle2,
   AlertCircle,
-  RefreshCw
+  RefreshCw,
+  CreditCard,
+  Mail,
 } from 'lucide-react';
 
 export const SettingsPage = () => {
@@ -40,6 +42,19 @@ export const SettingsPage = () => {
   const [dailyChecksSaving, setDailyChecksSaving] = React.useState(false);
   const [dailyChecksStatus, setDailyChecksStatus] = React.useState(null);
   const [dailyChecksRunning, setDailyChecksRunning] = React.useState(false);
+  const [billing, setBilling] = React.useState(null);
+  const [billingLoading, setBillingLoading] = React.useState(false);
+
+  React.useEffect(() => {
+    if (!isAdmin) return;
+    let cancelled = false;
+    setBillingLoading(true);
+    billingAPI.get()
+      .then((res) => { if (!cancelled) setBilling(res.data || null); })
+      .catch(() => { if (!cancelled) setBilling(null); })
+      .finally(() => { if (!cancelled) setBillingLoading(false); });
+    return () => { cancelled = true; };
+  }, [isAdmin]);
 
   const fetchDailyChecksStatus = React.useCallback(async () => {
     try {
@@ -187,6 +202,65 @@ export const SettingsPage = () => {
   return (
     <Layout title={t('settings')}>
       <div className="space-y-6 max-w-2xl" data-testid="settings-page">
+        {isAdmin && (
+          <Card data-testid="billing-card">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <CreditCard className="w-5 h-5 text-primary" />
+                {language === 'ar' ? 'الاشتراك والفوترة' : 'Subscription & Billing'}
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {billingLoading ? (
+                <p className="text-sm text-muted-foreground">{language === 'ar' ? 'جارٍ التحميل...' : 'Loading...'}</p>
+              ) : !billing ? (
+                <p className="text-sm text-muted-foreground">{language === 'ar' ? 'لا تتوفر معلومات الاشتراك.' : 'No billing info available.'}</p>
+              ) : (
+                <>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <p className="text-sm text-muted-foreground">{language === 'ar' ? 'الخطة الحالية' : 'Current plan'}</p>
+                      <p className="font-bold text-lg">{language === 'ar' ? (billing.plan_name_ar || billing.plan) : (billing.plan_name_en || billing.plan)}</p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-muted-foreground">{language === 'ar' ? 'الحالة' : 'Status'}</p>
+                      <p className="font-bold text-lg">
+                        {billing.is_trial && (language === 'ar' ? 'تجربة مجانية' : 'Free trial')}
+                        {!billing.is_trial && billing.status === 'active' && (language === 'ar' ? 'نشط' : 'Active')}
+                        {billing.status === 'expired' && (language === 'ar' ? 'منتهي' : 'Expired')}
+                        {billing.status === 'suspended' && (language === 'ar' ? 'معلّق' : 'Suspended')}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-muted-foreground">{language === 'ar' ? 'الأيام المتبقية' : 'Days remaining'}</p>
+                      <p className={`font-bold text-lg ${billing.days_remaining <= 7 ? 'text-red-600' : ''}`}>
+                        {billing.days_remaining != null ? billing.days_remaining : '—'}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-muted-foreground">{language === 'ar' ? 'تاريخ الانتهاء' : 'End date'}</p>
+                      <p className="font-medium">{billing.end_at ? new Date(billing.end_at).toLocaleDateString(language === 'ar' ? 'ar-SA' : 'en-GB') : '—'}</p>
+                    </div>
+                  </div>
+                  <div className="pt-3 border-t flex flex-col sm:flex-row gap-2">
+                    <a href="mailto:sales@championsacademy.app?subject=Renew%20or%20upgrade%20subscription" className="flex-1">
+                      <Button className="w-full" data-testid="billing-contact-btn">
+                        <Mail className="w-4 h-4 me-2" />
+                        {language === 'ar' ? 'تواصل لتجديد أو ترقية الخطة' : 'Contact to renew or upgrade'}
+                      </Button>
+                    </a>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    {language === 'ar'
+                      ? 'الدفع الإلكتروني المباشر سيكون متاحاً قريباً. حالياً، يرجى التواصل معنا للتجديد أو ترقية الخطة.'
+                      : 'Direct online payment is coming soon. For now, contact us to renew or upgrade.'}
+                  </p>
+                </>
+              )}
+            </CardContent>
+          </Card>
+        )}
+
         {/* Academy Info */}
         <Card>
           <CardHeader>

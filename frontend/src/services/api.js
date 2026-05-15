@@ -282,6 +282,16 @@ export const tenantAPI = {
   resetOnboarding: () => axios.post(`${API}/tenant/onboarding-reset`),
 };
 
+export const publicAPI = {
+  getPlans: () => axios.get(`${API}/public/plans`),
+  checkSlug: (slug) => axios.get(`${API}/public/check-slug/${encodeURIComponent(slug)}`),
+  signup: (data) => axios.post(`${API}/public/signup`, data),
+};
+
+export const billingAPI = {
+  get: () => axios.get(`${API}/billing`),
+};
+
 // Branches API
 export const branchesAPI = {
   getAll: () => axios.get(`${API}/branches`),

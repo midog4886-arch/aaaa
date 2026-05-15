@@ -84,6 +84,9 @@ const SocialPublisherPage = lazy(() => import('./pages/SocialPublisherPage'));
 const SuperLogin = lazy(() => import('./pages/SuperLogin'));
 const SuperTenants = lazy(() => import('./pages/SuperTenants'));
 const OnboardingPage = lazy(() => import('./pages/OnboardingPage'));
+const LandingPage = lazy(() => import('./pages/LandingPage'));
+const SignupPage = lazy(() => import('./pages/SignupPage'));
+import ExpiredTenantGuard from './components/ExpiredTenantGuard';
 
 const SuperGuard = ({ children }) => {
   const token = typeof window !== 'undefined' ? localStorage.getItem('super_token') : null;
@@ -171,7 +174,7 @@ const SmartRedirect = () => {
   }
   
   if (!isAuthenticated) {
-    return <Navigate to="/member-login" replace />;
+    return <LandingPage />;
   }
   
   if (isAdmin) {
@@ -221,6 +224,9 @@ function AppRoutes() {
       
       {/* Privacy Policy - Public page */}
       <Route path="/privacy" element={<PrivacyPolicyPage />} />
+
+      {/* Public self-signup */}
+      <Route path="/signup" element={<SignupPage />} />
       <Route path="/coach-qr/:coachId" element={<CoachQRPage />} />
 
       {/* Super-Admin (control plane) — outside main auth/permissions */}
@@ -518,8 +524,8 @@ function AppRoutes() {
         }
       />
       
-      {/* Catch-all redirect to member login */}
-      <Route path="*" element={<Navigate to="/member-login" replace />} />
+      {/* Catch-all → landing/smart redirect */}
+      <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
     </Suspense>
   );
@@ -532,7 +538,9 @@ function App() {
         <BrowserRouter>
           <ManifestSwitcher />
           <ErrorBoundary>
-            <AppRoutes />
+            <ExpiredTenantGuard>
+              <AppRoutes />
+            </ExpiredTenantGuard>
           </ErrorBoundary>
           <Toaster position="top-center" richColors closeButton />
         </BrowserRouter>
