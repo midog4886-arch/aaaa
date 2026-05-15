@@ -90,7 +90,7 @@ const formatDate = (dateStr) => {
 
 // ── Attendance Calendar ───────────────────────────────────────────────────────
 
-const AttendanceCalendar = ({ attendanceStats, darkMode, language, refreshToken }) => {
+const AttendanceCalendar = ({ attendanceStats, darkMode, language, refreshToken, primary }) => {
   const now = new Date();
   const [viewYear, setViewYear] = useState(now.getFullYear());
   const [viewMonth, setViewMonth] = useState(now.getMonth()); // 0-indexed
@@ -224,7 +224,7 @@ const AttendanceCalendar = ({ attendanceStats, darkMode, language, refreshToken 
           let ring = '';
 
           if (isToday) {
-            ring = 'ring-2 ring-amber-400';
+            ring = primary ? 'ring-2' : 'ring-2 ring-amber-400';
             textColor = darkMode ? 'text-white' : 'text-gray-900';
             dotColor = isAttended ? 'bg-green-500' : 'bg-gray-400';
           } else if (isAttended) {
@@ -238,14 +238,18 @@ const AttendanceCalendar = ({ attendanceStats, darkMode, language, refreshToken 
             textColor = darkMode ? 'text-gray-500' : 'text-gray-400';
           }
 
+          const todayBgStyle = isToday && primary && !darkMode ? { backgroundColor: `${primary}1A` } : undefined;
+          const todayRingStyle = isToday && primary ? { boxShadow: `0 0 0 2px ${primary}` } : undefined;
           return (
             <div
               key={idx}
-              className={`aspect-square flex flex-col items-center justify-center rounded-md ${ring} ${
+              className={`aspect-square flex flex-col items-center justify-center rounded-md ${primary && isToday ? '' : ring} ${
                 isAttended && !isToday ? (darkMode ? 'bg-green-900/30' : 'bg-green-50') :
-                isToday ? (darkMode ? 'bg-gray-700' : 'bg-amber-50') :
+                isToday && !primary ? (darkMode ? 'bg-gray-700' : 'bg-amber-50') :
+                isToday && darkMode ? 'bg-gray-700' :
                 ''
               }`}
+              style={{ ...(todayBgStyle || {}), ...(todayRingStyle || {}) }}
             >
               <span className={`text-[10px] font-medium leading-none ${textColor}`}>{cell.day}</span>
               {dotColor && (
@@ -421,9 +425,9 @@ const MemberDashboard = () => {
   }, [fetchData]);
 
   const quickLinks = [
-    { to: '/subscriptions',   icon: CreditCard, label: language === 'ar' ? 'اشتراكاتي'       : 'My Subs',   color: 'bg-gray-900' },
-    { to: '/member-schedule', icon: Calendar,   label: language === 'ar' ? 'جدول التدريبات'  : 'Schedule',  color: 'bg-amber-600', useBrand: true },
-    { to: '/card',            icon: QrCode,     label: language === 'ar' ? 'بطاقة العضوية'   : 'My Card',   color: 'bg-yellow-600', useBrand: true },
+    { to: '/subscriptions',   icon: CreditCard, label: language === 'ar' ? 'اشتراكاتي'       : 'My Subs',   color: 'bg-gray-900',  bgStyle: null },
+    { to: '/member-schedule', icon: Calendar,   label: language === 'ar' ? 'جدول التدريبات'  : 'Schedule',  color: primary ? '' : 'bg-amber-600',  bgStyle: primary ? { backgroundColor: primary } : null },
+    { to: '/card',            icon: QrCode,     label: language === 'ar' ? 'بطاقة العضوية'   : 'My Card',   color: primary ? '' : 'bg-yellow-600', bgStyle: primary ? { backgroundColor: primary } : null },
   ];
 
   // last attendance from recent list
@@ -463,7 +467,8 @@ const MemberDashboard = () => {
                         e.currentTarget.style.display = 'none';
                         if (e.currentTarget.nextSibling) e.currentTarget.nextSibling.style.display = 'flex';
                       }}
-                      className="w-14 h-14 sm:w-16 sm:h-16 rounded-full object-cover flex-shrink-0 shadow-lg shadow-amber-500/30 border-2 border-amber-400"
+                      className={`w-14 h-14 sm:w-16 sm:h-16 rounded-full object-cover flex-shrink-0 shadow-lg border-2 ${primary ? '' : 'shadow-amber-500/30 border-amber-400'}`}
+                      style={primary ? { borderColor: primary, boxShadow: `0 10px 15px -3px ${primary}4D` } : undefined}
                     />
                   ) : null}
                   <div
@@ -481,7 +486,7 @@ const MemberDashboard = () => {
                     <h1 className="text-lg sm:text-xl font-bold truncate">
                       {language === 'ar' ? `مرحباً ${member?.name_ar || member?.name}` : `Hello, ${member?.name || member?.name_ar}`}
                     </h1>
-                    <p className="text-gray-400 text-sm">{language === 'ar' ? 'رقم العضوية' : 'Member ID'}: <span className="font-bold" style={primary ? { color: primary } : { color: '#fbbf24' }}>#{member?.member_code}</span></p>
+                    <p className="text-gray-400 text-sm">{language === 'ar' ? 'رقم العضوية' : 'Member ID'}: <span className={`font-bold ${primary ? '' : 'text-amber-400'}`} style={primary ? { color: primary } : undefined}>#{member?.member_code}</span></p>
                   </div>
                 </div>
 
@@ -655,6 +660,7 @@ const MemberDashboard = () => {
                       darkMode={darkMode}
                       language={language}
                       refreshToken={refreshToken}
+                      primary={primary}
                     />
                     <div className="flex items-center gap-4 mt-3 justify-center">
                       <div className="flex items-center gap-1">
@@ -670,7 +676,10 @@ const MemberDashboard = () => {
                         </span>
                       </div>
                       <div className="flex items-center gap-1">
-                        <span className="w-3 h-3 rounded-md ring-2 ring-amber-400 inline-block" />
+                        <span
+                          className={`w-3 h-3 rounded-md inline-block ${primary ? '' : 'ring-2 ring-amber-400'}`}
+                          style={primary ? { boxShadow: `0 0 0 2px ${primary}` } : undefined}
+                        />
                         <span className={`text-[10px] ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
                           {language === 'ar' ? 'اليوم' : 'Today'}
                         </span>
@@ -691,7 +700,11 @@ const MemberDashboard = () => {
                     <CheckCircle className="w-4 h-4 text-green-600" />
                     {language === 'ar' ? 'اشتراكاتي السارية' : 'Active Subscriptions'}
                   </CardTitle>
-                  <Link to="/subscriptions" className="text-xs flex items-center gap-1" style={primary ? { color: primary } : { color: '#d97706' }}>
+                  <Link
+                    to="/subscriptions"
+                    className={`text-xs flex items-center gap-1 ${primary ? '' : 'text-amber-600'}`}
+                    style={primary ? { color: primary } : undefined}
+                  >
                     {language === 'ar' ? 'عرض الكل' : 'View all'} <ChevronLeft className="w-3 h-3" />
                   </Link>
                 </CardHeader>
@@ -832,24 +845,21 @@ const MemberDashboard = () => {
           {/* ── Quick Links ── */}
           <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }}>
             <div className="grid grid-cols-3 gap-3">
-              {quickLinks.map((link) => {
-                const useBrand = link.useBrand && primary;
-                return (
-                  <Link key={link.to} to={link.to}>
-                    <Card className={`hover:shadow-lg transition-shadow cursor-pointer h-full ${darkMode ? 'bg-gray-800 border-gray-700' : ''}`}>
-                      <CardContent className="p-4 text-center">
-                        <div
-                          className={`w-11 h-11 rounded-full flex items-center justify-center mx-auto mb-2.5 shadow-sm ${useBrand ? '' : link.color}`}
-                          style={useBrand ? { backgroundColor: primary } : undefined}
-                        >
-                          <link.icon className="w-5 h-5 text-white" />
-                        </div>
-                        <p className={`text-xs font-medium ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>{link.label}</p>
-                      </CardContent>
-                    </Card>
-                  </Link>
-                );
-              })}
+              {quickLinks.map((link) => (
+                <Link key={link.to} to={link.to}>
+                  <Card className={`hover:shadow-lg transition-shadow cursor-pointer h-full ${darkMode ? 'bg-gray-800 border-gray-700' : ''}`}>
+                    <CardContent className="p-4 text-center">
+                      <div
+                        className={`w-11 h-11 ${link.color} rounded-full flex items-center justify-center mx-auto mb-2.5 shadow-sm`}
+                        style={link.bgStyle || undefined}
+                      >
+                        <link.icon className="w-5 h-5 text-white" />
+                      </div>
+                      <p className={`text-xs font-medium ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>{link.label}</p>
+                    </CardContent>
+                  </Card>
+                </Link>
+              ))}
             </div>
           </motion.div>
 
@@ -865,7 +875,11 @@ const MemberDashboard = () => {
                     <Bell className="w-4 h-4 text-orange-600" />
                     {language === 'ar' ? 'آخر الإشعارات' : 'Recent Notifications'}
                   </CardTitle>
-                  <Link to="/notifications" className="text-xs flex items-center gap-1" style={primary ? { color: primary } : { color: '#d97706' }}>
+                  <Link
+                    to="/notifications"
+                    className={`text-xs flex items-center gap-1 ${primary ? '' : 'text-amber-600'}`}
+                    style={primary ? { color: primary } : undefined}
+                  >
                     {language === 'ar' ? 'عرض الكل' : 'View all'} <ChevronLeft className="w-3 h-3" />
                   </Link>
                 </CardHeader>

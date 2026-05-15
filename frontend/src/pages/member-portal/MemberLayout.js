@@ -478,12 +478,16 @@ const MemberLayout = ({ children }) => {
                       e.currentTarget.style.display = 'none';
                       if (e.currentTarget.nextSibling) e.currentTarget.nextSibling.style.display = 'flex';
                     }}
-                    className="w-9 h-9 rounded-full object-cover border-2 border-amber-400 shadow"
+                    className={`w-9 h-9 rounded-full object-cover border-2 shadow ${primary ? '' : 'border-amber-400'}`}
+                    style={primary ? { borderColor: primary } : undefined}
                   />
                 ) : null}
                 <div
-                  className="w-9 h-9 rounded-full bg-gradient-to-br from-amber-400 to-yellow-600 items-center justify-center text-gray-900 text-xs font-black border-2 border-amber-300 shadow"
-                  style={{ display: member.photo ? 'none' : 'flex' }}
+                  className={`w-9 h-9 rounded-full items-center justify-center text-gray-900 text-xs font-black border-2 shadow ${primary ? '' : 'bg-gradient-to-br from-amber-400 to-yellow-600 border-amber-300'}`}
+                  style={{
+                    display: member.photo ? 'none' : 'flex',
+                    ...(primary ? { background: primary, borderColor: primary } : {}),
+                  }}
                 >
                   {((member.name_ar || member.name || '?').trim().split(/\s+/).slice(0, 2).map(w => w[0]).join('')) || '?'}
                 </div>
