@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-route
 import { LanguageProvider } from './contexts/LanguageContext';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { Toaster } from './components/ui/sonner';
+import { loadBranding } from './services/branding';
 
 const ManifestSwitcher = () => {
   const location = useLocation();
@@ -530,3 +531,5 @@ function App() {
 }
 
 export default App;
+
+try { loadBranding(); } catch (e) {}

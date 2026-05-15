@@ -156,6 +156,9 @@ api_router.include_router(whatsapp_router)
 api_router.include_router(tournaments_router)
 api_router.include_router(social_publisher_router)
 
+from routes.branding import router as branding_router
+api_router.include_router(branding_router)
+
 app.include_router(super_admin_router)
 
 # Set database for loyalty router

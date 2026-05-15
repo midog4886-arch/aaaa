@@ -95,6 +95,7 @@ function TenantForm({ initial, onSubmit, onCancel, isEdit }) {
     trial_days: 30,
     auto_suspend_on_expiry: initial?.auto_suspend_on_expiry !== false,
     subscription_end_at_date: isoToDateInput(initial?.subscription_end_at),
+    logo_base64: initial?.logo_base64 || '',
   });
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
@@ -185,6 +186,39 @@ function TenantForm({ initial, onSubmit, onCancel, isEdit }) {
                 {f.label}
               </label>
             ))}
+          </div>
+        </div>
+        <div style={sx.field}>
+          <label style={sx.label}>شعار الأكاديمية (يظهر في القائمة الجانبية والفواتير)</label>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            {form.logo_base64 ? (
+              <img src={form.logo_base64} alt="logo" style={{ width: 56, height: 56, borderRadius: 8, objectFit: 'contain', border: '1px solid #cbd5e1', background: '#f8fafc' }} />
+            ) : (
+              <div style={{ width: 56, height: 56, borderRadius: 8, border: '1px dashed #cbd5e1', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#94a3b8', fontSize: 11 }}>لا يوجد</div>
+            )}
+            <div style={{ flex: 1 }}>
+              <input
+                type="file"
+                accept="image/png,image/jpeg,image/webp,image/svg+xml"
+                onChange={(e) => {
+                  const file = e.target.files && e.target.files[0];
+                  if (!file) return;
+                  if (file.size > 500 * 1024) {
+                    setErr('حجم الشعار يتجاوز 500KB. يرجى ضغط الصورة قبل الرفع.');
+                    e.target.value = '';
+                    return;
+                  }
+                  const reader = new FileReader();
+                  reader.onload = () => setF('logo_base64', reader.result);
+                  reader.readAsDataURL(file);
+                }}
+                style={{ fontSize: 12 }}
+              />
+              {form.logo_base64 && (
+                <button type="button" onClick={() => setF('logo_base64', '')} style={{ marginTop: 6, fontSize: 12, color: '#b91c1c', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>إزالة الشعار</button>
+              )}
+              <div style={{ marginTop: 4, fontSize: 11, color: '#64748b' }}>PNG/JPEG/WebP/SVG · أقصى 500KB · يفضّل صورة مربعة</div>
+            </div>
           </div>
         </div>
         <div style={sx.field}>

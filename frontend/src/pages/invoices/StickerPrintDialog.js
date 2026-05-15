@@ -6,6 +6,7 @@ import React from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../../components/ui/dialog';
 import { Button } from '../../components/ui/button';
 import { Printer } from 'lucide-react';
+import { getAcademyLogoUrl } from '../../services/branding';
 
 // Print settings
 const CARD_WIDTH = 90; // mm
@@ -96,7 +97,7 @@ const generateCardHTML = (member, qrData, schedule) => {
     <div class="card">
       <div class="card-header">
         <div class="header-text"><h2>شركة اداء الابطال العالمية للرياضة</h2><p>Global Champions Sports Performance</p></div>
-        <div class="header-logo"><img src="${window.location.origin}/images/academy-logo.png" alt="logo" /></div>
+        <div class="header-logo"><img src="${getAcademyLogoUrl()}" alt="logo" /></div>
       </div>
       <div class="card-body">
         <div class="qr-container">
@@ -151,7 +152,7 @@ export const openStickerPrint = (member) => {
           <div class="sticker-preview">
             ${cardHTML}
             <div class="logo-card">
-              <img src="${window.location.origin}/images/academy-logo.png" alt="شعار الأكاديمية" />
+              <img src="${getAcademyLogoUrl()}" alt="شعار الأكاديمية" />
               <div class="contact-info">📞 0566238384</div>
               <div class="lost-card-notice">⚠️ في حال فقدان كرت العضوية،<br/>يتم إصدار كرت جديد برسوم 10 ر.س</div>
             </div>
@@ -166,7 +167,7 @@ export const openStickerPrint = (member) => {
         <div class="print-area">
           ${cardHTML}
           <div class="logo-card">
-            <img src="${window.location.origin}/images/academy-logo.png" alt="شعار الأكاديمية" />
+            <img src="${getAcademyLogoUrl()}" alt="شعار الأكاديمية" />
             <div class="contact-info">📞 0566238384</div>
             <div class="lost-card-notice">⚠️ في حال فقدان كرت العضوية،<br/>يتم إصدار كرت جديد برسوم 10 ر.س</div>
           </div>
@@ -222,7 +223,7 @@ const StickerPrintDialog = ({
               {/* Preview Card 2 - Academy Logo */}
               <div className={`aspect-[9/6] w-[140px] bg-white border-2 ${color.border} rounded-lg flex flex-col items-center justify-center gap-2 p-3 overflow-hidden`}>
                 <img 
-                  src="/images/academy-logo.png" 
+                  src={getAcademyLogoUrl()} 
                   alt="شعار الأكاديمية" 
                   className="w-14 h-14 object-contain"
                 />

@@ -2,6 +2,7 @@ import React from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../../../../components/ui/dialog';
 import { Button } from '../../../../components/ui/button';
 import { Printer } from 'lucide-react';
+import { getAcademyLogoUrl } from '../../../../services/branding';
 
 export const CardPrintDialog = ({
   isOpen, onOpenChange, cardPrintMember,
@@ -24,7 +25,7 @@ export const CardPrintDialog = ({
                 <span className="text-xs text-orange-500">خانة 1</span>
               </div>
               <div className="aspect-[9/6] w-[140px] bg-white border-2 border-orange-400 rounded-lg flex flex-col items-center justify-center gap-2 p-3 overflow-hidden">
-                <img src="/images/academy-logo.png" alt="شعار الأكاديمية" className="w-14 h-14 object-contain" />
+                <img src={getAcademyLogoUrl()} alt="شعار الأكاديمية" className="w-14 h-14 object-contain" />
                 <span className="text-sm font-bold text-gray-700">شعار الأكاديمية</span>
                 <span className="text-xs text-orange-500">خانة 2</span>
               </div>

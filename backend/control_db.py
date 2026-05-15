@@ -56,6 +56,7 @@ async def ensure_default_tenant():
             "subscription_end_at": (now + timedelta(days=3650)).isoformat(),
             "auto_suspend_on_expiry": False,
             "renewal_history": [],
+            "logo_base64": "",
         }
         await control_db.tenants.insert_one(doc)
         try:

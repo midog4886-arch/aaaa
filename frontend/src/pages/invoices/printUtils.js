@@ -3,6 +3,7 @@
  */
 
 import { CARD_WIDTH, CARD_HEIGHT, TOP_MARGIN, RIGHT_MARGIN, GAP, VAT_RATE, COMPANY_INFO, INVOICE_TERMS } from './constants';
+import { getAcademyLogoUrl } from '../../services/branding';
 
 /**
  * Generate QR data for member - Just the member code number
@@ -86,7 +87,7 @@ export const generateCardHTML = (member, qrData, schedule) => {
     <div class="card">
       <div class="card-header">
         <div class="header-text"><h2>${COMPANY_INFO.name_ar}</h2><p>${COMPANY_INFO.name_en}</p></div>
-        <div class="header-logo"><img src="${window.location.origin}/images/academy-logo.png" alt="logo" /></div>
+        <div class="header-logo"><img src="${getAcademyLogoUrl()}" alt="logo" /></div>
       </div>
       <div class="card-body">
         <div class="qr-container">
@@ -141,7 +142,7 @@ export const printMemberCard = (member) => {
           <div class="sticker-preview">
             ${cardHTML}
             <div class="logo-card">
-              <img src="${window.location.origin}/images/academy-logo.png" alt="شعار الأكاديمية" />
+              <img src="${getAcademyLogoUrl()}" alt="شعار الأكاديمية" />
               <div class="contact-info">📞 0566238384</div>
               <div class="lost-card-notice">⚠️ في حال فقدان كرت العضوية،<br/>يتم إصدار كرت جديد برسوم 10 ر.س</div>
             </div>
@@ -156,7 +157,7 @@ export const printMemberCard = (member) => {
         <div class="print-area">
           ${cardHTML}
           <div class="logo-card">
-            <img src="${window.location.origin}/images/academy-logo.png" alt="شعار الأكاديمية" />
+            <img src="${getAcademyLogoUrl()}" alt="شعار الأكاديمية" />
             <div class="contact-info">📞 0566238384</div>
             <div class="lost-card-notice">⚠️ في حال فقدان كرت العضوية،<br/>يتم إصدار كرت جديد برسوم 10 ر.س</div>
           </div>

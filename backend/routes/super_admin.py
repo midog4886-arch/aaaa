@@ -10,6 +10,8 @@ import secrets
 import string
 import logging
 from datetime import datetime, timezone, timedelta
+import base64
+import re
 from typing import Optional, List
 
 import jwt
@@ -189,6 +191,36 @@ class TenantUpdate(BaseModel):
     billing_cycle: Optional[str] = None
     subscription_end_at: Optional[str] = None
     auto_suspend_on_expiry: Optional[bool] = None
+    logo_base64: Optional[str] = None
+
+
+MAX_LOGO_DECODED_BYTES = 500 * 1024
+ALLOWED_LOGO_MIME = {"image/png", "image/jpeg", "image/jpg", "image/webp", "image/svg+xml"}
+_LOGO_DATAURI_RE = re.compile(r"^data:(image/(?:png|jpeg|jpg|webp|svg\+xml));base64,([A-Za-z0-9+/=\s]+)$")
+
+
+def _validate_logo_base64(value):
+    if value is None:
+        return None
+    raw = (value or "").strip()
+    if raw == "":
+        return ""
+    m = _LOGO_DATAURI_RE.match(raw)
+    if not m:
+        raise HTTPException(status_code=400, detail="logo_base64 must be a base64 data URI for PNG/JPEG/WebP/SVG")
+    mime, b64 = m.group(1).lower(), m.group(2)
+    if mime not in ALLOWED_LOGO_MIME:
+        raise HTTPException(status_code=400, detail="Unsupported logo image type")
+    try:
+        decoded = base64.b64decode(b64, validate=True)
+    except Exception:
+        raise HTTPException(status_code=400, detail="logo_base64 is not valid base64")
+    if len(decoded) > MAX_LOGO_DECODED_BYTES:
+        raise HTTPException(status_code=400, detail=f"Logo size exceeds limit ({MAX_LOGO_DECODED_BYTES // 1024}KB)")
+    if len(decoded) < 32:
+        raise HTTPException(status_code=400, detail="Logo image is too small")
+    cleaned_b64 = "".join(b64.split())
+    return f"data:{mime};base64,{cleaned_b64}"
 
 
 @router.post("/login")
@@ -316,6 +348,8 @@ async def update_tenant(tenant_id: str, payload: TenantUpdate, _=Depends(_requir
         raise HTTPException(status_code=400, detail="max_branches must be >= 0")
     if "max_members" in update and int(update["max_members"]) < 0:
         raise HTTPException(status_code=400, detail="max_members must be >= 0")
+    if "logo_base64" in update:
+        update["logo_base64"] = _validate_logo_base64(update["logo_base64"])
     await control_db.tenants.update_one({"id": tenant_id}, {"$set": update})
     refreshed = await control_db.tenants.find_one({"id": tenant_id}, {"_id": 0})
     return refreshed

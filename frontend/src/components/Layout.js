@@ -1,3 +1,4 @@
+import { getAcademyLogoUrl } from '../services/branding';
 import React, { useState, useEffect } from 'react';
 import { NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { useLanguage } from '../contexts/LanguageContext';
@@ -214,6 +215,13 @@ export const Sidebar = ({ isOpen, onClose }) => {
     setOpenGroups(prev => ({ ...prev, [groupId]: !prev[groupId] }));
   };
 
+  const [brandingLogo, setBrandingLogo] = useState(getAcademyLogoUrl());
+  useEffect(() => {
+    const h = () => setBrandingLogo(getAcademyLogoUrl());
+    window.addEventListener('branding:updated', h);
+    return () => window.removeEventListener('branding:updated', h);
+  }, []);
+
   const handleLogout = () => {
     logout();
     navigate('/login');
@@ -234,8 +242,12 @@ export const Sidebar = ({ isOpen, onClose }) => {
         {/* Header */}
         <div className="sidebar-header">
           <div className="flex items-center gap-3 flex-1">
-            <div className="w-10 h-10 rounded-xl bg-primary flex items-center justify-center">
-              <Trophy className="w-6 h-6 text-primary-foreground" />
+            <div className="w-10 h-10 rounded-xl bg-primary flex items-center justify-center overflow-hidden">
+              {brandingLogo ? (
+                <img src={brandingLogo} alt="logo" className="w-full h-full object-contain" />
+              ) : (
+                <Trophy className="w-6 h-6 text-primary-foreground" />
+              )}
             </div>
             <div className="flex-1 min-w-0">
               <h1 className="text-sm font-bold truncate">
