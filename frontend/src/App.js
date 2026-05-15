@@ -533,3 +533,11 @@ function App() {
 export default App;
 
 try { loadBranding(); } catch (e) {}
+try {
+  setInterval(() => { try { loadBranding(); } catch (e) {} }, 30 * 60 * 1000);
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') {
+      try { loadBranding(); } catch (e) {}
+    }
+  });
+} catch (e) {}

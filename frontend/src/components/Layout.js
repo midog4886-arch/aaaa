@@ -1,4 +1,5 @@
 import { getAcademyLogoUrl } from '../services/branding';
+import SubscriptionBanner from './SubscriptionBanner';
 import React, { useState, useEffect } from 'react';
 import { NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { useLanguage } from '../contexts/LanguageContext';
@@ -706,6 +707,7 @@ export const Layout = ({ children, title }) => {
       <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
       <div className="main-content">
         <TopHeader onMenuClick={() => setSidebarOpen(true)} title={title} />
+        <SubscriptionBanner />
         <main className="page-content">
           {children}
         </main>

@@ -116,3 +116,21 @@ export async function loadBranding() {
     return cached;
   }
 }
+
+export function getSubscriptionInfo() {
+  const b = _read() || {};
+  const days = (typeof b.days_remaining === 'number') ? b.days_remaining : null;
+  const status = b.status || '';
+  let state = 'active';
+  if (status === 'suspended') state = 'suspended';
+  else if (days !== null && days < 0) state = 'expired';
+  else if (days !== null && days <= 3) state = 'urgent';
+  else if (days !== null && days <= 14) state = 'warning';
+  return {
+    state,
+    daysRemaining: days,
+    status,
+    endAt: b.subscription_end_at || '',
+    autoSuspend: !!b.auto_suspend_on_expiry,
+  };
+}
