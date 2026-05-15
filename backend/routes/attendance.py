@@ -14,13 +14,19 @@ async def send_attendance_push(member_id: str, member_name: str, activity_name: 
     """Send push notification to ALL member subscriptions (web + android)"""
     try:
         from .push_notifications import send_push_notification, NotificationPayload
+        from utils.i18n import t, get_member_language
         subs = await db.push_subscriptions.find(
             {"member_id": member_id, "is_active": True}, {"_id": 0}
         ).to_list(10)
         if not subs:
             return
-        title = "✅ تم تسجيل حضورك"
-        body = f"{activity_name} - {check_in_time}" if activity_name else f"وقت الدخول: {check_in_time}"
+        lang = await get_member_language(db, member_id)
+        title = t("attendance_title", lang)
+        body = (
+            t("attendance_body_with_activity", lang, activity=activity_name, time=check_in_time)
+            if activity_name
+            else t("attendance_body_time_only", lang, time=check_in_time)
+        )
         payload = NotificationPayload(
             title=title,
             body=body,

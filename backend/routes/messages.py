@@ -14,13 +14,15 @@ async def send_message_push(member_id: str, subject: str, body: str):
     """Send push notification to ALL member subscriptions (web + android)"""
     try:
         from .push_notifications import send_push_notification, NotificationPayload
+        from utils.i18n import t, get_member_language
         subs = await db.push_subscriptions.find(
             {"member_id": member_id, "is_active": True}, {"_id": 0}
         ).to_list(10)
         if not subs:
             return
+        lang = await get_member_language(db, member_id)
         payload = NotificationPayload(
-            title=f"✉️ رسالة جديدة: {subject}",
+            title=t("message_title_prefix", lang, subject=subject),
             body=body[:100] + ("..." if len(body) > 100 else ""),
             url="/member-messages",
             tag=f"message-{member_id}",

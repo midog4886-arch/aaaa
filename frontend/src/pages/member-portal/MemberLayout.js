@@ -110,6 +110,7 @@ const MemberLayout = ({ children }) => {
     const newLang = language === 'ar' ? 'en' : 'ar';
     setLanguageState(newLang);
     setLanguage(newLang);
+    memberAPI.put('/api/member-portal/preferences', { language: newLang }).catch(() => {});
   };
 
   // Translations

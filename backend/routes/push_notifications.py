@@ -319,18 +319,46 @@ async def send_notification_to_all_members(payload: NotificationPayload, branch_
 
 
 async def notify_new_video(video_title: str, video_id: str, branch_id: Optional[str] = None, youtube_id: Optional[str] = None):
+    from utils.i18n import t, get_member_languages_map
     thumbnail = f"https://img.youtube.com/vi/{youtube_id}/hqdefault.jpg" if youtube_id else None
-    payload = NotificationPayload(
-        title="🎬 فيديو جديد!",
-        body=video_title,
-        icon="/logo-new.png",
-        image=thumbnail,
-        url="/portal/daily-videos",
-        tag=f"video-{video_id}",
-        data={"video_id": video_id, "type": "new_video"}
-    )
-    
-    return await send_notification_to_all_members(payload, branch_id)
+
+    query = {"is_active": True}
+    if branch_id:
+        members = await db.members.find(
+            {"branch_id": branch_id},
+            {"_id": 0, "id": 1}
+        ).to_list(10000)
+        query["member_id"] = {"$in": [m["id"] for m in members]}
+
+    subscriptions = await db.push_subscriptions.find(query, {"_id": 0}).to_list(10000)
+    if not subscriptions:
+        return {"total": 0, "success": 0, "failed": 0}
+
+    member_ids = {s.get("member_id") for s in subscriptions if s.get("member_id")}
+    lang_map = await get_member_languages_map(db, member_ids)
+
+    success_count = 0
+    fail_count = 0
+    payloads_by_lang = {}
+    for sub in subscriptions:
+        lang = lang_map.get(sub.get("member_id"), "ar")
+        if lang not in payloads_by_lang:
+            payloads_by_lang[lang] = NotificationPayload(
+                title=t("new_video_title", lang),
+                body=video_title,
+                icon="/logo-new.png",
+                image=thumbnail,
+                url="/portal/daily-videos",
+                tag=f"video-{video_id}",
+                data={"video_id": video_id, "type": "new_video"}
+            )
+        ok = await send_push_notification(sub, payloads_by_lang[lang])
+        if ok:
+            success_count += 1
+        else:
+            fail_count += 1
+
+    return {"total": len(subscriptions), "success": success_count, "failed": fail_count}
 
 
 def get_notify_new_video_function():

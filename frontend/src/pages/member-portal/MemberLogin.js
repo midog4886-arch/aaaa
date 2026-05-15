@@ -192,7 +192,9 @@ const MemberLogin = () => {
       
       localStorage.setItem('member_token', response.data.access_token);
       localStorage.setItem('member_data', JSON.stringify(response.data.member));
-      
+      const savedLang = response.data.member?.language;
+      localStorage.setItem('member_language', savedLang === 'en' ? 'en' : 'ar');
+
       toast.success(`مرحباً ${response.data.member.name_ar}`);
       navigate('/member-dashboard');
     } catch (error) {

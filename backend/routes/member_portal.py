@@ -20,6 +20,7 @@ security = HTTPBearer()
 
 # Use centralized database connection
 from database import db
+from utils.i18n import normalize_lang
 
 # JWT Config for members
 MEMBER_JWT_SECRET = os.environ.get('JWT_SECRET_KEY', 'default_secret') + "_member"
@@ -209,6 +210,7 @@ async def member_login(data: MemberLogin):
             "email": member.get("email"),
             "photo": member.get("photo", ""),
             "dark_mode": member.get("preferences", {}).get("dark_mode", False),
+            "language": normalize_lang(member.get("preferences", {}).get("language")),
             "linked_members": linked,
         }
     }
@@ -232,7 +234,8 @@ async def get_member_profile(member: dict = Depends(get_current_member)):
         "emergency_contact": member.get("emergency_contact"),
         "photo": member.get("photo", ""),
         "created_at": member.get("created_at"),
-        "dark_mode": member.get("preferences", {}).get("dark_mode", False)
+        "dark_mode": member.get("preferences", {}).get("dark_mode", False),
+        "language": normalize_lang(member.get("preferences", {}).get("language")),
     }
 
 
@@ -348,6 +351,7 @@ async def update_member_profile(
 
 class MemberPreferences(BaseModel):
     dark_mode: Optional[bool] = None
+    language: Optional[str] = None
 
 
 @router.put("/preferences")
@@ -355,10 +359,13 @@ async def update_member_preferences(
     data: MemberPreferences,
     member: dict = Depends(get_current_member)
 ):
-    """Save member UI preferences (e.g. dark mode) to the database"""
+    """Save member UI preferences (e.g. dark mode, language) to the database"""
     update_fields = {}
     if data.dark_mode is not None:
         update_fields["preferences.dark_mode"] = data.dark_mode
+    if data.language is not None:
+        normalized = "en" if str(data.language).lower().startswith("en") else "ar"
+        update_fields["preferences.language"] = normalized
 
     if update_fields:
         await db.members.update_one(
