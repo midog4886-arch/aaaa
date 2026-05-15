@@ -4127,6 +4127,160 @@ def start_tenant_purge_scheduler():
         asyncio.ensure_future(tenant_purge_scheduler_loop())
 
 
+# ── Tenant auto-purge daily digest ──────────────────────────────────────────
+# Runs once per day, ahead of the actual purge tick, and emails super-admins
+# a short summary of every tenant whose ``deletion_purge_at`` falls inside
+# the next ``_TENANT_PURGE_DIGEST_WINDOW_HOURS``. The digest goes out via
+# ``_emit_ops_alert`` so it reuses the existing email/WhatsApp/in-app
+# delivery pipeline (recipient: ``OPS_ALERT_EMAIL_TO``). On days where no
+# tenant is pending in the window, no email is sent.
+_tenant_purge_digest_started = False
+# Run at 07:30 Riyadh — a few hours before the 02:00 purge tick of the next
+# day, so super-admins have a working window to react before any drop.
+_TENANT_PURGE_DIGEST_HOUR_RIYADH = 7
+_TENANT_PURGE_DIGEST_MINUTE_RIYADH = 30
+_TENANT_PURGE_DIGEST_WINDOW_HOURS = 72
+
+
+def _format_purge_remaining(delta: timedelta) -> str:
+    total_seconds = int(delta.total_seconds())
+    if total_seconds <= 0:
+        return "OVERDUE — will purge on next scheduler tick"
+    total_hours, _ = divmod(total_seconds, 3600)
+    days, hours = divmod(total_hours, 24)
+    if days > 0:
+        return f"{days}d {hours}h remaining"
+    if hours > 0:
+        return f"{hours}h remaining"
+    minutes = max(1, total_seconds // 60)
+    return f"{minutes}m remaining"
+
+
+async def _run_tenant_purge_digest() -> dict:
+    """Scan ``control_db.tenants`` and emit one ops alert summarising every
+    tenant whose grace period ends within the next
+    ``_TENANT_PURGE_DIGEST_WINDOW_HOURS``.
+
+    Returns ``{"sent": bool, "tenants": int}`` for logging and tests.
+    Skips emitting entirely (and returns ``sent=False``) when the window
+    is empty so super-admins do not get a noisy "nothing to do" email.
+    """
+    from control_db import control_db as _control_db
+    from utils.tenant import DEFAULT_TENANT_SLUG as _DEFAULT_SLUG
+
+    summary = {"sent": False, "tenants": 0}
+    now = datetime.now(timezone.utc)
+    horizon = now + timedelta(hours=_TENANT_PURGE_DIGEST_WINDOW_HOURS)
+
+    try:
+        candidates = await _control_db.tenants.find(
+            {"status": "pending_delete"}, {"_id": 0}
+        ).to_list(1000)
+    except Exception as e:
+        print(f"Tenant purge digest: failed to list tenants: {e}")
+        return summary
+
+    upcoming: list[tuple[dict, datetime]] = []
+    for tenant in candidates:
+        slug = tenant.get("slug") or ""
+        if slug == _DEFAULT_SLUG:
+            continue
+        purge_at_str = tenant.get("deletion_purge_at")
+        if not purge_at_str:
+            continue
+        try:
+            purge_at = datetime.fromisoformat(str(purge_at_str).replace("Z", "+00:00"))
+        except Exception:
+            continue
+        if purge_at <= horizon:
+            upcoming.append((tenant, purge_at))
+
+    if not upcoming:
+        print(
+            "Tenant purge digest: no tenants pending auto-purge in next "
+            f"{_TENANT_PURGE_DIGEST_WINDOW_HOURS}h; skipping email"
+        )
+        return summary
+
+    upcoming.sort(key=lambda pair: pair[1])
+    lines = []
+    for tenant, purge_at in upcoming:
+        slug = tenant.get("slug") or "(no-slug)"
+        tid = tenant.get("id") or ""
+        remaining = _format_purge_remaining(purge_at - now)
+        lines.append(
+            f"- {slug} (id={tid}): purge_at={purge_at.isoformat()}  →  {remaining}"
+        )
+
+    body = (
+        f"The following {len(upcoming)} tenant(s) are scheduled for "
+        f"permanent auto-purge within the next "
+        f"{_TENANT_PURGE_DIGEST_WINDOW_HOURS} hours.\n\n"
+        + "\n".join(lines)
+        + "\n\nTo cancel a deletion, call "
+        "POST /super/tenants/{id}/cancel-delete before its purge_at "
+        "timestamp."
+    )
+
+    try:
+        await _emit_ops_alert(
+            kind="tenant.auto_purge_digest",
+            title=f"Daily digest: {len(upcoming)} tenant(s) pending auto-purge",
+            body=body,
+            severity="warning",
+        )
+        summary["sent"] = True
+    except Exception as e:
+        print(f"Tenant purge digest: emit failed: {e}")
+
+    summary["tenants"] = len(upcoming)
+    return summary
+
+
+async def tenant_purge_digest_loop():
+    global _tenant_purge_digest_started
+    _tenant_purge_digest_started = True
+    print(
+        "Tenant purge digest scheduler started "
+        f"(timezone: Asia/Riyadh, runs daily at "
+        f"{_TENANT_PURGE_DIGEST_HOUR_RIYADH:02d}:"
+        f"{_TENANT_PURGE_DIGEST_MINUTE_RIYADH:02d})"
+    )
+    while True:
+        try:
+            now = datetime.now(_RIYADH_TZ)
+            next_run = now.replace(
+                hour=_TENANT_PURGE_DIGEST_HOUR_RIYADH,
+                minute=_TENANT_PURGE_DIGEST_MINUTE_RIYADH,
+                second=0,
+                microsecond=0,
+            )
+            if next_run <= now:
+                next_run += timedelta(days=1)
+            wait_seconds = (next_run - now).total_seconds()
+            print(
+                f"Tenant purge digest: next run in {wait_seconds:.0f}s "
+                f"at {next_run.isoformat()}"
+            )
+            await asyncio.sleep(wait_seconds)
+            try:
+                summary = await _run_tenant_purge_digest()
+                print(f"Tenant purge digest: finished {summary}")
+            except Exception as e:
+                print(f"Tenant purge digest run failed: {e}")
+        except asyncio.CancelledError:
+            break
+        except Exception as e:
+            print(f"Tenant purge digest error: {e}")
+            await asyncio.sleep(3600)
+
+
+def start_tenant_purge_digest_scheduler():
+    global _tenant_purge_digest_started
+    if not _tenant_purge_digest_started:
+        asyncio.ensure_future(tenant_purge_digest_loop())
+
+
 @api_router.post("/backup/create")
 async def create_backup(token: Optional[str] = None):
     if not token:
@@ -9632,6 +9786,11 @@ async def create_default_admin():
         start_tenant_purge_scheduler()
     except Exception as e:
         print(f"Tenant purge scheduler start failed: {e}")
+    # Start tenant auto-purge daily digest (emails super-admins ahead of drops)
+    try:
+        start_tenant_purge_digest_scheduler()
+    except Exception as e:
+        print(f"Tenant purge digest scheduler start failed: {e}")
     # Start social-insights auto-refresh scheduler (configurable from UI)
     try:
         from routes.social_publisher import start_insights_scheduler
