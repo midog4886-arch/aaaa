@@ -279,6 +279,8 @@ export const notificationsSettingsAPI = {
   runDailyChecksNow: () => axios.post(`${API}/notifications/daily-checks-run`),
   listOpsAlerts: (params = {}) => axios.get(`${API}/notifications/ops-alerts`, { params }),
   retryOpsAlert: (id) => axios.post(`${API}/notifications/ops-alerts/${id}/retry`),
+  clearDeliveredOpsAlerts: (olderThanDays = 7) => axios.post(`${API}/notifications/ops-alerts/clear-delivered`, null, { params: { older_than_days: olderThanDays } }),
+  deleteOpsAlert: (id) => axios.delete(`${API}/notifications/ops-alerts/${id}`),
   getOpsAlertsSettings: () => axios.get(`${API}/notifications/ops-alerts-settings`),
   updateOpsAlertsSettings: (payload) => axios.put(`${API}/notifications/ops-alerts-settings`, payload),
 };

@@ -416,6 +416,78 @@ async def retry_ops_alert(alert_id: str, current_user: dict = Depends(get_curren
     return {"ok": True, "id": alert_id, "next_attempt_at": now_iso}
 
 
+@router.post("/ops-alerts/clear-delivered")
+async def clear_delivered_ops_alerts(
+    older_than_days: int = 7,
+    current_user: dict = Depends(get_current_user),
+):
+    """Admin-only: delete ops_alerts rows whose ``delivery_status`` is
+    ``delivered`` and whose ``created_at`` is older than ``older_than_days``
+    days ago. Returns the count of removed rows. Audit-logged.
+    """
+    if not current_user.get("is_admin"):
+        raise HTTPException(status_code=403, detail="Admin access required")
+    try:
+        days = int(older_than_days)
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=400, detail="older_than_days must be an integer")
+    if days < 0 or days > 3650:
+        raise HTTPException(status_code=400, detail="older_than_days must be between 0 and 3650")
+    cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+    cutoff_iso = cutoff.isoformat()
+    try:
+        result = await db.ops_alerts.delete_many({
+            "delivery_status": "delivered",
+            "created_at": {"$lt": cutoff_iso},
+        })
+        deleted = int(result.deleted_count or 0)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to clear ops_alerts: {e}")
+    try:
+        from utils.audit import log_audit
+        await log_audit(
+            actor=current_user,
+            action="ops_alerts.clear_delivered",
+            entity_type="ops_alert",
+            entity_id="bulk",
+            after={"older_than_days": days, "cutoff": cutoff_iso, "deleted": deleted},
+        )
+    except Exception:
+        pass
+    return {"ok": True, "deleted": deleted, "older_than_days": days, "cutoff": cutoff_iso}
+
+
+@router.delete("/ops-alerts/{alert_id}")
+async def delete_ops_alert(alert_id: str, current_user: dict = Depends(get_current_user)):
+    """Admin-only: delete a single ops_alerts row (e.g. an exhausted alert
+    the admin has investigated). Audit-logged.
+    """
+    if not current_user.get("is_admin"):
+        raise HTTPException(status_code=403, detail="Admin access required")
+    try:
+        existing = await db.ops_alerts.find_one({"id": alert_id}, {"_id": 0})
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to read ops_alert: {e}")
+    if not existing:
+        raise HTTPException(status_code=404, detail="Ops alert not found")
+    try:
+        await db.ops_alerts.delete_one({"id": alert_id})
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to delete ops_alert: {e}")
+    try:
+        from utils.audit import log_audit
+        await log_audit(
+            actor=current_user,
+            action="ops_alerts.delete",
+            entity_type="ops_alert",
+            entity_id=alert_id,
+            before=existing,
+        )
+    except Exception:
+        pass
+    return {"ok": True, "id": alert_id}
+
+
 @router.post("/daily-checks-run")
 async def run_daily_checks_now(current_user: dict = Depends(get_current_user)):
     """Admin-only: trigger the daily renewal & ad-expiry checks on demand.

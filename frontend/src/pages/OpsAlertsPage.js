@@ -3,7 +3,7 @@ import { Layout } from '../components/Layout';
 import { useLanguage } from '../contexts/LanguageContext';
 import { notificationsSettingsAPI } from '../services/api';
 import { toast } from 'sonner';
-import { AlertTriangle, RefreshCcw, Mail, MessageCircle, CheckCircle2, Clock, XCircle } from 'lucide-react';
+import { AlertTriangle, RefreshCcw, Mail, MessageCircle, CheckCircle2, Clock, XCircle, Trash2 } from 'lucide-react';
 
 const STATUS_OPTIONS = ['', 'pending', 'retrying', 'delivered', 'exhausted'];
 
@@ -50,6 +50,9 @@ export default function OpsAlertsPage() {
   const [loading, setLoading] = useState(false);
   const [statusFilter, setStatusFilter] = useState('');
   const [retryingId, setRetryingId] = useState(null);
+  const [deletingId, setDeletingId] = useState(null);
+  const [clearDays, setClearDays] = useState(30);
+  const [clearing, setClearing] = useState(false);
 
   const t = (ar, en) => (isAr ? ar : en);
 
@@ -80,6 +83,39 @@ export default function OpsAlertsPage() {
       toast.error(e?.response?.data?.detail || t('تعذر إعادة المحاولة', 'Retry failed'));
     } finally {
       setRetryingId(null);
+    }
+  };
+
+  const onDelete = async (id) => {
+    if (!window.confirm(t('حذف هذا التنبيه نهائياً؟', 'Permanently delete this alert?'))) return;
+    setDeletingId(id);
+    try {
+      await notificationsSettingsAPI.deleteOpsAlert(id);
+      toast.success(t('تم حذف التنبيه', 'Alert deleted'));
+      await load();
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || t('تعذر حذف التنبيه', 'Failed to delete alert'));
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
+  const onClearDelivered = async () => {
+    const days = Number.isFinite(+clearDays) && +clearDays >= 0 ? Math.floor(+clearDays) : 30;
+    const msg = days === 0
+      ? t('حذف كل التنبيهات المُسلَّمة؟', 'Delete ALL delivered alerts?')
+      : t(`حذف التنبيهات المُسلَّمة الأقدم من ${days} يوم؟`, `Delete delivered alerts older than ${days} day(s)?`);
+    if (!window.confirm(msg)) return;
+    setClearing(true);
+    try {
+      const res = await notificationsSettingsAPI.clearDeliveredOpsAlerts(days);
+      const n = res?.data?.deleted ?? 0;
+      toast.success(t(`تم حذف ${n} تنبيه`, `Deleted ${n} alert(s)`));
+      await load();
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || t('تعذر حذف التنبيهات', 'Failed to clear alerts'));
+    } finally {
+      setClearing(false);
     }
   };
 
@@ -125,6 +161,29 @@ export default function OpsAlertsPage() {
               <RefreshCcw className="w-3.5 h-3.5" />
               {t('تحديث', 'Refresh')}
             </button>
+            <div className="inline-flex items-center gap-1 border rounded px-2 py-1 bg-white">
+              <span className="text-xs text-slate-500">{t('أقدم من', 'Older than')}</span>
+              <input
+                type="number"
+                min={0}
+                max={3650}
+                value={clearDays}
+                onChange={(e) => setClearDays(e.target.value)}
+                className="w-16 border rounded px-1 py-0.5 text-sm"
+                data-testid="ops-alerts-clear-days"
+              />
+              <span className="text-xs text-slate-500">{t('يوم', 'days')}</span>
+              <button
+                onClick={onClearDelivered}
+                disabled={clearing}
+                className="ms-1 px-2.5 py-1 rounded bg-red-600 text-white text-xs hover:bg-red-700 disabled:opacity-50 inline-flex items-center gap-1"
+                data-testid="ops-alerts-clear-delivered"
+                title={t('حذف التنبيهات المُسلَّمة الأقدم من المدة المحددة', 'Delete delivered alerts older than the chosen window')}
+              >
+                <Trash2 className="w-3 h-3" />
+                {t('مسح المُسلَّمة', 'Clear delivered')}
+              </button>
+            </div>
           </div>
         </div>
 
@@ -192,15 +251,27 @@ export default function OpsAlertsPage() {
                     ) : <span className="text-slate-400">—</span>}
                   </td>
                   <td className="px-3 py-2">
-                    <button
-                      onClick={() => onRetry(row.id)}
-                      disabled={retryingId === row.id}
-                      className="px-2.5 py-1 rounded bg-orange-600 text-white text-xs hover:bg-orange-700 disabled:opacity-50 inline-flex items-center gap-1"
-                      data-testid={`ops-alert-retry-${row.id}`}
-                    >
-                      <RefreshCcw className={`w-3 h-3 ${retryingId === row.id ? 'animate-spin' : ''}`} />
-                      {t('إعادة المحاولة', 'Retry')}
-                    </button>
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        onClick={() => onRetry(row.id)}
+                        disabled={retryingId === row.id}
+                        className="px-2.5 py-1 rounded bg-orange-600 text-white text-xs hover:bg-orange-700 disabled:opacity-50 inline-flex items-center gap-1"
+                        data-testid={`ops-alert-retry-${row.id}`}
+                      >
+                        <RefreshCcw className={`w-3 h-3 ${retryingId === row.id ? 'animate-spin' : ''}`} />
+                        {t('إعادة المحاولة', 'Retry')}
+                      </button>
+                      <button
+                        onClick={() => onDelete(row.id)}
+                        disabled={deletingId === row.id}
+                        className="px-2 py-1 rounded border border-red-300 text-red-700 text-xs hover:bg-red-50 disabled:opacity-50 inline-flex items-center gap-1"
+                        data-testid={`ops-alert-delete-${row.id}`}
+                        title={t('حذف هذا التنبيه', 'Delete this alert')}
+                      >
+                        <Trash2 className="w-3 h-3" />
+                        {t('حذف', 'Delete')}
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}
