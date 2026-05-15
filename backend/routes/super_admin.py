@@ -1368,7 +1368,9 @@ async def payment_settings_put(payload: PaymentSettingsIn, super_payload: dict =
 @router.get("/payment/events")
 async def payment_events_list(
     status: Optional[str] = None,
-    limit: int = 100,
+    provider: Optional[str] = None,
+    outcome: Optional[str] = None,
+    limit: int = 200,
     _=Depends(_require_super),
 ):
     """Return the most recent payment webhook deliveries (newest first).
@@ -1377,7 +1379,7 @@ async def payment_events_list(
     incoming webhooks are arriving and whether they are being accepted,
     signature-rejected, deduplicated, or otherwise ignored.
     """
-    rows = await list_webhook_events(status=status, limit=limit)
+    rows = await list_webhook_events(status=status, provider=provider, outcome=outcome, limit=limit)
     return {"items": rows, "max_retained": WEBHOOK_EVENTS_MAX}
 
 

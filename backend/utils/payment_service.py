@@ -101,27 +101,86 @@ async def record_webhook_event(
         logger.exception("record_webhook_event failed")
 
 
+# Maps the granular per-row ``status`` to the coarse ``outcome`` bucket the
+# super-admin UI groups by (the three categories called out in task #265:
+# processed / duplicate / ignored). ``status`` is retained as-is for callers
+# that want the precise reason; ``outcome`` is derived for display.
+_OUTCOME_BY_STATUS = {
+    "recorded": "processed",
+    "renewed": "processed",
+    "duplicate": "duplicate",
+    "ignored": "ignored",
+    "received": "ignored",
+    "signature_invalid": "ignored",
+    "invalid_payload": "ignored",
+    "provider_disabled": "ignored",
+    "secret_missing": "ignored",
+    "tenant_not_found": "ignored",
+    "error": "ignored",
+}
+
+VALID_WEBHOOK_OUTCOMES = {"processed", "duplicate", "ignored"}
+
+
+def _derive_outcome(status: str) -> str:
+    return _OUTCOME_BY_STATUS.get((status or "").lower(), "ignored")
+
+
 async def list_webhook_events(
     *,
     status: Optional[str] = None,
-    limit: int = 100,
+    provider: Optional[str] = None,
+    outcome: Optional[str] = None,
+    limit: int = 200,
 ) -> list:
-    """Return the most recent webhook diagnostic rows (newest first)."""
+    """Return the most recent webhook diagnostic rows (newest first).
+
+    Each returned row includes an ``outcome`` field (``processed`` /
+    ``duplicate`` / ``ignored``) derived from the granular ``status``, so the
+    super-admin UI can group / filter the way task #265 specifies without
+    losing the more detailed status string.
+    """
     try:
-        limit = max(1, min(int(limit or 100), WEBHOOK_EVENTS_MAX))
+        limit = max(1, min(int(limit or 200), WEBHOOK_EVENTS_MAX))
     except (TypeError, ValueError):
-        limit = 100
+        limit = 200
     query: Dict = {}
+    status_filter = ""
     if status:
         s = str(status).strip().lower()
         if s and s != "all":
-            query["status"] = s
+            status_filter = s
+    if provider:
+        p = str(provider).strip().lower()
+        if p and p != "all":
+            query["provider"] = p
+    outcome_filter = ""
+    if outcome:
+        o = str(outcome).strip().lower()
+        if o and o != "all":
+            if o not in VALID_WEBHOOK_OUTCOMES:
+                return []
+            outcome_filter = o
+    # Intersect status + outcome rather than letting one overwrite the other.
+    if status_filter and outcome_filter:
+        if _OUTCOME_BY_STATUS.get(status_filter) != outcome_filter:
+            return []
+        query["status"] = status_filter
+    elif status_filter:
+        query["status"] = status_filter
+    elif outcome_filter:
+        query["status"] = {
+            "$in": [s for s, oc in _OUTCOME_BY_STATUS.items() if oc == outcome_filter]
+        }
     cursor = control_db.webhook_events.find(query, {"_id": 0}).sort("received_at", -1).limit(limit)
     rows = []
     async for r in cursor:
         recv = r.get("received_at")
         if isinstance(recv, datetime):
             r["received_at"] = recv.isoformat()
+        r["outcome"] = _derive_outcome(r.get("status", ""))
+        if outcome_filter and r["outcome"] != outcome_filter:
+            continue
         rows.append(r)
     return rows
 

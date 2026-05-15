@@ -28,6 +28,22 @@ const EVENT_STATUSES = [
   { value: 'error', label: 'خطأ' },
 ];
 
+const EVENT_OUTCOMES = [
+  { value: 'all', label: 'كل النتائج' },
+  { value: 'processed', label: '✓ تمت المعالجة' },
+  { value: 'duplicate', label: '⟳ مكرر' },
+  { value: 'ignored', label: '∅ تم التجاهل' },
+];
+
+const OUTCOME_COLORS = {
+  processed: { bg: '#dcfce7', fg: '#166534' },
+  duplicate: { bg: '#e0e7ff', fg: '#3730a3' },
+  ignored: { bg: '#f1f5f9', fg: '#475569' },
+};
+
+const outcomeLabel = (o) =>
+  (EVENT_OUTCOMES.find((x) => x.value === o) || {}).label || o || '—';
+
 const STATUS_COLORS = {
   recorded: { bg: '#fef3c7', fg: '#92400e' },
   renewed: { bg: '#dcfce7', fg: '#166534' },
@@ -64,14 +80,22 @@ export default function SuperPayment() {
   const [eventsLoading, setEventsLoading] = useState(false);
   const [eventsErr, setEventsErr] = useState('');
   const [eventStatus, setEventStatus] = useState('all');
+  const [eventProvider, setEventProvider] = useState('all');
+  const [eventOutcome, setEventOutcome] = useState('all');
   const [maxRetained, setMaxRetained] = useState(0);
 
-  const reloadEvents = useCallback(async (statusFilter = eventStatus) => {
+  const reloadEvents = useCallback(async (
+    statusFilter = eventStatus,
+    providerFilter = eventProvider,
+    outcomeFilter = eventOutcome,
+  ) => {
     setEventsLoading(true);
     setEventsErr('');
     try {
-      const params = { limit: 100 };
+      const params = { limit: 200 };
       if (statusFilter && statusFilter !== 'all') params.status = statusFilter;
+      if (providerFilter && providerFilter !== 'all') params.provider = providerFilter;
+      if (outcomeFilter && outcomeFilter !== 'all') params.outcome = outcomeFilter;
       const res = await axios.get('/super/payment/events', { ...auth(), params });
       setEvents(Array.isArray(res.data?.items) ? res.data.items : []);
       if (typeof res.data?.max_retained === 'number') setMaxRetained(res.data.max_retained);
@@ -84,9 +108,9 @@ export default function SuperPayment() {
     } finally {
       setEventsLoading(false);
     }
-  }, [eventStatus, navigate]);
+  }, [eventStatus, eventProvider, eventOutcome, navigate]);
 
-  useEffect(() => { reloadEvents(eventStatus); }, [reloadEvents, eventStatus]);
+  useEffect(() => { reloadEvents(eventStatus, eventProvider, eventOutcome); }, [reloadEvents, eventStatus, eventProvider, eventOutcome]);
 
   const reload = useCallback(async () => {
     setLoading(true);
@@ -301,6 +325,27 @@ export default function SuperPayment() {
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12, marginBottom: 12 }}>
             <h2 style={{ fontSize: 16, fontWeight: 700, margin: 0 }}>📜 آخر أحداث الـ webhook</h2>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+              <label style={{ fontSize: 13, color: '#475569' }}>المزود:</label>
+              <select
+                value={eventProvider}
+                onChange={(e) => setEventProvider(e.target.value)}
+                style={{ ...input, width: 'auto', padding: '6px 10px' }}
+              >
+                <option value="all">كل المزودات</option>
+                {PROVIDERS.filter((p) => p.value).map((p) => (
+                  <option key={p.value} value={p.value}>{p.label}</option>
+                ))}
+              </select>
+              <label style={{ fontSize: 13, color: '#475569' }}>النتيجة:</label>
+              <select
+                value={eventOutcome}
+                onChange={(e) => setEventOutcome(e.target.value)}
+                style={{ ...input, width: 'auto', padding: '6px 10px' }}
+              >
+                {EVENT_OUTCOMES.map((o) => (
+                  <option key={o.value} value={o.value}>{o.label}</option>
+                ))}
+              </select>
               <label style={{ fontSize: 13, color: '#475569' }}>الحالة:</label>
               <select
                 value={eventStatus}
@@ -312,7 +357,7 @@ export default function SuperPayment() {
                 ))}
               </select>
               <button
-                onClick={() => reloadEvents(eventStatus)}
+                onClick={() => reloadEvents(eventStatus, eventProvider, eventOutcome)}
                 disabled={eventsLoading}
                 style={{ ...btn('#475569'), padding: '6px 12px', fontSize: 13 }}
               >
@@ -339,6 +384,7 @@ export default function SuperPayment() {
                   <tr style={{ background: '#f1f5f9', textAlign: 'right' }}>
                     <th style={{ padding: '8px 10px', fontWeight: 700, color: '#334155' }}>الوقت</th>
                     <th style={{ padding: '8px 10px', fontWeight: 700, color: '#334155' }}>المزود</th>
+                    <th style={{ padding: '8px 10px', fontWeight: 700, color: '#334155' }}>النتيجة</th>
                     <th style={{ padding: '8px 10px', fontWeight: 700, color: '#334155' }}>الحالة</th>
                     <th style={{ padding: '8px 10px', fontWeight: 700, color: '#334155' }}>الأكاديمية</th>
                     <th style={{ padding: '8px 10px', fontWeight: 700, color: '#334155' }}>السبب / التفاصيل</th>
@@ -348,10 +394,16 @@ export default function SuperPayment() {
                 <tbody>
                   {events.map((ev, i) => {
                     const c = STATUS_COLORS[ev.status] || { bg: '#f1f5f9', fg: '#475569' };
+                    const oc = OUTCOME_COLORS[ev.outcome] || { bg: '#f1f5f9', fg: '#475569' };
                     return (
                       <tr key={i} style={{ borderTop: '1px solid #e2e8f0' }}>
                         <td style={{ padding: '8px 10px', whiteSpace: 'nowrap', color: '#0f172a' }}>{fmt(ev.received_at)}</td>
                         <td style={{ padding: '8px 10px', fontFamily: 'monospace', color: '#0f172a' }}>{ev.provider || '—'}</td>
+                        <td style={{ padding: '8px 10px' }}>
+                          <span style={{ background: oc.bg, color: oc.fg, padding: '2px 8px', borderRadius: 999, fontWeight: 600, fontSize: 12 }}>
+                            {outcomeLabel(ev.outcome)}
+                          </span>
+                        </td>
                         <td style={{ padding: '8px 10px' }}>
                           <span style={{ background: c.bg, color: c.fg, padding: '2px 8px', borderRadius: 999, fontWeight: 600, fontSize: 12 }}>
                             {statusLabel(ev.status)}
