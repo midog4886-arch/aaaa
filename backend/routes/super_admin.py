@@ -192,6 +192,7 @@ class TenantUpdate(BaseModel):
     subscription_end_at: Optional[str] = None
     auto_suspend_on_expiry: Optional[bool] = None
     logo_base64: Optional[str] = None
+    primary_color: Optional[str] = None
 
 
 MAX_LOGO_DECODED_BYTES = 500 * 1024
@@ -221,6 +222,20 @@ def _validate_logo_base64(value):
         raise HTTPException(status_code=400, detail="Logo image is too small")
     cleaned_b64 = "".join(b64.split())
     return f"data:{mime};base64,{cleaned_b64}"
+
+_HEX_COLOR_RE = re.compile(r"^#([0-9a-fA-F]{6})$")
+
+
+def _validate_primary_color(value):
+    if value is None:
+        return None
+    raw = (value or "").strip()
+    if raw == "":
+        return ""
+    if not _HEX_COLOR_RE.match(raw):
+        raise HTTPException(status_code=400, detail="primary_color must be a hex like #f97316")
+    return raw.lower()
+
 
 
 @router.post("/login")
@@ -350,6 +365,8 @@ async def update_tenant(tenant_id: str, payload: TenantUpdate, _=Depends(_requir
         raise HTTPException(status_code=400, detail="max_members must be >= 0")
     if "logo_base64" in update:
         update["logo_base64"] = _validate_logo_base64(update["logo_base64"])
+    if "primary_color" in update:
+        update["primary_color"] = _validate_primary_color(update["primary_color"])
     await control_db.tenants.update_one({"id": tenant_id}, {"$set": update})
     refreshed = await control_db.tenants.find_one({"id": tenant_id}, {"_id": 0})
     return refreshed

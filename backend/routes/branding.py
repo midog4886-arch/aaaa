@@ -27,8 +27,13 @@ async def get_branding(request: Request):
             tenant = None
     if not tenant:
         tenant = get_current_tenant() or {}
+    pc = (tenant.get("primary_color", "") if tenant else "") or ""
+    pc = pc.strip().lower()
+    if pc and not (len(pc) == 7 and pc[0] == "#" and all(c in "0123456789abcdef" for c in pc[1:])):
+        pc = ""
     return {
         "name": tenant.get("name", "") if tenant else "",
         "slug": tenant.get("slug", "") if tenant else "",
         "logo_base64": _safe_logo(tenant.get("logo_base64", "") if tenant else ""),
+        "primary_color": pc,
     }

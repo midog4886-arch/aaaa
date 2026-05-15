@@ -96,6 +96,7 @@ function TenantForm({ initial, onSubmit, onCancel, isEdit }) {
     auto_suspend_on_expiry: initial?.auto_suspend_on_expiry !== false,
     subscription_end_at_date: isoToDateInput(initial?.subscription_end_at),
     logo_base64: initial?.logo_base64 || '',
+    primary_color: initial?.primary_color || '',
   });
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
@@ -220,6 +221,29 @@ function TenantForm({ initial, onSubmit, onCancel, isEdit }) {
               <div style={{ marginTop: 4, fontSize: 11, color: '#64748b' }}>PNG/JPEG/WebP/SVG · أقصى 500KB · يفضّل صورة مربعة</div>
             </div>
           </div>
+        </div>
+        <div style={sx.field}>
+          <label style={sx.label}>اللون الأساسي للأكاديمية (يظهر في الواجهة)</label>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <input
+              type="color"
+              value={form.primary_color || '#f97316'}
+              onChange={(e) => setF('primary_color', e.target.value.toLowerCase())}
+              style={{ width: 56, height: 40, border: '1px solid #cbd5e1', borderRadius: 8, padding: 2, cursor: 'pointer', background: 'white' }}
+            />
+            <input
+              type="text"
+              value={form.primary_color}
+              onChange={(e) => setF('primary_color', e.target.value.toLowerCase())}
+              placeholder="#f97316"
+              style={{ ...sx.input, flex: 1, fontFamily: 'monospace' }}
+              pattern="^#[0-9a-fA-F]{6}$"
+            />
+            {form.primary_color && (
+              <button type="button" onClick={() => setF('primary_color', '')} style={{ fontSize: 12, color: '#b91c1c', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>إزالة</button>
+            )}
+          </div>
+          <div style={{ marginTop: 4, fontSize: 11, color: '#64748b' }}>اتركه فارغاً لاستخدام اللون الافتراضي للنظام</div>
         </div>
         <div style={sx.field}>
           <label style={sx.label}>إيميل المالك (اختياري)</label>

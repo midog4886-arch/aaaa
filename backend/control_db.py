@@ -57,6 +57,7 @@ async def ensure_default_tenant():
             "auto_suspend_on_expiry": False,
             "renewal_history": [],
             "logo_base64": "",
+            "primary_color": "",
         }
         await control_db.tenants.insert_one(doc)
         try:
