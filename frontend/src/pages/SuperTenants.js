@@ -52,6 +52,21 @@ function expiryBadgeStyle(state) {
   return { background: '#f1f5f9', color: '#64748b', border: '1px solid #e2e8f0' };
 }
 
+function formatTimeRemaining(target) {
+  if (!target) return '—';
+  const t = new Date(target).getTime();
+  if (isNaN(t)) return '—';
+  const diff = t - Date.now();
+  if (diff <= 0) return 'انتهت فترة السماح';
+  const totalMin = Math.floor(diff / 60000);
+  const days = Math.floor(totalMin / (60 * 24));
+  const hours = Math.floor((totalMin % (60 * 24)) / 60);
+  const mins = totalMin % 60;
+  if (days > 0) return `${days} يوم و ${hours} ساعة`;
+  if (hours > 0) return `${hours} ساعة و ${mins} دقيقة`;
+  return `${mins} دقيقة`;
+}
+
 function expiryText(billing) {
   if (!billing || billing.days_until_expiry == null) return 'بدون اشتراك';
   const d = billing.days_until_expiry;
@@ -584,6 +599,14 @@ export default function SuperTenants() {
 
   useEffect(() => { load(); }, [load]);
 
+  // Tick once a minute so the "time remaining" column on the
+  // pending-auto-purge panel stays live without reloading the whole page.
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => setTick((n) => n + 1), 60000);
+    return () => clearInterval(id);
+  }, []);
+
   const refreshOne = async (id) => {
     try {
       const res = await axios.get(`/super/tenants/${id}/stats`, auth());
@@ -729,6 +752,130 @@ export default function SuperTenants() {
 
       {loading && <div style={{ textAlign: 'center', color: '#64748b', padding: 40 }}>جارٍ التحميل...</div>}
       {error && <div style={{ background: '#fef2f2', color: '#b91c1c', padding: 12, borderRadius: 8, marginBottom: 16 }}>{error}</div>}
+
+      {!loading && (() => {
+        const pending = rows
+          .filter((r) => r.tenant?.status === 'pending_delete')
+          .sort((a, b) => (a.tenant.deletion_purge_at || '').localeCompare(b.tenant.deletion_purge_at || ''));
+        if (pending.length === 0) return null;
+        return (
+          <div style={{ background: 'white', border: '1px solid #fde68a', borderRadius: 12, padding: 16, marginBottom: 16 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+              <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: '#92400e' }}>
+                ⏳ مجدولة للحذف التلقائي ({pending.length})
+              </h2>
+              <span style={{ fontSize: 11, color: '#64748b' }}>
+                تُحذف قواعد بياناتها نهائياً عند انتهاء فترة السماح. يمكنك إلغاء الجدولة قبل ذلك.
+              </span>
+            </div>
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                <thead>
+                  <tr style={{ background: '#fef3c7', color: '#78350f' }}>
+                    <th style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 600 }}>المعرّف</th>
+                    <th style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 600 }}>الاسم</th>
+                    <th style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 600 }}>تاريخ الجدولة</th>
+                    <th style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 600 }}>تاريخ الحذف النهائي</th>
+                    <th style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 600 }}>الوقت المتبقي</th>
+                    <th style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 600 }}>تنبيه نهائي</th>
+                    <th style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 600 }}>إجراء</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {pending.map((r) => {
+                    const t = r.tenant;
+                    const alertSent = !!t.final_purge_alert_sent_at;
+                    return (
+                      <tr key={t.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                        <td style={{ padding: '8px 10px', fontFamily: 'monospace', color: '#0f172a' }}>@{t.slug}</td>
+                        <td style={{ padding: '8px 10px', color: '#0f172a' }}>{t.name}</td>
+                        <td style={{ padding: '8px 10px', color: '#475569' }}>
+                          {t.deletion_scheduled_at ? new Date(t.deletion_scheduled_at).toLocaleString('ar-EG') : '—'}
+                        </td>
+                        <td style={{ padding: '8px 10px', color: '#475569' }}>
+                          {t.deletion_purge_at ? new Date(t.deletion_purge_at).toLocaleString('ar-EG') : '—'}
+                        </td>
+                        <td style={{ padding: '8px 10px', fontWeight: 600, color: '#b91c1c' }}>
+                          {formatTimeRemaining(t.deletion_purge_at)}
+                        </td>
+                        <td style={{ padding: '8px 10px' }}>
+                          {alertSent ? (
+                            <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 99, background: '#fee2e2', color: '#b91c1c', fontWeight: 600 }}
+                              title={new Date(t.final_purge_alert_sent_at).toLocaleString('ar-EG')}>
+                              ✓ أُرسل
+                            </span>
+                          ) : (
+                            <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 99, background: '#f1f5f9', color: '#64748b' }}>
+                              لم يُرسل بعد
+                            </span>
+                          )}
+                        </td>
+                        <td style={{ padding: '8px 10px' }}>
+                          <button style={sx.btnEdit} onClick={() => cancelDelete(t)}>إلغاء الحذف</button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        );
+      })()}
+
+      {!loading && (() => {
+        const purged = rows
+          .filter((r) => r.tenant?.status === 'deleted' && r.tenant?.deleted_by === 'auto_purge_scheduler')
+          .sort((a, b) => (b.tenant.deleted_at || '').localeCompare(a.tenant.deleted_at || ''))
+          .slice(0, 20);
+        if (purged.length === 0) return null;
+        return (
+          <div style={{ background: 'white', border: '1px solid #e2e8f0', borderRadius: 12, padding: 16, marginBottom: 16 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+              <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: '#475569' }}>
+                🗑 محذوفة تلقائياً مؤخراً ({purged.length})
+              </h2>
+              <span style={{ fontSize: 11, color: '#64748b' }}>
+                أكاديميات أزالها مُجدوِل الحذف التلقائي بعد انتهاء فترة السماح.
+              </span>
+            </div>
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                <thead>
+                  <tr style={{ background: '#f8fafc', color: '#475569' }}>
+                    <th style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 600 }}>المعرّف</th>
+                    <th style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 600 }}>الاسم</th>
+                    <th style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 600 }}>تاريخ الجدولة</th>
+                    <th style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 600 }}>تاريخ الحذف</th>
+                    <th style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 600 }}>السبب</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {purged.map((r) => {
+                    const t = r.tenant;
+                    return (
+                      <tr key={t.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                        <td style={{ padding: '8px 10px', fontFamily: 'monospace', color: '#0f172a' }}>@{t.slug}</td>
+                        <td style={{ padding: '8px 10px', color: '#0f172a' }}>{t.name}</td>
+                        <td style={{ padding: '8px 10px', color: '#64748b' }}>
+                          {t.deletion_scheduled_at ? new Date(t.deletion_scheduled_at).toLocaleString('ar-EG') : '—'}
+                        </td>
+                        <td style={{ padding: '8px 10px', color: '#64748b' }}>
+                          {t.deleted_at ? new Date(t.deleted_at).toLocaleString('ar-EG') : '—'}
+                        </td>
+                        <td style={{ padding: '8px 10px', color: '#64748b', maxWidth: 280, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                          title={t.deletion_reason || ''}>
+                          {t.deletion_reason || '—'}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        );
+      })()}
 
       {!loading && rows.map((row) => {
         const t = row.tenant;
