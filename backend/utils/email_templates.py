@@ -302,6 +302,50 @@ contact us immediately at
     return subject, _wrap(ar, en), text
 
 
+def _super_admin_signature_failures(ctx: Dict) -> Tuple[str, str, str]:
+    provider = (ctx.get("provider") or "").strip() or "unknown"
+    count = ctx.get("count", 0)
+    window_minutes = ctx.get("window_minutes", 10)
+    threshold = ctx.get("threshold", 5)
+    secret_env = (ctx.get("secret_env") or "").strip() or "PAYMENT_WEBHOOK_SECRET"
+    subject = (
+        f"[Champions Academy] Payment webhook signature failures: {provider}"
+    )
+    en = f"""
+<h2>Payment webhook signature failures</h2>
+<p>The <b>{provider}</b> payment provider webhook has failed signature
+verification <b>{count}</b> times in the last <b>{window_minutes} minutes</b>
+(threshold: {threshold}).</p>
+<p>This usually means one of:</p>
+<ul>
+<li>The signing secret in env var <code>{secret_env}</code> is missing or
+out of date (rotated on the provider side without an update here).</li>
+<li>An attacker is probing the webhook endpoint.</li>
+</ul>
+<p>Open <b>Super Admin → Payment Settings</b> to verify the secret and
+inspect recent webhook deliveries.</p>
+"""
+    ar = f"""
+<h2>فشل تحقق توقيع ويب-هوك الدفع</h2>
+<p>فشل التحقق من توقيع ويب-هوك مزوّد الدفع <b>{provider}</b> عدد
+<b>{count}</b> مرة خلال آخر <b>{window_minutes} دقيقة</b> (الحد: {threshold}).</p>
+<p>الأسباب المحتملة عادةً:</p>
+<ul>
+<li>سر التوقيع في متغير البيئة <code>{secret_env}</code> مفقود أو قديم
+(تم تدويره من جانب المزوّد دون تحديث هنا).</li>
+<li>محاولة عبث على نقطة استقبال الويب-هوك.</li>
+</ul>
+<p>افتح <b>لوحة المشرف الأعلى ← إعدادات الدفع</b> للتحقق من السر ومراجعة
+آخر عمليات استقبال الويب-هوك.</p>
+"""
+    text = (
+        f"Payment webhook signature failures for {provider}: {count} in the "
+        f"last {window_minutes}m (threshold {threshold}). Check env var "
+        f"{secret_env} or the super-admin payment settings."
+    )
+    return subject, _wrap(ar, en), text
+
+
 TEMPLATES: Dict[str, Callable[[Dict], Tuple[str, str, str]]] = {
     "welcome": _welcome,
     "trial_ending": _trial_ending,
@@ -312,6 +356,7 @@ TEMPLATES: Dict[str, Callable[[Dict], Tuple[str, str, str]]] = {
     "final_purge_warning": _final_purge_warning,
     "purge_completed": _purge_completed,
     "email_confirmation": _email_confirmation,
+    "super_admin_signature_failures": _super_admin_signature_failures,
 }
 
 

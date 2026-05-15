@@ -25,14 +25,19 @@ from utils.tenant import get_current_tenant_slug, DEFAULT_TENANT_SLUG
 from utils.auth import get_current_user
 from utils.email_service import send_email, list_email_log
 from utils.payment_service import (
+    SIGNATURE_FAILURE_ALERT_COOLDOWN_SECONDS,
+    SIGNATURE_FAILURE_THRESHOLD,
+    SIGNATURE_FAILURE_WINDOW_SECONDS,
     claim_event,
     confirm_event,
     extract_event_id,
     get_payment_settings,
     parse_failure_event,
     parse_success_event,
+    record_signature_failure,
     record_webhook_event,
     release_event,
+    reset_signature_failures,
     verify_signature,
 )
 from control_db import control_db
@@ -100,6 +105,40 @@ async def apply_payment_failure(
     return {"tenant": refreshed, "failure": history_entry, "email": email_result}
 
 
+async def _alert_super_admin_signature_failures(
+    *, provider: str, count: int, secret_env: str,
+) -> None:
+    """Email the super-admin when webhook signature failures cross the
+    rolling-window threshold. No-op when ``SUPER_ADMIN_ALERT_EMAIL`` is unset
+    so dev environments stay quiet.
+    """
+    recipient = (os.environ.get("SUPER_ADMIN_ALERT_EMAIL") or "").strip()
+    if not recipient:
+        logger.warning(
+            "payment webhook: signature failures crossed threshold for %s "
+            "(count=%s) but SUPER_ADMIN_ALERT_EMAIL is not set; skipping alert",
+            provider, count,
+        )
+        return
+    try:
+        await send_email(
+            kind="super_admin_signature_failures",
+            to=recipient,
+            tenant_slug=None,
+            ctx={
+                "provider": provider,
+                "count": count,
+                "threshold": SIGNATURE_FAILURE_THRESHOLD,
+                "window_minutes": SIGNATURE_FAILURE_WINDOW_SECONDS // 60,
+                "secret_env": secret_env,
+            },
+        )
+    except Exception:
+        logger.exception(
+            "payment webhook: super-admin signature-failure alert email failed",
+        )
+
+
 async def _resolve_tenant(tenant_id: Optional[str], tenant_slug: Optional[str]) -> Optional[dict]:
     if tenant_id:
         doc = await control_db.tenants.find_one({"id": tenant_id}, {"_id": 0})
@@ -151,12 +190,28 @@ async def payment_webhook(provider: str, request: Request):
 
     body = await request.body()
     if not verify_signature(cfg_provider, body, request.headers.raw, secret):
+        # Track repeated failures so a misconfigured/rotated secret surfaces
+        # to the super-admin instead of silently 401'ing every retry.
+        failure_state = await record_signature_failure(cfg_provider)
         await record_webhook_event(
             provider=cfg_provider,
             status="signature_invalid",
-            reason="HMAC signature verification failed",
+            reason=(
+                f"HMAC signature verification failed "
+                f"(count={failure_state.get('count', 0)})"
+            ),
         )
+        if failure_state.get("should_alert"):
+            await _alert_super_admin_signature_failures(
+                provider=cfg_provider,
+                count=int(failure_state.get("count") or 0),
+                secret_env=secret_env,
+            )
         raise HTTPException(status_code=401, detail="invalid signature")
+
+    # Successful verification clears the rolling failure window so the next
+    # burst of bad signatures starts from zero (and can alert again).
+    await reset_signature_failures(cfg_provider)
 
     try:
         payload = await request.json()

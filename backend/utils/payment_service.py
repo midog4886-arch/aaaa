@@ -24,8 +24,8 @@ import hashlib
 import os
 import logging
 import time
-from datetime import datetime, timezone
-from typing import Dict, Optional, Tuple, Iterable
+from datetime import datetime, timedelta, timezone
+from typing import Dict, List, Optional, Tuple, Iterable
 
 from control_db import control_db
 
@@ -34,6 +34,126 @@ logger = logging.getLogger("payment_service")
 VALID_PROVIDERS = {"stripe", "moyasar", "tap", ""}
 DEFAULT_SECRET_ENV = "PAYMENT_WEBHOOK_SECRET"
 STRIPE_TIMESTAMP_TOLERANCE = 60 * 5  # seconds
+
+# Rolling-window tracking of webhook signature failures per provider. If a
+# secret rotates (or is misconfigured) every retry will return 401 silently;
+# this surfaces the issue to the super-admin once a burst is detected.
+SIGNATURE_FAILURE_WINDOW_SECONDS = 10 * 60      # 10 minutes
+SIGNATURE_FAILURE_THRESHOLD = 5                  # failures within window
+SIGNATURE_FAILURE_ALERT_COOLDOWN_SECONDS = 60 * 60  # don't re-alert for 1h
+_SIGNATURE_FAILURE_KEY_PREFIX = "payment_signature_failures:"
+
+
+def _signature_failure_key(provider: str) -> str:
+    return f"{_SIGNATURE_FAILURE_KEY_PREFIX}{(provider or '').lower()}"
+
+
+def _parse_iso(ts: str) -> Optional[datetime]:
+    if not ts:
+        return None
+    try:
+        dt = datetime.fromisoformat(str(ts).replace("Z", "+00:00"))
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt
+    except Exception:
+        return None
+
+
+async def record_signature_failure(provider: str) -> Dict:
+    """Record one signature-verification failure for ``provider`` and decide
+    whether the super-admin should be alerted.
+
+    Returns ``{"count", "should_alert", "window_seconds", "threshold"}``:
+      * ``count`` — failures still inside the rolling window after this one.
+      * ``should_alert`` — True iff the threshold was just crossed AND we
+        haven't already alerted within the cooldown window.
+
+    Best-effort persistence: on a DB error we still return a non-alerting
+    response so the webhook handler keeps responding 401 to the provider.
+    """
+    provider_lc = (provider or "").lower()
+    key = _signature_failure_key(provider_lc)
+    now = datetime.now(timezone.utc)
+    window_start = now - timedelta(seconds=SIGNATURE_FAILURE_WINDOW_SECONDS)
+    cooldown_start = now - timedelta(seconds=SIGNATURE_FAILURE_ALERT_COOLDOWN_SECONDS)
+
+    try:
+        doc = await control_db.platform_settings.find_one({"key": key}, {"_id": 0}) or {}
+        raw_failures: List[str] = list(doc.get("failures") or [])
+        failures: List[str] = []
+        for ts in raw_failures:
+            dt = _parse_iso(ts)
+            if dt and dt >= window_start:
+                failures.append(dt.isoformat())
+        failures.append(now.isoformat())
+
+        last_alerted = _parse_iso(doc.get("alerted_at") or "")
+        # If the previous alert was sent before the cooldown window, treat
+        # it as expired so a brand-new burst will alert again.
+        previously_alerted_recently = bool(last_alerted and last_alerted >= cooldown_start)
+
+        should_alert = (
+            len(failures) >= SIGNATURE_FAILURE_THRESHOLD
+            and not previously_alerted_recently
+        )
+
+        update: Dict = {
+            "key": key,
+            "provider": provider_lc,
+            "failures": failures,
+            "updated_at": now.isoformat(),
+        }
+        if should_alert:
+            update["alerted_at"] = now.isoformat()
+            update["last_alert_count"] = len(failures)
+        elif "alerted_at" in doc:
+            # Preserve prior alerted_at across non-alerting writes.
+            update["alerted_at"] = doc.get("alerted_at")
+            update["last_alert_count"] = doc.get("last_alert_count", 0)
+
+        await control_db.platform_settings.update_one(
+            {"key": key}, {"$set": update}, upsert=True,
+        )
+        return {
+            "count": len(failures),
+            "should_alert": should_alert,
+            "window_seconds": SIGNATURE_FAILURE_WINDOW_SECONDS,
+            "threshold": SIGNATURE_FAILURE_THRESHOLD,
+        }
+    except Exception:
+        logger.exception("record_signature_failure persistence failed")
+        return {
+            "count": 0,
+            "should_alert": False,
+            "window_seconds": SIGNATURE_FAILURE_WINDOW_SECONDS,
+            "threshold": SIGNATURE_FAILURE_THRESHOLD,
+        }
+
+
+async def reset_signature_failures(provider: str) -> None:
+    """Clear the rolling failure counter after a verified delivery.
+
+    Called from the webhook on the first successful HMAC verify so a single
+    valid retry clears the alert state — matching task #266's "counter resets
+    after a successful verification" requirement.
+    """
+    key = _signature_failure_key(provider)
+    try:
+        await control_db.platform_settings.update_one(
+            {"key": key},
+            {"$set": {
+                "key": key,
+                "provider": (provider or "").lower(),
+                "failures": [],
+                "alerted_at": "",
+                "last_alert_count": 0,
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+            }},
+            upsert=True,
+        )
+    except Exception:
+        logger.exception("reset_signature_failures persistence failed")
 
 # Diagnostics: how many recent webhook deliveries to retain for super-admin
 # inspection. Each delivery is one row regardless of whether it was accepted,
