@@ -55,6 +55,16 @@ export const AuthProvider = ({ children }) => {
   };
 
   const logout = () => {
+    // Fire-and-forget audit ping. We must send it *before* clearing the
+    // Authorization header, but we don't await it — the user should see
+    // the logout happen instantly even if the network is slow/offline.
+    try {
+      if (axios.defaults.headers.common['Authorization']) {
+        axios.post(`${API}/auth/logout`).catch(() => {});
+      }
+    } catch (_) {
+      // ignore — logout must always succeed client-side
+    }
     localStorage.removeItem('token');
     localStorage.removeItem('selectedBranchId');
     delete axios.defaults.headers.common['Authorization'];

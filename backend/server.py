@@ -992,6 +992,24 @@ async def get_me(current_user: dict = Depends(get_current_user)):
         raise HTTPException(status_code=404, detail="User not found")
     return user
 
+@api_router.post("/auth/logout")
+async def logout(current_user: dict = Depends(get_current_user)):
+    """Record an audit entry when a user signs out.
+
+    Tokens are stateless JWTs, so the client is responsible for discarding
+    them. This endpoint exists purely so reviewers can see when a session
+    ended in the audit timeline.
+    """
+    from utils.audit import log_audit
+    await log_audit(
+        actor=current_user,
+        action="auth.logout",
+        entity_type="user",
+        entity_id=current_user.get("user_id", ""),
+        entity_name=current_user.get("username", ""),
+    )
+    return {"message": "Logged out"}
+
 # ============ ROUTES MOVED TO /routes/ DIRECTORY ============
 # - Users: routes/users.py
 # - Branches: routes/branches.py
