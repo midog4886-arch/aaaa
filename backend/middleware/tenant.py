@@ -1,9 +1,18 @@
 """ASGI middleware that resolves the current tenant for every HTTP request.
 
 Resolution order:
-  1. Subdomain  (e.g. ``academy1.app.com`` → slug ``academy1``)
+  1. Subdomain  (e.g. ``acme.champions.app`` → slug ``acme``)
   2. ``X-Tenant-Slug`` header
   3. Fallback to ``default`` tenant
+
+Subdomain detection:
+  - If env var ``TENANT_BASE_DOMAIN`` is set (recommended for production,
+    e.g. ``champions.app``), any host of the form ``<slug>.{BASE_DOMAIN}``
+    is treated as tenant ``<slug>``. The base domain itself and ``www``
+    map to no slug (i.e. fall through to header / default).
+  - If ``TENANT_BASE_DOMAIN`` is not set, falls back to a generic heuristic
+    that takes the first label of any 3+ label hostname, while ignoring
+    Replit dev/preview hosts and a small list of common reserved labels.
 
 Bypassed for: ``/super/*`` (control plane), ``/health``, ``/uploads``,
 and any non-HTTP scope (websocket, lifespan).
@@ -12,6 +21,7 @@ Sets the tenant in a ContextVar that ``TenantDBProxy`` reads to route every
 DB call to the correct per-tenant MongoDB database.
 """
 import logging
+import os
 from typing import Optional
 
 from utils.tenant import (
@@ -25,6 +35,7 @@ logger = logging.getLogger("tenant_middleware")
 
 BYPASS_PREFIXES = ("/super", "/health", "/uploads")
 COMMON_HOSTS_IGNORE = {"localhost", "127.0.0.1", "0.0.0.0", "app", "www", "api"}
+TENANT_BASE_DOMAIN = (os.environ.get("TENANT_BASE_DOMAIN") or "").lower().strip().lstrip(".")
 
 
 def _slug_from_host(host: str) -> Optional[str]:
@@ -33,6 +44,20 @@ def _slug_from_host(host: str) -> Optional[str]:
     host = host.split(":", 1)[0].lower().strip()
     if not host or host in COMMON_HOSTS_IGNORE:
         return None
+
+    if TENANT_BASE_DOMAIN:
+        if host == TENANT_BASE_DOMAIN or host == f"www.{TENANT_BASE_DOMAIN}":
+            return None
+        suffix = "." + TENANT_BASE_DOMAIN
+        if host.endswith(suffix):
+            sub_part = host[: -len(suffix)]
+            if "." in sub_part:
+                return None
+            if sub_part in COMMON_HOSTS_IGNORE:
+                return None
+            return sub_part or None
+        return None
+
     parts = host.split(".")
     if len(parts) < 3:
         return None

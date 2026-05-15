@@ -12,3 +12,9 @@ id = "WEaoWGz56x26Kh3fH8kkH"
 uri = "file://android-v1.0.9.zip"
 type = "unspecified"
 title = "مشروع Android - الإصدار v1.0.9 (build 10)"
+
+[[outputs]]
+id = "-8MEiSNhx-ZAa2NBPBXmv"
+uri = "file://MULTITENANT_SETUP.md"
+type = "text"
+title = "دليل إعداد النظام متعدد الأكاديميات"
