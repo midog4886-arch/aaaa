@@ -1,7 +1,7 @@
 """Notifications routes"""
 from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
-from typing import List, Optional
+from typing import Any, List, Optional
 import uuid
 from datetime import datetime, timezone, timedelta
 
@@ -19,25 +19,58 @@ router = APIRouter(prefix="/notifications", tags=["notifications"])
 # as ``minute=0`` for backwards compatibility.
 _DAILY_CHECKS_DEFAULT_HOUR = 7
 _DAILY_CHECKS_DEFAULT_MINUTE = 0
-_DAILY_CHECKS_DEFAULT_DAYS = [0, 1, 2, 3, 4, 5, 6]
 _DAILY_CHECKS_SETTINGS_KEY = "daily_checks"
+# Days the scheduler is allowed to run on. Stored as 3-letter abbreviations
+# (Sun..Sat). Default is every day so behaviour is unchanged for academies
+# that never opted in. We resolved a rebase conflict with an alternative
+# integer-based (0..6) implementation by standardizing on strings.
+_DAILY_CHECKS_VALID_DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
+_DAILY_CHECKS_DEFAULT_DAYS = list(_DAILY_CHECKS_VALID_DAYS)
+
+
+def _coerce_days(raw) -> list:
+    """Return a deduped, canonical subset of valid day abbreviations.
+
+    Accepts case-insensitive 3-letter abbreviations *and* legacy integer
+    encodings (0=Sun..6=Sat) to stay compatible with any docs written by
+    an earlier integer-based implementation that briefly landed on main.
+    Anything outside those forms is dropped silently. May return an empty
+    list — callers decide whether to treat that as "fall back to default"
+    (read path) or as a validation error (write path).
+    """
+    if not raw or not isinstance(raw, (list, tuple)):
+        return []
+    canon = {d.lower(): d for d in _DAILY_CHECKS_VALID_DAYS}
+    seen = set()
+    out = []
+    for item in raw:
+        key = None
+        if isinstance(item, str):
+            key = item.strip().lower()[:3]
+        elif isinstance(item, bool):
+            # bools are ints in Python — guard against True/False creeping in
+            continue
+        elif isinstance(item, int):
+            if 0 <= item <= 6:
+                # Legacy integer encoding: 0=Sun..6=Sat
+                key = _DAILY_CHECKS_VALID_DAYS[item].lower()
+        if key in canon and key not in seen:
+            seen.add(key)
+            out.append(canon[key])
+    # Preserve canonical Sun..Sat ordering for stable display
+    return [d for d in _DAILY_CHECKS_VALID_DAYS if d in out]
 
 
 def _normalize_days(raw) -> list:
-    if not isinstance(raw, list):
-        return list(_DAILY_CHECKS_DEFAULT_DAYS)
-    cleaned = []
-    for v in raw:
-        try:
-            n = int(v)
-        except (TypeError, ValueError):
-            continue
-        if 0 <= n <= 6 and n not in cleaned:
-            cleaned.append(n)
-    if not cleaned:
-        return list(_DAILY_CHECKS_DEFAULT_DAYS)
-    cleaned.sort()
-    return cleaned
+    """Read-path helper: coerce ``raw`` and fall back to all 7 days.
+
+    Used when reading settings from the DB so docs that pre-date the
+    field — or contain only invalid entries — keep the original "every
+    day" behaviour. Write paths should call :func:`_coerce_days` directly
+    and reject empty results instead.
+    """
+    coerced = _coerce_days(raw)
+    return coerced or list(_DAILY_CHECKS_DEFAULT_DAYS)
 
 
 async def get_daily_checks_hour() -> int:
@@ -85,6 +118,12 @@ async def get_daily_checks_time() -> tuple:
 
 
 async def get_daily_checks_days() -> list:
+    """Return the configured run days (subset of Sun..Sat).
+
+    Falls back to all 7 days if the setting is missing, the DB lookup
+    fails, or the stored value is invalid — preserving backwards
+    compatibility with docs that pre-date the ``days_of_week`` field.
+    """
     try:
         doc = await db.notifications_settings.find_one(
             {"key": _DAILY_CHECKS_SETTINGS_KEY}, {"_id": 0}
@@ -99,12 +138,14 @@ async def get_daily_checks_days() -> list:
 class DailyChecksSettings(BaseModel):
     hour: int
     minute: Optional[int] = 0
-    days_of_week: Optional[List[int]] = None
+    # Accept either string abbreviations (preferred) or legacy ints (0..6).
+    # Validation/coercion happens in the endpoint via ``_coerce_days``.
+    days_of_week: Optional[List[Any]] = None
 
 
 @router.get("/daily-checks-settings")
 async def get_daily_checks_settings(current_user: dict = Depends(get_current_user)):
-    """Return the configured daily-checks hour & minute (Asia/Riyadh)."""
+    """Return the configured daily-checks hour, minute & run days (Asia/Riyadh)."""
     hour, minute = await get_daily_checks_time()
     days = await get_daily_checks_days()
     return {
@@ -114,6 +155,7 @@ async def get_daily_checks_settings(current_user: dict = Depends(get_current_use
         "default_hour": _DAILY_CHECKS_DEFAULT_HOUR,
         "default_minute": _DAILY_CHECKS_DEFAULT_MINUTE,
         "default_days_of_week": list(_DAILY_CHECKS_DEFAULT_DAYS),
+        "valid_days_of_week": list(_DAILY_CHECKS_VALID_DAYS),
         "timezone": "Asia/Riyadh",
     }
 
@@ -123,9 +165,11 @@ async def update_daily_checks_settings(
     payload: DailyChecksSettings,
     current_user: dict = Depends(get_current_user),
 ):
-    """Admin-only: update the hour (0-23) and minute (0-59) in Asia/Riyadh
-    the daily renewal & ad-expiry checks run at. Takes effect on the next
-    scheduler tick (within ~24 hours, or immediately on next restart)."""
+    """Admin-only: update the hour (0-23), minute (0-59) and the days of
+    the week (subset of Sun..Sat) the daily renewal & ad-expiry checks run
+    on. Takes effect on the next scheduler tick (within ~24 hours, or
+    immediately on next restart). Omitting ``days_of_week`` keeps the
+    previously stored value (or the default of all 7 days)."""
     if not current_user.get("is_admin"):
         raise HTTPException(status_code=403, detail="Admin access required")
     hour = payload.hour
@@ -134,32 +178,39 @@ async def update_daily_checks_settings(
     minute = payload.minute if payload.minute is not None else 0
     if not isinstance(minute, int) or minute < 0 or minute > 59:
         raise HTTPException(status_code=400, detail="minute must be an integer between 0 and 59")
-    if payload.days_of_week is None:
-        days = await get_daily_checks_days()
-    else:
-        if not isinstance(payload.days_of_week, list) or len(payload.days_of_week) == 0:
-            raise HTTPException(status_code=400, detail="days_of_week must be a non-empty list of integers 0-6")
-        for v in payload.days_of_week:
-            if not isinstance(v, int) or v < 0 or v > 6:
-                raise HTTPException(status_code=400, detail="days_of_week values must be integers between 0 (Sunday) and 6 (Saturday)")
-        days = _normalize_days(payload.days_of_week)
+    update_doc = {
+        "hour": hour,
+        "minute": minute,
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    }
+    days_payload = payload.days_of_week
+    if days_payload is not None:
+        # Strict write-path validation: drop unknown entries via _coerce_days
+        # but reject the result when nothing valid remains, so an explicit
+        # but malformed payload never silently falls back to "every day".
+        # ``_coerce_days`` accepts both string abbreviations and legacy
+        # integer encodings (0=Sun..6=Sat) for compatibility.
+        coerced = _coerce_days(days_payload)
+        if not coerced:
+            raise HTTPException(
+                status_code=400,
+                detail="days_of_week must contain at least one of: " + ", ".join(_DAILY_CHECKS_VALID_DAYS),
+            )
+        update_doc["days_of_week"] = coerced
     await db.notifications_settings.update_one(
         {"key": _DAILY_CHECKS_SETTINGS_KEY},
-        {"$set": {
-            "hour": hour,
-            "minute": minute,
-            "days_of_week": days,
-            "updated_at": datetime.now(timezone.utc).isoformat(),
-        }},
+        {"$set": update_doc},
         upsert=True,
     )
+    days_after = await get_daily_checks_days()
     return {
         "hour": hour,
         "minute": minute,
-        "days_of_week": days,
+        "days_of_week": days_after,
         "default_hour": _DAILY_CHECKS_DEFAULT_HOUR,
         "default_minute": _DAILY_CHECKS_DEFAULT_MINUTE,
         "default_days_of_week": list(_DAILY_CHECKS_DEFAULT_DAYS),
+        "valid_days_of_week": list(_DAILY_CHECKS_VALID_DAYS),
         "timezone": "Asia/Riyadh",
     }
 

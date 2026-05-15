@@ -3190,12 +3190,19 @@ async def _resolve_daily_checks_time() -> tuple:
 
 
 async def _resolve_daily_checks_days() -> list:
+    """Read the admin-configured run days (subset of Sun..Sat).
+
+    Falls back to all 7 days on any error so a transient DB failure can't
+    silently disable the scheduler. Returns string abbreviations
+    ("Sun".."Sat") to match the canonical encoding in
+    ``routes/notifications.py``.
+    """
     try:
         from routes.notifications import get_daily_checks_days
         return await get_daily_checks_days()
     except Exception as e:
-        print(f"Daily checks scheduler: failed to read configured days ({e}), using all days")
-        return [0, 1, 2, 3, 4, 5, 6]
+        print(f"Daily checks scheduler: failed to read configured days ({e}), using all 7")
+        return ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
 
 
 async def daily_checks_scheduler_loop():
@@ -3213,15 +3220,21 @@ async def daily_checks_scheduler_loop():
             # restart.
             hour, minute = await _resolve_daily_checks_time()
             allowed_days = await _resolve_daily_checks_days()
-            allowed_set = set(allowed_days) if allowed_days else {0, 1, 2, 3, 4, 5, 6}
+            # Canonical Sun..Sat strings — match notifications.py encoding.
+            _ALL_DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
+            allowed_set = set(allowed_days) if allowed_days else set(_ALL_DAYS)
+            # weekday(): Monday=0..Sunday=6 — locale-independent mapping.
+            _WEEKDAY_ABBR = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
             now = datetime.now(_RIYADH_TZ)
             next_run = now.replace(
                 hour=hour, minute=minute, second=0, microsecond=0
             )
             if next_run <= now:
                 next_run += timedelta(days=1)
+            # Pre-advance across excluded days so we don't wake up just to
+            # immediately skip — keeps log noise down and is more accurate.
             for _ in range(7):
-                if (next_run.isoweekday() % 7) in allowed_set:
+                if _WEEKDAY_ABBR[next_run.weekday()] in allowed_set:
                     break
                 next_run += timedelta(days=1)
             wait_seconds = (next_run - now).total_seconds()
@@ -3231,6 +3244,18 @@ async def daily_checks_scheduler_loop():
                 f"days={sorted(allowed_set)})"
             )
             await asyncio.sleep(wait_seconds)
+            # Re-check the day-of-week filter at fire time so admins who
+            # disabled today's run after the previous tick still get the
+            # skip applied. _WEEKDAY_ABBR is already in scope from the
+            # pre-advance block above (locale-independent, weekday() index).
+            allowed_days = await _resolve_daily_checks_days()
+            today_abbr = _WEEKDAY_ABBR[datetime.now(_RIYADH_TZ).weekday()]
+            if today_abbr not in allowed_days:
+                print(
+                    f"Daily checks scheduler: skipping run, {today_abbr} is "
+                    f"not in configured days {allowed_days}"
+                )
+                continue
             await _run_daily_renewal_and_ads_checks()
         except asyncio.CancelledError:
             break

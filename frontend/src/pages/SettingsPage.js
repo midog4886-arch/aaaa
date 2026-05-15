@@ -36,14 +36,18 @@ export const SettingsPage = () => {
   const [dailyChecksMinute, setDailyChecksMinute] = React.useState(0);
   const [dailyChecksDefault, setDailyChecksDefault] = React.useState(7);
   const [dailyChecksDefaultMinute, setDailyChecksDefaultMinute] = React.useState(0);
-  const [dailyChecksDays, setDailyChecksDays] = React.useState([0, 1, 2, 3, 4, 5, 6]);
-  const [dailyChecksDefaultDays, setDailyChecksDefaultDays] = React.useState([0, 1, 2, 3, 4, 5, 6]);
   const [dailyChecksLoading, setDailyChecksLoading] = React.useState(false);
   const [dailyChecksSaving, setDailyChecksSaving] = React.useState(false);
   const [dailyChecksStatus, setDailyChecksStatus] = React.useState(null);
   const [dailyChecksRunning, setDailyChecksRunning] = React.useState(false);
   const [billing, setBilling] = React.useState(null);
   const [billingLoading, setBillingLoading] = React.useState(false);
+  const ALL_DAYS = React.useMemo(() => ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'], []);
+  const [dailyChecksDays, setDailyChecksDays] = React.useState(ALL_DAYS);
+  const DAY_LABELS = React.useMemo(() => ({
+    en: { Sun: 'Sun', Mon: 'Mon', Tue: 'Tue', Wed: 'Wed', Thu: 'Thu', Fri: 'Fri', Sat: 'Sat' },
+    ar: { Sun: 'الأحد', Mon: 'الإثنين', Tue: 'الثلاثاء', Wed: 'الأربعاء', Thu: 'الخميس', Fri: 'الجمعة', Sat: 'السبت' },
+  }), []);
 
   React.useEffect(() => {
     if (!isAdmin) return;
@@ -77,8 +81,9 @@ export const SettingsPage = () => {
         if (typeof data.minute === 'number') setDailyChecksMinute(data.minute);
         if (typeof data.default_hour === 'number') setDailyChecksDefault(data.default_hour);
         if (typeof data.default_minute === 'number') setDailyChecksDefaultMinute(data.default_minute);
-        if (Array.isArray(data.days_of_week)) setDailyChecksDays(data.days_of_week);
-        if (Array.isArray(data.default_days_of_week)) setDailyChecksDefaultDays(data.default_days_of_week);
+        if (Array.isArray(data.days_of_week) && data.days_of_week.length > 0) {
+          setDailyChecksDays(data.days_of_week);
+        }
       })
       .catch(() => { /* keep defaults */ })
       .finally(() => { if (!cancelled) setDailyChecksLoading(false); });
@@ -125,43 +130,52 @@ export const SettingsPage = () => {
     }
   };
 
-  const handleSaveDailyChecksTime = async (nextHour, nextMinute, nextDays = null) => {
+  const dailyChecksSaveSeq = React.useRef(0);
+  const handleSaveDailyChecksSettings = async (nextHour, nextMinute, nextDays) => {
+    const mySeq = ++dailyChecksSaveSeq.current;
     setDailyChecksSaving(true);
     try {
-      const res = await notificationsSettingsAPI.updateDailyChecks(nextHour, nextMinute, nextDays);
+      const daysArg = nextDays === undefined ? dailyChecksDays : nextDays;
+      const res = await notificationsSettingsAPI.updateDailyChecks(nextHour, nextMinute, daysArg);
+      // Drop stale responses from rapid toggles so an older request can't
+      // overwrite the latest selection the user just made.
+      if (mySeq !== dailyChecksSaveSeq.current) return;
       if (typeof res?.data?.hour === 'number') setDailyChecksHour(res.data.hour);
       if (typeof res?.data?.minute === 'number') setDailyChecksMinute(res.data.minute);
-      if (Array.isArray(res?.data?.days_of_week)) setDailyChecksDays(res.data.days_of_week);
+      if (Array.isArray(res?.data?.days_of_week) && res.data.days_of_week.length > 0) {
+        setDailyChecksDays(res.data.days_of_week);
+      }
       toast.success(language === 'ar'
         ? 'تم حفظ إعدادات التنبيهات اليومية'
         : 'Daily alerts settings saved');
     } catch (e) {
+      if (mySeq !== dailyChecksSaveSeq.current) return;
       toast.error(e?.response?.data?.detail || (language === 'ar'
         ? 'تعذر حفظ الإعداد'
         : 'Failed to save setting'));
     } finally {
-      setDailyChecksSaving(false);
+      if (mySeq === dailyChecksSaveSeq.current) setDailyChecksSaving(false);
     }
   };
 
-  const toggleDailyCheckDay = (dayIndex) => {
-    const isOn = dailyChecksDays.includes(dayIndex);
+  const handleSaveDailyChecksTime = (nextHour, nextMinute) =>
+    handleSaveDailyChecksSettings(nextHour, nextMinute, undefined);
+
+  const toggleDailyChecksDay = (day) => {
+    const isOn = dailyChecksDays.includes(day);
     const next = isOn
-      ? dailyChecksDays.filter((d) => d !== dayIndex)
-      : [...dailyChecksDays, dayIndex].sort((a, b) => a - b);
+      ? dailyChecksDays.filter((d) => d !== day)
+      : ALL_DAYS.filter((d) => dailyChecksDays.includes(d) || d === day);
     if (next.length === 0) {
       toast.error(language === 'ar'
         ? 'يجب اختيار يوم واحد على الأقل'
-        : 'Pick at least one day');
+        : 'At least one day must be selected');
       return;
     }
     setDailyChecksDays(next);
-    handleSaveDailyChecksTime(dailyChecksHour, dailyChecksMinute, next);
+    handleSaveDailyChecksSettings(dailyChecksHour, dailyChecksMinute, next);
   };
 
-  const dayLabels = language === 'ar'
-    ? ['الأحد', 'الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت']
-    : ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
   const formatTime = (h, m = 0) => {
     const hh = String(h).padStart(2, '0');
@@ -418,36 +432,38 @@ export const SettingsPage = () => {
                 </div>
               </div>
 
-              <div className="mt-4" data-testid="daily-checks-days">
-                <p className="text-sm font-medium mb-2">
-                  {language === 'ar' ? 'أيام التشغيل' : 'Run on'}
+              {/* Days-of-week selector */}
+              <div className="mt-4 pt-4 border-t" data-testid="daily-checks-days">
+                <p className="font-medium">
+                  {language === 'ar' ? 'أيام تشغيل التنبيهات' : 'Days the alerts run on'}
+                </p>
+                <p className="text-sm text-muted-foreground mb-3">
+                  {language === 'ar'
+                    ? 'اختر الأيام التي يجب أن تعمل بها التنبيهات (الافتراضي: كل الأيام).'
+                    : 'Pick which days the checks should run (default: every day).'}
                 </p>
                 <div className="flex flex-wrap gap-2">
-                  {dayLabels.map((label, idx) => {
-                    const active = dailyChecksDays.includes(idx);
+                  {ALL_DAYS.map((day) => {
+                    const selected = dailyChecksDays.includes(day);
                     return (
                       <button
-                        key={idx}
+                        key={day}
                         type="button"
-                        data-testid={`daily-checks-day-${idx}`}
-                        onClick={() => toggleDailyCheckDay(idx)}
+                        onClick={() => toggleDailyChecksDay(day)}
                         disabled={dailyChecksLoading || dailyChecksSaving}
-                        className={`px-3 py-1.5 rounded-md border text-sm transition-colors ${
-                          active
+                        data-testid={`daily-checks-day-${day.toLowerCase()}`}
+                        aria-pressed={selected}
+                        className={`px-3 py-1.5 rounded-full border text-sm transition-colors ${
+                          selected
                             ? 'bg-primary text-primary-foreground border-primary'
-                            : 'bg-background text-foreground border-border hover:bg-muted'
-                        } ${(dailyChecksLoading || dailyChecksSaving) ? 'opacity-60 cursor-not-allowed' : ''}`}
+                            : 'bg-background text-foreground border-input hover:bg-accent'
+                        } disabled:opacity-50`}
                       >
-                        {label}
+                        {DAY_LABELS[language === 'ar' ? 'ar' : 'en'][day]}
                       </button>
                     );
                   })}
                 </div>
-                <p className="text-xs text-muted-foreground mt-2">
-                  {language === 'ar'
-                    ? `الافتراضي: كل الأيام (${dailyChecksDefaultDays.length}/7).`
-                    : `Default: every day (${dailyChecksDefaultDays.length}/7).`}
-                </p>
               </div>
 
               {/* Last-run status + Run now */}

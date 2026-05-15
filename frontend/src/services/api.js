@@ -269,7 +269,12 @@ export const seedAPI = {
 // Notifications settings API (admin-only writes)
 export const notificationsSettingsAPI = {
   getDailyChecks: () => axios.get(`${API}/notifications/daily-checks-settings`),
-  updateDailyChecks: (hour, minute = 0, daysOfWeek = null) => axios.put(`${API}/notifications/daily-checks-settings`, daysOfWeek === null ? { hour, minute } : { hour, minute, days_of_week: daysOfWeek }),
+  updateDailyChecks: (hour, minute = 0, daysOfWeek) => axios.put(
+    `${API}/notifications/daily-checks-settings`,
+    daysOfWeek === undefined || daysOfWeek === null
+      ? { hour, minute }
+      : { hour, minute, days_of_week: daysOfWeek },
+  ),
   getDailyChecksStatus: () => axios.get(`${API}/notifications/daily-checks-status`),
   runDailyChecksNow: () => axios.post(`${API}/notifications/daily-checks-run`),
 };
