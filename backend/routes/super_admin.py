@@ -823,6 +823,66 @@ async def schedule_tenant_delete(
     return {"ok": True, "tenant": refreshed, "purge_at": purge_at.isoformat()}
 
 
+@router.post("/tenants/{tenant_id}/reschedule-delete")
+async def reschedule_tenant_delete(
+    tenant_id: str,
+    payload: Optional[dict] = Body(default=None),
+    super_payload: dict = Depends(_require_super),
+):
+    """Move the auto-purge date for a tenant that is already in
+    ``pending_delete`` to a new point in the future, without un-scheduling
+    or re-scheduling the deletion. Clears ``final_purge_alert_sent_at`` so
+    the auto-purge scheduler will emit a fresh "final warning" before the
+    new purge date, and writes an audit row so the change is traceable.
+    """
+    payload = payload or {}
+    new_purge_at_raw = (payload.get("purge_at") or "").strip()
+    if not new_purge_at_raw:
+        raise HTTPException(status_code=400, detail="purge_at is required")
+    try:
+        new_purge_at = datetime.fromisoformat(new_purge_at_raw.replace("Z", "+00:00"))
+    except Exception:
+        raise HTTPException(status_code=400, detail="purge_at must be an ISO datetime")
+    if new_purge_at.tzinfo is None:
+        new_purge_at = new_purge_at.replace(tzinfo=timezone.utc)
+    else:
+        new_purge_at = new_purge_at.astimezone(timezone.utc)
+    now = datetime.now(timezone.utc)
+    if new_purge_at <= now:
+        raise HTTPException(status_code=400, detail="purge_at must be in the future")
+
+    existing = await control_db.tenants.find_one({"id": tenant_id}, {"_id": 0})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Tenant not found")
+    if existing.get("status") != "pending_delete":
+        raise HTTPException(status_code=400, detail="Tenant is not pending deletion")
+
+    await control_db.tenants.update_one(
+        {"id": tenant_id},
+        {"$set": {"deletion_purge_at": new_purge_at.isoformat()},
+         # Reset per-cycle warning state so the auto-purge scheduler will
+         # emit a fresh "final warning" alert before the new purge date.
+         "$unset": {"final_purge_alert_sent_at": ""}},
+    )
+    refreshed = await control_db.tenants.find_one({"id": tenant_id}, {"_id": 0})
+
+    try:
+        from utils.audit import log_audit
+        await log_audit(
+            actor=_super_actor(super_payload),
+            action="tenant.reschedule_delete",
+            entity_type="tenant",
+            entity_id=tenant_id,
+            entity_name=existing.get("name", ""),
+            before={"deletion_purge_at": existing.get("deletion_purge_at")},
+            after={"deletion_purge_at": (refreshed or {}).get("deletion_purge_at")},
+        )
+    except Exception:
+        pass
+
+    return {"ok": True, "tenant": refreshed, "purge_at": new_purge_at.isoformat()}
+
+
 @router.post("/tenants/{tenant_id}/cancel-delete")
 async def cancel_tenant_delete(tenant_id: str, super_payload: dict = Depends(_require_super)):
     refreshed = await _apply_cancel_tenant_delete(

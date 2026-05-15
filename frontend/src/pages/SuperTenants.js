@@ -462,6 +462,62 @@ function DeleteTenantDialog({ tenant, onCancel, onSchedule, onFinalize }) {
   );
 }
 
+function RescheduleDeleteModal({ tenant, onSubmit, onCancel }) {
+  const pad = (n) => String(n).padStart(2, '0');
+  const toInput = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000);
+  const initial = tenant.deletion_purge_at ? new Date(tenant.deletion_purge_at) : tomorrow;
+  const [date, setDate] = useState(toInput(initial));
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+  const minDate = toInput(tomorrow);
+
+  const submit = async (e) => {
+    e.preventDefault();
+    setErr('');
+    setBusy(true);
+    try {
+      await onSubmit(date);
+    } catch (e2) {
+      setErr(e2?.response?.data?.detail || 'فشل تغيير الموعد');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div style={sx.modalBg} onClick={onCancel}>
+      <form style={sx.modal} onClick={(e) => e.stopPropagation()} onSubmit={submit}>
+        <h2 style={{ margin: 0, marginBottom: 14, fontSize: 18, fontWeight: 700, color: '#0f172a' }}>
+          تغيير موعد الحذف النهائي لـ "{tenant.name}"
+        </h2>
+        <div style={{ fontSize: 12, color: '#64748b', marginBottom: 14 }}>
+          الموعد الحالي: {tenant.deletion_purge_at ? new Date(tenant.deletion_purge_at).toLocaleString('ar-EG') : '—'}
+        </div>
+        {err && <div style={{ background: '#fef2f2', color: '#b91c1c', padding: 10, borderRadius: 6, marginBottom: 12, fontSize: 13 }}>{err}</div>}
+        <div style={sx.field}>
+          <label style={sx.label}>التاريخ الجديد للحذف</label>
+          <input
+            type="date"
+            style={sx.input}
+            value={date}
+            min={minDate}
+            onChange={(e) => setDate(e.target.value)}
+            required
+          />
+          <div style={sx.meta}>
+            سيُجدوَل الحذف في نهاية اليوم المحدد. سيُعاد إرسال التنبيه النهائي قبل الموعد الجديد.
+          </div>
+        </div>
+        <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+          <button type="submit" disabled={busy} style={{ ...sx.btnPrimary, opacity: busy ? 0.6 : 1 }}>{busy ? '...' : 'حفظ الموعد'}</button>
+          <button type="button" onClick={onCancel} style={sx.btnGhost}>إلغاء</button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
 function RenewModal({ tenant, onSubmit, onCancel }) {
   const [months, setMonths] = useState(1);
   const [days, setDays] = useState(0);
@@ -645,6 +701,7 @@ export default function SuperTenants() {
   };
 
   const [deleting, setDeleting] = useState(null);
+  const [rescheduling, setRescheduling] = useState(null);
 
   const scheduleDelete = async (t, slugConfirm, reason) => {
     try {
@@ -664,6 +721,25 @@ export default function SuperTenants() {
       await axios.post(`/super/tenants/${t.id}/cancel-delete`, {}, auth());
       await load();
     } catch (e) { alert(e?.response?.data?.detail || 'فشل'); }
+  };
+
+  const submitReschedule = async (t, dateStr) => {
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec((dateStr || '').trim());
+    if (!m) { alert('صيغة التاريخ غير صحيحة'); return; }
+    // Schedule the purge at end-of-day local time so the owner gets the
+    // entire chosen day before deletion runs.
+    const newDate = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]), 23, 59, 0, 0);
+    if (newDate.getTime() <= Date.now()) { alert('يجب أن يكون التاريخ في المستقبل'); return; }
+    try {
+      await axios.post(
+        `/super/tenants/${t.id}/reschedule-delete`,
+        { purge_at: newDate.toISOString() },
+        auth(),
+      );
+      setRescheduling(null);
+      await load();
+      alert('تم تغيير موعد الحذف بنجاح.');
+    } catch (e) { alert(e?.response?.data?.detail || 'فشل تغيير الموعد'); }
   };
 
   const finalizeDelete = async (t, slugConfirm, force) => {
@@ -812,7 +888,10 @@ export default function SuperTenants() {
                           )}
                         </td>
                         <td style={{ padding: '8px 10px' }}>
-                          <button style={sx.btnEdit} onClick={() => cancelDelete(t)}>إلغاء الحذف</button>
+                          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                            <button style={sx.btnEdit} onClick={() => setRescheduling(t)}>تغيير الموعد</button>
+                            <button style={sx.btnEdit} onClick={() => cancelDelete(t)}>إلغاء الحذف</button>
+                          </div>
                         </td>
                       </tr>
                     );
@@ -991,6 +1070,13 @@ export default function SuperTenants() {
         />
       )}
       {renewing && <RenewModal tenant={renewing} onSubmit={(d) => renew(renewing.id, d)} onCancel={() => setRenewing(null)} />}
+      {rescheduling && (
+        <RescheduleDeleteModal
+          tenant={rescheduling}
+          onCancel={() => setRescheduling(null)}
+          onSubmit={(dateStr) => submitReschedule(rescheduling, dateStr)}
+        />
+      )}
 
       {seedInfo && (
         <div style={sx.modalBg} onClick={() => setSeedInfo(null)}>
