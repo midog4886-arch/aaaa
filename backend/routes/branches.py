@@ -86,6 +86,18 @@ async def create_branch(branch: BranchCreate, current_user: dict = Depends(get_c
     # Assign exclusive sequence blocks for this new branch
     await assign_seq_starts_for_new_branch(branch_id)
     cache_invalidate("branches:")
+    try:
+        from utils.audit import log_audit
+        await log_audit(
+            actor=current_user,
+            action="branch.create",
+            entity_type="branch",
+            entity_id=branch_id,
+            entity_name=branch_doc.get("name_ar") or branch_doc.get("name", ""),
+            after={k: v for k, v in branch_doc.items() if k != "_id"},
+        )
+    except Exception:
+        pass
     return {k: v for k, v in branch_doc.items() if k != "_id"}
 
 
@@ -121,8 +133,21 @@ async def delete_branch(branch_id: str, current_user: dict = Depends(get_current
     if not current_user.get("is_admin", False):
         raise HTTPException(status_code=403, detail="Admin access required")
     
+    before = await db.branches.find_one({"id": branch_id}, {"_id": 0})
     result = await db.branches.delete_one({"id": branch_id})
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Branch not found")
     cache_invalidate("branches:")
+    try:
+        from utils.audit import log_audit
+        await log_audit(
+            actor=current_user,
+            action="branch.delete",
+            entity_type="branch",
+            entity_id=branch_id,
+            entity_name=(before or {}).get("name_ar") or (before or {}).get("name", ""),
+            before=before,
+        )
+    except Exception:
+        pass
     return {"message": "Branch deleted"}

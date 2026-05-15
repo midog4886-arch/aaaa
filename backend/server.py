@@ -3794,7 +3794,8 @@ async def restore_backup(filename: str, token: Optional[str] = None):
     if not token:
         raise HTTPException(status_code=401, detail="Not authenticated")
     try:
-        _enforce_tenant_match_local(jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM]))
+        actor_payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+        _enforce_tenant_match_local(actor_payload)
     except:
         raise HTTPException(status_code=401, detail="Invalid token")
 
@@ -3814,6 +3815,24 @@ async def restore_backup(filename: str, token: Optional[str] = None):
         if documents:
             await collection.insert_many(documents)
         restored[col_name] = len(documents)
+
+    try:
+        from utils.audit import log_audit
+        await log_audit(
+            actor=actor_payload,
+            action="backup.restore",
+            entity_type="backup",
+            entity_id=filename,
+            entity_name=filename,
+            after={
+                "filename": filename,
+                "total_collections": len(restored),
+                "backup_timestamp": backup_data.get("timestamp", ""),
+                "restored_collections": restored,
+            },
+        )
+    except Exception:
+        pass
 
     return {
         "success": True,
