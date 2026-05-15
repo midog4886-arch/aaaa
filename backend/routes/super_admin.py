@@ -411,79 +411,122 @@ async def update_tenant(tenant_id: str, payload: TenantUpdate, _=Depends(_requir
     return refreshed
 
 
-@router.post("/tenants/{tenant_id}/renew")
-async def renew_tenant(tenant_id: str, payload: TenantRenew, _=Depends(_require_super)):
-    existing = await control_db.tenants.find_one({"id": tenant_id}, {"_id": 0})
-    if not existing:
-        raise HTTPException(status_code=404, detail="Tenant not found")
-    months = int(payload.months or 0)
-    days = int(payload.days or 0)
+async def apply_renewal(
+    *,
+    tenant: dict,
+    months: int = 0,
+    days: int = 0,
+    extend_from: str = "current_end",
+    amount: Optional[float] = None,
+    currency: str = "SAR",
+    method: str = "manual",
+    provider_ref: str = "",
+    note: str = "",
+) -> dict:
+    """Extend a tenant's subscription, log a paid renewal, and email the owner.
+
+    Shared by the manual super-admin endpoint (``POST /super/tenants/{id}/renew``)
+    and the payment-provider webhook (``POST /api/billing/webhook/{provider}``)
+    so both code paths produce identical state and notifications.
+
+    Returns ``{"tenant", "renewal", "email"}``. Raises ``ValueError`` for
+    invalid inputs (the caller maps these to HTTP 400).
+    """
+    if not tenant or not tenant.get("id"):
+        raise ValueError("tenant with id is required")
+    months = int(months or 0)
+    days = int(days or 0)
     if months < 0 or days < 0:
-        raise HTTPException(status_code=400, detail="months/days must be non-negative")
+        raise ValueError("months/days must be non-negative")
     if months <= 0 and days <= 0:
-        raise HTTPException(status_code=400, detail="Provide months or days to extend")
+        raise ValueError("Provide months or days to extend")
     if months > MAX_RENEWAL_MONTHS or days > MAX_RENEWAL_DAYS:
-        raise HTTPException(status_code=400, detail=f"Renewal too large (max {MAX_RENEWAL_MONTHS} months / {MAX_RENEWAL_DAYS} days)")
+        raise ValueError(f"Renewal too large (max {MAX_RENEWAL_MONTHS} months / {MAX_RENEWAL_DAYS} days)")
     add_days = months * 30 + days
     now = datetime.now(timezone.utc)
     base = now
-    if (payload.extend_from or "current_end") == "current_end":
-        cur_end = _parse_iso(existing.get("subscription_end_at"))
+    if (extend_from or "current_end") == "current_end":
+        cur_end = _parse_iso(tenant.get("subscription_end_at"))
         if cur_end and cur_end > now:
             base = cur_end
     new_end = base + timedelta(days=add_days)
-    amount_val = float(payload.amount) if payload.amount is not None else None
-    currency_val = (payload.currency or "SAR").upper()
-    method_val = (payload.method or "manual").lower()
+    amount_val = float(amount) if amount is not None else None
+    currency_val = (currency or "SAR").upper()
+    method_val = (method or "manual").lower()
     history_entry = {
+        "id": f"renew-{uuid.uuid4()}",
         "renewed_at": now.isoformat(),
-        "previous_end": existing.get("subscription_end_at"),
+        "previous_end": tenant.get("subscription_end_at"),
         "new_end": new_end.isoformat(),
         "months": months,
         "days": days,
-        "note": (payload.note or "").strip(),
+        "note": (note or "").strip()[:500],
         "status": "paid",
         "amount": amount_val,
         "currency": currency_val,
         "method": method_val,
+        "provider_ref": (provider_ref or "").strip()[:200],
     }
     set_ops = {
         "subscription_end_at": new_end.isoformat(),
         "last_renewed_at": now.isoformat(),
     }
-    if existing.get("status") in ("suspended",) and existing.get("suspended_reason") == "expired":
+    if tenant.get("status") == "suspended" and tenant.get("suspended_reason") == "expired":
         set_ops["status"] = "active"
         set_ops["suspended_at"] = None
         set_ops["suspended_reason"] = None
     await control_db.tenants.update_one(
-        {"id": tenant_id},
+        {"id": tenant["id"]},
         {"$set": set_ops,
          "$push": {"renewal_history": history_entry},
          "$unset": {"trial_emails_sent": ""}},
     )
-    refreshed = await control_db.tenants.find_one({"id": tenant_id}, {"_id": 0})
+    refreshed = await control_db.tenants.find_one({"id": tenant["id"]}, {"_id": 0}) or tenant
 
+    email_result = {"status": "skipped", "error": "no owner_email"}
     try:
         owner_email = ((refreshed or {}).get("billing_email") or "").strip() \
             or ((refreshed or {}).get("owner_email") or "").strip()
         if owner_email:
-            await send_email(
+            email_result = await send_email(
                 kind="payment_success",
                 to=owner_email,
-                tenant_slug=refreshed.get("slug"),
+                tenant_slug=(refreshed or {}).get("slug"),
                 ctx={
-                    "academy_name": refreshed.get("name", ""),
+                    "academy_name": (refreshed or {}).get("name", ""),
                     "amount": amount_val if amount_val is not None else "—",
                     "currency": currency_val,
-                    "subscription_end_at": refreshed.get("subscription_end_at", ""),
+                    "subscription_end_at": (refreshed or {}).get("subscription_end_at", ""),
                     "months": months,
                     "days": days,
                 },
             )
-    except Exception:
+    except Exception as e:
         logger.exception("payment_success email failed for %s", (refreshed or {}).get("slug"))
+        email_result = {"status": "failed", "error": str(e)}
 
-    return {"tenant": refreshed, "renewal": history_entry}
+    return {"tenant": refreshed, "renewal": history_entry, "email": email_result}
+
+
+@router.post("/tenants/{tenant_id}/renew")
+async def renew_tenant(tenant_id: str, payload: TenantRenew, _=Depends(_require_super)):
+    existing = await control_db.tenants.find_one({"id": tenant_id}, {"_id": 0})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Tenant not found")
+    try:
+        result = await apply_renewal(
+            tenant=existing,
+            months=int(payload.months or 0),
+            days=int(payload.days or 0),
+            extend_from=payload.extend_from or "current_end",
+            amount=payload.amount,
+            currency=payload.currency or "SAR",
+            method=payload.method or "manual",
+            note=payload.note or "",
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return {"tenant": result["tenant"], "renewal": result["renewal"]}
 
 
 @router.post("/tenants/{tenant_id}/payment-failure")

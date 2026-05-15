@@ -25,6 +25,7 @@ from utils.email_service import send_email
 from utils.payment_service import (
     get_payment_settings,
     parse_failure_event,
+    parse_success_event,
     verify_signature,
 )
 from control_db import control_db
@@ -135,30 +136,65 @@ async def payment_webhook(provider: str, request: Request):
         raise HTTPException(status_code=400, detail="invalid json body")
 
     failure = parse_failure_event(cfg_provider, payload)
-    if not failure:
-        # Non-failure events (e.g. payment_succeeded) are accepted but ignored
-        # here; success-side handling is owned by ``renew_tenant``.
-        return {"status": "ignored", "reason": "not a failure event"}
+    if failure:
+        tenant = await _resolve_tenant(failure.get("tenant_id"), failure.get("tenant_slug"))
+        if not tenant:
+            logger.warning("payment webhook: tenant not found for ref=%s", failure.get("provider_ref"))
+            raise HTTPException(status_code=404, detail="tenant not found in event metadata")
+        result = await apply_payment_failure(
+            tenant=tenant,
+            reason=failure["reason"],
+            amount=failure.get("amount"),
+            currency=failure.get("currency") or "SAR",
+            provider=cfg_provider,
+            provider_ref=failure.get("provider_ref") or "",
+        )
+        return {
+            "status": "recorded",
+            "tenant_slug": (result.get("tenant") or {}).get("slug"),
+            "failure_id": (result.get("failure") or {}).get("id"),
+            "email": result.get("email"),
+        }
 
-    tenant = await _resolve_tenant(failure.get("tenant_id"), failure.get("tenant_slug"))
-    if not tenant:
-        logger.warning("payment webhook: tenant not found for ref=%s", failure.get("provider_ref"))
-        raise HTTPException(status_code=404, detail="tenant not found in event metadata")
+    success = parse_success_event(cfg_provider, payload)
+    if success:
+        tenant = await _resolve_tenant(success.get("tenant_id"), success.get("tenant_slug"))
+        if not tenant:
+            logger.warning("payment webhook: tenant not found for ref=%s", success.get("provider_ref"))
+            raise HTTPException(status_code=404, detail="tenant not found in event metadata")
+        months = success.get("months") or 0
+        days = success.get("days") or 0
+        if not months and not days:
+            cycle = (success.get("cycle") or tenant.get("billing_cycle") or "monthly").lower()
+            if cycle == "yearly":
+                months = 12
+            elif cycle == "quarterly":
+                months = 3
+            else:
+                months = 1
+        from routes.super_admin import apply_renewal
+        try:
+            result = await apply_renewal(
+                tenant=tenant,
+                months=int(months or 0),
+                days=int(days or 0),
+                amount=success.get("amount"),
+                currency=success.get("currency") or "SAR",
+                method=cfg_provider,
+                provider_ref=success.get("provider_ref") or "",
+                note="auto-renewed via payment webhook",
+            )
+        except ValueError as e:
+            logger.error("payment webhook renewal rejected: %s", e)
+            raise HTTPException(status_code=400, detail=str(e))
+        return {
+            "status": "renewed",
+            "tenant_slug": (result.get("tenant") or {}).get("slug"),
+            "renewal_id": (result.get("renewal") or {}).get("id"),
+            "email": result.get("email"),
+        }
 
-    result = await apply_payment_failure(
-        tenant=tenant,
-        reason=failure["reason"],
-        amount=failure.get("amount"),
-        currency=failure.get("currency") or "SAR",
-        provider=cfg_provider,
-        provider_ref=failure.get("provider_ref") or "",
-    )
-    return {
-        "status": "recorded",
-        "tenant_slug": (result.get("tenant") or {}).get("slug"),
-        "failure_id": (result.get("failure") or {}).get("id"),
-        "email": result.get("email"),
-    }
+    return {"status": "ignored", "reason": "unrecognized event"}
 
 
 def _build_invoices(tenant: dict, plans: list) -> list:

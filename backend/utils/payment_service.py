@@ -263,3 +263,134 @@ def parse_failure_event(provider: str, payload: Dict) -> Optional[Dict]:
     if provider == "tap":
         return _parse_tap(payload)
     return None
+
+
+# ── Success-event normalization ─────────────────────────────────────────
+
+_STRIPE_SUCCESS_TYPES = {
+    "invoice.payment_succeeded",
+    "payment_intent.succeeded",
+    "charge.succeeded",
+}
+_MOYASAR_SUCCESS_TYPES = {"payment_paid", "payment.paid", "payment_succeeded"}
+_TAP_SUCCESS_STATUSES = {"CAPTURED", "PAID", "AUTHORIZED"}
+
+
+def _meta_period(meta: Dict) -> Tuple[Optional[int], Optional[int], Optional[str]]:
+    if not isinstance(meta, dict):
+        return None, None, None
+    raw_months = meta.get("months") if meta.get("months") is not None else meta.get("renewal_months")
+    raw_days = meta.get("days") if meta.get("days") is not None else meta.get("renewal_days")
+    cycle = (meta.get("cycle") or meta.get("billing_cycle") or "").strip().lower() or None
+    try:
+        months = int(raw_months) if raw_months is not None else None
+    except (TypeError, ValueError):
+        months = None
+    try:
+        days = int(raw_days) if raw_days is not None else None
+    except (TypeError, ValueError):
+        days = None
+    return months, days, cycle
+
+
+def _parse_stripe_success(payload: Dict) -> Optional[Dict]:
+    evt_type = (payload.get("type") or "").strip()
+    if evt_type not in _STRIPE_SUCCESS_TYPES:
+        return None
+    obj = ((payload.get("data") or {}).get("object")) or {}
+    meta = obj.get("metadata") or {}
+    tid, slug = _meta_lookup(meta)
+    raw_amount = (obj.get("amount_paid")
+                  or obj.get("amount_received")
+                  or obj.get("amount") or 0)
+    try:
+        amount = float(raw_amount) / 100.0 if raw_amount else None
+    except (TypeError, ValueError):
+        amount = None
+    currency = (obj.get("currency") or "SAR").upper()
+    provider_ref = obj.get("id") or payload.get("id") or ""
+    months, days, cycle = _meta_period(meta)
+    return {
+        "tenant_id": tid,
+        "tenant_slug": slug,
+        "amount": amount,
+        "currency": currency,
+        "provider_ref": str(provider_ref)[:200],
+        "months": months,
+        "days": days,
+        "cycle": cycle,
+    }
+
+
+def _parse_moyasar_success(payload: Dict) -> Optional[Dict]:
+    evt_type = (payload.get("type") or payload.get("event") or "").strip().lower()
+    data = payload.get("data") or payload
+    status = (data.get("status") or "").lower()
+    is_success = evt_type in _MOYASAR_SUCCESS_TYPES or status == "paid"
+    if not is_success:
+        return None
+    meta = data.get("metadata") or payload.get("metadata") or {}
+    tid, slug = _meta_lookup(meta)
+    raw_amount = data.get("amount") or 0
+    try:
+        amount = float(raw_amount) / 100.0 if raw_amount else None
+    except (TypeError, ValueError):
+        amount = None
+    currency = (data.get("currency") or "SAR").upper()
+    provider_ref = data.get("id") or payload.get("id") or ""
+    months, days, cycle = _meta_period(meta)
+    return {
+        "tenant_id": tid,
+        "tenant_slug": slug,
+        "amount": amount,
+        "currency": currency,
+        "provider_ref": str(provider_ref)[:200],
+        "months": months,
+        "days": days,
+        "cycle": cycle,
+    }
+
+
+def _parse_tap_success(payload: Dict) -> Optional[Dict]:
+    status = (payload.get("status") or "").upper()
+    if status not in _TAP_SUCCESS_STATUSES:
+        return None
+    meta = payload.get("metadata") or {}
+    tid, slug = _meta_lookup(meta)
+    raw_amount = payload.get("amount")
+    try:
+        amount = float(raw_amount) if raw_amount is not None else None
+    except (TypeError, ValueError):
+        amount = None
+    currency = (payload.get("currency") or "SAR").upper()
+    provider_ref = payload.get("id") or ""
+    months, days, cycle = _meta_period(meta)
+    return {
+        "tenant_id": tid,
+        "tenant_slug": slug,
+        "amount": amount,
+        "currency": currency,
+        "provider_ref": str(provider_ref)[:200],
+        "months": months,
+        "days": days,
+        "cycle": cycle,
+    }
+
+
+def parse_success_event(provider: str, payload: Dict) -> Optional[Dict]:
+    """Return a normalized success dict, or ``None`` if not a success event.
+
+    Shape mirrors :func:`parse_failure_event` and adds optional
+    ``months``/``days``/``cycle`` extracted from the event ``metadata`` so the
+    webhook can drive the same renewal flow as the manual super-admin endpoint.
+    """
+    provider = (provider or "").lower()
+    if not isinstance(payload, dict):
+        return None
+    if provider == "stripe":
+        return _parse_stripe_success(payload)
+    if provider == "moyasar":
+        return _parse_moyasar_success(payload)
+    if provider == "tap":
+        return _parse_tap_success(payload)
+    return None

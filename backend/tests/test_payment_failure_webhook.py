@@ -118,6 +118,45 @@ class TestPureHelpers:
         assert out["amount"] == 500.0
         assert out["reason"] == "insufficient funds"
 
+    def test_parse_stripe_success(self):
+        from utils.payment_service import parse_success_event
+        evt = {
+            "type": "invoice.payment_succeeded",
+            "id": "evt_ok",
+            "data": {"object": {
+                "id": "in_ok",
+                "amount_paid": 29900,
+                "currency": "sar",
+                "metadata": {"tenant_id": "tenant-xyz",
+                             "months": "12", "cycle": "yearly"},
+            }},
+        }
+        out = parse_success_event("stripe", evt)
+        assert out is not None
+        assert out["tenant_id"] == "tenant-xyz"
+        assert out["amount"] == 299.0
+        assert out["currency"] == "SAR"
+        assert out["months"] == 12
+        assert out["cycle"] == "yearly"
+        assert out["provider_ref"] == "in_ok"
+
+    def test_parse_stripe_success_ignores_failure(self):
+        from utils.payment_service import parse_success_event
+        evt = {"type": "invoice.payment_failed", "data": {"object": {}}}
+        assert parse_success_event("stripe", evt) is None
+
+    def test_parse_moyasar_success_by_status(self):
+        from utils.payment_service import parse_success_event
+        evt = {
+            "type": "payment.updated",
+            "data": {"id": "p_ok", "amount": 50000, "currency": "SAR",
+                     "status": "paid", "metadata": {"tenant_slug": "acme"}},
+        }
+        out = parse_success_event("moyasar", evt)
+        assert out is not None
+        assert out["tenant_slug"] == "acme"
+        assert out["amount"] == 500.0
+
 
 # ── 2. Webhook end-to-end with mocked control_db + send_email ───────────
 
@@ -175,6 +214,10 @@ def webhook_client(monkeypatch):
     # Patch the symbol in every module that already imported it.
     monkeypatch.setattr("routes.billing.control_db", fake_control_db, raising=True)
     monkeypatch.setattr("utils.payment_service.control_db", fake_control_db, raising=True)
+    # The success-event branch in the webhook calls into super_admin's
+    # apply_renewal, which uses its own bound control_db / send_email refs.
+    import routes.super_admin as _super_admin  # noqa: F401 — ensures import
+    monkeypatch.setattr("routes.super_admin.control_db", fake_control_db, raising=True)
 
     email_calls = []
 
@@ -183,6 +226,7 @@ def webhook_client(monkeypatch):
         return {"status": "sent", "id": "msg_test_1"}
 
     monkeypatch.setattr("routes.billing.send_email", fake_send_email, raising=True)
+    monkeypatch.setattr("routes.super_admin.send_email", fake_send_email, raising=True)
 
     from routes.billing import router as billing_router
     app = FastAPI()
@@ -287,10 +331,74 @@ def test_webhook_records_failure_and_sends_email(webhook_client):
     assert call["ctx"]["currency"] == "SAR"
 
 
-def test_webhook_ignores_non_failure_event(webhook_client):
+def test_webhook_renews_and_emails_on_success_event(webhook_client):
+    """A signed Stripe success event auto-renews and emails ``payment_success``."""
     client, state, email_calls = webhook_client
-    payload = {"type": "invoice.payment_succeeded",
-               "data": {"object": {"id": "in_ok", "metadata": {"tenant_id": "tenant-xyz"}}}}
+    payload = {
+        "type": "invoice.payment_succeeded",
+        "id": "evt_ok",
+        "data": {"object": {
+            "id": "in_ok",
+            "amount_paid": 29900,
+            "currency": "sar",
+            "metadata": {"tenant_id": "tenant-xyz",
+                         "months": "12", "cycle": "yearly"},
+        }},
+    }
+    body = json.dumps(payload).encode("utf-8")
+    sig = _stripe_signature(body, WEBHOOK_SECRET)
+    r = client.post("/api/billing/webhook/stripe", content=body,
+                    headers={"Stripe-Signature": sig, "Content-Type": "application/json"})
+    assert r.status_code == 200, r.text
+    data = r.json()
+    assert data["status"] == "renewed"
+    assert data["tenant_slug"] == "acme"
+    assert data["renewal_id"].startswith("renew-")
+    assert data["email"]["status"] == "sent"
+
+    history = state["tenant"]["renewal_history"]
+    assert len(history) == 1
+    assert history[0]["status"] == "paid"
+    assert history[0]["method"] == "stripe"
+    assert history[0]["amount"] == 299.0
+    assert history[0]["months"] == 12
+    assert history[0]["provider_ref"] == "in_ok"
+    assert "subscription_end_at" in state["tenant"]
+
+    assert len(email_calls) == 1
+    call = email_calls[0]
+    assert call["kind"] == "payment_success"
+    assert call["to"] == "owner@acme.example"
+    assert call["ctx"]["currency"] == "SAR"
+
+
+def test_webhook_renews_using_tenant_cycle_when_metadata_missing(webhook_client):
+    """When the event omits months/cycle, fall back to tenant.billing_cycle."""
+    client, state, email_calls = webhook_client
+    state["tenant"]["billing_cycle"] = "quarterly"
+    payload = {
+        "type": "invoice.payment_succeeded",
+        "data": {"object": {
+            "id": "in_q",
+            "amount_paid": 89700,
+            "currency": "sar",
+            "metadata": {"tenant_id": "tenant-xyz"},
+        }},
+    }
+    body = json.dumps(payload).encode("utf-8")
+    sig = _stripe_signature(body, WEBHOOK_SECRET)
+    r = client.post("/api/billing/webhook/stripe", content=body,
+                    headers={"Stripe-Signature": sig, "Content-Type": "application/json"})
+    assert r.status_code == 200, r.text
+    assert r.json()["status"] == "renewed"
+    assert state["tenant"]["renewal_history"][0]["months"] == 3
+
+
+def test_webhook_ignores_unrecognized_event(webhook_client):
+    """Events that match neither failure nor success are accepted but ignored."""
+    client, state, email_calls = webhook_client
+    payload = {"type": "customer.created",
+               "data": {"object": {"id": "cus_x", "metadata": {"tenant_id": "tenant-xyz"}}}}
     body = json.dumps(payload).encode("utf-8")
     sig = _stripe_signature(body, WEBHOOK_SECRET)
     r = client.post("/api/billing/webhook/stripe", content=body,
