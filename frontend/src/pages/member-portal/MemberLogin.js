@@ -8,12 +8,21 @@ import { Phone, LogIn, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import axios from 'axios';
 import API_URL from '../../config/api';
+import { getAcademyLogoUrl, getPrimaryColor, loadBranding } from '../../services/branding';
 
-// Academy Logo URL
-const ACADEMY_LOGO = "/logo-new.png";
+// Default member-portal logo if no tenant branding logo is set
+const DEFAULT_LOGO = "/logo-new.png";
+
+const resolveAcademyLogo = () => {
+  const url = getAcademyLogoUrl();
+  // branding service returns '/images/academy-logo.png' as global fallback;
+  // prefer the member-portal default in that case so existing visuals stay.
+  if (!url || url === '/images/academy-logo.png') return DEFAULT_LOGO;
+  return url;
+};
 
 // Splash Screen Component
-const SplashScreen = ({ onComplete }) => {
+const SplashScreen = ({ onComplete, logo }) => {
   useEffect(() => {
     const timer = setTimeout(onComplete, 2500);
     return () => clearTimeout(timer);
@@ -80,8 +89,8 @@ const SplashScreen = ({ onComplete }) => {
             transition={{ duration: 2, repeat: Infinity }}
           >
             <img 
-              src={ACADEMY_LOGO} 
-              alt="Global Champions" 
+              src={logo} 
+              alt="Academy logo" 
               className="w-full h-full object-contain"
             />
           </motion.div>
@@ -135,6 +144,8 @@ const MemberLogin = () => {
   const [loading, setLoading] = useState(false);
   const [showSplash, setShowSplash] = useState(true);
   const [formVisible, setFormVisible] = useState(false);
+  const [logo, setLogo] = useState(resolveAcademyLogo());
+  const [primary, setPrimary] = useState(getPrimaryColor());
 
   useEffect(() => {
     // Check if already logged in
@@ -143,6 +154,25 @@ const MemberLogin = () => {
       navigate('/member-dashboard');
     }
   }, [navigate]);
+
+  // Pull tenant branding (logo + primary color) and react to updates
+  useEffect(() => {
+    let cancelled = false;
+    loadBranding().then(() => {
+      if (cancelled) return;
+      setLogo(resolveAcademyLogo());
+      setPrimary(getPrimaryColor());
+    }).catch(() => {});
+    const onUpdate = () => {
+      setLogo(resolveAcademyLogo());
+      setPrimary(getPrimaryColor());
+    };
+    window.addEventListener('branding:updated', onUpdate);
+    return () => {
+      cancelled = true;
+      window.removeEventListener('branding:updated', onUpdate);
+    };
+  }, []);
 
   const handleSplashComplete = () => {
     setShowSplash(false);
@@ -217,7 +247,7 @@ const MemberLogin = () => {
 
       {/* Splash Screen */}
       <AnimatePresence>
-        {showSplash && <SplashScreen onComplete={handleSplashComplete} />}
+        {showSplash && <SplashScreen onComplete={handleSplashComplete} logo={logo} />}
       </AnimatePresence>
 
       {/* Login Form */}
@@ -249,8 +279,8 @@ const MemberLogin = () => {
                   >
                     <div className="w-28 h-28 bg-white rounded-2xl flex items-center justify-center shadow-xl p-2 overflow-hidden">
                       <img 
-                        src={ACADEMY_LOGO} 
-                        alt="Global Champions" 
+                        src={logo} 
+                        alt="Academy logo" 
                         className="w-full h-full object-contain"
                       />
                     </div>
@@ -299,7 +329,8 @@ const MemberLogin = () => {
                     >
                       <Button 
                         type="submit" 
-                        className="w-full h-14 text-lg bg-gradient-to-r from-amber-500 to-yellow-600 hover:from-amber-400 hover:to-yellow-500 text-gray-900 font-bold gap-2 shadow-lg shadow-amber-500/30 transition-all hover:shadow-xl hover:shadow-amber-500/40"
+                        className={`w-full h-14 text-lg font-bold gap-2 shadow-lg transition-all hover:shadow-xl ${primary ? 'text-white' : 'bg-gradient-to-r from-amber-500 to-yellow-600 hover:from-amber-400 hover:to-yellow-500 text-gray-900 shadow-amber-500/30 hover:shadow-amber-500/40'}`}
+                        style={primary ? { background: primary, color: 'hsl(var(--primary-foreground))' } : undefined}
                         disabled={loading}
                         data-testid="member-login-btn"
                       >

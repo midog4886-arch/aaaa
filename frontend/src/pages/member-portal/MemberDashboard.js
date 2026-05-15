@@ -8,6 +8,7 @@ import {
 import { toast } from 'sonner';
 import { motion } from 'framer-motion';
 import MemberLayout, { memberAPI, getMemberData, getDarkMode, getLanguage } from './MemberLayout';
+import { getPrimaryColor } from '../../services/branding';
 import { HeroBannerAds, InlineAds, PopupAd } from './MemberAds';
 import PullToRefresh from '../../components/PullToRefresh';
 import TrainingReminder from '../../components/TrainingReminder';
@@ -346,6 +347,13 @@ const MemberDashboard = () => {
   const darkMode = getDarkMode();
   const language = getLanguage();
   const today = new Date().toISOString().slice(0, 10);
+  const [primary, setPrimary] = useState(getPrimaryColor());
+
+  useEffect(() => {
+    const onUpdate = () => setPrimary(getPrimaryColor());
+    window.addEventListener('branding:updated', onUpdate);
+    return () => window.removeEventListener('branding:updated', onUpdate);
+  }, []);
 
   useEffect(() => { fetchData(); }, []);
 
@@ -459,8 +467,11 @@ const MemberDashboard = () => {
                     />
                   ) : null}
                   <div
-                    className="w-14 h-14 sm:w-16 sm:h-16 bg-gradient-to-br from-amber-400 to-yellow-600 rounded-full items-center justify-center flex-shrink-0 shadow-lg shadow-amber-500/30"
-                    style={{ display: member?.photo ? 'none' : 'flex' }}
+                    className={`w-14 h-14 sm:w-16 sm:h-16 rounded-full items-center justify-center flex-shrink-0 shadow-lg ${primary ? '' : 'bg-gradient-to-br from-amber-400 to-yellow-600 shadow-amber-500/30'}`}
+                    style={{
+                      display: member?.photo ? 'none' : 'flex',
+                      ...(primary ? { background: primary } : {}),
+                    }}
                   >
                     <span className="text-gray-900 font-black text-xl sm:text-2xl leading-none">
                       {getInitials(member?.name_ar || member?.name)}

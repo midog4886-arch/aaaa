@@ -9,6 +9,15 @@ import { Button } from '../../components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../../components/ui/dialog';
 import axios from 'axios';
 import API_URL from '../../config/api';
+import { getAcademyLogoUrl, getPrimaryColor } from '../../services/branding';
+
+// Default member-portal logo (used when tenant has not uploaded a custom logo).
+const MEMBER_PORTAL_DEFAULT_LOGO = '/logo-new.png';
+const _resolveAcademyLogo = () => {
+  const url = getAcademyLogoUrl();
+  if (!url || url === '/images/academy-logo.png') return MEMBER_PORTAL_DEFAULT_LOGO;
+  return url;
+};
 
 // Language helper
 export const getLanguage = () => localStorage.getItem('member_language') || 'ar';
@@ -74,6 +83,18 @@ const MemberLayout = ({ children }) => {
   const [tournamentsCount, setTournamentsCount] = useState(0);
   const [darkMode, setDarkModeState] = useState(getDarkMode());
   const [language, setLanguageState] = useState(getLanguage());
+  const [tenantLogo, setTenantLogo] = useState(_resolveAcademyLogo());
+  const [primary, setPrimary] = useState(getPrimaryColor());
+
+  // React to tenant branding updates (logo + colors loaded from /api/tenant/branding)
+  useEffect(() => {
+    const onUpdate = () => {
+      setTenantLogo(_resolveAcademyLogo());
+      setPrimary(getPrimaryColor());
+    };
+    window.addEventListener('branding:updated', onUpdate);
+    return () => window.removeEventListener('branding:updated', onUpdate);
+  }, []);
   
   // PWA Install states
   const [installPrompt, setInstallPrompt] = useState(null);
@@ -353,13 +374,27 @@ const MemberLayout = ({ children }) => {
   return (
     <div className={`min-h-screen transition-colors duration-300 ${darkMode ? 'bg-gray-900' : 'bg-stone-50'}`} dir={language === 'ar' ? 'rtl' : 'ltr'}>
       {/* Header */}
-      <header className={`${darkMode ? 'bg-gray-800' : 'bg-gradient-to-r from-gray-950 via-gray-900 to-gray-950'} text-white sticky top-0 z-50 shadow-lg safe-area-top`}>
+      <header
+        className={`${darkMode ? 'bg-gray-800' : (primary ? '' : 'bg-gradient-to-r from-gray-950 via-gray-900 to-gray-950')} text-white sticky top-0 z-50 shadow-lg safe-area-top`}
+        style={!darkMode && primary ? { background: `linear-gradient(to right, ${primary}, ${primary}dd, ${primary})` } : undefined}
+      >
         <div className="max-w-7xl mx-auto px-4">
           <div className="flex items-center justify-between h-14 sm:h-16">
             {/* Logo */}
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-gradient-to-br from-amber-500 to-yellow-600 rounded-full flex items-center justify-center">
-                <Trophy className="w-5 h-5 text-gray-900" />
+              <div className="w-10 h-10 rounded-full flex items-center justify-center overflow-hidden bg-white shadow">
+                <img
+                  src={tenantLogo}
+                  alt="Academy logo"
+                  className="w-full h-full object-contain"
+                  onError={(e) => { e.currentTarget.style.display = 'none'; if (e.currentTarget.nextSibling) e.currentTarget.nextSibling.style.display = 'flex'; }}
+                />
+                <div
+                  className="w-full h-full bg-gradient-to-br from-amber-500 to-yellow-600 items-center justify-center"
+                  style={{ display: 'none' }}
+                >
+                  <Trophy className="w-5 h-5 text-gray-900" />
+                </div>
               </div>
               <div className="hidden sm:block">
                 <p className="font-bold">{getText('memberPortal')}</p>
@@ -540,13 +575,19 @@ const MemberLayout = ({ children }) => {
               >
                 <div className="relative flex flex-col items-center">
                   {isActive && (
-                    <div className="absolute -top-1 w-12 h-1 bg-gradient-to-r from-amber-500 to-yellow-500 rounded-full" />
+                    <div
+                      className={`absolute -top-1 w-12 h-1 rounded-full ${primary ? '' : 'bg-gradient-to-r from-amber-500 to-yellow-500'}`}
+                      style={primary ? { background: primary } : undefined}
+                    />
                   )}
-                  <div className={`relative p-2 rounded-xl transition-colors ${
-                    isActive 
-                      ? 'text-amber-600' 
-                      : darkMode ? 'text-gray-400' : 'text-gray-500'
-                  }`}>
+                  <div
+                    className={`relative p-2 rounded-xl transition-colors ${
+                      isActive
+                        ? (primary ? '' : 'text-amber-600')
+                        : darkMode ? 'text-gray-400' : 'text-gray-500'
+                    }`}
+                    style={isActive && primary ? { color: primary } : undefined}
+                  >
                     <Icon className={`w-6 h-6 ${isActive ? 'stroke-[2.5]' : ''}`} />
                     {item.badge > 0 && (
                       <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white text-xs font-bold rounded-full flex items-center justify-center">
@@ -554,11 +595,14 @@ const MemberLayout = ({ children }) => {
                       </span>
                     )}
                   </div>
-                  <span className={`text-[10px] mt-0.5 font-medium ${
-                    isActive 
-                      ? 'text-amber-600' 
-                      : darkMode ? 'text-gray-400' : 'text-gray-500'
-                  }`}>
+                  <span
+                    className={`text-[10px] mt-0.5 font-medium ${
+                      isActive
+                        ? (primary ? '' : 'text-amber-600')
+                        : darkMode ? 'text-gray-400' : 'text-gray-500'
+                    }`}
+                    style={isActive && primary ? { color: primary } : undefined}
+                  >
                     {item.label}
                   </span>
                 </div>
