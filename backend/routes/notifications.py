@@ -101,11 +101,11 @@ class Notification(BaseModel):
 @router.get("")
 async def get_notifications(
     is_read: Optional[bool] = None,
+    tag: Optional[str] = None,
     limit: int = 50,
     current_user: dict = Depends(get_current_user)
 ):
     """Get notifications for the current user's branch"""
-    # Branch filtering — fail-closed for non-admins without a branch_id
     effective_branch = resolve_branch_filter(current_user, None)
 
     query = {}
@@ -113,6 +113,8 @@ async def get_notifications(
         query["branch_id"] = effective_branch
     if is_read is not None:
         query["is_read"] = is_read
+    if tag:
+        query["tag"] = tag
 
     notifications = await db.notifications.find(query, {"_id": 0}).sort("created_at", -1).to_list(limit)
     return notifications
@@ -132,12 +134,13 @@ async def get_unread_count(current_user: dict = Depends(get_current_user)):
 
 @router.put("/{notification_id}/read")
 async def mark_notification_read(notification_id: str, current_user: dict = Depends(get_current_user)):
-    """Mark a notification as read"""
-    result = await db.notifications.update_one(
-        {"id": notification_id},
-        {"$set": {"is_read": True}}
-    )
-    if result.modified_count == 0:
+    """Mark a notification as read (scoped to the user's branch)"""
+    effective_branch = resolve_branch_filter(current_user, None)
+    query = {"id": notification_id}
+    if effective_branch:
+        query["$or"] = [{"branch_id": effective_branch}, {"branch_id": None}]
+    result = await db.notifications.update_one(query, {"$set": {"is_read": True}})
+    if result.matched_count == 0:
         raise HTTPException(status_code=404, detail="Notification not found")
     return {"message": "Notification marked as read"}
 
@@ -159,8 +162,12 @@ async def mark_all_notifications_read(current_user: dict = Depends(get_current_u
 
 @router.delete("/{notification_id}")
 async def delete_notification(notification_id: str, current_user: dict = Depends(get_current_user)):
-    """Delete a notification"""
-    result = await db.notifications.delete_one({"id": notification_id})
+    """Delete a notification (scoped to the user's branch)"""
+    effective_branch = resolve_branch_filter(current_user, None)
+    query = {"id": notification_id}
+    if effective_branch:
+        query["$or"] = [{"branch_id": effective_branch}, {"branch_id": None}]
+    result = await db.notifications.delete_one(query)
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Notification not found")
     return {"message": "Notification deleted"}
