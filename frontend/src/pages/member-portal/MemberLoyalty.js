@@ -7,6 +7,7 @@ import { Progress } from '../../components/ui/progress';
 import { Textarea } from '../../components/ui/textarea';
 import { Input } from '../../components/ui/input';
 import MemberLayout, { memberAPI, getMemberData, getLanguage, getDarkMode } from './MemberLayout';
+import { getPrimaryColor } from '../../services/branding';
 import { 
   Trophy, Gift, Star, Crown, Medal, Target, Percent, Package,
   Clock, CheckCircle, Copy, Users, TrendingUp, Coins, History, UserPlus
@@ -30,6 +31,12 @@ const MemberLoyalty = () => {
   const member = getMemberData();
   const language = getLanguage();
   const darkMode = getDarkMode();
+  const [primary, setPrimary] = useState(getPrimaryColor());
+  useEffect(() => {
+    const onUpdate = () => setPrimary(getPrimaryColor());
+    window.addEventListener('branding:updated', onUpdate);
+    return () => window.removeEventListener('branding:updated', onUpdate);
+  }, []);
 
   const t = (ar, en) => language === 'ar' ? ar : en;
 
@@ -252,9 +259,14 @@ const MemberLoyalty = () => {
                       onClick={() => canRedeem && (setSelectedReward(reward), setRedeemDialogOpen(true))}
                     >
                       <div className="flex items-start gap-3">
-                        <div className={`w-12 h-12 rounded-lg flex items-center justify-center ${
-                          canRedeem ? 'bg-gradient-to-br from-yellow-400 to-orange-500' : darkMode ? 'bg-gray-600' : 'bg-gray-300'
-                        }`}>
+                        <div
+                          className={`w-12 h-12 rounded-lg flex items-center justify-center ${
+                            canRedeem
+                              ? (primary ? '' : 'bg-gradient-to-br from-yellow-400 to-orange-500')
+                              : darkMode ? 'bg-gray-600' : 'bg-gray-300'
+                          }`}
+                          style={canRedeem && primary ? { backgroundColor: primary } : undefined}
+                        >
                           {getRewardIcon(reward.reward_type)}
                         </div>
                         <div className="flex-1">
@@ -276,7 +288,8 @@ const MemberLoyalty = () => {
                           </div>
                           {canRedeem && (
                             <Button 
-                              className="w-full mt-3 bg-gradient-to-r from-yellow-500 to-orange-500 hover:from-yellow-600 hover:to-orange-600"
+                              className={`w-full mt-3 text-white ${primary ? 'hover:opacity-90' : 'bg-gradient-to-r from-yellow-500 to-orange-500 hover:from-yellow-600 hover:to-orange-600'}`}
+                              style={primary ? { backgroundColor: primary } : undefined}
                               onClick={(e) => {
                                 e.stopPropagation();
                                 setSelectedReward(reward);

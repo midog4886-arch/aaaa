@@ -71,7 +71,7 @@ const buildMonthGrid = (year, month, attendedDates) => {
 
 // ── Streak Calendar Component ─────────────────────────────────────────────────
 
-const StreakCalendar = ({ dates, year, month, monthName, darkMode, language }) => {
+const StreakCalendar = ({ dates, year, month, monthName, darkMode, language, primary }) => {
   const cells = buildMonthGrid(year, month, dates || []);
   const weeks = [];
   for (let i = 0; i < cells.length; i += 7) weeks.push(cells.slice(i, i + 7));
@@ -100,13 +100,19 @@ const StreakCalendar = ({ dates, year, month, monthName, darkMode, language }) =
             <div key={wi} className="grid grid-cols-7 gap-1">
               {week.map((cell, di) => {
                 if (!cell) return <div key={di} />;
-                let bg, textColor;
+                let bg, textColor, inlineStyle;
                 if (cell.isAttended) {
                   bg = 'bg-green-500 shadow-sm shadow-green-500/40';
                   textColor = 'text-white font-bold';
                 } else if (cell.isToday) {
-                  bg = darkMode ? 'bg-amber-500/30 border border-amber-500' : 'bg-amber-100 border border-amber-400';
-                  textColor = 'text-amber-600 font-bold';
+                  if (primary) {
+                    bg = 'border';
+                    textColor = 'font-bold';
+                    inlineStyle = { backgroundColor: `${primary}33`, borderColor: primary, color: primary };
+                  } else {
+                    bg = darkMode ? 'bg-amber-500/30 border border-amber-500' : 'bg-amber-100 border border-amber-400';
+                    textColor = 'text-amber-600 font-bold';
+                  }
                 } else if (cell.isPast) {
                   bg = darkMode ? 'bg-gray-700' : 'bg-gray-100';
                   textColor = darkMode ? 'text-gray-500' : 'text-gray-400';
@@ -118,6 +124,7 @@ const StreakCalendar = ({ dates, year, month, monthName, darkMode, language }) =
                   <div
                     key={di}
                     className={`aspect-square rounded-lg flex items-center justify-center text-xs transition-all ${bg} ${textColor}`}
+                    style={inlineStyle}
                   >
                     {cell.day}
                   </div>
@@ -140,7 +147,10 @@ const StreakCalendar = ({ dates, year, month, monthName, darkMode, language }) =
             </span>
           </div>
           <div className="flex items-center gap-1.5">
-            <div className={`w-3 h-3 rounded border ${darkMode ? 'border-amber-500 bg-amber-500/30' : 'border-amber-400 bg-amber-100'}`} />
+            <div
+              className={`w-3 h-3 rounded border ${primary ? '' : (darkMode ? 'border-amber-500 bg-amber-500/30' : 'border-amber-400 bg-amber-100')}`}
+              style={primary ? { borderColor: primary, backgroundColor: `${primary}33` } : undefined}
+            />
             <span className={`text-[10px] ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
               {language === 'ar' ? 'اليوم' : 'Today'}
             </span>
@@ -705,6 +715,7 @@ const MemberAttendance = () => {
           monthName={stats?.this_month?.month_name || displayMonthName}
           darkMode={darkMode}
           language={language}
+          primary={primary}
         />
 
         {/* ── Activities Breakdown ── */}

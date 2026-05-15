@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import MemberLayout, { memberAPI, getMemberData, getDarkMode, getLanguage } from './MemberLayout';
+import { getPrimaryColor } from '../../services/branding';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -286,6 +287,12 @@ const MemberCard = () => {
   const darkMode = getDarkMode();
   const language = getLanguage();
   const today = new Date().toISOString().slice(0, 10);
+  const [primary, setPrimary] = useState(getPrimaryColor());
+  useEffect(() => {
+    const onUpdate = () => setPrimary(getPrimaryColor());
+    window.addEventListener('branding:updated', onUpdate);
+    return () => window.removeEventListener('branding:updated', onUpdate);
+  }, []);
 
   useEffect(() => { fetchCardData(); }, []);
 
@@ -382,7 +389,7 @@ const MemberCard = () => {
     return (
       <MemberLayout>
         <div className="flex items-center justify-center min-h-[400px]">
-          <Loader2 className="w-8 h-8 animate-spin text-amber-500" />
+          <Loader2 className={`w-8 h-8 animate-spin ${primary ? '' : 'text-amber-500'}`} style={primary ? { color: primary } : undefined} />
         </div>
       </MemberLayout>
     );
@@ -398,8 +405,14 @@ const MemberCard = () => {
 
         {/* ── Linked Members Switcher (siblings sharing this phone) ── */}
         {cards.length > 1 && (
-          <div className={`rounded-2xl p-3 border ${darkMode ? 'bg-gray-800/60 border-gray-700' : 'bg-amber-50 border-amber-200'}`}>
-            <p className={`text-xs font-bold mb-2 ${darkMode ? 'text-amber-400' : 'text-amber-700'}`}>
+          <div
+            className={`rounded-2xl p-3 border ${darkMode ? 'bg-gray-800/60 border-gray-700' : (primary ? '' : 'bg-amber-50 border-amber-200')}`}
+            style={!darkMode && primary ? { backgroundColor: `${primary}1a`, borderColor: `${primary}66` } : undefined}
+          >
+            <p
+              className={`text-xs font-bold mb-2 ${primary ? '' : (darkMode ? 'text-amber-400' : 'text-amber-700')}`}
+              style={primary ? { color: primary } : undefined}
+            >
               👥 {language === 'ar'
                 ? `الأعضاء المرتبطون بنفس الرقم (${cards.length})`
                 : `Linked members on this phone (${cards.length})`}
@@ -413,11 +426,12 @@ const MemberCard = () => {
                     onClick={() => setSelectedCardIdx(idx)}
                     className={`flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-bold border transition-all ${
                       active
-                        ? 'bg-amber-500 text-gray-900 border-amber-500 shadow'
+                        ? (primary ? 'text-gray-900 shadow' : 'bg-amber-500 text-gray-900 border-amber-500 shadow')
                         : darkMode
                           ? 'bg-gray-700 text-gray-200 border-gray-600 hover:bg-gray-600'
                           : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'
                     }`}
+                    style={active && primary ? { backgroundColor: primary, borderColor: primary } : undefined}
                   >
                     {c.photo ? (
                       <img
@@ -427,14 +441,24 @@ const MemberCard = () => {
                           e.currentTarget.style.display = 'none';
                           if (e.currentTarget.nextSibling) e.currentTarget.nextSibling.style.display = 'flex';
                         }}
-                        className="w-7 h-7 rounded-full object-cover border border-amber-300"
+                        className={`w-7 h-7 rounded-full object-cover border ${primary ? '' : 'border-amber-300'}`}
+                        style={primary ? { borderColor: primary } : undefined}
                       />
                     ) : null}
                     <span
                       className={`w-7 h-7 rounded-full items-center justify-center text-xs font-black ${
-                        active ? 'bg-gray-900 text-amber-400' : 'bg-amber-100 text-amber-700'
+                        active
+                          ? (primary ? 'bg-gray-900' : 'bg-gray-900 text-amber-400')
+                          : (primary ? '' : 'bg-amber-100 text-amber-700')
                       }`}
-                      style={{ display: c.photo ? 'none' : 'flex' }}
+                      style={{
+                        display: c.photo ? 'none' : 'flex',
+                        ...(primary
+                          ? (active
+                              ? { color: primary }
+                              : { backgroundColor: `${primary}26`, color: primary })
+                          : {}),
+                      }}
                     >
                       {getInitials(c.name_ar || c.name || '')}
                     </span>
@@ -491,18 +515,30 @@ const MemberCard = () => {
         </Dialog>
 
         {/* ── Profile Header ── */}
-        <div className={`relative rounded-3xl overflow-hidden border shadow-xl ${
-          darkMode
-            ? 'bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 border-amber-500/10'
-            : 'bg-gradient-to-br from-gray-950 via-gray-900 to-gray-950 border-amber-500/10'
-        }`}>
+        <div
+          className={`relative rounded-3xl overflow-hidden border shadow-xl ${
+            darkMode
+              ? 'bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900'
+              : 'bg-gradient-to-br from-gray-950 via-gray-900 to-gray-950'
+          } ${primary ? '' : 'border-amber-500/10'}`}
+          style={primary ? { borderColor: `${primary}1a` } : undefined}
+        >
           {/* Decorative circles */}
-          <div className="absolute top-0 right-0 w-40 h-40 bg-amber-500/10 rounded-full -translate-y-16 translate-x-16" />
-          <div className="absolute bottom-0 left-0 w-32 h-32 bg-orange-500/10 rounded-full translate-y-12 -translate-x-12" />
+          <div
+            className={`absolute top-0 right-0 w-40 h-40 rounded-full -translate-y-16 translate-x-16 ${primary ? '' : 'bg-amber-500/10'}`}
+            style={primary ? { backgroundColor: `${primary}1a` } : undefined}
+          />
+          <div
+            className={`absolute bottom-0 left-0 w-32 h-32 rounded-full translate-y-12 -translate-x-12 ${primary ? '' : 'bg-orange-500/10'}`}
+            style={primary ? { backgroundColor: `${primary}14` } : undefined}
+          />
 
           <div className="relative p-6 pb-5">
             {/* Academy name */}
-            <p className="text-amber-400 text-xs font-bold mb-4 text-center opacity-80">
+            <p
+              className={`text-xs font-bold mb-4 text-center opacity-80 ${primary ? '' : 'text-amber-400'}`}
+              style={primary ? { color: primary } : undefined}
+            >
               🏆 {language === 'ar' ? 'شركة اداء الابطال العالمية للرياضة' : 'Global Champions Sports Academy'}
             </p>
 
@@ -516,19 +552,23 @@ const MemberCard = () => {
                     e.currentTarget.style.display = 'none';
                     if (e.currentTarget.nextSibling) e.currentTarget.nextSibling.style.display = 'flex';
                   }}
-                  className="w-20 h-20 rounded-2xl object-cover flex-shrink-0 shadow-lg shadow-amber-500/30 border-2 border-amber-400"
+                  className={`w-20 h-20 rounded-2xl object-cover flex-shrink-0 shadow-lg border-2 ${primary ? '' : 'shadow-amber-500/30 border-amber-400'}`}
+                  style={primary ? { borderColor: primary } : undefined}
                 />
               ) : null}
               <div
-                className="w-20 h-20 bg-gradient-to-br from-amber-400 to-yellow-600 rounded-2xl items-center justify-center flex-shrink-0 shadow-lg shadow-amber-500/30"
-                style={{ display: currentCard?.photo ? 'none' : 'flex' }}
+                className={`w-20 h-20 rounded-2xl items-center justify-center flex-shrink-0 shadow-lg ${primary ? '' : 'bg-gradient-to-br from-amber-400 to-yellow-600 shadow-amber-500/30'}`}
+                style={{ display: currentCard?.photo ? 'none' : 'flex', ...(primary ? { backgroundColor: primary } : {}) }}
               >
                 <span className="text-gray-900 font-black text-2xl leading-none">{getInitials(name)}</span>
               </div>
               <div className="flex-1 min-w-0">
                 <h1 className="text-white font-black text-xl leading-tight truncate">{name}</h1>
                 <div className="flex items-center gap-2 mt-1.5">
-                  <span className="bg-amber-500/20 border border-amber-500/30 text-amber-400 text-sm font-bold px-3 py-0.5 rounded-full">
+                  <span
+                    className={`text-sm font-bold px-3 py-0.5 rounded-full border ${primary ? '' : 'bg-amber-500/20 border-amber-500/30 text-amber-400'}`}
+                    style={primary ? { backgroundColor: `${primary}33`, borderColor: `${primary}4d`, color: primary } : undefined}
+                  >
                     #{currentCard?.member_code}
                   </span>
                 </div>
@@ -561,7 +601,10 @@ const MemberCard = () => {
             <div className="flex flex-col items-center text-center">
               {/* QR Label */}
               <div className="flex items-center gap-2 mb-4">
-                <QrCode className={`w-4 h-4 ${darkMode ? 'text-amber-400' : 'text-amber-500'}`} />
+                <QrCode
+                  className={`w-4 h-4 ${primary ? '' : (darkMode ? 'text-amber-400' : 'text-amber-500')}`}
+                  style={primary ? { color: primary } : undefined}
+                />
                 <span className={`text-sm font-bold ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
                   {language === 'ar' ? 'رمز المسح السريع' : 'Quick Scan Code'}
                 </span>
@@ -578,7 +621,10 @@ const MemberCard = () => {
               </div>
 
               {/* Member code under QR */}
-              <p className={`text-2xl font-black mb-1 ${darkMode ? 'text-amber-400' : 'text-amber-600'}`}>
+              <p
+                className={`text-2xl font-black mb-1 ${primary ? '' : (darkMode ? 'text-amber-400' : 'text-amber-600')}`}
+                style={primary ? { color: primary } : undefined}
+              >
                 #{currentCard?.member_code}
               </p>
               <p className={`text-xs mb-5 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>

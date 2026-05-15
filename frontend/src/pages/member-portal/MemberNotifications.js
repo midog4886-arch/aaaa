@@ -5,6 +5,7 @@ import {
   Mail, Send, CheckCheck
 } from 'lucide-react';
 import MemberLayout, { memberAPI, getLanguage } from './MemberLayout';
+import { getPrimaryColor } from '../../services/branding';
 
 const getInitials = (name) => {
   const trimmed = (name || '').trim();
@@ -53,6 +54,12 @@ const MemberNotifications = () => {
   const location = useLocation();
   const language = getLanguage();
   const t = (ar, en) => (language === 'ar' ? ar : en);
+  const [primary, setPrimary] = useState(getPrimaryColor());
+  useEffect(() => {
+    const onUpdate = () => setPrimary(getPrimaryColor());
+    window.addEventListener('branding:updated', onUpdate);
+    return () => window.removeEventListener('branding:updated', onUpdate);
+  }, []);
 
   const params = new URLSearchParams(location.search);
   const tabFromQuery = params.get('tab');
@@ -306,9 +313,10 @@ const MemberNotifications = () => {
             onClick={() => switchTab('notifications')}
             className={`relative flex items-center gap-2 px-4 py-3 text-sm font-medium transition-colors -mb-px border-b-2 ${
               activeTab === 'notifications'
-                ? 'border-blue-600 text-blue-600 dark:text-blue-400 dark:border-blue-400'
+                ? (primary ? '' : 'border-blue-600 text-blue-600 dark:text-blue-400 dark:border-blue-400')
                 : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
             }`}
+            style={activeTab === 'notifications' && primary ? { borderColor: primary, color: primary } : undefined}
           >
             <Bell className="w-4 h-4" />
             {t('الإشعارات', 'Notifications')}
@@ -322,9 +330,10 @@ const MemberNotifications = () => {
             onClick={() => switchTab('messages')}
             className={`relative flex items-center gap-2 px-4 py-3 text-sm font-medium transition-colors -mb-px border-b-2 ${
               activeTab === 'messages'
-                ? 'border-blue-600 text-blue-600 dark:text-blue-400 dark:border-blue-400'
+                ? (primary ? '' : 'border-blue-600 text-blue-600 dark:text-blue-400 dark:border-blue-400')
                 : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
             }`}
+            style={activeTab === 'messages' && primary ? { borderColor: primary, color: primary } : undefined}
           >
             <Mail className="w-4 h-4" />
             {t('الرسائل', 'Messages')}
@@ -344,7 +353,8 @@ const MemberNotifications = () => {
                 <button
                   onClick={handleMarkAllRead}
                   disabled={markingAll}
-                  className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded-lg transition-colors disabled:opacity-50"
+                  className={`flex items-center gap-2 px-3 py-2 text-sm font-medium rounded-lg transition-colors disabled:opacity-50 ${primary ? 'hover:bg-gray-100 dark:hover:bg-gray-800' : 'text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/30'}`}
+                  style={primary ? { color: primary } : undefined}
                 >
                   <CheckCheck className="w-4 h-4" />
                   {markingAll ? t('جاري التحديث...', 'Updating...') : t('تحديد الكل كمقروء', 'Mark all as read')}
@@ -354,7 +364,7 @@ const MemberNotifications = () => {
 
             {loading ? (
               <div className="flex items-center justify-center min-h-[300px]">
-                <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
+                <Loader2 className={`w-8 h-8 animate-spin ${primary ? '' : 'text-blue-600'}`} style={primary ? { color: primary } : undefined} />
               </div>
             ) : sortedNotifications.length === 0 ? (
               <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 py-12 text-center">
@@ -379,7 +389,7 @@ const MemberNotifications = () => {
           <div className="flex flex-col" style={{ minHeight: '60vh' }}>
             {msgLoading ? (
               <div className="flex items-center justify-center py-16">
-                <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
+                <Loader2 className={`w-8 h-8 animate-spin ${primary ? '' : 'text-blue-600'}`} style={primary ? { color: primary } : undefined} />
               </div>
             ) : (
               <>
@@ -475,7 +485,8 @@ const MemberNotifications = () => {
                     <button
                       onClick={handleReply}
                       disabled={!replyText.trim() || sending}
-                      className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium disabled:opacity-50 hover:bg-blue-700 transition-colors flex items-center gap-1"
+                      className={`px-4 py-2 text-white rounded-lg text-sm font-medium disabled:opacity-50 transition-colors flex items-center gap-1 ${primary ? 'hover:opacity-90' : 'bg-blue-600 hover:bg-blue-700'}`}
+                      style={primary ? { backgroundColor: primary } : undefined}
                     >
                       <Send className="w-4 h-4" />
                       <span className="hidden sm:inline">

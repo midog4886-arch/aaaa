@@ -13,6 +13,7 @@ import {
 } from '../../components/ui/dialog';
 import { Textarea } from '../../components/ui/textarea';
 import MemberLayout, { memberAPI, getDarkMode, getLanguage, getMemberData } from './MemberLayout';
+import { getPrimaryColor } from '../../services/branding';
 import {
   compressImageFile,
   estimateDataUrlBytes,
@@ -45,6 +46,12 @@ const MemberProfile = () => {
   const language = getLanguage();
   const darkMode = getDarkMode();
   const t = (ar, en) => (language === 'ar' ? ar : en);
+  const [primary, setPrimary] = useState(getPrimaryColor());
+  useEffect(() => {
+    const onUpdate = () => setPrimary(getPrimaryColor());
+    window.addEventListener('branding:updated', onUpdate);
+    return () => window.removeEventListener('branding:updated', onUpdate);
+  }, []);
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -347,13 +354,19 @@ const MemberProfile = () => {
 
         {loading ? (
           <div className="flex items-center justify-center py-20">
-            <Loader2 className={`w-8 h-8 animate-spin ${darkMode ? 'text-amber-400' : 'text-amber-500'}`} />
+            <Loader2
+              className={`w-8 h-8 animate-spin ${primary ? '' : (darkMode ? 'text-amber-400' : 'text-amber-500')}`}
+              style={primary ? { color: primary } : undefined}
+            />
           </div>
         ) : (
           <>
             {/* Avatar Card */}
             <Card className={cardClass}>
-              <div className="bg-gradient-to-r from-amber-500 to-yellow-600 px-4 py-3">
+              <div
+                className={`px-4 py-3 ${primary ? '' : 'bg-gradient-to-r from-amber-500 to-yellow-600'}`}
+                style={primary ? { backgroundColor: primary } : undefined}
+              >
                 <h2 className="text-white font-bold flex items-center gap-2">
                   <User className="w-5 h-5" />
                   {t('الصورة الشخصية', 'Profile Picture')}
@@ -366,10 +379,14 @@ const MemberProfile = () => {
                       src={photo}
                       alt={displayName}
                       onError={() => setImgError(true)}
-                      className="w-32 h-32 rounded-full object-cover border-4 border-amber-400 shadow-lg"
+                      className={`w-32 h-32 rounded-full object-cover border-4 shadow-lg ${primary ? '' : 'border-amber-400'}`}
+                      style={primary ? { borderColor: primary } : undefined}
                     />
                   ) : (
-                    <div className="w-32 h-32 rounded-full bg-gradient-to-br from-amber-500 to-yellow-600 flex items-center justify-center shadow-lg border-4 border-amber-300">
+                    <div
+                      className={`w-32 h-32 rounded-full flex items-center justify-center shadow-lg border-4 ${primary ? '' : 'bg-gradient-to-br from-amber-500 to-yellow-600 border-amber-300'}`}
+                      style={primary ? { backgroundColor: primary, borderColor: primary } : undefined}
+                    >
                       <span className="text-3xl font-bold text-white">
                         {initialsFor(displayName)}
                       </span>
@@ -563,7 +580,8 @@ const MemberProfile = () => {
               <Button
                 onClick={handleSave}
                 disabled={saving}
-                className="gap-2 bg-gradient-to-r from-amber-500 to-yellow-600 hover:from-amber-600 hover:to-yellow-700 text-gray-900 font-bold px-6"
+                className={`gap-2 text-gray-900 font-bold px-6 ${primary ? 'hover:opacity-90' : 'bg-gradient-to-r from-amber-500 to-yellow-600 hover:from-amber-600 hover:to-yellow-700'}`}
+                style={primary ? { backgroundColor: primary } : undefined}
                 data-testid="save-profile-btn"
               >
                 {saving ? (
@@ -672,7 +690,8 @@ const MemberProfile = () => {
                 type="button"
                 onClick={submitChangeRequest}
                 disabled={submittingRequest || !requestValue.trim()}
-                className="gap-2 bg-gradient-to-r from-amber-500 to-yellow-600 hover:from-amber-600 hover:to-yellow-700 text-gray-900 font-bold"
+                className={`gap-2 text-gray-900 font-bold ${primary ? 'hover:opacity-90' : 'bg-gradient-to-r from-amber-500 to-yellow-600 hover:from-amber-600 hover:to-yellow-700'}`}
+                style={primary ? { backgroundColor: primary } : undefined}
                 data-testid="submit-change-request-btn"
               >
                 {submittingRequest ? (
