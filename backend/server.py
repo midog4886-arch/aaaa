@@ -7042,7 +7042,30 @@ async def check_subscription_renewals(current_user: dict = Depends(get_current_u
                 
                 await db.notifications.insert_one(notification)
                 notifications_created += 1
-    
+
+                try:
+                    from routes.push_notifications import send_push_to_admins, NotificationPayload
+                    await send_push_to_admins(
+                        NotificationPayload(
+                            title=title,
+                            body=message,
+                            title_en=title_en,
+                            body_en=message_en,
+                            url=notification["action_url"],
+                            tag=f"renewal-{member['id']}-{activity['activity_id']}-{activity['end_date']}",
+                            data={
+                                "type": "renewal_reminder",
+                                "member_id": member["id"],
+                                "activity_id": activity.get("activity_id"),
+                                "end_date": activity["end_date"],
+                                "days_before_expiry": days_until_expiry,
+                            },
+                        ),
+                        branch_id=member.get("branch_id"),
+                    )
+                except Exception as exc:
+                    logger.error(f"check_subscription_renewals: admin push failed: {exc}")
+
     return {"message": f"تم إنشاء {notifications_created} إشعار جديد", "count": notifications_created}
 
 
