@@ -64,7 +64,18 @@ async def create_branch(branch: BranchCreate, current_user: dict = Depends(get_c
     """Create a new branch - admin only"""
     if not current_user.get("is_admin", False):
         raise HTTPException(status_code=403, detail="Admin access required")
-    
+
+    from utils.tenant import get_current_tenant
+    tenant = get_current_tenant() or {}
+    max_branches = int(tenant.get("max_branches") or 0)
+    if max_branches > 0:
+        current_count = await db.branches.count_documents({})
+        if current_count >= max_branches:
+            raise HTTPException(
+                status_code=402,
+                detail=f"تم بلوغ الحد الأقصى للفروع ({max_branches}) في خطة اشتراكك"
+            )
+
     branch_id = str(uuid.uuid4())
     branch_doc = {
         "id": branch_id,

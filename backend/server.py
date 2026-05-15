@@ -105,6 +105,8 @@ from routes.coach_salaries import router as coach_salaries_router
 from routes.whatsapp import router as whatsapp_router, set_database as set_whatsapp_db, start_scheduler as start_whatsapp_scheduler
 from routes.tournaments import router as tournaments_router
 from routes.social_publisher import router as social_publisher_router
+from routes.super_admin import router as super_admin_router
+from middleware.tenant import TenantMiddleware
 
 ROOT_DIR = Path(__file__).parent
 UPLOADS_DIR = ROOT_DIR / "uploads"
@@ -153,6 +155,8 @@ api_router.include_router(coach_salaries_router)
 api_router.include_router(whatsapp_router)
 api_router.include_router(tournaments_router)
 api_router.include_router(social_publisher_router)
+
+app.include_router(super_admin_router)
 
 # Set database for loyalty router
 set_loyalty_db(db)
@@ -8124,6 +8128,8 @@ app.add_middleware(
 # such as members/invoices lists). minimum_size avoids overhead on tiny responses.
 app.add_middleware(GZipMiddleware, minimum_size=1024)
 
+app.add_middleware(TenantMiddleware)
+
 # Serve React static files in production
 STATIC_DIR = ROOT_DIR / "static"
 if STATIC_DIR.exists():
@@ -8157,6 +8163,11 @@ if STATIC_DIR.exists():
 async def create_default_admin():
     import asyncio
     async def _init():
+        try:
+            from control_db import ensure_default_tenant
+            await ensure_default_tenant()
+        except Exception as e:
+            print(f"Tenant seed error: {str(e)}")
         try:
             from db_indexes import ensure_indexes
             await ensure_indexes()

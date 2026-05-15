@@ -165,9 +165,17 @@ async def get_member(member_id: str, current_user: dict = Depends(get_current_us
 @router.post("", response_model=Member)
 async def create_member(member: MemberCreate, current_user: dict = Depends(get_current_user)):
     """Create a new member"""
+    from utils.tenant import get_current_tenant
+    tenant = get_current_tenant() or {}
+    max_members = int(tenant.get("max_members") or 0)
+    if max_members > 0:
+        current_count = await db.members.count_documents({})
+        if current_count >= max_members:
+            raise HTTPException(
+                status_code=402,
+                detail=f"تم بلوغ الحد الأقصى للأعضاء ({max_members}) في خطة اشتراكك"
+            )
     member_id = str(uuid.uuid4())
-    # For non-admins, require a branch (fail-closed). Admins may create
-    # branch-less members (returns None).
     branch_id = require_branch_scope(current_user) or current_user.get("branch_id")
     
     # Generate sequential member code – unique per branch (each branch owns a block)
