@@ -293,6 +293,8 @@ async def _send_member_notification(
         payload = NotificationPayload(
             title=title_ar,
             body=message_ar,
+            title_en=title_en or title_ar,
+            body_en=message_en or message_ar,
             url=link or "/portal",
             tag=tag or f"tournament-{uuid.uuid4()}",
             data={"type": notif_type},

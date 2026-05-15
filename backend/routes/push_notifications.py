@@ -520,6 +520,11 @@ def get_notify_new_video_function():
 class BroadcastPayload(BaseModel):
     title: str
     body: str
+    # Optional English variants. When provided, recipients whose saved
+    # subscription language is 'en' receive the English copy; otherwise
+    # they fall back to the Arabic title/body above.
+    title_en: Optional[str] = None
+    body_en: Optional[str] = None
     url: Optional[str] = "/"
     image: Optional[str] = None
     branch_id: Optional[str] = None
@@ -556,6 +561,8 @@ async def broadcast_notification(data: BroadcastPayload):
     payload = NotificationPayload(
         title=data.title,
         body=data.body,
+        title_en=data.title_en or None,
+        body_en=data.body_en or None,
         image=data.image or None,
         url=data.url or "/",
         tag=f"broadcast-{uuid.uuid4()}"

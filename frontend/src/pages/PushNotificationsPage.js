@@ -39,6 +39,8 @@ const PushNotificationsPage = () => {
   const [form, setForm] = useState({
     title: '',
     body: '',
+    title_en: '',
+    body_en: '',
     url: '/',
     branch_id: ''
   });
@@ -94,6 +96,8 @@ const PushNotificationsPage = () => {
       const payload = {
         title: form.title,
         body: form.body,
+        title_en: form.title_en.trim() || null,
+        body_en: form.body_en.trim() || null,
         url: form.url || '/',
         branch_id: form.branch_id || null
       };
@@ -104,7 +108,7 @@ const PushNotificationsPage = () => {
           ? `تم الإرسال بنجاح! (${res.data.success} من ${res.data.total})`
           : `Sent successfully! (${res.data.success} of ${res.data.total})`
       );
-      setForm({ title: '', body: '', url: '/', branch_id: '' });
+      setForm({ title: '', body: '', title_en: '', body_en: '', url: '/', branch_id: '' });
     } catch (error) {
       console.error('Failed to send:', error);
       toast.error(isAr ? 'فشل في الإرسال' : 'Failed to send');
@@ -213,26 +217,56 @@ const PushNotificationsPage = () => {
             <form onSubmit={handleSend} className="space-y-4">
               <div>
                 <label className="block text-sm font-medium mb-1">
-                  {isAr ? 'العنوان' : 'Title'} *
+                  {isAr ? 'العنوان (عربي)' : 'Title (Arabic)'} *
                 </label>
                 <Input
                   value={form.title}
                   onChange={(e) => setForm({ ...form, title: e.target.value })}
-                  placeholder={isAr ? 'عنوان الإشعار...' : 'Notification title...'}
-                  dir={isAr ? 'rtl' : 'ltr'}
+                  placeholder={isAr ? 'عنوان الإشعار...' : 'Arabic notification title...'}
+                  dir="rtl"
                 />
               </div>
 
               <div>
                 <label className="block text-sm font-medium mb-1">
-                  {isAr ? 'المحتوى' : 'Body'} *
+                  {isAr ? 'المحتوى (عربي)' : 'Body (Arabic)'} *
                 </label>
                 <Textarea
                   value={form.body}
                   onChange={(e) => setForm({ ...form, body: e.target.value })}
-                  placeholder={isAr ? 'محتوى الإشعار...' : 'Notification body...'}
+                  placeholder={isAr ? 'محتوى الإشعار...' : 'Arabic notification body...'}
                   rows={3}
-                  dir={isAr ? 'rtl' : 'ltr'}
+                  dir="rtl"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium mb-1">
+                  {isAr ? 'العنوان (إنجليزي - اختياري)' : 'Title (English - optional)'}
+                </label>
+                <Input
+                  value={form.title_en}
+                  onChange={(e) => setForm({ ...form, title_en: e.target.value })}
+                  placeholder={isAr ? 'عنوان الإشعار بالإنجليزية...' : 'English notification title...'}
+                  dir="ltr"
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  {isAr
+                    ? 'يُرسَل للمشتركين الذين يستخدمون الواجهة بالإنجليزية. اتركه فارغاً لإرسال النص العربي للجميع.'
+                    : 'Sent to subscribers using the app in English. Leave empty to send the Arabic text to everyone.'}
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium mb-1">
+                  {isAr ? 'المحتوى (إنجليزي - اختياري)' : 'Body (English - optional)'}
+                </label>
+                <Textarea
+                  value={form.body_en}
+                  onChange={(e) => setForm({ ...form, body_en: e.target.value })}
+                  placeholder={isAr ? 'محتوى الإشعار بالإنجليزية...' : 'English notification body...'}
+                  rows={3}
+                  dir="ltr"
                 />
               </div>
 
