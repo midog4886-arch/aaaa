@@ -291,6 +291,22 @@ async def public_signup(payload: PublicSignupIn, request: Request):
         algorithm=JWT_ALGORITHM,
     )
 
+    try:
+        from utils.email_service import send_email
+        await send_email(
+            kind="welcome",
+            to=str(payload.owner_email).lower(),
+            tenant_slug=slug,
+            ctx={
+                "academy_name": tenant_doc["name"],
+                "slug": slug,
+                "trial_days": DEFAULT_TRIAL_DAYS,
+                "subscription_end_at": tenant_doc["subscription_end_at"],
+            },
+        )
+    except Exception:
+        logger.exception("welcome email failed for %s", slug)
+
     return {
         "ok": True,
         "tenant": {

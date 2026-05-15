@@ -20,7 +20,13 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel, Field
 
 from database import JWT_SECRET, JWT_ALGORITHM, _raw_client
-from control_db import control_db, auto_suspend_expired, DEFAULT_TRIAL_DAYS, DEFAULT_BILLING_CYCLE
+from control_db import control_db, auto_suspend_expired, send_trial_ending_emails, DEFAULT_TRIAL_DAYS, DEFAULT_BILLING_CYCLE
+from utils.email_service import (
+    get_email_settings,
+    update_email_settings,
+    list_email_log,
+    send_email,
+)
 from utils.tenant import slug_to_db_name, DEFAULT_TENANT_SLUG
 from utils.auth import hash_password
 
@@ -74,6 +80,17 @@ class TenantRenew(BaseModel):
     days: Optional[int] = None
     extend_from: Optional[str] = "current_end"
     note: Optional[str] = ""
+    amount: Optional[float] = None
+    currency: Optional[str] = "SAR"
+    method: Optional[str] = "manual"
+
+
+class TenantPaymentFailure(BaseModel):
+    reason: str = Field(..., min_length=1, max_length=500)
+    amount: Optional[float] = None
+    currency: Optional[str] = "SAR"
+    provider: Optional[str] = ""
+    provider_ref: Optional[str] = ""
 
 
 VALID_BILLING_CYCLES = {"monthly", "quarterly", "yearly"}
@@ -370,6 +387,23 @@ async def update_tenant(tenant_id: str, payload: TenantUpdate, _=Depends(_requir
         update["primary_color"] = _validate_primary_color(update["primary_color"])
     await control_db.tenants.update_one({"id": tenant_id}, {"$set": update})
     refreshed = await control_db.tenants.find_one({"id": tenant_id}, {"_id": 0})
+
+    # Email on manual suspended (only when status actually flipped active→suspended).
+    try:
+        if (
+            update.get("status") == "suspended"
+            and existing.get("status") != "suspended"
+            and (refreshed or {}).get("owner_email")
+        ):
+            await send_email(
+                kind="suspended",
+                to=refreshed["owner_email"],
+                tenant_slug=refreshed.get("slug"),
+                ctx={"academy_name": refreshed.get("name", ""), "reason": "manual"},
+            )
+    except Exception:
+        logger.exception("manual-suspended email failed for %s", (refreshed or {}).get("slug"))
+
     return refreshed
 
 
@@ -394,6 +428,9 @@ async def renew_tenant(tenant_id: str, payload: TenantRenew, _=Depends(_require_
         if cur_end and cur_end > now:
             base = cur_end
     new_end = base + timedelta(days=add_days)
+    amount_val = float(payload.amount) if payload.amount is not None else None
+    currency_val = (payload.currency or "SAR").upper()
+    method_val = (payload.method or "manual").lower()
     history_entry = {
         "renewed_at": now.isoformat(),
         "previous_end": existing.get("subscription_end_at"),
@@ -401,6 +438,10 @@ async def renew_tenant(tenant_id: str, payload: TenantRenew, _=Depends(_require_
         "months": months,
         "days": days,
         "note": (payload.note or "").strip(),
+        "status": "paid",
+        "amount": amount_val,
+        "currency": currency_val,
+        "method": method_val,
     }
     set_ops = {
         "subscription_end_at": new_end.isoformat(),
@@ -412,10 +453,88 @@ async def renew_tenant(tenant_id: str, payload: TenantRenew, _=Depends(_require_
         set_ops["suspended_reason"] = None
     await control_db.tenants.update_one(
         {"id": tenant_id},
-        {"$set": set_ops, "$push": {"renewal_history": history_entry}},
+        {"$set": set_ops,
+         "$push": {"renewal_history": history_entry},
+         "$unset": {"trial_emails_sent": ""}},
     )
     refreshed = await control_db.tenants.find_one({"id": tenant_id}, {"_id": 0})
+
+    try:
+        owner_email = (refreshed or {}).get("owner_email") or ""
+        if owner_email:
+            await send_email(
+                kind="payment_success",
+                to=owner_email,
+                tenant_slug=refreshed.get("slug"),
+                ctx={
+                    "academy_name": refreshed.get("name", ""),
+                    "amount": amount_val if amount_val is not None else "—",
+                    "currency": currency_val,
+                    "subscription_end_at": refreshed.get("subscription_end_at", ""),
+                    "months": months,
+                    "days": days,
+                },
+            )
+    except Exception:
+        logger.exception("payment_success email failed for %s", (refreshed or {}).get("slug"))
+
     return {"tenant": refreshed, "renewal": history_entry}
+
+
+@router.post("/tenants/{tenant_id}/payment-failure")
+async def record_payment_failure(
+    tenant_id: str,
+    payload: TenantPaymentFailure,
+    _=Depends(_require_super),
+):
+    """Record a failed renewal payment attempt and email the tenant.
+
+    Called either by a payment-provider webhook (Phase 2) or manually by a
+    super-admin when a charge bounces. Appends a status='failed' entry to
+    ``renewal_history`` so failures are auditable alongside successes, then
+    fires the ``payment_failed`` email.
+    """
+    existing = await control_db.tenants.find_one({"id": tenant_id}, {"_id": 0})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Tenant not found")
+    now = datetime.now(timezone.utc)
+    history_entry = {
+        "id": f"fail-{uuid.uuid4()}",
+        "renewed_at": now.isoformat(),
+        "status": "failed",
+        "reason": (payload.reason or "").strip()[:500],
+        "amount": payload.amount,
+        "currency": (payload.currency or "SAR").upper(),
+        "method": (payload.provider or "manual").lower(),
+        "provider_ref": (payload.provider_ref or "").strip()[:200],
+    }
+    await control_db.tenants.update_one(
+        {"id": tenant_id},
+        {"$set": {"last_payment_failure_at": now.isoformat()},
+         "$push": {"renewal_history": history_entry}},
+    )
+    refreshed = await control_db.tenants.find_one({"id": tenant_id}, {"_id": 0})
+
+    email_result = {"status": "skipped", "error": "no owner_email"}
+    try:
+        owner_email = (refreshed or {}).get("owner_email") or ""
+        if owner_email:
+            email_result = await send_email(
+                kind="payment_failed",
+                to=owner_email,
+                tenant_slug=(refreshed or {}).get("slug"),
+                ctx={
+                    "academy_name": (refreshed or {}).get("name", ""),
+                    "reason": history_entry["reason"],
+                    "amount": payload.amount,
+                    "currency": history_entry["currency"],
+                },
+            )
+    except Exception as e:
+        logger.exception("payment_failed email failed for %s", (refreshed or {}).get("slug"))
+        email_result = {"status": "failed", "error": str(e)}
+
+    return {"tenant": refreshed, "failure": history_entry, "email": email_result}
 
 
 @router.post("/check_expired")
@@ -461,6 +580,22 @@ async def schedule_tenant_delete(
         }},
     )
     refreshed = await control_db.tenants.find_one({"id": tenant_id}, {"_id": 0})
+
+    try:
+        owner_email = (refreshed or {}).get("owner_email") or ""
+        if owner_email:
+            await send_email(
+                kind="cancelled",
+                to=owner_email,
+                tenant_slug=(refreshed or {}).get("slug"),
+                ctx={
+                    "academy_name": (refreshed or {}).get("name", ""),
+                    "purge_at": purge_at.isoformat(),
+                },
+            )
+    except Exception:
+        logger.exception("cancelled email failed for %s", (refreshed or {}).get("slug"))
+
     return {"ok": True, "tenant": refreshed, "purge_at": purge_at.isoformat()}
 
 
@@ -668,3 +803,73 @@ async def super_overview(_=Depends(_require_super)):
             "auto_suspended_now": suspended_count,
         },
     }
+
+
+# ── Email management (transactional emails to tenant owners) ────────────
+
+class EmailSettingsIn(BaseModel):
+    provider: str = Field("", description="'resend', 'sendgrid', or '' to disable")
+    from_email: Optional[str] = ""
+    from_name: Optional[str] = ""
+    enabled: Optional[bool] = True
+
+
+class EmailTestIn(BaseModel):
+    to: str
+    kind: Optional[str] = "welcome"
+
+
+@router.get("/email/settings")
+async def email_settings_get(_=Depends(_require_super)):
+    return await get_email_settings()
+
+
+@router.put("/email/settings")
+async def email_settings_put(payload: EmailSettingsIn, _=Depends(_require_super)):
+    try:
+        return await update_email_settings(
+            provider=payload.provider or "",
+            from_email=payload.from_email or "",
+            from_name=payload.from_name or "",
+            enabled=bool(payload.enabled if payload.enabled is not None else True),
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.get("/email/log")
+async def email_log_list(
+    limit: int = 100,
+    kind: str = "",
+    status: str = "",
+    tenant_slug: str = "",
+    _=Depends(_require_super),
+):
+    rows = await list_email_log(limit=limit, kind=kind, status=status, tenant_slug=tenant_slug)
+    return {"items": rows}
+
+
+@router.post("/email/test")
+async def email_test_send(payload: EmailTestIn, _=Depends(_require_super)):
+    kind = (payload.kind or "welcome").strip()
+    ctx = {
+        "academy_name": "Test Academy",
+        "slug": "test",
+        "trial_days": DEFAULT_TRIAL_DAYS,
+        "subscription_end_at": (datetime.now(timezone.utc) + timedelta(days=DEFAULT_TRIAL_DAYS)).isoformat(),
+        "days_remaining": 3,
+        "amount": "299",
+        "currency": "SAR",
+        "months": 1,
+        "days": 0,
+        "reason": "test",
+        "purge_at": (datetime.now(timezone.utc) + timedelta(days=7)).isoformat(),
+    }
+    res = await send_email(kind=kind, to=payload.to, tenant_slug="", ctx=ctx)
+    return res
+
+
+@router.post("/email/run-trial-checks")
+async def email_run_trial_checks(_=Depends(_require_super)):
+    """Manually trigger the daily trial-ending email sweep (also runs on schedule)."""
+    return await send_trial_ending_emails()

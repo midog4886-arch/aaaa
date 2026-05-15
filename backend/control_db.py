@@ -35,6 +35,12 @@ async def ensure_default_tenant():
     no data migration is required.
     """
     try:
+        # Always (re)assert the email_log indexes — cheap and idempotent.
+        try:
+            await control_db.email_log.create_index([("sent_at", -1)])
+            await control_db.email_log.create_index("tenant_slug")
+        except Exception:
+            pass
         existing = await control_db.tenants.find_one({"slug": DEFAULT_TENANT_SLUG}, {"_id": 0})
         if existing:
             return existing
@@ -63,6 +69,11 @@ async def ensure_default_tenant():
         await control_db.tenants.insert_one(doc)
         try:
             await control_db.tenants.create_index("slug", unique=True)
+        except Exception:
+            pass
+        try:
+            await control_db.email_log.create_index([("sent_at", -1)])
+            await control_db.email_log.create_index("tenant_slug")
         except Exception:
             pass
         logger.info("Seeded default tenant in control DB")
@@ -137,10 +148,24 @@ async def auto_suspend_expired() -> int:
     """Suspend tenants whose subscription_end_at has passed.
 
     Only acts on tenants with status='active' and auto_suspend_on_expiry=True.
-    Returns the number of tenants suspended.
+    Returns the number of tenants suspended. Also sends a "suspended" email
+    to each affected tenant (best-effort; never raises).
     """
     now_iso = datetime.now(timezone.utc).isoformat()
     try:
+        # Stream the to-be-suspended set via a cursor (no fixed cap) so very
+        # large fleets don't silently miss the suspension email.
+        send_email = None
+        try:
+            from utils.email_service import send_email as _se
+            send_email = _se
+        except Exception:
+            logger.exception("failed to import email_service in auto_suspend_expired")
+
+        # Atomic transition first so we never email a tenant that raced a
+        # renewal in between the read and the update. Then re-query the
+        # exact set we just suspended (matched by the unique suspended_at
+        # stamp we just wrote) and email those owners.
         result = await control_db.tenants.update_many(
             {
                 "status": "active",
@@ -149,12 +174,136 @@ async def auto_suspend_expired() -> int:
             },
             {"$set": {"status": "suspended", "suspended_at": now_iso, "suspended_reason": "expired"}},
         )
+
+        emailed = 0
+        if result.modified_count and send_email is not None:
+            just_suspended = control_db.tenants.find(
+                {"suspended_at": now_iso, "suspended_reason": "expired"},
+                {"_id": 0, "slug": 1, "name": 1, "owner_email": 1},
+            )
+            async for t in just_suspended:
+                email = (t.get("owner_email") or "").strip()
+                if not email:
+                    continue
+                try:
+                    res = await send_email(
+                        kind="suspended",
+                        to=email,
+                        tenant_slug=t.get("slug"),
+                        ctx={"academy_name": t.get("name", ""), "reason": "expired"},
+                    )
+                    if (res or {}).get("status") == "sent":
+                        emailed += 1
+                except Exception:
+                    logger.exception("suspended email failed for %s", t.get("slug"))
+
         if result.modified_count:
-            logger.warning("Auto-suspended %d expired tenants", result.modified_count)
+            logger.warning(
+                "Auto-suspended %d expired tenants (emails sent: %d)",
+                result.modified_count, emailed,
+            )
+
         return result.modified_count
     except Exception as e:
         logger.warning(f"auto_suspend_expired failed: {e}")
         return 0
+
+
+async def send_trial_ending_emails() -> dict:
+    """Send "trial_ending" emails to tenants at 7/3/1 days before expiry.
+
+    Idempotent per (tenant, threshold) — uses ``trial_emails_sent`` array on
+    the tenant doc to dedupe so each threshold fires at most once per cycle
+    (the array is cleared on renewal).
+    Returns ``{"sent": N, "skipped": M, "errors": [...]}``.
+    """
+    THRESHOLDS = [7, 3, 1]
+    now = datetime.now(timezone.utc)
+    sent = 0
+    skipped = 0
+    errors: list = []
+    try:
+        cursor = control_db.tenants.find(
+            {"status": "active", "subscription_end_at": {"$exists": True}},
+            {"_id": 0, "slug": 1, "name": 1, "owner_email": 1,
+             "subscription_end_at": 1, "trial_emails_sent": 1, "auto_suspend_on_expiry": 1},
+        )
+        send_email = None
+        try:
+            from utils.email_service import send_email as _se
+            send_email = _se
+        except Exception:
+            logger.exception("send_trial_ending_emails: email_service import failed")
+            return {"sent": 0, "skipped": 0, "errors": ["email_service import failed"]}
+
+        async for t in cursor:
+            email = (t.get("owner_email") or "").strip()
+            if not email:
+                skipped += 1
+                continue
+            end_iso = t.get("subscription_end_at") or ""
+            try:
+                end = datetime.fromisoformat(end_iso.replace("Z", "+00:00"))
+                if end.tzinfo is None:
+                    end = end.replace(tzinfo=timezone.utc)
+            except Exception:
+                skipped += 1
+                continue
+            # Tolerant window: hours-based so a daily run that fires anywhere
+            # within ±12h of the threshold still catches it. Pick the smallest
+            # not-yet-sent threshold whose window has been reached.
+            hours_left = (end - now).total_seconds() / 3600.0
+            if hours_left <= 0:
+                skipped += 1
+                continue
+            already = set(t.get("trial_emails_sent") or [])
+            target = None
+            for th in THRESHOLDS:  # 7, 3, 1 (largest first)
+                if th in already:
+                    continue
+                # Fire once we're inside the threshold window (e.g. ≤7d24h
+                # for the 7-day reminder) but not below the next finer one.
+                upper_h = th * 24 + 12
+                lower_h = 0
+                for finer in THRESHOLDS:
+                    if finer < th:
+                        lower_h = finer * 24 + 12
+                        break
+                if lower_h < hours_left <= upper_h:
+                    target = th
+                    break
+            if target is None:
+                skipped += 1
+                continue
+            try:
+                res = await send_email(
+                    kind="trial_ending",
+                    to=email,
+                    tenant_slug=t.get("slug"),
+                    ctx={
+                        "academy_name": t.get("name", ""),
+                        "days_remaining": target,
+                        "subscription_end_at": end_iso,
+                    },
+                )
+                # Only mark the threshold as handled when the email actually
+                # went out — that way a misconfigured provider can be fixed
+                # later and the reminder will still fire on the next run.
+                if res.get("status") == "sent":
+                    sent += 1
+                    await control_db.tenants.update_one(
+                        {"slug": t.get("slug")},
+                        {"$addToSet": {"trial_emails_sent": target}},
+                    )
+                else:
+                    skipped += 1
+            except Exception as e:
+                errors.append(f"{t.get('slug')}: {e}")
+                logger.exception("trial_ending email failed for %s", t.get("slug"))
+    except Exception as e:
+        logger.exception("send_trial_ending_emails failed")
+        errors.append(str(e))
+    return {"sent": sent, "skipped": skipped, "errors": errors}
 
 
 async def get_tenant_by_slug(slug: str):

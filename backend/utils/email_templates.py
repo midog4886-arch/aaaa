@@ -1,0 +1,188 @@
+"""Bilingual (Arabic / English) transactional email templates for tenants.
+
+Each template is a function that returns ``(subject, html_body, text_body)``
+given a ``ctx`` dict. Templates are intentionally minimal HTML so they render
+well in any inbox (no external CSS, no images, RTL handled inline).
+
+Six template kinds (matches task #229):
+  - welcome
+  - trial_ending
+  - payment_success
+  - payment_failed
+  - suspended
+  - cancelled
+"""
+from datetime import datetime
+from typing import Dict, Tuple, Callable
+
+BRAND_NAME = "Champions Academy Platform"
+SUPPORT_EMAIL = "support@champions-academy.app"
+
+
+def _fmt_date(iso: str) -> str:
+    if not iso:
+        return ""
+    try:
+        d = datetime.fromisoformat(iso.replace("Z", "+00:00"))
+        return d.strftime("%Y-%m-%d")
+    except Exception:
+        return iso[:10] if iso else ""
+
+
+def _wrap(html_ar: str, html_en: str) -> str:
+    return f"""<!doctype html><html><body style="font-family:Arial,Helvetica,sans-serif;color:#111;max-width:600px;margin:0 auto;padding:24px;">
+<div dir="rtl" style="text-align:right;line-height:1.7;">{html_ar}</div>
+<hr style="border:none;border-top:1px solid #eee;margin:24px 0;"/>
+<div dir="ltr" style="text-align:left;line-height:1.6;">{html_en}</div>
+<p style="color:#777;font-size:12px;margin-top:24px;">{BRAND_NAME} · {SUPPORT_EMAIL}</p>
+</body></html>"""
+
+
+def _welcome(ctx: Dict) -> Tuple[str, str, str]:
+    name = ctx.get("academy_name", "")
+    slug = ctx.get("slug", "")
+    trial_days = ctx.get("trial_days", 30)
+    end = _fmt_date(ctx.get("subscription_end_at", ""))
+    subject = f"مرحباً بكم في {BRAND_NAME} / Welcome to {BRAND_NAME}"
+    ar = f"""
+<h2>مرحباً {name} 👋</h2>
+<p>تم إنشاء حساب أكاديميتك بنجاح. تجربتك المجانية لمدة <b>{trial_days} يوماً</b> تبدأ الآن وتنتهي في <b>{end}</b>.</p>
+<p>النطاق الفرعي: <b>{slug}</b></p>
+<p>يمكنك الآن تسجيل الدخول وبدء إعداد الفروع والأنشطة والأعضاء.</p>
+"""
+    en = f"""
+<h2>Welcome, {name} 👋</h2>
+<p>Your academy account is ready. Your <b>{trial_days}-day</b> free trial starts now and ends on <b>{end}</b>.</p>
+<p>Subdomain: <b>{slug}</b></p>
+<p>Sign in to start configuring branches, activities, and members.</p>
+"""
+    text = f"Welcome {name}. Trial ends {end}. Subdomain: {slug}."
+    return subject, _wrap(ar, en), text
+
+
+def _trial_ending(ctx: Dict) -> Tuple[str, str, str]:
+    name = ctx.get("academy_name", "")
+    days = ctx.get("days_remaining", 0)
+    end = _fmt_date(ctx.get("subscription_end_at", ""))
+    subject = f"تنبيه: تنتهي تجربتك خلال {days} يوم / Your trial ends in {days} days"
+    ar = f"""
+<h2>تذكير بتجديد الاشتراك</h2>
+<p>عزيزي {name}، تنتهي تجربتك المجانية خلال <b>{days}</b> يوم (في {end}).</p>
+<p>يرجى التواصل معنا لتجديد الاشتراك قبل التاريخ المذكور لتجنب تعليق الحساب.</p>
+"""
+    en = f"""
+<h2>Renewal reminder</h2>
+<p>Hello {name}, your free trial ends in <b>{days}</b> days (on {end}).</p>
+<p>Please contact us to renew your subscription before that date to avoid suspension.</p>
+"""
+    text = f"Trial ends in {days} days ({end})."
+    return subject, _wrap(ar, en), text
+
+
+def _payment_success(ctx: Dict) -> Tuple[str, str, str]:
+    name = ctx.get("academy_name", "")
+    amount = ctx.get("amount", "")
+    currency = ctx.get("currency", "SAR")
+    new_end = _fmt_date(ctx.get("subscription_end_at", ""))
+    months = ctx.get("months", 0)
+    days = ctx.get("days", 0)
+    period = []
+    if months:
+        period.append(f"{months} شهر / {months} month(s)")
+    if days:
+        period.append(f"{days} يوم / {days} day(s)")
+    period_str = " + ".join(period) or "—"
+    subject = f"إيصال دفع — تم تجديد اشتراك {name} / Payment receipt"
+    ar = f"""
+<h2>تم استلام الدفعة</h2>
+<p>شكراً {name}، تم تجديد اشتراكك بنجاح.</p>
+<ul>
+<li>المبلغ: <b>{amount} {currency}</b></li>
+<li>المدة المضافة: <b>{period_str}</b></li>
+<li>تاريخ انتهاء الاشتراك الجديد: <b>{new_end}</b></li>
+</ul>
+"""
+    en = f"""
+<h2>Payment received</h2>
+<p>Thank you {name}, your subscription has been renewed.</p>
+<ul>
+<li>Amount: <b>{amount} {currency}</b></li>
+<li>Added period: <b>{period_str}</b></li>
+<li>New expiry date: <b>{new_end}</b></li>
+</ul>
+"""
+    text = f"Renewal: {amount} {currency}. New expiry: {new_end}."
+    return subject, _wrap(ar, en), text
+
+
+def _payment_failed(ctx: Dict) -> Tuple[str, str, str]:
+    name = ctx.get("academy_name", "")
+    reason = ctx.get("reason", "")
+    subject = f"فشل عملية الدفع / Payment failed"
+    ar = f"""
+<h2>تعذّر إتمام الدفع</h2>
+<p>عزيزي {name}، حصلت مشكلة أثناء معالجة دفعة التجديد.</p>
+<p>السبب: {reason or 'غير معروف'}</p>
+<p>يرجى المحاولة مجدداً أو التواصل مع فريق الدعم.</p>
+"""
+    en = f"""
+<h2>Payment could not be completed</h2>
+<p>Hello {name}, we were unable to process your renewal payment.</p>
+<p>Reason: {reason or 'unknown'}</p>
+<p>Please try again or contact support.</p>
+"""
+    text = f"Payment failed: {reason}"
+    return subject, _wrap(ar, en), text
+
+
+def _suspended(ctx: Dict) -> Tuple[str, str, str]:
+    name = ctx.get("academy_name", "")
+    reason = ctx.get("reason", "expired")
+    subject = f"تم تعليق حساب أكاديميتك / Your academy has been suspended"
+    ar = f"""
+<h2>تنبيه: تم تعليق الحساب</h2>
+<p>عزيزي {name}، تم تعليق حساب أكاديميتك (السبب: {reason}).</p>
+<p>للمتابعة، يرجى التواصل مع فريق الدعم لتجديد الاشتراك.</p>
+"""
+    en = f"""
+<h2>Account suspended</h2>
+<p>Hello {name}, your academy account has been suspended (reason: {reason}).</p>
+<p>To restore access, please contact support to renew your subscription.</p>
+"""
+    text = f"Suspended ({reason}). Contact support to renew."
+    return subject, _wrap(ar, en), text
+
+
+def _cancelled(ctx: Dict) -> Tuple[str, str, str]:
+    name = ctx.get("academy_name", "")
+    purge_at = _fmt_date(ctx.get("purge_at", ""))
+    subject = f"جدولة حذف حساب أكاديميتك / Your academy is scheduled for deletion"
+    ar = f"""
+<h2>تم جدولة حذف الحساب</h2>
+<p>عزيزي {name}، تمت جدولة حذف حسابك في <b>{purge_at}</b> (فترة سماح 7 أيام).</p>
+<p>إذا كان هذا غير مقصود، يرجى التواصل معنا فوراً لإلغاء الحذف.</p>
+"""
+    en = f"""
+<h2>Deletion scheduled</h2>
+<p>Hello {name}, your academy account is scheduled for deletion on <b>{purge_at}</b> (7-day grace period).</p>
+<p>If this was not intended, please contact us immediately to cancel.</p>
+"""
+    text = f"Account scheduled for deletion on {purge_at}."
+    return subject, _wrap(ar, en), text
+
+
+TEMPLATES: Dict[str, Callable[[Dict], Tuple[str, str, str]]] = {
+    "welcome": _welcome,
+    "trial_ending": _trial_ending,
+    "payment_success": _payment_success,
+    "payment_failed": _payment_failed,
+    "suspended": _suspended,
+    "cancelled": _cancelled,
+}
+
+
+def render(kind: str, ctx: Dict) -> Tuple[str, str, str]:
+    fn = TEMPLATES.get(kind)
+    if not fn:
+        raise ValueError(f"Unknown email template: {kind}")
+    return fn(ctx or {})

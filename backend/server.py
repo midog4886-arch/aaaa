@@ -3311,6 +3311,31 @@ async def _run_daily_renewal_and_ads_checks(trigger: str = "scheduler") -> dict:
         errors.append(msg)
         print(f"Daily checks: {msg}")
 
+    # 4) Trial-ending emails to tenant owners (7/3/1 days before expiry).
+    # Independent of in-app notifications above; runs control-plane wide.
+    try:
+        from control_db import send_trial_ending_emails
+        em = await send_trial_ending_emails()
+        print(f"Daily checks: trial-ending emails → {em}")
+        for e in em.get("errors") or []:
+            errors.append(f"trial_ending email: {e}")
+    except Exception as e:
+        msg = f"trial-ending emails failed: {e}"
+        errors.append(msg)
+        print(f"Daily checks: {msg}")
+
+    # 5) Auto-suspend any tenants whose subscription ended (also sends the
+    # ``suspended`` email). Safe / idempotent.
+    try:
+        from control_db import auto_suspend_expired
+        n = await auto_suspend_expired()
+        if n:
+            print(f"Daily checks: auto-suspended {n} expired tenants")
+    except Exception as e:
+        msg = f"auto-suspend failed: {e}"
+        errors.append(msg)
+        print(f"Daily checks: {msg}")
+
     success = len(errors) == 0
     await _persist_daily_checks_status(
         started_at=started_at,
