@@ -216,13 +216,51 @@ Both background jobs now emit an **ops alert** on failure:
 
 Each alert:
 
-1. Inserts a row into `db.ops_alerts` (machine-readable).
+1. Inserts a row into `db.ops_alerts` (machine-readable, with delivery
+   bookkeeping fields: `attempts`, `next_attempt_at`, `delivered_email`,
+   `delivered_whatsapp`, `last_error`, `delivery_status`).
 2. Inserts an admin notification into `db.notifications` (so admins see it
    on next dashboard load).
 3. Logs `OPS ALERT [<kind>]: ...` to stdout (picked up by Sentry / log
    aggregator).
-4. Sends an SMTP email when configured.
-5. Sends a WhatsApp message via the local Baileys side-car when configured.
+
+Outbound delivery is performed asynchronously by the **ops-alerts
+delivery worker** (`ops_alerts_delivery_loop` in `backend/server.py`,
+started at app startup). The worker:
+
+* Wakes every 30 s and selects unacknowledged rows whose
+  `next_attempt_at` is due.
+* Attempts each enabled, configured channel; a channel that is disabled
+  (per-tenant toggle) or unconfigured (env var missing) is treated as
+  satisfied so the row can settle.
+* On full success → sets `acknowledged: true`, `delivery_status: "delivered"`.
+* On partial/failure → increments `attempts`, schedules the next try
+  using exponential backoff (60 s → 5 m → 30 m → 2 h → 6 h).
+* After 6 failed attempts (the 5 backoff slots above plus the initial
+  try) → sets `acknowledged: true`,
+  `delivery_status: "exhausted"` so the row stops cycling. The in-app
+  notification + `ops_alerts` row remain for manual investigation.
+
+### Per-tenant opt-in / opt-out
+
+`db.notifications_settings` (key=`ops_alerts_delivery`) holds two
+booleans, both defaulting to **enabled** so existing deployments are
+unaffected:
+
+| Field              | Default | Effect when `false`                              |
+|--------------------|---------|--------------------------------------------------|
+| `email_enabled`    | `true`  | Worker skips SMTP send for this tenant.          |
+| `whatsapp_enabled` | `true`  | Worker skips Baileys send for this tenant.       |
+
+Endpoints (admin only):
+
+* `GET  /api/notifications/ops-alerts-settings`
+* `PUT  /api/notifications/ops-alerts-settings` — body
+  `{ "email_enabled": bool, "whatsapp_enabled": bool }` (either field
+  optional).
+
+Disabling a channel takes effect on the worker's next tick, including
+for alerts that are already mid-retry.
 
 ### Email transport (optional)
 

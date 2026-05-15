@@ -253,6 +253,84 @@ async def get_daily_checks_status(current_user: dict = Depends(get_current_user)
     return {"has_run": True, **doc}
 
 
+_OPS_ALERTS_DELIVERY_KEY = "ops_alerts_delivery"
+
+
+class OpsAlertsDeliverySettings(BaseModel):
+    email_enabled: Optional[bool] = None
+    whatsapp_enabled: Optional[bool] = None
+
+
+@router.get("/ops-alerts-settings")
+async def get_ops_alerts_settings(current_user: dict = Depends(get_current_user)):
+    """Admin-only: per-tenant opt-in/out toggle for ops-alert outbound
+    transports (email + WhatsApp). Defaults to both enabled so deployments
+    that already configured the env vars keep their current behaviour.
+    """
+    if not current_user.get("is_admin"):
+        raise HTTPException(status_code=403, detail="Admin access required")
+    try:
+        doc = await db.notifications_settings.find_one(
+            {"key": _OPS_ALERTS_DELIVERY_KEY}, {"_id": 0, "key": 0}
+        ) or {}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to read settings: {e}")
+    return {
+        "email_enabled": bool(doc.get("email_enabled", True)),
+        "whatsapp_enabled": bool(doc.get("whatsapp_enabled", True)),
+        "updated_at": doc.get("updated_at"),
+    }
+
+
+@router.put("/ops-alerts-settings")
+async def update_ops_alerts_settings(
+    payload: OpsAlertsDeliverySettings,
+    current_user: dict = Depends(get_current_user),
+):
+    """Admin-only: enable/disable individual outbound channels for ops
+    alerts. Omitted fields keep their previously stored value (defaulting
+    to enabled). Only affects future delivery attempts — previously queued
+    alerts are re-evaluated against the new toggle on the worker's next
+    tick, so disabling a channel mid-retry stops further attempts on it.
+    """
+    if not current_user.get("is_admin"):
+        raise HTTPException(status_code=403, detail="Admin access required")
+    before = await db.notifications_settings.find_one(
+        {"key": _OPS_ALERTS_DELIVERY_KEY}, {"_id": 0}
+    ) or {}
+    update_doc = {
+        "key": _OPS_ALERTS_DELIVERY_KEY,
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    }
+    if payload.email_enabled is not None:
+        update_doc["email_enabled"] = bool(payload.email_enabled)
+    if payload.whatsapp_enabled is not None:
+        update_doc["whatsapp_enabled"] = bool(payload.whatsapp_enabled)
+    await db.notifications_settings.update_one(
+        {"key": _OPS_ALERTS_DELIVERY_KEY},
+        {"$set": update_doc},
+        upsert=True,
+    )
+    try:
+        from utils.audit import log_audit
+        await log_audit(
+            actor=current_user,
+            action="settings.ops_alerts.update",
+            entity_type="settings",
+            entity_id=_OPS_ALERTS_DELIVERY_KEY,
+            before=before,
+            after={**before, **update_doc},
+        )
+    except Exception:
+        pass
+    merged = {**before, **update_doc}
+    return {
+        "email_enabled": bool(merged.get("email_enabled", True)),
+        "whatsapp_enabled": bool(merged.get("whatsapp_enabled", True)),
+        "updated_at": merged.get("updated_at"),
+    }
+
+
 @router.post("/daily-checks-run")
 async def run_daily_checks_now(current_user: dict = Depends(get_current_user)):
     """Admin-only: trigger the daily renewal & ad-expiry checks on demand.

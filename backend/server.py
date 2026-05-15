@@ -3025,37 +3025,73 @@ async def _send_ops_email(subject: str, body: str) -> None:
                 s.login(user, pwd)
             s.send_message(msg)
 
-    try:
-        await asyncio.to_thread(_send_sync)
-    except Exception as e:
-        print(f"_send_ops_email failed: {e}")
+    # Raises on send failure so the delivery worker can retry. Callers that
+    # want fire-and-forget semantics must wrap in their own try/except.
+    await asyncio.to_thread(_send_sync)
 
 
 async def _send_ops_whatsapp(body: str) -> None:
-    """Best-effort WhatsApp send via the local Baileys side-car, if running.
+    """WhatsApp send via the local Baileys side-car. Raises on failure so
+    the ops-alerts delivery worker can retry with backoff.
 
-    No-op unless ``OPS_ALERT_WHATSAPP_TO`` is set. The side-car listens on
-    127.0.0.1:3001 and exposes ``POST /send`` (``{phone, message}``).
+    No-op (returns without raising) unless ``OPS_ALERT_WHATSAPP_TO`` is
+    set. The side-car listens on 127.0.0.1:3001 and exposes ``POST /send``
+    (``{phone, message}``). A non-2xx response is treated as failure.
     """
     to_phone = os.environ.get("OPS_ALERT_WHATSAPP_TO")
     if not to_phone:
         return
     url = os.environ.get("WHATSAPP_SERVICE_URL", "http://127.0.0.1:3001") + "/send"
+    import httpx
+    async with httpx.AsyncClient(timeout=8.0) as client:
+        resp = await client.post(url, json={"phone": to_phone, "message": body})
+        resp.raise_for_status()
+
+
+_OPS_ALERTS_SETTINGS_KEY = "ops_alerts_delivery"
+# Backoff schedule (seconds) between delivery attempts. Each entry is the
+# wait time *before* the next retry, so all entries are actually used: a
+# failed first attempt waits ``[0]`` then retries, and so on. After the
+# final retry fails the alert is marked acknowledged with
+# ``delivery_status="exhausted"`` so the worker stops cycling it.
+# Roughly: 1m → 5m → 30m → 2h → 6h. Total of 6 attempts before exhaustion.
+_OPS_ALERTS_BACKOFF_SECONDS = [60, 300, 1800, 7200, 21600]
+_OPS_ALERTS_MAX_ATTEMPTS = len(_OPS_ALERTS_BACKOFF_SECONDS) + 1
+
+
+async def _get_ops_alerts_delivery_settings() -> dict:
+    """Per-tenant opt-in/out toggle for the outbound transports.
+
+    Stored in ``db.notifications_settings`` (singleton, key=``ops_alerts_delivery``).
+    Defaults to enabled for both channels so behaviour is unchanged for
+    deployments that already configured ``OPS_ALERT_EMAIL_TO`` /
+    ``OPS_ALERT_WHATSAPP_TO`` env vars before this toggle existed. Tenants
+    can flip individual channels off without unsetting the env vars.
+    Never raises — falls back to "both enabled" on DB errors.
+    """
     try:
-        import httpx
-        async with httpx.AsyncClient(timeout=8.0) as client:
-            await client.post(url, json={"phone": to_phone, "message": body})
-    except Exception as e:
-        print(f"_send_ops_whatsapp failed: {e}")
+        doc = await db.notifications_settings.find_one(
+            {"key": _OPS_ALERTS_SETTINGS_KEY}, {"_id": 0, "key": 0}
+        ) or {}
+    except Exception:
+        doc = {}
+    return {
+        "email_enabled": bool(doc.get("email_enabled", True)),
+        "whatsapp_enabled": bool(doc.get("whatsapp_enabled", True)),
+        "updated_at": doc.get("updated_at"),
+    }
 
 
 async def _emit_ops_alert(*, kind: str, title: str, body: str, severity: str = "error") -> None:
-    """Record + deliver a critical-failure alert.
+    """Record a critical-failure alert and queue it for outbound delivery.
 
-    Persists to ``db.ops_alerts`` and ``db.notifications`` (in-app dropdown
-    for every admin in the current tenant), and forwards to email + WhatsApp
-    when their respective env vars are configured. Each transport is
-    best-effort — failures never propagate to the caller.
+    Persists to ``db.ops_alerts`` (machine-readable, picked up by the
+    delivery worker) and ``db.notifications`` (in-app dropdown for every
+    admin in the current tenant). Outbound email/WhatsApp delivery is
+    handled asynchronously by :func:`ops_alerts_delivery_loop` so that a
+    transient SMTP/WhatsApp failure cannot drop the alert — the worker
+    retries with exponential backoff until either the alert is delivered
+    or the backoff schedule is exhausted.
     """
     try:
         ts = datetime.now(timezone.utc).isoformat()
@@ -3067,6 +3103,15 @@ async def _emit_ops_alert(*, kind: str, title: str, body: str, severity: str = "
             "severity": severity,
             "created_at": ts,
             "acknowledged": False,
+            # Delivery bookkeeping — populated/updated by the worker. Setting
+            # ``next_attempt_at`` to created_at means the worker picks the row
+            # up on its next tick without an extra query.
+            "attempts": 0,
+            "next_attempt_at": ts,
+            "delivered_email": False,
+            "delivered_whatsapp": False,
+            "last_error": "",
+            "delivery_status": "pending",
         })
         admins = await db.users.find({"is_admin": True}, {"id": 1, "_id": 0}).to_list(50)
         for u in admins:
@@ -3084,17 +3129,171 @@ async def _emit_ops_alert(*, kind: str, title: str, body: str, severity: str = "
             except Exception:
                 pass
         print(f"OPS ALERT [{kind}]: {title} — {body}")
-        # Outbound transports (env-gated, fire-and-forget).
-        try:
-            await _send_ops_email(f"[Champions Academy] {title}", f"{body}\n\nKind: {kind}\nSeverity: {severity}\nAt: {ts}")
-        except Exception:
-            pass
-        try:
-            await _send_ops_whatsapp(f"⚠ {title}\n{body}")
-        except Exception:
-            pass
     except Exception as e:  # pragma: no cover — best-effort
         print(f"_emit_ops_alert failed: {e}")
+
+
+_ops_alerts_worker_started = False
+
+
+async def _try_deliver_ops_alert(alert: dict) -> dict:
+    """Attempt the outbound transports for a single ops alert.
+
+    Returns a dict with the post-attempt state of each channel and the
+    last error, if any. A channel that is disabled (per-tenant toggle) or
+    unconfigured (missing env var) is treated as "delivered" so the alert
+    can be marked acknowledged once every required channel has resolved.
+    """
+    settings = await _get_ops_alerts_delivery_settings()
+    kind = alert.get("kind", "")
+    title = alert.get("title", "")
+    body = alert.get("body", "")
+    severity = alert.get("severity", "error")
+    created_at = alert.get("created_at", "")
+
+    delivered_email = bool(alert.get("delivered_email"))
+    delivered_whatsapp = bool(alert.get("delivered_whatsapp"))
+    last_error = ""
+
+    email_to = os.environ.get("OPS_ALERT_EMAIL_TO")
+    smtp_host = os.environ.get("SMTP_HOST")
+    smtp_from = os.environ.get("SMTP_FROM") or os.environ.get("SMTP_USER")
+    email_configured = bool(email_to and smtp_host and smtp_from)
+    if not delivered_email:
+        if not settings["email_enabled"] or not email_configured:
+            delivered_email = True  # nothing to do for this channel
+        else:
+            try:
+                await _send_ops_email(
+                    f"[Champions Academy] {title}",
+                    f"{body}\n\nKind: {kind}\nSeverity: {severity}\nAt: {created_at}",
+                )
+                delivered_email = True
+            except Exception as e:
+                last_error = f"email: {e}"
+
+    whatsapp_to = os.environ.get("OPS_ALERT_WHATSAPP_TO")
+    if not delivered_whatsapp:
+        if not settings["whatsapp_enabled"] or not whatsapp_to:
+            delivered_whatsapp = True
+        else:
+            try:
+                await _send_ops_whatsapp(f"⚠ {title}\n{body}")
+                delivered_whatsapp = True
+            except Exception as e:
+                last_error = (last_error + " | " if last_error else "") + f"whatsapp: {e}"
+
+    return {
+        "delivered_email": delivered_email,
+        "delivered_whatsapp": delivered_whatsapp,
+        "last_error": last_error[:500],
+    }
+
+
+async def _process_pending_ops_alerts() -> int:
+    """Single tick of the delivery worker. Returns number of alerts processed."""
+    now = datetime.now(timezone.utc)
+    now_iso = now.isoformat()
+    processed = 0
+    try:
+        # Include legacy rows (written before the delivery-bookkeeping
+        # fields existed) by also matching docs with missing/null
+        # ``next_attempt_at``. Without this, alerts created by the older
+        # _emit_ops_alert would never be picked up.
+        cursor = db.ops_alerts.find(
+            {
+                "acknowledged": False,
+                "$or": [
+                    {"next_attempt_at": {"$lte": now_iso}},
+                    {"next_attempt_at": {"$exists": False}},
+                    {"next_attempt_at": None},
+                ],
+            },
+            {"_id": 0},
+        ).limit(50)
+        rows = await cursor.to_list(50)
+    except Exception as e:
+        print(f"ops_alerts worker: query failed: {e}")
+        return 0
+
+    for alert in rows:
+        alert_id = alert.get("id")
+        if not alert_id:
+            continue
+        # Normalise legacy rows so they enter the same retry state machine
+        # as freshly-emitted ones.
+        alert.setdefault("attempts", 0)
+        alert.setdefault("delivered_email", False)
+        alert.setdefault("delivered_whatsapp", False)
+        alert.setdefault("last_error", "")
+        alert.setdefault("delivery_status", "pending")
+        result = await _try_deliver_ops_alert(alert)
+        attempts = int(alert.get("attempts", 0)) + 1
+        all_delivered = result["delivered_email"] and result["delivered_whatsapp"]
+
+        update = {
+            "attempts": attempts,
+            "delivered_email": result["delivered_email"],
+            "delivered_whatsapp": result["delivered_whatsapp"],
+            "last_error": result["last_error"],
+            "last_attempt_at": now_iso,
+        }
+        if all_delivered:
+            update["acknowledged"] = True
+            update["delivery_status"] = "delivered"
+            update["acknowledged_at"] = now_iso
+        elif attempts >= _OPS_ALERTS_MAX_ATTEMPTS:
+            # Give up and stop retrying; the in-app notification + ops_alerts
+            # row remain so an admin can investigate manually.
+            update["acknowledged"] = True
+            update["delivery_status"] = "exhausted"
+            update["acknowledged_at"] = now_iso
+            print(
+                f"ops_alerts worker: giving up on {alert_id} after "
+                f"{attempts} attempts: {result['last_error']}"
+            )
+        else:
+            backoff = _OPS_ALERTS_BACKOFF_SECONDS[min(attempts, _OPS_ALERTS_MAX_ATTEMPTS) - 1]
+            update["delivery_status"] = "retrying"
+            update["next_attempt_at"] = (now + timedelta(seconds=backoff)).isoformat()
+
+        try:
+            await db.ops_alerts.update_one({"id": alert_id}, {"$set": update})
+        except Exception as e:
+            print(f"ops_alerts worker: update failed for {alert_id}: {e}")
+        processed += 1
+    return processed
+
+
+async def ops_alerts_delivery_loop():
+    """Background worker that drains ``db.ops_alerts`` for unacknowledged
+    rows and attempts the outbound transports with exponential backoff.
+
+    Runs every 30 seconds. Never raises — any unexpected error sleeps a
+    minute and retries so a single bad row can't take down the worker.
+    """
+    print("Ops alerts delivery worker started (interval: 30s)")
+    while True:
+        try:
+            await _process_pending_ops_alerts()
+            await asyncio.sleep(30)
+        except asyncio.CancelledError:
+            break
+        except Exception as e:
+            print(f"ops_alerts worker error: {e}")
+            await asyncio.sleep(60)
+
+
+def start_ops_alerts_worker():
+    """Idempotent start. Flips the started flag *before* scheduling the
+    coroutine so two near-simultaneous startup calls can never schedule
+    duplicate loops (the previous version flipped the flag inside the
+    loop, leaving a small race window)."""
+    global _ops_alerts_worker_started
+    if _ops_alerts_worker_started:
+        return
+    _ops_alerts_worker_started = True
+    asyncio.ensure_future(ops_alerts_delivery_loop())
 
 
 async def _create_auto_backup():
@@ -8942,6 +9141,11 @@ async def create_default_admin():
     asyncio.create_task(_keep_proxy_alive())
     # Start auto backup scheduler (daily at midnight Riyadh time)
     start_backup_scheduler()
+    # Start ops-alerts delivery worker (drains db.ops_alerts → email/WhatsApp)
+    try:
+        start_ops_alerts_worker()
+    except Exception as e:
+        print(f"Ops alerts worker start failed: {e}")
     # Start daily renewal & ad-expiry checks scheduler
     try:
         start_daily_checks_scheduler()
