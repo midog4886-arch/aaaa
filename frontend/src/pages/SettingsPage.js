@@ -46,6 +46,10 @@ export const SettingsPage = () => {
   const [dailyChecksSaving, setDailyChecksSaving] = React.useState(false);
   const [dailyChecksStatus, setDailyChecksStatus] = React.useState(null);
   const [dailyChecksRunning, setDailyChecksRunning] = React.useState(false);
+  const [opsAlertsEmailEnabled, setOpsAlertsEmailEnabled] = React.useState(true);
+  const [opsAlertsWhatsappEnabled, setOpsAlertsWhatsappEnabled] = React.useState(true);
+  const [opsAlertsLoading, setOpsAlertsLoading] = React.useState(false);
+  const [opsAlertsSaving, setOpsAlertsSaving] = React.useState(false);
   const [billing, setBilling] = React.useState(null);
   const [billingLoading, setBillingLoading] = React.useState(false);
   const [invoices, setInvoices] = React.useState([]);
@@ -153,8 +157,45 @@ export const SettingsPage = () => {
       .catch(() => { /* keep defaults */ })
       .finally(() => { if (!cancelled) setDailyChecksLoading(false); });
     fetchDailyChecksStatus();
+    setOpsAlertsLoading(true);
+    notificationsSettingsAPI.getOpsAlertsSettings()
+      .then((res) => {
+        if (cancelled) return;
+        const data = res.data || {};
+        if (typeof data.email_enabled === 'boolean') setOpsAlertsEmailEnabled(data.email_enabled);
+        if (typeof data.whatsapp_enabled === 'boolean') setOpsAlertsWhatsappEnabled(data.whatsapp_enabled);
+      })
+      .catch(() => { /* keep defaults (both ON) */ })
+      .finally(() => { if (!cancelled) setOpsAlertsLoading(false); });
     return () => { cancelled = true; };
   }, [isAdmin, fetchDailyChecksStatus]);
+
+  const opsAlertsSaveSeq = React.useRef(0);
+  const handleSaveOpsAlertsSetting = async (field, value) => {
+    const mySeq = ++opsAlertsSaveSeq.current;
+    const prevEmail = opsAlertsEmailEnabled;
+    const prevWhatsapp = opsAlertsWhatsappEnabled;
+    if (field === 'email_enabled') setOpsAlertsEmailEnabled(value);
+    if (field === 'whatsapp_enabled') setOpsAlertsWhatsappEnabled(value);
+    setOpsAlertsSaving(true);
+    try {
+      const res = await notificationsSettingsAPI.updateOpsAlertsSettings({ [field]: value });
+      if (mySeq !== opsAlertsSaveSeq.current) return;
+      const data = res?.data || {};
+      if (typeof data.email_enabled === 'boolean') setOpsAlertsEmailEnabled(data.email_enabled);
+      if (typeof data.whatsapp_enabled === 'boolean') setOpsAlertsWhatsappEnabled(data.whatsapp_enabled);
+      toast.success(language === 'ar' ? 'تم حفظ إعدادات قنوات التنبيهات' : 'Alert channels saved');
+    } catch (e) {
+      if (mySeq !== opsAlertsSaveSeq.current) return;
+      setOpsAlertsEmailEnabled(prevEmail);
+      setOpsAlertsWhatsappEnabled(prevWhatsapp);
+      toast.error(e?.response?.data?.detail || (language === 'ar'
+        ? 'تعذر حفظ الإعداد'
+        : 'Failed to save setting'));
+    } finally {
+      if (mySeq === opsAlertsSaveSeq.current) setOpsAlertsSaving(false);
+    }
+  };
 
   const handleRunDailyChecksNow = async () => {
     setDailyChecksRunning(true);
@@ -838,6 +879,69 @@ export const SettingsPage = () => {
                     ? (language === 'ar' ? 'جاري التشغيل...' : 'Running...')
                     : (language === 'ar' ? 'تشغيل الآن' : 'Run now')}
                 </Button>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Ops alert delivery channels — admin only */}
+        {isAdmin && (
+          <Card data-testid="ops-alerts-channels-card">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <ShieldAlert className="w-5 h-5 text-primary" />
+                {language === 'ar'
+                  ? 'قنوات تنبيهات التشغيل'
+                  : 'Ops Alert Channels'}
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <p className="text-sm text-muted-foreground">
+                {language === 'ar'
+                  ? 'تحكم في القنوات التي تُرسَل عبرها تنبيهات التشغيل (أعطال الفحص اليومي، فشل الإرسال، إلخ).'
+                  : 'Choose which transports outbound ops alerts (daily-check failures, delivery errors, etc.) are sent over.'}
+              </p>
+              <div className="flex items-center justify-between gap-3 pt-2 border-t">
+                <div>
+                  <Label htmlFor="ops-alerts-email-toggle" className="font-medium">
+                    {language === 'ar'
+                      ? 'إرسال تنبيهات التشغيل بالبريد الإلكتروني'
+                      : 'Send ops alerts by email'}
+                  </Label>
+                  <p className="text-sm text-muted-foreground">
+                    {language === 'ar'
+                      ? 'يتطلب ضبط متغير البيئة OPS_ALERT_EMAIL_TO حتى يصبح للمفتاح أثر.'
+                      : 'Requires the OPS_ALERT_EMAIL_TO env var to be configured for the toggle to have any effect.'}
+                  </p>
+                </div>
+                <Switch
+                  id="ops-alerts-email-toggle"
+                  data-testid="ops-alerts-email-toggle"
+                  checked={opsAlertsEmailEnabled}
+                  disabled={opsAlertsLoading || opsAlertsSaving}
+                  onCheckedChange={(v) => handleSaveOpsAlertsSetting('email_enabled', !!v)}
+                />
+              </div>
+              <div className="flex items-center justify-between gap-3 pt-3 border-t">
+                <div>
+                  <Label htmlFor="ops-alerts-whatsapp-toggle" className="font-medium">
+                    {language === 'ar'
+                      ? 'إرسال تنبيهات التشغيل عبر واتساب'
+                      : 'Send ops alerts by WhatsApp'}
+                  </Label>
+                  <p className="text-sm text-muted-foreground">
+                    {language === 'ar'
+                      ? 'يتطلب ضبط متغير البيئة OPS_ALERT_WHATSAPP_TO حتى يصبح للمفتاح أثر.'
+                      : 'Requires the OPS_ALERT_WHATSAPP_TO env var to be configured for the toggle to have any effect.'}
+                  </p>
+                </div>
+                <Switch
+                  id="ops-alerts-whatsapp-toggle"
+                  data-testid="ops-alerts-whatsapp-toggle"
+                  checked={opsAlertsWhatsappEnabled}
+                  disabled={opsAlertsLoading || opsAlertsSaving}
+                  onCheckedChange={(v) => handleSaveOpsAlertsSetting('whatsapp_enabled', !!v)}
+                />
               </div>
             </CardContent>
           </Card>
