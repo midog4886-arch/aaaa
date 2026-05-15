@@ -3699,6 +3699,223 @@ def start_daily_checks_scheduler():
         asyncio.ensure_future(daily_checks_scheduler_loop())
 
 
+# ── Tenant auto-purge scheduler ─────────────────────────────────────────────
+# Runs once per day. For every tenant in ``pending_delete`` whose
+# ``deletion_purge_at`` is in the past:
+#   1. On first detection, emit a ``tenant.auto_purge_pending`` ops alert and
+#      stamp ``final_purge_alert_sent_at``. The actual drop is deferred until
+#      the NEXT scheduler tick (~24h), giving super-admins one last chance to
+#      cancel via ``POST /super/tenants/{id}/cancel-delete``.
+#   2. On the following tick, drop the per-tenant Mongo DB and mark the
+#      tenant ``status: deleted``. Failures are logged + raised as
+#      ``tenant.auto_purge_failed`` ops alerts; the tenant stays
+#      ``pending_delete`` so the next tick retries.
+_tenant_purge_scheduler_started = False
+# Run at 02:00 Riyadh — after nightly backup (00:00) and before the daily
+# renewal/ad checks (default 07:00) so the three jobs don't pile up.
+_TENANT_PURGE_HOUR_RIYADH = 2
+
+
+async def _run_tenant_auto_purge() -> dict:
+    """Scan ``control_db.tenants`` and purge any whose grace period has elapsed.
+
+    Returns a summary dict ``{warned, purged, failed, skipped}`` for logging
+    and tests.
+    """
+    from control_db import control_db as _control_db
+    from database import _raw_client as _client
+    from utils.tenant import slug_to_db_name as _slug_to_db_name, DEFAULT_TENANT_SLUG as _DEFAULT_SLUG
+
+    now = datetime.now(timezone.utc)
+    summary = {"warned": 0, "purged": 0, "failed": 0, "skipped": 0}
+    try:
+        candidates = await _control_db.tenants.find(
+            {"status": "pending_delete"}, {"_id": 0}
+        ).to_list(1000)
+    except Exception as e:
+        print(f"Tenant purge scheduler: failed to list tenants: {e}")
+        return summary
+
+    for tenant in candidates:
+        tid = tenant.get("id")
+        slug = tenant.get("slug") or ""
+        if slug == _DEFAULT_SLUG:
+            summary["skipped"] += 1
+            continue
+        purge_at_str = tenant.get("deletion_purge_at")
+        if not purge_at_str:
+            summary["skipped"] += 1
+            continue
+        try:
+            purge_at = datetime.fromisoformat(str(purge_at_str).replace("Z", "+00:00"))
+        except Exception:
+            summary["skipped"] += 1
+            continue
+        if now < purge_at:
+            # Grace period not yet elapsed — nothing to do.
+            summary["skipped"] += 1
+            continue
+
+        warned_at = tenant.get("final_purge_alert_sent_at")
+        if not warned_at:
+            # First detection: emit final warning and defer the drop one tick.
+            try:
+                await _emit_ops_alert(
+                    kind="tenant.auto_purge_pending",
+                    title=f"Tenant '{slug}' will be auto-purged on next run",
+                    body=(
+                        f"Tenant '{slug}' (id={tid}) reached its 7-day deletion "
+                        f"grace period on {purge_at.isoformat()}. The next "
+                        "scheduler tick (~24h) will permanently drop its "
+                        "MongoDB database. To cancel, call "
+                        f"POST /super/tenants/{tid}/cancel-delete now."
+                    ),
+                    severity="warning",
+                )
+            except Exception as e:
+                print(f"Tenant purge scheduler: ops alert emit failed for {slug}: {e}")
+            try:
+                await _control_db.tenants.update_one(
+                    {"id": tid},
+                    {"$set": {"final_purge_alert_sent_at": now.isoformat()}},
+                )
+            except Exception as e:
+                print(f"Tenant purge scheduler: failed to stamp warning for {slug}: {e}")
+            summary["warned"] += 1
+            continue
+
+        # Second detection: actually drop the database.
+        # Re-fetch immediately before the irreversible drop so a super-admin
+        # who calls cancel-delete during the scan window can still abort.
+        # cancel-delete unsets ``deletion_purge_at`` and flips ``status`` to
+        # ``active``, both of which we re-validate here.
+        fresh = None
+        try:
+            fresh = await _control_db.tenants.find_one({"id": tid}, {"_id": 0})
+        except Exception as e:
+            print(f"Tenant purge scheduler: pre-drop refetch failed for {slug}: {e}")
+            summary["skipped"] += 1
+            continue
+        if not fresh or fresh.get("status") != "pending_delete":
+            print(
+                f"Tenant purge scheduler: skipping {slug} — status changed "
+                f"to {fresh.get('status') if fresh else 'missing'} since scan"
+            )
+            summary["skipped"] += 1
+            continue
+        fresh_purge_at_str = fresh.get("deletion_purge_at")
+        if not fresh_purge_at_str:
+            print(f"Tenant purge scheduler: skipping {slug} — deletion_purge_at cleared since scan")
+            summary["skipped"] += 1
+            continue
+        try:
+            fresh_purge_at = datetime.fromisoformat(
+                str(fresh_purge_at_str).replace("Z", "+00:00")
+            )
+        except Exception:
+            summary["skipped"] += 1
+            continue
+        if datetime.now(timezone.utc) < fresh_purge_at:
+            print(f"Tenant purge scheduler: skipping {slug} — deletion_purge_at moved to future")
+            summary["skipped"] += 1
+            continue
+
+        db_name = fresh.get("db_name") or _slug_to_db_name(slug)
+        try:
+            await _client.drop_database(db_name)
+        except Exception as e:
+            err = str(e) or e.__class__.__name__
+            print(f"Tenant purge scheduler: drop_database({db_name}) failed: {err}")
+            try:
+                await _control_db.tenants.update_one(
+                    {"id": tid},
+                    {"$set": {
+                        "deletion_last_error": err,
+                        "deletion_last_error_at": now.isoformat(),
+                    }},
+                )
+            except Exception:
+                pass
+            try:
+                await _emit_ops_alert(
+                    kind="tenant.auto_purge_failed",
+                    title=f"Tenant '{slug}' auto-purge FAILED",
+                    body=(
+                        f"Could not drop MongoDB database '{db_name}' for "
+                        f"tenant '{slug}' (id={tid}): {err}. Tenant remains "
+                        "pending_delete; next scheduler tick will retry."
+                    ),
+                    severity="error",
+                )
+            except Exception:
+                pass
+            summary["failed"] += 1
+            continue
+
+        try:
+            await _control_db.tenants.update_one(
+                {"id": tid},
+                {"$set": {
+                    "status": "deleted",
+                    "deleted_at": now.isoformat(),
+                    "db_dropped": True,
+                    "deleted_by": "auto_purge_scheduler",
+                },
+                 "$unset": {"deletion_last_error": "", "deletion_last_error_at": ""}},
+            )
+        except Exception as e:
+            print(f"Tenant purge scheduler: failed to mark {slug} deleted: {e}")
+        print(f"Tenant purge scheduler: purged tenant '{slug}' (db={db_name})")
+        summary["purged"] += 1
+
+    return summary
+
+
+async def tenant_purge_scheduler_loop():
+    global _tenant_purge_scheduler_started
+    _tenant_purge_scheduler_started = True
+    print(
+        "Tenant auto-purge scheduler started "
+        f"(timezone: Asia/Riyadh, runs daily at {_TENANT_PURGE_HOUR_RIYADH:02d}:00)"
+    )
+    while True:
+        try:
+            now = datetime.now(_RIYADH_TZ)
+            next_run = now.replace(
+                hour=_TENANT_PURGE_HOUR_RIYADH, minute=0, second=0, microsecond=0
+            )
+            if next_run <= now:
+                next_run += timedelta(days=1)
+            wait_seconds = (next_run - now).total_seconds()
+            print(
+                f"Tenant purge scheduler: next run in {wait_seconds:.0f}s "
+                f"at {next_run.isoformat()}"
+            )
+            await asyncio.sleep(wait_seconds)
+            try:
+                summary = await _run_tenant_auto_purge()
+                print(f"Tenant purge scheduler: finished {summary}")
+            except Exception as e:
+                print(f"Tenant purge scheduler run failed: {e}")
+                await _emit_ops_alert(
+                    kind="tenant.auto_purge_failed",
+                    title="Tenant auto-purge scheduler raised an exception",
+                    body=f"The daily tenant auto-purge run failed: {e}",
+                    severity="error",
+                )
+        except asyncio.CancelledError:
+            break
+        except Exception as e:
+            print(f"Tenant purge scheduler error: {e}")
+            await asyncio.sleep(3600)
+
+
+def start_tenant_purge_scheduler():
+    global _tenant_purge_scheduler_started
+    if not _tenant_purge_scheduler_started:
+        asyncio.ensure_future(tenant_purge_scheduler_loop())
+
+
 @api_router.post("/backup/create")
 async def create_backup(token: Optional[str] = None):
     if not token:
@@ -9170,6 +9387,11 @@ async def create_default_admin():
         start_daily_checks_scheduler()
     except Exception as e:
         print(f"Daily checks scheduler start failed: {e}")
+    # Start tenant auto-purge scheduler (drops Mongo DB once 7-day grace ends)
+    try:
+        start_tenant_purge_scheduler()
+    except Exception as e:
+        print(f"Tenant purge scheduler start failed: {e}")
     # Start social-insights auto-refresh scheduler (configurable from UI)
     try:
         from routes.social_publisher import start_insights_scheduler

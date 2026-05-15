@@ -204,6 +204,31 @@ Refuses unless **either**:
 After success: `status = deleted`, `db_dropped = true`, the per-tenant
 Mongo database is irreversibly dropped. **Take a backup first.**
 
+### Auto-purge scheduler (runs daily at 02:00 Riyadh)
+
+A background loop (`tenant_purge_scheduler_loop` in `backend/server.py`)
+walks `control_db.tenants` once per day looking for `pending_delete`
+tenants whose `deletion_purge_at` is in the past:
+
+1. **First detection** — emits a `tenant.auto_purge_pending` ops alert
+   (severity `warning`) and stamps `final_purge_alert_sent_at` on the
+   tenant doc. The actual drop is **deferred until the next tick (~24 h)**
+   so super-admins have one last chance to call
+   `POST /super/tenants/{id}/cancel-delete`.
+2. **Next detection (still elapsed, already warned)** — drops the
+   per-tenant Mongo DB via `_raw_client.drop_database(db_name)` and sets
+   `status = deleted`, `deleted_at`, `db_dropped = true`,
+   `deleted_by = "auto_purge_scheduler"`.
+3. **On drop failure** — records `deletion_last_error[_at]`, emits a
+   `tenant.auto_purge_failed` ops alert, and leaves the tenant in
+   `pending_delete` so the next tick retries.
+
+The default tenant is always skipped. To cancel an auto-purge once the
+warning alert has fired but before the actual drop, call
+`POST /super/tenants/{id}/cancel-delete` — `cancel-delete` already clears
+`deletion_purge_at`, so the next scheduler tick treats the tenant as a
+no-op.
+
 ---
 
 ## 6. Backup & Daily-Check Failure Alerts

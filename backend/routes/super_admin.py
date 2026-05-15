@@ -577,7 +577,15 @@ async def schedule_tenant_delete(
             "deletion_scheduled_at": datetime.now(timezone.utc).isoformat(),
             "deletion_purge_at": purge_at.isoformat(),
             "deletion_reason": (payload.get("reason") or "")[:500],
-        }},
+         },
+         # Reset per-cycle warning state so the auto-purge scheduler will
+         # always emit a fresh "final warning" alert before dropping this
+         # tenant on a subsequent cycle.
+         "$unset": {
+            "final_purge_alert_sent_at": "",
+            "deletion_last_error": "",
+            "deletion_last_error_at": "",
+         }},
     )
     refreshed = await control_db.tenants.find_one({"id": tenant_id}, {"_id": 0})
 
@@ -607,7 +615,17 @@ async def cancel_tenant_delete(tenant_id: str, _=Depends(_require_super)):
     await control_db.tenants.update_one(
         {"id": tenant_id},
         {"$set": {"status": "active"},
-         "$unset": {"deletion_scheduled_at": "", "deletion_purge_at": "", "deletion_reason": ""}},
+         "$unset": {
+            "deletion_scheduled_at": "",
+            "deletion_purge_at": "",
+            "deletion_reason": "",
+            # Clear per-cycle warning state so a future schedule-delete
+            # always re-warns before the auto-purge scheduler drops this
+            # tenant.
+            "final_purge_alert_sent_at": "",
+            "deletion_last_error": "",
+            "deletion_last_error_at": "",
+         }},
     )
     refreshed = await control_db.tenants.find_one({"id": tenant_id}, {"_id": 0})
     return {"ok": True, "tenant": refreshed}
