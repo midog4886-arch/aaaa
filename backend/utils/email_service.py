@@ -62,10 +62,20 @@ async def get_email_settings() -> Dict:
     }
 
 
-async def update_email_settings(provider: str, from_email: str, from_name: str, enabled: bool) -> Dict:
+async def update_email_settings(
+    provider: str,
+    from_email: str,
+    from_name: str,
+    enabled: bool,
+    *,
+    actor: Optional[Dict] = None,
+    trigger: str = "automated",
+    trigger_source: str = "",
+) -> Dict:
     provider = (provider or "").lower()
     if provider not in {"resend", "sendgrid", ""}:
         raise ValueError("provider must be 'resend', 'sendgrid', or '' (disabled)")
+    before = await get_email_settings()
     now_iso = datetime.now(timezone.utc).isoformat()
     await control_db.platform_settings.update_one(
         {"key": "email"},
@@ -79,7 +89,30 @@ async def update_email_settings(provider: str, from_email: str, from_name: str, 
         }},
         upsert=True,
     )
-    return await get_email_settings()
+    after = await get_email_settings()
+    try:
+        from utils.audit import log_audit
+        actor_doc = actor or {
+            "user_id": "system",
+            "username": "system",
+            "is_admin": False,
+        }
+        trig = (trigger or "automated").lower()
+        if trig not in {"manual", "automated"}:
+            trig = "automated"
+        await log_audit(
+            actor=actor_doc,
+            action="settings.email.update",
+            entity_type="settings",
+            entity_id="email",
+            entity_name="email_settings",
+            before=before,
+            after=after,
+            extra={"trigger": trig, "trigger_source": trigger_source or ""},
+        )
+    except Exception:
+        logger.exception("failed to write audit row for email settings update")
+    return after
 
 
 async def _log_send(

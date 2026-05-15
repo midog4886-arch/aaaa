@@ -1262,28 +1262,17 @@ async def email_settings_get(_=Depends(_require_super)):
 @router.put("/email/settings")
 async def email_settings_put(payload: EmailSettingsIn, super_payload: dict = Depends(_require_super)):
     try:
-        before = await get_email_settings()
         result = await update_email_settings(
             provider=payload.provider or "",
             from_email=payload.from_email or "",
             from_name=payload.from_name or "",
             enabled=bool(payload.enabled if payload.enabled is not None else True),
+            actor=_super_actor(super_payload),
+            trigger="manual",
+            trigger_source="super_admin_api",
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
-    try:
-        from utils.audit import log_audit
-        await log_audit(
-            actor=_super_actor(super_payload),
-            action="settings.email.update",
-            entity_type="settings",
-            entity_id="email",
-            entity_name="email_settings",
-            before=before,
-            after=result,
-        )
-    except Exception:
-        pass
     return result
 
 
@@ -1341,27 +1330,16 @@ async def payment_settings_get(_=Depends(_require_super)):
 @router.put("/payment/settings")
 async def payment_settings_put(payload: PaymentSettingsIn, super_payload: dict = Depends(_require_super)):
     try:
-        before = await get_payment_settings()
         result = await update_payment_settings(
             provider=payload.provider or "",
             enabled=bool(payload.enabled),
             secret_env=payload.secret_env or "PAYMENT_WEBHOOK_SECRET",
+            actor=_super_actor(super_payload),
+            trigger="manual",
+            trigger_source="super_admin_api",
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
-    try:
-        from utils.audit import log_audit
-        await log_audit(
-            actor=_super_actor(super_payload),
-            action="settings.payment.update",
-            entity_type="settings",
-            entity_id="payment",
-            entity_name="payment_settings",
-            before=before,
-            after=result,
-        )
-    except Exception:
-        pass
     return result
 
 

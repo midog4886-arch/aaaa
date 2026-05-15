@@ -455,13 +455,22 @@ async def get_payment_settings() -> Dict:
     }
 
 
-async def update_payment_settings(provider: str, enabled: bool, secret_env: str) -> Dict:
+async def update_payment_settings(
+    provider: str,
+    enabled: bool,
+    secret_env: str,
+    *,
+    actor: Optional[Dict] = None,
+    trigger: str = "automated",
+    trigger_source: str = "",
+) -> Dict:
     provider = (provider or "").lower()
     if provider not in VALID_PROVIDERS:
         raise ValueError("provider must be 'stripe', 'moyasar', 'tap', or '' (disabled)")
     secret_env = (secret_env or "").strip() or DEFAULT_SECRET_ENV
     if not secret_env.replace("_", "").isalnum():
         raise ValueError("secret_env must be alphanumeric / underscores only")
+    before = await get_payment_settings()
     now_iso = datetime.now(timezone.utc).isoformat()
     await control_db.platform_settings.update_one(
         {"key": "payment"},
@@ -474,7 +483,30 @@ async def update_payment_settings(provider: str, enabled: bool, secret_env: str)
         }},
         upsert=True,
     )
-    return await get_payment_settings()
+    after = await get_payment_settings()
+    try:
+        from utils.audit import log_audit
+        actor_doc = actor or {
+            "user_id": "system",
+            "username": "system",
+            "is_admin": False,
+        }
+        trig = (trigger or "automated").lower()
+        if trig not in {"manual", "automated"}:
+            trig = "automated"
+        await log_audit(
+            actor=actor_doc,
+            action="settings.payment.update",
+            entity_type="settings",
+            entity_id="payment",
+            entity_name="payment_settings",
+            before=before,
+            after=after,
+            extra={"trigger": trig, "trigger_source": trigger_source or ""},
+        )
+    except Exception:
+        logger.exception("failed to write audit row for payment settings update")
+    return after
 
 
 # ── Signature verification ──────────────────────────────────────────────
