@@ -297,6 +297,7 @@ export const publicAPI = {
 export const billingAPI = {
   get: () => axios.get(`${API}/billing`),
   invoices: () => axios.get(`${API}/billing/invoices`),
+  updateContact: (data) => axios.patch(`${API}/billing/contact`, data),
 };
 
 // Branches API

@@ -464,7 +464,8 @@ async def renew_tenant(tenant_id: str, payload: TenantRenew, _=Depends(_require_
     refreshed = await control_db.tenants.find_one({"id": tenant_id}, {"_id": 0})
 
     try:
-        owner_email = (refreshed or {}).get("owner_email") or ""
+        owner_email = ((refreshed or {}).get("billing_email") or "").strip() \
+            or ((refreshed or {}).get("owner_email") or "").strip()
         if owner_email:
             await send_email(
                 kind="payment_success",

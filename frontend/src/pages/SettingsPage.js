@@ -50,6 +50,10 @@ export const SettingsPage = () => {
   const [billingLoading, setBillingLoading] = React.useState(false);
   const [invoices, setInvoices] = React.useState([]);
   const [invoicesLoading, setInvoicesLoading] = React.useState(false);
+  const [contactEditing, setContactEditing] = React.useState(false);
+  const [contactSaving, setContactSaving] = React.useState(false);
+  const [contactOwner, setContactOwner] = React.useState('');
+  const [contactBilling, setContactBilling] = React.useState('');
   const ALL_DAYS = React.useMemo(() => ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'], []);
   const [dailyChecksDays, setDailyChecksDays] = React.useState(ALL_DAYS);
   const DAY_LABELS = React.useMemo(() => ({
@@ -63,7 +67,12 @@ export const SettingsPage = () => {
     setBillingLoading(true);
     setInvoicesLoading(true);
     billingAPI.get()
-      .then((res) => { if (!cancelled) setBilling(res.data || null); })
+      .then((res) => {
+        if (cancelled) return;
+        setBilling(res.data || null);
+        setContactOwner(res.data?.owner_email || '');
+        setContactBilling(res.data?.billing_email || '');
+      })
       .catch(() => { if (!cancelled) setBilling(null); })
       .finally(() => { if (!cancelled) setBillingLoading(false); });
     billingAPI.invoices()
@@ -269,6 +278,39 @@ export const SettingsPage = () => {
     }
   }, []);
 
+  const handleSaveBillingContact = async () => {
+    const owner = (contactOwner || '').trim();
+    if (!owner || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(owner)) {
+      toast.error(language === 'ar' ? 'بريد المالك غير صالح' : 'Invalid owner email');
+      return;
+    }
+    const bill = (contactBilling || '').trim();
+    if (bill && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(bill)) {
+      toast.error(language === 'ar' ? 'بريد الفوترة غير صالح' : 'Invalid billing email');
+      return;
+    }
+    setContactSaving(true);
+    try {
+      const res = await billingAPI.updateContact({ owner_email: owner, billing_email: bill });
+      const data = res?.data || {};
+      setBilling((prev) => prev ? { ...prev, owner_email: data.owner_email || '', billing_email: data.billing_email || '' } : prev);
+      setContactOwner(data.owner_email || '');
+      setContactBilling(data.billing_email || '');
+      setContactEditing(false);
+      if (data.owner_email_changed) {
+        toast.success(language === 'ar'
+          ? 'تم تحديث البريد. أُرسلت رسالة تأكيد إلى العنوان الجديد.'
+          : 'Email updated. A confirmation email was sent to the new address.');
+      } else {
+        toast.success(language === 'ar' ? 'تم حفظ بيانات الاتصال' : 'Contact details saved');
+      }
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || (language === 'ar' ? 'تعذر حفظ البريد' : 'Failed to save email'));
+    } finally {
+      setContactSaving(false);
+    }
+  };
+
   const onDownloadTenantData = () => {
     const msg = language === 'ar'
       ? 'سيتم تنزيل نسخة كاملة من بيانات أكاديميتك بصيغة ZIP. قد يستغرق ذلك بعض الوقت. هل تريد المتابعة؟'
@@ -357,6 +399,78 @@ export const SettingsPage = () => {
                       <p className="text-sm text-muted-foreground">{language === 'ar' ? 'تاريخ الانتهاء' : 'End date'}</p>
                       <p className="font-medium">{billing.end_at ? new Date(billing.end_at).toLocaleDateString(language === 'ar' ? 'ar-SA' : 'en-GB') : '—'}</p>
                     </div>
+                  </div>
+                  <div className="pt-3 border-t" data-testid="billing-contact-section">
+                    <div className="flex items-center justify-between mb-2">
+                      <h4 className="font-bold flex items-center gap-2">
+                        <Mail className="w-4 h-4 text-primary" />
+                        {language === 'ar' ? 'بريد الإشعارات' : 'Notification email'}
+                      </h4>
+                      {!contactEditing && (
+                        <Button size="sm" variant="outline" onClick={() => setContactEditing(true)} data-testid="billing-contact-edit-btn">
+                          {language === 'ar' ? 'تعديل' : 'Edit'}
+                        </Button>
+                      )}
+                    </div>
+                    {!contactEditing ? (
+                      <div className="space-y-1 text-sm">
+                        <div className="flex flex-wrap gap-x-2">
+                          <span className="text-muted-foreground">{language === 'ar' ? 'بريد المالك:' : 'Owner email:'}</span>
+                          <span className="font-medium" data-testid="billing-owner-email">{billing.owner_email || '—'}</span>
+                        </div>
+                        <div className="flex flex-wrap gap-x-2">
+                          <span className="text-muted-foreground">{language === 'ar' ? 'بريد الفوترة (اختياري):' : 'Billing email (optional):'}</span>
+                          <span className="font-medium" data-testid="billing-billing-email">{billing.billing_email || '—'}</span>
+                        </div>
+                        <p className="text-xs text-muted-foreground pt-1">
+                          {language === 'ar'
+                            ? 'تُرسل رسائل الترحيب والتذكير والتعليق إلى بريد المالك. تُرسل رسائل الدفع إلى بريد الفوترة إن وُجد، وإلا فإلى بريد المالك.'
+                            : 'Welcome, reminder, and suspension emails go to the owner address. Payment emails go to the billing address if set, otherwise the owner address.'}
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        <div>
+                          <Label className="text-xs">{language === 'ar' ? 'بريد المالك (للإشعارات)' : 'Owner email (notifications)'}</Label>
+                          <input
+                            type="email"
+                            className="w-full mt-1 px-3 py-2 border rounded-md text-sm bg-background"
+                            value={contactOwner}
+                            onChange={(e) => setContactOwner(e.target.value)}
+                            placeholder="owner@academy.com"
+                            data-testid="billing-owner-email-input"
+                          />
+                        </div>
+                        <div>
+                          <Label className="text-xs">{language === 'ar' ? 'بريد الفوترة (اختياري)' : 'Billing email (optional)'}</Label>
+                          <input
+                            type="email"
+                            className="w-full mt-1 px-3 py-2 border rounded-md text-sm bg-background"
+                            value={contactBilling}
+                            onChange={(e) => setContactBilling(e.target.value)}
+                            placeholder="billing@academy.com"
+                            data-testid="billing-billing-email-input"
+                          />
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                          {language === 'ar'
+                            ? 'عند تغيير بريد المالك، سنرسل رسالة تأكيد إلى العنوان الجديد للتحقق من وصولها.'
+                            : 'When the owner email changes, a confirmation email will be sent to the new address to verify reachability.'}
+                        </p>
+                        <div className="flex gap-2 pt-1">
+                          <Button size="sm" onClick={handleSaveBillingContact} disabled={contactSaving} data-testid="billing-contact-save-btn">
+                            {contactSaving ? (language === 'ar' ? 'جارٍ الحفظ...' : 'Saving...') : (language === 'ar' ? 'حفظ' : 'Save')}
+                          </Button>
+                          <Button size="sm" variant="outline" onClick={() => {
+                            setContactOwner(billing.owner_email || '');
+                            setContactBilling(billing.billing_email || '');
+                            setContactEditing(false);
+                          }} disabled={contactSaving} data-testid="billing-contact-cancel-btn">
+                            {language === 'ar' ? 'إلغاء' : 'Cancel'}
+                          </Button>
+                        </div>
+                      </div>
+                    )}
                   </div>
                   <div className="pt-3 border-t grid grid-cols-1 sm:grid-cols-2 gap-2">
                     <a href={buildMailto(

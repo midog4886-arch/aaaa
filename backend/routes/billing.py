@@ -17,6 +17,7 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request
+from pydantic import BaseModel, EmailStr, Field
 
 from utils.tenant import get_current_tenant_slug, DEFAULT_TENANT_SLUG
 from utils.auth import get_current_user
@@ -70,11 +71,12 @@ async def apply_payment_failure(
 
     email_result = {"status": "skipped", "error": "no owner_email"}
     try:
-        owner_email = (refreshed or {}).get("owner_email") or ""
-        if owner_email:
+        recipient = ((refreshed or {}).get("billing_email") or "").strip() \
+            or ((refreshed or {}).get("owner_email") or "").strip()
+        if recipient:
             email_result = await send_email(
                 kind="payment_failed",
-                to=owner_email,
+                to=recipient,
                 tenant_slug=(refreshed or {}).get("slug"),
                 ctx={
                     "academy_name": (refreshed or {}).get("name", ""),
@@ -243,8 +245,88 @@ async def get_billing(current_user: dict = Depends(get_current_user)):
         "is_trial": bool(is_trial),
         "trial_days": int(tenant.get("trial_days") or 0),
         "owner_email": tenant.get("owner_email", ""),
+        "billing_email": tenant.get("billing_email", ""),
         "owner_phone": tenant.get("owner_phone", ""),
         "max_branches": tenant.get("max_branches", 0),
         "max_members": tenant.get("max_members", 0),
         "available_plans": plans,
+    }
+
+
+class BillingContactUpdate(BaseModel):
+    owner_email: EmailStr
+    billing_email: Optional[str] = Field(default="", max_length=320)
+
+
+@router.patch("/contact")
+async def update_billing_contact(
+    payload: BillingContactUpdate,
+    current_user: dict = Depends(get_current_user),
+):
+    """Update the academy's notification + billing email addresses.
+
+    - ``owner_email`` is the primary recipient for transactional emails
+      (welcome, trial_ending, suspended, cancelled, payment_success).
+    - ``billing_email`` is an optional dedicated address for payment-related
+      emails (payment_failed, payment_success). When empty, payment emails
+      fall back to ``owner_email``.
+
+    On owner_email change, a fresh "welcome" confirmation email is dispatched
+    to the new address so the academy can verify reachability.
+    """
+    if not current_user.get("is_admin", False):
+        raise HTTPException(status_code=403, detail="صلاحية مسؤول الأكاديمية مطلوبة")
+
+    slug = get_current_tenant_slug() or DEFAULT_TENANT_SLUG
+    tenant = await control_db.tenants.find_one({"slug": slug}, {"_id": 0})
+    if not tenant:
+        raise HTTPException(status_code=404, detail="tenant not found")
+
+    new_owner = str(payload.owner_email).strip().lower()
+    raw_billing = (payload.billing_email or "").strip().lower()
+    if raw_billing:
+        # Validate via pydantic by re-parsing through EmailStr
+        try:
+            BillingContactUpdate(owner_email=raw_billing, billing_email="")
+        except Exception:
+            raise HTTPException(status_code=422, detail="billing_email غير صالح")
+    new_billing = raw_billing
+
+    prev_owner = (tenant.get("owner_email") or "").strip().lower()
+    owner_changed = new_owner != prev_owner
+
+    await control_db.tenants.update_one(
+        {"slug": slug},
+        {"$set": {
+            "owner_email": new_owner,
+            "billing_email": new_billing,
+            "billing_contact_updated_at": datetime.now(timezone.utc).isoformat(),
+        }},
+    )
+    refreshed = await control_db.tenants.find_one({"slug": slug}, {"_id": 0}) or tenant
+
+    confirmation = {"status": "skipped", "error": "owner_email unchanged"}
+    if owner_changed:
+        try:
+            confirmation = await send_email(
+                kind="welcome",
+                to=new_owner,
+                tenant_slug=slug,
+                ctx={
+                    "academy_name": refreshed.get("name", ""),
+                    "slug": slug,
+                    "trial_days": int(refreshed.get("trial_days") or 0),
+                    "subscription_end_at": refreshed.get("subscription_end_at", ""),
+                },
+            )
+        except Exception as e:
+            logger.exception("welcome confirmation email failed for %s", slug)
+            confirmation = {"status": "failed", "error": str(e)}
+
+    return {
+        "ok": True,
+        "owner_email": refreshed.get("owner_email", ""),
+        "billing_email": refreshed.get("billing_email", ""),
+        "owner_email_changed": owner_changed,
+        "confirmation_email": confirmation,
     }
