@@ -249,17 +249,75 @@ async def delete_tenant(tenant_id: str, _=Depends(_require_super)):
     return {"ok": True}
 
 
+async def _compute_tenant_stats(tenant: dict) -> dict:
+    db_name = tenant.get("db_name") or slug_to_db_name(tenant.get("slug", ""))
+    tdb = _raw_client[db_name]
+
+    counts: dict = {}
+    for coll in ("members", "branches", "users", "invoices", "activities", "attendance"):
+        try:
+            counts[coll] = await tdb[coll].count_documents({})
+        except Exception:
+            counts[coll] = 0
+
+    cutoff_30d = (datetime.now(timezone.utc) - timedelta(days=30)).isoformat()
+    recent: dict = {"members": 0, "invoices": 0, "attendance": 0}
+    for coll in recent.keys():
+        try:
+            recent[coll] = await tdb[coll].count_documents({"created_at": {"$gte": cutoff_30d}})
+        except Exception:
+            recent[coll] = 0
+
+    last_activity: Optional[str] = None
+    for coll in ("attendance", "invoices", "members", "branches"):
+        try:
+            doc = await tdb[coll].find_one({}, sort=[("created_at", -1)], projection={"_id": 0, "created_at": 1})
+            ts = (doc or {}).get("created_at")
+            if ts and (last_activity is None or ts > last_activity):
+                last_activity = ts
+        except Exception:
+            pass
+
+    max_members = int(tenant.get("max_members") or 0)
+    max_branches = int(tenant.get("max_branches") or 0)
+    usage = {
+        "members_pct": round(counts["members"] * 100 / max_members, 1) if max_members > 0 else None,
+        "branches_pct": round(counts["branches"] * 100 / max_branches, 1) if max_branches > 0 else None,
+    }
+
+    return {
+        "counts": counts,
+        "recent_30d": recent,
+        "last_activity_at": last_activity,
+        "usage": usage,
+    }
+
+
 @router.get("/tenants/{tenant_id}/stats")
 async def tenant_stats(tenant_id: str, _=Depends(_require_super)):
     existing = await control_db.tenants.find_one({"id": tenant_id}, {"_id": 0})
     if not existing:
         raise HTTPException(status_code=404, detail="Tenant not found")
-    db_name = existing.get("db_name") or slug_to_db_name(existing.get("slug", ""))
-    tdb = _raw_client[db_name]
-    stats = {}
-    for coll in ("members", "branches", "users", "invoices", "activities"):
+    data = await _compute_tenant_stats(existing)
+    return {"tenant": existing, **data}
+
+
+@router.get("/overview")
+async def super_overview(_=Depends(_require_super)):
+    tenants = await control_db.tenants.find({}, {"_id": 0}).to_list(1000)
+    tenants.sort(key=lambda r: r.get("created_at", ""), reverse=True)
+    rows = []
+    totals = {"members": 0, "branches": 0, "invoices": 0, "users": 0, "activities": 0, "attendance": 0}
+    for t in tenants:
+        if t.get("status") == "deleted":
+            rows.append({"tenant": t, "counts": {}, "recent_30d": {}, "last_activity_at": None, "usage": {"members_pct": None, "branches_pct": None}})
+            continue
         try:
-            stats[coll] = await tdb[coll].count_documents({})
-        except Exception:
-            stats[coll] = 0
-    return {"tenant": existing, "counts": stats}
+            data = await _compute_tenant_stats(t)
+        except Exception as e:
+            logger.exception("overview failed for %s", t.get("slug"))
+            data = {"counts": {}, "recent_30d": {}, "last_activity_at": None, "usage": {"members_pct": None, "branches_pct": None}, "error": str(e)}
+        for k in totals.keys():
+            totals[k] += int((data.get("counts") or {}).get(k) or 0)
+        rows.append({"tenant": t, **data})
+    return {"tenants": rows, "totals": totals, "tenant_count": len(tenants)}

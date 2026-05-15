@@ -168,14 +168,49 @@ function TenantForm({ initial, onSubmit, onCancel, isEdit }) {
   );
 }
 
+function formatDate(iso) {
+  if (!iso) return '—';
+  try {
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return iso;
+    const now = new Date();
+    const diffMs = now - d;
+    const diffH = diffMs / 36e5;
+    if (diffH < 1) return `منذ ${Math.max(1, Math.floor(diffMs / 60000))} د`;
+    if (diffH < 24) return `منذ ${Math.floor(diffH)} س`;
+    const diffD = Math.floor(diffH / 24);
+    if (diffD < 30) return `منذ ${diffD} يوم`;
+    return d.toLocaleDateString('ar-EG');
+  } catch { return iso; }
+}
+
+function UsageBar({ label, pct }) {
+  if (pct == null) {
+    return <div style={{ fontSize: 11, color: '#64748b' }}>{label}: ∞</div>;
+  }
+  const clamped = Math.min(100, Math.max(0, pct));
+  const color = clamped >= 90 ? '#dc2626' : clamped >= 75 ? '#d97706' : '#16a34a';
+  return (
+    <div style={{ marginTop: 4 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: '#64748b', marginBottom: 2 }}>
+        <span>{label}</span>
+        <span style={{ color, fontWeight: 600 }}>{clamped}%</span>
+      </div>
+      <div style={{ height: 6, background: '#e2e8f0', borderRadius: 99, overflow: 'hidden' }}>
+        <div style={{ width: `${clamped}%`, height: '100%', background: color, transition: 'width .3s' }} />
+      </div>
+    </div>
+  );
+}
+
 export default function SuperTenants() {
   const navigate = useNavigate();
-  const [tenants, setTenants] = useState([]);
+  const [rows, setRows] = useState([]);
+  const [totals, setTotals] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState(null);
-  const [stats, setStats] = useState({});
   const [seedInfo, setSeedInfo] = useState(null);
 
   const auth = () => ({ headers: { Authorization: `Bearer ${localStorage.getItem('super_token') || ''}` } });
@@ -183,8 +218,9 @@ export default function SuperTenants() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await axios.get('/super/tenants', auth());
-      setTenants(res.data || []);
+      const res = await axios.get('/super/overview', auth());
+      setRows(res.data?.tenants || []);
+      setTotals(res.data?.totals || null);
       setError('');
     } catch (err) {
       if (err?.response?.status === 401) {
@@ -200,13 +236,11 @@ export default function SuperTenants() {
 
   useEffect(() => { load(); }, [load]);
 
-  const loadStats = async (id) => {
+  const refreshOne = async (id) => {
     try {
       const res = await axios.get(`/super/tenants/${id}/stats`, auth());
-      setStats((s) => ({ ...s, [id]: res.data.counts }));
-    } catch {
-      setStats((s) => ({ ...s, [id]: null }));
-    }
+      setRows((rs) => rs.map((r) => r.tenant.id === id ? { ...r, ...res.data, tenant: res.data.tenant } : r));
+    } catch {}
   };
 
   const create = async (data) => {
@@ -251,63 +285,120 @@ export default function SuperTenants() {
   const statusBadge = (s) => s === 'suspended' ? sx.badgeSuspended : (s === 'deleted' ? sx.badgeDeleted : sx.badgeActive);
   const statusText = (s) => s === 'suspended' ? 'موقوفة' : (s === 'deleted' ? 'محذوفة' : 'نشطة');
 
+  const totalCard = (label, val) => (
+    <div style={{ flex: 1, minWidth: 110, background: 'white', border: '1px solid #e2e8f0', borderRadius: 10, padding: '10px 14px' }}>
+      <div style={{ fontSize: 11, color: '#64748b', marginBottom: 4 }}>{label}</div>
+      <div style={{ fontSize: 20, fontWeight: 700, color: '#0f172a' }}>{val ?? 0}</div>
+    </div>
+  );
+
   return (
     <div style={sx.page}>
       <div style={sx.header}>
         <div>
           <h1 style={sx.title}>الأكاديميات المشتركة</h1>
-          <div style={{ fontSize: 13, color: '#64748b', marginTop: 4 }}>{tenants.length} أكاديمية</div>
+          <div style={{ fontSize: 13, color: '#64748b', marginTop: 4 }}>{rows.length} أكاديمية</div>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
+          <button style={sx.btnGhost} onClick={load} disabled={loading}>{loading ? '…' : '↻ تحديث'}</button>
           <button style={sx.btnPrimary} onClick={() => setCreating(true)}>+ أكاديمية جديدة</button>
           <button style={sx.btnGhost} onClick={logout}>خروج</button>
         </div>
       </div>
 
+      {totals && (
+        <div style={{ display: 'flex', gap: 10, marginBottom: 18, flexWrap: 'wrap' }}>
+          {totalCard('إجمالي الأعضاء', totals.members)}
+          {totalCard('إجمالي الفواتير', totals.invoices)}
+          {totalCard('إجمالي الفروع', totals.branches)}
+          {totalCard('إجمالي المستخدمين', totals.users)}
+          {totalCard('إجمالي الأنشطة', totals.activities)}
+          {totalCard('إجمالي الحضور', totals.attendance)}
+        </div>
+      )}
+
       {loading && <div style={{ textAlign: 'center', color: '#64748b', padding: 40 }}>جارٍ التحميل...</div>}
       {error && <div style={{ background: '#fef2f2', color: '#b91c1c', padding: 12, borderRadius: 8, marginBottom: 16 }}>{error}</div>}
 
-      {!loading && tenants.map((t) => (
-        <div key={t.id} style={sx.card}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 12 }}>
-            <div style={{ flex: 1, minWidth: 240 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
-                <h3 style={{ margin: 0, fontSize: 17, fontWeight: 700, color: '#0f172a' }}>{t.name}</h3>
-                <span style={statusBadge(t.status)}>{statusText(t.status)}</span>
-                <span style={{ fontSize: 12, color: '#64748b', fontFamily: 'monospace' }}>@{t.slug}</span>
-              </div>
-              <div style={sx.meta}>
-                الخطة: <b>{t.plan}</b> · فروع: {t.max_branches || '∞'} · أعضاء: {t.max_members || '∞'} · DB: <code>{t.db_name}</code>
-              </div>
-              {t.owner_email && <div style={sx.meta}>المالك: {t.owner_email}</div>}
-              {t.features?.length > 0 && (
-                <div style={{ marginTop: 6, display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-                  {t.features.map((f) => (
-                    <span key={f} style={{ fontSize: 11, padding: '2px 8px', background: '#f1f5f9', borderRadius: 99, color: '#475569' }}>{f}</span>
-                  ))}
+      {!loading && rows.map((row) => {
+        const t = row.tenant;
+        const counts = row.counts || {};
+        const recent = row.recent_30d || {};
+        const usage = row.usage || {};
+        return (
+          <div key={t.id} style={sx.card}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 12 }}>
+              <div style={{ flex: 1, minWidth: 260 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6, flexWrap: 'wrap' }}>
+                  <h3 style={{ margin: 0, fontSize: 17, fontWeight: 700, color: '#0f172a' }}>{t.name}</h3>
+                  <span style={statusBadge(t.status)}>{statusText(t.status)}</span>
+                  <span style={{ fontSize: 12, color: '#64748b', fontFamily: 'monospace' }}>@{t.slug}</span>
                 </div>
-              )}
-              {stats[t.id] && (
-                <div style={{ ...sx.meta, marginTop: 8, display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-                  {Object.entries(stats[t.id]).map(([k, v]) => (
-                    <span key={k}>{k}: <b>{v}</b></span>
-                  ))}
+                <div style={sx.meta}>
+                  الخطة: <b>{t.plan}</b> · فروع: {t.max_branches || '∞'} · أعضاء: {t.max_members || '∞'} · DB: <code>{t.db_name}</code>
                 </div>
-              )}
-            </div>
-            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-              <button style={sx.btnGhost} onClick={() => loadStats(t.id)}>إحصائيات</button>
-              <button style={sx.btnEdit} onClick={() => setEditing(t)}>تعديل</button>
-              {t.status !== 'deleted' && (
-                <button style={sx.btnGhost} onClick={() => toggleSuspend(t)}>{t.status === 'active' ? 'إيقاف' : 'تفعيل'}</button>
-              )}
-              {t.slug !== 'default' && t.status !== 'deleted' && (
-                <button style={sx.btnDanger} onClick={() => remove(t)}>حذف</button>
-              )}
+                {t.owner_email && <div style={sx.meta}>المالك: {t.owner_email}</div>}
+                {t.features?.length > 0 && (
+                  <div style={{ marginTop: 6, display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                    {t.features.map((f) => (
+                      <span key={f} style={{ fontSize: 11, padding: '2px 8px', background: '#f1f5f9', borderRadius: 99, color: '#475569' }}>{f}</span>
+                    ))}
+                  </div>
+                )}
+
+                {t.status !== 'deleted' && (
+                  <div style={{ marginTop: 12, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 10 }}>
+                    <div>
+                      <div style={{ fontSize: 11, color: '#64748b' }}>أعضاء</div>
+                      <div style={{ fontSize: 16, fontWeight: 700, color: '#0f172a' }}>{counts.members ?? 0}</div>
+                      {recent.members > 0 && <div style={{ fontSize: 10, color: '#16a34a' }}>+{recent.members} (30 يوم)</div>}
+                    </div>
+                    <div>
+                      <div style={{ fontSize: 11, color: '#64748b' }}>فواتير</div>
+                      <div style={{ fontSize: 16, fontWeight: 700, color: '#0f172a' }}>{counts.invoices ?? 0}</div>
+                      {recent.invoices > 0 && <div style={{ fontSize: 10, color: '#16a34a' }}>+{recent.invoices} (30 يوم)</div>}
+                    </div>
+                    <div>
+                      <div style={{ fontSize: 11, color: '#64748b' }}>فروع</div>
+                      <div style={{ fontSize: 16, fontWeight: 700, color: '#0f172a' }}>{counts.branches ?? 0}</div>
+                    </div>
+                    <div>
+                      <div style={{ fontSize: 11, color: '#64748b' }}>حضور</div>
+                      <div style={{ fontSize: 16, fontWeight: 700, color: '#0f172a' }}>{counts.attendance ?? 0}</div>
+                      {recent.attendance > 0 && <div style={{ fontSize: 10, color: '#16a34a' }}>+{recent.attendance} (30 يوم)</div>}
+                    </div>
+                    <div>
+                      <div style={{ fontSize: 11, color: '#64748b' }}>أنشطة</div>
+                      <div style={{ fontSize: 16, fontWeight: 700, color: '#0f172a' }}>{counts.activities ?? 0}</div>
+                    </div>
+                    <div>
+                      <div style={{ fontSize: 11, color: '#64748b' }}>آخر نشاط</div>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: '#0f172a' }}>{formatDate(row.last_activity_at)}</div>
+                    </div>
+                  </div>
+                )}
+
+                {t.status !== 'deleted' && (usage.members_pct != null || usage.branches_pct != null) && (
+                  <div style={{ marginTop: 12, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, maxWidth: 480 }}>
+                    <UsageBar label="استخدام الأعضاء" pct={usage.members_pct} />
+                    <UsageBar label="استخدام الفروع" pct={usage.branches_pct} />
+                  </div>
+                )}
+              </div>
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                <button style={sx.btnGhost} onClick={() => refreshOne(t.id)}>↻</button>
+                <button style={sx.btnEdit} onClick={() => setEditing(t)}>تعديل</button>
+                {t.status !== 'deleted' && (
+                  <button style={sx.btnGhost} onClick={() => toggleSuspend(t)}>{t.status === 'active' ? 'إيقاف' : 'تفعيل'}</button>
+                )}
+                {t.slug !== 'default' && t.status !== 'deleted' && (
+                  <button style={sx.btnDanger} onClick={() => remove(t)}>حذف</button>
+                )}
+              </div>
             </div>
           </div>
-        </div>
-      ))}
+        );
+      })}
 
       {creating && <TenantForm onSubmit={create} onCancel={() => setCreating(false)} />}
       {editing && <TenantForm initial={editing} onSubmit={(d) => update(editing.id, d)} onCancel={() => setEditing(null)} isEdit />}
