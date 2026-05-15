@@ -714,6 +714,7 @@ export default function SuperTenants() {
         <div style={{ display: 'flex', gap: 8 }}>
           <button style={sx.btnGhost} onClick={load} disabled={loading}>{loading ? '…' : '↻ تحديث'}</button>
           <button style={sx.btnGhost} onClick={() => navigate('/super/emails')}>📧 الإيميلات</button>
+          <button style={sx.btnGhost} onClick={() => navigate('/super/payment')}>💳 مزود الدفع</button>
           <button style={sx.btnPrimary} onClick={() => setCreating(true)}>+ أكاديمية جديدة</button>
           <button style={sx.btnGhost} onClick={logout}>خروج</button>
         </div>

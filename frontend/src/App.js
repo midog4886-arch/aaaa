@@ -85,6 +85,7 @@ const SocialPublisherPage = lazy(() => import('./pages/SocialPublisherPage'));
 const SuperLogin = lazy(() => import('./pages/SuperLogin'));
 const SuperTenants = lazy(() => import('./pages/SuperTenants'));
 const SuperEmails = lazy(() => import('./pages/SuperEmails'));
+const SuperPayment = lazy(() => import('./pages/SuperPayment'));
 const OnboardingPage = lazy(() => import('./pages/OnboardingPage'));
 const LandingPage = lazy(() => import('./pages/LandingPage'));
 const SignupPage = lazy(() => import('./pages/SignupPage'));
@@ -242,6 +243,7 @@ function AppRoutes() {
       <Route path="/super/login" element={<SuperLogin />} />
       <Route path="/super/tenants" element={<SuperGuard><SuperTenants /></SuperGuard>} />
       <Route path="/super/emails" element={<SuperGuard><SuperEmails /></SuperGuard>} />
+      <Route path="/super/payment" element={<SuperGuard><SuperPayment /></SuperGuard>} />
       
       {/* Root - smart redirect based on user role */}
       <Route path="/" element={<SmartRedirect />} />
