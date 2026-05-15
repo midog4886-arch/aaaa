@@ -303,6 +303,8 @@ export const billingAPI = {
   invoices: () => axios.get(`${API}/billing/invoices`),
   updateContact: (data) => axios.patch(`${API}/billing/contact`, data),
   resendConfirmation: (role = 'owner') => axios.post(`${API}/billing/contact/resend`, { role }),
+  emailLog: () => axios.get(`${API}/billing/email-log`),
+  sendTestWelcome: () => axios.post(`${API}/billing/email-log/test-welcome`),
 };
 
 // Branches API

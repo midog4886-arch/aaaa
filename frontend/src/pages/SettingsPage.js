@@ -58,6 +58,9 @@ export const SettingsPage = () => {
   const [contactSaving, setContactSaving] = React.useState(false);
   const [contactOwner, setContactOwner] = React.useState('');
   const [contactBilling, setContactBilling] = React.useState('');
+  const [emailLog, setEmailLog] = React.useState([]);
+  const [emailLogLoading, setEmailLogLoading] = React.useState(false);
+  const [testEmailSending, setTestEmailSending] = React.useState(false);
   const ALL_DAYS = React.useMemo(() => ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'], []);
   const [dailyChecksDays, setDailyChecksDays] = React.useState(ALL_DAYS);
   const DAY_LABELS = React.useMemo(() => ({
@@ -83,8 +86,92 @@ export const SettingsPage = () => {
       .then((res) => { if (!cancelled) setInvoices(res.data?.items || []); })
       .catch(() => { if (!cancelled) setInvoices([]); })
       .finally(() => { if (!cancelled) setInvoicesLoading(false); });
+    setEmailLogLoading(true);
+    billingAPI.emailLog()
+      .then((res) => { if (!cancelled) setEmailLog(res.data?.items || []); })
+      .catch(() => { if (!cancelled) setEmailLog([]); })
+      .finally(() => { if (!cancelled) setEmailLogLoading(false); });
     return () => { cancelled = true; };
   }, [isAdmin]);
+
+  const reloadEmailLog = React.useCallback(async () => {
+    setEmailLogLoading(true);
+    try {
+      const res = await billingAPI.emailLog();
+      setEmailLog(res.data?.items || []);
+    } catch {
+      // keep previous list
+    } finally {
+      setEmailLogLoading(false);
+    }
+  }, []);
+
+  const handleSendTestWelcome = async () => {
+    setTestEmailSending(true);
+    try {
+      const res = await billingAPI.sendTestWelcome();
+      const status = res?.data?.result?.status;
+      const to = res?.data?.to || '';
+      if (status === 'sent') {
+        toast.success(language === 'ar'
+          ? `تم إرسال الإيميل التجريبي إلى ${to}`
+          : `Test email sent to ${to}`);
+      } else if (status === 'skipped') {
+        const reason = res?.data?.result?.error || '';
+        toast.info(language === 'ar'
+          ? `لم يتم الإرسال${reason ? ': ' + reason : ''}`
+          : `Not sent${reason ? ': ' + reason : ''}`);
+      } else {
+        toast.error(language === 'ar'
+          ? `فشل الإرسال: ${res?.data?.result?.error || ''}`
+          : `Send failed: ${res?.data?.result?.error || ''}`);
+      }
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || (language === 'ar'
+        ? 'تعذر إرسال الإيميل التجريبي'
+        : 'Failed to send test email'));
+    } finally {
+      setTestEmailSending(false);
+      reloadEmailLog();
+    }
+  };
+
+  const formatEmailLogTime = (iso) => {
+    if (!iso) return '—';
+    try {
+      return new Date(iso).toLocaleString(language === 'ar' ? 'ar-SA' : 'en-GB', {
+        dateStyle: 'short', timeStyle: 'short',
+      });
+    } catch { return iso; }
+  };
+
+  const EMAIL_KIND_LABELS = {
+    welcome: { ar: 'ترحيب', en: 'Welcome' },
+    trial_ending: { ar: 'انتهاء التجربة', en: 'Trial ending' },
+    payment_success: { ar: 'دفعة ناجحة', en: 'Payment success' },
+    payment_failed: { ar: 'فشل الدفع', en: 'Payment failed' },
+    suspended: { ar: 'تعليق', en: 'Suspended' },
+    cancelled: { ar: 'إلغاء', en: 'Cancelled' },
+    email_confirmation: { ar: 'تأكيد البريد', en: 'Email confirmation' },
+  };
+  const labelForKind = (kind) => {
+    const entry = EMAIL_KIND_LABELS[kind];
+    if (!entry) return kind || '—';
+    return language === 'ar' ? entry.ar : entry.en;
+  };
+  const renderEmailStatusBadge = (status) => {
+    const map = {
+      sent: { ar: 'تم الإرسال', en: 'Sent', cls: 'bg-green-100 text-green-700' },
+      failed: { ar: 'فشل', en: 'Failed', cls: 'bg-red-100 text-red-700' },
+      skipped: { ar: 'متجاهَل', en: 'Skipped', cls: 'bg-slate-100 text-slate-700' },
+    };
+    const entry = map[status] || { ar: status || '—', en: status || '—', cls: 'bg-slate-100 text-slate-700' };
+    return (
+      <span className={`text-xs px-2 py-0.5 rounded-full ${entry.cls}`}>
+        {language === 'ar' ? entry.ar : entry.en}
+      </span>
+    );
+  };
 
   const buildMailto = (subjectAr, subjectEn, bodyAr, bodyEn) => {
     const subject = encodeURIComponent(language === 'ar' ? subjectAr : subjectEn);
@@ -594,6 +681,80 @@ export const SettingsPage = () => {
                         </div>
                       </div>
                     )}
+                  </div>
+                  <div className="pt-3 border-t" data-testid="billing-email-log-section">
+                    <div className="flex items-center justify-between mb-2">
+                      <h4 className="font-bold flex items-center gap-2">
+                        <Mail className="w-4 h-4 text-primary" />
+                        {language === 'ar' ? 'سجل آخر الإيميلات' : 'Recent emails'}
+                      </h4>
+                      <div className="flex gap-2">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={reloadEmailLog}
+                          disabled={emailLogLoading}
+                          data-testid="billing-email-log-refresh-btn"
+                        >
+                          <RefreshCw className={`w-4 h-4 me-1 ${emailLogLoading ? 'animate-spin' : ''}`} />
+                          {language === 'ar' ? 'تحديث' : 'Refresh'}
+                        </Button>
+                        <Button
+                          size="sm"
+                          onClick={handleSendTestWelcome}
+                          disabled={testEmailSending}
+                          data-testid="billing-email-log-test-btn"
+                        >
+                          {testEmailSending
+                            ? (language === 'ar' ? 'جارٍ الإرسال...' : 'Sending...')
+                            : (language === 'ar' ? 'إرسال إيميل ترحيبي تجريبي' : 'Send test welcome email')}
+                        </Button>
+                      </div>
+                    </div>
+                    {emailLogLoading && emailLog.length === 0 ? (
+                      <p className="text-sm text-muted-foreground">{language === 'ar' ? 'جارٍ التحميل...' : 'Loading...'}</p>
+                    ) : emailLog.length === 0 ? (
+                      <p className="text-sm text-muted-foreground" data-testid="billing-email-log-empty">
+                        {language === 'ar'
+                          ? 'لا توجد إيميلات مسجّلة بعد. ستظهر هنا بعد أول إرسال.'
+                          : 'No emails logged yet. They will appear here after the first send.'}
+                      </p>
+                    ) : (
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-sm" data-testid="billing-email-log-table">
+                          <thead>
+                            <tr className="text-start text-muted-foreground border-b">
+                              <th className="py-2 text-start">{language === 'ar' ? 'الوقت' : 'Time'}</th>
+                              <th className="py-2 text-start">{language === 'ar' ? 'النوع' : 'Type'}</th>
+                              <th className="py-2 text-start">{language === 'ar' ? 'إلى' : 'To'}</th>
+                              <th className="py-2 text-start">{language === 'ar' ? 'الموضوع' : 'Subject'}</th>
+                              <th className="py-2 text-start">{language === 'ar' ? 'الحالة' : 'Status'}</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {emailLog.map((row) => (
+                              <tr key={row.id || `${row.sent_at}-${row.to}`} className="border-b last:border-0 align-top" data-testid={`billing-email-log-row-${row.id || row.sent_at}`}>
+                                <td className="py-2 whitespace-nowrap">{formatEmailLogTime(row.sent_at)}</td>
+                                <td className="py-2">{labelForKind(row.kind)}</td>
+                                <td className="py-2 break-all">{row.to || '—'}</td>
+                                <td className="py-2">
+                                  <div className="max-w-[24rem] truncate" title={row.subject || ''}>{row.subject || '—'}</div>
+                                  {row.status === 'failed' && row.error && (
+                                    <div className="text-xs text-red-600 mt-0.5 max-w-[24rem] break-words" title={row.error}>{row.error}</div>
+                                  )}
+                                </td>
+                                <td className="py-2">{renderEmailStatusBadge(row.status)}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                    <p className="text-xs text-muted-foreground pt-2">
+                      {language === 'ar'
+                        ? 'يعرض آخر 20 إيميل تم محاولة إرساله من المنصة لأكاديميتك (ترحيب، تذكير، فوترة...).'
+                        : 'Showing the last 20 emails the platform attempted to send for your academy (welcome, reminders, billing, ...).'}
+                    </p>
                   </div>
                   <div className="pt-3 border-t grid grid-cols-1 sm:grid-cols-2 gap-2">
                     <a href={buildMailto(

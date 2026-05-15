@@ -23,7 +23,7 @@ from pydantic import BaseModel, EmailStr, Field
 
 from utils.tenant import get_current_tenant_slug, DEFAULT_TENANT_SLUG
 from utils.auth import get_current_user
-from utils.email_service import send_email
+from utils.email_service import send_email, list_email_log
 from utils.payment_service import (
     claim_event,
     confirm_event,
@@ -649,3 +649,60 @@ async def confirm_email_change(token: str):
             f"Your {role_en} has been updated to <b>{new_email}</b>. You can close this tab.",
             ok=True),
     )
+
+
+@router.get("/email-log")
+async def get_billing_email_log(current_user: dict = Depends(get_current_user)):
+    """Return the most recent transactional emails for the current academy.
+
+    Limited to the last 20 entries scoped by ``tenant_slug`` so academy owners
+    can see whether reminder/renewal/payment emails actually went out without
+    needing super-admin access to the platform-wide log.
+    """
+    if not current_user.get("is_admin", False):
+        raise HTTPException(status_code=403, detail="صلاحية مسؤول الأكاديمية مطلوبة")
+    slug = get_current_tenant_slug() or DEFAULT_TENANT_SLUG
+    rows = await list_email_log(limit=20, tenant_slug=slug)
+    items = [
+        {
+            "id": r.get("id", ""),
+            "kind": r.get("kind", ""),
+            "to": r.get("to", ""),
+            "subject": r.get("subject", ""),
+            "status": r.get("status", ""),
+            "error": r.get("error", ""),
+            "sent_at": r.get("sent_at", ""),
+        }
+        for r in rows
+    ]
+    return {"items": items}
+
+
+@router.post("/email-log/test-welcome")
+async def send_test_welcome_email(current_user: dict = Depends(get_current_user)):
+    """Send a one-off welcome email to the academy owner address.
+
+    Used from Settings → Billing as a quick reachability check: it goes through
+    the same provider + template + log pipeline as production sends, so a
+    success here proves the whole stack is wired correctly.
+    """
+    if not current_user.get("is_admin", False):
+        raise HTTPException(status_code=403, detail="صلاحية مسؤول الأكاديمية مطلوبة")
+    slug = get_current_tenant_slug() or DEFAULT_TENANT_SLUG
+    tenant = await control_db.tenants.find_one({"slug": slug}, {"_id": 0}) or {}
+    recipient = ((tenant.get("owner_email") or "").strip()
+                 or (tenant.get("billing_email") or "").strip())
+    if not recipient:
+        raise HTTPException(status_code=400, detail="لا يوجد بريد إلكتروني محفوظ للأكاديمية")
+    result = await send_email(
+        kind="welcome",
+        to=recipient,
+        tenant_slug=slug,
+        ctx={
+            "academy_name": tenant.get("name", ""),
+            "slug": slug,
+            "trial_days": int(tenant.get("trial_days") or 0),
+            "subscription_end_at": tenant.get("subscription_end_at", ""),
+        },
+    )
+    return {"to": recipient, "result": result}
