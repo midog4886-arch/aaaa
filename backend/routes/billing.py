@@ -853,17 +853,39 @@ async def confirm_email_change(token: str):
 
 
 @router.get("/email-log")
-async def get_billing_email_log(current_user: dict = Depends(get_current_user)):
-    """Return the most recent transactional emails for the current academy.
+async def get_billing_email_log(
+    current_user: dict = Depends(get_current_user),
+    status: str = "",
+    kind: str = "",
+    q: str = "",
+    limit: int = 20,
+):
+    """Return recent transactional emails for the current academy.
 
-    Limited to the last 20 entries scoped by ``tenant_slug`` so academy owners
-    can see whether reminder/renewal/payment emails actually went out without
-    needing super-admin access to the platform-wide log.
+    Scoped by ``tenant_slug`` so academy owners can see whether
+    reminder/renewal/payment emails actually went out without needing
+    super-admin access to the platform-wide log.
+
+    Optional filters:
+    - ``status``: restrict to ``sent`` / ``failed`` / ``skipped``
+    - ``kind``: restrict to a single email kind (e.g. ``welcome``)
+    - ``q``: case-insensitive substring search on the recipient address
+    - ``limit``: number of rows to return (default 20, capped at 200)
     """
     if not current_user.get("is_admin", False):
         raise HTTPException(status_code=403, detail="صلاحية مسؤول الأكاديمية مطلوبة")
     slug = get_current_tenant_slug() or DEFAULT_TENANT_SLUG
-    rows = await list_email_log(limit=20, tenant_slug=slug)
+    try:
+        capped_limit = max(1, min(int(limit or 20), 200))
+    except (TypeError, ValueError):
+        capped_limit = 20
+    rows = await list_email_log(
+        limit=capped_limit,
+        tenant_slug=slug,
+        status=(status or "").strip(),
+        kind=(kind or "").strip(),
+        q=(q or "").strip(),
+    )
     items = [
         {
             "id": r.get("id", ""),

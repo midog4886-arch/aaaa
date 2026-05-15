@@ -8,6 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import { Button } from '../components/ui/button';
 import { Switch } from '../components/ui/switch';
 import { Label } from '../components/ui/label';
+import { Input } from '../components/ui/input';
 import { tenantAPI, notificationsSettingsAPI, billingAPI, tenantDataAPI } from '../services/api';
 import {
   Languages,
@@ -65,6 +66,11 @@ export const SettingsPage = () => {
   const [emailLog, setEmailLog] = React.useState([]);
   const [emailLogLoading, setEmailLogLoading] = React.useState(false);
   const [testEmailSending, setTestEmailSending] = React.useState(false);
+  const [emailLogStatus, setEmailLogStatus] = React.useState('');
+  const [emailLogKind, setEmailLogKind] = React.useState('');
+  const [emailLogSearch, setEmailLogSearch] = React.useState('');
+  const [emailLogSearchInput, setEmailLogSearchInput] = React.useState('');
+  const [emailLogLimit, setEmailLogLimit] = React.useState(20);
   const ALL_DAYS = React.useMemo(() => ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'], []);
   const [dailyChecksDays, setDailyChecksDays] = React.useState(ALL_DAYS);
   const DAY_LABELS = React.useMemo(() => ({
@@ -90,25 +96,48 @@ export const SettingsPage = () => {
       .then((res) => { if (!cancelled) setInvoices(res.data?.items || []); })
       .catch(() => { if (!cancelled) setInvoices([]); })
       .finally(() => { if (!cancelled) setInvoicesLoading(false); });
-    setEmailLogLoading(true);
-    billingAPI.emailLog()
-      .then((res) => { if (!cancelled) setEmailLog(res.data?.items || []); })
-      .catch(() => { if (!cancelled) setEmailLog([]); })
-      .finally(() => { if (!cancelled) setEmailLogLoading(false); });
     return () => { cancelled = true; };
   }, [isAdmin]);
 
   const reloadEmailLog = React.useCallback(async () => {
     setEmailLogLoading(true);
     try {
-      const res = await billingAPI.emailLog();
+      const params = {};
+      if (emailLogStatus) params.status = emailLogStatus;
+      if (emailLogKind) params.kind = emailLogKind;
+      if (emailLogSearch) params.q = emailLogSearch;
+      if (emailLogLimit && emailLogLimit !== 20) params.limit = emailLogLimit;
+      const res = await billingAPI.emailLog(params);
       setEmailLog(res.data?.items || []);
     } catch {
       // keep previous list
     } finally {
       setEmailLogLoading(false);
     }
-  }, []);
+  }, [emailLogStatus, emailLogKind, emailLogSearch, emailLogLimit]);
+
+  React.useEffect(() => {
+    if (!isAdmin) return undefined;
+    let cancelled = false;
+    setEmailLogLoading(true);
+    const params = {};
+    if (emailLogStatus) params.status = emailLogStatus;
+    if (emailLogKind) params.kind = emailLogKind;
+    if (emailLogSearch) params.q = emailLogSearch;
+    if (emailLogLimit && emailLogLimit !== 20) params.limit = emailLogLimit;
+    billingAPI.emailLog(params)
+      .then((res) => { if (!cancelled) setEmailLog(res.data?.items || []); })
+      .catch(() => { if (!cancelled) setEmailLog([]); })
+      .finally(() => { if (!cancelled) setEmailLogLoading(false); });
+    return () => { cancelled = true; };
+  }, [isAdmin, emailLogStatus, emailLogKind, emailLogSearch, emailLogLimit]);
+
+  React.useEffect(() => {
+    const t = setTimeout(() => {
+      setEmailLogSearch(emailLogSearchInput.trim());
+    }, 350);
+    return () => clearTimeout(t);
+  }, [emailLogSearchInput]);
 
   const handleSendTestWelcome = async () => {
     setTestEmailSending(true);
@@ -799,6 +828,64 @@ export const SettingsPage = () => {
                         </Button>
                       </div>
                     </div>
+                    <div className="flex flex-wrap items-center gap-2 mb-3" data-testid="billing-email-log-filters">
+                      <select
+                        value={emailLogStatus}
+                        onChange={(e) => setEmailLogStatus(e.target.value)}
+                        className="text-sm border rounded-md px-2 py-1 bg-background"
+                        data-testid="billing-email-log-status-filter"
+                      >
+                        <option value="">{language === 'ar' ? 'كل الحالات' : 'All statuses'}</option>
+                        <option value="sent">{language === 'ar' ? 'تم الإرسال' : 'Sent'}</option>
+                        <option value="failed">{language === 'ar' ? 'فشل' : 'Failed'}</option>
+                        <option value="skipped">{language === 'ar' ? 'متجاهَل' : 'Skipped'}</option>
+                      </select>
+                      <select
+                        value={emailLogKind}
+                        onChange={(e) => setEmailLogKind(e.target.value)}
+                        className="text-sm border rounded-md px-2 py-1 bg-background"
+                        data-testid="billing-email-log-kind-filter"
+                      >
+                        <option value="">{language === 'ar' ? 'كل الأنواع' : 'All types'}</option>
+                        {Object.keys(EMAIL_KIND_LABELS).map((k) => (
+                          <option key={k} value={k}>{labelForKind(k)}</option>
+                        ))}
+                      </select>
+                      <Input
+                        type="search"
+                        value={emailLogSearchInput}
+                        onChange={(e) => setEmailLogSearchInput(e.target.value)}
+                        placeholder={language === 'ar' ? 'بحث بالمستلم...' : 'Search by recipient...'}
+                        className="h-8 text-sm w-48"
+                        data-testid="billing-email-log-search-input"
+                      />
+                      <select
+                        value={emailLogLimit}
+                        onChange={(e) => setEmailLogLimit(parseInt(e.target.value, 10) || 20)}
+                        className="text-sm border rounded-md px-2 py-1 bg-background"
+                        data-testid="billing-email-log-limit-filter"
+                      >
+                        <option value={20}>{language === 'ar' ? '20 سجل' : '20 rows'}</option>
+                        <option value={50}>{language === 'ar' ? '50 سجل' : '50 rows'}</option>
+                        <option value={100}>{language === 'ar' ? '100 سجل' : '100 rows'}</option>
+                        <option value={200}>{language === 'ar' ? '200 سجل' : '200 rows'}</option>
+                      </select>
+                      {(emailLogStatus || emailLogKind || emailLogSearch || emailLogSearchInput) && (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => {
+                            setEmailLogStatus('');
+                            setEmailLogKind('');
+                            setEmailLogSearch('');
+                            setEmailLogSearchInput('');
+                          }}
+                          data-testid="billing-email-log-clear-filters-btn"
+                        >
+                          {language === 'ar' ? 'مسح الفلاتر' : 'Clear filters'}
+                        </Button>
+                      )}
+                    </div>
                     {emailLogLoading && emailLog.length === 0 ? (
                       <p className="text-sm text-muted-foreground">{language === 'ar' ? 'جارٍ التحميل...' : 'Loading...'}</p>
                     ) : emailLog.length === 0 ? (
@@ -838,10 +925,10 @@ export const SettingsPage = () => {
                         </table>
                       </div>
                     )}
-                    <p className="text-xs text-muted-foreground pt-2">
+                    <p className="text-xs text-muted-foreground pt-2" data-testid="billing-email-log-footer">
                       {language === 'ar'
-                        ? 'يعرض آخر 20 إيميل تم محاولة إرساله من المنصة لأكاديميتك (ترحيب، تذكير، فوترة...).'
-                        : 'Showing the last 20 emails the platform attempted to send for your academy (welcome, reminders, billing, ...).'}
+                        ? `يعرض آخر ${emailLogLimit} إيميل تم محاولة إرساله من المنصة لأكاديميتك (ترحيب، تذكير، فوترة...).`
+                        : `Showing the last ${emailLogLimit} emails the platform attempted to send for your academy (welcome, reminders, billing, ...).`}
                     </p>
                   </div>
                   <div className="pt-3 border-t grid grid-cols-1 sm:grid-cols-2 gap-2">

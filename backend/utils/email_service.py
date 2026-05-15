@@ -24,6 +24,7 @@ If no provider is configured, ``send_email`` short-circuits and logs the
 attempt with status=``skipped`` so triggers stay safe in dev environments.
 """
 import os
+import re
 import uuid
 import logging
 from datetime import datetime, timezone
@@ -229,14 +230,20 @@ async def send_email(
     return {"status": "sent", "id": provider_id}
 
 
-async def list_email_log(limit: int = 100, kind: str = "", status: str = "", tenant_slug: str = "") -> list:
-    q: Dict = {}
+async def list_email_log(limit: int = 100, kind: str = "", status: str = "", tenant_slug: str = "", q: str = "") -> list:
+    query: Dict = {}
     if kind:
-        q["kind"] = kind
+        query["kind"] = kind
     if status:
-        q["status"] = status
+        query["status"] = status
     if tenant_slug:
-        q["tenant_slug"] = tenant_slug
+        query["tenant_slug"] = tenant_slug
+    if q:
+        # Case-insensitive substring search on recipient address.
+        # Escape regex metacharacters so user input like "." or "+" matches literally.
+        escaped = re.escape(q.strip())
+        if escaped:
+            query["to"] = {"$regex": escaped, "$options": "i"}
     limit = max(1, min(int(limit or 100), 500))
-    rows = await control_db.email_log.find(q, {"_id": 0}).sort("sent_at", -1).to_list(limit)
+    rows = await control_db.email_log.find(query, {"_id": 0}).sort("sent_at", -1).to_list(limit)
     return rows

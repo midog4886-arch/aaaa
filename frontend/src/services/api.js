@@ -307,7 +307,7 @@ export const billingAPI = {
   updateContact: (data) => axios.patch(`${API}/billing/contact`, data),
   resendConfirmation: (role = 'owner') => axios.post(`${API}/billing/contact/resend`, { role }),
   cancelPendingEmail: (role = 'owner') => axios.delete(`${API}/billing/contact/pending`, { params: { role } }),
-  emailLog: () => axios.get(`${API}/billing/email-log`),
+  emailLog: (params = {}) => axios.get(`${API}/billing/email-log`, { params }),
   sendTestWelcome: () => axios.post(`${API}/billing/email-log/test-welcome`),
 };
 
