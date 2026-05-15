@@ -205,6 +205,32 @@ deadline.</p>
     return subject, _wrap(ar, en), text
 
 
+def _email_confirmation(ctx: Dict) -> Tuple[str, str, str]:
+    name = ctx.get("academy_name", "")
+    confirm_url = ctx.get("confirm_url", "")
+    role = (ctx.get("role") or "owner").lower()
+    role_ar = "بريد المالك" if role == "owner" else "بريد الفوترة"
+    role_en = "owner email" if role == "owner" else "billing email"
+    expires_hours = ctx.get("expires_hours", 24)
+    subject = f"تأكيد البريد الإلكتروني / Confirm your {role_en}"
+    ar = f"""
+<h2>تأكيد البريد الإلكتروني</h2>
+<p>طلبت أكاديمية <b>{name}</b> استخدام هذا البريد كـ<b>{role_ar}</b> للإشعارات.</p>
+<p>اضغط على الرابط التالي لتأكيد ملكية البريد:</p>
+<p><a href="{confirm_url}" style="display:inline-block;background:#0d6efd;color:#fff;padding:10px 18px;border-radius:6px;text-decoration:none;">تأكيد البريد</a></p>
+<p style="color:#666;font-size:13px;">الرابط صالح لمدة {expires_hours} ساعة. إذا لم تطلب هذا التغيير، تجاهل هذه الرسالة.</p>
+"""
+    en = f"""
+<h2>Confirm your email</h2>
+<p>Academy <b>{name}</b> requested to use this address as the <b>{role_en}</b> for notifications.</p>
+<p>Click the button below to confirm you own this address:</p>
+<p><a href="{confirm_url}" style="display:inline-block;background:#0d6efd;color:#fff;padding:10px 18px;border-radius:6px;text-decoration:none;">Confirm email</a></p>
+<p style="color:#666;font-size:13px;">This link expires in {expires_hours} hours. If you didn't request this change, you can ignore this message.</p>
+"""
+    text = f"Confirm your {role_en} for {name}: {confirm_url} (expires in {expires_hours} hours)."
+    return subject, _wrap(ar, en), text
+
+
 TEMPLATES: Dict[str, Callable[[Dict], Tuple[str, str, str]]] = {
     "welcome": _welcome,
     "trial_ending": _trial_ending,
@@ -213,6 +239,7 @@ TEMPLATES: Dict[str, Callable[[Dict], Tuple[str, str, str]]] = {
     "suspended": _suspended,
     "cancelled": _cancelled,
     "final_purge_warning": _final_purge_warning,
+    "email_confirmation": _email_confirmation,
 }
 
 

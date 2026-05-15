@@ -319,6 +319,56 @@ export const SettingsPage = () => {
     }
   }, []);
 
+  const PendingEmailRow = ({ language, role, email, expiresAt, onResent }) => {
+    const [busy, setBusy] = React.useState(false);
+    const expiresTxt = expiresAt
+      ? new Date(expiresAt).toLocaleString(language === 'ar' ? 'ar-SA' : 'en-GB')
+      : '';
+    const onResend = async () => {
+      setBusy(true);
+      try {
+        const res = await billingAPI.resendConfirmation(role);
+        toast.success(language === 'ar'
+          ? 'أُعيد إرسال رابط التأكيد.'
+          : 'Confirmation link re-sent.');
+        if (onResent) onResent(res?.data || {});
+      } catch (e) {
+        toast.error(e?.response?.data?.detail || (language === 'ar' ? 'تعذر إعادة الإرسال' : 'Failed to resend'));
+      } finally {
+        setBusy(false);
+      }
+    };
+    return (
+      <div
+        className="flex flex-wrap items-center gap-2 text-xs bg-amber-50 border border-amber-200 text-amber-900 rounded px-2 py-1"
+        data-testid={`billing-pending-${role}-email`}
+      >
+        <Clock className="w-3 h-3" />
+        <span>
+          {language === 'ar' ? 'قيد التأكيد:' : 'Pending confirmation:'}{' '}
+          <span className="font-medium">{email}</span>
+        </span>
+        {expiresTxt && (
+          <span className="text-[11px] opacity-80">
+            {language === 'ar' ? `صالح حتى ${expiresTxt}` : `expires ${expiresTxt}`}
+          </span>
+        )}
+        <Button
+          size="sm"
+          variant="outline"
+          className="h-6 px-2 text-[11px] ms-auto"
+          onClick={onResend}
+          disabled={busy}
+          data-testid={`billing-pending-${role}-resend-btn`}
+        >
+          {busy
+            ? (language === 'ar' ? 'جارٍ الإرسال...' : 'Sending...')
+            : (language === 'ar' ? 'إعادة إرسال التأكيد' : 'Resend confirmation')}
+        </Button>
+      </div>
+    );
+  };
+
   const handleSaveBillingContact = async () => {
     const owner = (contactOwner || '').trim();
     if (!owner || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(owner)) {
@@ -334,14 +384,22 @@ export const SettingsPage = () => {
     try {
       const res = await billingAPI.updateContact({ owner_email: owner, billing_email: bill });
       const data = res?.data || {};
-      setBilling((prev) => prev ? { ...prev, owner_email: data.owner_email || '', billing_email: data.billing_email || '' } : prev);
+      setBilling((prev) => prev ? {
+        ...prev,
+        owner_email: data.owner_email || '',
+        billing_email: data.billing_email || '',
+        pending_owner_email: data.pending_owner_email || '',
+        pending_owner_email_expires_at: data.pending_owner_email_expires_at || '',
+        pending_billing_email: data.pending_billing_email || '',
+        pending_billing_email_expires_at: data.pending_billing_email_expires_at || '',
+      } : prev);
       setContactOwner(data.owner_email || '');
       setContactBilling(data.billing_email || '');
       setContactEditing(false);
-      if (data.owner_email_changed) {
+      if (data.owner_email_changed || (data.billing_email_changed && data.pending_billing_email)) {
         toast.success(language === 'ar'
-          ? 'تم تحديث البريد. أُرسلت رسالة تأكيد إلى العنوان الجديد.'
-          : 'Email updated. A confirmation email was sent to the new address.');
+          ? 'أُرسلت رسالة تأكيد إلى العنوان الجديد. لن يصبح فعّالاً قبل النقر على الرابط.'
+          : 'A confirmation email was sent to the new address. It will not take effect until you click the link.');
       } else {
         toast.success(language === 'ar' ? 'تم حفظ بيانات الاتصال' : 'Contact details saved');
       }
@@ -459,14 +517,38 @@ export const SettingsPage = () => {
                           <span className="text-muted-foreground">{language === 'ar' ? 'بريد المالك:' : 'Owner email:'}</span>
                           <span className="font-medium" data-testid="billing-owner-email">{billing.owner_email || '—'}</span>
                         </div>
+                        {billing.pending_owner_email && (
+                          <PendingEmailRow
+                            language={language}
+                            role="owner"
+                            email={billing.pending_owner_email}
+                            expiresAt={billing.pending_owner_email_expires_at}
+                            onResent={(data) => setBilling((prev) => prev ? {
+                              ...prev,
+                              pending_owner_email_expires_at: data?.expires_at || prev.pending_owner_email_expires_at,
+                            } : prev)}
+                          />
+                        )}
                         <div className="flex flex-wrap gap-x-2">
                           <span className="text-muted-foreground">{language === 'ar' ? 'بريد الفوترة (اختياري):' : 'Billing email (optional):'}</span>
                           <span className="font-medium" data-testid="billing-billing-email">{billing.billing_email || '—'}</span>
                         </div>
+                        {billing.pending_billing_email && (
+                          <PendingEmailRow
+                            language={language}
+                            role="billing"
+                            email={billing.pending_billing_email}
+                            expiresAt={billing.pending_billing_email_expires_at}
+                            onResent={(data) => setBilling((prev) => prev ? {
+                              ...prev,
+                              pending_billing_email_expires_at: data?.expires_at || prev.pending_billing_email_expires_at,
+                            } : prev)}
+                          />
+                        )}
                         <p className="text-xs text-muted-foreground pt-1">
                           {language === 'ar'
-                            ? 'تُرسل رسائل الترحيب والتذكير والتعليق إلى بريد المالك. تُرسل رسائل الدفع إلى بريد الفوترة إن وُجد، وإلا فإلى بريد المالك.'
-                            : 'Welcome, reminder, and suspension emails go to the owner address. Payment emails go to the billing address if set, otherwise the owner address.'}
+                            ? 'تُرسل رسائل الترحيب والتذكير والتعليق إلى بريد المالك. تُرسل رسائل الدفع إلى بريد الفوترة إن وُجد، وإلا فإلى بريد المالك. لا يُعتمد أي بريد جديد قبل تأكيده عبر الرابط المرسل إليه.'
+                            : 'Welcome, reminder, and suspension emails go to the owner address. Payment emails go to the billing address if set, otherwise the owner address. New addresses only take effect after the recipient confirms via the emailed link.'}
                         </p>
                       </div>
                     ) : (
