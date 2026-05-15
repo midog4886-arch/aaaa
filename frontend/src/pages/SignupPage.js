@@ -284,9 +284,9 @@ export default function SignupPage() {
 
               <p className="text-xs text-center text-slate-500">
                 {isAr ? (
-                  <>بإنشاء الحساب أنت توافق على <Link to="/privacy" className="text-primary underline">سياسة الخصوصية</Link>.</>
+                  <>بإنشاء الحساب أنت توافق على <Link to="/terms" className="text-primary underline">شروط الاستخدام</Link>، <Link to="/privacy" className="text-primary underline">سياسة الخصوصية</Link>، و<Link to="/refund-policy" className="text-primary underline">سياسة الاسترجاع</Link>.</>
                 ) : (
-                  <>By signing up you agree to our <Link to="/privacy" className="text-primary underline">Privacy Policy</Link>.</>
+                  <>By signing up you agree to our <Link to="/terms" className="text-primary underline">Terms</Link>, <Link to="/privacy" className="text-primary underline">Privacy Policy</Link>, and <Link to="/refund-policy" className="text-primary underline">Refund Policy</Link>.</>
                 )}
               </p>
 
