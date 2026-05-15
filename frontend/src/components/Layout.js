@@ -616,10 +616,10 @@ export const TopHeader = ({ onMenuClick, title }) => {
                         </div>
                         <div className="flex-1 min-w-0">
                           <p className={`text-sm ${!notif.is_read ? 'font-semibold' : ''}`}>
-                            {notif.title}
+                            {(language === 'en' ? (notif.title_en || notif.title_ar) : (notif.title_ar || notif.title_en)) || notif.title}
                           </p>
                           <p className="text-xs text-gray-600 mt-1 line-clamp-2">
-                            {notif.message}
+                            {(language === 'en' ? (notif.message_en || notif.message_ar) : (notif.message_ar || notif.message_en)) || notif.message}
                           </p>
                           <div className="flex items-center gap-2 mt-2 text-xs text-gray-400">
                             <span>{notif.created_at?.split('T')[0]}</span>

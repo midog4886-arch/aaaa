@@ -170,17 +170,33 @@ async def _send_onboarding_welcome_notification(current_user: dict, tenant_name:
     branch_id = current_user.get("branch_id")
     name_part = (tenant_name or "").strip()
     title_ar = f"أهلاً بك في {name_part}!" if name_part else "أهلاً بك في أكاديميتك!"
+    title_en = f"Welcome to {name_part}!" if name_part else "Welcome to your academy!"
     message_ar = (
         "اكتمل إعداد أكاديميتك. الخطوات التالية المقترحة: "
         "1) إضافة أول الأعضاء، "
         "2) ضبط الأنشطة وجدول التدريب، "
         "3) دعوة الطاقم وإنشاء حسابات المستخدمين."
     )
+    message_en = (
+        "Your academy setup is complete. Suggested next steps: "
+        "1) add your first members, "
+        "2) configure activities and the training schedule, "
+        "3) invite staff and create user accounts."
+    )
     notification_id = str(uuid.uuid4())
+    # Persist both languages so the bell can render in the admin's chosen
+    # language (notifications are stored once and read by many UI sessions
+    # which may have different language preferences). Legacy ``title``/
+    # ``message`` keys are kept populated (Arabic) for backward compatibility
+    # with any consumer that hasn't been updated yet.
     await db.notifications.insert_one({
         "id": notification_id,
         "title": title_ar,
         "message": message_ar,
+        "title_ar": title_ar,
+        "title_en": title_en,
+        "message_ar": message_ar,
+        "message_en": message_en,
         "type": "success",
         "link": "/admin/members",
         "branch_id": branch_id,
