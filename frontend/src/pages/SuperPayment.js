@@ -26,6 +26,8 @@ export default function SuperPayment() {
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState('');
   const [okMsg, setOkMsg] = useState('');
+  const [testing, setTesting] = useState(false);
+  const [testResult, setTestResult] = useState(null);
 
   const reload = useCallback(async () => {
     setLoading(true);
@@ -50,6 +52,25 @@ export default function SuperPayment() {
   }, [navigate]);
 
   useEffect(() => { reload(); }, [reload]);
+
+  const sendTest = async () => {
+    setTesting(true);
+    setTestResult(null);
+    setErr('');
+    try {
+      const res = await axios.post('/super/payment/test-webhook', {}, auth());
+      setTestResult(res.data);
+    } catch (e) {
+      const data = e?.response?.data;
+      setTestResult({
+        ok: false,
+        error: (data && data.detail) || e?.message || 'تعذر إرسال الـ webhook التجريبي',
+        status_code: e?.response?.status,
+      });
+    } finally {
+      setTesting(false);
+    }
+  };
 
   const save = async () => {
     setSaving(true);
@@ -172,6 +193,49 @@ export default function SuperPayment() {
             <button onClick={save} disabled={saving} style={btn()}>{saving ? 'جارٍ الحفظ...' : 'حفظ الإعدادات'}</button>
             <button onClick={reload} disabled={loading} style={btn('#475569')}>{loading ? '...' : '↻ إعادة تحميل'}</button>
           </div>
+        </div>
+
+        <div style={card}>
+          <h2 style={{ fontSize: 16, fontWeight: 700, marginTop: 0, marginBottom: 8 }}>اختبار الاتصال بالـ webhook</h2>
+          <div style={{ fontSize: 13, color: '#64748b', marginBottom: 12, lineHeight: 1.6 }}>
+            يولّد حدثاً وهمياً موقّعاً بالسر الحالي ويتحقق منه بنفس الدالة التي يستخدمها مسار <code style={{ fontFamily: 'monospace', background: '#f1f5f9', padding: '1px 6px', borderRadius: 4 }}>/api/billing/webhook/{settings?.provider || '…'}</code>. لا يُجرى أي اتصال خارجي ولا يُسجَّل أي تجديد أو فشل دفع.
+          </div>
+          <button
+            onClick={sendTest}
+            disabled={testing || !settings?.enabled || !settings?.provider || !settings?.has_secret}
+            style={{ ...btn('#0ea5e9'), opacity: (testing || !settings?.enabled || !settings?.provider || !settings?.has_secret) ? 0.6 : 1 }}
+            title={
+              !settings?.provider ? 'اختر مزوداً أولاً' :
+              !settings?.enabled ? 'فعّل المزود أولاً' :
+              !settings?.has_secret ? 'اضبط السر في الـ secrets أولاً' : ''
+            }
+          >
+            {testing ? 'جارٍ الاختبار...' : '📤 إرسال webhook تجريبي'}
+          </button>
+
+          {testResult && (
+            <div style={{
+              marginTop: 12,
+              padding: 12,
+              borderRadius: 8,
+              fontSize: 13,
+              background: testResult.ok ? '#dcfce7' : '#fef2f2',
+              color: testResult.ok ? '#166534' : '#b91c1c',
+              border: `1px solid ${testResult.ok ? '#86efac' : '#fecaca'}`,
+            }}>
+              <div style={{ fontWeight: 700, marginBottom: 6 }}>
+                {testResult.ok ? '✓ نجح التحقق من التوقيع' : '✗ فشل التحقق من التوقيع'}
+              </div>
+              {testResult.error && (
+                <div style={{ marginBottom: 6 }}>{testResult.error}</div>
+              )}
+              <div style={{ fontSize: 12, opacity: 0.85, fontFamily: 'monospace' }}>
+                {testResult.provider ? `provider: ${testResult.provider}` : ''}
+                {testResult.signature_header ? ` · header: ${testResult.signature_header}` : ''}
+                {testResult.secret_env ? ` · secret_env: ${testResult.secret_env}` : ''}
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>

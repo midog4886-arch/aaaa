@@ -9,6 +9,10 @@ import uuid
 import secrets
 import string
 import logging
+import time
+import json
+import hmac
+import hashlib
 from datetime import datetime, timezone, timedelta
 import base64
 import re
@@ -31,6 +35,7 @@ from utils.email_service import (
 from utils.payment_service import (
     get_payment_settings,
     update_payment_settings,
+    verify_signature,
 )
 from utils.tenant import slug_to_db_name, DEFAULT_TENANT_SLUG
 from utils.auth import hash_password
@@ -1356,3 +1361,77 @@ async def payment_settings_put(payload: PaymentSettingsIn, super_payload: dict =
     except Exception:
         pass
     return result
+
+
+@router.post("/payment/test-webhook")
+async def payment_test_webhook(_=Depends(_require_super)):
+    """Build a signed dummy webhook for the configured provider and verify it
+    with the same routine the production webhook uses
+    (``utils.payment_service.verify_signature``). A green result confirms the
+    provider + ``secret_env`` + signing scheme are aligned end-to-end.
+
+    Runs in-process so there is no HTTP loopback (no SSRF surface, no TLS
+    bypass) and no business-side action of any kind: no renewal, no failure
+    record, no email.
+    """
+    settings = await get_payment_settings()
+    provider = (settings.get("provider") or "").lower()
+    if not provider:
+        raise HTTPException(status_code=400, detail="لم يتم اختيار مزود دفع")
+    if not settings.get("enabled"):
+        raise HTTPException(status_code=400, detail="مزود الدفع غير مفعل")
+    secret_env = settings.get("secret_env") or "PAYMENT_WEBHOOK_SECRET"
+    secret = os.environ.get(secret_env, "")
+    if not secret:
+        raise HTTPException(
+            status_code=400,
+            detail=f"متغير البيئة {secret_env} غير مضبوط في الـ secrets",
+        )
+
+    payload = {
+        "id": f"evt_super_test_{int(time.time() * 1000)}",
+        "type": "super_admin.test_ping",
+        "data": {"object": {"test": True}},
+    }
+    body_bytes = json.dumps(payload, separators=(",", ":")).encode("utf-8")
+    headers = {"Content-Type": "application/json"}
+    sig_header_name = ""
+    sig_header_value = ""
+
+    if provider == "stripe":
+        ts = str(int(time.time()))
+        signed = f"{ts}.".encode("utf-8") + body_bytes
+        sig = hmac.new(secret.encode("utf-8"), signed, hashlib.sha256).hexdigest()
+        sig_header_name = "Stripe-Signature"
+        sig_header_value = f"t={ts},v1={sig}"
+    else:
+        sig = hmac.new(secret.encode("utf-8"), body_bytes, hashlib.sha256).hexdigest()
+        if provider == "moyasar":
+            sig_header_name = "X-Moyasar-Signature"
+        elif provider == "tap":
+            sig_header_name = "Tap-Signature"
+        else:
+            sig_header_name = "X-Webhook-Signature"
+        sig_header_value = sig
+    headers[sig_header_name] = sig_header_value
+
+    try:
+        ok = verify_signature(provider, body_bytes, headers, secret)
+    except Exception as e:
+        logger.exception("payment test webhook: verify_signature crashed")
+        return {
+            "ok": False,
+            "provider": provider,
+            "secret_env": secret_env,
+            "signature_header": sig_header_name,
+            "error": f"تعذر التحقق من التوقيع: {e}",
+        }
+
+    return {
+        "ok": bool(ok),
+        "provider": provider,
+        "secret_env": secret_env,
+        "signature_header": sig_header_name,
+        "event_id": payload["id"],
+        "error": None if ok else "رفضت دالة التحقق التوقيع — تأكد من قيمة السر في الـ secrets",
+    }
