@@ -3168,19 +3168,19 @@ async def _persist_daily_checks_status(
         print(f"Daily checks: failed to persist status: {e}")
 
 
-async def _resolve_daily_checks_hour() -> int:
-    """Read the admin-configured hour-of-day for daily checks.
+async def _resolve_daily_checks_time() -> tuple:
+    """Read the admin-configured ``(hour, minute)`` for daily checks.
 
-    Falls back to ``_DAILY_CHECKS_HOUR_RIYADH`` (7) on any error or when no
-    setting is stored, so the scheduler keeps working even if the DB lookup
-    fails.
+    Falls back to ``(_DAILY_CHECKS_HOUR_RIYADH, 0)`` on any error or when
+    no setting is stored, so the scheduler keeps working even if the DB
+    lookup fails.
     """
     try:
-        from routes.notifications import get_daily_checks_hour
-        return await get_daily_checks_hour()
+        from routes.notifications import get_daily_checks_time
+        return await get_daily_checks_time()
     except Exception as e:
-        print(f"Daily checks scheduler: failed to read configured hour ({e}), using default")
-        return _DAILY_CHECKS_HOUR_RIYADH
+        print(f"Daily checks scheduler: failed to read configured time ({e}), using default")
+        return _DAILY_CHECKS_HOUR_RIYADH, 0
 
 
 async def daily_checks_scheduler_loop():
@@ -3188,25 +3188,25 @@ async def daily_checks_scheduler_loop():
     _daily_checks_scheduler_started = True
     print(
         "Daily checks scheduler started "
-        f"(timezone: Asia/Riyadh, default hour: {_DAILY_CHECKS_HOUR_RIYADH:02d}:00, "
+        f"(timezone: Asia/Riyadh, default time: {_DAILY_CHECKS_HOUR_RIYADH:02d}:00, "
         "configurable via notifications settings)"
     )
     while True:
         try:
-            # Re-read the configured hour on every tick so an admin changing
+            # Re-read the configured time on every tick so an admin changing
             # the setting takes effect on the next scheduled run without a
             # restart.
-            hour = await _resolve_daily_checks_hour()
+            hour, minute = await _resolve_daily_checks_time()
             now = datetime.now(_RIYADH_TZ)
             next_run = now.replace(
-                hour=hour, minute=0, second=0, microsecond=0
+                hour=hour, minute=minute, second=0, microsecond=0
             )
             if next_run <= now:
                 next_run += timedelta(days=1)
             wait_seconds = (next_run - now).total_seconds()
             print(
                 f"Daily checks scheduler: next run in {wait_seconds:.0f}s "
-                f"at {next_run.isoformat()} (hour={hour:02d})"
+                f"at {next_run.isoformat()} (time={hour:02d}:{minute:02d})"
             )
             await asyncio.sleep(wait_seconds)
             await _run_daily_renewal_and_ads_checks()

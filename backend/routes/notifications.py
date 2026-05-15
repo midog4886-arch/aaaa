@@ -13,47 +13,75 @@ router = APIRouter(prefix="/notifications", tags=["notifications"])
 
 # ── Daily-checks scheduler settings ────────────────────────────────────────
 # Singleton document in ``db.notifications_settings`` (key=``daily_checks``)
-# holding the hour-of-day in Asia/Riyadh that the daily renewal & ad-expiry
-# checks should run at. Falls back to 7am when nothing is stored.
+# holding the hour-of-day (and optional minute) in Asia/Riyadh that the
+# daily renewal & ad-expiry checks should run at. Falls back to 07:00 when
+# nothing is stored. Stored docs that pre-date the minute field are treated
+# as ``minute=0`` for backwards compatibility.
 _DAILY_CHECKS_DEFAULT_HOUR = 7
+_DAILY_CHECKS_DEFAULT_MINUTE = 0
 _DAILY_CHECKS_SETTINGS_KEY = "daily_checks"
 
 
 async def get_daily_checks_hour() -> int:
     """Return the configured hour-of-day (0-23) for daily renewal/ad checks.
 
+    Kept for backwards compatibility with any external caller; new code
+    should prefer :func:`get_daily_checks_time` which also returns the
+    minute. Falls back to the default on any error.
+    """
+    hour, _minute = await get_daily_checks_time()
+    return hour
+
+
+async def get_daily_checks_time() -> tuple:
+    """Return ``(hour, minute)`` for the daily renewal/ad checks.
+
     Reads from ``db.notifications_settings`` (singleton keyed by ``key``).
-    Returns the default (7) when no setting is stored or the value is invalid.
-    Never raises — failures fall back to the default so the scheduler keeps
-    working even if the DB is briefly unreachable.
+    Returns the defaults (07:00) when no setting is stored or the values
+    are invalid. Never raises — failures fall back to the defaults so the
+    scheduler keeps working even if the DB is briefly unreachable. Docs
+    written before the minute field existed are treated as ``minute=0``.
     """
     try:
         doc = await db.notifications_settings.find_one(
             {"key": _DAILY_CHECKS_SETTINGS_KEY}, {"_id": 0}
         )
     except Exception:
-        return _DAILY_CHECKS_DEFAULT_HOUR
+        return _DAILY_CHECKS_DEFAULT_HOUR, _DAILY_CHECKS_DEFAULT_MINUTE
     if not doc:
-        return _DAILY_CHECKS_DEFAULT_HOUR
-    hour = doc.get("hour")
+        return _DAILY_CHECKS_DEFAULT_HOUR, _DAILY_CHECKS_DEFAULT_MINUTE
     try:
-        hour = int(hour)
+        hour = int(doc.get("hour"))
     except (TypeError, ValueError):
-        return _DAILY_CHECKS_DEFAULT_HOUR
-    if 0 <= hour <= 23:
-        return hour
-    return _DAILY_CHECKS_DEFAULT_HOUR
+        hour = _DAILY_CHECKS_DEFAULT_HOUR
+    if not (0 <= hour <= 23):
+        hour = _DAILY_CHECKS_DEFAULT_HOUR
+    raw_minute = doc.get("minute", _DAILY_CHECKS_DEFAULT_MINUTE)
+    try:
+        minute = int(raw_minute)
+    except (TypeError, ValueError):
+        minute = _DAILY_CHECKS_DEFAULT_MINUTE
+    if not (0 <= minute <= 59):
+        minute = _DAILY_CHECKS_DEFAULT_MINUTE
+    return hour, minute
 
 
 class DailyChecksSettings(BaseModel):
     hour: int
+    minute: Optional[int] = 0
 
 
 @router.get("/daily-checks-settings")
 async def get_daily_checks_settings(current_user: dict = Depends(get_current_user)):
-    """Return the configured daily-checks hour (Asia/Riyadh)."""
-    hour = await get_daily_checks_hour()
-    return {"hour": hour, "default_hour": _DAILY_CHECKS_DEFAULT_HOUR, "timezone": "Asia/Riyadh"}
+    """Return the configured daily-checks hour & minute (Asia/Riyadh)."""
+    hour, minute = await get_daily_checks_time()
+    return {
+        "hour": hour,
+        "minute": minute,
+        "default_hour": _DAILY_CHECKS_DEFAULT_HOUR,
+        "default_minute": _DAILY_CHECKS_DEFAULT_MINUTE,
+        "timezone": "Asia/Riyadh",
+    }
 
 
 @router.put("/daily-checks-settings")
@@ -61,20 +89,33 @@ async def update_daily_checks_settings(
     payload: DailyChecksSettings,
     current_user: dict = Depends(get_current_user),
 ):
-    """Admin-only: update the hour-of-day (0-23, Asia/Riyadh) the daily
-    renewal & ad-expiry checks run at. Takes effect on the next scheduler
-    tick (within ~24 hours, or immediately on next restart)."""
+    """Admin-only: update the hour (0-23) and minute (0-59) in Asia/Riyadh
+    the daily renewal & ad-expiry checks run at. Takes effect on the next
+    scheduler tick (within ~24 hours, or immediately on next restart)."""
     if not current_user.get("is_admin"):
         raise HTTPException(status_code=403, detail="Admin access required")
     hour = payload.hour
     if not isinstance(hour, int) or hour < 0 or hour > 23:
         raise HTTPException(status_code=400, detail="hour must be an integer between 0 and 23")
+    minute = payload.minute if payload.minute is not None else 0
+    if not isinstance(minute, int) or minute < 0 or minute > 59:
+        raise HTTPException(status_code=400, detail="minute must be an integer between 0 and 59")
     await db.notifications_settings.update_one(
         {"key": _DAILY_CHECKS_SETTINGS_KEY},
-        {"$set": {"hour": hour, "updated_at": datetime.now(timezone.utc).isoformat()}},
+        {"$set": {
+            "hour": hour,
+            "minute": minute,
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }},
         upsert=True,
     )
-    return {"hour": hour, "default_hour": _DAILY_CHECKS_DEFAULT_HOUR, "timezone": "Asia/Riyadh"}
+    return {
+        "hour": hour,
+        "minute": minute,
+        "default_hour": _DAILY_CHECKS_DEFAULT_HOUR,
+        "default_minute": _DAILY_CHECKS_DEFAULT_MINUTE,
+        "timezone": "Asia/Riyadh",
+    }
 
 
 @router.get("/daily-checks-status")

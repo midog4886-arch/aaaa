@@ -31,7 +31,9 @@ export const SettingsPage = () => {
     return document.documentElement.classList.contains('dark');
   });
   const [dailyChecksHour, setDailyChecksHour] = React.useState(7);
+  const [dailyChecksMinute, setDailyChecksMinute] = React.useState(0);
   const [dailyChecksDefault, setDailyChecksDefault] = React.useState(7);
+  const [dailyChecksDefaultMinute, setDailyChecksDefaultMinute] = React.useState(0);
   const [dailyChecksLoading, setDailyChecksLoading] = React.useState(false);
   const [dailyChecksSaving, setDailyChecksSaving] = React.useState(false);
   const [dailyChecksStatus, setDailyChecksStatus] = React.useState(null);
@@ -55,7 +57,9 @@ export const SettingsPage = () => {
         if (cancelled) return;
         const data = res.data || {};
         if (typeof data.hour === 'number') setDailyChecksHour(data.hour);
+        if (typeof data.minute === 'number') setDailyChecksMinute(data.minute);
         if (typeof data.default_hour === 'number') setDailyChecksDefault(data.default_hour);
+        if (typeof data.default_minute === 'number') setDailyChecksDefaultMinute(data.default_minute);
       })
       .catch(() => { /* keep defaults */ })
       .finally(() => { if (!cancelled) setDailyChecksLoading(false); });
@@ -102,11 +106,12 @@ export const SettingsPage = () => {
     }
   };
 
-  const handleSaveDailyChecksHour = async (nextHour) => {
+  const handleSaveDailyChecksTime = async (nextHour, nextMinute) => {
     setDailyChecksSaving(true);
     try {
-      const res = await notificationsSettingsAPI.updateDailyChecks(nextHour);
+      const res = await notificationsSettingsAPI.updateDailyChecks(nextHour, nextMinute);
       if (typeof res?.data?.hour === 'number') setDailyChecksHour(res.data.hour);
+      if (typeof res?.data?.minute === 'number') setDailyChecksMinute(res.data.minute);
       toast.success(language === 'ar'
         ? 'تم حفظ وقت التنبيهات اليومية'
         : 'Daily alerts time saved');
@@ -119,9 +124,10 @@ export const SettingsPage = () => {
     }
   };
 
-  const formatHour = (h) => {
+  const formatTime = (h, m = 0) => {
     const hh = String(h).padStart(2, '0');
-    return `${hh}:00`;
+    const mm = String(m).padStart(2, '0');
+    return `${hh}:${mm}`;
   };
 
   const handleRestartOnboarding = async () => {
@@ -282,32 +288,35 @@ export const SettingsPage = () => {
                   </p>
                   <p className="text-sm text-muted-foreground">
                     {language === 'ar'
-                      ? `يتم تنفيذ الفحص يومياً بتوقيت الرياض (الافتراضي ${formatHour(dailyChecksDefault)}).`
-                      : `Runs daily in Asia/Riyadh time (default ${formatHour(dailyChecksDefault)}).`}
+                      ? `يتم تنفيذ الفحص يومياً بتوقيت الرياض (الافتراضي ${formatTime(dailyChecksDefault, dailyChecksDefaultMinute)}).`
+                      : `Runs daily in Asia/Riyadh time (default ${formatTime(dailyChecksDefault, dailyChecksDefaultMinute)}).`}
                   </p>
                 </div>
                 <div className="flex items-center gap-2">
-                  <Label htmlFor="daily-checks-hour" className="sr-only">
-                    {language === 'ar' ? 'الساعة' : 'Hour'}
+                  <Label htmlFor="daily-checks-time" className="sr-only">
+                    {language === 'ar' ? 'الوقت' : 'Time'}
                   </Label>
-                  <select
-                    id="daily-checks-hour"
-                    data-testid="daily-checks-hour-select"
+                  <input
+                    id="daily-checks-time"
+                    type="time"
+                    data-testid="daily-checks-time-input"
                     className="border rounded-md px-3 py-2 bg-background text-foreground"
-                    value={dailyChecksHour}
+                    value={formatTime(dailyChecksHour, dailyChecksMinute)}
                     disabled={dailyChecksLoading || dailyChecksSaving}
                     onChange={(e) => {
-                      const next = parseInt(e.target.value, 10);
-                      if (!Number.isNaN(next)) {
-                        setDailyChecksHour(next);
-                        handleSaveDailyChecksHour(next);
+                      const v = e.target.value || '';
+                      const [hStr, mStr] = v.split(':');
+                      const nextH = parseInt(hStr, 10);
+                      const nextM = parseInt(mStr, 10);
+                      if (!Number.isNaN(nextH) && !Number.isNaN(nextM)
+                          && nextH >= 0 && nextH <= 23
+                          && nextM >= 0 && nextM <= 59) {
+                        setDailyChecksHour(nextH);
+                        setDailyChecksMinute(nextM);
+                        handleSaveDailyChecksTime(nextH, nextM);
                       }
                     }}
-                  >
-                    {Array.from({ length: 24 }, (_, h) => (
-                      <option key={h} value={h}>{formatHour(h)}</option>
-                    ))}
-                  </select>
+                  />
                 </div>
               </div>
 
