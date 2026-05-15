@@ -153,6 +153,25 @@ async def create_freeze(freeze: FreezeCreate, current_user: dict = Depends(get_c
     }
 
     await db.member_freezes.insert_one(freeze_doc)
+    try:
+        from utils.audit import log_audit
+        await log_audit(
+            actor=current_user,
+            action="freeze.create",
+            entity_type="freeze",
+            entity_id=freeze_id,
+            entity_name=member.get("name_ar") or member.get("name", ""),
+            after={
+                "member_id": freeze.member_id,
+                "start_date": freeze.start_date,
+                "end_date": freeze.end_date,
+                "reason": freeze.reason,
+                "duration_days": duration_days,
+                "total_extension_days": total_extension,
+            },
+        )
+    except Exception:
+        pass
 
     member_name = member.get("name_ar", member.get("name", ""))
     notification = {
@@ -325,6 +344,19 @@ async def cancel_freeze(freeze_id: str, current_user: dict = Depends(get_current
 
     freeze_doc["status"] = "cancelled"
     freeze_doc["cancelled_at"] = now_str
+    try:
+        from utils.audit import log_audit
+        await log_audit(
+            actor=current_user,
+            action="freeze.cancel",
+            entity_type="freeze",
+            entity_id=freeze_id,
+            entity_name=(member or {}).get("name_ar") or (member or {}).get("name", ""),
+            before={"status": "active"},
+            after={"status": "cancelled", "cancelled_at": now_str},
+        )
+    except Exception:
+        pass
     return freeze_doc
 
 

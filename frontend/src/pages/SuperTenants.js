@@ -34,6 +34,7 @@ const sx = {
   badgeActive: { display: 'inline-block', padding: '2px 8px', background: '#dcfce7', color: '#15803d', borderRadius: 99, fontSize: 11, fontWeight: 600 },
   badgeSuspended: { display: 'inline-block', padding: '2px 8px', background: '#fef3c7', color: '#a16207', borderRadius: 99, fontSize: 11, fontWeight: 600 },
   badgeDeleted: { display: 'inline-block', padding: '2px 8px', background: '#fee2e2', color: '#b91c1c', borderRadius: 99, fontSize: 11, fontWeight: 600 },
+  badgePending: { display: 'inline-block', padding: '2px 8px', background: '#fef3c7', color: '#92400e', borderRadius: 99, fontSize: 11, fontWeight: 600 },
   modalBg: { position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50, padding: 16 },
   modal: { background: 'white', borderRadius: 12, padding: 24, width: '100%', maxWidth: 520, maxHeight: '90vh', overflowY: 'auto' },
   field: { marginBottom: 14 },
@@ -316,6 +317,136 @@ function TenantForm({ initial, onSubmit, onCancel, isEdit }) {
   );
 }
 
+function DeleteTenantDialog({ tenant, onCancel, onSchedule, onFinalize }) {
+  const [step, setStep] = useState(1);
+  const [slug, setSlug] = useState('');
+  const [reason, setReason] = useState('');
+  const [force, setForce] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+
+  const isPending = tenant.status === 'pending_delete';
+  const purgeAt = tenant.deletion_purge_at ? new Date(tenant.deletion_purge_at) : null;
+  const canFinalizeNoForce = isPending && purgeAt && purgeAt.getTime() <= Date.now();
+  const slugMatches = slug.trim() === tenant.slug;
+
+  const submitSchedule = async () => {
+    if (!slugMatches) return alert(`الرجاء كتابة معرّف الأكاديمية بالضبط: ${tenant.slug}`);
+    if (reason.trim().length < 6) return alert('يرجى كتابة سبب الحذف (6 أحرف على الأقل).');
+    setSubmitting(true);
+    try { await onSchedule(slug.trim(), reason.trim()); } finally { setSubmitting(false); }
+  };
+
+  const submitFinalize = async () => {
+    if (!slugMatches) return alert(`الرجاء كتابة معرّف الأكاديمية بالضبط: ${tenant.slug}`);
+    if (!canFinalizeNoForce && !force) {
+      return alert('فترة السماح لم تنتهِ بعد. فعّل خيار التجاوز فقط في حالات الطوارئ.');
+    }
+    const final = window.confirm(
+      `سيتم حذف "${tenant.name}" وقاعدة بياناتها نهائياً ولا يمكن التراجع. متابعة؟`
+    );
+    if (!final) return;
+    setSubmitting(true);
+    try { await onFinalize(slug.trim(), force && !canFinalizeNoForce); } finally { setSubmitting(false); }
+  };
+
+  return (
+    <div style={sx.modalBg} onClick={onCancel}>
+      <div style={sx.modal} onClick={(e) => e.stopPropagation()}>
+        <h2 style={{ margin: 0, marginBottom: 6, color: '#b91c1c' }}>
+          {step === 1 ? '⚠ تأكيد حذف الأكاديمية' : '⚠ تأكيد نهائي قبل الحذف'}
+        </h2>
+        <div style={{ fontSize: 13, color: '#64748b', marginBottom: 14 }}>
+          الأكاديمية: <b style={{ color: '#0f172a' }}>{tenant.name}</b> (@{tenant.slug})
+          {' · '}الحالة: <b>{tenant.status}</b>
+          {tenant.db_name && <> · DB: <code>{tenant.db_name}</code></>}
+        </div>
+
+        {isPending && tenant.deletion_scheduled_at && (
+          <div style={{ background: '#fef3c7', border: '1px solid #fde68a', color: '#92400e', padding: 10, borderRadius: 8, fontSize: 12, marginBottom: 12 }}>
+            تم جدولة الحذف في {new Date(tenant.deletion_scheduled_at).toLocaleString('ar-EG')}.
+            {purgeAt && <> سينتهي السماح في {purgeAt.toLocaleString('ar-EG')}.</>}
+            {tenant.deletion_reason && <div style={{ marginTop: 4 }}>السبب: {tenant.deletion_reason}</div>}
+          </div>
+        )}
+
+        {step === 1 && (
+          <>
+            <div style={{ background: '#fee2e2', border: '1px solid #fecaca', color: '#7f1d1d', padding: 10, borderRadius: 8, fontSize: 12, marginBottom: 12 }}>
+              الحذف عملية كبرى. سيتم إيقاف الأكاديمية فوراً، ثم بعد 7 أيام كاملة (فترة سماح) ستُحذف قاعدة بياناتها بشكل نهائي ولا يمكن استرجاعها.
+              يمكنك إلغاء الجدولة في أي وقت خلال فترة السماح.
+            </div>
+            <div style={sx.field}>
+              <label style={sx.label}>اكتب معرّف الأكاديمية للتأكيد ({tenant.slug})</label>
+              <input style={sx.input} value={slug} onChange={(e) => setSlug(e.target.value)} placeholder={tenant.slug} />
+            </div>
+            <div style={sx.field}>
+              <label style={sx.label}>سبب الحذف (يُسجّل في سجل التدقيق)</label>
+              <textarea style={{ ...sx.input, minHeight: 70, fontFamily: 'inherit' }}
+                value={reason} onChange={(e) => setReason(e.target.value)}
+                placeholder="مثال: تم الاتفاق مع المالك على إنهاء الاشتراك بتاريخ ..." />
+            </div>
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 16 }}>
+              <button style={sx.btnGhost} onClick={onCancel} disabled={submitting}>إلغاء</button>
+              {!isPending && (
+                <button
+                  style={{ ...sx.btnDanger, padding: '10px 16px', fontSize: 13 }}
+                  onClick={() => slugMatches && reason.trim().length >= 6 ? setStep(2) : submitSchedule()}
+                  disabled={submitting}
+                >المتابعة للتأكيد النهائي</button>
+              )}
+              {isPending && (
+                <button
+                  style={{ ...sx.btnDanger, padding: '10px 16px', fontSize: 13 }}
+                  onClick={() => setStep(2)}
+                  disabled={submitting}
+                >المتابعة للحذف النهائي</button>
+              )}
+            </div>
+          </>
+        )}
+
+        {step === 2 && (
+          <>
+            <div style={{ background: '#fef2f2', border: '1px solid #fecaca', color: '#7f1d1d', padding: 12, borderRadius: 8, fontSize: 13, marginBottom: 12, fontWeight: 600 }}>
+              {isPending
+                ? (canFinalizeNoForce
+                    ? 'فترة السماح انتهت. يمكنك الآن حذف قاعدة البيانات نهائياً.'
+                    : 'فترة السماح لم تنتهِ بعد. يلزم تفعيل التجاوز للحذف الفوري.')
+                : 'سيتم جدولة الحذف. لن تُحذف البيانات فعلياً قبل 7 أيام.'}
+            </div>
+            {isPending && !canFinalizeNoForce && (
+              <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 13, color: '#7f1d1d', marginBottom: 12 }}>
+                <input type="checkbox" checked={force} onChange={(e) => setForce(e.target.checked)} />
+                تجاوز فترة السماح (طوارئ فقط — يستلزم تأكيد المالك خارجياً)
+              </label>
+            )}
+            <div style={{ fontSize: 12, color: '#475569', marginBottom: 8 }}>
+              لإلغاء العملية اضغط رجوع. للمتابعة اضغط زر التأكيد النهائي.
+            </div>
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 12 }}>
+              <button style={sx.btnGhost} onClick={() => setStep(1)} disabled={submitting}>رجوع</button>
+              <button style={sx.btnGhost} onClick={onCancel} disabled={submitting}>إلغاء</button>
+              {!isPending && (
+                <button style={{ ...sx.btnDanger, padding: '10px 16px', fontSize: 13, fontWeight: 700 }}
+                  onClick={submitSchedule} disabled={submitting || !slugMatches}>
+                  {submitting ? '...' : 'جدولة الحذف (7 أيام سماح)'}
+                </button>
+              )}
+              {isPending && (
+                <button style={{ ...sx.btnDanger, padding: '10px 16px', fontSize: 13, fontWeight: 700 }}
+                  onClick={submitFinalize}
+                  disabled={submitting || !slugMatches || (!canFinalizeNoForce && !force)}>
+                  {submitting ? '...' : 'حذف قاعدة البيانات نهائياً'}
+                </button>
+              )}
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function RenewModal({ tenant, onSubmit, onCancel }) {
   const [months, setMonths] = useState(1);
   const [days, setDays] = useState(0);
@@ -490,13 +621,42 @@ export default function SuperTenants() {
     } catch (e) { alert(e?.response?.data?.detail || 'فشل'); }
   };
 
-  const remove = async (t) => {
-    if (t.slug === 'default') return alert('لا يمكن حذف الأكاديمية الافتراضية');
-    if (!window.confirm(`حذف "${t.name}" نهائياً؟ (سيتم تعليمه فقط، البيانات تبقى في قاعدة البيانات)`)) return;
+  const [deleting, setDeleting] = useState(null);
+
+  const scheduleDelete = async (t, slugConfirm, reason) => {
     try {
-      await axios.delete(`/super/tenants/${t.id}`, auth());
+      await axios.post(`/super/tenants/${t.id}/schedule-delete`, {
+        confirm_slug: slugConfirm,
+        reason,
+      }, auth());
+      setDeleting(null);
+      await load();
+      alert('تم جدولة الحذف. ستُحذف نهائياً بعد 7 أيام ما لم يتم الإلغاء.');
+    } catch (e) { alert(e?.response?.data?.detail || 'فشل جدولة الحذف'); }
+  };
+
+  const cancelDelete = async (t) => {
+    if (!window.confirm(`إلغاء جدولة حذف "${t.name}"؟`)) return;
+    try {
+      await axios.post(`/super/tenants/${t.id}/cancel-delete`, {}, auth());
       await load();
     } catch (e) { alert(e?.response?.data?.detail || 'فشل'); }
+  };
+
+  const finalizeDelete = async (t, slugConfirm, force) => {
+    try {
+      const params = new URLSearchParams({ confirm_slug: slugConfirm });
+      if (force) params.append('force', 'true');
+      await axios.delete(`/super/tenants/${t.id}?${params.toString()}`, auth());
+      setDeleting(null);
+      await load();
+      alert('تم حذف الأكاديمية وقاعدة بياناتها نهائياً.');
+    } catch (e) { alert(e?.response?.data?.detail || 'فشل الحذف'); }
+  };
+
+  const remove = (t) => {
+    if (t.slug === 'default') return alert('لا يمكن حذف الأكاديمية الافتراضية');
+    setDeleting(t);
   };
 
   const logout = () => {
@@ -505,8 +665,14 @@ export default function SuperTenants() {
     navigate('/super/login', { replace: true });
   };
 
-  const statusBadge = (s) => s === 'suspended' ? sx.badgeSuspended : (s === 'deleted' ? sx.badgeDeleted : sx.badgeActive);
-  const statusText = (s) => s === 'suspended' ? 'موقوفة' : (s === 'deleted' ? 'محذوفة' : 'نشطة');
+  const statusBadge = (s) => s === 'suspended' ? sx.badgeSuspended
+    : s === 'deleted' ? sx.badgeDeleted
+    : s === 'pending_delete' ? sx.badgePending
+    : sx.badgeActive;
+  const statusText = (s) => s === 'suspended' ? 'موقوفة'
+    : s === 'deleted' ? 'محذوفة'
+    : s === 'pending_delete' ? 'جدولة حذف'
+    : 'نشطة';
 
   const totalCard = (label, val) => (
     <div style={{ flex: 1, minWidth: 110, background: 'white', border: '1px solid #e2e8f0', borderRadius: 10, padding: '10px 14px' }}>
@@ -651,8 +817,13 @@ export default function SuperTenants() {
                 {t.status !== 'deleted' && (
                   <button style={sx.btnGhost} onClick={() => toggleSuspend(t)}>{t.status === 'active' ? 'إيقاف' : 'تفعيل'}</button>
                 )}
+                {t.status === 'pending_delete' && (
+                  <button style={sx.btnEdit} onClick={() => cancelDelete(t)}>إلغاء الجدولة</button>
+                )}
                 {t.slug !== 'default' && t.status !== 'deleted' && (
-                  <button style={sx.btnDanger} onClick={() => remove(t)}>حذف</button>
+                  <button style={sx.btnDanger} onClick={() => remove(t)}>
+                    {t.status === 'pending_delete' ? 'حذف نهائي' : 'حذف'}
+                  </button>
                 )}
               </div>
             </div>
@@ -662,6 +833,14 @@ export default function SuperTenants() {
 
       {creating && <TenantForm onSubmit={create} onCancel={() => setCreating(false)} />}
       {editing && <TenantForm initial={editing} onSubmit={(d) => update(editing.id, d)} onCancel={() => setEditing(null)} isEdit />}
+      {deleting && (
+        <DeleteTenantDialog
+          tenant={deleting}
+          onCancel={() => setDeleting(null)}
+          onSchedule={(slug, reason) => scheduleDelete(deleting, slug, reason)}
+          onFinalize={(slug, force) => finalizeDelete(deleting, slug, force)}
+        />
+      )}
       {renewing && <RenewModal tenant={renewing} onSubmit={(d) => renew(renewing.id, d)} onCancel={() => setRenewing(null)} />}
 
       {seedInfo && (

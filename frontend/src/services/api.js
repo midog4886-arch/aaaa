@@ -613,6 +613,23 @@ export const paymentVouchersAPI = {
   delete: (id) => axios.delete(`${API}/payment-vouchers/${id}`),
 };
 
+export const auditAPI = {
+  list: (params = {}) => axios.get(`${API}/audit`, { params }),
+  listActions: () => axios.get(`${API}/audit/actions`),
+  exportUrl: (params = {}) => {
+    const token = localStorage.getItem('token') || '';
+    const sp = new URLSearchParams({ ...params, token });
+    return `${API}/audit/export?${sp.toString()}`;
+  },
+};
+
+export const tenantDataAPI = {
+  exportUrl: () => {
+    const token = localStorage.getItem('token') || '';
+    return `${API}/tenant/export-data?token=${encodeURIComponent(token)}`;
+  },
+};
+
 export const whatsappAPI = {
   getStatus: () => axios.get(`${API}/whatsapp/status`),
   getSettings: () => axios.get(`${API}/whatsapp/settings`),

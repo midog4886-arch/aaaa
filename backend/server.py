@@ -6,6 +6,7 @@ from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from starlette.middleware.gzip import GZipMiddleware
 import os
+import asyncio
 import logging
 import io
 from io import BytesIO
@@ -124,6 +125,24 @@ JWT_EXPIRATION_HOURS = 24 * 365 * 100  # 100 years - permanent session
 # Stripe Config
 STRIPE_API_KEY = os.environ.get('STRIPE_API_KEY', '')
 
+# ── Sentry SDK (optional) ───────────────────────────────────────────────────
+# Enabled only if SENTRY_DSN is set. We import lazily so the dependency is
+# truly optional — the app boots fine without sentry-sdk installed.
+SENTRY_DSN = os.environ.get("SENTRY_DSN", "").strip()
+if SENTRY_DSN:
+    try:
+        import sentry_sdk  # type: ignore
+        sentry_sdk.init(
+            dsn=SENTRY_DSN,
+            environment=os.environ.get("SENTRY_ENVIRONMENT", "production"),
+            release=os.environ.get("SENTRY_RELEASE") or None,
+            traces_sample_rate=float(os.environ.get("SENTRY_TRACES_SAMPLE_RATE", "0.05")),
+            send_default_pii=False,
+        )
+        logging.getLogger("sentry").info("Sentry SDK initialised")
+    except Exception as _e:  # pragma: no cover
+        logging.getLogger("sentry").warning("Sentry init failed: %s", _e)
+
 app = FastAPI(title="Champions Academy API")
 api_router = APIRouter(prefix="/api")
 security = HTTPBearer()
@@ -169,6 +188,12 @@ from routes.contact import router as contact_router, super_router as contact_sup
 api_router.include_router(contact_router)
 app.include_router(contact_super_router)
 
+from routes.audit import router as audit_router
+api_router.include_router(audit_router)
+
+from routes.data_export import router as data_export_router
+api_router.include_router(data_export_router)
+
 app.include_router(super_admin_router)
 
 # Set database for loyalty router
@@ -199,10 +224,45 @@ app.mount("/uploads", StaticFiles(directory=str(UPLOADS_DIR)), name="uploads")
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-# Health check endpoint (required for Kubernetes deployment)
+# Health check endpoints (required for Kubernetes deployment + UptimeRobot).
+# ``/health`` stays a tiny string-only check that never touches the DB so a
+# slow Mongo cluster can't take the liveness probe down. ``/api/health``
+# additionally pings the database with a low timeout and reports degraded
+# state, which is what UptimeRobot / monitoring should call.
+_APP_BOOT_AT = datetime.now(timezone.utc)
+
+
 @app.get("/health")
 async def health_check():
     return {"status": "ok"}
+
+
+@app.get("/api/health")
+async def api_health_check():
+    """Deeper health check used by UptimeRobot and dashboards."""
+    started = datetime.now(timezone.utc)
+    db_ok = True
+    db_error = None
+    try:
+        # Lightweight ping — listing collections via a count on a tiny one
+        # works on both Motor and the AtlasClient HTTP shim.
+        await asyncio.wait_for(db.users.count_documents({}, limit=1), timeout=4.0)
+    except Exception as e:
+        db_ok = False
+        db_error = str(e)[:200]
+
+    duration_ms = int((datetime.now(timezone.utc) - started).total_seconds() * 1000)
+    status_code = 200 if db_ok else 503
+    body = {
+        "status": "ok" if db_ok else "degraded",
+        "db": "ok" if db_ok else "down",
+        "db_latency_ms": duration_ms,
+        "uptime_seconds": int((datetime.now(timezone.utc) - _APP_BOOT_AT).total_seconds()),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    }
+    if db_error:
+        body["db_error"] = db_error
+    return JSONResponse(content=body, status_code=status_code)
 
 @app.get("/")
 async def root():
@@ -886,9 +946,11 @@ async def register(user: UserCreate):
 
 @api_router.post("/auth/login", response_model=TokenResponse)
 async def login(credentials: UserLogin):
+    from utils.audit import log_login
     try:
         user = await db.users.find_one({"username": credentials.username}, {"_id": 0})
         if not user:
+            await log_login(username=credentials.username, success=False)
             raise HTTPException(status_code=401, detail="Invalid credentials")
         
         stored_password = user.get("password", "")
@@ -905,11 +967,13 @@ async def login(credentials: UserLogin):
             raise HTTPException(status_code=401, detail="Invalid credentials")
         
         if not password_ok:
+            await log_login(username=credentials.username, success=False)
             raise HTTPException(status_code=401, detail="Invalid credentials")
-        
+
         branch_id = user.get("branch_id")
         is_admin = user.get("is_admin", False)
-        
+
+        await log_login(username=credentials.username, success=True, user=user)
         token = create_token(user["id"], user["username"], branch_id, is_admin)
         return TokenResponse(
             access_token=token,
@@ -2930,6 +2994,109 @@ _ALL_COLLECTIONS = [
 ]
 
 
+async def _send_ops_email(subject: str, body: str) -> None:
+    """Best-effort SMTP send for ops alerts. No-op unless ``SMTP_HOST``,
+    ``OPS_ALERT_EMAIL_TO``, and ``SMTP_FROM`` are configured. Runs sync send
+    in a worker thread so it never blocks the event loop.
+    """
+    host = os.environ.get("SMTP_HOST")
+    to_addr = os.environ.get("OPS_ALERT_EMAIL_TO")
+    sender = os.environ.get("SMTP_FROM") or os.environ.get("SMTP_USER")
+    if not host or not to_addr or not sender:
+        return
+    port = int(os.environ.get("SMTP_PORT", "587"))
+    user = os.environ.get("SMTP_USER")
+    pwd = os.environ.get("SMTP_PASSWORD")
+    use_tls = os.environ.get("SMTP_TLS", "true").lower() != "false"
+
+    def _send_sync():
+        import smtplib, ssl
+        from email.message import EmailMessage
+        msg = EmailMessage()
+        msg["Subject"] = subject
+        msg["From"] = sender
+        msg["To"] = to_addr
+        msg.set_content(body)
+        ctx = ssl.create_default_context()
+        with smtplib.SMTP(host, port, timeout=10) as s:
+            if use_tls:
+                s.starttls(context=ctx)
+            if user and pwd:
+                s.login(user, pwd)
+            s.send_message(msg)
+
+    try:
+        await asyncio.to_thread(_send_sync)
+    except Exception as e:
+        print(f"_send_ops_email failed: {e}")
+
+
+async def _send_ops_whatsapp(body: str) -> None:
+    """Best-effort WhatsApp send via the local Baileys side-car, if running.
+
+    No-op unless ``OPS_ALERT_WHATSAPP_TO`` is set. The side-car listens on
+    127.0.0.1:3001 and exposes ``POST /send`` (``{phone, message}``).
+    """
+    to_phone = os.environ.get("OPS_ALERT_WHATSAPP_TO")
+    if not to_phone:
+        return
+    url = os.environ.get("WHATSAPP_SERVICE_URL", "http://127.0.0.1:3001") + "/send"
+    try:
+        import httpx
+        async with httpx.AsyncClient(timeout=8.0) as client:
+            await client.post(url, json={"phone": to_phone, "message": body})
+    except Exception as e:
+        print(f"_send_ops_whatsapp failed: {e}")
+
+
+async def _emit_ops_alert(*, kind: str, title: str, body: str, severity: str = "error") -> None:
+    """Record + deliver a critical-failure alert.
+
+    Persists to ``db.ops_alerts`` and ``db.notifications`` (in-app dropdown
+    for every admin in the current tenant), and forwards to email + WhatsApp
+    when their respective env vars are configured. Each transport is
+    best-effort — failures never propagate to the caller.
+    """
+    try:
+        ts = datetime.now(timezone.utc).isoformat()
+        await db.ops_alerts.insert_one({
+            "id": str(uuid.uuid4()),
+            "kind": kind,
+            "title": title,
+            "body": body,
+            "severity": severity,
+            "created_at": ts,
+            "acknowledged": False,
+        })
+        admins = await db.users.find({"is_admin": True}, {"id": 1, "_id": 0}).to_list(50)
+        for u in admins:
+            try:
+                await db.notifications.insert_one({
+                    "id": str(uuid.uuid4()),
+                    "user_id": u.get("id"),
+                    "type": f"ops_alert.{kind}",
+                    "title": title,
+                    "message": body,
+                    "severity": severity,
+                    "is_read": False,
+                    "created_at": ts,
+                })
+            except Exception:
+                pass
+        print(f"OPS ALERT [{kind}]: {title} — {body}")
+        # Outbound transports (env-gated, fire-and-forget).
+        try:
+            await _send_ops_email(f"[Champions Academy] {title}", f"{body}\n\nKind: {kind}\nSeverity: {severity}\nAt: {ts}")
+        except Exception:
+            pass
+        try:
+            await _send_ops_whatsapp(f"⚠ {title}\n{body}")
+        except Exception:
+            pass
+    except Exception as e:  # pragma: no cover — best-effort
+        print(f"_emit_ops_alert failed: {e}")
+
+
 async def _create_auto_backup():
     timestamp = datetime.now(_RIYADH_TZ).strftime('%Y%m%d')
     filename = f"auto_backup_{timestamp}.json"
@@ -2940,6 +3107,7 @@ async def _create_auto_backup():
         "collections": {}
     }
 
+    skipped: list = []
     for col_name in _ALL_COLLECTIONS:
         try:
             collection = db[col_name]
@@ -2947,6 +3115,7 @@ async def _create_auto_backup():
             if documents:
                 backup_data["collections"][col_name] = documents
         except Exception as e:
+            skipped.append(f"{col_name}: {e}")
             print(f"Auto backup: skipping {col_name}: {e}")
 
     with open(filepath, 'w', encoding='utf-8') as f:
@@ -2961,6 +3130,16 @@ async def _create_auto_backup():
         oldest.unlink()
         print(f"Auto backup deleted (retention limit): {oldest.name}")
 
+    # Treat "more than half the collections failed" as a backup failure even
+    # if the file itself was written, since it likely means a Mongo outage.
+    if len(skipped) > max(5, len(_ALL_COLLECTIONS) // 2):
+        await _emit_ops_alert(
+            kind="backup.partial_failure",
+            title="Backup completed with errors",
+            body=f"{len(skipped)} collections were skipped during the daily backup.",
+            severity="warning",
+        )
+
 
 async def backup_scheduler_loop():
     global _backup_scheduler_started
@@ -2973,7 +3152,16 @@ async def backup_scheduler_loop():
             wait_seconds = (next_midnight - now).total_seconds()
             print(f"Backup scheduler: next run in {wait_seconds:.0f}s at midnight Riyadh time")
             await asyncio.sleep(wait_seconds)
-            await _create_auto_backup()
+            try:
+                await _create_auto_backup()
+            except Exception as e:
+                print(f"Auto backup failed: {e}")
+                await _emit_ops_alert(
+                    kind="backup.failure",
+                    title="Daily backup FAILED",
+                    body=f"The nightly auto-backup raised an exception: {e}",
+                    severity="error",
+                )
         except asyncio.CancelledError:
             break
         except Exception as e:
@@ -3136,6 +3324,19 @@ async def _run_daily_renewal_and_ads_checks(trigger: str = "scheduler") -> dict:
         f"Daily checks scheduler: finished (success={success}, "
         f"renewals={renewals_created}, ads={ads_flagged}, errors={len(errors)})"
     )
+    if not success:
+        try:
+            await _emit_ops_alert(
+                kind="daily_checks.failure",
+                title="Daily renewal/ads check FAILED",
+                body=(
+                    f"{len(errors)} error(s) during daily check (trigger={trigger}). "
+                    f"First: {errors[0] if errors else ''}"
+                )[:1000],
+                severity="error",
+            )
+        except Exception:
+            pass
     return {
         "success": success,
         "renewals_created": renewals_created,

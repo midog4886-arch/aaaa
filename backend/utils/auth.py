@@ -8,6 +8,9 @@ import bcrypt
 from database import JWT_SECRET, JWT_ALGORITHM, JWT_EXPIRATION_HOURS
 
 security = HTTPBearer()
+# Optional bearer used by export endpoints which also accept ?token= in the query
+# (browser file downloads can't easily set Authorization headers).
+security_optional = HTTPBearer(auto_error=False)
 
 def hash_password(password: str) -> str:
     return bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
@@ -52,7 +55,7 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
     _enforce_tenant_match(payload)
     return payload
 
-async def get_current_user_from_token(token: Optional[str] = None, credentials: Optional[HTTPAuthorizationCredentials] = Depends(security)):
+async def get_current_user_from_token(token: Optional[str] = None, credentials: Optional[HTTPAuthorizationCredentials] = Depends(security_optional)):
     """Support both Bearer token and query parameter token for exports"""
     actual_token = token
     if not actual_token and credentials:

@@ -426,13 +426,27 @@ async def pay_invoice(invoice_id: str, current_user: dict = Depends(get_current_
     
     # Update invoice status (scoped filter — defence-in-depth in case of
     # future refactors that move the existence check away from the write).
+    paid_at = datetime.now(timezone.utc).isoformat()
     await db.invoices.update_one(
         scoped_invoice_query,
         {"$set": {
             "status": "paid",
-            "paid_at": datetime.now(timezone.utc).isoformat()
+            "paid_at": paid_at
         }}
     )
+    try:
+        from utils.audit import log_audit
+        await log_audit(
+            actor=current_user,
+            action="invoice.pay",
+            entity_type="invoice",
+            entity_id=invoice_id,
+            entity_name=invoice.get("customer_name_ar") or invoice.get("invoice_number", ""),
+            before={"status": invoice.get("status")},
+            after={"status": "paid", "paid_at": paid_at, "total": invoice.get("total")},
+        )
+    except Exception:
+        pass
     
     # Group items by member_id for multi-member invoice support
     items_by_member = {}
@@ -607,12 +621,23 @@ async def pay_invoice(invoice_id: str, current_user: dict = Depends(get_current_
 @router.put("/{invoice_id}/cancel")
 async def cancel_invoice(invoice_id: str, current_user: dict = Depends(get_current_user)):
     """Cancel an invoice (branch-scoped for non-admins)"""
+    before = await db.invoices.find_one(_scoped_invoice_query(invoice_id, current_user), {"_id": 0})
     result = await db.invoices.update_one(
         _scoped_invoice_query(invoice_id, current_user),
         {"$set": {"status": "cancelled"}}
     )
     if result.matched_count == 0:
         raise HTTPException(status_code=404, detail="Invoice not found")
+    from utils.audit import log_audit
+    await log_audit(
+        actor=current_user,
+        action="invoice.cancel",
+        entity_type="invoice",
+        entity_id=invoice_id,
+        entity_name=(before or {}).get("invoice_number") or invoice_id[:8],
+        before=before,
+        after={"status": "cancelled"},
+    )
     return {"message": "Invoice cancelled"}
 
 @router.put("/{invoice_id}/restore")
@@ -640,4 +665,13 @@ async def delete_invoice(invoice_id: str, current_user: dict = Depends(get_curre
         raise HTTPException(status_code=400, detail="Cannot delete paid invoice")
 
     await db.invoices.delete_one(scoped)
+    from utils.audit import log_audit
+    await log_audit(
+        actor=current_user,
+        action="invoice.delete",
+        entity_type="invoice",
+        entity_id=invoice_id,
+        entity_name=invoice.get("invoice_number") or invoice_id[:8],
+        before=invoice,
+    )
     return {"message": "Invoice deleted"}

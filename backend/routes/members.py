@@ -211,7 +211,8 @@ async def update_member(member_id: str, member: MemberUpdate, current_user: dict
     update_data = {k: v for k, v in member.model_dump().items() if v is not None}
     if not update_data:
         raise HTTPException(status_code=400, detail="No data to update")
-    
+
+    before = await db.members.find_one(_scoped_member_query(member_id, current_user), {"_id": 0})
     result = await db.members.find_one_and_update(
         _scoped_member_query(member_id, current_user),
         {"$set": update_data},
@@ -219,6 +220,16 @@ async def update_member(member_id: str, member: MemberUpdate, current_user: dict
     )
     if not result:
         raise HTTPException(status_code=404, detail="Member not found")
+    from utils.audit import log_audit
+    await log_audit(
+        actor=current_user,
+        action="member.update",
+        entity_type="member",
+        entity_id=member_id,
+        entity_name=(result.get("name_ar") or result.get("name") or ""),
+        before=before,
+        after=result,
+    )
     return Member(**{k: v for k, v in result.items() if k != "_id"})
 
 @router.patch("/{member_id}/marked")
@@ -237,9 +248,19 @@ async def set_member_marked(member_id: str, payload: dict, current_user: dict = 
 @router.delete("/{member_id}")
 async def delete_member(member_id: str, current_user: dict = Depends(get_current_user)):
     """Delete a member"""
+    before = await db.members.find_one(_scoped_member_query(member_id, current_user), {"_id": 0})
     result = await db.members.delete_one(_scoped_member_query(member_id, current_user))
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Member not found")
+    from utils.audit import log_audit
+    await log_audit(
+        actor=current_user,
+        action="member.delete",
+        entity_type="member",
+        entity_id=member_id,
+        entity_name=(before or {}).get("name_ar") or (before or {}).get("name", ""),
+        before=before,
+    )
     return {"message": "Member deleted"}
 
 @router.post("/{member_id}/activities")
@@ -251,6 +272,15 @@ async def add_member_activity(member_id: str, activity: MemberActivity, current_
     )
     if result.matched_count == 0:
         raise HTTPException(status_code=404, detail="Member not found")
+    from utils.audit import log_audit
+    await log_audit(
+        actor=current_user,
+        action="subscription.add",
+        entity_type="member",
+        entity_id=member_id,
+        entity_name=activity.activity_name or "",
+        after=activity.model_dump(),
+    )
     return {"message": "Activity added"}
 
 _PROFILE_CHANGE_FIELD_MAP = {
@@ -486,10 +516,30 @@ async def update_member_activity(member_id: str, activity_id: str, activity: Mem
     """Update a member's activity"""
     scoped = _scoped_member_query(member_id, current_user)
     scoped["activities.activity_id"] = activity_id
+    before_member = await db.members.find_one(scoped, {"_id": 0, "activities": 1, "name_ar": 1, "name": 1})
+    before_act = None
+    if before_member:
+        for a in (before_member.get("activities") or []):
+            if a.get("activity_id") == activity_id:
+                before_act = a
+                break
     result = await db.members.update_one(
         scoped,
         {"$set": {"activities.$": activity.model_dump()}}
     )
     if result.matched_count == 0:
         raise HTTPException(status_code=404, detail="Member or activity not found")
+    try:
+        from utils.audit import log_audit
+        await log_audit(
+            actor=current_user,
+            action="subscription.update",
+            entity_type="member_activity",
+            entity_id=f"{member_id}:{activity_id}",
+            entity_name=(before_member or {}).get("name_ar") or (before_member or {}).get("name", ""),
+            before=before_act,
+            after=activity.model_dump(),
+        )
+    except Exception:
+        pass
     return {"message": "Activity updated"}

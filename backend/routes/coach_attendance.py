@@ -328,6 +328,19 @@ async def update_record(
         await db.coach_attendance.update_one({"id": record_id}, {"$set": updates})
 
     updated = await db.coach_attendance.find_one({"id": record_id}, {"_id": 0})
+    try:
+        from utils.audit import log_audit
+        await log_audit(
+            actor=current_user,
+            action="coach_attendance.update",
+            entity_type="coach_attendance",
+            entity_id=record_id,
+            entity_name=record.get("coach_name", record.get("coach_id", "")),
+            before=record,
+            after=updated,
+        )
+    except Exception:
+        pass
     return updated
 
 
@@ -350,9 +363,22 @@ async def delete_record(
             {"branch_id": {"$exists": False}},
         ]
 
+    before = await db.coach_attendance.find_one(delete_query, {"_id": 0})
     result = await db.coach_attendance.delete_one(delete_query)
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Record not found")
+    try:
+        from utils.audit import log_audit
+        await log_audit(
+            actor=current_user,
+            action="coach_attendance.delete",
+            entity_type="coach_attendance",
+            entity_id=record_id,
+            entity_name=(before or {}).get("coach_name") or (before or {}).get("coach_id", ""),
+            before=before,
+        )
+    except Exception:
+        pass
     return {"message": "Record deleted"}
 
 

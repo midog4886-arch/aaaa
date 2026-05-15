@@ -8,7 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import { Button } from '../components/ui/button';
 import { Switch } from '../components/ui/switch';
 import { Label } from '../components/ui/label';
-import { tenantAPI, notificationsSettingsAPI, billingAPI } from '../services/api';
+import { tenantAPI, notificationsSettingsAPI, billingAPI, tenantDataAPI } from '../services/api';
 import {
   Languages,
   Moon,
@@ -26,6 +26,8 @@ import {
   XCircle,
   Repeat,
   ArrowUpCircle,
+  Download,
+  ShieldAlert,
 } from 'lucide-react';
 
 export const SettingsPage = () => {
@@ -267,9 +269,55 @@ export const SettingsPage = () => {
     }
   }, []);
 
+  const onDownloadTenantData = () => {
+    const msg = language === 'ar'
+      ? 'سيتم تنزيل نسخة كاملة من بيانات أكاديميتك بصيغة ZIP. قد يستغرق ذلك بعض الوقت. هل تريد المتابعة؟'
+      : 'A full ZIP archive of your academy data will be downloaded. This may take a moment. Continue?';
+    if (!window.confirm(msg)) return;
+    window.open(tenantDataAPI.exportUrl(), '_blank');
+  };
+
   return (
     <Layout title={t('settings')}>
       <div className="space-y-6 max-w-2xl" data-testid="settings-page">
+        {isAdmin && (
+          <Card data-testid="tenant-data-card">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Download className="w-5 h-5 text-primary" />
+                {language === 'ar' ? 'بياناتي (تصدير وحذف)' : 'My data (export & delete)'}
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <p className="text-sm text-muted-foreground">
+                {language === 'ar'
+                  ? 'يمكنك تنزيل نسخة كاملة من جميع بيانات أكاديميتك في أي وقت. للحذف الدائم، يجب التواصل مع فريق الدعم — سيتم تنفيذ الحذف بعد فترة سماح 7 أيام.'
+                  : 'You may download a full archive of your academy data at any time. To permanently delete your academy, contact support — deletion is finalized after a 7-day grace period.'}
+              </p>
+              <Button onClick={onDownloadTenantData} data-testid="tenant-data-export-btn">
+                <Download className="w-4 h-4 me-2" />
+                {language === 'ar' ? 'تنزيل بيانات الأكاديمية (ZIP)' : 'Download my data (ZIP)'}
+              </Button>
+              <div className="pt-3 border-t">
+                <a href={buildMailto(
+                  'طلب حذف الأكاديمية نهائياً', 'Request permanent academy deletion',
+                  'مرحباً، أرغب في حذف أكاديميتي وجميع بياناتها نهائياً. أرجو تأكيد فترة السماح (7 أيام) ومتطلبات التحقق.',
+                  'Hi, I would like to permanently delete my academy and all its data. Please confirm the 7-day grace period and verification requirements.'
+                )}>
+                  <Button variant="outline" className="w-full text-red-700 border-red-200 hover:bg-red-50" data-testid="tenant-delete-request-btn">
+                    <ShieldAlert className="w-4 h-4 me-2" />
+                    {language === 'ar' ? 'طلب حذف الأكاديمية نهائياً' : 'Request permanent deletion'}
+                  </Button>
+                </a>
+                <p className="text-xs text-muted-foreground mt-2">
+                  {language === 'ar'
+                    ? 'يتم تنفيذ الحذف يدوياً بواسطة فريقنا بعد التحقق وفترة سماح 7 أيام يمكنك إلغاؤها خلالها.'
+                    : 'Deletion is processed manually by our team after verification and a 7-day grace period during which you can cancel.'}
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+        )}
         {isAdmin && (
           <Card data-testid="billing-card">
             <CardHeader>

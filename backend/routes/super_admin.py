@@ -15,7 +15,7 @@ import re
 from typing import Optional, List
 
 import jwt
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, Body
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel, Field
 
@@ -424,15 +424,145 @@ async def check_expired(_=Depends(_require_super)):
     return {"suspended": n}
 
 
-@router.delete("/tenants/{tenant_id}")
-async def delete_tenant(tenant_id: str, _=Depends(_require_super)):
+_GRACE_PERIOD_DAYS = 7
+
+
+@router.post("/tenants/{tenant_id}/schedule-delete")
+async def schedule_tenant_delete(
+    tenant_id: str,
+    payload: Optional[dict] = Body(default=None),
+    _=Depends(_require_super),
+):
+    """Soft-delete: marks the tenant for permanent deletion in 7 days.
+
+    Body (optional): ``{"confirm_slug": "<tenant_slug>", "reason": "..."}``.
+    The slug confirmation is required to avoid wrong-tenant disasters.
+    """
+    payload = payload or {}
     existing = await control_db.tenants.find_one({"id": tenant_id}, {"_id": 0})
     if not existing:
         raise HTTPException(status_code=404, detail="Tenant not found")
     if existing.get("slug") == DEFAULT_TENANT_SLUG:
         raise HTTPException(status_code=400, detail="Cannot delete default tenant")
-    await control_db.tenants.update_one({"id": tenant_id}, {"$set": {"status": "deleted"}})
-    return {"ok": True}
+    confirm = (payload.get("confirm_slug") or "").strip().lower()
+    if confirm != (existing.get("slug") or "").lower():
+        raise HTTPException(
+            status_code=400,
+            detail="confirm_slug must match the tenant slug exactly",
+        )
+    purge_at = datetime.now(timezone.utc) + timedelta(days=_GRACE_PERIOD_DAYS)
+    await control_db.tenants.update_one(
+        {"id": tenant_id},
+        {"$set": {
+            "status": "pending_delete",
+            "deletion_scheduled_at": datetime.now(timezone.utc).isoformat(),
+            "deletion_purge_at": purge_at.isoformat(),
+            "deletion_reason": (payload.get("reason") or "")[:500],
+        }},
+    )
+    refreshed = await control_db.tenants.find_one({"id": tenant_id}, {"_id": 0})
+    return {"ok": True, "tenant": refreshed, "purge_at": purge_at.isoformat()}
+
+
+@router.post("/tenants/{tenant_id}/cancel-delete")
+async def cancel_tenant_delete(tenant_id: str, _=Depends(_require_super)):
+    existing = await control_db.tenants.find_one({"id": tenant_id}, {"_id": 0})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Tenant not found")
+    await control_db.tenants.update_one(
+        {"id": tenant_id},
+        {"$set": {"status": "active"},
+         "$unset": {"deletion_scheduled_at": "", "deletion_purge_at": "", "deletion_reason": ""}},
+    )
+    refreshed = await control_db.tenants.find_one({"id": tenant_id}, {"_id": 0})
+    return {"ok": True, "tenant": refreshed}
+
+
+@router.delete("/tenants/{tenant_id}")
+async def delete_tenant(
+    tenant_id: str,
+    confirm_slug: Optional[str] = None,
+    force: bool = False,
+    _=Depends(_require_super),
+):
+    """Permanently delete a tenant.
+
+    Refuses unless either:
+      * the tenant was previously scheduled for deletion and the 7-day grace
+        period has elapsed, OR
+      * ``force=true`` is passed alongside a matching ``confirm_slug``.
+
+    On success the per-tenant MongoDB database is dropped.
+    """
+    existing = await control_db.tenants.find_one({"id": tenant_id}, {"_id": 0})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Tenant not found")
+    if existing.get("slug") == DEFAULT_TENANT_SLUG:
+        raise HTTPException(status_code=400, detail="Cannot delete default tenant")
+
+    confirm = (confirm_slug or "").strip().lower()
+    if confirm != (existing.get("slug") or "").lower():
+        raise HTTPException(
+            status_code=400,
+            detail="confirm_slug query parameter must match tenant slug exactly",
+        )
+
+    purge_at_str = existing.get("deletion_purge_at")
+    grace_elapsed = False
+    if purge_at_str:
+        try:
+            purge_at = datetime.fromisoformat(purge_at_str.replace("Z", "+00:00"))
+            grace_elapsed = datetime.now(timezone.utc) >= purge_at
+        except Exception:
+            grace_elapsed = False
+
+    if not force and not grace_elapsed:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Tenant must be in pending_delete state with the 7-day grace "
+                "period elapsed, or pass force=true to override."
+            ),
+        )
+
+    db_name = existing.get("db_name") or slug_to_db_name(existing.get("slug", ""))
+    drop_error: str = ""
+    try:
+        await _raw_client.drop_database(db_name)
+    except Exception as e:
+        logger.exception("Failed to drop tenant database %s: %s", db_name, e)
+        drop_error = str(e) or e.__class__.__name__
+
+    if drop_error:
+        # Fail closed: do NOT mark the tenant as `deleted` if the underlying
+        # data wasn't actually dropped — that would let us "lose" a tenant
+        # while their data lingers (compliance / GDPR risk).
+        await control_db.tenants.update_one(
+            {"id": tenant_id},
+            {"$set": {
+                "deletion_last_error": drop_error,
+                "deletion_last_error_at": datetime.now(timezone.utc).isoformat(),
+            }},
+        )
+        raise HTTPException(
+            status_code=500,
+            detail=(
+                f"Tenant database '{db_name}' could not be dropped: {drop_error}. "
+                "Tenant remains pending_delete. Please retry after fixing the "
+                "underlying issue."
+            ),
+        )
+
+    await control_db.tenants.update_one(
+        {"id": tenant_id},
+        {"$set": {
+            "status": "deleted",
+            "deleted_at": datetime.now(timezone.utc).isoformat(),
+            "db_dropped": True,
+        },
+         "$unset": {"deletion_last_error": "", "deletion_last_error_at": ""}},
+    )
+    return {"ok": True, "db_dropped": True, "force": force}
 
 
 async def _compute_tenant_stats(tenant: dict) -> dict:

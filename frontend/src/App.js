@@ -55,6 +55,7 @@ const InvoicesPage = lazy(() => import('./pages/InvoicesPage'));
 const ReportsPage = lazy(() => import('./pages/ReportsPage'));
 // MessagesPage import retained (used as fallback redirect target previously)
 const SettingsPage = lazy(() => import('./pages/SettingsPage'));
+const AuditLogPage = lazy(() => import('./pages/AuditLogPage'));
 const BranchesPage = lazy(() => import('./pages/BranchesPage'));
 const UsersPage = lazy(() => import('./pages/UsersPage'));
 const StorePage = lazy(() => import('./pages/StorePage'));
@@ -350,6 +351,14 @@ function AppRoutes() {
             <SettingsPage />
           </ProtectedRoute>
         } 
+      />
+      <Route
+        path="/admin/audit"
+        element={
+          <ProtectedRoute permission="settings">
+            <AuditLogPage />
+          </ProtectedRoute>
+        }
       />
       <Route 
         path="/admin/branches" 

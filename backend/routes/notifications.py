@@ -197,12 +197,27 @@ async def update_daily_checks_settings(
                 detail="days_of_week must contain at least one of: " + ", ".join(_DAILY_CHECKS_VALID_DAYS),
             )
         update_doc["days_of_week"] = coerced
+    before_doc = await db.notifications_settings.find_one(
+        {"key": _DAILY_CHECKS_SETTINGS_KEY}, {"_id": 0}
+    )
     await db.notifications_settings.update_one(
         {"key": _DAILY_CHECKS_SETTINGS_KEY},
         {"$set": update_doc},
         upsert=True,
     )
     days_after = await get_daily_checks_days()
+    try:
+        from utils.audit import log_audit
+        await log_audit(
+            actor=current_user,
+            action="settings.daily_checks.update",
+            entity_type="settings",
+            entity_id=_DAILY_CHECKS_SETTINGS_KEY,
+            before=before_doc,
+            after={**(before_doc or {}), **update_doc, "days_of_week": days_after},
+        )
+    except Exception:
+        pass
     return {
         "hour": hour,
         "minute": minute,

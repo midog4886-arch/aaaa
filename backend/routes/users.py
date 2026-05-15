@@ -10,6 +10,7 @@ import uuid
 
 from database import db
 from utils.auth import get_current_user, hash_password
+from utils.audit import log_audit
 
 router = APIRouter(prefix="/users", tags=["Users"])
 
@@ -134,6 +135,7 @@ async def update_user(user_id: str, user_data: UserUpdateAdmin, current_user: di
     if not update_data:
         raise HTTPException(status_code=400, detail="No data to update")
     
+    before = await db.users.find_one({"id": user_id}, {"_id": 0})
     result = await db.users.find_one_and_update(
         {"id": user_id},
         {"$set": update_data},
@@ -141,7 +143,22 @@ async def update_user(user_id: str, user_data: UserUpdateAdmin, current_user: di
     )
     if not result:
         raise HTTPException(status_code=404, detail="User not found")
-    
+
+    # Distinguish permission/admin changes from generic updates so the
+    # audit timeline highlights privilege escalations clearly.
+    perms_or_admin_changed = (
+        "permissions" in update_data or "is_admin" in update_data
+    )
+    await log_audit(
+        actor=current_user,
+        action="user.permissions.update" if perms_or_admin_changed else "user.update",
+        entity_type="user",
+        entity_id=user_id,
+        entity_name=result.get("username", ""),
+        before=before,
+        after=result,
+    )
+
     # Return user without password
     return {k: v for k, v in result.items() if k not in ["_id", "password"]}
 
@@ -156,7 +173,16 @@ async def delete_user(user_id: str, current_user: dict = Depends(get_current_use
     if user_id == current_user.get("user_id"):
         raise HTTPException(status_code=400, detail="Cannot delete yourself")
     
+    before = await db.users.find_one({"id": user_id}, {"_id": 0})
     result = await db.users.delete_one({"id": user_id})
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="User not found")
+    await log_audit(
+        actor=current_user,
+        action="user.delete",
+        entity_type="user",
+        entity_id=user_id,
+        entity_name=(before or {}).get("username", ""),
+        before=before,
+    )
     return {"message": "User deleted"}

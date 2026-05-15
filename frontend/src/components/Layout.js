@@ -196,6 +196,7 @@ export const Sidebar = ({ isOpen, onClose }) => {
         ...(isAdmin ? [{ to: '/admin/branches', icon: Building2, label: 'branches', permission: 'branches' }] : []),
         ...(isAdmin ? [{ to: '/admin/users', icon: Users, label: 'users', permission: 'users' }] : []),
         ...(isAdmin ? [{ to: '/admin/backup', icon: HardDrive, label: 'backup', permission: 'backup' }] : []),
+        ...(isAdmin ? [{ to: '/admin/audit', icon: ShieldCheck, label: 'audit_log', permission: 'settings' }] : []),
         ...(isAdmin ? [{ to: '/admin/support', icon: MessageSquare, label: 'support', permission: 'settings' }] : []),
       ]
     },

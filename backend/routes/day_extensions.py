@@ -501,6 +501,25 @@ async def apply_extension(data: ExtensionApply, user=Depends(get_current_user)):
     }
     await db.extension_logs.insert_one(log_entry)
 
+    try:
+        from utils.audit import log_audit
+        await log_audit(
+            actor=user,
+            action="day_extension.apply",
+            entity_type="closure",
+            entity_id=data.closure_id,
+            entity_name=closure.get("title_ar", ""),
+            after={
+                "days": data.days,
+                "extended_count": extended_count,
+                "skipped_count": len(skipped_members),
+                "branch_id": data.branch_id,
+                "scope": scope,
+            },
+        )
+    except Exception:
+        pass
+
     return {
         "message": f"Extended {extended_count} members",
         "extended_count": extended_count,
@@ -570,6 +589,23 @@ async def manual_extension(data: ManualExtension, user=Depends(get_current_user)
         "created_at": datetime.now(timezone.utc).isoformat()
     }
     await db.extension_logs.insert_one(log_entry)
+
+    try:
+        from utils.audit import log_audit
+        await log_audit(
+            actor=user,
+            action="day_extension.manual",
+            entity_type="member",
+            entity_id=data.member_id,
+            entity_name=member.get("name_ar", member.get("name", "")),
+            after={
+                "days": data.days,
+                "reason": data.reason,
+                "activity_id": data.activity_id,
+            },
+        )
+    except Exception:
+        pass
 
     return {"message": f"Extended {member.get('name_ar', '')} by {data.days} days"}
 
