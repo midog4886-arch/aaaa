@@ -16,7 +16,10 @@ import {
   Trophy,
   Info,
   Sparkles,
-  Clock
+  Clock,
+  CheckCircle2,
+  AlertCircle,
+  RefreshCw
 } from 'lucide-react';
 
 export const SettingsPage = () => {
@@ -31,6 +34,17 @@ export const SettingsPage = () => {
   const [dailyChecksDefault, setDailyChecksDefault] = React.useState(7);
   const [dailyChecksLoading, setDailyChecksLoading] = React.useState(false);
   const [dailyChecksSaving, setDailyChecksSaving] = React.useState(false);
+  const [dailyChecksStatus, setDailyChecksStatus] = React.useState(null);
+  const [dailyChecksRunning, setDailyChecksRunning] = React.useState(false);
+
+  const fetchDailyChecksStatus = React.useCallback(async () => {
+    try {
+      const res = await notificationsSettingsAPI.getDailyChecksStatus();
+      setDailyChecksStatus(res.data || null);
+    } catch {
+      setDailyChecksStatus(null);
+    }
+  }, []);
 
   React.useEffect(() => {
     if (!isAdmin) return;
@@ -45,8 +59,48 @@ export const SettingsPage = () => {
       })
       .catch(() => { /* keep defaults */ })
       .finally(() => { if (!cancelled) setDailyChecksLoading(false); });
+    fetchDailyChecksStatus();
     return () => { cancelled = true; };
-  }, [isAdmin]);
+  }, [isAdmin, fetchDailyChecksStatus]);
+
+  const handleRunDailyChecksNow = async () => {
+    setDailyChecksRunning(true);
+    try {
+      const res = await notificationsSettingsAPI.runDailyChecksNow();
+      const data = res?.data || {};
+      const renewals = data.renewals_created ?? 0;
+      const ads = data.ads_flagged ?? 0;
+      if (data.success) {
+        toast.success(language === 'ar'
+          ? `اكتمل الفحص: ${renewals} تجديد، ${ads} إعلان`
+          : `Run finished: ${renewals} renewal(s), ${ads} ad(s)`);
+      } else {
+        toast.error(language === 'ar'
+          ? `اكتمل الفحص مع وجود أخطاء (${(data.errors || []).length})`
+          : `Run finished with errors (${(data.errors || []).length})`);
+      }
+      await fetchDailyChecksStatus();
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || (language === 'ar'
+        ? 'تعذر تشغيل الفحص'
+        : 'Failed to run checks'));
+    } finally {
+      setDailyChecksRunning(false);
+    }
+  };
+
+  const formatLastRun = (iso) => {
+    if (!iso) return '';
+    try {
+      const d = new Date(iso);
+      return d.toLocaleString(language === 'ar' ? 'ar-SA' : undefined, {
+        dateStyle: 'medium',
+        timeStyle: 'short',
+      });
+    } catch {
+      return iso;
+    }
+  };
 
   const handleSaveDailyChecksHour = async (nextHour) => {
     setDailyChecksSaving(true);
@@ -255,6 +309,80 @@ export const SettingsPage = () => {
                     ))}
                   </select>
                 </div>
+              </div>
+
+              {/* Last-run status + Run now */}
+              <div
+                className="mt-4 pt-4 border-t flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3"
+                data-testid="daily-checks-status"
+              >
+                <div className="flex items-start gap-2">
+                  {dailyChecksStatus?.has_run ? (
+                    dailyChecksStatus.success ? (
+                      <CheckCircle2 className="w-5 h-5 text-green-600 mt-0.5" />
+                    ) : (
+                      <AlertCircle className="w-5 h-5 text-red-600 mt-0.5" />
+                    )
+                  ) : (
+                    <Clock className="w-5 h-5 text-muted-foreground mt-0.5" />
+                  )}
+                  <div>
+                    {dailyChecksStatus?.has_run ? (
+                      <>
+                        <p className="font-medium" data-testid="daily-checks-last-run">
+                          {language === 'ar' ? 'آخر تشغيل: ' : 'Last run: '}
+                          {formatLastRun(dailyChecksStatus.last_run_at)}
+                          {dailyChecksStatus.trigger === 'manual' && (
+                            <span className="ms-2 text-xs text-muted-foreground">
+                              {language === 'ar' ? '(يدوي)' : '(manual)'}
+                            </span>
+                          )}
+                        </p>
+                        <p className="text-sm text-muted-foreground">
+                          {dailyChecksStatus.success ? (
+                            language === 'ar'
+                              ? `نجح: ${dailyChecksStatus.renewals_created ?? 0} تجديد، ${dailyChecksStatus.ads_flagged ?? 0} إعلان`
+                              : `Success: ${dailyChecksStatus.renewals_created ?? 0} renewal(s), ${dailyChecksStatus.ads_flagged ?? 0} ad(s)`
+                          ) : (
+                            language === 'ar'
+                              ? `فشل (${dailyChecksStatus.error_count ?? 0} خطأ)`
+                              : `Failed (${dailyChecksStatus.error_count ?? 0} error(s))`
+                          )}
+                        </p>
+                        {!dailyChecksStatus.success && Array.isArray(dailyChecksStatus.errors) && dailyChecksStatus.errors.length > 0 && (
+                          <details className="mt-1 text-xs text-red-600 max-w-md">
+                            <summary className="cursor-pointer">
+                              {language === 'ar' ? 'عرض الأخطاء' : 'Show errors'}
+                            </summary>
+                            <ul className="list-disc ms-5 mt-1 space-y-0.5">
+                              {dailyChecksStatus.errors.slice(0, 5).map((err, i) => (
+                                <li key={i} className="break-words">{err}</li>
+                              ))}
+                            </ul>
+                          </details>
+                        )}
+                      </>
+                    ) : (
+                      <p className="text-sm text-muted-foreground">
+                        {language === 'ar'
+                          ? 'لم يتم تشغيل الفحص بعد'
+                          : 'Has not run yet'}
+                      </p>
+                    )}
+                  </div>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleRunDailyChecksNow}
+                  disabled={dailyChecksRunning}
+                  data-testid="run-daily-checks-now-btn"
+                >
+                  <RefreshCw className={`w-4 h-4 me-2 ${dailyChecksRunning ? 'animate-spin' : ''}`} />
+                  {dailyChecksRunning
+                    ? (language === 'ar' ? 'جاري التشغيل...' : 'Running...')
+                    : (language === 'ar' ? 'تشغيل الآن' : 'Run now')}
+                </Button>
               </div>
             </CardContent>
           </Card>

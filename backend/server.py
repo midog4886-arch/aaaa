@@ -2989,7 +2989,7 @@ _daily_checks_scheduler_started = False
 _DAILY_CHECKS_HOUR_RIYADH = 7
 
 
-async def _run_daily_renewal_and_ads_checks() -> None:
+async def _run_daily_renewal_and_ads_checks(trigger: str = "scheduler") -> dict:
     """Execute renewal-reminder and ad-expiry checks for every branch.
 
     Each individual check runs inside its own try/except so a failure in one
@@ -2997,8 +2997,33 @@ async def _run_daily_renewal_and_ads_checks() -> None:
     underlying endpoints already dedupe via their own ``find_one`` lookups
     keyed on type + entity + today, so calling this multiple times in a day
     is safe.
+
+    Returns a small dict summarising the run (renewals_created, ads_flagged,
+    errors[], success). The same dict is also persisted to
+    ``db.notifications_settings`` (key=``daily_checks_status``) so admins can
+    see when the scheduler last ran and whether it succeeded.
     """
-    print("Daily checks scheduler: running renewal & ad-expiry checks")
+    print(f"Daily checks scheduler: running renewal & ad-expiry checks (trigger={trigger})")
+
+    started_at = datetime.now(timezone.utc)
+    renewals_created = 0
+    ads_flagged = 0
+    errors: list[str] = []
+
+    def _count(result) -> int:
+        # The various check endpoints don't share a return shape:
+        #   server.check_subscription_renewals → {"message": ..., "count": N}
+        #   routes.notifications.check_subscription_renewals →
+        #     {"message": ..., "count": N, "notifications_created": N}
+        #   routes.notifications.check_ads_expiry →
+        #     {"message": ..., "notifications_created": N}
+        # Try the known keys in order so each path contributes its real count.
+        if isinstance(result, dict):
+            for key in ("count", "notifications_created", "created"):
+                n = result.get(key)
+                if isinstance(n, int):
+                    return n
+        return 0
 
     # 1) Global renewal scan from server.py — already iterates all members
     # across branches and stamps each notification with the member's branch_id.
@@ -3012,9 +3037,12 @@ async def _run_daily_renewal_and_ads_checks() -> None:
     try:
         admin_user = {"is_admin": True, "branch_id": None}
         result = await check_subscription_renewals(current_user=admin_user)
+        renewals_created += _count(result)
         print(f"Daily checks: global renewals → {result}")
     except Exception as e:
-        print(f"Daily checks: global renewals failed: {e}")
+        msg = f"global renewals failed: {e}"
+        errors.append(msg)
+        print(f"Daily checks: {msg}")
 
     # 2) Per-branch checks for the routes/notifications.py endpoints, which
     # filter by branch via ``resolve_branch_filter``. We synthesize a
@@ -3026,8 +3054,23 @@ async def _run_daily_renewal_and_ads_checks() -> None:
             check_ads_expiry as notif_check_ads_expiry,
         )
     except Exception as e:
-        print(f"Daily checks: failed to import notifications routes: {e}")
-        return
+        msg = f"failed to import notifications routes: {e}"
+        errors.append(msg)
+        print(f"Daily checks: {msg}")
+        await _persist_daily_checks_status(
+            started_at=started_at,
+            success=False,
+            renewals_created=renewals_created,
+            ads_flagged=ads_flagged,
+            errors=errors,
+            trigger=trigger,
+        )
+        return {
+            "success": False,
+            "renewals_created": renewals_created,
+            "ads_flagged": ads_flagged,
+            "errors": errors,
+        }
 
     # Stream branches via the cursor (no fixed cap) so adding more branches
     # in the future never causes some to be silently skipped.
@@ -3038,28 +3081,91 @@ async def _run_daily_renewal_and_ads_checks() -> None:
             if bid:
                 branch_ids.append(bid)
     except Exception as e:
-        print(f"Daily checks: failed to list branches: {e}")
+        msg = f"failed to list branches: {e}"
+        errors.append(msg)
+        print(f"Daily checks: {msg}")
 
     for branch_id in branch_ids:
         scoped_user = {"is_admin": False, "branch_id": branch_id}
         try:
-            await notif_check_renewals(current_user=scoped_user)
+            r = await notif_check_renewals(current_user=scoped_user)
+            renewals_created += _count(r)
         except Exception as e:
-            print(f"Daily checks: renewals failed for branch {branch_id}: {e}")
+            msg = f"renewals failed for branch {branch_id}: {e}"
+            errors.append(msg)
+            print(f"Daily checks: {msg}")
         try:
-            await notif_check_ads_expiry(current_user=scoped_user)
+            r = await notif_check_ads_expiry(current_user=scoped_user)
+            ads_flagged += _count(r)
         except Exception as e:
-            print(f"Daily checks: ads-expiry failed for branch {branch_id}: {e}")
+            msg = f"ads-expiry failed for branch {branch_id}: {e}"
+            errors.append(msg)
+            print(f"Daily checks: {msg}")
 
     # 3) Also run ads-expiry once globally (as admin with no branch filter) so
     # legacy/shared ads with branch_id == None are still flagged.
     try:
         admin_user = {"is_admin": True, "branch_id": None}
-        await notif_check_ads_expiry(current_user=admin_user)
+        r = await notif_check_ads_expiry(current_user=admin_user)
+        ads_flagged += _count(r)
     except Exception as e:
-        print(f"Daily checks: global ads-expiry failed: {e}")
+        msg = f"global ads-expiry failed: {e}"
+        errors.append(msg)
+        print(f"Daily checks: {msg}")
 
-    print("Daily checks scheduler: finished")
+    success = len(errors) == 0
+    await _persist_daily_checks_status(
+        started_at=started_at,
+        success=success,
+        renewals_created=renewals_created,
+        ads_flagged=ads_flagged,
+        errors=errors,
+        trigger=trigger,
+    )
+    print(
+        f"Daily checks scheduler: finished (success={success}, "
+        f"renewals={renewals_created}, ads={ads_flagged}, errors={len(errors)})"
+    )
+    return {
+        "success": success,
+        "renewals_created": renewals_created,
+        "ads_flagged": ads_flagged,
+        "errors": errors,
+    }
+
+
+async def _persist_daily_checks_status(
+    *,
+    started_at: datetime,
+    success: bool,
+    renewals_created: int,
+    ads_flagged: int,
+    errors: list,
+    trigger: str,
+) -> None:
+    """Best-effort write of the run status doc. Never raises."""
+    try:
+        finished_at = datetime.now(timezone.utc)
+        # Cap stored errors so a runaway loop can't blow up the doc size.
+        capped_errors = [str(e)[:500] for e in errors[:20]]
+        await db.notifications_settings.update_one(
+            {"key": "daily_checks_status"},
+            {"$set": {
+                "key": "daily_checks_status",
+                "last_run_at": finished_at.isoformat(),
+                "started_at": started_at.isoformat(),
+                "duration_seconds": (finished_at - started_at).total_seconds(),
+                "success": success,
+                "renewals_created": renewals_created,
+                "ads_flagged": ads_flagged,
+                "errors": capped_errors,
+                "error_count": len(errors),
+                "trigger": trigger,
+            }},
+            upsert=True,
+        )
+    except Exception as e:
+        print(f"Daily checks: failed to persist status: {e}")
 
 
 async def _resolve_daily_checks_hour() -> int:

@@ -270,6 +270,8 @@ export const seedAPI = {
 export const notificationsSettingsAPI = {
   getDailyChecks: () => axios.get(`${API}/notifications/daily-checks-settings`),
   updateDailyChecks: (hour) => axios.put(`${API}/notifications/daily-checks-settings`, { hour }),
+  getDailyChecksStatus: () => axios.get(`${API}/notifications/daily-checks-status`),
+  runDailyChecksNow: () => axios.post(`${API}/notifications/daily-checks-run`),
 };
 
 export const tenantAPI = {

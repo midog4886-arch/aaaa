@@ -77,6 +77,46 @@ async def update_daily_checks_settings(
     return {"hour": hour, "default_hour": _DAILY_CHECKS_DEFAULT_HOUR, "timezone": "Asia/Riyadh"}
 
 
+@router.get("/daily-checks-status")
+async def get_daily_checks_status(current_user: dict = Depends(get_current_user)):
+    """Admin-only: return the last-run status of the daily checks scheduler.
+
+    Returns ``{has_run: false}`` when the scheduler has never persisted a
+    status doc (e.g. fresh deployment, or it has not yet fired since the
+    feature was added). Otherwise returns the persisted fields:
+    ``last_run_at``, ``success``, ``renewals_created``, ``ads_flagged``,
+    ``error_count``, ``errors`` (capped), ``trigger``, ``duration_seconds``.
+    """
+    if not current_user.get("is_admin"):
+        raise HTTPException(status_code=403, detail="Admin access required")
+    try:
+        doc = await db.notifications_settings.find_one(
+            {"key": "daily_checks_status"}, {"_id": 0, "key": 0}
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to read status: {e}")
+    if not doc:
+        return {"has_run": False}
+    return {"has_run": True, **doc}
+
+
+@router.post("/daily-checks-run")
+async def run_daily_checks_now(current_user: dict = Depends(get_current_user)):
+    """Admin-only: trigger the daily renewal & ad-expiry checks on demand.
+
+    Runs synchronously and returns the same summary dict that gets persisted
+    to the status doc. The underlying check endpoints already dedupe per-day
+    so triggering this multiple times is safe.
+    """
+    if not current_user.get("is_admin"):
+        raise HTTPException(status_code=403, detail="Admin access required")
+    # Lazy import to avoid a top-level circular import (server.py imports
+    # this module).
+    from server import _run_daily_renewal_and_ads_checks
+    summary = await _run_daily_renewal_and_ads_checks(trigger="manual")
+    return summary
+
+
 async def send_to_coach(
     coach_id: str,
     title: str,
@@ -340,7 +380,11 @@ async def check_subscription_renewals(current_user: dict = Depends(get_current_u
                             import logging
                             logging.getLogger(__name__).exception("renewal-reminder push failed")
     
-    return {"message": f"Created {notifications_created} renewal notifications"}
+    return {
+        "message": f"Created {notifications_created} renewal notifications",
+        "count": notifications_created,
+        "notifications_created": notifications_created,
+    }
 
 @router.get("/expiring-subscriptions")
 async def get_expiring_subscriptions(
