@@ -116,6 +116,10 @@ async def update_branch(branch_id: str, branch: BranchCreate, current_user: dict
     if not current_user.get("is_admin", False):
         raise HTTPException(status_code=403, detail="Admin access required")
     
+    before = await db.branches.find_one({"id": branch_id}, {"_id": 0})
+    if not before:
+        raise HTTPException(status_code=404, detail="Branch not found")
+
     result = await db.branches.find_one_and_update(
         {"id": branch_id},
         {"$set": branch.model_dump()},
@@ -124,7 +128,21 @@ async def update_branch(branch_id: str, branch: BranchCreate, current_user: dict
     if not result:
         raise HTTPException(status_code=404, detail="Branch not found")
     cache_invalidate("branches:")
-    return {k: v for k, v in result.items() if k != "_id"}
+    after = {k: v for k, v in result.items() if k != "_id"}
+    try:
+        from utils.audit import log_audit
+        await log_audit(
+            actor=current_user,
+            action="branch.update",
+            entity_type="branch",
+            entity_id=branch_id,
+            entity_name=after.get("name_ar") or after.get("name", ""),
+            before=before,
+            after=after,
+        )
+    except Exception:
+        pass
+    return after
 
 
 @router.delete("/{branch_id}")
