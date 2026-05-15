@@ -4065,7 +4065,8 @@ async def upload_backup(file: UploadFile = File(...), token: Optional[str] = Que
     if not token:
         raise HTTPException(status_code=401, detail="Not authenticated")
     try:
-        _enforce_tenant_match_local(jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM]))
+        actor_payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+        _enforce_tenant_match_local(actor_payload)
     except:
         raise HTTPException(status_code=401, detail="Invalid token")
 
@@ -4087,6 +4088,19 @@ async def upload_backup(file: UploadFile = File(...), token: Optional[str] = Que
     with open(filepath, 'wb') as f:
         f.write(content)
 
+    try:
+        from utils.audit import log_audit
+        await log_audit(
+            actor=actor_payload,
+            action="backup.upload",
+            entity_type="backup",
+            entity_id=filename,
+            entity_name=filename,
+            after={"filename": filename, "size": len(content)},
+        )
+    except Exception:
+        pass
+
     return {
         "success": True,
         "filename": filename,
@@ -4100,7 +4114,8 @@ async def delete_backup(filename: str, token: Optional[str] = None):
     if not token:
         raise HTTPException(status_code=401, detail="Not authenticated")
     try:
-        _enforce_tenant_match_local(jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM]))
+        actor_payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+        _enforce_tenant_match_local(actor_payload)
     except:
         raise HTTPException(status_code=401, detail="Invalid token")
 
@@ -4108,7 +4123,21 @@ async def delete_backup(filename: str, token: Optional[str] = None):
     if not filepath.exists() or not filepath.is_file():
         raise HTTPException(status_code=404, detail="Backup file not found")
 
+    file_size = filepath.stat().st_size
     filepath.unlink()
+
+    try:
+        from utils.audit import log_audit
+        await log_audit(
+            actor=actor_payload,
+            action="backup.delete",
+            entity_type="backup",
+            entity_id=filename,
+            entity_name=filename,
+            before={"filename": filename, "size": file_size},
+        )
+    except Exception:
+        pass
 
     return {"success": True, "message": f"Backup {filename} deleted successfully"}
 
