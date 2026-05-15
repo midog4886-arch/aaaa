@@ -214,6 +214,8 @@ async def public_signup(payload: PublicSignupIn, request: Request):
     if plan_id not in plan_ids:
         plan_id = "starter"
     plan_doc = next((p for p in plans if p.get("id") == plan_id), plans[0])
+    if plan_doc.get("contact_only"):
+        raise HTTPException(status_code=400, detail="هذه الخطة تتطلب التواصل مع المبيعات، الرجاء اختيار خطة أخرى أو التواصل معنا")
 
     cycle = (payload.billing_cycle or "monthly").lower()
     if cycle not in {"monthly", "yearly"}:

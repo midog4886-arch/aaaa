@@ -263,10 +263,16 @@ export default function LandingPage() {
       <footer className="border-t bg-slate-50 dark:bg-slate-950">
         <div className="max-w-6xl mx-auto px-4 py-8 flex flex-col sm:flex-row items-center justify-between gap-4 text-sm text-slate-600 dark:text-slate-400">
           <div>© {new Date().getFullYear()} {isAr ? 'منصة الأبطال للأكاديميات' : 'Champions Academy Platform'}</div>
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-4 flex-wrap">
             <Link to="/privacy" className="hover:text-primary">
               {isAr ? 'سياسة الخصوصية' : 'Privacy policy'}
             </Link>
+            <Link to="/privacy" className="hover:text-primary">
+              {isAr ? 'الشروط والاسترداد' : 'Terms & refunds'}
+            </Link>
+            <a href="mailto:sales@championsacademy.app" className="hover:text-primary">
+              {isAr ? 'تواصل معنا' : 'Contact us'}
+            </a>
             <Link to="/login" className="hover:text-primary">
               {isAr ? 'تسجيل الدخول' : 'Login'}
             </Link>
