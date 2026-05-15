@@ -192,6 +192,20 @@ async def _maybe_alert_delivery(record_result, *, provider: str, secret_env: str
         )
 
 
+# Map a provider to the canonical name of its signature header. Stored on
+# every webhook diagnostic row (name only — never the value) so a super-admin
+# can confirm the provider is sending the header we expect.
+_SIGNATURE_HEADER_BY_PROVIDER = {
+    "stripe": "Stripe-Signature",
+    "moyasar": "X-Moyasar-Signature",
+    "tap": "Tap-Signature",
+}
+
+
+def _signature_header_name(provider: str) -> str:
+    return _SIGNATURE_HEADER_BY_PROVIDER.get((provider or "").lower(), "X-Webhook-Signature")
+
+
 async def _resolve_tenant(tenant_id: Optional[str], tenant_slug: Optional[str]) -> Optional[dict]:
     if tenant_id:
         doc = await control_db.tenants.find_one({"id": tenant_id}, {"_id": 0})
@@ -235,11 +249,14 @@ async def payment_webhook(provider: str, request: Request):
     settings = await get_payment_settings()
     cfg_provider = (settings.get("provider") or "").lower()
     incoming_provider = (provider or "").lower()
+    sig_header_name = _signature_header_name(cfg_provider or incoming_provider)
     if not settings.get("enabled") or not cfg_provider:
         await record_webhook_event(
             provider=incoming_provider,
             status="provider_disabled",
             reason="payment provider not configured",
+            signature_header=_signature_header_name(incoming_provider),
+            http_status=503,
         )
         raise HTTPException(status_code=503, detail="payment provider not configured")
     if incoming_provider != cfg_provider:
@@ -247,6 +264,8 @@ async def payment_webhook(provider: str, request: Request):
             provider=incoming_provider,
             status="provider_disabled",
             reason=f"provider '{incoming_provider}' not enabled (configured: {cfg_provider})",
+            signature_header=_signature_header_name(incoming_provider),
+            http_status=404,
         )
         raise HTTPException(status_code=404, detail="provider not enabled")
 
@@ -258,6 +277,8 @@ async def payment_webhook(provider: str, request: Request):
             provider=cfg_provider,
             status="secret_missing",
             reason=f"env var {secret_env} is empty",
+            signature_header=sig_header_name,
+            http_status=503,
         )
         raise HTTPException(status_code=503, detail="webhook secret not set")
 
@@ -266,6 +287,16 @@ async def payment_webhook(provider: str, request: Request):
         # Track repeated failures so a misconfigured/rotated secret surfaces
         # to the super-admin instead of silently 401'ing every retry.
         failure_state = await record_signature_failure(cfg_provider)
+        # Try to keep a redacted snapshot even though the signature failed —
+        # without it the super-admin has nothing to compare against the
+        # provider dashboard. Body may not be valid JSON; in that case keep
+        # only metadata (length / unparsed flag) so we never persist a raw
+        # body that could contain card numbers or signing secrets. Even when
+        # JSON parses, the snapshot helper still scrubs sensitive keys.
+        try:
+            invalid_sig_payload = await request.json()
+        except Exception:
+            invalid_sig_payload = {"_unparsed": True, "body_length": len(body or b"")}
         rec = await record_webhook_event(
             provider=cfg_provider,
             status="signature_invalid",
@@ -273,6 +304,9 @@ async def payment_webhook(provider: str, request: Request):
                 f"HMAC signature verification failed "
                 f"(count={failure_state.get('count', 0)})"
             ),
+            payload=invalid_sig_payload,
+            signature_header=sig_header_name,
+            http_status=401,
         )
         if failure_state.get("should_alert"):
             await _alert_super_admin_signature_failures(
@@ -294,6 +328,9 @@ async def payment_webhook(provider: str, request: Request):
             provider=cfg_provider,
             status="invalid_payload",
             reason="body is not valid JSON",
+            payload={"_unparsed": True, "body_length": len(body or b"")},
+            signature_header=sig_header_name,
+            http_status=400,
         )
         raise HTTPException(status_code=400, detail="invalid json body")
 
@@ -319,6 +356,9 @@ async def payment_webhook(provider: str, request: Request):
                 status="duplicate",
                 reason=f"already {claim_state}",
                 event_id=event_id,
+                payload=payload,
+                signature_header=sig_header_name,
+                http_status=200,
             )
             return {
                 "status": "duplicate",
@@ -339,6 +379,9 @@ async def payment_webhook(provider: str, request: Request):
                     tenant_id=failure.get("tenant_id"),
                     tenant_slug=failure.get("tenant_slug"),
                     event_id=event_id,
+                    payload=payload,
+                    signature_header=sig_header_name,
+                    http_status=404,
                 )
                 await _maybe_alert_delivery(rec, provider=cfg_provider, secret_env=secret_env)
                 raise HTTPException(status_code=404, detail="tenant not found in event metadata")
@@ -359,6 +402,9 @@ async def payment_webhook(provider: str, request: Request):
                 tenant_id=(result.get("tenant") or {}).get("id"),
                 tenant_slug=(result.get("tenant") or {}).get("slug"),
                 event_id=event_id,
+                payload=payload,
+                signature_header=sig_header_name,
+                http_status=200,
             )
             return {
                 "status": "recorded",
@@ -379,6 +425,9 @@ async def payment_webhook(provider: str, request: Request):
                     tenant_id=success.get("tenant_id"),
                     tenant_slug=success.get("tenant_slug"),
                     event_id=event_id,
+                    payload=payload,
+                    signature_header=sig_header_name,
+                    http_status=404,
                 )
                 await _maybe_alert_delivery(rec, provider=cfg_provider, secret_env=secret_env)
                 raise HTTPException(status_code=404, detail="tenant not found in event metadata")
@@ -413,6 +462,9 @@ async def payment_webhook(provider: str, request: Request):
                     tenant_id=tenant.get("id"),
                     tenant_slug=tenant.get("slug"),
                     event_id=event_id,
+                    payload=payload,
+                    signature_header=sig_header_name,
+                    http_status=400,
                 )
                 await _maybe_alert_delivery(rec, provider=cfg_provider, secret_env=secret_env)
                 raise HTTPException(status_code=400, detail=str(e))
@@ -425,6 +477,9 @@ async def payment_webhook(provider: str, request: Request):
                 tenant_id=(result.get("tenant") or {}).get("id"),
                 tenant_slug=(result.get("tenant") or {}).get("slug"),
                 event_id=event_id,
+                payload=payload,
+                signature_header=sig_header_name,
+                http_status=200,
             )
             return {
                 "status": "renewed",
@@ -442,6 +497,9 @@ async def payment_webhook(provider: str, request: Request):
             status="ignored",
             reason=f"unrecognized event type: {(payload.get('type') or payload.get('event') or '')[:120]}",
             event_id=event_id,
+            payload=payload,
+            signature_header=sig_header_name,
+            http_status=200,
         )
         return {"status": "ignored", "reason": "unrecognized event"}
     except HTTPException:
@@ -458,6 +516,9 @@ async def payment_webhook(provider: str, request: Request):
             status="error",
             reason=str(e)[:500],
             event_id=event_id,
+            payload=payload,
+            signature_header=sig_header_name,
+            http_status=500,
         )
         await _maybe_alert_delivery(rec, provider=cfg_provider, secret_env=secret_env)
         raise

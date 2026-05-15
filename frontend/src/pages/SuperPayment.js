@@ -86,6 +86,7 @@ export default function SuperPayment() {
   const [exporting, setExporting] = useState(false);
   const [deliveryAlerts, setDeliveryAlerts] = useState([]);
   const [deliveryThreshold, setDeliveryThreshold] = useState(3);
+  const [expandedEvent, setExpandedEvent] = useState(null);
 
   const reloadDeliveryAlerts = useCallback(async () => {
     try {
@@ -476,24 +477,102 @@ export default function SuperPayment() {
                   {events.map((ev, i) => {
                     const c = STATUS_COLORS[ev.status] || { bg: '#f1f5f9', fg: '#475569' };
                     const oc = OUTCOME_COLORS[ev.outcome] || { bg: '#f1f5f9', fg: '#475569' };
+                    const isOpen = expandedEvent === i;
+                    const snap = ev.payload_snapshot;
+                    const hasDetails = !!(snap || ev.signature_header || ev.http_status);
+                    let snapshotText = '';
+                    if (snap) {
+                      if (snap.preview) {
+                        snapshotText = snap.preview;
+                      } else if (snap.data !== undefined && snap.data !== null) {
+                        try { snapshotText = JSON.stringify(snap.data, null, 2); }
+                        catch (e) { snapshotText = String(snap.data); }
+                      }
+                    }
                     return (
-                      <tr key={i} style={{ borderTop: '1px solid #e2e8f0' }}>
-                        <td style={{ padding: '8px 10px', whiteSpace: 'nowrap', color: '#0f172a' }}>{fmt(ev.received_at)}</td>
-                        <td style={{ padding: '8px 10px', fontFamily: 'monospace', color: '#0f172a' }}>{ev.provider || '—'}</td>
-                        <td style={{ padding: '8px 10px' }}>
-                          <span style={{ background: oc.bg, color: oc.fg, padding: '2px 8px', borderRadius: 999, fontWeight: 600, fontSize: 12 }}>
-                            {outcomeLabel(ev.outcome)}
-                          </span>
-                        </td>
-                        <td style={{ padding: '8px 10px' }}>
-                          <span style={{ background: c.bg, color: c.fg, padding: '2px 8px', borderRadius: 999, fontWeight: 600, fontSize: 12 }}>
-                            {statusLabel(ev.status)}
-                          </span>
-                        </td>
-                        <td style={{ padding: '8px 10px', color: '#0f172a' }}>{ev.tenant_slug || '—'}</td>
-                        <td style={{ padding: '8px 10px', color: '#475569', maxWidth: 320, wordBreak: 'break-word' }}>{ev.reason || '—'}</td>
-                        <td style={{ padding: '8px 10px', fontFamily: 'monospace', color: '#64748b', fontSize: 12, wordBreak: 'break-all', maxWidth: 200 }}>{ev.event_id || '—'}</td>
-                      </tr>
+                      <React.Fragment key={i}>
+                        <tr style={{ borderTop: '1px solid #e2e8f0', cursor: hasDetails ? 'pointer' : 'default' }}
+                            onClick={() => hasDetails && setExpandedEvent(isOpen ? null : i)}>
+                          <td style={{ padding: '8px 10px', whiteSpace: 'nowrap', color: '#0f172a' }}>
+                            {hasDetails && (
+                              <span style={{ display: 'inline-block', width: 14, color: '#64748b', marginLeft: 4 }}>
+                                {isOpen ? '▾' : '▸'}
+                              </span>
+                            )}
+                            {fmt(ev.received_at)}
+                          </td>
+                          <td style={{ padding: '8px 10px', fontFamily: 'monospace', color: '#0f172a' }}>{ev.provider || '—'}</td>
+                          <td style={{ padding: '8px 10px' }}>
+                            <span style={{ background: oc.bg, color: oc.fg, padding: '2px 8px', borderRadius: 999, fontWeight: 600, fontSize: 12 }}>
+                              {outcomeLabel(ev.outcome)}
+                            </span>
+                          </td>
+                          <td style={{ padding: '8px 10px' }}>
+                            <span style={{ background: c.bg, color: c.fg, padding: '2px 8px', borderRadius: 999, fontWeight: 600, fontSize: 12 }}>
+                              {statusLabel(ev.status)}
+                            </span>
+                          </td>
+                          <td style={{ padding: '8px 10px', color: '#0f172a' }}>{ev.tenant_slug || '—'}</td>
+                          <td style={{ padding: '8px 10px', color: '#475569', maxWidth: 320, wordBreak: 'break-word' }}>{ev.reason || '—'}</td>
+                          <td style={{ padding: '8px 10px', fontFamily: 'monospace', color: '#64748b', fontSize: 12, wordBreak: 'break-all', maxWidth: 200 }}>{ev.event_id || '—'}</td>
+                        </tr>
+                        {isOpen && hasDetails && (
+                          <tr style={{ background: '#f8fafc', borderTop: '1px solid #e2e8f0' }}>
+                            <td colSpan={7} style={{ padding: '12px 16px' }}>
+                              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16, marginBottom: 10, fontSize: 12, color: '#475569' }}>
+                                <div>
+                                  <span style={{ color: '#64748b' }}>كود الاستجابة HTTP: </span>
+                                  <code style={{ fontFamily: 'monospace', background: '#fff', padding: '1px 6px', borderRadius: 4, color: '#0f172a' }}>
+                                    {ev.http_status != null ? ev.http_status : '—'}
+                                  </code>
+                                </div>
+                                <div>
+                                  <span style={{ color: '#64748b' }}>اسم رأس التوقيع: </span>
+                                  <code style={{ fontFamily: 'monospace', background: '#fff', padding: '1px 6px', borderRadius: 4, color: '#0f172a' }}>
+                                    {ev.signature_header || '—'}
+                                  </code>
+                                  <span style={{ color: '#94a3b8', marginRight: 6 }}>(القيمة لا تُحفظ)</span>
+                                </div>
+                                {snap && typeof snap.size_bytes === 'number' && (
+                                  <div>
+                                    <span style={{ color: '#64748b' }}>حجم الحمولة: </span>
+                                    <code style={{ fontFamily: 'monospace', background: '#fff', padding: '1px 6px', borderRadius: 4, color: '#0f172a' }}>
+                                      {snap.size_bytes} B
+                                    </code>
+                                    {snap.truncated && (
+                                      <span style={{ color: '#92400e', marginRight: 6, fontWeight: 600 }}>· مقتطعة</span>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                              {snap ? (
+                                <pre dir="ltr" style={{
+                                  background: '#0f172a',
+                                  color: '#e2e8f0',
+                                  padding: 12,
+                                  borderRadius: 8,
+                                  fontFamily: 'monospace',
+                                  fontSize: 12,
+                                  lineHeight: 1.5,
+                                  overflowX: 'auto',
+                                  maxHeight: 360,
+                                  margin: 0,
+                                  whiteSpace: 'pre-wrap',
+                                  wordBreak: 'break-word',
+                                  textAlign: 'left',
+                                }}>{snapshotText || '(empty)'}</pre>
+                              ) : (
+                                <div style={{ fontSize: 13, color: '#64748b' }}>
+                                  لم يُحفظ نسخة من الحمولة لهذا الحدث (حدث قبل تفعيل التشخيص أو لم يصل أي محتوى).
+                                </div>
+                              )}
+                              <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 8 }}>
+                                ملاحظة: الحقول الحساسة (أرقام البطاقات، CVV، الأسرار) محذوفة تلقائياً قبل الحفظ.
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                      </React.Fragment>
                     );
                   })}
                 </tbody>

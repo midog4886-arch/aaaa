@@ -21,11 +21,12 @@ from __future__ import annotations
 
 import hmac
 import hashlib
+import json
 import os
 import logging
 import time
 from datetime import datetime, timedelta, timezone
-from typing import Dict, List, Optional, Tuple, Iterable
+from typing import Any, Dict, List, Optional, Tuple, Iterable
 
 from control_db import control_db
 
@@ -342,6 +343,110 @@ async def list_active_delivery_alerts() -> list:
 # inspection. Each delivery is one row regardless of whether it was accepted,
 # rejected by signature, deduplicated, or otherwise ignored.
 WEBHOOK_EVENTS_MAX = 200
+# Cap the redacted payload snapshot stored per row. Keeps the diagnostic
+# collection bounded (200 rows × ~8 KB ≈ 1.6 MB worst case) and prevents a
+# single oversized provider event from filling up control_db.
+WEBHOOK_PAYLOAD_SNAPSHOT_MAX_BYTES = 8192
+# Keys whose values are scrubbed from the snapshot before persisting.
+# Card numbers / CVVs / signing secrets / API keys must never land in the
+# diagnostics collection regardless of which provider sent them.
+_SENSITIVE_PAYLOAD_KEYS = {
+    "number", "card_number", "pan", "account_number", "iban",
+    "cvc", "cvv", "cvv2", "csc",
+    "secret", "client_secret", "signing_secret", "webhook_secret",
+    "api_key", "apikey", "private_key", "password", "passcode", "pin",
+    "authorization", "auth_token", "bearer",
+}
+_SENSITIVE_PAYLOAD_KEYS_LC = {k.lower() for k in _SENSITIVE_PAYLOAD_KEYS}
+_REDACTED_PLACEHOLDER = "***REDACTED***"
+_MAX_STRING_LEN = 500
+_MAX_LIST_ITEMS = 50
+
+# Pattern-based scrubbers for free-text payload values (and the unparsed-body
+# fallback). Run *before* truncation so the placeholder lands intact.
+import re as _re
+_PAN_RE = _re.compile(r"(?<!\d)(?:\d[ -]?){12,19}(?!\d)")
+# Match common secret-style tokens by prefix or by long alnum runs.
+_TOKEN_RE = _re.compile(
+    r"\b(?:sk_live|sk_test|pk_live|pk_test|whsec|rk_live|rk_test|Bearer\s+|"
+    r"AIza|ghp_|gho_|github_pat_|xox[abprs]-)[A-Za-z0-9_\-\.]{6,}\b"
+)
+# Match generic long opaque tokens (>=24 chars of base64-ish + dashes/dots).
+_LONG_TOKEN_RE = _re.compile(r"\b[A-Za-z0-9_\-]{32,}\b")
+
+
+def _scrub_text(text: str) -> str:
+    """Mask PAN-like digit runs and known secret-token shapes inside a string."""
+    if not text:
+        return text
+    out = _PAN_RE.sub(_REDACTED_PLACEHOLDER, text)
+    out = _TOKEN_RE.sub(_REDACTED_PLACEHOLDER, out)
+    out = _LONG_TOKEN_RE.sub(_REDACTED_PLACEHOLDER, out)
+    return out
+
+
+def _redact_value(value: Any, depth: int = 0) -> Any:
+    """Walk a JSON-ish value and scrub sensitive keys + clip giant strings."""
+    if depth > 8:
+        return "…"
+    if isinstance(value, dict):
+        out: Dict[str, Any] = {}
+        for k, v in value.items():
+            key = str(k)
+            if key.lower() in _SENSITIVE_PAYLOAD_KEYS_LC:
+                out[key] = _REDACTED_PLACEHOLDER
+            else:
+                out[key] = _redact_value(v, depth + 1)
+        return out
+    if isinstance(value, list):
+        trimmed = list(value)[:_MAX_LIST_ITEMS]
+        out_list = [_redact_value(v, depth + 1) for v in trimmed]
+        if len(value) > _MAX_LIST_ITEMS:
+            out_list.append(f"… (+{len(value) - _MAX_LIST_ITEMS} more)")
+        return out_list
+    if isinstance(value, str):
+        scrubbed = _scrub_text(value)
+        if len(scrubbed) > _MAX_STRING_LEN:
+            return scrubbed[:_MAX_STRING_LEN] + "…"
+        return scrubbed
+    if isinstance(value, (int, float, bool)) or value is None:
+        return value
+    try:
+        s = str(value)
+    except Exception:
+        return _REDACTED_PLACEHOLDER
+    if len(s) > _MAX_STRING_LEN:
+        s = s[:_MAX_STRING_LEN] + "…"
+    return s
+
+
+def _build_payload_snapshot(payload: Any) -> Optional[Dict[str, Any]]:
+    """Return ``{"data", "truncated", "size_bytes"}`` or ``None``.
+
+    The snapshot is bounded by ``WEBHOOK_PAYLOAD_SNAPSHOT_MAX_BYTES`` so a
+    single oversized provider event can't blow up the diagnostics collection.
+    """
+    if payload is None:
+        return None
+    try:
+        redacted = _redact_value(payload)
+        encoded = json.dumps(redacted, ensure_ascii=False, default=str)
+    except Exception:
+        logger.exception("payload snapshot serialization failed")
+        return None
+    raw = encoded.encode("utf-8")
+    if len(raw) <= WEBHOOK_PAYLOAD_SNAPSHOT_MAX_BYTES:
+        return {"data": redacted, "truncated": False, "size_bytes": len(raw)}
+    # Too large to keep in structured form — fall back to a clipped string
+    # preview so the super-admin still sees what the provider sent.
+    clipped = raw[:WEBHOOK_PAYLOAD_SNAPSHOT_MAX_BYTES].decode("utf-8", errors="ignore")
+    return {
+        "data": None,
+        "preview": clipped + "…",
+        "truncated": True,
+        "size_bytes": len(raw),
+    }
+
 VALID_WEBHOOK_EVENT_STATUSES = {
     "received",
     "signature_invalid",
@@ -365,6 +470,9 @@ async def record_webhook_event(
     tenant_id: Optional[str] = None,
     tenant_slug: Optional[str] = None,
     event_id: Optional[str] = None,
+    payload: Any = None,
+    signature_header: Optional[str] = None,
+    http_status: Optional[int] = None,
 ) -> None:
     """Append a diagnostic row to ``control_db.webhook_events``.
 
@@ -387,6 +495,14 @@ async def record_webhook_event(
     provider_lc = (provider or "").strip().lower()[:40]
     reason_clean = (reason or "").strip()[:500]
     tenant_slug_clean = (tenant_slug or "").strip().lower()[:80] if tenant_slug else ""
+    snapshot = _build_payload_snapshot(payload)
+    sig_header_clean = (signature_header or "").strip()[:80]
+    http_status_int: Optional[int] = None
+    if http_status is not None:
+        try:
+            http_status_int = int(http_status)
+        except (TypeError, ValueError):
+            http_status_int = None
     try:
         doc = {
             "provider": provider_lc,
@@ -397,6 +513,12 @@ async def record_webhook_event(
             "event_id": (event_id or "").strip()[:200] if event_id else "",
             "received_at": datetime.now(timezone.utc),
         }
+        if snapshot is not None:
+            doc["payload_snapshot"] = snapshot
+        if sig_header_clean:
+            doc["signature_header"] = sig_header_clean
+        if http_status_int is not None:
+            doc["http_status"] = http_status_int
         await control_db.webhook_events.insert_one(doc)
         # Trim oldest rows beyond the cap. Cheap because we keep the cap
         # small and the collection is queried rarely (admin only).
