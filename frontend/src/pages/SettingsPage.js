@@ -52,6 +52,8 @@ export const SettingsPage = () => {
   const [opsAlertsWhatsappConfigured, setOpsAlertsWhatsappConfigured] = React.useState(true);
   const [opsAlertsLoading, setOpsAlertsLoading] = React.useState(false);
   const [opsAlertsSaving, setOpsAlertsSaving] = React.useState(false);
+  const [opsAlertsTestSending, setOpsAlertsTestSending] = React.useState(false);
+  const [opsAlertsTestResult, setOpsAlertsTestResult] = React.useState(null);
   const [billing, setBilling] = React.useState(null);
   const [billingLoading, setBillingLoading] = React.useState(false);
   const [invoices, setInvoices] = React.useState([]);
@@ -285,6 +287,35 @@ export const SettingsPage = () => {
         : 'Failed to save setting'));
     } finally {
       if (mySeq === opsAlertsSaveSeq.current) setOpsAlertsSaving(false);
+    }
+  };
+
+  const handleSendTestOpsAlert = async () => {
+    setOpsAlertsTestSending(true);
+    setOpsAlertsTestResult(null);
+    try {
+      const res = await notificationsSettingsAPI.sendTestOpsAlert();
+      const data = res?.data || {};
+      setOpsAlertsTestResult(data);
+      const channels = data.channels || {};
+      const attempted = [];
+      if (channels.email?.will_attempt) attempted.push(language === 'ar' ? 'البريد' : 'Email');
+      if (channels.whatsapp?.will_attempt) attempted.push(language === 'ar' ? 'واتساب' : 'WhatsApp');
+      if (attempted.length > 0) {
+        toast.success(language === 'ar'
+          ? `تم إرسال تنبيه تجريبي عبر: ${attempted.join('، ')}`
+          : `Test alert queued via: ${attempted.join(', ')}`);
+      } else {
+        toast.info(language === 'ar'
+          ? 'تم تسجيل التنبيه التجريبي، لكن لا توجد قناة مفعّلة ومهيّأة لإرساله.'
+          : 'Test alert recorded, but no channel is enabled and configured to deliver it.');
+      }
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || (language === 'ar'
+        ? 'تعذر إرسال التنبيه التجريبي'
+        : 'Failed to send test alert'));
+    } finally {
+      setOpsAlertsTestSending(false);
     }
   };
 
@@ -1235,6 +1266,74 @@ export const SettingsPage = () => {
                   disabled={opsAlertsLoading || opsAlertsSaving}
                   onCheckedChange={(v) => handleSaveOpsAlertsSetting('whatsapp_enabled', !!v)}
                 />
+              </div>
+              <div className="pt-3 border-t space-y-2">
+                <div className="flex items-center justify-between gap-3 flex-wrap">
+                  <div>
+                    <p className="font-medium">
+                      {language === 'ar' ? 'إرسال تنبيه تجريبي' : 'Send a test alert'}
+                    </p>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      {language === 'ar'
+                        ? 'يُرسل تنبيهًا تجريبيًا واضحًا عبر القنوات المفعّلة والمهيّأة فقط، ويظهر في سجل تنبيهات النظام.'
+                        : 'Sends a clearly-labelled test alert through the enabled & configured channels only. It will also appear in the Ops Alerts history page.'}
+                    </p>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={handleSendTestOpsAlert}
+                    disabled={opsAlertsLoading || opsAlertsSaving || opsAlertsTestSending}
+                    data-testid="ops-alerts-send-test-btn"
+                  >
+                    {opsAlertsTestSending
+                      ? (language === 'ar' ? 'جارٍ الإرسال...' : 'Sending...')
+                      : (language === 'ar' ? 'إرسال تنبيه تجريبي' : 'Send test alert')}
+                  </Button>
+                </div>
+                {opsAlertsTestResult && (
+                  <div
+                    className="text-xs rounded border bg-slate-50 p-2 space-y-1"
+                    data-testid="ops-alerts-test-result"
+                  >
+                    {(() => {
+                      const ch = opsAlertsTestResult.channels || {};
+                      const renderRow = (key, label) => {
+                        const c = ch[key] || {};
+                        let cls, text;
+                        if (c.will_attempt) {
+                          cls = 'bg-green-100 text-green-700';
+                          text = language === 'ar' ? 'سيُحاول الإرسال' : 'Will attempt';
+                        } else if (!c.configured) {
+                          cls = 'bg-amber-100 text-amber-700';
+                          text = language === 'ar' ? 'تم التخطي — غير مهيّأ' : 'Skipped — not configured';
+                        } else {
+                          cls = 'bg-slate-200 text-slate-700';
+                          text = language === 'ar' ? 'تم التخطي — مُعطَّل' : 'Skipped — disabled';
+                        }
+                        return (
+                          <div className="flex items-center justify-between gap-2" key={key}>
+                            <span>{label}</span>
+                            <span className={`px-2 py-0.5 rounded-full ${cls}`}>{text}</span>
+                          </div>
+                        );
+                      };
+                      return (
+                        <>
+                          {renderRow('email', language === 'ar' ? 'البريد الإلكتروني' : 'Email')}
+                          {renderRow('whatsapp', language === 'ar' ? 'واتساب' : 'WhatsApp')}
+                          {!opsAlertsTestResult.any_channel_will_attempt && (
+                            <p className="text-amber-700 mt-1">
+                              {language === 'ar'
+                                ? 'لم تُحاول أي قناة. تم تسجيل التنبيه فقط في السجل الداخلي.'
+                                : 'No channel was attempted. The alert is only recorded in the in-app log.'}
+                            </p>
+                          )}
+                        </>
+                      );
+                    })()}
+                  </div>
+                )}
               </div>
             </CardContent>
           </Card>

@@ -491,6 +491,122 @@ async def delete_ops_alert(alert_id: str, current_user: dict = Depends(get_curre
     return {"ok": True, "id": alert_id}
 
 
+@router.post("/ops-alerts/test")
+async def send_test_ops_alert(current_user: dict = Depends(get_current_user)):
+    """Admin-only: enqueue a clearly-labelled test ops alert through the
+    same delivery pipeline so admins can verify their email/WhatsApp
+    destinations actually receive messages without waiting for a real
+    failure. Respects the per-channel toggles and env-var configuration.
+
+    The alert is inserted directly into ``db.ops_alerts`` so it gets
+    picked up by the existing background delivery worker, shows up in
+    the Ops Alerts history page, and is retried with backoff on failure
+    just like a real alert.
+    """
+    if not current_user.get("is_admin"):
+        raise HTTPException(status_code=403, detail="Admin access required")
+
+    settings_doc = await db.notifications_settings.find_one(
+        {"key": _OPS_ALERTS_DELIVERY_KEY}, {"_id": 0, "key": 0}
+    ) or {}
+    email_enabled = bool(settings_doc.get("email_enabled", True))
+    whatsapp_enabled = bool(settings_doc.get("whatsapp_enabled", True))
+    email_to = (os.environ.get("OPS_ALERT_EMAIL_TO") or "").strip()
+    smtp_host = (os.environ.get("SMTP_HOST") or "").strip()
+    smtp_from = (os.environ.get("SMTP_FROM") or os.environ.get("SMTP_USER") or "").strip()
+    whatsapp_to = (os.environ.get("OPS_ALERT_WHATSAPP_TO") or "").strip()
+    email_configured = bool(email_to and smtp_host and smtp_from)
+    whatsapp_configured = bool(whatsapp_to)
+    email_will_attempt = email_enabled and email_configured
+    whatsapp_will_attempt = whatsapp_enabled and whatsapp_configured
+
+    actor = current_user.get("username") or current_user.get("email") or current_user.get("id") or "admin"
+    now = datetime.now(timezone.utc)
+    ts = now.isoformat()
+    alert_id = str(uuid.uuid4())
+    title = f"[TEST] Ops alert delivery check — triggered by {actor}"
+    body = (
+        "This is a TEST ops alert sent from the Settings page to verify that "
+        "your configured delivery channels are working.\n\n"
+        "If you receive this in the channels you expect (email and/or WhatsApp), "
+        "delivery is configured correctly. No action is required — you can "
+        "delete this alert from the Ops Alerts history page."
+    )
+    try:
+        await db.ops_alerts.insert_one({
+            "id": alert_id,
+            "kind": "test_alert",
+            "title": title,
+            "body": body,
+            "severity": "info",
+            "created_at": ts,
+            "acknowledged": False,
+            "attempts": 0,
+            "next_attempt_at": ts,
+            "delivered_email": False,
+            "delivered_whatsapp": False,
+            "last_error": "",
+            "delivery_status": "pending",
+            "is_test": True,
+            "triggered_by": actor,
+        })
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to enqueue test alert: {e}")
+
+    try:
+        admins = await db.users.find({"is_admin": True}, {"id": 1, "_id": 0}).to_list(50)
+        for u in admins:
+            try:
+                await db.notifications.insert_one({
+                    "id": str(uuid.uuid4()),
+                    "user_id": u.get("id"),
+                    "type": "ops_alert.test_alert",
+                    "title": title,
+                    "message": body,
+                    "severity": "info",
+                    "is_read": False,
+                    "created_at": ts,
+                })
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+    try:
+        from utils.audit import log_audit
+        await log_audit(
+            actor=current_user,
+            action="ops_alerts.send_test",
+            entity_type="ops_alert",
+            entity_id=alert_id,
+            after={
+                "email_will_attempt": email_will_attempt,
+                "whatsapp_will_attempt": whatsapp_will_attempt,
+            },
+        )
+    except Exception:
+        pass
+
+    return {
+        "ok": True,
+        "id": alert_id,
+        "channels": {
+            "email": {
+                "enabled": email_enabled,
+                "configured": email_configured,
+                "will_attempt": email_will_attempt,
+            },
+            "whatsapp": {
+                "enabled": whatsapp_enabled,
+                "configured": whatsapp_configured,
+                "will_attempt": whatsapp_will_attempt,
+            },
+        },
+        "any_channel_will_attempt": email_will_attempt or whatsapp_will_attempt,
+        "created_at": ts,
+    }
+
+
 @router.post("/daily-checks-run")
 async def run_daily_checks_now(current_user: dict = Depends(get_current_user)):
     """Admin-only: trigger the daily renewal & ad-expiry checks on demand.

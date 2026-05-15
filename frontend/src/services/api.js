@@ -283,6 +283,7 @@ export const notificationsSettingsAPI = {
   deleteOpsAlert: (id) => axios.delete(`${API}/notifications/ops-alerts/${id}`),
   getOpsAlertsSettings: () => axios.get(`${API}/notifications/ops-alerts-settings`),
   updateOpsAlertsSettings: (payload) => axios.put(`${API}/notifications/ops-alerts-settings`, payload),
+  sendTestOpsAlert: () => axios.post(`${API}/notifications/ops-alerts/test`),
 };
 
 export const tenantAPI = {
