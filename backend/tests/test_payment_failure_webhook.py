@@ -207,9 +207,70 @@ def webhook_client(monkeypatch):
 
     fake_settings.find_one = AsyncMock(side_effect=fake_settings_find)
 
+    # Fake processed_payment_events: in-memory dict keyed by (provider, event_id)
+    # that mimics the unique-index DuplicateKeyError on re-insert and supports
+    # find_one / update_one / delete_one for the two-phase claim/confirm flow.
+    processed_events = {}
+
+    class _DupKeyError(Exception):
+        pass
+    _DupKeyError.__name__ = "DuplicateKeyError"
+
+    fake_processed_events = MagicMock()
+
+    def _key_from_query(q):
+        return (q.get("provider"), q.get("event_id"))
+
+    async def fake_processed_insert(doc):
+        key = _key_from_query(doc)
+        if key in processed_events:
+            raise _DupKeyError("duplicate")
+        processed_events[key] = dict(doc)
+        return MagicMock()
+
+    async def fake_processed_find_one(query, projection=None):
+        return dict(processed_events.get(_key_from_query(query) or (), {})) or None
+
+    async def fake_processed_update_one(query, update):
+        key = _key_from_query(query)
+        if key in processed_events:
+            processed_events[key].update((update or {}).get("$set") or {})
+        return MagicMock()
+
+    async def fake_processed_delete_one(query):
+        key = _key_from_query(query)
+        existing = processed_events.get(key)
+        if existing is None:
+            return MagicMock()
+        # Honor extra filter fields (e.g. status="processing") so we don't
+        # delete confirmed rows.
+        for k, v in (query or {}).items():
+            if k in ("provider", "event_id"):
+                continue
+            if existing.get(k) != v:
+                return MagicMock()
+        processed_events.pop(key, None)
+        return MagicMock()
+
+    async def fake_processed_create_index(*args, **kwargs):
+        return None
+
+    fake_processed_events.insert_one = AsyncMock(side_effect=fake_processed_insert)
+    fake_processed_events.find_one = AsyncMock(side_effect=fake_processed_find_one)
+    fake_processed_events.update_one = AsyncMock(side_effect=fake_processed_update_one)
+    fake_processed_events.delete_one = AsyncMock(side_effect=fake_processed_delete_one)
+    fake_processed_events.create_index = AsyncMock(side_effect=fake_processed_create_index)
+
     fake_control_db = MagicMock()
     fake_control_db.tenants = fake_tenants
     fake_control_db.platform_settings = fake_settings
+    fake_control_db.processed_payment_events = fake_processed_events
+    state["processed_events"] = processed_events
+
+    # Reset the cached "indexes ready" flag so each test re-runs index setup
+    # against the fresh fake collection.
+    import utils.payment_service as _ps
+    _ps._processed_events_indexes_ready = False
 
     # Patch the symbol in every module that already imported it.
     monkeypatch.setattr("routes.billing.control_db", fake_control_db, raising=True)
@@ -392,6 +453,130 @@ def test_webhook_renews_using_tenant_cycle_when_metadata_missing(webhook_client)
     assert r.status_code == 200, r.text
     assert r.json()["status"] == "renewed"
     assert state["tenant"]["renewal_history"][0]["months"] == 3
+
+
+def test_webhook_dedupes_repeated_event(webhook_client):
+    """Re-delivering the same event id must record exactly one renewal row."""
+    client, state, email_calls = webhook_client
+    payload = {
+        "type": "invoice.payment_succeeded",
+        "id": "evt_dedupe_1",
+        "data": {"object": {
+            "id": "in_dedupe_1",
+            "amount_paid": 29900,
+            "currency": "sar",
+            "metadata": {"tenant_id": "tenant-xyz",
+                         "months": "12", "cycle": "yearly"},
+        }},
+    }
+    body = json.dumps(payload).encode("utf-8")
+    sig = _stripe_signature(body, WEBHOOK_SECRET)
+    headers = {"Stripe-Signature": sig, "Content-Type": "application/json"}
+
+    r1 = client.post("/api/billing/webhook/stripe", content=body, headers=headers)
+    assert r1.status_code == 200, r1.text
+    assert r1.json()["status"] == "renewed"
+
+    # Second delivery of the SAME event id — the provider retried.
+    r2 = client.post("/api/billing/webhook/stripe", content=body, headers=headers)
+    assert r2.status_code == 200, r2.text
+    assert r2.json()["status"] == "duplicate"
+    assert r2.json()["event_id"] == "evt_dedupe_1"
+
+    # Exactly one row in renewal_history and exactly one email sent.
+    history = state["tenant"]["renewal_history"]
+    assert len(history) == 1, history
+    assert len(email_calls) == 1
+    assert ("stripe", "evt_dedupe_1") in state["processed_events"]
+    assert state["processed_events"][("stripe", "evt_dedupe_1")]["status"] == "processed"
+
+
+def test_webhook_dedupes_repeated_failure_event(webhook_client):
+    """Failure events must also dedupe: no duplicate failure row or email."""
+    client, state, email_calls = webhook_client
+    payload = {
+        "type": "invoice.payment_failed",
+        "id": "evt_dedupe_fail",
+        "data": {"object": {
+            "id": "in_fail_1",
+            "amount_due": 29900,
+            "currency": "sar",
+            "failure_message": "Your card was declined.",
+            "metadata": {"tenant_id": "tenant-xyz"},
+        }},
+    }
+    body = json.dumps(payload).encode("utf-8")
+    sig = _stripe_signature(body, WEBHOOK_SECRET)
+    headers = {"Stripe-Signature": sig, "Content-Type": "application/json"}
+
+    r1 = client.post("/api/billing/webhook/stripe", content=body, headers=headers)
+    assert r1.status_code == 200
+    assert r1.json()["status"] == "recorded"
+
+    r2 = client.post("/api/billing/webhook/stripe", content=body, headers=headers)
+    assert r2.status_code == 200
+    assert r2.json()["status"] == "duplicate"
+
+    assert len(state["tenant"]["renewal_history"]) == 1
+    assert len(email_calls) == 1
+
+
+def test_webhook_releases_claim_when_processing_fails(webhook_client, monkeypatch):
+    """If processing crashes mid-flight, the next provider retry must succeed.
+
+    Guards against the failure mode flagged in code review: marking the event
+    as ``processed`` before side effects commit would silently drop legitimate
+    events whenever an error occurs after the claim.
+    """
+    client, state, email_calls = webhook_client
+
+    payload = {
+        "type": "invoice.payment_succeeded",
+        "id": "evt_recover_1",
+        "data": {"object": {
+            "id": "in_recover_1",
+            "amount_paid": 29900,
+            "currency": "sar",
+            "metadata": {"tenant_id": "tenant-xyz",
+                         "months": "12", "cycle": "yearly"},
+        }},
+    }
+    body = json.dumps(payload).encode("utf-8")
+    sig = _stripe_signature(body, WEBHOOK_SECRET)
+    headers = {"Stripe-Signature": sig, "Content-Type": "application/json"}
+
+    # First delivery: force apply_renewal to blow up after the claim.
+    boom_calls = {"n": 0}
+
+    async def boom_apply_renewal(**kwargs):
+        boom_calls["n"] += 1
+        raise RuntimeError("simulated transient failure")
+
+    import routes.super_admin as _sa
+    real_apply_renewal = _sa.apply_renewal
+    monkeypatch.setattr(_sa, "apply_renewal", boom_apply_renewal, raising=True)
+
+    # The TestClient re-raises server exceptions by default; the important
+    # thing is that the claim was released so a retry can re-process.
+    with pytest.raises(RuntimeError, match="simulated transient failure"):
+        client.post("/api/billing/webhook/stripe", content=body, headers=headers)
+    assert boom_calls["n"] == 1
+    # Claim row must have been released, not left as "processing".
+    assert ("stripe", "evt_recover_1") not in state["processed_events"]
+    # No side effects committed yet.
+    assert state["tenant"]["renewal_history"] == []
+    assert email_calls == []
+
+    # Restore the real handler and let the provider retry succeed.
+    monkeypatch.setattr(_sa, "apply_renewal", real_apply_renewal, raising=True)
+    r2 = client.post("/api/billing/webhook/stripe", content=body, headers=headers)
+    assert r2.status_code == 200, r2.text
+    assert r2.json()["status"] == "renewed"
+
+    # Exactly one renewal row + one email — retry was processed, not dropped.
+    assert len(state["tenant"]["renewal_history"]) == 1
+    assert len(email_calls) == 1
+    assert state["processed_events"][("stripe", "evt_recover_1")]["status"] == "processed"
 
 
 def test_webhook_ignores_unrecognized_event(webhook_client):

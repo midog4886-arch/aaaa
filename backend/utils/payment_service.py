@@ -34,6 +34,139 @@ logger = logging.getLogger("payment_service")
 VALID_PROVIDERS = {"stripe", "moyasar", "tap", ""}
 DEFAULT_SECRET_ENV = "PAYMENT_WEBHOOK_SECRET"
 STRIPE_TIMESTAMP_TOLERANCE = 60 * 5  # seconds
+# Retain the processed-event fingerprint long enough to cover the longest
+# automatic retry window of any supported provider (Stripe retries for up to
+# ~3 days). 30 days provides a comfortable safety margin while still keeping
+# the collection bounded via a TTL index.
+PROCESSED_EVENT_TTL_SECONDS = 60 * 60 * 24 * 30
+
+_processed_events_indexes_ready = False
+
+
+async def _ensure_processed_events_indexes() -> None:
+    """Create the unique + TTL indexes on ``processed_payment_events`` once."""
+    global _processed_events_indexes_ready
+    if _processed_events_indexes_ready:
+        return
+    try:
+        await control_db.processed_payment_events.create_index(
+            [("provider", 1), ("event_id", 1)], unique=True
+        )
+        await control_db.processed_payment_events.create_index(
+            "created_at", expireAfterSeconds=PROCESSED_EVENT_TTL_SECONDS
+        )
+    except Exception:
+        logger.exception("processed_payment_events index creation failed")
+    _processed_events_indexes_ready = True
+
+
+def extract_event_id(provider: str, payload: Dict) -> Optional[str]:
+    """Pull the provider-assigned event id out of a webhook payload."""
+    if not isinstance(payload, dict):
+        return None
+    provider = (provider or "").lower()
+    eid = payload.get("id")
+    if not eid and provider == "moyasar":
+        eid = (payload.get("data") or {}).get("id")
+    if not eid:
+        return None
+    eid = str(eid).strip()[:200]
+    return eid or None
+
+
+def _is_duplicate_key_error(e: Exception) -> bool:
+    try:
+        from pymongo.errors import DuplicateKeyError
+        if isinstance(e, DuplicateKeyError):
+            return True
+    except Exception:
+        pass
+    return e.__class__.__name__ == "DuplicateKeyError"
+
+
+async def claim_event(provider: str, event_id: str) -> str:
+    """Two-phase dedup: try to claim ``(provider, event_id)`` for processing.
+
+    Returns one of:
+      * ``"new"``       — caller is the unique owner; proceed with processing
+                          and call :func:`confirm_event` on success or
+                          :func:`release_event` on failure so a retry can
+                          re-claim.
+      * ``"processed"`` — the same event was already fully processed by a
+                          previous delivery; caller should short-circuit
+                          and respond ``2xx duplicate``.
+      * ``"in_flight"`` — another delivery is currently processing the
+                          event (or crashed mid-flight without releasing).
+                          Caller should also short-circuit so the active /
+                          next legitimate retry is the one that completes.
+
+    When ``event_id`` is empty we cannot dedupe and return ``"new"`` so the
+    legacy non-dedup behavior is preserved.
+    """
+    if not event_id:
+        return "new"
+    await _ensure_processed_events_indexes()
+    provider_lc = (provider or "").lower()
+    try:
+        await control_db.processed_payment_events.insert_one({
+            "provider": provider_lc,
+            "event_id": event_id,
+            "status": "processing",
+            "created_at": datetime.now(timezone.utc),
+        })
+        return "new"
+    except Exception as e:
+        if not _is_duplicate_key_error(e):
+            logger.exception("claim_event unexpected error")
+            # Fail open: better to risk one duplicate than to drop a real event.
+            return "new"
+    # A row already exists — check its state.
+    try:
+        existing = await control_db.processed_payment_events.find_one(
+            {"provider": provider_lc, "event_id": event_id}
+        )
+    except Exception:
+        logger.exception("claim_event lookup failed; treating as duplicate")
+        return "in_flight"
+    status = ((existing or {}).get("status") or "").lower()
+    if status == "processed":
+        return "processed"
+    return "in_flight"
+
+
+async def confirm_event(provider: str, event_id: str) -> None:
+    """Mark a previously-claimed event as fully processed."""
+    if not event_id:
+        return
+    try:
+        await control_db.processed_payment_events.update_one(
+            {"provider": (provider or "").lower(), "event_id": event_id},
+            {"$set": {
+                "status": "processed",
+                "processed_at": datetime.now(timezone.utc),
+            }},
+        )
+    except Exception:
+        logger.exception("confirm_event update failed for %s/%s", provider, event_id)
+
+
+async def release_event(provider: str, event_id: str) -> None:
+    """Release a claim so a provider retry can re-attempt processing.
+
+    Only releases rows still in the ``processing`` state — never deletes a
+    confirmed ``processed`` row (which would silently re-enable double
+    processing).
+    """
+    if not event_id:
+        return
+    try:
+        await control_db.processed_payment_events.delete_one({
+            "provider": (provider or "").lower(),
+            "event_id": event_id,
+            "status": "processing",
+        })
+    except Exception:
+        logger.exception("release_event delete failed for %s/%s", provider, event_id)
 
 
 async def get_payment_settings() -> Dict:

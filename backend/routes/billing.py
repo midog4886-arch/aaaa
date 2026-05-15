@@ -23,9 +23,13 @@ from utils.tenant import get_current_tenant_slug, DEFAULT_TENANT_SLUG
 from utils.auth import get_current_user
 from utils.email_service import send_email
 from utils.payment_service import (
+    claim_event,
+    confirm_event,
+    extract_event_id,
     get_payment_settings,
     parse_failure_event,
     parse_success_event,
+    release_event,
     verify_signature,
 )
 from control_db import control_db
@@ -135,66 +139,108 @@ async def payment_webhook(provider: str, request: Request):
     except Exception:
         raise HTTPException(status_code=400, detail="invalid json body")
 
-    failure = parse_failure_event(cfg_provider, payload)
-    if failure:
-        tenant = await _resolve_tenant(failure.get("tenant_id"), failure.get("tenant_slug"))
-        if not tenant:
-            logger.warning("payment webhook: tenant not found for ref=%s", failure.get("provider_ref"))
-            raise HTTPException(status_code=404, detail="tenant not found in event metadata")
-        result = await apply_payment_failure(
-            tenant=tenant,
-            reason=failure["reason"],
-            amount=failure.get("amount"),
-            currency=failure.get("currency") or "SAR",
-            provider=cfg_provider,
-            provider_ref=failure.get("provider_ref") or "",
-        )
-        return {
-            "status": "recorded",
-            "tenant_slug": (result.get("tenant") or {}).get("slug"),
-            "failure_id": (result.get("failure") or {}).get("id"),
-            "email": result.get("email"),
-        }
-
-    success = parse_success_event(cfg_provider, payload)
-    if success:
-        tenant = await _resolve_tenant(success.get("tenant_id"), success.get("tenant_slug"))
-        if not tenant:
-            logger.warning("payment webhook: tenant not found for ref=%s", success.get("provider_ref"))
-            raise HTTPException(status_code=404, detail="tenant not found in event metadata")
-        months = success.get("months") or 0
-        days = success.get("days") or 0
-        if not months and not days:
-            cycle = (success.get("cycle") or tenant.get("billing_cycle") or "monthly").lower()
-            if cycle == "yearly":
-                months = 12
-            elif cycle == "quarterly":
-                months = 3
-            else:
-                months = 1
-        from routes.super_admin import apply_renewal
-        try:
-            result = await apply_renewal(
-                tenant=tenant,
-                months=int(months or 0),
-                days=int(days or 0),
-                amount=success.get("amount"),
-                currency=success.get("currency") or "SAR",
-                method=cfg_provider,
-                provider_ref=success.get("provider_ref") or "",
-                note="auto-renewed via payment webhook",
+    # Dedupe: providers (Stripe especially) retry the same event many times
+    # until they receive a 2xx. Without this guard, every retry would append
+    # another renewal_history row and re-send the customer email.
+    #
+    # Two-phase: claim first, do the work, then confirm. If the work raises
+    # before confirmation, release the claim so the *next* provider retry
+    # can reprocess — we never want to suppress retries for events whose
+    # side effects didn't actually commit.
+    event_id = extract_event_id(cfg_provider, payload)
+    claim_state = "new"
+    if event_id:
+        claim_state = await claim_event(cfg_provider, event_id)
+        if claim_state != "new":
+            logger.info(
+                "payment webhook: short-circuiting %s event id=%s (claim=%s)",
+                cfg_provider, event_id, claim_state,
             )
-        except ValueError as e:
-            logger.error("payment webhook renewal rejected: %s", e)
-            raise HTTPException(status_code=400, detail=str(e))
-        return {
-            "status": "renewed",
-            "tenant_slug": (result.get("tenant") or {}).get("slug"),
-            "renewal_id": (result.get("renewal") or {}).get("id"),
-            "email": result.get("email"),
-        }
+            return {
+                "status": "duplicate",
+                "event_id": event_id,
+                "claim": claim_state,
+            }
 
-    return {"status": "ignored", "reason": "unrecognized event"}
+    try:
+        failure = parse_failure_event(cfg_provider, payload)
+        if failure:
+            tenant = await _resolve_tenant(failure.get("tenant_id"), failure.get("tenant_slug"))
+            if not tenant:
+                logger.warning("payment webhook: tenant not found for ref=%s", failure.get("provider_ref"))
+                raise HTTPException(status_code=404, detail="tenant not found in event metadata")
+            result = await apply_payment_failure(
+                tenant=tenant,
+                reason=failure["reason"],
+                amount=failure.get("amount"),
+                currency=failure.get("currency") or "SAR",
+                provider=cfg_provider,
+                provider_ref=failure.get("provider_ref") or "",
+            )
+            if event_id:
+                await confirm_event(cfg_provider, event_id)
+            return {
+                "status": "recorded",
+                "tenant_slug": (result.get("tenant") or {}).get("slug"),
+                "failure_id": (result.get("failure") or {}).get("id"),
+                "email": result.get("email"),
+            }
+
+        success = parse_success_event(cfg_provider, payload)
+        if success:
+            tenant = await _resolve_tenant(success.get("tenant_id"), success.get("tenant_slug"))
+            if not tenant:
+                logger.warning("payment webhook: tenant not found for ref=%s", success.get("provider_ref"))
+                raise HTTPException(status_code=404, detail="tenant not found in event metadata")
+            months = success.get("months") or 0
+            days = success.get("days") or 0
+            if not months and not days:
+                cycle = (success.get("cycle") or tenant.get("billing_cycle") or "monthly").lower()
+                if cycle == "yearly":
+                    months = 12
+                elif cycle == "quarterly":
+                    months = 3
+                else:
+                    months = 1
+            from routes.super_admin import apply_renewal
+            try:
+                result = await apply_renewal(
+                    tenant=tenant,
+                    months=int(months or 0),
+                    days=int(days or 0),
+                    amount=success.get("amount"),
+                    currency=success.get("currency") or "SAR",
+                    method=cfg_provider,
+                    provider_ref=success.get("provider_ref") or "",
+                    note="auto-renewed via payment webhook",
+                )
+            except ValueError as e:
+                logger.error("payment webhook renewal rejected: %s", e)
+                raise HTTPException(status_code=400, detail=str(e))
+            if event_id:
+                await confirm_event(cfg_provider, event_id)
+            return {
+                "status": "renewed",
+                "tenant_slug": (result.get("tenant") or {}).get("slug"),
+                "renewal_id": (result.get("renewal") or {}).get("id"),
+                "email": result.get("email"),
+            }
+
+        # Unrecognized event types are still "handled" (we deliberately
+        # ignore them) — confirm the claim so retries don't keep re-claiming.
+        if event_id:
+            await confirm_event(cfg_provider, event_id)
+        return {"status": "ignored", "reason": "unrecognized event"}
+    except HTTPException:
+        # Tenant-not-found / renewal-rejected: release so the provider
+        # retry can succeed once the tenant metadata is corrected.
+        if event_id:
+            await release_event(cfg_provider, event_id)
+        raise
+    except Exception:
+        if event_id:
+            await release_event(cfg_provider, event_id)
+        raise
 
 
 def _build_invoices(tenant: dict, plans: list) -> list:
