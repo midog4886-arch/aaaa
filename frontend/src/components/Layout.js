@@ -1,5 +1,6 @@
 import { getAcademyLogoUrl } from '../services/branding';
 import SubscriptionBanner from './SubscriptionBanner';
+import OnboardingGuard from './OnboardingGuard';
 import React, { useState, useEffect } from 'react';
 import { NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { useLanguage } from '../contexts/LanguageContext';
@@ -708,6 +709,7 @@ export const Layout = ({ children, title }) => {
       <div className="main-content">
         <TopHeader onMenuClick={() => setSidebarOpen(true)} title={title} />
         <SubscriptionBanner />
+        <OnboardingGuard />
         <main className="page-content">
           {children}
         </main>

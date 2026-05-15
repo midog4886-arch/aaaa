@@ -265,6 +265,15 @@ export const seedAPI = {
   seed: () => axios.post(`${API}/seed`),
 };
 
+// Tenant (academy) self-service API
+export const tenantAPI = {
+  getBranding: () => axios.get(`${API}/tenant/branding`),
+  updateBranding: (data) => axios.patch(`${API}/tenant/branding`, data),
+  getOnboardingStatus: () => axios.get(`${API}/tenant/onboarding-status`),
+  completeOnboarding: () => axios.post(`${API}/tenant/onboarding-complete`),
+  resetOnboarding: () => axios.post(`${API}/tenant/onboarding-reset`),
+};
+
 // Branches API
 export const branchesAPI = {
   getAll: () => axios.get(`${API}/branches`),

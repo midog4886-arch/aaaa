@@ -1,6 +1,9 @@
 from datetime import datetime, timezone
-from fastapi import APIRouter, Request
-from utils.tenant import get_current_tenant
+from typing import Optional
+from fastapi import APIRouter, Depends, HTTPException, Request
+from pydantic import BaseModel
+from utils.tenant import get_current_tenant, get_current_tenant_slug, DEFAULT_TENANT_SLUG
+from utils.auth import get_current_user
 from middleware.tenant import _slug_from_host
 from control_db import control_db
 
@@ -60,3 +63,87 @@ async def get_branding(request: Request):
         "days_remaining": _days_remaining(end_at),
         "auto_suspend_on_expiry": bool(tenant.get("auto_suspend_on_expiry", False)) if tenant else False,
     }
+
+
+def _require_tenant_admin(current_user: dict):
+    if not current_user.get("is_admin", False):
+        raise HTTPException(status_code=403, detail="صلاحية مسؤول الأكاديمية مطلوبة")
+    slug = get_current_tenant_slug() or DEFAULT_TENANT_SLUG
+    if slug == DEFAULT_TENANT_SLUG:
+        raise HTTPException(status_code=400, detail="لا تتوفر هذه العملية للأكاديمية الافتراضية")
+    return slug
+
+
+class BrandingUpdate(BaseModel):
+    name: Optional[str] = None
+    logo_base64: Optional[str] = None
+    primary_color: Optional[str] = None
+
+
+@router.patch("/branding")
+async def update_branding(payload: BrandingUpdate, current_user: dict = Depends(get_current_user)):
+    slug = _require_tenant_admin(current_user)
+    update = {}
+    if payload.name is not None:
+        nm = payload.name.strip()
+        if not nm or len(nm) > 120:
+            raise HTTPException(status_code=400, detail="اسم الأكاديمية مطلوب (حتى 120 حرفاً)")
+        update["name"] = nm
+    if payload.logo_base64 is not None:
+        if payload.logo_base64 == "":
+            update["logo_base64"] = ""
+        else:
+            cleaned = _safe_logo(payload.logo_base64)
+            if not cleaned:
+                raise HTTPException(status_code=400, detail="صيغة الشعار غير مدعومة أو حجمه أكبر من المسموح")
+            update["logo_base64"] = cleaned
+    if payload.primary_color is not None:
+        if payload.primary_color == "":
+            update["primary_color"] = ""
+        else:
+            cleaned = _safe_color(payload.primary_color)
+            if not cleaned:
+                raise HTTPException(status_code=400, detail="صيغة اللون غير صحيحة (#RRGGBB)")
+            update["primary_color"] = cleaned
+    if update:
+        await control_db.tenants.update_one({"slug": slug}, {"$set": update})
+    refreshed = await control_db.tenants.find_one({"slug": slug}, {"_id": 0}) or {}
+    return {
+        "name": refreshed.get("name", ""),
+        "logo_base64": _safe_logo(refreshed.get("logo_base64", "")),
+        "primary_color": _safe_color(refreshed.get("primary_color", "")),
+    }
+
+
+@router.get("/onboarding-status")
+async def onboarding_status(current_user: dict = Depends(get_current_user)):
+    slug = _require_tenant_admin(current_user)
+    tenant = await control_db.tenants.find_one({"slug": slug}, {"_id": 0}) or {}
+    completed_at = tenant.get("onboarding_completed_at")
+    return {
+        "completed": bool(completed_at),
+        "completed_at": completed_at,
+        "tenant_name": tenant.get("name", ""),
+        "plan": tenant.get("plan", ""),
+        "logo_base64": _safe_logo(tenant.get("logo_base64", "")),
+        "primary_color": _safe_color(tenant.get("primary_color", "")),
+    }
+
+
+@router.post("/onboarding-complete")
+async def onboarding_complete(current_user: dict = Depends(get_current_user)):
+    slug = _require_tenant_admin(current_user)
+    now_iso = datetime.now(timezone.utc).isoformat()
+    await control_db.tenants.update_one(
+        {"slug": slug}, {"$set": {"onboarding_completed_at": now_iso}}
+    )
+    return {"completed": True, "completed_at": now_iso}
+
+
+@router.post("/onboarding-reset")
+async def onboarding_reset(current_user: dict = Depends(get_current_user)):
+    slug = _require_tenant_admin(current_user)
+    await control_db.tenants.update_one(
+        {"slug": slug}, {"$set": {"onboarding_completed_at": None}}
+    )
+    return {"completed": False}

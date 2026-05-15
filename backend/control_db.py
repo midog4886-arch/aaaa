@@ -58,6 +58,7 @@ async def ensure_default_tenant():
             "renewal_history": [],
             "logo_base64": "",
             "primary_color": "",
+            "onboarding_completed_at": now.isoformat(),
         }
         await control_db.tenants.insert_one(doc)
         try:
@@ -111,6 +112,25 @@ async def backfill_billing_fields():
             logger.info("Backfilled billing for tenant %s", slug)
     except Exception as e:
         logger.warning(f"backfill_billing_fields failed: {e}")
+
+
+async def backfill_onboarding_completed():
+    """Mark pre-existing tenants as having completed onboarding so the wizard
+    only shows up for tenants newly created after this feature ships.
+    """
+    try:
+        cursor = control_db.tenants.find(
+            {"onboarding_completed_at": {"$exists": False}}, {"_id": 0, "slug": 1, "created_at": 1}
+        )
+        async for t in cursor:
+            slug = t.get("slug", "")
+            stamp = t.get("created_at") or datetime.now(timezone.utc).isoformat()
+            await control_db.tenants.update_one(
+                {"slug": slug}, {"$set": {"onboarding_completed_at": stamp}}
+            )
+            logger.info("Backfilled onboarding flag for tenant %s", slug)
+    except Exception as e:
+        logger.warning(f"backfill_onboarding_completed failed: {e}")
 
 
 async def auto_suspend_expired() -> int:

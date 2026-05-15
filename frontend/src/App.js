@@ -83,6 +83,7 @@ const TournamentsPage = lazy(() => import('./pages/TournamentsPage'));
 const SocialPublisherPage = lazy(() => import('./pages/SocialPublisherPage'));
 const SuperLogin = lazy(() => import('./pages/SuperLogin'));
 const SuperTenants = lazy(() => import('./pages/SuperTenants'));
+const OnboardingPage = lazy(() => import('./pages/OnboardingPage'));
 
 const SuperGuard = ({ children }) => {
   const token = typeof window !== 'undefined' ? localStorage.getItem('super_token') : null;
@@ -247,6 +248,16 @@ function AppRoutes() {
       <Route path="/coach-profile/:coachId" element={<CoachProfile />} />
       <Route path="/member-profile" element={<MemberProfile />} />
       
+      {/* Onboarding wizard — admin only, no Layout chrome */}
+      <Route
+        path="/admin/onboarding"
+        element={
+          <ProtectedRoute>
+            <OnboardingPage />
+          </ProtectedRoute>
+        }
+      />
+
       {/* Admin Protected Routes - under /admin prefix */}
       <Route 
         path="/admin/unauthorized" 

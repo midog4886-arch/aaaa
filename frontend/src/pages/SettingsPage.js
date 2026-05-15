@@ -1,23 +1,47 @@
 import React from 'react';
+import { useNavigate } from 'react-router-dom';
+import { toast } from 'sonner';
 import { useLanguage } from '../contexts/LanguageContext';
+import { useAuth } from '../contexts/AuthContext';
 import { Layout } from '../components/Layout';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Switch } from '../components/ui/switch';
 import { Label } from '../components/ui/label';
+import { tenantAPI } from '../services/api';
 import { 
   Languages, 
   Moon,
   Sun,
   Trophy,
-  Info
+  Info,
+  Sparkles
 } from 'lucide-react';
 
 export const SettingsPage = () => {
   const { t, language, toggleLanguage } = useLanguage();
+  const { isAdmin } = useAuth();
+  const navigate = useNavigate();
+  const [resetting, setResetting] = React.useState(false);
   const [darkMode, setDarkMode] = React.useState(() => {
     return document.documentElement.classList.contains('dark');
   });
+
+  const handleRestartOnboarding = async () => {
+    const ok = window.confirm(language === 'ar'
+      ? 'هل تريد تشغيل معالج الإعداد مرة أخرى؟'
+      : 'Run the setup wizard again?');
+    if (!ok) return;
+    setResetting(true);
+    try {
+      await tenantAPI.resetOnboarding();
+      navigate('/admin/onboarding');
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || (language === 'ar' ? 'تعذر تشغيل المعالج' : 'Failed to start wizard'));
+    } finally {
+      setResetting(false);
+    }
+  };
 
   const toggleDarkMode = () => {
     document.documentElement.classList.toggle('dark');
@@ -139,6 +163,35 @@ export const SettingsPage = () => {
             </div>
           </CardContent>
         </Card>
+
+        {/* Onboarding restart — admin only */}
+        {isAdmin && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Sparkles className="w-5 h-5 text-primary" />
+                {language === 'ar' ? 'معالج إعداد الأكاديمية' : 'Setup Wizard'}
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="font-medium">
+                    {language === 'ar' ? 'تشغيل المعالج مرة أخرى' : 'Restart setup wizard'}
+                  </p>
+                  <p className="text-sm text-muted-foreground">
+                    {language === 'ar'
+                      ? 'يساعدك على ضبط الهوية والفرع والمدرب الأول.'
+                      : 'Helps you re-configure branding, branch, and first coach.'}
+                  </p>
+                </div>
+                <Button variant="outline" onClick={handleRestartOnboarding} disabled={resetting} data-testid="restart-onboarding-btn">
+                  {language === 'ar' ? 'تشغيل المعالج' : 'Run wizard'}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {/* About */}
         <Card>

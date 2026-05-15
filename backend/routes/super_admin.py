@@ -305,6 +305,7 @@ async def create_tenant(payload: TenantCreate, _=Depends(_require_super)):
         "subscription_end_at": end_at.isoformat(),
         "auto_suspend_on_expiry": bool(payload.auto_suspend_on_expiry if payload.auto_suspend_on_expiry is not None else True),
         "renewal_history": [],
+        "onboarding_completed_at": None,
     }
     await control_db.tenants.insert_one(doc)
 

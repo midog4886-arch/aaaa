@@ -8189,9 +8189,10 @@ async def create_default_admin():
     import asyncio
     async def _init():
         try:
-            from control_db import ensure_default_tenant, backfill_billing_fields, auto_suspend_expired
+            from control_db import ensure_default_tenant, backfill_billing_fields, backfill_onboarding_completed, auto_suspend_expired
             await ensure_default_tenant()
             await backfill_billing_fields()
+            await backfill_onboarding_completed()
             n = await auto_suspend_expired()
             if n:
                 print(f"Auto-suspended {n} expired tenants on startup")
