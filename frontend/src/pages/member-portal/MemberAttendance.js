@@ -10,7 +10,7 @@ import {
   ResponsiveContainer, Cell
 } from 'recharts';
 import MemberLayout, { memberAPI, getDarkMode, getLanguage } from './MemberLayout';
-import { getPrimaryColor } from '../../services/branding';
+import { useBrandColor } from '../../services/branding';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -331,12 +331,7 @@ const MemberAttendance = () => {
   const pickerRef = useRef(null);
   const darkMode = getDarkMode();
   const language = getLanguage();
-  const [primary, setPrimary] = useState(getPrimaryColor());
-  useEffect(() => {
-    const onUpdate = () => setPrimary(getPrimaryColor());
-    window.addEventListener('branding:updated', onUpdate);
-    return () => window.removeEventListener('branding:updated', onUpdate);
-  }, []);
+  const primary = useBrandColor();
 
   const isCurrentMonth = viewYear === today.getFullYear() && viewMonth === (today.getMonth() + 1);
 

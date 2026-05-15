@@ -5,7 +5,7 @@ import {
   Mail, Send, CheckCheck
 } from 'lucide-react';
 import MemberLayout, { memberAPI, getLanguage } from './MemberLayout';
-import { getPrimaryColor } from '../../services/branding';
+import { useBrandColor } from '../../services/branding';
 
 const getInitials = (name) => {
   const trimmed = (name || '').trim();
@@ -54,12 +54,7 @@ const MemberNotifications = () => {
   const location = useLocation();
   const language = getLanguage();
   const t = (ar, en) => (language === 'ar' ? ar : en);
-  const [primary, setPrimary] = useState(getPrimaryColor());
-  useEffect(() => {
-    const onUpdate = () => setPrimary(getPrimaryColor());
-    window.addEventListener('branding:updated', onUpdate);
-    return () => window.removeEventListener('branding:updated', onUpdate);
-  }, []);
+  const primary = useBrandColor();
 
   const params = new URLSearchParams(location.search);
   const tabFromQuery = params.get('tab');

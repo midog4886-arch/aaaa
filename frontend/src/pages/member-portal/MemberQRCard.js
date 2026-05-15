@@ -8,7 +8,7 @@ import {
 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import MemberLayout, { memberAPI, getMemberData, getDarkMode, getLanguage } from './MemberLayout';
-import { getPrimaryColor } from '../../services/branding';
+import { getPrimaryColor, useBrandColor } from '../../services/branding';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -290,12 +290,7 @@ const MemberCard = () => {
   const darkMode = getDarkMode();
   const language = getLanguage();
   const today = new Date().toISOString().slice(0, 10);
-  const [primary, setPrimary] = useState(getPrimaryColor());
-  useEffect(() => {
-    const onUpdate = () => setPrimary(getPrimaryColor());
-    window.addEventListener('branding:updated', onUpdate);
-    return () => window.removeEventListener('branding:updated', onUpdate);
-  }, []);
+  const primary = useBrandColor();
 
   useEffect(() => { fetchCardData(); }, []);
 

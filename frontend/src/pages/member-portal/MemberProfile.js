@@ -13,7 +13,7 @@ import {
 } from '../../components/ui/dialog';
 import { Textarea } from '../../components/ui/textarea';
 import MemberLayout, { memberAPI, getDarkMode, getLanguage, getMemberData } from './MemberLayout';
-import { getPrimaryColor } from '../../services/branding';
+import { useBrandColor } from '../../services/branding';
 import {
   compressImageFile,
   estimateDataUrlBytes,
@@ -46,12 +46,7 @@ const MemberProfile = () => {
   const language = getLanguage();
   const darkMode = getDarkMode();
   const t = (ar, en) => (language === 'ar' ? ar : en);
-  const [primary, setPrimary] = useState(getPrimaryColor());
-  useEffect(() => {
-    const onUpdate = () => setPrimary(getPrimaryColor());
-    window.addEventListener('branding:updated', onUpdate);
-    return () => window.removeEventListener('branding:updated', onUpdate);
-  }, []);
+  const primary = useBrandColor();
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);

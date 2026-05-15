@@ -7,7 +7,7 @@ import { Progress } from '../../components/ui/progress';
 import { Textarea } from '../../components/ui/textarea';
 import { Input } from '../../components/ui/input';
 import MemberLayout, { memberAPI, getMemberData, getLanguage, getDarkMode } from './MemberLayout';
-import { getPrimaryColor } from '../../services/branding';
+import { useBrandColor } from '../../services/branding';
 import { 
   Trophy, Gift, Star, Crown, Medal, Target, Percent, Package,
   Clock, CheckCircle, Copy, Users, TrendingUp, Coins, History, UserPlus
@@ -31,12 +31,7 @@ const MemberLoyalty = () => {
   const member = getMemberData();
   const language = getLanguage();
   const darkMode = getDarkMode();
-  const [primary, setPrimary] = useState(getPrimaryColor());
-  useEffect(() => {
-    const onUpdate = () => setPrimary(getPrimaryColor());
-    window.addEventListener('branding:updated', onUpdate);
-    return () => window.removeEventListener('branding:updated', onUpdate);
-  }, []);
+  const primary = useBrandColor();
 
   const t = (ar, en) => language === 'ar' ? ar : en;
 

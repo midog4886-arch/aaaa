@@ -8,7 +8,7 @@ import { Phone, LogIn, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import axios from 'axios';
 import API_URL from '../../config/api';
-import { getAcademyLogoUrl, getPrimaryColor, loadBranding } from '../../services/branding';
+import { getAcademyLogoUrl, loadBranding, useBrandColor } from '../../services/branding';
 
 // Default member-portal logo if no tenant branding logo is set
 const DEFAULT_LOGO = "/logo-new.png";
@@ -145,7 +145,7 @@ const MemberLogin = () => {
   const [showSplash, setShowSplash] = useState(true);
   const [formVisible, setFormVisible] = useState(false);
   const [logo, setLogo] = useState(resolveAcademyLogo());
-  const [primary, setPrimary] = useState(getPrimaryColor());
+  const primary = useBrandColor();
 
   useEffect(() => {
     // Check if already logged in
@@ -155,17 +155,15 @@ const MemberLogin = () => {
     }
   }, [navigate]);
 
-  // Pull tenant branding (logo + primary color) and react to updates
+  // Pull tenant branding (logo) and react to updates
   useEffect(() => {
     let cancelled = false;
     loadBranding().then(() => {
       if (cancelled) return;
       setLogo(resolveAcademyLogo());
-      setPrimary(getPrimaryColor());
     }).catch(() => {});
     const onUpdate = () => {
       setLogo(resolveAcademyLogo());
-      setPrimary(getPrimaryColor());
     };
     window.addEventListener('branding:updated', onUpdate);
     return () => {

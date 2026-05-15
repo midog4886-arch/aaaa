@@ -4,7 +4,7 @@ import { Button } from '../../components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../../components/ui/dialog';
 import { FileText, Download, Eye, Loader2, Receipt, Calendar, Clock, CheckCircle, XCircle, Printer, ClipboardList } from 'lucide-react';
 import MemberLayout, { memberAPI, getDarkMode } from './MemberLayout';
-import { getPrimaryColor } from '../../services/branding';
+import { useBrandColor } from '../../services/branding';
 import jsPDF from 'jspdf';
 
 const MemberInvoices = () => {
@@ -14,13 +14,8 @@ const MemberInvoices = () => {
   const [selectedItem, setSelectedItem] = useState(null);
   const [viewDialogOpen, setViewDialogOpen] = useState(false);
   const [activeTab, setActiveTab] = useState('all');
-  const [primary, setPrimary] = useState(getPrimaryColor());
+  const primary = useBrandColor();
   const darkMode = getDarkMode();
-  useEffect(() => {
-    const onUpdate = () => setPrimary(getPrimaryColor());
-    window.addEventListener('branding:updated', onUpdate);
-    return () => window.removeEventListener('branding:updated', onUpdate);
-  }, []);
 
   useEffect(() => {
     fetchData();
