@@ -1,3 +1,5 @@
+import logging
+import uuid
 from datetime import datetime, timezone
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -6,6 +8,9 @@ from utils.tenant import get_current_tenant, get_current_tenant_slug, DEFAULT_TE
 from utils.auth import get_current_user
 from middleware.tenant import _slug_from_host
 from control_db import control_db
+from database import db
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/tenant", tags=["branding"])
 
@@ -130,14 +135,52 @@ async def onboarding_status(current_user: dict = Depends(get_current_user)):
     }
 
 
+async def _create_welcome_notification(slug: str, tenant_name: str) -> None:
+    try:
+        academy = (tenant_name or "").strip() or "أكاديميتك"
+        title = "مرحباً بك في أكاديميتك الجديدة"
+        message = (
+            f"تم إعداد {academy} بنجاح. الخطوات التالية المقترحة: "
+            "إضافة الأعضاء، إعداد الأنشطة وجداول التدريب، ودعوة باقي طاقم العمل."
+        )
+        await db.notifications.update_one(
+            {"tag": "onboarding-welcome"},
+            {
+                "$setOnInsert": {
+                    "id": str(uuid.uuid4()),
+                    "title": title,
+                    "message": message,
+                    "type": "success",
+                    "link": "/admin/dashboard",
+                    "branch_id": None,
+                    "tag": "onboarding-welcome",
+                    "is_read": False,
+                    "created_at": datetime.now(timezone.utc).isoformat(),
+                }
+            },
+            upsert=True,
+        )
+    except Exception as exc:
+        logger.warning(f"welcome notification failed for {slug}: {exc}")
+
+
 @router.post("/onboarding-complete")
 async def onboarding_complete(current_user: dict = Depends(get_current_user)):
     slug = _require_tenant_admin(current_user)
     now_iso = datetime.now(timezone.utc).isoformat()
-    await control_db.tenants.update_one(
-        {"slug": slug}, {"$set": {"onboarding_completed_at": now_iso}}
+    result = await control_db.tenants.find_one_and_update(
+        {"slug": slug, "onboarding_completed_at": {"$in": [None, ""]}},
+        {"$set": {"onboarding_completed_at": now_iso}},
+        return_document=True,
     )
-    return {"completed": True, "completed_at": now_iso}
+    if result:
+        await _create_welcome_notification(slug, result.get("name", ""))
+        return {"completed": True, "completed_at": now_iso}
+    tenant = await control_db.tenants.find_one({"slug": slug}, {"_id": 0}) or {}
+    return {
+        "completed": True,
+        "completed_at": tenant.get("onboarding_completed_at") or now_iso,
+    }
 
 
 @router.post("/onboarding-reset")
