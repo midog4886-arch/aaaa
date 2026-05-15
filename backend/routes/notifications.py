@@ -249,6 +249,30 @@ async def check_subscription_renewals(current_user: dict = Depends(get_current_u
                             "created_at": datetime.now(timezone.utc).isoformat()
                         })
                         notifications_created += 1
+                        # Best-effort push to admins so they hear about the
+                        # expiring subscription on their device, in their saved
+                        # language. Failures are swallowed so a push hiccup
+                        # doesn't break the in-app notification creation.
+                        try:
+                            from .push_notifications import send_push_to_admins, NotificationPayload
+                            await send_push_to_admins(
+                                NotificationPayload(
+                                    title=title_ar, body=message_ar,
+                                    title_en=title_en, body_en=message_en,
+                                    url=f"/admin/members?search={member.get('name_ar', '')}",
+                                    tag=f"renewal-{member['id']}-{activity.get('activity_id')}-{end_date}",
+                                    data={
+                                        "type": "renewal_reminder",
+                                        "member_id": member["id"],
+                                        "activity_id": activity.get("activity_id"),
+                                        "end_date": end_date,
+                                    },
+                                ),
+                                branch_id=branch_id,
+                            )
+                        except Exception:
+                            import logging
+                            logging.getLogger(__name__).exception("renewal-reminder push failed")
     
     return {"message": f"Created {notifications_created} renewal notifications"}
 
