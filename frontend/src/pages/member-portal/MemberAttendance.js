@@ -10,6 +10,7 @@ import {
   ResponsiveContainer, Cell
 } from 'recharts';
 import MemberLayout, { memberAPI, getDarkMode, getLanguage } from './MemberLayout';
+import { getPrimaryColor } from '../../services/branding';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -320,6 +321,12 @@ const MemberAttendance = () => {
   const pickerRef = useRef(null);
   const darkMode = getDarkMode();
   const language = getLanguage();
+  const [primary, setPrimary] = useState(getPrimaryColor());
+  useEffect(() => {
+    const onUpdate = () => setPrimary(getPrimaryColor());
+    window.addEventListener('branding:updated', onUpdate);
+    return () => window.removeEventListener('branding:updated', onUpdate);
+  }, []);
 
   const isCurrentMonth = viewYear === today.getFullYear() && viewMonth === (today.getMonth() + 1);
 
@@ -580,19 +587,22 @@ const MemberAttendance = () => {
           </Card>
 
           {/* Total */}
-          <Card className="bg-gradient-to-br from-orange-500 to-amber-600 text-white border-0">
+          <Card
+            className={`text-white border-0 ${primary ? '' : 'bg-gradient-to-br from-orange-500 to-amber-600'}`}
+            style={primary ? { background: primary } : undefined}
+          >
             <CardContent className="p-5">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-orange-100 text-sm">{language === 'ar' ? 'إجمالي الحضور' : 'Total Sessions'}</p>
+                  <p className="text-white/80 text-sm">{language === 'ar' ? 'إجمالي الحضور' : 'Total Sessions'}</p>
                   <p className="text-4xl font-black mt-1">{stats?.total || 0}</p>
-                  <p className="text-orange-100 text-sm mt-1">{language === 'ar' ? 'حصة' : 'sessions'}</p>
+                  <p className="text-white/80 text-sm mt-1">{language === 'ar' ? 'حصة' : 'sessions'}</p>
                 </div>
                 <div className="w-14 h-14 bg-white/20 rounded-full flex items-center justify-center">
                   <Award className="w-7 h-7" />
                 </div>
               </div>
-              <p className="text-orange-100 text-xs mt-3">{language === 'ar' ? 'منذ الاشتراك' : 'since joining'}</p>
+              <p className="text-white/80 text-xs mt-3">{language === 'ar' ? 'منذ الاشتراك' : 'since joining'}</p>
             </CardContent>
           </Card>
         </div>
@@ -655,7 +665,10 @@ const MemberAttendance = () => {
             <CardContent className="pt-0 flex flex-col items-center justify-center pb-5 min-h-[140px]">
               {bestWeek ? (
                 <>
-                  <div className="w-20 h-20 bg-gradient-to-br from-amber-400 to-yellow-600 rounded-full flex items-center justify-center shadow-lg shadow-amber-400/30 mb-3">
+                  <div
+                    className={`w-20 h-20 rounded-full flex items-center justify-center shadow-lg mb-3 ${primary ? '' : 'bg-gradient-to-br from-amber-400 to-yellow-600 shadow-amber-400/30'}`}
+                    style={primary ? { background: primary } : undefined}
+                  >
                     <span className="text-3xl font-black text-gray-900">{bestWeek.count}</span>
                   </div>
                   <p className={`text-sm font-bold ${darkMode ? 'text-white' : 'text-gray-800'}`}>

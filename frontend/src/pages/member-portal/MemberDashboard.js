@@ -422,8 +422,8 @@ const MemberDashboard = () => {
 
   const quickLinks = [
     { to: '/subscriptions',   icon: CreditCard, label: language === 'ar' ? 'اشتراكاتي'       : 'My Subs',   color: 'bg-gray-900' },
-    { to: '/member-schedule', icon: Calendar,   label: language === 'ar' ? 'جدول التدريبات'  : 'Schedule',  color: 'bg-amber-600' },
-    { to: '/card',            icon: QrCode,     label: language === 'ar' ? 'بطاقة العضوية'   : 'My Card',   color: 'bg-yellow-600' },
+    { to: '/member-schedule', icon: Calendar,   label: language === 'ar' ? 'جدول التدريبات'  : 'Schedule',  color: 'bg-amber-600', useBrand: true },
+    { to: '/card',            icon: QrCode,     label: language === 'ar' ? 'بطاقة العضوية'   : 'My Card',   color: 'bg-yellow-600', useBrand: true },
   ];
 
   // last attendance from recent list
@@ -481,7 +481,7 @@ const MemberDashboard = () => {
                     <h1 className="text-lg sm:text-xl font-bold truncate">
                       {language === 'ar' ? `مرحباً ${member?.name_ar || member?.name}` : `Hello, ${member?.name || member?.name_ar}`}
                     </h1>
-                    <p className="text-gray-400 text-sm">{language === 'ar' ? 'رقم العضوية' : 'Member ID'}: <span className="text-amber-400 font-bold">#{member?.member_code}</span></p>
+                    <p className="text-gray-400 text-sm">{language === 'ar' ? 'رقم العضوية' : 'Member ID'}: <span className="font-bold" style={primary ? { color: primary } : { color: '#fbbf24' }}>#{member?.member_code}</span></p>
                   </div>
                 </div>
 
@@ -691,7 +691,7 @@ const MemberDashboard = () => {
                     <CheckCircle className="w-4 h-4 text-green-600" />
                     {language === 'ar' ? 'اشتراكاتي السارية' : 'Active Subscriptions'}
                   </CardTitle>
-                  <Link to="/subscriptions" className="text-amber-600 text-xs flex items-center gap-1">
+                  <Link to="/subscriptions" className="text-xs flex items-center gap-1" style={primary ? { color: primary } : { color: '#d97706' }}>
                     {language === 'ar' ? 'عرض الكل' : 'View all'} <ChevronLeft className="w-3 h-3" />
                   </Link>
                 </CardHeader>
@@ -832,18 +832,24 @@ const MemberDashboard = () => {
           {/* ── Quick Links ── */}
           <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }}>
             <div className="grid grid-cols-3 gap-3">
-              {quickLinks.map((link) => (
-                <Link key={link.to} to={link.to}>
-                  <Card className={`hover:shadow-lg transition-shadow cursor-pointer h-full ${darkMode ? 'bg-gray-800 border-gray-700' : ''}`}>
-                    <CardContent className="p-4 text-center">
-                      <div className={`w-11 h-11 ${link.color} rounded-full flex items-center justify-center mx-auto mb-2.5 shadow-sm`}>
-                        <link.icon className="w-5 h-5 text-white" />
-                      </div>
-                      <p className={`text-xs font-medium ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>{link.label}</p>
-                    </CardContent>
-                  </Card>
-                </Link>
-              ))}
+              {quickLinks.map((link) => {
+                const useBrand = link.useBrand && primary;
+                return (
+                  <Link key={link.to} to={link.to}>
+                    <Card className={`hover:shadow-lg transition-shadow cursor-pointer h-full ${darkMode ? 'bg-gray-800 border-gray-700' : ''}`}>
+                      <CardContent className="p-4 text-center">
+                        <div
+                          className={`w-11 h-11 rounded-full flex items-center justify-center mx-auto mb-2.5 shadow-sm ${useBrand ? '' : link.color}`}
+                          style={useBrand ? { backgroundColor: primary } : undefined}
+                        >
+                          <link.icon className="w-5 h-5 text-white" />
+                        </div>
+                        <p className={`text-xs font-medium ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>{link.label}</p>
+                      </CardContent>
+                    </Card>
+                  </Link>
+                );
+              })}
             </div>
           </motion.div>
 
@@ -859,7 +865,7 @@ const MemberDashboard = () => {
                     <Bell className="w-4 h-4 text-orange-600" />
                     {language === 'ar' ? 'آخر الإشعارات' : 'Recent Notifications'}
                   </CardTitle>
-                  <Link to="/notifications" className="text-amber-600 text-xs flex items-center gap-1">
+                  <Link to="/notifications" className="text-xs flex items-center gap-1" style={primary ? { color: primary } : { color: '#d97706' }}>
                     {language === 'ar' ? 'عرض الكل' : 'View all'} <ChevronLeft className="w-3 h-3" />
                   </Link>
                 </CardHeader>

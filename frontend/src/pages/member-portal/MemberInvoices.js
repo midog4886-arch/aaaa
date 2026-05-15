@@ -4,6 +4,7 @@ import { Button } from '../../components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../../components/ui/dialog';
 import { FileText, Download, Eye, Loader2, Receipt, Calendar, Clock, CheckCircle, XCircle, Printer, ClipboardList } from 'lucide-react';
 import MemberLayout, { memberAPI, getDarkMode } from './MemberLayout';
+import { getPrimaryColor } from '../../services/branding';
 import jsPDF from 'jspdf';
 
 const MemberInvoices = () => {
@@ -13,7 +14,13 @@ const MemberInvoices = () => {
   const [selectedItem, setSelectedItem] = useState(null);
   const [viewDialogOpen, setViewDialogOpen] = useState(false);
   const [activeTab, setActiveTab] = useState('all');
+  const [primary, setPrimary] = useState(getPrimaryColor());
   const darkMode = getDarkMode();
+  useEffect(() => {
+    const onUpdate = () => setPrimary(getPrimaryColor());
+    window.addEventListener('branding:updated', onUpdate);
+    return () => window.removeEventListener('branding:updated', onUpdate);
+  }, []);
 
   useEffect(() => {
     fetchData();
@@ -504,7 +511,8 @@ const MemberInvoices = () => {
                               <Button 
                                 size="sm" 
                                 onClick={() => handlePrintForm(item)}
-                                className="gap-1 bg-orange-600 hover:bg-orange-700"
+                                className={`gap-1 text-white ${primary ? 'hover:opacity-90' : 'bg-orange-600 hover:bg-orange-700'}`}
+                                style={primary ? { backgroundColor: primary } : undefined}
                               >
                                 <Printer className="w-4 h-4" />
                                 طباعة
@@ -642,7 +650,8 @@ const MemberInvoices = () => {
               <div className="flex gap-2">
                 {selectedItem.type === 'form' ? (
                   <Button 
-                    className="flex-1 gap-2 bg-orange-600 hover:bg-orange-700"
+                    className={`flex-1 gap-2 text-white ${primary ? 'hover:opacity-90' : 'bg-orange-600 hover:bg-orange-700'}`}
+                    style={primary ? { backgroundColor: primary } : undefined}
                     onClick={() => handlePrintForm(selectedItem)}
                   >
                     <Printer className="w-4 h-4" />
