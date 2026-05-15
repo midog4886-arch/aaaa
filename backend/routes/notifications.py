@@ -19,7 +19,25 @@ router = APIRouter(prefix="/notifications", tags=["notifications"])
 # as ``minute=0`` for backwards compatibility.
 _DAILY_CHECKS_DEFAULT_HOUR = 7
 _DAILY_CHECKS_DEFAULT_MINUTE = 0
+_DAILY_CHECKS_DEFAULT_DAYS = [0, 1, 2, 3, 4, 5, 6]
 _DAILY_CHECKS_SETTINGS_KEY = "daily_checks"
+
+
+def _normalize_days(raw) -> list:
+    if not isinstance(raw, list):
+        return list(_DAILY_CHECKS_DEFAULT_DAYS)
+    cleaned = []
+    for v in raw:
+        try:
+            n = int(v)
+        except (TypeError, ValueError):
+            continue
+        if 0 <= n <= 6 and n not in cleaned:
+            cleaned.append(n)
+    if not cleaned:
+        return list(_DAILY_CHECKS_DEFAULT_DAYS)
+    cleaned.sort()
+    return cleaned
 
 
 async def get_daily_checks_hour() -> int:
@@ -66,20 +84,36 @@ async def get_daily_checks_time() -> tuple:
     return hour, minute
 
 
+async def get_daily_checks_days() -> list:
+    try:
+        doc = await db.notifications_settings.find_one(
+            {"key": _DAILY_CHECKS_SETTINGS_KEY}, {"_id": 0}
+        )
+    except Exception:
+        return list(_DAILY_CHECKS_DEFAULT_DAYS)
+    if not doc or "days_of_week" not in doc:
+        return list(_DAILY_CHECKS_DEFAULT_DAYS)
+    return _normalize_days(doc.get("days_of_week"))
+
+
 class DailyChecksSettings(BaseModel):
     hour: int
     minute: Optional[int] = 0
+    days_of_week: Optional[List[int]] = None
 
 
 @router.get("/daily-checks-settings")
 async def get_daily_checks_settings(current_user: dict = Depends(get_current_user)):
     """Return the configured daily-checks hour & minute (Asia/Riyadh)."""
     hour, minute = await get_daily_checks_time()
+    days = await get_daily_checks_days()
     return {
         "hour": hour,
         "minute": minute,
+        "days_of_week": days,
         "default_hour": _DAILY_CHECKS_DEFAULT_HOUR,
         "default_minute": _DAILY_CHECKS_DEFAULT_MINUTE,
+        "default_days_of_week": list(_DAILY_CHECKS_DEFAULT_DAYS),
         "timezone": "Asia/Riyadh",
     }
 
@@ -100,11 +134,21 @@ async def update_daily_checks_settings(
     minute = payload.minute if payload.minute is not None else 0
     if not isinstance(minute, int) or minute < 0 or minute > 59:
         raise HTTPException(status_code=400, detail="minute must be an integer between 0 and 59")
+    if payload.days_of_week is None:
+        days = await get_daily_checks_days()
+    else:
+        if not isinstance(payload.days_of_week, list) or len(payload.days_of_week) == 0:
+            raise HTTPException(status_code=400, detail="days_of_week must be a non-empty list of integers 0-6")
+        for v in payload.days_of_week:
+            if not isinstance(v, int) or v < 0 or v > 6:
+                raise HTTPException(status_code=400, detail="days_of_week values must be integers between 0 (Sunday) and 6 (Saturday)")
+        days = _normalize_days(payload.days_of_week)
     await db.notifications_settings.update_one(
         {"key": _DAILY_CHECKS_SETTINGS_KEY},
         {"$set": {
             "hour": hour,
             "minute": minute,
+            "days_of_week": days,
             "updated_at": datetime.now(timezone.utc).isoformat(),
         }},
         upsert=True,
@@ -112,8 +156,10 @@ async def update_daily_checks_settings(
     return {
         "hour": hour,
         "minute": minute,
+        "days_of_week": days,
         "default_hour": _DAILY_CHECKS_DEFAULT_HOUR,
         "default_minute": _DAILY_CHECKS_DEFAULT_MINUTE,
+        "default_days_of_week": list(_DAILY_CHECKS_DEFAULT_DAYS),
         "timezone": "Asia/Riyadh",
     }
 

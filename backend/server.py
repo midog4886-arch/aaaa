@@ -3183,6 +3183,15 @@ async def _resolve_daily_checks_time() -> tuple:
         return _DAILY_CHECKS_HOUR_RIYADH, 0
 
 
+async def _resolve_daily_checks_days() -> list:
+    try:
+        from routes.notifications import get_daily_checks_days
+        return await get_daily_checks_days()
+    except Exception as e:
+        print(f"Daily checks scheduler: failed to read configured days ({e}), using all days")
+        return [0, 1, 2, 3, 4, 5, 6]
+
+
 async def daily_checks_scheduler_loop():
     global _daily_checks_scheduler_started
     _daily_checks_scheduler_started = True
@@ -3197,16 +3206,23 @@ async def daily_checks_scheduler_loop():
             # the setting takes effect on the next scheduled run without a
             # restart.
             hour, minute = await _resolve_daily_checks_time()
+            allowed_days = await _resolve_daily_checks_days()
+            allowed_set = set(allowed_days) if allowed_days else {0, 1, 2, 3, 4, 5, 6}
             now = datetime.now(_RIYADH_TZ)
             next_run = now.replace(
                 hour=hour, minute=minute, second=0, microsecond=0
             )
             if next_run <= now:
                 next_run += timedelta(days=1)
+            for _ in range(7):
+                if (next_run.isoweekday() % 7) in allowed_set:
+                    break
+                next_run += timedelta(days=1)
             wait_seconds = (next_run - now).total_seconds()
             print(
                 f"Daily checks scheduler: next run in {wait_seconds:.0f}s "
-                f"at {next_run.isoformat()} (time={hour:02d}:{minute:02d})"
+                f"at {next_run.isoformat()} (time={hour:02d}:{minute:02d}, "
+                f"days={sorted(allowed_set)})"
             )
             await asyncio.sleep(wait_seconds)
             await _run_daily_renewal_and_ads_checks()

@@ -34,6 +34,8 @@ export const SettingsPage = () => {
   const [dailyChecksMinute, setDailyChecksMinute] = React.useState(0);
   const [dailyChecksDefault, setDailyChecksDefault] = React.useState(7);
   const [dailyChecksDefaultMinute, setDailyChecksDefaultMinute] = React.useState(0);
+  const [dailyChecksDays, setDailyChecksDays] = React.useState([0, 1, 2, 3, 4, 5, 6]);
+  const [dailyChecksDefaultDays, setDailyChecksDefaultDays] = React.useState([0, 1, 2, 3, 4, 5, 6]);
   const [dailyChecksLoading, setDailyChecksLoading] = React.useState(false);
   const [dailyChecksSaving, setDailyChecksSaving] = React.useState(false);
   const [dailyChecksStatus, setDailyChecksStatus] = React.useState(null);
@@ -60,6 +62,8 @@ export const SettingsPage = () => {
         if (typeof data.minute === 'number') setDailyChecksMinute(data.minute);
         if (typeof data.default_hour === 'number') setDailyChecksDefault(data.default_hour);
         if (typeof data.default_minute === 'number') setDailyChecksDefaultMinute(data.default_minute);
+        if (Array.isArray(data.days_of_week)) setDailyChecksDays(data.days_of_week);
+        if (Array.isArray(data.default_days_of_week)) setDailyChecksDefaultDays(data.default_days_of_week);
       })
       .catch(() => { /* keep defaults */ })
       .finally(() => { if (!cancelled) setDailyChecksLoading(false); });
@@ -106,15 +110,16 @@ export const SettingsPage = () => {
     }
   };
 
-  const handleSaveDailyChecksTime = async (nextHour, nextMinute) => {
+  const handleSaveDailyChecksTime = async (nextHour, nextMinute, nextDays = null) => {
     setDailyChecksSaving(true);
     try {
-      const res = await notificationsSettingsAPI.updateDailyChecks(nextHour, nextMinute);
+      const res = await notificationsSettingsAPI.updateDailyChecks(nextHour, nextMinute, nextDays);
       if (typeof res?.data?.hour === 'number') setDailyChecksHour(res.data.hour);
       if (typeof res?.data?.minute === 'number') setDailyChecksMinute(res.data.minute);
+      if (Array.isArray(res?.data?.days_of_week)) setDailyChecksDays(res.data.days_of_week);
       toast.success(language === 'ar'
-        ? 'تم حفظ وقت التنبيهات اليومية'
-        : 'Daily alerts time saved');
+        ? 'تم حفظ إعدادات التنبيهات اليومية'
+        : 'Daily alerts settings saved');
     } catch (e) {
       toast.error(e?.response?.data?.detail || (language === 'ar'
         ? 'تعذر حفظ الإعداد'
@@ -123,6 +128,25 @@ export const SettingsPage = () => {
       setDailyChecksSaving(false);
     }
   };
+
+  const toggleDailyCheckDay = (dayIndex) => {
+    const isOn = dailyChecksDays.includes(dayIndex);
+    const next = isOn
+      ? dailyChecksDays.filter((d) => d !== dayIndex)
+      : [...dailyChecksDays, dayIndex].sort((a, b) => a - b);
+    if (next.length === 0) {
+      toast.error(language === 'ar'
+        ? 'يجب اختيار يوم واحد على الأقل'
+        : 'Pick at least one day');
+      return;
+    }
+    setDailyChecksDays(next);
+    handleSaveDailyChecksTime(dailyChecksHour, dailyChecksMinute, next);
+  };
+
+  const dayLabels = language === 'ar'
+    ? ['الأحد', 'الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت']
+    : ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
   const formatTime = (h, m = 0) => {
     const hh = String(h).padStart(2, '0');
@@ -288,8 +312,8 @@ export const SettingsPage = () => {
                   </p>
                   <p className="text-sm text-muted-foreground">
                     {language === 'ar'
-                      ? `يتم تنفيذ الفحص يومياً بتوقيت الرياض (الافتراضي ${formatTime(dailyChecksDefault, dailyChecksDefaultMinute)}).`
-                      : `Runs daily in Asia/Riyadh time (default ${formatTime(dailyChecksDefault, dailyChecksDefaultMinute)}).`}
+                      ? `يتم تنفيذ الفحص بتوقيت الرياض (الافتراضي ${formatTime(dailyChecksDefault, dailyChecksDefaultMinute)} كل الأيام).`
+                      : `Runs in Asia/Riyadh time (default ${formatTime(dailyChecksDefault, dailyChecksDefaultMinute)} every day).`}
                   </p>
                 </div>
                 <div className="flex items-center gap-2">
@@ -318,6 +342,38 @@ export const SettingsPage = () => {
                     }}
                   />
                 </div>
+              </div>
+
+              <div className="mt-4" data-testid="daily-checks-days">
+                <p className="text-sm font-medium mb-2">
+                  {language === 'ar' ? 'أيام التشغيل' : 'Run on'}
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {dayLabels.map((label, idx) => {
+                    const active = dailyChecksDays.includes(idx);
+                    return (
+                      <button
+                        key={idx}
+                        type="button"
+                        data-testid={`daily-checks-day-${idx}`}
+                        onClick={() => toggleDailyCheckDay(idx)}
+                        disabled={dailyChecksLoading || dailyChecksSaving}
+                        className={`px-3 py-1.5 rounded-md border text-sm transition-colors ${
+                          active
+                            ? 'bg-primary text-primary-foreground border-primary'
+                            : 'bg-background text-foreground border-border hover:bg-muted'
+                        } ${(dailyChecksLoading || dailyChecksSaving) ? 'opacity-60 cursor-not-allowed' : ''}`}
+                      >
+                        {label}
+                      </button>
+                    );
+                  })}
+                </div>
+                <p className="text-xs text-muted-foreground mt-2">
+                  {language === 'ar'
+                    ? `الافتراضي: كل الأيام (${dailyChecksDefaultDays.length}/7).`
+                    : `Default: every day (${dailyChecksDefaultDays.length}/7).`}
+                </p>
               </div>
 
               {/* Last-run status + Run now */}
