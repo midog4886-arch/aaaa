@@ -240,6 +240,29 @@ async def create_closure(data: ClosureCreate, user=Depends(get_current_user)):
     }
     await db.closures.insert_one(closure)
     closure.pop("_id", None)
+
+    try:
+        from utils.audit import log_audit
+        await log_audit(
+            actor=user,
+            action="closure.create",
+            entity_type="closure",
+            entity_id=closure["id"],
+            entity_name=closure.get("title_ar", ""),
+            after={
+                "title_ar": closure.get("title_ar", ""),
+                "start_date": closure.get("start_date", ""),
+                "end_date": closure.get("end_date", ""),
+                "scope": closure.get("scope", "all"),
+                "branch_id": closure.get("branch_id", "all"),
+                "activity_names": closure.get("activity_names", []),
+                "activity_ids": closure.get("activity_ids", []),
+                "stop_type": closure.get("stop_type", "full_day"),
+            },
+        )
+    except Exception:
+        pass
+
     return closure
 
 @router.delete("/closures/{closure_id}")
@@ -251,6 +274,29 @@ async def delete_closure(closure_id: str, user=Depends(get_current_user)):
     if closure.get("applied"):
         raise HTTPException(status_code=400, detail="Cannot delete applied closure")
     await db.closures.delete_one({"id": closure_id})
+
+    try:
+        from utils.audit import log_audit
+        await log_audit(
+            actor=user,
+            action="closure.delete",
+            entity_type="closure",
+            entity_id=closure_id,
+            entity_name=closure.get("title_ar", ""),
+            before={
+                "title_ar": closure.get("title_ar", ""),
+                "start_date": closure.get("start_date", ""),
+                "end_date": closure.get("end_date", ""),
+                "scope": closure.get("scope", "all"),
+                "branch_id": closure.get("branch_id", "all"),
+                "activity_names": closure.get("activity_names", []),
+                "activity_ids": closure.get("activity_ids", []),
+                "stop_type": closure.get("stop_type", "full_day"),
+            },
+        )
+    except Exception:
+        pass
+
     return {"message": "Deleted"}
 
 @router.post("/apply")
