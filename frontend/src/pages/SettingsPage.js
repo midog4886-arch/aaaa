@@ -441,8 +441,9 @@ export const SettingsPage = () => {
     }
   }, []);
 
-  const PendingEmailRow = ({ language, role, email, expiresAt, onResent }) => {
+  const PendingEmailRow = ({ language, role, email, expiresAt, onResent, onCancelled }) => {
     const [busy, setBusy] = React.useState(false);
+    const [cancelBusy, setCancelBusy] = React.useState(false);
     const expiresTxt = expiresAt
       ? new Date(expiresAt).toLocaleString(language === 'ar' ? 'ar-SA' : 'en-GB')
       : '';
@@ -466,6 +467,24 @@ export const SettingsPage = () => {
         toast.error(e?.response?.data?.detail || (language === 'ar' ? 'تعذر إعادة الإرسال' : 'Failed to resend'));
       } finally {
         setBusy(false);
+      }
+    };
+    const onCancel = async () => {
+      const confirmMsg = language === 'ar'
+        ? 'هل تريد إلغاء طلب تأكيد البريد الجديد؟ سيبقى البريد الحالي كما هو.'
+        : 'Cancel the pending email confirmation? The current email will remain in place.';
+      if (typeof window !== 'undefined' && window.confirm && !window.confirm(confirmMsg)) return;
+      setCancelBusy(true);
+      try {
+        await billingAPI.cancelPendingEmail(role);
+        toast.success(language === 'ar'
+          ? 'تم إلغاء طلب تأكيد البريد.'
+          : 'Pending email confirmation cancelled.');
+        if (onCancelled) onCancelled();
+      } catch (e) {
+        toast.error(e?.response?.data?.detail || (language === 'ar' ? 'تعذر إلغاء الطلب' : 'Failed to cancel request'));
+      } finally {
+        setCancelBusy(false);
       }
     };
     return (
@@ -492,12 +511,24 @@ export const SettingsPage = () => {
           variant="outline"
           className="h-6 px-2 text-[11px] ms-auto"
           onClick={onResend}
-          disabled={busy}
+          disabled={busy || cancelBusy}
           data-testid={`billing-pending-${role}-resend-btn`}
         >
           {busy
             ? (language === 'ar' ? 'جارٍ الإرسال...' : 'Sending...')
             : (language === 'ar' ? 'إعادة إرسال التأكيد' : 'Resend confirmation')}
+        </Button>
+        <Button
+          size="sm"
+          variant="outline"
+          className="h-6 px-2 text-[11px] border-red-300 text-red-700 hover:bg-red-100"
+          onClick={onCancel}
+          disabled={busy || cancelBusy}
+          data-testid={`billing-pending-${role}-cancel-btn`}
+        >
+          {cancelBusy
+            ? (language === 'ar' ? 'جارٍ الإلغاء...' : 'Cancelling...')
+            : (language === 'ar' ? 'إلغاء طلب التأكيد' : 'Cancel confirmation')}
         </Button>
       </div>
     );
@@ -661,6 +692,11 @@ export const SettingsPage = () => {
                               ...prev,
                               pending_owner_email_expires_at: data?.expires_at || prev.pending_owner_email_expires_at,
                             } : prev)}
+                            onCancelled={() => setBilling((prev) => prev ? {
+                              ...prev,
+                              pending_owner_email: '',
+                              pending_owner_email_expires_at: '',
+                            } : prev)}
                           />
                         )}
                         <div className="flex flex-wrap gap-x-2">
@@ -676,6 +712,11 @@ export const SettingsPage = () => {
                             onResent={(data) => setBilling((prev) => prev ? {
                               ...prev,
                               pending_billing_email_expires_at: data?.expires_at || prev.pending_billing_email_expires_at,
+                            } : prev)}
+                            onCancelled={() => setBilling((prev) => prev ? {
+                              ...prev,
+                              pending_billing_email: '',
+                              pending_billing_email_expires_at: '',
                             } : prev)}
                           />
                         )}

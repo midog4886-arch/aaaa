@@ -716,6 +716,41 @@ async def resend_email_confirmation(
     }
 
 
+@router.delete("/contact/pending")
+async def cancel_pending_email_change(
+    role: str = "owner",
+    current_user: dict = Depends(get_current_user),
+):
+    """Cancel an in-flight email change so the field reverts to the confirmed value."""
+    if not current_user.get("is_admin", False):
+        raise HTTPException(status_code=403, detail="صلاحية مسؤول الأكاديمية مطلوبة")
+    role = (role or "owner").lower()
+    if role not in {"owner", "billing"}:
+        raise HTTPException(status_code=422, detail="role يجب أن يكون owner أو billing")
+
+    slug = get_current_tenant_slug() or DEFAULT_TENANT_SLUG
+    tenant = await control_db.tenants.find_one({"slug": slug}, {"_id": 0})
+    if not tenant:
+        raise HTTPException(status_code=404, detail="tenant not found")
+
+    pending = (tenant.get(f"pending_{role}_email") or "").strip()
+    if not pending:
+        raise HTTPException(status_code=404, detail="لا يوجد بريد قيد التأكيد")
+
+    unset_fields = {
+        f"pending_{role}_email": "",
+        f"pending_{role}_email_token": "",
+        f"pending_{role}_email_expires_at": "",
+        f"pending_{role}_email_requested_at": "",
+        f"pending_{role}_email_expired_notified_at": "",
+    }
+    await control_db.tenants.update_one(
+        {"id": tenant.get("id")},
+        {"$unset": unset_fields},
+    )
+    return {"ok": True, "role": role, "cancelled_email": pending}
+
+
 @router.get("/confirm-email", response_class=HTMLResponse)
 async def confirm_email_change(token: str):
     """Public endpoint hit from the confirmation email link.
