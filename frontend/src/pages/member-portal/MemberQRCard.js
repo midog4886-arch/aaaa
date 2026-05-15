@@ -87,7 +87,7 @@ const buildStickerHtml = (cardData, brand) => {
       .qr-section img { width: 100%; height: 100%; }
       .qr-dates { text-align: center; font-size: 8pt; color: #1f2937; margin-top: 1mm; line-height: 1.4; font-weight: 700; }
       .qr-dates span { display: block; }
-      .schedule-info { text-align: center; font-size: 6pt; color: ${_accent}; margin-top: 1mm; font-weight: 600; background: #FFF7ED; padding: 1mm; border-radius: 2mm; }
+      .schedule-info { text-align: center; font-size: 6pt; color: ${_accent}; margin-top: 1mm; font-weight: 600; background: ${/^#[0-9a-fA-F]{6}$/.test(_brand) ? `${_brand}1F` : '#FFF7ED'}; padding: 1mm; border-radius: 2mm; }
       .member-name { font-size: 10pt; font-weight: 700; color: #1f2937; margin-bottom: 1mm; }
       .info-row { display: flex; align-items: center; gap: 1mm; margin-bottom: 0.8mm; font-size: 7pt; }
       .info-label { color: #6b7280; font-size: 6pt; }
@@ -204,7 +204,10 @@ const buildStickerHtml = (cardData, brand) => {
 
 // ── Sub-components ────────────────────────────────────────────────────────────
 
-const SubscriptionCard = ({ act, darkMode, language, today }) => {
+const isHex6 = (c) => typeof c === 'string' && /^#[0-9a-fA-F]{6}$/.test(c);
+
+const SubscriptionCard = ({ act, darkMode, language, today, primary }) => {
+  const brandHex = isHex6(primary) ? primary : '';
   const totalDays = daysDiff(act.start_date, act.end_date);
   const remaining = Math.max(0, daysDiff(today, act.end_date));
   const progressPct = totalDays > 0
@@ -269,9 +272,12 @@ const SubscriptionCard = ({ act, darkMode, language, today }) => {
 
         {/* Schedule */}
         {act.schedule && (
-          <div className={`flex items-center gap-1.5 mt-1.5 px-2.5 py-1.5 rounded-lg ${darkMode ? 'bg-blue-900/30' : 'bg-blue-50'}`}>
-            <Clock className="w-3.5 h-3.5 text-blue-500 flex-shrink-0" />
-            <span className={`text-xs ${darkMode ? 'text-blue-300' : 'text-blue-600'}`}>{act.schedule}</span>
+          <div
+            className={`flex items-center gap-1.5 mt-1.5 px-2.5 py-1.5 rounded-lg ${brandHex ? '' : (darkMode ? 'bg-blue-900/30' : 'bg-blue-50')}`}
+            style={brandHex ? { backgroundColor: `${brandHex}${darkMode ? '40' : '1F'}` } : undefined}
+          >
+            <Clock className="w-3.5 h-3.5 flex-shrink-0" style={{ color: brandHex || (darkMode ? '#60A5FA' : '#3B82F6') }} />
+            <span className="text-xs" style={{ color: brandHex || (darkMode ? '#93C5FD' : '#2563EB') }}>{act.schedule}</span>
           </div>
         )}
       </div>
@@ -659,6 +665,7 @@ const MemberCard = () => {
                 darkMode={darkMode}
                 language={language}
                 today={today}
+                primary={primary}
               />
             ))}
           </div>
