@@ -3,7 +3,7 @@
  */
 
 import { CARD_WIDTH, CARD_HEIGHT, TOP_MARGIN, RIGHT_MARGIN, GAP, VAT_RATE, COMPANY_INFO, INVOICE_TERMS } from './constants';
-import { getAcademyLogoUrl } from '../../services/branding';
+import { getAcademyLogoUrl, getPrimaryColor } from '../../services/branding';
 
 /**
  * Generate QR data for member - Just the member code number
@@ -27,7 +27,11 @@ export const generateActivitiesHTML = (activities = []) => {
 /**
  * Get print CSS styles for member card
  */
-export const getCardPrintStyles = () => `
+export const getCardPrintStyles = () => {
+  const _brand = getPrimaryColor();
+  const _headerBg = _brand || 'linear-gradient(135deg, #F97316, #F59E0B)';
+  const _accent = _brand || '#F97316';
+  return `
   @import url('https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700&display=swap');
   @page { size: A4; margin: 0mm; }
   * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -37,7 +41,7 @@ export const getCardPrintStyles = () => `
   @media screen { .print-area { display: none; } }
   .sticker-preview { display: flex; gap: 15px; justify-content: center; margin-bottom: 20px; }
   .card { width: ${CARD_WIDTH}mm; height: ${CARD_HEIGHT}mm; background: white; border-radius: 4mm; overflow: hidden; box-shadow: 0 4px 15px rgba(0,0,0,0.1); display: flex; flex-direction: column; }
-  .card-header { background: linear-gradient(135deg, #F97316, #F59E0B); padding: 1.5mm 2mm; display: flex; justify-content: space-between; align-items: center; color: white; }
+  .card-header { background: ${_headerBg}; padding: 1.5mm 2mm; display: flex; justify-content: space-between; align-items: center; color: white; }
   .header-text h2 { font-size: 7pt; font-weight: 700; margin: 0; line-height: 1.3; }
   .header-text p { font-size: 5.5pt; opacity: 0.9; margin: 0; }
   .header-logo { width: 10mm; height: 10mm; border-radius: 50%; background: white; padding: 0.5mm; display: flex; align-items: center; justify-content: center; }
@@ -49,11 +53,11 @@ export const getCardPrintStyles = () => `
   .qr-section img { width: 100%; height: 100%; }
   .qr-dates { text-align: center; font-size: 8pt; color: #1f2937; margin-top: 1mm; line-height: 1.4; font-weight: 700; }
   .qr-dates span { display: block; }
-  .schedule-info { text-align: center; font-size: 6pt; color: #F97316; margin-top: 1mm; font-weight: 600; background: #FFF7ED; padding: 1mm; border-radius: 2mm; }
+  .schedule-info { text-align: center; font-size: 6pt; color: ${_accent}; margin-top: 1mm; font-weight: 600; background: #FFF7ED; padding: 1mm; border-radius: 2mm; }
   .member-name { font-size: 10pt; font-weight: 700; color: #1f2937; margin-bottom: 1mm; }
   .info-row { display: flex; align-items: center; gap: 1mm; margin-bottom: 0.8mm; font-size: 7pt; }
   .info-label { color: #6b7280; font-size: 6pt; }
-  .member-code { color: #F97316; font-weight: 700; font-size: 10pt; }
+  .member-code { color: ${_accent}; font-weight: 700; font-size: 10pt; }
   .activities { margin-top: 1mm; padding-top: 1mm; border-top: 1px dashed #e5e7eb; }
   .activities-label { font-size: 6pt; color: #6b7280; margin-bottom: 0.5mm; }
   .activity-item { padding: 1mm 1.5mm; margin-bottom: 0.5mm; border-radius: 1.5mm; font-size: 6pt; }
@@ -73,6 +77,7 @@ export const getCardPrintStyles = () => `
   .position-labels { display: flex; gap: 15px; justify-content: center; margin-top: 10px; }
   .position-label { padding: 8px 16px; background: #FEF3C7; border-radius: 8px; color: #92400E; font-size: 12px; }
 `;
+};
 
 /**
  * Generate member card HTML

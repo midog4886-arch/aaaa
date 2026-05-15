@@ -34,6 +34,9 @@ const remainingColor = (days) => {
 
 const buildStickerHtml = (cardData) => {
   const qrData = cardData?.member_code?.toString() || '';
+  const _brand = getPrimaryColor();
+  const _headerBg = _brand || 'linear-gradient(135deg, #F97316, #F59E0B)';
+  const _accent = _brand || '#F97316';
   const _allActs = cardData?.active_activities || [];
   const _parseEnd = (a) => {
     if (!a?.end_date) return 0;
@@ -72,7 +75,7 @@ const buildStickerHtml = (cardData) => {
       @media screen { .print-area { display: none; } }
       .sticker-preview { display: flex; gap: 15px; justify-content: center; margin-bottom: 20px; }
       .card { width: 90mm; height: 60mm; background: white; border-radius: 4mm; overflow: hidden; box-shadow: 0 4px 15px rgba(0,0,0,0.1); display: flex; flex-direction: column; }
-      .card-header { background: linear-gradient(135deg, #F97316, #F59E0B); padding: 1.5mm 2mm; display: flex; justify-content: space-between; align-items: center; color: white; }
+      .card-header { background: ${_headerBg}; padding: 1.5mm 2mm; display: flex; justify-content: space-between; align-items: center; color: white; }
       .header-text h2 { font-size: 7pt; font-weight: 700; margin: 0; line-height: 1.3; }
       .header-text p { font-size: 5.5pt; opacity: 0.9; margin: 0; }
       .header-logo { width: 10mm; height: 10mm; border-radius: 50%; background: white; padding: 0.5mm; display: flex; align-items: center; justify-content: center; }
@@ -84,11 +87,11 @@ const buildStickerHtml = (cardData) => {
       .qr-section img { width: 100%; height: 100%; }
       .qr-dates { text-align: center; font-size: 8pt; color: #1f2937; margin-top: 1mm; line-height: 1.4; font-weight: 700; }
       .qr-dates span { display: block; }
-      .schedule-info { text-align: center; font-size: 6pt; color: #F97316; margin-top: 1mm; font-weight: 600; background: #FFF7ED; padding: 1mm; border-radius: 2mm; }
+      .schedule-info { text-align: center; font-size: 6pt; color: ${_accent}; margin-top: 1mm; font-weight: 600; background: #FFF7ED; padding: 1mm; border-radius: 2mm; }
       .member-name { font-size: 10pt; font-weight: 700; color: #1f2937; margin-bottom: 1mm; }
       .info-row { display: flex; align-items: center; gap: 1mm; margin-bottom: 0.8mm; font-size: 7pt; }
       .info-label { color: #6b7280; font-size: 6pt; }
-      .member-code { color: #F97316; font-weight: 700; font-size: 10pt; }
+      .member-code { color: ${_accent}; font-weight: 700; font-size: 10pt; }
       .activities { margin-top: 1mm; padding-top: 1mm; border-top: 1px dashed #e5e7eb; }
       .activities-label { font-size: 6pt; color: #6b7280; margin-bottom: 0.5mm; }
       .activity-item { padding: 1mm 1.5mm; margin-bottom: 0.5mm; border-radius: 1.5mm; font-size: 6pt; }
@@ -485,7 +488,7 @@ const MemberCard = () => {
             </DialogHeader>
             <div className="py-4">
               <p className="text-center text-gray-600 mb-2 font-bold">{currentCard?.name_ar}</p>
-              <p className="text-center text-sm text-orange-600 mb-4 font-bold">#{currentCard?.member_code}</p>
+              <p className="text-center text-sm mb-4 font-bold" style={primary ? { color: primary } : { color: '#ea580c' }}>#{currentCard?.member_code}</p>
               <p className="text-center text-sm text-gray-500 mb-4">
                 {language === 'ar' ? 'سيتم طباعة كرت العضوية + شعار الأكاديمية معاً' : 'Print member card + academy logo together'}
               </p>
