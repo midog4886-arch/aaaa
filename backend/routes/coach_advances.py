@@ -152,6 +152,8 @@ async def create_advance(
             coach_id=data.coach_id,
             title="تم تسجيل سلفة",
             message=f"تم تسجيل سلفة بقيمة {float(data.amount):,.2f} ريال بتاريخ {data.advance_date}",
+            title_en="Advance recorded",
+            message_en=f"Advance of SAR {float(data.amount):,.2f} recorded on {data.advance_date}",
             notif_type="advance_recorded",
             link="/coach-advances",
             branch_id=branch_id,

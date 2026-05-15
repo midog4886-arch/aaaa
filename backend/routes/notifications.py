@@ -19,6 +19,8 @@ async def send_to_coach(
     link: Optional[str] = None,
     branch_id: Optional[str] = None,
     tag: Optional[str] = None,
+    title_en: Optional[str] = None,
+    message_en: Optional[str] = None,
 ) -> dict:
     """Notify a coach via in-app notification + push (FCM/Web Push).
 
@@ -36,10 +38,18 @@ async def send_to_coach(
     result = {"in_app": False, "push_sent": 0, "push_failed": 0}
 
     try:
+        # Persist both Arabic (default ``title``/``message`` args) and the
+        # optional English variants so the admin notification bell can render
+        # the alert in the viewer's chosen language. Layout falls back to the
+        # legacy ``title``/``message`` keys when the bilingual ones are absent.
         await db.notifications.insert_one({
             "id": str(uuid.uuid4()),
             "title": title,
             "message": message,
+            "title_ar": title,
+            "message_ar": message,
+            "title_en": title_en or title,
+            "message_en": message_en or message,
             "type": notif_type,
             "link": link,
             "coach_id": coach_id,

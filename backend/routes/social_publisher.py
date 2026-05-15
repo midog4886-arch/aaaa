@@ -2240,16 +2240,32 @@ async def _notify_admins_cleanup_failed(error_message: str) -> None:
         snippet = (error_message or "").strip()
         if len(snippet) > 400:
             snippet = snippet[:400] + "…"
+        title_ar = "فشل التشغيل التلقائي لتنظيف الملفات"
+        title_en = "Social uploads cleanup failed"
+        message_ar = (
+            "تعذّر إكمال آخر تشغيل تلقائي لمهمة تنظيف ملفات النشر الاجتماعي. "
+            f"السبب: {snippet}" if snippet else
+            "تعذّر إكمال آخر تشغيل تلقائي لمهمة تنظيف ملفات النشر الاجتماعي."
+        )
+        message_en = (
+            "The latest automatic social-uploads cleanup run could not finish. "
+            f"Reason: {snippet}" if snippet else
+            "The latest automatic social-uploads cleanup run could not finish."
+        )
+        # Persist both languages so the admin notification bell can render the
+        # alert in the viewer's chosen language. Legacy ``title``/``message``
+        # keys remain (Arabic) for back-compat with any consumer not yet
+        # updated to read the bilingual fields.
         notification_doc = {
             "id": str(uuid.uuid4()),
             "type": "social_cleanup_failed",
             "notification_type": "social_cleanup_failed",
-            "title": "فشل التشغيل التلقائي لتنظيف الملفات",
-            "message": (
-                "تعذّر إكمال آخر تشغيل تلقائي لمهمة تنظيف ملفات النشر الاجتماعي. "
-                f"السبب: {snippet}" if snippet else
-                "تعذّر إكمال آخر تشغيل تلقائي لمهمة تنظيف ملفات النشر الاجتماعي."
-            ),
+            "title": title_ar,
+            "message": message_ar,
+            "title_ar": title_ar,
+            "message_ar": message_ar,
+            "title_en": title_en,
+            "message_en": message_en,
             "action_url": "/admin/social-publisher",
             "is_read": False,
             "created_at": datetime.now(timezone.utc).isoformat(),

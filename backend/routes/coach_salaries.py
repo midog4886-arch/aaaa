@@ -540,6 +540,8 @@ async def disburse_salary(
             coach_id=salary.get("coach_id"),
             title="تم صرف الراتب",
             message=f"تم صرف راتب شهر {salary['year_month']} بقيمة {float(net):,.2f} ريال",
+            title_en="Salary disbursed",
+            message_en=f"Salary for {salary['year_month']} paid: SAR {float(net):,.2f}",
             notif_type="salary_disbursed",
             link=f"/coach-salaries/{salary_id}/payslip.pdf",
             branch_id=salary.get("branch_id"),
