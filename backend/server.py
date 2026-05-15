@@ -8186,10 +8186,26 @@ async def create_default_admin():
     import asyncio
     async def _init():
         try:
-            from control_db import ensure_default_tenant
+            from control_db import ensure_default_tenant, backfill_billing_fields, auto_suspend_expired
             await ensure_default_tenant()
+            await backfill_billing_fields()
+            n = await auto_suspend_expired()
+            if n:
+                print(f"Auto-suspended {n} expired tenants on startup")
         except Exception as e:
             print(f"Tenant seed error: {str(e)}")
+
+        async def _expiry_scanner():
+            while True:
+                try:
+                    await asyncio.sleep(3600)
+                    from control_db import auto_suspend_expired as _a
+                    n2 = await _a()
+                    if n2:
+                        print(f"Auto-suspended {n2} expired tenants (scheduler)")
+                except Exception as ex:
+                    print(f"Expiry scanner error: {ex}")
+        asyncio.create_task(_expiry_scanner())
         try:
             from db_indexes import ensure_indexes
             await ensure_indexes()

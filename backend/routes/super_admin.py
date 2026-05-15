@@ -18,7 +18,7 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel, Field
 
 from database import JWT_SECRET, JWT_ALGORITHM, _raw_client
-from control_db import control_db
+from control_db import control_db, auto_suspend_expired, DEFAULT_TRIAL_DAYS, DEFAULT_BILLING_CYCLE
 from utils.tenant import slug_to_db_name, DEFAULT_TENANT_SLUG
 from utils.auth import hash_password
 
@@ -62,6 +62,55 @@ class TenantCreate(BaseModel):
     admin_username: Optional[str] = "admin"
     admin_password: Optional[str] = ""
     branch_name: Optional[str] = "الفرع الرئيسي"
+    billing_cycle: Optional[str] = None
+    trial_days: Optional[int] = None
+    auto_suspend_on_expiry: Optional[bool] = True
+
+
+class TenantRenew(BaseModel):
+    months: Optional[int] = None
+    days: Optional[int] = None
+    extend_from: Optional[str] = "current_end"
+    note: Optional[str] = ""
+
+
+VALID_BILLING_CYCLES = {"monthly", "quarterly", "yearly"}
+MAX_RENEWAL_MONTHS = 120
+MAX_RENEWAL_DAYS = 3650
+
+
+def _parse_iso(s: Optional[str]) -> Optional[datetime]:
+    if not s:
+        return None
+    try:
+        d = datetime.fromisoformat(s.replace("Z", "+00:00"))
+        return d if d.tzinfo else d.replace(tzinfo=timezone.utc)
+    except Exception:
+        return None
+
+
+def _expiry_info(tenant: dict) -> dict:
+    end = _parse_iso(tenant.get("subscription_end_at"))
+    if not end:
+        return {"days_until_expiry": None, "expiry_state": "unknown", "subscription_end_at": None}
+    delta = end - datetime.now(timezone.utc)
+    days = int(delta.total_seconds() // 86400)
+    if days < 0:
+        state = "expired"
+    elif days <= 7:
+        state = "expiring_soon"
+    elif days <= 30:
+        state = "expiring_month"
+    else:
+        state = "active"
+    return {
+        "days_until_expiry": days,
+        "expiry_state": state,
+        "subscription_end_at": tenant.get("subscription_end_at"),
+        "subscription_start_at": tenant.get("subscription_start_at"),
+        "billing_cycle": tenant.get("billing_cycle"),
+        "auto_suspend_on_expiry": bool(tenant.get("auto_suspend_on_expiry", True)),
+    }
 
 
 def _generate_password(length: int = 12) -> str:
@@ -137,6 +186,9 @@ class TenantUpdate(BaseModel):
     features: Optional[List[str]] = None
     owner_email: Optional[str] = None
     status: Optional[str] = None
+    billing_cycle: Optional[str] = None
+    subscription_end_at: Optional[str] = None
+    auto_suspend_on_expiry: Optional[bool] = None
 
 
 @router.post("/login")
@@ -177,6 +229,18 @@ async def create_tenant(payload: TenantCreate, _=Depends(_require_super)):
     existing = await control_db.tenants.find_one({"slug": slug}, {"_id": 0})
     if existing:
         raise HTTPException(status_code=409, detail="Tenant slug already exists")
+    cycle = (payload.billing_cycle or DEFAULT_BILLING_CYCLE).lower()
+    if cycle not in VALID_BILLING_CYCLES:
+        raise HTTPException(status_code=400, detail=f"Invalid billing_cycle (allowed: {sorted(VALID_BILLING_CYCLES)})")
+    now = datetime.now(timezone.utc)
+    trial_days = int(payload.trial_days) if payload.trial_days is not None else DEFAULT_TRIAL_DAYS
+    if trial_days < 1 or trial_days > MAX_RENEWAL_DAYS:
+        raise HTTPException(status_code=400, detail="trial_days must be between 1 and 3650")
+    end_at = now + timedelta(days=trial_days)
+    max_branches = int(payload.max_branches) if payload.max_branches is not None else 1
+    max_members = int(payload.max_members) if payload.max_members is not None else 100
+    if max_branches < 0 or max_members < 0:
+        raise HTTPException(status_code=400, detail="Limits must be >= 0")
     doc = {
         "id": str(uuid.uuid4()),
         "slug": slug,
@@ -184,11 +248,16 @@ async def create_tenant(payload: TenantCreate, _=Depends(_require_super)):
         "db_name": slug_to_db_name(slug),
         "status": "active",
         "plan": payload.plan or "starter",
-        "max_branches": int(payload.max_branches or 1),
-        "max_members": int(payload.max_members or 100),
+        "max_branches": max_branches,
+        "max_members": max_members,
         "features": payload.features or [],
         "owner_email": payload.owner_email or "",
-        "created_at": datetime.now(timezone.utc).isoformat(),
+        "created_at": now.isoformat(),
+        "billing_cycle": cycle,
+        "subscription_start_at": now.isoformat(),
+        "subscription_end_at": end_at.isoformat(),
+        "auto_suspend_on_expiry": bool(payload.auto_suspend_on_expiry if payload.auto_suspend_on_expiry is not None else True),
+        "renewal_history": [],
     }
     await control_db.tenants.insert_one(doc)
 
@@ -233,9 +302,74 @@ async def update_tenant(tenant_id: str, payload: TenantUpdate, _=Depends(_requir
         return existing
     if "status" in update and update["status"] not in ("active", "suspended"):
         raise HTTPException(status_code=400, detail="Invalid status")
+    if "billing_cycle" in update:
+        cyc = str(update["billing_cycle"]).lower()
+        if cyc not in VALID_BILLING_CYCLES:
+            raise HTTPException(status_code=400, detail=f"Invalid billing_cycle (allowed: {sorted(VALID_BILLING_CYCLES)})")
+        update["billing_cycle"] = cyc
+    if "subscription_end_at" in update:
+        parsed = _parse_iso(update["subscription_end_at"])
+        if not parsed:
+            raise HTTPException(status_code=400, detail="Invalid subscription_end_at (must be ISO 8601 datetime)")
+        update["subscription_end_at"] = parsed.isoformat()
+    if "max_branches" in update and int(update["max_branches"]) < 0:
+        raise HTTPException(status_code=400, detail="max_branches must be >= 0")
+    if "max_members" in update and int(update["max_members"]) < 0:
+        raise HTTPException(status_code=400, detail="max_members must be >= 0")
     await control_db.tenants.update_one({"id": tenant_id}, {"$set": update})
     refreshed = await control_db.tenants.find_one({"id": tenant_id}, {"_id": 0})
     return refreshed
+
+
+@router.post("/tenants/{tenant_id}/renew")
+async def renew_tenant(tenant_id: str, payload: TenantRenew, _=Depends(_require_super)):
+    existing = await control_db.tenants.find_one({"id": tenant_id}, {"_id": 0})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Tenant not found")
+    months = int(payload.months or 0)
+    days = int(payload.days or 0)
+    if months < 0 or days < 0:
+        raise HTTPException(status_code=400, detail="months/days must be non-negative")
+    if months <= 0 and days <= 0:
+        raise HTTPException(status_code=400, detail="Provide months or days to extend")
+    if months > MAX_RENEWAL_MONTHS or days > MAX_RENEWAL_DAYS:
+        raise HTTPException(status_code=400, detail=f"Renewal too large (max {MAX_RENEWAL_MONTHS} months / {MAX_RENEWAL_DAYS} days)")
+    add_days = months * 30 + days
+    now = datetime.now(timezone.utc)
+    base = now
+    if (payload.extend_from or "current_end") == "current_end":
+        cur_end = _parse_iso(existing.get("subscription_end_at"))
+        if cur_end and cur_end > now:
+            base = cur_end
+    new_end = base + timedelta(days=add_days)
+    history_entry = {
+        "renewed_at": now.isoformat(),
+        "previous_end": existing.get("subscription_end_at"),
+        "new_end": new_end.isoformat(),
+        "months": months,
+        "days": days,
+        "note": (payload.note or "").strip(),
+    }
+    set_ops = {
+        "subscription_end_at": new_end.isoformat(),
+        "last_renewed_at": now.isoformat(),
+    }
+    if existing.get("status") in ("suspended",) and existing.get("suspended_reason") == "expired":
+        set_ops["status"] = "active"
+        set_ops["suspended_at"] = None
+        set_ops["suspended_reason"] = None
+    await control_db.tenants.update_one(
+        {"id": tenant_id},
+        {"$set": set_ops, "$push": {"renewal_history": history_entry}},
+    )
+    refreshed = await control_db.tenants.find_one({"id": tenant_id}, {"_id": 0})
+    return {"tenant": refreshed, "renewal": history_entry}
+
+
+@router.post("/check_expired")
+async def check_expired(_=Depends(_require_super)):
+    n = await auto_suspend_expired()
+    return {"suspended": n}
 
 
 @router.delete("/tenants/{tenant_id}")
@@ -299,18 +433,40 @@ async def tenant_stats(tenant_id: str, _=Depends(_require_super)):
     if not existing:
         raise HTTPException(status_code=404, detail="Tenant not found")
     data = await _compute_tenant_stats(existing)
-    return {"tenant": existing, **data}
+    return {"tenant": existing, **data, "billing": _expiry_info(existing)}
 
 
 @router.get("/overview")
 async def super_overview(_=Depends(_require_super)):
+    suspended_count = 0
+    try:
+        suspended_count = await auto_suspend_expired()
+    except Exception:
+        logger.exception("auto_suspend_expired failed in overview")
+
     tenants = await control_db.tenants.find({}, {"_id": 0}).to_list(1000)
     tenants.sort(key=lambda r: r.get("created_at", ""), reverse=True)
     rows = []
     totals = {"members": 0, "branches": 0, "invoices": 0, "users": 0, "activities": 0, "attendance": 0}
+    expiring_soon = 0
+    expired = 0
     for t in tenants:
+        billing = _expiry_info(t)
+        state = billing.get("expiry_state")
+        if t.get("status") != "deleted":
+            if state == "expired":
+                expired += 1
+            elif state == "expiring_soon":
+                expiring_soon += 1
         if t.get("status") == "deleted":
-            rows.append({"tenant": t, "counts": {}, "recent_30d": {}, "last_activity_at": None, "usage": {"members_pct": None, "branches_pct": None}})
+            rows.append({
+                "tenant": t,
+                "counts": {},
+                "recent_30d": {},
+                "last_activity_at": None,
+                "usage": {"members_pct": None, "branches_pct": None},
+                "billing": billing,
+            })
             continue
         try:
             data = await _compute_tenant_stats(t)
@@ -319,5 +475,14 @@ async def super_overview(_=Depends(_require_super)):
             data = {"counts": {}, "recent_30d": {}, "last_activity_at": None, "usage": {"members_pct": None, "branches_pct": None}, "error": str(e)}
         for k in totals.keys():
             totals[k] += int((data.get("counts") or {}).get(k) or 0)
-        rows.append({"tenant": t, **data})
-    return {"tenants": rows, "totals": totals, "tenant_count": len(tenants)}
+        rows.append({"tenant": t, **data, "billing": billing})
+    return {
+        "tenants": rows,
+        "totals": totals,
+        "tenant_count": len(tenants),
+        "alerts": {
+            "expiring_soon": expiring_soon,
+            "expired": expired,
+            "auto_suspended_now": suspended_count,
+        },
+    }
