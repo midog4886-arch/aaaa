@@ -20,7 +20,7 @@ from typing import Optional, List
 
 import jwt
 from fastapi import APIRouter, HTTPException, Depends, Body, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, Response
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel, Field
 
@@ -1446,6 +1446,54 @@ async def payment_events_list(
     """
     rows = await list_webhook_events(status=status, provider=provider, outcome=outcome, limit=limit)
     return {"items": rows, "max_retained": WEBHOOK_EVENTS_MAX}
+
+
+@router.get("/payment/events.csv")
+async def payment_events_export_csv(
+    status: Optional[str] = None,
+    provider: Optional[str] = None,
+    outcome: Optional[str] = None,
+    limit: int = 200,
+    _=Depends(_require_super),
+):
+    """Export the same webhook events shown on the super-admin page as a CSV
+    file so they can be archived or shared with a payment provider's support
+    team. Honors the same status/provider/outcome filters as ``/payment/events``.
+    """
+    import csv
+    import io
+
+    rows = await list_webhook_events(status=status, provider=provider, outcome=outcome, limit=limit)
+    buf = io.StringIO()
+    buf.write("\ufeff")  # UTF-8 BOM so Excel opens Arabic text correctly
+    writer = csv.writer(buf)
+    writer.writerow([
+        "received_at",
+        "provider",
+        "status",
+        "outcome",
+        "reason",
+        "tenant_slug",
+        "tenant_id",
+        "event_id",
+    ])
+    for r in rows:
+        writer.writerow([
+            r.get("received_at") or "",
+            r.get("provider") or "",
+            r.get("status") or "",
+            r.get("outcome") or "",
+            r.get("reason") or "",
+            r.get("tenant_slug") or "",
+            r.get("tenant_id") or "",
+            r.get("event_id") or "",
+        ])
+    filename = f"payment-webhook-events-{datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S')}.csv"
+    return Response(
+        content=buf.getvalue(),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @router.post("/payment/test-webhook")

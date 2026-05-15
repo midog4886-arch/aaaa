@@ -83,6 +83,7 @@ export default function SuperPayment() {
   const [eventProvider, setEventProvider] = useState('all');
   const [eventOutcome, setEventOutcome] = useState('all');
   const [maxRetained, setMaxRetained] = useState(0);
+  const [exporting, setExporting] = useState(false);
 
   const reloadEvents = useCallback(async (
     statusFilter = eventStatus,
@@ -135,6 +136,40 @@ export default function SuperPayment() {
   }, [navigate]);
 
   useEffect(() => { reload(); }, [reload]);
+
+  const exportEventsCsv = async () => {
+    setExporting(true);
+    setEventsErr('');
+    try {
+      const params = { limit: 200 };
+      if (eventStatus && eventStatus !== 'all') params.status = eventStatus;
+      if (eventProvider && eventProvider !== 'all') params.provider = eventProvider;
+      if (eventOutcome && eventOutcome !== 'all') params.outcome = eventOutcome;
+      const res = await axios.get('/super/payment/events.csv', {
+        ...auth(),
+        params,
+        responseType: 'blob',
+      });
+      const blob = new Blob([res.data], { type: 'text/csv;charset=utf-8' });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+      a.download = `payment-webhook-events-${stamp}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+    } catch (e) {
+      if (e?.response?.status === 401) {
+        navigate('/super/login', { replace: true });
+        return;
+      }
+      setEventsErr(e?.response?.data?.detail || 'تعذر تصدير سجل الأحداث');
+    } finally {
+      setExporting(false);
+    }
+  };
 
   const sendTest = async () => {
     setTesting(true);
@@ -362,6 +397,14 @@ export default function SuperPayment() {
                 style={{ ...btn('#475569'), padding: '6px 12px', fontSize: 13 }}
               >
                 {eventsLoading ? '...' : '↻ تحديث'}
+              </button>
+              <button
+                onClick={exportEventsCsv}
+                disabled={exporting || eventsLoading}
+                style={{ ...btn('#0ea5e9'), padding: '6px 12px', fontSize: 13 }}
+                title="تنزيل الأحداث المعروضة كملف CSV"
+              >
+                {exporting ? '...' : '⬇ تصدير CSV'}
               </button>
             </div>
           </div>
