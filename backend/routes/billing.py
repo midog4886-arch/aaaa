@@ -478,7 +478,39 @@ async def get_billing(current_user: dict = Depends(get_current_user)):
         "max_branches": tenant.get("max_branches", 0),
         "max_members": tenant.get("max_members", 0),
         "available_plans": plans,
+        "deletion_scheduled_at": tenant.get("deletion_scheduled_at", ""),
+        "deletion_purge_at": tenant.get("deletion_purge_at", ""),
     }
+
+
+@router.post("/cancel-delete")
+async def cancel_pending_deletion(current_user: dict = Depends(get_current_user)):
+    """Self-service: let an academy admin cancel a pending deletion of
+    their own tenant from inside the admin app, without needing the
+    emailed cancel link or a super-admin. Reuses the same shared worker
+    as the super-admin and email-link flows so audit + side effects stay
+    consistent.
+    """
+    if not current_user.get("is_admin", False):
+        raise HTTPException(status_code=403, detail="صلاحية مسؤول الأكاديمية مطلوبة")
+    slug = get_current_tenant_slug() or DEFAULT_TENANT_SLUG
+    tenant = await control_db.tenants.find_one({"slug": slug}, {"_id": 0})
+    if not tenant:
+        raise HTTPException(status_code=404, detail="Tenant not found")
+    if tenant.get("status") != "pending_delete":
+        raise HTTPException(status_code=400, detail="Tenant is not pending deletion")
+    from routes.super_admin import _apply_cancel_tenant_delete
+    actor = {
+        "user_id": current_user.get("id") or current_user.get("user_id") or "",
+        "username": current_user.get("username", ""),
+        "is_admin": True,
+    }
+    refreshed = await _apply_cancel_tenant_delete(
+        tenant["id"],
+        actor=actor,
+        source="tenant_admin",
+    )
+    return {"ok": True, "tenant": refreshed}
 
 
 EMAIL_CONFIRM_TTL_HOURS = 24

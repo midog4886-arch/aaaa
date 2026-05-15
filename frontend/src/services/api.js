@@ -310,6 +310,7 @@ export const billingAPI = {
   emailLog: (params = {}) => axios.get(`${API}/billing/email-log`, { params }),
   sendTestWelcome: () => axios.post(`${API}/billing/email-log/test-welcome`),
   resendEmailLog: (id) => axios.post(`${API}/billing/email-log/${id}/resend`),
+  cancelDelete: () => axios.post(`${API}/billing/cancel-delete`),
 };
 
 // Branches API

@@ -63,6 +63,7 @@ export const SettingsPage = () => {
   const [contactSaving, setContactSaving] = React.useState(false);
   const [contactOwner, setContactOwner] = React.useState('');
   const [contactBilling, setContactBilling] = React.useState('');
+  const [cancelDeleteSubmitting, setCancelDeleteSubmitting] = React.useState(false);
   const [emailLog, setEmailLog] = React.useState([]);
   const [emailLogLoading, setEmailLogLoading] = React.useState(false);
   const [emailLogResendingId, setEmailLogResendingId] = React.useState('');
@@ -636,6 +637,29 @@ export const SettingsPage = () => {
     }
   };
 
+  const handleCancelPendingDeletion = async () => {
+    const msg = language === 'ar'
+      ? 'سيتم إلغاء طلب حذف الأكاديمية وإعادتها إلى الحالة النشطة. هل تريد المتابعة؟'
+      : 'This will cancel the pending deletion and restore your academy to active. Continue?';
+    if (!window.confirm(msg)) return;
+    setCancelDeleteSubmitting(true);
+    try {
+      const res = await billingAPI.cancelDelete();
+      const refreshed = res?.data?.tenant || {};
+      setBilling((prev) => prev ? {
+        ...prev,
+        status: refreshed.status || 'active',
+        deletion_scheduled_at: '',
+        deletion_purge_at: '',
+      } : prev);
+      toast.success(language === 'ar' ? 'تم إلغاء طلب الحذف' : 'Deletion cancelled');
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || (language === 'ar' ? 'تعذر إلغاء طلب الحذف' : 'Failed to cancel deletion'));
+    } finally {
+      setCancelDeleteSubmitting(false);
+    }
+  };
+
   const onDownloadTenantData = () => {
     const msg = language === 'ar'
       ? 'سيتم تنزيل نسخة كاملة من بيانات أكاديميتك بصيغة ZIP. قد يستغرق ذلك بعض الوقت. هل تريد المتابعة؟'
@@ -700,6 +724,50 @@ export const SettingsPage = () => {
                 <p className="text-sm text-muted-foreground">{language === 'ar' ? 'لا تتوفر معلومات الاشتراك.' : 'No billing info available.'}</p>
               ) : (
                 <>
+                  {billing.status === 'pending_delete' && (
+                    <div
+                      className="rounded-md border border-red-300 bg-red-50 p-4 text-red-900"
+                      data-testid="billing-pending-delete-banner"
+                    >
+                      <div className="flex items-start gap-3">
+                        <ShieldAlert className="w-5 h-5 mt-0.5 text-red-700 shrink-0" />
+                        <div className="flex-1 space-y-2">
+                          <p className="font-bold">
+                            {language === 'ar'
+                              ? 'أكاديميتك مجدوَلة للحذف النهائي'
+                              : 'Your academy is scheduled for permanent deletion'}
+                          </p>
+                          <p className="text-sm">
+                            {language === 'ar'
+                              ? 'سيتم حذف جميع بيانات الأكاديمية نهائياً في:'
+                              : 'All academy data will be permanently deleted on:'}{' '}
+                            <span className="font-bold" data-testid="billing-pending-delete-date">
+                              {billing.deletion_purge_at
+                                ? new Date(billing.deletion_purge_at).toLocaleString(language === 'ar' ? 'ar-SA' : 'en-GB')
+                                : '—'}
+                            </span>
+                          </p>
+                          <p className="text-xs text-red-800">
+                            {language === 'ar'
+                              ? 'إذا كان هذا خطأً، يمكنك إلغاء الحذف الآن واستعادة الحساب فوراً.'
+                              : 'If this is a mistake, you can cancel the deletion now and restore the account immediately.'}
+                          </p>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="border-red-300 text-red-800 hover:bg-red-100"
+                            onClick={handleCancelPendingDeletion}
+                            disabled={cancelDeleteSubmitting}
+                            data-testid="billing-cancel-delete-btn"
+                          >
+                            {cancelDeleteSubmitting
+                              ? (language === 'ar' ? 'جارٍ الإلغاء...' : 'Cancelling...')
+                              : (language === 'ar' ? 'إلغاء طلب الحذف' : 'Cancel deletion')}
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <p className="text-sm text-muted-foreground">{language === 'ar' ? 'الخطة الحالية' : 'Current plan'}</p>
@@ -707,11 +775,12 @@ export const SettingsPage = () => {
                     </div>
                     <div>
                       <p className="text-sm text-muted-foreground">{language === 'ar' ? 'الحالة' : 'Status'}</p>
-                      <p className="font-bold text-lg">
+                      <p className={`font-bold text-lg ${billing.status === 'pending_delete' ? 'text-red-700' : ''}`}>
                         {billing.is_trial && (language === 'ar' ? 'تجربة مجانية' : 'Free trial')}
                         {!billing.is_trial && billing.status === 'active' && (language === 'ar' ? 'نشط' : 'Active')}
                         {billing.status === 'expired' && (language === 'ar' ? 'منتهي' : 'Expired')}
                         {billing.status === 'suspended' && (language === 'ar' ? 'معلّق' : 'Suspended')}
+                        {billing.status === 'pending_delete' && (language === 'ar' ? 'مجدوَل للحذف' : 'Pending deletion')}
                       </p>
                     </div>
                     <div>
