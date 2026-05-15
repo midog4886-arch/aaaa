@@ -2977,6 +2977,124 @@ def start_backup_scheduler():
         asyncio.ensure_future(backup_scheduler_loop())
 
 
+# ── Daily renewal & ad-expiry checks ────────────────────────────────────────
+# Runs once per day so admins get push/in-app alerts without anyone manually
+# hitting the /notifications/check-renewals or /check-ads-expiry endpoints.
+# Idempotency is preserved by the existing dedup checks inside each endpoint.
+_daily_checks_scheduler_started = False
+# 7am Riyadh time — early enough that admins see notifications when they
+# start their day, late enough that overnight DB load is past.
+_DAILY_CHECKS_HOUR_RIYADH = 7
+
+
+async def _run_daily_renewal_and_ads_checks() -> None:
+    """Execute renewal-reminder and ad-expiry checks for every branch.
+
+    Each individual check runs inside its own try/except so a failure in one
+    branch (or one check) cannot prevent the others from running. The
+    underlying endpoints already dedupe via their own ``find_one`` lookups
+    keyed on type + entity + today, so calling this multiple times in a day
+    is safe.
+    """
+    print("Daily checks scheduler: running renewal & ad-expiry checks")
+
+    # 1) Global renewal scan from server.py — already iterates all members
+    # across branches and stamps each notification with the member's branch_id.
+    # Note: this endpoint and the per-branch ``routes/notifications.py``
+    # renewal check use different notification schemas and dedup keys
+    # (``related_entity_id`` vs. ``type+member+activity+today``). Both are
+    # already exposed as separate manual admin endpoints, so the scheduler
+    # intentionally runs both to mirror existing manual behaviour. If product
+    # later wants to consolidate to a single renewal notification, drop one
+    # of the two calls below.
+    try:
+        admin_user = {"is_admin": True, "branch_id": None}
+        result = await check_subscription_renewals(current_user=admin_user)
+        print(f"Daily checks: global renewals → {result}")
+    except Exception as e:
+        print(f"Daily checks: global renewals failed: {e}")
+
+    # 2) Per-branch checks for the routes/notifications.py endpoints, which
+    # filter by branch via ``resolve_branch_filter``. We synthesize a
+    # non-admin user pinned to each branch so notifications are stamped
+    # with the correct branch_id.
+    try:
+        from routes.notifications import (
+            check_subscription_renewals as notif_check_renewals,
+            check_ads_expiry as notif_check_ads_expiry,
+        )
+    except Exception as e:
+        print(f"Daily checks: failed to import notifications routes: {e}")
+        return
+
+    # Stream branches via the cursor (no fixed cap) so adding more branches
+    # in the future never causes some to be silently skipped.
+    branch_ids: list[str] = []
+    try:
+        async for b in db.branches.find({}, {"id": 1, "_id": 0}):
+            bid = b.get("id")
+            if bid:
+                branch_ids.append(bid)
+    except Exception as e:
+        print(f"Daily checks: failed to list branches: {e}")
+
+    for branch_id in branch_ids:
+        scoped_user = {"is_admin": False, "branch_id": branch_id}
+        try:
+            await notif_check_renewals(current_user=scoped_user)
+        except Exception as e:
+            print(f"Daily checks: renewals failed for branch {branch_id}: {e}")
+        try:
+            await notif_check_ads_expiry(current_user=scoped_user)
+        except Exception as e:
+            print(f"Daily checks: ads-expiry failed for branch {branch_id}: {e}")
+
+    # 3) Also run ads-expiry once globally (as admin with no branch filter) so
+    # legacy/shared ads with branch_id == None are still flagged.
+    try:
+        admin_user = {"is_admin": True, "branch_id": None}
+        await notif_check_ads_expiry(current_user=admin_user)
+    except Exception as e:
+        print(f"Daily checks: global ads-expiry failed: {e}")
+
+    print("Daily checks scheduler: finished")
+
+
+async def daily_checks_scheduler_loop():
+    global _daily_checks_scheduler_started
+    _daily_checks_scheduler_started = True
+    print(
+        f"Daily checks scheduler started "
+        f"(timezone: Asia/Riyadh, runs at {_DAILY_CHECKS_HOUR_RIYADH:02d}:00)"
+    )
+    while True:
+        try:
+            now = datetime.now(_RIYADH_TZ)
+            next_run = now.replace(
+                hour=_DAILY_CHECKS_HOUR_RIYADH, minute=0, second=0, microsecond=0
+            )
+            if next_run <= now:
+                next_run += timedelta(days=1)
+            wait_seconds = (next_run - now).total_seconds()
+            print(
+                f"Daily checks scheduler: next run in {wait_seconds:.0f}s "
+                f"at {next_run.isoformat()}"
+            )
+            await asyncio.sleep(wait_seconds)
+            await _run_daily_renewal_and_ads_checks()
+        except asyncio.CancelledError:
+            break
+        except Exception as e:
+            print(f"Daily checks scheduler error: {e}")
+            await asyncio.sleep(3600)
+
+
+def start_daily_checks_scheduler():
+    global _daily_checks_scheduler_started
+    if not _daily_checks_scheduler_started:
+        asyncio.ensure_future(daily_checks_scheduler_loop())
+
+
 @api_router.post("/backup/create")
 async def create_backup(token: Optional[str] = None):
     if not token:
@@ -8419,6 +8537,11 @@ async def create_default_admin():
     asyncio.create_task(_keep_proxy_alive())
     # Start auto backup scheduler (daily at midnight Riyadh time)
     start_backup_scheduler()
+    # Start daily renewal & ad-expiry checks scheduler
+    try:
+        start_daily_checks_scheduler()
+    except Exception as e:
+        print(f"Daily checks scheduler start failed: {e}")
     # Start social-insights auto-refresh scheduler (configurable from UI)
     try:
         from routes.social_publisher import start_insights_scheduler
