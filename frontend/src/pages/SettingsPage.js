@@ -8,14 +8,15 @@ import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import { Button } from '../components/ui/button';
 import { Switch } from '../components/ui/switch';
 import { Label } from '../components/ui/label';
-import { tenantAPI } from '../services/api';
-import { 
-  Languages, 
+import { tenantAPI, notificationsSettingsAPI } from '../services/api';
+import {
+  Languages,
   Moon,
   Sun,
   Trophy,
   Info,
-  Sparkles
+  Sparkles,
+  Clock
 } from 'lucide-react';
 
 export const SettingsPage = () => {
@@ -26,6 +27,48 @@ export const SettingsPage = () => {
   const [darkMode, setDarkMode] = React.useState(() => {
     return document.documentElement.classList.contains('dark');
   });
+  const [dailyChecksHour, setDailyChecksHour] = React.useState(7);
+  const [dailyChecksDefault, setDailyChecksDefault] = React.useState(7);
+  const [dailyChecksLoading, setDailyChecksLoading] = React.useState(false);
+  const [dailyChecksSaving, setDailyChecksSaving] = React.useState(false);
+
+  React.useEffect(() => {
+    if (!isAdmin) return;
+    let cancelled = false;
+    setDailyChecksLoading(true);
+    notificationsSettingsAPI.getDailyChecks()
+      .then((res) => {
+        if (cancelled) return;
+        const data = res.data || {};
+        if (typeof data.hour === 'number') setDailyChecksHour(data.hour);
+        if (typeof data.default_hour === 'number') setDailyChecksDefault(data.default_hour);
+      })
+      .catch(() => { /* keep defaults */ })
+      .finally(() => { if (!cancelled) setDailyChecksLoading(false); });
+    return () => { cancelled = true; };
+  }, [isAdmin]);
+
+  const handleSaveDailyChecksHour = async (nextHour) => {
+    setDailyChecksSaving(true);
+    try {
+      const res = await notificationsSettingsAPI.updateDailyChecks(nextHour);
+      if (typeof res?.data?.hour === 'number') setDailyChecksHour(res.data.hour);
+      toast.success(language === 'ar'
+        ? 'تم حفظ وقت التنبيهات اليومية'
+        : 'Daily alerts time saved');
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || (language === 'ar'
+        ? 'تعذر حفظ الإعداد'
+        : 'Failed to save setting'));
+    } finally {
+      setDailyChecksSaving(false);
+    }
+  };
+
+  const formatHour = (h) => {
+    const hh = String(h).padStart(2, '0');
+    return `${hh}:00`;
+  };
 
   const handleRestartOnboarding = async () => {
     const ok = window.confirm(language === 'ar'
@@ -163,6 +206,59 @@ export const SettingsPage = () => {
             </div>
           </CardContent>
         </Card>
+
+        {/* Daily renewal & ad-expiry alerts — admin only */}
+        {isAdmin && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Clock className="w-5 h-5 text-primary" />
+                {language === 'ar'
+                  ? 'وقت التنبيهات اليومية'
+                  : 'Daily Alerts Time'}
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                <div>
+                  <p className="font-medium">
+                    {language === 'ar'
+                      ? 'وقت تشغيل تنبيهات التجديد وانتهاء الإعلانات'
+                      : 'When renewal & ad-expiry alerts are sent'}
+                  </p>
+                  <p className="text-sm text-muted-foreground">
+                    {language === 'ar'
+                      ? `يتم تنفيذ الفحص يومياً بتوقيت الرياض (الافتراضي ${formatHour(dailyChecksDefault)}).`
+                      : `Runs daily in Asia/Riyadh time (default ${formatHour(dailyChecksDefault)}).`}
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Label htmlFor="daily-checks-hour" className="sr-only">
+                    {language === 'ar' ? 'الساعة' : 'Hour'}
+                  </Label>
+                  <select
+                    id="daily-checks-hour"
+                    data-testid="daily-checks-hour-select"
+                    className="border rounded-md px-3 py-2 bg-background text-foreground"
+                    value={dailyChecksHour}
+                    disabled={dailyChecksLoading || dailyChecksSaving}
+                    onChange={(e) => {
+                      const next = parseInt(e.target.value, 10);
+                      if (!Number.isNaN(next)) {
+                        setDailyChecksHour(next);
+                        handleSaveDailyChecksHour(next);
+                      }
+                    }}
+                  >
+                    {Array.from({ length: 24 }, (_, h) => (
+                      <option key={h} value={h}>{formatHour(h)}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Onboarding restart — admin only */}
         {isAdmin && (

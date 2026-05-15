@@ -11,6 +11,72 @@ from utils.auth import resolve_branch_filter
 router = APIRouter(prefix="/notifications", tags=["notifications"])
 
 
+# ── Daily-checks scheduler settings ────────────────────────────────────────
+# Singleton document in ``db.notifications_settings`` (key=``daily_checks``)
+# holding the hour-of-day in Asia/Riyadh that the daily renewal & ad-expiry
+# checks should run at. Falls back to 7am when nothing is stored.
+_DAILY_CHECKS_DEFAULT_HOUR = 7
+_DAILY_CHECKS_SETTINGS_KEY = "daily_checks"
+
+
+async def get_daily_checks_hour() -> int:
+    """Return the configured hour-of-day (0-23) for daily renewal/ad checks.
+
+    Reads from ``db.notifications_settings`` (singleton keyed by ``key``).
+    Returns the default (7) when no setting is stored or the value is invalid.
+    Never raises — failures fall back to the default so the scheduler keeps
+    working even if the DB is briefly unreachable.
+    """
+    try:
+        doc = await db.notifications_settings.find_one(
+            {"key": _DAILY_CHECKS_SETTINGS_KEY}, {"_id": 0}
+        )
+    except Exception:
+        return _DAILY_CHECKS_DEFAULT_HOUR
+    if not doc:
+        return _DAILY_CHECKS_DEFAULT_HOUR
+    hour = doc.get("hour")
+    try:
+        hour = int(hour)
+    except (TypeError, ValueError):
+        return _DAILY_CHECKS_DEFAULT_HOUR
+    if 0 <= hour <= 23:
+        return hour
+    return _DAILY_CHECKS_DEFAULT_HOUR
+
+
+class DailyChecksSettings(BaseModel):
+    hour: int
+
+
+@router.get("/daily-checks-settings")
+async def get_daily_checks_settings(current_user: dict = Depends(get_current_user)):
+    """Return the configured daily-checks hour (Asia/Riyadh)."""
+    hour = await get_daily_checks_hour()
+    return {"hour": hour, "default_hour": _DAILY_CHECKS_DEFAULT_HOUR, "timezone": "Asia/Riyadh"}
+
+
+@router.put("/daily-checks-settings")
+async def update_daily_checks_settings(
+    payload: DailyChecksSettings,
+    current_user: dict = Depends(get_current_user),
+):
+    """Admin-only: update the hour-of-day (0-23, Asia/Riyadh) the daily
+    renewal & ad-expiry checks run at. Takes effect on the next scheduler
+    tick (within ~24 hours, or immediately on next restart)."""
+    if not current_user.get("is_admin"):
+        raise HTTPException(status_code=403, detail="Admin access required")
+    hour = payload.hour
+    if not isinstance(hour, int) or hour < 0 or hour > 23:
+        raise HTTPException(status_code=400, detail="hour must be an integer between 0 and 23")
+    await db.notifications_settings.update_one(
+        {"key": _DAILY_CHECKS_SETTINGS_KEY},
+        {"$set": {"hour": hour, "updated_at": datetime.now(timezone.utc).isoformat()}},
+        upsert=True,
+    )
+    return {"hour": hour, "default_hour": _DAILY_CHECKS_DEFAULT_HOUR, "timezone": "Asia/Riyadh"}
+
+
 async def send_to_coach(
     coach_id: str,
     title: str,

@@ -266,6 +266,12 @@ export const seedAPI = {
 };
 
 // Tenant (academy) self-service API
+// Notifications settings API (admin-only writes)
+export const notificationsSettingsAPI = {
+  getDailyChecks: () => axios.get(`${API}/notifications/daily-checks-settings`),
+  updateDailyChecks: (hour) => axios.put(`${API}/notifications/daily-checks-settings`, { hour }),
+};
+
 export const tenantAPI = {
   getBranding: () => axios.get(`${API}/tenant/branding`),
   updateBranding: (data) => axios.patch(`${API}/tenant/branding`, data),
