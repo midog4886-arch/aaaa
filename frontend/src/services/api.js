@@ -2,11 +2,18 @@ import axios from 'axios';
 
 const API = '/api';
 
-// Set up axios interceptor to add token
+// Set up axios interceptor to add token + tenant header
 axios.interceptors.request.use((config) => {
-  const token = localStorage.getItem('token');
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
+  const url = config.url || '';
+  const isSuper = url.startsWith('/super') || url.startsWith('/super/');
+  if (isSuper) {
+    const superTok = localStorage.getItem('super_token');
+    if (superTok) config.headers.Authorization = `Bearer ${superTok}`;
+  } else {
+    const token = localStorage.getItem('token');
+    if (token) config.headers.Authorization = `Bearer ${token}`;
+    const tenantSlug = localStorage.getItem('tenant_slug') || 'default';
+    config.headers['X-Tenant-Slug'] = tenantSlug;
   }
   return config;
 });

@@ -80,17 +80,38 @@ class TenantMiddleware:
             return
 
         headers = scope.get("headers") or []
-        slug = _slug_from_host(_host_from_headers(headers)) or _slug_from_headers(headers) or DEFAULT_TENANT_SLUG
+        host_slug = _slug_from_host(_host_from_headers(headers))
+        header_slug = _slug_from_headers(headers)
+        explicit_slug = host_slug or header_slug
+        slug = explicit_slug or DEFAULT_TENANT_SLUG
 
-        from control_db import get_tenant_by_slug
-        tenant = await get_tenant_by_slug(slug)
+        tenant = None
+        try:
+            from control_db import get_tenant_by_slug
+            tenant = await get_tenant_by_slug(slug)
+        except Exception as e:
+            logger.warning(f"Tenant lookup failed for slug={slug}: {e}")
+            if not explicit_slug:
+                tenant = {"slug": DEFAULT_TENANT_SLUG, "db_name": slug_to_db_name(DEFAULT_TENANT_SLUG), "status": "active"}
+
         if not tenant:
-            tenant = await get_tenant_by_slug(DEFAULT_TENANT_SLUG)
-        if not tenant:
+            if explicit_slug:
+                body = b'{"detail":"Tenant not found"}'
+                await send({
+                    "type": "http.response.start",
+                    "status": 404,
+                    "headers": [
+                        (b"content-type", b"application/json"),
+                        (b"content-length", str(len(body)).encode()),
+                    ],
+                })
+                await send({"type": "http.response.body", "body": body})
+                return
             tenant = {"slug": DEFAULT_TENANT_SLUG, "db_name": slug_to_db_name(DEFAULT_TENANT_SLUG), "status": "active"}
 
-        if tenant.get("status") == "suspended":
-            body = b'{"detail":"Tenant suspended"}'
+        status_val = tenant.get("status")
+        if status_val in ("suspended", "deleted", "inactive"):
+            body = f'{{"detail":"Tenant {status_val}"}}'.encode("utf-8")
             await send({
                 "type": "http.response.start",
                 "status": 403,

@@ -42,3 +42,10 @@ def get_current_tenant_db_name() -> str:
     if not t:
         return DEFAULT_DB_NAME
     return t.get("db_name") or slug_to_db_name(t.get("slug") or DEFAULT_TENANT_SLUG)
+
+
+def get_current_tenant_slug() -> str:
+    t = _current_tenant.get()
+    if not t:
+        return DEFAULT_TENANT_SLUG
+    return t.get("slug") or DEFAULT_TENANT_SLUG

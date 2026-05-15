@@ -67,10 +67,12 @@ class MemberTokenResponse(BaseModel):
 
 def create_member_token(member_id: str, phone: str) -> str:
     """Create JWT token for member"""
+    from utils.tenant import get_current_tenant_slug, DEFAULT_TENANT_SLUG
     payload = {
         "member_id": member_id,
         "phone": phone,
         "type": "member",
+        "tenant_slug": get_current_tenant_slug() or DEFAULT_TENANT_SLUG,
         "exp": datetime.now(timezone.utc) + timedelta(days=MEMBER_JWT_EXPIRATION_DAYS)
     }
     return jwt.encode(payload, MEMBER_JWT_SECRET, algorithm=JWT_ALGORITHM)
@@ -89,6 +91,13 @@ async def get_current_member(credentials: HTTPAuthorizationCredentials = Depends
 
         if payload.get("type") != "member":
             raise HTTPException(status_code=401, detail="Invalid token type")
+
+        from utils.tenant import get_current_tenant_slug, DEFAULT_TENANT_SLUG
+        token_tenant = payload.get("tenant_slug")
+        if not token_tenant:
+            raise HTTPException(status_code=401, detail="Token missing tenant — please log in again")
+        if token_tenant != (get_current_tenant_slug() or DEFAULT_TENANT_SLUG):
+            raise HTTPException(status_code=403, detail="Tenant mismatch")
 
         member_id = payload.get("member_id")
         member = await db.members.find_one({"id": member_id}, {"_id": 0})

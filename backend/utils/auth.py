@@ -15,24 +15,42 @@ def hash_password(password: str) -> str:
 def verify_password(password: str, hashed: str) -> bool:
     return bcrypt.checkpw(password.encode(), hashed.encode())
 
-def create_token(user_id: str, username: str, branch_id: str = None, is_admin: bool = False) -> str:
+def create_token(user_id: str, username: str, branch_id: str = None, is_admin: bool = False, tenant_slug: Optional[str] = None) -> str:
+    from utils.tenant import get_current_tenant_slug, DEFAULT_TENANT_SLUG
     payload = {
         "user_id": user_id,
         "username": username,
         "branch_id": branch_id,
         "is_admin": is_admin,
+        "tenant_slug": tenant_slug or get_current_tenant_slug() or DEFAULT_TENANT_SLUG,
         "exp": datetime.now(timezone.utc) + timedelta(hours=JWT_EXPIRATION_HOURS)
     }
     return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
 
+
+def _enforce_tenant_match(payload: dict):
+    from utils.tenant import get_current_tenant_slug, DEFAULT_TENANT_SLUG
+    if payload.get("scope") == "super":
+        raise HTTPException(status_code=403, detail="Invalid token scope")
+    if not payload.get("user_id") or not payload.get("username"):
+        raise HTTPException(status_code=401, detail="Invalid token")
+    token_tenant = payload.get("tenant_slug")
+    if not token_tenant:
+        raise HTTPException(status_code=401, detail="Token missing tenant — please log in again")
+    current_tenant = get_current_tenant_slug() or DEFAULT_TENANT_SLUG
+    if token_tenant != current_tenant:
+        raise HTTPException(status_code=403, detail="Tenant mismatch")
+
+
 async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
     try:
         payload = jwt.decode(credentials.credentials, JWT_SECRET, algorithms=[JWT_ALGORITHM])
-        return payload
     except jwt.ExpiredSignatureError:
         raise HTTPException(status_code=401, detail="Token expired")
     except jwt.InvalidTokenError:
         raise HTTPException(status_code=401, detail="Invalid token")
+    _enforce_tenant_match(payload)
+    return payload
 
 async def get_current_user_from_token(token: Optional[str] = None, credentials: Optional[HTTPAuthorizationCredentials] = Depends(security)):
     """Support both Bearer token and query parameter token for exports"""
@@ -43,11 +61,12 @@ async def get_current_user_from_token(token: Optional[str] = None, credentials: 
         raise HTTPException(status_code=401, detail="Not authenticated")
     try:
         payload = jwt.decode(actual_token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
-        return payload
     except jwt.ExpiredSignatureError:
         raise HTTPException(status_code=401, detail="Token expired")
     except jwt.InvalidTokenError:
         raise HTTPException(status_code=401, detail="Invalid token")
+    _enforce_tenant_match(payload)
+    return payload
 
 def require_admin(current_user: dict):
     """Check if current user is admin"""

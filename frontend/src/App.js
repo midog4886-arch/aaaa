@@ -80,6 +80,17 @@ const WhatsAppPage = lazy(() => import('./pages/WhatsAppPage'));
 const WhatsAppBulkPage = lazy(() => import('./pages/WhatsAppBulkPage'));
 const TournamentsPage = lazy(() => import('./pages/TournamentsPage'));
 const SocialPublisherPage = lazy(() => import('./pages/SocialPublisherPage'));
+const SuperLogin = lazy(() => import('./pages/SuperLogin'));
+const SuperTenants = lazy(() => import('./pages/SuperTenants'));
+
+const SuperGuard = ({ children }) => {
+  const token = typeof window !== 'undefined' ? localStorage.getItem('super_token') : null;
+  if (!token) {
+    window.location.replace('/super/login');
+    return null;
+  }
+  return children;
+};
 
 // Member Portal Pages
 const MemberLogin = lazy(() => import('./pages/member-portal/MemberLogin'));
@@ -209,6 +220,11 @@ function AppRoutes() {
       {/* Privacy Policy - Public page */}
       <Route path="/privacy" element={<PrivacyPolicyPage />} />
       <Route path="/coach-qr/:coachId" element={<CoachQRPage />} />
+
+      {/* Super-Admin (control plane) — outside main auth/permissions */}
+      <Route path="/super" element={<Navigate to="/super/tenants" replace />} />
+      <Route path="/super/login" element={<SuperLogin />} />
+      <Route path="/super/tenants" element={<SuperGuard><SuperTenants /></SuperGuard>} />
       
       {/* Root - smart redirect based on user role */}
       <Route path="/" element={<SmartRedirect />} />

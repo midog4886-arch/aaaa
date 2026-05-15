@@ -792,24 +792,42 @@ def hash_password(password: str) -> str:
 def verify_password(password: str, hashed: str) -> bool:
     return bcrypt.checkpw(password.encode(), hashed.encode())
 
-def create_token(user_id: str, username: str, branch_id: str = None, is_admin: bool = False) -> str:
+def create_token(user_id: str, username: str, branch_id: str = None, is_admin: bool = False, tenant_slug: Optional[str] = None) -> str:
+    from utils.tenant import get_current_tenant_slug, DEFAULT_TENANT_SLUG
     payload = {
         "user_id": user_id,
         "username": username,
         "branch_id": branch_id,
         "is_admin": is_admin,
+        "tenant_slug": tenant_slug or get_current_tenant_slug() or DEFAULT_TENANT_SLUG,
         "exp": datetime.now(timezone.utc) + timedelta(hours=JWT_EXPIRATION_HOURS)
     }
     return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
 
+
+def _enforce_tenant_match_local(payload: dict):
+    from utils.tenant import get_current_tenant_slug, DEFAULT_TENANT_SLUG
+    if payload.get("scope") == "super":
+        raise HTTPException(status_code=403, detail="Invalid token scope")
+    if not payload.get("user_id") or not payload.get("username"):
+        raise HTTPException(status_code=401, detail="Invalid token")
+    token_tenant = payload.get("tenant_slug")
+    if not token_tenant:
+        raise HTTPException(status_code=401, detail="Token missing tenant — please log in again")
+    current_tenant = get_current_tenant_slug() or DEFAULT_TENANT_SLUG
+    if token_tenant != current_tenant:
+        raise HTTPException(status_code=403, detail="Tenant mismatch")
+
+
 async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
     try:
         payload = jwt.decode(credentials.credentials, JWT_SECRET, algorithms=[JWT_ALGORITHM])
-        return payload
     except jwt.ExpiredSignatureError:
         raise HTTPException(status_code=401, detail="Token expired")
     except jwt.InvalidTokenError:
         raise HTTPException(status_code=401, detail="Invalid token")
+    _enforce_tenant_match_local(payload)
+    return payload
 
 async def get_current_user_from_token(token: Optional[str] = None, credentials: Optional[HTTPAuthorizationCredentials] = Depends(security)):
     """Support both Bearer token and query parameter token for exports"""
@@ -820,11 +838,12 @@ async def get_current_user_from_token(token: Optional[str] = None, credentials: 
         raise HTTPException(status_code=401, detail="Not authenticated")
     try:
         payload = jwt.decode(actual_token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
-        return payload
     except jwt.ExpiredSignatureError:
         raise HTTPException(status_code=401, detail="Token expired")
     except jwt.InvalidTokenError:
         raise HTTPException(status_code=401, detail="Invalid token")
+    _enforce_tenant_match_local(payload)
+    return payload
 
 # ============ AUTH ROUTES ============
 
@@ -2396,7 +2415,7 @@ async def export_members(
     if not token:
         raise HTTPException(status_code=401, detail="Not authenticated")
     try:
-        jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+        _enforce_tenant_match_local(jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM]))
     except:
         raise HTTPException(status_code=401, detail="Invalid token")
     
@@ -2516,7 +2535,7 @@ async def export_invoices(
     if not token:
         raise HTTPException(status_code=401, detail="Not authenticated")
     try:
-        jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+        _enforce_tenant_match_local(jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM]))
     except:
         raise HTTPException(status_code=401, detail="Invalid token")
     
@@ -2632,7 +2651,7 @@ async def export_members_pdf(
     if not token:
         raise HTTPException(status_code=401, detail="Not authenticated")
     try:
-        jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+        _enforce_tenant_match_local(jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM]))
     except:
         raise HTTPException(status_code=401, detail="Invalid token")
 
@@ -2739,7 +2758,7 @@ async def export_invoices_pdf(
     if not token:
         raise HTTPException(status_code=401, detail="Not authenticated")
     try:
-        jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+        _enforce_tenant_match_local(jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM]))
     except:
         raise HTTPException(status_code=401, detail="Invalid token")
 
@@ -2960,7 +2979,7 @@ async def create_backup(token: Optional[str] = None):
     if not token:
         raise HTTPException(status_code=401, detail="Not authenticated")
     try:
-        jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+        _enforce_tenant_match_local(jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM]))
     except:
         raise HTTPException(status_code=401, detail="Invalid token")
 
@@ -3004,7 +3023,7 @@ async def list_backups(token: Optional[str] = None):
     if not token:
         raise HTTPException(status_code=401, detail="Not authenticated")
     try:
-        jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+        _enforce_tenant_match_local(jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM]))
     except:
         raise HTTPException(status_code=401, detail="Invalid token")
 
@@ -3029,7 +3048,7 @@ async def download_backup(filename: str, token: Optional[str] = None):
     if not token:
         raise HTTPException(status_code=401, detail="Not authenticated")
     try:
-        jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+        _enforce_tenant_match_local(jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM]))
     except:
         raise HTTPException(status_code=401, detail="Invalid token")
 
@@ -3050,7 +3069,7 @@ async def restore_backup(filename: str, token: Optional[str] = None):
     if not token:
         raise HTTPException(status_code=401, detail="Not authenticated")
     try:
-        jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+        _enforce_tenant_match_local(jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM]))
     except:
         raise HTTPException(status_code=401, detail="Invalid token")
 
@@ -3085,7 +3104,7 @@ async def upload_backup(file: UploadFile = File(...), token: Optional[str] = Que
     if not token:
         raise HTTPException(status_code=401, detail="Not authenticated")
     try:
-        jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+        _enforce_tenant_match_local(jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM]))
     except:
         raise HTTPException(status_code=401, detail="Invalid token")
 
@@ -3120,7 +3139,7 @@ async def delete_backup(filename: str, token: Optional[str] = None):
     if not token:
         raise HTTPException(status_code=401, detail="Not authenticated")
     try:
-        jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+        _enforce_tenant_match_local(jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM]))
     except:
         raise HTTPException(status_code=401, detail="Invalid token")
 
@@ -3145,7 +3164,7 @@ async def export_financial_report(
     if not token:
         raise HTTPException(status_code=401, detail="Not authenticated")
     try:
-        jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+        _enforce_tenant_match_local(jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM]))
     except:
         raise HTTPException(status_code=401, detail="Invalid token")
     
@@ -3270,7 +3289,7 @@ async def export_all_data(token: Optional[str] = None):
     if not token:
         raise HTTPException(status_code=401, detail="Not authenticated")
     try:
-        jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+        _enforce_tenant_match_local(jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM]))
     except:
         raise HTTPException(status_code=401, detail="Invalid token")
     
@@ -5841,11 +5860,14 @@ async def export_attendance_excel(
     token: str = None
 ):
     """Export attendance summary to Excel or PDF (one row per member with session count)"""
-    if token:
-        try:
-            jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
-        except Exception:
-            raise HTTPException(status_code=401, detail="Invalid token")
+    if not token:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    try:
+        _enforce_tenant_match_local(jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM]))
+    except HTTPException:
+        raise
+    except Exception:
+        raise HTTPException(status_code=401, detail="Invalid token")
 
     # Build date query
     date_query = {}
@@ -7645,7 +7667,7 @@ async def export_sales_report(
     if not token:
         raise HTTPException(status_code=401, detail="Not authenticated")
     try:
-        jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+        _enforce_tenant_match_local(jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM]))
     except:
         raise HTTPException(status_code=401, detail="Invalid token")
     
@@ -7746,7 +7768,7 @@ async def export_purchases_report(
     if not token:
         raise HTTPException(status_code=401, detail="Not authenticated")
     try:
-        jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+        _enforce_tenant_match_local(jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM]))
     except:
         raise HTTPException(status_code=401, detail="Invalid token")
     
@@ -7851,7 +7873,7 @@ async def export_vat_report(
     if not token:
         raise HTTPException(status_code=401, detail="Not authenticated")
     try:
-        jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+        _enforce_tenant_match_local(jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM]))
     except:
         raise HTTPException(status_code=401, detail="Invalid token")
     
@@ -8285,4 +8307,9 @@ async def create_default_admin():
 
 @app.on_event("shutdown")
 async def shutdown_db_client():
-    client.close()
+    try:
+        from database import _raw_client
+        if _raw_client is not None and hasattr(_raw_client, "close"):
+            _raw_client.close()
+    except Exception as e:
+        print(f"Shutdown close failed: {e}")
