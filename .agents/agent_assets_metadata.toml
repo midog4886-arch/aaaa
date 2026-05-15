@@ -18,3 +18,9 @@ id = "-8MEiSNhx-ZAa2NBPBXmv"
 uri = "file://MULTITENANT_SETUP.md"
 type = "text"
 title = "دليل إعداد النظام متعدد الأكاديميات"
+
+[[outputs]]
+id = "HOutxgKvGHHgjb8s114yG"
+uri = "file://.local/post_deploy_checklist_ar.md"
+type = "text"
+title = "قائمة اختبار ما بعد النشر"
