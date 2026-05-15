@@ -214,10 +214,21 @@ async def check_subscription_renewals(current_user: dict = Depends(get_current_u
                     
                     if not existing:
                         notification_id = str(uuid.uuid4())
+                        member_name = member.get('name_ar', '') or member.get('name', '')
+                        member_name_en = member.get('name', '') or member.get('name_ar', '')
+                        activity_name = activity.get('activity_name', '')
+                        title_ar = "تنبيه تجديد اشتراك"
+                        title_en = "Subscription Renewal Reminder"
+                        message_ar = f"اشتراك {member_name} في {activity_name} ينتهي بتاريخ {end_date}"
+                        message_en = f"{member_name_en}'s subscription in {activity_name} expires on {end_date}"
                         await db.notifications.insert_one({
                             "id": notification_id,
-                            "title": "تنبيه تجديد اشتراك",
-                            "message": f"اشتراك {member.get('name_ar', '')} في {activity.get('activity_name', '')} ينتهي بتاريخ {end_date}",
+                            "title": title_ar,
+                            "title_ar": title_ar,
+                            "title_en": title_en,
+                            "message": message_ar,
+                            "message_ar": message_ar,
+                            "message_en": message_en,
                             "type": "renewal_reminder",
                             "member_id": member["id"],
                             "activity_id": activity.get("activity_id"),
@@ -352,6 +363,7 @@ async def check_ads_expiry(current_user: dict = Depends(get_current_user)):
         
         ad_id = ad.get("id")
         ad_title = ad.get("title_ar", ad.get("title", "إعلان"))
+        ad_title_en = ad.get("title_en") or ad.get("title") or ad_title
         
         # Check if ad is expired
         if end_date < today:
@@ -364,10 +376,18 @@ async def check_ads_expiry(current_user: dict = Depends(get_current_user)):
             
             if not existing:
                 notification_id = str(uuid.uuid4())
+                title_ar = "⚠️ إعلان منتهي"
+                title_en = "⚠️ Advertisement Expired"
+                message_ar = f"انتهى الإعلان \"{ad_title}\" بتاريخ {end_date}"
+                message_en = f"The advertisement \"{ad_title_en}\" expired on {end_date}"
                 await db.notifications.insert_one({
                     "id": notification_id,
-                    "title": "⚠️ إعلان منتهي",
-                    "message": f"انتهى الإعلان \"{ad_title}\" بتاريخ {end_date}",
+                    "title": title_ar,
+                    "title_ar": title_ar,
+                    "title_en": title_en,
+                    "message": message_ar,
+                    "message_ar": message_ar,
+                    "message_en": message_en,
                     "type": "ad_expired",
                     "ad_id": ad_id,
                     "link": "/advertisements",
@@ -390,10 +410,19 @@ async def check_ads_expiry(current_user: dict = Depends(get_current_user)):
             
             if not existing:
                 notification_id = str(uuid.uuid4())
+                title_ar = "🔔 إعلان ينتهي قريباً"
+                title_en = "🔔 Advertisement Expiring Soon"
+                message_ar = f"الإعلان \"{ad_title}\" سينتهي خلال {days_remaining} أيام ({end_date})"
+                day_word = "day" if days_remaining == 1 else "days"
+                message_en = f"The advertisement \"{ad_title_en}\" will expire in {days_remaining} {day_word} ({end_date})"
                 await db.notifications.insert_one({
                     "id": notification_id,
-                    "title": "🔔 إعلان ينتهي قريباً",
-                    "message": f"الإعلان \"{ad_title}\" سينتهي خلال {days_remaining} أيام ({end_date})",
+                    "title": title_ar,
+                    "title_ar": title_ar,
+                    "title_en": title_en,
+                    "message": message_ar,
+                    "message_ar": message_ar,
+                    "message_en": message_en,
                     "type": "ad_expiring_soon",
                     "ad_id": ad_id,
                     "link": "/advertisements",
