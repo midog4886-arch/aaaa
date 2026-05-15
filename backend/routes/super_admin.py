@@ -58,6 +58,16 @@ def _require_super(creds: Optional[HTTPAuthorizationCredentials] = Depends(secur
     return payload
 
 
+def _super_actor(super_payload: dict) -> dict:
+    """Build an audit ``actor`` dict for a super-admin caller."""
+    username = (super_payload or {}).get("sub") or "super-admin"
+    return {
+        "user_id": f"super:{username}",
+        "username": username,
+        "is_admin": True,
+    }
+
+
 class LoginIn(BaseModel):
     username: str
     password: str
@@ -290,7 +300,7 @@ async def list_tenants(_=Depends(_require_super)):
 
 
 @router.post("/tenants")
-async def create_tenant(payload: TenantCreate, _=Depends(_require_super)):
+async def create_tenant(payload: TenantCreate, super_payload: dict = Depends(_require_super)):
     slug = payload.slug.lower()
     if slug == DEFAULT_TENANT_SLUG:
         raise HTTPException(status_code=400, detail="Slug 'default' is reserved")
@@ -358,11 +368,23 @@ async def create_tenant(payload: TenantCreate, _=Depends(_require_super)):
         "admin_username": admin_username,
         "admin_password": generated_password or None,
     }
+    try:
+        from utils.audit import log_audit
+        await log_audit(
+            actor=_super_actor(super_payload),
+            action="tenant.create",
+            entity_type="tenant",
+            entity_id=doc["id"],
+            entity_name=doc.get("name", ""),
+            after={k: v for k, v in doc.items() if k != "_id"},
+        )
+    except Exception:
+        pass
     return response
 
 
 @router.patch("/tenants/{tenant_id}")
-async def update_tenant(tenant_id: str, payload: TenantUpdate, _=Depends(_require_super)):
+async def update_tenant(tenant_id: str, payload: TenantUpdate, super_payload: dict = Depends(_require_super)):
     existing = await control_db.tenants.find_one({"id": tenant_id}, {"_id": 0})
     if not existing:
         raise HTTPException(status_code=404, detail="Tenant not found")
@@ -407,6 +429,20 @@ async def update_tenant(tenant_id: str, payload: TenantUpdate, _=Depends(_requir
             )
     except Exception:
         logger.exception("manual-suspended email failed for %s", (refreshed or {}).get("slug"))
+
+    try:
+        from utils.audit import log_audit
+        await log_audit(
+            actor=_super_actor(super_payload),
+            action="settings.tenant.update",
+            entity_type="tenant",
+            entity_id=tenant_id,
+            entity_name=(refreshed or existing).get("name", ""),
+            before={k: existing.get(k) for k in update.keys()},
+            after={k: (refreshed or {}).get(k) for k in update.keys()},
+        )
+    except Exception:
+        pass
 
     return refreshed
 
@@ -509,7 +545,7 @@ async def apply_renewal(
 
 
 @router.post("/tenants/{tenant_id}/renew")
-async def renew_tenant(tenant_id: str, payload: TenantRenew, _=Depends(_require_super)):
+async def renew_tenant(tenant_id: str, payload: TenantRenew, super_payload: dict = Depends(_require_super)):
     existing = await control_db.tenants.find_one({"id": tenant_id}, {"_id": 0})
     if not existing:
         raise HTTPException(status_code=404, detail="Tenant not found")
@@ -526,6 +562,27 @@ async def renew_tenant(tenant_id: str, payload: TenantRenew, _=Depends(_require_
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+    try:
+        from utils.audit import log_audit
+        refreshed = result.get("tenant") or {}
+        await log_audit(
+            actor=_super_actor(super_payload),
+            action="tenant.renew",
+            entity_type="tenant",
+            entity_id=tenant_id,
+            entity_name=refreshed.get("name", "") or existing.get("name", ""),
+            before={
+                "subscription_end_at": existing.get("subscription_end_at"),
+                "status": existing.get("status"),
+            },
+            after={
+                "subscription_end_at": refreshed.get("subscription_end_at"),
+                "status": refreshed.get("status"),
+            },
+            extra={"renewal": result.get("renewal")},
+        )
+    except Exception:
+        pass
     return {"tenant": result["tenant"], "renewal": result["renewal"]}
 
 
@@ -533,7 +590,7 @@ async def renew_tenant(tenant_id: str, payload: TenantRenew, _=Depends(_require_
 async def record_payment_failure(
     tenant_id: str,
     payload: TenantPaymentFailure,
-    _=Depends(_require_super),
+    super_payload: dict = Depends(_require_super),
 ):
     """Record a failed renewal payment attempt and email the tenant.
 
@@ -546,7 +603,7 @@ async def record_payment_failure(
     if not existing:
         raise HTTPException(status_code=404, detail="Tenant not found")
     from routes.billing import apply_payment_failure
-    return await apply_payment_failure(
+    result = await apply_payment_failure(
         tenant=existing,
         reason=payload.reason or "",
         amount=payload.amount,
@@ -554,6 +611,26 @@ async def record_payment_failure(
         provider=payload.provider or "manual",
         provider_ref=payload.provider_ref or "",
     )
+    try:
+        from utils.audit import log_audit
+        await log_audit(
+            actor=_super_actor(super_payload),
+            action="tenant.payment_failure",
+            entity_type="tenant",
+            entity_id=tenant_id,
+            entity_name=existing.get("name", ""),
+            extra={
+                "reason": payload.reason,
+                "amount": payload.amount,
+                "currency": payload.currency,
+                "provider": payload.provider,
+                "provider_ref": payload.provider_ref,
+                "failure": (result or {}).get("failure"),
+            },
+        )
+    except Exception:
+        pass
+    return result
 
 
 @router.post("/check_expired")
@@ -569,7 +646,7 @@ _GRACE_PERIOD_DAYS = 7
 async def schedule_tenant_delete(
     tenant_id: str,
     payload: Optional[dict] = Body(default=None),
-    _=Depends(_require_super),
+    super_payload: dict = Depends(_require_super),
 ):
     """Soft-delete: marks the tenant for permanent deletion in 7 days.
 
@@ -609,6 +686,24 @@ async def schedule_tenant_delete(
     refreshed = await control_db.tenants.find_one({"id": tenant_id}, {"_id": 0})
 
     try:
+        from utils.audit import log_audit
+        await log_audit(
+            actor=_super_actor(super_payload),
+            action="tenant.schedule_delete",
+            entity_type="tenant",
+            entity_id=tenant_id,
+            entity_name=existing.get("name", ""),
+            before={"status": existing.get("status")},
+            after={
+                "status": (refreshed or {}).get("status"),
+                "deletion_purge_at": (refreshed or {}).get("deletion_purge_at"),
+            },
+            extra={"reason": (payload.get("reason") or "")[:500]},
+        )
+    except Exception:
+        pass
+
+    try:
         owner_email = (refreshed or {}).get("owner_email") or ""
         if owner_email:
             await send_email(
@@ -627,7 +722,7 @@ async def schedule_tenant_delete(
 
 
 @router.post("/tenants/{tenant_id}/cancel-delete")
-async def cancel_tenant_delete(tenant_id: str, _=Depends(_require_super)):
+async def cancel_tenant_delete(tenant_id: str, super_payload: dict = Depends(_require_super)):
     existing = await control_db.tenants.find_one({"id": tenant_id}, {"_id": 0})
     if not existing:
         raise HTTPException(status_code=404, detail="Tenant not found")
@@ -647,6 +742,22 @@ async def cancel_tenant_delete(tenant_id: str, _=Depends(_require_super)):
          }},
     )
     refreshed = await control_db.tenants.find_one({"id": tenant_id}, {"_id": 0})
+    try:
+        from utils.audit import log_audit
+        await log_audit(
+            actor=_super_actor(super_payload),
+            action="tenant.cancel_delete",
+            entity_type="tenant",
+            entity_id=tenant_id,
+            entity_name=existing.get("name", ""),
+            before={
+                "status": existing.get("status"),
+                "deletion_purge_at": existing.get("deletion_purge_at"),
+            },
+            after={"status": (refreshed or {}).get("status")},
+        )
+    except Exception:
+        pass
     return {"ok": True, "tenant": refreshed}
 
 
@@ -655,7 +766,7 @@ async def delete_tenant(
     tenant_id: str,
     confirm_slug: Optional[str] = None,
     force: bool = False,
-    _=Depends(_require_super),
+    super_payload: dict = Depends(_require_super),
 ):
     """Permanently delete a tenant.
 
@@ -734,6 +845,19 @@ async def delete_tenant(
         },
          "$unset": {"deletion_last_error": "", "deletion_last_error_at": ""}},
     )
+    try:
+        from utils.audit import log_audit
+        await log_audit(
+            actor=_super_actor(super_payload),
+            action="tenant.delete",
+            entity_type="tenant",
+            entity_id=tenant_id,
+            entity_name=existing.get("name", ""),
+            before=existing,
+            extra={"force": force, "db_name": db_name},
+        )
+    except Exception:
+        pass
     return {"ok": True, "db_dropped": True, "force": force}
 
 
@@ -862,9 +986,10 @@ async def email_settings_get(_=Depends(_require_super)):
 
 
 @router.put("/email/settings")
-async def email_settings_put(payload: EmailSettingsIn, _=Depends(_require_super)):
+async def email_settings_put(payload: EmailSettingsIn, super_payload: dict = Depends(_require_super)):
     try:
-        return await update_email_settings(
+        before = await get_email_settings()
+        result = await update_email_settings(
             provider=payload.provider or "",
             from_email=payload.from_email or "",
             from_name=payload.from_name or "",
@@ -872,6 +997,20 @@ async def email_settings_put(payload: EmailSettingsIn, _=Depends(_require_super)
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+    try:
+        from utils.audit import log_audit
+        await log_audit(
+            actor=_super_actor(super_payload),
+            action="settings.email.update",
+            entity_type="settings",
+            entity_id="email",
+            entity_name="email_settings",
+            before=before,
+            after=result,
+        )
+    except Exception:
+        pass
+    return result
 
 
 @router.get("/email/log")
@@ -926,12 +1065,27 @@ async def payment_settings_get(_=Depends(_require_super)):
 
 
 @router.put("/payment/settings")
-async def payment_settings_put(payload: PaymentSettingsIn, _=Depends(_require_super)):
+async def payment_settings_put(payload: PaymentSettingsIn, super_payload: dict = Depends(_require_super)):
     try:
-        return await update_payment_settings(
+        before = await get_payment_settings()
+        result = await update_payment_settings(
             provider=payload.provider or "",
             enabled=bool(payload.enabled),
             secret_env=payload.secret_env or "PAYMENT_WEBHOOK_SECRET",
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+    try:
+        from utils.audit import log_audit
+        await log_audit(
+            actor=_super_actor(super_payload),
+            action="settings.payment.update",
+            entity_type="settings",
+            entity_id="payment",
+            entity_name="payment_settings",
+            before=before,
+            after=result,
+        )
+    except Exception:
+        pass
+    return result

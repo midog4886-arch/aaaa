@@ -496,6 +496,28 @@ async def update_billing_contact(
         billing_confirmation = result["sent"]
 
     refreshed = await control_db.tenants.find_one({"slug": slug}, {"_id": 0}) or refreshed
+    if owner_changed or billing_changed:
+        try:
+            from utils.audit import log_audit
+            tracked = (
+                "owner_email", "billing_email",
+                "pending_owner_email", "pending_billing_email",
+            )
+            await log_audit(
+                actor=current_user,
+                action="settings.billing_contact.update",
+                entity_type="tenant",
+                entity_id=refreshed.get("id", ""),
+                entity_name=refreshed.get("name", ""),
+                before={k: tenant.get(k) for k in tracked},
+                after={k: refreshed.get(k) for k in tracked},
+                extra={
+                    "owner_email_changed": owner_changed,
+                    "billing_email_changed": billing_changed,
+                },
+            )
+        except Exception:
+            pass
     return {
         "ok": True,
         "owner_email": refreshed.get("owner_email", ""),

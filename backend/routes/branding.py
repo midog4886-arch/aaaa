@@ -110,9 +110,24 @@ async def update_branding(payload: BrandingUpdate, current_user: dict = Depends(
             if not cleaned:
                 raise HTTPException(status_code=400, detail="صيغة اللون غير صحيحة (#RRGGBB)")
             update["primary_color"] = cleaned
+    before = await control_db.tenants.find_one({"slug": slug}, {"_id": 0}) or {}
     if update:
         await control_db.tenants.update_one({"slug": slug}, {"$set": update})
     refreshed = await control_db.tenants.find_one({"slug": slug}, {"_id": 0}) or {}
+    if update:
+        try:
+            from utils.audit import log_audit
+            await log_audit(
+                actor=current_user,
+                action="settings.branding.update",
+                entity_type="tenant",
+                entity_id=refreshed.get("id", "") or before.get("id", ""),
+                entity_name=refreshed.get("name", "") or before.get("name", ""),
+                before={k: before.get(k) for k in update.keys()},
+                after={k: refreshed.get(k) for k in update.keys()},
+            )
+        except Exception:
+            pass
     return {
         "name": refreshed.get("name", ""),
         "logo_base64": _safe_logo(refreshed.get("logo_base64", "")),
@@ -152,6 +167,19 @@ async def onboarding_complete(current_user: dict = Depends(get_current_user)):
             await _send_onboarding_welcome_notification(current_user, result.get("name", ""))
         except Exception:
             logger.exception("Failed to send onboarding welcome notification")
+        try:
+            from utils.audit import log_audit
+            await log_audit(
+                actor=current_user,
+                action="settings.onboarding.complete",
+                entity_type="tenant",
+                entity_id=result.get("id", ""),
+                entity_name=result.get("name", ""),
+                before={"onboarding_completed_at": None},
+                after={"onboarding_completed_at": now_iso},
+            )
+        except Exception:
+            pass
         return {"completed": True, "completed_at": now_iso}
     tenant = await control_db.tenants.find_one({"slug": slug}, {"_id": 0}) or {}
     return {
@@ -238,7 +266,21 @@ async def _send_onboarding_welcome_notification(current_user: dict, tenant_name:
 @router.post("/onboarding-reset")
 async def onboarding_reset(current_user: dict = Depends(get_current_user)):
     slug = _require_tenant_admin(current_user)
+    before = await control_db.tenants.find_one({"slug": slug}, {"_id": 0}) or {}
     await control_db.tenants.update_one(
         {"slug": slug}, {"$set": {"onboarding_completed_at": None}}
     )
+    try:
+        from utils.audit import log_audit
+        await log_audit(
+            actor=current_user,
+            action="settings.onboarding.reset",
+            entity_type="tenant",
+            entity_id=before.get("id", ""),
+            entity_name=before.get("name", ""),
+            before={"onboarding_completed_at": before.get("onboarding_completed_at")},
+            after={"onboarding_completed_at": None},
+        )
+    except Exception:
+        pass
     return {"completed": False}
