@@ -3535,7 +3535,20 @@ async def _run_daily_renewal_and_ads_checks(trigger: str = "scheduler") -> dict:
         errors.append(msg)
         print(f"Daily checks: {msg}")
 
-    # 6) Daily digest of any ops_alerts that ended in delivery_status=exhausted
+    # 6) Notify owners whose pending email confirmation links expired without
+    # being clicked (so they don't only learn about it from the billing page).
+    try:
+        from control_db import notify_expired_email_confirmations
+        ec = await notify_expired_email_confirmations()
+        print(f"Daily checks: expired-confirmation reminders → {ec}")
+        for e in ec.get("errors") or []:
+            errors.append(f"email_confirmation_expired: {e}")
+    except Exception as e:
+        msg = f"expired-confirmation reminders failed: {e}"
+        errors.append(msg)
+        print(f"Daily checks: {msg}")
+
+    # 7) Daily digest of any ops_alerts that ended in delivery_status=exhausted
     # in the last 24h, so admins are proactively notified about outages even
     # if they never visit /admin/ops-alerts.
     digest_sent = False

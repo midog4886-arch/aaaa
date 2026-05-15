@@ -446,6 +446,14 @@ export const SettingsPage = () => {
     const expiresTxt = expiresAt
       ? new Date(expiresAt).toLocaleString(language === 'ar' ? 'ar-SA' : 'en-GB')
       : '';
+    const expired = (() => {
+      if (!expiresAt) return false;
+      const t = Date.parse(expiresAt);
+      return Number.isFinite(t) && t < Date.now();
+    })();
+    const containerCls = expired
+      ? 'flex flex-wrap items-center gap-2 text-xs bg-red-50 border border-red-200 text-red-900 rounded px-2 py-1'
+      : 'flex flex-wrap items-center gap-2 text-xs bg-amber-50 border border-amber-200 text-amber-900 rounded px-2 py-1';
     const onResend = async () => {
       setBusy(true);
       try {
@@ -462,17 +470,21 @@ export const SettingsPage = () => {
     };
     return (
       <div
-        className="flex flex-wrap items-center gap-2 text-xs bg-amber-50 border border-amber-200 text-amber-900 rounded px-2 py-1"
+        className={containerCls}
         data-testid={`billing-pending-${role}-email`}
       >
         <Clock className="w-3 h-3" />
         <span>
-          {language === 'ar' ? 'قيد التأكيد:' : 'Pending confirmation:'}{' '}
+          {expired
+            ? (language === 'ar' ? 'طلب تأكيد منتهي - أعد المحاولة:' : 'Confirmation expired – please retry:')
+            : (language === 'ar' ? 'قيد التأكيد:' : 'Pending confirmation:')}{' '}
           <span className="font-medium">{email}</span>
         </span>
         {expiresTxt && (
           <span className="text-[11px] opacity-80">
-            {language === 'ar' ? `صالح حتى ${expiresTxt}` : `expires ${expiresTxt}`}
+            {expired
+              ? (language === 'ar' ? `انتهى في ${expiresTxt}` : `expired ${expiresTxt}`)
+              : (language === 'ar' ? `صالح حتى ${expiresTxt}` : `expires ${expiresTxt}`)}
           </span>
         )}
         <Button

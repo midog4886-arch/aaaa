@@ -511,6 +511,7 @@ async def _send_confirmation(
     field_token = f"pending_{role}_email_token"
     field_exp = f"pending_{role}_email_expires_at"
     field_req = f"pending_{role}_email_requested_at"
+    field_notified = f"pending_{role}_email_expired_notified_at"
     await control_db.tenants.update_one(
         {"slug": slug},
         {"$set": {
@@ -518,7 +519,8 @@ async def _send_confirmation(
             field_token: token,
             field_exp: expires_at.isoformat(),
             field_req: now.isoformat(),
-        }},
+        },
+         "$unset": {field_notified: ""}},
     )
     try:
         result = await send_email(
@@ -611,6 +613,7 @@ async def update_billing_contact(
             "pending_billing_email_token": "",
             "pending_billing_email_expires_at": "",
             "pending_billing_email_requested_at": "",
+            "pending_billing_email_expired_notified_at": "",
         })
 
     update_doc: dict = {"$set": set_fields}
@@ -795,6 +798,7 @@ async def confirm_email_change(token: str):
         field_token: "",
         field_exp: "",
         f"pending_{role}_email_requested_at": "",
+        f"pending_{role}_email_expired_notified_at": "",
     }
     await control_db.tenants.update_one(
         {"id": tenant.get("id")},

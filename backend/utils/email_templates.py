@@ -269,6 +269,43 @@ def _email_confirmation(ctx: Dict) -> Tuple[str, str, str]:
     return subject, _wrap(ar, en), text
 
 
+def _email_confirmation_expired(ctx: Dict) -> Tuple[str, str, str]:
+    name = ctx.get("academy_name", "")
+    role = (ctx.get("role") or "owner").lower()
+    role_ar = "بريد المالك" if role == "owner" else "بريد الفوترة"
+    role_en = "owner email" if role == "owner" else "billing email"
+    pending_email = ctx.get("pending_email", "")
+    requested_at = _fmt_date(ctx.get("requested_at", ""))
+    subject = (
+        f"انتهت صلاحية رابط تأكيد البريد / "
+        f"Your {role_en} confirmation link expired"
+    )
+    ar = f"""
+<h2>طلب تغيير البريد لم يُؤكَّد</h2>
+<p>عزيزي {name}، انتهت صلاحية رابط تأكيد <b>{role_ar}</b> الجديد
+(<b>{pending_email}</b>) الذي طلبته بتاريخ {requested_at} دون النقر عليه.</p>
+<p>ما زال البريد القديم (هذا العنوان) هو المعتمد لاستقبال جميع الإشعارات
+الهامة، وإذا أردت إكمال التغيير افتح صفحة الإعدادات → الاشتراك والفوترة
+واضغط على «إعادة إرسال التأكيد» لإصدار رابط جديد.</p>
+"""
+    en = f"""
+<h2>Email change was not confirmed</h2>
+<p>Hello {name}, the confirmation link for your new <b>{role_en}</b>
+(<b>{pending_email}</b>), requested on {requested_at}, has expired without
+being clicked.</p>
+<p>This address (the previously confirmed one) remains in effect for all
+important notifications. To complete the change, open Settings →
+Subscription &amp; Billing and click "Resend confirmation" to issue a new
+link.</p>
+"""
+    text = (
+        f"Confirmation for new {role_en} {pending_email} expired without "
+        f"being clicked. The old address remains active. Resend the link "
+        f"from Settings → Subscription & Billing if you still want to change it."
+    )
+    return subject, _wrap(ar, en), text
+
+
 def _purge_completed(ctx: Dict) -> Tuple[str, str, str]:
     name = ctx.get("academy_name", "")
     deleted_at = _fmt_date(ctx.get("deleted_at", ""))
@@ -356,6 +393,7 @@ TEMPLATES: Dict[str, Callable[[Dict], Tuple[str, str, str]]] = {
     "final_purge_warning": _final_purge_warning,
     "purge_completed": _purge_completed,
     "email_confirmation": _email_confirmation,
+    "email_confirmation_expired": _email_confirmation_expired,
     "super_admin_signature_failures": _super_admin_signature_failures,
 }
 

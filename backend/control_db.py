@@ -306,6 +306,96 @@ async def send_trial_ending_emails() -> dict:
     return {"sent": sent, "skipped": skipped, "errors": errors}
 
 
+async def notify_expired_email_confirmations() -> dict:
+    """Email a reminder to the OLD/confirmed address when a pending owner or
+    billing email change request expires without being clicked.
+
+    The new ``pending_{role}_email`` is intentionally left in place on the
+    tenant doc so the in-app Settings → Billing badge can surface the
+    "expired – please retry" state until the admin acts (resend or save a new
+    address). To avoid re-emailing on every daily run, we stamp
+    ``pending_{role}_email_expired_notified_at`` with the expiry time we
+    handled; if the admin later resends, ``_send_confirmation`` writes a fresh
+    ``pending_{role}_email_expires_at`` and the next expiry will reopen this
+    code path.
+
+    Returns ``{"sent": N, "skipped": M, "errors": [...]}``.
+    """
+    now = datetime.now(timezone.utc)
+    now_iso = now.isoformat()
+    sent = 0
+    skipped = 0
+    errors: list = []
+    try:
+        send_email = None
+        try:
+            from utils.email_service import send_email as _se
+            send_email = _se
+        except Exception:
+            logger.exception("notify_expired_email_confirmations: email_service import failed")
+            return {"sent": 0, "skipped": 0, "errors": ["email_service import failed"]}
+
+        for role in ("owner", "billing"):
+            field_email = f"pending_{role}_email"
+            field_exp = f"pending_{role}_email_expires_at"
+            field_req = f"pending_{role}_email_requested_at"
+            field_notified = f"pending_{role}_email_expired_notified_at"
+            cursor = control_db.tenants.find(
+                {
+                    field_email: {"$nin": ["", None]},
+                    field_exp: {"$lt": now_iso, "$nin": ["", None]},
+                },
+                {
+                    "_id": 0, "slug": 1, "name": 1,
+                    "owner_email": 1, "billing_email": 1,
+                    field_email: 1, field_exp: 1, field_req: 1, field_notified: 1,
+                },
+            )
+            async for t in cursor:
+                exp_iso = t.get(field_exp) or ""
+                already = t.get(field_notified) or ""
+                if already and already == exp_iso:
+                    skipped += 1
+                    continue
+                # Reminder always goes to the previously confirmed owner_email
+                # (the address the admin still controls). The billing address
+                # is only a delegated recipient for payment mails.
+                recipient = (t.get("owner_email") or "").strip()
+                if not recipient:
+                    skipped += 1
+                    continue
+                try:
+                    res = await send_email(
+                        kind="email_confirmation_expired",
+                        to=recipient,
+                        tenant_slug=t.get("slug"),
+                        ctx={
+                            "academy_name": t.get("name", ""),
+                            "role": role,
+                            "pending_email": t.get(field_email, ""),
+                            "requested_at": t.get(field_req, ""),
+                        },
+                    )
+                    if (res or {}).get("status") == "sent":
+                        sent += 1
+                        await control_db.tenants.update_one(
+                            {"slug": t.get("slug")},
+                            {"$set": {field_notified: exp_iso}},
+                        )
+                    else:
+                        skipped += 1
+                except Exception as e:
+                    errors.append(f"{t.get('slug')}/{role}: {e}")
+                    logger.exception(
+                        "email_confirmation_expired send failed for %s (%s)",
+                        t.get("slug"), role,
+                    )
+    except Exception as e:
+        logger.exception("notify_expired_email_confirmations failed")
+        errors.append(str(e))
+    return {"sent": sent, "skipped": skipped, "errors": errors}
+
+
 async def get_tenant_by_slug(slug: str):
     if not slug:
         return None
