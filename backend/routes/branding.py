@@ -135,52 +135,86 @@ async def onboarding_status(current_user: dict = Depends(get_current_user)):
     }
 
 
-async def _create_welcome_notification(slug: str, tenant_name: str) -> None:
-    try:
-        academy = (tenant_name or "").strip() or "أكاديميتك"
-        title = "مرحباً بك في أكاديميتك الجديدة"
-        message = (
-            f"تم إعداد {academy} بنجاح. الخطوات التالية المقترحة: "
-            "إضافة الأعضاء، إعداد الأنشطة وجداول التدريب، ودعوة باقي طاقم العمل."
-        )
-        await db.notifications.update_one(
-            {"tag": "onboarding-welcome"},
-            {
-                "$setOnInsert": {
-                    "id": str(uuid.uuid4()),
-                    "title": title,
-                    "message": message,
-                    "type": "success",
-                    "link": "/admin/dashboard",
-                    "branch_id": None,
-                    "tag": "onboarding-welcome",
-                    "is_read": False,
-                    "created_at": datetime.now(timezone.utc).isoformat(),
-                }
-            },
-            upsert=True,
-        )
-    except Exception as exc:
-        logger.warning(f"welcome notification failed for {slug}: {exc}")
-
-
 @router.post("/onboarding-complete")
 async def onboarding_complete(current_user: dict = Depends(get_current_user)):
     slug = _require_tenant_admin(current_user)
     now_iso = datetime.now(timezone.utc).isoformat()
+    # Atomic claim: only the caller that flips onboarding_completed_at from
+    # empty -> now gets a non-None result back. This guarantees the welcome
+    # notification fires at most once per tenant even under concurrent calls.
     result = await control_db.tenants.find_one_and_update(
         {"slug": slug, "onboarding_completed_at": {"$in": [None, ""]}},
         {"$set": {"onboarding_completed_at": now_iso}},
         return_document=True,
     )
     if result:
-        await _create_welcome_notification(slug, result.get("name", ""))
+        try:
+            await _send_onboarding_welcome_notification(current_user, result.get("name", ""))
+        except Exception:
+            logger.exception("Failed to send onboarding welcome notification")
         return {"completed": True, "completed_at": now_iso}
     tenant = await control_db.tenants.find_one({"slug": slug}, {"_id": 0}) or {}
     return {
         "completed": True,
         "completed_at": tenant.get("onboarding_completed_at") or now_iso,
     }
+
+
+async def _send_onboarding_welcome_notification(current_user: dict, tenant_name: str) -> None:
+    """Insert an in-app welcome notification for the academy admin and best-effort push.
+
+    The notification suggests the next actions a freshly onboarded admin can
+    take (add members, schedule activities, invite staff) with a deep link to
+    the most important first step.
+    """
+    branch_id = current_user.get("branch_id")
+    name_part = (tenant_name or "").strip()
+    title_ar = f"أهلاً بك في {name_part}!" if name_part else "أهلاً بك في أكاديميتك!"
+    message_ar = (
+        "اكتمل إعداد أكاديميتك. الخطوات التالية المقترحة: "
+        "1) إضافة أول الأعضاء، "
+        "2) ضبط الأنشطة وجدول التدريب، "
+        "3) دعوة الطاقم وإنشاء حسابات المستخدمين."
+    )
+    notification_id = str(uuid.uuid4())
+    await db.notifications.insert_one({
+        "id": notification_id,
+        "title": title_ar,
+        "message": message_ar,
+        "type": "success",
+        "link": "/admin/members",
+        "branch_id": branch_id,
+        "is_read": False,
+        "tag": "onboarding_welcome",
+        "actions": [
+            {"label_ar": "إضافة أعضاء", "label_en": "Add members", "link": "/admin/members"},
+            {"label_ar": "إعداد الأنشطة", "label_en": "Set up activities", "link": "/admin/activities"},
+            {"label_ar": "دعوة المستخدمين", "label_en": "Invite users", "link": "/admin/users"},
+        ],
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    })
+    # Best-effort push notification to the admin (reuses member push channel keyed by user id)
+    try:
+        from .push_notifications import send_push_notification, NotificationPayload
+        payload = NotificationPayload(
+            title=title_ar,
+            body=message_ar,
+            url="/admin/members",
+            tag=f"onboarding-welcome-{notification_id}",
+            data={"type": "onboarding_welcome"},
+        )
+        user_id = current_user.get("id") or current_user.get("user_id")
+        if user_id:
+            subs = await db.push_subscriptions.find(
+                {"member_id": user_id, "is_active": True}, {"_id": 0}
+            ).to_list(20)
+            for sub in subs:
+                try:
+                    await send_push_notification(sub, payload)
+                except Exception:
+                    pass
+    except Exception:
+        pass
 
 
 @router.post("/onboarding-reset")
