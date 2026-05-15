@@ -12,6 +12,7 @@ Template kinds:
   - suspended
   - cancelled
   - final_purge_warning
+  - purge_completed
 """
 from datetime import datetime
 from typing import Dict, Tuple, Callable
@@ -231,6 +232,39 @@ def _email_confirmation(ctx: Dict) -> Tuple[str, str, str]:
     return subject, _wrap(ar, en), text
 
 
+def _purge_completed(ctx: Dict) -> Tuple[str, str, str]:
+    name = ctx.get("academy_name", "")
+    deleted_at = _fmt_date(ctx.get("deleted_at", ""))
+    subject = (
+        f"تأكيد حذف بيانات أكاديميتك / "
+        f"Confirmation: your academy data has been permanently erased"
+    )
+    ar = f"""
+<h2>تم حذف بيانات أكاديميتك بشكل نهائي</h2>
+<p>عزيزي {name}، نؤكد أنه تم حذف قاعدة بيانات أكاديميتك بشكل نهائي
+ولا يمكن التراجع عنه بتاريخ <b>{deleted_at}</b>.</p>
+<p>لم يعد بالإمكان استعادة الأعضاء أو الفواتير أو السجلات المرتبطة
+بهذا الحساب.</p>
+<p>إذا لم تكن قد طلبت هذا الحذف أو كان الأمر غير متوقع، يرجى التواصل
+معنا فوراً على <a href="mailto:{SUPPORT_EMAIL}">{SUPPORT_EMAIL}</a>.</p>
+"""
+    en = f"""
+<h2>Your academy data has been permanently erased</h2>
+<p>Hello {name}, we are confirming that your academy's database was
+<b>permanently and irreversibly erased on {deleted_at}</b>.</p>
+<p>Members, invoices and records associated with this account can no
+longer be recovered.</p>
+<p>If you did not request this deletion or it was unexpected, please
+contact us immediately at
+<a href="mailto:{SUPPORT_EMAIL}">{SUPPORT_EMAIL}</a>.</p>
+"""
+    text = (
+        f"Confirmation: {name}'s academy database was permanently erased on "
+        f"{deleted_at}. Contact {SUPPORT_EMAIL} if this was unexpected."
+    )
+    return subject, _wrap(ar, en), text
+
+
 TEMPLATES: Dict[str, Callable[[Dict], Tuple[str, str, str]]] = {
     "welcome": _welcome,
     "trial_ending": _trial_ending,
@@ -239,6 +273,7 @@ TEMPLATES: Dict[str, Callable[[Dict], Tuple[str, str, str]]] = {
     "suspended": _suspended,
     "cancelled": _cancelled,
     "final_purge_warning": _final_purge_warning,
+    "purge_completed": _purge_completed,
     "email_confirmation": _email_confirmation,
 }
 

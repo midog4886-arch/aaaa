@@ -4016,21 +4016,62 @@ async def _run_tenant_auto_purge() -> dict:
             summary["failed"] += 1
             continue
 
+        deleted_at_iso = datetime.now(timezone.utc).isoformat()
+        bookkeeping_ok = False
         try:
             await _control_db.tenants.update_one(
                 {"id": tid},
                 {"$set": {
                     "status": "deleted",
-                    "deleted_at": now.isoformat(),
+                    "deleted_at": deleted_at_iso,
                     "db_dropped": True,
                     "deleted_by": "auto_purge_scheduler",
                 },
                  "$unset": {"deletion_last_error": "", "deletion_last_error_at": ""}},
             )
+            bookkeeping_ok = True
         except Exception as e:
             print(f"Tenant purge scheduler: failed to mark {slug} deleted: {e}")
         print(f"Tenant purge scheduler: purged tenant '{slug}' (db={db_name})")
         summary["purged"] += 1
+
+        # Best-effort: email the academy owner to confirm the irreversible
+        # deletion happened. Only send if the bookkeeping update succeeded so
+        # we don't tell the owner "deleted" while the tenant doc still claims
+        # otherwise. Failures here must never disturb the purge flow.
+        if not bookkeeping_ok:
+            print(
+                f"Tenant purge scheduler: skipping purge_completed email for "
+                f"{slug} — tenant status update failed"
+            )
+            continue
+        owner_email = (fresh.get("owner_email") or tenant.get("owner_email") or "").strip()
+        if owner_email:
+            try:
+                from utils.email_service import send_email as _send_email
+                result = await _send_email(
+                    kind="purge_completed",
+                    to=owner_email,
+                    tenant_slug=slug,
+                    ctx={
+                        "academy_name": fresh.get("name") or tenant.get("name", "") or slug,
+                        "deleted_at": deleted_at_iso,
+                    },
+                )
+                print(
+                    f"Tenant purge scheduler: purge_completed email to "
+                    f"{owner_email} for {slug}: {result.get('status')}"
+                )
+            except Exception as e:
+                print(
+                    f"Tenant purge scheduler: purge_completed email "
+                    f"failed for {slug} ({owner_email}): {e}"
+                )
+        else:
+            print(
+                f"Tenant purge scheduler: no owner_email for {slug}; "
+                "skipping purge_completed email"
+            )
 
     return summary
 
