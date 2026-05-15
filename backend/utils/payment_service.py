@@ -34,6 +34,97 @@ logger = logging.getLogger("payment_service")
 VALID_PROVIDERS = {"stripe", "moyasar", "tap", ""}
 DEFAULT_SECRET_ENV = "PAYMENT_WEBHOOK_SECRET"
 STRIPE_TIMESTAMP_TOLERANCE = 60 * 5  # seconds
+
+# Diagnostics: how many recent webhook deliveries to retain for super-admin
+# inspection. Each delivery is one row regardless of whether it was accepted,
+# rejected by signature, deduplicated, or otherwise ignored.
+WEBHOOK_EVENTS_MAX = 200
+VALID_WEBHOOK_EVENT_STATUSES = {
+    "received",
+    "signature_invalid",
+    "invalid_payload",
+    "provider_disabled",
+    "secret_missing",
+    "duplicate",
+    "recorded",
+    "renewed",
+    "ignored",
+    "tenant_not_found",
+    "error",
+}
+
+
+async def record_webhook_event(
+    *,
+    provider: str,
+    status: str,
+    reason: str = "",
+    tenant_id: Optional[str] = None,
+    tenant_slug: Optional[str] = None,
+    event_id: Optional[str] = None,
+) -> None:
+    """Append a diagnostic row to ``control_db.webhook_events``.
+
+    Used by the payment webhook handler so a super-admin can see at a glance
+    whether deliveries are arriving, being signature-rejected, deduplicated,
+    or successfully applied — without trawling server logs.
+
+    Self-trims to the most recent ``WEBHOOK_EVENTS_MAX`` rows so the
+    collection stays bounded. Best-effort: any failure is logged and
+    swallowed (we never want diagnostics to break webhook processing).
+    """
+    try:
+        normalized_status = (status or "").strip().lower()
+        if normalized_status not in VALID_WEBHOOK_EVENT_STATUSES:
+            normalized_status = "error"
+        doc = {
+            "provider": (provider or "").strip().lower()[:40],
+            "status": normalized_status,
+            "reason": (reason or "").strip()[:500],
+            "tenant_id": (tenant_id or "").strip()[:80] if tenant_id else "",
+            "tenant_slug": (tenant_slug or "").strip().lower()[:80] if tenant_slug else "",
+            "event_id": (event_id or "").strip()[:200] if event_id else "",
+            "received_at": datetime.now(timezone.utc),
+        }
+        await control_db.webhook_events.insert_one(doc)
+        # Trim oldest rows beyond the cap. Cheap because we keep the cap
+        # small and the collection is queried rarely (admin only).
+        total = await control_db.webhook_events.count_documents({})
+        if total > WEBHOOK_EVENTS_MAX:
+            cutoff_cursor = control_db.webhook_events.find(
+                {}, {"_id": 1}
+            ).sort("received_at", -1).skip(WEBHOOK_EVENTS_MAX).limit(total)
+            stale_ids = [r["_id"] async for r in cutoff_cursor]
+            if stale_ids:
+                await control_db.webhook_events.delete_many({"_id": {"$in": stale_ids}})
+    except Exception:
+        logger.exception("record_webhook_event failed")
+
+
+async def list_webhook_events(
+    *,
+    status: Optional[str] = None,
+    limit: int = 100,
+) -> list:
+    """Return the most recent webhook diagnostic rows (newest first)."""
+    try:
+        limit = max(1, min(int(limit or 100), WEBHOOK_EVENTS_MAX))
+    except (TypeError, ValueError):
+        limit = 100
+    query: Dict = {}
+    if status:
+        s = str(status).strip().lower()
+        if s and s != "all":
+            query["status"] = s
+    cursor = control_db.webhook_events.find(query, {"_id": 0}).sort("received_at", -1).limit(limit)
+    rows = []
+    async for r in cursor:
+        recv = r.get("received_at")
+        if isinstance(recv, datetime):
+            r["received_at"] = recv.isoformat()
+        rows.append(r)
+    return rows
+
 # Retain the processed-event fingerprint long enough to cover the longest
 # automatic retry window of any supported provider (Stripe retries for up to
 # ~3 days). 30 days provides a comfortable safety margin while still keeping

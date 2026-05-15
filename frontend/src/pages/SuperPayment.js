@@ -13,10 +13,42 @@ const PROVIDERS = [
   { value: 'tap', label: 'Tap' },
 ];
 
+const EVENT_STATUSES = [
+  { value: 'all', label: 'كل الحالات' },
+  { value: 'received', label: 'مستلم' },
+  { value: 'recorded', label: 'فشل دفع مسجَّل' },
+  { value: 'renewed', label: 'تجديد ناجح' },
+  { value: 'duplicate', label: 'مكرر' },
+  { value: 'ignored', label: 'مُتجاهل' },
+  { value: 'signature_invalid', label: 'توقيع غير صالح' },
+  { value: 'invalid_payload', label: 'محتوى غير صالح' },
+  { value: 'tenant_not_found', label: 'أكاديمية غير موجودة' },
+  { value: 'provider_disabled', label: 'مزود معطّل' },
+  { value: 'secret_missing', label: 'سر مفقود' },
+  { value: 'error', label: 'خطأ' },
+];
+
+const STATUS_COLORS = {
+  recorded: { bg: '#fef3c7', fg: '#92400e' },
+  renewed: { bg: '#dcfce7', fg: '#166534' },
+  duplicate: { bg: '#e0e7ff', fg: '#3730a3' },
+  ignored: { bg: '#f1f5f9', fg: '#475569' },
+  signature_invalid: { bg: '#fef2f2', fg: '#b91c1c' },
+  invalid_payload: { bg: '#fef2f2', fg: '#b91c1c' },
+  tenant_not_found: { bg: '#fef2f2', fg: '#b91c1c' },
+  provider_disabled: { bg: '#fff7ed', fg: '#9a3412' },
+  secret_missing: { bg: '#fff7ed', fg: '#9a3412' },
+  error: { bg: '#fef2f2', fg: '#b91c1c' },
+  received: { bg: '#e0f2fe', fg: '#075985' },
+};
+
 const fmt = (iso) => {
   if (!iso) return '—';
   try { return new Date(iso).toLocaleString('ar-EG'); } catch (e) { return iso; }
 };
+
+const statusLabel = (s) =>
+  (EVENT_STATUSES.find((x) => x.value === s) || {}).label || s || '—';
 
 export default function SuperPayment() {
   const navigate = useNavigate();
@@ -28,6 +60,33 @@ export default function SuperPayment() {
   const [okMsg, setOkMsg] = useState('');
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState(null);
+  const [events, setEvents] = useState([]);
+  const [eventsLoading, setEventsLoading] = useState(false);
+  const [eventsErr, setEventsErr] = useState('');
+  const [eventStatus, setEventStatus] = useState('all');
+  const [maxRetained, setMaxRetained] = useState(0);
+
+  const reloadEvents = useCallback(async (statusFilter = eventStatus) => {
+    setEventsLoading(true);
+    setEventsErr('');
+    try {
+      const params = { limit: 100 };
+      if (statusFilter && statusFilter !== 'all') params.status = statusFilter;
+      const res = await axios.get('/super/payment/events', { ...auth(), params });
+      setEvents(Array.isArray(res.data?.items) ? res.data.items : []);
+      if (typeof res.data?.max_retained === 'number') setMaxRetained(res.data.max_retained);
+    } catch (e) {
+      if (e?.response?.status === 401) {
+        navigate('/super/login', { replace: true });
+        return;
+      }
+      setEventsErr(e?.response?.data?.detail || 'تعذر تحميل سجل الأحداث');
+    } finally {
+      setEventsLoading(false);
+    }
+  }, [eventStatus, navigate]);
+
+  useEffect(() => { reloadEvents(eventStatus); }, [reloadEvents, eventStatus]);
 
   const reload = useCallback(async () => {
     setLoading(true);
@@ -234,6 +293,78 @@ export default function SuperPayment() {
                 {testResult.signature_header ? ` · header: ${testResult.signature_header}` : ''}
                 {testResult.secret_env ? ` · secret_env: ${testResult.secret_env}` : ''}
               </div>
+            </div>
+          )}
+        </div>
+
+        <div style={card}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12, marginBottom: 12 }}>
+            <h2 style={{ fontSize: 16, fontWeight: 700, margin: 0 }}>📜 آخر أحداث الـ webhook</h2>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+              <label style={{ fontSize: 13, color: '#475569' }}>الحالة:</label>
+              <select
+                value={eventStatus}
+                onChange={(e) => setEventStatus(e.target.value)}
+                style={{ ...input, width: 'auto', padding: '6px 10px' }}
+              >
+                {EVENT_STATUSES.map((s) => (
+                  <option key={s.value} value={s.value}>{s.label}</option>
+                ))}
+              </select>
+              <button
+                onClick={() => reloadEvents(eventStatus)}
+                disabled={eventsLoading}
+                style={{ ...btn('#475569'), padding: '6px 12px', fontSize: 13 }}
+              >
+                {eventsLoading ? '...' : '↻ تحديث'}
+              </button>
+            </div>
+          </div>
+          <div style={{ fontSize: 12, color: '#64748b', marginBottom: 12, lineHeight: 1.6 }}>
+            يحتفظ النظام بآخر {maxRetained || 200} حدث وارد إلى <code style={{ fontFamily: 'monospace', background: '#f1f5f9', padding: '1px 6px', borderRadius: 4 }}>/api/billing/webhook/&lt;مزود&gt;</code> — مفيد لتشخيص ما إذا كانت الـ webhooks تصل وما إذا كانت تُقبل أو تُرفض.
+          </div>
+          {eventsErr && (
+            <div style={{ background: '#fef2f2', color: '#b91c1c', padding: 10, borderRadius: 8, marginBottom: 12, fontSize: 13 }}>{eventsErr}</div>
+          )}
+          {eventsLoading && events.length === 0 ? (
+            <div style={{ color: '#64748b', fontSize: 14, padding: 12 }}>جارٍ التحميل...</div>
+          ) : events.length === 0 ? (
+            <div style={{ color: '#64748b', fontSize: 14, padding: 12, textAlign: 'center', background: '#f8fafc', borderRadius: 8 }}>
+              لا توجد أحداث {eventStatus !== 'all' ? 'بهذه الحالة' : 'مسجلة بعد'}.
+            </div>
+          ) : (
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                <thead>
+                  <tr style={{ background: '#f1f5f9', textAlign: 'right' }}>
+                    <th style={{ padding: '8px 10px', fontWeight: 700, color: '#334155' }}>الوقت</th>
+                    <th style={{ padding: '8px 10px', fontWeight: 700, color: '#334155' }}>المزود</th>
+                    <th style={{ padding: '8px 10px', fontWeight: 700, color: '#334155' }}>الحالة</th>
+                    <th style={{ padding: '8px 10px', fontWeight: 700, color: '#334155' }}>الأكاديمية</th>
+                    <th style={{ padding: '8px 10px', fontWeight: 700, color: '#334155' }}>السبب / التفاصيل</th>
+                    <th style={{ padding: '8px 10px', fontWeight: 700, color: '#334155' }}>event_id</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {events.map((ev, i) => {
+                    const c = STATUS_COLORS[ev.status] || { bg: '#f1f5f9', fg: '#475569' };
+                    return (
+                      <tr key={i} style={{ borderTop: '1px solid #e2e8f0' }}>
+                        <td style={{ padding: '8px 10px', whiteSpace: 'nowrap', color: '#0f172a' }}>{fmt(ev.received_at)}</td>
+                        <td style={{ padding: '8px 10px', fontFamily: 'monospace', color: '#0f172a' }}>{ev.provider || '—'}</td>
+                        <td style={{ padding: '8px 10px' }}>
+                          <span style={{ background: c.bg, color: c.fg, padding: '2px 8px', borderRadius: 999, fontWeight: 600, fontSize: 12 }}>
+                            {statusLabel(ev.status)}
+                          </span>
+                        </td>
+                        <td style={{ padding: '8px 10px', color: '#0f172a' }}>{ev.tenant_slug || '—'}</td>
+                        <td style={{ padding: '8px 10px', color: '#475569', maxWidth: 320, wordBreak: 'break-word' }}>{ev.reason || '—'}</td>
+                        <td style={{ padding: '8px 10px', fontFamily: 'monospace', color: '#64748b', fontSize: 12, wordBreak: 'break-all', maxWidth: 200 }}>{ev.event_id || '—'}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
             </div>
           )}
         </div>

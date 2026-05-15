@@ -31,6 +31,7 @@ from utils.payment_service import (
     get_payment_settings,
     parse_failure_event,
     parse_success_event,
+    record_webhook_event,
     release_event,
     verify_signature,
 )
@@ -121,24 +122,50 @@ async def payment_webhook(provider: str, request: Request):
     """
     settings = await get_payment_settings()
     cfg_provider = (settings.get("provider") or "").lower()
+    incoming_provider = (provider or "").lower()
     if not settings.get("enabled") or not cfg_provider:
+        await record_webhook_event(
+            provider=incoming_provider,
+            status="provider_disabled",
+            reason="payment provider not configured",
+        )
         raise HTTPException(status_code=503, detail="payment provider not configured")
-    if (provider or "").lower() != cfg_provider:
+    if incoming_provider != cfg_provider:
+        await record_webhook_event(
+            provider=incoming_provider,
+            status="provider_disabled",
+            reason=f"provider '{incoming_provider}' not enabled (configured: {cfg_provider})",
+        )
         raise HTTPException(status_code=404, detail="provider not enabled")
 
     secret_env = settings.get("secret_env") or "PAYMENT_WEBHOOK_SECRET"
     secret = os.environ.get(secret_env, "")
     if not secret:
         logger.error("payment webhook: secret env %s is empty", secret_env)
+        await record_webhook_event(
+            provider=cfg_provider,
+            status="secret_missing",
+            reason=f"env var {secret_env} is empty",
+        )
         raise HTTPException(status_code=503, detail="webhook secret not set")
 
     body = await request.body()
     if not verify_signature(cfg_provider, body, request.headers.raw, secret):
+        await record_webhook_event(
+            provider=cfg_provider,
+            status="signature_invalid",
+            reason="HMAC signature verification failed",
+        )
         raise HTTPException(status_code=401, detail="invalid signature")
 
     try:
         payload = await request.json()
     except Exception:
+        await record_webhook_event(
+            provider=cfg_provider,
+            status="invalid_payload",
+            reason="body is not valid JSON",
+        )
         raise HTTPException(status_code=400, detail="invalid json body")
 
     # Dedupe: providers (Stripe especially) retry the same event many times
@@ -158,6 +185,12 @@ async def payment_webhook(provider: str, request: Request):
                 "payment webhook: short-circuiting %s event id=%s (claim=%s)",
                 cfg_provider, event_id, claim_state,
             )
+            await record_webhook_event(
+                provider=cfg_provider,
+                status="duplicate",
+                reason=f"already {claim_state}",
+                event_id=event_id,
+            )
             return {
                 "status": "duplicate",
                 "event_id": event_id,
@@ -170,6 +203,14 @@ async def payment_webhook(provider: str, request: Request):
             tenant = await _resolve_tenant(failure.get("tenant_id"), failure.get("tenant_slug"))
             if not tenant:
                 logger.warning("payment webhook: tenant not found for ref=%s", failure.get("provider_ref"))
+                await record_webhook_event(
+                    provider=cfg_provider,
+                    status="tenant_not_found",
+                    reason=f"failure event ref={failure.get('provider_ref') or ''}",
+                    tenant_id=failure.get("tenant_id"),
+                    tenant_slug=failure.get("tenant_slug"),
+                    event_id=event_id,
+                )
                 raise HTTPException(status_code=404, detail="tenant not found in event metadata")
             result = await apply_payment_failure(
                 tenant=tenant,
@@ -181,6 +222,14 @@ async def payment_webhook(provider: str, request: Request):
             )
             if event_id:
                 await confirm_event(cfg_provider, event_id)
+            await record_webhook_event(
+                provider=cfg_provider,
+                status="recorded",
+                reason=failure.get("reason") or "",
+                tenant_id=(result.get("tenant") or {}).get("id"),
+                tenant_slug=(result.get("tenant") or {}).get("slug"),
+                event_id=event_id,
+            )
             return {
                 "status": "recorded",
                 "tenant_slug": (result.get("tenant") or {}).get("slug"),
@@ -193,6 +242,14 @@ async def payment_webhook(provider: str, request: Request):
             tenant = await _resolve_tenant(success.get("tenant_id"), success.get("tenant_slug"))
             if not tenant:
                 logger.warning("payment webhook: tenant not found for ref=%s", success.get("provider_ref"))
+                await record_webhook_event(
+                    provider=cfg_provider,
+                    status="tenant_not_found",
+                    reason=f"success event ref={success.get('provider_ref') or ''}",
+                    tenant_id=success.get("tenant_id"),
+                    tenant_slug=success.get("tenant_slug"),
+                    event_id=event_id,
+                )
                 raise HTTPException(status_code=404, detail="tenant not found in event metadata")
             months = success.get("months") or 0
             days = success.get("days") or 0
@@ -218,9 +275,25 @@ async def payment_webhook(provider: str, request: Request):
                 )
             except ValueError as e:
                 logger.error("payment webhook renewal rejected: %s", e)
+                await record_webhook_event(
+                    provider=cfg_provider,
+                    status="error",
+                    reason=f"renewal rejected: {e}",
+                    tenant_id=tenant.get("id"),
+                    tenant_slug=tenant.get("slug"),
+                    event_id=event_id,
+                )
                 raise HTTPException(status_code=400, detail=str(e))
             if event_id:
                 await confirm_event(cfg_provider, event_id)
+            await record_webhook_event(
+                provider=cfg_provider,
+                status="renewed",
+                reason=f"+{months}m/+{days}d",
+                tenant_id=(result.get("tenant") or {}).get("id"),
+                tenant_slug=(result.get("tenant") or {}).get("slug"),
+                event_id=event_id,
+            )
             return {
                 "status": "renewed",
                 "tenant_slug": (result.get("tenant") or {}).get("slug"),
@@ -232,6 +305,12 @@ async def payment_webhook(provider: str, request: Request):
         # ignore them) — confirm the claim so retries don't keep re-claiming.
         if event_id:
             await confirm_event(cfg_provider, event_id)
+        await record_webhook_event(
+            provider=cfg_provider,
+            status="ignored",
+            reason=f"unrecognized event type: {(payload.get('type') or payload.get('event') or '')[:120]}",
+            event_id=event_id,
+        )
         return {"status": "ignored", "reason": "unrecognized event"}
     except HTTPException:
         # Tenant-not-found / renewal-rejected: release so the provider
@@ -239,9 +318,15 @@ async def payment_webhook(provider: str, request: Request):
         if event_id:
             await release_event(cfg_provider, event_id)
         raise
-    except Exception:
+    except Exception as e:
         if event_id:
             await release_event(cfg_provider, event_id)
+        await record_webhook_event(
+            provider=cfg_provider,
+            status="error",
+            reason=str(e)[:500],
+            event_id=event_id,
+        )
         raise
 
 

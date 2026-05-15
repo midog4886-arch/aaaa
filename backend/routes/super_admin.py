@@ -34,8 +34,10 @@ from utils.email_service import (
 )
 from utils.payment_service import (
     get_payment_settings,
+    list_webhook_events,
     update_payment_settings,
     verify_signature,
+    WEBHOOK_EVENTS_MAX,
 )
 from utils.tenant import slug_to_db_name, DEFAULT_TENANT_SLUG
 from utils.auth import hash_password
@@ -1361,6 +1363,22 @@ async def payment_settings_put(payload: PaymentSettingsIn, super_payload: dict =
     except Exception:
         pass
     return result
+
+
+@router.get("/payment/events")
+async def payment_events_list(
+    status: Optional[str] = None,
+    limit: int = 100,
+    _=Depends(_require_super),
+):
+    """Return the most recent payment webhook deliveries (newest first).
+
+    Used by the Super-Admin payment-settings page to diagnose whether
+    incoming webhooks are arriving and whether they are being accepted,
+    signature-rejected, deduplicated, or otherwise ignored.
+    """
+    rows = await list_webhook_events(status=status, limit=limit)
+    return {"items": rows, "max_retained": WEBHOOK_EVENTS_MAX}
 
 
 @router.post("/payment/test-webhook")
