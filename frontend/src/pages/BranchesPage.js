@@ -30,7 +30,8 @@ const BranchesPage = () => {
   
   const [formData, setFormData] = useState({
     name_ar: '',
-    phone: ''
+    phone: '',
+    code_prefix: ''
   });
 
   useEffect(() => {
@@ -57,6 +58,10 @@ const BranchesPage = () => {
 
     setSaving(true);
     try {
+      const cleanedPrefix = (formData.code_prefix || '')
+        .replace(/[^A-Za-z0-9]/g, '')
+        .toUpperCase()
+        .slice(0, 8);
       const dataToSend = {
         name: formData.name_ar,
         name_ar: formData.name_ar,
@@ -65,7 +70,8 @@ const BranchesPage = () => {
         manager_name_ar: '',
         address: '',
         address_ar: '',
-        is_active: true
+        is_active: true,
+        code_prefix: cleanedPrefix
       };
       
       if (editingBranch) {
@@ -101,7 +107,8 @@ const BranchesPage = () => {
     setEditingBranch(branch);
     setFormData({
       name_ar: branch.name_ar || branch.name || '',
-      phone: branch.phone || ''
+      phone: branch.phone || '',
+      code_prefix: branch.code_prefix || ''
     });
     setIsDialogOpen(true);
   };
@@ -111,7 +118,8 @@ const BranchesPage = () => {
     setEditingBranch(null);
     setFormData({
       name_ar: '',
-      phone: ''
+      phone: '',
+      code_prefix: ''
     });
   };
 
@@ -174,6 +182,14 @@ const BranchesPage = () => {
                     <Phone className="w-4 h-4" />
                     <span dir="ltr">{branch.phone}</span>
                   </div>
+                  {branch.code_prefix && (
+                    <div className="flex items-center gap-2 text-sm">
+                      <span className="text-muted-foreground">
+                        {language === 'ar' ? 'بادئة كود العضوية:' : 'Member code prefix:'}
+                      </span>
+                      <Badge variant="outline" dir="ltr">{branch.code_prefix}-001</Badge>
+                    </div>
+                  )}
                   <div className="flex gap-2 pt-2">
                     <Button variant="outline" size="sm" onClick={() => handleEdit(branch)} data-testid={`edit-branch-${branch.id}`}>
                       <Edit className="w-4 h-4 me-1" />
@@ -221,6 +237,28 @@ const BranchesPage = () => {
                   dir="ltr"
                   data-testid="branch-phone-input"
                 />
+              </div>
+
+              <div className="space-y-2">
+                <Label>
+                  {language === 'ar' ? 'بادئة كود العضوية' : 'Member Code Prefix'}
+                </Label>
+                <Input
+                  value={formData.code_prefix}
+                  onChange={(e) => setFormData({
+                    ...formData,
+                    code_prefix: e.target.value.replace(/[^A-Za-z0-9]/g, '').toUpperCase().slice(0, 8)
+                  })}
+                  placeholder={language === 'ar' ? 'مثال: RYD' : 'e.g. RYD'}
+                  dir="ltr"
+                  maxLength={8}
+                  data-testid="branch-code-prefix-input"
+                />
+                <p className="text-xs text-muted-foreground">
+                  {language === 'ar'
+                    ? `سيتم توليد أكواد الأعضاء في هذا الفرع بصيغة ${formData.code_prefix || 'PREFIX'}-001, ${formData.code_prefix || 'PREFIX'}-002 ... (اتركه فارغًا للتوليد التلقائي)`
+                    : `New member codes in this branch will be ${formData.code_prefix || 'PREFIX'}-001, ${formData.code_prefix || 'PREFIX'}-002 ... (leave empty for auto)`}
+                </p>
               </div>
 
               <DialogFooter>

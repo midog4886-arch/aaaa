@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 from .common import db, get_current_user
 from utils.auth import require_branch_scope, resolve_branch_filter
 from utils.sequences import get_branch_seq_start
+from utils.member_code import generate_member_code
 
 router = APIRouter(prefix="/members", tags=["members"])
 
@@ -177,23 +178,8 @@ async def create_member(member: MemberCreate, current_user: dict = Depends(get_c
             )
     member_id = str(uuid.uuid4())
     branch_id = require_branch_scope(current_user) or current_user.get("branch_id")
-    
-    # Generate sequential member code – unique per branch (each branch owns a block)
-    seq_start = await get_branch_seq_start(branch_id, "member")
-    branch_filter = {"branch_id": branch_id} if branch_id else {}
-    all_members = await db.members.find(
-        {"member_code": {"$exists": True, "$ne": None}, **branch_filter},
-        {"member_code": 1, "_id": 0}
-    ).to_list(length=None)
-    max_code = seq_start - 1
-    for m in all_members:
-        try:
-            code_num = int(m.get("member_code", "0"))
-            if code_num > max_code:
-                max_code = code_num
-        except (ValueError, TypeError):
-            continue
-    new_code = str(max(max_code + 1, seq_start))
+
+    new_code = await generate_member_code(branch_id)
     
     member_doc = {
         "id": member_id,

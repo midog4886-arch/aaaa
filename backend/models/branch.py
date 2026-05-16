@@ -10,6 +10,7 @@ class BranchBase(BaseModel):
     address: Optional[str] = ""
     address_ar: Optional[str] = ""
     is_active: bool = True
+    code_prefix: Optional[str] = ""
 
 class BranchCreate(BranchBase):
     pass

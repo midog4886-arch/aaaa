@@ -25,6 +25,7 @@ class BranchBase(BaseModel):
     email: Optional[str] = ""
     manager_name: Optional[str] = ""
     is_active: bool = True
+    code_prefix: Optional[str] = ""
 
 class BranchCreate(BranchBase):
     pass
@@ -77,9 +78,22 @@ async def create_branch(branch: BranchCreate, current_user: dict = Depends(get_c
             )
 
     branch_id = str(uuid.uuid4())
+    data = branch.model_dump()
+    from utils.member_code import sanitize_prefix
+    data["code_prefix"] = sanitize_prefix(data.get("code_prefix") or "")
+    if data["code_prefix"]:
+        dupe = await db.branches.find_one(
+            {"code_prefix": data["code_prefix"]},
+            {"_id": 0, "id": 1, "name_ar": 1, "name": 1},
+        )
+        if dupe:
+            raise HTTPException(
+                status_code=409,
+                detail=f"البادئة '{data['code_prefix']}' مستخدمة بالفعل في فرع آخر"
+            )
     branch_doc = {
         "id": branch_id,
-        **branch.model_dump(),
+        **data,
         "created_at": datetime.now(timezone.utc).isoformat()
     }
     await db.branches.insert_one(branch_doc)
@@ -120,9 +134,22 @@ async def update_branch(branch_id: str, branch: BranchCreate, current_user: dict
     if not before:
         raise HTTPException(status_code=404, detail="Branch not found")
 
+    data = branch.model_dump()
+    from utils.member_code import sanitize_prefix
+    data["code_prefix"] = sanitize_prefix(data.get("code_prefix") or "")
+    if data["code_prefix"]:
+        dupe = await db.branches.find_one(
+            {"code_prefix": data["code_prefix"], "id": {"$ne": branch_id}},
+            {"_id": 0, "id": 1, "name_ar": 1, "name": 1},
+        )
+        if dupe:
+            raise HTTPException(
+                status_code=409,
+                detail=f"البادئة '{data['code_prefix']}' مستخدمة بالفعل في فرع آخر"
+            )
     result = await db.branches.find_one_and_update(
         {"id": branch_id},
-        {"$set": branch.model_dump()},
+        {"$set": data},
         return_document=True
     )
     if not result:

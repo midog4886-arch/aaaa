@@ -1374,26 +1374,9 @@ async def create_registration_form(
                 )
         else:
             # Create new member from registration form data
-            # Generate sequential member number per branch – unique across branches
-            mem_seq_start = await _get_branch_seq_start(branch_id, "member")
-            branch_mem_filter = {"branch_id": branch_id} if branch_id else {}
-            all_members = await db.members.find(
-                {"member_code": {"$exists": True, "$ne": ""}, **branch_mem_filter},
-                {"member_code": 1, "_id": 0}
-            ).to_list(10000)
-            
-            max_number = mem_seq_start - 1
-            for m in all_members:
-                code = m.get("member_code", "")
-                try:
-                    num = int(code)
-                    if num > max_number:
-                        max_number = num
-                except ValueError:
-                    continue
-            
-            next_num = max(max_number + 1, mem_seq_start)
-            next_member_code = str(next_num)
+            # Generate per-branch member code in {PREFIX}-NNN format
+            from utils.member_code import generate_member_code
+            next_member_code = await generate_member_code(branch_id)
             member_id = str(uuid.uuid4())
             member_code = next_member_code
             
