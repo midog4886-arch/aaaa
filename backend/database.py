@@ -10,7 +10,6 @@ load_dotenv(ROOT_DIR / '.env', override=True)
 
 ATLAS_APP_ID = os.environ.get('ATLAS_APP_ID', '')
 ATLAS_API_KEY = os.environ.get('ATLAS_API_KEY', '')
-DB_NAME = os.environ.get('DB_NAME', 'champions_academy')
 USE_ATLAS_PROXY = os.environ.get('USE_ATLAS_PROXY', '').lower() in ('1', 'true', 'yes')
 MONGO_URL = os.environ.get('MONGO_URL', '')
 
@@ -42,8 +41,9 @@ class TenantDBProxy:
 
     Reads ``utils.tenant.get_current_tenant_db_name()`` (a ContextVar set by
     the tenant middleware on every HTTP request) and resolves the underlying
-    database fresh on each access. Falls back to the default ``DB_NAME`` when
-    no tenant context is set (background tasks, scripts, startup).
+    database fresh on each access. Falls back to the default tenant's
+    slug-derived DB name (``champions_default``) when no tenant context is
+    set (background tasks, scripts, startup) and strict mode is off.
     """
     __slots__ = ("_client",)
 

@@ -9,7 +9,7 @@ import os
 import logging
 from datetime import datetime, timezone, timedelta
 
-from utils.tenant import DEFAULT_TENANT_SLUG, DEFAULT_DB_NAME
+from utils.tenant import DEFAULT_TENANT_SLUG, slug_to_db_name
 
 DEFAULT_TRIAL_DAYS = int(os.environ.get("TENANT_TRIAL_DAYS", "30"))
 DEFAULT_BILLING_CYCLE = os.environ.get("TENANT_BILLING_CYCLE", "monthly")
@@ -31,8 +31,8 @@ async def ensure_default_tenant():
     """Make sure the registry has a row for the legacy single-tenant deployment.
 
     Idempotent: only inserts the ``default`` tenant if it is missing.
-    The default tenant points at the existing DB (``DB_NAME`` env var) so
-    no data migration is required.
+    The default tenant points at the slug-derived DB name (``champions_default``)
+    just like every other tenant — no special-case DB name remains.
     """
     try:
         # Always (re)assert the email_log indexes — cheap and idempotent.
@@ -49,7 +49,7 @@ async def ensure_default_tenant():
             "id": DEFAULT_TENANT_SLUG,
             "slug": DEFAULT_TENANT_SLUG,
             "name": "الأكاديمية الافتراضية",
-            "db_name": DEFAULT_DB_NAME,
+            "db_name": slug_to_db_name(DEFAULT_TENANT_SLUG),
             "status": "active",
             "plan": "enterprise",
             "max_branches": 0,

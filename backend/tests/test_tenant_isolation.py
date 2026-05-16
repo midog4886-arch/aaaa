@@ -76,7 +76,7 @@ def test_strict_mode_raises_without_tenant(monkeypatch, fresh_tenant_module):
 def test_explicit_lax_mode_falls_back_to_default(monkeypatch, fresh_tenant_module):
     monkeypatch.setenv("STRICT_TENANT_CONTEXT", "0")
     tenant_mod = importlib.import_module("utils.tenant")
-    assert tenant_mod.get_current_tenant_db_name() == tenant_mod.DEFAULT_DB_NAME
+    assert tenant_mod.get_current_tenant_db_name() == tenant_mod.slug_to_db_name(tenant_mod.DEFAULT_TENANT_SLUG)
 
 
 def test_strict_is_default_outside_production(monkeypatch, fresh_tenant_module):
@@ -95,7 +95,7 @@ def test_strict_is_off_by_default_in_production(monkeypatch, fresh_tenant_module
     monkeypatch.setenv("REPLIT_DEPLOYMENT", "1")
     tenant_mod = importlib.import_module("utils.tenant")
     assert tenant_mod.is_strict_mode() is False
-    assert tenant_mod.get_current_tenant_db_name() == tenant_mod.DEFAULT_DB_NAME
+    assert tenant_mod.get_current_tenant_db_name() == tenant_mod.slug_to_db_name(tenant_mod.DEFAULT_TENANT_SLUG)
 
 
 def test_bypass_strict_allows_fallback(monkeypatch, fresh_tenant_module):
@@ -103,7 +103,7 @@ def test_bypass_strict_allows_fallback(monkeypatch, fresh_tenant_module):
     tenant_mod = importlib.import_module("utils.tenant")
     token = tenant_mod.set_bypass_strict(True)
     try:
-        assert tenant_mod.get_current_tenant_db_name() == tenant_mod.DEFAULT_DB_NAME
+        assert tenant_mod.get_current_tenant_db_name() == tenant_mod.slug_to_db_name(tenant_mod.DEFAULT_TENANT_SLUG)
     finally:
         tenant_mod.reset_bypass_strict(token)
     with pytest.raises(RuntimeError):
@@ -134,8 +134,9 @@ def test_middleware_sets_bypass_for_super_and_health(monkeypatch, fresh_tenant_m
     mw = middleware_mod.TenantMiddleware(fake_app)
     for path in ("/super/tenants", "/health"):
         asyncio.run(mw({"type": "http", "path": path, "headers": []}, receive, send))
-    assert captured_db["/super/tenants"] == tenant_mod.DEFAULT_DB_NAME
-    assert captured_db["/health"] == tenant_mod.DEFAULT_DB_NAME
+    default_db = tenant_mod.slug_to_db_name(tenant_mod.DEFAULT_TENANT_SLUG)
+    assert captured_db["/super/tenants"] == default_db
+    assert captured_db["/health"] == default_db
 
 
 def test_tenant_db_proxy_routes_to_correct_db(monkeypatch, fresh_tenant_module):

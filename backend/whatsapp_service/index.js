@@ -11,7 +11,12 @@ app.use(express.json());
 
 const AUTH_DIR = path.join(__dirname, 'auth_info_baileys');
 const MONGO_URL = process.env.MONGO_URL;
-const DB_NAME = 'champions_academy';
+// Mirrors the Python slug_to_db_name("default") convention so this service
+// resolves to the same MongoDB database as the main app's default tenant
+// (`champions_default`). Overridable via env for non-default deployments.
+const TENANT_DB_PREFIX = process.env.TENANT_DB_PREFIX || 'champions_';
+const DEFAULT_TENANT_SLUG = process.env.WHATSAPP_TENANT_SLUG || 'default';
+const DB_NAME = process.env.WHATSAPP_DB_NAME || `${TENANT_DB_PREFIX}${DEFAULT_TENANT_SLUG}`;
 const COLL_NAME = 'whatsapp_auth';
 const _domain = process.env.REPLIT_DOMAINS || '';
 const SESSION_ID = (_domain.includes('.replit.app') && !_domain.includes('pike')) ? 'session_prod' : 'session_dev';

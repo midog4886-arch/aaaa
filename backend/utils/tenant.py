@@ -31,7 +31,6 @@ import logging
 import os
 
 DEFAULT_TENANT_SLUG = "default"
-DEFAULT_DB_NAME = os.environ.get("DB_NAME", "champions_academy")
 TENANT_DB_PREFIX = os.environ.get("TENANT_DB_PREFIX", "champions_")
 
 logger = logging.getLogger("tenant_context")
@@ -83,9 +82,9 @@ def reset_bypass_strict(token) -> None:
 
 
 def slug_to_db_name(slug: str) -> str:
-    if slug == DEFAULT_TENANT_SLUG:
-        return DEFAULT_DB_NAME
-    safe = "".join(c for c in slug.lower() if c.isalnum() or c == "_")
+    safe = "".join(c for c in (slug or "").lower() if c.isalnum() or c == "_")
+    if not safe:
+        safe = DEFAULT_TENANT_SLUG
     return f"{TENANT_DB_PREFIX}{safe}"
 
 
@@ -99,7 +98,7 @@ def get_current_tenant_db_name() -> str:
                 "code path as control-plane via set_bypass_strict(True). "
                 "To disable strict mode entirely, set STRICT_TENANT_CONTEXT=0."
             )
-        return DEFAULT_DB_NAME
+        return slug_to_db_name(DEFAULT_TENANT_SLUG)
     return t.get("db_name") or slug_to_db_name(t.get("slug") or DEFAULT_TENANT_SLUG)
 
 
