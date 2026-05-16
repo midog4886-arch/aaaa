@@ -47,9 +47,12 @@ export const AuthProvider = ({ children }) => {
       return { success: true };
     } catch (error) {
       console.error('Login failed:', error);
-      return { 
-        success: false, 
-        error: error.response?.data?.detail || 'Login failed' 
+      return {
+        success: false,
+        error: error.response?.data?.detail || 'Login failed',
+        detail: error.response?.data?.detail || '',
+        tenant_status: error.response?.data?.tenant_status || '',
+        status: error.response?.status,
       };
     }
   };

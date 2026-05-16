@@ -394,6 +394,109 @@ async def create_tenant(payload: TenantCreate, super_payload: dict = Depends(_re
     return response
 
 
+@router.post("/tenants/{tenant_id}/approve")
+async def approve_tenant(tenant_id: str, super_payload: dict = Depends(_require_super)):
+    existing = await control_db.tenants.find_one({"id": tenant_id}, {"_id": 0})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Tenant not found")
+    if existing.get("status") == "active" and existing.get("approval_status") == "approved":
+        return {**existing, "already_approved": True}
+    if existing.get("status") not in ("pending_approval", "rejected"):
+        raise HTTPException(status_code=400, detail="Tenant is not pending approval")
+    now_iso = datetime.now(timezone.utc).isoformat()
+    actor = _super_actor(super_payload)
+    result = await control_db.tenants.update_one(
+        {"id": tenant_id, "status": {"$in": ["pending_approval", "rejected"]}},
+        {"$set": {
+            "status": "active",
+            "approval_status": "approved",
+            "approved_at": now_iso,
+            "approved_by": actor.get("username", ""),
+        },
+         "$unset": {"rejection_reason": "", "rejected_at": ""}},
+    )
+    refreshed = await control_db.tenants.find_one({"id": tenant_id}, {"_id": 0})
+    if result.modified_count == 0:
+        return {**(refreshed or {}), "already_approved": True}
+    try:
+        from utils.audit import log_audit
+        await log_audit(
+            actor=_super_actor(super_payload),
+            action="tenant.approve",
+            entity_type="tenant",
+            entity_id=tenant_id,
+            entity_name=existing.get("name", ""),
+            before={"status": existing.get("status")},
+            after={"status": (refreshed or {}).get("status")},
+        )
+    except Exception:
+        pass
+    try:
+        owner_email = (refreshed or {}).get("owner_email") or ""
+        if owner_email:
+            await send_email(
+                kind="welcome",
+                to=owner_email,
+                tenant_slug=(refreshed or {}).get("slug"),
+                ctx={
+                    "academy_name": (refreshed or {}).get("name", ""),
+                    "slug": (refreshed or {}).get("slug"),
+                    "approved": True,
+                    "subscription_end_at": (refreshed or {}).get("subscription_end_at"),
+                },
+            )
+    except Exception:
+        logger.exception("approve email failed for %s", existing.get("slug"))
+    return refreshed or {}
+
+
+@router.post("/tenants/{tenant_id}/reject")
+async def reject_tenant(
+    tenant_id: str,
+    payload: Optional[dict] = Body(default=None),
+    super_payload: dict = Depends(_require_super),
+):
+    payload = payload or {}
+    existing = await control_db.tenants.find_one({"id": tenant_id}, {"_id": 0})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Tenant not found")
+    if existing.get("status") == "rejected":
+        return {**existing, "already_rejected": True}
+    if existing.get("status") != "pending_approval":
+        raise HTTPException(status_code=400, detail="Tenant is not pending approval")
+    reason = (payload.get("reason") or "")[:500]
+    now_iso = datetime.now(timezone.utc).isoformat()
+    actor = _super_actor(super_payload)
+    result = await control_db.tenants.update_one(
+        {"id": tenant_id, "status": "pending_approval"},
+        {"$set": {
+            "status": "rejected",
+            "approval_status": "rejected",
+            "rejected_at": now_iso,
+            "rejected_by": actor.get("username", ""),
+            "rejection_reason": reason,
+        }},
+    )
+    refreshed = await control_db.tenants.find_one({"id": tenant_id}, {"_id": 0})
+    if result.modified_count == 0:
+        return {**(refreshed or {}), "already_rejected": True}
+    try:
+        from utils.audit import log_audit
+        await log_audit(
+            actor=_super_actor(super_payload),
+            action="tenant.reject",
+            entity_type="tenant",
+            entity_id=tenant_id,
+            entity_name=existing.get("name", ""),
+            before={"status": existing.get("status")},
+            after={"status": (refreshed or {}).get("status")},
+            extra={"reason": reason},
+        )
+    except Exception:
+        pass
+    return refreshed or {}
+
+
 @router.patch("/tenants/{tenant_id}")
 async def update_tenant(tenant_id: str, payload: TenantUpdate, super_payload: dict = Depends(_require_super)):
     existing = await control_db.tenants.find_one({"id": tenant_id}, {"_id": 0})
@@ -402,7 +505,7 @@ async def update_tenant(tenant_id: str, payload: TenantUpdate, super_payload: di
     update = {k: v for k, v in payload.model_dump().items() if v is not None}
     if not update:
         return existing
-    if "status" in update and update["status"] not in ("active", "suspended"):
+    if "status" in update and update["status"] not in ("active", "suspended", "pending_approval", "rejected"):
         raise HTTPException(status_code=400, detail="Invalid status")
     if "billing_cycle" in update:
         cyc = str(update["billing_cycle"]).lower()

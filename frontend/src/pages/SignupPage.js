@@ -112,9 +112,25 @@ export default function SignupPage() {
       const data = res.data || {};
       try {
         localStorage.setItem('tenant_slug', data.tenant?.slug || slug);
+        Object.keys(localStorage).filter((k) => k.startsWith('tenant_branding:')).forEach((k) => localStorage.removeItem(k));
+      } catch {}
+      if (data.pending_approval) {
+        toast.success(
+          isAr
+            ? 'تم إنشاء طلبك بنجاح! حسابك بانتظار موافقة الإدارة قبل التفعيل.'
+            : 'Your request was submitted! Your account is awaiting admin approval.'
+        );
+        setSubmitting(false);
+        setError(
+          isAr
+            ? `تم تسجيل أكاديميتك "${data.tenant?.name || ''}" بنجاح. سيتم إعلامك عبر البريد الإلكتروني (${email}) فور الموافقة. لا يمكنك الدخول حالياً حتى تتم الموافقة.`
+            : `Your academy was registered. We will notify ${email} once an admin approves it.`
+        );
+        return;
+      }
+      try {
         localStorage.setItem('token', data.access_token || '');
         axios.defaults.headers.common['Authorization'] = `Bearer ${data.access_token}`;
-        Object.keys(localStorage).filter((k) => k.startsWith('tenant_branding:')).forEach((k) => localStorage.removeItem(k));
       } catch {}
       toast.success(isAr ? `تم إنشاء أكاديميتك! تجربة ${trialDays} يوم بدأت.` : `Academy created! ${trialDays}-day trial started.`);
       window.location.replace('/admin/onboarding');

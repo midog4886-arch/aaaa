@@ -780,11 +780,34 @@ export default function SuperTenants() {
   const statusBadge = (s) => s === 'suspended' ? sx.badgeSuspended
     : s === 'deleted' ? sx.badgeDeleted
     : s === 'pending_delete' ? sx.badgePending
+    : s === 'pending_approval' ? sx.badgePending
+    : s === 'rejected' ? sx.badgeSuspended
     : sx.badgeActive;
   const statusText = (s) => s === 'suspended' ? 'موقوفة'
     : s === 'deleted' ? 'محذوفة'
     : s === 'pending_delete' ? 'جدولة حذف'
+    : s === 'pending_approval' ? 'بانتظار الموافقة'
+    : s === 'rejected' ? 'مرفوضة'
     : 'نشطة';
+
+  const approveTenant = async (t) => {
+    if (!window.confirm(`الموافقة على تفعيل "${t.name}"؟`)) return;
+    try {
+      await axios.post(`/super/tenants/${t.id}/approve`, {}, auth());
+      await load();
+      alert('تمت الموافقة على الأكاديمية وتفعيلها.');
+    } catch (e) { alert(e?.response?.data?.detail || 'فشل'); }
+  };
+
+  const rejectTenant = async (t) => {
+    const reason = window.prompt(`سبب رفض "${t.name}" (اختياري):`, '');
+    if (reason === null) return;
+    try {
+      await axios.post(`/super/tenants/${t.id}/reject`, { reason }, auth());
+      await load();
+      alert('تم رفض طلب الأكاديمية.');
+    } catch (e) { alert(e?.response?.data?.detail || 'فشل'); }
+  };
 
   const totalCard = (label, val) => (
     <div style={{ flex: 1, minWidth: 110, background: 'white', border: '1px solid #e2e8f0', borderRadius: 10, padding: '10px 14px' }}>
@@ -1166,11 +1189,20 @@ export default function SuperTenants() {
               </div>
               <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                 <button style={sx.btnGhost} onClick={() => refreshOne(t.id)}>↻</button>
-                {t.status !== 'deleted' && (
+                {t.status === 'pending_approval' && (
+                  <>
+                    <button style={sx.btnRenew} onClick={() => approveTenant(t)}>موافقة</button>
+                    <button style={sx.btnDanger} onClick={() => rejectTenant(t)}>رفض</button>
+                  </>
+                )}
+                {t.status === 'rejected' && (
+                  <button style={sx.btnRenew} onClick={() => approveTenant(t)}>إعادة الموافقة</button>
+                )}
+                {t.status !== 'deleted' && t.status !== 'pending_approval' && t.status !== 'rejected' && (
                   <button style={sx.btnRenew} onClick={() => setRenewing(t)}>تجديد</button>
                 )}
                 <button style={sx.btnEdit} onClick={() => setEditing(t)}>تعديل</button>
-                {t.status !== 'deleted' && (
+                {t.status !== 'deleted' && t.status !== 'pending_approval' && t.status !== 'rejected' && (
                   <button style={sx.btnGhost} onClick={() => toggleSuspend(t)}>{t.status === 'active' ? 'إيقاف' : 'تفعيل'}</button>
                 )}
                 {t.status === 'pending_delete' && (

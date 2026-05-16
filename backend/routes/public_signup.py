@@ -228,7 +228,9 @@ async def public_signup(payload: PublicSignupIn, request: Request):
         "slug": slug,
         "name": payload.academy_name.strip(),
         "db_name": slug_to_db_name(slug),
-        "status": "active",
+        "status": "pending_approval",
+        "approval_status": "pending",
+        "approval_requested_at": now.isoformat(),
         "plan": plan_id,
         "max_branches": int(plan_doc.get("max_branches") or 0),
         "max_members": int(plan_doc.get("max_members") or 0),
@@ -280,17 +282,6 @@ async def public_signup(payload: PublicSignupIn, request: Request):
     if not user_doc:
         raise HTTPException(status_code=500, detail="تعذر إنشاء حساب المسؤول")
 
-    token = jwt.encode(
-        {
-            "user_id": user_doc["id"],
-            "username": user_doc["username"],
-            "tenant_slug": slug,
-            "exp": datetime.now(timezone.utc) + timedelta(days=365 * 100),
-        },
-        JWT_SECRET,
-        algorithm=JWT_ALGORITHM,
-    )
-
     try:
         from utils.email_service import send_email
         await send_email(
@@ -302,6 +293,7 @@ async def public_signup(payload: PublicSignupIn, request: Request):
                 "slug": slug,
                 "trial_days": DEFAULT_TRIAL_DAYS,
                 "subscription_end_at": tenant_doc["subscription_end_at"],
+                "pending_approval": True,
             },
         )
     except Exception:
@@ -309,14 +301,16 @@ async def public_signup(payload: PublicSignupIn, request: Request):
 
     return {
         "ok": True,
+        "pending_approval": True,
         "tenant": {
             "slug": slug,
             "name": tenant_doc["name"],
             "plan": plan_id,
             "subscription_end_at": tenant_doc["subscription_end_at"],
             "trial_days": DEFAULT_TRIAL_DAYS,
+            "approval_status": "pending",
         },
-        "access_token": token,
+        "access_token": None,
         "user": {
             "id": user_doc["id"],
             "username": user_doc["username"],

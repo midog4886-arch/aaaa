@@ -38,13 +38,32 @@ export const LoginPage = () => {
     }
 
     const result = await login(username, password);
-    
+
     if (result.success) {
       navigate('/admin/dashboard');
     } else {
-      setError(t('invalid_credentials'));
+      const tenantStatus = result?.error?.response?.data?.tenant_status
+        || result?.tenant_status;
+      const detail = result?.error?.response?.data?.detail || result?.detail;
+      if (tenantStatus === 'pending_approval') {
+        setError(language === 'ar'
+          ? 'هذه الأكاديمية بانتظار موافقة الإدارة قبل التفعيل. سيتم إعلامك عبر البريد فور الموافقة.'
+          : 'This academy is awaiting admin approval before activation.');
+      } else if (tenantStatus === 'rejected') {
+        setError(language === 'ar'
+          ? 'تم رفض طلب تفعيل هذه الأكاديمية. الرجاء التواصل مع الدعم.'
+          : 'This academy registration was rejected. Please contact support.');
+      } else if (tenantStatus === 'suspended') {
+        setError(language === 'ar'
+          ? 'هذه الأكاديمية موقوفة. الرجاء التواصل مع الدعم.'
+          : 'This academy is suspended. Please contact support.');
+      } else if (detail && typeof detail === 'string' && detail.length < 200) {
+        setError(detail);
+      } else {
+        setError(t('invalid_credentials'));
+      }
     }
-    
+
     setLoading(false);
   };
 

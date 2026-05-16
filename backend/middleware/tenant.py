@@ -135,8 +135,14 @@ class TenantMiddleware:
             tenant = {"slug": DEFAULT_TENANT_SLUG, "db_name": slug_to_db_name(DEFAULT_TENANT_SLUG), "status": "active"}
 
         status_val = tenant.get("status")
-        if status_val in ("suspended", "deleted", "inactive"):
-            body = f'{{"detail":"Tenant {status_val}"}}'.encode("utf-8")
+        if status_val in ("suspended", "deleted", "inactive", "pending_approval", "rejected"):
+            if status_val == "pending_approval":
+                detail = "حساب الأكاديمية بانتظار موافقة الإدارة قبل التفعيل"
+            elif status_val == "rejected":
+                detail = "تم رفض طلب تفعيل هذه الأكاديمية. الرجاء التواصل مع الدعم"
+            else:
+                detail = f"Tenant {status_val}"
+            body = ('{"detail":"' + detail + '","tenant_status":"' + status_val + '"}').encode("utf-8")
             await send({
                 "type": "http.response.start",
                 "status": 403,
