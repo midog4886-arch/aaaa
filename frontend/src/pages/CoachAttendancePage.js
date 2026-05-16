@@ -4,10 +4,11 @@ import {
   Clock, LogIn, LogOut, UserX, Calendar, ChevronLeft, ChevronRight,
   FileText, Download, Edit2, Trash2, Save, X, AlertCircle, CheckCircle,
   Users, Timer, CalendarDays, UserPlus, Phone, Mail, QrCode, Printer,
-  FileSpreadsheet, TrendingUp, Award, AlarmClock, List
+  FileSpreadsheet, TrendingUp, Award, AlarmClock, List, Camera
 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import axios from 'axios';
+import CoachCameraQRScanner from '../components/CoachCameraQRScanner';
 import {
   compressImageFile,
   estimateDataUrlBytes,
@@ -36,6 +37,7 @@ const CoachAttendancePage = () => {
   const [savingCoach, setSavingCoach] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState(null);
   const [qrCoach, setQrCoach] = useState(null); // coach whose QR is being shown
+  const [scanCameraOpen, setScanCameraOpen] = useState(false);
   const [lateThreshold, setLateThreshold] = useState('09:00'); // وقت الحضور المعتاد
   const [lateDetailCoach, setLateDetailCoach] = useState(null); // popup for late details
   const [detailCoach, setDetailCoach] = useState(null); // daily breakdown modal
@@ -803,6 +805,14 @@ const CoachAttendancePage = () => {
             >
               <UserPlus className="w-4 h-4" />
               إضافة مدرب
+            </button>
+            <button
+              onClick={() => setScanCameraOpen(true)}
+              className="bg-orange-500 text-white px-3 py-1.5 rounded-lg text-sm font-medium hover:bg-orange-600 transition-colors flex items-center gap-1"
+              title="فتح الكاميرا لمسح كود المدرب وتسجيل الحضور/الانصراف"
+            >
+              <Camera className="w-4 h-4" />
+              مسح كود المدرب
             </button>
           </div>
           <div className="flex gap-2">
@@ -1639,6 +1649,12 @@ const CoachAttendancePage = () => {
           </div>
         );
       })()}
+
+      <CoachCameraQRScanner
+        open={scanCameraOpen}
+        onClose={() => setScanCameraOpen(false)}
+        onSuccess={() => { fetchData(); }}
+      />
 
     </Layout>
   );
