@@ -1054,8 +1054,12 @@ const TournamentDetail = ({ tid, onBack }) => {
         ? Math.max(...existing.map(l => l.level_number || 0)) + 1
         : 1;
       const cap = parseInt(newLevelForm.capacity, 10) || subCapacity || 6;
-      const branchId = selectedBranchId && selectedBranchId !== 'all'
-        ? selectedBranchId : 'all';
+      if (!selectedBranchId || selectedBranchId === 'all') {
+        toast.error(language === 'ar' ? 'يرجى اختيار فرع محدد قبل إنشاء المستوى' : 'Please select a specific branch first');
+        setNewLevelSaving(false);
+        return;
+      }
+      const branchId = selectedBranchId;
       await levelsAPI.create({
         level_number: nextNum,
         activity_name: aname,

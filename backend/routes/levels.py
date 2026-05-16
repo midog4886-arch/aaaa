@@ -205,12 +205,15 @@ async def create_level(level: LevelCreate, current_user: dict = Depends(get_curr
     level_id = str(uuid.uuid4())
     is_admin = current_user.get("is_admin", False)
 
-    # Admin can specify branch, otherwise non-admin is locked to their own
-    # branch (require_branch_scope rejects non-admins without a branch_id).
-    if is_admin and level.branch_id:
-        final_branch_id = level.branch_id if level.branch_id != "all" else None
+    if is_admin:
+        if not level.branch_id or level.branch_id == "all":
+            raise HTTPException(status_code=400, detail="يجب اختيار فرع للمستوى — لا يمكن إنشاء مستوى بدون فرع")
+        final_branch_id = level.branch_id
     else:
         final_branch_id = require_branch_scope(current_user)
+    branch_exists = await db.branches.find_one({"id": final_branch_id}, {"_id": 1})
+    if not branch_exists:
+        raise HTTPException(status_code=400, detail="الفرع المحدد غير موجود")
     
     level_doc = {
         "id": level_id,

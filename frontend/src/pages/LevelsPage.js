@@ -944,10 +944,15 @@ export const LevelsPage = () => {
         }
       }
       
+      if (!selectedBranchId || selectedBranchId === 'all') {
+        toast.error(t('يرجى اختيار فرع محدد من الأعلى قبل إضافة الساعة', 'Please select a specific branch first'));
+        setSaving(false);
+        return;
+      }
       const newLevel = {
         level_number: 1,
         activity_name: activityName,
-        branch_id: selectedBranchId || 'all',
+        branch_id: selectedBranchId,
         capacity: effectiveActivityId === 'swimming' ? 6 : 10,
         members: []
       };
@@ -1204,13 +1209,17 @@ ${slotTables}
       }
     }
     
+    if (!selectedBranchId || selectedBranchId === 'all') {
+      toast.error(t('يرجى اختيار فرع محدد من الأعلى قبل إضافة المستوى', 'Please select a specific branch first'));
+      return;
+    }
     setSaving(true);
     try {
       const newLevel = {
         level_number: nextLevelNumber,
         activity_name: activityName,
         time_slot: selectedTimeSlotKey,
-        branch_id: selectedBranchId || 'all',
+        branch_id: selectedBranchId,
         capacity: selectedActivityId === 'swimming' ? 6 : 10,
         days: [...ALL_DAY_IDS],
         members: []
@@ -1330,6 +1339,10 @@ ${slotTables}
     e.preventDefault();
     if (!formData.activity_name.trim()) {
       toast.error(t('أدخل اسم النشاط', 'Enter activity name'));
+      return;
+    }
+    if (!selectedLevel && isAdmin && (!formData.branch_id || formData.branch_id === 'all')) {
+      toast.error(t('يرجى اختيار فرع محدد للمستوى', 'Please select a specific branch for the level'));
       return;
     }
     

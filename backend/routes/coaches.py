@@ -112,12 +112,15 @@ async def create_coach(coach: CoachCreate, current_user: dict = Depends(get_curr
     coach_id = str(uuid.uuid4())
     is_admin = current_user.get("is_admin", False)
 
-    # Admin can specify branch, otherwise non-admin is locked to their own
-    # branch (require_branch_scope rejects non-admins without a branch_id).
-    if is_admin and coach.branch_id:
-        final_branch_id = coach.branch_id if coach.branch_id != "all" else None
+    if is_admin:
+        if not coach.branch_id or coach.branch_id == "all":
+            raise HTTPException(status_code=400, detail="يجب اختيار فرع للمدرّب — لا يمكن إنشاء مدرّب بدون فرع")
+        final_branch_id = coach.branch_id
     else:
         final_branch_id = require_branch_scope(current_user)
+    branch_exists = await db.branches.find_one({"id": final_branch_id}, {"_id": 1})
+    if not branch_exists:
+        raise HTTPException(status_code=400, detail="الفرع المحدد غير موجود")
     
     employee_id = await get_next_employee_id()
     

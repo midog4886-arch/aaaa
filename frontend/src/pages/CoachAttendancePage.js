@@ -220,10 +220,14 @@ const CoachAttendancePage = () => {
       showToast('يرجى إدخال رقم الجوال', 'error');
       return;
     }
+    if (!branchFilter || branchFilter === 'all') {
+      showToast('يرجى اختيار فرع محدد من الأعلى قبل إضافة المدرّب', 'error');
+      return;
+    }
     setAddingCoach(true);
     try {
       const token = localStorage.getItem('token');
-      const branchId = branchFilter !== 'all' ? branchFilter : null;
+      const branchId = branchFilter;
       await axios.post('/api/coaches', {
         name: addCoachForm.name_en.trim() || addCoachForm.name.trim(),
         name_ar: addCoachForm.name.trim(),
