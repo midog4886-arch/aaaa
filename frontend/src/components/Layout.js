@@ -1,4 +1,4 @@
-import { getAcademyLogoUrl } from '../services/branding';
+import { getAcademyLogoUrl, getAcademyName } from '../services/branding';
 import SubscriptionBanner from './SubscriptionBanner';
 import OnboardingGuard from './OnboardingGuard';
 import React, { useState, useEffect } from 'react';
@@ -221,8 +221,12 @@ export const Sidebar = ({ isOpen, onClose }) => {
   };
 
   const [brandingLogo, setBrandingLogo] = useState(getAcademyLogoUrl());
+  const [brandingName, setBrandingName] = useState(getAcademyName());
   useEffect(() => {
-    const h = () => setBrandingLogo(getAcademyLogoUrl());
+    const h = () => {
+      setBrandingLogo(getAcademyLogoUrl());
+      setBrandingName(getAcademyName());
+    };
     window.addEventListener('branding:updated', h);
     return () => window.removeEventListener('branding:updated', h);
   }, []);
@@ -255,8 +259,8 @@ export const Sidebar = ({ isOpen, onClose }) => {
               )}
             </div>
             <div className="flex-1 min-w-0">
-              <h1 className="text-sm font-bold truncate">
-                {t('academy_name_short')}
+              <h1 className="text-sm font-bold truncate" data-testid="header-academy-name">
+                {brandingName || t('academy_name_short')}
               </h1>
             </div>
           </div>
