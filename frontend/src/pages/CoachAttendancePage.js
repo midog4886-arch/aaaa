@@ -40,7 +40,7 @@ const CoachAttendancePage = () => {
   const [lateDetailCoach, setLateDetailCoach] = useState(null); // popup for late details
   const [detailCoach, setDetailCoach] = useState(null); // daily breakdown modal
   const qrRef = useRef(null);
-  const branchFilter = localStorage.getItem('selectedBranch') || 'all';
+  const branchFilter = localStorage.getItem('selectedBranchId') || 'all';
 
   const showToast = (message, type = 'success') => {
     setToast({ message, type });
