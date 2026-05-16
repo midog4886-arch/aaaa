@@ -31,6 +31,11 @@ from routes.attendance import parse_schedule_days  # noqa: E402
 from routes.freezes import (  # noqa: E402
     compute_activity_extension,
 )
+from utils.tenant import (  # noqa: E402
+    set_current_tenant,
+    reset_current_tenant,
+    list_active_tenants,
+)
 
 
 def build_extension_records(freeze: dict, activities: list) -> list:
@@ -209,15 +214,42 @@ def print_summary(summary: dict, apply_changes: bool) -> None:
 
 
 async def main():
-    parser = argparse.ArgumentParser()
-    group = parser.add_mutually_exclusive_group(required=True)
-    group.add_argument("--dry-run", action="store_true", help="Preview changes only.")
-    group.add_argument("--apply", action="store_true", help="Apply the migration.")
+    parser = argparse.ArgumentParser(
+        description="Migrate legacy freezes. Must run against an explicit tenant."
+    )
+    mode = parser.add_mutually_exclusive_group(required=True)
+    mode.add_argument("--dry-run", action="store_true", help="Preview changes only.")
+    mode.add_argument("--apply", action="store_true", help="Apply the migration.")
+    scope = parser.add_mutually_exclusive_group(required=True)
+    scope.add_argument("--tenant", help="Tenant slug to operate on (e.g. 'default')")
+    scope.add_argument("--all-tenants", action="store_true", help="Run against every active tenant")
     args = parser.parse_args()
-
     apply_changes = bool(args.apply)
-    summary = await migrate(apply_changes=apply_changes)
-    print_summary(summary, apply_changes=apply_changes)
+
+    async def _run_for(tenant_dict):
+        token = set_current_tenant(tenant_dict)
+        try:
+            print(f"\n>>> Tenant: {tenant_dict.get('slug')} (db={tenant_dict.get('db_name')})")
+            summary = await migrate(apply_changes=apply_changes)
+            print_summary(summary, apply_changes=apply_changes)
+        finally:
+            reset_current_tenant(token)
+
+    if args.all_tenants:
+        tenants = await list_active_tenants()
+        if not tenants:
+            print("No active tenants found.")
+            return
+        for t in tenants:
+            await _run_for(t)
+    else:
+        tenants = await list_active_tenants()
+        match = next((t for t in tenants if t.get("slug") == args.tenant), None)
+        if not match:
+            print(f"Tenant '{args.tenant}' not found (or not active). Active tenants: "
+                  f"{[t.get('slug') for t in tenants]}")
+            sys.exit(2)
+        await _run_for(match)
 
 
 if __name__ == "__main__":

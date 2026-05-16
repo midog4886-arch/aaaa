@@ -89,8 +89,12 @@ async def handle_action(action: str, request: Request, api_key: str = Header(Non
         raise HTTPException(status_code=401, detail="Unauthorized")
 
     body = await request.json()
-    db_name = body.get("database", "champions_academy")
+    db_name = body.get("database")
+    if not db_name:
+        raise HTTPException(status_code=400, detail="Missing 'database' in request body")
     col_name = body.get("collection", "")
+    if not col_name:
+        raise HTTPException(status_code=400, detail="Missing 'collection' in request body")
 
     try:
         client = get_client()

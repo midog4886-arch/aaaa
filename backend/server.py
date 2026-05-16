@@ -3424,15 +3424,9 @@ async def _run_daily_renewal_and_ads_checks(trigger: str = "scheduler") -> dict:
     renewals_created = 0
     ads_flagged = 0
     errors: list[str] = []
+    tenants_processed = 0
 
     def _count(result) -> int:
-        # The various check endpoints don't share a return shape:
-        #   server.check_subscription_renewals → {"message": ..., "count": N}
-        #   routes.notifications.check_subscription_renewals →
-        #     {"message": ..., "count": N, "notifications_created": N}
-        #   routes.notifications.check_ads_expiry →
-        #     {"message": ..., "notifications_created": N}
-        # Try the known keys in order so each path contributes its real count.
         if isinstance(result, dict):
             for key in ("count", "notifications_created", "created"):
                 n = result.get(key)
@@ -3440,29 +3434,6 @@ async def _run_daily_renewal_and_ads_checks(trigger: str = "scheduler") -> dict:
                     return n
         return 0
 
-    # 1) Global renewal scan from server.py — already iterates all members
-    # across branches and stamps each notification with the member's branch_id.
-    # Note: this endpoint and the per-branch ``routes/notifications.py``
-    # renewal check use different notification schemas and dedup keys
-    # (``related_entity_id`` vs. ``type+member+activity+today``). Both are
-    # already exposed as separate manual admin endpoints, so the scheduler
-    # intentionally runs both to mirror existing manual behaviour. If product
-    # later wants to consolidate to a single renewal notification, drop one
-    # of the two calls below.
-    try:
-        admin_user = {"is_admin": True, "branch_id": None}
-        result = await check_subscription_renewals(current_user=admin_user)
-        renewals_created += _count(result)
-        print(f"Daily checks: global renewals → {result}")
-    except Exception as e:
-        msg = f"global renewals failed: {e}"
-        errors.append(msg)
-        print(f"Daily checks: {msg}")
-
-    # 2) Per-branch checks for the routes/notifications.py endpoints, which
-    # filter by branch via ``resolve_branch_filter``. We synthesize a
-    # non-admin user pinned to each branch so notifications are stamped
-    # with the correct branch_id.
     try:
         from routes.notifications import (
             check_subscription_renewals as notif_check_renewals,
@@ -3487,44 +3458,61 @@ async def _run_daily_renewal_and_ads_checks(trigger: str = "scheduler") -> dict:
             "errors": errors,
         }
 
-    # Stream branches via the cursor (no fixed cap) so adding more branches
-    # in the future never causes some to be silently skipped.
-    branch_ids: list[str] = []
-    try:
-        async for b in db.branches.find({}, {"id": 1, "_id": 0}):
-            bid = b.get("id")
-            if bid:
-                branch_ids.append(bid)
-    except Exception as e:
-        msg = f"failed to list branches: {e}"
-        errors.append(msg)
-        print(f"Daily checks: {msg}")
-
-    for branch_id in branch_ids:
-        scoped_user = {"is_admin": False, "branch_id": branch_id}
+    async def _per_tenant_checks(tenant: dict) -> dict:
+        nonlocal renewals_created, ads_flagged
+        slug = tenant.get("slug") or "?"
+        tenant_renewals = 0
+        tenant_ads = 0
         try:
-            r = await notif_check_renewals(current_user=scoped_user)
-            renewals_created += _count(r)
+            admin_user = {"is_admin": True, "branch_id": None}
+            result = await check_subscription_renewals(current_user=admin_user)
+            tenant_renewals += _count(result)
         except Exception as e:
-            msg = f"renewals failed for branch {branch_id}: {e}"
-            errors.append(msg)
-            print(f"Daily checks: {msg}")
-        try:
-            r = await notif_check_ads_expiry(current_user=scoped_user)
-            ads_flagged += _count(r)
-        except Exception as e:
-            msg = f"ads-expiry failed for branch {branch_id}: {e}"
-            errors.append(msg)
-            print(f"Daily checks: {msg}")
+            errors.append(f"[{slug}] global renewals failed: {e}")
 
-    # 3) Also run ads-expiry once globally (as admin with no branch filter) so
-    # legacy/shared ads with branch_id == None are still flagged.
+        branch_ids: list[str] = []
+        try:
+            async for b in db.branches.find({}, {"id": 1, "_id": 0}):
+                bid = b.get("id")
+                if bid:
+                    branch_ids.append(bid)
+        except Exception as e:
+            errors.append(f"[{slug}] failed to list branches: {e}")
+
+        for branch_id in branch_ids:
+            scoped_user = {"is_admin": False, "branch_id": branch_id}
+            try:
+                r = await notif_check_renewals(current_user=scoped_user)
+                tenant_renewals += _count(r)
+            except Exception as e:
+                errors.append(f"[{slug}] renewals failed for branch {branch_id}: {e}")
+            try:
+                r = await notif_check_ads_expiry(current_user=scoped_user)
+                tenant_ads += _count(r)
+            except Exception as e:
+                errors.append(f"[{slug}] ads-expiry failed for branch {branch_id}: {e}")
+
+        try:
+            admin_user = {"is_admin": True, "branch_id": None}
+            r = await notif_check_ads_expiry(current_user=admin_user)
+            tenant_ads += _count(r)
+        except Exception as e:
+            errors.append(f"[{slug}] global ads-expiry failed: {e}")
+
+        renewals_created += tenant_renewals
+        ads_flagged += tenant_ads
+        print(f"Daily checks [{slug}]: renewals={tenant_renewals} ads={tenant_ads}")
+        return {"renewals": tenant_renewals, "ads": tenant_ads}
+
     try:
-        admin_user = {"is_admin": True, "branch_id": None}
-        r = await notif_check_ads_expiry(current_user=admin_user)
-        ads_flagged += _count(r)
+        from utils.tenant import for_each_active_tenant
+        per_tenant_summary = await for_each_active_tenant(_per_tenant_checks, label="renewal_ads")
+        tenants_processed = per_tenant_summary.get("processed", 0)
+        if per_tenant_summary.get("failed"):
+            for slug, err in (per_tenant_summary.get("errors") or {}).items():
+                errors.append(f"[{slug}] tenant scope failed: {err}")
     except Exception as e:
-        msg = f"global ads-expiry failed: {e}"
+        msg = f"per-tenant iteration failed: {e}"
         errors.append(msg)
         print(f"Daily checks: {msg}")
 

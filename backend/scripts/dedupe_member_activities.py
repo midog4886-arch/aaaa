@@ -29,6 +29,11 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 from database import db  # noqa: E402
+from utils.tenant import (  # noqa: E402
+    set_current_tenant,
+    reset_current_tenant,
+    list_active_tenants,
+)
 
 
 def dedupe_activities(activities: list) -> tuple:
@@ -185,13 +190,42 @@ def print_summary(summary: dict, applied: bool) -> None:
 
 
 async def main():
-    parser = argparse.ArgumentParser()
-    group = parser.add_mutually_exclusive_group(required=True)
-    group.add_argument("--dry-run", action="store_true")
-    group.add_argument("--apply", action="store_true")
+    parser = argparse.ArgumentParser(
+        description="Dedupe member activities. Must run against an explicit tenant."
+    )
+    mode = parser.add_mutually_exclusive_group(required=True)
+    mode.add_argument("--dry-run", action="store_true")
+    mode.add_argument("--apply", action="store_true")
+    scope = parser.add_mutually_exclusive_group(required=True)
+    scope.add_argument("--tenant", help="Tenant slug to operate on (e.g. 'default')")
+    scope.add_argument("--all-tenants", action="store_true", help="Run against every active tenant")
     args = parser.parse_args()
-    summary = await migrate(apply_changes=bool(args.apply))
-    print_summary(summary, applied=bool(args.apply))
+    apply_changes = bool(args.apply)
+
+    async def _run_for(tenant_dict):
+        token = set_current_tenant(tenant_dict)
+        try:
+            print(f"\n>>> Tenant: {tenant_dict.get('slug')} (db={tenant_dict.get('db_name')})")
+            summary = await migrate(apply_changes=apply_changes)
+            print_summary(summary, applied=apply_changes)
+        finally:
+            reset_current_tenant(token)
+
+    if args.all_tenants:
+        tenants = await list_active_tenants()
+        if not tenants:
+            print("No active tenants found.")
+            return
+        for t in tenants:
+            await _run_for(t)
+    else:
+        tenants = await list_active_tenants()
+        match = next((t for t in tenants if t.get("slug") == args.tenant), None)
+        if not match:
+            print(f"Tenant '{args.tenant}' not found (or not active). Active tenants: "
+                  f"{[t.get('slug') for t in tenants]}")
+            sys.exit(2)
+        await _run_for(match)
 
 
 if __name__ == "__main__":
