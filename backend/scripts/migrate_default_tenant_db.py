@@ -62,7 +62,7 @@ async def _copy_collection(src_db, dst_db, name: str, *, dry_run: bool) -> int:
         log.info("  [dry-run] would copy %s docs from %s.%s", total, src_db.name, name)
         return total
 
-    cursor = src.find({}, no_cursor_timeout=True)
+    cursor = src.find({}).batch_size(BATCH_SIZE)
     batch: list = []
     copied = 0
     try:
