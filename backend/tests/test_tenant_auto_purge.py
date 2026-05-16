@@ -23,6 +23,8 @@ import pytest
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
+from utils.tenant import slug_to_db_name  # noqa: E402
+
 
 class _FakeCursor:
     def __init__(self, docs):
@@ -231,7 +233,7 @@ def test_default_tenant_is_never_purged(monkeypatch, server_module):
         _tenant(
             id="default-id",
             slug="default",
-            db_name="champions_academy",
+            db_name=slug_to_db_name("default"),
             deletion_purge_at=past,
             final_purge_alert_sent_at=warned,
         ),

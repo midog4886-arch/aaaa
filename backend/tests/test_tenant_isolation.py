@@ -286,6 +286,138 @@ def test_context_is_reset_after_iteration(monkeypatch, fresh_tenant_module):
     assert tenant_mod.get_current_tenant() is None
 
 
+def test_end_to_end_tenant_isolation_via_middleware_and_jwt(monkeypatch, fresh_tenant_module):
+    """Full-stack integration test for tenant isolation.
+
+    Spins up a FastAPI app wrapped in TenantMiddleware. Mocks control_db so
+    two tenants (alpha + beta) resolve, and uses a fake mongo client so each
+    tenant's data lives in its own database. Verifies:
+
+      1. A request scoped to tenant alpha sees only alpha's members.
+      2. A request scoped to tenant beta sees only beta's members.
+      3. A JWT issued for tenant alpha is REJECTED with 403 when presented
+         on a request resolved to tenant beta (cross-tenant token reuse).
+      4. Two distinct underlying MongoDB databases were materialized.
+    """
+    monkeypatch.setenv("STRICT_TENANT_CONTEXT", "1")
+    monkeypatch.setenv("JWT_SECRET_KEY", "test-secret-for-isolation")
+
+    from fastapi import FastAPI, Depends
+    from fastapi.testclient import TestClient
+
+    tenant_mod = importlib.import_module("utils.tenant")
+    middleware_mod = importlib.import_module("middleware.tenant")
+    importlib.reload(middleware_mod)
+
+    class FakeColl:
+        def __init__(self): self.docs = []
+        async def insert_one(self, d): self.docs.append(d)
+        def find(self, *_a, **_k):
+            docs = list(self.docs)
+            class _C:
+                def __aiter__(s): s._it = iter(docs); return s
+                async def __anext__(s):
+                    try: return next(s._it)
+                    except StopIteration: raise StopAsyncIteration
+            return _C()
+
+    class FakeDB:
+        def __init__(self): self._c = {}
+        def __getitem__(self, n): return self._c.setdefault(n, FakeColl())
+        def __getattr__(self, n): return self[n]
+
+    class FakeClient:
+        def __init__(self): self.dbs = {}
+        def __getitem__(self, n): return self.dbs.setdefault(n, FakeDB())
+
+    fake_client = FakeClient()
+    from database import TenantDBProxy
+    test_db = TenantDBProxy(fake_client)
+
+    tenants = {
+        "alpha": {"slug": "alpha", "db_name": "champions_alpha", "status": "active"},
+        "beta":  {"slug": "beta",  "db_name": "champions_beta",  "status": "active"},
+    }
+
+    async def fake_get_tenant_by_slug(slug):
+        return tenants.get(slug)
+
+    fake_control = type("M", (), {
+        "control_db": object(),
+        "get_tenant_by_slug": fake_get_tenant_by_slug,
+    })
+    monkeypatch.setitem(sys.modules, "control_db", fake_control)
+
+    from utils.auth import create_token, get_current_user
+
+    app = FastAPI()
+
+    @app.get("/api/members")
+    async def list_members(current_user: dict = Depends(get_current_user)):
+        out = []
+        async for m in test_db.members.find({}):
+            out.append(m)
+        return out
+
+    app.add_middleware(middleware_mod.TenantMiddleware)
+
+    async def seed():
+        token_a = tenant_mod.set_current_tenant(tenants["alpha"])
+        try:
+            await test_db.members.insert_one({"name": "alice"})
+        finally:
+            tenant_mod.reset_current_tenant(token_a)
+        token_b = tenant_mod.set_current_tenant(tenants["beta"])
+        try:
+            await test_db.members.insert_one({"name": "bob"})
+        finally:
+            tenant_mod.reset_current_tenant(token_b)
+
+    asyncio.run(seed())
+
+    token_alpha = None
+    token_beta = None
+
+    async def make_tokens():
+        nonlocal token_alpha, token_beta
+        t = tenant_mod.set_current_tenant(tenants["alpha"])
+        try:
+            token_alpha = create_token("u-a", "alice", is_admin=True)
+        finally:
+            tenant_mod.reset_current_tenant(t)
+        t = tenant_mod.set_current_tenant(tenants["beta"])
+        try:
+            token_beta = create_token("u-b", "bob", is_admin=True)
+        finally:
+            tenant_mod.reset_current_tenant(t)
+
+    asyncio.run(make_tokens())
+
+    client = TestClient(app)
+
+    r_a = client.get("/api/members",
+                     headers={"X-Tenant-Slug": "alpha",
+                              "Authorization": f"Bearer {token_alpha}"})
+    assert r_a.status_code == 200, r_a.text
+    assert r_a.json() == [{"name": "alice"}], "tenant alpha leaked or missing data"
+
+    r_b = client.get("/api/members",
+                     headers={"X-Tenant-Slug": "beta",
+                              "Authorization": f"Bearer {token_beta}"})
+    assert r_b.status_code == 200, r_b.text
+    assert r_b.json() == [{"name": "bob"}], "tenant beta leaked or missing data"
+
+    r_cross = client.get("/api/members",
+                         headers={"X-Tenant-Slug": "beta",
+                                  "Authorization": f"Bearer {token_alpha}"})
+    assert r_cross.status_code == 403, (
+        f"cross-tenant token must be rejected, got {r_cross.status_code}: {r_cross.text}"
+    )
+    assert "Tenant mismatch" in r_cross.text
+
+    assert set(fake_client.dbs.keys()) == {"champions_alpha", "champions_beta"}
+
+
 @pytest.mark.parametrize("script_name", [
     "dedupe_member_activities.py",
     "migrate_freezes_to_training_days.py",

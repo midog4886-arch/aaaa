@@ -13,9 +13,12 @@ Cancelled freezes are simply tagged ``calculation_mode = "legacy_calendar"``
 so they're skipped on subsequent runs (their effect was already undone at
 cancellation time using the old logic).
 
-Usage:
-    python -m scripts.migrate_freezes_to_training_days --dry-run
-    python -m scripts.migrate_freezes_to_training_days --apply
+Usage (one of --tenant <slug> or --all-tenants is REQUIRED so the script
+never silently runs against the legacy default DB):
+    python -m scripts.migrate_freezes_to_training_days --dry-run --tenant default
+    python -m scripts.migrate_freezes_to_training_days --apply   --tenant acme
+    python -m scripts.migrate_freezes_to_training_days --dry-run --all-tenants
+    python -m scripts.migrate_freezes_to_training_days --apply   --all-tenants
 """
 import argparse
 import asyncio

@@ -15,9 +15,12 @@ Side-effects handled:
   * ``total_extension_days`` is recomputed.
 - Cancelled freezes are left as-is (their extensions were already undone).
 
-Usage:
-    python -m scripts.dedupe_member_activities --dry-run
-    python -m scripts.dedupe_member_activities --apply
+Usage (one of --tenant <slug> or --all-tenants is REQUIRED so the script
+never silently runs against the legacy default DB):
+    python -m scripts.dedupe_member_activities --dry-run --tenant default
+    python -m scripts.dedupe_member_activities --apply   --tenant acme
+    python -m scripts.dedupe_member_activities --dry-run --all-tenants
+    python -m scripts.dedupe_member_activities --apply   --all-tenants
 """
 import argparse
 import asyncio
