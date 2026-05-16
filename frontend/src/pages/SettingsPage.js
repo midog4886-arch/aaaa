@@ -1598,6 +1598,11 @@ export const SettingsPage = () => {
           </Card>
         )}
 
+        {/* Academy identity & legal info — admin only */}
+        {isAdmin && (
+          <BrandingLegalCard language={language} />
+        )}
+
         {/* Onboarding restart — admin only */}
         {isAdmin && (
           <Card>
@@ -1645,6 +1650,95 @@ export const SettingsPage = () => {
         </Card>
       </div>
     </Layout>
+  );
+};
+
+const BrandingLegalCard = ({ language }) => {
+  const isAr = language === 'ar';
+  const [loading, setLoading] = React.useState(true);
+  const [saving, setSaving] = React.useState(false);
+  const [name, setName] = React.useState('');
+  const [taxNumber, setTaxNumber] = React.useState('');
+  const [commercialReg, setCommercialReg] = React.useState('');
+
+  React.useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await tenantAPI.getBranding();
+        if (cancelled) return;
+        const d = res?.data || {};
+        setName(d.name || '');
+        setTaxNumber(d.tax_number || '');
+        setCommercialReg(d.commercial_reg || '');
+      } catch (e) {
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  const handleSave = async () => {
+    const trimmedName = (name || '').trim();
+    if (!trimmedName) {
+      toast.error(isAr ? 'اسم الأكاديمية مطلوب' : 'Academy name required');
+      return;
+    }
+    setSaving(true);
+    try {
+      await tenantAPI.updateBranding({
+        name: trimmedName,
+        tax_number: (taxNumber || '').trim(),
+        commercial_reg: (commercialReg || '').trim(),
+      });
+      try {
+        const mod = await import('../services/branding');
+        if (mod && typeof mod.loadBranding === 'function') await mod.loadBranding();
+      } catch (e) {}
+      toast.success(isAr ? 'تم الحفظ' : 'Saved');
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || (isAr ? 'تعذر الحفظ' : 'Failed to save'));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <Info className="w-5 h-5 text-primary" />
+          {isAr ? 'هوية الأكاديمية والبيانات الضريبية' : 'Academy Identity & Tax Info'}
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <p className="text-sm text-muted-foreground">
+          {isAr
+            ? 'هذه البيانات تظهر تلقائياً في رأس كل فاتورة وفي تقارير ضريبة القيمة المضافة.'
+            : 'These values appear automatically on every invoice header and in VAT reports.'}
+        </p>
+        <div>
+          <Label>{isAr ? 'اسم الأكاديمية' : 'Academy name'}</Label>
+          <Input value={name} onChange={(e) => setName(e.target.value)} disabled={loading} />
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div>
+            <Label>{isAr ? 'الرقم الضريبي' : 'Tax number'}</Label>
+            <Input value={taxNumber} onChange={(e) => setTaxNumber(e.target.value)} disabled={loading} maxLength={50} dir="ltr" placeholder="312655637900003" />
+          </div>
+          <div>
+            <Label>{isAr ? 'رقم السجل التجاري' : 'Commercial registration'}</Label>
+            <Input value={commercialReg} onChange={(e) => setCommercialReg(e.target.value)} disabled={loading} maxLength={50} dir="ltr" placeholder="7043630230" />
+          </div>
+        </div>
+        <div className="flex justify-end pt-2">
+          <Button onClick={handleSave} disabled={saving || loading} data-testid="save-branding-legal-btn">
+            {saving ? (isAr ? 'جارٍ الحفظ…' : 'Saving…') : (isAr ? 'حفظ' : 'Save')}
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
   );
 };
 
