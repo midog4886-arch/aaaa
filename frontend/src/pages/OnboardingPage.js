@@ -28,6 +28,8 @@ const OnboardingPage = () => {
   const [logoBase64, setLogoBase64] = useState('');
   const [primaryColor, setPrimaryColor] = useState('');
   const [academyName, setAcademyName] = useState('');
+  const [taxNumber, setTaxNumber] = useState('');
+  const [commercialReg, setCommercialReg] = useState('');
 
   const [branchId, setBranchId] = useState('');
   const [branchForm, setBranchForm] = useState({ name: '', name_ar: '', address: '', phone: '' });
@@ -58,6 +60,8 @@ const OnboardingPage = () => {
         setAcademyName(s.tenant_name || '');
         setLogoBase64(s.logo_base64 || '');
         setPrimaryColor(s.primary_color || '');
+        setTaxNumber(s.tax_number || '');
+        setCommercialReg(s.commercial_reg || '');
         const bs = branchesRes.data || [];
         if (bs.length > 0) {
           const b = bs[0];
@@ -112,6 +116,8 @@ const OnboardingPage = () => {
         name: trimmedName,
         logo_base64: logoBase64 || '',
         primary_color: primaryColor || '',
+        tax_number: (taxNumber || '').trim(),
+        commercial_reg: (commercialReg || '').trim(),
       });
       try { await loadBranding(); } catch (e) {}
       return true;
@@ -287,6 +293,17 @@ const OnboardingPage = () => {
                   {logoBase64 && (
                     <Button type="button" variant="ghost" size="sm" onClick={() => setLogoBase64('')}>{isAr ? 'إزالة' : 'Remove'}</Button>
                   )}
+                </div>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div>
+                  <Label>{isAr ? 'الرقم الضريبي (اختياري)' : 'Tax number (optional)'}</Label>
+                  <Input value={taxNumber} onChange={(e) => setTaxNumber(e.target.value)} placeholder={isAr ? 'مثال: 312655637900003' : 'e.g. 312655637900003'} maxLength={50} dir="ltr" />
+                  <p className="text-xs text-muted-foreground mt-1">{isAr ? 'سيظهر تلقائياً في كل فواتير أكاديميتك.' : 'Will appear automatically on all your invoices.'}</p>
+                </div>
+                <div>
+                  <Label>{isAr ? 'رقم السجل التجاري (اختياري)' : 'Commercial registration (optional)'}</Label>
+                  <Input value={commercialReg} onChange={(e) => setCommercialReg(e.target.value)} placeholder={isAr ? 'مثال: 7043630230' : 'e.g. 7043630230'} maxLength={50} dir="ltr" />
                 </div>
               </div>
               <div>

@@ -1,18 +1,14 @@
-/**
- * Constants for Invoice pages
- */
+import { getTaxNumber, getCommercialReg, getAcademyName } from '../../services/branding';
 
-// Card print dimensions
-export const CARD_WIDTH = 90; // mm
-export const CARD_HEIGHT = 60; // mm
-export const TOP_MARGIN = 30; // mm
-export const RIGHT_MARGIN = 15; // mm
-export const GAP = 5; // mm
+export const CARD_WIDTH = 90;
+export const CARD_HEIGHT = 60;
+export const TOP_MARGIN = 30;
+export const RIGHT_MARGIN = 15;
+export const GAP = 5;
 
-// Company info
 export const COMPANY_TAX_NUMBER = "312655637900003";
 export const COMPANY_COMMERCIAL_REG = "7043630230";
-export const VAT_RATE = 15; // 15%
+export const VAT_RATE = 15;
 
 // Main activities for level selector
 export const MAIN_ACTIVITIES_FOR_LEVELS = [
@@ -21,14 +17,32 @@ export const MAIN_ACTIVITIES_FOR_LEVELS = [
   { id: 'karate', name_ar: 'الكاراتيه', name_en: 'Karate', icon: '🥋', color: 'bg-red-500' },
 ];
 
-// Company info object
-export const COMPANY_INFO = {
+const COMPANY_INFO_DEFAULTS = {
   name_ar: "شركة اداء الابطال العالمية للرياضة",
   name_en: "Global Champions Sports Performance",
   tax_number: COMPANY_TAX_NUMBER,
   commercial_reg: COMPANY_COMMERCIAL_REG,
-  vat_rate: VAT_RATE
+  vat_rate: VAT_RATE,
 };
+
+export const COMPANY_INFO = new Proxy(COMPANY_INFO_DEFAULTS, {
+  get(target, prop) {
+    if (prop === 'name_ar' || prop === 'name_en') {
+      const dyn = getAcademyName();
+      if (dyn) return dyn;
+      return target[prop];
+    }
+    if (prop === 'tax_number') {
+      const dyn = getTaxNumber();
+      return dyn || target.tax_number;
+    }
+    if (prop === 'commercial_reg') {
+      const dyn = getCommercialReg();
+      return dyn || target.commercial_reg;
+    }
+    return target[prop];
+  },
+});
 
 // Payment methods
 export const PAYMENT_METHODS = [

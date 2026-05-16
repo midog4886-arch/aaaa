@@ -124,6 +124,16 @@ export function getPrimaryColor() {
   return (b && _isHexColor(b.primary_color)) ? b.primary_color : '';
 }
 
+export function getTaxNumber() {
+  const b = _read();
+  return (b && typeof b.tax_number === 'string') ? b.tax_number : '';
+}
+
+export function getCommercialReg() {
+  const b = _read();
+  return (b && typeof b.commercial_reg === 'string') ? b.commercial_reg : '';
+}
+
 export async function loadBranding() {
   try {
     const { data } = await axios.get('/api/tenant/branding');

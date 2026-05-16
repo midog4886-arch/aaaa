@@ -63,6 +63,8 @@ async def get_branding(request: Request):
         "slug": tenant.get("slug", "") if tenant else "",
         "logo_base64": _safe_logo(tenant.get("logo_base64", "") if tenant else ""),
         "primary_color": _safe_color(tenant.get("primary_color", "") if tenant else ""),
+        "tax_number": (tenant.get("tax_number", "") if tenant else "") or "",
+        "commercial_reg": (tenant.get("commercial_reg", "") if tenant else "") or "",
         "status": tenant.get("status", "") if tenant else "",
         "subscription_end_at": end_at,
         "days_remaining": _days_remaining(end_at),
@@ -83,6 +85,8 @@ class BrandingUpdate(BaseModel):
     name: Optional[str] = None
     logo_base64: Optional[str] = None
     primary_color: Optional[str] = None
+    tax_number: Optional[str] = None
+    commercial_reg: Optional[str] = None
 
 
 @router.patch("/branding")
@@ -110,6 +114,16 @@ async def update_branding(payload: BrandingUpdate, current_user: dict = Depends(
             if not cleaned:
                 raise HTTPException(status_code=400, detail="صيغة اللون غير صحيحة (#RRGGBB)")
             update["primary_color"] = cleaned
+    if payload.tax_number is not None:
+        tn = (payload.tax_number or "").strip()
+        if len(tn) > 50:
+            raise HTTPException(status_code=400, detail="الرقم الضريبي طويل جداً (حتى 50 حرفاً)")
+        update["tax_number"] = tn
+    if payload.commercial_reg is not None:
+        cr = (payload.commercial_reg or "").strip()
+        if len(cr) > 50:
+            raise HTTPException(status_code=400, detail="رقم السجل التجاري طويل جداً (حتى 50 حرفاً)")
+        update["commercial_reg"] = cr
     before = await control_db.tenants.find_one({"slug": slug}, {"_id": 0}) or {}
     if update:
         await control_db.tenants.update_one({"slug": slug}, {"$set": update})
@@ -132,6 +146,8 @@ async def update_branding(payload: BrandingUpdate, current_user: dict = Depends(
         "name": refreshed.get("name", ""),
         "logo_base64": _safe_logo(refreshed.get("logo_base64", "")),
         "primary_color": _safe_color(refreshed.get("primary_color", "")),
+        "tax_number": refreshed.get("tax_number", "") or "",
+        "commercial_reg": refreshed.get("commercial_reg", "") or "",
     }
 
 
@@ -147,6 +163,8 @@ async def onboarding_status(current_user: dict = Depends(get_current_user)):
         "plan": tenant.get("plan", ""),
         "logo_base64": _safe_logo(tenant.get("logo_base64", "")),
         "primary_color": _safe_color(tenant.get("primary_color", "")),
+        "tax_number": tenant.get("tax_number", "") or "",
+        "commercial_reg": tenant.get("commercial_reg", "") or "",
     }
 
 
