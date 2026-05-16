@@ -16,6 +16,9 @@ export const LoginPage = () => {
   
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [tenantSlug, setTenantSlug] = useState(
+    (typeof window !== 'undefined' && localStorage.getItem('tenant_slug')) || ''
+  );
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [seeding, setSeeding] = useState(false);
@@ -24,7 +27,16 @@ export const LoginPage = () => {
     e.preventDefault();
     setError('');
     setLoading(true);
-    
+
+    const cleanSlug = (tenantSlug || '').trim().toLowerCase();
+    if (typeof window !== 'undefined') {
+      if (cleanSlug) {
+        localStorage.setItem('tenant_slug', cleanSlug);
+      } else {
+        localStorage.setItem('tenant_slug', 'default');
+      }
+    }
+
     const result = await login(username, password);
     
     if (result.success) {
@@ -98,6 +110,28 @@ export const LoginPage = () => {
                 </div>
               )}
               
+              <div className="space-y-2">
+                <Label htmlFor="tenant-slug">
+                  {language === 'ar' ? 'اسم الأكاديمية (slug)' : 'Academy slug'}
+                </Label>
+                <Input
+                  id="tenant-slug"
+                  type="text"
+                  value={tenantSlug}
+                  onChange={(e) => setTenantSlug(e.target.value)}
+                  placeholder={language === 'ar' ? 'اتركه فارغاً للحساب الافتراضي' : 'Leave empty for default'}
+                  autoCapitalize="off"
+                  autoCorrect="off"
+                  spellCheck={false}
+                  data-testid="login-tenant-slug-input"
+                />
+                <p className="text-xs text-muted-foreground">
+                  {language === 'ar'
+                    ? 'مثال: bluewave10 — اسم الأكاديمية الذي ظهر بعد التسجيل.'
+                    : 'Example: bluewave10 — the slug shown after signup.'}
+                </p>
+              </div>
+
               <div className="space-y-2">
                 <Label htmlFor="username">{t('username')}</Label>
                 <Input
