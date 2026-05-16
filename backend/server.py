@@ -3425,6 +3425,9 @@ async def _run_daily_renewal_and_ads_checks(trigger: str = "scheduler") -> dict:
     ads_flagged = 0
     errors: list[str] = []
     tenants_processed = 0
+    tenants_failed = 0
+    tenant_results: dict = {}
+    tenant_errors: dict = {}
 
     def _count(result) -> int:
         if isinstance(result, dict):
@@ -3450,25 +3453,42 @@ async def _run_daily_renewal_and_ads_checks(trigger: str = "scheduler") -> dict:
             ads_flagged=ads_flagged,
             errors=errors,
             trigger=trigger,
+            tenants_processed=tenants_processed,
+            tenants_failed=tenants_failed,
+            tenant_results=tenant_results,
+            tenant_errors=tenant_errors,
         )
         return {
             "success": False,
             "renewals_created": renewals_created,
             "ads_flagged": ads_flagged,
             "errors": errors,
+            "tenants_processed": tenants_processed,
+            "tenants_failed": tenants_failed,
         }
+
+    # Per-tenant local errors collected inside _per_tenant_checks so we can
+    # treat a tenant as "failed" even when the callback didn't crash (i.e.
+    # some per-branch check raised but we swallowed it to keep going).
+    per_tenant_local_errors: dict[str, list[str]] = {}
 
     async def _per_tenant_checks(tenant: dict) -> dict:
         nonlocal renewals_created, ads_flagged
         slug = tenant.get("slug") or "?"
         tenant_renewals = 0
         tenant_ads = 0
+        local_errors: list[str] = []
+
+        def _record(msg: str) -> None:
+            errors.append(msg)
+            local_errors.append(msg)
+
         try:
             admin_user = {"is_admin": True, "branch_id": None}
             result = await check_subscription_renewals(current_user=admin_user)
             tenant_renewals += _count(result)
         except Exception as e:
-            errors.append(f"[{slug}] global renewals failed: {e}")
+            _record(f"[{slug}] global renewals failed: {e}")
 
         branch_ids: list[str] = []
         try:
@@ -3477,7 +3497,7 @@ async def _run_daily_renewal_and_ads_checks(trigger: str = "scheduler") -> dict:
                 if bid:
                     branch_ids.append(bid)
         except Exception as e:
-            errors.append(f"[{slug}] failed to list branches: {e}")
+            _record(f"[{slug}] failed to list branches: {e}")
 
         for branch_id in branch_ids:
             scoped_user = {"is_admin": False, "branch_id": branch_id}
@@ -3485,32 +3505,47 @@ async def _run_daily_renewal_and_ads_checks(trigger: str = "scheduler") -> dict:
                 r = await notif_check_renewals(current_user=scoped_user)
                 tenant_renewals += _count(r)
             except Exception as e:
-                errors.append(f"[{slug}] renewals failed for branch {branch_id}: {e}")
+                _record(f"[{slug}] renewals failed for branch {branch_id}: {e}")
             try:
                 r = await notif_check_ads_expiry(current_user=scoped_user)
                 tenant_ads += _count(r)
             except Exception as e:
-                errors.append(f"[{slug}] ads-expiry failed for branch {branch_id}: {e}")
+                _record(f"[{slug}] ads-expiry failed for branch {branch_id}: {e}")
 
         try:
             admin_user = {"is_admin": True, "branch_id": None}
             r = await notif_check_ads_expiry(current_user=admin_user)
             tenant_ads += _count(r)
         except Exception as e:
-            errors.append(f"[{slug}] global ads-expiry failed: {e}")
+            _record(f"[{slug}] global ads-expiry failed: {e}")
 
         renewals_created += tenant_renewals
         ads_flagged += tenant_ads
-        print(f"Daily checks [{slug}]: renewals={tenant_renewals} ads={tenant_ads}")
+        if local_errors:
+            per_tenant_local_errors[slug] = local_errors
+        print(f"Daily checks [{slug}]: renewals={tenant_renewals} ads={tenant_ads} errors={len(local_errors)}")
         return {"renewals": tenant_renewals, "ads": tenant_ads}
 
     try:
         from utils.tenant import for_each_active_tenant
         per_tenant_summary = await for_each_active_tenant(_per_tenant_checks, label="renewal_ads")
         tenants_processed = per_tenant_summary.get("processed", 0)
+        tenant_results = per_tenant_summary.get("results") or {}
+        # Start from callback-level failures (callback raised) and merge in
+        # tenants where individual checks errored but the callback completed,
+        # so "failed" means "this tenant had at least one check error".
+        tenant_errors = dict(per_tenant_summary.get("errors") or {})
         if per_tenant_summary.get("failed"):
-            for slug, err in (per_tenant_summary.get("errors") or {}).items():
+            for slug, err in list(tenant_errors.items()):
                 errors.append(f"[{slug}] tenant scope failed: {err}")
+        for slug, local_errs in per_tenant_local_errors.items():
+            if slug in tenant_errors or not local_errs:
+                continue
+            # Summarise: first error verbatim plus a "(+N more)" suffix.
+            head = local_errs[0]
+            extra = len(local_errs) - 1
+            tenant_errors[slug] = head if extra <= 0 else f"{head} (+{extra} more)"
+        tenants_failed = len(tenant_errors)
     except Exception as e:
         msg = f"per-tenant iteration failed: {e}"
         errors.append(msg)
@@ -3583,6 +3618,10 @@ async def _run_daily_renewal_and_ads_checks(trigger: str = "scheduler") -> dict:
         ads_flagged=ads_flagged,
         errors=errors,
         trigger=trigger,
+        tenants_processed=tenants_processed,
+        tenants_failed=tenants_failed,
+        tenant_results=tenant_results,
+        tenant_errors=tenant_errors,
     )
     print(
         f"Daily checks scheduler: finished (success={success}, "
@@ -3606,6 +3645,10 @@ async def _run_daily_renewal_and_ads_checks(trigger: str = "scheduler") -> dict:
         "renewals_created": renewals_created,
         "ads_flagged": ads_flagged,
         "errors": errors,
+        "tenants_processed": tenants_processed,
+        "tenants_failed": tenants_failed,
+        "tenant_results": tenant_results,
+        "tenant_errors": tenant_errors,
         "ops_alerts_digest_sent": digest_sent,
         "ops_alerts_digest_count": digest_count,
     }
@@ -3729,12 +3772,31 @@ async def _persist_daily_checks_status(
     ads_flagged: int,
     errors: list,
     trigger: str,
+    tenants_processed: int = 0,
+    tenants_failed: int = 0,
+    tenant_results: dict | None = None,
+    tenant_errors: dict | None = None,
 ) -> None:
     """Best-effort write of the run status doc. Never raises."""
     try:
         finished_at = datetime.now(timezone.utc)
         # Cap stored errors so a runaway loop can't blow up the doc size.
         capped_errors = [str(e)[:500] for e in errors[:20]]
+        # Per-tenant breakdown: keep it bounded the same way as errors so the
+        # status doc stays small even when many tenants are active.
+        results_in = tenant_results or {}
+        errors_in = tenant_errors or {}
+        capped_tenant_results: dict = {}
+        for slug, res in list(results_in.items())[:50]:
+            if isinstance(res, dict):
+                capped_tenant_results[str(slug)[:100]] = {
+                    "renewals": int(res.get("renewals") or 0),
+                    "ads": int(res.get("ads") or 0),
+                }
+        capped_failed_tenants = [
+            {"slug": str(slug)[:100], "error": str(err)[:500]}
+            for slug, err in list(errors_in.items())[:20]
+        ]
         await db.notifications_settings.update_one(
             {"key": "daily_checks_status"},
             {"$set": {
@@ -3748,6 +3810,10 @@ async def _persist_daily_checks_status(
                 "errors": capped_errors,
                 "error_count": len(errors),
                 "trigger": trigger,
+                "tenants_processed": tenants_processed,
+                "tenants_failed": tenants_failed,
+                "tenant_results": capped_tenant_results,
+                "failed_tenants": capped_failed_tenants,
             }},
             upsert=True,
         )

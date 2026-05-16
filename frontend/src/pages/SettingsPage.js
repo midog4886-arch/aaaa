@@ -1382,6 +1382,31 @@ export const SettingsPage = () => {
                               : `Failed (${dailyChecksStatus.error_count ?? 0} error(s))`
                           )}
                         </p>
+                        {typeof dailyChecksStatus.tenants_processed === 'number' && (
+                          <p
+                            className="text-sm text-muted-foreground"
+                            data-testid="daily-checks-tenants"
+                          >
+                            {language === 'ar'
+                              ? `المستأجرون الذين تمت معالجتهم: ${dailyChecksStatus.tenants_processed} (${dailyChecksStatus.tenants_failed ?? 0} فشل)`
+                              : `Tenants processed: ${dailyChecksStatus.tenants_processed} (${dailyChecksStatus.tenants_failed ?? 0} failed)`}
+                          </p>
+                        )}
+                        {Array.isArray(dailyChecksStatus.failed_tenants) && dailyChecksStatus.failed_tenants.length > 0 && (
+                          <details className="mt-1 text-xs text-red-600 max-w-md" data-testid="daily-checks-failed-tenants">
+                            <summary className="cursor-pointer">
+                              {language === 'ar' ? 'المستأجرون الفاشلون' : 'Failed tenants'}
+                            </summary>
+                            <ul className="list-disc ms-5 mt-1 space-y-0.5">
+                              {dailyChecksStatus.failed_tenants.slice(0, 10).map((ft, i) => (
+                                <li key={i} className="break-words">
+                                  <span className="font-mono">{ft.slug}</span>
+                                  {ft.error ? `: ${ft.error}` : ''}
+                                </li>
+                              ))}
+                            </ul>
+                          </details>
+                        )}
                         {!dailyChecksStatus.success && Array.isArray(dailyChecksStatus.errors) && dailyChecksStatus.errors.length > 0 && (
                           <details className="mt-1 text-xs text-red-600 max-w-md">
                             <summary className="cursor-pointer">
