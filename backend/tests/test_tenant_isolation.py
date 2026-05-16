@@ -73,10 +73,153 @@ def test_strict_mode_raises_without_tenant(monkeypatch, fresh_tenant_module):
         tenant_mod.get_current_tenant_db_name()
 
 
-def test_lax_mode_falls_back_to_default(monkeypatch, fresh_tenant_module):
-    monkeypatch.delenv("STRICT_TENANT_CONTEXT", raising=False)
+def test_explicit_lax_mode_falls_back_to_default(monkeypatch, fresh_tenant_module):
+    monkeypatch.setenv("STRICT_TENANT_CONTEXT", "0")
     tenant_mod = importlib.import_module("utils.tenant")
     assert tenant_mod.get_current_tenant_db_name() == tenant_mod.DEFAULT_DB_NAME
+
+
+def test_strict_is_default_outside_production(monkeypatch, fresh_tenant_module):
+    monkeypatch.delenv("STRICT_TENANT_CONTEXT", raising=False)
+    monkeypatch.delenv("REPLIT_DEPLOYMENT", raising=False)
+    for k in ("SENTRY_ENVIRONMENT", "ENV", "ENVIRONMENT", "APP_ENV"):
+        monkeypatch.delenv(k, raising=False)
+    tenant_mod = importlib.import_module("utils.tenant")
+    assert tenant_mod.is_strict_mode() is True
+    with pytest.raises(RuntimeError):
+        tenant_mod.get_current_tenant_db_name()
+
+
+def test_strict_is_off_by_default_in_production(monkeypatch, fresh_tenant_module):
+    monkeypatch.delenv("STRICT_TENANT_CONTEXT", raising=False)
+    monkeypatch.setenv("REPLIT_DEPLOYMENT", "1")
+    tenant_mod = importlib.import_module("utils.tenant")
+    assert tenant_mod.is_strict_mode() is False
+    assert tenant_mod.get_current_tenant_db_name() == tenant_mod.DEFAULT_DB_NAME
+
+
+def test_bypass_strict_allows_fallback(monkeypatch, fresh_tenant_module):
+    monkeypatch.setenv("STRICT_TENANT_CONTEXT", "1")
+    tenant_mod = importlib.import_module("utils.tenant")
+    token = tenant_mod.set_bypass_strict(True)
+    try:
+        assert tenant_mod.get_current_tenant_db_name() == tenant_mod.DEFAULT_DB_NAME
+    finally:
+        tenant_mod.reset_bypass_strict(token)
+    with pytest.raises(RuntimeError):
+        tenant_mod.get_current_tenant_db_name()
+
+
+def test_middleware_sets_bypass_for_super_and_health(monkeypatch, fresh_tenant_module):
+    monkeypatch.setenv("STRICT_TENANT_CONTEXT", "1")
+    tenant_mod = importlib.import_module("utils.tenant")
+    middleware_mod = importlib.import_module("middleware.tenant")
+    importlib.reload(middleware_mod)
+
+    captured_db = {}
+
+    async def fake_app(scope, receive, send):
+        captured_db[scope["path"]] = tenant_mod.get_current_tenant_db_name()
+        await send({"type": "http.response.start", "status": 200, "headers": []})
+        await send({"type": "http.response.body", "body": b""})
+
+    async def receive():
+        return {"type": "http.request"}
+
+    sent = []
+
+    async def send(msg):
+        sent.append(msg)
+
+    mw = middleware_mod.TenantMiddleware(fake_app)
+    for path in ("/super/tenants", "/health"):
+        asyncio.run(mw({"type": "http", "path": path, "headers": []}, receive, send))
+    assert captured_db["/super/tenants"] == tenant_mod.DEFAULT_DB_NAME
+    assert captured_db["/health"] == tenant_mod.DEFAULT_DB_NAME
+
+
+def test_tenant_db_proxy_routes_to_correct_db(monkeypatch, fresh_tenant_module):
+    monkeypatch.setenv("STRICT_TENANT_CONTEXT", "1")
+    tenant_mod = importlib.import_module("utils.tenant")
+
+    class FakeCollection:
+        def __init__(self):
+            self.docs = []
+
+        async def insert_one(self, doc):
+            self.docs.append(doc)
+
+        def find(self, *_a, **_kw):
+            docs = list(self.docs)
+
+            class _Cur:
+                def __aiter__(self_inner):
+                    self_inner._it = iter(docs)
+                    return self_inner
+
+                async def __anext__(self_inner):
+                    try:
+                        return next(self_inner._it)
+                    except StopIteration:
+                        raise StopAsyncIteration
+
+            return _Cur()
+
+    class FakeDB:
+        def __init__(self):
+            self._collections = {}
+
+        def __getitem__(self, name):
+            if name not in self._collections:
+                self._collections[name] = FakeCollection()
+            return self._collections[name]
+
+        def __getattr__(self, name):
+            return self[name]
+
+    class FakeClient:
+        def __init__(self):
+            self.dbs = {}
+
+        def __getitem__(self, name):
+            if name not in self.dbs:
+                self.dbs[name] = FakeDB()
+            return self.dbs[name]
+
+    from database import TenantDBProxy
+    client = FakeClient()
+    db_proxy = TenantDBProxy(client)
+
+    async def scenario():
+        t_a = {"slug": "alpha", "db_name": "champions_alpha", "status": "active"}
+        t_b = {"slug": "beta", "db_name": "champions_beta", "status": "active"}
+
+        token = tenant_mod.set_current_tenant(t_a)
+        try:
+            await db_proxy.members.insert_one({"name": "alice"})
+        finally:
+            tenant_mod.reset_current_tenant(token)
+
+        token = tenant_mod.set_current_tenant(t_b)
+        try:
+            beta_members = []
+            async for m in db_proxy.members.find({}):
+                beta_members.append(m)
+        finally:
+            tenant_mod.reset_current_tenant(token)
+        assert beta_members == [], "tenant B leaked data from tenant A"
+
+        token = tenant_mod.set_current_tenant(t_a)
+        try:
+            alpha_members = []
+            async for m in db_proxy.members.find({}):
+                alpha_members.append(m)
+        finally:
+            tenant_mod.reset_current_tenant(token)
+        assert alpha_members == [{"name": "alice"}]
+
+    asyncio.run(scenario())
+    assert set(client.dbs.keys()) == {"champions_alpha", "champions_beta"}
 
 
 def test_for_each_active_tenant_iterates(monkeypatch, fresh_tenant_module):

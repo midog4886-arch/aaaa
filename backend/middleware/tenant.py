@@ -27,6 +27,8 @@ from typing import Optional
 from utils.tenant import (
     set_current_tenant,
     reset_current_tenant,
+    set_bypass_strict,
+    reset_bypass_strict,
     DEFAULT_TENANT_SLUG,
     slug_to_db_name,
 )
@@ -101,7 +103,11 @@ class TenantMiddleware:
 
         path = scope.get("path", "")
         if any(path.startswith(p) for p in BYPASS_PREFIXES):
-            await self.app(scope, receive, send)
+            bypass_token = set_bypass_strict(True)
+            try:
+                await self.app(scope, receive, send)
+            finally:
+                reset_bypass_strict(bypass_token)
             return
 
         headers = scope.get("headers") or []
