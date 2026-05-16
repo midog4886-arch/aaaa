@@ -36,6 +36,7 @@ from utils.tenant import (
 logger = logging.getLogger("tenant_middleware")
 
 BYPASS_PREFIXES = ("/super", "/health", "/uploads")
+STRICT_BYPASS_PREFIXES = ("/super", "/health")
 COMMON_HOSTS_IGNORE = {"localhost", "127.0.0.1", "0.0.0.0", "app", "www", "api"}
 TENANT_BASE_DOMAIN = (os.environ.get("TENANT_BASE_DOMAIN") or "").lower().strip().lstrip(".")
 
@@ -103,11 +104,14 @@ class TenantMiddleware:
 
         path = scope.get("path", "")
         if any(path.startswith(p) for p in BYPASS_PREFIXES):
-            bypass_token = set_bypass_strict(True)
-            try:
+            if any(path.startswith(p) for p in STRICT_BYPASS_PREFIXES):
+                bypass_token = set_bypass_strict(True)
+                try:
+                    await self.app(scope, receive, send)
+                finally:
+                    reset_bypass_strict(bypass_token)
+            else:
                 await self.app(scope, receive, send)
-            finally:
-                reset_bypass_strict(bypass_token)
             return
 
         headers = scope.get("headers") or []
