@@ -80,23 +80,20 @@ const GlobalScanner = ({ enabled = true, language = 'ar' }) => {
   // Extract member code from QR data
   const extractMemberCode = (scannedData) => {
     if (!scannedData) return null;
-    
     let data = scannedData.trim();
-    
-    if (/^\d+$/.test(data)) {
-      return data;
-    }
-    
+    if (!data) return null;
     try {
       const parsed = JSON.parse(data);
-      if (parsed.code) return parsed.code.toString();
-      if (parsed.member_code) return parsed.member_code.toString();
+      if (parsed && typeof parsed === 'object') {
+        if (parsed.code) return parsed.code.toString();
+        if (parsed.member_code) return parsed.member_code.toString();
+        if (parsed.member_id) return parsed.member_id.toString();
+        if (parsed.id) return parsed.id.toString();
+        return null;
+      }
+      return String(parsed);
     } catch (e) {}
-    
-    const numberMatch = data.match(/(\d{3,6})/);
-    if (numberMatch) return numberMatch[1];
-    
-    return null;
+    return data;
   };
 
   // Fetch member data and show dialog; auto check-in when member has exactly one active unrecorded activity
