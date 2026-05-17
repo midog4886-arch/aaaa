@@ -181,6 +181,9 @@ api_router.include_router(branding_router)
 from routes.public_signup import router as public_signup_router
 api_router.include_router(public_signup_router)
 
+from routes.tenant_lookup import router as tenant_lookup_router
+api_router.include_router(tenant_lookup_router)
+
 from routes.billing import router as billing_router
 api_router.include_router(billing_router)
 

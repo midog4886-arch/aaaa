@@ -120,6 +120,7 @@ const MemberTournaments = lazy(() => import('./pages/member-portal/MemberTournam
 const CoachProfile = lazy(() => import('./pages/member-portal/CoachProfile'));
 const MemberProfile = lazy(() => import('./pages/member-portal/MemberProfile'));
 const CoachQRPage = lazy(() => import('./pages/CoachQRPage'));
+const AcademyPickerPage = lazy(() => import('./pages/AcademyPickerPage'));
 
 // Lightweight fallback shown while a page chunk is being fetched
 const PageLoader = () => (
@@ -215,10 +216,26 @@ const PublicRoute = ({ children }) => {
   return children;
 };
 
+const ACADEMY_BYPASS_PREFIXES = ['/academy-picker', '/super', '/admin', '/login', '/privacy', '/terms', '/refund-policy', '/signup', '/coach-qr'];
+
+const AcademyGuard = ({ children }) => {
+  const location = useLocation();
+  const path = location.pathname || '/';
+  const confirmed = typeof window !== 'undefined' && localStorage.getItem('academy_confirmed') === '1';
+  const isBypassed = ACADEMY_BYPASS_PREFIXES.some(p => path === p || path.startsWith(p + '/'));
+  if (!confirmed && !isBypassed) {
+    const next = encodeURIComponent(path + (location.search || ''));
+    return <Navigate to={`/academy-picker?next=${next}`} replace />;
+  }
+  return children;
+};
+
 function AppRoutes() {
   return (
     <Suspense fallback={<PageLoader />}>
+    <AcademyGuard>
     <Routes>
+      <Route path="/academy-picker" element={<AcademyPickerPage />} />
       {/* Public Routes */}
       <Route 
         path="/login" 
@@ -562,6 +579,7 @@ function AppRoutes() {
       {/* Catch-all → landing/smart redirect */}
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
+    </AcademyGuard>
     </Suspense>
   );
 }
