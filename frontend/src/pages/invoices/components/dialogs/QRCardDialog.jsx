@@ -2,6 +2,7 @@ import React from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '../../../../components/ui/dialog';
 import { Button } from '../../../../components/ui/button';
 import { MessageSquare, QrCode } from 'lucide-react';
+import { getMemberQRValue } from '../../../../utils/memberQR';
 
 export const QRCardDialog = ({
   isOpen, onOpenChange, qrCardMember,
@@ -19,7 +20,7 @@ export const QRCardDialog = ({
             <p className="text-orange-600 font-bold text-xl">#{qrCardMember.member_code}</p>
             <div className="bg-gray-50 rounded-xl p-4 flex justify-center">
               <img
-                src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(qrCardMember.member_code?.toString() || '')}`}
+                src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(getMemberQRValue(qrCardMember.member_code))}`}
                 alt="QR Code"
                 className="w-40 h-40 rounded-lg shadow"
               />

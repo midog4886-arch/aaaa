@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { toast } from 'sonner';
+import { getMemberQRValue } from '../../../utils/memberQR';
 
 export const useQRCardPrint = ({ language }) => {
   const [isQRCardDialogOpen, setIsQRCardDialogOpen] = useState(false);
@@ -18,7 +19,7 @@ export const useQRCardPrint = ({ language }) => {
 
   const handlePrintQRCard = async () => {
     if (!qrCardMember) return;
-    const qrData = qrCardMember.member_code.toString();
+    const qrData = getMemberQRValue(qrCardMember.member_code);
     let qrImageUrl = '';
     try {
       const QRCode = await import('qrcode');
@@ -37,7 +38,7 @@ export const useQRCardPrint = ({ language }) => {
     if (!qrCardMember) return;
     const phone = qrCardMember.phone?.replace(/^0/, '966') || '';
     if (!phone) { toast.error(language === 'ar' ? 'لا يوجد رقم جوال' : 'No phone number'); return; }
-    const qrData = qrCardMember.member_code.toString();
+    const qrData = getMemberQRValue(qrCardMember.member_code);
     try {
       const canvas = document.createElement('canvas');
       canvas.width = 400; canvas.height = 500;
