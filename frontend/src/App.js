@@ -182,6 +182,14 @@ const SmartRedirect = () => {
   }
   
   if (!isAuthenticated) {
+    const memberToken = localStorage.getItem('member_token');
+    if (memberToken) {
+      return <Navigate to="/member-dashboard" replace />;
+    }
+    const isNativeApp = !!(window.Capacitor?.isNativePlatform?.());
+    if (isNativeApp) {
+      return <Navigate to="/member-login" replace />;
+    }
     return <LandingPage />;
   }
   
