@@ -36,15 +36,16 @@ async def _ensure_branch_prefix(branch_id: str) -> str:
     existing = sanitize_prefix(branch.get("code_prefix") or "")
     if existing:
         return existing
-    from utils.prefix_gen import pick_unique_branch_prefix
-    new_prefix = await pick_unique_branch_prefix(
-        name_latin=branch.get("name") or "",
-        name_ar=branch.get("name_ar") or "",
-        exclude_id=branch_id,
-    )
-    await db.branches.update_one(
+    from utils.prefix_gen import pick_unique_branch_prefix, update_with_unique_prefix
+    new_prefix = await update_with_unique_prefix(
+        db.branches,
         {"id": branch_id},
-        {"$set": {"code_prefix": new_prefix}},
+        "code_prefix",
+        lambda: pick_unique_branch_prefix(
+            name_latin=branch.get("name") or "",
+            name_ar=branch.get("name_ar") or "",
+            exclude_id=branch_id,
+        ),
     )
     return new_prefix
 
@@ -63,14 +64,18 @@ async def _ensure_academy_prefix() -> str:
 
     slug = tenant.get("slug") or ""
     name = tenant.get("name") or ""
-    new_prefix = await pick_unique_academy_prefix(slug=slug, name=name)
     tenant_id = tenant.get("id")
     if tenant_id:
-        await control_db.tenants.update_one(
+        from utils.prefix_gen import update_with_unique_prefix
+        new_prefix = await update_with_unique_prefix(
+            control_db.tenants,
             {"id": tenant_id},
-            {"$set": {"academy_prefix": new_prefix}},
+            "academy_prefix",
+            lambda: pick_unique_academy_prefix(slug=slug, name=name),
         )
         tenant["academy_prefix"] = new_prefix
+    else:
+        new_prefix = await pick_unique_academy_prefix(slug=slug, name=name)
     return new_prefix
 
 

@@ -9842,7 +9842,11 @@ async def create_default_admin():
             print(f"Index creation error: {str(e)}")
         try:
             from control_db import control_db as _ctrl
-            from utils.prefix_gen import pick_unique_academy_prefix, pick_unique_branch_prefix
+            from utils.prefix_gen import (
+                pick_unique_academy_prefix,
+                pick_unique_branch_prefix,
+                update_with_unique_prefix,
+            )
             from utils.tenant import set_current_tenant, reset_current_tenant, list_active_tenants
             tenants = await list_active_tenants()
             filled_acad = 0
@@ -9852,31 +9856,43 @@ async def create_default_admin():
                 if not full:
                     continue
                 if not (full.get("academy_prefix") or "").strip():
-                    new_acad = await pick_unique_academy_prefix(
-                        slug=full.get("slug") or "",
-                        name=full.get("name") or "",
-                    )
-                    await _ctrl.tenants.update_one(
+                    slug_v = full.get("slug") or ""
+                    name_v = full.get("name") or ""
+                    new_acad = await update_with_unique_prefix(
+                        _ctrl.tenants,
                         {"id": full["id"]},
-                        {"$set": {"academy_prefix": new_acad}},
+                        "academy_prefix",
+                        lambda s=slug_v, n=name_v: pick_unique_academy_prefix(slug=s, name=n),
                     )
                     full["academy_prefix"] = new_acad
                     filled_acad += 1
                 token = set_current_tenant(full)
                 try:
+                    try:
+                        await db.branches.create_index(
+                            "code_prefix",
+                            unique=True,
+                            partialFilterExpression={"code_prefix": {"$type": "string", "$gt": ""}},
+                            name="uniq_code_prefix",
+                            background=True,
+                        )
+                    except Exception:
+                        pass
                     cursor = db.branches.find(
                         {"$or": [{"code_prefix": {"$exists": False}}, {"code_prefix": ""}, {"code_prefix": None}]},
                         {"_id": 0, "id": 1, "name": 1, "name_ar": 1},
                     )
                     async for br in cursor:
-                        bp = await pick_unique_branch_prefix(
-                            name_latin=br.get("name") or "",
-                            name_ar=br.get("name_ar") or "",
-                            exclude_id=br.get("id"),
-                        )
-                        await db.branches.update_one(
-                            {"id": br["id"]},
-                            {"$set": {"code_prefix": bp}},
+                        br_id = br.get("id")
+                        nl = br.get("name") or ""
+                        na = br.get("name_ar") or ""
+                        await update_with_unique_prefix(
+                            db.branches,
+                            {"id": br_id},
+                            "code_prefix",
+                            lambda l=nl, a=na, eid=br_id: pick_unique_branch_prefix(
+                                name_latin=l, name_ar=a, exclude_id=eid,
+                            ),
                         )
                         filled_branch += 1
                 finally:

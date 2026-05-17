@@ -334,13 +334,10 @@ async def create_tenant(payload: TenantCreate, super_payload: dict = Depends(_re
     max_members = int(payload.max_members) if payload.max_members is not None else 100
     if max_branches < 0 or max_members < 0:
         raise HTTPException(status_code=400, detail="Limits must be >= 0")
-    from utils.prefix_gen import pick_unique_academy_prefix
-    academy_prefix = await pick_unique_academy_prefix(slug=slug, name=payload.name)
     doc = {
         "id": str(uuid.uuid4()),
         "slug": slug,
         "name": payload.name,
-        "academy_prefix": academy_prefix,
         "db_name": slug_to_db_name(slug),
         "status": "active",
         "plan": payload.plan or "starter",
@@ -356,7 +353,13 @@ async def create_tenant(payload: TenantCreate, super_payload: dict = Depends(_re
         "renewal_history": [],
         "onboarding_completed_at": None,
     }
-    await control_db.tenants.insert_one(doc)
+    from utils.prefix_gen import pick_unique_academy_prefix, insert_with_unique_prefix
+    await insert_with_unique_prefix(
+        control_db.tenants,
+        doc,
+        "academy_prefix",
+        lambda: pick_unique_academy_prefix(slug=slug, name=payload.name),
+    )
 
     admin_username = (payload.admin_username or "admin").strip() or "admin"
     provided_password = (payload.admin_password or "").strip()

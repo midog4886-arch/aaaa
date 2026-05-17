@@ -68,6 +68,11 @@ INDEXES = {
     ],
     "branches": [
         ([("id", 1)], {}),
+        ([("code_prefix", 1)], {
+            "unique": True,
+            "partialFilterExpression": {"code_prefix": {"$type": "string", "$gt": ""}},
+            "name": "uniq_code_prefix",
+        }),
     ],
     "daily_ledger": [
         ([("branch_id", 1), ("date", -1)], {}),

@@ -12,9 +12,18 @@ Branch prefix:
   - Unique within the current tenant's ``branches`` collection.
 """
 import re
-from typing import Optional
+from typing import Optional, Awaitable, Callable
 
 from database import db
+
+try:
+    from pymongo.errors import DuplicateKeyError
+except Exception:
+    class DuplicateKeyError(Exception):
+        pass
+
+
+PREFIX_ALLOC_RETRIES = 12
 
 
 _NON_ALNUM = re.compile(r"[^A-Za-z0-9]")
@@ -97,3 +106,46 @@ async def pick_unique_branch_prefix(
         if not await _branch_prefix_exists(candidate, exclude_id):
             return candidate
     raise RuntimeError("Could not allocate unique branch prefix")
+
+
+async def insert_with_unique_prefix(
+    collection,
+    doc: dict,
+    prefix_field: str,
+    allocator: Callable[[], Awaitable[str]],
+) -> str:
+    """Insert ``doc`` setting ``doc[prefix_field]`` via ``allocator``; retry on
+    DuplicateKeyError on the prefix field. Used to make the read-then-write
+    allocation race-proof when a unique index exists on ``prefix_field``."""
+    last_err = None
+    for _ in range(PREFIX_ALLOC_RETRIES):
+        doc[prefix_field] = await allocator()
+        try:
+            await collection.insert_one(doc)
+            return doc[prefix_field]
+        except DuplicateKeyError as e:
+            last_err = e
+            if prefix_field not in str(e):
+                raise
+            continue
+    raise RuntimeError(f"Could not allocate unique {prefix_field}: {last_err}")
+
+
+async def update_with_unique_prefix(
+    collection,
+    filter_q: dict,
+    prefix_field: str,
+    allocator: Callable[[], Awaitable[str]],
+) -> str:
+    last_err = None
+    for _ in range(PREFIX_ALLOC_RETRIES):
+        new_p = await allocator()
+        try:
+            await collection.update_one(filter_q, {"$set": {prefix_field: new_p}})
+            return new_p
+        except DuplicateKeyError as e:
+            last_err = e
+            if prefix_field not in str(e):
+                raise
+            continue
+    raise RuntimeError(f"Could not allocate unique {prefix_field}: {last_err}")

@@ -81,7 +81,8 @@ async def create_branch(branch: BranchCreate, current_user: dict = Depends(get_c
     data = branch.model_dump()
     from utils.member_code import sanitize_prefix
     data["code_prefix"] = sanitize_prefix(data.get("code_prefix") or "")
-    if data["code_prefix"]:
+    user_supplied_prefix = bool(data["code_prefix"])
+    if user_supplied_prefix:
         dupe = await db.branches.find_one(
             {"code_prefix": data["code_prefix"]},
             {"_id": 0, "id": 1, "name_ar": 1, "name": 1},
@@ -91,18 +92,33 @@ async def create_branch(branch: BranchCreate, current_user: dict = Depends(get_c
                 status_code=409,
                 detail=f"البادئة '{data['code_prefix']}' مستخدمة بالفعل في فرع آخر"
             )
-    else:
-        from utils.prefix_gen import pick_unique_branch_prefix
-        data["code_prefix"] = await pick_unique_branch_prefix(
-            name_latin=data.get("name") or "",
-            name_ar=data.get("name_ar") or "",
-        )
     branch_doc = {
         "id": branch_id,
         **data,
         "created_at": datetime.now(timezone.utc).isoformat()
     }
-    await db.branches.insert_one(branch_doc)
+    if user_supplied_prefix:
+        try:
+            from pymongo.errors import DuplicateKeyError
+            await db.branches.insert_one(branch_doc)
+        except DuplicateKeyError:
+            raise HTTPException(
+                status_code=409,
+                detail=f"البادئة '{data['code_prefix']}' مستخدمة بالفعل في فرع آخر"
+            )
+    else:
+        from utils.prefix_gen import pick_unique_branch_prefix, insert_with_unique_prefix
+        await insert_with_unique_prefix(
+            db.branches,
+            branch_doc,
+            "code_prefix",
+            lambda: pick_unique_branch_prefix(
+                name_latin=data.get("name") or "",
+                name_ar=data.get("name_ar") or "",
+                exclude_id=branch_id,
+            ),
+        )
+        data["code_prefix"] = branch_doc.get("code_prefix", "")
     # Assign exclusive sequence blocks for this new branch
     await assign_seq_starts_for_new_branch(branch_id)
     cache_invalidate("branches:")

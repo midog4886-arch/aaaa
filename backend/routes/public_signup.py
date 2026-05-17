@@ -223,13 +223,10 @@ async def public_signup(payload: PublicSignupIn, request: Request):
 
     now = datetime.now(timezone.utc)
     trial_end = now + timedelta(days=DEFAULT_TRIAL_DAYS)
-    from utils.prefix_gen import pick_unique_academy_prefix
-    academy_prefix = await pick_unique_academy_prefix(slug=slug, name=payload.academy_name.strip())
     tenant_doc = {
         "id": str(uuid.uuid4()),
         "slug": slug,
         "name": payload.academy_name.strip(),
-        "academy_prefix": academy_prefix,
         "db_name": slug_to_db_name(slug),
         "status": "pending_approval",
         "approval_status": "pending",
@@ -253,7 +250,13 @@ async def public_signup(payload: PublicSignupIn, request: Request):
     }
 
     try:
-        await control_db.tenants.insert_one(tenant_doc)
+        from utils.prefix_gen import pick_unique_academy_prefix, insert_with_unique_prefix
+        await insert_with_unique_prefix(
+            control_db.tenants,
+            tenant_doc,
+            "academy_prefix",
+            lambda: pick_unique_academy_prefix(slug=slug, name=payload.academy_name.strip()),
+        )
     except Exception as e:
         logger.exception("insert tenant failed for %s", slug)
         raise HTTPException(status_code=500, detail="تعذر إنشاء الأكاديمية، حاول مجدداً")

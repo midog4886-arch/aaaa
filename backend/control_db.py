@@ -41,6 +41,15 @@ async def ensure_default_tenant():
             await control_db.email_log.create_index("tenant_slug")
         except Exception:
             pass
+        try:
+            await control_db.tenants.create_index(
+                "academy_prefix",
+                unique=True,
+                partialFilterExpression={"academy_prefix": {"$type": "string", "$gt": ""}},
+                name="uniq_academy_prefix",
+            )
+        except Exception:
+            pass
         existing = await control_db.tenants.find_one({"slug": DEFAULT_TENANT_SLUG}, {"_id": 0})
         if existing:
             return existing
