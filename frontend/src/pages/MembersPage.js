@@ -3,6 +3,7 @@ import { useSearchParams, useNavigate } from 'react-router-dom';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/AuthContext';
 import { Layout } from '../components/Layout';
+import { getMemberQRValue } from '../utils/memberQR';
 import { Card, CardContent } from '../components/ui/card';
 import { Button } from '../components/ui/button';
  
@@ -474,7 +475,7 @@ export const MembersPage = () => {
     const printWindow = window.open('', '_blank', 'width=800,height=600');
     if (!printWindow) return;
     
-    const qrData = `${memberCardData.member_code || memberCardData.id}`;
+    const qrData = getMemberQRValue(memberCardData.member_code || memberCardData.id);
 
     const _allActs = memberCardData.activities || [];
     const _today = new Date();
@@ -3736,7 +3737,7 @@ export const MembersPage = () => {
                       <div className="flex flex-col items-center shrink-0">
                         <div className="bg-white p-2 rounded-lg shadow-inner border-2 border-orange-100">
                           <img 
-                            src={`https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=${encodeURIComponent(memberCardData.member_code || memberCardData.id)}`}
+                            src={`https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=${encodeURIComponent(getMemberQRValue(memberCardData.member_code || memberCardData.id))}`}
                             alt="QR"
                             className="w-24 h-24"
                           />

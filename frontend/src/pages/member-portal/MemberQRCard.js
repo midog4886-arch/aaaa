@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { getMemberQRValue } from '../../utils/memberQR';
 import { Card, CardContent } from '../../components/ui/card';
 import { Button } from '../../components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../../components/ui/dialog';
@@ -33,7 +34,7 @@ const remainingColor = (days) => {
 // ── Print / Download Logic (unchanged from original) ──────────────────────────
 
 const buildStickerHtml = (cardData, brand) => {
-  const qrData = cardData?.member_code?.toString() || '';
+  const qrData = getMemberQRValue(cardData?.member_code);
   const _brand = brand || '';
   const _headerBg = _brand || 'linear-gradient(135deg, #F97316, #F59E0B)';
   const _accent = _brand || '#F97316';
@@ -328,7 +329,7 @@ const MemberCard = () => {
 
   const handleDownload = async () => {
     const cardData = currentCard;
-    const qrData = cardData?.member_code?.toString() || '';
+    const qrData = getMemberQRValue(cardData?.member_code);
     const canvas = document.createElement('canvas');
     canvas.width = 400;
     canvas.height = 450;
@@ -400,7 +401,7 @@ const MemberCard = () => {
     );
   }
 
-  const qrData = currentCard?.member_code?.toString() || '';
+  const qrData = getMemberQRValue(currentCard?.member_code);
   const name = currentCard?.name_ar || member?.name_ar || '';
   const activeActivities = currentCard?.active_activities || [];
 

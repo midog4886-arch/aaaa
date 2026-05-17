@@ -8,6 +8,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../components/
 import { User, CreditCard, Phone, Download, Printer, CheckCircle, XCircle } from 'lucide-react';
 import axios from 'axios';
 import { getPrimaryColor } from '../services/branding';
+import { getMemberQRValue } from '../utils/memberQR';
 
 const API_URL = '';
 
@@ -246,7 +247,7 @@ const MemberCardPage = () => {
   // Generate QR data - Just the member code number for easy scanning
   const getQRData = () => {
     if (!member) return '';
-    return member.member_code.toString();
+    return getMemberQRValue(member.member_code);
   };
 
   return (

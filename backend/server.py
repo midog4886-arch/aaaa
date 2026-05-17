@@ -315,7 +315,21 @@ async def get_member_card_public(search_term: str):
         ]},
         {"_id": 0}
     )
-    
+
+    if not member and search_term.isdigit():
+        import re as _re
+        matches = await db.members.find(
+            {"member_code": {"$regex": f"-{_re.escape(search_term)}$"}},
+            {"_id": 0}
+        ).to_list(5)
+        if len(matches) == 1:
+            member = matches[0]
+        elif len(matches) > 1:
+            raise HTTPException(
+                status_code=409,
+                detail="رقم العضوية مكرر بين فروع مختلفة — استخدم الرقم الكامل"
+            )
+
     if not member:
         # Try to search by name
         member = await db.members.find_one(

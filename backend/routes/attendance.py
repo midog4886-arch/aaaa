@@ -775,6 +775,24 @@ async def qr_checkin(
         {"$or": [{"member_code": member_code}, {"phone": member_code}]},
         {"_id": 0}
     )
+    if not member and member_code.isdigit():
+        import re as _re
+        suffix_filter = {"member_code": {"$regex": f"-{_re.escape(member_code)}$"}}
+        user_branch = current_user.get("branch_id")
+        if user_branch:
+            member = await db.members.find_one(
+                {"$and": [suffix_filter, {"branch_id": user_branch}]},
+                {"_id": 0}
+            )
+        if not member:
+            matches = await db.members.find(suffix_filter, {"_id": 0}).to_list(5)
+            if len(matches) == 1:
+                member = matches[0]
+            elif len(matches) > 1:
+                raise HTTPException(
+                    status_code=409,
+                    detail="رقم العضوية مكرر بين فروع مختلفة — استخدم الرقم الكامل"
+                )
     if not member:
         raise HTTPException(status_code=404, detail="Member not found")
 
