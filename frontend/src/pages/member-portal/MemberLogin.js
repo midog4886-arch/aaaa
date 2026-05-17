@@ -8,21 +8,17 @@ import { Phone, LogIn, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import axios from 'axios';
 import API_URL from '../../config/api';
-import { getAcademyLogoUrl, loadBranding, useBrandColor } from '../../services/branding';
+import { getAcademyLogoUrl, getAcademyName, loadBranding, useBrandColor } from '../../services/branding';
 
-// Default member-portal logo if no tenant branding logo is set
 const DEFAULT_LOGO = "/logo-new.png";
 
 const resolveAcademyLogo = () => {
   const url = getAcademyLogoUrl();
-  // branding service returns '/images/academy-logo.png' as global fallback;
-  // prefer the member-portal default in that case so existing visuals stay.
   if (!url || url === '/images/academy-logo.png') return DEFAULT_LOGO;
   return url;
 };
 
-// Splash Screen Component
-const SplashScreen = ({ onComplete, logo }) => {
+const SplashScreen = ({ onComplete, logo, academyName }) => {
   useEffect(() => {
     const timer = setTimeout(onComplete, 2500);
     return () => clearTimeout(timer);
@@ -102,12 +98,9 @@ const SplashScreen = ({ onComplete, logo }) => {
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.5 }}
         >
-          <h1 className="mt-8 text-3xl font-bold text-white drop-shadow-lg">
-            شركة اداء الابطال العالمية للرياضة
+          <h1 className="mt-8 text-3xl font-bold text-white drop-shadow-lg px-6">
+            {academyName || 'بوابة الأعضاء'}
           </h1>
-          <p className="mt-3 text-xl text-white/90 font-medium tracking-wide">
-            Global Champions Sports Performance
-          </p>
         </motion.div>
 
         {/* Loading wave animation */}
@@ -145,7 +138,17 @@ const MemberLogin = () => {
   const [showSplash, setShowSplash] = useState(true);
   const [formVisible, setFormVisible] = useState(false);
   const [logo, setLogo] = useState(resolveAcademyLogo());
+  const [academyName, setAcademyName] = useState(getAcademyName());
   const primary = useBrandColor();
+
+  useEffect(() => {
+    const onUpdate = () => {
+      setLogo(resolveAcademyLogo());
+      setAcademyName(getAcademyName());
+    };
+    window.addEventListener('branding:updated', onUpdate);
+    return () => window.removeEventListener('branding:updated', onUpdate);
+  }, []);
 
   useEffect(() => {
     // Check if already logged in
@@ -245,7 +248,7 @@ const MemberLogin = () => {
 
       {/* Splash Screen */}
       <AnimatePresence>
-        {showSplash && <SplashScreen onComplete={handleSplashComplete} logo={logo} />}
+        {showSplash && <SplashScreen onComplete={handleSplashComplete} logo={logo} academyName={academyName} />}
       </AnimatePresence>
 
       {/* Login Form */}
@@ -292,7 +295,9 @@ const MemberLogin = () => {
                     <CardTitle className="text-2xl font-bold text-white mt-4">
                       بوابة الأعضاء
                     </CardTitle>
-                    <p className="text-white/80 mt-2 text-sm">Global Champions Sports Performance</p>
+                    {academyName && (
+                      <p className="text-white/80 mt-2 text-sm px-4">{academyName}</p>
+                    )}
                   </motion.div>
                 </CardHeader>
                 
@@ -356,9 +361,9 @@ const MemberLogin = () => {
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 transition={{ delay: 0.7 }}
-                className="text-center text-white/50 text-sm mt-6"
+                className="text-center text-white/50 text-sm mt-6 px-4"
               >
-                © 2026 Global Champions Sports Performance
+                © 2026 {academyName || 'Member Portal'}
               </motion.p>
             </motion.div>
           </motion.div>
