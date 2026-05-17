@@ -35,6 +35,7 @@ const ALL_PERMISSIONS = [
   { key: 'attendance', label_ar: 'الحضور', label_en: 'Attendance' },
   { key: 'coach-ratings', label_ar: 'تقييم المدربين', label_en: 'Coach Ratings' },
   { key: 'coach-attendance', label_ar: 'حضور المدربين', label_en: 'Coach Attendance' },
+  { key: 'coaches', label_ar: 'المدربين والمشرفين', label_en: 'Coaches & Supervisors' },
   { key: 'tournaments', label_ar: 'البطولات', label_en: 'Tournaments' },
   { key: 'advertisements', label_ar: 'الإعلانات', label_en: 'Advertisements' },
   { key: 'daily-videos', label_ar: 'الفيديوهات', label_en: 'Daily Videos' },
