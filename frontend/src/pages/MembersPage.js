@@ -333,11 +333,12 @@ export const MembersPage = () => {
     }
   };
 
-  const DELETE_MEMBER_PASSWORD = '242456';
-
   const handleDelete = async (id) => {
     const password = window.prompt(language === 'ar' ? 'أدخل كلمة المرور لحذف العضو:' : 'Enter password to delete member:');
-    if (password !== DELETE_MEMBER_PASSWORD) {
+    if (password === null) return;
+    const { verifyOperationPassword } = await import('../utils/operationPassword');
+    const valid = await verifyOperationPassword('delete_member', password);
+    if (!valid) {
       toast.error(language === 'ar' ? 'كلمة المرور غير صحيحة' : 'Incorrect password');
       return;
     }

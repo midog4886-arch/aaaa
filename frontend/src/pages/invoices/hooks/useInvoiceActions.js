@@ -2,8 +2,7 @@ import { useState } from 'react';
 import { toast } from 'sonner';
 import { invoicesAPI, creditNotesAPI, exportAPI } from '../../../services/api';
 import { COMPANY_INFO } from '../constants';
-
-const DELETE_PASSWORD = '242456';
+import { verifyOperationPassword } from '../../../utils/operationPassword';
 
 export const useInvoiceActions = ({ loadData, language, t, isAdmin, getBranchName, setInvoices }) => {
   const [selectedInvoice, setSelectedInvoice] = useState(null);
@@ -73,7 +72,9 @@ export const useInvoiceActions = ({ loadData, language, t, isAdmin, getBranchNam
     if (!isAdmin) { toast.error(language === 'ar' ? 'الحذف متاح للمدير فقط' : 'Delete is admin only'); return; }
     if (status === 'paid') {
       const pw = window.prompt(language === 'ar' ? 'أدخل كلمة المرور لحذف الفاتورة المدفوعة:' : 'Enter password to delete paid invoice:');
-      if (pw !== DELETE_PASSWORD) { toast.error(language === 'ar' ? 'كلمة المرور غير صحيحة' : 'Incorrect password'); return; }
+      if (pw === null) return;
+      const ok = await verifyOperationPassword('delete_invoice', pw);
+      if (!ok) { toast.error(language === 'ar' ? 'كلمة المرور غير صحيحة' : 'Incorrect password'); return; }
     }
     if (!window.confirm(language === 'ar' ? 'هل أنت متأكد من حذف الفاتورة نهائياً؟' : 'Are you sure you want to permanently delete this invoice?')) return;
     try { await invoicesAPI.delete(id); toast.success(language === 'ar' ? 'تم حذف الفاتورة' : 'Invoice deleted'); loadData(); setIsViewDialogOpen(false); } catch { toast.error(t('error')); }

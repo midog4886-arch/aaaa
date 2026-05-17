@@ -55,12 +55,12 @@ export const ReportsPage = () => {
   const [statsUnlocked, setStatsUnlocked] = useState(false);
   const [showPasswordInput, setShowPasswordInput] = useState(false);
   const [passwordInput, setPasswordInput] = useState('');
-  const STATS_PASSWORD = '242456';
-
   const hiddenValue = '••••••';
 
-  const handleUnlockStats = () => {
-    if (passwordInput === STATS_PASSWORD) {
+  const handleUnlockStats = async () => {
+    const { verifyOperationPassword } = await import('../utils/operationPassword');
+    const ok = await verifyOperationPassword('reports', passwordInput);
+    if (ok) {
       setStatsUnlocked(true);
       setShowPasswordInput(false);
       setPasswordInput('');

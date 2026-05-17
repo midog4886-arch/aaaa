@@ -38,7 +38,7 @@ import { QRCardDialog } from './invoices/components/dialogs/QRCardDialog';
 import { CardPrintDialog } from './invoices/components/dialogs/CardPrintDialog';
 import { RegFormCardPrintDialog } from './invoices/components/dialogs/RegFormCardPrintDialog';
 
-const REG_FORMS_PASSWORD = '242456';
+import { verifyOperationPassword } from '../utils/operationPassword';
 
 export const InvoicesPage = () => {
   const { t, language } = useLanguage();
@@ -208,8 +208,9 @@ export const InvoicesPage = () => {
     setActiveTab(tab);
   };
 
-  const handleRegFormsPasswordConfirm = () => {
-    if (regFormsPasswordInput !== REG_FORMS_PASSWORD) { toast.error(language === 'ar' ? 'كلمة المرور غير صحيحة' : 'Incorrect password'); setRegFormsPasswordInput(''); return; }
+  const handleRegFormsPasswordConfirm = async () => {
+    const ok = await verifyOperationPassword('reg_forms', regFormsPasswordInput);
+    if (!ok) { toast.error(language === 'ar' ? 'كلمة المرور غير صحيحة' : 'Incorrect password'); setRegFormsPasswordInput(''); return; }
     setShowRegFormsPasswordDialog(false); setRegFormsPasswordInput(''); setActiveTab('forms');
   };
 

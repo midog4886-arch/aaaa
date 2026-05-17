@@ -2,8 +2,7 @@ import { useState, useMemo } from 'react';
 import { toast } from 'sonner';
 import { invoicesAPI, discountsAPI, levelsAPI, membersAPI } from '../../../services/api';
 import { COMPANY_INFO } from '../constants';
-
-const EDIT_PASSWORD = '242456';
+import { verifyOperationPassword } from '../../../utils/operationPassword';
 
 const MAIN_ACTIVITIES_FOR_LEVELS = [
   { id: 'swimming', name_ar: 'السباحة', name_en: 'Swimming', icon: '🏊', color: 'bg-blue-500' },
@@ -189,14 +188,17 @@ export const useInvoiceForm = ({
     toast.success(language === 'ar' ? `تم إضافة ${activity.name_ar}` : `Added ${activity.name}`);
   };
 
-  const unlockFeeEdit = () => {
+  const unlockFeeEdit = async () => {
     const password = window.prompt(language === 'ar' ? 'أدخل كلمة المرور لتغيير السعر:' : 'Enter password to change price:');
-    if (password === EDIT_PASSWORD) { setFeeEditUnlocked(true); toast.success(language === 'ar' ? 'تم فتح تعديل السعر' : 'Price edit unlocked'); return true; }
-    else { toast.error(language === 'ar' ? 'كلمة المرور غير صحيحة' : 'Incorrect password'); return false; }
+    if (password === null) return false;
+    const ok = await verifyOperationPassword('edit_price', password);
+    if (ok) { setFeeEditUnlocked(true); toast.success(language === 'ar' ? 'تم فتح تعديل السعر' : 'Price edit unlocked'); return true; }
+    toast.error(language === 'ar' ? 'كلمة المرور غير صحيحة' : 'Incorrect password');
+    return false;
   };
 
-  const updateItemFee = (index, newFee) => {
-    if (!feeEditUnlocked) { if (!unlockFeeEdit()) return; }
+  const updateItemFee = async (index, newFee) => {
+    if (!feeEditUnlocked) { const ok = await unlockFeeEdit(); if (!ok) return; }
     const updated = [...invoiceItems]; updated[index].fee = parseFloat(newFee) || 0; setInvoiceItems(updated);
   };
 

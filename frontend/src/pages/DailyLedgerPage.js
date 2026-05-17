@@ -16,8 +16,6 @@ import {
   ArrowUpRight, ArrowDownRight, Minus
 } from 'lucide-react';
 
-const STATS_PASSWORD = '242456';
-
 const CATEGORY_LABELS = {
   ar: {
     rent: 'إيجار', salaries: 'رواتب', maintenance: 'صيانة', purchases: 'مشتريات',
@@ -73,8 +71,10 @@ export const DailyLedgerPage = () => {
   const [passwordInput, setPasswordInput] = useState('');
   const [passwordError, setPasswordError] = useState(false);
 
-  const handleUnlock = () => {
-    if (passwordInput === STATS_PASSWORD) {
+  const handleUnlock = async () => {
+    const { verifyOperationPassword } = await import('../utils/operationPassword');
+    const ok = await verifyOperationPassword('daily_ledger', passwordInput);
+    if (ok) {
       setStatsUnlocked(true);
       setPasswordError(false);
     } else {
