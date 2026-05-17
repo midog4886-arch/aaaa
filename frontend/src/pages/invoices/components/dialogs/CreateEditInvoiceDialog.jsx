@@ -208,7 +208,21 @@ export const CreateEditInvoiceDialog = ({
                         return { dot: 'bg-red-500', text: 'text-red-700', icon: '🥋' };
                       return { dot: 'bg-gray-400', text: 'text-gray-700', icon: '📋' };
                     };
-                    return (activities || []).filter(a => a.id).map(a => {
+                    const memberBranch = selectedMember?.branch_id || '';
+                    const visibleActivities = (activities || []).filter(a => {
+                      if (!a.id) return false;
+                      if (!memberBranch) return true;
+                      const ab = a.branch_id || '';
+                      return !ab || ab === memberBranch;
+                    });
+                    if (visibleActivities.length === 0) {
+                      return (
+                        <SelectItem value="none" disabled>
+                          {language === 'ar' ? 'لا توجد أنشطة لهذا الفرع' : 'No activities for this branch'}
+                        </SelectItem>
+                      );
+                    }
+                    return visibleActivities.map(a => {
                       const label = language === 'ar' ? a.name_ar : a.name;
                       const s = styleFor(a.name_ar || a.name);
                       return (
@@ -576,7 +590,21 @@ export const CreateEditInvoiceDialog = ({
                                     return { dot: 'bg-red-500', text: 'text-red-700', icon: '🥋' };
                                   return { dot: 'bg-gray-400', text: 'text-gray-700', icon: '📋' };
                                 };
-                                return (activities || []).filter(a => a.id).map(a => {
+                                const amBranch = am.member?.branch_id || '';
+                                const visibleActs = (activities || []).filter(a => {
+                                  if (!a.id) return false;
+                                  if (!amBranch) return true;
+                                  const ab = a.branch_id || '';
+                                  return !ab || ab === amBranch;
+                                });
+                                if (visibleActs.length === 0) {
+                                  return (
+                                    <SelectItem value="none" disabled>
+                                      {language === 'ar' ? 'لا توجد أنشطة لهذا الفرع' : 'No activities for this branch'}
+                                    </SelectItem>
+                                  );
+                                }
+                                return visibleActs.map(a => {
                                   const label = a.name_ar || a.name;
                                   const s = styleFor(label);
                                   return (
