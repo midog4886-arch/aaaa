@@ -468,9 +468,8 @@ export default function AttendancePage() {
         toast.error(t('كود غير صالح', 'Invalid QR code'));
       }
     } catch (e) {
-      // Plain text — try as member/coach code
       const trimmed = decodedText.trim();
-      if (trimmed.match(/^\d+$/)) {
+      if (trimmed) {
         stopQRScanner();
         setManualMemberId(trimmed);
         await fetchMemberActivities(trimmed);

@@ -25,15 +25,19 @@ const CameraQRScanner = ({ open, onClose, language = 'ar' }) => {
   const extractMemberCode = (scannedData) => {
     if (!scannedData) return null;
     let data = scannedData.trim();
-    if (/^\d+$/.test(data)) return data;
+    if (!data) return null;
     try {
       const parsed = JSON.parse(data);
-      if (parsed.code) return parsed.code.toString();
-      if (parsed.member_code) return parsed.member_code.toString();
+      if (parsed && typeof parsed === 'object') {
+        if (parsed.code) return parsed.code.toString();
+        if (parsed.member_code) return parsed.member_code.toString();
+        if (parsed.member_id) return parsed.member_id.toString();
+        if (parsed.id) return parsed.id.toString();
+        return null;
+      }
+      return String(parsed);
     } catch (e) {}
-    const numberMatch = data.match(/(\d{3,6})/);
-    if (numberMatch) return numberMatch[1];
-    return null;
+    return data;
   };
 
   const stopScanner = useCallback(async () => {
