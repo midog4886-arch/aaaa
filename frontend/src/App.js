@@ -230,8 +230,9 @@ const AcademyGuard = ({ children }) => {
   const location = useLocation();
   const path = location.pathname || '/';
   const confirmed = typeof window !== 'undefined' && localStorage.getItem('academy_confirmed') === '1';
+  const hasAdminToken = typeof window !== 'undefined' && !!(localStorage.getItem('token') || localStorage.getItem('super_token'));
   const isBypassed = ACADEMY_BYPASS_PREFIXES.some(p => path === p || path.startsWith(p + '/'));
-  if (!confirmed && !isBypassed) {
+  if (!confirmed && !isBypassed && !hasAdminToken) {
     const next = encodeURIComponent(path + (location.search || ''));
     return <Navigate to={`/academy-picker?next=${next}`} replace />;
   }
