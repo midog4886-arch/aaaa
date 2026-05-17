@@ -204,16 +204,16 @@ const MemberRegistrationForms = () => {
 
   const getStatusBadge = (status) => {
     if (status === 'converted') {
-      return <span className="px-2 py-1 bg-green-100 text-green-700 rounded-full text-xs">تم التحويل لفاتورة</span>;
+      return <span className="px-2 py-1 bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300 rounded-full text-xs">تم التحويل لفاتورة</span>;
     }
-    return <span className="px-2 py-1 bg-yellow-100 text-yellow-700 rounded-full text-xs">قيد المعالجة</span>;
+    return <span className="px-2 py-1 bg-yellow-100 text-yellow-700 dark:bg-yellow-900/40 dark:text-yellow-300 rounded-full text-xs">قيد المعالجة</span>;
   };
 
   if (loading) {
     return (
       <MemberLayout>
         <div className="flex items-center justify-center min-h-[400px]">
-          <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
+          <Loader2 className="w-8 h-8 animate-spin text-blue-600 dark:text-blue-400" />
         </div>
       </MemberLayout>
     );
@@ -222,12 +222,12 @@ const MemberRegistrationForms = () => {
   return (
     <MemberLayout>
       <div className="space-y-6">
-        <h1 className="text-2xl font-bold text-gray-800">استمارات التسجيل</h1>
+        <h1 className="text-2xl font-bold text-gray-800 dark:text-gray-100">استمارات التسجيل</h1>
 
-        <Card>
+        <Card className="dark:bg-gray-800 dark:border-gray-700">
           <CardHeader>
-            <CardTitle className="text-lg flex items-center gap-2">
-              <FileText className="w-5 h-5 text-orange-600" />
+            <CardTitle className="text-lg flex items-center gap-2 dark:text-gray-100">
+              <FileText className="w-5 h-5 text-orange-600 dark:text-orange-400" />
               جميع الاستمارات ({forms.length})
             </CardTitle>
           </CardHeader>
@@ -235,43 +235,43 @@ const MemberRegistrationForms = () => {
             {forms.length > 0 ? (
               <div className="space-y-4">
                 {forms.map((form, idx) => (
-                  <div key={idx} className="p-4 bg-gradient-to-l from-orange-50 to-white rounded-lg border border-orange-200 hover:shadow-md transition-shadow">
+                  <div key={idx} className="p-4 bg-gradient-to-l from-orange-50 to-white dark:from-orange-900/20 dark:to-gray-800 rounded-lg border border-orange-200 dark:border-orange-800 hover:shadow-md transition-shadow">
                     <div className="flex items-center justify-between flex-wrap gap-3">
                       <div>
                         <div className="flex items-center gap-2">
-                          <FileText className="w-5 h-5 text-orange-600" />
-                          <span className="font-bold text-lg">{form.form_number}</span>
+                          <FileText className="w-5 h-5 text-orange-600 dark:text-orange-400" />
+                          <span className="font-bold text-lg text-gray-900 dark:text-gray-100">{form.form_number}</span>
                           {getStatusBadge(form.status)}
                         </div>
-                        <p className="text-sm text-gray-500 mt-1 flex items-center gap-1">
+                        <p className="text-sm text-gray-500 dark:text-gray-400 mt-1 flex items-center gap-1">
                           <Calendar className="w-4 h-4" />
                           {new Date(form.created_at).toLocaleDateString('ar-SA')}
                         </p>
                         <div className="mt-2">
                           {form.items?.slice(0, 2).map((item, i) => (
-                            <div key={i} className="text-sm text-gray-600 flex items-center gap-2">
+                            <div key={i} className="text-sm text-gray-600 dark:text-gray-300 flex items-center gap-2">
                               <span>• {item.activity_name}</span>
                               {item.schedule && (
-                                <span className="text-xs text-orange-600 bg-orange-100 px-2 py-0.5 rounded">
+                                <span className="text-xs text-orange-600 dark:text-orange-300 bg-orange-100 dark:bg-orange-900/40 px-2 py-0.5 rounded">
                                   {item.schedule}
                                 </span>
                               )}
                             </div>
                           ))}
                           {form.items?.length > 2 && (
-                            <span className="text-sm text-gray-400">+{form.items.length - 2} المزيد</span>
+                            <span className="text-sm text-gray-400 dark:text-gray-500">+{form.items.length - 2} المزيد</span>
                           )}
                         </div>
                       </div>
                       
                       <div className="text-left">
-                        <p className="text-2xl font-bold text-orange-600">{form.total} <span className="text-sm">ر.س</span></p>
+                        <p className="text-2xl font-bold text-orange-600 dark:text-orange-400">{form.total} <span className="text-sm">ر.س</span></p>
                         <div className="flex gap-2 mt-2">
                           <Button 
                             size="sm" 
                             variant="outline"
                             onClick={() => handleViewForm(form)}
-                            className="gap-1"
+                            className="gap-1 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-700"
                           >
                             <Eye className="w-4 h-4" />
                             عرض
@@ -279,7 +279,7 @@ const MemberRegistrationForms = () => {
                           <Button 
                             size="sm" 
                             onClick={() => handlePrintForm(form)}
-                            className="gap-1 bg-orange-600 hover:bg-orange-700"
+                            className="gap-1 bg-orange-600 hover:bg-orange-700 text-white"
                           >
                             <Printer className="w-4 h-4" />
                             طباعة
@@ -291,7 +291,7 @@ const MemberRegistrationForms = () => {
                 ))}
               </div>
             ) : (
-              <div className="text-center py-8 text-gray-500">
+              <div className="text-center py-8 text-gray-500 dark:text-gray-400">
                 <FileText className="w-12 h-12 mx-auto mb-3 opacity-30" />
                 <p>لا توجد استمارات تسجيل</p>
               </div>
@@ -302,10 +302,10 @@ const MemberRegistrationForms = () => {
 
       {/* Form View Dialog */}
       <Dialog open={viewDialogOpen} onOpenChange={setViewDialogOpen}>
-        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto" dir="rtl">
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto dark:bg-gray-800 dark:text-gray-100 dark:border-gray-700" dir="rtl">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <FileText className="w-5 h-5 text-orange-600" />
+            <DialogTitle className="flex items-center gap-2 dark:text-gray-100">
+              <FileText className="w-5 h-5 text-orange-600 dark:text-orange-400" />
               استمارة {selectedForm?.form_number}
             </DialogTitle>
           </DialogHeader>
@@ -313,55 +313,55 @@ const MemberRegistrationForms = () => {
           {selectedForm && (
             <div className="space-y-4">
               {/* Customer Info */}
-              <div className="bg-gray-50 p-4 rounded-lg">
-                <h3 className="font-bold text-gray-700 mb-3 flex items-center gap-2">
+              <div className="bg-gray-50 dark:bg-gray-900/60 p-4 rounded-lg">
+                <h3 className="font-bold text-gray-700 dark:text-gray-200 mb-3 flex items-center gap-2">
                   <User className="w-4 h-4" />
                   بيانات المشترك
                 </h3>
                 <div className="grid grid-cols-2 gap-3 text-sm">
                   <div>
-                    <span className="text-gray-500">الاسم:</span>
-                    <p className="font-medium">{selectedForm.customer_name}</p>
+                    <span className="text-gray-500 dark:text-gray-400">الاسم:</span>
+                    <p className="font-medium text-gray-800 dark:text-gray-100">{selectedForm.customer_name}</p>
                   </div>
                   <div>
-                    <span className="text-gray-500">الجوال:</span>
-                    <p className="font-medium" dir="ltr">{selectedForm.customer_phone}</p>
+                    <span className="text-gray-500 dark:text-gray-400">الجوال:</span>
+                    <p className="font-medium text-gray-800 dark:text-gray-100" dir="ltr">{selectedForm.customer_phone}</p>
                   </div>
                 </div>
               </div>
               
               {/* Activities */}
               <div>
-                <h3 className="font-bold text-gray-700 mb-3">📋 الأنشطة</h3>
+                <h3 className="font-bold text-gray-700 dark:text-gray-200 mb-3">📋 الأنشطة</h3>
                 {selectedForm.items?.map((item, idx) => (
-                  <div key={idx} className="p-3 bg-orange-50 rounded-lg border border-orange-200 mb-2">
+                  <div key={idx} className="p-3 bg-orange-50 dark:bg-orange-900/20 rounded-lg border border-orange-200 dark:border-orange-800 mb-2">
                     <div className="flex justify-between items-start">
                       <div>
-                        <p className="font-bold">{item.activity_name}</p>
+                        <p className="font-bold text-gray-900 dark:text-gray-100">{item.activity_name}</p>
                         {item.schedule && (
-                          <p className="text-sm text-orange-600 flex items-center gap-1 mt-1">
+                          <p className="text-sm text-orange-600 dark:text-orange-300 flex items-center gap-1 mt-1">
                             <Clock className="w-4 h-4" />
                             {item.schedule}
                           </p>
                         )}
-                        <p className="text-xs text-gray-500 mt-1">
+                        <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
                           {item.start_date} → {item.end_date}
                         </p>
                       </div>
-                      <span className="font-bold text-orange-600">{item.fee} ر.س</span>
+                      <span className="font-bold text-orange-600 dark:text-orange-400">{item.fee} ر.س</span>
                     </div>
                   </div>
                 ))}
               </div>
               
               {/* Totals */}
-              <div className="bg-gray-50 p-4 rounded-lg space-y-2">
+              <div className="bg-gray-50 dark:bg-gray-900/60 p-4 rounded-lg space-y-2 text-gray-700 dark:text-gray-200">
                 <div className="flex justify-between">
                   <span>المجموع الفرعي:</span>
                   <span>{selectedForm.subtotal} ر.س</span>
                 </div>
                 {selectedForm.discount > 0 && (
-                  <div className="flex justify-between text-green-600">
+                  <div className="flex justify-between text-green-600 dark:text-green-400">
                     <span>الخصم:</span>
                     <span>-{selectedForm.discount} ر.س</span>
                   </div>
@@ -370,18 +370,18 @@ const MemberRegistrationForms = () => {
                   <span>الضريبة (15%):</span>
                   <span>{selectedForm.vat_amount} ر.س</span>
                 </div>
-                <div className="flex justify-between font-bold text-lg pt-2 border-t text-orange-600">
+                <div className="flex justify-between font-bold text-lg pt-2 border-t border-gray-200 dark:border-gray-700 text-orange-600 dark:text-orange-400">
                   <span>الإجمالي:</span>
                   <span>{selectedForm.total} ر.س</span>
                 </div>
               </div>
               
               {/* Terms and Conditions */}
-              <div className="bg-amber-50 border-2 border-amber-400 rounded-lg p-4">
-                <p className="font-bold text-amber-800 mb-2 flex items-center gap-1">
+              <div className="bg-amber-50 dark:bg-amber-900/20 border-2 border-amber-400 dark:border-amber-700 rounded-lg p-4">
+                <p className="font-bold text-amber-800 dark:text-amber-300 mb-2 flex items-center gap-1">
                   <span>⚠️</span> شروط وأحكام:
                 </p>
-                <ul className="text-sm text-amber-700 space-y-1 list-disc list-inside">
+                <ul className="text-sm text-amber-700 dark:text-amber-200 space-y-1 list-disc list-inside">
                   <li>عرض عدد الحصص لا يعني أن الاشتراك ما زال فعّالًا بعد تاريخ الانتهاء.</li>
                   <li><strong>يُعتد فقط بتاريخ بداية ونهاية الاشتراك</strong> الموضّح في هذه الاستمارة.</li>
                   <li>لا يحق للمشترك المطالبة بالحصص بعد انتهاء فترة الاشتراك.</li>
@@ -389,7 +389,7 @@ const MemberRegistrationForms = () => {
               </div>
               
               <Button 
-                className="w-full gap-2 bg-orange-600 hover:bg-orange-700"
+                className="w-full gap-2 bg-orange-600 hover:bg-orange-700 text-white"
                 onClick={() => handlePrintForm(selectedForm)}
               >
                 <Printer className="w-4 h-4" />

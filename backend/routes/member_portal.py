@@ -354,6 +354,18 @@ class MemberPreferences(BaseModel):
     language: Optional[str] = None
 
 
+@router.get("/preferences")
+async def get_member_preferences(member: dict = Depends(get_current_member)):
+    """Return current member UI preferences (dark mode, language) from the database."""
+    prefs = (member.get("preferences") or {})
+    raw_lang = prefs.get("language")
+    language = "en" if str(raw_lang or "").lower().startswith("en") else "ar"
+    return {
+        "dark_mode": bool(prefs.get("dark_mode", False)),
+        "language": language,
+    }
+
+
 @router.put("/preferences")
 async def update_member_preferences(
     data: MemberPreferences,

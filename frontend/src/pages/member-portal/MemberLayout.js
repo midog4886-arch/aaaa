@@ -86,6 +86,33 @@ const MemberLayout = ({ children }) => {
   const [tenantLogo, setTenantLogo] = useState(_resolveAcademyLogo());
   const primary = useBrandColor();
   const [tenantName, setTenantName] = useState(getAcademyName());
+  const prefsHydratedRef = useRef(false);
+
+  useEffect(() => {
+    if (prefsHydratedRef.current) return;
+    if (!getMemberToken()) return;
+    prefsHydratedRef.current = true;
+    memberAPI.get('/api/member-portal/preferences').then((res) => {
+      const remoteLang = res?.data?.language === 'en' ? 'en' : 'ar';
+      const remoteDark = !!res?.data?.dark_mode;
+      try {
+        const cached = JSON.parse(localStorage.getItem('member_data') || '{}');
+        if (cached.language !== remoteLang || cached.dark_mode !== remoteDark) {
+          cached.language = remoteLang;
+          cached.dark_mode = remoteDark;
+          localStorage.setItem('member_data', JSON.stringify(cached));
+        }
+      } catch (_) {}
+      if (remoteLang !== getLanguage()) {
+        setLanguage(remoteLang);
+        setLanguageState(remoteLang);
+      }
+      if (remoteDark !== getDarkMode()) {
+        setDarkMode(remoteDark);
+        setDarkModeState(remoteDark);
+      }
+    }).catch(() => {});
+  }, []);
 
   // React to tenant branding updates for non-color fields (logo + name).
   // Primary color is handled by the `useBrandColor()` hook above.
