@@ -223,10 +223,13 @@ async def public_signup(payload: PublicSignupIn, request: Request):
 
     now = datetime.now(timezone.utc)
     trial_end = now + timedelta(days=DEFAULT_TRIAL_DAYS)
+    from utils.prefix_gen import pick_unique_academy_prefix
+    academy_prefix = await pick_unique_academy_prefix(slug=slug, name=payload.academy_name.strip())
     tenant_doc = {
         "id": str(uuid.uuid4()),
         "slug": slug,
         "name": payload.academy_name.strip(),
+        "academy_prefix": academy_prefix,
         "db_name": slug_to_db_name(slug),
         "status": "pending_approval",
         "approval_status": "pending",

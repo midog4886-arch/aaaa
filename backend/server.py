@@ -9841,6 +9841,51 @@ async def create_default_admin():
         except Exception as e:
             print(f"Index creation error: {str(e)}")
         try:
+            from control_db import control_db as _ctrl
+            from utils.prefix_gen import pick_unique_academy_prefix, pick_unique_branch_prefix
+            from utils.tenant import set_current_tenant, reset_current_tenant, list_active_tenants
+            tenants = await list_active_tenants()
+            filled_acad = 0
+            filled_branch = 0
+            for t in tenants:
+                full = await _ctrl.tenants.find_one({"id": t.get("id")}, {"_id": 0})
+                if not full:
+                    continue
+                if not (full.get("academy_prefix") or "").strip():
+                    new_acad = await pick_unique_academy_prefix(
+                        slug=full.get("slug") or "",
+                        name=full.get("name") or "",
+                    )
+                    await _ctrl.tenants.update_one(
+                        {"id": full["id"]},
+                        {"$set": {"academy_prefix": new_acad}},
+                    )
+                    full["academy_prefix"] = new_acad
+                    filled_acad += 1
+                token = set_current_tenant(full)
+                try:
+                    cursor = db.branches.find(
+                        {"$or": [{"code_prefix": {"$exists": False}}, {"code_prefix": ""}, {"code_prefix": None}]},
+                        {"_id": 0, "id": 1, "name": 1, "name_ar": 1},
+                    )
+                    async for br in cursor:
+                        bp = await pick_unique_branch_prefix(
+                            name_latin=br.get("name") or "",
+                            name_ar=br.get("name_ar") or "",
+                            exclude_id=br.get("id"),
+                        )
+                        await db.branches.update_one(
+                            {"id": br["id"]},
+                            {"$set": {"code_prefix": bp}},
+                        )
+                        filled_branch += 1
+                finally:
+                    reset_current_tenant(token)
+            if filled_acad or filled_branch:
+                print(f"Prefix backfill: {filled_acad} academies, {filled_branch} branches updated")
+        except Exception as e:
+            print(f"Prefix backfill error: {str(e)}")
+        try:
             users_count = await db.users.count_documents({})
             if users_count == 0:
                 hashed_password = bcrypt.hashpw("123456".encode('utf-8'), bcrypt.gensalt())

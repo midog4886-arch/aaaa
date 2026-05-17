@@ -91,6 +91,12 @@ async def create_branch(branch: BranchCreate, current_user: dict = Depends(get_c
                 status_code=409,
                 detail=f"البادئة '{data['code_prefix']}' مستخدمة بالفعل في فرع آخر"
             )
+    else:
+        from utils.prefix_gen import pick_unique_branch_prefix
+        data["code_prefix"] = await pick_unique_branch_prefix(
+            name_latin=data.get("name") or "",
+            name_ar=data.get("name_ar") or "",
+        )
     branch_doc = {
         "id": branch_id,
         **data,

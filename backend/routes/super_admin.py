@@ -175,6 +175,9 @@ async def _seed_new_tenant_db(
 
     existing_branch_count = await tdb.branches.count_documents({})
     if existing_branch_count == 0:
+        import re as _re
+        raw = _re.sub(r"[^A-Za-z0-9]", "", branch_name or "").upper()
+        branch_prefix = raw[:3] if raw else "B1"
         branch_doc = {
             "id": str(uuid.uuid4()),
             "name": branch_name,
@@ -185,6 +188,7 @@ async def _seed_new_tenant_db(
             "address": "",
             "address_ar": "",
             "is_active": True,
+            "code_prefix": branch_prefix,
             "created_at": now,
         }
         await tdb.branches.insert_one(branch_doc)
@@ -330,10 +334,13 @@ async def create_tenant(payload: TenantCreate, super_payload: dict = Depends(_re
     max_members = int(payload.max_members) if payload.max_members is not None else 100
     if max_branches < 0 or max_members < 0:
         raise HTTPException(status_code=400, detail="Limits must be >= 0")
+    from utils.prefix_gen import pick_unique_academy_prefix
+    academy_prefix = await pick_unique_academy_prefix(slug=slug, name=payload.name)
     doc = {
         "id": str(uuid.uuid4()),
         "slug": slug,
         "name": payload.name,
+        "academy_prefix": academy_prefix,
         "db_name": slug_to_db_name(slug),
         "status": "active",
         "plan": payload.plan or "starter",
