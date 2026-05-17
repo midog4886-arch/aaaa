@@ -1598,7 +1598,7 @@ const CoachAttendancePage = () => {
                     {/* QR Side */}
                     <div className="flex flex-col items-center shrink-0">
                       <div className="border border-gray-200 rounded-lg p-1 bg-white">
-                        <QRCodeSVG value={qrValue} size={100} level="M" includeMargin={false} fgColor="#1a1a1a" />
+                        <QRCodeSVG value={qrValue} size={180} level="H" includeMargin={true} fgColor="#000000" />
                       </div>
                       <p className="text-[10px] text-orange-500 font-semibold mt-1 text-center">تسجيل الحضور/الانصراف</p>
                     </div>

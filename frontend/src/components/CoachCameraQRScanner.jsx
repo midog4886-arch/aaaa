@@ -1,13 +1,14 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Html5Qrcode } from 'html5-qrcode';
+import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from './ui/dialog';
 import { Button } from './ui/button';
+import { Input } from './ui/input';
 import { Badge } from './ui/badge';
 import { toast } from 'sonner';
 import axios from 'axios';
 import {
   Camera, Check, X, User, Clock, Loader2,
-  LogIn, LogOut, SwitchCamera, Phone,
+  LogIn, LogOut, SwitchCamera, Phone, Keyboard, Send,
 } from 'lucide-react';
 
 const extractCoachCode = (scannedData) => {
@@ -43,6 +44,8 @@ const CoachCameraQRScanner = ({ open, onClose, onSuccess }) => {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState(null);
   const [facingMode, setFacingMode] = useState('environment');
+  const [manualMode, setManualMode] = useState(false);
+  const [manualCode, setManualCode] = useState('');
   const scannerRef = useRef(null);
   const processingRef = useRef(false);
   const mountedRef = useRef(true);
@@ -113,27 +116,57 @@ const CoachCameraQRScanner = ({ open, onClose, onSuccess }) => {
     if (!container) return;
     container.innerHTML = '';
     try {
-      const scanner = new Html5Qrcode(containerId);
+      const scanner = new Html5Qrcode(containerId, {
+        formatsToSupport: [Html5QrcodeSupportedFormats.QR_CODE],
+        verbose: false,
+      });
       scannerRef.current = scanner;
+      const qrboxFn = (viewW, viewH) => {
+        const minEdge = Math.min(viewW, viewH);
+        const edge = Math.max(180, Math.floor(minEdge * 0.75));
+        return { width: edge, height: edge };
+      };
       await scanner.start(
         { facingMode },
-        { fps: 10, qrbox: { width: 250, height: 250 }, aspectRatio: 1.0 },
+        {
+          fps: 15,
+          qrbox: qrboxFn,
+          aspectRatio: 1.0,
+          disableFlip: false,
+          experimentalFeatures: { useBarCodeDetectorIfSupported: true },
+        },
         (decodedText) => { handleScanSuccess(decodedText); },
         () => {}
       );
     } catch (err) {
       console.error('Camera error:', err);
       if (mountedRef.current) {
-        toast.error('لا يمكن فتح الكاميرا. تأكد من إعطاء الإذن.');
+        toast.error('لا يمكن فتح الكاميرا. تأكد من إعطاء الإذن، أو استخدم الإدخال اليدوي.');
       }
     }
   }, [facingMode, handleScanSuccess, stopScanner]);
+
+  const handleManualSubmit = useCallback(async (e) => {
+    if (e && e.preventDefault) e.preventDefault();
+    const code = extractCoachCode(manualCode);
+    if (!code) {
+      toast.error('الرجاء إدخال رقم موظف صحيح');
+      return;
+    }
+    await handleScanSuccess(code);
+  }, [manualCode, handleScanSuccess]);
 
   useEffect(() => {
     if (!open) {
       stopScanner();
       setResult(null);
       processingRef.current = false;
+      setManualMode(false);
+      setManualCode('');
+      return undefined;
+    }
+    if (manualMode) {
+      stopScanner();
       return undefined;
     }
     const t = setTimeout(() => { startScanner(); }, 350);
@@ -141,7 +174,7 @@ const CoachCameraQRScanner = ({ open, onClose, onSuccess }) => {
       clearTimeout(t);
       stopScanner();
     };
-  }, [open, facingMode, startScanner, stopScanner]);
+  }, [open, facingMode, manualMode, startScanner, stopScanner]);
 
   const handleClose = useCallback(() => {
     stopScanner();
@@ -170,22 +203,55 @@ const CoachCameraQRScanner = ({ open, onClose, onSuccess }) => {
           </DialogTitle>
         </DialogHeader>
 
-        {!result && !loading && (
+        {!result && !loading && !manualMode && (
           <div className="space-y-3">
             <div
               id="coach-camera-qr-reader"
               style={{ width: '100%', minHeight: '300px', borderRadius: '12px', overflow: 'hidden' }}
             />
-            <div className="flex justify-center gap-2">
+            <div className="flex justify-center gap-2 flex-wrap">
               <Button variant="outline" size="sm" onClick={handleSwitchCamera}>
                 <SwitchCamera className="w-4 h-4 me-2" />
                 تبديل الكاميرا
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => setManualMode(true)}>
+                <Keyboard className="w-4 h-4 me-2" />
+                إدخال رقم الموظف يدوياً
               </Button>
             </div>
             <p className="text-center text-sm text-muted-foreground">
               وجّه الكاميرا نحو رمز QR في كارت المدرب لتسجيل الحضور/الانصراف
             </p>
           </div>
+        )}
+
+        {!result && !loading && manualMode && (
+          <form onSubmit={handleManualSubmit} className="space-y-3 py-4">
+            <div className="text-center mb-2">
+              <Keyboard className="w-12 h-12 mx-auto text-orange-500 mb-2" />
+              <p className="text-sm text-muted-foreground">
+                أدخل رقم الموظف الموجود في كارت المدرب
+              </p>
+            </div>
+            <Input
+              autoFocus
+              value={manualCode}
+              onChange={(e) => setManualCode(e.target.value)}
+              placeholder="مثال: 5001"
+              dir="ltr"
+              className="text-center text-lg tracking-wider"
+            />
+            <div className="flex gap-2">
+              <Button type="submit" className="flex-1 gap-2" disabled={!manualCode.trim()}>
+                <Send className="w-4 h-4" />
+                تسجيل
+              </Button>
+              <Button type="button" variant="outline" onClick={() => { setManualMode(false); setManualCode(''); }}>
+                <Camera className="w-4 h-4 me-2" />
+                الكاميرا
+              </Button>
+            </div>
+          </form>
         )}
 
         {loading && (
