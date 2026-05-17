@@ -259,7 +259,7 @@ export const Sidebar = ({ isOpen, onClose }) => {
               )}
             </div>
             <div className="flex-1 min-w-0">
-              <h1 className="text-sm font-bold truncate" data-testid="header-academy-name">
+              <h1 className="text-xs font-bold leading-tight line-clamp-2 break-words" data-testid="header-academy-name">
                 {brandingName || t('academy_name_short')}
               </h1>
             </div>
