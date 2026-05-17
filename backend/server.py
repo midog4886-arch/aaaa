@@ -2277,15 +2277,31 @@ async def get_company_info():
 @api_router.get("/global-search")
 async def global_search(
     q: str = "",
+    branch_filter: Optional[str] = None,
     current_user: dict = Depends(get_current_user)
 ):
     if not q or len(q.strip()) < 2:
         return {"members": [], "invoices": [], "activities": []}
-    
+
     query = q.strip()
-    regex_pattern = {"$regex": query, "$options": "i"}
-    
-    members_query = {"$or": [
+    regex_pattern = {"$regex": re.escape(query), "$options": "i"}
+
+    is_admin = current_user.get("is_admin", False)
+    user_branch = current_user.get("branch_id")
+    if is_admin:
+        effective_branch = branch_filter if (branch_filter and branch_filter != "all") else None
+    else:
+        effective_branch = user_branch
+        if not effective_branch:
+            return {"members": [], "invoices": [], "activities": []}
+
+    scoped_filter = {"branch_id": effective_branch} if effective_branch else {}
+    activity_branch_filter = (
+        {"$or": [{"branch_id": effective_branch}, {"branch_id": None}, {"branch_id": {"$exists": False}}]}
+        if effective_branch else {}
+    )
+
+    members_or = {"$or": [
         {"name": regex_pattern},
         {"name_ar": regex_pattern},
         {"phone": regex_pattern},
@@ -2293,7 +2309,9 @@ async def global_search(
         {"guardian_name_ar": regex_pattern},
         {"guardian_phone": regex_pattern},
         {"member_id": regex_pattern},
+        {"member_code": regex_pattern},
     ]}
+    members_query = {"$and": [members_or, scoped_filter]} if scoped_filter else members_or
     members_cursor = db.members.find(members_query, {"_id": 0}).limit(10)
     members = await members_cursor.to_list(10)
     members_results = [{
@@ -2303,12 +2321,13 @@ async def global_search(
         "member_id": m.get("member_id", ""),
         "activities_count": len(m.get("activities", [])),
     } for m in members]
-    
-    invoices_query = {"$or": [
+
+    invoices_or = {"$or": [
         {"invoice_number": regex_pattern},
         {"member_name": regex_pattern},
         {"member_phone": regex_pattern},
     ]}
+    invoices_query = {"$and": [invoices_or, scoped_filter]} if scoped_filter else invoices_or
     invoices_cursor = db.invoices.find(invoices_query, {"_id": 0}).sort("created_at", -1).limit(10)
     invoices = await invoices_cursor.to_list(10)
     invoices_results = [{
@@ -2319,11 +2338,12 @@ async def global_search(
         "status": inv.get("status", ""),
         "created_at": inv.get("created_at", ""),
     } for inv in invoices]
-    
-    activities_query = {"$or": [
+
+    activities_or = {"$or": [
         {"name": regex_pattern},
         {"name_ar": regex_pattern},
     ]}
+    activities_query = {"$and": [activities_or, activity_branch_filter]} if activity_branch_filter else activities_or
     activities_cursor = db.activities.find(activities_query, {"_id": 0}).limit(10)
     activities = await activities_cursor.to_list(10)
     activities_results = [{

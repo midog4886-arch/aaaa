@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useLanguage } from '../contexts/LanguageContext';
+import { useAuth } from '../contexts/AuthContext';
 import { globalSearchAPI } from '../services/api';
 import { Search, Users, Receipt, Dumbbell, X, Loader2, Clock, Trash2 } from 'lucide-react';
 
@@ -19,6 +20,7 @@ const saveSearchHistory = (history) => {
 
 const GlobalSearch = () => {
   const { language } = useLanguage();
+  const { selectedBranchId } = useAuth();
   const navigate = useNavigate();
   const [query, setQuery] = useState('');
   const [results, setResults] = useState(null);
@@ -88,7 +90,7 @@ const GlobalSearch = () => {
     setLoading(true);
     debounceRef.current = setTimeout(async () => {
       try {
-        const res = await globalSearchAPI.search(value);
+        const res = await globalSearchAPI.search(value, selectedBranchId);
         setResults(res.data);
         setIsOpen(true);
       } catch (err) {

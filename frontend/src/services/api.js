@@ -257,7 +257,11 @@ export const dashboardAPI = {
 
 // Global Search API
 export const globalSearchAPI = {
-  search: (q) => axios.get(`${API}/global-search`, { params: { q } }),
+  search: (q, branchFilter) => {
+    const params = { q };
+    if (branchFilter && branchFilter !== 'all') params.branch_filter = branchFilter;
+    return axios.get(`${API}/global-search`, { params });
+  },
 };
 
 // Seed API
