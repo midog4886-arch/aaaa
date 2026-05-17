@@ -28,6 +28,34 @@ const MONTH_NAMES_EN = [
   'July', 'August', 'September', 'October', 'November', 'December'
 ];
 
+const LAST_VIEW_STORAGE_KEY = 'memberAttendance.lastViewedMonth';
+
+const readLastViewedMonth = () => {
+  try {
+    const raw = localStorage.getItem(LAST_VIEW_STORAGE_KEY);
+    if (!raw) return null;
+    const { year, month } = JSON.parse(raw);
+    const y = Number(year), m = Number(month);
+    if (Number.isInteger(y) && y >= 2000 && y <= 2100 && Number.isInteger(m) && m >= 1 && m <= 12) {
+      return { year: y, month: m };
+    }
+  } catch {}
+  return null;
+};
+
+const writeLastViewedMonth = (year, month) => {
+  try { localStorage.setItem(LAST_VIEW_STORAGE_KEY, JSON.stringify({ year, month })); } catch {}
+};
+
+const formatFreshness = (date, language) => {
+  if (!date) return '';
+  try {
+    return date.toLocaleTimeString(language === 'ar' ? 'ar-EG' : 'en-US', { hour: '2-digit', minute: '2-digit' });
+  } catch {
+    return date.toTimeString().slice(0, 5);
+  }
+};
+
 // Format ISO week label "2026-W16" → "الأسبوع 16 / Week 16"
 const formatWeekLabel = (weekLabel, language) => {
   if (!weekLabel) return '';
@@ -195,7 +223,7 @@ const MONTH_SHORT_AR = ['يناير','فبراير','مارس','أبريل','م�
 
 // ── Attendance Trend Chart Component ──────────────────────────────────────────
 
-const AttendanceTrendChart = ({ darkMode, language }) => {
+const AttendanceTrendChart = ({ darkMode, language, onSelectMonth }) => {
   const [trendData, setTrendData] = useState([]);
   const [trendLoading, setTrendLoading] = useState(true);
 
@@ -204,9 +232,8 @@ const AttendanceTrendChart = ({ darkMode, language }) => {
       setTrendLoading(true);
       try {
         const today = new Date();
-        // Build last 6 months (oldest first)
         const months = [];
-        for (let i = 5; i >= 0; i--) {
+        for (let i = 11; i >= 0; i--) {
           const d = new Date(today.getFullYear(), today.getMonth() - i, 1);
           months.push({ year: d.getFullYear(), month: d.getMonth() + 1 });
         }
@@ -220,11 +247,17 @@ const AttendanceTrendChart = ({ darkMode, language }) => {
         );
 
         setTrendData(
-          results.map(({ year, month, count }) => ({
-            label: language === 'ar' ? MONTH_SHORT_AR[month - 1] : MONTH_SHORT_EN[month - 1],
-            count,
-            key: `${year}-${month}`,
-          }))
+          results.map(({ year, month, count }) => {
+            const shortName = language === 'ar' ? MONTH_SHORT_AR[month - 1] : MONTH_SHORT_EN[month - 1];
+            const yy = String(year).slice(-2);
+            return {
+              label: language === 'ar' ? `${shortName} ${yy}` : `${shortName.slice(0,3)} ${yy}`,
+              count,
+              key: `${year}-${month}`,
+              year,
+              month,
+            };
+          })
         );
       } catch {
         setTrendData([]);
@@ -259,7 +292,7 @@ const AttendanceTrendChart = ({ darkMode, language }) => {
       <CardHeader className="pb-2">
         <CardTitle className={`text-base flex items-center gap-2 ${darkMode ? 'text-white' : ''}`}>
           <BarChart2 className="w-4 h-4 text-green-600" />
-          {language === 'ar' ? 'اتجاه الحضور — آخر 6 أشهر' : 'Attendance Trend — Last 6 Months'}
+          {language === 'ar' ? 'اتجاه الحضور — آخر 12 شهراً' : 'Attendance Trend — Last 12 Months'}
         </CardTitle>
       </CardHeader>
       <CardContent className="pt-0">
@@ -285,7 +318,21 @@ const AttendanceTrendChart = ({ darkMode, language }) => {
                 domain={[0, Math.max(maxCount + 1, 4)]}
               />
               <Tooltip content={<CustomTooltip />} cursor={{ fill: darkMode ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)' }} />
-              <Bar dataKey="count" radius={[6, 6, 0, 0]} maxBarSize={40}>
+              <Bar
+                dataKey="count"
+                radius={[6, 6, 0, 0]}
+                maxBarSize={28}
+                onClick={(data) => {
+                  if (!onSelectMonth || !data) return;
+                  const src = data.payload || data;
+                  const y = Number(src.year);
+                  const m = Number(src.month);
+                  if (!Number.isInteger(y) || y < 2000 || y > 2100) return;
+                  if (!Number.isInteger(m) || m < 1 || m > 12) return;
+                  onSelectMonth(y, m);
+                }}
+                cursor={onSelectMonth ? 'pointer' : 'default'}
+              >
                 {trendData.map((entry) => (
                   <Cell
                     key={entry.key}
@@ -297,7 +344,7 @@ const AttendanceTrendChart = ({ darkMode, language }) => {
           </ResponsiveContainer>
         )}
         {!trendLoading && (
-          <div className="flex items-center gap-4 mt-2 justify-center">
+          <div className="flex items-center gap-4 mt-2 justify-center flex-wrap">
             <div className="flex items-center gap-1.5">
               <div className="w-3 h-3 rounded" style={{ background: '#22c55e' }} />
               <span className={`text-[10px] ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
@@ -310,6 +357,11 @@ const AttendanceTrendChart = ({ darkMode, language }) => {
                 {language === 'ar' ? 'الأشهر السابقة' : 'Previous months'}
               </span>
             </div>
+            {onSelectMonth && (
+              <span className={`text-[10px] italic ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                {language === 'ar' ? '— انقر على عمود للانتقال إلى ذلك الشهر' : '— tap a bar to jump to that month'}
+              </span>
+            )}
           </div>
         )}
       </CardContent>
@@ -321,26 +373,42 @@ const AttendanceTrendChart = ({ darkMode, language }) => {
 
 const MemberAttendance = () => {
   const today = new Date();
-  const [viewYear, setViewYear] = useState(today.getFullYear());
-  const [viewMonth, setViewMonth] = useState(today.getMonth() + 1);
+  const todayY = today.getFullYear();
+  const todayM = today.getMonth() + 1;
+  const initialView = readLastViewedMonth() || { year: todayY, month: todayM };
+  const [viewYear, setViewYear] = useState(initialView.year);
+  const [viewMonth, setViewMonth] = useState(initialView.month);
   const [loading, setLoading] = useState(true);
   const [monthLoading, setMonthLoading] = useState(false);
   const [stats, setStats] = useState(null);
+  const [lastFetchedAt, setLastFetchedAt] = useState(null);
   const [pickerOpen, setPickerOpen] = useState(false);
-  const [pickerYear, setPickerYear] = useState(today.getFullYear());
+  const [pickerYear, setPickerYear] = useState(initialView.year);
   const pickerRef = useRef(null);
+  const cacheRef = useRef({});
   const darkMode = getDarkMode();
   const language = getLanguage();
   const primary = useBrandColor();
 
-  const isCurrentMonth = viewYear === today.getFullYear() && viewMonth === (today.getMonth() + 1);
+  const isCurrentMonth = viewYear === todayY && viewMonth === todayM;
 
-  const fetchStats = useCallback(async (year, month, isInitial = false) => {
+  const fetchStats = useCallback(async (year, month, isInitial = false, force = false) => {
+    const key = `${year}-${month}`;
+    const cached = cacheRef.current[key];
+    if (!force && cached) {
+      setStats(cached.data);
+      setLastFetchedAt(cached.fetchedAt);
+      if (isInitial) setLoading(false);
+      return;
+    }
     if (isInitial) setLoading(true);
     else setMonthLoading(true);
     try {
       const res = await memberAPI.get(`/api/member-portal/attendance-stats?year=${year}&month=${month}`);
+      const fetchedAt = new Date();
+      cacheRef.current[key] = { data: res.data, fetchedAt };
       setStats(res.data);
+      setLastFetchedAt(fetchedAt);
     } catch (error) {
       console.error('Failed to fetch attendance stats');
     } finally {
@@ -354,7 +422,34 @@ const MemberAttendance = () => {
     const initial = isFirstMount.current;
     isFirstMount.current = false;
     fetchStats(viewYear, viewMonth, initial);
+    writeLastViewedMonth(viewYear, viewMonth);
   }, [viewYear, viewMonth, fetchStats]);
+
+  useEffect(() => {
+    if (loading || monthLoading) return;
+    const t = setTimeout(() => {
+      const now = new Date();
+      const limitY = now.getFullYear();
+      const limitM = now.getMonth() + 1;
+      const nearby = [];
+      let pY = viewYear, pM = viewMonth - 1;
+      if (pM < 1) { pM = 12; pY -= 1; }
+      nearby.push({ year: pY, month: pM });
+      let nY = viewYear, nM = viewMonth + 1;
+      if (nM > 12) { nM = 1; nY += 1; }
+      if (nY < limitY || (nY === limitY && nM <= limitM)) {
+        nearby.push({ year: nY, month: nM });
+      }
+      nearby.forEach(({ year, month }) => {
+        const key = `${year}-${month}`;
+        if (cacheRef.current[key]) return;
+        memberAPI.get(`/api/member-portal/attendance-stats?year=${year}&month=${month}`)
+          .then(r => { cacheRef.current[key] = { data: r.data, fetchedAt: new Date() }; })
+          .catch(() => {});
+      });
+    }, 400);
+    return () => clearTimeout(t);
+  }, [viewYear, viewMonth, loading, monthLoading]);
 
   const goToPrevMonth = () => {
     if (viewMonth === 1) {
@@ -476,6 +571,11 @@ const MemberAttendance = () => {
                 {language === 'ar' ? 'العودة للشهر الحالي' : 'Back to current month'}
               </button>
             )}
+            {lastFetchedAt && (
+              <span className={`text-[10px] ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                {language === 'ar' ? `محدَّث: ${formatFreshness(lastFetchedAt, language)}` : `Updated: ${formatFreshness(lastFetchedAt, language)}`}
+              </span>
+            )}
 
             {/* ── Month/Year Picker Dropdown ── */}
             {pickerOpen && (
@@ -484,7 +584,15 @@ const MemberAttendance = () => {
                 style={{ left: '50%', transform: 'translateX(-50%)' }}
               >
                 {/* Year selector */}
-                <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center justify-between mb-3 gap-1">
+                  <button
+                    onClick={() => setPickerYear(y => y - 5)}
+                    className={`px-1.5 py-1 rounded-lg text-[11px] font-bold transition-colors ${darkMode ? 'hover:bg-gray-700 text-gray-300' : 'hover:bg-gray-100 text-gray-600'}`}
+                    aria-label={language === 'ar' ? 'الرجوع 5 سنوات' : 'Back 5 years'}
+                    title={language === 'ar' ? '-5 سنوات' : '-5 years'}
+                  >
+                    {language === 'ar' ? '»' : '«'}
+                  </button>
                   <button
                     onClick={() => setPickerYear(y => y - 1)}
                     className={`p-1.5 rounded-lg transition-colors ${darkMode ? 'hover:bg-gray-700 text-gray-300' : 'hover:bg-gray-100 text-gray-600'}`}
@@ -495,11 +603,20 @@ const MemberAttendance = () => {
                   <span className={`font-bold text-sm ${darkMode ? 'text-white' : 'text-gray-800'}`}>{pickerYear}</span>
                   <button
                     onClick={() => setPickerYear(y => y + 1)}
-                    disabled={pickerYear >= today.getFullYear()}
-                    className={`p-1.5 rounded-lg transition-colors ${pickerYear >= today.getFullYear() ? 'opacity-30 cursor-not-allowed' : darkMode ? 'hover:bg-gray-700 text-gray-300' : 'hover:bg-gray-100 text-gray-600'}`}
+                    disabled={pickerYear >= todayY}
+                    className={`p-1.5 rounded-lg transition-colors ${pickerYear >= todayY ? 'opacity-30 cursor-not-allowed' : darkMode ? 'hover:bg-gray-700 text-gray-300' : 'hover:bg-gray-100 text-gray-600'}`}
                     aria-label={language === 'ar' ? 'السنة التالية' : 'Next year'}
                   >
                     {language === 'ar' ? <ChevronLeft className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+                  </button>
+                  <button
+                    onClick={() => setPickerYear(y => Math.min(todayY, y + 5))}
+                    disabled={pickerYear >= todayY}
+                    className={`px-1.5 py-1 rounded-lg text-[11px] font-bold transition-colors ${pickerYear >= todayY ? 'opacity-30 cursor-not-allowed' : darkMode ? 'hover:bg-gray-700 text-gray-300' : 'hover:bg-gray-100 text-gray-600'}`}
+                    aria-label={language === 'ar' ? 'التقدم 5 سنوات' : 'Forward 5 years'}
+                    title={language === 'ar' ? '+5 سنوات' : '+5 years'}
+                  >
+                    {language === 'ar' ? '«' : '»'}
                   </button>
                 </div>
 
@@ -613,7 +730,14 @@ const MemberAttendance = () => {
         </div>
 
         {/* ── Attendance Trend Chart ── */}
-        <AttendanceTrendChart darkMode={darkMode} language={language} />
+        <AttendanceTrendChart
+          darkMode={darkMode}
+          language={language}
+          onSelectMonth={(y, m) => {
+            setViewYear(y);
+            setViewMonth(m);
+          }}
+        />
 
         {/* ── Attendance Rate + Best Week ── */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
