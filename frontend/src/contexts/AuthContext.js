@@ -10,6 +10,7 @@ export const AuthProvider = ({ children }) => {
   const [token, setToken] = useState(() => localStorage.getItem('token'));
   const [loading, setLoading] = useState(true);
   const [selectedBranchId, setSelectedBranchId] = useState(() => localStorage.getItem('selectedBranchId') || 'all');
+  const [disabledFeatures, setDisabledFeatures] = useState([]);
 
   useEffect(() => {
     if (token) {
@@ -20,6 +21,22 @@ export const AuthProvider = ({ children }) => {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const r = await axios.get(`${API}/tenant/features`);
+        if (!cancelled) setDisabledFeatures(Array.isArray(r.data?.disabled_features) ? r.data.disabled_features : []);
+      } catch (_) {
+        if (!cancelled) setDisabledFeatures([]);
+      }
+    };
+    load();
+    return () => { cancelled = true; };
+  }, []);
+
+  const isFeatureEnabled = (key) => !key || !disabledFeatures.includes(key);
 
   const fetchUser = async () => {
     try {
@@ -94,7 +111,9 @@ export const AuthProvider = ({ children }) => {
       isAuthenticated,
       isAdmin,
       selectedBranchId,
-      switchBranch
+      switchBranch,
+      disabledFeatures,
+      isFeatureEnabled
     }}>
       {children}
     </AuthContext.Provider>

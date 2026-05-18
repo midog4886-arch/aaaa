@@ -45,6 +45,23 @@ def _days_remaining(end_at_iso):
         return None
 
 
+@router.get("/features")
+async def get_tenant_features(request: Request):
+    host = request.headers.get("host", "")
+    host_slug = _slug_from_host(host)
+    tenant = None
+    if host_slug:
+        try:
+            tenant = await control_db.tenants.find_one({"slug": host_slug}, {"_id": 0, "disabled_features": 1})
+        except Exception:
+            tenant = None
+    if not tenant:
+        tenant = get_current_tenant() or {}
+    raw = tenant.get("disabled_features") if isinstance(tenant, dict) else None
+    disabled = [str(x) for x in raw if isinstance(x, str)] if isinstance(raw, list) else []
+    return {"disabled_features": disabled}
+
+
 @router.get("/branding")
 async def get_branding(request: Request):
     host = request.headers.get("host", "")

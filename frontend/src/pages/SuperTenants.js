@@ -9,6 +9,31 @@ const ALL_FEATURES = [
   { key: 'tournaments', label: 'البطولات' },
 ];
 
+const HIDEABLE_MODULES = [
+  { key: 'invoices', label: 'الفواتير' },
+  { key: 'members', label: 'الأعضاء' },
+  { key: 'attendance', label: 'حضور الأعضاء' },
+  { key: 'coach_attendance', label: 'حضور المدربين' },
+  { key: 'activities_levels', label: 'الأنشطة والمستويات' },
+  { key: 'reports', label: 'التقارير' },
+  { key: 'daily_ledger', label: 'الدفتر المالي اليومي' },
+  { key: 'payment_vouchers', label: 'سندات الصرف' },
+  { key: 'expense_payments', label: 'مدفوعات المصاريف' },
+  { key: 'loyalty', label: 'الولاء' },
+  { key: 'renewals', label: 'التجديدات/تمديد الأيام/التجميد' },
+  { key: 'advertisements', label: 'الإعلانات' },
+  { key: 'social_publisher_module', label: 'النشر على السوشيال ميديا' },
+  { key: 'messages', label: 'الرسائل الداخلية' },
+  { key: 'push_notifications', label: 'الإشعارات Push' },
+  { key: 'backup', label: 'النسخ الاحتياطية' },
+  { key: 'tournaments_module', label: 'البطولات' },
+  { key: 'coach_advances', label: 'سلفيات المدربين' },
+  { key: 'coach_salaries', label: 'رواتب المدربين' },
+  { key: 'bank_reports', label: 'التقارير البنكية' },
+  { key: 'data_export', label: 'تصدير البيانات' },
+  { key: 'whatsapp_module', label: 'WhatsApp' },
+];
+
 const PLANS = [
   { value: 'starter', label: 'Starter', max_branches: 1, max_members: 100 },
   { value: 'pro', label: 'Pro', max_branches: 3, max_members: 500 },
@@ -102,6 +127,7 @@ function TenantForm({ initial, onSubmit, onCancel, isEdit }) {
     max_branches: initial?.max_branches ?? 1,
     max_members: initial?.max_members ?? 100,
     features: initial?.features || [],
+    disabled_features: initial?.disabled_features || [],
     owner_email: initial?.owner_email || '',
     status: initial?.status || 'active',
     admin_username: 'admin',
@@ -130,6 +156,11 @@ function TenantForm({ initial, onSubmit, onCancel, isEdit }) {
 
   const toggleFeat = (k) => {
     setF('features', form.features.includes(k) ? form.features.filter((x) => x !== k) : [...form.features, k]);
+  };
+
+  const toggleDisabled = (k) => {
+    const cur = form.disabled_features || [];
+    setF('disabled_features', cur.includes(k) ? cur.filter((x) => x !== k) : [...cur, k]);
   };
 
   const submit = async (e) => {
@@ -203,6 +234,23 @@ function TenantForm({ initial, onSubmit, onCancel, isEdit }) {
                 {f.label}
               </label>
             ))}
+          </div>
+        </div>
+        <div style={sx.field}>
+          <label style={sx.label}>إخفاء أقسام من واجهة الأكاديمية</label>
+          <div style={{ fontSize: 11, color: '#64748b', marginBottom: 8 }}>
+            علِّم القسم لإخفائه من الشريط الجانبي وصفحات هذه الأكاديمية. الافتراضي = كل الأقسام ظاهرة.
+          </div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+            {HIDEABLE_MODULES.map((f) => {
+              const isHidden = (form.disabled_features || []).includes(f.key);
+              return (
+                <label key={f.key} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 10px', border: '1px solid #cbd5e1', borderRadius: 99, fontSize: 13, cursor: 'pointer', background: isHidden ? '#fee2e2' : 'white' }}>
+                  <input type="checkbox" checked={isHidden} onChange={() => toggleDisabled(f.key)} style={{ margin: 0 }} />
+                  {f.label}
+                </label>
+              );
+            })}
           </div>
         </div>
         <div style={sx.field}>

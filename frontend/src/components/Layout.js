@@ -58,7 +58,7 @@ import {
 
 export const Sidebar = ({ isOpen, onClose }) => {
   const { t, language, toggleLanguage } = useLanguage();
-  const { logout, user, selectedBranchId, switchBranch } = useAuth();
+  const { logout, user, selectedBranchId, switchBranch, isFeatureEnabled } = useAuth();
   const navigate = useNavigate();
   const [branches, setBranches] = useState([]);
   const [unassignedCount, setUnassignedCount] = useState(0);
@@ -119,7 +119,7 @@ export const Sidebar = ({ isOpen, onClose }) => {
       icon: Receipt,
       single: true,
       items: [
-        { to: '/admin/invoices', icon: Receipt, label: 'invoices', permission: 'invoices' },
+        { to: '/admin/invoices', icon: Receipt, label: 'invoices', permission: 'invoices', feature: 'invoices' },
       ]
     },
     {
@@ -128,11 +128,11 @@ export const Sidebar = ({ isOpen, onClose }) => {
       label_en: 'Members',
       icon: Users,
       items: [
-        { to: '/admin/members', icon: Users, label: 'members', permission: 'members' },
-        { to: '/admin/renewals', icon: RefreshCcw, label: 'renewals', permission: 'renewals' },
+        { to: '/admin/members', icon: Users, label: 'members', permission: 'members', feature: 'members' },
+        { to: '/admin/renewals', icon: RefreshCcw, label: 'renewals', permission: 'renewals', feature: 'renewals' },
         { to: '/admin/member-card', icon: QrCode, label: 'member_card', permission: 'member-card' },
-        { to: '/admin/attendance', icon: ClipboardList, label: 'attendance', permission: 'attendance' },
-        { to: '/admin/today-attendance', icon: CheckCheck, label: 'today_attendance', permission: 'attendance' },
+        { to: '/admin/attendance', icon: ClipboardList, label: 'attendance', permission: 'attendance', feature: 'attendance' },
+        { to: '/admin/today-attendance', icon: CheckCheck, label: 'today_attendance', permission: 'attendance', feature: 'attendance' },
       ]
     },
     {
@@ -141,13 +141,13 @@ export const Sidebar = ({ isOpen, onClose }) => {
       label_en: 'Activities & Training',
       icon: Dumbbell,
       items: [
-        { to: '/admin/activities', icon: Dumbbell, label: 'activities', permission: 'activities' },
-        { to: '/admin/levels', icon: Layers, label: 'levels', permission: 'levels' },
-        { to: '/admin/schedule', icon: CalendarDays, label: 'schedule', permission: 'schedule' },
+        { to: '/admin/activities', icon: Dumbbell, label: 'activities', permission: 'activities', feature: 'activities_levels' },
+        { to: '/admin/levels', icon: Layers, label: 'levels', permission: 'levels', feature: 'activities_levels' },
+        { to: '/admin/schedule', icon: CalendarDays, label: 'schedule', permission: 'schedule', feature: 'activities_levels' },
         { to: '/admin/coach-ratings', icon: Star, label: 'coach_ratings', permission: 'coach-ratings' },
-        { to: '/admin/coach-attendance', icon: Clock, label: 'coach_attendance', permission: 'coach-attendance' },
+        { to: '/admin/coach-attendance', icon: Clock, label: 'coach_attendance', permission: 'coach-attendance', feature: 'coach_attendance' },
         { to: '/admin/supervisors', icon: UserCog, label: 'supervisors', permission: 'coaches' },
-        { to: '/admin/tournaments', icon: Trophy, label: 'tournaments', permission: 'tournaments' },
+        { to: '/admin/tournaments', icon: Trophy, label: 'tournaments', permission: 'tournaments', feature: 'tournaments_module' },
       ]
     },
     {
@@ -156,11 +156,11 @@ export const Sidebar = ({ isOpen, onClose }) => {
       label_en: 'Finance',
       icon: Wallet,
       items: [
-        { to: '/admin/invoices', icon: Receipt, label: 'invoices', permission: 'invoices' },
-        { to: '/admin/daily-ledger', icon: BookOpen, label: 'daily_ledger', permission: 'daily-ledger' },
-        { to: '/admin/day-extensions', icon: CalendarOff, label: 'day_extensions', permission: 'day-extensions' },
-        { to: '/admin/accounting', icon: Calculator, label: 'accounting', permission: 'accounting' },
-        { to: '/admin/coach-salaries', icon: Wallet, label: 'coach_salaries', permission: 'salaries' },
+        { to: '/admin/invoices', icon: Receipt, label: 'invoices', permission: 'invoices', feature: 'invoices' },
+        { to: '/admin/daily-ledger', icon: BookOpen, label: 'daily_ledger', permission: 'daily-ledger', feature: 'daily_ledger' },
+        { to: '/admin/day-extensions', icon: CalendarOff, label: 'day_extensions', permission: 'day-extensions', feature: 'renewals' },
+        { to: '/admin/accounting', icon: Calculator, label: 'accounting', permission: 'accounting', feature: 'expense_payments' },
+        { to: '/admin/coach-salaries', icon: Wallet, label: 'coach_salaries', permission: 'salaries', feature: 'coach_salaries' },
         { to: '/admin/store', icon: Package, label: 'store', permission: 'store' },
       ]
     },
@@ -170,11 +170,11 @@ export const Sidebar = ({ isOpen, onClose }) => {
       label_en: 'Communication',
       icon: Radio,
       items: [
-        { to: '/admin/whatsapp', icon: MessageCircle, label: 'messages', permission: 'messages' },
-        { to: '/admin/whatsapp-bulk', icon: MessageCircle, label: 'whatsapp_bulk', permission: 'messages' },
-        { to: '/admin/advertisements', icon: Megaphone, label: 'advertisements', permission: 'advertisements' },
+        { to: '/admin/whatsapp', icon: MessageCircle, label: 'messages', permission: 'messages', feature: 'messages' },
+        { to: '/admin/whatsapp-bulk', icon: MessageCircle, label: 'whatsapp_bulk', permission: 'messages', feature: 'whatsapp_module' },
+        { to: '/admin/advertisements', icon: Megaphone, label: 'advertisements', permission: 'advertisements', feature: 'advertisements' },
         { to: '/admin/daily-videos', icon: Video, label: 'daily_videos', permission: 'daily-videos' },
-        { to: '/admin/social-publisher', icon: Radio, label: 'social_publisher', permission: 'social-publisher' },
+        { to: '/admin/social-publisher', icon: Radio, label: 'social_publisher', permission: 'social-publisher', feature: 'social_publisher_module' },
       ]
     },
     {
@@ -183,8 +183,8 @@ export const Sidebar = ({ isOpen, onClose }) => {
       label_en: 'More',
       icon: Trophy,
       items: [
-        { to: '/admin/loyalty', icon: Trophy, label: 'loyalty', permission: 'loyalty' },
-        { to: '/admin/reports', icon: BarChart3, label: 'reports', permission: 'reports' },
+        { to: '/admin/loyalty', icon: Trophy, label: 'loyalty', permission: 'loyalty', feature: 'loyalty' },
+        { to: '/admin/reports', icon: BarChart3, label: 'reports', permission: 'reports', feature: 'reports' },
       ]
     },
     {
@@ -196,7 +196,7 @@ export const Sidebar = ({ isOpen, onClose }) => {
         { to: '/admin/settings', icon: Settings, label: 'settings', permission: 'settings' },
         ...(isAdmin ? [{ to: '/admin/branches', icon: Building2, label: 'branches', permission: 'branches' }] : []),
         ...(isAdmin ? [{ to: '/admin/users', icon: Users, label: 'users', permission: 'users' }] : []),
-        ...(isAdmin ? [{ to: '/admin/backup', icon: HardDrive, label: 'backup', permission: 'backup' }] : []),
+        ...(isAdmin ? [{ to: '/admin/backup', icon: HardDrive, label: 'backup', permission: 'backup', feature: 'backup' }] : []),
         ...(isAdmin ? [{ to: '/admin/audit', icon: ShieldCheck, label: 'audit_log', permission: 'settings' }] : []),
         ...(isAdmin ? [{ to: '/admin/operation-passwords', icon: Lock, label: 'operation_passwords', permission: 'settings' }] : []),
         ...(isAdmin ? [{ to: '/admin/ops-alerts', icon: AlertTriangle, label: 'ops_alerts', permission: 'settings' }] : []),
@@ -207,7 +207,9 @@ export const Sidebar = ({ isOpen, onClose }) => {
 
   const filteredGroups = navGroups.map(group => ({
     ...group,
-    items: group.items.filter(item => isAdmin || userPermissions.includes(item.permission))
+    items: group.items
+      .filter(item => isAdmin || userPermissions.includes(item.permission))
+      .filter(item => isFeatureEnabled(item.feature))
   })).filter(group => group.items.length > 0);
 
   useEffect(() => {

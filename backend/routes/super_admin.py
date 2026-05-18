@@ -232,6 +232,7 @@ class TenantUpdate(BaseModel):
     max_branches: Optional[int] = None
     max_members: Optional[int] = None
     features: Optional[List[str]] = None
+    disabled_features: Optional[List[str]] = None
     owner_email: Optional[str] = None
     status: Optional[str] = None
     billing_cycle: Optional[str] = None
