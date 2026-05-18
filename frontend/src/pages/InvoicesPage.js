@@ -168,7 +168,7 @@ export const InvoicesPage = () => {
     parseActivityForLevel, subtotal, vatAmount, totalBeforeDiscount, totalDiscount, total, handleMemberSelect, addProductToInvoice,
     addActivityToInvoice, validateCoupon, removeCoupon, updateItemFee, updateItemDate, updateItemWeeks, removeItem, updateItemSchedule,
     updateItemLevel, handleAcceptFullLevel, handleRejectFullLevel, initLevelSelector, selectLevelActivity, selectLevelTime,
-    goBackLevelSelector, resetLevelSelector, unlockFeeEdit, handleCreateInvoice, openEditDialog, closeCreateDialog, EDIT_PASSWORD
+    goBackLevelSelector, resetLevelSelector, unlockFeeEdit, handleCreateInvoice, openEditDialog, closeCreateDialog
   } = invoiceForm;
 
   const { savingPdf, sharingWhatsApp, handleSaveAsPdfOnly, handleSaveAsPdf, handleShareWhatsApp, handleSendWhatsApp, handlePrint, handlePrintRegistrationForm } = viewHandlers;

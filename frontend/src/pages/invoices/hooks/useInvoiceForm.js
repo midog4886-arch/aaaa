@@ -358,7 +358,6 @@ export const useInvoiceForm = ({
     handleMemberSelect, addProductToInvoice, addActivityToInvoice, validateCoupon, removeCoupon,
     updateItemFee, updateItemDate, updateItemWeeks, removeItem, updateItemSchedule, updateItemLevel,
     handleAcceptFullLevel, handleRejectFullLevel, initLevelSelector, selectLevelActivity, selectLevelTime,
-    goBackLevelSelector, resetLevelSelector, unlockFeeEdit, handleCreateInvoice, openEditDialog, closeCreateDialog,
-    EDIT_PASSWORD
+    goBackLevelSelector, resetLevelSelector, unlockFeeEdit, handleCreateInvoice, openEditDialog, closeCreateDialog
   };
 };
