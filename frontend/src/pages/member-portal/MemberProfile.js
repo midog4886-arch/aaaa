@@ -55,6 +55,7 @@ const MemberProfile = () => {
   const [email, setEmail] = useState('');
   const [address, setAddress] = useState('');
   const [emergencyContact, setEmergencyContact] = useState('');
+  const [preferredLanguage, setPreferredLanguage] = useState('ar');
   const [imgError, setImgError] = useState(false);
   const fileInputRef = useRef(null);
 
@@ -81,6 +82,7 @@ const MemberProfile = () => {
       setEmail(data.email || '');
       setAddress(data.address || '');
       setEmergencyContact(data.emergency_contact || '');
+      setPreferredLanguage(data.preferred_language === 'en' ? 'en' : 'ar');
       setImgError(false);
     } catch (err) {
       console.error('Failed to load profile', err);
@@ -153,6 +155,7 @@ const MemberProfile = () => {
         address,
         emergency_contact: emergencyContact,
         photo: photo || '',
+        preferred_language: preferredLanguage,
       };
       const res = await memberAPI.put('/api/member-portal/profile', payload);
       const updated = res.data?.profile;
@@ -565,6 +568,28 @@ const MemberProfile = () => {
                     {t(
                       'سيتم استخدامه فقط في حالات الطوارئ.',
                       'Used only in case of emergencies.'
+                    )}
+                  </p>
+                </div>
+
+                <div>
+                  <Label htmlFor="member-preferred-language" className={labelClass}>
+                    {t('لغة التواصل', 'Communication language')}
+                  </Label>
+                  <select
+                    id="member-preferred-language"
+                    value={preferredLanguage}
+                    onChange={(e) => setPreferredLanguage(e.target.value)}
+                    className={inputClass}
+                    data-testid="member-preferred-language-select"
+                  >
+                    <option value="ar">{t('العربية', 'Arabic')}</option>
+                    <option value="en">{t('الإنجليزية', 'English')}</option>
+                  </select>
+                  <p className={`mt-1 text-xs ${subtleClass}`}>
+                    {t(
+                      'اللغة المفضلة لاستلام الفواتير والرسائل عبر واتساب.',
+                      'Preferred language for invoices and WhatsApp messages.'
                     )}
                   </p>
                 </div>

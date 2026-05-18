@@ -24,7 +24,10 @@ export const useViewInvoiceHandlers = ({
       toast.success(language === 'ar' ? 'تم حفظ الصورة! يمكنك الآن مشاركتها على الواتساب' : 'Image saved! You can now share it on WhatsApp');
       const phone = selectedInvoice.customer_phone?.replace(/^0/, '966') || '';
       if (phone) {
-        const message = `مرحباً، مرفق فاتورتكم من ${COMPANY_INFO.name_ar} رقم #${selectedInvoice.id.slice(0, 8)}`;
+        const memberLang = selectedInvoice.customer_preferred_language === 'en' ? 'en' : 'ar';
+        const message = memberLang === 'en'
+          ? `Hello, please find attached your invoice from ${COMPANY_INFO.name_ar} no. #${selectedInvoice.id.slice(0, 8)}`
+          : `مرحباً، مرفق فاتورتكم من ${COMPANY_INFO.name_ar} رقم #${selectedInvoice.id.slice(0, 8)}`;
         setTimeout(() => { window.open(`https://wa.me/${phone}?text=${encodeURIComponent(message)}`, '_blank'); }, 500);
       }
     } catch (error) {
@@ -62,10 +65,31 @@ export const useViewInvoiceHandlers = ({
       toast.success(language === 'ar' ? 'تم حفظ الفاتورة كـ PDF! يمكنك إرفاقها في الواتساب' : 'Invoice saved as PDF! You can attach it in WhatsApp');
       const phone = selectedInvoice.customer_phone?.replace(/^0/, '966') || '';
       if (phone) {
-        const pdfItemsList = selectedInvoice.items?.map((item, i) => { let line = `${i + 1}. ${item.activity_name} - ${item.fee} ر.س`; if (item.schedule) line += `\n   📅 ${item.schedule}`; const startDate = item.start_date || ((item.period || '').split(' - ')[0] || '').trim(); const startTs = startDate ? new Date(startDate).getTime() : NaN; if (!isNaN(startTs)) line += `\n   ▶️ تاريخ البداية: ${new Date(startTs).toLocaleDateString('ar-SA')}`; const endDate = item.end_date || ((item.period || '').split(' - ')[1] || '').trim(); const endTs = endDate ? new Date(endDate).getTime() : NaN; if (!isNaN(endTs)) line += `\n   ⏳ تاريخ الانتهاء: ${new Date(endTs).toLocaleDateString('ar-SA')}`; return line; }).join('\n') || '';
-        const pdfTerms = INVOICE_TERMS.ar.map(t => `• ${t}`).join('\n');
+        const memberLang = selectedInvoice.customer_preferred_language === 'en' ? 'en' : 'ar';
+        const dateLocale = memberLang === 'en' ? 'en-US' : 'ar-SA';
+        const pdfItemsList = selectedInvoice.items?.map((item, i) => {
+          let line = memberLang === 'en'
+            ? `${i + 1}. ${item.activity_name} - ${item.fee} SAR`
+            : `${i + 1}. ${item.activity_name} - ${item.fee} ر.س`;
+          if (item.schedule) line += `\n   📅 ${item.schedule}`;
+          const startDate = item.start_date || ((item.period || '').split(' - ')[0] || '').trim();
+          const startTs = startDate ? new Date(startDate).getTime() : NaN;
+          if (!isNaN(startTs)) line += memberLang === 'en'
+            ? `\n   ▶️ Start: ${new Date(startTs).toLocaleDateString(dateLocale)}`
+            : `\n   ▶️ تاريخ البداية: ${new Date(startTs).toLocaleDateString(dateLocale)}`;
+          const endDate = item.end_date || ((item.period || '').split(' - ')[1] || '').trim();
+          const endTs = endDate ? new Date(endDate).getTime() : NaN;
+          if (!isNaN(endTs)) line += memberLang === 'en'
+            ? `\n   ⏳ End: ${new Date(endTs).toLocaleDateString(dateLocale)}`
+            : `\n   ⏳ تاريخ الانتهاء: ${new Date(endTs).toLocaleDateString(dateLocale)}`;
+          return line;
+        }).join('\n') || '';
+        const pdfTerms = (INVOICE_TERMS[memberLang] || INVOICE_TERMS.ar).map(tt => `• ${tt}`).join('\n');
         const pdfVat = selectedInvoice.vat_amount || 0;
-        const message = `📲 *لتحميل أيقونة تطبيق الأعضاء اندرويد اضغط على الرابط:*\nhttps://play.google.com/store/apps/details?id=com.champions.academy.member\n🍎 *لتحميل الأيفون اضغط على الرابط:*\nhttps://adaa-alabtal.replit.app/member-login\n👥 *انضم لمجموعتنا على الواتساب:*\nhttps://chat.whatsapp.com/JDf5d5mwAcxBy6nXA9gvhs\n━━━━━━━━━━━━━━\n🏆 *${COMPANY_INFO.name_ar}*\n━━━━━━━━━━━━━━\n📄 *فاتورة رقم:* #${invoiceNum}\n📅 *التاريخ:* ${new Date(selectedInvoice.created_at).toLocaleDateString('ar-SA')}\n👤 *العميل:* ${selectedInvoice.customer_name_ar || selectedInvoice.member_name}\n🔢 *رقم العضوية:* #${selectedInvoice.member_code || '-'}\n━━━━━━━━━━━━━━\n*الأنشطة والمواعيد:*\n${pdfItemsList}\n━━━━━━━━━━━━━━\n💰 *المجموع:* ${selectedInvoice.subtotal} ر.س\n${selectedInvoice.discount > 0 ? `🎁 *الخصم:* ${selectedInvoice.discount} ر.س\n` : ''}📊 *ضريبة القيمة المضافة (15%):* ${pdfVat} ر.س\n━━━━━━━━━━━━━━\n✨ *الإجمالي:* ${selectedInvoice.total} ر.س\n📌 *الحالة:* ${selectedInvoice.status === 'paid' ? '✅ مدفوعة' : '⏳ غير مدفوعة'}\n━━━━━━━━━━━━━━\n⚠️ *شروط وأحكام:*\n${pdfTerms}\n━━━━━━━━━━━━━━\n🏛️ الرقم الضريبي: ${COMPANY_INFO.tax_number}\n📋 السجل التجاري: ${COMPANY_INFO.commercial_reg}`;
+        const currency = memberLang === 'en' ? 'SAR' : 'ر.س';
+        const message = memberLang === 'en'
+          ? `📲 *Download the Android member app:*\nhttps://play.google.com/store/apps/details?id=com.champions.academy.member\n🍎 *For iPhone open:*\nhttps://adaa-alabtal.replit.app/member-login\n👥 *Join our WhatsApp group:*\nhttps://chat.whatsapp.com/JDf5d5mwAcxBy6nXA9gvhs\n━━━━━━━━━━━━━━\n🏆 *${COMPANY_INFO.name_ar}*\n━━━━━━━━━━━━━━\n📄 *Invoice No.:* #${invoiceNum}\n📅 *Date:* ${new Date(selectedInvoice.created_at).toLocaleDateString(dateLocale)}\n👤 *Customer:* ${selectedInvoice.customer_name_ar || selectedInvoice.member_name}\n🔢 *Member No.:* #${selectedInvoice.member_code || '-'}\n━━━━━━━━━━━━━━\n*Activities & Schedule:*\n${pdfItemsList}\n━━━━━━━━━━━━━━\n💰 *Subtotal:* ${selectedInvoice.subtotal} ${currency}\n${selectedInvoice.discount > 0 ? `🎁 *Discount:* ${selectedInvoice.discount} ${currency}\n` : ''}📊 *VAT (15%):* ${pdfVat} ${currency}\n━━━━━━━━━━━━━━\n✨ *Total:* ${selectedInvoice.total} ${currency}\n📌 *Status:* ${selectedInvoice.status === 'paid' ? '✅ Paid' : '⏳ Unpaid'}\n━━━━━━━━━━━━━━\n⚠️ *Terms & Conditions:*\n${pdfTerms}\n━━━━━━━━━━━━━━\n🏛️ Tax No.: ${COMPANY_INFO.tax_number}\n📋 CR: ${COMPANY_INFO.commercial_reg}`
+          : `📲 *لتحميل أيقونة تطبيق الأعضاء اندرويد اضغط على الرابط:*\nhttps://play.google.com/store/apps/details?id=com.champions.academy.member\n🍎 *لتحميل الأيفون اضغط على الرابط:*\nhttps://adaa-alabtal.replit.app/member-login\n👥 *انضم لمجموعتنا على الواتساب:*\nhttps://chat.whatsapp.com/JDf5d5mwAcxBy6nXA9gvhs\n━━━━━━━━━━━━━━\n🏆 *${COMPANY_INFO.name_ar}*\n━━━━━━━━━━━━━━\n📄 *فاتورة رقم:* #${invoiceNum}\n📅 *التاريخ:* ${new Date(selectedInvoice.created_at).toLocaleDateString('ar-SA')}\n👤 *العميل:* ${selectedInvoice.customer_name_ar || selectedInvoice.member_name}\n🔢 *رقم العضوية:* #${selectedInvoice.member_code || '-'}\n━━━━━━━━━━━━━━\n*الأنشطة والمواعيد:*\n${pdfItemsList}\n━━━━━━━━━━━━━━\n💰 *المجموع:* ${selectedInvoice.subtotal} ر.س\n${selectedInvoice.discount > 0 ? `🎁 *الخصم:* ${selectedInvoice.discount} ر.س\n` : ''}📊 *ضريبة القيمة المضافة (15%):* ${pdfVat} ر.س\n━━━━━━━━━━━━━━\n✨ *الإجمالي:* ${selectedInvoice.total} ر.س\n📌 *الحالة:* ${selectedInvoice.status === 'paid' ? '✅ مدفوعة' : '⏳ غير مدفوعة'}\n━━━━━━━━━━━━━━\n⚠️ *شروط وأحكام:*\n${pdfTerms}\n━━━━━━━━━━━━━━\n🏛️ الرقم الضريبي: ${COMPANY_INFO.tax_number}\n📋 السجل التجاري: ${COMPANY_INFO.commercial_reg}`;
         setTimeout(() => { window.open(`https://wa.me/${phone}?text=${encodeURIComponent(message)}`, '_blank'); }, 500);
       } else { toast.info(language === 'ar' ? 'لا يوجد رقم جوال للعميل' : 'No phone number for customer'); }
     } catch (error) {
@@ -82,7 +106,10 @@ export const useViewInvoiceHandlers = ({
       const invoiceNum = selectedInvoice.invoice_number || selectedInvoice.id.slice(0, 8);
       const fileName = `فاتورة_${invoiceNum}.png`;
       const file = new File([blob], fileName, { type: 'image/png' });
-      const message = `📄 فاتورة رقم #${invoiceNum} - الإجمالي: ${selectedInvoice.total} ر.س\nشركة اداء الابطال العالمية للرياضة`;
+      const memberLang = selectedInvoice.customer_preferred_language === 'en' ? 'en' : 'ar';
+      const message = memberLang === 'en'
+        ? `📄 Invoice No. #${invoiceNum} - Total: ${selectedInvoice.total} SAR\nChampions Academy`
+        : `📄 فاتورة رقم #${invoiceNum} - الإجمالي: ${selectedInvoice.total} ر.س\nشركة اداء الابطال العالمية للرياضة`;
       if (navigator.canShare && navigator.canShare({ files: [file] })) {
         await navigator.share({ text: message, files: [file] });
         toast.success(language === 'ar' ? 'تمت المشاركة بنجاح' : 'Shared successfully');
@@ -97,8 +124,13 @@ export const useViewInvoiceHandlers = ({
       if (error.name !== 'AbortError') {
         const phone = selectedInvoice.customer_phone?.replace(/^0/, '966') || '';
         const invoiceNum = selectedInvoice.invoice_number || selectedInvoice.id.slice(0, 8);
-        const items = selectedInvoice.items?.map(item => `• ${item.activity_name}: ${item.fee} ر.س`).join('\n') || '';
-        const message = `السلام عليكم،\n\n📄 *فاتورة رقم #${invoiceNum}*\n\n${items}\n\n✅ *الإجمالي: ${selectedInvoice.total} ر.س*\n\nشكراً لكم،\nشركة اداء الابطال العالمية للرياضة`;
+        const memberLang = selectedInvoice.customer_preferred_language === 'en' ? 'en' : 'ar';
+        const items = selectedInvoice.items?.map(item => memberLang === 'en'
+          ? `• ${item.activity_name}: ${item.fee} SAR`
+          : `• ${item.activity_name}: ${item.fee} ر.س`).join('\n') || '';
+        const message = memberLang === 'en'
+          ? `Hello,\n\n📄 *Invoice No. #${invoiceNum}*\n\n${items}\n\n✅ *Total: ${selectedInvoice.total} SAR*\n\nThank you,\nChampions Academy`
+          : `السلام عليكم،\n\n📄 *فاتورة رقم #${invoiceNum}*\n\n${items}\n\n✅ *الإجمالي: ${selectedInvoice.total} ر.س*\n\nشكراً لكم،\nشركة اداء الابطال العالمية للرياضة`;
         if (phone) { window.open(`https://wa.me/${phone}?text=${encodeURIComponent(message)}`, '_blank'); }
         else { navigator.clipboard?.writeText(message); toast.info(language === 'ar' ? 'تم نسخ الرسالة' : 'Message copied'); }
       }
@@ -110,9 +142,30 @@ export const useViewInvoiceHandlers = ({
     if (!phone) { toast.error(language === 'ar' ? 'لا يوجد رقم جوال' : 'No phone number'); return; }
     const formattedPhone = phone.replace(/^0/, '966');
     const vatAmount = invoice.vat_amount || 0;
-    const itemsList = invoice.items?.map((item, i) => { let line = `${i + 1}. ${item.activity_name} - ${item.fee} ر.س`; if (item.schedule) line += `\n   📅 ${item.schedule}`; const startDate = item.start_date || ((item.period || '').split(' - ')[0] || '').trim(); const startTs = startDate ? new Date(startDate).getTime() : NaN; if (!isNaN(startTs)) line += `\n   ▶️ تاريخ البداية: ${new Date(startTs).toLocaleDateString('ar-SA')}`; const endDate = item.end_date || ((item.period || '').split(' - ')[1] || '').trim(); const endTs = endDate ? new Date(endDate).getTime() : NaN; if (!isNaN(endTs)) line += `\n   ⏳ تاريخ الانتهاء: ${new Date(endTs).toLocaleDateString('ar-SA')}`; return line; }).join('\n') || '';
-    const termsText = INVOICE_TERMS.ar.map(t => `• ${t}`).join('\n');
-    const message = `📲 *لتحميل أيقونة تطبيق الأعضاء اندرويد اضغط على الرابط:*\nhttps://play.google.com/store/apps/details?id=com.champions.academy.member\n🍎 *لتحميل الأيفون اضغط على الرابط:*\nhttps://adaa-alabtal.replit.app/member-login\n👥 *انضم لمجموعتنا على الواتساب:*\nhttps://chat.whatsapp.com/JDf5d5mwAcxBy6nXA9gvhs\n━━━━━━━━━━━━━━\n🏆 *${COMPANY_INFO.name_ar}*\n━━━━━━━━━━━━━━\n📄 *فاتورة رقم:* #${invoice.id.slice(0, 8)}\n📅 *التاريخ:* ${new Date(invoice.created_at).toLocaleDateString('ar-SA')}\n👤 *العميل:* ${invoice.customer_name_ar || invoice.member_name}\n🔢 *رقم العضوية:* #${invoice.member_code || '-'}\n━━━━━━━━━━━━━━\n*الأنشطة والمواعيد:*\n${itemsList}\n━━━━━━━━━━━━━━\n💰 *المجموع:* ${invoice.subtotal} ر.س\n${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ر.س\n` : ''}📊 *ضريبة القيمة المضافة (15%):* ${vatAmount} ر.س\n━━━━━━━━━━━━━━\n✨ *الإجمالي:* ${invoice.total} ر.س\n📌 *الحالة:* ${invoice.status === 'paid' ? '✅ مدفوعة' : '⏳ غير مدفوعة'}\n━━━━━━━━━━━━━━\n⚠️ *شروط وأحكام:*\n${termsText}\n━━━━━━━━━━━━━━\n🏛️ الرقم الضريبي: ${COMPANY_INFO.tax_number}\n📋 السجل التجاري: ${COMPANY_INFO.commercial_reg}`;
+    const memberLang = invoice.customer_preferred_language === 'en' ? 'en' : 'ar';
+    const dateLocale = memberLang === 'en' ? 'en-US' : 'ar-SA';
+    const currency = memberLang === 'en' ? 'SAR' : 'ر.س';
+    const itemsList = invoice.items?.map((item, i) => {
+      let line = memberLang === 'en'
+        ? `${i + 1}. ${item.activity_name} - ${item.fee} SAR`
+        : `${i + 1}. ${item.activity_name} - ${item.fee} ر.س`;
+      if (item.schedule) line += `\n   📅 ${item.schedule}`;
+      const startDate = item.start_date || ((item.period || '').split(' - ')[0] || '').trim();
+      const startTs = startDate ? new Date(startDate).getTime() : NaN;
+      if (!isNaN(startTs)) line += memberLang === 'en'
+        ? `\n   ▶️ Start: ${new Date(startTs).toLocaleDateString(dateLocale)}`
+        : `\n   ▶️ تاريخ البداية: ${new Date(startTs).toLocaleDateString(dateLocale)}`;
+      const endDate = item.end_date || ((item.period || '').split(' - ')[1] || '').trim();
+      const endTs = endDate ? new Date(endDate).getTime() : NaN;
+      if (!isNaN(endTs)) line += memberLang === 'en'
+        ? `\n   ⏳ End: ${new Date(endTs).toLocaleDateString(dateLocale)}`
+        : `\n   ⏳ تاريخ الانتهاء: ${new Date(endTs).toLocaleDateString(dateLocale)}`;
+      return line;
+    }).join('\n') || '';
+    const termsText = (INVOICE_TERMS[memberLang] || INVOICE_TERMS.ar).map(tt => `• ${tt}`).join('\n');
+    const message = memberLang === 'en'
+      ? `📲 *Download the Android member app:*\nhttps://play.google.com/store/apps/details?id=com.champions.academy.member\n🍎 *For iPhone open:*\nhttps://adaa-alabtal.replit.app/member-login\n👥 *Join our WhatsApp group:*\nhttps://chat.whatsapp.com/JDf5d5mwAcxBy6nXA9gvhs\n━━━━━━━━━━━━━━\n🏆 *${COMPANY_INFO.name_ar}*\n━━━━━━━━━━━━━━\n📄 *Invoice No.:* #${invoice.id.slice(0, 8)}\n📅 *Date:* ${new Date(invoice.created_at).toLocaleDateString(dateLocale)}\n👤 *Customer:* ${invoice.customer_name_ar || invoice.member_name}\n🔢 *Member No.:* #${invoice.member_code || '-'}\n━━━━━━━━━━━━━━\n*Activities & Schedule:*\n${itemsList}\n━━━━━━━━━━━━━━\n💰 *Subtotal:* ${invoice.subtotal} ${currency}\n${invoice.discount > 0 ? `🎁 *Discount:* ${invoice.discount} ${currency}\n` : ''}📊 *VAT (15%):* ${vatAmount} ${currency}\n━━━━━━━━━━━━━━\n✨ *Total:* ${invoice.total} ${currency}\n📌 *Status:* ${invoice.status === 'paid' ? '✅ Paid' : '⏳ Unpaid'}\n━━━━━━━━━━━━━━\n⚠️ *Terms & Conditions:*\n${termsText}\n━━━━━━━━━━━━━━\n🏛️ Tax No.: ${COMPANY_INFO.tax_number}\n📋 CR: ${COMPANY_INFO.commercial_reg}`
+      : `📲 *لتحميل أيقونة تطبيق الأعضاء اندرويد اضغط على الرابط:*\nhttps://play.google.com/store/apps/details?id=com.champions.academy.member\n🍎 *لتحميل الأيفون اضغط على الرابط:*\nhttps://adaa-alabtal.replit.app/member-login\n👥 *انضم لمجموعتنا على الواتساب:*\nhttps://chat.whatsapp.com/JDf5d5mwAcxBy6nXA9gvhs\n━━━━━━━━━━━━━━\n🏆 *${COMPANY_INFO.name_ar}*\n━━━━━━━━━━━━━━\n📄 *فاتورة رقم:* #${invoice.id.slice(0, 8)}\n📅 *التاريخ:* ${new Date(invoice.created_at).toLocaleDateString(dateLocale)}\n👤 *العميل:* ${invoice.customer_name_ar || invoice.member_name}\n🔢 *رقم العضوية:* #${invoice.member_code || '-'}\n━━━━━━━━━━━━━━\n*الأنشطة والمواعيد:*\n${itemsList}\n━━━━━━━━━━━━━━\n💰 *المجموع:* ${invoice.subtotal} ${currency}\n${invoice.discount > 0 ? `🎁 *الخصم:* ${invoice.discount} ${currency}\n` : ''}📊 *ضريبة القيمة المضافة (15%):* ${vatAmount} ${currency}\n━━━━━━━━━━━━━━\n✨ *الإجمالي:* ${invoice.total} ${currency}\n📌 *الحالة:* ${invoice.status === 'paid' ? '✅ مدفوعة' : '⏳ غير مدفوعة'}\n━━━━━━━━━━━━━━\n⚠️ *شروط وأحكام:*\n${termsText}\n━━━━━━━━━━━━━━\n🏛️ الرقم الضريبي: ${COMPANY_INFO.tax_number}\n📋 السجل التجاري: ${COMPANY_INFO.commercial_reg}`;
     window.open(`https://wa.me/${formattedPhone}?text=${encodeURIComponent(message)}`, '_blank');
   };
 

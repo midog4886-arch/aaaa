@@ -233,6 +233,7 @@ async def get_member_profile(member: dict = Depends(get_current_member)):
         "address": member.get("address"),
         "emergency_contact": member.get("emergency_contact"),
         "photo": member.get("photo", ""),
+        "preferred_language": member.get("preferred_language", "ar"),
         "created_at": member.get("created_at"),
         "dark_mode": member.get("preferences", {}).get("dark_mode", False),
         "language": normalize_lang(member.get("preferences", {}).get("language")),
@@ -252,6 +253,7 @@ class MemberProfileUpdate(BaseModel):
     address: Optional[str] = None
     emergency_contact: Optional[str] = None
     photo: Optional[str] = None  # base64 data URL, "" to clear
+    preferred_language: Optional[str] = None
 
 
 # Lightweight format / length guards for member-editable text fields.
@@ -323,6 +325,10 @@ async def update_member_profile(
                 )
             update_fields["photo"] = photo
 
+    if data.preferred_language is not None:
+        lang = "en" if str(data.preferred_language).lower().startswith("en") else "ar"
+        update_fields["preferred_language"] = lang
+
     if update_fields:
         await db.members.update_one(
             {"id": member["id"]},
@@ -344,6 +350,7 @@ async def update_member_profile(
             "address": updated.get("address"),
             "emergency_contact": updated.get("emergency_contact"),
             "photo": updated.get("photo", ""),
+            "preferred_language": updated.get("preferred_language", "ar"),
             "created_at": updated.get("created_at"),
         }
     }

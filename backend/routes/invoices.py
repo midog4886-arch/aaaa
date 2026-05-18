@@ -102,6 +102,7 @@ class Invoice(BaseModel):
     customer_name_ar: Optional[str] = ""
     customer_phone: Optional[str] = ""
     customer_address: Optional[str] = ""
+    customer_preferred_language: Optional[str] = "ar"
     guardian_name_ar: Optional[str] = ""
     guardian_name: Optional[str] = ""
     supervisor_name: Optional[str] = ""
@@ -380,6 +381,7 @@ async def create_invoice(invoice: InvoiceCreate, current_user: dict = Depends(ge
         "customer_name_ar": display_name,
         "customer_phone": customer_phone,
         "customer_address": invoice.customer_address,
+        "customer_preferred_language": (member.get("preferred_language") if member else None) or "ar",
         "supervisor_name": supervisor_name,
         "tax_number": COMPANY_TAX_NUMBER,
         "commercial_reg": COMPANY_COMMERCIAL_REG,

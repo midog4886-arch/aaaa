@@ -580,6 +580,7 @@ class MemberBase(BaseModel):
     phone: str
     email: Optional[str] = ""
     notes: Optional[str] = ""
+    preferred_language: Optional[str] = "ar"
 
 class MemberCreate(MemberBase):
     activities: List[MemberActivity] = []
@@ -595,6 +596,7 @@ class MemberUpdate(BaseModel):
     notes: Optional[str] = None
     activities: Optional[List[MemberActivity]] = None
     branch_id: Optional[str] = None
+    preferred_language: Optional[str] = None
 
 class Member(MemberBase):
     id: str

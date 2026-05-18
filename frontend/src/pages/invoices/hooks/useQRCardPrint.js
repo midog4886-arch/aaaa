@@ -12,7 +12,8 @@ export const useQRCardPrint = ({ language }) => {
       id: invoice.member_id,
       name_ar: invoice.customer_name_ar || invoice.member_name,
       member_code: invoice.member_code,
-      phone: invoice.customer_phone
+      phone: invoice.customer_phone,
+      preferred_language: invoice.customer_preferred_language === 'en' ? 'en' : 'ar'
     });
     setIsQRCardDialogOpen(true);
   };
@@ -63,7 +64,10 @@ export const useQRCardPrint = ({ language }) => {
             return;
           }
           const fileName = `qr-${qrCardMember.member_code}.png`;
-          const caption = `🏆 *شركة اداء الابطال العالمية للرياضة*\n━━━━━━━━━━━━━━\n🎫 *بطاقة العضوية*\n\n👤 *الاسم:* ${qrCardMember.name_ar}\n🔢 *رقم العضوية:* #${qrCardMember.member_code}\n\nامسح الكود عند الدخول للأكاديمية ✅`;
+          const memberLang = qrCardMember.preferred_language === 'en' ? 'en' : 'ar';
+          const caption = memberLang === 'en'
+            ? `🏆 *Champions Academy*\n━━━━━━━━━━━━━━\n🎫 *Membership Card*\n\n👤 *Name:* ${qrCardMember.name_ar}\n🔢 *Member No.:* #${qrCardMember.member_code}\n\nScan the code at the academy entrance ✅`
+            : `🏆 *شركة اداء الابطال العالمية للرياضة*\n━━━━━━━━━━━━━━\n🎫 *بطاقة العضوية*\n\n👤 *الاسم:* ${qrCardMember.name_ar}\n🔢 *رقم العضوية:* #${qrCardMember.member_code}\n\nامسح الكود عند الدخول للأكاديمية ✅`;
           try {
             const file = new File([blob], fileName, { type: 'image/png' });
             if (navigator.canShare && navigator.canShare({ files: [file] })) {
@@ -81,7 +85,9 @@ export const useQRCardPrint = ({ language }) => {
             const link = document.createElement('a');
             link.href = url; link.download = fileName; link.click();
             setTimeout(() => URL.revokeObjectURL(url), 1000);
-            const fallbackMessage = `${caption}\n\n📥 تم تنزيل صورة QR على جهازك باسم ${fileName} — يرجى إرفاقها يدوياً مع هذه الرسالة في واتساب.`;
+            const fallbackMessage = memberLang === 'en'
+              ? `${caption}\n\n📥 The QR image was downloaded to your device as ${fileName} — please attach it manually with this message in WhatsApp.`
+              : `${caption}\n\n📥 تم تنزيل صورة QR على جهازك باسم ${fileName} — يرجى إرفاقها يدوياً مع هذه الرسالة في واتساب.`;
             window.open(`https://wa.me/${phone}?text=${encodeURIComponent(fallbackMessage)}`, '_blank');
             toast.success(language === 'ar' ? 'تم تنزيل الصورة - أرفقها يدوياً في واتساب' : 'Image downloaded - attach it manually in WhatsApp');
             setIsQRCardDialogOpen(false);

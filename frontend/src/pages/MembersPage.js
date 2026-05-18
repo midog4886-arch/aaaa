@@ -152,6 +152,7 @@ export const MembersPage = () => {
     phone: '',
     email: '',
     notes: '',
+    preferred_language: 'ar',
     activities: []
   });
 
@@ -664,6 +665,7 @@ export const MembersPage = () => {
       phone: member.phone || '',
       email: member.email || '',
       notes: member.notes || '',
+      preferred_language: member.preferred_language || 'ar',
       activities: member.activities || []
     });
     setIsAddDialogOpen(true);
@@ -785,6 +787,7 @@ export const MembersPage = () => {
       phone: '',
       email: '',
       notes: '',
+      preferred_language: 'ar',
       activities: []
     });
   };
@@ -1787,6 +1790,19 @@ export const MembersPage = () => {
                     placeholder={language === 'ar' ? 'أضف ملاحظات...' : 'Add notes...'}
                     data-testid="member-notes-input"
                   />
+                </div>
+
+                <div className="space-y-2 sm:col-span-2">
+                  <Label>{language === 'ar' ? 'لغة التواصل (الفواتير والرسائل)' : 'Communication language (invoices & messages)'}</Label>
+                  <select
+                    value={formData.preferred_language || 'ar'}
+                    onChange={(e) => setFormData({...formData, preferred_language: e.target.value})}
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                    data-testid="member-preferred-language-select"
+                  >
+                    <option value="ar">{language === 'ar' ? 'العربية' : 'Arabic'}</option>
+                    <option value="en">{language === 'ar' ? 'الإنجليزية' : 'English'}</option>
+                  </select>
                 </div>
                 
                 {/* Activity Section - Only for new members */}

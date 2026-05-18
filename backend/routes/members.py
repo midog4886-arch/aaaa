@@ -43,6 +43,7 @@ class MemberCreate(BaseModel):
     guardian_phone: Optional[str] = ""
     activities: List[MemberActivity] = []
     notes: Optional[str] = ""
+    preferred_language: Optional[str] = "ar"
 
 class MemberUpdate(BaseModel):
     name: Optional[str] = None
@@ -59,6 +60,7 @@ class MemberUpdate(BaseModel):
     activities: Optional[List[MemberActivity]] = None
     notes: Optional[str] = None
     marked: Optional[bool] = None
+    preferred_language: Optional[str] = None
 
 class Member(BaseModel):
     id: str = ""
@@ -80,6 +82,7 @@ class Member(BaseModel):
     status: str = "active"
     branch_id: Optional[str] = None
     created_at: str = ""
+    preferred_language: Optional[str] = "ar"
 
 # ============ ROUTES ============
 
@@ -181,10 +184,12 @@ async def create_member(member: MemberCreate, current_user: dict = Depends(get_c
 
     new_code = await generate_member_code(branch_id)
     
+    payload = member.model_dump()
+    payload["preferred_language"] = "en" if str(payload.get("preferred_language") or "ar").lower().startswith("en") else "ar"
     member_doc = {
         "id": member_id,
         "member_code": new_code,
-        **member.model_dump(),
+        **payload,
         "branch_id": branch_id,
         "created_at": datetime.now(timezone.utc).isoformat()
     }
@@ -195,6 +200,8 @@ async def create_member(member: MemberCreate, current_user: dict = Depends(get_c
 async def update_member(member_id: str, member: MemberUpdate, current_user: dict = Depends(get_current_user)):
     """Update an existing member"""
     update_data = {k: v for k, v in member.model_dump().items() if v is not None}
+    if "preferred_language" in update_data:
+        update_data["preferred_language"] = "en" if str(update_data["preferred_language"]).lower().startswith("en") else "ar"
     if not update_data:
         raise HTTPException(status_code=400, detail="No data to update")
 
