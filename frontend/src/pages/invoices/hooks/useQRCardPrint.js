@@ -57,22 +57,46 @@ export const useQRCardPrint = ({ language }) => {
         ctx.fillText('#' + qrCardMember.member_code, 200, 420);
         ctx.fillStyle = '#9ca3af'; ctx.font = '14px Tajawal, sans-serif';
         ctx.fillText('امسح الكود عند الدخول لتسجيل الحضور', 200, 470);
-        canvas.toBlob((blob) => {
-          const url = URL.createObjectURL(blob);
-          const link = document.createElement('a');
-          link.href = url; link.download = `qr-${qrCardMember.member_code}.png`; link.click();
-          URL.revokeObjectURL(url);
-          const message = `🏆 *شركة اداء الابطال العالمية للرياضة*\n━━━━━━━━━━━━━━\n🎫 *بطاقة العضوية*\n\n👤 *الاسم:* ${qrCardMember.name_ar}\n🔢 *رقم العضوية:* #${qrCardMember.member_code}\n\n📎 تم إرفاق صورة QR Code\nامسح الكود عند الدخول للأكاديمية ✅`;
-          window.open(`https://wa.me/${phone}?text=${encodeURIComponent(message)}`, '_blank');
-          toast.success(language === 'ar' ? 'تم تحميل الصورة - أرسلها في الواتساب' : 'Image downloaded - send it on WhatsApp');
+        canvas.toBlob(async (blob) => {
+          if (!blob) {
+            toast.error(language === 'ar' ? 'تعذّر إنشاء الصورة' : 'Failed to create image');
+            return;
+          }
+          const fileName = `qr-${qrCardMember.member_code}.png`;
+          const caption = `🏆 *شركة اداء الابطال العالمية للرياضة*\n━━━━━━━━━━━━━━\n🎫 *بطاقة العضوية*\n\n👤 *الاسم:* ${qrCardMember.name_ar}\n🔢 *رقم العضوية:* #${qrCardMember.member_code}\n\nامسح الكود عند الدخول للأكاديمية ✅`;
+          try {
+            const file = new File([blob], fileName, { type: 'image/png' });
+            if (navigator.canShare && navigator.canShare({ files: [file] })) {
+              await navigator.share({ files: [file], text: caption, title: 'بطاقة العضوية' });
+              toast.success(language === 'ar' ? 'تمت المشاركة' : 'Shared successfully');
+              setIsQRCardDialogOpen(false);
+              return;
+            }
+          } catch (shareErr) {
+            if (shareErr && shareErr.name === 'AbortError') return;
+            console.warn('Web Share failed, falling back:', shareErr);
+          }
+          try {
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url; link.download = fileName; link.click();
+            setTimeout(() => URL.revokeObjectURL(url), 1000);
+            const fallbackMessage = `${caption}\n\n📥 تم تنزيل صورة QR على جهازك باسم ${fileName} — يرجى إرفاقها يدوياً مع هذه الرسالة في واتساب.`;
+            window.open(`https://wa.me/${phone}?text=${encodeURIComponent(fallbackMessage)}`, '_blank');
+            toast.success(language === 'ar' ? 'تم تنزيل الصورة - أرفقها يدوياً في واتساب' : 'Image downloaded - attach it manually in WhatsApp');
+            setIsQRCardDialogOpen(false);
+          } catch (fbErr) {
+            console.error('Fallback share failed:', fbErr);
+            toast.error(language === 'ar' ? 'تعذّر تنزيل الصورة' : 'Failed to download image');
+          }
         }, 'image/png');
       };
       qrImg.src = qrDataUrl;
     } catch (err) {
       console.error('Error generating QR:', err);
       toast.error(language === 'ar' ? 'خطأ في إنشاء الصورة' : 'Error creating image');
+      setIsQRCardDialogOpen(false);
     }
-    setIsQRCardDialogOpen(false);
   };
 
   return {
