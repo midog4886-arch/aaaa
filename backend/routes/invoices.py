@@ -21,6 +21,21 @@ def set_loyalty_award_function(func):
 
 router = APIRouter(prefix="/invoices", tags=["invoices"])
 
+
+async def _enrich_branch_names(invoices: list) -> None:
+    branch_ids = list({inv.get("branch_id") for inv in invoices if inv.get("branch_id")})
+    if not branch_ids:
+        return
+    branches = await db.branches.find(
+        {"id": {"$in": branch_ids}},
+        {"_id": 0, "id": 1, "name_ar": 1, "name": 1},
+    ).to_list(len(branch_ids))
+    bmap = {b["id"]: (b.get("name_ar") or b.get("name") or "") for b in branches}
+    for inv in invoices:
+        bid = inv.get("branch_id")
+        if bid and bid in bmap:
+            inv["branch_name"] = bmap[bid]
+
 # Company registration info
 COMPANY_TAX_NUMBER = "312655637900003"
 COMPANY_COMMERCIAL_REG = "7043630230"
@@ -81,6 +96,7 @@ class Invoice(BaseModel):
     payment_method: str
     notes: Optional[str] = ""
     branch_id: Optional[str] = None
+    branch_name: Optional[str] = ""
     created_at: str
     paid_at: Optional[str] = None
     customer_name_ar: Optional[str] = ""
@@ -150,6 +166,7 @@ async def get_invoices(
                 if not inv.get("guardian_name"):
                     inv["guardian_name"] = members_map[mid].get("guardian_name", "")
     
+    await _enrich_branch_names(invoices)
     return invoices
 
 @router.get("/search")
@@ -205,6 +222,7 @@ async def search_invoices(
                 if not inv.get("guardian_name"):
                     inv["guardian_name"] = members_map[mid].get("guardian_name", "")
     
+    await _enrich_branch_names(invoices)
     return invoices
 
 def _scoped_invoice_query(invoice_id: str, current_user: dict) -> dict:
