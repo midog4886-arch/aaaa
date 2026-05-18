@@ -41,7 +41,12 @@ export const AuthProvider = ({ children }) => {
   const fetchUser = async () => {
     try {
       const response = await axios.get(`${API}/auth/me`);
-      setUser(response.data);
+      const userData = response.data;
+      setUser(userData);
+      if (userData && userData.is_admin !== true && userData.branch_id) {
+        setSelectedBranchId(userData.branch_id);
+        localStorage.setItem('selectedBranchId', userData.branch_id);
+      }
     } catch (error) {
       console.error('Failed to fetch user:', error);
       logout();
@@ -60,7 +65,10 @@ export const AuthProvider = ({ children }) => {
       
       setToken(access_token);
       setUser(userData);
-      
+      if (userData && userData.is_admin !== true && userData.branch_id) {
+        setSelectedBranchId(userData.branch_id);
+        localStorage.setItem('selectedBranchId', userData.branch_id);
+      }
       return { success: true };
     } catch (error) {
       console.error('Login failed:', error);
