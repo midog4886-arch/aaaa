@@ -155,9 +155,11 @@ export const InvoicesPage = () => {
     setQrCardMember, setQrCardSubscription, setIsQRCardDialogOpen
   });
 
+  const [langOverride, setLangOverride] = useState(null);
+  useEffect(() => { setLangOverride(null); }, [selectedInvoice?.id]);
   const viewHandlers = useViewInvoiceHandlers({
     selectedInvoice, printRef, qrCode, loyaltySettings, loyaltyLevelSettings,
-    language, t, getBranchName, setIsViewDialogOpen
+    language, t, getBranchName, setIsViewDialogOpen, langOverride
   });
 
   const { isCreateDialogOpen, setIsCreateDialogOpen, isEditMode, selectedMember, setSelectedMember, invoiceItems, setInvoiceItems,
@@ -483,6 +485,7 @@ export const InvoicesPage = () => {
           onRestoreInvoice={handleRestoreInvoice} onOpenRefund={openRefundDialog}
           onDelete={handleDeleteInvoice}
           sharingWhatsApp={sharingWhatsApp} savingPdf={savingPdf} saving={saving} isAdmin={isAdmin}
+          langOverride={langOverride} setLangOverride={setLangOverride}
           language={language} t={t}
         />
 

@@ -6,11 +6,16 @@ import { COMPANY_INFO, INVOICE_TERMS, getPaymentMethodLabel } from '../constants
 
 export const useViewInvoiceHandlers = ({
   selectedInvoice, printRef, qrCode, loyaltySettings, loyaltyLevelSettings,
-  language, t, getBranchName, setIsViewDialogOpen
+  language, t, getBranchName, setIsViewDialogOpen, langOverride
 }) => {
   const [savingImage, setSavingImage] = useState(false);
   const [savingPdf, setSavingPdf] = useState(false);
   const [sharingWhatsApp, setSharingWhatsApp] = useState(false);
+
+  const resolveLang = (inv) => {
+    if (langOverride === 'ar' || langOverride === 'en') return langOverride;
+    return inv?.customer_preferred_language === 'en' ? 'en' : 'ar';
+  };
 
   const handleSaveAsImage = async () => {
     if (!printRef.current) return;
@@ -24,7 +29,7 @@ export const useViewInvoiceHandlers = ({
       toast.success(language === 'ar' ? 'تم حفظ الصورة! يمكنك الآن مشاركتها على الواتساب' : 'Image saved! You can now share it on WhatsApp');
       const phone = selectedInvoice.customer_phone?.replace(/^0/, '966') || '';
       if (phone) {
-        const memberLang = selectedInvoice.customer_preferred_language === 'en' ? 'en' : 'ar';
+        const memberLang = resolveLang(selectedInvoice);
         const message = memberLang === 'en'
           ? `Hello, please find attached your invoice from ${COMPANY_INFO.name_ar} no. #${selectedInvoice.id.slice(0, 8)}`
           : `مرحباً، مرفق فاتورتكم من ${COMPANY_INFO.name_ar} رقم #${selectedInvoice.id.slice(0, 8)}`;
@@ -65,7 +70,7 @@ export const useViewInvoiceHandlers = ({
       toast.success(language === 'ar' ? 'تم حفظ الفاتورة كـ PDF! يمكنك إرفاقها في الواتساب' : 'Invoice saved as PDF! You can attach it in WhatsApp');
       const phone = selectedInvoice.customer_phone?.replace(/^0/, '966') || '';
       if (phone) {
-        const memberLang = selectedInvoice.customer_preferred_language === 'en' ? 'en' : 'ar';
+        const memberLang = resolveLang(selectedInvoice);
         const dateLocale = memberLang === 'en' ? 'en-US' : 'ar-SA';
         const pdfItemsList = selectedInvoice.items?.map((item, i) => {
           let line = memberLang === 'en'
@@ -106,7 +111,7 @@ export const useViewInvoiceHandlers = ({
       const invoiceNum = selectedInvoice.invoice_number || selectedInvoice.id.slice(0, 8);
       const fileName = `فاتورة_${invoiceNum}.png`;
       const file = new File([blob], fileName, { type: 'image/png' });
-      const memberLang = selectedInvoice.customer_preferred_language === 'en' ? 'en' : 'ar';
+      const memberLang = resolveLang(selectedInvoice);
       const message = memberLang === 'en'
         ? `📄 Invoice No. #${invoiceNum} - Total: ${selectedInvoice.total} SAR\nChampions Academy`
         : `📄 فاتورة رقم #${invoiceNum} - الإجمالي: ${selectedInvoice.total} ر.س\nشركة اداء الابطال العالمية للرياضة`;
@@ -124,7 +129,7 @@ export const useViewInvoiceHandlers = ({
       if (error.name !== 'AbortError') {
         const phone = selectedInvoice.customer_phone?.replace(/^0/, '966') || '';
         const invoiceNum = selectedInvoice.invoice_number || selectedInvoice.id.slice(0, 8);
-        const memberLang = selectedInvoice.customer_preferred_language === 'en' ? 'en' : 'ar';
+        const memberLang = resolveLang(selectedInvoice);
         const items = selectedInvoice.items?.map(item => memberLang === 'en'
           ? `• ${item.activity_name}: ${item.fee} SAR`
           : `• ${item.activity_name}: ${item.fee} ر.س`).join('\n') || '';
@@ -142,7 +147,7 @@ export const useViewInvoiceHandlers = ({
     if (!phone) { toast.error(language === 'ar' ? 'لا يوجد رقم جوال' : 'No phone number'); return; }
     const formattedPhone = phone.replace(/^0/, '966');
     const vatAmount = invoice.vat_amount || 0;
-    const memberLang = invoice.customer_preferred_language === 'en' ? 'en' : 'ar';
+    const memberLang = resolveLang(invoice);
     const dateLocale = memberLang === 'en' ? 'en-US' : 'ar-SA';
     const currency = memberLang === 'en' ? 'SAR' : 'ر.س';
     const itemsList = invoice.items?.map((item, i) => {

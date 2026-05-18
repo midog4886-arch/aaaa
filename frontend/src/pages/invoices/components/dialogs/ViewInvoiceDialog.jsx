@@ -11,8 +11,11 @@ export const ViewInvoiceDialog = ({
   onPrintRegistrationForm, onEdit, onMarkPaid, onRestoreInvoice,
   onOpenRefund, onDelete,
   sharingWhatsApp, savingPdf, saving, isAdmin,
+  langOverride, setLangOverride,
   language, t
 }) => {
+  const customerLang = selectedInvoice?.customer_preferred_language === 'en' ? 'en' : 'ar';
+  const effectiveLang = (langOverride === 'ar' || langOverride === 'en') ? langOverride : customerLang;
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
@@ -138,6 +141,41 @@ export const ViewInvoiceDialog = ({
           </div>
         )}
         <DialogFooter className="flex flex-col gap-3 sm:flex-col">
+          <div className="flex flex-wrap items-center justify-center gap-2 border-b pb-2">
+            <span className="text-xs font-semibold text-muted-foreground">
+              {language === 'ar' ? 'لغة المشاركة:' : 'Share language:'}
+            </span>
+            <div className="inline-flex rounded-md border border-gray-300 overflow-hidden">
+              <button
+                type="button"
+                onClick={() => setLangOverride && setLangOverride(null)}
+                className={`px-2 py-1 text-xs ${!langOverride ? 'bg-blue-600 text-white' : 'bg-white text-gray-700 hover:bg-gray-50'}`}
+              >
+                {language === 'ar' ? `تلقائي (${customerLang === 'en' ? 'EN' : 'AR'})` : `Auto (${customerLang === 'en' ? 'EN' : 'AR'})`}
+              </button>
+              <button
+                type="button"
+                onClick={() => setLangOverride && setLangOverride('ar')}
+                className={`px-2 py-1 text-xs border-s border-gray-300 ${langOverride === 'ar' ? 'bg-blue-600 text-white' : 'bg-white text-gray-700 hover:bg-gray-50'}`}
+              >
+                {language === 'ar' ? 'عربي' : 'AR'}
+              </button>
+              <button
+                type="button"
+                onClick={() => setLangOverride && setLangOverride('en')}
+                className={`px-2 py-1 text-xs border-s border-gray-300 ${langOverride === 'en' ? 'bg-blue-600 text-white' : 'bg-white text-gray-700 hover:bg-gray-50'}`}
+              >
+                {language === 'ar' ? 'إنجليزي' : 'EN'}
+              </button>
+            </div>
+            {langOverride && langOverride !== customerLang && (
+              <span className="text-[10px] text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded">
+                {language === 'ar'
+                  ? `تجاوز مؤقت — تفضيل العميل: ${customerLang === 'en' ? 'EN' : 'AR'}`
+                  : `Override — customer prefers ${customerLang === 'en' ? 'EN' : 'AR'}`}
+              </span>
+            )}
+          </div>
           <div className="flex flex-wrap gap-2 justify-center border-b pb-3">
             <Button variant="outline" onClick={onPrint} size="sm"><Printer className="w-4 h-4 me-1" />{t('print')}</Button>
             <Button variant="outline" onClick={onShareWhatsApp} disabled={sharingWhatsApp} size="sm" className="bg-green-50 border-green-400 text-green-700 hover:bg-green-100">
