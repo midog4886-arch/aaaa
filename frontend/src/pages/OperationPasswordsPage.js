@@ -1,13 +1,15 @@
 import React, { useEffect, useState } from 'react';
 import axios from 'axios';
 import { toast } from 'sonner';
-import { Eye, EyeOff, Save, Lock, RotateCcw } from 'lucide-react';
+import { Eye, EyeOff, Save, Lock, RotateCcw, ArrowRight, ArrowLeft } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { useLanguage } from '../contexts/LanguageContext';
 
 const API = process.env.REACT_APP_BACKEND_URL || '';
 
 const OperationPasswordsPage = () => {
   const { language } = useLanguage();
+  const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [keys, setKeys] = useState({});
@@ -60,6 +62,15 @@ const OperationPasswordsPage = () => {
 
   return (
     <div className="p-4 sm:p-6 max-w-3xl mx-auto" dir="rtl">
+      <button
+        type="button"
+        onClick={() => navigate('/admin/dashboard')}
+        className="mb-4 inline-flex items-center gap-2 px-3 py-1.5 text-sm text-gray-700 bg-white border border-gray-200 rounded-lg hover:bg-gray-50"
+        data-testid="back-to-dashboard"
+      >
+        {language === 'ar' ? <ArrowRight className="w-4 h-4" /> : <ArrowLeft className="w-4 h-4" />}
+        {language === 'ar' ? 'رجوع للوحة التحكم' : 'Back to Dashboard'}
+      </button>
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
           <Lock className="w-6 h-6 text-orange-500" />
