@@ -159,7 +159,7 @@ export const InvoicesPage = () => {
   useEffect(() => { setLangOverride(null); }, [selectedInvoice?.id]);
   const viewHandlers = useViewInvoiceHandlers({
     selectedInvoice, printRef, qrCode, loyaltySettings, loyaltyLevelSettings,
-    language, t, getBranchName, setIsViewDialogOpen, langOverride
+    language, t, getBranchName, setIsViewDialogOpen, langOverride, branches
   });
 
   const { isCreateDialogOpen, setIsCreateDialogOpen, isEditMode, selectedMember, setSelectedMember, invoiceItems, setInvoiceItems,

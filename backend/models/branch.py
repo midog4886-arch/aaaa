@@ -11,6 +11,7 @@ class BranchBase(BaseModel):
     address_ar: Optional[str] = ""
     is_active: bool = True
     code_prefix: Optional[str] = ""
+    whatsapp_group_url: Optional[str] = ""
 
 class BranchCreate(BranchBase):
     pass

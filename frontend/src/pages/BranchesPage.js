@@ -31,7 +31,8 @@ const BranchesPage = () => {
   const [formData, setFormData] = useState({
     name_ar: '',
     phone: '',
-    code_prefix: ''
+    code_prefix: '',
+    whatsapp_group_url: ''
   });
 
   useEffect(() => {
@@ -71,7 +72,8 @@ const BranchesPage = () => {
         address: '',
         address_ar: '',
         is_active: true,
-        code_prefix: cleanedPrefix
+        code_prefix: cleanedPrefix,
+        whatsapp_group_url: (formData.whatsapp_group_url || '').trim()
       };
       
       if (editingBranch) {
@@ -108,7 +110,8 @@ const BranchesPage = () => {
     setFormData({
       name_ar: branch.name_ar || branch.name || '',
       phone: branch.phone || '',
-      code_prefix: branch.code_prefix || ''
+      code_prefix: branch.code_prefix || '',
+      whatsapp_group_url: branch.whatsapp_group_url || ''
     });
     setIsDialogOpen(true);
   };
@@ -119,7 +122,8 @@ const BranchesPage = () => {
     setFormData({
       name_ar: '',
       phone: '',
-      code_prefix: ''
+      code_prefix: '',
+      whatsapp_group_url: ''
     });
   };
 
@@ -258,6 +262,22 @@ const BranchesPage = () => {
                   {language === 'ar'
                     ? `سيتم توليد أكواد الأعضاء في هذا الفرع بصيغة ${formData.code_prefix || 'PREFIX'}-001, ${formData.code_prefix || 'PREFIX'}-002 ... (اتركه فارغًا للتوليد التلقائي)`
                     : `New member codes in this branch will be ${formData.code_prefix || 'PREFIX'}-001, ${formData.code_prefix || 'PREFIX'}-002 ... (leave empty for auto)`}
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <Label>{language === 'ar' ? 'رابط جروب الواتساب الخاص بالفرع' : 'Branch WhatsApp Group Link'}</Label>
+                <Input
+                  value={formData.whatsapp_group_url}
+                  onChange={(e) => setFormData({ ...formData, whatsapp_group_url: e.target.value })}
+                  placeholder="https://chat.whatsapp.com/XXXXXXXXXXXX"
+                  dir="ltr"
+                  data-testid="branch-whatsapp-group-input"
+                />
+                <p className="text-xs text-muted-foreground">
+                  {language === 'ar'
+                    ? 'سيتم إدراج هذا الرابط في رسائل واتساب الفواتير واستمارات التسجيل لهذا الفرع. اتركه فارغًا لإخفاء الرابط من الرسائل.'
+                    : 'This link will be inserted in WhatsApp messages for invoices and registration forms of this branch. Leave empty to omit the link.'}
                 </p>
               </div>
 
