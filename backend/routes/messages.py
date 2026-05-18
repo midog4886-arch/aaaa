@@ -10,7 +10,13 @@ from .common import db, get_current_user
 router = APIRouter(prefix="/messages", tags=["messages"])
 
 
-async def send_message_push(member_id: str, subject: str, body: str):
+async def send_message_push(
+    member_id: str,
+    subject: str,
+    body: str,
+    subject_en: Optional[str] = None,
+    body_en: Optional[str] = None,
+):
     """Send push notification to ALL member subscriptions (web + android)"""
     try:
         from .push_notifications import send_push_notification, NotificationPayload
@@ -20,14 +26,15 @@ async def send_message_push(member_id: str, subject: str, body: str):
         ).to_list(10)
         if not subs:
             return
-        # Populate both Arabic and English variants; send_push_notification
-        # picks the right one per subscription based on saved language.
         body_preview = body[:100] + ("..." if len(body) > 100 else "")
+        subject_en_val = (subject_en or subject) if (subject_en or subject) else subject
+        body_en_source = body_en if (body_en and body_en.strip()) else body
+        body_en_preview = body_en_source[:100] + ("..." if len(body_en_source) > 100 else "")
         payload = NotificationPayload(
             title=t("message_title_prefix", "ar", subject=subject),
             body=body_preview,
-            title_en=t("message_title_prefix", "en", subject=subject),
-            body_en=body_preview,
+            title_en=t("message_title_prefix", "en", subject=subject_en_val),
+            body_en=body_en_preview,
             url="/member-messages",
             tag=f"message-{member_id}",
             data={"type": "message"}
@@ -45,6 +52,8 @@ class MessageCreate(BaseModel):
     recipient_member_id: Optional[str] = None
     subject: str
     body: str
+    subject_en: Optional[str] = None
+    body_en: Optional[str] = None
     broadcast: bool = False
 
 
@@ -56,6 +65,9 @@ class MessageReply(BaseModel):
 async def send_message(data: MessageCreate, current_user: dict = Depends(get_current_user)):
     now = datetime.now(timezone.utc).isoformat()
     sender_name = current_user.get("name", current_user.get("username", "الإدارة"))
+
+    subject_en = (data.subject_en or "").strip() or None
+    body_en = (data.body_en or "").strip() or None
 
     if data.broadcast:
         members = await db.members.find(
@@ -76,6 +88,8 @@ async def send_message(data: MessageCreate, current_user: dict = Depends(get_cur
                 "recipient_name": member.get("name_ar", member.get("name", "")),
                 "subject": data.subject,
                 "body": data.body,
+                "subject_en": subject_en,
+                "body_en": body_en,
                 "is_broadcast": True,
                 "read_by_member": False,
                 "read_by_admin": True,
@@ -84,10 +98,12 @@ async def send_message(data: MessageCreate, current_user: dict = Depends(get_cur
 
         if messages:
             await db.messages.insert_many(messages)
-            # Send push notification to each member
             for msg in messages:
                 try:
-                    await send_message_push(msg["recipient_member_id"], data.subject, data.body)
+                    await send_message_push(
+                        msg["recipient_member_id"], data.subject, data.body,
+                        subject_en=subject_en, body_en=body_en,
+                    )
                 except Exception:
                     pass
 
@@ -111,6 +127,8 @@ async def send_message(data: MessageCreate, current_user: dict = Depends(get_cur
         "recipient_name": member.get("name_ar", member.get("name", "")),
         "subject": data.subject,
         "body": data.body,
+        "subject_en": subject_en,
+        "body_en": body_en,
         "is_broadcast": False,
         "read_by_member": False,
         "read_by_admin": True,
@@ -119,7 +137,10 @@ async def send_message(data: MessageCreate, current_user: dict = Depends(get_cur
 
     await db.messages.insert_one(message)
     try:
-        await send_message_push(member["id"], data.subject, data.body)
+        await send_message_push(
+            member["id"], data.subject, data.body,
+            subject_en=subject_en, body_en=body_en,
+        )
     except Exception as e:
         print(f"Message push error: {e}")
     return {"message": "تم إرسال الرسالة بنجاح", "id": msg_id}

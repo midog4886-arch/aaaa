@@ -194,6 +194,13 @@ async def create_member(member: MemberCreate, current_user: dict = Depends(get_c
         "created_at": datetime.now(timezone.utc).isoformat()
     }
     await db.members.insert_one(member_doc)
+    try:
+        await db.push_subscriptions.update_many(
+            {"member_id": member_id, "is_active": True},
+            {"$set": {"language": payload["preferred_language"]}},
+        )
+    except Exception:
+        pass
     return Member(**{k: v for k, v in member_doc.items() if k != "_id"})
 
 @router.put("/{member_id}", response_model=Member)
@@ -213,6 +220,14 @@ async def update_member(member_id: str, member: MemberUpdate, current_user: dict
     )
     if not result:
         raise HTTPException(status_code=404, detail="Member not found")
+    if "preferred_language" in update_data:
+        try:
+            await db.push_subscriptions.update_many(
+                {"member_id": member_id, "is_active": True},
+                {"$set": {"language": update_data["preferred_language"]}},
+            )
+        except Exception:
+            pass
     from utils.audit import log_audit
     await log_audit(
         actor=current_user,

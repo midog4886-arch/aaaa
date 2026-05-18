@@ -231,6 +231,8 @@ export const MessagesPage = () => {
   const [threadMember, setThreadMember] = useState(null);
   const [newMsgSubject, setNewMsgSubject] = useState('');
   const [newMsgBody, setNewMsgBody] = useState('');
+  const [newMsgSubjectEn, setNewMsgSubjectEn] = useState('');
+  const [newMsgBodyEn, setNewMsgBodyEn] = useState('');
   const [newMsgRecipient, setNewMsgRecipient] = useState('');
   const [newMsgBroadcast, setNewMsgBroadcast] = useState(false);
   const [replyText, setReplyText] = useState('');
@@ -474,12 +476,16 @@ export const MessagesPage = () => {
       const res = await messagesAPI.send({
         subject: newMsgSubject,
         body: newMsgBody,
+        subject_en: newMsgSubjectEn || null,
+        body_en: newMsgBodyEn || null,
         recipient_member_id: newMsgBroadcast ? null : newMsgRecipient,
         broadcast: newMsgBroadcast
       });
       toast.success(res.data.message);
       setNewMsgSubject('');
       setNewMsgBody('');
+      setNewMsgSubjectEn('');
+      setNewMsgBodyEn('');
       setNewMsgRecipient('');
       setNewMsgBroadcast(false);
       setShowCompose(false);
@@ -1162,7 +1168,7 @@ export const MessagesPage = () => {
                   )}
 
                   <div>
-                    <label className="text-sm font-medium mb-1 block">{language === 'ar' ? 'الموضوع' : 'Subject'}</label>
+                    <label className="text-sm font-medium mb-1 block">{language === 'ar' ? 'الموضوع (عربي)' : 'Subject (Arabic)'}</label>
                     <Input
                       value={newMsgSubject}
                       onChange={(e) => setNewMsgSubject(e.target.value)}
@@ -1171,13 +1177,40 @@ export const MessagesPage = () => {
                   </div>
 
                   <div>
-                    <label className="text-sm font-medium mb-1 block">{language === 'ar' ? 'نص الرسالة' : 'Message Body'}</label>
+                    <label className="text-sm font-medium mb-1 block">{language === 'ar' ? 'نص الرسالة (عربي)' : 'Message Body (Arabic)'}</label>
                     <Textarea
                       value={newMsgBody}
                       onChange={(e) => setNewMsgBody(e.target.value)}
                       placeholder={language === 'ar' ? 'اكتب رسالتك هنا...' : 'Write your message here...'}
                       rows={4}
                     />
+                  </div>
+
+                  <div className="border-t pt-3 space-y-3">
+                    <p className="text-xs text-muted-foreground">
+                      {language === 'ar'
+                        ? 'اختياري: نسخة إنجليزية لمن يفضّل التواصل بالإنجليزية'
+                        : 'Optional: English version for members who prefer English communication'}
+                    </p>
+                    <div>
+                      <label className="text-sm font-medium mb-1 block">{language === 'ar' ? 'الموضوع (إنجليزي)' : 'Subject (English)'}</label>
+                      <Input
+                        dir="ltr"
+                        value={newMsgSubjectEn}
+                        onChange={(e) => setNewMsgSubjectEn(e.target.value)}
+                        placeholder="Message subject (optional)"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium mb-1 block">{language === 'ar' ? 'نص الرسالة (إنجليزي)' : 'Message Body (English)'}</label>
+                      <Textarea
+                        dir="ltr"
+                        value={newMsgBodyEn}
+                        onChange={(e) => setNewMsgBodyEn(e.target.value)}
+                        placeholder="Write the English version (optional)..."
+                        rows={4}
+                      />
+                    </div>
                   </div>
 
                   <Button onClick={handleSendInternalMessage} disabled={sendingMsg} className="w-full gap-2">

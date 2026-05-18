@@ -441,12 +441,21 @@ const MemberNotifications = () => {
                                   {formatRelative(msg.created_at)}
                                 </span>
                               </div>
-                              {msg.subject && (
-                                <p className={`font-semibold text-sm mb-1 ${isAdmin ? 'text-gray-700 dark:text-gray-200' : 'text-white'}`}>
-                                  {msg.subject}
-                                </p>
-                              )}
-                              <p className="text-sm whitespace-pre-wrap leading-relaxed">{msg.body}</p>
+                              {(() => {
+                                const showEn = isAdmin && language === 'en';
+                                const displaySubject = showEn && msg.subject_en ? msg.subject_en : msg.subject;
+                                const displayBody = showEn && msg.body_en ? msg.body_en : msg.body;
+                                return (
+                                  <>
+                                    {displaySubject && (
+                                      <p className={`font-semibold text-sm mb-1 ${isAdmin ? 'text-gray-700 dark:text-gray-200' : 'text-white'}`}>
+                                        {displaySubject}
+                                      </p>
+                                    )}
+                                    <p className="text-sm whitespace-pre-wrap leading-relaxed">{displayBody}</p>
+                                  </>
+                                );
+                              })()}
                               {msg.is_broadcast && (
                                 <span className={`text-[10px] mt-1 block ${isAdmin ? 'text-gray-400' : 'text-blue-100'}`}>
                                   {t('📢 رسالة عامة', '📢 Broadcast')}

@@ -45,9 +45,12 @@ async def get_member_language(db, member_id: str) -> str:
     try:
         m = await db.members.find_one(
             {"id": member_id},
-            {"_id": 0, "preferences": 1},
+            {"_id": 0, "preferred_language": 1, "preferences": 1},
         )
         if m:
+            pref = m.get("preferred_language")
+            if pref:
+                return normalize_lang(pref)
             lang = (m.get("preferences") or {}).get("language")
             return normalize_lang(lang)
     except Exception:
@@ -62,10 +65,14 @@ async def get_member_languages_map(db, member_ids):
     try:
         cursor = db.members.find(
             {"id": {"$in": list(member_ids)}},
-            {"_id": 0, "id": 1, "preferences": 1},
+            {"_id": 0, "id": 1, "preferred_language": 1, "preferences": 1},
         )
         async for m in cursor:
-            out[m["id"]] = normalize_lang((m.get("preferences") or {}).get("language"))
+            pref = m.get("preferred_language")
+            if pref:
+                out[m["id"]] = normalize_lang(pref)
+            else:
+                out[m["id"]] = normalize_lang((m.get("preferences") or {}).get("language"))
     except Exception:
         pass
     return out

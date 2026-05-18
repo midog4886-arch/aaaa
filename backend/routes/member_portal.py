@@ -334,6 +334,14 @@ async def update_member_profile(
             {"id": member["id"]},
             {"$set": update_fields}
         )
+        if "preferred_language" in update_fields:
+            try:
+                await db.push_subscriptions.update_many(
+                    {"member_id": member["id"], "is_active": True},
+                    {"$set": {"language": update_fields["preferred_language"]}},
+                )
+            except Exception:
+                pass
 
     updated = await db.members.find_one({"id": member["id"]}, {"_id": 0})
     return {
