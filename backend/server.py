@@ -3339,6 +3339,32 @@ def start_ops_alerts_worker():
     asyncio.ensure_future(ops_alerts_delivery_loop())
 
 
+async def _send_backup_to_telegram(filepath, filename):
+    token = os.environ.get("TELEGRAM_BOT_TOKEN")
+    chat_id = os.environ.get("TELEGRAM_CHAT_ID")
+    if not token or not chat_id:
+        return
+    try:
+        size_mb = filepath.stat().st_size / (1024 * 1024)
+        if size_mb > 49:
+            print(f"Telegram backup skipped: file {filename} is {size_mb:.1f}MB (limit 50MB)")
+            return
+        import httpx
+        url = f"https://api.telegram.org/bot{token}/sendDocument"
+        caption = f"Champions Academy backup\n{filename}\n{datetime.now(_RIYADH_TZ).strftime('%Y-%m-%d %H:%M %Z')}"
+        with open(filepath, "rb") as f:
+            files = {"document": (filename, f, "application/json")}
+            data = {"chat_id": chat_id, "caption": caption}
+            async with httpx.AsyncClient(timeout=120.0) as client:
+                resp = await client.post(url, data=data, files=files)
+        if resp.status_code == 200 and resp.json().get("ok"):
+            print(f"Telegram backup sent: {filename}")
+        else:
+            print(f"Telegram backup failed: {resp.status_code} {resp.text[:200]}")
+    except Exception as e:
+        print(f"Telegram backup error: {e}")
+
+
 async def _create_auto_backup():
     timestamp = datetime.now(_RIYADH_TZ).strftime('%Y%m%d')
     filename = f"auto_backup_{timestamp}.json"
@@ -3365,6 +3391,8 @@ async def _create_auto_backup():
         _json.dump(backup_data, f, ensure_ascii=False, default=str)
 
     print(f"Auto backup created: {filename}")
+
+    await _send_backup_to_telegram(filepath, filename)
 
     auto_backups = sorted(BACKUPS_DIR.glob("auto_backup_*.json"), key=lambda x: x.stat().st_mtime)
     while len(auto_backups) > 7:
@@ -4518,6 +4546,8 @@ async def create_backup(token: Optional[str] = None):
 
     file_size = filepath.stat().st_size
     saved_collections = list(backup_data["collections"].keys())
+
+    await _send_backup_to_telegram(filepath, filename)
 
     return {
         "success": True,
