@@ -1685,6 +1685,8 @@ const BrandingLegalCard = ({ language }) => {
   const [name, setName] = React.useState('');
   const [taxNumber, setTaxNumber] = React.useState('');
   const [commercialReg, setCommercialReg] = React.useState('');
+  const [termsAr, setTermsAr] = React.useState('');
+  const [termsEn, setTermsEn] = React.useState('');
 
   React.useEffect(() => {
     let cancelled = false;
@@ -1696,6 +1698,8 @@ const BrandingLegalCard = ({ language }) => {
         setName(d.name || '');
         setTaxNumber(d.tax_number || '');
         setCommercialReg(d.commercial_reg || '');
+        setTermsAr(Array.isArray(d.invoice_terms_ar) ? d.invoice_terms_ar.join('\n') : '');
+        setTermsEn(Array.isArray(d.invoice_terms_en) ? d.invoice_terms_en.join('\n') : '');
       } catch (e) {
       } finally {
         if (!cancelled) setLoading(false);
@@ -1710,12 +1714,16 @@ const BrandingLegalCard = ({ language }) => {
       toast.error(isAr ? 'اسم الأكاديمية مطلوب' : 'Academy name required');
       return;
     }
+    const linesAr = (termsAr || '').split('\n').map(s => s.trim()).filter(Boolean);
+    const linesEn = (termsEn || '').split('\n').map(s => s.trim()).filter(Boolean);
     setSaving(true);
     try {
       await tenantAPI.updateBranding({
         name: trimmedName,
         tax_number: (taxNumber || '').trim(),
         commercial_reg: (commercialReg || '').trim(),
+        invoice_terms_ar: linesAr,
+        invoice_terms_en: linesEn,
       });
       try {
         const mod = await import('../services/branding');
@@ -1755,6 +1763,42 @@ const BrandingLegalCard = ({ language }) => {
           <div>
             <Label>{isAr ? 'رقم السجل التجاري' : 'Commercial registration'}</Label>
             <Input value={commercialReg} onChange={(e) => setCommercialReg(e.target.value)} disabled={loading} maxLength={50} dir="ltr" placeholder="7043630230" />
+          </div>
+        </div>
+        <div className="pt-4 border-t mt-4">
+          <h4 className="font-semibold mb-2">{isAr ? 'الشروط والأحكام في الفواتير' : 'Invoice Terms & Conditions'}</h4>
+          <p className="text-sm text-muted-foreground mb-3">
+            {isAr
+              ? 'كل بند في سطر منفصل. ستظهر هذه الشروط في صندوق الشروط أعلى كل فاتورة وفي رسائل الواتساب وPDF. اتركها فارغة لاستخدام الشروط الافتراضية.'
+              : 'One term per line. These appear in the terms box on every invoice and in WhatsApp/PDF messages. Leave empty to use defaults.'}
+          </p>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div>
+              <Label>{isAr ? 'الشروط بالعربية' : 'Terms (Arabic)'}</Label>
+              <textarea
+                value={termsAr}
+                onChange={(e) => setTermsAr(e.target.value)}
+                disabled={loading}
+                rows={6}
+                dir="rtl"
+                className="w-full mt-1 px-3 py-2 border border-input rounded-md text-sm bg-background"
+                placeholder={'الاشتراك محدد البداية والنهاية...\nالمبلغ المدفوع لا يسترد...\nيجب إحضار بطاقة العضوية...'}
+                data-testid="invoice-terms-ar-input"
+              />
+            </div>
+            <div>
+              <Label>{isAr ? 'الشروط بالإنجليزية' : 'Terms (English)'}</Label>
+              <textarea
+                value={termsEn}
+                onChange={(e) => setTermsEn(e.target.value)}
+                disabled={loading}
+                rows={6}
+                dir="ltr"
+                className="w-full mt-1 px-3 py-2 border border-input rounded-md text-sm bg-background"
+                placeholder={'Subscription has a fixed start and end date...\nPaid amount is non-refundable...\nMembership card must be presented...'}
+                data-testid="invoice-terms-en-input"
+              />
+            </div>
           </div>
         </div>
         <div className="flex justify-end pt-2">

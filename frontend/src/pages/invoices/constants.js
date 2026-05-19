@@ -1,4 +1,4 @@
-import { getTaxNumber, getCommercialReg, getAcademyName } from '../../services/branding';
+import { getTaxNumber, getCommercialReg, getAcademyName, getInvoiceTerms } from '../../services/branding';
 
 export const CARD_WIDTH = 90;
 export const CARD_HEIGHT = 60;
@@ -80,8 +80,7 @@ export const DAYS_OF_WEEK = [
   { value: 'saturday', label: 'السبت', labelEn: 'Saturday' }
 ];
 
-// Invoice terms
-export const INVOICE_TERMS = {
+const INVOICE_TERMS_DEFAULTS = {
   ar: [
     "الاشتراك محدد البداية والنهاية ولا يتم تعويض حصص غياب المشترك",
     "المبلغ المدفوع لا يسترد بعد مرور أسبوع من الاشتراك",
@@ -95,6 +94,19 @@ export const INVOICE_TERMS = {
     "Commitment to scheduled session times is required"
   ]
 };
+
+export const INVOICE_TERMS = new Proxy(INVOICE_TERMS_DEFAULTS, {
+  get(target, prop) {
+    if (prop === 'ar' || prop === 'en') {
+      try {
+        const dyn = getInvoiceTerms(prop);
+        if (Array.isArray(dyn) && dyn.length > 0) return dyn;
+      } catch (e) {}
+      return target[prop];
+    }
+    return target[prop];
+  },
+});
 
 /**
  * Get status information (color, label)

@@ -1,7 +1,7 @@
 import logging
 import uuid
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Optional, List
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from utils.tenant import get_current_tenant, get_current_tenant_slug, DEFAULT_TENANT_SLUG
@@ -13,6 +13,50 @@ from database import db
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/tenant", tags=["branding"])
+
+MAX_TERMS_COUNT = 20
+MAX_TERM_LENGTH = 300
+
+
+def _sanitize_terms(value):
+    if value is None:
+        return None
+    if not isinstance(value, list):
+        return []
+    out = []
+    for item in value:
+        if not isinstance(item, str):
+            continue
+        s = item.strip()
+        if not s:
+            continue
+        if len(s) > MAX_TERM_LENGTH:
+            s = s[:MAX_TERM_LENGTH]
+        out.append(s)
+        if len(out) >= MAX_TERMS_COUNT:
+            break
+    return out
+
+
+def _read_terms(tenant, key):
+    if not tenant:
+        return []
+    raw = tenant.get(key)
+    if not isinstance(raw, list):
+        return []
+    out = []
+    for x in raw:
+        if not isinstance(x, str):
+            continue
+        s = x.strip()
+        if not s:
+            continue
+        if len(s) > MAX_TERM_LENGTH:
+            s = s[:MAX_TERM_LENGTH]
+        out.append(s)
+        if len(out) >= MAX_TERMS_COUNT:
+            break
+    return out
 
 
 def _safe_logo(value):
@@ -82,6 +126,8 @@ async def get_branding(request: Request):
         "primary_color": _safe_color(tenant.get("primary_color", "") if tenant else ""),
         "tax_number": (tenant.get("tax_number", "") if tenant else "") or "",
         "commercial_reg": (tenant.get("commercial_reg", "") if tenant else "") or "",
+        "invoice_terms_ar": _read_terms(tenant, "invoice_terms_ar"),
+        "invoice_terms_en": _read_terms(tenant, "invoice_terms_en"),
         "status": tenant.get("status", "") if tenant else "",
         "subscription_end_at": end_at,
         "days_remaining": _days_remaining(end_at),
@@ -104,6 +150,8 @@ class BrandingUpdate(BaseModel):
     primary_color: Optional[str] = None
     tax_number: Optional[str] = None
     commercial_reg: Optional[str] = None
+    invoice_terms_ar: Optional[List[str]] = None
+    invoice_terms_en: Optional[List[str]] = None
 
 
 @router.patch("/branding")
@@ -141,6 +189,10 @@ async def update_branding(payload: BrandingUpdate, current_user: dict = Depends(
         if len(cr) > 50:
             raise HTTPException(status_code=400, detail="رقم السجل التجاري طويل جداً (حتى 50 حرفاً)")
         update["commercial_reg"] = cr
+    if payload.invoice_terms_ar is not None:
+        update["invoice_terms_ar"] = _sanitize_terms(payload.invoice_terms_ar) or []
+    if payload.invoice_terms_en is not None:
+        update["invoice_terms_en"] = _sanitize_terms(payload.invoice_terms_en) or []
     before = await control_db.tenants.find_one({"slug": slug}, {"_id": 0}) or {}
     if update:
         await control_db.tenants.update_one({"slug": slug}, {"$set": update})
@@ -165,6 +217,8 @@ async def update_branding(payload: BrandingUpdate, current_user: dict = Depends(
         "primary_color": _safe_color(refreshed.get("primary_color", "")),
         "tax_number": refreshed.get("tax_number", "") or "",
         "commercial_reg": refreshed.get("commercial_reg", "") or "",
+        "invoice_terms_ar": _read_terms(refreshed, "invoice_terms_ar"),
+        "invoice_terms_en": _read_terms(refreshed, "invoice_terms_en"),
     }
 
 

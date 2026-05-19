@@ -134,6 +134,13 @@ export function getCommercialReg() {
   return (b && typeof b.commercial_reg === 'string') ? b.commercial_reg : '';
 }
 
+export function getInvoiceTerms(lang) {
+  const b = _read();
+  const key = lang === 'en' ? 'invoice_terms_en' : 'invoice_terms_ar';
+  const arr = b && Array.isArray(b[key]) ? b[key] : [];
+  return arr.map(s => String(s || '').trim()).filter(Boolean);
+}
+
 export async function loadBranding() {
   try {
     const { data } = await axios.get('/api/tenant/branding');

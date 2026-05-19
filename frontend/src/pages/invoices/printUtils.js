@@ -3,6 +3,13 @@
  */
 
 import { CARD_WIDTH, CARD_HEIGHT, TOP_MARGIN, RIGHT_MARGIN, GAP, VAT_RATE, COMPANY_INFO, INVOICE_TERMS } from './constants';
+
+const _escapeHtml = (s) => String(s == null ? '' : s)
+  .replace(/&/g, '&amp;')
+  .replace(/</g, '&lt;')
+  .replace(/>/g, '&gt;')
+  .replace(/"/g, '&quot;')
+  .replace(/'/g, '&#39;');
 import { getAcademyLogoUrl, getPrimaryColor } from '../../services/branding';
 
 /**
@@ -113,8 +120,7 @@ export const generateCardHTML = (member, qrData, schedule) => {
       </div>
       <div class="card-footer">
         <div class="terms-title">شروط وأحكام:</div>
-        <div>• ${INVOICE_TERMS.ar[0]}</div>
-        <div>• ${INVOICE_TERMS.ar[1]}</div>
+        ${(INVOICE_TERMS.ar || []).slice(0, 2).map(t => `<div>• ${_escapeHtml(t)}</div>`).join('')}
       </div>
     </div>
   `;
@@ -290,7 +296,7 @@ export const printInvoice = (invoice, items) => {
           <div class="terms">
             <h4>الشروط والأحكام:</h4>
             <ul>
-              ${INVOICE_TERMS.ar.map(term => `<li>${term}</li>`).join('')}
+              ${(INVOICE_TERMS.ar || []).map(term => `<li>${_escapeHtml(term)}</li>`).join('')}
             </ul>
           </div>
           
