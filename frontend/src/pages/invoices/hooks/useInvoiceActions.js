@@ -68,12 +68,12 @@ export const useInvoiceActions = ({ loadData, language, t, isAdmin, getBranchNam
     try { await invoicesAPI.cancel(id); toast.success(language === 'ar' ? 'تم إلغاء الفاتورة' : 'Invoice cancelled'); loadData(); } catch { toast.error(t('error')); }
   };
 
-  const handleDeleteInvoice = async (id, status) => {
+  const handleDeleteInvoice = async (id, status, branchId) => {
     if (!isAdmin) { toast.error(language === 'ar' ? 'الحذف متاح للمدير فقط' : 'Delete is admin only'); return; }
     if (status === 'paid') {
       const pw = window.prompt(language === 'ar' ? 'أدخل كلمة المرور لحذف الفاتورة المدفوعة:' : 'Enter password to delete paid invoice:');
       if (pw === null) return;
-      const ok = await verifyOperationPassword('delete_invoice', pw);
+      const ok = await verifyOperationPassword('delete_invoice', pw, branchId);
       if (!ok) { toast.error(language === 'ar' ? 'كلمة المرور غير صحيحة' : 'Incorrect password'); return; }
     }
     if (!window.confirm(language === 'ar' ? 'هل أنت متأكد من حذف الفاتورة نهائياً؟' : 'Are you sure you want to permanently delete this invoice?')) return;

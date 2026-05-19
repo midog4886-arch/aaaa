@@ -211,7 +211,7 @@ export const InvoicesPage = () => {
   };
 
   const handleRegFormsPasswordConfirm = async () => {
-    const ok = await verifyOperationPassword('reg_forms', regFormsPasswordInput);
+    const ok = await verifyOperationPassword('reg_forms', regFormsPasswordInput, selectedBranchId);
     if (!ok) { toast.error(language === 'ar' ? 'كلمة المرور غير صحيحة' : 'Incorrect password'); setRegFormsPasswordInput(''); return; }
     setShowRegFormsPasswordDialog(false); setRegFormsPasswordInput(''); setActiveTab('forms');
   };
@@ -331,7 +331,7 @@ export const InvoicesPage = () => {
                               <Button variant="ghost" size="sm" onClick={() => handleSendWhatsApp(inv)} className="text-green-500"><MessageSquare className="w-4 h-4" /></Button>
                               <Button variant="ghost" size="sm" onClick={() => handleOpenCardPrint(inv)} className="text-blue-500"><CreditCard className="w-4 h-4" /></Button>
                               <Button variant="ghost" size="sm" onClick={() => handleOpenQRCard(inv)} className="text-indigo-500"><QrCode className="w-4 h-4" /></Button>
-                              {isAdmin && <Button variant="ghost" size="sm" onClick={() => handleDeleteInvoice(inv.id, inv.status)} className="text-red-500"><Trash2 className="w-4 h-4" /></Button>}
+                              {isAdmin && <Button variant="ghost" size="sm" onClick={() => handleDeleteInvoice(inv.id, inv.status, inv.branch_id)} className="text-red-500"><Trash2 className="w-4 h-4" /></Button>}
                             </div>
                           </td>
                         </tr>

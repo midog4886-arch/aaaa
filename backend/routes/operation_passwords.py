@@ -1,3 +1,4 @@
+import re
 from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 from typing import Optional, Dict, List
@@ -19,6 +20,7 @@ PASSWORD_KEYS = {
 DEFAULT_PASSWORD = "242456"
 DOC_ID = "operation_passwords"
 GLOBAL_KEY = "__global__"
+_BRANCH_ID_RE = re.compile(r"^[A-Za-z0-9_\-]{1,64}$")
 
 
 class UpdateBody(BaseModel):
@@ -32,31 +34,46 @@ class VerifyBody(BaseModel):
     branch_id: Optional[str] = None
 
 
-def _normalize_branch_id(branch_id: Optional[str]) -> str:
-    bid = (branch_id or "").strip()
-    return bid if bid else GLOBAL_KEY
+def _safe_branch_id(branch_id: Optional[str]) -> Optional[str]:
+    if branch_id is None:
+        return None
+    bid = str(branch_id).strip()
+    if not bid:
+        return None
+    if not _BRANCH_ID_RE.match(bid):
+        raise HTTPException(status_code=400, detail="Invalid branch_id format")
+    return bid
 
 
-def _empty_values() -> Dict[str, str]:
-    return {k: DEFAULT_PASSWORD for k in PASSWORD_KEYS.keys()}
+def _effective_branch_for_user(current_user: dict, branch_id: Optional[str]) -> str:
+    safe = _safe_branch_id(branch_id)
+    if current_user.get("is_admin", False):
+        return safe if safe else GLOBAL_KEY
+    user_branch = current_user.get("branch_id")
+    if not user_branch:
+        return GLOBAL_KEY
+    return str(user_branch)
 
 
 async def _load_doc() -> dict:
     return await db.app_settings.find_one({"_id": DOC_ID}) or {}
 
 
-def _branch_values_from_doc(doc: dict, branch_id: Optional[str]) -> Dict[str, str]:
-    branch_key = _normalize_branch_id(branch_id)
-    branch_map = (doc.get("branch_values") or {}) if isinstance(doc.get("branch_values"), dict) else {}
-    stored = branch_map.get(branch_key) or {}
-    if not stored and branch_key != GLOBAL_KEY:
-        stored = branch_map.get(GLOBAL_KEY) or {}
-    if not stored:
-        stored = doc.get("values") or {}
+def _branch_values_from_doc(doc: dict, branch_key: str) -> Dict[str, str]:
+    branch_map = doc.get("branch_values") if isinstance(doc.get("branch_values"), dict) else {}
+    branch_map = branch_map or {}
+    branch_stored = branch_map.get(branch_key) if isinstance(branch_map.get(branch_key), dict) else {}
+    global_stored = branch_map.get(GLOBAL_KEY) if isinstance(branch_map.get(GLOBAL_KEY), dict) else {}
+    legacy_stored = doc.get("values") if isinstance(doc.get("values"), dict) else {}
     out = {}
     for k in PASSWORD_KEYS.keys():
-        v = stored.get(k) if isinstance(stored, dict) else None
-        out[k] = v if (isinstance(v, str) and v.strip()) else DEFAULT_PASSWORD
+        chosen = None
+        for source in (branch_stored, global_stored, legacy_stored):
+            v = source.get(k) if isinstance(source, dict) else None
+            if isinstance(v, str) and v.strip():
+                chosen = v.strip()
+                break
+        out[k] = chosen if chosen else DEFAULT_PASSWORD
     return out
 
 
@@ -76,14 +93,16 @@ async def get_passwords(
 ):
     if not current_user.get("is_admin", False):
         raise HTTPException(status_code=403, detail="Admin access required")
+    safe = _safe_branch_id(branch_id)
+    branch_key = safe if safe else GLOBAL_KEY
     doc = await _load_doc()
-    values = _branch_values_from_doc(doc, branch_id)
+    values = _branch_values_from_doc(doc, branch_key)
     branches = await _load_branches_for_user(current_user)
     return {
         "keys": PASSWORD_KEYS,
         "values": values,
         "default": DEFAULT_PASSWORD,
-        "branch_id": _normalize_branch_id(branch_id),
+        "branch_id": branch_key,
         "branches": branches,
     }
 
@@ -92,7 +111,12 @@ async def get_passwords(
 async def update_passwords(body: UpdateBody, current_user: dict = Depends(get_current_user)):
     if not current_user.get("is_admin", False):
         raise HTTPException(status_code=403, detail="Admin access required")
-    branch_key = _normalize_branch_id(body.branch_id)
+    safe = _safe_branch_id(body.branch_id)
+    branch_key = safe if safe else GLOBAL_KEY
+    if branch_key != GLOBAL_KEY:
+        valid_ids = {b.get("id") for b in await _load_branches_for_user(current_user) if b.get("id")}
+        if branch_key not in valid_ids:
+            raise HTTPException(status_code=400, detail="Unknown branch_id")
     clean = {}
     for k, v in (body.values or {}).items():
         if k not in PASSWORD_KEYS:
@@ -114,7 +138,7 @@ async def update_passwords(body: UpdateBody, current_user: dict = Depends(get_cu
     return {
         "ok": True,
         "branch_id": branch_key,
-        "values": _branch_values_from_doc(doc, branch_key if branch_key != GLOBAL_KEY else None),
+        "values": _branch_values_from_doc(doc, branch_key),
     }
 
 
@@ -122,8 +146,9 @@ async def update_passwords(body: UpdateBody, current_user: dict = Depends(get_cu
 async def verify_password(body: VerifyBody, current_user: dict = Depends(get_current_user)):
     if body.key not in PASSWORD_KEYS:
         raise HTTPException(status_code=400, detail="Invalid key")
+    branch_key = _effective_branch_for_user(current_user, body.branch_id)
     doc = await _load_doc()
-    values = _branch_values_from_doc(doc, body.branch_id)
+    values = _branch_values_from_doc(doc, branch_key)
     expected = values.get(body.key) or DEFAULT_PASSWORD
     valid = (body.password or "") == expected
     return {"valid": valid}

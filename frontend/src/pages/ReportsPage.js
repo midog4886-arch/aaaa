@@ -59,7 +59,7 @@ export const ReportsPage = () => {
 
   const handleUnlockStats = async () => {
     const { verifyOperationPassword } = await import('../utils/operationPassword');
-    const ok = await verifyOperationPassword('reports', passwordInput);
+    const ok = await verifyOperationPassword('reports', passwordInput, selectedBranchId);
     if (ok) {
       setStatsUnlocked(true);
       setShowPasswordInput(false);

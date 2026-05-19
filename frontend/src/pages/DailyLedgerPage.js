@@ -73,7 +73,7 @@ export const DailyLedgerPage = () => {
 
   const handleUnlock = async () => {
     const { verifyOperationPassword } = await import('../utils/operationPassword');
-    const ok = await verifyOperationPassword('daily_ledger', passwordInput);
+    const ok = await verifyOperationPassword('daily_ledger', passwordInput, selectedBranchId);
     if (ok) {
       setStatsUnlocked(true);
       setPasswordError(false);

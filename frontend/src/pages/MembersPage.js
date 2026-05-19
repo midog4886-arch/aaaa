@@ -338,7 +338,7 @@ export const MembersPage = () => {
     const password = window.prompt(language === 'ar' ? 'أدخل كلمة المرور لحذف العضو:' : 'Enter password to delete member:');
     if (password === null) return;
     const { verifyOperationPassword } = await import('../utils/operationPassword');
-    const valid = await verifyOperationPassword('delete_member', password);
+    const valid = await verifyOperationPassword('delete_member', password, selectedBranchId);
     if (!valid) {
       toast.error(language === 'ar' ? 'كلمة المرور غير صحيحة' : 'Incorrect password');
       return;

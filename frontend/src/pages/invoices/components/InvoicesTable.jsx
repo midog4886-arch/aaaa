@@ -211,7 +211,7 @@ const InvoicesTable = ({
                       {isAdmin && (
                         <button 
                           className="action-button text-red-600" 
-                          onClick={() => onDelete(invoice.id, invoice.status)}
+                          onClick={() => onDelete(invoice.id, invoice.status, invoice.branch_id)}
                           title={language === 'ar' ? 'حذف' : 'Delete'}
                         >
                           <Trash2 className="w-4 h-4" />

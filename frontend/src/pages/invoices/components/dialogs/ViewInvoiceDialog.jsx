@@ -206,7 +206,7 @@ export const ViewInvoiceDialog = ({
             {selectedInvoice?.status === 'pending' && <Button size="sm" onClick={() => onMarkPaid(selectedInvoice.id)}><CheckCircle className="w-4 h-4 me-1" />{language === 'ar' ? 'تم الدفع' : 'Mark Paid'}</Button>}
             {selectedInvoice?.status === 'cancelled' && <Button variant="outline" size="sm" onClick={() => onRestoreInvoice(selectedInvoice.id)}><RotateCcw className="w-4 h-4 me-1" />{language === 'ar' ? 'استرجاع' : 'Restore'}</Button>}
             {selectedInvoice?.status === 'paid' && <Button variant="outline" size="sm" className="text-purple-600 border-purple-300" onClick={() => { onOpenChange(false); onOpenRefund(selectedInvoice); }}><RefreshCcw className="w-4 h-4 me-1" />{language === 'ar' ? 'استرجاع مبلغ' : 'Refund'}</Button>}
-            {isAdmin && <Button variant="destructive" size="sm" onClick={() => onDelete(selectedInvoice?.id, selectedInvoice?.status)}><Trash2 className="w-4 h-4 me-1" />{language === 'ar' ? 'حذف' : 'Delete'}</Button>}
+            {isAdmin && <Button variant="destructive" size="sm" onClick={() => onDelete(selectedInvoice?.id, selectedInvoice?.status, selectedInvoice?.branch_id)}><Trash2 className="w-4 h-4 me-1" />{language === 'ar' ? 'حذف' : 'Delete'}</Button>}
             <Button variant="outline" size="sm" onClick={() => onOpenChange(false)}>{t('close')}</Button>
           </div>
         </DialogFooter>

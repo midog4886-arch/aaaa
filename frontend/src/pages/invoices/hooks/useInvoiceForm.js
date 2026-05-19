@@ -191,7 +191,7 @@ export const useInvoiceForm = ({
   const unlockFeeEdit = async () => {
     const password = window.prompt(language === 'ar' ? 'أدخل كلمة المرور لتغيير السعر:' : 'Enter password to change price:');
     if (password === null) return false;
-    const ok = await verifyOperationPassword('edit_price', password);
+    const ok = await verifyOperationPassword('edit_price', password, selectedBranchId);
     if (ok) { setFeeEditUnlocked(true); toast.success(language === 'ar' ? 'تم فتح تعديل السعر' : 'Price edit unlocked'); return true; }
     toast.error(language === 'ar' ? 'كلمة المرور غير صحيحة' : 'Incorrect password');
     return false;
