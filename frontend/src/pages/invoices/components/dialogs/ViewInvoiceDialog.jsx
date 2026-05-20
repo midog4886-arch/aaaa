@@ -3,6 +3,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Button } from '../../../../components/ui/button';
 import { CheckCircle, Edit, FileText, Loader2, MessageSquare, Printer, Receipt, RefreshCcw, RotateCcw, Trash2 } from 'lucide-react';
 import { COMPANY_INFO, INVOICE_TERMS } from '../../constants';
+import { translateSchedule, translateActivityName, translatePeriod } from '../../invoiceI18n';
 
 export const ViewInvoiceDialog = ({
   isOpen, onOpenChange, selectedInvoice, qrCode, printRef,
@@ -74,7 +75,7 @@ export const ViewInvoiceDialog = ({
                 <th className="border p-2 text-start">{tl('activity_name')}</th><th className="border p-2 text-start">{isAr ? 'الفترة' : 'Period'}</th><th className="border p-2 text-start">{isAr ? 'المواعيد' : 'Schedule'}</th><th className="border p-2 text-start">{isAr ? 'المبلغ' : 'Amount'}</th></tr></thead>
               <tbody>{(selectedInvoice.items || []).map((item, idx) => <tr key={idx}>
                 {selectedInvoice.additional_members?.length > 0 && <td className="border p-2 text-xs text-blue-700 font-medium">{item.member_name || selectedInvoice.customer_name_ar || '-'}</td>}
-                <td className="border p-2">{item.activity_name}</td><td className="border p-2 text-sm">{item.period}</td><td className="border p-2 text-sm text-blue-700 schedule-cell font-medium">{item.schedule || '-'}</td><td className="border p-2">{item.fee} {tl('sar')}</td></tr>)}</tbody>
+                <td className="border p-2">{translateActivityName(item.activity_name, effectiveLang)}</td><td className="border p-2 text-sm">{translatePeriod(item.period, effectiveLang)}</td><td className="border p-2 text-sm text-blue-700 schedule-cell font-medium">{translateSchedule(item.schedule, effectiveLang) || '-'}</td><td className="border p-2">{item.fee} {tl('sar')}</td></tr>)}</tbody>
             </table>
 
             <div className="space-y-2 text-sm">
