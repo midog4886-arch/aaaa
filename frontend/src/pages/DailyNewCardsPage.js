@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Badge } from '../components/ui/badge';
-import { Printer, CalendarDays, Users, Building2, RefreshCw, CreditCard } from 'lucide-react';
+import { Printer, CalendarDays, Users, Building2, RefreshCw, CreditCard, Filter } from 'lucide-react';
 import { membersAPI } from '../services/api';
 import { getMemberQRValue } from '../utils/memberQR';
 
@@ -15,6 +15,7 @@ const DailyNewCardsPage = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [data, setData] = useState(null);
+  const [selectedBranchId, setSelectedBranchId] = useState('all');
 
   const load = useCallback(async (d) => {
     setLoading(true);
@@ -93,11 +94,19 @@ const DailyNewCardsPage = () => {
     </div>
   `;
 
+  const getFilteredBranches = () => {
+    const list = data?.branches || [];
+    if (selectedBranchId === 'all') return list;
+    return list.filter((b) => String(b.branch_id) === String(selectedBranchId));
+  };
+
   const printAllCards = () => {
     if (!data || !data.members || data.members.length === 0) return;
+    const branchesList = getFilteredBranches();
+    if (branchesList.length === 0) return;
 
     const pairs = [];
-    data.branches.forEach((branch) => {
+    branchesList.forEach((branch) => {
       branch.members.forEach((m) => {
         pairs.push({ branch, member: m });
       });
@@ -180,9 +189,11 @@ const DailyNewCardsPage = () => {
 
   const printCD820 = (mode = 'duplex') => {
     if (!data || !data.members || data.members.length === 0) return;
+    const branchesList = getFilteredBranches();
+    if (branchesList.length === 0) return;
 
     const allMembers = [];
-    data.branches.forEach((branch) => {
+    branchesList.forEach((branch) => {
       branch.members.forEach((m) => allMembers.push({ branch, member: m }));
     });
 
@@ -264,8 +275,12 @@ const DailyNewCardsPage = () => {
     win.document.close();
   };
 
-  const totalMembers = data?.total_members || 0;
-  const branches = data?.branches || [];
+  const allBranches = data?.branches || [];
+  const branches = selectedBranchId === 'all'
+    ? allBranches
+    : allBranches.filter((b) => String(b.branch_id) === String(selectedBranchId));
+  const totalMembers = branches.reduce((sum, b) => sum + (b.members?.length || 0), 0);
+  const totalBranchesShown = branches.length;
 
   return (
     <Layout>
@@ -291,7 +306,25 @@ const DailyNewCardsPage = () => {
                   dir="ltr"
                 />
               </div>
-              <div className="flex gap-2">
+              <div className="md:w-64">
+                <label className="block text-sm font-semibold text-gray-700 mb-1 flex items-center gap-1">
+                  <Filter className="w-3.5 h-3.5 text-orange-500" />
+                  الفرع
+                </label>
+                <select
+                  value={selectedBranchId}
+                  onChange={(e) => setSelectedBranchId(e.target.value)}
+                  className="w-full h-10 border border-gray-300 rounded-md px-3 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-orange-400"
+                >
+                  <option value="all">كل الفروع ({data?.total_branches || 0})</option>
+                  {(data?.branches || []).map((b) => (
+                    <option key={b.branch_id} value={b.branch_id}>
+                      {b.branch_name} ({b.members.length})
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex gap-2 flex-wrap">
                 <Button
                   onClick={() => load(date)}
                   variant="outline"
@@ -339,12 +372,20 @@ const DailyNewCardsPage = () => {
             <div className="flex flex-wrap gap-3 mt-4">
               <Badge variant="secondary" className="text-sm gap-1 px-3 py-1">
                 <Users className="w-3.5 h-3.5" />
-                إجمالي الأعضاء الجدد: {totalMembers}
+                {selectedBranchId === 'all' ? 'إجمالي الأعضاء الجدد' : 'أعضاء الفرع المختار'}: {totalMembers}
               </Badge>
               <Badge variant="secondary" className="text-sm gap-1 px-3 py-1">
                 <Building2 className="w-3.5 h-3.5" />
-                عدد الفروع: {data?.total_branches || 0}
+                {selectedBranchId === 'all' ? `عدد الفروع: ${data?.total_branches || 0}` : `الفرع: ${totalBranchesShown}`}
               </Badge>
+              {selectedBranchId !== 'all' && (
+                <Badge
+                  className="text-xs gap-1 px-3 py-1 bg-orange-100 text-orange-700 cursor-pointer hover:bg-orange-200"
+                  onClick={() => setSelectedBranchId('all')}
+                >
+                  ✕ إزالة فلتر الفرع
+                </Badge>
+              )}
             </div>
           </CardContent>
         </Card>
