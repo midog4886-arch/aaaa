@@ -187,7 +187,7 @@ const DailyNewCardsPage = () => {
         .card { width:60mm; height:95mm; background:white; border-radius:3mm; overflow:hidden; border:1px solid #e5e7eb; display:flex; flex-direction:column; position:relative; }
         .accent-stripe { position:absolute; top:0; bottom:0; right:0; width:4mm; background:linear-gradient(180deg,#F97316,#EA580C,#B45309); z-index:2; display:flex; align-items:center; justify-content:center; overflow:hidden; }
         .accent-stripe span { writing-mode:vertical-rl; transform:rotate(180deg); color:white; font-size:6.5pt; font-weight:900; letter-spacing:1.5pt; text-transform:uppercase; white-space:nowrap; }
-        .card-header { background:linear-gradient(135deg,#F97316,#F59E0B); padding:2mm 2mm 2.5mm; display:flex; flex-direction:column; align-items:center; gap:1mm; color:white; text-align:center; }
+        .card-header { background:linear-gradient(135deg,#0369A1,#0EA5E9); padding:2mm 2mm 2.5mm; display:flex; flex-direction:column; align-items:center; gap:1mm; color:white; text-align:center; }
         .header-text h2 { font-size:7.5pt; font-weight:900; line-height:1.2; }
         .header-text p { font-size:5.5pt; font-weight:800; opacity:0.95; margin-top:0.3mm; }
         .header-logo { width:18mm; height:18mm; border-radius:50%; background:white; padding:0; display:flex; align-items:center; justify-content:center; overflow:hidden; border:1.5px solid white; box-shadow:0 1px 3px rgba(0,0,0,0.2); }
@@ -263,7 +263,7 @@ const DailyNewCardsPage = () => {
         .card { width:54mm; height:85.6mm; border-radius:0; border:none; display:flex; flex-direction:column; position:relative; }
         .accent-stripe { position:absolute; top:0; bottom:0; right:0; width:4mm; background:linear-gradient(180deg,#F97316,#EA580C,#B45309); z-index:2; display:flex; align-items:center; justify-content:center; overflow:hidden; }
         .accent-stripe span { writing-mode:vertical-rl; transform:rotate(180deg); color:white; font-size:6pt; font-weight:900; letter-spacing:1.2pt; text-transform:uppercase; white-space:nowrap; }
-        .card-header { background:linear-gradient(135deg,#F97316,#F59E0B); padding:2mm 2mm 2.2mm; display:flex; flex-direction:column; align-items:center; gap:1mm; color:white; text-align:center; }
+        .card-header { background:linear-gradient(135deg,#0369A1,#0EA5E9); padding:2mm 2mm 2.2mm; display:flex; flex-direction:column; align-items:center; gap:1mm; color:white; text-align:center; }
         .header-text h2 { font-size:7pt; font-weight:900; line-height:1.2; }
         .header-text p { font-size:5pt; font-weight:800; opacity:0.95; margin-top:0.2mm; }
         .header-logo { width:16mm; height:16mm; border-radius:50%; background:white; padding:0; display:flex; align-items:center; justify-content:center; overflow:hidden; border:1.5px solid white; box-shadow:0 1px 3px rgba(0,0,0,0.2); }
