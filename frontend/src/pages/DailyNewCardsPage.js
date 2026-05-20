@@ -90,7 +90,7 @@ const DailyNewCardsPage = () => {
         return `<div class="activity-item ${isActive ? 'active' : 'expired'}"><div class="activity-name">${isActive ? '✓' : '✗'} ${act.activity_name || ''}</div></div>`;
       })
       .join('');
-    const name = (m.name_ar || m.name || '').split('+').map((n) => `<div>${n.trim()}</div>`).join('');
+    const name = (m.name_ar || m.name || '').split('+').map((n) => n.trim()).filter(Boolean).join(' - ');
     return `
       <div class="card">
         <div class="accent-stripe"><span>${(m.activities && m.activities[0] && m.activities[0].activity_name) || 'GLOBAL CHAMPIONS'}</span></div>
