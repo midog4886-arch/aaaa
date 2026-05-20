@@ -7806,17 +7806,30 @@ class InternalExpenseCreate(BaseModel):
     executor_name: str  # الشخص المنفذ
     notes: Optional[str] = None
 
-def _can_approve_internal_expenses(user: dict) -> bool:
+async def _load_user_permissions(user: dict) -> list:
+    perms = user.get("permissions")
+    if isinstance(perms, list):
+        return perms
+    uid = user.get("user_id")
+    if not uid:
+        return []
+    doc = await db.users.find_one({"id": uid}, {"_id": 0, "permissions": 1})
+    perms = (doc or {}).get("permissions") or []
+    user["permissions"] = perms
+    return perms
+
+
+async def _can_approve_internal_expenses(user: dict) -> bool:
     if user.get("is_admin", False):
         return True
-    perms = user.get("permissions") or []
+    perms = await _load_user_permissions(user)
     return ("accounting" in perms) or ("internal-expenses-approve" in perms)
 
 
-def _can_create_internal_expenses(user: dict) -> bool:
-    if _can_approve_internal_expenses(user):
+async def _can_create_internal_expenses(user: dict) -> bool:
+    if await _can_approve_internal_expenses(user):
         return True
-    perms = user.get("permissions") or []
+    perms = await _load_user_permissions(user)
     return "internal-expenses-create" in perms
 
 
@@ -7832,7 +7845,7 @@ async def get_internal_expenses(
     current_user: dict = Depends(get_current_user)
 ):
     """Get all internal expenses with filters"""
-    if not _can_create_internal_expenses(current_user):
+    if not await _can_create_internal_expenses(current_user):
         raise HTTPException(status_code=403, detail="الصلاحية مطلوبة للوصول للمصروفات الداخلية")
     query = {}
     
@@ -7842,7 +7855,7 @@ async def get_internal_expenses(
     elif is_admin and branch_filter and branch_filter != "all":
         query["branch_id"] = branch_filter
     
-    if not _can_approve_internal_expenses(current_user):
+    if not await _can_approve_internal_expenses(current_user):
         query["created_by"] = current_user.get("username")
     elif mine_only:
         query["created_by"] = current_user.get("username")
@@ -7872,7 +7885,7 @@ async def get_expenses_summary(
     current_user: dict = Depends(get_current_user)
 ):
     """Get summary of internal expenses"""
-    if not _can_create_internal_expenses(current_user):
+    if not await _can_create_internal_expenses(current_user):
         raise HTTPException(status_code=403, detail="الصلاحية مطلوبة")
     query = {}
     
@@ -7882,7 +7895,7 @@ async def get_expenses_summary(
     elif is_admin and branch_filter and branch_filter != "all":
         query["branch_id"] = branch_filter
     
-    if not _can_approve_internal_expenses(current_user):
+    if not await _can_approve_internal_expenses(current_user):
         query["created_by"] = current_user.get("username")
     
     if start_date:
@@ -7946,7 +7959,7 @@ async def create_internal_expense(
     current_user: dict = Depends(get_current_user)
 ):
     """Create a new internal expense with optional receipt image"""
-    if not _can_create_internal_expenses(current_user):
+    if not await _can_create_internal_expenses(current_user):
         raise HTTPException(status_code=403, detail="الصلاحية مطلوبة لإضافة مصروف")
     
     last_expense = await db.internal_expenses.find_one(
@@ -8006,7 +8019,7 @@ async def create_internal_expense(
     await db.internal_expenses.insert_one(expense_data)
     expense_data.pop("_id", None)
     
-    if not _can_approve_internal_expenses(current_user):
+    if not await _can_approve_internal_expenses(current_user):
         try:
             from routes.push_notifications import send_push_to_admins, NotificationPayload
             submitter = expense_data["created_by_name"]
@@ -8062,8 +8075,8 @@ async def update_internal_expense(
         user_branch = current_user.get("branch_id")
         if not user_branch or existing.get("branch_id") != user_branch:
             raise HTTPException(status_code=403, detail="هذا المصروف يخص فرعاً آخر")
-    if not _can_approve_internal_expenses(current_user):
-        if not _can_create_internal_expenses(current_user):
+    if not await _can_approve_internal_expenses(current_user):
+        if not await _can_create_internal_expenses(current_user):
             raise HTTPException(status_code=403, detail="الصلاحية مطلوبة")
         if existing.get("created_by") != current_user.get("username"):
             raise HTTPException(status_code=403, detail="لا يمكنك تعديل مصروف ليس من إنشائك")
@@ -8114,7 +8127,7 @@ async def update_expense_status(
     current_user: dict = Depends(get_current_user)
 ):
     """Update expense status (approve/reject)"""
-    if not _can_approve_internal_expenses(current_user):
+    if not await _can_approve_internal_expenses(current_user):
         raise HTTPException(status_code=403, detail="الصلاحية مطلوبة لاعتماد المصروفات")
     if status not in ["pending", "approved", "rejected"]:
         raise HTTPException(status_code=400, detail="Invalid status")
@@ -8261,8 +8274,8 @@ async def delete_internal_expense(expense_id: str, current_user: dict = Depends(
         user_branch = current_user.get("branch_id")
         if not user_branch or existing.get("branch_id") != user_branch:
             raise HTTPException(status_code=403, detail="هذا المصروف يخص فرعاً آخر")
-    if not _can_approve_internal_expenses(current_user):
-        if not _can_create_internal_expenses(current_user):
+    if not await _can_approve_internal_expenses(current_user):
+        if not await _can_create_internal_expenses(current_user):
             raise HTTPException(status_code=403, detail="الصلاحية مطلوبة")
         if existing.get("created_by") != current_user.get("username"):
             raise HTTPException(status_code=403, detail="لا يمكنك حذف مصروف ليس من إنشائك")
@@ -8290,7 +8303,7 @@ async def get_internal_expenses_pending_count(
     current_user: dict = Depends(get_current_user)
 ):
     """Count of pending internal expenses for the badge in the sidebar."""
-    if not _can_approve_internal_expenses(current_user):
+    if not await _can_approve_internal_expenses(current_user):
         return {"count": 0}
     query = {"status": "pending"}
     is_admin = current_user.get("is_admin", False)
