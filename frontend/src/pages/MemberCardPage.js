@@ -93,7 +93,8 @@ const MemberCardPage = () => {
             @media screen { .print-area { display: none; } }
             .sticker-preview { display: flex; gap: 15px; justify-content: center; margin-bottom: 20px; }
             .card { width: 60mm; height: 95mm; background: white; border-radius: 4mm; overflow: hidden; box-shadow: 0 4px 15px rgba(0,0,0,0.1); display: flex; flex-direction: column; position: relative; }
-            .accent-stripe { position: absolute; top: 0; bottom: 0; right: 0; width: 2.5mm; background: linear-gradient(180deg,#F97316,#EA580C,#B45309); z-index: 2; }
+            .accent-stripe { position: absolute; top: 0; bottom: 0; right: 0; width: 4mm; background: linear-gradient(180deg,#F97316,#EA580C,#B45309); z-index: 2; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+            .accent-stripe span { writing-mode: vertical-rl; transform: rotate(180deg); color: white; font-size: 6.5pt; font-weight: 900; letter-spacing: 1.5pt; text-transform: uppercase; white-space: nowrap; }
             .card-header { background: ${_headerBg}; padding: 2mm 2mm 2.5mm; display: flex; flex-direction: column; align-items: center; gap: 1mm; color: white; text-align: center; }
             .header-text h2 { font-size: 7.5pt; font-weight: 900; margin: 0; line-height: 1.2; }
             .header-text p { font-size: 5.5pt; font-weight: 800; opacity: 0.95; margin: 0.3mm 0 0; }
@@ -121,10 +122,10 @@ const MemberCardPage = () => {
             .activity-status { font-size: 5.5pt; font-weight: 700; }
             .activity-item.active .activity-status { color: #059669; }
             .activity-item.expired .activity-status { color: #DC2626; }
-            .logo-card { width: 60mm; height: 95mm; background: linear-gradient(180deg,#FFFFFF,#FFF7ED); border-radius: 4mm; overflow: hidden; box-shadow: 0 4px 15px rgba(0,0,0,0.1); display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 4mm; }
-            .logo-card img { max-width: 90%; max-height: 55%; object-fit: contain; }
-            .logo-card .lost-card-notice { font-size: 8pt; color: #DC2626; text-align: center; margin-top: 3mm; font-weight: 900; line-height: 1.4; background: #FEF2F2; padding: 2mm; border-radius: 2mm; border: 1.5px solid #EF4444; }
-            .logo-card .contact-info { font-size: 11pt; color: #000; text-align: center; margin-top: 3mm; font-weight: 900; line-height: 1.4; }
+            .logo-card { width: 60mm; height: 95mm; background: linear-gradient(180deg,#FFFFFF,#FFF7ED); border-radius: 4mm; overflow: hidden; box-shadow: 0 4px 15px rgba(0,0,0,0.1); display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 5mm 4mm; gap: 3mm; }
+            .logo-card img { max-width: 90%; max-height: 48%; object-fit: contain; }
+            .logo-card .contact-block { display: flex; flex-direction: column; gap: 1.5mm; align-items: center; width: 100%; }
+            .logo-card .contact-row { font-size: 9pt; color: #111827; text-align: center; font-weight: 800; line-height: 1.3; direction: ltr; }
             .print-btn { margin-top: 20px; padding: 12px 30px; background: linear-gradient(135deg, #F97316, #EA580C); color: white; border: none; border-radius: 10px; cursor: pointer; font-family: 'Tajawal', Arial, sans-serif; font-size: 16px; font-weight: bold; }
             .position-labels { display: flex; gap: 15px; justify-content: center; margin-top: 10px; }
             .position-label { padding: 8px 16px; background: #FEF3C7; border-radius: 8px; color: #92400E; font-size: 12px; }
@@ -136,7 +137,7 @@ const MemberCardPage = () => {
             <div class="sticker-preview">
               <!-- Member Card - Position 1 -->
               <div class="card">
-                <div class="accent-stripe"></div>
+                <div class="accent-stripe"><span>${(member?.activities && member.activities[0] && member.activities[0].activity_name) || 'GLOBAL CHAMPIONS'}</span></div>
                 <div class="card-header">
                   <div class="header-logo"><img src="${window.location.origin}/images/academy-logo.png" alt="logo" /></div>
                   <div class="header-text"><h2>شركة اداء الابطال العالمية للرياضة</h2><p>Global Champions Sports Performance</p></div>
@@ -163,8 +164,13 @@ const MemberCardPage = () => {
               <!-- Logo Card - Position 2 -->
               <div class="logo-card">
                 <img src="${window.location.origin}/images/academy-logo.png" alt="شعار الأكاديمية" />
-                <div class="contact-info">📞 0566238384</div>
-                <div class="lost-card-notice">⚠️ في حال فقدان كرت العضوية،<br/>يتم إصدار كرت جديد برسوم 10 ر.س</div>
+                <div class="contact-block">
+                  <div class="contact-row">📞 0566238384</div>
+                  <div class="contact-row">🌐 globalchampions.com</div>
+                  <div class="contact-row">📍 المملكة العربية السعودية</div>
+                  <div class="contact-row">📷 @global.champions</div>
+                  <div class="contact-row">🎵 @globalchampions</div>
+                </div>
               </div>
             </div>
             <div class="position-labels">
@@ -177,7 +183,7 @@ const MemberCardPage = () => {
           <div class="print-area">
             <!-- Member Card - Position 1 -->
             <div class="card">
-              <div class="accent-stripe"></div>
+              <div class="accent-stripe"><span>${(member?.activities && member.activities[0] && member.activities[0].activity_name) || 'GLOBAL CHAMPIONS'}</span></div>
               <div class="card-header">
                 <div class="header-logo"><img src="${window.location.origin}/images/academy-logo.png" alt="logo" /></div>
                 <div class="header-text"><h2>شركة اداء الابطال العالمية للرياضة</h2><p>Global Champions Sports Performance</p></div>
@@ -203,8 +209,13 @@ const MemberCardPage = () => {
             <!-- Logo Card - Position 2 -->
             <div class="logo-card">
               <img src="${window.location.origin}/images/academy-logo.png" alt="شعار الأكاديمية" />
-              <div class="contact-info">📞 0566238384</div>
-              <div class="lost-card-notice">⚠️ في حال فقدان كرت العضوية،<br/>يتم إصدار كرت جديد برسوم 10 ر.س</div>
+              <div class="contact-block">
+                <div class="contact-row">📞 0566238384</div>
+                <div class="contact-row">🌐 globalchampions.com</div>
+                <div class="contact-row">📍 المملكة العربية السعودية</div>
+                <div class="contact-row">📷 @global.champions</div>
+                <div class="contact-row">🎵 @globalchampions</div>
+              </div>
             </div>
           </div>
         </body>
@@ -242,7 +253,7 @@ const MemberCardPage = () => {
     const frontHtml = `
       <div class="cd-page">
         <div class="card">
-          <div class="accent-stripe"></div>
+          <div class="accent-stripe"><span>${(member?.activities && member.activities[0] && member.activities[0].activity_name) || 'GLOBAL CHAMPIONS'}</span></div>
           <div class="card-header">
             <div class="header-logo"><img src="${window.location.origin}/images/academy-logo.png" alt="logo" /></div>
             <div class="header-text"><h2>شركة اداء الابطال العالمية للرياضة</h2><p>Global Champions Sports Performance</p></div>
@@ -268,8 +279,13 @@ const MemberCardPage = () => {
       <div class="cd-page back">
         <div class="logo-card">
           <img src="${window.location.origin}/images/academy-logo.png" alt="شعار الأكاديمية" />
-          <div class="contact-info">📞 0566238384</div>
-          <div class="lost-card-notice">⚠️ في حال فقدان كرت العضوية،<br/>يتم إصدار كرت جديد برسوم 10 ر.س</div>
+          <div class="contact-block">
+            <div class="contact-row">📞 0566238384</div>
+            <div class="contact-row">🌐 globalchampions.com</div>
+            <div class="contact-row">📍 المملكة العربية السعودية</div>
+            <div class="contact-row">📷 @global.champions</div>
+            <div class="contact-row">🎵 @globalchampions</div>
+          </div>
         </div>
       </div>`;
     const pages = mode === 'duplex' ? frontHtml + backHtml : frontHtml;
@@ -315,10 +331,12 @@ const MemberCardPage = () => {
         .activity-item.expired { background:transparent; border-right:2px solid #EF4444; }
         .activity-name { font-weight:800; color:#111827; font-size:6.5pt; }
         .cd-page.back { transform:rotate(180deg); transform-origin:center center; }
-        .logo-card { width:54mm; height:85.6mm; background:linear-gradient(180deg,#FFFFFF,#FFF7ED); display:flex; flex-direction:column; align-items:center; justify-content:center; padding:4mm 3mm; }
-        .logo-card img { width:42mm; max-width:95%; max-height:50%; object-fit:contain; margin-bottom:0; }
-        .logo-card .contact-info { font-size:11pt; color:#000; text-align:center; margin-top:3mm; font-weight:900; }
-        .logo-card .lost-card-notice { font-size:8pt; color:#DC2626; text-align:center; margin-top:3mm; font-weight:900; background:#FEF2F2; padding:2mm; border-radius:1.5mm; border:1.5px solid #EF4444; line-height:1.35; }
+        .accent-stripe { position:absolute; top:0; bottom:0; right:0; width:4mm; background:linear-gradient(180deg,#F97316,#EA580C,#B45309); z-index:2; display:flex; align-items:center; justify-content:center; overflow:hidden; }
+        .accent-stripe span { writing-mode:vertical-rl; transform:rotate(180deg); color:white; font-size:6pt; font-weight:900; letter-spacing:1.2pt; text-transform:uppercase; white-space:nowrap; }
+        .logo-card { width:54mm; height:85.6mm; background:linear-gradient(180deg,#FFFFFF,#FFF7ED); display:flex; flex-direction:column; align-items:center; justify-content:center; padding:4mm 3mm; gap:2.5mm; }
+        .logo-card img { width:38mm; max-width:95%; max-height:42%; object-fit:contain; margin-bottom:0; }
+        .logo-card .contact-block { display:flex; flex-direction:column; gap:1.3mm; align-items:center; width:100%; }
+        .logo-card .contact-row { font-size:8pt; color:#111827; text-align:center; font-weight:800; line-height:1.3; direction:ltr; }
         @media print {
           .toolbar { display:none; }
           html, body { background:white; margin:0; padding:0; }
@@ -447,7 +465,7 @@ const MemberCardPage = () => {
                       </div>
                     </div>
                     <p className="text-center text-xs text-gray-500 mt-3">
-                      📐 حجم كل كرت: 9سم × 6سم
+                      📐 حجم كل كرت: 6سم × 9.5سم (عمودي)
                     </p>
                   </div>
                   
@@ -477,7 +495,7 @@ const MemberCardPage = () => {
                       </Button>
                     </div>
                     <p className="text-xs text-gray-500 text-center mt-1">
-                      مقاس CD820: 85.6 × 54 مم (CR-80)
+                      مقاس CD820: 54 × 85.6 مم (CR-80) — عمودي
                     </p>
                   </div>
                 </div>
