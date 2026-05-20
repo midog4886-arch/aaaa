@@ -124,6 +124,7 @@ export const membersAPI = {
     axios.post(`${API}/members/${memberId}/apply-change-request/${messageId}`),
   rejectChangeRequest: (memberId, messageId, reason = '') =>
     axios.post(`${API}/members/${memberId}/reject-change-request/${messageId}`, { reason }),
+  getDailyNewCards: (date) => axios.get(`${API}/members/daily-new-cards`, { params: date ? { date } : {} }),
 };
 
 // Social Publisher API

@@ -67,6 +67,7 @@ const TodayAttendancePage = lazy(() => import('./pages/TodayAttendancePage'));
 const SchedulePage = lazy(() => import('./pages/SchedulePage'));
 const UnauthorizedPage = lazy(() => import('./pages/UnauthorizedPage'));
 const MemberCardPage = lazy(() => import('./pages/MemberCardPage'));
+const DailyNewCardsPage = lazy(() => import('./pages/DailyNewCardsPage'));
 const CoachRatingsPage = lazy(() => import('./pages/CoachRatingsPage'));
 const CoachAttendancePage = lazy(() => import('./pages/CoachAttendancePage'));
 const CoachSalariesPage = lazy(() => import('./pages/CoachSalariesPage'));
@@ -457,6 +458,14 @@ function AppRoutes() {
             <TodayAttendancePage />
           </ProtectedRoute>
         } 
+      />
+      <Route
+        path="/admin/daily-new-cards"
+        element={
+          <ProtectedRoute permission="member-card">
+            <DailyNewCardsPage />
+          </ProtectedRoute>
+        }
       />
       <Route 
         path="/admin/schedule" 

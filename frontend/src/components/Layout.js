@@ -150,6 +150,7 @@ export const Sidebar = ({ isOpen, onClose }) => {
         { to: '/admin/members', icon: Users, label: 'members', permission: 'members', feature: 'members' },
         { to: '/admin/renewals', icon: RefreshCcw, label: 'renewals', permission: 'renewals', feature: 'renewals' },
         { to: '/admin/member-card', icon: QrCode, label: 'member_card', permission: 'member-card' },
+        { to: '/admin/daily-new-cards', icon: CalendarDays, label: 'daily_new_cards', permission: 'member-card' },
         { to: '/admin/attendance', icon: ClipboardList, label: 'attendance', permission: 'attendance', feature: 'attendance' },
         { to: '/admin/today-attendance', icon: CheckCheck, label: 'today_attendance', permission: 'attendance', feature: 'attendance' },
       ]

@@ -1,0 +1,317 @@
+import React, { useEffect, useState, useCallback } from 'react';
+import { Layout } from '../components/Layout';
+import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
+import { Button } from '../components/ui/button';
+import { Input } from '../components/ui/input';
+import { Badge } from '../components/ui/badge';
+import { Printer, CalendarDays, Users, Building2, RefreshCw } from 'lucide-react';
+import { membersAPI } from '../services/api';
+import { getMemberQRValue } from '../utils/memberQR';
+
+const todayStr = () => new Date().toISOString().split('T')[0];
+
+const DailyNewCardsPage = () => {
+  const [date, setDate] = useState(todayStr());
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [data, setData] = useState(null);
+
+  const load = useCallback(async (d) => {
+    setLoading(true);
+    setError('');
+    try {
+      const res = await membersAPI.getDailyNewCards(d);
+      setData(res.data);
+    } catch (e) {
+      setError(e?.response?.data?.detail || 'فشل تحميل بطاقات اليوم');
+      setData(null);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    load(date);
+  }, [date, load]);
+
+  const renderCardHtml = (m) => {
+    const qrData = encodeURIComponent(getMemberQRValue(m.member_code || ''));
+    const allActs = m.activities || [];
+    const today = new Date();
+    const parseEnd = (a) => {
+      if (!a?.end_date) return 0;
+      const t = new Date(a.end_date).getTime();
+      return isNaN(t) ? 0 : t;
+    };
+    const actives = allActs.filter((a) => a?.end_date && new Date(a.end_date) >= today);
+    const pool = actives.length ? actives : allActs;
+    const latest = [...pool].sort((a, b) => parseEnd(b) - parseEnd(a))[0] || allActs[0] || {};
+    const startDate = latest.start_date || '';
+    const endDate = latest.end_date || '';
+    const schedule = latest.schedule || '';
+    const activitiesHtml = allActs
+      .map((act) => {
+        const isActive = act?.end_date ? new Date(act.end_date) >= today : true;
+        return `<div class="activity-item ${isActive ? 'active' : 'expired'}"><div class="activity-name">${isActive ? '✓' : '✗'} ${act.activity_name || ''}</div></div>`;
+      })
+      .join('');
+    const name = (m.name_ar || m.name || '').split('+').map((n) => `<div>${n.trim()}</div>`).join('');
+    return `
+      <div class="card">
+        <div class="card-header">
+          <div class="header-text"><h2>شركة اداء الابطال العالمية للرياضة</h2><p>Global Champions Sports Performance</p></div>
+          <div class="header-logo"><img src="${window.location.origin}/images/academy-logo.png" alt="logo" /></div>
+        </div>
+        <div class="card-body">
+          <div class="qr-container">
+            <div class="qr-section"><img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${qrData}" /></div>
+            <div class="qr-dates"><span>من: ${startDate || '----'}</span><span>إلى: ${endDate || '----'}</span></div>
+            ${schedule ? `<div class="schedule-info">📅 ${schedule}</div>` : ''}
+          </div>
+          <div class="info-section">
+            <div class="info-label">الاسم</div>
+            <div class="member-name">${name}</div>
+            <div class="info-row"><span class="info-label">رقم العضوية:</span><span class="member-code">#${m.member_code || ''}</span></div>
+            <div class="info-row"><span class="info-label">رقم الجوال:</span><span>${m.phone || '-'}</span></div>
+            ${activitiesHtml ? `<div class="activities"><div class="activities-label">الأنشطة المسجلة</div>${activitiesHtml}</div>` : ''}
+          </div>
+        </div>
+        <div class="card-footer">
+          <div class="terms-title">شروط وأحكام:</div>
+          <div>• الاشتراك محدد البداية والنهاية ولا يتم تعويض حصص غياب المشترك</div>
+          <div>• المبلغ المدفوع لا يسترد بعد مرور أسبوع من الاشتراك</div>
+        </div>
+      </div>
+    `;
+  };
+
+  const renderLogoCardHtml = () => `
+    <div class="logo-card">
+      <img src="${window.location.origin}/images/academy-logo.png" alt="شعار الأكاديمية" />
+      <div class="contact-info">📞 0566238384</div>
+      <div class="lost-card-notice">⚠️ في حال فقدان كرت العضوية،<br/>يتم إصدار كرت جديد برسوم 10 ر.س</div>
+    </div>
+  `;
+
+  const printAllCards = () => {
+    if (!data || !data.members || data.members.length === 0) return;
+
+    const pairs = [];
+    data.branches.forEach((branch) => {
+      branch.members.forEach((m) => {
+        pairs.push({ branch, member: m });
+      });
+    });
+
+    const pagesHtml = [];
+    for (let i = 0; i < pairs.length; i += 4) {
+      const slice = pairs.slice(i, i + 4);
+      const rowsHtml = slice
+        .map(
+          ({ branch, member }) => `
+            <div class="row">
+              <div class="branch-tag">${branch.branch_name}</div>
+              <div class="row-cards">
+                ${renderCardHtml(member)}
+                ${renderLogoCardHtml()}
+              </div>
+            </div>
+          `,
+        )
+        .join('');
+      pagesHtml.push(`<div class="page">${rowsHtml}</div>`);
+    }
+
+    const win = window.open('', '_blank', 'width=900,height=700');
+    win.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>كروت ${data.date}</title>
+      <style>
+        @import url('https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700&display=swap');
+        @page { size: A4; margin: 5mm; }
+        * { margin:0; padding:0; box-sizing:border-box; }
+        body { font-family:'Tajawal',Arial,sans-serif; background:#f3f4f6; direction:rtl; }
+        .toolbar { padding:14px; text-align:center; background:white; border-bottom:1px solid #e5e7eb; position:sticky; top:0; }
+        .toolbar button { padding:10px 24px; background:linear-gradient(135deg,#F97316,#EA580C); color:white; border:none; border-radius:8px; cursor:pointer; font-family:inherit; font-weight:700; font-size:15px; }
+        .toolbar .meta { margin-top:6px; color:#374151; font-size:13px; }
+        .page { width:200mm; min-height:287mm; margin:6mm auto; background:white; padding:4mm; box-shadow:0 4px 16px rgba(0,0,0,0.08); display:flex; flex-direction:column; gap:4mm; page-break-after:always; }
+        .page:last-child { page-break-after:auto; }
+        .row { display:flex; flex-direction:column; gap:2mm; }
+        .branch-tag { background:#FEF3C7; color:#92400E; font-weight:700; padding:1mm 3mm; border-radius:2mm; font-size:9pt; align-self:flex-start; }
+        .row-cards { display:flex; gap:5mm; }
+        .card { width:90mm; height:60mm; background:white; border-radius:3mm; overflow:hidden; border:1px solid #e5e7eb; display:flex; flex-direction:column; }
+        .card-header { background:linear-gradient(135deg,#F97316,#F59E0B); padding:1.5mm 2mm; display:flex; justify-content:space-between; align-items:center; color:white; }
+        .header-text h2 { font-size:7pt; font-weight:700; line-height:1.3; }
+        .header-text p { font-size:5.5pt; opacity:0.9; }
+        .header-logo { width:10mm; height:10mm; border-radius:50%; background:white; padding:0.5mm; display:flex; align-items:center; justify-content:center; }
+        .header-logo img { width:100%; height:100%; object-fit:contain; border-radius:50%; }
+        .card-body { padding:2mm; display:flex; gap:2mm; flex:1; }
+        .info-section { flex:1; text-align:right; overflow:hidden; }
+        .qr-container { display:flex; flex-direction:column; align-items:center; }
+        .qr-section { width:26mm; height:26mm; background:white; border:1px solid #eee; border-radius:2mm; padding:0.5mm; }
+        .qr-section img { width:100%; height:100%; }
+        .qr-dates { text-align:center; font-size:7pt; color:#1f2937; margin-top:1mm; line-height:1.3; font-weight:700; }
+        .qr-dates span { display:block; }
+        .schedule-info { text-align:center; font-size:6pt; color:#F97316; margin-top:1mm; font-weight:600; background:#FFF7ED; padding:0.6mm; border-radius:2mm; }
+        .info-label { color:#6b7280; font-size:6pt; }
+        .member-name { font-size:9pt; font-weight:700; color:#1f2937; margin-bottom:1mm; }
+        .info-row { display:flex; gap:1mm; font-size:7pt; align-items:center; margin-bottom:0.5mm; }
+        .member-code { color:#F97316; font-weight:700; font-size:9pt; }
+        .activities { margin-top:1mm; padding-top:1mm; border-top:1px dashed #e5e7eb; }
+        .activities-label { font-size:6pt; color:#6b7280; margin-bottom:0.5mm; }
+        .activity-item { padding:0.6mm 1mm; margin-bottom:0.4mm; border-radius:1mm; font-size:6pt; }
+        .activity-item.active { background:#D1FAE5; border-right:2px solid #10B981; }
+        .activity-item.expired { background:#FEE2E2; border-right:2px solid #EF4444; }
+        .activity-name { font-weight:600; color:#1f2937; font-size:6.5pt; }
+        .card-footer { padding:1mm 2mm; background:#f9fafb; font-size:5pt; color:#374151; border-top:1px dashed #e5e7eb; line-height:1.3; }
+        .card-footer .terms-title { font-weight:700; color:#1f2937; font-size:5.5pt; margin-bottom:0.3mm; }
+        .logo-card { width:90mm; height:60mm; background:white; border-radius:3mm; overflow:hidden; border:1px solid #e5e7eb; display:flex; flex-direction:column; align-items:center; justify-content:center; padding:3mm; }
+        .logo-card img { max-width:100%; max-height:55%; object-fit:contain; }
+        .logo-card .contact-info { font-size:7pt; color:#374151; text-align:center; margin-top:2mm; font-weight:600; }
+        .logo-card .lost-card-notice { font-size:6pt; color:#DC2626; text-align:center; margin-top:1.5mm; font-weight:700; background:#FEF2F2; padding:1.5mm 2mm; border-radius:2mm; border:1px solid #EF4444; }
+        @media print { .toolbar { display:none; } .page { margin:0 auto; box-shadow:none; } body { background:white; } }
+      </style></head><body>
+      <div class="toolbar">
+        <button onclick="window.print()">🖨️ طباعة (${pairs.length} كرت)</button>
+        <div class="meta">تاريخ: ${data.date} — إجمالي: ${pairs.length} كرت موزع على ${data.total_branches} فرع</div>
+      </div>
+      ${pagesHtml.join('')}
+      </body></html>`);
+    win.document.close();
+  };
+
+  const totalMembers = data?.total_members || 0;
+  const branches = data?.branches || [];
+
+  return (
+    <Layout>
+      <div className="p-4 md:p-6 max-w-7xl mx-auto" dir="rtl">
+        <div className="mb-6">
+          <h1 className="text-2xl md:text-3xl font-bold text-gray-800 mb-1 flex items-center gap-2">
+            <CalendarDays className="w-7 h-7 text-orange-500" />
+            كروت العضوية اليومية
+          </h1>
+          <p className="text-gray-600 text-sm">تجميع يومي لكل كروت العضوية الجديدة من كل الفروع لطباعتها وتوزيعها.</p>
+        </div>
+
+        <Card className="mb-6 shadow-sm">
+          <CardContent className="p-4">
+            <div className="flex flex-col md:flex-row gap-3 md:items-end">
+              <div className="flex-1">
+                <label className="block text-sm font-semibold text-gray-700 mb-1">اختر اليوم</label>
+                <Input
+                  type="date"
+                  value={date}
+                  onChange={(e) => setDate(e.target.value)}
+                  className="text-lg"
+                  dir="ltr"
+                />
+              </div>
+              <div className="flex gap-2">
+                <Button
+                  onClick={() => load(date)}
+                  variant="outline"
+                  disabled={loading}
+                  className="gap-2"
+                >
+                  <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+                  تحديث
+                </Button>
+                <Button
+                  onClick={() => setDate(todayStr())}
+                  variant="outline"
+                >
+                  اليوم
+                </Button>
+                <Button
+                  onClick={printAllCards}
+                  disabled={loading || totalMembers === 0}
+                  className="bg-orange-500 hover:bg-orange-600 text-white gap-2"
+                >
+                  <Printer className="w-4 h-4" />
+                  طباعة كل الكروت ({totalMembers})
+                </Button>
+              </div>
+            </div>
+            <div className="flex flex-wrap gap-3 mt-4">
+              <Badge variant="secondary" className="text-sm gap-1 px-3 py-1">
+                <Users className="w-3.5 h-3.5" />
+                إجمالي الأعضاء الجدد: {totalMembers}
+              </Badge>
+              <Badge variant="secondary" className="text-sm gap-1 px-3 py-1">
+                <Building2 className="w-3.5 h-3.5" />
+                عدد الفروع: {data?.total_branches || 0}
+              </Badge>
+            </div>
+          </CardContent>
+        </Card>
+
+        {error && (
+          <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-700 rounded">
+            {error}
+          </div>
+        )}
+
+        {loading && (
+          <div className="text-center py-12 text-gray-500">جاري التحميل...</div>
+        )}
+
+        {!loading && totalMembers === 0 && !error && (
+          <Card className="shadow-sm">
+            <CardContent className="p-10 text-center text-gray-500">
+              <Users className="w-12 h-12 mx-auto mb-3 text-gray-300" />
+              <p className="text-lg">لا يوجد أعضاء جدد بهذا التاريخ</p>
+              <p className="text-sm mt-1">جرّب تاريخاً آخر من الفلتر بالأعلى.</p>
+            </CardContent>
+          </Card>
+        )}
+
+        {!loading && branches.map((branch) => (
+          <Card key={branch.branch_id} className="mb-4 shadow-sm">
+            <CardHeader className="bg-gradient-to-l from-orange-50 to-amber-50 border-b py-3">
+              <CardTitle className="text-lg flex items-center justify-between">
+                <span className="flex items-center gap-2">
+                  <Building2 className="w-5 h-5 text-orange-500" />
+                  {branch.branch_name}
+                </span>
+                <Badge className="bg-orange-500 text-white">{branch.members.length} عضو</Badge>
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="p-3">
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-50 text-gray-600">
+                    <tr>
+                      <th className="text-right p-2 font-semibold">#</th>
+                      <th className="text-right p-2 font-semibold">رقم العضوية</th>
+                      <th className="text-right p-2 font-semibold">الاسم</th>
+                      <th className="text-right p-2 font-semibold">الجوال</th>
+                      <th className="text-right p-2 font-semibold">الأنشطة</th>
+                      <th className="text-right p-2 font-semibold">وقت التسجيل</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {branch.members.map((m, idx) => {
+                      const acts = (m.activities || []).map((a) => a.activity_name).filter(Boolean).join('، ');
+                      const time = (m.created_at || '').split('T')[1]?.split('.')[0]?.slice(0, 5) || '';
+                      return (
+                        <tr key={m.id} className="border-t hover:bg-orange-50/40">
+                          <td className="p-2 text-gray-500">{idx + 1}</td>
+                          <td className="p-2 font-bold text-orange-600">#{m.member_code}</td>
+                          <td className="p-2 font-medium">{m.name_ar || m.name}</td>
+                          <td className="p-2" dir="ltr">{m.phone || '-'}</td>
+                          <td className="p-2 text-gray-700">{acts || '-'}</td>
+                          <td className="p-2 text-gray-500" dir="ltr">{time}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+    </Layout>
+  );
+};
+
+export default DailyNewCardsPage;

@@ -86,6 +86,52 @@ class Member(BaseModel):
 
 # ============ ROUTES ============
 
+@router.get("/daily-new-cards")
+async def get_daily_new_member_cards(
+    date: Optional[str] = None,
+    current_user: dict = Depends(get_current_user),
+):
+    if not current_user.get("is_admin"):
+        raise HTTPException(status_code=403, detail="Admin access required")
+
+    try:
+        target_date = (date or datetime.now(timezone.utc).strftime("%Y-%m-%d")).strip()
+        datetime.strptime(target_date, "%Y-%m-%d")
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD")
+
+    start_iso = f"{target_date}T00:00:00"
+    end_iso = f"{target_date}T23:59:59.999999"
+    query = {"created_at": {"$gte": start_iso, "$lte": end_iso}}
+
+    members = await db.members.find(query, {"_id": 0}).sort("created_at", 1).to_list(5000)
+
+    branches = await db.branches.find({}, {"_id": 0, "id": 1, "name": 1, "name_ar": 1}).to_list(500)
+    branch_map = {b["id"]: b for b in branches}
+
+    grouped: Dict[str, Dict[str, Any]] = {}
+    for m in members:
+        bid = m.get("branch_id") or "__no_branch__"
+        if bid not in grouped:
+            b = branch_map.get(bid, {})
+            grouped[bid] = {
+                "branch_id": bid,
+                "branch_name": b.get("name_ar") or b.get("name") or ("بدون فرع" if bid == "__no_branch__" else bid),
+                "members": [],
+            }
+        grouped[bid]["members"].append(m)
+
+    branch_summaries = sorted(grouped.values(), key=lambda g: g["branch_name"])
+
+    return {
+        "date": target_date,
+        "total_members": len(members),
+        "total_branches": len([g for g in branch_summaries if g["members"]]),
+        "branches": branch_summaries,
+        "members": members,
+    }
+
+
 @router.get("", response_model=List[Member])
 async def get_members(
     activity_id: Optional[str] = None,
