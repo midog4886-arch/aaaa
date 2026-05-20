@@ -51,7 +51,7 @@ const MemberCardPage = () => {
     const printWindow = window.open('', '_blank', 'width=800,height=600');
     const qrData = getQRData();
     const _brand = getPrimaryColor();
-    const _headerBg = 'linear-gradient(135deg, #0369A1, #0EA5E9)';
+    const _headerBg = 'linear-gradient(135deg, #1E3A5F 0%, #2C5282 45%, #C9A227 100%)';
     const _accent = _brand || '#F97316';
     
     const _allActs = member?.activities || [];
@@ -219,7 +219,7 @@ const MemberCardPage = () => {
     const printWindow = window.open('', '_blank', 'width=800,height=600');
     const qrData = getQRData();
     const _brand = getPrimaryColor();
-    const _headerBg = 'linear-gradient(135deg, #0369A1, #0EA5E9)';
+    const _headerBg = 'linear-gradient(135deg, #1E3A5F 0%, #2C5282 45%, #C9A227 100%)';
     const _accent = _brand || '#F97316';
     const _allActs = member?.activities || [];
     const _today = new Date();
