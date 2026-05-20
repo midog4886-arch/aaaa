@@ -99,8 +99,9 @@ const DailyNewCardsPage = () => {
         </div>
         <div class="card-body">
           <div class="qr-container">
-            <div class="qr-section"><img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${qrData}" /></div>
+            <div class="qr-section"><img src="https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${qrData}" /></div>
             <div class="qr-dates"><span>من: ${startDate || '----'}</span><span>إلى: ${endDate || '----'}</span></div>
+            ${schedule ? `<div class="schedule-info">📅 ${schedule}</div>` : ''}
           </div>
           <div class="info-section">
             <div class="info-label">الاسم</div>
@@ -190,7 +191,7 @@ const DailyNewCardsPage = () => {
         .card-body { padding:2mm; display:flex; gap:2mm; flex:1; }
         .info-section { flex:1; text-align:right; overflow:hidden; }
         .qr-container { display:flex; flex-direction:column; align-items:center; }
-        .qr-section { width:26mm; height:26mm; background:white; border:1px solid #eee; border-radius:2mm; padding:0.5mm; }
+        .qr-section { width:30mm; height:30mm; background:white; border:1px solid #eee; border-radius:2mm; padding:0.5mm; }
         .qr-section img { width:100%; height:100%; }
         .qr-dates { text-align:center; font-size:7pt; color:#1f2937; margin-top:1mm; line-height:1.3; font-weight:700; }
         .qr-dates span { display:block; }
@@ -265,7 +266,7 @@ const DailyNewCardsPage = () => {
         .card-body { padding:1.5mm; display:flex; gap:1.5mm; flex:1; min-height:0; }
         .info-section { flex:1; text-align:right; overflow:hidden; }
         .qr-container { display:flex; flex-direction:column; align-items:center; }
-        .qr-section { width:23mm; height:23mm; background:white; border:1px solid #eee; border-radius:1.5mm; padding:0.4mm; }
+        .qr-section { width:27mm; height:27mm; background:white; border:1px solid #eee; border-radius:1.5mm; padding:0.4mm; }
         .qr-section img { width:100%; height:100%; }
         .qr-dates { text-align:center; font-size:6pt; color:#1f2937; margin-top:0.8mm; line-height:1.2; font-weight:700; }
         .qr-dates span { display:block; }
