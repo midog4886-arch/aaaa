@@ -197,9 +197,9 @@ const DailyNewCardsPage = () => {
         .header-logo { width:18mm; height:18mm; border-radius:50%; background:white; padding:0; display:flex; align-items:center; justify-content:center; overflow:hidden; border:1.5px solid white; box-shadow:0 1px 3px rgba(0,0,0,0.2); }
         .header-logo img { width:140%; height:140%; object-fit:cover; border-radius:50%; }
         .card-body { padding:2mm 5mm 1.5mm 2.5mm; display:flex; flex-direction:column; gap:1.5mm; flex:1; min-height:0; }
-        .info-section { text-align:right; overflow:hidden; }
-        .qr-container { display:flex; flex-direction:column; align-items:center; margin-top:auto; padding-top:1mm; border-top:1px dashed #e5e7eb; }
-        .qr-section { width:30mm; height:30mm; background:white; border:1px solid #eee; border-radius:2mm; padding:0.5mm; }
+        .info-section { text-align:right; overflow:hidden; flex:1; min-height:0; display:flex; flex-direction:column; }
+        .qr-container { display:flex; flex-direction:column; align-items:center; flex-shrink:0; padding-top:1mm; }
+        .qr-section { width:26mm; height:26mm; background:white; border:1px solid #eee; border-radius:2mm; padding:0.5mm; }
         .qr-section img { width:100%; height:100%; }
         .qr-dates { text-align:center; font-size:6pt; color:#1f2937; margin-top:0.8mm; line-height:1.3; font-weight:700; }
         .qr-dates span { display:block; }
@@ -209,7 +209,7 @@ const DailyNewCardsPage = () => {
         .member-name { font-size:10.5pt; font-weight:900; color:#111827; margin:0.3mm 0 1.2mm; line-height:1.15; letter-spacing:-0.1pt; }
         .info-row { display:flex; gap:1mm; font-size:7pt; align-items:center; margin-bottom:0.5mm; }
         .member-code { color:#EA580C; font-weight:900; font-size:9pt; }
-        .activities { margin-top:1mm; padding-top:1mm; border-top:1px dashed #e5e7eb; }
+        .activities { margin-top:1mm; padding-top:1mm; border-top:1px dashed #e5e7eb; overflow:hidden; min-height:0; flex-shrink:1; }
         .activities-label { font-size:6pt; color:#6b7280; font-weight:700; margin-bottom:0.5mm; }
         .activity-item { padding:0.4mm 1mm; margin-bottom:0.3mm; border-radius:1mm; font-size:6pt; }
         .activity-item.active { background:transparent; border-right:2px solid #10B981; }
@@ -273,9 +273,9 @@ const DailyNewCardsPage = () => {
         .header-logo { width:16mm; height:16mm; border-radius:50%; background:white; padding:0; display:flex; align-items:center; justify-content:center; overflow:hidden; border:1.5px solid white; box-shadow:0 1px 3px rgba(0,0,0,0.2); }
         .header-logo img { width:140%; height:140%; object-fit:cover; border-radius:50%; }
         .card-body { padding:2mm 5mm 1.5mm 2mm; display:flex; flex-direction:column; gap:1mm; flex:1; min-height:0; }
-        .info-section { text-align:right; overflow:hidden; }
-        .qr-container { display:flex; flex-direction:column; align-items:center; margin-top:auto; padding-top:1mm; border-top:1px dashed #e5e7eb; }
-        .qr-section { width:28mm; height:28mm; background:white; border:1px solid #eee; border-radius:1.5mm; padding:0.4mm; }
+        .info-section { text-align:right; overflow:hidden; flex:1; min-height:0; display:flex; flex-direction:column; }
+        .qr-container { display:flex; flex-direction:column; align-items:center; flex-shrink:0; padding-top:1mm; }
+        .qr-section { width:24mm; height:24mm; background:white; border:1px solid #eee; border-radius:1.5mm; padding:0.4mm; }
         .qr-section img { width:100%; height:100%; }
         .qr-dates { text-align:center; font-size:6pt; color:#1f2937; margin-top:0.6mm; line-height:1.2; font-weight:700; }
         .qr-dates span { display:block; }
@@ -285,7 +285,7 @@ const DailyNewCardsPage = () => {
         .member-name { font-size:10.5pt; font-weight:900; color:#111827; margin:0.3mm 0 1.2mm; line-height:1.1; letter-spacing:-0.1pt; }
         .info-row { display:flex; gap:1mm; font-size:7pt; font-weight:700; color:#111827; align-items:center; margin-bottom:0.4mm; }
         .member-code { color:#EA580C; font-weight:900; font-size:9pt; }
-        .activities { margin-top:0.8mm; padding-top:0.8mm; border-top:1px dashed #e5e7eb; }
+        .activities { margin-top:0.8mm; padding-top:0.8mm; border-top:1px dashed #e5e7eb; overflow:hidden; min-height:0; flex-shrink:1; }
         .activities-label { font-size:6.5pt; color:#6b7280; font-weight:700; margin-bottom:0.3mm; }
         .activity-item { padding:0.3mm 0.8mm; margin-bottom:0.2mm; border-radius:0.8mm; font-size:6.5pt; }
         .activity-item.active { background:transparent; border-right:2px solid #10B981; }
