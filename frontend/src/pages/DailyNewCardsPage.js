@@ -121,7 +121,6 @@ const DailyNewCardsPage = () => {
       <img src="${window.location.origin}/images/academy-logo.png" alt="شعار الأكاديمية" />
       <div class="contact-block">
         <div class="contact-row">📞 0566238384</div>
-        <div class="contact-row">🌐 globalchampions.com</div>
       </div>
     </div>
   `;
@@ -213,7 +212,7 @@ const DailyNewCardsPage = () => {
         .activity-item.expired { background:transparent; border-right:2px solid #EF4444; }
         .activity-name { font-weight:700; color:#1f2937; font-size:6.5pt; }
         .logo-card { width:60mm; height:95mm; background:linear-gradient(180deg,#FFFFFF,#FFF7ED); border-radius:3mm; overflow:hidden; border:1px solid #e5e7eb; display:flex; flex-direction:column; align-items:center; justify-content:center; padding:5mm 4mm; gap:3mm; }
-        .logo-card img { max-width:90%; max-height:48%; object-fit:contain; }
+        .logo-card img { width:95%; max-width:95%; max-height:78%; object-fit:contain; }
         .logo-card .contact-block { display:flex; flex-direction:column; gap:1.5mm; align-items:center; width:100%; }
         .logo-card .contact-row { font-size:9pt; color:#111827; text-align:center; font-weight:800; line-height:1.3; direction:ltr; }
         @media print { .toolbar { display:none; } .page { margin:0 auto; box-shadow:none; } body { background:white; } }
@@ -290,7 +289,7 @@ const DailyNewCardsPage = () => {
         .activity-name { font-weight:800; color:#111827; font-size:6.5pt; }
         .cd-page.back { transform:rotate(180deg); transform-origin:center center; }
         .logo-card { width:54mm; height:85.6mm; background:linear-gradient(180deg,#FFFFFF,#FFF7ED); display:flex; flex-direction:column; align-items:center; justify-content:center; padding:4mm 3mm; border:none; border-radius:0; gap:2.5mm; }
-        .logo-card img { width:38mm; max-width:95%; max-height:42%; object-fit:contain; margin-bottom:0; }
+        .logo-card img { width:50mm; max-width:98%; max-height:75%; object-fit:contain; margin-bottom:0; }
         .logo-card .contact-block { display:flex; flex-direction:column; gap:1.3mm; align-items:center; width:100%; }
         .logo-card .contact-row { font-size:8pt; color:#111827; text-align:center; font-weight:800; line-height:1.3; direction:ltr; }
         @media print {
