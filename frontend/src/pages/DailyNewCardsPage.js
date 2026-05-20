@@ -283,6 +283,7 @@ const DailyNewCardsPage = () => {
         .activity-name { font-weight:900; color:#000; font-size:8pt; }
         .card-footer { padding:0.8mm 1.5mm; background:#f9fafb; font-size:4.5pt; color:#374151; border-top:1px dashed #e5e7eb; line-height:1.2; }
         .card-footer .terms-title { font-weight:700; color:#1f2937; font-size:5pt; margin-bottom:0.2mm; }
+        .cd-page.back { transform:rotate(180deg); transform-origin:center center; }
         .logo-card { width:85.6mm; height:54mm; background:white; display:flex; flex-direction:column; align-items:center; justify-content:center; padding:2mm; border:none; border-radius:0; }
         .logo-card img { max-width:100%; max-height:70%; object-fit:contain; }
         .logo-card .contact-info { font-size:11pt; color:#000; text-align:center; margin-top:1.8mm; font-weight:900; }
