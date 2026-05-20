@@ -110,7 +110,6 @@ const DailyNewCardsPage = () => {
             <div class="qr-section"><img src="https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${qrData}" /></div>
             <div class="qr-dates"><span>من: ${startDate || '----'}</span><span>إلى: ${endDate || '----'}</span></div>
             ${schedule ? `<div class="schedule-info">📅 ${schedule}</div>` : ''}
-            <div class="qr-label">امسح للحضور</div>
           </div>
         </div>
       </div>
@@ -197,7 +196,7 @@ const DailyNewCardsPage = () => {
         .header-text p { font-size:5.5pt; font-weight:800; opacity:0.95; margin-top:0.3mm; }
         .header-logo { width:18mm; height:18mm; border-radius:50%; background:white; padding:0; display:flex; align-items:center; justify-content:center; overflow:hidden; border:1.5px solid white; box-shadow:0 1px 3px rgba(0,0,0,0.2); }
         .header-logo img { width:140%; height:140%; object-fit:cover; border-radius:50%; }
-        .card-body { padding:2mm 2.5mm 1.5mm 4mm; display:flex; flex-direction:column; gap:1.5mm; flex:1; min-height:0; }
+        .card-body { padding:2mm 5mm 1.5mm 2.5mm; display:flex; flex-direction:column; gap:1.5mm; flex:1; min-height:0; }
         .info-section { text-align:right; overflow:hidden; }
         .qr-container { display:flex; flex-direction:column; align-items:center; margin-top:auto; padding-top:1mm; border-top:1px dashed #e5e7eb; }
         .qr-section { width:30mm; height:30mm; background:white; border:1px solid #eee; border-radius:2mm; padding:0.5mm; }
@@ -273,7 +272,7 @@ const DailyNewCardsPage = () => {
         .header-text p { font-size:5pt; font-weight:800; opacity:0.95; margin-top:0.2mm; }
         .header-logo { width:16mm; height:16mm; border-radius:50%; background:white; padding:0; display:flex; align-items:center; justify-content:center; overflow:hidden; border:1.5px solid white; box-shadow:0 1px 3px rgba(0,0,0,0.2); }
         .header-logo img { width:140%; height:140%; object-fit:cover; border-radius:50%; }
-        .card-body { padding:2mm 2mm 1.5mm 4mm; display:flex; flex-direction:column; gap:1mm; flex:1; min-height:0; }
+        .card-body { padding:2mm 5mm 1.5mm 2mm; display:flex; flex-direction:column; gap:1mm; flex:1; min-height:0; }
         .info-section { text-align:right; overflow:hidden; }
         .qr-container { display:flex; flex-direction:column; align-items:center; margin-top:auto; padding-top:1mm; border-top:1px dashed #e5e7eb; }
         .qr-section { width:28mm; height:28mm; background:white; border:1px solid #eee; border-radius:1.5mm; padding:0.4mm; }
