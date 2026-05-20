@@ -53,7 +53,8 @@ import {
   BookOpen,
   CalendarOff,
   MessageCircle,
-  UserCog
+  UserCog,
+  Search
 } from 'lucide-react';
 
 export const Sidebar = ({ isOpen, onClose }) => {
@@ -119,6 +120,7 @@ export const Sidebar = ({ isOpen, onClose }) => {
 
   const location = useLocation();
   const [openGroups, setOpenGroups] = useState({});
+  const [navSearch, setNavSearch] = useState('');
 
   const navGroups = [
     {
@@ -232,12 +234,29 @@ export const Sidebar = ({ isOpen, onClose }) => {
     const alts = item.altPermissions || [];
     return alts.some(p => userPermissions.includes(p));
   };
-  const filteredGroups = navGroups.map(group => ({
+  const permittedGroups = navGroups.map(group => ({
     ...group,
     items: group.items
       .filter(hasAnyPerm)
       .filter(item => isFeatureEnabled(item.feature))
   })).filter(group => group.items.length > 0);
+
+  const normalizedSearch = navSearch.trim().toLowerCase();
+  const filteredGroups = normalizedSearch
+    ? permittedGroups
+        .map(group => {
+          const groupLabel = (language === 'ar' ? group.label_ar : group.label_en) || '';
+          const groupMatches = groupLabel.toLowerCase().includes(normalizedSearch);
+          const matchedItems = group.items.filter(item => {
+            const label = (t(item.label) || '').toLowerCase();
+            return label.includes(normalizedSearch);
+          });
+          if (groupMatches) return { ...group, single: group.single && matchedItems.length <= 1 };
+          if (matchedItems.length === 0) return null;
+          return { ...group, items: matchedItems, single: matchedItems.length === 1 ? true : group.single };
+        })
+        .filter(Boolean)
+    : permittedGroups;
 
   useEffect(() => {
     const currentPath = location.pathname;
@@ -246,6 +265,15 @@ export const Sidebar = ({ isOpen, onClose }) => {
       setOpenGroups(prev => ({ ...prev, [activeGroup.id]: true }));
     }
   }, [location.pathname]);
+
+  useEffect(() => {
+    if (!normalizedSearch) return;
+    const next = {};
+    filteredGroups.forEach(g => {
+      if (!g.single) next[g.id] = true;
+    });
+    setOpenGroups(prev => ({ ...prev, ...next }));
+  }, [normalizedSearch]);
 
   const toggleGroup = (groupId) => {
     setOpenGroups(prev => ({ ...prev, [groupId]: !prev[groupId] }));
@@ -303,8 +331,40 @@ export const Sidebar = ({ isOpen, onClose }) => {
           </button>
         </div>
 
+        {/* Sidebar Search */}
+        <div className="px-3 pt-2 pb-1">
+          <div className="relative">
+            <Search className="absolute top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" style={{ [language === 'ar' ? 'right' : 'left']: '0.625rem' }} />
+            <input
+              type="text"
+              value={navSearch}
+              onChange={(e) => setNavSearch(e.target.value)}
+              placeholder={language === 'ar' ? 'ابحث في القائمة...' : 'Search menu...'}
+              className="w-full h-9 text-sm bg-muted/40 border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-primary/40 focus:bg-background transition"
+              style={{ paddingInlineStart: '2rem', paddingInlineEnd: navSearch ? '2rem' : '0.625rem' }}
+              data-testid="sidebar-search-input"
+            />
+            {navSearch && (
+              <button
+                type="button"
+                onClick={() => setNavSearch('')}
+                className="absolute top-1/2 -translate-y-1/2 p-1 rounded-full hover:bg-muted text-muted-foreground"
+                style={{ [language === 'ar' ? 'left' : 'right']: '0.375rem' }}
+                aria-label={language === 'ar' ? 'مسح' : 'Clear'}
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
+        </div>
+
         {/* Navigation */}
         <nav className="sidebar-nav">
+          {filteredGroups.length === 0 && (
+            <div className="px-3 py-6 text-center text-xs text-muted-foreground">
+              {language === 'ar' ? 'لا توجد نتائج' : 'No results'}
+            </div>
+          )}
           {filteredGroups.map((group) => {
             if (group.single) {
               const item = group.items[0];
