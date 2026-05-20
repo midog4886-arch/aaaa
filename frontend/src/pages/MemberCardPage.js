@@ -92,39 +92,39 @@ const MemberCardPage = () => {
             @media print { .screen-only { display: none !important; } .print-area { display: flex !important; position: absolute; top: 10mm; right: 10mm; gap: 5mm; } }
             @media screen { .print-area { display: none; } }
             .sticker-preview { display: flex; gap: 15px; justify-content: center; margin-bottom: 20px; }
-            .card { width: 90mm; height: 60mm; background: white; border-radius: 4mm; overflow: hidden; box-shadow: 0 4px 15px rgba(0,0,0,0.1); display: flex; flex-direction: column; }
-            .card-header { background: ${_headerBg}; padding: 1.5mm 2mm; display: flex; justify-content: space-between; align-items: center; color: white; }
-            .header-text h2 { font-size: 8.5pt; font-weight: 900; margin: 0; line-height: 1.3; }
-            .header-text p { font-size: 6pt; font-weight: 800; opacity: 0.95; margin: 0; }
-            .header-logo { width: 16mm; height: 16mm; border-radius: 50%; background: white; padding: 0; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+            .card { width: 60mm; height: 95mm; background: white; border-radius: 4mm; overflow: hidden; box-shadow: 0 4px 15px rgba(0,0,0,0.1); display: flex; flex-direction: column; position: relative; }
+            .accent-stripe { position: absolute; top: 0; bottom: 0; right: 0; width: 2.5mm; background: linear-gradient(180deg,#F97316,#EA580C,#B45309); z-index: 2; }
+            .card-header { background: ${_headerBg}; padding: 2mm 2mm 2.5mm; display: flex; flex-direction: column; align-items: center; gap: 1mm; color: white; text-align: center; }
+            .header-text h2 { font-size: 7.5pt; font-weight: 900; margin: 0; line-height: 1.2; }
+            .header-text p { font-size: 5.5pt; font-weight: 800; opacity: 0.95; margin: 0.3mm 0 0; }
+            .header-logo { width: 18mm; height: 18mm; border-radius: 50%; background: white; padding: 0; display: flex; align-items: center; justify-content: center; overflow: hidden; border: 1.5px solid white; box-shadow: 0 1px 3px rgba(0,0,0,0.2); }
             .header-logo img { width: 140%; height: 140%; object-fit: cover; border-radius: 50%; }
-            .card-body { padding: 2mm; display: flex; gap: 2mm; flex: 1; }
-            .info-section { flex: 1; text-align: right; overflow: hidden; }
-            .qr-container { display: flex; flex-direction: column; align-items: center; }
-            .qr-section { width: 26mm; height: 26mm; background: white; border: 1px solid #eee; border-radius: 2mm; padding: 0.5mm; }
+            .card-body { padding: 2mm 2.5mm 1.5mm 4mm; display: flex; flex-direction: column; gap: 1.5mm; flex: 1; min-height: 0; }
+            .info-section { text-align: right; overflow: hidden; }
+            .qr-container { display: flex; flex-direction: column; align-items: center; margin-top: auto; padding-top: 1mm; border-top: 1px dashed #e5e7eb; }
+            .qr-section { width: 28mm; height: 28mm; background: white; border: 1px solid #eee; border-radius: 2mm; padding: 0.5mm; }
             .qr-section img { width: 100%; height: 100%; }
-            .qr-dates { text-align: center; font-size: 8pt; color: #1f2937; margin-top: 1mm; line-height: 1.4; font-weight: 700; }
+            .qr-dates { text-align: center; font-size: 6.5pt; color: #1f2937; margin-top: 0.8mm; line-height: 1.3; font-weight: 700; }
             .qr-dates span { display: block; }
-            .schedule-info { text-align: center; font-size: 6pt; color: ${_accent}; margin-top: 1mm; font-weight: 600; background: #FFF7ED; padding: 1mm; border-radius: 2mm; }
-            .member-name { font-size: 10pt; font-weight: 700; color: #1f2937; margin-bottom: 1mm; }
-            .info-row { display: flex; align-items: center; gap: 1mm; margin-bottom: 0.8mm; font-size: 7pt; }
-            .info-label { color: #6b7280; font-size: 6pt; }
-            .member-code { color: ${_accent}; font-weight: 700; font-size: 10pt; }
+            .qr-label { text-align: center; font-size: 6.5pt; color: ${_accent}; font-weight: 900; margin-top: 0.5mm; letter-spacing: 0.3mm; }
+            .schedule-info { text-align: center; font-size: 5.5pt; color: ${_accent}; margin-top: 0.5mm; font-weight: 700; background: #FFF7ED; padding: 0.5mm 1mm; border-radius: 1.5mm; }
+            .member-name { font-size: 10.5pt; font-weight: 900; color: #111827; margin: 0.3mm 0 1.2mm; line-height: 1.15; letter-spacing: -0.1pt; }
+            .info-row { display: flex; align-items: center; gap: 1mm; margin-bottom: 0.5mm; font-size: 7pt; }
+            .info-label { color: #6b7280; font-size: 6pt; font-weight: 600; }
+            .member-code { color: ${_accent}; font-weight: 900; font-size: 9pt; }
             .activities { margin-top: 1mm; padding-top: 1mm; border-top: 1px dashed #e5e7eb; }
-            .activities-label { font-size: 6pt; color: #6b7280; margin-bottom: 0.5mm; }
-            .activity-item { padding: 1mm 1.5mm; margin-bottom: 0.5mm; border-radius: 1.5mm; font-size: 6pt; }
+            .activities-label { font-size: 6pt; color: #6b7280; font-weight: 700; margin-bottom: 0.4mm; }
+            .activity-item { padding: 0.6mm 1mm; margin-bottom: 0.3mm; border-radius: 1mm; font-size: 6pt; }
             .activity-item.active { background: #D1FAE5; border-right: 2px solid #10B981; }
             .activity-item.expired { background: #FEE2E2; border-right: 2px solid #EF4444; }
-            .activity-name { font-weight: 600; color: #1f2937; font-size: 7pt; }
-            .activity-status { font-size: 6pt; font-weight: 700; }
+            .activity-name { font-weight: 700; color: #1f2937; font-size: 6.5pt; }
+            .activity-status { font-size: 5.5pt; font-weight: 700; }
             .activity-item.active .activity-status { color: #059669; }
             .activity-item.expired .activity-status { color: #DC2626; }
-            .card-footer { text-align: right; padding: 1.5mm 2mm; background: #f9fafb; font-size: 5pt; color: #374151; border-top: 1px dashed #e5e7eb; line-height: 1.4; }
-            .card-footer .terms-title { font-weight: 700; color: #1f2937; font-size: 6pt; margin-bottom: 0.5mm; }
-            .logo-card { width: 90mm; height: 60mm; background: white; border-radius: 4mm; overflow: hidden; box-shadow: 0 4px 15px rgba(0,0,0,0.1); display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 3mm; }
-            .logo-card img { max-width: 100%; max-height: 72%; object-fit: contain; }
-            .logo-card .lost-card-notice { font-size: 10pt; color: #DC2626; text-align: center; margin-top: 2mm; font-weight: 900; line-height: 1.4; background: #FEF2F2; padding: 2mm 3mm; border-radius: 2mm; border: 1.5px solid #EF4444; }
-            .logo-card .contact-info { font-size: 12pt; color: #000; text-align: center; margin-top: 2.5mm; font-weight: 900; line-height: 1.4; }
+            .logo-card { width: 60mm; height: 95mm; background: linear-gradient(180deg,#FFFFFF,#FFF7ED); border-radius: 4mm; overflow: hidden; box-shadow: 0 4px 15px rgba(0,0,0,0.1); display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 4mm; }
+            .logo-card img { max-width: 90%; max-height: 55%; object-fit: contain; }
+            .logo-card .lost-card-notice { font-size: 8pt; color: #DC2626; text-align: center; margin-top: 3mm; font-weight: 900; line-height: 1.4; background: #FEF2F2; padding: 2mm; border-radius: 2mm; border: 1.5px solid #EF4444; }
+            .logo-card .contact-info { font-size: 11pt; color: #000; text-align: center; margin-top: 3mm; font-weight: 900; line-height: 1.4; }
             .print-btn { margin-top: 20px; padding: 12px 30px; background: linear-gradient(135deg, #F97316, #EA580C); color: white; border: none; border-radius: 10px; cursor: pointer; font-family: 'Tajawal', Arial, sans-serif; font-size: 16px; font-weight: bold; }
             .position-labels { display: flex; gap: 15px; justify-content: center; margin-top: 10px; }
             .position-label { padding: 8px 16px; background: #FEF3C7; border-radius: 8px; color: #92400E; font-size: 12px; }
@@ -136,19 +136,12 @@ const MemberCardPage = () => {
             <div class="sticker-preview">
               <!-- Member Card - Position 1 -->
               <div class="card">
+                <div class="accent-stripe"></div>
                 <div class="card-header">
-                  <div class="header-text"><h2>شركة اداء الابطال العالمية للرياضة</h2><p>Global Champions Sports Performance</p></div>
                   <div class="header-logo"><img src="${window.location.origin}/images/academy-logo.png" alt="logo" /></div>
+                  <div class="header-text"><h2>شركة اداء الابطال العالمية للرياضة</h2><p>Global Champions Sports Performance</p></div>
                 </div>
                 <div class="card-body">
-                  <div class="qr-container">
-                    <div class="qr-section"><img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(qrData)}" /></div>
-                    <div class="qr-dates">
-                      <span>من: ${startDate || '----'}</span>
-                      <span>إلى: ${endDate || '----'}</span>
-                    </div>
-                    ${schedule ? `<div class="schedule-info">📅 ${schedule}</div>` : ''}
-                  </div>
                   <div class="info-section">
                     <div class="info-label">الاسم</div>
                     <div class="member-name">${(member?.name_ar || member?.name || '').split('+').map(n => `<div>${n.trim()}</div>`).join('')}</div>
@@ -156,11 +149,15 @@ const MemberCardPage = () => {
                     <div class="info-row"><span class="info-label">رقم الجوال:</span><span>${member?.phone || '-'}</span></div>
                     ${activitiesHtml ? `<div class="activities"><div class="activities-label">الأنشطة المسجلة</div>${activitiesHtml}</div>` : ''}
                   </div>
-                </div>
-                <div class="card-footer">
-                  <div class="terms-title">شروط وأحكام:</div>
-                  <div>• الاشتراك محدد البداية والنهاية ولا يتم تعويض حصص غياب المشترك</div>
-                  <div>• المبلغ المدفوع لا يسترد بعد مرور أسبوع من الاشتراك</div>
+                  <div class="qr-container">
+                    <div class="qr-section"><img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(qrData)}" /></div>
+                    <div class="qr-dates">
+                      <span>من: ${startDate || '----'}</span>
+                      <span>إلى: ${endDate || '----'}</span>
+                    </div>
+                    ${schedule ? `<div class="schedule-info">📅 ${schedule}</div>` : ''}
+                    <div class="qr-label">امسح للحضور</div>
+                  </div>
                 </div>
               </div>
               <!-- Logo Card - Position 2 -->
@@ -174,24 +171,18 @@ const MemberCardPage = () => {
               <div class="position-label">📍 خانة 1: كرت العضوية</div>
               <div class="position-label">📍 خانة 2: شعار الأكاديمية</div>
             </div>
-            <p style="margin-top: 10px; color: #6b7280; font-size: 14px;">📐 حجم كل كرت: 9سم × 6سم</p>
+            <p style="margin-top: 10px; color: #6b7280; font-size: 14px;">📐 حجم كل كرت: 6سم × 9.5سم (عمودي)</p>
             <button class="print-btn" onclick="window.print()">🖨️ طباعة الملصقات</button>
           </div>
           <div class="print-area">
             <!-- Member Card - Position 1 -->
             <div class="card">
+              <div class="accent-stripe"></div>
               <div class="card-header">
-                <div class="header-text"><h2>شركة اداء الابطال العالمية للرياضة</h2><p>Global Champions Sports Performance</p></div>
                 <div class="header-logo"><img src="${window.location.origin}/images/academy-logo.png" alt="logo" /></div>
+                <div class="header-text"><h2>شركة اداء الابطال العالمية للرياضة</h2><p>Global Champions Sports Performance</p></div>
               </div>
               <div class="card-body">
-                <div class="qr-container">
-                  <div class="qr-section"><img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(qrData)}" /></div>
-                  <div class="qr-dates">
-                    <span>من: ${startDate || '----'}</span>
-                    <span>إلى: ${endDate || '----'}</span>
-                  </div>
-                </div>
                 <div class="info-section">
                   <div class="info-label">الاسم</div>
                   <div class="member-name">${(member?.name_ar || member?.name || '').split('+').map(n => `<div>${n.trim()}</div>`).join('')}</div>
@@ -199,11 +190,14 @@ const MemberCardPage = () => {
                   <div class="info-row"><span class="info-label">رقم الجوال:</span><span>${member?.phone || '-'}</span></div>
                   ${activitiesHtml ? `<div class="activities"><div class="activities-label">الأنشطة المسجلة</div>${activitiesHtml}</div>` : ''}
                 </div>
-              </div>
-              <div class="card-footer">
-                <div class="terms-title">شروط وأحكام:</div>
-                <div>• الاشتراك محدد البداية والنهاية ولا يتم تعويض حصص غياب المشترك</div>
-                <div>• المبلغ المدفوع لا يسترد بعد مرور أسبوع من الاشتراك</div>
+                <div class="qr-container">
+                  <div class="qr-section"><img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(qrData)}" /></div>
+                  <div class="qr-dates">
+                    <span>من: ${startDate || '----'}</span>
+                    <span>إلى: ${endDate || '----'}</span>
+                  </div>
+                  <div class="qr-label">امسح للحضور</div>
+                </div>
               </div>
             </div>
             <!-- Logo Card - Position 2 -->
@@ -248,22 +242,24 @@ const MemberCardPage = () => {
     const frontHtml = `
       <div class="cd-page">
         <div class="card">
+          <div class="accent-stripe"></div>
           <div class="card-header">
-            <div class="header-text"><h2>شركة اداء الابطال العالمية للرياضة</h2><p>Global Champions Sports Performance</p></div>
             <div class="header-logo"><img src="${window.location.origin}/images/academy-logo.png" alt="logo" /></div>
+            <div class="header-text"><h2>شركة اداء الابطال العالمية للرياضة</h2><p>Global Champions Sports Performance</p></div>
           </div>
           <div class="card-body">
-            <div class="qr-container">
-              <div class="qr-section"><img src="https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(qrData)}" /></div>
-              <div class="qr-dates"><span>من: ${startDate || '----'}</span><span>إلى: ${endDate || '----'}</span></div>
-              ${schedule ? `<div class="schedule-info">📅 ${schedule}</div>` : ''}
-            </div>
             <div class="info-section">
               <div class="info-label">الاسم</div>
               <div class="member-name">${(member?.name_ar || member?.name || '').split('+').map(n => `<div>${n.trim()}</div>`).join('')}</div>
               <div class="info-row"><span class="info-label">رقم العضوية:</span><span class="member-code">#${member?.member_code || ''}</span></div>
               <div class="info-row"><span class="info-label">رقم الجوال:</span><span>${member?.phone || '-'}</span></div>
               ${activitiesHtml ? `<div class="activities"><div class="activities-label">الأنشطة المسجلة</div>${activitiesHtml}</div>` : ''}
+            </div>
+            <div class="qr-container">
+              <div class="qr-section"><img src="https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(qrData)}" /></div>
+              <div class="qr-dates"><span>من: ${startDate || '----'}</span><span>إلى: ${endDate || '----'}</span></div>
+              ${schedule ? `<div class="schedule-info">📅 ${schedule}</div>` : ''}
+              <div class="qr-label">امسح للحضور</div>
             </div>
           </div>
         </div>
@@ -281,48 +277,48 @@ const MemberCardPage = () => {
     printWindow.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>CD820 - ${member?.member_code}</title>
       <style>
         @import url('https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700&display=swap');
-        @page { size: 85.6mm 54mm; margin: 0; }
+        @page { size: 54mm 85.6mm; margin: 0; }
         * { margin:0; padding:0; box-sizing:border-box; }
-        html, body { width:85.6mm; }
+        html, body { width:54mm; }
         body { font-family:'Tajawal',Arial,sans-serif; background:#e5e7eb; direction:rtl; }
         .toolbar { padding:14px; text-align:center; background:white; border-bottom:1px solid #e5e7eb; position:sticky; top:0; }
         .toolbar button { padding:10px 24px; background:linear-gradient(135deg,#F97316,#EA580C); color:white; border:none; border-radius:8px; cursor:pointer; font-family:inherit; font-weight:700; font-size:15px; margin:0 4px; }
         .toolbar button.secondary { background:#374151; }
         .toolbar .meta { margin-top:6px; color:#374151; font-size:13px; }
         .toolbar .hint { margin-top:4px; color:#6b7280; font-size:11px; line-height:1.5; }
-        .cd-page { width:85.6mm; height:54mm; background:white; margin:4mm auto; box-shadow:0 2px 8px rgba(0,0,0,0.15); overflow:hidden; page-break-after:always; }
+        .cd-page { width:54mm; height:85.6mm; background:white; margin:4mm auto; box-shadow:0 2px 8px rgba(0,0,0,0.15); overflow:hidden; page-break-after:always; }
         .cd-page:last-child { page-break-after:auto; }
-        .card { width:85.6mm; height:54mm; display:flex; flex-direction:column; }
-        .card-header { background:${_headerBg}; padding:1.2mm 1.8mm; display:flex; justify-content:space-between; align-items:center; color:white; }
-        .header-text h2 { font-size:8pt; font-weight:900; line-height:1.2; }
-        .header-text p { font-size:5.5pt; font-weight:800; opacity:0.95; }
-        .header-logo { width:15mm; height:15mm; border-radius:50%; background:white; padding:0; display:flex; align-items:center; justify-content:center; overflow:hidden; }
+        .card { width:54mm; height:85.6mm; display:flex; flex-direction:column; position:relative; }
+        .accent-stripe { position:absolute; top:0; bottom:0; right:0; width:2.5mm; background:linear-gradient(180deg,#F97316,#EA580C,#B45309); z-index:2; }
+        .card-header { background:${_headerBg}; padding:2mm 2mm 2.2mm; display:flex; flex-direction:column; align-items:center; gap:1mm; color:white; text-align:center; }
+        .header-text h2 { font-size:7pt; font-weight:900; line-height:1.2; }
+        .header-text p { font-size:5pt; font-weight:800; opacity:0.95; margin-top:0.2mm; }
+        .header-logo { width:16mm; height:16mm; border-radius:50%; background:white; padding:0; display:flex; align-items:center; justify-content:center; overflow:hidden; border:1.5px solid white; box-shadow:0 1px 3px rgba(0,0,0,0.2); }
         .header-logo img { width:140%; height:140%; object-fit:cover; border-radius:50%; }
-        .card-body { padding:1.5mm; display:flex; gap:1.5mm; flex:1; min-height:0; }
-        .info-section { flex:1; text-align:right; overflow:hidden; }
-        .qr-container { display:flex; flex-direction:column; align-items:center; }
-        .qr-section { width:27mm; height:27mm; background:white; border:1px solid #eee; border-radius:1.5mm; padding:0.4mm; }
+        .card-body { padding:2mm 2mm 1.5mm 4mm; display:flex; flex-direction:column; gap:1mm; flex:1; min-height:0; }
+        .info-section { text-align:right; overflow:hidden; }
+        .qr-container { display:flex; flex-direction:column; align-items:center; margin-top:auto; padding-top:1mm; border-top:1px dashed #e5e7eb; }
+        .qr-section { width:28mm; height:28mm; background:white; border:1px solid #eee; border-radius:1.5mm; padding:0.4mm; }
         .qr-section img { width:100%; height:100%; }
-        .qr-dates { text-align:center; font-size:6pt; color:#1f2937; margin-top:0.8mm; line-height:1.2; font-weight:700; }
+        .qr-dates { text-align:center; font-size:6pt; color:#1f2937; margin-top:0.6mm; line-height:1.2; font-weight:700; }
         .qr-dates span { display:block; }
-        .schedule-info { text-align:center; font-size:5pt; color:${_accent}; margin-top:0.8mm; font-weight:600; background:#FFF7ED; padding:0.4mm; border-radius:1.5mm; }
-        .info-label { color:#6b7280; font-size:7pt; font-weight:700; }
-        .member-name { font-size:11pt; font-weight:900; color:#000; margin-bottom:0.8mm; line-height:1.1; }
-        .info-row { display:flex; gap:1mm; font-size:9pt; font-weight:900; color:#000; align-items:center; margin-bottom:0.5mm; }
-        .member-code { color:#000; font-weight:900; font-size:10.5pt; }
+        .qr-label { text-align:center; font-size:6.5pt; color:${_accent}; font-weight:900; margin-top:0.4mm; letter-spacing:0.2mm; }
+        .schedule-info { text-align:center; font-size:5pt; color:${_accent}; margin-top:0.4mm; font-weight:700; background:#FFF7ED; padding:0.3mm 0.8mm; border-radius:1.2mm; }
+        .info-label { color:#6b7280; font-size:6.5pt; font-weight:600; }
+        .member-name { font-size:10.5pt; font-weight:900; color:#111827; margin:0.3mm 0 1.2mm; line-height:1.1; letter-spacing:-0.1pt; }
+        .info-row { display:flex; gap:1mm; font-size:7pt; font-weight:700; color:#111827; align-items:center; margin-bottom:0.4mm; }
+        .member-code { color:${_accent}; font-weight:900; font-size:9pt; }
         .activities { margin-top:0.8mm; padding-top:0.8mm; border-top:1px dashed #e5e7eb; }
-        .activities-label { font-size:7.5pt; color:#6b7280; font-weight:700; margin-bottom:0.3mm; }
-        .activity-item { padding:0.4mm 0.8mm; margin-bottom:0.3mm; border-radius:0.8mm; font-size:8pt; }
+        .activities-label { font-size:6.5pt; color:#6b7280; font-weight:700; margin-bottom:0.3mm; }
+        .activity-item { padding:0.3mm 0.8mm; margin-bottom:0.2mm; border-radius:0.8mm; font-size:6.5pt; }
         .activity-item.active { background:transparent; border-right:2px solid #10B981; }
         .activity-item.expired { background:transparent; border-right:2px solid #EF4444; }
-        .activity-name { font-weight:900; color:#000; font-size:8pt; }
-        .card-footer { padding:0.8mm 1.5mm; background:#f9fafb; font-size:4.5pt; color:#374151; border-top:1px dashed #e5e7eb; line-height:1.2; }
-        .card-footer .terms-title { font-weight:700; color:#1f2937; font-size:5pt; margin-bottom:0.2mm; }
+        .activity-name { font-weight:800; color:#111827; font-size:6.5pt; }
         .cd-page.back { transform:rotate(180deg); transform-origin:center center; }
-        .logo-card { width:85.6mm; height:54mm; background:white; display:flex; flex-direction:column; align-items:center; justify-content:center; padding:1.5mm; }
-        .logo-card img { width:55mm; max-width:90%; max-height:65%; object-fit:contain; margin-bottom:0; }
-        .logo-card .contact-info { font-size:12pt; color:#000; text-align:center; margin-top:0.3mm; font-weight:900; }
-        .logo-card .lost-card-notice { font-size:9pt; color:#DC2626; text-align:center; margin-top:1mm; font-weight:900; background:#FEF2F2; padding:1.2mm 1.5mm; border-radius:1.5mm; border:1.5px solid #EF4444; line-height:1.3; }
+        .logo-card { width:54mm; height:85.6mm; background:linear-gradient(180deg,#FFFFFF,#FFF7ED); display:flex; flex-direction:column; align-items:center; justify-content:center; padding:4mm 3mm; }
+        .logo-card img { width:42mm; max-width:95%; max-height:50%; object-fit:contain; margin-bottom:0; }
+        .logo-card .contact-info { font-size:11pt; color:#000; text-align:center; margin-top:3mm; font-weight:900; }
+        .logo-card .lost-card-notice { font-size:8pt; color:#DC2626; text-align:center; margin-top:3mm; font-weight:900; background:#FEF2F2; padding:2mm; border-radius:1.5mm; border:1.5px solid #EF4444; line-height:1.35; }
         @media print {
           .toolbar { display:none; }
           html, body { background:white; margin:0; padding:0; }
@@ -335,8 +331,8 @@ const MemberCardPage = () => {
         <div class="meta">عضو واحد — ${mode === 'duplex' ? '2 صفحة (وش + ظهر)' : 'صفحة 1 (وش فقط)'}</div>
         <div class="hint">
           إعدادات الطابعة:<br/>
-          • Paper Size: CR-80 (85.6 × 54 mm)<br/>
-          • Orientation: Landscape<br/>
+          • Paper Size: CR-80 (54 × 85.6 mm)<br/>
+          • Orientation: Portrait<br/>
           • Margins: None<br/>
           ${mode === 'duplex' ? '• Double-sided: ON (flip on long edge)<br/>' : ''}
           • Scale: 100%
