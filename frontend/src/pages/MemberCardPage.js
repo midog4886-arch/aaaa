@@ -94,9 +94,9 @@ const MemberCardPage = () => {
             .sticker-preview { display: flex; gap: 15px; justify-content: center; margin-bottom: 20px; }
             .card { width: 90mm; height: 60mm; background: white; border-radius: 4mm; overflow: hidden; box-shadow: 0 4px 15px rgba(0,0,0,0.1); display: flex; flex-direction: column; }
             .card-header { background: ${_headerBg}; padding: 1.5mm 2mm; display: flex; justify-content: space-between; align-items: center; color: white; }
-            .header-text h2 { font-size: 7pt; font-weight: 700; margin: 0; line-height: 1.3; }
-            .header-text p { font-size: 5.5pt; opacity: 0.9; margin: 0; }
-            .header-logo { width: 10mm; height: 10mm; border-radius: 50%; background: white; padding: 0.5mm; display: flex; align-items: center; justify-content: center; }
+            .header-text h2 { font-size: 8.5pt; font-weight: 900; margin: 0; line-height: 1.3; }
+            .header-text p { font-size: 6pt; font-weight: 800; opacity: 0.95; margin: 0; }
+            .header-logo { width: 13mm; height: 13mm; border-radius: 50%; background: white; padding: 0.6mm; display: flex; align-items: center; justify-content: center; }
             .header-logo img { width: 100%; height: 100%; object-fit: contain; border-radius: 50%; }
             .card-body { padding: 2mm; display: flex; gap: 2mm; flex: 1; }
             .info-section { flex: 1; text-align: right; overflow: hidden; }
@@ -294,9 +294,9 @@ const MemberCardPage = () => {
         .cd-page:last-child { page-break-after:auto; }
         .card { width:85.6mm; height:54mm; display:flex; flex-direction:column; }
         .card-header { background:${_headerBg}; padding:1.2mm 1.8mm; display:flex; justify-content:space-between; align-items:center; color:white; }
-        .header-text h2 { font-size:6.5pt; font-weight:700; line-height:1.2; }
-        .header-text p { font-size:5pt; opacity:0.9; }
-        .header-logo { width:9mm; height:9mm; border-radius:50%; background:white; padding:0.4mm; display:flex; align-items:center; justify-content:center; }
+        .header-text h2 { font-size:8pt; font-weight:900; line-height:1.2; }
+        .header-text p { font-size:5.5pt; font-weight:800; opacity:0.95; }
+        .header-logo { width:12mm; height:12mm; border-radius:50%; background:white; padding:0.5mm; display:flex; align-items:center; justify-content:center; }
         .header-logo img { width:100%; height:100%; object-fit:contain; border-radius:50%; }
         .card-body { padding:1.5mm; display:flex; gap:1.5mm; flex:1; min-height:0; }
         .info-section { flex:1; text-align:right; overflow:hidden; }

@@ -184,9 +184,9 @@ const DailyNewCardsPage = () => {
         .row-cards { display:flex; gap:5mm; }
         .card { width:90mm; height:60mm; background:white; border-radius:3mm; overflow:hidden; border:1px solid #e5e7eb; display:flex; flex-direction:column; }
         .card-header { background:linear-gradient(135deg,#F97316,#F59E0B); padding:1.5mm 2mm; display:flex; justify-content:space-between; align-items:center; color:white; }
-        .header-text h2 { font-size:7pt; font-weight:700; line-height:1.3; }
-        .header-text p { font-size:5.5pt; opacity:0.9; }
-        .header-logo { width:10mm; height:10mm; border-radius:50%; background:white; padding:0.5mm; display:flex; align-items:center; justify-content:center; }
+        .header-text h2 { font-size:8.5pt; font-weight:900; line-height:1.3; }
+        .header-text p { font-size:6pt; font-weight:800; opacity:0.95; }
+        .header-logo { width:13mm; height:13mm; border-radius:50%; background:white; padding:0.6mm; display:flex; align-items:center; justify-content:center; }
         .header-logo img { width:100%; height:100%; object-fit:contain; border-radius:50%; }
         .card-body { padding:2mm; display:flex; gap:2mm; flex:1; }
         .info-section { flex:1; text-align:right; overflow:hidden; }
@@ -259,9 +259,9 @@ const DailyNewCardsPage = () => {
         .cd-page:last-child { page-break-after:auto; }
         .card { width:85.6mm; height:54mm; border-radius:0; border:none; display:flex; flex-direction:column; }
         .card-header { background:linear-gradient(135deg,#F97316,#F59E0B); padding:1.2mm 1.8mm; display:flex; justify-content:space-between; align-items:center; color:white; }
-        .header-text h2 { font-size:6.5pt; font-weight:700; line-height:1.2; }
-        .header-text p { font-size:5pt; opacity:0.9; }
-        .header-logo { width:9mm; height:9mm; border-radius:50%; background:white; padding:0.4mm; display:flex; align-items:center; justify-content:center; }
+        .header-text h2 { font-size:8pt; font-weight:900; line-height:1.2; }
+        .header-text p { font-size:5.5pt; font-weight:800; opacity:0.95; }
+        .header-logo { width:12mm; height:12mm; border-radius:50%; background:white; padding:0.5mm; display:flex; align-items:center; justify-content:center; }
         .header-logo img { width:100%; height:100%; object-fit:contain; border-radius:50%; }
         .card-body { padding:1.5mm; display:flex; gap:1.5mm; flex:1; min-height:0; }
         .info-section { flex:1; text-align:right; overflow:hidden; }
