@@ -16,6 +16,40 @@ const DailyNewCardsPage = () => {
   const [error, setError] = useState('');
   const [data, setData] = useState(null);
   const [selectedBranchId, setSelectedBranchId] = useState('all');
+  const [selectedIds, setSelectedIds] = useState(() => new Set());
+
+  const toggleMember = (id) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleBranchAll = (branch, checked) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      branch.members.forEach((m) => {
+        if (checked) next.add(m.id);
+        else next.delete(m.id);
+      });
+      return next;
+    });
+  };
+
+  const clearSelection = () => setSelectedIds(new Set());
+
+  const selectAllVisible = () => {
+    setSelectedIds(() => {
+      const next = new Set();
+      (data?.branches || []).forEach((br) => {
+        if (selectedBranchId !== 'all' && String(br.branch_id) !== String(selectedBranchId)) return;
+        br.members.forEach((m) => next.add(m.id));
+      });
+      return next;
+    });
+  };
 
   const load = useCallback(async (d) => {
     setLoading(true);
@@ -90,8 +124,15 @@ const DailyNewCardsPage = () => {
 
   const getFilteredBranches = () => {
     const list = data?.branches || [];
-    if (selectedBranchId === 'all') return list;
-    return list.filter((b) => String(b.branch_id) === String(selectedBranchId));
+    let scoped = selectedBranchId === 'all'
+      ? list
+      : list.filter((b) => String(b.branch_id) === String(selectedBranchId));
+    if (selectedIds.size > 0) {
+      scoped = scoped
+        .map((b) => ({ ...b, members: b.members.filter((m) => selectedIds.has(m.id)) }))
+        .filter((b) => b.members.length > 0);
+    }
+    return scoped;
   };
 
   const printAllCards = () => {
@@ -380,6 +421,34 @@ const DailyNewCardsPage = () => {
                   ✕ إزالة فلتر الفرع
                 </Badge>
               )}
+              {selectedIds.size > 0 && (
+                <Badge className="text-sm gap-1 px-3 py-1 bg-blue-600 text-white">
+                  محدد يدوياً: {selectedIds.size}
+                </Badge>
+              )}
+            </div>
+            <div className="flex flex-wrap gap-2 mt-3">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={selectAllVisible}
+                disabled={loading || totalMembers === 0}
+              >
+                تحديد كل المعروض
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={clearSelection}
+                disabled={selectedIds.size === 0}
+              >
+                إلغاء التحديد
+              </Button>
+              <span className="text-xs text-gray-500 self-center">
+                {selectedIds.size > 0
+                  ? `سيتم طباعة ${selectedIds.size} كرت محدد فقط`
+                  : 'بدون تحديد: سيتم طباعة كل أعضاء الفرع المعروض'}
+              </span>
             </div>
           </CardContent>
         </Card>
@@ -404,7 +473,10 @@ const DailyNewCardsPage = () => {
           </Card>
         )}
 
-        {!loading && branches.map((branch) => (
+        {!loading && branches.map((branch) => {
+          const branchSelectedCount = branch.members.filter((m) => selectedIds.has(m.id)).length;
+          const allSelected = branchSelectedCount === branch.members.length && branch.members.length > 0;
+          return (
           <Card key={branch.branch_id} className="mb-4 shadow-sm">
             <CardHeader className="bg-gradient-to-l from-orange-50 to-amber-50 border-b py-3">
               <CardTitle className="text-lg flex items-center justify-between">
@@ -412,7 +484,12 @@ const DailyNewCardsPage = () => {
                   <Building2 className="w-5 h-5 text-orange-500" />
                   {branch.branch_name}
                 </span>
-                <Badge className="bg-orange-500 text-white">{branch.members.length} عضو</Badge>
+                <div className="flex items-center gap-2">
+                  {branchSelectedCount > 0 && (
+                    <Badge className="bg-blue-600 text-white text-xs">محدد: {branchSelectedCount}</Badge>
+                  )}
+                  <Badge className="bg-orange-500 text-white">{branch.members.length} عضو</Badge>
+                </div>
               </CardTitle>
             </CardHeader>
             <CardContent className="p-3">
@@ -420,6 +497,15 @@ const DailyNewCardsPage = () => {
                 <table className="w-full text-sm">
                   <thead className="bg-gray-50 text-gray-600">
                     <tr>
+                      <th className="text-center p-2 font-semibold w-10">
+                        <input
+                          type="checkbox"
+                          checked={allSelected}
+                          onChange={(e) => toggleBranchAll(branch, e.target.checked)}
+                          className="w-4 h-4 cursor-pointer accent-orange-500"
+                          title="تحديد كل الفرع"
+                        />
+                      </th>
                       <th className="text-right p-2 font-semibold">#</th>
                       <th className="text-right p-2 font-semibold">رقم العضوية</th>
                       <th className="text-right p-2 font-semibold">الاسم</th>
@@ -432,8 +518,21 @@ const DailyNewCardsPage = () => {
                     {branch.members.map((m, idx) => {
                       const acts = (m.activities || []).map((a) => a.activity_name).filter(Boolean).join('، ');
                       const time = (m.created_at || '').split('T')[1]?.split('.')[0]?.slice(0, 5) || '';
+                      const isSelected = selectedIds.has(m.id);
                       return (
-                        <tr key={m.id} className="border-t hover:bg-orange-50/40">
+                        <tr
+                          key={m.id}
+                          className={`border-t hover:bg-orange-50/40 cursor-pointer ${isSelected ? 'bg-blue-50' : ''}`}
+                          onClick={() => toggleMember(m.id)}
+                        >
+                          <td className="p-2 text-center" onClick={(e) => e.stopPropagation()}>
+                            <input
+                              type="checkbox"
+                              checked={isSelected}
+                              onChange={() => toggleMember(m.id)}
+                              className="w-4 h-4 cursor-pointer accent-orange-500"
+                            />
+                          </td>
                           <td className="p-2 text-gray-500">{idx + 1}</td>
                           <td className="p-2 font-bold text-orange-600">#{m.member_code}</td>
                           <td className="p-2 font-medium">{m.name_ar || m.name}</td>
@@ -448,7 +547,8 @@ const DailyNewCardsPage = () => {
               </div>
             </CardContent>
           </Card>
-        ))}
+          );
+        })}
       </div>
     </Layout>
   );
