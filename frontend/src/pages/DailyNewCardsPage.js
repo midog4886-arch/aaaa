@@ -186,8 +186,8 @@ const DailyNewCardsPage = () => {
         .card-header { background:linear-gradient(135deg,#F97316,#F59E0B); padding:1.5mm 2mm; display:flex; justify-content:space-between; align-items:center; color:white; }
         .header-text h2 { font-size:8.5pt; font-weight:900; line-height:1.3; }
         .header-text p { font-size:6pt; font-weight:800; opacity:0.95; }
-        .header-logo { width:13mm; height:13mm; border-radius:50%; background:white; padding:0; display:flex; align-items:center; justify-content:center; overflow:hidden; }
-        .header-logo img { width:100%; height:100%; object-fit:cover; border-radius:50%; }
+        .header-logo { width:16mm; height:16mm; border-radius:50%; background:white; padding:0; display:flex; align-items:center; justify-content:center; overflow:hidden; }
+        .header-logo img { width:140%; height:140%; object-fit:cover; border-radius:50%; transform:scale(1); }
         .card-body { padding:2mm; display:flex; gap:2mm; flex:1; }
         .info-section { flex:1; text-align:right; overflow:hidden; }
         .qr-container { display:flex; flex-direction:column; align-items:center; }
@@ -261,8 +261,8 @@ const DailyNewCardsPage = () => {
         .card-header { background:linear-gradient(135deg,#F97316,#F59E0B); padding:1.2mm 1.8mm; display:flex; justify-content:space-between; align-items:center; color:white; }
         .header-text h2 { font-size:8pt; font-weight:900; line-height:1.2; }
         .header-text p { font-size:5.5pt; font-weight:800; opacity:0.95; }
-        .header-logo { width:12mm; height:12mm; border-radius:50%; background:white; padding:0; display:flex; align-items:center; justify-content:center; overflow:hidden; }
-        .header-logo img { width:100%; height:100%; object-fit:cover; border-radius:50%; }
+        .header-logo { width:15mm; height:15mm; border-radius:50%; background:white; padding:0; display:flex; align-items:center; justify-content:center; overflow:hidden; }
+        .header-logo img { width:140%; height:140%; object-fit:cover; border-radius:50%; transform:scale(1); }
         .card-body { padding:1.5mm; display:flex; gap:1.5mm; flex:1; min-height:0; }
         .info-section { flex:1; text-align:right; overflow:hidden; }
         .qr-container { display:flex; flex-direction:column; align-items:center; }
