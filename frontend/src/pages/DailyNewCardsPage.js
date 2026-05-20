@@ -208,9 +208,9 @@ const DailyNewCardsPage = () => {
         .card-footer { padding:1mm 2mm; background:#f9fafb; font-size:5pt; color:#374151; border-top:1px dashed #e5e7eb; line-height:1.3; }
         .card-footer .terms-title { font-weight:700; color:#1f2937; font-size:5.5pt; margin-bottom:0.3mm; }
         .logo-card { width:90mm; height:60mm; background:white; border-radius:3mm; overflow:hidden; border:1px solid #e5e7eb; display:flex; flex-direction:column; align-items:center; justify-content:center; padding:3mm; }
-        .logo-card img { max-width:100%; max-height:55%; object-fit:contain; }
-        .logo-card .contact-info { font-size:7pt; color:#374151; text-align:center; margin-top:2mm; font-weight:600; }
-        .logo-card .lost-card-notice { font-size:6pt; color:#DC2626; text-align:center; margin-top:1.5mm; font-weight:700; background:#FEF2F2; padding:1.5mm 2mm; border-radius:2mm; border:1px solid #EF4444; }
+        .logo-card img { max-width:100%; max-height:72%; object-fit:contain; }
+        .logo-card .contact-info { font-size:12pt; color:#000; text-align:center; margin-top:2.5mm; font-weight:900; }
+        .logo-card .lost-card-notice { font-size:10pt; color:#DC2626; text-align:center; margin-top:2mm; font-weight:900; background:#FEF2F2; padding:2mm 2.5mm; border-radius:2mm; border:1.5px solid #EF4444; line-height:1.4; }
         @media print { .toolbar { display:none; } .page { margin:0 auto; box-shadow:none; } body { background:white; } }
       </style></head><body>
       <div class="toolbar">
@@ -282,10 +282,10 @@ const DailyNewCardsPage = () => {
         .activity-name { font-weight:900; color:#000; font-size:8pt; }
         .card-footer { padding:0.8mm 1.5mm; background:#f9fafb; font-size:4.5pt; color:#374151; border-top:1px dashed #e5e7eb; line-height:1.2; }
         .card-footer .terms-title { font-weight:700; color:#1f2937; font-size:5pt; margin-bottom:0.2mm; }
-        .logo-card { width:85.6mm; height:54mm; background:white; display:flex; flex-direction:column; align-items:center; justify-content:center; padding:2.5mm; border:none; border-radius:0; }
-        .logo-card img { max-width:100%; max-height:55%; object-fit:contain; }
-        .logo-card .contact-info { font-size:7pt; color:#374151; text-align:center; margin-top:1.5mm; font-weight:600; }
-        .logo-card .lost-card-notice { font-size:5.5pt; color:#DC2626; text-align:center; margin-top:1.2mm; font-weight:700; background:#FEF2F2; padding:1.2mm 1.5mm; border-radius:1.5mm; border:1px solid #EF4444; }
+        .logo-card { width:85.6mm; height:54mm; background:white; display:flex; flex-direction:column; align-items:center; justify-content:center; padding:2mm; border:none; border-radius:0; }
+        .logo-card img { max-width:100%; max-height:70%; object-fit:contain; }
+        .logo-card .contact-info { font-size:11pt; color:#000; text-align:center; margin-top:1.8mm; font-weight:900; }
+        .logo-card .lost-card-notice { font-size:9pt; color:#DC2626; text-align:center; margin-top:1.5mm; font-weight:900; background:#FEF2F2; padding:1.5mm 1.8mm; border-radius:1.5mm; border:1.5px solid #EF4444; line-height:1.3; }
         @media print {
           .toolbar { display:none; }
           html, body { background:white; margin:0; padding:0; }
