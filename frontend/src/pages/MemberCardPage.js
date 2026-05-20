@@ -315,7 +315,7 @@ const MemberCardPage = () => {
         .activity-item.active { background:transparent; border-right:2px solid #10B981; }
         .activity-item.expired { background:transparent; border-right:2px solid #EF4444; }
         .activity-name { font-weight:800; color:#111827; font-size:6.5pt; }
-        .cd-page.back { }
+        .cd-page.back { transform:rotate(180deg); transform-origin:center center; }
         .accent-stripe { position:absolute; top:0; bottom:0; right:0; width:4mm; background:linear-gradient(180deg,#0EA5E9,#0369A1,#075985); z-index:2; display:flex; align-items:center; justify-content:center; overflow:hidden; }
         .accent-stripe span { writing-mode:vertical-rl; transform:rotate(180deg); color:white; font-size:6pt; font-weight:900; letter-spacing:1.2pt; text-transform:uppercase; white-space:nowrap; }
         .logo-card { width:54mm; height:85.6mm; background:linear-gradient(180deg,#FFFFFF,#FFF7ED); display:flex; flex-direction:column; align-items:center; justify-content:center; padding:4mm 3mm; gap:2.5mm; }

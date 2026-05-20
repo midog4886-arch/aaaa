@@ -287,7 +287,7 @@ const DailyNewCardsPage = () => {
         .activity-item.active { background:transparent; border-right:2px solid #10B981; }
         .activity-item.expired { background:transparent; border-right:2px solid #EF4444; }
         .activity-name { font-weight:800; color:#111827; font-size:6.5pt; }
-        .cd-page.back { }
+        .cd-page.back { transform:rotate(180deg); transform-origin:center center; }
         .logo-card { width:54mm; height:85.6mm; background:linear-gradient(180deg,#FFFFFF,#FFF7ED); display:flex; flex-direction:column; align-items:center; justify-content:center; padding:4mm 3mm; border:none; border-radius:0; gap:2.5mm; }
         .logo-card img { width:50mm; max-width:98%; max-height:75%; object-fit:contain; margin-bottom:0; }
         .logo-card .contact-block { display:flex; flex-direction:column; gap:1.3mm; align-items:center; width:100%; }
