@@ -219,6 +219,138 @@ const MemberCardPage = () => {
     printWindow.document.close();
   };
 
+  const handleCD820Print = (mode = 'duplex') => {
+    setShowPrintDialog(false);
+    const printWindow = window.open('', '_blank', 'width=800,height=600');
+    const qrData = getQRData();
+    const _brand = getPrimaryColor();
+    const _headerBg = _brand || 'linear-gradient(135deg, #F97316, #F59E0B)';
+    const _accent = _brand || '#F97316';
+    const _allActs = member?.activities || [];
+    const _today = new Date();
+    const _parseEnd = (a) => {
+      if (!a?.end_date) return 0;
+      const t = new Date(a.end_date).getTime();
+      return isNaN(t) ? 0 : t;
+    };
+    const _activeActs = _allActs.filter(a => a?.end_date && new Date(a.end_date) >= _today);
+    const _pool = _activeActs.length ? _activeActs : _allActs;
+    const latestActivity = [..._pool].sort((a, b) => _parseEnd(b) - _parseEnd(a))[0] || _allActs[0];
+    const startDate = latestActivity?.start_date || '';
+    const endDate = latestActivity?.end_date || '';
+    const schedule = latestActivity?.schedule || '';
+    const activitiesHtml = member?.activities?.map(act => `
+      <div class="activity-item ${act.status === 'active' ? 'active' : 'expired'}">
+        <div class="activity-name">${act.status === 'active' ? '✓' : '✗'} ${act.activity_name}</div>
+      </div>
+    `).join('') || '';
+
+    const frontHtml = `
+      <div class="cd-page">
+        <div class="card">
+          <div class="card-header">
+            <div class="header-text"><h2>شركة اداء الابطال العالمية للرياضة</h2><p>Global Champions Sports Performance</p></div>
+            <div class="header-logo"><img src="${window.location.origin}/images/academy-logo.png" alt="logo" /></div>
+          </div>
+          <div class="card-body">
+            <div class="qr-container">
+              <div class="qr-section"><img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(qrData)}" /></div>
+              <div class="qr-dates"><span>من: ${startDate || '----'}</span><span>إلى: ${endDate || '----'}</span></div>
+              ${schedule ? `<div class="schedule-info">📅 ${schedule}</div>` : ''}
+            </div>
+            <div class="info-section">
+              <div class="info-label">الاسم</div>
+              <div class="member-name">${(member?.name_ar || member?.name || '').split('+').map(n => `<div>${n.trim()}</div>`).join('')}</div>
+              <div class="info-row"><span class="info-label">رقم العضوية:</span><span class="member-code">#${member?.member_code || ''}</span></div>
+              <div class="info-row"><span class="info-label">رقم الجوال:</span><span>${member?.phone || '-'}</span></div>
+              ${activitiesHtml ? `<div class="activities"><div class="activities-label">الأنشطة المسجلة</div>${activitiesHtml}</div>` : ''}
+            </div>
+          </div>
+          <div class="card-footer">
+            <div class="terms-title">شروط وأحكام:</div>
+            <div>• الاشتراك محدد البداية والنهاية ولا يتم تعويض حصص غياب المشترك</div>
+            <div>• المبلغ المدفوع لا يسترد بعد مرور أسبوع من الاشتراك</div>
+          </div>
+        </div>
+      </div>`;
+    const backHtml = `
+      <div class="cd-page">
+        <div class="logo-card">
+          <img src="${window.location.origin}/images/academy-logo.png" alt="شعار الأكاديمية" />
+          <div class="contact-info">📞 0566238384</div>
+          <div class="lost-card-notice">⚠️ في حال فقدان كرت العضوية،<br/>يتم إصدار كرت جديد برسوم 10 ر.س</div>
+        </div>
+      </div>`;
+    const pages = mode === 'duplex' ? frontHtml + backHtml : frontHtml;
+
+    printWindow.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>CD820 - ${member?.member_code}</title>
+      <style>
+        @import url('https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700&display=swap');
+        @page { size: 85.6mm 54mm; margin: 0; }
+        * { margin:0; padding:0; box-sizing:border-box; }
+        html, body { width:85.6mm; }
+        body { font-family:'Tajawal',Arial,sans-serif; background:#e5e7eb; direction:rtl; }
+        .toolbar { padding:14px; text-align:center; background:white; border-bottom:1px solid #e5e7eb; position:sticky; top:0; }
+        .toolbar button { padding:10px 24px; background:linear-gradient(135deg,#F97316,#EA580C); color:white; border:none; border-radius:8px; cursor:pointer; font-family:inherit; font-weight:700; font-size:15px; margin:0 4px; }
+        .toolbar button.secondary { background:#374151; }
+        .toolbar .meta { margin-top:6px; color:#374151; font-size:13px; }
+        .toolbar .hint { margin-top:4px; color:#6b7280; font-size:11px; line-height:1.5; }
+        .cd-page { width:85.6mm; height:54mm; background:white; margin:4mm auto; box-shadow:0 2px 8px rgba(0,0,0,0.15); overflow:hidden; page-break-after:always; }
+        .cd-page:last-child { page-break-after:auto; }
+        .card { width:85.6mm; height:54mm; display:flex; flex-direction:column; }
+        .card-header { background:${_headerBg}; padding:1.2mm 1.8mm; display:flex; justify-content:space-between; align-items:center; color:white; }
+        .header-text h2 { font-size:6.5pt; font-weight:700; line-height:1.2; }
+        .header-text p { font-size:5pt; opacity:0.9; }
+        .header-logo { width:9mm; height:9mm; border-radius:50%; background:white; padding:0.4mm; display:flex; align-items:center; justify-content:center; }
+        .header-logo img { width:100%; height:100%; object-fit:contain; border-radius:50%; }
+        .card-body { padding:1.5mm; display:flex; gap:1.5mm; flex:1; min-height:0; }
+        .info-section { flex:1; text-align:right; overflow:hidden; }
+        .qr-container { display:flex; flex-direction:column; align-items:center; }
+        .qr-section { width:23mm; height:23mm; background:white; border:1px solid #eee; border-radius:1.5mm; padding:0.4mm; }
+        .qr-section img { width:100%; height:100%; }
+        .qr-dates { text-align:center; font-size:6pt; color:#1f2937; margin-top:0.8mm; line-height:1.2; font-weight:700; }
+        .qr-dates span { display:block; }
+        .schedule-info { text-align:center; font-size:5pt; color:${_accent}; margin-top:0.8mm; font-weight:600; background:#FFF7ED; padding:0.4mm; border-radius:1.5mm; }
+        .info-label { color:#6b7280; font-size:5.5pt; }
+        .member-name { font-size:8pt; font-weight:700; color:#1f2937; margin-bottom:0.8mm; line-height:1.1; }
+        .info-row { display:flex; gap:1mm; font-size:6.5pt; align-items:center; margin-bottom:0.4mm; }
+        .member-code { color:${_accent}; font-weight:700; font-size:8pt; }
+        .activities { margin-top:0.8mm; padding-top:0.8mm; border-top:1px dashed #e5e7eb; }
+        .activities-label { font-size:5.5pt; color:#6b7280; margin-bottom:0.3mm; }
+        .activity-item { padding:0.4mm 0.8mm; margin-bottom:0.3mm; border-radius:0.8mm; font-size:5.5pt; }
+        .activity-item.active { background:#D1FAE5; border-right:2px solid #10B981; }
+        .activity-item.expired { background:#FEE2E2; border-right:2px solid #EF4444; }
+        .activity-name { font-weight:600; color:#1f2937; font-size:5.5pt; }
+        .card-footer { padding:0.8mm 1.5mm; background:#f9fafb; font-size:4.5pt; color:#374151; border-top:1px dashed #e5e7eb; line-height:1.2; }
+        .card-footer .terms-title { font-weight:700; color:#1f2937; font-size:5pt; margin-bottom:0.2mm; }
+        .logo-card { width:85.6mm; height:54mm; background:white; display:flex; flex-direction:column; align-items:center; justify-content:center; padding:2.5mm; }
+        .logo-card img { max-width:100%; max-height:55%; object-fit:contain; }
+        .logo-card .contact-info { font-size:7pt; color:#374151; text-align:center; margin-top:1.5mm; font-weight:600; }
+        .logo-card .lost-card-notice { font-size:5.5pt; color:#DC2626; text-align:center; margin-top:1.2mm; font-weight:700; background:#FEF2F2; padding:1.2mm 1.5mm; border-radius:1.5mm; border:1px solid #EF4444; }
+        @media print {
+          .toolbar { display:none; }
+          html, body { background:white; margin:0; padding:0; }
+          .cd-page { margin:0; box-shadow:none; }
+        }
+      </style></head><body>
+      <div class="toolbar">
+        <button onclick="window.print()">🖨️ طباعة على Datacard CD820</button>
+        <button class="secondary" onclick="window.close()">إغلاق</button>
+        <div class="meta">عضو واحد — ${mode === 'duplex' ? '2 صفحة (وش + ظهر)' : 'صفحة 1 (وش فقط)'}</div>
+        <div class="hint">
+          إعدادات الطابعة:<br/>
+          • Paper Size: CR-80 (85.6 × 54 mm)<br/>
+          • Orientation: Landscape<br/>
+          • Margins: None<br/>
+          ${mode === 'duplex' ? '• Double-sided: ON (flip on long edge)<br/>' : ''}
+          • Scale: 100%
+        </div>
+      </div>
+      ${pages}
+      </body></html>`);
+    printWindow.document.close();
+  };
+
   const handleDownload = () => {
     const svg = document.getElementById('member-qr-code');
     if (!svg) return;
@@ -327,14 +459,34 @@ const MemberCardPage = () => {
                     </p>
                   </div>
                   
-                  <div className="mt-4 flex justify-center">
+                  <div className="mt-4 flex flex-col gap-2 items-center">
                     <Button
                       onClick={handleStickerPrint}
-                      className="bg-orange-500 hover:bg-orange-600 text-white px-8 py-3 text-lg"
+                      className="bg-orange-500 hover:bg-orange-600 text-white px-8 py-3 text-lg w-full max-w-sm"
                     >
                       <Printer className="w-5 h-5 ml-2" />
-                      طباعة الملصقات
+                      طباعة على ورق A4 (ملصقات)
                     </Button>
+                    <div className="flex gap-2 w-full max-w-sm">
+                      <Button
+                        onClick={() => handleCD820Print('duplex')}
+                        className="bg-blue-600 hover:bg-blue-700 text-white flex-1"
+                        title="طباعة على Datacard CD820 — وش وظهر"
+                      >
+                        💳 CD820 وش وظهر
+                      </Button>
+                      <Button
+                        onClick={() => handleCD820Print('single')}
+                        variant="outline"
+                        className="border-blue-600 text-blue-700 hover:bg-blue-50 flex-1"
+                        title="طباعة وش فقط على CD820"
+                      >
+                        💳 CD820 وش فقط
+                      </Button>
+                    </div>
+                    <p className="text-xs text-gray-500 text-center mt-1">
+                      مقاس CD820: 85.6 × 54 مم (CR-80)
+                    </p>
                   </div>
                 </div>
               </DialogContent>
