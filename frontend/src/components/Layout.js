@@ -7,7 +7,7 @@ import { useLanguage } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/AuthContext';
 import { Button } from './ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
-import { branchesAPI, notificationsAPI, levelsAPI } from '../services/api';
+import { branchesAPI, notificationsAPI, levelsAPI, internalExpensesAPI } from '../services/api';
 import GlobalScanner from './GlobalScanner';
 import CameraQRScanner from './CameraQRScanner';
 import GlobalSearch from './GlobalSearch';
@@ -62,9 +62,12 @@ export const Sidebar = ({ isOpen, onClose }) => {
   const navigate = useNavigate();
   const [branches, setBranches] = useState([]);
   const [unassignedCount, setUnassignedCount] = useState(0);
+  const [pendingExpensesCount, setPendingExpensesCount] = useState(0);
 
   const isAdmin = user?.is_admin;
   const userPermissions = user?.permissions || [];
+  const canApproveExpenses = isAdmin || userPermissions.includes('accounting') || userPermissions.includes('internal-expenses-approve');
+  const canSubmitExpenses = !isAdmin && !userPermissions.includes('accounting') && !userPermissions.includes('internal-expenses-approve') && userPermissions.includes('internal-expenses-create');
 
   useEffect(() => {
     if (isAdmin) {
@@ -88,6 +91,22 @@ export const Sidebar = ({ isOpen, onClose }) => {
     const id = setInterval(loadCount, 5 * 60 * 1000); // refresh every 5 min
     return () => clearInterval(id);
   }, [isAdmin, user?.permissions, selectedBranchId]);
+
+  useEffect(() => {
+    if (!canApproveExpenses) { setPendingExpensesCount(0); return; }
+    const loadPending = async () => {
+      try {
+        const params = selectedBranchId && selectedBranchId !== 'all' ? { branch_filter: selectedBranchId } : {};
+        const res = await internalExpensesAPI.getPendingCount(params);
+        setPendingExpensesCount(res.data?.count || 0);
+      } catch (e) {
+        // silent
+      }
+    };
+    loadPending();
+    const id = setInterval(loadPending, 60 * 1000);
+    return () => clearInterval(id);
+  }, [canApproveExpenses, selectedBranchId]);
 
   const loadBranches = async () => {
     try {
@@ -159,7 +178,8 @@ export const Sidebar = ({ isOpen, onClose }) => {
         { to: '/admin/invoices', icon: Receipt, label: 'invoices', permission: 'invoices', feature: 'invoices' },
         { to: '/admin/daily-ledger', icon: BookOpen, label: 'daily_ledger', permission: 'daily-ledger', feature: 'daily_ledger' },
         { to: '/admin/day-extensions', icon: CalendarOff, label: 'day_extensions', permission: 'day-extensions', feature: 'renewals' },
-        { to: '/admin/accounting', icon: Calculator, label: 'accounting', permission: 'accounting', feature: 'expense_payments' },
+        { to: '/admin/accounting', icon: Calculator, label: 'accounting', permission: 'accounting', altPermissions: ['internal-expenses-approve'], feature: 'expense_payments' },
+        ...(canSubmitExpenses ? [{ to: '/admin/my-expenses', icon: Wallet, label: 'my_expenses', permission: 'internal-expenses-create' }] : []),
         { to: '/admin/coach-salaries', icon: Wallet, label: 'coach_salaries', permission: 'salaries', feature: 'coach_salaries' },
         { to: '/admin/store', icon: Package, label: 'store', permission: 'store' },
       ]
@@ -205,10 +225,16 @@ export const Sidebar = ({ isOpen, onClose }) => {
     },
   ];
 
+  const hasAnyPerm = (item) => {
+    if (isAdmin) return true;
+    if (userPermissions.includes(item.permission)) return true;
+    const alts = item.altPermissions || [];
+    return alts.some(p => userPermissions.includes(p));
+  };
   const filteredGroups = navGroups.map(group => ({
     ...group,
     items: group.items
-      .filter(item => isAdmin || userPermissions.includes(item.permission))
+      .filter(hasAnyPerm)
       .filter(item => isFeatureEnabled(item.feature))
   })).filter(group => group.items.length > 0);
 
@@ -329,6 +355,15 @@ export const Sidebar = ({ isOpen, onClose }) => {
                           data-testid="sidebar-unassigned-badge"
                         >
                           {unassignedCount > 99 ? '99+' : unassignedCount}
+                        </span>
+                      )}
+                      {item.to === '/admin/accounting' && pendingExpensesCount > 0 && (
+                        <span
+                          className="ms-auto inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full bg-amber-500 text-white text-[11px] font-bold"
+                          title={language === 'ar' ? 'مصروفات بانتظار الاعتماد' : 'Expenses pending approval'}
+                          data-testid="sidebar-pending-expenses-badge"
+                        >
+                          {pendingExpensesCount > 99 ? '99+' : pendingExpensesCount}
                         </span>
                       )}
                     </NavLink>

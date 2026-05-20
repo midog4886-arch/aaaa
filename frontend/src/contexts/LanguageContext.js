@@ -45,6 +45,7 @@ const translations = {
     social_publisher: 'النشر الاجتماعي',
     loyalty: 'الولاء',
     accounting: 'المحاسبة',
+    my_expenses: 'مصروفاتي (بانتظار الاعتماد)',
     reports: 'التقارير',
     daily_ledger: 'اليومية المالية',
     day_extensions: 'ترحيل الأيام',
@@ -235,6 +236,7 @@ const translations = {
     attendance: 'Attendance',
     today_attendance: "Today's Attendance",
     accounting: 'Accounting',
+    my_expenses: 'My Expenses (pending approval)',
     
     // Dashboard
     total_members: 'Total Members',

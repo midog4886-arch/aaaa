@@ -37,7 +37,8 @@ ALL_PERMISSIONS = [
     'coach-ratings', 'coach-attendance', 'coaches', 'advertisements', 'daily-videos',
     'loyalty', 'store', 'accounting', 'reports', 'messages', 'branches', 'users',
     'settings', 'tournaments', 'social-publisher', 'renewals', 'daily-ledger',
-    'day-extensions', 'backup', 'push-notifications', 'member-card', 'salaries'
+    'day-extensions', 'backup', 'push-notifications', 'member-card', 'salaries',
+    'internal-expenses-create', 'internal-expenses-approve'
 ]
 
 # ============ ROUTES ============

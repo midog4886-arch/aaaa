@@ -61,6 +61,7 @@ const BranchesPage = lazy(() => import('./pages/BranchesPage'));
 const UsersPage = lazy(() => import('./pages/UsersPage'));
 const StorePage = lazy(() => import('./pages/StorePage'));
 const AccountingPage = lazy(() => import('./pages/AccountingPage'));
+const MyExpensesPage = lazy(() => import('./pages/MyExpensesPage'));
 const AttendancePage = lazy(() => import('./pages/AttendancePage'));
 const TodayAttendancePage = lazy(() => import('./pages/TodayAttendancePage'));
 const SchedulePage = lazy(() => import('./pages/SchedulePage'));
@@ -148,10 +149,11 @@ const ProtectedRoute = ({ children, permission }) => {
     return <Navigate to="/login" replace />;
   }
   
-  // Check permission if specified
+  // Check permission if specified (string or array of accepted permissions)
   if (permission && !isAdmin) {
     const userPermissions = user?.permissions || [];
-    if (!userPermissions.includes(permission)) {
+    const required = Array.isArray(permission) ? permission : [permission];
+    if (!required.some(p => userPermissions.includes(p))) {
       return <Navigate to="/admin/unauthorized" replace />;
     }
   }
@@ -427,10 +429,18 @@ function AppRoutes() {
       <Route 
         path="/admin/accounting" 
         element={
-          <ProtectedRoute permission="accounting">
+          <ProtectedRoute permission={["accounting", "internal-expenses-approve"]}>
             <AccountingPage />
           </ProtectedRoute>
         } 
+      />
+      <Route
+        path="/admin/my-expenses"
+        element={
+          <ProtectedRoute permission="internal-expenses-create">
+            <MyExpensesPage />
+          </ProtectedRoute>
+        }
       />
       <Route 
         path="/admin/attendance" 

@@ -430,6 +430,7 @@ export const internalExpensesAPI = {
   getAll: (params = {}) => axios.get(`${API}/internal-expenses`, { params }),
   getSummary: (params = {}) => axios.get(`${API}/internal-expenses/summary`, { params }),
   getTypes: () => axios.get(`${API}/internal-expenses/types`),
+  getPendingCount: (params = {}) => axios.get(`${API}/internal-expenses/pending-count`, { params }),
   create: (formData) => axios.post(`${API}/internal-expenses`, formData, {
     headers: { 'Content-Type': 'multipart/form-data' }
   }),

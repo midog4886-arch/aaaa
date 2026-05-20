@@ -55,6 +55,8 @@ const ALL_PERMISSIONS = [
   { key: 'push-notifications', label_ar: 'الإشعارات', label_en: 'Push Notifications' },
   { key: 'member-card', label_ar: 'بطاقة العضو', label_en: 'Member Card' },
   { key: 'salaries', label_ar: 'رواتب المدربين', label_en: 'Coach Salaries' },
+  { key: 'internal-expenses-create', label_ar: 'تقديم مصروفات (بانتظار الاعتماد)', label_en: 'Submit Expenses (pending approval)' },
+  { key: 'internal-expenses-approve', label_ar: 'اعتماد/رفض المصروفات', label_en: 'Approve/Reject Expenses' },
 ];
 
 const UsersPage = () => {
