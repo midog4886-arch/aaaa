@@ -122,9 +122,6 @@ const DailyNewCardsPage = () => {
       <div class="contact-block">
         <div class="contact-row">📞 0566238384</div>
         <div class="contact-row">🌐 globalchampions.com</div>
-        <div class="contact-row">📍 المملكة العربية السعودية</div>
-        <div class="contact-row">📷 @global.champions</div>
-        <div class="contact-row">🎵 @globalchampions</div>
       </div>
     </div>
   `;
