@@ -58,7 +58,7 @@ externalPort = 3000
 [deployment]
 deploymentTarget = "autoscale"
 run = ["python", "backend/main.py"]
-build = ["pip", "install", "-r", "backend/requirements.txt"]
+build = ["bash", "-c", "pip install -r backend/requirements.txt && cd frontend && yarn install --frozen-lockfile && DISABLE_ESLINT_PLUGIN=true GENERATE_SOURCEMAP=false NODE_OPTIONS=--max-old-space-size=4096 yarn build"]
 
 [postMerge]
 path = "scripts/post-merge.sh"
