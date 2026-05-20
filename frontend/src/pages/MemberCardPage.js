@@ -256,7 +256,6 @@ const MemberCardPage = () => {
             <div class="qr-container">
               <div class="qr-section"><img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(qrData)}" /></div>
               <div class="qr-dates"><span>من: ${startDate || '----'}</span><span>إلى: ${endDate || '----'}</span></div>
-              ${schedule ? `<div class="schedule-info">📅 ${schedule}</div>` : ''}
             </div>
             <div class="info-section">
               <div class="info-label">الاسم</div>
@@ -265,11 +264,6 @@ const MemberCardPage = () => {
               <div class="info-row"><span class="info-label">رقم الجوال:</span><span>${member?.phone || '-'}</span></div>
               ${activitiesHtml ? `<div class="activities"><div class="activities-label">الأنشطة المسجلة</div>${activitiesHtml}</div>` : ''}
             </div>
-          </div>
-          <div class="card-footer">
-            <div class="terms-title">شروط وأحكام:</div>
-            <div>• الاشتراك محدد البداية والنهاية ولا يتم تعويض حصص غياب المشترك</div>
-            <div>• المبلغ المدفوع لا يسترد بعد مرور أسبوع من الاشتراك</div>
           </div>
         </div>
       </div>`;
