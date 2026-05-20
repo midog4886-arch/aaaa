@@ -311,16 +311,16 @@ const MemberCardPage = () => {
         .qr-dates { text-align:center; font-size:6pt; color:#1f2937; margin-top:0.8mm; line-height:1.2; font-weight:700; }
         .qr-dates span { display:block; }
         .schedule-info { text-align:center; font-size:5pt; color:${_accent}; margin-top:0.8mm; font-weight:600; background:#FFF7ED; padding:0.4mm; border-radius:1.5mm; }
-        .info-label { color:#6b7280; font-size:5.5pt; }
-        .member-name { font-size:8pt; font-weight:700; color:#1f2937; margin-bottom:0.8mm; line-height:1.1; }
-        .info-row { display:flex; gap:1mm; font-size:6.5pt; align-items:center; margin-bottom:0.4mm; }
-        .member-code { color:${_accent}; font-weight:700; font-size:8pt; }
+        .info-label { color:#6b7280; font-size:7pt; font-weight:700; }
+        .member-name { font-size:11pt; font-weight:900; color:#1f2937; margin-bottom:0.8mm; line-height:1.1; }
+        .info-row { display:flex; gap:1mm; font-size:9pt; font-weight:700; align-items:center; margin-bottom:0.5mm; }
+        .member-code { color:${_accent}; font-weight:900; font-size:10.5pt; }
         .activities { margin-top:0.8mm; padding-top:0.8mm; border-top:1px dashed #e5e7eb; }
-        .activities-label { font-size:5.5pt; color:#6b7280; margin-bottom:0.3mm; }
-        .activity-item { padding:0.4mm 0.8mm; margin-bottom:0.3mm; border-radius:0.8mm; font-size:5.5pt; }
+        .activities-label { font-size:7.5pt; color:#6b7280; font-weight:700; margin-bottom:0.3mm; }
+        .activity-item { padding:0.4mm 0.8mm; margin-bottom:0.3mm; border-radius:0.8mm; font-size:8pt; }
         .activity-item.active { background:#D1FAE5; border-right:2px solid #10B981; }
         .activity-item.expired { background:#FEE2E2; border-right:2px solid #EF4444; }
-        .activity-name { font-weight:600; color:#1f2937; font-size:5.5pt; }
+        .activity-name { font-weight:800; color:#1f2937; font-size:8pt; }
         .card-footer { padding:0.8mm 1.5mm; background:#f9fafb; font-size:4.5pt; color:#374151; border-top:1px dashed #e5e7eb; line-height:1.2; }
         .card-footer .terms-title { font-weight:700; color:#1f2937; font-size:5pt; margin-bottom:0.2mm; }
         .logo-card { width:85.6mm; height:54mm; background:white; display:flex; flex-direction:column; align-items:center; justify-content:center; padding:2.5mm; }
