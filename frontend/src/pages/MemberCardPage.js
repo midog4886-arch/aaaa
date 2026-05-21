@@ -151,7 +151,7 @@ const MemberCardPage = () => {
                     ${activitiesHtml ? `<div class="activities"><div class="activities-label">الأنشطة المسجلة</div>${activitiesHtml}</div>` : ''}
                   </div>
                   <div class="qr-container">
-                    <div class="qr-section"><img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(qrData)}" /></div>
+                    <div class="qr-section"><img src="https://api.qrserver.com/v1/create-qr-code/?size=600x600&ecc=H&margin=1&qzone=1&format=png&data=${encodeURIComponent(qrData)}" /></div>
                     <div class="qr-dates">
                       <span>من: ${startDate || '----'}</span>
                       <span>إلى: ${endDate || '----'}</span>
@@ -192,7 +192,7 @@ const MemberCardPage = () => {
                   ${activitiesHtml ? `<div class="activities"><div class="activities-label">الأنشطة المسجلة</div>${activitiesHtml}</div>` : ''}
                 </div>
                 <div class="qr-container">
-                  <div class="qr-section"><img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(qrData)}" /></div>
+                  <div class="qr-section"><img src="https://api.qrserver.com/v1/create-qr-code/?size=600x600&ecc=H&margin=1&qzone=1&format=png&data=${encodeURIComponent(qrData)}" /></div>
                   <div class="qr-dates">
                     <span>من: ${startDate || '----'}</span>
                     <span>إلى: ${endDate || '----'}</span>
@@ -256,7 +256,7 @@ const MemberCardPage = () => {
               ${activitiesHtml ? `<div class="activities"><div class="activities-label">الأنشطة المسجلة</div>${activitiesHtml}</div>` : ''}
             </div>
             <div class="qr-container">
-              <div class="qr-section"><img src="https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(qrData)}" /></div>
+              <div class="qr-section"><img src="https://api.qrserver.com/v1/create-qr-code/?size=600x600&ecc=H&margin=1&qzone=1&format=png&data=${encodeURIComponent(qrData)}" /></div>
               <div class="qr-dates"><span>من: ${startDate || '----'}</span><span>إلى: ${endDate || '----'}</span></div>
               ${schedule ? `<div class="schedule-info">📅 ${schedule}</div>` : ''}
             </div>
@@ -301,7 +301,7 @@ const MemberCardPage = () => {
         .info-section { text-align:right; overflow:hidden; flex:1; min-height:0; display:flex; flex-direction:column; }
         .qr-container { display:flex; flex-direction:column; align-items:center; flex-shrink:0; padding-top:0.5mm; }
         .qr-section { width:19mm; height:19mm; background:white; border:1px solid #eee; border-radius:1.5mm; padding:0.4mm; }
-        .qr-section img { width:100%; height:100%; }
+        .qr-section img { width:100%; height:100%; image-rendering:pixelated; image-rendering:crisp-edges; -ms-interpolation-mode:nearest-neighbor; }
         .qr-dates { text-align:center; font-size:5.5pt; color:#1f2937; margin-top:0.4mm; line-height:1.2; font-weight:700; }
         .qr-dates span { display:block; }
         .qr-label { text-align:center; font-size:6pt; color:${_accent}; font-weight:900; margin-top:0.3mm; letter-spacing:0.2mm; }
