@@ -51,7 +51,7 @@ const MemberCardPage = () => {
     const printWindow = window.open('', '_blank', 'width=800,height=600');
     const qrData = getQRData();
     const _brand = getPrimaryColor();
-    const _headerBg = 'linear-gradient(135deg, #1E3A5F 0%, #2C5282 45%, #C9A227 100%)';
+    const _headerBg = 'linear-gradient(135deg, #0B1F3A 0%, #1E3A5F 35%, #C9A227 78%, #F5C842 100%)';
     const _accent = _brand || '#F97316';
     
     const _allActs = member?.activities || [];
@@ -93,7 +93,7 @@ const MemberCardPage = () => {
             @media screen { .print-area { display: none; } }
             .sticker-preview { display: flex; gap: 15px; justify-content: center; margin-bottom: 20px; }
             .card { width: 60mm; height: 95mm; background: white; border-radius: 4mm; overflow: hidden; box-shadow: 0 4px 15px rgba(0,0,0,0.1); display: flex; flex-direction: column; position: relative; }
-            .accent-stripe { position: absolute; top: 0; bottom: 0; right: 0; width: 4mm; background: linear-gradient(180deg,#1E3A5F 0%,#2C5282 45%,#C9A227 100%); z-index: 2; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+            .accent-stripe { position: absolute; top: 0; bottom: 0; right: 0; width: 4mm; background: linear-gradient(180deg,#0B1F3A 0%,#1E3A5F 35%,#C9A227 78%,#F5C842 100%); z-index: 2; display: flex; align-items: center; justify-content: center; overflow: hidden; }
             .accent-stripe span { writing-mode: vertical-rl; transform: rotate(180deg); color: white; font-size: 6.5pt; font-weight: 900; letter-spacing: 1.5pt; text-transform: uppercase; white-space: nowrap; }
             .card-header { background: ${_headerBg}; padding: 2mm 2mm 2.5mm; display: flex; flex-direction: column; align-items: center; gap: 1mm; color: white; text-align: center; }
             .header-text h2 { font-size: 7.5pt; font-weight: 900; margin: 0; line-height: 1.2; }
@@ -219,7 +219,7 @@ const MemberCardPage = () => {
     const printWindow = window.open('', '_blank', 'width=800,height=600');
     const qrData = getQRData();
     const _brand = getPrimaryColor();
-    const _headerBg = 'linear-gradient(135deg, #1E3A5F 0%, #2C5282 45%, #C9A227 100%)';
+    const _headerBg = 'linear-gradient(135deg, #0B1F3A 0%, #1E3A5F 35%, #C9A227 78%, #F5C842 100%)';
     const _accent = _brand || '#F97316';
     const _allActs = member?.activities || [];
     const _today = new Date();
@@ -290,7 +290,7 @@ const MemberCardPage = () => {
         .cd-page { width:54mm; height:85.6mm; background:white; margin:4mm auto; box-shadow:0 2px 8px rgba(0,0,0,0.15); overflow:hidden; page-break-after:always; }
         .cd-page:last-child { page-break-after:auto; }
         .card { width:54mm; height:85.6mm; display:flex; flex-direction:column; position:relative; padding-top:7mm; }
-        .accent-stripe { position:absolute; top:7mm; bottom:0; right:0; width:2.5mm; background:linear-gradient(180deg,#1E3A5F 0%,#2C5282 45%,#C9A227 100%); z-index:2; }
+        .accent-stripe { position:absolute; top:7mm; bottom:0; right:0; width:2.5mm; background:linear-gradient(180deg,#0B1F3A 0%,#1E3A5F 35%,#C9A227 78%,#F5C842 100%); z-index:2; }
         .card-header { background:${_headerBg}; padding:2mm 2mm 2.2mm; display:flex; flex-direction:column; align-items:center; gap:1mm; color:white; text-align:center; }
         .header-text h2 { font-size:7pt; font-weight:900; line-height:1.2; }
         .header-text p { font-size:5pt; font-weight:800; opacity:0.95; margin-top:0.2mm; }
@@ -318,7 +318,7 @@ const MemberCardPage = () => {
         .activity-item.expired { background:transparent; border-right:2px solid #EF4444; }
         .activity-name { font-weight:800; color:#111827; font-size:6.5pt; }
         .cd-page.back { }
-        .accent-stripe { position:absolute; top:0; bottom:0; right:0; width:4mm; background:linear-gradient(180deg,#1E3A5F 0%,#2C5282 45%,#C9A227 100%); z-index:2; display:flex; align-items:center; justify-content:center; overflow:hidden; }
+        .accent-stripe { position:absolute; top:0; bottom:0; right:0; width:4mm; background:linear-gradient(180deg,#0B1F3A 0%,#1E3A5F 35%,#C9A227 78%,#F5C842 100%); z-index:2; display:flex; align-items:center; justify-content:center; overflow:hidden; }
         .accent-stripe span { writing-mode:vertical-rl; transform:rotate(180deg); color:white; font-size:6pt; font-weight:900; letter-spacing:1.2pt; text-transform:uppercase; white-space:nowrap; }
         .logo-card { width:54mm; height:85.6mm; background:linear-gradient(180deg,#FFFFFF,#FFF7ED); display:flex; flex-direction:column; align-items:center; justify-content:center; padding:10mm 3mm 4mm; gap:2.5mm; }
         .logo-card img { width:50mm; max-width:98%; max-height:75%; object-fit:contain; margin-bottom:0; }
