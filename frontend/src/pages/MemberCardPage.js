@@ -253,7 +253,6 @@ const MemberCardPage = () => {
               <div class="info-label">الاسم</div>
               <div class="member-name">${(member?.name_ar || member?.name || '').split('+').map(n => n.trim()).filter(Boolean).join(' - ')}</div>
               <div class="info-row"><span class="info-label">رقم العضوية:</span><span class="member-code">#${member?.member_code || ''}</span></div>
-              <div class="info-row"><span class="info-label">رقم الجوال:</span><span>${member?.phone || '-'}</span></div>
               ${activitiesHtml ? `<div class="activities"><div class="activities-label">الأنشطة المسجلة</div>${activitiesHtml}</div>` : ''}
             </div>
             <div class="qr-container">
@@ -297,7 +296,7 @@ const MemberCardPage = () => {
         .header-text p { font-size:4.5pt; font-weight:800; opacity:0.95; margin-top:0.2mm; }
         .header-logo { width:14mm; height:14mm; border-radius:50%; background:white; padding:0; display:flex; align-items:center; justify-content:center; overflow:hidden; border:1.5px solid white; box-shadow:0 1px 3px rgba(0,0,0,0.2); }
         .header-logo img { width:140%; height:140%; object-fit:cover; border-radius:50%; }
-        .card-body { padding:1mm 7mm 1mm 1mm; display:flex; flex-direction:column; gap:0.6mm; flex:1; min-height:0; position:relative; background-image:url('${window.location.origin}/images/academy-logo.png'); background-repeat:no-repeat; background-position:center center; background-size:contain; }
+        .card-body { padding:1mm 6mm 1mm 0; display:flex; flex-direction:column; gap:0.6mm; flex:1; min-height:0; position:relative; background-image:url('${window.location.origin}/images/academy-logo.png'); background-repeat:no-repeat; background-position:center center; background-size:contain; }
         .card-body > * { position:relative; z-index:1; }
         .card-body::before { content:''; position:absolute; inset:0; background:rgba(255,255,255,0.88); z-index:0; }
         .info-section { text-align:right; overflow:hidden; flex:1; min-height:0; display:flex; flex-direction:column; }
@@ -315,8 +314,8 @@ const MemberCardPage = () => {
         .activities { margin-top:0.5mm; padding-top:0.5mm; border-top:1px dashed #e5e7eb; overflow:hidden; min-height:0; flex-shrink:1; }
         .activities-label { font-size:6pt; color:#6b7280; font-weight:700; margin-bottom:0.2mm; }
         .activity-item { padding:0.2mm 1mm; margin-bottom:0.2mm; border-radius:0.8mm; font-size:7pt; }
-        .activity-item.active { background:#ECFDF5; border-right:2px solid #10B981; }
-        .activity-item.expired { background:#FEF2F2; border-right:2px solid #EF4444; }
+        .activity-item.active { background:transparent; border-right:2px solid #10B981; }
+        .activity-item.expired { background:transparent; border-right:2px solid #EF4444; }
         .activity-name { font-weight:900; color:#0B1F3A; font-size:7pt; }
         .cd-page.back { }
         .accent-stripe { position:absolute; top:0; bottom:0; right:0; width:4mm; background:linear-gradient(180deg,#0B1F3A 0%,#1E3A5F 35%,#C9A227 78%,#F5C842 100%); z-index:2; display:flex; align-items:center; justify-content:center; overflow:hidden; }
