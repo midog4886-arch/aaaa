@@ -288,7 +288,7 @@ const MemberCardPage = () => {
         .toolbar .meta { margin-top:6px; color:#374151; font-size:13px; }
         .toolbar .hint { margin-top:4px; color:#6b7280; font-size:11px; line-height:1.5; }
         .cd-page { width:54mm; height:85.6mm; background:white; margin:4mm auto; box-shadow:0 2px 8px rgba(0,0,0,0.15); overflow:hidden; page-break-after:always; position:relative; }
-        .cd-page::after { content:''; position:absolute; inset:1.2mm; border:0.5mm solid #0B1F3A; border-radius:1.5mm; pointer-events:none; box-shadow:inset 0 0 0 0.3mm #F5C842; z-index:3; }
+        .cd-page::after { content:''; position:absolute; inset:1.2mm; border:0.5mm solid #000000; border-radius:1.5mm; pointer-events:none; z-index:3; }
         .cd-page:last-child { page-break-after:auto; }
         .card { width:54mm; height:85.6mm; display:flex; flex-direction:column; position:relative; padding:4mm 3mm 2.5mm 3mm; box-sizing:border-box; }
         .accent-stripe { display:none; }
