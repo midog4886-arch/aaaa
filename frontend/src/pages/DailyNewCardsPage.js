@@ -116,11 +116,12 @@ const DailyNewCardsPage = () => {
     `;
   };
 
-  const renderLogoCardHtml = (branchPhone) => `
+  const renderLogoCardHtml = (branchPhone, branchName) => `
     <div class="logo-card">
       <img src="${window.location.origin}/images/academy-logo.png" alt="شعار الأكاديمية" />
       <div class="contact-block">
         <div class="contact-row">📞 ${branchPhone || '0566238384'}</div>
+        ${branchName ? `<div class="contact-row branch-name">${branchName}</div>` : ''}
       </div>
     </div>
   `;
@@ -160,7 +161,7 @@ const DailyNewCardsPage = () => {
               <div class="branch-tag">${branch.branch_name}</div>
               <div class="row-cards">
                 ${renderCardHtml(member)}
-                ${renderLogoCardHtml(branch.branch_phone)}
+                ${renderLogoCardHtml(branch.branch_phone, branch.branch_name)}
               </div>
             </div>
           `,
@@ -240,7 +241,7 @@ const DailyNewCardsPage = () => {
     allMembers.forEach(({ branch, member }) => {
       pagesHtml.push(`<div class="cd-page front">${renderCardHtml(member)}</div>`);
       if (mode === 'duplex') {
-        pagesHtml.push(`<div class="cd-page back">${renderLogoCardHtml(branch.branch_phone)}</div>`);
+        pagesHtml.push(`<div class="cd-page back">${renderLogoCardHtml(branch.branch_phone, branch.branch_name)}</div>`);
       }
     });
 
@@ -290,10 +291,11 @@ const DailyNewCardsPage = () => {
         .activity-item.expired { background:transparent; border-right:2px solid #EF4444; }
         .activity-name { font-weight:800; color:#111827; font-size:6.5pt; }
         .cd-page.back { }
-        .logo-card { width:54mm; height:85.6mm; background:linear-gradient(180deg,#FFFFFF,#FFF7ED); display:flex; flex-direction:column; align-items:center; justify-content:center; padding:10mm 3mm 4mm; border:none; border-radius:0; gap:2.5mm; }
-        .logo-card img { width:50mm; max-width:98%; max-height:75%; object-fit:contain; margin-bottom:0; }
-        .logo-card .contact-block { display:flex; flex-direction:column; gap:1.3mm; align-items:center; width:100%; }
+        .logo-card { width:54mm; height:85.6mm; background:linear-gradient(180deg,#FFFFFF,#FFF7ED); display:flex; flex-direction:column; align-items:center; justify-content:center; padding:9mm 2mm 3mm; border:none; border-radius:0; gap:2mm; }
+        .logo-card img { width:54mm; max-width:100%; max-height:82%; object-fit:contain; margin-bottom:0; }
+        .logo-card .contact-block { display:flex; flex-direction:column; gap:1mm; align-items:center; width:100%; }
         .logo-card .contact-row { font-size:8pt; color:#111827; text-align:center; font-weight:800; line-height:1.3; direction:ltr; }
+        .logo-card .contact-row.branch-name { font-size:8.5pt; color:#0B1F3A; direction:rtl; }
         @media print {
           .toolbar { display:none; }
           html, body { background:white; margin:0; padding:0; }

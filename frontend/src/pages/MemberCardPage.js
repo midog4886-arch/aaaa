@@ -270,6 +270,7 @@ const MemberCardPage = () => {
           <img src="${window.location.origin}/images/academy-logo.png" alt="شعار الأكاديمية" />
           <div class="contact-block">
             <div class="contact-row">📞 ${member?.branch_phone || '0566238384'}</div>
+            ${member?.branch_name ? `<div class="contact-row branch-name">${member.branch_name}</div>` : ''}
           </div>
         </div>
       </div>`;
@@ -320,10 +321,11 @@ const MemberCardPage = () => {
         .cd-page.back { }
         .accent-stripe { position:absolute; top:0; bottom:0; right:0; width:4mm; background:linear-gradient(180deg,#0B1F3A 0%,#1E3A5F 35%,#C9A227 78%,#F5C842 100%); z-index:2; display:flex; align-items:center; justify-content:center; overflow:hidden; }
         .accent-stripe span { writing-mode:vertical-rl; transform:rotate(180deg); color:white; font-size:6pt; font-weight:900; letter-spacing:1.2pt; text-transform:uppercase; white-space:nowrap; }
-        .logo-card { width:54mm; height:85.6mm; background:linear-gradient(180deg,#FFFFFF,#FFF7ED); display:flex; flex-direction:column; align-items:center; justify-content:center; padding:10mm 3mm 4mm; gap:2.5mm; }
-        .logo-card img { width:50mm; max-width:98%; max-height:75%; object-fit:contain; margin-bottom:0; }
-        .logo-card .contact-block { display:flex; flex-direction:column; gap:1.3mm; align-items:center; width:100%; }
+        .logo-card { width:54mm; height:85.6mm; background:linear-gradient(180deg,#FFFFFF,#FFF7ED); display:flex; flex-direction:column; align-items:center; justify-content:center; padding:9mm 2mm 3mm; gap:2mm; }
+        .logo-card img { width:54mm; max-width:100%; max-height:82%; object-fit:contain; margin-bottom:0; }
+        .logo-card .contact-block { display:flex; flex-direction:column; gap:1mm; align-items:center; width:100%; }
         .logo-card .contact-row { font-size:8pt; color:#111827; text-align:center; font-weight:800; line-height:1.3; direction:ltr; }
+        .logo-card .contact-row.branch-name { font-size:8.5pt; color:#0B1F3A; direction:rtl; }
         @media print {
           .toolbar { display:none; }
           html, body { background:white; margin:0; padding:0; }
