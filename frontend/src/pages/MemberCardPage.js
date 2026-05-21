@@ -290,28 +290,28 @@ const MemberCardPage = () => {
         .toolbar .hint { margin-top:4px; color:#6b7280; font-size:11px; line-height:1.5; }
         .cd-page { width:54mm; height:85.6mm; background:white; margin:4mm auto; box-shadow:0 2px 8px rgba(0,0,0,0.15); overflow:hidden; page-break-after:always; }
         .cd-page:last-child { page-break-after:auto; }
-        .card { width:54mm; height:85.6mm; display:flex; flex-direction:column; position:relative; padding-top:7mm; }
-        .accent-stripe { position:absolute; top:7mm; bottom:0; right:0; width:2.5mm; background:linear-gradient(180deg,#0B1F3A 0%,#1E3A5F 35%,#C9A227 78%,#F5C842 100%); z-index:2; }
-        .card-header { background:${_headerBg}; padding:2mm 2mm 2.2mm; display:flex; flex-direction:column; align-items:center; gap:1mm; color:white; text-align:center; }
-        .header-text h2 { font-size:7pt; font-weight:900; line-height:1.2; }
-        .header-text p { font-size:5pt; font-weight:800; opacity:0.95; margin-top:0.2mm; }
-        .header-logo { width:16mm; height:16mm; border-radius:50%; background:white; padding:0; display:flex; align-items:center; justify-content:center; overflow:hidden; border:1.5px solid white; box-shadow:0 1px 3px rgba(0,0,0,0.2); }
+        .card { width:54mm; height:85.6mm; display:flex; flex-direction:column; position:relative; padding-top:5mm; }
+        .accent-stripe { position:absolute; top:5mm; bottom:0; right:0; width:4mm; background:linear-gradient(180deg,#0B1F3A 0%,#1E3A5F 35%,#C9A227 78%,#F5C842 100%); z-index:2; }
+        .card-header { background:${_headerBg}; padding:1.5mm 2mm 1.8mm; display:flex; flex-direction:column; align-items:center; gap:0.6mm; color:white; text-align:center; }
+        .header-text h2 { font-size:6.5pt; font-weight:900; line-height:1.15; }
+        .header-text p { font-size:4.5pt; font-weight:800; opacity:0.95; margin-top:0.2mm; }
+        .header-logo { width:14mm; height:14mm; border-radius:50%; background:white; padding:0; display:flex; align-items:center; justify-content:center; overflow:hidden; border:1.5px solid white; box-shadow:0 1px 3px rgba(0,0,0,0.2); }
         .header-logo img { width:140%; height:140%; object-fit:cover; border-radius:50%; }
-        .card-body { padding:2mm 5mm 1.5mm 0; display:flex; flex-direction:column; gap:1mm; flex:1; min-height:0; position:relative; background-image:url('${window.location.origin}/images/academy-logo.png'); background-repeat:no-repeat; background-position:center center; background-size:38mm 38mm; }
+        .card-body { padding:1mm 5.5mm 1mm 1mm; display:flex; flex-direction:column; gap:0.6mm; flex:1; min-height:0; position:relative; background-image:url('${window.location.origin}/images/academy-logo.png'); background-repeat:no-repeat; background-position:50% 78%; background-size:30mm 30mm; }
         .card-body > * { position:relative; z-index:1; }
-        .card-body::before { content:''; position:absolute; inset:0; background:rgba(255,255,255,0.78); z-index:0; }
+        .card-body::before { content:''; position:absolute; inset:0; background:rgba(255,255,255,0.88); z-index:0; }
         .info-section { text-align:right; overflow:hidden; flex:1; min-height:0; display:flex; flex-direction:column; }
-        .qr-container { display:flex; flex-direction:column; align-items:center; flex-shrink:0; padding-top:1mm; }
-        .qr-section { width:24mm; height:24mm; background:white; border:1px solid #eee; border-radius:1.5mm; padding:0.4mm; }
+        .qr-container { display:flex; flex-direction:column; align-items:center; flex-shrink:0; padding-top:0.5mm; }
+        .qr-section { width:22mm; height:22mm; background:white; border:1px solid #eee; border-radius:1.5mm; padding:0.4mm; }
         .qr-section img { width:100%; height:100%; }
-        .qr-dates { text-align:center; font-size:6pt; color:#1f2937; margin-top:0.6mm; line-height:1.2; font-weight:700; }
+        .qr-dates { text-align:center; font-size:5.5pt; color:#1f2937; margin-top:0.4mm; line-height:1.2; font-weight:700; }
         .qr-dates span { display:block; }
-        .qr-label { text-align:center; font-size:6.5pt; color:${_accent}; font-weight:900; margin-top:0.4mm; letter-spacing:0.2mm; }
-        .schedule-info { text-align:center; font-size:5pt; color:${_accent}; margin-top:0.4mm; font-weight:700; background:#FFF7ED; padding:0.3mm 0.8mm; border-radius:1.2mm; }
-        .info-label { color:#6b7280; font-size:6.5pt; font-weight:600; }
-        .member-name { font-size:10.5pt; font-weight:900; color:#111827; margin:0.3mm 0 1.2mm; line-height:1.1; letter-spacing:-0.1pt; }
-        .info-row { display:flex; gap:1mm; font-size:7pt; font-weight:700; color:#111827; align-items:center; margin-bottom:0.4mm; }
-        .member-code { color:${_accent}; font-weight:900; font-size:9pt; }
+        .qr-label { text-align:center; font-size:6pt; color:${_accent}; font-weight:900; margin-top:0.3mm; letter-spacing:0.2mm; }
+        .schedule-info { text-align:center; font-size:5pt; color:${_accent}; margin-top:0.3mm; font-weight:700; background:#FFF7ED; padding:0.3mm 0.8mm; border-radius:1.2mm; }
+        .info-label { color:#6b7280; font-size:6pt; font-weight:600; }
+        .member-name { font-size:9.5pt; font-weight:900; color:#111827; margin:0.2mm 0 0.8mm; line-height:1.1; letter-spacing:-0.1pt; }
+        .info-row { display:flex; gap:1mm; font-size:6.5pt; font-weight:700; color:#111827; align-items:center; margin-bottom:0.3mm; }
+        .member-code { color:${_accent}; font-weight:900; font-size:8.5pt; }
         .activities { margin-top:0.8mm; padding-top:0.8mm; border-top:1px dashed #e5e7eb; overflow:hidden; min-height:0; flex-shrink:1; }
         .activities-label { font-size:6.5pt; color:#6b7280; font-weight:700; margin-bottom:0.3mm; }
         .activity-item { padding:0.3mm 0.8mm; margin-bottom:0.2mm; border-radius:0.8mm; font-size:6.5pt; }
