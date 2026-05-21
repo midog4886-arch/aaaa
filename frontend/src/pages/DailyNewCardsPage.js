@@ -269,9 +269,9 @@ const DailyNewCardsPage = () => {
         .header-text p { font-size:4.5pt; font-weight:800; opacity:0.95; margin-top:0.2mm; }
         .header-logo { width:14mm; height:14mm; border-radius:50%; background:white; padding:0; display:flex; align-items:center; justify-content:center; overflow:hidden; border:1.5px solid white; box-shadow:0 1px 3px rgba(0,0,0,0.2); }
         .header-logo img { width:140%; height:140%; object-fit:cover; border-radius:50%; }
-        .card-body { padding:1mm 7mm 1mm 1mm; display:flex; flex-direction:column; gap:0.6mm; flex:1; min-height:0; position:relative; background-image:url('${window.location.origin}/images/academy-logo.png'); background-repeat:no-repeat; background-position:50% 90%; background-size:24mm 24mm; }
+        .card-body { padding:1mm 7mm 1mm 1mm; display:flex; flex-direction:column; gap:0.6mm; flex:1; min-height:0; position:relative; background-image:url('${window.location.origin}/images/academy-logo.png'); background-repeat:no-repeat; background-position:center center; background-size:contain; }
         .card-body > * { position:relative; z-index:1; }
-        .card-body::before { content:''; position:absolute; inset:0; background:rgba(255,255,255,0.92); z-index:0; }
+        .card-body::before { content:''; position:absolute; inset:0; background:rgba(255,255,255,0.88); z-index:0; }
         .info-section { text-align:right; overflow:hidden; flex:1; min-height:0; display:flex; flex-direction:column; }
         .qr-container { display:flex; flex-direction:column; align-items:center; flex-shrink:0; padding-top:0.5mm; }
         .qr-section { width:22mm; height:22mm; background:white; border:1px solid #eee; border-radius:1.5mm; padding:0.4mm; }
