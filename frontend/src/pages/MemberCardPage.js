@@ -164,7 +164,7 @@ const MemberCardPage = () => {
               <div class="logo-card">
                 <img src="${window.location.origin}/images/academy-logo.png" alt="شعار الأكاديمية" />
                 <div class="contact-block">
-                  <div class="contact-row">📞 0566238384</div>
+                  <div class="contact-row">📞 ${member?.branch_phone || '0566238384'}</div>
                 </div>
               </div>
             </div>
@@ -204,7 +204,7 @@ const MemberCardPage = () => {
             <div class="logo-card">
               <img src="${window.location.origin}/images/academy-logo.png" alt="شعار الأكاديمية" />
               <div class="contact-block">
-                <div class="contact-row">📞 0566238384</div>
+                <div class="contact-row">📞 ${member?.branch_phone || '0566238384'}</div>
               </div>
             </div>
           </div>
@@ -269,7 +269,7 @@ const MemberCardPage = () => {
         <div class="logo-card">
           <img src="${window.location.origin}/images/academy-logo.png" alt="شعار الأكاديمية" />
           <div class="contact-block">
-            <div class="contact-row">📞 0566238384</div>
+            <div class="contact-row">📞 ${member?.branch_phone || '0566238384'}</div>
           </div>
         </div>
       </div>`;

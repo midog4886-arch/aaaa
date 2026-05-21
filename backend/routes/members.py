@@ -106,7 +106,7 @@ async def get_daily_new_member_cards(
 
     members = await db.members.find(query, {"_id": 0}).sort("created_at", 1).to_list(5000)
 
-    branches = await db.branches.find({}, {"_id": 0, "id": 1, "name": 1, "name_ar": 1}).to_list(500)
+    branches = await db.branches.find({}, {"_id": 0, "id": 1, "name": 1, "name_ar": 1, "phone": 1}).to_list(500)
     branch_map = {b["id"]: b for b in branches}
 
     grouped: Dict[str, Dict[str, Any]] = {}
@@ -117,6 +117,7 @@ async def get_daily_new_member_cards(
             grouped[bid] = {
                 "branch_id": bid,
                 "branch_name": b.get("name_ar") or b.get("name") or ("بدون فرع" if bid == "__no_branch__" else bid),
+                "branch_phone": b.get("phone") or "",
                 "members": [],
             }
         grouped[bid]["members"].append(m)
@@ -132,7 +133,7 @@ async def get_daily_new_member_cards(
     }
 
 
-@router.get("", response_model=List[Member])
+@router.get("")
 async def get_members(
     activity_id: Optional[str] = None,
     coach_id: Optional[str] = None,
@@ -174,8 +175,10 @@ async def get_members(
         ]
     
     members = await db.members.find(query, {"_id": 0}).sort("created_at", -1).to_list(1000)
-    
-    # Ensure all required fields exist with defaults
+
+    branch_docs = await db.branches.find({}, {"_id": 0, "id": 1, "phone": 1}).to_list(500)
+    branch_phone_map = {b["id"]: (b.get("phone") or "") for b in branch_docs}
+
     for member in members:
         member.setdefault("age", 0)
         member.setdefault("guardian_name", "")
@@ -187,7 +190,8 @@ async def get_members(
         member.setdefault("address", "")
         member.setdefault("activities", [])
         member.setdefault("status", "active")
-    
+        member["branch_phone"] = branch_phone_map.get(member.get("branch_id") or "", "")
+
     return members
 
 def _scoped_member_query(member_id: str, current_user: dict) -> dict:

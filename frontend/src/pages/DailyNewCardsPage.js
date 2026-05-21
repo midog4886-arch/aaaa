@@ -116,11 +116,11 @@ const DailyNewCardsPage = () => {
     `;
   };
 
-  const renderLogoCardHtml = () => `
+  const renderLogoCardHtml = (branchPhone) => `
     <div class="logo-card">
       <img src="${window.location.origin}/images/academy-logo.png" alt="شعار الأكاديمية" />
       <div class="contact-block">
-        <div class="contact-row">📞 0566238384</div>
+        <div class="contact-row">📞 ${branchPhone || '0566238384'}</div>
       </div>
     </div>
   `;
@@ -160,7 +160,7 @@ const DailyNewCardsPage = () => {
               <div class="branch-tag">${branch.branch_name}</div>
               <div class="row-cards">
                 ${renderCardHtml(member)}
-                ${renderLogoCardHtml()}
+                ${renderLogoCardHtml(branch.branch_phone)}
               </div>
             </div>
           `,
@@ -237,10 +237,10 @@ const DailyNewCardsPage = () => {
     });
 
     const pagesHtml = [];
-    allMembers.forEach(({ member }) => {
+    allMembers.forEach(({ branch, member }) => {
       pagesHtml.push(`<div class="cd-page front">${renderCardHtml(member)}</div>`);
       if (mode === 'duplex') {
-        pagesHtml.push(`<div class="cd-page back">${renderLogoCardHtml()}</div>`);
+        pagesHtml.push(`<div class="cd-page back">${renderLogoCardHtml(branch.branch_phone)}</div>`);
       }
     });
 

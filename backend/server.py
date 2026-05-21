@@ -443,6 +443,13 @@ async def get_member_card_public(search_term: str):
                         "schedule": item.get("schedule", "")
                     })
     
+    branch_phone = ""
+    member_branch_id = member.get("branch_id")
+    if member_branch_id:
+        _branch = await db.branches.find_one({"id": member_branch_id}, {"_id": 0, "phone": 1})
+        if _branch:
+            branch_phone = _branch.get("phone") or ""
+
     return {
         "id": member["id"],
         "name": member.get("name"),
@@ -450,6 +457,8 @@ async def get_member_card_public(search_term: str):
         "member_code": member.get("member_code"),
         "phone": member.get("phone"),
         "photo": member.get("photo", ""),
+        "branch_id": member_branch_id,
+        "branch_phone": branch_phone,
         "activities": activities,
         "active_activities": [a for a in activities if a.get("status") == "active"],
         "qr_data": {

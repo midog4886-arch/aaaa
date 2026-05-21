@@ -600,7 +600,7 @@ export const MembersPage = () => {
               </div>
               <div class="logo-card">
                 <img src="${origin}/images/academy-logo.png" alt="شعار الأكاديمية" />
-                <div class="contact-info">📞 0566238384</div>
+                <div class="contact-info">📞 ${memberCardData.branch_phone || '0566238384'}</div>
                 <div class="lost-card-notice">⚠️ في حال فقدان كرت العضوية،<br/>يتم إصدار كرت جديد برسوم 10 ر.س</div>
               </div>
             </div>
@@ -642,7 +642,7 @@ export const MembersPage = () => {
             </div>
             <div class="logo-card">
               <img src="${origin}/images/academy-logo.png" alt="شعار الأكاديمية" />
-              <div class="contact-info">📞 0566238384</div>
+              <div class="contact-info">📞 ${memberCardData.branch_phone || '0566238384'}</div>
               <div class="lost-card-notice">⚠️ في حال فقدان كرت العضوية،<br/>يتم إصدار كرت جديد برسوم 10 ر.س</div>
             </div>
           </div>
@@ -3834,7 +3834,7 @@ export const MembersPage = () => {
                   {/* Logo Card */}
                   <div className="w-[300px] shrink-0 h-auto rounded-xl overflow-hidden shadow-lg bg-white flex flex-col items-center justify-center p-4 gap-2">
                     <img src="/images/academy-logo.png" alt="شعار الأكاديمية" className="max-w-[80%] max-h-[55%] object-contain" />
-                    <p className="text-sm font-semibold text-gray-700">📞 0566238384</p>
+                    <p className="text-sm font-semibold text-gray-700">📞 {memberCardData?.branch_phone || '0566238384'}</p>
                     <div className="text-center text-xs text-red-600 font-bold bg-red-50 border border-red-300 rounded px-3 py-2">
                       ⚠️ في حال فقدان كرت العضوية،<br/>يتم إصدار كرت جديد برسوم 10 ر.س
                     </div>
