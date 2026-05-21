@@ -259,6 +259,7 @@ const DailyNewCardsPage = () => {
         .toolbar .meta { margin-top:6px; color:#374151; font-size:13px; }
         .toolbar .hint { margin-top:4px; color:#6b7280; font-size:11px; line-height:1.5; }
         .cd-page { width:54mm; height:85.6mm; background:white; margin:4mm auto; box-shadow:0 2px 8px rgba(0,0,0,0.15); overflow:hidden; page-break-after:always; position:relative; }
+        .cd-page::after { content:''; position:absolute; inset:1.2mm; border:0.5mm solid #0B1F3A; border-radius:1.5mm; pointer-events:none; box-shadow:inset 0 0 0 0.3mm #F5C842; z-index:3; }
         .cd-page:last-child { page-break-after:auto; }
         .card { width:54mm; height:85.6mm; border-radius:0; border:none; display:flex; flex-direction:column; position:relative; padding-top:5mm; }
         .accent-stripe { display:none; }
@@ -266,7 +267,8 @@ const DailyNewCardsPage = () => {
         .card-header { background:white; padding:1.5mm 2mm 1.8mm; display:flex; flex-direction:column; align-items:center; gap:0.6mm; color:#0B1F3A; text-align:center; border-bottom:1px solid #E5E7EB; }
         .header-text h2 { font-size:6.5pt; font-weight:900; line-height:1.15; color:#0B1F3A; }
         .header-text p { font-size:4.5pt; font-weight:800; opacity:0.8; margin-top:0.2mm; color:#374151; }
-        .header-logo { display:none; }
+        .header-logo { width:16mm; height:16mm; border-radius:50%; background:white; padding:0.6mm; display:flex; align-items:center; justify-content:center; overflow:hidden; border:1.5px solid #0B1F3A; box-shadow:0 1px 3px rgba(0,0,0,0.2); }
+        .header-logo img { width:100%; height:100%; object-fit:contain; border-radius:50%; }
         .card-body { padding:1mm 1mm 1mm 1mm; display:flex; flex-direction:column; gap:0.6mm; flex:1; min-height:0; }
         .info-section { text-align:right; overflow:hidden; flex:1; min-height:0; display:flex; flex-direction:column; }
         .qr-container { display:flex; flex-direction:column; align-items:center; flex-shrink:0; padding-top:0.5mm; }
