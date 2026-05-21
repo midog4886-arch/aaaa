@@ -269,7 +269,7 @@ const DailyNewCardsPage = () => {
         .header-text p { font-size:5pt; font-weight:800; opacity:0.95; margin-top:0.2mm; }
         .header-logo { width:16mm; height:16mm; border-radius:50%; background:white; padding:0; display:flex; align-items:center; justify-content:center; overflow:hidden; border:1.5px solid white; box-shadow:0 1px 3px rgba(0,0,0,0.2); }
         .header-logo img { width:140%; height:140%; object-fit:cover; border-radius:50%; }
-        .card-body { padding:2mm 5mm 1.5mm 2mm; display:flex; flex-direction:column; gap:1mm; flex:1; min-height:0; position:relative; background-image:url('${window.location.origin}/images/academy-logo.png'); background-repeat:no-repeat; background-position:center center; background-size:38mm 38mm; }
+        .card-body { padding:2mm 5mm 1.5mm 0; display:flex; flex-direction:column; gap:1mm; flex:1; min-height:0; position:relative; background-image:url('${window.location.origin}/images/academy-logo.png'); background-repeat:no-repeat; background-position:center center; background-size:38mm 38mm; }
         .card-body > * { position:relative; z-index:1; }
         .card-body::before { content:''; position:absolute; inset:0; background:rgba(255,255,255,0.78); z-index:0; }
         .info-section { text-align:right; overflow:hidden; flex:1; min-height:0; display:flex; flex-direction:column; }
