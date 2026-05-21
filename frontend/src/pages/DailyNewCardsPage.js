@@ -263,14 +263,11 @@ const DailyNewCardsPage = () => {
         .card { width:54mm; height:85.6mm; border-radius:0; border:none; display:flex; flex-direction:column; position:relative; padding-top:5mm; }
         .accent-stripe { display:none; }
         .accent-stripe span { display:none; }
-        .card-header { background:linear-gradient(135deg,#0A1A33 0%,#122E55 40%,#1E3A6E 70%,#0F2547 100%); padding:1.5mm 2mm 1.8mm; display:flex; flex-direction:column; align-items:center; gap:0.6mm; color:white; text-align:center; }
-        .header-text h2 { font-size:6.5pt; font-weight:900; line-height:1.15; }
-        .header-text p { font-size:4.5pt; font-weight:800; opacity:0.95; margin-top:0.2mm; }
-        .header-logo { width:17mm; height:17mm; border-radius:50%; background:white; padding:1mm; display:flex; align-items:center; justify-content:center; overflow:hidden; border:1.5px solid white; box-shadow:0 1px 3px rgba(0,0,0,0.25); }
-        .header-logo img { width:100%; height:100%; object-fit:contain; border-radius:50%; }
-        .card-body { padding:1mm 1mm 1mm 1mm; display:flex; flex-direction:column; gap:0.6mm; flex:1; min-height:0; position:relative; background-image:url('${window.location.origin}/images/academy-logo.png'); background-repeat:no-repeat; background-position:center center; background-size:contain; }
-        .card-body > * { position:relative; z-index:1; }
-        .card-body::before { content:''; position:absolute; inset:0; background:rgba(255,255,255,0.72); z-index:0; }
+        .card-header { background:white; padding:1.5mm 2mm 1.8mm; display:flex; flex-direction:column; align-items:center; gap:0.6mm; color:#0B1F3A; text-align:center; border-bottom:1px solid #E5E7EB; }
+        .header-text h2 { font-size:6.5pt; font-weight:900; line-height:1.15; color:#0B1F3A; }
+        .header-text p { font-size:4.5pt; font-weight:800; opacity:0.8; margin-top:0.2mm; color:#374151; }
+        .header-logo { display:none; }
+        .card-body { padding:1mm 1mm 1mm 1mm; display:flex; flex-direction:column; gap:0.6mm; flex:1; min-height:0; }
         .info-section { text-align:right; overflow:hidden; flex:1; min-height:0; display:flex; flex-direction:column; }
         .qr-container { display:flex; flex-direction:column; align-items:center; flex-shrink:0; padding-top:0.5mm; }
         .qr-section { width:22mm; height:22mm; background:white; border:1px solid #eee; border-radius:1.5mm; padding:0.4mm; }
