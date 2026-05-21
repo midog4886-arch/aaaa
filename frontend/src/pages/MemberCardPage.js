@@ -7,6 +7,7 @@ import { Input } from '../components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../components/ui/dialog';
 import { User, CreditCard, Phone, Download, Printer, CheckCircle, XCircle } from 'lucide-react';
 import axios from 'axios';
+import { membersAPI } from '../services/api';
 import { getPrimaryColor } from '../services/branding';
 import { getMemberQRValue } from '../utils/memberQR';
 
@@ -43,6 +44,14 @@ const MemberCardPage = () => {
 
   const handlePrint = () => {
     setShowPrintDialog(true);
+  };
+
+  const markCurrentPrinted = async () => {
+    try {
+      if (member?.id) {
+        await membersAPI.markPrinted([member.id]);
+      }
+    } catch (_e) {}
   };
 
   const handleStickerPrint = () => {
@@ -212,6 +221,7 @@ const MemberCardPage = () => {
       </html>
     `);
     printWindow.document.close();
+    markCurrentPrinted();
   };
 
   const handleCD820Print = (mode = 'duplex') => {
@@ -345,6 +355,7 @@ const MemberCardPage = () => {
       ${pages}
       </body></html>`);
     printWindow.document.close();
+    markCurrentPrinted();
   };
 
   const handleDownload = () => {

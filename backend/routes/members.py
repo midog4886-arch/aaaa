@@ -303,6 +303,25 @@ async def set_member_marked(member_id: str, payload: dict, current_user: dict = 
         raise HTTPException(status_code=404, detail="Member not found")
     return {"id": member_id, "marked": marked}
 
+@router.post("/mark-printed")
+async def mark_members_printed(payload: dict, current_user: dict = Depends(get_current_user)):
+    if not current_user.get("is_admin"):
+        raise HTTPException(status_code=403, detail="Admin access required")
+    member_ids = payload.get("member_ids") or []
+    if not isinstance(member_ids, list) or not member_ids:
+        raise HTTPException(status_code=400, detail="member_ids list required")
+    now_iso = datetime.now(timezone.utc).isoformat()
+    query = {"id": {"$in": member_ids}}
+    effective_branch = resolve_branch_filter(current_user, None)
+    if effective_branch:
+        query["branch_id"] = effective_branch
+    result = await db.members.update_many(
+        query,
+        {"$set": {"card_printed_at": now_iso, "card_printed_by": current_user.get("username") or current_user.get("id") or ""},
+         "$inc": {"card_print_count": 1}}
+    )
+    return {"updated": result.modified_count, "printed_at": now_iso}
+
 @router.delete("/{member_id}")
 async def delete_member(member_id: str, current_user: dict = Depends(get_current_user)):
     """Delete a member"""

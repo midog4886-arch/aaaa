@@ -31,8 +31,11 @@ const DailyNewCardsPage = () => {
     setSelectedIds((prev) => {
       const next = new Set(prev);
       branch.members.forEach((m) => {
-        if (checked) next.add(m.id);
-        else next.delete(m.id);
+        if (checked) {
+          if (!m.card_printed_at) next.add(m.id);
+        } else {
+          next.delete(m.id);
+        }
       });
       return next;
     });
@@ -45,10 +48,27 @@ const DailyNewCardsPage = () => {
       const next = new Set();
       (data?.branches || []).forEach((br) => {
         if (selectedBranchId !== 'all' && String(br.branch_id) !== String(selectedBranchId)) return;
-        br.members.forEach((m) => next.add(m.id));
+        br.members.forEach((m) => { if (!m.card_printed_at) next.add(m.id); });
       });
       return next;
     });
+  };
+
+  const markIdsPrinted = async (ids) => {
+    if (!ids || ids.length === 0) return;
+    try {
+      await membersAPI.markPrinted(ids);
+      await load(date);
+      setSelectedIds(new Set());
+    } catch (_e) {}
+  };
+
+  const formatPrintedDate = (iso) => {
+    if (!iso) return '';
+    try {
+      const d = new Date(iso);
+      return d.toLocaleString('ar-EG', { dateStyle: 'short', timeStyle: 'short' });
+    } catch (_e) { return iso; }
   };
 
   const load = useCallback(async (d) => {
@@ -223,6 +243,7 @@ const DailyNewCardsPage = () => {
       ${pagesHtml.join('')}
       </body></html>`);
     win.document.close();
+    markIdsPrinted(pairs.map((p) => p.member.id));
   };
 
   const printCD820 = (mode = 'duplex') => {
@@ -315,6 +336,7 @@ const DailyNewCardsPage = () => {
       ${pagesHtml.join('')}
       </body></html>`);
     win.document.close();
+    markIdsPrinted(allMembers.map((p) => p.member.id));
   };
 
   const allBranches = data?.branches || [];
@@ -526,10 +548,11 @@ const DailyNewCardsPage = () => {
                       const acts = (m.activities || []).map((a) => a.activity_name).filter(Boolean).join('، ');
                       const time = (m.created_at || '').split('T')[1]?.split('.')[0]?.slice(0, 5) || '';
                       const isSelected = selectedIds.has(m.id);
+                      const isPrinted = !!m.card_printed_at;
                       return (
                         <tr
                           key={m.id}
-                          className={`border-t hover:bg-orange-50/40 cursor-pointer ${isSelected ? 'bg-blue-50' : ''}`}
+                          className={`border-t hover:bg-orange-50/40 cursor-pointer ${isSelected ? 'bg-blue-50' : ''} ${isPrinted ? 'opacity-70' : ''}`}
                           onClick={() => toggleMember(m.id)}
                         >
                           <td className="p-2 text-center" onClick={(e) => e.stopPropagation()}>
@@ -542,7 +565,19 @@ const DailyNewCardsPage = () => {
                           </td>
                           <td className="p-2 text-gray-500">{idx + 1}</td>
                           <td className="p-2 font-bold text-orange-600">#{m.member_code}</td>
-                          <td className="p-2 font-medium">{m.name_ar || m.name}</td>
+                          <td className="p-2 font-medium">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span>{m.name_ar || m.name}</span>
+                              {isPrinted && (
+                                <span
+                                  className="inline-flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700 border border-emerald-300"
+                                  title={`تم الطباعة: ${formatPrintedDate(m.card_printed_at)}${m.card_print_count ? ` (${m.card_print_count} مرة)` : ''}`}
+                                >
+                                  ✓ مطبوع
+                                </span>
+                              )}
+                            </div>
+                          </td>
                           <td className="p-2" dir="ltr">{m.phone || '-'}</td>
                           <td className="p-2 text-gray-700">{acts || '-'}</td>
                           <td className="p-2 text-gray-500" dir="ltr">{time}</td>
