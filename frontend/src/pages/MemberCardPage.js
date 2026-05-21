@@ -51,7 +51,7 @@ const MemberCardPage = () => {
     const printWindow = window.open('', '_blank', 'width=800,height=600');
     const qrData = getQRData();
     const _brand = getPrimaryColor();
-    const _headerBg = 'linear-gradient(135deg, #0B1F3A 0%, #1E3A5F 35%, #C9A227 78%, #F5C842 100%)';
+    const _headerBg = 'linear-gradient(135deg, #0A1A33 0%, #122E55 40%, #1E3A6E 70%, #0F2547 100%)';
     const _accent = _brand || '#F97316';
     
     const _allActs = member?.activities || [];
@@ -219,7 +219,7 @@ const MemberCardPage = () => {
     const printWindow = window.open('', '_blank', 'width=800,height=600');
     const qrData = getQRData();
     const _brand = getPrimaryColor();
-    const _headerBg = 'linear-gradient(135deg, #0B1F3A 0%, #1E3A5F 35%, #C9A227 78%, #F5C842 100%)';
+    const _headerBg = 'linear-gradient(135deg, #0A1A33 0%, #122E55 40%, #1E3A6E 70%, #0F2547 100%)';
     const _accent = _brand || '#F97316';
     const _allActs = member?.activities || [];
     const _today = new Date();
@@ -294,8 +294,8 @@ const MemberCardPage = () => {
         .card-header { background:${_headerBg}; padding:1.5mm 2mm 1.8mm; display:flex; flex-direction:column; align-items:center; gap:0.6mm; color:white; text-align:center; }
         .header-text h2 { font-size:6.5pt; font-weight:900; line-height:1.15; }
         .header-text p { font-size:4.5pt; font-weight:800; opacity:0.95; margin-top:0.2mm; }
-        .header-logo { width:14mm; height:14mm; border-radius:50%; background:white; padding:0; display:flex; align-items:center; justify-content:center; overflow:hidden; border:1.5px solid white; box-shadow:0 1px 3px rgba(0,0,0,0.2); }
-        .header-logo img { width:140%; height:140%; object-fit:cover; border-radius:50%; }
+        .header-logo { width:17mm; height:17mm; border-radius:50%; background:white; padding:1mm; display:flex; align-items:center; justify-content:center; overflow:hidden; border:1.5px solid white; box-shadow:0 1px 3px rgba(0,0,0,0.25); }
+        .header-logo img { width:100%; height:100%; object-fit:contain; border-radius:50%; }
         .card-body { padding:1mm 1mm 1mm 1mm; display:flex; flex-direction:column; gap:0.6mm; flex:1; min-height:0; position:relative; background-image:url('${window.location.origin}/images/academy-logo.png'); background-repeat:no-repeat; background-position:center center; background-size:contain; }
         .card-body > * { position:relative; z-index:1; }
         .card-body::before { content:''; position:absolute; inset:0; background:rgba(255,255,255,0.72); z-index:0; }
