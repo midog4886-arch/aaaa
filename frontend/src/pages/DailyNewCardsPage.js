@@ -260,8 +260,8 @@ const DailyNewCardsPage = () => {
         .toolbar .hint { margin-top:4px; color:#6b7280; font-size:11px; line-height:1.5; }
         .cd-page { width:54mm; height:85.6mm; background:white; margin:4mm auto; box-shadow:0 2px 8px rgba(0,0,0,0.15); overflow:hidden; page-break-after:always; position:relative; }
         .cd-page:last-child { page-break-after:auto; }
-        .card { width:54mm; height:85.6mm; border-radius:0; border:none; display:flex; flex-direction:column; position:relative; }
-        .accent-stripe { position:absolute; top:0; bottom:0; right:0; width:4mm; background:linear-gradient(180deg,#1E3A5F 0%,#2C5282 45%,#C9A227 100%); z-index:2; display:flex; align-items:center; justify-content:center; overflow:hidden; }
+        .card { width:54mm; height:85.6mm; border-radius:0; border:none; display:flex; flex-direction:column; position:relative; padding-top:7mm; }
+        .accent-stripe { position:absolute; top:7mm; bottom:0; right:0; width:4mm; background:linear-gradient(180deg,#1E3A5F 0%,#2C5282 45%,#C9A227 100%); z-index:2; display:flex; align-items:center; justify-content:center; overflow:hidden; }
         .accent-stripe span { writing-mode:vertical-rl; transform:rotate(180deg); color:white; font-size:6pt; font-weight:900; letter-spacing:1.2pt; text-transform:uppercase; white-space:nowrap; }
         .card-header { background:linear-gradient(135deg,#1E3A5F 0%,#2C5282 45%,#C9A227 100%); padding:2mm 2mm 2.2mm; display:flex; flex-direction:column; align-items:center; gap:1mm; color:white; text-align:center; }
         .header-text h2 { font-size:7pt; font-weight:900; line-height:1.2; }
@@ -288,7 +288,7 @@ const DailyNewCardsPage = () => {
         .activity-item.expired { background:transparent; border-right:2px solid #EF4444; }
         .activity-name { font-weight:800; color:#111827; font-size:6.5pt; }
         .cd-page.back { }
-        .logo-card { width:54mm; height:85.6mm; background:linear-gradient(180deg,#FFFFFF,#FFF7ED); display:flex; flex-direction:column; align-items:center; justify-content:center; padding:4mm 3mm; border:none; border-radius:0; gap:2.5mm; }
+        .logo-card { width:54mm; height:85.6mm; background:linear-gradient(180deg,#FFFFFF,#FFF7ED); display:flex; flex-direction:column; align-items:center; justify-content:center; padding:10mm 3mm 4mm; border:none; border-radius:0; gap:2.5mm; }
         .logo-card img { width:50mm; max-width:98%; max-height:75%; object-fit:contain; margin-bottom:0; }
         .logo-card .contact-block { display:flex; flex-direction:column; gap:1.3mm; align-items:center; width:100%; }
         .logo-card .contact-row { font-size:8pt; color:#111827; text-align:center; font-weight:800; line-height:1.3; direction:ltr; }
