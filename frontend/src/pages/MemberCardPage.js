@@ -290,17 +290,17 @@ const MemberCardPage = () => {
         .cd-page { width:54mm; height:85.6mm; background:white; margin:4mm auto; box-shadow:0 2px 8px rgba(0,0,0,0.15); overflow:hidden; page-break-after:always; position:relative; }
         .cd-page::after { content:''; position:absolute; inset:1.2mm; border:0.5mm solid #0B1F3A; border-radius:1.5mm; pointer-events:none; box-shadow:inset 0 0 0 0.3mm #F5C842; z-index:3; }
         .cd-page:last-child { page-break-after:auto; }
-        .card { width:54mm; height:85.6mm; display:flex; flex-direction:column; position:relative; padding:5mm 3mm 3mm 3mm; box-sizing:border-box; }
+        .card { width:54mm; height:85.6mm; display:flex; flex-direction:column; position:relative; padding:4mm 3mm 2.5mm 3mm; box-sizing:border-box; }
         .accent-stripe { display:none; }
         .card-header { background:white; padding:1.5mm 2mm 1.8mm; display:flex; flex-direction:column; align-items:center; gap:0.6mm; color:#0B1F3A; text-align:center; border-bottom:1px solid #E5E7EB; }
         .header-text h2 { font-size:6.5pt; font-weight:900; line-height:1.15; color:#0B1F3A; }
         .header-text p { font-size:4.5pt; font-weight:800; opacity:0.8; margin-top:0.2mm; color:#374151; }
-        .header-logo { width:16mm; height:16mm; border-radius:50%; background:white; padding:0.6mm; display:flex; align-items:center; justify-content:center; overflow:hidden; border:1.5px solid #0B1F3A; box-shadow:0 1px 3px rgba(0,0,0,0.2); }
+        .header-logo { width:13mm; height:13mm; border-radius:50%; background:white; padding:0.5mm; display:flex; align-items:center; justify-content:center; overflow:hidden; border:1px solid #0B1F3A; box-shadow:0 1px 2px rgba(0,0,0,0.2); }
         .header-logo img { width:100%; height:100%; object-fit:contain; border-radius:50%; }
         .card-body { padding:1mm 1mm 1mm 1mm; display:flex; flex-direction:column; gap:0.6mm; flex:1; min-height:0; }
         .info-section { text-align:right; overflow:hidden; flex:1; min-height:0; display:flex; flex-direction:column; }
         .qr-container { display:flex; flex-direction:column; align-items:center; flex-shrink:0; padding-top:0.5mm; }
-        .qr-section { width:22mm; height:22mm; background:white; border:1px solid #eee; border-radius:1.5mm; padding:0.4mm; }
+        .qr-section { width:19mm; height:19mm; background:white; border:1px solid #eee; border-radius:1.5mm; padding:0.4mm; }
         .qr-section img { width:100%; height:100%; }
         .qr-dates { text-align:center; font-size:5.5pt; color:#1f2937; margin-top:0.4mm; line-height:1.2; font-weight:700; }
         .qr-dates span { display:block; }
@@ -310,7 +310,7 @@ const MemberCardPage = () => {
         .member-name { font-size:9.5pt; font-weight:900; color:#111827; margin:0.2mm 0 0.8mm; line-height:1.1; letter-spacing:-0.1pt; }
         .info-row { display:flex; gap:1mm; font-size:6.5pt; font-weight:700; color:#111827; align-items:center; margin-bottom:0.3mm; }
         .member-code { color:${_accent}; font-weight:900; font-size:8.5pt; }
-        .activities { margin-top:0.5mm; padding-top:0.5mm; border-top:1px dashed #e5e7eb; overflow:hidden; min-height:0; flex-shrink:1; }
+        .activities { margin-top:0.5mm; padding-top:0.5mm; border-top:1px dashed #e5e7eb; overflow:visible; flex-shrink:0; margin-bottom:0.8mm; }
         .activities-label { font-size:6pt; color:#6b7280; font-weight:700; margin-bottom:0.2mm; }
         .activity-item { padding:0.2mm 1mm; margin-bottom:0.2mm; border-radius:0.8mm; font-size:7pt; }
         .activity-item.active { background:transparent; border-right:2px solid #10B981; }
