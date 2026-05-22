@@ -309,8 +309,8 @@ const DailyNewCardsPage = () => {
         .activity-item.expired { background:transparent; border-right:2px solid #EF4444; }
         .activity-name { font-weight:900; color:#0B1F3A; font-size:8pt; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; display:block; }
         .cd-page.back { }
-        .logo-card { width:54mm; height:85.6mm; background:linear-gradient(180deg,#FFFFFF,#FFF7ED); display:flex; flex-direction:column; align-items:center; justify-content:center; padding:9mm 2mm 3mm; border:none; border-radius:0; gap:2mm; }
-        .logo-card img { width:54mm; max-width:100%; max-height:82%; object-fit:contain; margin-bottom:0; }
+        .logo-card { width:54mm; height:85.6mm; background:linear-gradient(180deg,#FFFFFF,#FFF7ED); display:flex; flex-direction:column; align-items:center; justify-content:center; padding:3mm 2mm 3mm; border:none; border-radius:0; gap:1.5mm; }
+        .logo-card img { width:54mm; max-width:100%; max-height:92%; object-fit:contain; margin-bottom:0; }
         .logo-card .contact-block { display:flex; flex-direction:column; gap:1mm; align-items:center; width:100%; }
         .logo-card .contact-row { font-size:8pt; color:#111827; text-align:center; font-weight:800; line-height:1.3; direction:ltr; }
         .logo-card .contact-row.branch-name { font-size:8.5pt; color:#0B1F3A; direction:rtl; }
