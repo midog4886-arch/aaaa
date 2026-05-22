@@ -285,29 +285,29 @@ const DailyNewCardsPage = () => {
         .accent-stripe { display:none; }
         .accent-stripe span { display:none; }
         .card-header { background:white; padding:1.5mm 2mm 1.8mm; display:flex; flex-direction:column; align-items:center; gap:0.6mm; color:#0B1F3A; text-align:center; border-bottom:1px solid #E5E7EB; }
-        .header-text h2 { font-size:5pt; font-weight:900; line-height:1.15; color:#0B1F3A; }
-        .header-text p { font-size:3.5pt; font-weight:800; opacity:0.8; margin-top:0.2mm; color:#374151; }
-        .header-logo { width:13mm; height:13mm; border-radius:50%; background:white; padding:0.5mm; display:flex; align-items:center; justify-content:center; overflow:hidden; border:1px solid #0B1F3A; box-shadow:0 1px 2px rgba(0,0,0,0.2); }
+        .header-text h2 { font-size:6.5pt; font-weight:900; line-height:1.15; color:#0B1F3A; }
+        .header-text p { font-size:4.5pt; font-weight:900; opacity:0.85; margin-top:0.2mm; color:#374151; }
+        .header-logo { width:12mm; height:12mm; border-radius:50%; background:white; padding:0.5mm; display:flex; align-items:center; justify-content:center; overflow:hidden; border:1px solid #0B1F3A; box-shadow:0 1px 2px rgba(0,0,0,0.2); }
         .header-logo img { width:100%; height:100%; object-fit:contain; border-radius:50%; }
         .card-body { padding:1mm 1mm 1mm 1mm; display:flex; flex-direction:column; gap:0.6mm; flex:1; min-height:0; }
         .info-section { text-align:right; overflow:hidden; flex:1; min-height:0; display:flex; flex-direction:column; }
         .qr-container { display:flex; flex-direction:column; align-items:center; flex-shrink:0; padding-top:0.5mm; }
-        .qr-section { width:19mm; height:19mm; background:white; border:1px solid #eee; border-radius:1.5mm; padding:0.4mm; }
+        .qr-section { width:24mm; height:24mm; background:white; border:1px solid #eee; border-radius:1.5mm; padding:0.4mm; }
         .qr-section img { width:100%; height:100%; image-rendering:pixelated; image-rendering:crisp-edges; -ms-interpolation-mode:nearest-neighbor; }
-        .qr-dates { text-align:center; font-size:5.5pt; color:#1f2937; margin-top:0.4mm; line-height:1.2; font-weight:700; }
+        .qr-dates { text-align:center; font-size:7pt; color:#1f2937; margin-top:0.5mm; line-height:1.2; font-weight:900; }
         .qr-dates span { display:block; }
-        .qr-label { text-align:center; font-size:6pt; color:#EA580C; font-weight:900; margin-top:0.3mm; letter-spacing:0.2mm; }
-        .schedule-info { text-align:center; font-size:4.5pt; color:#F97316; margin-top:0.2mm; font-weight:700; padding:0.2mm 0.6mm; line-height:1.1; }
-        .info-label { color:#6b7280; font-size:6pt; font-weight:600; }
-        .member-name { font-size:7.5pt; font-weight:900; color:#111827; margin:0.2mm 0 0.8mm; line-height:1.1; letter-spacing:-0.1pt; }
-        .info-row { display:flex; gap:1mm; font-size:5pt; font-weight:700; color:#111827; align-items:center; margin-bottom:0.3mm; }
-        .member-code { color:#EA580C; font-weight:900; font-size:7pt; }
+        .qr-label { text-align:center; font-size:7.5pt; color:#EA580C; font-weight:900; margin-top:0.4mm; letter-spacing:0.2mm; }
+        .schedule-info { text-align:center; font-size:6pt; color:#F97316; margin-top:0.3mm; font-weight:900; padding:0.2mm 0.6mm; line-height:1.15; }
+        .info-label { color:#6b7280; font-size:7pt; font-weight:800; }
+        .member-name { font-size:10pt; font-weight:900; color:#111827; margin:0.3mm 0 1mm; line-height:1.1; letter-spacing:-0.1pt; }
+        .info-row { display:flex; gap:1mm; font-size:7pt; font-weight:900; color:#111827; align-items:center; margin-bottom:0.4mm; }
+        .member-code { color:#EA580C; font-weight:900; font-size:9pt; }
         .activities { margin-top:0.5mm; padding-top:0.5mm; border-top:1px dashed #e5e7eb; overflow:visible; flex-shrink:0; margin-bottom:0.8mm; }
-        .activities-label { font-size:4.5pt; color:#6b7280; font-weight:700; margin-bottom:0.2mm; }
-        .activity-item { padding:0.2mm 1mm; margin-bottom:0.2mm; border-radius:0.8mm; font-size:7pt; }
+        .activities-label { font-size:6pt; color:#6b7280; font-weight:900; margin-bottom:0.3mm; }
+        .activity-item { padding:0.2mm 1mm; margin-bottom:0.3mm; border-radius:0.8mm; font-size:8.5pt; }
         .activity-item.active { background:transparent; border-right:2px solid #10B981; }
         .activity-item.expired { background:transparent; border-right:2px solid #EF4444; }
-        .activity-name { font-weight:900; color:#0B1F3A; font-size:7pt; }
+        .activity-name { font-weight:900; color:#0B1F3A; font-size:8.5pt; }
         .cd-page.back { }
         .logo-card { width:54mm; height:85.6mm; background:linear-gradient(180deg,#FFFFFF,#FFF7ED); display:flex; flex-direction:column; align-items:center; justify-content:center; padding:9mm 2mm 3mm; border:none; border-radius:0; gap:2mm; }
         .logo-card img { width:54mm; max-width:100%; max-height:82%; object-fit:contain; margin-bottom:0; }
