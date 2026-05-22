@@ -294,10 +294,10 @@ const DailyNewCardsPage = () => {
         .qr-container { display:flex; flex-direction:column; align-items:center; flex-shrink:0; padding-top:0.5mm; }
         .qr-section { width:22mm; height:22mm; background:white; border:1px solid #eee; border-radius:1.5mm; padding:0.4mm; }
         .qr-section img { width:100%; height:100%; image-rendering:pixelated; image-rendering:crisp-edges; -ms-interpolation-mode:nearest-neighbor; }
-        .qr-dates { text-align:center; font-size:7pt; color:#1f2937; margin-top:0.5mm; line-height:1.2; font-weight:900; }
+        .qr-dates { text-align:center; font-size:8.5pt; color:#000000; margin-top:0.6mm; line-height:1.25; font-weight:900; }
         .qr-dates span { display:block; }
         .qr-label { text-align:center; font-size:7.5pt; color:#EA580C; font-weight:900; margin-top:0.4mm; letter-spacing:0.2mm; }
-        .schedule-info { text-align:center; font-size:6pt; color:#F97316; margin-top:0.3mm; font-weight:900; padding:0.2mm 0.6mm; line-height:1.15; }
+        .schedule-info { text-align:center; font-size:7.5pt; color:#EA580C; margin-top:0.4mm; font-weight:900; padding:0.2mm 0.6mm; line-height:1.2; }
         .info-label { color:#000000; font-size:7pt; font-weight:900; }
         .member-name { font-size:10pt; font-weight:900; color:#111827; margin:0.3mm 0 1mm; line-height:1.1; letter-spacing:-0.1pt; }
         .info-row { display:flex; gap:1mm; font-size:7pt; font-weight:900; color:#111827; align-items:center; margin-bottom:0.4mm; }
