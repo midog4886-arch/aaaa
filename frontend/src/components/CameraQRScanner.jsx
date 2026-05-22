@@ -62,21 +62,30 @@ const CameraQRScanner = ({ open, onClose, language = 'ar' }) => {
 
     try {
       const response = await fetch(`/api/public/member-card/${memberCode}`);
-      if (!response.ok) throw new Error('Member not found');
-      const data = await response.json();
-
-      const allActivities = data.activities || [];
-      const activeActivities = allActivities.filter(a => a.status === 'active');
-      const expiredActivities = allActivities.filter(a => a.status === 'expired');
-
-      // Initialize per-activity states
-      const initStates = {};
-      activeActivities.forEach(a => {
-        initStates[a.activity_id] = { status: a.recorded_today ? 'recorded' : 'idle' };
-      });
-      setActivityStates(initStates);
-
-      setMemberData({ ...data, activeActivities, expiredActivities });
+      if (response.ok) {
+        const data = await response.json();
+        const allActivities = data.activities || [];
+        const activeActivities = allActivities.filter(a => a.status === 'active');
+        const expiredActivities = allActivities.filter(a => a.status === 'expired');
+        const initStates = {};
+        activeActivities.forEach(a => {
+          initStates[a.activity_id] = { status: a.recorded_today ? 'recorded' : 'idle' };
+        });
+        setActivityStates(initStates);
+        setMemberData({ ...data, activeActivities, expiredActivities });
+      } else {
+        const coachRes = await fetch(`/api/coach-attendance/qr-checkin-by-code/${memberCode}`, { method: 'POST' });
+        if (coachRes.ok) {
+          const coachData = await coachRes.json();
+          setMemberData({ isCoach: true, ...coachData });
+        } else {
+          setMemberData({
+            error: true,
+            message: t('رقم العضوية غير موجود', 'Member ID not found'),
+            memberCode
+          });
+        }
+      }
     } catch (error) {
       setMemberData({
         error: true,
@@ -257,6 +266,48 @@ const CameraQRScanner = ({ open, onClose, language = 'ar' }) => {
           </div>
         )}
 
+        {memberData?.isCoach && (
+          <div className="py-6 text-center space-y-4">
+            <div className={`w-20 h-20 mx-auto rounded-full flex items-center justify-center ${memberData.action === 'checked_in' ? 'bg-green-100' : memberData.action === 'checked_out' ? 'bg-blue-100' : 'bg-amber-100'}`}>
+              {memberData.action === 'checked_in' && <Check className="w-10 h-10 text-green-600" />}
+              {memberData.action === 'checked_out' && <Clock className="w-10 h-10 text-blue-600" />}
+              {memberData.action === 'already_out' && <AlertTriangle className="w-10 h-10 text-amber-600" />}
+            </div>
+            <div>
+              <p className="text-xs text-gray-500 mb-1">{t('مدرب', 'Coach')}</p>
+              <h2 className="text-xl font-bold">{memberData.coach_name}</h2>
+              <Badge variant="outline" className="mt-1">#{memberData.employee_id}</Badge>
+            </div>
+            <p className={`text-base font-bold ${memberData.action === 'checked_in' ? 'text-green-700' : memberData.action === 'checked_out' ? 'text-blue-700' : 'text-amber-700'}`}>
+              {memberData.message}
+            </p>
+            <div className="flex gap-3 justify-center text-sm">
+              {memberData.check_in_time && (
+                <div className="bg-green-50 border border-green-200 rounded-lg px-3 py-2">
+                  <p className="text-[10px] text-green-600">{t('حضور', 'In')}</p>
+                  <p className="font-bold text-green-700" dir="ltr">{memberData.check_in_time}</p>
+                </div>
+              )}
+              {memberData.check_out_time && (
+                <div className="bg-blue-50 border border-blue-200 rounded-lg px-3 py-2">
+                  <p className="text-[10px] text-blue-600">{t('انصراف', 'Out')}</p>
+                  <p className="font-bold text-blue-700" dir="ltr">{memberData.check_out_time}</p>
+                </div>
+              )}
+              {memberData.total_hours != null && (
+                <div className="bg-purple-50 border border-purple-200 rounded-lg px-3 py-2">
+                  <p className="text-[10px] text-purple-600">{t('ساعات', 'Hours')}</p>
+                  <p className="font-bold text-purple-700">{memberData.total_hours}</p>
+                </div>
+              )}
+            </div>
+            <Button onClick={handleScanAgain} className="gap-2">
+              <Camera className="w-4 h-4" />
+              {t('مسح آخر', 'Scan Another')}
+            </Button>
+          </div>
+        )}
+
         {memberData?.error && (
           <div className="py-8 text-center space-y-4">
             <div className="w-20 h-20 mx-auto rounded-full bg-red-100 flex items-center justify-center">
@@ -273,7 +324,7 @@ const CameraQRScanner = ({ open, onClose, language = 'ar' }) => {
           </div>
         )}
 
-        {memberData && !memberData.error && (
+        {memberData && !memberData.error && !memberData.isCoach && (
           <div className="space-y-4">
             {/* Member Info */}
             <div className="text-center border-b pb-4">
