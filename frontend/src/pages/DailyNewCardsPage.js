@@ -304,10 +304,10 @@ const DailyNewCardsPage = () => {
         .member-code { color:#EA580C; font-weight:900; font-size:9pt; }
         .activities { margin-top:0.3mm; padding-top:0.3mm; border-top:1px dashed #e5e7eb; overflow:hidden; flex-shrink:0; min-height:0; margin-bottom:0.3mm; }
         .activities-label { font-size:5.5pt; color:#000000; font-weight:900; margin-bottom:0.2mm; }
-        .activity-item { padding:0.1mm 1mm; margin-bottom:0.2mm; border-radius:0.8mm; font-size:7.5pt; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; line-height:1.15; }
+        .activity-item { padding:0.1mm 1mm; margin-bottom:0.2mm; border-radius:0.8mm; font-size:7.5pt; overflow:hidden; line-height:1.15; }
         .activity-item.active { background:transparent; border-right:2px solid #10B981; }
         .activity-item.expired { background:transparent; border-right:2px solid #EF4444; }
-        .activity-name { font-weight:900; color:#0B1F3A; font-size:7.5pt; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; display:block; line-height:1.15; }
+        .activity-name { font-weight:900; color:#0B1F3A; font-size:7pt; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; line-height:1.2; word-break:break-word; }
         .cd-page.back { }
         .logo-card { width:54mm; height:85.6mm; background:linear-gradient(180deg,#FFFFFF,#FFF7ED); display:flex; flex-direction:column; align-items:center; justify-content:center; padding:3mm 2mm 3mm; border:none; border-radius:0; gap:1.5mm; }
         .logo-card img { width:54mm; max-width:100%; max-height:92%; object-fit:contain; margin-bottom:0; }
