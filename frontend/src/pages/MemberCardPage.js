@@ -315,12 +315,12 @@ const MemberCardPage = () => {
         .qr-dates span { display:block; }
         .qr-label { text-align:center; font-size:7.5pt; color:${_accent}; font-weight:900; margin-top:0.4mm; letter-spacing:0.2mm; }
         .schedule-info { text-align:center; font-size:6pt; color:${_accent}; margin-top:0.3mm; font-weight:900; padding:0.2mm 0.6mm; line-height:1.15; }
-        .info-label { color:#6b7280; font-size:7pt; font-weight:800; }
+        .info-label { color:#000000; font-size:7pt; font-weight:900; }
         .member-name { font-size:10pt; font-weight:900; color:#111827; margin:0.3mm 0 1mm; line-height:1.1; letter-spacing:-0.1pt; }
         .info-row { display:flex; gap:1mm; font-size:7pt; font-weight:900; color:#111827; align-items:center; margin-bottom:0.4mm; }
         .member-code { color:${_accent}; font-weight:900; font-size:9pt; }
         .activities { margin-top:0.5mm; padding-top:0.5mm; border-top:1px dashed #e5e7eb; overflow:hidden; flex-shrink:1; min-height:0; margin-bottom:0.5mm; max-height:10mm; }
-        .activities-label { font-size:6pt; color:#6b7280; font-weight:900; margin-bottom:0.3mm; }
+        .activities-label { font-size:6pt; color:#000000; font-weight:900; margin-bottom:0.3mm; }
         .activity-item { padding:0.2mm 1mm; margin-bottom:0.3mm; border-radius:0.8mm; font-size:8pt; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
         .activity-item.active { background:transparent; border-right:2px solid #10B981; }
         .activity-item.expired { background:transparent; border-right:2px solid #EF4444; }
