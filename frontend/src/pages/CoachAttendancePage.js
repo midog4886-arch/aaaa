@@ -1619,7 +1619,7 @@ const CoachAttendancePage = () => {
               .cd-page { width:54mm; height:85.6mm; background:white; margin:10mm auto; box-shadow:0 4px 20px rgba(0,0,0,0.15); page-break-after:always; position:relative; overflow:hidden; }
               .cd-page::after { content:''; position:absolute; inset:1.2mm; border:0.5mm solid #000000; border-radius:1.5mm; pointer-events:none; z-index:3; }
               .cd-page:last-child { page-break-after:auto; }
-              .card { width:54mm; height:85.6mm; display:flex; flex-direction:column; position:relative; padding:4mm 3mm 2.5mm 3mm; box-sizing:border-box; }
+              .card { width:54mm; height:85.6mm; display:flex; flex-direction:column; position:relative; padding:1.5mm 3mm 2.5mm 3mm; box-sizing:border-box; }
               .card-header { background:white; padding:1.5mm 2mm 1.8mm; display:flex; flex-direction:column; align-items:center; gap:0.6mm; color:#0B1F3A; text-align:center; border-bottom:1px solid #E5E7EB; }
               .header-text h2 { font-size:6.5pt; font-weight:900; line-height:1.15; color:#0B1F3A; }
               .header-text p { font-size:4.5pt; font-weight:900; opacity:0.85; margin-top:0.2mm; color:#374151; }
