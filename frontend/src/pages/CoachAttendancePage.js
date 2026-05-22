@@ -1568,6 +1568,103 @@ const CoachAttendancePage = () => {
           win.document.close();
         };
 
+        const handleCD820Print = (mode = 'duplex') => {
+          const win = window.open('', '_blank', 'width=800,height=600');
+          const qrSrc = `https://api.qrserver.com/v1/create-qr-code/?size=600x600&ecc=H&margin=1&qzone=1&format=png&data=${encodeURIComponent(qrValue)}`;
+          const frontHtml = `
+            <div class="cd-page">
+              <div class="card">
+                <div class="card-header">
+                  <div class="header-logo"><img src="${origin}/images/academy-logo.png" alt="logo" /></div>
+                  <div class="header-text">
+                    <h2>شركة اداء الابطال العالمية للرياضة</h2>
+                    <p>Global Champions Sports Performance</p>
+                  </div>
+                </div>
+                <div class="card-body">
+                  <div class="info-section">
+                    <div class="info-row"><span class="info-label">المدرب:</span></div>
+                    <div class="member-name">${coachName}</div>
+                    <div class="info-row"><span class="info-label">رقم الموظف:</span><span class="member-code">#${employeeId}</span></div>
+                    ${qrCoach.phone ? `<div class="info-row"><span class="info-label">الجوال:</span><span class="phone">${qrCoach.phone}</span></div>` : ''}
+                    ${qrCoach.specialization ? `<div class="activities"><div class="activities-label">التخصص</div><div class="activity-item active"><div class="activity-name">🏅 ${qrCoach.specialization}</div></div></div>` : ''}
+                  </div>
+                  <div class="qr-container">
+                    <div class="qr-section"><img src="${qrSrc}" /></div>
+                    <div class="qr-label">حضور / انصراف</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          `;
+          const backHtml = `
+            <div class="cd-page back">
+              <div class="logo-card">
+                <img src="${origin}/images/academy-logo.png" alt="logo" />
+                <div class="contact-block">
+                  <div class="contact-row">📞 ${qrCoach.branch_phone || '0566238384'}</div>
+                </div>
+              </div>
+            </div>
+          `;
+          win.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>كرت المدرب CD820 - ${coachName}</title>
+            <style>
+              @import url('https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;900&display=swap');
+              @page { size: 54mm 85.6mm; margin: 0; }
+              * { margin:0; padding:0; box-sizing:border-box; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+              html, body { background:white; font-family:'Tajawal',Arial,sans-serif; direction:rtl; }
+              .toolbar { padding:14px; text-align:center; background:#f3f4f6; border-bottom:1px solid #e5e7eb; position:sticky; top:0; z-index:10; }
+              .toolbar button { padding:10px 24px; background:linear-gradient(135deg,#F97316,#EA580C); color:white; border:none; border-radius:8px; cursor:pointer; font-family:inherit; font-weight:700; font-size:14px; margin:0 5px; }
+              .toolbar .meta { margin-top:8px; color:#374151; font-size:12px; }
+              .cd-page { width:54mm; height:85.6mm; background:white; margin:10mm auto; box-shadow:0 4px 20px rgba(0,0,0,0.15); page-break-after:always; position:relative; overflow:hidden; }
+              .cd-page::after { content:''; position:absolute; inset:1.2mm; border:0.5mm solid #000000; border-radius:1.5mm; pointer-events:none; z-index:3; }
+              .cd-page:last-child { page-break-after:auto; }
+              .card { width:54mm; height:85.6mm; display:flex; flex-direction:column; position:relative; padding:4mm 3mm 2.5mm 3mm; box-sizing:border-box; }
+              .card-header { background:white; padding:1.5mm 2mm 1.8mm; display:flex; flex-direction:column; align-items:center; gap:0.6mm; color:#0B1F3A; text-align:center; border-bottom:1px solid #E5E7EB; }
+              .header-text h2 { font-size:6.5pt; font-weight:900; line-height:1.15; color:#0B1F3A; }
+              .header-text p { font-size:4.5pt; font-weight:900; opacity:0.85; margin-top:0.2mm; color:#374151; }
+              .header-logo { width:12mm; height:12mm; border-radius:50%; background:white; padding:0.5mm; display:flex; align-items:center; justify-content:center; overflow:hidden; border:1px solid #0B1F3A; box-shadow:0 1px 2px rgba(0,0,0,0.2); }
+              .header-logo img { width:100%; height:100%; object-fit:contain; border-radius:50%; }
+              .card-body { padding:1mm; display:flex; flex-direction:column; gap:0.6mm; flex:1; min-height:0; }
+              .info-section { text-align:right; overflow:hidden; flex:1; min-height:0; display:flex; flex-direction:column; }
+              .qr-container { display:flex; flex-direction:column; align-items:center; flex-shrink:0; padding-top:0.5mm; }
+              .qr-section { width:21mm; height:21mm; background:white; border:1px solid #eee; border-radius:1.5mm; padding:0.4mm; }
+              .qr-section img { width:100%; height:100%; image-rendering:pixelated; image-rendering:crisp-edges; -ms-interpolation-mode:nearest-neighbor; }
+              .qr-label { text-align:center; font-size:7.5pt; color:#EA580C; font-weight:900; margin-top:0.4mm; letter-spacing:0.2mm; }
+              .info-label { color:#000000; font-size:7pt; font-weight:900; }
+              .member-name { font-size:9.5pt; font-weight:900; color:#111827; margin:0.2mm 0 0.3mm; line-height:1.05; letter-spacing:-0.1pt; }
+              .info-row { display:flex; gap:1mm; font-size:7pt; font-weight:900; color:#111827; align-items:center; margin-bottom:0.2mm; }
+              .member-code { color:#EA580C; font-weight:900; font-size:9pt; }
+              .phone { color:#111827; font-weight:900; font-size:8pt; direction:ltr; }
+              .activities { margin-top:0.3mm; padding-top:0.3mm; border-top:1px dashed #e5e7eb; overflow:hidden; flex-shrink:0; min-height:0; margin-bottom:0.3mm; }
+              .activities-label { font-size:5.5pt; color:#000000; font-weight:900; margin-bottom:0.2mm; }
+              .activity-item { padding:0.1mm 1mm; margin-bottom:0.2mm; border-radius:0.8mm; font-size:7.5pt; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; line-height:1.15; background:transparent; border-right:2px solid #10B981; }
+              .activity-name { font-weight:900; color:#0B1F3A; font-size:7.5pt; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; display:block; line-height:1.15; }
+              .logo-card { width:54mm; height:85.6mm; background:linear-gradient(180deg,#FFFFFF,#FFF7ED); display:flex; flex-direction:column; align-items:center; justify-content:center; padding:3mm 2mm 3mm; gap:1.5mm; }
+              .logo-card img { width:54mm; max-width:100%; max-height:92%; object-fit:contain; }
+              .logo-card .contact-block { display:flex; flex-direction:column; gap:1mm; align-items:center; width:100%; }
+              .logo-card .contact-row { font-size:8pt; color:#111827; text-align:center; font-weight:800; line-height:1.3; direction:ltr; }
+              @media print {
+                .toolbar { display:none; }
+                html, body { background:white; margin:0; padding:0; }
+                .cd-page { box-shadow:none; margin:0; page-break-after:always; }
+                .cd-page:last-child { page-break-after:auto; }
+              }
+            </style></head><body>
+            <div class="toolbar">
+              <button onclick="window.print()">🖨️ طباعة CD820 (${mode === 'duplex' ? 'وش وظهر' : 'وش فقط'})</button>
+              <div class="meta">
+                • طابعة: Evolis CD820 (54×85.6mm)<br/>
+                • Orientation: Portrait — Margins: None — Scale: 100%
+                ${mode === 'duplex' ? '<br/>• Double-sided: ON (flip on long edge)' : ''}
+              </div>
+            </div>
+            ${frontHtml}
+            ${mode === 'duplex' ? backHtml : ''}
+            </body></html>`);
+          win.document.close();
+        };
+
         return (
           <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4" dir="rtl">
             <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
@@ -1631,19 +1728,35 @@ const CoachAttendancePage = () => {
               </div>
 
               {/* Buttons */}
-              <div className="px-5 pb-5 flex gap-3">
-                <button
-                  onClick={handlePrint}
-                  className="flex-1 bg-orange-500 hover:bg-orange-600 text-white font-semibold py-2.5 rounded-xl flex items-center justify-center gap-2 transition-colors"
-                >
-                  <Printer className="w-4 h-4" /> طباعة الكارت
-                </button>
-                <button
-                  onClick={() => setQrCoach(null)}
-                  className="px-5 py-2.5 border border-gray-200 rounded-xl text-gray-600 hover:bg-gray-50 transition-colors"
-                >
-                  إغلاق
-                </button>
+              <div className="px-5 pb-5 space-y-2">
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => handleCD820Print('duplex')}
+                    className="flex-1 bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-700 hover:to-blue-700 text-white font-semibold py-2.5 rounded-xl flex items-center justify-center gap-2 transition-colors text-sm"
+                  >
+                    <Printer className="w-4 h-4" /> CD820 (وش وظهر)
+                  </button>
+                  <button
+                    onClick={() => handleCD820Print('front')}
+                    className="flex-1 bg-gradient-to-r from-indigo-500 to-blue-500 hover:from-indigo-600 hover:to-blue-600 text-white font-semibold py-2.5 rounded-xl flex items-center justify-center gap-2 transition-colors text-sm"
+                  >
+                    <Printer className="w-4 h-4" /> CD820 (وش)
+                  </button>
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    onClick={handlePrint}
+                    className="flex-1 bg-orange-500 hover:bg-orange-600 text-white font-semibold py-2.5 rounded-xl flex items-center justify-center gap-2 transition-colors text-sm"
+                  >
+                    <Printer className="w-4 h-4" /> طباعة A4
+                  </button>
+                  <button
+                    onClick={() => setQrCoach(null)}
+                    className="px-5 py-2.5 border border-gray-200 rounded-xl text-gray-600 hover:bg-gray-50 transition-colors text-sm"
+                  >
+                    إغلاق
+                  </button>
+                </div>
               </div>
             </div>
           </div>
