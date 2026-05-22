@@ -292,7 +292,7 @@ const DailyNewCardsPage = () => {
         .card-body { padding:1mm 1mm 1mm 1mm; display:flex; flex-direction:column; gap:0.6mm; flex:1; min-height:0; }
         .info-section { text-align:right; overflow:hidden; flex:1; min-height:0; display:flex; flex-direction:column; }
         .qr-container { display:flex; flex-direction:column; align-items:center; flex-shrink:0; padding-top:0.5mm; }
-        .qr-section { width:24mm; height:24mm; background:white; border:1px solid #eee; border-radius:1.5mm; padding:0.4mm; }
+        .qr-section { width:22mm; height:22mm; background:white; border:1px solid #eee; border-radius:1.5mm; padding:0.4mm; }
         .qr-section img { width:100%; height:100%; image-rendering:pixelated; image-rendering:crisp-edges; -ms-interpolation-mode:nearest-neighbor; }
         .qr-dates { text-align:center; font-size:7pt; color:#1f2937; margin-top:0.5mm; line-height:1.2; font-weight:900; }
         .qr-dates span { display:block; }
@@ -302,12 +302,12 @@ const DailyNewCardsPage = () => {
         .member-name { font-size:10pt; font-weight:900; color:#111827; margin:0.3mm 0 1mm; line-height:1.1; letter-spacing:-0.1pt; }
         .info-row { display:flex; gap:1mm; font-size:7pt; font-weight:900; color:#111827; align-items:center; margin-bottom:0.4mm; }
         .member-code { color:#EA580C; font-weight:900; font-size:9pt; }
-        .activities { margin-top:0.5mm; padding-top:0.5mm; border-top:1px dashed #e5e7eb; overflow:visible; flex-shrink:0; margin-bottom:0.8mm; }
+        .activities { margin-top:0.5mm; padding-top:0.5mm; border-top:1px dashed #e5e7eb; overflow:hidden; flex-shrink:1; min-height:0; margin-bottom:0.5mm; max-height:10mm; }
         .activities-label { font-size:6pt; color:#6b7280; font-weight:900; margin-bottom:0.3mm; }
-        .activity-item { padding:0.2mm 1mm; margin-bottom:0.3mm; border-radius:0.8mm; font-size:8.5pt; }
+        .activity-item { padding:0.2mm 1mm; margin-bottom:0.3mm; border-radius:0.8mm; font-size:8pt; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
         .activity-item.active { background:transparent; border-right:2px solid #10B981; }
         .activity-item.expired { background:transparent; border-right:2px solid #EF4444; }
-        .activity-name { font-weight:900; color:#0B1F3A; font-size:8.5pt; }
+        .activity-name { font-weight:900; color:#0B1F3A; font-size:8pt; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; display:block; }
         .cd-page.back { }
         .logo-card { width:54mm; height:85.6mm; background:linear-gradient(180deg,#FFFFFF,#FFF7ED); display:flex; flex-direction:column; align-items:center; justify-content:center; padding:9mm 2mm 3mm; border:none; border-radius:0; gap:2mm; }
         .logo-card img { width:54mm; max-width:100%; max-height:82%; object-fit:contain; margin-bottom:0; }
