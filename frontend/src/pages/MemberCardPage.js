@@ -313,8 +313,8 @@ const MemberCardPage = () => {
         .phone-row { text-align:center; font-size:6pt; color:#0B1F3A; font-weight:900; margin-top:0.2mm; direction:ltr; letter-spacing:0.1pt; }
         .header-logo img { width:100%; height:100%; object-fit:contain; border-radius:50%; }
         .card-body { padding:1mm 1mm 1mm 1mm; display:flex; flex-direction:column; gap:0.6mm; flex:1; min-height:0; }
-        .info-section { text-align:right; overflow:hidden; flex:1; min-height:0; display:flex; flex-direction:column; }
-        .qr-container { display:flex; flex-direction:column; align-items:center; flex-shrink:0; padding-top:0.5mm; }
+        .info-section { text-align:right; flex-shrink:0; display:flex; flex-direction:column; }
+        .qr-container { display:flex; flex-direction:column; align-items:center; flex-shrink:0; padding-top:0.3mm; margin-top:auto; }
         .qr-section { width:17mm; height:17mm; background:white; border:1px solid #eee; border-radius:1.5mm; padding:0.3mm; }
         .qr-section img { width:100%; height:100%; image-rendering:pixelated; image-rendering:crisp-edges; -ms-interpolation-mode:nearest-neighbor; }
         .qr-dates { text-align:center; font-size:6.5pt; color:#000000; margin-top:0.3mm; line-height:1.15; font-weight:900; }
@@ -325,7 +325,7 @@ const MemberCardPage = () => {
         .member-name { font-size:9.5pt; font-weight:900; color:#111827; margin:0.2mm 0 0.3mm; line-height:1.05; letter-spacing:-0.1pt; }
         .info-row { display:flex; gap:1mm; font-size:7pt; font-weight:900; color:#111827; align-items:center; margin-bottom:0.2mm; }
         .member-code { color:${_accent}; font-weight:900; font-size:9pt; }
-        .activities { margin-top:0.3mm; padding-top:0.3mm; border-top:1px dashed #e5e7eb; overflow:hidden; flex-shrink:0; min-height:0; margin-bottom:0.3mm; }
+        .activities { margin-top:0.3mm; padding-top:0.3mm; border-top:1px dashed #e5e7eb; flex-shrink:0; margin-bottom:0.3mm; }
         .activities-label { font-size:5.5pt; color:#000000; font-weight:900; margin-bottom:0.2mm; }
         .activity-item { padding:0.1mm 1mm; margin-bottom:0.2mm; border-radius:0.8mm; font-size:7.5pt; overflow:hidden; line-height:1.15; }
         .activity-item.active { background:transparent; border-right:2px solid #10B981; }

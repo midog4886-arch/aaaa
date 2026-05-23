@@ -218,8 +218,8 @@ const DailyNewCardsPage = () => {
         .phone-row { text-align:center; font-size:6pt; color:#0B1F3A; font-weight:800; margin-top:0.3mm; direction:ltr; letter-spacing:0.1pt; }
         .header-logo img { width:140%; height:140%; object-fit:cover; border-radius:50%; }
         .card-body { padding:2mm 5mm 1.5mm 2.5mm; display:flex; flex-direction:column; gap:1.5mm; flex:1; min-height:0; }
-        .info-section { text-align:right; overflow:hidden; flex:1; min-height:0; display:flex; flex-direction:column; }
-        .qr-container { display:flex; flex-direction:column; align-items:center; flex-shrink:0; padding-top:1mm; }
+        .info-section { text-align:right; flex-shrink:0; display:flex; flex-direction:column; }
+        .qr-container { display:flex; flex-direction:column; align-items:center; flex-shrink:0; padding-top:0.5mm; margin-top:auto; }
         .qr-section { width:22mm; height:22mm; background:white; border:1px solid #eee; border-radius:2mm; padding:0.4mm; }
         .qr-section img { width:100%; height:100%; }
         .qr-dates { text-align:center; font-size:5.5pt; color:#1f2937; margin-top:0.4mm; line-height:1.2; font-weight:700; }
