@@ -287,7 +287,7 @@ const DailyNewCardsPage = () => {
         .cd-page { width:54mm; height:85.6mm; background:white; margin:4mm auto; box-shadow:0 2px 8px rgba(0,0,0,0.15); overflow:hidden; page-break-after:always; position:relative; }
         .cd-page::after { content:''; position:absolute; inset:1.2mm; border:0.5mm solid #000000; border-radius:1.5mm; pointer-events:none; z-index:3; }
         .cd-page:last-child { page-break-after:auto; }
-        .card { width:54mm; height:85.6mm; border-radius:0; border:none; display:flex; flex-direction:column; position:relative; padding:1.5mm 3mm 2.5mm 3mm; box-sizing:border-box; }
+        .card { width:54mm; height:85.6mm; border-radius:0; border:none; display:flex; flex-direction:column; position:relative; padding:7mm 3mm 2.5mm 3mm; box-sizing:border-box; }
         .accent-stripe { display:none; }
         .accent-stripe span { display:none; }
         .card-header { background:white; padding:0.3mm 2mm 0.5mm; display:flex; flex-direction:column; align-items:center; gap:0.1mm; color:#0B1F3A; text-align:center; border-bottom:1px solid #E5E7EB; }
