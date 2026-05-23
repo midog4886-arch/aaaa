@@ -310,27 +310,27 @@ const MemberCardPage = () => {
         .header-text h2 { font-size:5pt; font-weight:900; line-height:1.0; color:#0B1F3A; }
         .header-text p { font-size:3.5pt; font-weight:900; opacity:0.85; margin-top:0.1mm; color:#374151; }
         .header-logo { width:4.5mm; height:4.5mm; border-radius:50%; background:white; padding:0.15mm; display:flex; align-items:center; justify-content:center; overflow:hidden; border:1px solid #0B1F3A; box-shadow:0 1px 2px rgba(0,0,0,0.2); }
-        .phone-row { text-align:center; font-size:6pt; color:#0B1F3A; font-weight:900; margin-top:0.2mm; direction:ltr; letter-spacing:0.1pt; }
+        .phone-row { text-align:center; font-size:5.5pt; color:#0B1F3A; font-weight:900; margin-top:0.1mm; direction:ltr; letter-spacing:0.1pt; }
         .header-logo img { width:100%; height:100%; object-fit:contain; border-radius:50%; }
         .card-body { padding:1mm 1mm 1mm 1mm; display:flex; flex-direction:column; gap:0.6mm; flex:1; min-height:0; }
         .info-section { text-align:right; flex-shrink:0; display:flex; flex-direction:column; }
         .qr-container { display:flex; flex-direction:column; align-items:center; flex-shrink:0; padding-top:0.3mm; margin-top:auto; }
-        .qr-section { width:17mm; height:17mm; background:white; border:1px solid #eee; border-radius:1.5mm; padding:0.3mm; }
+        .qr-section { width:14mm; height:14mm; background:white; border:1px solid #eee; border-radius:1.5mm; padding:0.2mm; }
         .qr-section img { width:100%; height:100%; image-rendering:pixelated; image-rendering:crisp-edges; -ms-interpolation-mode:nearest-neighbor; }
-        .qr-dates { text-align:center; font-size:6.5pt; color:#000000; margin-top:0.3mm; line-height:1.15; font-weight:900; }
-        .qr-dates span { display:block; }
-        .qr-label { text-align:center; font-size:7pt; color:${_accent}; font-weight:900; margin-top:0.3mm; letter-spacing:0.2mm; }
-        .schedule-info { text-align:center; font-size:6pt; color:${_accent}; margin-top:0.2mm; font-weight:900; padding:0.1mm 0.4mm; line-height:1.15; }
+        .qr-dates { text-align:center; font-size:5.5pt; color:#000000; margin-top:0.2mm; line-height:1.1; font-weight:900; }
+        .qr-dates span { display:inline-block; margin:0 1mm; }
+        .qr-label { text-align:center; font-size:6pt; color:${_accent}; font-weight:900; margin-top:0.2mm; letter-spacing:0.2mm; }
+        .schedule-info { text-align:center; font-size:5pt; color:${_accent}; margin-top:0.1mm; font-weight:900; padding:0 0.4mm; line-height:1.1; }
         .info-label { color:#000000; font-size:7pt; font-weight:900; }
         .member-name { font-size:9.5pt; font-weight:900; color:#111827; margin:0.2mm 0 0.3mm; line-height:1.05; letter-spacing:-0.1pt; }
         .info-row { display:flex; gap:1mm; font-size:7pt; font-weight:900; color:#111827; align-items:center; margin-bottom:0.2mm; }
         .member-code { color:${_accent}; font-weight:900; font-size:9pt; }
-        .activities { margin-top:0.3mm; padding-top:0.3mm; border-top:1px dashed #e5e7eb; flex-shrink:0; margin-bottom:0.3mm; }
+        .activities { margin-top:0.3mm; padding-top:0.3mm; border-top:1px dashed #e5e7eb; flex-shrink:0; margin-bottom:0.3mm; min-height:7mm; }
         .activities-label { font-size:5.5pt; color:#000000; font-weight:900; margin-bottom:0.2mm; }
-        .activity-item { padding:0.1mm 1mm; margin-bottom:0.2mm; border-radius:0.8mm; font-size:7.5pt; overflow:hidden; line-height:1.15; }
+        .activity-item { padding:0.1mm 1mm; margin-bottom:0.2mm; border-radius:0.8mm; font-size:6.5pt; overflow:hidden; line-height:1.1; }
         .activity-item.active { background:transparent; border-right:2px solid #10B981; }
         .activity-item.expired { background:transparent; border-right:2px solid #EF4444; }
-        .activity-name { font-weight:900; color:#0B1F3A; font-size:7pt; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; line-height:1.2; word-break:break-word; }
+        .activity-name { font-weight:900; color:#0B1F3A; font-size:6pt; line-height:1.1; word-break:break-word; }
         .cd-page.back { }
         .accent-stripe { position:absolute; top:0; bottom:0; right:0; width:4mm; background:linear-gradient(180deg,#0B1F3A 0%,#1E3A5F 35%,#C9A227 78%,#F5C842 100%); z-index:2; display:flex; align-items:center; justify-content:center; overflow:hidden; }
         .accent-stripe span { writing-mode:vertical-rl; transform:rotate(180deg); color:white; font-size:6pt; font-weight:900; letter-spacing:1.2pt; text-transform:uppercase; white-space:nowrap; }
