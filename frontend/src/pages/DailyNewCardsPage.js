@@ -306,16 +306,16 @@ const DailyNewCardsPage = () => {
         .qr-dates span { display:inline-block; margin:0 1mm; }
         .qr-label { text-align:center; font-size:6pt; color:#EA580C; font-weight:900; margin-top:0.2mm; letter-spacing:0.2mm; }
         .schedule-info { text-align:center; font-size:5pt; color:#EA580C; margin-top:0.1mm; font-weight:900; padding:0 0.4mm; line-height:1.1; }
-        .info-label { color:#000000; font-size:7pt; font-weight:900; }
-        .member-name { font-size:9.5pt; font-weight:900; color:#111827; margin:0.2mm 0 0.3mm; line-height:1.05; letter-spacing:-0.1pt; }
-        .info-row { display:flex; gap:1mm; font-size:7pt; font-weight:900; color:#111827; align-items:center; margin-bottom:0.2mm; }
-        .member-code { color:#EA580C; font-weight:900; font-size:10.5pt; }
-        .activities { margin-top:0.3mm; padding-top:0.3mm; border-top:1px dashed #e5e7eb; flex-shrink:0; margin-bottom:0.3mm; min-height:7mm; }
-        .activities-label { font-size:5.5pt; color:#000000; font-weight:900; margin-bottom:0.2mm; }
-        .activity-item { padding:0.1mm 1mm; margin-bottom:0.2mm; border-radius:0.8mm; font-size:6.5pt; overflow:hidden; line-height:1.1; }
-        .activity-item.active { background:transparent; border-right:2px solid #10B981; }
-        .activity-item.expired { background:transparent; border-right:2px solid #EF4444; }
-        .activity-name { font-weight:900; color:#0B1F3A; font-size:6pt; line-height:1.1; word-break:break-word; }
+        .info-label { color:#000000; font-size:8pt; font-weight:900; }
+        .member-name { font-size:9.5pt; font-weight:900; color:#000000; margin:0.2mm 0 0.3mm; line-height:1.05; letter-spacing:-0.1pt; }
+        .info-row { display:flex; gap:1mm; font-size:7pt; font-weight:900; color:#000000; align-items:center; margin-bottom:0.2mm; }
+        .member-code { color:#EA580C; font-weight:900; font-size:10.5pt; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+        .activities { margin-top:0.3mm; padding-top:0.3mm; border-top:1px dashed #000000; flex-shrink:0; margin-bottom:0.3mm; min-height:7mm; }
+        .activities-label { font-size:6.5pt; color:#000000; font-weight:900; margin-bottom:0.2mm; }
+        .activity-item { padding:0.2mm 1mm; margin-bottom:0.3mm; border-radius:0.8mm; font-size:8pt; overflow:hidden; line-height:1.15; }
+        .activity-item.active { background:transparent; border-right:2px solid #000000; }
+        .activity-item.expired { background:transparent; border-right:2px solid #000000; }
+        .activity-name { font-weight:900; color:#000000; font-size:8pt; line-height:1.15; word-break:break-word; }
         .cd-page.back { }
         .logo-card { width:54mm; height:85.6mm; background:linear-gradient(180deg,#FFFFFF,#FFF7ED); display:flex; flex-direction:column; align-items:center; justify-content:center; padding:3mm 2mm 3mm; border:none; border-radius:0; gap:1.5mm; }
         .logo-card img { width:54mm; max-width:100%; max-height:92%; object-fit:contain; margin-bottom:0; }
