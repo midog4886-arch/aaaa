@@ -229,7 +229,7 @@ const DailyNewCardsPage = () => {
         .info-label { color:#6b7280; font-size:6pt; font-weight:600; }
         .member-name { font-size:10.5pt; font-weight:900; color:#111827; margin:0.3mm 0 1.2mm; line-height:1.15; letter-spacing:-0.1pt; }
         .info-row { display:flex; gap:1mm; font-size:7pt; align-items:center; margin-bottom:0.5mm; }
-        .member-code { color:#EA580C; font-weight:900; font-size:9pt; }
+        .member-code { color:#EA580C; font-weight:900; font-size:10.5pt; }
         .activities { margin-top:1mm; padding-top:1mm; border-top:1px dashed #e5e7eb; overflow:hidden; min-height:0; flex-shrink:1; }
         .activities-label { font-size:6pt; color:#6b7280; font-weight:700; margin-bottom:0.5mm; }
         .activity-item { padding:0.4mm 1mm; margin-bottom:0.3mm; border-radius:1mm; font-size:6pt; }
@@ -308,7 +308,7 @@ const DailyNewCardsPage = () => {
         .info-label { color:#000000; font-size:7pt; font-weight:900; }
         .member-name { font-size:9.5pt; font-weight:900; color:#111827; margin:0.2mm 0 0.3mm; line-height:1.05; letter-spacing:-0.1pt; }
         .info-row { display:flex; gap:1mm; font-size:7pt; font-weight:900; color:#111827; align-items:center; margin-bottom:0.2mm; }
-        .member-code { color:#EA580C; font-weight:900; font-size:9pt; }
+        .member-code { color:#EA580C; font-weight:900; font-size:10.5pt; }
         .activities { margin-top:0.3mm; padding-top:0.3mm; border-top:1px dashed #e5e7eb; flex-shrink:0; margin-bottom:0.3mm; min-height:7mm; }
         .activities-label { font-size:5.5pt; color:#000000; font-weight:900; margin-bottom:0.2mm; }
         .activity-item { padding:0.1mm 1mm; margin-bottom:0.2mm; border-radius:0.8mm; font-size:6.5pt; overflow:hidden; line-height:1.1; }
