@@ -248,11 +248,14 @@ const MemberCardPage = () => {
     const startDate = latestActivity?.start_date || '';
     const endDate = latestActivity?.end_date || '';
     const schedule = latestActivity?.schedule || '';
-    const activitiesHtml = member?.activities?.map(act => `
+    const activitiesHtml = member?.activities?.map(act => {
+      const actName = (lang === 'en' && act.activity_name_en) ? act.activity_name_en : (act.activity_name || '');
+      return `
       <div class="activity-item ${act.status === 'active' ? 'active' : 'expired'}">
-        <div class="activity-name">${act.status === 'active' ? '✓' : '✗'} ${act.activity_name}</div>
+        <div class="activity-name">${act.status === 'active' ? '✓' : '✗'} ${actName}</div>
       </div>
-    `).join('') || '';
+    `;
+    }).join('') || '';
 
     const frontHtml = `
       <div class="cd-page">

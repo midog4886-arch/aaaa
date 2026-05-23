@@ -106,6 +106,15 @@ async def get_daily_new_member_cards(
 
     members = await db.members.find(query, {"_id": 0}).sort("created_at", 1).to_list(5000)
 
+    activity_ids = list({a.get("activity_id") for m in members for a in (m.get("activities") or []) if a.get("activity_id")})
+    activities_en_map = {}
+    if activity_ids:
+        act_docs = await db.activities.find({"id": {"$in": activity_ids}}, {"_id": 0, "id": 1, "name": 1}).to_list(1000)
+        activities_en_map = {a["id"]: a.get("name") or "" for a in act_docs}
+    for m in members:
+        for a in (m.get("activities") or []):
+            a["activity_name_en"] = activities_en_map.get(a.get("activity_id")) or ""
+
     branches = await db.branches.find({}, {"_id": 0, "id": 1, "name": 1, "name_ar": 1, "phone": 1}).to_list(500)
     branch_map = {b["id"]: b for b in branches}
 

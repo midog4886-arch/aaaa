@@ -366,6 +366,11 @@ async def get_member_card_public(search_term: str):
     
     # First, get activities from member document
     member_activities = member.get("activities", [])
+    member_activity_ids = list({a.get("activity_id") for a in member_activities if a.get("activity_id")})
+    activities_en_map = {}
+    if member_activity_ids:
+        act_docs = await db.activities.find({"id": {"$in": member_activity_ids}}, {"_id": 0, "id": 1, "name": 1}).to_list(1000)
+        activities_en_map = {a["id"]: a.get("name") or "" for a in act_docs}
     for act in member_activities:
         end_date = act.get("end_date", "")
         start_date = act.get("start_date", "")
@@ -379,6 +384,7 @@ async def get_member_card_public(search_term: str):
         activities.append({
             "activity_id": act.get("activity_id"),
             "activity_name": act.get("activity_name"),
+            "activity_name_en": activities_en_map.get(act.get("activity_id")) or "",
             "status": status,
             "start_date": start_date,
             "end_date": end_date,

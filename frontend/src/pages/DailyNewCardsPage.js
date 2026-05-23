@@ -110,7 +110,8 @@ const DailyNewCardsPage = () => {
     const activitiesHtml = allActs
       .map((act) => {
         const isActive = act?.end_date ? new Date(act.end_date) >= today : true;
-        return `<div class="activity-item ${isActive ? 'active' : 'expired'}"><div class="activity-name">${isActive ? '✓' : '✗'} ${act.activity_name || ''}</div></div>`;
+        const actName = (lang === 'en' && act.activity_name_en) ? act.activity_name_en : (act.activity_name || '');
+        return `<div class="activity-item ${isActive ? 'active' : 'expired'}"><div class="activity-name">${isActive ? '✓' : '✗'} ${actName}</div></div>`;
       })
       .join('');
     const name = (m.name_ar || m.name || '').split('+').map((n) => n.trim()).filter(Boolean).join(' - ');
