@@ -273,6 +273,7 @@ const MemberCardPage = () => {
               <div class="qr-section"><img src="https://api.qrserver.com/v1/create-qr-code/?size=600x600&ecc=H&margin=1&qzone=1&format=png&data=${encodeURIComponent(qrData)}" /></div>
               <div class="qr-dates"><span>${L.from} ${startDate || '----'}</span><span>${L.to} ${endDate || '----'}</span></div>
               ${schedule ? `<div class="schedule-info">📅 ${translateSchedule(schedule, lang)}</div>` : ''}
+              ${member?.phone ? `<div class="phone-row">📱 ${member.phone}</div>` : ''}
             </div>
           </div>
         </div>
@@ -305,10 +306,10 @@ const MemberCardPage = () => {
         .cd-page:last-child { page-break-after:auto; }
         .card { width:54mm; height:85.6mm; display:flex; flex-direction:column; position:relative; padding:1.5mm 3mm 2.5mm 3mm; box-sizing:border-box; }
         .accent-stripe { display:none; }
-        .card-header { background:white; padding:1.5mm 2mm 1.8mm; display:flex; flex-direction:column; align-items:center; gap:0.6mm; color:#0B1F3A; text-align:center; border-bottom:1px solid #E5E7EB; }
-        .header-text h2 { font-size:6.5pt; font-weight:900; line-height:1.15; color:#0B1F3A; }
-        .header-text p { font-size:4.5pt; font-weight:900; opacity:0.85; margin-top:0.2mm; color:#374151; }
-        .header-logo { width:9.5mm; height:9.5mm; border-radius:50%; background:white; padding:0.4mm; display:flex; align-items:center; justify-content:center; overflow:hidden; border:1px solid #0B1F3A; box-shadow:0 1px 2px rgba(0,0,0,0.2); }
+        .card-header { background:white; padding:1mm 2mm 1.2mm; display:flex; flex-direction:column; align-items:center; gap:0.4mm; color:#0B1F3A; text-align:center; border-bottom:1px solid #E5E7EB; }
+        .header-text h2 { font-size:6pt; font-weight:900; line-height:1.1; color:#0B1F3A; }
+        .header-text p { font-size:4pt; font-weight:900; opacity:0.85; margin-top:0.1mm; color:#374151; }
+        .header-logo { width:7.5mm; height:7.5mm; border-radius:50%; background:white; padding:0.3mm; display:flex; align-items:center; justify-content:center; overflow:hidden; border:1px solid #0B1F3A; box-shadow:0 1px 2px rgba(0,0,0,0.2); }
         .phone-row { text-align:center; font-size:7.5pt; color:#0B1F3A; font-weight:900; margin-top:0.6mm; direction:ltr; letter-spacing:0.2pt; }
         .header-logo img { width:100%; height:100%; object-fit:contain; border-radius:50%; }
         .card-body { padding:1mm 1mm 1mm 1mm; display:flex; flex-direction:column; gap:0.6mm; flex:1; min-height:0; }
