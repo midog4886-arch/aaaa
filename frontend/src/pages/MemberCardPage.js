@@ -306,10 +306,10 @@ const MemberCardPage = () => {
         .cd-page:last-child { page-break-after:auto; }
         .card { width:54mm; height:85.6mm; display:flex; flex-direction:column; position:relative; padding:1.5mm 3mm 2.5mm 3mm; box-sizing:border-box; }
         .accent-stripe { display:none; }
-        .card-header { background:white; padding:0.6mm 2mm 0.8mm; display:flex; flex-direction:column; align-items:center; gap:0.2mm; color:#0B1F3A; text-align:center; border-bottom:1px solid #E5E7EB; }
-        .header-text h2 { font-size:5.5pt; font-weight:900; line-height:1.05; color:#0B1F3A; }
-        .header-text p { font-size:3.8pt; font-weight:900; opacity:0.85; margin-top:0.1mm; color:#374151; }
-        .header-logo { width:6mm; height:6mm; border-radius:50%; background:white; padding:0.2mm; display:flex; align-items:center; justify-content:center; overflow:hidden; border:1px solid #0B1F3A; box-shadow:0 1px 2px rgba(0,0,0,0.2); }
+        .card-header { background:white; padding:0.3mm 2mm 0.5mm; display:flex; flex-direction:column; align-items:center; gap:0.1mm; color:#0B1F3A; text-align:center; border-bottom:1px solid #E5E7EB; }
+        .header-text h2 { font-size:5pt; font-weight:900; line-height:1.0; color:#0B1F3A; }
+        .header-text p { font-size:3.5pt; font-weight:900; opacity:0.85; margin-top:0.1mm; color:#374151; }
+        .header-logo { width:4.5mm; height:4.5mm; border-radius:50%; background:white; padding:0.15mm; display:flex; align-items:center; justify-content:center; overflow:hidden; border:1px solid #0B1F3A; box-shadow:0 1px 2px rgba(0,0,0,0.2); }
         .phone-row { text-align:center; font-size:6pt; color:#0B1F3A; font-weight:900; margin-top:0.2mm; direction:ltr; letter-spacing:0.1pt; }
         .header-logo img { width:100%; height:100%; object-fit:contain; border-radius:50%; }
         .card-body { padding:1mm 1mm 1mm 1mm; display:flex; flex-direction:column; gap:0.6mm; flex:1; min-height:0; }
