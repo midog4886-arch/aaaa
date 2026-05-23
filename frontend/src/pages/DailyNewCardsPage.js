@@ -299,7 +299,7 @@ const DailyNewCardsPage = () => {
         .card-body { padding:1mm 1mm 1mm 1mm; display:flex; flex-direction:column; gap:0.6mm; flex:1; min-height:0; }
         .info-section { text-align:right; flex-shrink:0; display:flex; flex-direction:column; }
         .qr-container { display:flex; flex-direction:column; align-items:center; flex-shrink:0; padding-top:0.3mm; margin-top:auto; }
-        .qr-section { width:14mm; height:14mm; background:white; border:1px solid #eee; border-radius:1.5mm; padding:0.2mm; }
+        .qr-section { width:18mm; height:18mm; background:white; border:1px solid #eee; border-radius:1.5mm; padding:0.2mm; }
         .qr-section img { width:100%; height:100%; image-rendering:pixelated; image-rendering:crisp-edges; -ms-interpolation-mode:nearest-neighbor; }
         .qr-dates { text-align:center; font-size:5.5pt; color:#000000; margin-top:0.2mm; line-height:1.1; font-weight:900; }
         .qr-dates span { display:inline-block; margin:0 1mm; }
