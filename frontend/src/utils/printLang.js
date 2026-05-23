@@ -34,13 +34,11 @@ export const translateSchedule = (text, lang) => {
       out = out.split(ar).join(AR_DAYS_MAP[ar]);
     });
   out = out
-    .replace(/\bو\s+/g, 'and ')
-    .replace(/\s+و\b/g, ' and')
-    .replace(/\bمن\b/g, 'from')
-    .replace(/\bإلى\b/g, 'to')
-    .replace(/\bالى\b/g, 'to')
-    .replace(/(\d)\s*م\b/g, '$1 PM')
-    .replace(/(\d)\s*ص\b/g, '$1 AM')
+    .replace(/\s+و\s+/g, ' and ')
+    .replace(/(^|[\s,،])من(?=[\s,،]|$)/g, '$1from')
+    .replace(/(^|[\s,،])(?:إلى|الى)(?=[\s,،]|$)/g, '$1to')
+    .replace(/(\d)\s*م(?![\u0600-\u06FF])/g, '$1 PM')
+    .replace(/(\d)\s*ص(?![\u0600-\u06FF])/g, '$1 AM')
     .replace(/،/g, ',');
   return out;
 };
