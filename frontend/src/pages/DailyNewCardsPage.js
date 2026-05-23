@@ -4,9 +4,10 @@ import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Badge } from '../components/ui/badge';
-import { Printer, CalendarDays, Users, Building2, RefreshCw, CreditCard, Filter } from 'lucide-react';
+import { Printer, CalendarDays, Users, Building2, RefreshCw, CreditCard, Filter, Languages } from 'lucide-react';
 import { membersAPI } from '../services/api';
 import { getMemberQRValue } from '../utils/memberQR';
+import { getPrintLang, setPrintLang, PRINT_LABELS } from '../utils/printLang';
 
 const todayStr = () => new Date().toISOString().split('T')[0];
 
@@ -17,6 +18,8 @@ const DailyNewCardsPage = () => {
   const [data, setData] = useState(null);
   const [selectedBranchId, setSelectedBranchId] = useState('all');
   const [selectedIds, setSelectedIds] = useState(() => new Set());
+  const [printLang, setPrintLangState] = useState(getPrintLang);
+  const changePrintLang = (l) => { setPrintLang(l); setPrintLangState(l); };
 
   const toggleMember = (id) => {
     setSelectedIds((prev) => {
@@ -89,7 +92,7 @@ const DailyNewCardsPage = () => {
     load(date);
   }, [date, load]);
 
-  const renderCardHtml = (m) => {
+  const renderCardHtml = (m, lang = printLang) => {
     const qrData = encodeURIComponent(getMemberQRValue(m.member_code || ''));
     const allActs = m.activities || [];
     const today = new Date();
@@ -111,23 +114,24 @@ const DailyNewCardsPage = () => {
       })
       .join('');
     const name = (m.name_ar || m.name || '').split('+').map((n) => n.trim()).filter(Boolean).join(' - ');
+    const L = PRINT_LABELS[lang] || PRINT_LABELS.ar;
     return `
-      <div class="card">
+      <div class="card" dir="${L.dir}">
         <div class="accent-stripe"><span>${(m.activities && m.activities[0] && m.activities[0].activity_name) || 'GLOBAL CHAMPIONS'}</span></div>
         <div class="card-header">
           <div class="header-logo"><img src="${window.location.origin}/images/academy-logo.png" alt="logo" /></div>
-          <div class="header-text"><h2>شركة اداء الابطال العالمية للرياضة</h2><p>Global Champions Sports Performance</p></div>
+          <div class="header-text"><h2>${L.company_name}</h2><p>${L.company_sub}</p></div>
         </div>
         <div class="card-body">
-          <div class="info-section">
-            <div class="info-label">الاسم</div>
+          <div class="info-section" style="text-align:${L.align};">
+            <div class="info-label">${L.name}</div>
             <div class="member-name">${name}</div>
-            <div class="info-row"><span class="info-label">رقم العضوية:</span><span class="member-code">#${m.member_code || ''}</span></div>
-            ${activitiesHtml ? `<div class="activities"><div class="activities-label">الأنشطة المسجلة</div>${activitiesHtml}</div>` : ''}
+            <div class="info-row"><span class="info-label">${L.member_id}:</span><span class="member-code">#${m.member_code || ''}</span></div>
+            ${activitiesHtml ? `<div class="activities"><div class="activities-label">${L.activities}</div>${activitiesHtml}</div>` : ''}
           </div>
           <div class="qr-container">
             <div class="qr-section"><img src="https://api.qrserver.com/v1/create-qr-code/?size=600x600&ecc=H&margin=1&qzone=1&format=png&data=${qrData}" /></div>
-            <div class="qr-dates"><span>من: ${startDate || '----'}</span><span>إلى: ${endDate || '----'}</span></div>
+            <div class="qr-dates"><span>${L.from} ${startDate || '----'}</span><span>${L.to} ${endDate || '----'}</span></div>
             ${schedule ? `<div class="schedule-info">📅 ${schedule}</div>` : ''}
           </div>
         </div>
@@ -157,7 +161,7 @@ const DailyNewCardsPage = () => {
     return scoped;
   };
 
-  const printAllCards = () => {
+  const printAllCards = (lang = printLang) => {
     if (!data || !data.members || data.members.length === 0) return;
     const branchesList = getFilteredBranches();
     if (branchesList.length === 0) return;
@@ -178,7 +182,7 @@ const DailyNewCardsPage = () => {
             <div class="row">
               <div class="branch-tag">${branch.branch_name}</div>
               <div class="row-cards">
-                ${renderCardHtml(member)}
+                ${renderCardHtml(member, lang)}
                 ${renderLogoCardHtml(branch.branch_phone, branch.branch_name)}
               </div>
             </div>
@@ -246,7 +250,7 @@ const DailyNewCardsPage = () => {
     markIdsPrinted(pairs.map((p) => p.member.id));
   };
 
-  const printCD820 = (mode = 'duplex') => {
+  const printCD820 = (mode = 'duplex', lang = printLang) => {
     if (!data || !data.members || data.members.length === 0) return;
     const branchesList = getFilteredBranches();
     if (branchesList.length === 0) return;
@@ -258,7 +262,7 @@ const DailyNewCardsPage = () => {
 
     const pagesHtml = [];
     allMembers.forEach(({ branch, member }) => {
-      pagesHtml.push(`<div class="cd-page front">${renderCardHtml(member)}</div>`);
+      pagesHtml.push(`<div class="cd-page front">${renderCardHtml(member, lang)}</div>`);
       if (mode === 'duplex') {
         pagesHtml.push(`<div class="cd-page back">${renderLogoCardHtml(branch.branch_phone, branch.branch_name)}</div>`);
       }
@@ -404,8 +408,25 @@ const DailyNewCardsPage = () => {
                 >
                   اليوم
                 </Button>
+                <div className="inline-flex rounded-md border border-gray-300 overflow-hidden" title="لغة الطباعة">
+                  <button
+                    type="button"
+                    onClick={() => changePrintLang('ar')}
+                    className={`px-3 h-10 text-sm font-bold flex items-center gap-1 ${printLang === 'ar' ? 'bg-orange-500 text-white' : 'bg-white text-gray-700 hover:bg-gray-50'}`}
+                  >
+                    <Languages className="w-3.5 h-3.5" />
+                    عربي
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => changePrintLang('en')}
+                    className={`px-3 h-10 text-sm font-bold border-r border-gray-300 ${printLang === 'en' ? 'bg-orange-500 text-white' : 'bg-white text-gray-700 hover:bg-gray-50'}`}
+                  >
+                    EN
+                  </button>
+                </div>
                 <Button
-                  onClick={printAllCards}
+                  onClick={() => printAllCards()}
                   disabled={loading || totalMembers === 0}
                   className="bg-orange-500 hover:bg-orange-600 text-white gap-2"
                 >

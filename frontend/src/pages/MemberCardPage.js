@@ -5,11 +5,12 @@ import { Card, CardContent } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../components/ui/dialog';
-import { User, CreditCard, Phone, Download, Printer, CheckCircle, XCircle } from 'lucide-react';
+import { User, CreditCard, Phone, Download, Printer, CheckCircle, XCircle, Languages } from 'lucide-react';
 import axios from 'axios';
 import { membersAPI } from '../services/api';
 import { getPrimaryColor } from '../services/branding';
 import { getMemberQRValue } from '../utils/memberQR';
+import { getPrintLang, setPrintLang, PRINT_LABELS } from '../utils/printLang';
 
 const API_URL = '';
 
@@ -19,6 +20,8 @@ const MemberCardPage = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [showPrintDialog, setShowPrintDialog] = useState(false);
+  const [printLang, setPrintLangState] = useState(getPrintLang);
+  const changePrintLang = (l) => { setPrintLang(l); setPrintLangState(l); };
 
   const searchMember = async () => {
     if (!searchQuery.trim()) return;
@@ -54,9 +57,9 @@ const MemberCardPage = () => {
     } catch (_e) {}
   };
 
-  const handleStickerPrint = () => {
+  const handleStickerPrint = (lang = printLang) => {
     setShowPrintDialog(false);
-    
+    const L = PRINT_LABELS[lang] || PRINT_LABELS.ar;
     const printWindow = window.open('', '_blank', 'width=800,height=600');
     const qrData = getQRData();
     const _brand = getPrimaryColor();
@@ -96,7 +99,7 @@ const MemberCardPage = () => {
             @import url('https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700&display=swap');
             @page { size: A4; margin: 0mm; }
             * { margin: 0; padding: 0; box-sizing: border-box; }
-            body { font-family: 'Tajawal', Arial, sans-serif; background: #f3f4f6; direction: rtl; }
+            body { font-family: 'Tajawal', Arial, sans-serif; background: #f3f4f6; direction: ${L.dir}; }
             .screen-only { padding: 20px; text-align: center; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; }
             @media print { .screen-only { display: none !important; } .print-area { display: flex !important; position: absolute; top: 10mm; right: 10mm; gap: 5mm; } }
             @media screen { .print-area { display: none; } }
@@ -110,7 +113,7 @@ const MemberCardPage = () => {
             .header-logo { width: 18mm; height: 18mm; border-radius: 50%; background: white; padding: 0; display: flex; align-items: center; justify-content: center; overflow: hidden; border: 1.5px solid white; box-shadow: 0 1px 3px rgba(0,0,0,0.2); }
             .header-logo img { width: 140%; height: 140%; object-fit: cover; border-radius: 50%; }
             .card-body { padding: 2mm 5mm 1.5mm 2.5mm; display: flex; flex-direction: column; gap: 1.5mm; flex: 1; min-height: 0; }
-            .info-section { text-align: right; overflow: hidden; flex: 1; min-height: 0; display: flex; flex-direction: column; }
+            .info-section { text-align: ${L.align}; overflow: hidden; flex: 1; min-height: 0; display: flex; flex-direction: column; }
             .qr-container { display: flex; flex-direction: column; align-items: center; flex-shrink: 0; padding-top: 1mm; }
             .qr-section { width: 26mm; height: 26mm; background: white; border: 1px solid #eee; border-radius: 2mm; padding: 0.5mm; }
             .qr-section img { width: 100%; height: 100%; }
@@ -149,21 +152,21 @@ const MemberCardPage = () => {
                 <div class="accent-stripe"><span>${(member?.activities && member.activities[0] && member.activities[0].activity_name) || 'GLOBAL CHAMPIONS'}</span></div>
                 <div class="card-header">
                   <div class="header-logo"><img src="${window.location.origin}/images/academy-logo.png" alt="logo" /></div>
-                  <div class="header-text"><h2>شركة اداء الابطال العالمية للرياضة</h2><p>Global Champions Sports Performance</p></div>
+                  <div class="header-text"><h2>${L.company_name}</h2><p>${L.company_sub}</p></div>
                 </div>
                 <div class="card-body">
                   <div class="info-section">
-                    <div class="info-label">الاسم</div>
+                    <div class="info-label">${L.name}</div>
                     <div class="member-name">${(member?.name_ar || member?.name || '').split('+').map(n => n.trim()).filter(Boolean).join(' - ')}</div>
-                    <div class="info-row"><span class="info-label">رقم العضوية:</span><span class="member-code">#${member?.member_code || ''}</span></div>
-                    <div class="info-row"><span class="info-label">رقم الجوال:</span><span>${member?.phone || '-'}</span></div>
-                    ${activitiesHtml ? `<div class="activities"><div class="activities-label">الأنشطة المسجلة</div>${activitiesHtml}</div>` : ''}
+                    <div class="info-row"><span class="info-label">${L.member_id}:</span><span class="member-code">#${member?.member_code || ''}</span></div>
+                    <div class="info-row"><span class="info-label">${L.phone}:</span><span>${member?.phone || '-'}</span></div>
+                    ${activitiesHtml ? `<div class="activities"><div class="activities-label">${L.activities}</div>${activitiesHtml}</div>` : ''}
                   </div>
                   <div class="qr-container">
                     <div class="qr-section"><img src="https://api.qrserver.com/v1/create-qr-code/?size=600x600&ecc=H&margin=1&qzone=1&format=png&data=${encodeURIComponent(qrData)}" /></div>
                     <div class="qr-dates">
-                      <span>من: ${startDate || '----'}</span>
-                      <span>إلى: ${endDate || '----'}</span>
+                      <span>${L.from} ${startDate || '----'}</span>
+                      <span>${L.to} ${endDate || '----'}</span>
                     </div>
                     ${schedule ? `<div class="schedule-info">📅 ${schedule}</div>` : ''}
                   </div>
@@ -190,21 +193,21 @@ const MemberCardPage = () => {
               <div class="accent-stripe"><span>${(member?.activities && member.activities[0] && member.activities[0].activity_name) || 'GLOBAL CHAMPIONS'}</span></div>
               <div class="card-header">
                 <div class="header-logo"><img src="${window.location.origin}/images/academy-logo.png" alt="logo" /></div>
-                <div class="header-text"><h2>شركة اداء الابطال العالمية للرياضة</h2><p>Global Champions Sports Performance</p></div>
+                <div class="header-text"><h2>${L.company_name}</h2><p>${L.company_sub}</p></div>
               </div>
               <div class="card-body">
                 <div class="info-section">
-                  <div class="info-label">الاسم</div>
+                  <div class="info-label">${L.name}</div>
                   <div class="member-name">${(member?.name_ar || member?.name || '').split('+').map(n => n.trim()).filter(Boolean).join(' - ')}</div>
-                  <div class="info-row"><span class="info-label">رقم العضوية:</span><span class="member-code">#${member?.member_code || ''}</span></div>
-                  <div class="info-row"><span class="info-label">رقم الجوال:</span><span>${member?.phone || '-'}</span></div>
-                  ${activitiesHtml ? `<div class="activities"><div class="activities-label">الأنشطة المسجلة</div>${activitiesHtml}</div>` : ''}
+                  <div class="info-row"><span class="info-label">${L.member_id}:</span><span class="member-code">#${member?.member_code || ''}</span></div>
+                  <div class="info-row"><span class="info-label">${L.phone}:</span><span>${member?.phone || '-'}</span></div>
+                  ${activitiesHtml ? `<div class="activities"><div class="activities-label">${L.activities}</div>${activitiesHtml}</div>` : ''}
                 </div>
                 <div class="qr-container">
                   <div class="qr-section"><img src="https://api.qrserver.com/v1/create-qr-code/?size=600x600&ecc=H&margin=1&qzone=1&format=png&data=${encodeURIComponent(qrData)}" /></div>
                   <div class="qr-dates">
-                    <span>من: ${startDate || '----'}</span>
-                    <span>إلى: ${endDate || '----'}</span>
+                    <span>${L.from} ${startDate || '----'}</span>
+                    <span>${L.to} ${endDate || '----'}</span>
                   </div>
                 </div>
               </div>
@@ -224,8 +227,9 @@ const MemberCardPage = () => {
     markCurrentPrinted();
   };
 
-  const handleCD820Print = (mode = 'duplex') => {
+  const handleCD820Print = (mode = 'duplex', lang = printLang) => {
     setShowPrintDialog(false);
+    const L = PRINT_LABELS[lang] || PRINT_LABELS.ar;
     const printWindow = window.open('', '_blank', 'width=800,height=600');
     const qrData = getQRData();
     const _brand = getPrimaryColor();
@@ -256,18 +260,18 @@ const MemberCardPage = () => {
           <div class="accent-stripe"><span>${(member?.activities && member.activities[0] && member.activities[0].activity_name) || 'GLOBAL CHAMPIONS'}</span></div>
           <div class="card-header">
             <div class="header-logo"><img src="${window.location.origin}/images/academy-logo.png" alt="logo" /></div>
-            <div class="header-text"><h2>شركة اداء الابطال العالمية للرياضة</h2><p>Global Champions Sports Performance</p></div>
+            <div class="header-text"><h2>${L.company_name}</h2><p>${L.company_sub}</p></div>
           </div>
           <div class="card-body">
-            <div class="info-section">
-              <div class="info-label">الاسم</div>
+            <div class="info-section" style="text-align:${L.align};">
+              <div class="info-label">${L.name}</div>
               <div class="member-name">${(member?.name_ar || member?.name || '').split('+').map(n => n.trim()).filter(Boolean).join(' - ')}</div>
-              <div class="info-row"><span class="info-label">رقم العضوية:</span><span class="member-code">#${member?.member_code || ''}</span></div>
-              ${activitiesHtml ? `<div class="activities"><div class="activities-label">الأنشطة المسجلة</div>${activitiesHtml}</div>` : ''}
+              <div class="info-row"><span class="info-label">${L.member_id}:</span><span class="member-code">#${member?.member_code || ''}</span></div>
+              ${activitiesHtml ? `<div class="activities"><div class="activities-label">${L.activities}</div>${activitiesHtml}</div>` : ''}
             </div>
             <div class="qr-container">
               <div class="qr-section"><img src="https://api.qrserver.com/v1/create-qr-code/?size=600x600&ecc=H&margin=1&qzone=1&format=png&data=${encodeURIComponent(qrData)}" /></div>
-              <div class="qr-dates"><span>من: ${startDate || '----'}</span><span>إلى: ${endDate || '----'}</span></div>
+              <div class="qr-dates"><span>${L.from} ${startDate || '----'}</span><span>${L.to} ${endDate || '----'}</span></div>
               ${schedule ? `<div class="schedule-info">📅 ${schedule}</div>` : ''}
             </div>
           </div>
@@ -290,7 +294,7 @@ const MemberCardPage = () => {
         @page { size: 54mm 85.6mm; margin: 0; }
         * { margin:0; padding:0; box-sizing:border-box; }
         html, body { width:54mm; }
-        body { font-family:'Tajawal',Arial,sans-serif; background:#e5e7eb; direction:rtl; }
+        body { font-family:'Tajawal',Arial,sans-serif; background:#e5e7eb; direction:${L.dir}; }
         .toolbar { padding:14px; text-align:center; background:white; border-bottom:1px solid #e5e7eb; position:sticky; top:0; }
         .toolbar button { padding:10px 24px; background:linear-gradient(135deg,#F97316,#EA580C); color:white; border:none; border-radius:8px; cursor:pointer; font-family:inherit; font-weight:700; font-size:15px; margin:0 4px; }
         .toolbar button.secondary { background:#374151; }
@@ -438,7 +442,17 @@ const MemberCardPage = () => {
                 <div className="py-4">
                   <p className="text-center text-gray-600 mb-2 font-bold">{(member?.name_ar || member?.name || '').split('+').map((n, i) => <span key={i}>{i > 0 && <br/>}{n.trim()}</span>)}</p>
                   <p className="text-center text-sm text-orange-600 mb-4 font-bold">#{member?.member_code}</p>
-                  <p className="text-center text-sm text-gray-500 mb-4">سيتم طباعة كرت العضوية + شعار الأكاديمية معاً</p>
+                  <p className="text-center text-sm text-gray-500 mb-3">سيتم طباعة كرت العضوية + شعار الأكاديمية معاً</p>
+                  <div className="flex justify-center mb-4">
+                    <div className="inline-flex rounded-md border border-gray-300 overflow-hidden text-sm" title="لغة الطباعة">
+                      <button type="button" onClick={() => changePrintLang('ar')} className={`px-4 py-1.5 font-bold flex items-center gap-1 ${printLang === 'ar' ? 'bg-orange-500 text-white' : 'bg-white text-gray-700 hover:bg-gray-50'}`}>
+                        <Languages className="w-3.5 h-3.5" /> عربي
+                      </button>
+                      <button type="button" onClick={() => changePrintLang('en')} className={`px-4 py-1.5 font-bold border-r border-gray-300 ${printLang === 'en' ? 'bg-orange-500 text-white' : 'bg-white text-gray-700 hover:bg-gray-50'}`}>
+                        English
+                      </button>
+                    </div>
+                  </div>
                   
                   {/* Preview Cards */}
                   <div className="bg-gray-100 p-4 rounded-lg">
@@ -468,7 +482,7 @@ const MemberCardPage = () => {
                   
                   <div className="mt-4 flex flex-col gap-2 items-center">
                     <Button
-                      onClick={handleStickerPrint}
+                      onClick={() => handleStickerPrint()}
                       className="bg-orange-500 hover:bg-orange-600 text-white px-8 py-3 text-lg w-full max-w-sm"
                     >
                       <Printer className="w-5 h-5 ml-2" />

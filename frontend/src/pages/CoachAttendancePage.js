@@ -9,6 +9,7 @@ import {
 import { QRCodeSVG } from 'qrcode.react';
 import axios from 'axios';
 import CoachCameraQRScanner from '../components/CoachCameraQRScanner';
+import { getPrintLang, setPrintLang, PRINT_LABELS } from '../utils/printLang';
 import {
   compressImageFile,
   estimateDataUrlBytes,
@@ -41,6 +42,8 @@ const CoachAttendancePage = () => {
   const [lateThreshold, setLateThreshold] = useState('09:00'); // وقت الحضور المعتاد
   const [lateDetailCoach, setLateDetailCoach] = useState(null); // popup for late details
   const [detailCoach, setDetailCoach] = useState(null); // daily breakdown modal
+  const [printLang, setPrintLangState] = useState(getPrintLang);
+  const changePrintLang = (l) => { setPrintLang(l); setPrintLangState(l); };
   const qrRef = useRef(null);
   const branchFilter = localStorage.getItem('selectedBranchId') || 'all';
 
@@ -1464,16 +1467,17 @@ const CoachAttendancePage = () => {
         const coachName = qrCoach.name_ar || qrCoach.name;
         const origin = window.location.origin;
 
-        const handlePrint = () => {
+        const handlePrint = (lang = printLang) => {
+          const L = PRINT_LABELS[lang] || PRINT_LABELS.ar;
           const win = window.open('', '_blank', 'width=900,height=700');
           win.document.write(`<!DOCTYPE html><html><head>
             <meta charset="UTF-8">
-            <title>كارت المدرب - ${coachName}</title>
+            <title>${L.coach} - ${coachName}</title>
             <style>
               @import url('https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700&display=swap');
               @page { size: A4; margin: 0mm; }
               * { margin:0; padding:0; box-sizing:border-box; }
-              body { font-family:'Tajawal',Arial,sans-serif; background:#f3f4f6; direction:rtl; }
+              body { font-family:'Tajawal',Arial,sans-serif; background:#f3f4f6; direction:${L.dir}; }
               .screen-only { padding:20px; display:flex; flex-direction:column; align-items:center; justify-content:center; min-height:100vh; }
               @media print { .screen-only { display:none !important; } .print-area { display:flex !important; position:absolute; top:10mm; right:15mm; gap:5mm; } }
               @media screen { .print-area { display:none; } }
@@ -1485,7 +1489,7 @@ const CoachAttendancePage = () => {
               .header-logo { width:10mm; height:10mm; border-radius:50%; background:white; padding:.5mm; display:flex; align-items:center; justify-content:center; }
               .header-logo img { width:100%; height:100%; object-fit:contain; border-radius:50%; }
               .card-body { padding:2mm; display:flex; gap:2mm; flex:1; }
-              .info-section { flex:1; text-align:right; overflow:hidden; }
+              .info-section { flex:1; text-align:${L.align}; overflow:hidden; }
               .qr-container { display:flex; flex-direction:column; align-items:center; }
               .qr-section { width:28mm; height:28mm; background:white; border:1px solid #eee; border-radius:2mm; padding:.5mm; }
               .qr-section img { width:100%; height:100%; }
@@ -1508,23 +1512,23 @@ const CoachAttendancePage = () => {
               <div class="sticker-preview">
                 <div class="card">
                   <div class="card-header">
-                    <div class="header-text"><h2>شركة اداء الابطال العالمية للرياضة</h2><p>Global Champions Sports Performance</p></div>
+                    <div class="header-text"><h2>${L.company_name}</h2><p>${L.company_sub}</p></div>
                     <div class="header-logo"><img src="${origin}/images/academy-logo.png" alt="logo"/></div>
                   </div>
                   <div class="card-body">
                     <div class="qr-container">
                       <div class="qr-section"><img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(qrValue)}" /></div>
-                      <div class="qr-label">تسجيل الحضور/الانصراف</div>
+                      <div class="qr-label">${L.checkin_out}</div>
                     </div>
                     <div class="info-section">
-                      <div class="coach-label">المدرب</div>
+                      <div class="coach-label">${L.coach}</div>
                       <div class="coach-name">${coachName}</div>
-                      <div class="info-row"><span class="info-label">رقم الموظف:</span><span class="member-code">#${employeeId}</span></div>
-                      ${qrCoach.phone ? `<div class="info-row"><span class="info-label">الجوال:</span><span>${qrCoach.phone}</span></div>` : ''}
+                      <div class="info-row"><span class="info-label">${L.employee_id}:</span><span class="member-code">#${employeeId}</span></div>
+                      ${qrCoach.phone ? `<div class="info-row"><span class="info-label">${L.phone_short}:</span><span>${qrCoach.phone}</span></div>` : ''}
                       ${qrCoach.specialization ? `<div class="badge">🏅 ${qrCoach.specialization}</div>` : ''}
                     </div>
                   </div>
-                  <div class="card-footer">امسح رمز QR لتسجيل الحضور أو الانصراف</div>
+                  <div class="card-footer">${L.checkin_out}</div>
                 </div>
                 <div class="logo-card">
                   <img src="${origin}/images/academy-logo.png" alt="شعار الأكاديمية"/>
@@ -1541,23 +1545,23 @@ const CoachAttendancePage = () => {
             <div class="print-area">
               <div class="card">
                 <div class="card-header">
-                  <div class="header-text"><h2>شركة اداء الابطال العالمية للرياضة</h2><p>Global Champions Sports Performance</p></div>
+                  <div class="header-text"><h2>${L.company_name}</h2><p>${L.company_sub}</p></div>
                   <div class="header-logo"><img src="${origin}/images/academy-logo.png" alt="logo"/></div>
                 </div>
                 <div class="card-body">
                   <div class="qr-container">
                     <div class="qr-section"><img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(qrValue)}" /></div>
-                    <div class="qr-label">تسجيل الحضور/الانصراف</div>
+                    <div class="qr-label">${L.checkin_out}</div>
                   </div>
                   <div class="info-section">
-                    <div class="coach-label">المدرب</div>
+                    <div class="coach-label">${L.coach}</div>
                     <div class="coach-name">${coachName}</div>
-                    <div class="info-row"><span class="info-label">رقم الموظف:</span><span class="member-code">#${employeeId}</span></div>
-                    ${qrCoach.phone ? `<div class="info-row"><span class="info-label">الجوال:</span><span>${qrCoach.phone}</span></div>` : ''}
+                    <div class="info-row"><span class="info-label">${L.employee_id}:</span><span class="member-code">#${employeeId}</span></div>
+                    ${qrCoach.phone ? `<div class="info-row"><span class="info-label">${L.phone_short}:</span><span>${qrCoach.phone}</span></div>` : ''}
                     ${qrCoach.specialization ? `<div class="badge">🏅 ${qrCoach.specialization}</div>` : ''}
                   </div>
                 </div>
-                <div class="card-footer">امسح رمز QR لتسجيل الحضور أو الانصراف</div>
+                <div class="card-footer">${L.checkin_out}</div>
               </div>
               <div class="logo-card">
                 <img src="${origin}/images/academy-logo.png" alt="شعار الأكاديمية"/>
@@ -1568,30 +1572,31 @@ const CoachAttendancePage = () => {
           win.document.close();
         };
 
-        const handleCD820Print = (mode = 'duplex') => {
+        const handleCD820Print = (mode = 'duplex', lang = printLang) => {
+          const L = PRINT_LABELS[lang] || PRINT_LABELS.ar;
           const win = window.open('', '_blank', 'width=800,height=600');
           const qrSrc = `https://api.qrserver.com/v1/create-qr-code/?size=600x600&ecc=H&margin=1&qzone=1&format=png&data=${encodeURIComponent(qrValue)}`;
           const frontHtml = `
             <div class="cd-page">
-              <div class="card">
+              <div class="card" dir="${L.dir}">
                 <div class="card-header">
                   <div class="header-logo"><img src="${origin}/images/academy-logo.png" alt="logo" /></div>
                   <div class="header-text">
-                    <h2>شركة اداء الابطال العالمية للرياضة</h2>
-                    <p>Global Champions Sports Performance</p>
+                    <h2>${L.company_name}</h2>
+                    <p>${L.company_sub}</p>
                   </div>
                 </div>
                 <div class="card-body">
-                  <div class="info-section">
-                    <div class="info-row"><span class="info-label">المدرب:</span></div>
+                  <div class="info-section" style="text-align:${L.align};">
+                    <div class="info-row"><span class="info-label">${L.coach_label}</span></div>
                     <div class="member-name">${coachName}</div>
-                    <div class="info-row"><span class="info-label">رقم الموظف:</span><span class="member-code">#${employeeId}</span></div>
-                    ${qrCoach.phone ? `<div class="info-row"><span class="info-label">الجوال:</span><span class="phone">${qrCoach.phone}</span></div>` : ''}
-                    ${qrCoach.specialization ? `<div class="activities"><div class="activities-label">التخصص</div><div class="activity-item active"><div class="activity-name">🏅 ${qrCoach.specialization}</div></div></div>` : ''}
+                    <div class="info-row"><span class="info-label">${L.employee_id}:</span><span class="member-code">#${employeeId}</span></div>
+                    ${qrCoach.phone ? `<div class="info-row"><span class="info-label">${L.phone_short}:</span><span class="phone">${qrCoach.phone}</span></div>` : ''}
+                    ${qrCoach.specialization ? `<div class="activities"><div class="activities-label">${L.specialization}</div><div class="activity-item active"><div class="activity-name">🏅 ${qrCoach.specialization}</div></div></div>` : ''}
                   </div>
                   <div class="qr-container">
                     <div class="qr-section"><img src="${qrSrc}" /></div>
-                    <div class="qr-label">حضور / انصراف</div>
+                    <div class="qr-label">${L.checkin_out}</div>
                   </div>
                 </div>
               </div>
@@ -1612,7 +1617,7 @@ const CoachAttendancePage = () => {
               @import url('https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;900&display=swap');
               @page { size: 54mm 85.6mm; margin: 0; }
               * { margin:0; padding:0; box-sizing:border-box; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
-              html, body { background:white; font-family:'Tajawal',Arial,sans-serif; direction:rtl; }
+              html, body { background:white; font-family:'Tajawal',Arial,sans-serif; direction:${L.dir}; }
               .toolbar { padding:14px; text-align:center; background:#f3f4f6; border-bottom:1px solid #e5e7eb; position:sticky; top:0; z-index:10; }
               .toolbar button { padding:10px 24px; background:linear-gradient(135deg,#F97316,#EA580C); color:white; border:none; border-radius:8px; cursor:pointer; font-family:inherit; font-weight:700; font-size:14px; margin:0 5px; }
               .toolbar .meta { margin-top:8px; color:#374151; font-size:12px; }
@@ -1729,6 +1734,12 @@ const CoachAttendancePage = () => {
 
               {/* Buttons */}
               <div className="px-5 pb-5 space-y-2">
+                <div className="flex justify-center mb-1">
+                  <div className="inline-flex rounded-md border border-gray-300 overflow-hidden text-xs" title="لغة الطباعة">
+                    <button type="button" onClick={() => changePrintLang('ar')} className={`px-3 py-1 font-bold ${printLang === 'ar' ? 'bg-orange-500 text-white' : 'bg-white text-gray-700 hover:bg-gray-50'}`}>عربي</button>
+                    <button type="button" onClick={() => changePrintLang('en')} className={`px-3 py-1 font-bold border-r border-gray-300 ${printLang === 'en' ? 'bg-orange-500 text-white' : 'bg-white text-gray-700 hover:bg-gray-50'}`}>English</button>
+                  </div>
+                </div>
                 <div className="flex gap-2">
                   <button
                     onClick={() => handleCD820Print('duplex')}
@@ -1745,7 +1756,7 @@ const CoachAttendancePage = () => {
                 </div>
                 <div className="flex gap-2">
                   <button
-                    onClick={handlePrint}
+                    onClick={() => handlePrint()}
                     className="flex-1 bg-orange-500 hover:bg-orange-600 text-white font-semibold py-2.5 rounded-xl flex items-center justify-center gap-2 transition-colors text-sm"
                   >
                     <Printer className="w-4 h-4" /> طباعة A4
