@@ -273,7 +273,6 @@ const MemberCardPage = () => {
               <div class="qr-section"><img src="https://api.qrserver.com/v1/create-qr-code/?size=600x600&ecc=H&margin=1&qzone=1&format=png&data=${encodeURIComponent(qrData)}" /></div>
               <div class="qr-dates"><span>${L.from} ${startDate || '----'}</span><span>${L.to} ${endDate || '----'}</span></div>
               ${schedule ? `<div class="schedule-info">📅 ${translateSchedule(schedule, lang)}</div>` : ''}
-              <div class="phone-row">📞 ${member?.branch_phone || '0566238384'}</div>
             </div>
           </div>
         </div>
