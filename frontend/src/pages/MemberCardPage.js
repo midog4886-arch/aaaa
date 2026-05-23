@@ -10,7 +10,7 @@ import axios from 'axios';
 import { membersAPI } from '../services/api';
 import { getPrimaryColor } from '../services/branding';
 import { getMemberQRValue } from '../utils/memberQR';
-import { getPrintLang, setPrintLang, PRINT_LABELS } from '../utils/printLang';
+import { getPrintLang, setPrintLang, PRINT_LABELS, translateSchedule } from '../utils/printLang';
 
 const API_URL = '';
 
@@ -168,7 +168,7 @@ const MemberCardPage = () => {
                       <span>${L.from} ${startDate || '----'}</span>
                       <span>${L.to} ${endDate || '----'}</span>
                     </div>
-                    ${schedule ? `<div class="schedule-info">📅 ${schedule}</div>` : ''}
+                    ${schedule ? `<div class="schedule-info">📅 ${translateSchedule(schedule, lang)}</div>` : ''}
                   </div>
                 </div>
               </div>
@@ -272,7 +272,7 @@ const MemberCardPage = () => {
             <div class="qr-container">
               <div class="qr-section"><img src="https://api.qrserver.com/v1/create-qr-code/?size=600x600&ecc=H&margin=1&qzone=1&format=png&data=${encodeURIComponent(qrData)}" /></div>
               <div class="qr-dates"><span>${L.from} ${startDate || '----'}</span><span>${L.to} ${endDate || '----'}</span></div>
-              ${schedule ? `<div class="schedule-info">📅 ${schedule}</div>` : ''}
+              ${schedule ? `<div class="schedule-info">📅 ${translateSchedule(schedule, lang)}</div>` : ''}
             </div>
           </div>
         </div>

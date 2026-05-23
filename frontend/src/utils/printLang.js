@@ -15,6 +15,36 @@ export const setPrintLang = (lang) => {
   } catch {}
 };
 
+const AR_DAYS_MAP = {
+  'الأحد': 'Sun', 'الاحد': 'Sun',
+  'الإثنين': 'Mon', 'الاثنين': 'Mon',
+  'الثلاثاء': 'Tue',
+  'الأربعاء': 'Wed', 'الاربعاء': 'Wed',
+  'الخميس': 'Thu',
+  'الجمعة': 'Fri',
+  'السبت': 'Sat',
+};
+
+export const translateSchedule = (text, lang) => {
+  if (!text || lang !== 'en') return text || '';
+  let out = String(text);
+  Object.keys(AR_DAYS_MAP)
+    .sort((a, b) => b.length - a.length)
+    .forEach((ar) => {
+      out = out.split(ar).join(AR_DAYS_MAP[ar]);
+    });
+  out = out
+    .replace(/\bو\s+/g, 'and ')
+    .replace(/\s+و\b/g, ' and')
+    .replace(/\bمن\b/g, 'from')
+    .replace(/\bإلى\b/g, 'to')
+    .replace(/\bالى\b/g, 'to')
+    .replace(/(\d)\s*م\b/g, '$1 PM')
+    .replace(/(\d)\s*ص\b/g, '$1 AM')
+    .replace(/،/g, ',');
+  return out;
+};
+
 export const PRINT_LABELS = {
   ar: {
     name: 'الاسم',
