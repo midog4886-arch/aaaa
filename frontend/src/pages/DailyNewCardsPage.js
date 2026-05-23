@@ -220,9 +220,9 @@ const DailyNewCardsPage = () => {
         .card-body { padding:2mm 5mm 1.5mm 2.5mm; display:flex; flex-direction:column; gap:1.5mm; flex:1; min-height:0; }
         .info-section { text-align:right; overflow:hidden; flex:1; min-height:0; display:flex; flex-direction:column; }
         .qr-container { display:flex; flex-direction:column; align-items:center; flex-shrink:0; padding-top:1mm; }
-        .qr-section { width:26mm; height:26mm; background:white; border:1px solid #eee; border-radius:2mm; padding:0.5mm; }
+        .qr-section { width:22mm; height:22mm; background:white; border:1px solid #eee; border-radius:2mm; padding:0.4mm; }
         .qr-section img { width:100%; height:100%; }
-        .qr-dates { text-align:center; font-size:6pt; color:#1f2937; margin-top:0.8mm; line-height:1.3; font-weight:700; }
+        .qr-dates { text-align:center; font-size:5.5pt; color:#1f2937; margin-top:0.4mm; line-height:1.2; font-weight:700; }
         .qr-dates span { display:block; }
         .qr-label { text-align:center; font-size:6.5pt; color:#F97316; font-weight:900; margin-top:0.5mm; letter-spacing:0.3mm; }
         .schedule-info { text-align:center; font-size:5.5pt; color:#F97316; margin-top:0.5mm; font-weight:700; background:#FFF7ED; padding:0.4mm 1mm; border-radius:1.5mm; }
