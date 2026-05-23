@@ -133,6 +133,7 @@ const DailyNewCardsPage = () => {
             <div class="qr-section"><img src="https://api.qrserver.com/v1/create-qr-code/?size=600x600&ecc=H&margin=1&qzone=1&format=png&data=${qrData}" /></div>
             <div class="qr-dates"><span>${L.from} ${startDate || '----'}</span><span>${L.to} ${endDate || '----'}</span></div>
             ${schedule ? `<div class="schedule-info">📅 ${translateSchedule(schedule, lang)}</div>` : ''}
+            <div class="phone-row">📞 ${m._branch_phone || '0566238384'}</div>
           </div>
         </div>
       </div>
@@ -182,7 +183,7 @@ const DailyNewCardsPage = () => {
             <div class="row">
               <div class="branch-tag">${branch.branch_name}</div>
               <div class="row-cards">
-                ${renderCardHtml(member, lang)}
+                ${renderCardHtml({ ...member, _branch_phone: branch.branch_phone }, lang)}
                 ${renderLogoCardHtml(branch.branch_phone, branch.branch_name)}
               </div>
             </div>
@@ -213,7 +214,8 @@ const DailyNewCardsPage = () => {
         .card-header { background:linear-gradient(135deg,#0B1F3A 0%,#1E3A5F 35%,#C9A227 78%,#F5C842 100%); padding:2mm 2mm 2.5mm; display:flex; flex-direction:column; align-items:center; gap:1mm; color:white; text-align:center; }
         .header-text h2 { font-size:7.5pt; font-weight:900; line-height:1.2; }
         .header-text p { font-size:5.5pt; font-weight:800; opacity:0.95; margin-top:0.3mm; }
-        .header-logo { width:18mm; height:18mm; border-radius:50%; background:white; padding:0; display:flex; align-items:center; justify-content:center; overflow:hidden; border:1.5px solid white; box-shadow:0 1px 3px rgba(0,0,0,0.2); }
+        .header-logo { width:14mm; height:14mm; border-radius:50%; background:white; padding:0; display:flex; align-items:center; justify-content:center; overflow:hidden; border:1.5px solid white; box-shadow:0 1px 3px rgba(0,0,0,0.2); }
+        .phone-row { text-align:center; font-size:7pt; color:#0B1F3A; font-weight:800; margin-top:0.6mm; direction:ltr; letter-spacing:0.2pt; }
         .header-logo img { width:140%; height:140%; object-fit:cover; border-radius:50%; }
         .card-body { padding:2mm 5mm 1.5mm 2.5mm; display:flex; flex-direction:column; gap:1.5mm; flex:1; min-height:0; }
         .info-section { text-align:right; overflow:hidden; flex:1; min-height:0; display:flex; flex-direction:column; }
