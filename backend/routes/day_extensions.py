@@ -414,6 +414,21 @@ async def apply_extension(data: ExtensionApply, user=Depends(get_current_user)):
     extended_members = []
     skipped_members = []
 
+    existing_ext_keys = set()
+    try:
+        async for ext in db.day_extensions.find(
+            {"closure_id": data.closure_id},
+            {"member_id": 1, "activity_id": 1, "scope_type": 1, "level_subscription_id": 1, "_id": 0}
+        ):
+            stype = ext.get("scope_type") or "activity"
+            mid = ext.get("member_id") or ""
+            if stype == "level_sub":
+                existing_ext_keys.add((stype, mid, ext.get("level_subscription_id") or ""))
+            else:
+                existing_ext_keys.add((stype, mid, ext.get("activity_id") or ""))
+    except Exception:
+        pass
+
     all_invoices = await db.invoices.find(
         {"items.schedule": {"$exists": True, "$ne": ""}}
     ).sort("created_at", -1).to_list(50000)
@@ -453,6 +468,9 @@ async def apply_extension(data: ExtensionApply, user=Depends(get_current_user)):
             act_name = act.get("activity_name", act.get("name", ""))
             m_id = member.get("id", "")
 
+            if ("activity", m_id, act_id) in existing_ext_keys:
+                continue
+
             schedule_key = f"{m_id}_{act_id}"
             gen_key = f"{m_id}_general"
             schedule_text = member_schedules.get(schedule_key, member_schedules.get(gen_key, ""))
@@ -485,6 +503,7 @@ async def apply_extension(data: ExtensionApply, user=Depends(get_current_user)):
                 end_date = datetime.strptime(act["end_date"], '%Y-%m-%d')
                 old_end_dates[act_name] = act["end_date"]
 
+                _ext_record = None
                 if member_training_days:
                     missed = count_missed_sessions(closure_start, closure_end, member_training_days)
                     day_names = [ARABIC_DAY_NAMES.get(d, "") for d in sorted(member_training_days)]
@@ -501,6 +520,14 @@ async def apply_extension(data: ExtensionApply, user=Depends(get_current_user)):
                             parts = act["period"].split(" - ")
                             act["period"] = f"{parts[0]} - {new_end.strftime('%Y-%m-%d')}"
                         updated = True
+                        _ext_record = {
+                            "missed": missed,
+                            "old_end": old_end_dates[act_name],
+                            "new_end": act["end_date"],
+                            "schedule": schedule_text,
+                            "training_days": ", ".join(day_names),
+                            "mode": "training_days",
+                        }
                     else:
                         missed_info[act_name] = {
                             "missed_sessions": 0,
@@ -522,6 +549,40 @@ async def apply_extension(data: ExtensionApply, user=Depends(get_current_user)):
                         parts = act["period"].split(" - ")
                         act["period"] = f"{parts[0]} - {new_end.strftime('%Y-%m-%d')}"
                     updated = True
+                    _ext_record = {
+                        "missed": int(round(fallback_days)),
+                        "old_end": old_end_dates[act_name],
+                        "new_end": act["end_date"],
+                        "schedule": "",
+                        "training_days": "غير محدد",
+                        "mode": "fallback_days",
+                    }
+
+                if _ext_record and not data.dry_run:
+                    try:
+                        await db.day_extensions.insert_one({
+                            "id": str(uuid.uuid4()),
+                            "scope_type": "activity",
+                            "closure_id": data.closure_id,
+                            "closure_title": closure.get("title_ar", "") or closure.get("title_en", ""),
+                            "member_id": m_id,
+                            "member_name": member.get("name_ar") or member.get("name", ""),
+                            "member_code": member.get("member_code", ""),
+                            "branch_id": member.get("branch_id", ""),
+                            "activity_id": act_id,
+                            "activity_name": act_name,
+                            "old_end_date": _ext_record["old_end"],
+                            "new_end_date": _ext_record["new_end"],
+                            "missed_sessions": _ext_record["missed"],
+                            "schedule": _ext_record["schedule"],
+                            "training_days": _ext_record["training_days"],
+                            "mode": _ext_record["mode"],
+                            "applied_by": user.get("username", ""),
+                            "applied_at": datetime.now(timezone.utc).isoformat(),
+                        })
+                        existing_ext_keys.add(("activity", m_id, act_id))
+                    except Exception:
+                        pass
             except Exception:
                 pass
 
@@ -540,24 +601,55 @@ async def apply_extension(data: ExtensionApply, user=Depends(get_current_user)):
                 if sub.get("end_date"):
                     try:
                         sub_act_id = sub.get("activity_id", "")
+                        sub_uid = sub.get("id") or str(sub.get("_id", ""))
+                        if ("level_sub", member["id"], sub_uid) in existing_ext_keys:
+                            continue
                         s_key = f"{member['id']}_{sub_act_id}"
                         s_gen_key = f"{member['id']}_general"
                         s_text = member_schedules.get(s_key, member_schedules.get(s_gen_key, ""))
                         s_days = parse_schedule_days(s_text)
                         sub_end = datetime.strptime(sub["end_date"], '%Y-%m-%d')
+                        _s_missed = 0
+                        _s_mode = "fallback_days"
                         if s_days:
                             s_missed = count_missed_sessions(closure_start, closure_end, s_days)
                             if s_missed > 0:
                                 new_sub_end = find_new_end_date(sub_end, s_missed, s_days)
+                                _s_missed = s_missed
+                                _s_mode = "training_days"
                             else:
                                 continue
                         else:
                             new_sub_end = sub_end + timedelta(days=int(round(fallback_days)))
+                            _s_missed = int(round(fallback_days))
                         if not data.dry_run:
+                            old_sub_end = sub["end_date"]
+                            new_sub_end_str = new_sub_end.strftime('%Y-%m-%d')
                             await db.level_subscriptions.update_one(
                                 {"_id": sub["_id"]},
-                                {"$set": {"end_date": new_sub_end.strftime('%Y-%m-%d')}}
+                                {"$set": {"end_date": new_sub_end_str}}
                             )
+                            try:
+                                await db.day_extensions.insert_one({
+                                    "id": str(uuid.uuid4()),
+                                    "scope_type": "level_sub",
+                                    "closure_id": data.closure_id,
+                                    "closure_title": closure.get("title_ar", "") or closure.get("title_en", ""),
+                                    "member_id": member["id"],
+                                    "member_name": member.get("name_ar") or member.get("name", ""),
+                                    "branch_id": member.get("branch_id", ""),
+                                    "activity_id": sub_act_id,
+                                    "level_subscription_id": sub_uid,
+                                    "old_end_date": old_sub_end,
+                                    "new_end_date": new_sub_end_str,
+                                    "missed_sessions": _s_missed,
+                                    "mode": _s_mode,
+                                    "applied_by": user.get("username", ""),
+                                    "applied_at": datetime.now(timezone.utc).isoformat(),
+                                })
+                                existing_ext_keys.add(("level_sub", member["id"], sub_uid))
+                            except Exception:
+                                pass
                     except Exception:
                         pass
 
