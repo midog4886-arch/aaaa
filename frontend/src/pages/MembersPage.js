@@ -15,7 +15,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { Popover, PopoverContent, PopoverTrigger } from '../components/ui/popover';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '../components/ui/command';
 import { Textarea } from '../components/ui/textarea';
-import { membersAPI, activitiesAPI, coachesAPI, exportAPI, invoicesAPI, attendanceAPI, levelsAPI, productInvoicesAPI, freezesAPI, tournamentsAPI, whatsappAPI } from '../services/api';
+import { membersAPI, activitiesAPI, coachesAPI, exportAPI, invoicesAPI, attendanceAPI, levelsAPI, productInvoicesAPI, freezesAPI, tournamentsAPI, whatsappAPI, dayExtensionsAPI } from '../services/api';
 import { toast } from 'sonner';
 import { 
   Plus, 
@@ -134,6 +134,7 @@ export const MembersPage = () => {
   const [memberFreezes, setMemberFreezes] = useState([]);
   const [memberFreezeStats, setMemberFreezeStats] = useState(null);
   const [freezeLoading, setFreezeLoading] = useState(false);
+  const [appliedClosures, setAppliedClosures] = useState([]);
   const [renewalActivity, setRenewalActivity] = useState(null);
   const [renewalForm, setRenewalForm] = useState({
     start_date: '',
@@ -709,6 +710,68 @@ export const MembersPage = () => {
     return dates;
   };
 
+  const closureMatchesActivity = (closure, activityId) => {
+    const scope = closure.scope || 'all';
+    if (scope === 'all') return true;
+    const ids = Array.isArray(closure.activity_ids) ? closure.activity_ids : [];
+    const single = closure.activity_id ? [closure.activity_id] : [];
+    const all = [...ids, ...single].filter(Boolean);
+    return all.length === 0 || all.includes(activityId);
+  };
+
+  const closureMatchesBranch = (closure, memberBranchId) => {
+    const cb = closure.branch_id;
+    if (!cb || cb === 'all') return true;
+    return cb === memberBranchId;
+  };
+
+  const computeTransferInfo = (q, member, closures) => {
+    const transferred = new Set();
+    const transferredMeta = {};
+    if (!Array.isArray(closures) || closures.length === 0 || !q.schedule_days?.length) {
+      return { transferredSet: transferred, transferredMeta, replacementDates: [] };
+    }
+    const targetDays = q.schedule_days.map(d => ARABIC_DAY_TO_JS[d]).filter(n => n !== undefined);
+    if (!targetDays.length) return { transferredSet: transferred, transferredMeta, replacementDates: [] };
+    const subStart = q.start_date;
+    const subEnd = q.end_date;
+    for (const cl of closures) {
+      if (!cl.applied) continue;
+      if (!closureMatchesActivity(cl, q.activity_id)) continue;
+      if (!closureMatchesBranch(cl, member?.branch_id)) continue;
+      if (!cl.start_date || !cl.end_date) continue;
+      const [csy, csm, csd] = cl.start_date.split('-').map(Number);
+      const [cey, cem, ced] = cl.end_date.split('-').map(Number);
+      const ce = new Date(cey, cem - 1, ced);
+      const cur = new Date(csy, csm - 1, csd);
+      while (cur <= ce) {
+        if (targetDays.includes(cur.getDay())) {
+          const ds = localDateStr(cur);
+          if ((!subStart || ds >= subStart) && (!subEnd || ds <= subEnd)) {
+            transferred.add(ds);
+            transferredMeta[ds] = { title: cl.title_ar || cl.title_en || '', closureId: cl.id };
+          }
+        }
+        cur.setDate(cur.getDate() + 1);
+      }
+    }
+    const replacementDates = [];
+    if (transferred.size > 0 && subEnd) {
+      const [ey, em, ed] = subEnd.split('-').map(Number);
+      const cur = new Date(ey, em - 1, ed);
+      cur.setDate(cur.getDate() + 1);
+      let guard = 0;
+      while (replacementDates.length < transferred.size && guard < 365) {
+        if (targetDays.includes(cur.getDay())) {
+          replacementDates.push(localDateStr(cur));
+        }
+        cur.setDate(cur.getDate() + 1);
+        guard++;
+      }
+    }
+    return { transferredSet: transferred, transferredMeta, replacementDates };
+  };
+
   const refreshMemberAttendance = async (memberId) => {
     try {
       const [attendanceRes, quotaRes] = await Promise.all([
@@ -746,18 +809,21 @@ export const MembersPage = () => {
     setMemberSessionQuota([]);
     setMemberTournaments([]);
     try {
-      const [invoicesRes, attendanceRes, productInvRes, quotaRes, tournamentsRes] = await Promise.all([
+      const [invoicesRes, attendanceRes, productInvRes, quotaRes, tournamentsRes, closuresRes] = await Promise.all([
         invoicesAPI.getAll({ member_id: member.id }),
         attendanceAPI.getMemberReport(member.id),
         productInvoicesAPI.getAll({ member_id: member.id }),
         attendanceAPI.getSessionQuota(member.id),
-        tournamentsAPI.getByMember(member.id).catch(() => ({ data: [] }))
+        tournamentsAPI.getByMember(member.id).catch(() => ({ data: [] })),
+        dayExtensionsAPI.getClosures().catch(() => ({ data: [] }))
       ]);
       setMemberInvoices(invoicesRes.data);
       setMemberAttendance(attendanceRes.data);
       setMemberProductPurchases(Array.isArray(productInvRes.data) ? productInvRes.data : []);
       setMemberSessionQuota(Array.isArray(quotaRes.data) ? quotaRes.data : []);
       setMemberTournaments(Array.isArray(tournamentsRes.data) ? tournamentsRes.data : []);
+      const closuresList = Array.isArray(closuresRes.data) ? closuresRes.data : [];
+      setAppliedClosures(closuresList.filter(c => c.applied));
     } catch (error) {
       console.error('Failed to load member data:', error);
       setMemberInvoices([]);
@@ -2966,7 +3032,10 @@ export const MembersPage = () => {
                         <div className="space-y-2">
                           {memberSessionQuota.map((q, idx) => {
                             const isExpanded = expandedQuotaIdx.has(idx);
-                            const scheduleDates = generateScheduleDates(q.start_date, q.end_date, q.schedule_days);
+                            const baseDates = generateScheduleDates(q.start_date, q.end_date, q.schedule_days);
+                            const transferInfo = computeTransferInfo(q, selectedMember, appliedClosures);
+                            const scheduleDates = [...baseDates, ...transferInfo.replacementDates];
+                            const replacementSet = new Set(transferInfo.replacementDates);
                             const attendedDates = new Set(
                               (memberAttendance?.records || [])
                                 .filter(r => r.activity_id === q.activity_id && (r.status === 'present' || !r.status))
@@ -3019,14 +3088,18 @@ export const MembersPage = () => {
                                         const attended = attendedDates.has(date);
                                         const isFuture = date > todayStr;
                                         const isToday = date === todayStr;
+                                        const isTransferred = transferInfo.transferredSet.has(date);
+                                        const isReplacement = replacementSet.has(date);
+                                        const transferMeta = transferInfo.transferredMeta[date];
                                         const key = `${q.activity_id}_${date}`;
                                         const isRegistering = registeringDate === key;
+                                        const clickable = !attended && !isRegistering && !isFuture && !isTransferred;
                                         return (
                                           <button
-                                            key={date}
-                                            disabled={attended || isRegistering || isFuture}
+                                            key={date + (isReplacement ? '_r' : '')}
+                                            disabled={!clickable}
                                             onClick={() => {
-                                              if (!attended && !isRegistering && !isFuture) {
+                                              if (clickable) {
                                                 if (window.confirm(language === 'ar'
                                                   ? `تسجيل حضور بتاريخ ${date}؟`
                                                   : `Record attendance for ${date}?`)) {
@@ -3034,33 +3107,60 @@ export const MembersPage = () => {
                                                 }
                                               }
                                             }}
-                                            title={attended
-                                              ? (language === 'ar' ? 'تم التسجيل' : 'Attended')
-                                              : isFuture
-                                                ? (language === 'ar' ? 'موعد مستقبلي' : 'Future date')
-                                                : (language === 'ar' ? 'اضغط للتسجيل' : 'Click to register')}
-                                            className={`text-xs px-2 py-1 rounded-full border font-medium transition-all ${
-                                              attended
-                                                ? 'bg-green-100 border-green-400 text-green-700 cursor-default'
-                                                : isRegistering
-                                                  ? 'bg-blue-100 border-blue-300 text-blue-500 cursor-wait'
+                                            title={isTransferred
+                                              ? (language === 'ar' ? `مُرحَّل (${transferMeta?.title || ''}) — تم تعويضه بحصة بديلة` : `Transferred (${transferMeta?.title || ''}) — replaced with a make-up session`)
+                                              : isReplacement
+                                                ? (language === 'ar' ? 'حصة بديلة (تعويض ترحيل)' : 'Replacement session (make-up)')
+                                                : attended
+                                                  ? (language === 'ar' ? 'تم التسجيل' : 'Attended')
                                                   : isFuture
-                                                    ? 'bg-gray-100 border-gray-300 text-gray-400 cursor-not-allowed'
-                                                    : isToday
-                                                      ? 'bg-blue-500 border-blue-600 text-white cursor-pointer hover:bg-blue-600 shadow-sm'
-                                                      : 'bg-white border-blue-300 text-blue-700 cursor-pointer hover:bg-blue-50'
+                                                    ? (language === 'ar' ? 'موعد مستقبلي' : 'Future date')
+                                                    : (language === 'ar' ? 'اضغط للتسجيل' : 'Click to register')}
+                                            className={`text-xs px-2 py-1 rounded-full border font-medium transition-all ${
+                                              isTransferred
+                                                ? 'bg-orange-100 border-orange-400 text-orange-800 line-through decoration-orange-600 cursor-not-allowed'
+                                                : isReplacement
+                                                  ? attended
+                                                    ? 'bg-green-100 border-green-400 text-green-700 cursor-default ring-2 ring-purple-300'
+                                                    : isFuture
+                                                      ? 'bg-purple-50 border-purple-300 text-purple-600 cursor-not-allowed'
+                                                      : 'bg-purple-50 border-purple-400 text-purple-800 cursor-pointer hover:bg-purple-100'
+                                                  : attended
+                                                    ? 'bg-green-100 border-green-400 text-green-700 cursor-default'
+                                                    : isRegistering
+                                                      ? 'bg-blue-100 border-blue-300 text-blue-500 cursor-wait'
+                                                      : isFuture
+                                                        ? 'bg-gray-100 border-gray-300 text-gray-400 cursor-not-allowed'
+                                                        : isToday
+                                                          ? 'bg-blue-500 border-blue-600 text-white cursor-pointer hover:bg-blue-600 shadow-sm'
+                                                          : 'bg-white border-blue-300 text-blue-700 cursor-pointer hover:bg-blue-50'
                                             }`}
                                           >
-                                            {isRegistering ? '...' : attended ? `✓ ${date}` : date}
+                                            {isTransferred ? (
+                                              <span className="inline-flex items-center gap-1">
+                                                <span>{date}</span>
+                                                <span className="text-[10px] bg-orange-200 text-orange-900 px-1 rounded">{language === 'ar' ? 'مُرحَّل' : 'Transferred'}</span>
+                                              </span>
+                                            ) : isReplacement ? (
+                                              <span className="inline-flex items-center gap-1">
+                                                {attended && <span>✓</span>}
+                                                <span>{date}</span>
+                                                <span className="text-[10px] bg-purple-200 text-purple-900 px-1 rounded">{language === 'ar' ? 'بديل' : 'Make-up'}</span>
+                                              </span>
+                                            ) : (
+                                              isRegistering ? '...' : attended ? `✓ ${date}` : date
+                                            )}
                                           </button>
                                         );
                                       })}
                                     </div>
-                                    <div className="mt-2 flex items-center gap-3 text-xs text-gray-500">
+                                    <div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-gray-500">
                                       <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-green-400 inline-block"></span>{language === 'ar' ? 'حضر' : 'Attended'}</span>
                                       <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-blue-500 inline-block"></span>{language === 'ar' ? 'اليوم' : 'Today'}</span>
                                       <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-white border border-blue-300 inline-block"></span>{language === 'ar' ? 'غائب (اضغط للتسجيل)' : 'Missed (click to register)'}</span>
                                       <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-gray-200 inline-block"></span>{language === 'ar' ? 'مستقبلي' : 'Future'}</span>
+                                      <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-orange-200 border border-orange-400 inline-block"></span>{language === 'ar' ? 'مُرحَّل' : 'Transferred'}</span>
+                                      <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-purple-200 border border-purple-400 inline-block"></span>{language === 'ar' ? 'حصة بديلة' : 'Make-up'}</span>
                                     </div>
                                   </div>
                                 )}

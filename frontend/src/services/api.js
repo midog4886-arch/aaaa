@@ -571,6 +571,16 @@ export const messagesAPI = {
   delete: (id) => axios.delete(`${API}/messages/${id}`),
 };
 
+export const dayExtensionsAPI = {
+  getClosures: () => axios.get(`${API}/day-extensions/closures`),
+  createClosure: (data) => axios.post(`${API}/day-extensions/closures`, data),
+  deleteClosure: (id) => axios.delete(`${API}/day-extensions/closures/${id}`),
+  applyExtension: (data) => axios.post(`${API}/day-extensions/apply`, data),
+  manualExtension: (data) => axios.post(`${API}/day-extensions/manual`, data),
+  getLogs: () => axios.get(`${API}/day-extensions/logs`),
+  getAvailableTimes: () => axios.get(`${API}/day-extensions/available-times`),
+};
+
 export default {
   auth: authAPI,
   activities: activitiesAPI,
@@ -602,15 +612,7 @@ export default {
     deleteExpense: (id) => axios.delete(`${API}/daily-ledger/expenses/${id}`),
     getCategories: () => axios.get(`${API}/daily-ledger/categories`),
   },
-  dayExtensions: {
-    getClosures: () => axios.get(`${API}/day-extensions/closures`),
-    createClosure: (data) => axios.post(`${API}/day-extensions/closures`, data),
-    deleteClosure: (id) => axios.delete(`${API}/day-extensions/closures/${id}`),
-    applyExtension: (data) => axios.post(`${API}/day-extensions/apply`, data),
-    manualExtension: (data) => axios.post(`${API}/day-extensions/manual`, data),
-    getLogs: () => axios.get(`${API}/day-extensions/logs`),
-    getAvailableTimes: () => axios.get(`${API}/day-extensions/available-times`),
-  },
+  dayExtensions: dayExtensionsAPI,
   get: (url) => axios.get(`${API}${url}`),
   post: (url, data) => axios.post(`${API}${url}`, data),
   put: (url, data) => axios.put(`${API}${url}`, data),
