@@ -324,7 +324,7 @@ async def get_member_card_public(search_term: str):
     if not member and search_term.isdigit():
         import re as _re
         matches = await db.members.find(
-            {"member_code": {"$regex": f"-{_re.escape(search_term)}$"}},
+            {"member_code": {"$regex": f"-{_re.escape(search_term)}[^0-9]*$"}},
             {"_id": 0}
         ).to_list(5)
         if len(matches) == 1:
