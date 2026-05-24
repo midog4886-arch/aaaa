@@ -465,6 +465,21 @@ export default function DayExtensionsPage() {
                             </span>
                           )}
                         </div>
+                        {closure.applied && (
+                          <div className="mt-2 inline-flex items-center gap-1.5 text-xs px-2 py-1 rounded bg-green-100 text-green-800">
+                            <CheckCircle className="w-3 h-3" />
+                            {t('تم التطبيق', 'Applied on')}: {closure.applied_at ? new Date(closure.applied_at).toLocaleString(language === 'ar' ? 'ar-SA' : 'en-US', { dateStyle: 'short', timeStyle: 'short' }) : '—'}
+                            {closure.applied_by && (
+                              <span className="ms-1">• {t('بواسطة', 'by')} {closure.applied_by}</span>
+                            )}
+                          </div>
+                        )}
+                        {!closure.applied && (
+                          <div className="mt-2 inline-flex items-center gap-1.5 text-xs px-2 py-1 rounded bg-orange-100 text-orange-800">
+                            <Clock className="w-3 h-3" />
+                            {t('لم يتم الترحيل بعد — اضغط "ترحيل للجميع"', 'Not applied yet — click "Apply to All"')}
+                          </div>
+                        )}
                         {closure.notes && <p className="text-sm text-muted-foreground mt-1">{closure.notes}</p>}
                       </div>
                       <div className="flex gap-2">
