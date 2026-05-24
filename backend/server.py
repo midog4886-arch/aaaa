@@ -10275,6 +10275,52 @@ async def create_default_admin():
     except Exception as e:
         print(f"Social uploads cleanup scheduler start failed: {e}")
 
+    async def _backfill_freeze_extensions_one_tenant(tenant: dict):
+        from routes.day_extensions import extend_freezes_for_closure
+        from database import db as tdb
+        cursor = tdb.closures.find({
+            "applied": True,
+            "$or": [{"freezes_extended": {"$exists": False}}, {"freezes_extended": False}],
+        })
+        total = 0
+        async for cl in cursor:
+            cl.pop("_id", None)
+            affected = cl.get("affected_members") or []
+            member_ids = [a.get("member_id", "") for a in affected if a.get("member_id")]
+            if not member_ids:
+                await tdb.closures.update_one(
+                    {"id": cl.get("id")},
+                    {"$set": {"freezes_extended": True, "freezes_extended_count": 0}}
+                )
+                continue
+            try:
+                res = await extend_freezes_for_closure(cl, member_ids, "system_backfill")
+                total += int(res.get("extended", 0))
+                await tdb.closures.update_one(
+                    {"id": cl.get("id")},
+                    {"$set": {"freezes_extended": True, "freezes_extended_count": int(res.get("extended", 0))}}
+                )
+            except Exception as _e:
+                print(f"Freeze backfill failed for closure {cl.get('id')}: {_e}")
+        return {"extended": total}
+
+    async def _run_freeze_backfill_once():
+        try:
+            await asyncio.sleep(30)
+            from utils.tenant import for_each_active_tenant
+            summary = await for_each_active_tenant(
+                _backfill_freeze_extensions_one_tenant,
+                label="freeze-extensions-backfill",
+            )
+            print(f"Freeze extensions backfill: {summary.get('processed', 0)} tenants, results={summary.get('results', {})}")
+        except Exception as e:
+            print(f"Freeze backfill scheduler failed: {e}")
+
+    try:
+        asyncio.create_task(_run_freeze_backfill_once())
+    except Exception as e:
+        print(f"Freeze backfill task start failed: {e}")
+
 @app.on_event("shutdown")
 async def shutdown_db_client():
     try:

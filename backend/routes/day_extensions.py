@@ -299,6 +299,90 @@ async def delete_closure(closure_id: str, user=Depends(get_current_user)):
 
     return {"message": "Deleted"}
 
+async def extend_freezes_for_closure(closure: dict, member_ids: list, applied_by: str) -> dict:
+    """Extend any ACTIVE member freezes that overlap the closure date range
+    by the number of overlapping calendar days. Idempotent per closure."""
+    result = {"extended": 0, "skipped": 0}
+    if not member_ids:
+        return result
+    closure_start_str = closure.get("start_date", "")
+    closure_end_str = closure.get("end_date", "")
+    closure_id = closure.get("id", "")
+    if not closure_start_str or not closure_end_str or not closure_id:
+        return result
+    try:
+        closure_start = datetime.strptime(closure_start_str, "%Y-%m-%d")
+        closure_end = datetime.strptime(closure_end_str, "%Y-%m-%d")
+    except ValueError:
+        return result
+
+    freezes = await db.member_freezes.find({
+        "member_id": {"$in": list(set(member_ids))},
+        "status": "active",
+        "start_date": {"$lte": closure_end_str},
+        "end_date": {"$gte": closure_start_str},
+    }, {"_id": 0}).to_list(20000)
+
+    now_str = datetime.now(timezone.utc).isoformat()
+    for fz in freezes:
+        try:
+            fz_start = datetime.strptime(fz["start_date"], "%Y-%m-%d")
+            fz_end = datetime.strptime(fz["end_date"], "%Y-%m-%d")
+        except (ValueError, KeyError):
+            result["skipped"] += 1
+            continue
+        overlap_start = max(fz_start, closure_start)
+        overlap_end = min(fz_end, closure_end)
+        overlap_days = (overlap_end - overlap_start).days + 1
+        if overlap_days <= 0:
+            result["skipped"] += 1
+            continue
+        already = fz.get("closure_extensions") or []
+        if any((c or {}).get("closure_id") == closure_id for c in already):
+            result["skipped"] += 1
+            continue
+        new_end_dt = fz_end + timedelta(days=overlap_days)
+        new_end_str = new_end_dt.strftime("%Y-%m-%d")
+        new_duration = int(fz.get("duration_days", 0) or 0) + overlap_days
+        already.append({
+            "closure_id": closure_id,
+            "closure_title": closure.get("title_ar", "") or closure.get("title_en", ""),
+            "overlap_days": overlap_days,
+            "old_end_date": fz["end_date"],
+            "new_end_date": new_end_str,
+            "extended_at": now_str,
+            "extended_by": applied_by or "",
+        })
+        await db.member_freezes.update_one(
+            {"id": fz["id"]},
+            {"$set": {
+                "end_date": new_end_str,
+                "duration_days": new_duration,
+                "closure_extensions": already,
+            }}
+        )
+        if applied_by == "system_backfill":
+            result["extended"] += 1
+            continue
+        try:
+            notification = {
+                "id": str(uuid.uuid4()),
+                "member_id": fz["member_id"],
+                "type": "freeze",
+                "title_ar": "تمديد فترة التجميد",
+                "message_ar": f"تم تمديد فترة تجميد عضويتك بـ {overlap_days} يوم بسبب الإغلاق ({closure.get('title_ar', '') or closure.get('title_en', '')}). تاريخ الانتهاء الجديد: {new_end_str}",
+                "title_en": "Freeze Extended",
+                "message_en": f"Your membership freeze was extended by {overlap_days} day(s) due to closure ({closure.get('title_en', '') or closure.get('title_ar', '')}). New end date: {new_end_str}",
+                "read": False,
+                "created_at": now_str,
+            }
+            await db.member_notifications.insert_one(notification)
+        except Exception:
+            pass
+        result["extended"] += 1
+    return result
+
+
 @router.post("/apply")
 async def apply_extension(data: ExtensionApply, user=Depends(get_current_user)):
     require_admin(user)
@@ -530,6 +614,13 @@ async def apply_extension(data: ExtensionApply, user=Depends(get_current_user)):
             "details": em.get("details", []),
         })
 
+    freeze_ext_result = {"extended": 0, "skipped": 0}
+    try:
+        ext_member_ids = [em.get("member_id", "") for em in extended_members if em.get("member_id")]
+        freeze_ext_result = await extend_freezes_for_closure(closure, ext_member_ids, user.get("username", ""))
+    except Exception as _fe:
+        pass
+
     await db.closures.update_one(
         {"id": data.closure_id},
         {"$set": {
@@ -538,6 +629,8 @@ async def apply_extension(data: ExtensionApply, user=Depends(get_current_user)):
             "applied_at": datetime.now(timezone.utc).isoformat(),
             "applied_by": user.get("username", ""),
             "affected_members": slim_affected,
+            "freezes_extended": True,
+            "freezes_extended_count": freeze_ext_result.get("extended", 0),
         }}
     )
 
