@@ -88,6 +88,29 @@ def _load_real_app_sync():
         _app_ready.set()
 
 
+async def _run_real_app_startup():
+    try:
+        await _wait_for_app()
+        if _real_app is None:
+            logger.warning("Real app not loaded; cannot run startup hooks")
+            return
+        handlers = list(getattr(_real_app.router, "on_startup", []) or [])
+        if not handlers:
+            logger.info("Real app has no on_startup handlers")
+            return
+        logger.info(f"Running {len(handlers)} startup hooks on real app")
+        for h in handlers:
+            try:
+                result = h()
+                if asyncio.iscoroutine(result):
+                    await result
+            except Exception as e:
+                logger.warning(f"Startup hook {getattr(h,'__name__','?')} failed: {e}")
+        logger.info("Real app startup hooks completed")
+    except Exception as e:
+        logger.error(f"Failed running real app startup hooks: {e}")
+
+
 async def _wait_for_app():
     loop = asyncio.get_running_loop()
     await loop.run_in_executor(None, lambda: _app_ready.wait(timeout=30))
@@ -155,6 +178,7 @@ async def app(scope, receive, send):
                 t.start()
                 asyncio.ensure_future(_keep_alive_loop())
                 asyncio.ensure_future(_render_proxy_warmup())
+                asyncio.ensure_future(_run_real_app_startup())
                 # Start WhatsApp service in background to avoid blocking startup
                 threading.Thread(target=_start_whatsapp_service, daemon=True).start()
             elif msg["type"] == "lifespan.shutdown":

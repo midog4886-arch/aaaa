@@ -3383,48 +3383,60 @@ async def _send_backup_to_telegram(filepath, filename):
         print(f"Telegram backup error: {e}")
 
 
-async def _create_auto_backup():
+async def _backup_one_tenant(tenant: dict) -> dict:
+    import json as _json
+    slug = (tenant.get("slug") or "default").replace("/", "_")
     timestamp = datetime.now(_RIYADH_TZ).strftime('%Y%m%d')
-    filename = f"auto_backup_{timestamp}.json"
+    filename = f"auto_backup_{slug}_{timestamp}.json"
     filepath = BACKUPS_DIR / filename
 
     backup_data = {
         "timestamp": datetime.now(timezone.utc).isoformat(),
-        "collections": {}
+        "tenant": {"slug": slug, "name": tenant.get("name"), "db_name": tenant.get("db_name")},
+        "collections": {},
     }
-
     skipped: list = []
     for col_name in _ALL_COLLECTIONS:
         try:
-            collection = db[col_name]
-            documents = await collection.find({}, {"_id": 0}).to_list(100000)
+            documents = await db[col_name].find({}, {"_id": 0}).to_list(100000)
             if documents:
                 backup_data["collections"][col_name] = documents
         except Exception as e:
             skipped.append(f"{col_name}: {e}")
-            print(f"Auto backup: skipping {col_name}: {e}")
 
     with open(filepath, 'w', encoding='utf-8') as f:
-        import json as _json
         _json.dump(backup_data, f, ensure_ascii=False, default=str)
 
-    print(f"Auto backup created: {filename}")
+    cols = len(backup_data["collections"])
+    size_mb = filepath.stat().st_size / (1024 * 1024)
+    print(f"Auto backup created for tenant '{slug}': {filename} ({cols} collections, {size_mb:.2f}MB)")
 
     await _send_backup_to_telegram(filepath, filename)
 
-    auto_backups = sorted(BACKUPS_DIR.glob("auto_backup_*.json"), key=lambda x: x.stat().st_mtime)
-    while len(auto_backups) > 7:
-        oldest = auto_backups.pop(0)
-        oldest.unlink()
-        print(f"Auto backup deleted (retention limit): {oldest.name}")
+    return {"file": filename, "collections": cols, "size_mb": round(size_mb, 2), "skipped": len(skipped)}
 
-    # Treat "more than half the collections failed" as a backup failure even
-    # if the file itself was written, since it likely means a Mongo outage.
-    if len(skipped) > max(5, len(_ALL_COLLECTIONS) // 2):
+
+async def _create_auto_backup():
+    from utils.tenant import for_each_active_tenant
+    summary = await for_each_active_tenant(_backup_one_tenant, label="daily-backup")
+    print(f"Auto backup summary: processed={summary['processed']} succeeded={summary['succeeded']} failed={summary['failed']}")
+
+    auto_backups = sorted(BACKUPS_DIR.glob("auto_backup_*.json"), key=lambda x: x.stat().st_mtime)
+    tenants_count = max(1, summary.get("processed", 1))
+    keep = tenants_count * 7
+    while len(auto_backups) > keep:
+        oldest = auto_backups.pop(0)
+        try:
+            oldest.unlink()
+            print(f"Auto backup deleted (retention limit): {oldest.name}")
+        except Exception:
+            pass
+
+    if summary.get("failed", 0) > 0:
         await _emit_ops_alert(
             kind="backup.partial_failure",
             title="Backup completed with errors",
-            body=f"{len(skipped)} collections were skipped during the daily backup.",
+            body=f"{summary['failed']}/{summary['processed']} tenants failed during the daily backup. Errors: {summary.get('errors', {})}",
             severity="warning",
         )
 
@@ -3433,6 +3445,32 @@ async def backup_scheduler_loop():
     global _backup_scheduler_started
     _backup_scheduler_started = True
     print("Backup scheduler started (timezone: Asia/Riyadh, runs at midnight)")
+
+    try:
+        await asyncio.sleep(30)
+        today_str = datetime.now(_RIYADH_TZ).strftime('%Y%m%d')
+        from utils.tenant import list_active_tenants as _list_active_tenants
+        try:
+            tenants = await _list_active_tenants()
+        except Exception as e:
+            tenants = []
+            print(f"Backup scheduler: could not list tenants for catch-up check: {e}")
+        missing = []
+        for t in tenants:
+            slug = (t.get("slug") or "default").replace("/", "_")
+            if not (BACKUPS_DIR / f"auto_backup_{slug}_{today_str}.json").exists():
+                missing.append(slug)
+        if missing or not tenants:
+            print(f"Backup scheduler: catch-up needed for {len(missing) or 'all'} tenant(s) ({today_str})")
+            try:
+                await _create_auto_backup()
+            except Exception as e:
+                print(f"Backup scheduler: catch-up failed: {e}")
+        else:
+            print(f"Backup scheduler: all {len(tenants)} tenants already have today's backup, skipping catch-up")
+    except Exception as e:
+        print(f"Backup scheduler: startup catch-up error: {e}")
+
     while True:
         try:
             now = datetime.now(_RIYADH_TZ)
