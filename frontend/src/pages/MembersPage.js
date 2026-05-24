@@ -725,34 +725,58 @@ export const MembersPage = () => {
     return cb === memberBranchId;
   };
 
-  const computeTransferInfo = (q, member, closures) => {
+  const computeTransferInfo = (q, member, closures, freezes) => {
     const transferred = new Set();
     const transferredMeta = {};
-    if (!Array.isArray(closures) || closures.length === 0 || !q.schedule_days?.length) {
+    if (!q.schedule_days?.length) {
       return { transferredSet: transferred, transferredMeta, replacementDates: [] };
     }
     const targetDays = q.schedule_days.map(d => ARABIC_DAY_TO_JS[d]).filter(n => n !== undefined);
     if (!targetDays.length) return { transferredSet: transferred, transferredMeta, replacementDates: [] };
     const subStart = q.start_date;
     const subEnd = q.end_date;
-    for (const cl of closures) {
-      if (!cl.applied) continue;
-      if (!closureMatchesActivity(cl, q.activity_id)) continue;
-      if (!closureMatchesBranch(cl, member?.branch_id)) continue;
-      if (!cl.start_date || !cl.end_date) continue;
-      const [csy, csm, csd] = cl.start_date.split('-').map(Number);
-      const [cey, cem, ced] = cl.end_date.split('-').map(Number);
-      const ce = new Date(cey, cem - 1, ced);
-      const cur = new Date(csy, csm - 1, csd);
-      while (cur <= ce) {
-        if (targetDays.includes(cur.getDay())) {
-          const ds = localDateStr(cur);
-          if ((!subStart || ds >= subStart) && (!subEnd || ds <= subEnd)) {
-            transferred.add(ds);
-            transferredMeta[ds] = { title: cl.title_ar || cl.title_en || '', closureId: cl.id };
+    if (Array.isArray(closures)) {
+      for (const cl of closures) {
+        if (!cl.applied) continue;
+        if (!closureMatchesActivity(cl, q.activity_id)) continue;
+        if (!closureMatchesBranch(cl, member?.branch_id)) continue;
+        if (!cl.start_date || !cl.end_date) continue;
+        const [csy, csm, csd] = cl.start_date.split('-').map(Number);
+        const [cey, cem, ced] = cl.end_date.split('-').map(Number);
+        const ce = new Date(cey, cem - 1, ced);
+        const cur = new Date(csy, csm - 1, csd);
+        while (cur <= ce) {
+          if (targetDays.includes(cur.getDay())) {
+            const ds = localDateStr(cur);
+            if ((!subStart || ds >= subStart) && (!subEnd || ds <= subEnd)) {
+              transferred.add(ds);
+              transferredMeta[ds] = { title: cl.title_ar || cl.title_en || '', closureId: cl.id };
+            }
           }
+          cur.setDate(cur.getDate() + 1);
         }
-        cur.setDate(cur.getDate() + 1);
+      }
+    }
+    if (Array.isArray(freezes)) {
+      for (const fz of freezes) {
+        if (fz.status === 'cancelled') continue;
+        if (!fz.start_date || !fz.end_date) continue;
+        const [fsy, fsm, fsd] = fz.start_date.split('-').map(Number);
+        const [fey, fem, fed] = fz.end_date.split('-').map(Number);
+        const fe = new Date(fey, fem - 1, fed);
+        const cur = new Date(fsy, fsm - 1, fsd);
+        while (cur <= fe) {
+          if (targetDays.includes(cur.getDay())) {
+            const ds = localDateStr(cur);
+            if ((!subStart || ds >= subStart) && (!subEnd || ds <= subEnd)) {
+              transferred.add(ds);
+              if (!transferredMeta[ds]) {
+                transferredMeta[ds] = { title: language === 'ar' ? 'تجميد العضوية' : 'Membership Freeze', freezeId: fz.id };
+              }
+            }
+          }
+          cur.setDate(cur.getDate() + 1);
+        }
       }
     }
     const replacementDates = [];
@@ -3033,7 +3057,7 @@ export const MembersPage = () => {
                           {memberSessionQuota.map((q, idx) => {
                             const isExpanded = expandedQuotaIdx.has(idx);
                             const baseDates = generateScheduleDates(q.start_date, q.end_date, q.schedule_days);
-                            const transferInfo = computeTransferInfo(q, selectedMember, appliedClosures);
+                            const transferInfo = computeTransferInfo(q, selectedMember, appliedClosures, memberFreezes);
                             const scheduleDates = [...baseDates, ...transferInfo.replacementDates];
                             const replacementSet = new Set(transferInfo.replacementDates);
                             const attendedDates = new Set(
