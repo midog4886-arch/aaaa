@@ -403,8 +403,8 @@ async def apply_extension(data: ExtensionApply, user=Depends(get_current_user)):
     closure_weekdays = get_closure_weekdays(closure_start, closure_end)
     fallback_days = data.days
 
-    today_str = datetime.now().strftime('%Y-%m-%d')
-    query = {"activities": {"$elemMatch": {"end_date": {"$gte": today_str}}}}
+    closure_start_str = closure["start_date"]
+    query = {"activities": {"$elemMatch": {"end_date": {"$gte": closure_start_str}}}}
     apply_branch = data.branch_id or closure.get("branch_id", "all")
     if apply_branch and apply_branch != "all":
         query["branch_id"] = apply_branch
@@ -443,7 +443,7 @@ async def apply_extension(data: ExtensionApply, user=Depends(get_current_user)):
 
         for act in activities:
             act_end = act.get("end_date", "")
-            if not act_end or act_end < today_str:
+            if not act_end or act_end < closure_start_str:
                 continue
             if scope == "specific" and activity_ids:
                 if act.get("activity_id") not in activity_ids:
