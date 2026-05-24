@@ -520,13 +520,24 @@ async def apply_extension(data: ExtensionApply, user=Depends(get_current_user)):
             "skipped_members": skipped_members
         }
 
+    slim_affected = []
+    for em in extended_members:
+        slim_affected.append({
+            "member_id": em.get("member_id", ""),
+            "name": em.get("name", ""),
+            "guardian_name": em.get("guardian_name", ""),
+            "phone": em.get("phone", ""),
+            "details": em.get("details", []),
+        })
+
     await db.closures.update_one(
         {"id": data.closure_id},
         {"$set": {
             "applied": True,
             "applied_count": extended_count,
             "applied_at": datetime.now(timezone.utc).isoformat(),
-            "applied_by": user.get("username", "")
+            "applied_by": user.get("username", ""),
+            "affected_members": slim_affected,
         }}
     )
 
@@ -543,7 +554,8 @@ async def apply_extension(data: ExtensionApply, user=Depends(get_current_user)):
         "stop_type": closure.get("stop_type", "full_day"),
         "stop_hours": closure.get("stop_hours", 0),
         "applied_by": user.get("username", ""),
-        "created_at": datetime.now(timezone.utc).isoformat()
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "affected_members": slim_affected,
     }
     await db.extension_logs.insert_one(log_entry)
 

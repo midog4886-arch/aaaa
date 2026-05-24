@@ -13,7 +13,8 @@ import api, { membersAPI, branchesAPI, activitiesAPI } from '../services/api';
 import { toast } from 'sonner';
 import {
   CalendarOff, Plus, Trash2, Play, Clock, User, Users,
-  CalendarDays, CheckCircle, History, Loader2, MessageCircle, Send
+  CalendarDays, CheckCircle, History, Loader2, MessageCircle, Send,
+  ChevronDown, ChevronUp, Phone
 } from 'lucide-react';
 
 const REASON_LABELS = {
@@ -57,6 +58,8 @@ export default function DayExtensionsPage() {
   const [availableTimes, setAvailableTimes] = useState([]);
   const [showPreviewDialog, setShowPreviewDialog] = useState(false);
   const [previewClosure, setPreviewClosure] = useState(null);
+  const [expandedClosures, setExpandedClosures] = useState({});
+  const [memberSearch, setMemberSearch] = useState({});
   const [previewResult, setPreviewResult] = useState(null);
   const [previewing, setPreviewing] = useState(false);
   const [waMessage, setWaMessage] = useState('');
@@ -471,6 +474,90 @@ export default function DayExtensionsPage() {
                             {t('تم التطبيق', 'Applied on')}: {closure.applied_at ? new Date(closure.applied_at).toLocaleString(language === 'ar' ? 'ar-SA' : 'en-US', { dateStyle: 'short', timeStyle: 'short' }) : '—'}
                             {closure.applied_by && (
                               <span className="ms-1">• {t('بواسطة', 'by')} {closure.applied_by}</span>
+                            )}
+                          </div>
+                        )}
+                        {closure.applied && (
+                          <div className="mt-2">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="text-xs h-7 border-green-300 text-green-800 hover:bg-green-50"
+                              onClick={() => setExpandedClosures(prev => ({ ...prev, [closure.id]: !prev[closure.id] }))}
+                            >
+                              {expandedClosures[closure.id] ? <ChevronUp className="w-3 h-3 me-1" /> : <ChevronDown className="w-3 h-3 me-1" />}
+                              {expandedClosures[closure.id]
+                                ? t('إخفاء تفاصيل الأعضاء', 'Hide member details')
+                                : t('عرض تفاصيل الأعضاء المُرحَّلين', 'Show extended members details')}
+                            </Button>
+                            {expandedClosures[closure.id] && (
+                              <div className="mt-3 border rounded-lg bg-green-50/40 p-3 space-y-2">
+                                {!Array.isArray(closure.affected_members) || closure.affected_members.length === 0 ? (
+                                  <p className="text-xs text-muted-foreground text-center py-2">
+                                    {t('لا توجد بيانات محفوظة لأعضاء هذا الترحيل (ترحيل قديم قبل تفعيل الميزة).', 'No saved member data for this extension (legacy extension before this feature).')}
+                                  </p>
+                                ) : (
+                                  <>
+                                    <div className="flex items-center gap-2">
+                                      <Input
+                                        placeholder={t('بحث بالاسم أو ولي الأمر أو الجوال…', 'Search name / guardian / phone…')}
+                                        value={memberSearch[closure.id] || ''}
+                                        onChange={(e) => setMemberSearch(prev => ({ ...prev, [closure.id]: e.target.value }))}
+                                        className="h-8 text-xs"
+                                      />
+                                      <Badge className="bg-green-100 text-green-800 whitespace-nowrap text-xs">
+                                        {closure.affected_members.length} {t('عضو', 'members')}
+                                      </Badge>
+                                    </div>
+                                    <div className="max-h-96 overflow-y-auto space-y-2 pr-1">
+                                      {closure.affected_members
+                                        .filter(em => {
+                                          const q = (memberSearch[closure.id] || '').trim().toLowerCase();
+                                          if (!q) return true;
+                                          return [em.name, em.guardian_name, em.phone].some(v => (v || '').toLowerCase().includes(q));
+                                        })
+                                        .map((em, idx) => (
+                                          <div key={em.member_id || idx} className="bg-white border rounded p-2 text-xs">
+                                            <div className="flex items-center justify-between gap-2 flex-wrap">
+                                              <div className="font-semibold text-gray-800 flex items-center gap-1.5">
+                                                <User className="w-3.5 h-3.5 text-green-700" />
+                                                {em.name || t('بدون اسم', 'No name')}
+                                                {em.guardian_name && (
+                                                  <span className="text-gray-500 font-normal">• {t('ولي الأمر:', 'Guardian:')} {em.guardian_name}</span>
+                                                )}
+                                              </div>
+                                              {em.phone && (
+                                                <span className="text-gray-500 flex items-center gap-1">
+                                                  <Phone className="w-3 h-3" /> {em.phone}
+                                                </span>
+                                              )}
+                                            </div>
+                                            {Array.isArray(em.details) && em.details.length > 0 && (
+                                              <div className="mt-1.5 space-y-1">
+                                                {em.details.map((d, di) => (
+                                                  <div key={di} className="flex flex-wrap items-center gap-1.5 text-[11px] bg-green-50 rounded px-2 py-1">
+                                                    <Badge className="bg-purple-100 text-purple-800 text-[10px]">{d.activity}</Badge>
+                                                    <span className="text-gray-600">{d.old_end}</span>
+                                                    <span className="text-green-700 font-bold">→</span>
+                                                    <span className="text-green-800 font-semibold">{d.new_end}</span>
+                                                    {d.missed_sessions > 0 && (
+                                                      <Badge className="bg-blue-100 text-blue-800 text-[10px]">
+                                                        +{d.missed_sessions} {t('يوم', 'days')}
+                                                      </Badge>
+                                                    )}
+                                                    {d.training_days && d.training_days !== 'غير محدد' && (
+                                                      <span className="text-gray-500">• {d.training_days}</span>
+                                                    )}
+                                                  </div>
+                                                ))}
+                                              </div>
+                                            )}
+                                          </div>
+                                        ))}
+                                    </div>
+                                  </>
+                                )}
+                              </div>
                             )}
                           </div>
                         )}
