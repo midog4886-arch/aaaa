@@ -134,11 +134,20 @@ const GlobalScanner = ({ enabled = true, language = 'ar' }) => {
     setLoading(true);
     setShowMemberDialog(true);
     
+    let memberLookupErrorMsg = null;
     try {
       const API_URL = '';
       const response = await fetch(`${API_URL}/api/public/member-card/${memberCode}`);
       
       if (!response.ok) {
+        // Capture server-provided error (e.g. 409 duplicate across branches) before trying coach lookup
+        try {
+          const errBody = await response.clone().json();
+          const detail = errBody?.detail;
+          if (typeof detail === 'string') memberLookupErrorMsg = detail;
+          else if (detail?.msg) memberLookupErrorMsg = detail.msg;
+          else if (detail?.message) memberLookupErrorMsg = detail.message;
+        } catch (_) {}
         // Not a member — try coach lookup
         const coachRes = await fetch(`/api/coach-attendance/qr-status-by-code/${memberCode}`);
         if (coachRes.ok) {
@@ -228,7 +237,9 @@ const GlobalScanner = ({ enabled = true, language = 'ar' }) => {
       playSound('error');
       setMemberData({
         error: true,
-        message: t('⚠️ رقم العضوية غير موجود', '⚠️ Member ID not found'),
+        message: memberLookupErrorMsg
+          ? `⚠️ ${memberLookupErrorMsg}`
+          : t('⚠️ رقم العضوية غير موجود', '⚠️ Member ID not found'),
         memberCode
       });
       setLoading(false);

@@ -35,7 +35,13 @@ const MemberCardPage = () => {
       const response = await axios.get(`${API_URL}/api/public/member-card/${encodeURIComponent(searchQuery.trim())}`);
       setMember(response.data);
     } catch (err) {
-      if (err.response?.status === 404) {
+      const rawDetail = err.response?.data?.detail;
+      const serverMsg = typeof rawDetail === 'string'
+        ? rawDetail
+        : (rawDetail?.msg || rawDetail?.message || null);
+      if (serverMsg) {
+        setError(serverMsg);
+      } else if (err.response?.status === 404) {
         setError('لم يتم العثور على العضو');
       } else {
         setError('حدث خطأ في البحث');
