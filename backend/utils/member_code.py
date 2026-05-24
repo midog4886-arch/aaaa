@@ -83,18 +83,14 @@ async def get_branch_code_prefix(branch_id: str) -> str:
     return await _ensure_branch_prefix(branch_id)
 
 
-async def _seed_counter_from_existing(branch_id: str, academy: str, branch_prefix: str) -> int:
-    branch_filter = {"branch_id": branch_id} if branch_id else {}
-    full_re = re.compile(
-        rf"^{re.escape(academy)}-{re.escape(branch_prefix)}-(\d+)$"
-    )
+async def _seed_global_counter(academy: str) -> int:
+    """Seed the global member counter from the highest existing numeric
+    suffix across ALL branches for this academy, so newly-issued codes
+    never collide with legacy ones.
+    """
+    full_re = re.compile(rf"^{re.escape(academy)}-[A-Z0-9]+-(\d+)$")
     cursor = db.members.find(
-        {
-            "member_code": {
-                "$regex": f"^{re.escape(academy)}-{re.escape(branch_prefix)}-\\d+$"
-            },
-            **branch_filter,
-        },
+        {"member_code": {"$regex": f"^{re.escape(academy)}-[A-Z0-9]+-\\d+$"}},
         {"member_code": 1, "_id": 0},
     )
     max_num = 0
@@ -112,13 +108,20 @@ async def _seed_counter_from_existing(branch_id: str, academy: str, branch_prefi
 
 
 async def generate_member_code(branch_id: str) -> str:
+    """Generate a globally-unique member code: {ACADEMY}-{BRANCH}-{NNNN}.
+
+    The numeric suffix is allocated from a single per-academy counter
+    (shared across all branches), guaranteeing the suffix alone is
+    unique across the whole tenant. This makes short-suffix lookups
+    (e.g. scanning "0042") unambiguous.
+    """
     academy = await _ensure_academy_prefix()
     branch_prefix = await _ensure_branch_prefix(branch_id)
 
-    counter_id = f"member:{branch_id or 'global'}:{academy}:{branch_prefix}"
+    counter_id = f"member:global:{academy}"
     existing = await db.branch_counters.find_one({"_id": counter_id})
     if not existing:
-        seed = await _seed_counter_from_existing(branch_id, academy, branch_prefix)
+        seed = await _seed_global_counter(academy)
         try:
             await db.branch_counters.insert_one({"_id": counter_id, "seq": seed})
         except Exception:
