@@ -3488,6 +3488,33 @@ export const MembersPage = () => {
                               <div className="text-xs text-muted-foreground mt-1">
                                 {getReasonLabel(f.reason)} • {language === 'ar' ? 'بواسطة' : 'by'} {f.created_by}
                               </div>
+                              {f.status === 'cancelled' ? (
+                                <div className="mt-2 text-xs px-2 py-1 rounded bg-gray-100 text-gray-600 inline-block">
+                                  {language === 'ar' ? 'ملغى — تم استرجاع الأيام المضافة' : 'Cancelled — extension days reverted'}
+                                </div>
+                              ) : (f.total_extension_days > 0 || (Array.isArray(f.extensions) && f.extensions.length > 0)) ? (
+                                <div className="mt-2">
+                                  <div className="text-xs px-2 py-1 rounded bg-green-100 text-green-700 inline-flex items-center gap-1 font-medium">
+                                    <span>✓</span>
+                                    {language === 'ar'
+                                      ? `تم ترحيل ${f.total_extension_days || 0} يوم تدريب على نهاية الاشتراك`
+                                      : `${f.total_extension_days || 0} training day(s) added to subscription end`}
+                                  </div>
+                                  {Array.isArray(f.extensions) && f.extensions.length > 0 && (
+                                    <ul className="mt-1.5 text-[11px] text-muted-foreground space-y-0.5 ps-3">
+                                      {f.extensions.map((ext, idx) => (
+                                        <li key={idx}>
+                                          • {ext.activity_name || ext.activity_id}: +{ext.days} {language === 'ar' ? 'يوم' : 'day(s)'} {ext.new_end_date ? `→ ${ext.new_end_date}` : ''}
+                                        </li>
+                                      ))}
+                                    </ul>
+                                  )}
+                                </div>
+                              ) : (
+                                <div className="mt-2 text-xs px-2 py-1 rounded bg-amber-50 text-amber-700 inline-block">
+                                  {language === 'ar' ? 'لم يتم ترحيل أيام (تجميد قديم بدون تمديد)' : 'No days carried over (legacy freeze)'}
+                                </div>
+                              )}
                             </div>
                           ))}
                         </div>
