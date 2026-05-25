@@ -310,8 +310,14 @@ async def serve_ad_image(filename: str):
 # ============ PUBLIC API - Member Card ============
 
 @api_router.get("/public/member-card/{search_term}")
-async def get_member_card_public(search_term: str):
-    """Public API to get member card info by member_code or phone"""
+async def get_member_card_public(search_term: str, branch_id: Optional[str] = None):
+    """Public API to get member card info by member_code or phone.
+
+    Optional ``branch_id`` disambiguates printed-card QRs that only encode the
+    numeric suffix (e.g. ``0027``) when the same suffix exists in multiple
+    branches after a global renumber. The scanner page passes the active
+    branch so a B5 reader maps ``0027`` to ``DEFA-B5-0027`` automatically.
+    """
     # Search by member_code first
     member = await db.members.find_one(
         {"$or": [
@@ -326,14 +332,20 @@ async def get_member_card_public(search_term: str):
         matches = await db.members.find(
             {"member_code": {"$regex": f"-{_re.escape(search_term)}[^0-9]*$"}},
             {"_id": 0}
-        ).to_list(5)
+        ).to_list(20)
         if len(matches) == 1:
             member = matches[0]
         elif len(matches) > 1:
-            raise HTTPException(
-                status_code=409,
-                detail="رقم العضوية مكرر بين فروع مختلفة — استخدم الرقم الكامل"
-            )
+            # Try to disambiguate using the scanner's branch context
+            if branch_id:
+                scoped = [m for m in matches if m.get("branch_id") == branch_id]
+                if len(scoped) == 1:
+                    member = scoped[0]
+            if not member:
+                raise HTTPException(
+                    status_code=409,
+                    detail="رقم العضوية مكرر بين فروع مختلفة — استخدم الرقم الكامل"
+                )
 
     if not member:
         # Try to search by name

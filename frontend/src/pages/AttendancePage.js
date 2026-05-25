@@ -512,7 +512,12 @@ export default function AttendancePage() {
     
     try {
       const API_URL = '';
-      const response = await fetch(`${API_URL}/api/public/member-card/${memberCode}`);
+      // Pass the scanner's branch context so the backend can disambiguate
+      // printed-card QRs that only carry a numeric suffix (e.g. "0027")
+      // when the same suffix exists in more than one branch.
+      const scannerBranchId = selectedBranchId || user?.branch_id || '';
+      const branchQS = scannerBranchId ? `?branch_id=${encodeURIComponent(scannerBranchId)}` : '';
+      const response = await fetch(`${API_URL}/api/public/member-card/${encodeURIComponent(memberCode)}${branchQS}`);
       
       if (!response.ok) {
         // Not a member — try coach lookup
