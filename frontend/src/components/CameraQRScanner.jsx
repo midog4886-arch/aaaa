@@ -199,11 +199,13 @@ const CameraQRScanner = ({ open, onClose, language = 'ar' }) => {
         }));
       } else {
         const quotaWarn = res.data.session_quota_warning;
+        const wrongDayWarn = res.data.wrong_day_warning;
         setActivityStates(prev => ({
           ...prev,
           [activityId]: {
             status: 'recorded',
             sessionQuotaWarning: quotaWarn || null,
+            wrongDayWarning: wrongDayWarn || null,
             message: t('✅ تم تسجيل الحضور', '✅ Checked in')
           }
         }));
@@ -454,6 +456,20 @@ const CameraQRScanner = ({ open, onClose, language = 'ar' }) => {
                             >
                               {t('إعادة المحاولة', 'Retry')}
                             </Button>
+                          </div>
+                        )}
+
+                        {/* Wrong-day informational notice (check-in was still saved) */}
+                        {isRecorded && state.wrongDayWarning && (
+                          <div className="px-3 pb-3">
+                            <div className="bg-yellow-50 p-2.5 rounded-lg border border-yellow-200">
+                              <p className="text-yellow-800 font-bold text-xs mb-1">
+                                {state.wrongDayWarning.message}
+                              </p>
+                              <p className="text-xs text-yellow-700">
+                                {t('مواعيدك:', 'Your days:')} <span className="font-semibold">{state.wrongDayWarning.schedule_days?.join(' - ')}</span>
+                              </p>
+                            </div>
                           </div>
                         )}
 

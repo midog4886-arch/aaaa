@@ -219,8 +219,9 @@ const GlobalScanner = ({ enabled = true, language = 'ar' }) => {
             setActivityStates({ [act.activity_id]: { status: 'wrong_day', scheduleDays: res.data.schedule_days || [], today: res.data.today, message: res.data.message || t('هذا ليس موعدك اليوم!', 'This is not your scheduled day!') } });
           } else {
             const quotaWarn = res.data.session_quota_warning;
+            const wrongDayWarn = res.data.wrong_day_warning;
             playSound(quotaWarn ? 'error' : 'success');
-            setActivityStates({ [act.activity_id]: { status: 'recorded', sessionQuotaWarning: quotaWarn || null, message: t('✅ تم تسجيل الحضور', '✅ Checked in') } });
+            setActivityStates({ [act.activity_id]: { status: 'recorded', sessionQuotaWarning: quotaWarn || null, wrongDayWarning: wrongDayWarn || null, message: t('✅ تم تسجيل الحضور', '✅ Checked in') } });
             setMemberData(prev => ({ ...prev, activeActivities: prev.activeActivities.map(a => a.activity_id === act.activity_id ? { ...a, recorded_today: true } : a) }));
           }
         } catch (checkinError) {
@@ -322,12 +323,14 @@ const GlobalScanner = ({ enabled = true, language = 'ar' }) => {
         }));
       } else {
         const quotaWarn = res.data.session_quota_warning;
+        const wrongDayWarn = res.data.wrong_day_warning;
         playSound(quotaWarn ? 'error' : 'success');
         setActivityStates(prev => ({
           ...prev,
           [activityId]: {
             status: 'recorded',
             sessionQuotaWarning: quotaWarn || null,
+            wrongDayWarning: wrongDayWarn || null,
             message: t('✅ تم تسجيل الحضور', '✅ Checked in')
           }
         }));
@@ -641,6 +644,20 @@ const GlobalScanner = ({ enabled = true, language = 'ar' }) => {
                             {isError && (
                               <div className="px-3.5 pb-3.5">
                                 <p className="text-xs text-red-600 bg-red-50 px-3 py-2 rounded-lg">{state.message}</p>
+                              </div>
+                            )}
+
+                            {/* Wrong-day informational notice (check-in still saved) */}
+                            {isRecorded && state.wrongDayWarning && (
+                              <div className="px-3.5 pb-3.5">
+                                <div className="bg-yellow-50 p-3 rounded-lg border border-yellow-200">
+                                  <p className="text-yellow-800 font-bold text-sm mb-1">
+                                    {state.wrongDayWarning.message}
+                                  </p>
+                                  <p className="text-xs text-yellow-700">
+                                    {t('مواعيدك:', 'Your days:')} <span className="font-semibold">{state.wrongDayWarning.schedule_days?.join(' - ')}</span>
+                                  </p>
+                                </div>
                               </div>
                             )}
 

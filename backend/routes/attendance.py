@@ -1009,7 +1009,14 @@ async def qr_checkin(
     }
     if session_quota_warning:
         response["session_quota_warning"] = session_quota_warning
-    
+    # Informational only: flag check-ins recorded on a non-scheduled day
+    if schedule_days and not is_scheduled_day:
+        response["wrong_day_warning"] = {
+            "message": f"⚠️ ليس موعدك اليوم — تم تسجيل الحضور بتاريخ اليوم",
+            "schedule_days": schedule_days_arabic,
+            "today": ENGLISH_TO_ARABIC_DAY.get(today_day_name, today_day_name),
+        }
+
     return response
 
 @router.patch("/{record_id}/date")
