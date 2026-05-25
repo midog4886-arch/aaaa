@@ -237,7 +237,10 @@ async def create_attendance(
     })
     if existing:
         raise HTTPException(status_code=400, detail="Already checked in for this activity today")
-    
+
+    # Hard cap on total allowed sessions for this subscription
+    await enforce_session_cap(attendance.member_id, attendance.activity_id, record_date)
+
     record_id = str(uuid.uuid4())
     record = {
         "id": record_id,
@@ -333,6 +336,30 @@ async def get_member_schedule_days(member_id: str, activity_id: str) -> list:
                     if d not in all_days:
                         all_days.append(d)
     return all_days
+
+async def enforce_session_cap(member_id: str, activity_id: str, check_date: str):
+    """Raise HTTPException if recording another attendance would exceed the
+    member's total allowed sessions for the active subscription that covers
+    `check_date`. Uses the same calculation as check_member_session_quota so
+    the total honours days_per_week × weeks (e.g. 2 days/week → 8/month)."""
+    quotas = await check_member_session_quota(member_id, activity_id)
+    for q in quotas:
+        if q.get("activity_id") != activity_id:
+            continue
+        start = q.get("start_date") or ""
+        end = q.get("end_date") or ""
+        if start and end and not (start <= check_date <= end):
+            continue
+        if q.get("used_sessions", 0) >= q.get("total_allowed", 0):
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"تم استنفاد عدد الحصص المسموح به ({q.get('used_sessions')}/"
+                    f"{q.get('total_allowed')}) — لا يمكن تسجيل حصة إضافية"
+                ),
+            )
+        return
+
 
 async def check_member_session_quota(member_id: str, activity_id: str = None):
     """Check if member has used all their allowed sessions based on subscription days per week.
@@ -869,10 +896,17 @@ async def qr_checkin(
         is_scheduled_day = today_day_name in schedule_days
         schedule_days_arabic = [ENGLISH_TO_ARABIC_DAY.get(d, d) for d in schedule_days]
     
-    if not is_scheduled_day and not force:
+    # Note: attendance is allowed on any day; only the total session cap is enforced.
+    # When today is not a scheduled day, the record is still saved with today's date
+    # and tagged in `notes` so it's visible in reports as "خارج الموعد".
+
+    # Hard cap on total allowed sessions for this subscription
+    try:
+        await enforce_session_cap(member["id"], target_activity_id, today)
+    except HTTPException as cap_err:
         return {
-            "message": f"هذا ليس موعدك اليوم! مواعيدك: {' - '.join(schedule_days_arabic)}",
-            "status": "wrong_day",
+            "message": cap_err.detail,
+            "status": "quota_exceeded",
             "schedule_days": schedule_days_arabic,
             "today": ENGLISH_TO_ARABIC_DAY.get(today_day_name, today_day_name),
             "member": {
@@ -882,7 +916,7 @@ async def qr_checkin(
                 "activity": activity_name
             }
         }
-    
+
     record_id = str(uuid.uuid4())
     record = {
         "id": record_id,
