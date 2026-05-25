@@ -202,7 +202,16 @@ const GlobalSearch = () => {
                         {m.name?.charAt(0) || '?'}
                       </div>
                       <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium truncate">{m.name}</p>
+                        <p className="text-sm font-medium truncate">
+                          {m.name}
+                          {m.guardian_name && (
+                            <span className="text-xs text-muted-foreground font-normal">
+                              {' — '}
+                              {language === 'ar' ? 'ولي الأمر: ' : 'Guardian: '}
+                              {m.guardian_name}
+                            </span>
+                          )}
+                        </p>
                         <p className="text-xs text-muted-foreground" dir="ltr">{m.phone}</p>
                       </div>
                       <span className="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded">
