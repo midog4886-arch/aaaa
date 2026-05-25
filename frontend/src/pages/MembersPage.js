@@ -823,6 +823,25 @@ export const MembersPage = () => {
     }
   };
 
+  const handleRemoveDateAttendance = async (memberId, activityId, date, recordId) => {
+    if (!recordId) {
+      toast.error(language === 'ar' ? 'تعذر العثور على سجل الحضور' : 'Attendance record not found');
+      return;
+    }
+    const key = `${activityId}_${date}`;
+    setRegisteringDate(key);
+    try {
+      await attendanceAPI.delete(recordId);
+      await refreshMemberAttendance(memberId);
+      toast.success(language === 'ar' ? 'تم حذف تسجيل الحضور وتحديث الحصص' : 'Attendance removed and sessions updated');
+    } catch (e) {
+      const msg = e?.response?.data?.detail || (language === 'ar' ? 'فشل حذف الحضور' : 'Failed to remove attendance');
+      toast.error(msg);
+    } finally {
+      setRegisteringDate(null);
+    }
+  };
+
   const openViewDialog = async (member) => {
     setSelectedMember(member);
     setViewTab('info');
@@ -3062,11 +3081,11 @@ export const MembersPage = () => {
                             const transferInfo = computeTransferInfo(q, selectedMember, appliedClosures, memberFreezes);
                             const scheduleDates = [...baseDates, ...transferInfo.replacementDates];
                             const replacementSet = new Set(transferInfo.replacementDates);
-                            const attendedDates = new Set(
-                              (memberAttendance?.records || [])
-                                .filter(r => r.activity_id === q.activity_id && (r.status === 'present' || !r.status))
-                                .map(r => r.date)
-                            );
+                            const attendedRecords = (memberAttendance?.records || [])
+                              .filter(r => r.activity_id === q.activity_id && (r.status === 'present' || !r.status));
+                            const attendedDates = new Set(attendedRecords.map(r => r.date));
+                            const attendedRecordIdByDate = {};
+                            attendedRecords.forEach(r => { attendedRecordIdByDate[r.date] = r.id; });
                             const todayStr = localDateStr(new Date());
                             return (
                               <div key={idx} className={`rounded-lg border ${q.exceeded ? 'bg-red-50 border-red-300' : q.remaining <= 2 ? 'bg-amber-50 border-amber-300' : 'bg-green-50 border-green-300'}`}>
@@ -3119,13 +3138,23 @@ export const MembersPage = () => {
                                         const transferMeta = transferInfo.transferredMeta[date];
                                         const key = `${q.activity_id}_${date}`;
                                         const isRegistering = registeringDate === key;
-                                        const clickable = !attended && !isRegistering && !isFuture && !isTransferred;
+                                        const recordId = attendedRecordIdByDate[date];
+                                        const removable = attended && !isRegistering && !isTransferred && !!recordId;
+                                        const clickable = (!attended && !isRegistering && !isFuture && !isTransferred) || removable;
                                         return (
                                           <button
                                             key={date + (isReplacement ? '_r' : '')}
                                             disabled={!clickable}
                                             onClick={() => {
-                                              if (clickable) {
+                                              if (isRegistering || isTransferred) return;
+                                              if (attended) {
+                                                if (!recordId) return;
+                                                if (window.confirm(language === 'ar'
+                                                  ? `حذف تسجيل الحضور بتاريخ ${date}؟ سيتم تحديث عدد الحصص المتبقية.`
+                                                  : `Remove attendance for ${date}? Remaining sessions will be updated.`)) {
+                                                  handleRemoveDateAttendance(selectedMember.id, q.activity_id, date, recordId);
+                                                }
+                                              } else if (!isFuture) {
                                                 if (window.confirm(language === 'ar'
                                                   ? `تسجيل حضور بتاريخ ${date}؟`
                                                   : `Record attendance for ${date}?`)) {
@@ -3138,7 +3167,7 @@ export const MembersPage = () => {
                                               : isReplacement
                                                 ? (language === 'ar' ? 'حصة بديلة (تعويض ترحيل)' : 'Replacement session (make-up)')
                                                 : attended
-                                                  ? (language === 'ar' ? 'تم التسجيل' : 'Attended')
+                                                  ? (language === 'ar' ? 'تم التسجيل — اضغط للحذف' : 'Attended — click to remove')
                                                   : isFuture
                                                     ? (language === 'ar' ? 'موعد مستقبلي' : 'Future date')
                                                     : (language === 'ar' ? 'اضغط للتسجيل' : 'Click to register')}
@@ -3152,7 +3181,7 @@ export const MembersPage = () => {
                                                       ? 'bg-purple-50 border-purple-300 text-purple-600 cursor-not-allowed'
                                                       : 'bg-purple-50 border-purple-400 text-purple-800 cursor-pointer hover:bg-purple-100'
                                                   : attended
-                                                    ? 'bg-green-100 border-green-400 text-green-700 cursor-default'
+                                                    ? 'bg-green-100 border-green-400 text-green-700 cursor-pointer hover:bg-red-100 hover:border-red-400 hover:text-red-700'
                                                     : isRegistering
                                                       ? 'bg-blue-100 border-blue-300 text-blue-500 cursor-wait'
                                                       : isFuture

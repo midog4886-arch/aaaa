@@ -983,7 +983,20 @@ async def delete_attendance(
     record_id: str,
     current_user: dict = Depends(get_current_user)
 ):
-    """Delete an attendance record"""
+    """Delete an attendance record (branch-scoped for non-admins)"""
+    record = await db.attendance.find_one({"id": record_id})
+    if not record:
+        raise HTTPException(status_code=404, detail="Attendance record not found")
+
+    if not current_user.get("is_admin"):
+        user_branch = current_user.get("branch_id")
+        record_branch = record.get("branch_id")
+        if not record_branch and record.get("member_id"):
+            member = await db.members.find_one({"id": record["member_id"]}, {"branch_id": 1})
+            record_branch = (member or {}).get("branch_id")
+        if user_branch and record_branch and user_branch != record_branch:
+            raise HTTPException(status_code=403, detail="Not allowed to modify attendance from another branch")
+
     result = await db.attendance.delete_one({"id": record_id})
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Attendance record not found")
