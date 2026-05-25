@@ -823,19 +823,32 @@ export const MembersPage = () => {
     }
   };
 
-  const handleRemoveDateAttendance = async (memberId, activityId, date, recordId) => {
+  const handleReplaceDateAttendance = async (memberId, activityId, oldDate, recordId) => {
     if (!recordId) {
       toast.error(language === 'ar' ? 'تعذر العثور على سجل الحضور' : 'Attendance record not found');
       return;
     }
-    const key = `${activityId}_${date}`;
+    const promptMsg = language === 'ar'
+      ? `استبدال تاريخ الحضور ${oldDate}\nأدخل التاريخ الجديد بصيغة YYYY-MM-DD:`
+      : `Replace attendance date ${oldDate}\nEnter the new date (YYYY-MM-DD):`;
+    const newDate = window.prompt(promptMsg, oldDate);
+    if (!newDate) return;
+    const trimmed = newDate.trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+      toast.error(language === 'ar' ? 'صيغة تاريخ غير صحيحة. استخدم YYYY-MM-DD' : 'Invalid date format. Use YYYY-MM-DD');
+      return;
+    }
+    if (trimmed === oldDate) return;
+    const key = `${activityId}_${oldDate}`;
     setRegisteringDate(key);
     try {
-      await attendanceAPI.delete(recordId);
+      await attendanceAPI.updateDate(recordId, trimmed);
       await refreshMemberAttendance(memberId);
-      toast.success(language === 'ar' ? 'تم حذف تسجيل الحضور وتحديث الحصص' : 'Attendance removed and sessions updated');
+      toast.success(language === 'ar'
+        ? `تم نقل الحضور من ${oldDate} إلى ${trimmed} (عدد الحصص لم يتغيّر)`
+        : `Attendance moved from ${oldDate} to ${trimmed} (session count unchanged)`);
     } catch (e) {
-      const msg = e?.response?.data?.detail || (language === 'ar' ? 'فشل حذف الحضور' : 'Failed to remove attendance');
+      const msg = e?.response?.data?.detail || (language === 'ar' ? 'فشل استبدال التاريخ' : 'Failed to replace date');
       toast.error(msg);
     } finally {
       setRegisteringDate(null);
@@ -3149,11 +3162,7 @@ export const MembersPage = () => {
                                               if (isRegistering || isTransferred) return;
                                               if (attended) {
                                                 if (!recordId) return;
-                                                if (window.confirm(language === 'ar'
-                                                  ? `حذف تسجيل الحضور بتاريخ ${date}؟ سيتم تحديث عدد الحصص المتبقية.`
-                                                  : `Remove attendance for ${date}? Remaining sessions will be updated.`)) {
-                                                  handleRemoveDateAttendance(selectedMember.id, q.activity_id, date, recordId);
-                                                }
+                                                handleReplaceDateAttendance(selectedMember.id, q.activity_id, date, recordId);
                                               } else if (!isFuture) {
                                                 if (window.confirm(language === 'ar'
                                                   ? `تسجيل حضور بتاريخ ${date}؟`
@@ -3167,7 +3176,7 @@ export const MembersPage = () => {
                                               : isReplacement
                                                 ? (language === 'ar' ? 'حصة بديلة (تعويض ترحيل)' : 'Replacement session (make-up)')
                                                 : attended
-                                                  ? (language === 'ar' ? 'تم التسجيل — اضغط للحذف' : 'Attended — click to remove')
+                                                  ? (language === 'ar' ? 'تم التسجيل — اضغط لاستبدال التاريخ' : 'Attended — click to replace the date')
                                                   : isFuture
                                                     ? (language === 'ar' ? 'موعد مستقبلي' : 'Future date')
                                                     : (language === 'ar' ? 'اضغط للتسجيل' : 'Click to register')}
@@ -3181,7 +3190,7 @@ export const MembersPage = () => {
                                                       ? 'bg-purple-50 border-purple-300 text-purple-600 cursor-not-allowed'
                                                       : 'bg-purple-50 border-purple-400 text-purple-800 cursor-pointer hover:bg-purple-100'
                                                   : attended
-                                                    ? 'bg-green-100 border-green-400 text-green-700 cursor-pointer hover:bg-red-100 hover:border-red-400 hover:text-red-700'
+                                                    ? 'bg-green-100 border-green-400 text-green-700 cursor-pointer hover:bg-blue-100 hover:border-blue-400 hover:text-blue-700'
                                                     : isRegistering
                                                       ? 'bg-blue-100 border-blue-300 text-blue-500 cursor-wait'
                                                       : isFuture

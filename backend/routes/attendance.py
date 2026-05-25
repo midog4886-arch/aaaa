@@ -978,6 +978,54 @@ async def qr_checkin(
     
     return response
 
+@router.patch("/{record_id}/date")
+async def update_attendance_date(
+    record_id: str,
+    payload: dict,
+    current_user: dict = Depends(get_current_user)
+):
+    """Move an attendance record to a different date (branch-scoped). Does not change the used-sessions count."""
+    new_date = (payload or {}).get("date")
+    if not new_date or not isinstance(new_date, str):
+        raise HTTPException(status_code=400, detail="Missing 'date' (YYYY-MM-DD)")
+    try:
+        datetime.strptime(new_date, "%Y-%m-%d")
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid date format, expected YYYY-MM-DD")
+
+    record = await db.attendance.find_one({"id": record_id})
+    if not record:
+        raise HTTPException(status_code=404, detail="Attendance record not found")
+
+    if not current_user.get("is_admin"):
+        user_branch = current_user.get("branch_id")
+        record_branch = record.get("branch_id")
+        if not record_branch and record.get("member_id"):
+            member = await db.members.find_one({"id": record["member_id"]}, {"branch_id": 1})
+            record_branch = (member or {}).get("branch_id")
+        if user_branch and record_branch and user_branch != record_branch:
+            raise HTTPException(status_code=403, detail="Not allowed to modify attendance from another branch")
+
+    if new_date == record.get("date"):
+        return {"message": "No change", "id": record_id, "date": new_date}
+
+    # Block move if another record already exists for same member+activity on the new date
+    clash = await db.attendance.find_one({
+        "member_id": record.get("member_id"),
+        "activity_id": record.get("activity_id"),
+        "date": new_date,
+        "id": {"$ne": record_id},
+    })
+    if clash:
+        raise HTTPException(status_code=400, detail=f"يوجد تسجيل حضور بالفعل بتاريخ {new_date} لهذا النشاط")
+
+    await db.attendance.update_one(
+        {"id": record_id},
+        {"$set": {"date": new_date, "updated_at": datetime.utcnow()}}
+    )
+    return {"message": "Attendance date updated", "id": record_id, "date": new_date}
+
+
 @router.delete("/{record_id}")
 async def delete_attendance(
     record_id: str,

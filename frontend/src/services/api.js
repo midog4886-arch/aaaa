@@ -482,6 +482,7 @@ export const attendanceAPI = {
   },
   getSessionQuotaAlerts: (branchFilter) => axios.get(`${API}/attendance/session-quota-alerts`, { params: { branch_filter: branchFilter } }),
   delete: (id) => axios.delete(`${API}/attendance/${id}`),
+  updateDate: (id, date) => axios.patch(`${API}/attendance/${id}/date`, { date }),
   export: (params = {}) => {
     const token = localStorage.getItem('token');
     const queryParams = new URLSearchParams({ token, ...params }).toString();
