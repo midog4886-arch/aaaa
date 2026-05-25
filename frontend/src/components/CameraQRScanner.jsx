@@ -61,7 +61,9 @@ const CameraQRScanner = ({ open, onClose, language = 'ar' }) => {
     setLoading(true);
 
     try {
-      const response = await fetch(`/api/public/member-card/${memberCode}`);
+      const branchId = localStorage.getItem('selectedBranchId') || '';
+      const lookupUrl = `/api/public/member-card/${encodeURIComponent(memberCode)}${branchId ? `?branch_id=${encodeURIComponent(branchId)}` : ''}`;
+      const response = await fetch(lookupUrl);
       if (response.ok) {
         const data = await response.json();
         const allActivities = data.activities || [];
@@ -74,6 +76,16 @@ const CameraQRScanner = ({ open, onClose, language = 'ar' }) => {
         setActivityStates(initStates);
         setMemberData({ ...data, activeActivities, expiredActivities });
       } else {
+        // Capture server-provided error detail (e.g. 409 duplicate suffix across branches)
+        let serverErrorMsg = null;
+        try {
+          const errBody = await response.clone().json();
+          const detail = errBody?.detail;
+          if (typeof detail === 'string') serverErrorMsg = detail;
+          else if (detail?.msg) serverErrorMsg = detail.msg;
+          else if (detail?.message) serverErrorMsg = detail.message;
+        } catch (_) {}
+
         const coachRes = await fetch(`/api/coach-attendance/qr-checkin-by-code/${memberCode}`, { method: 'POST' });
         if (coachRes.ok) {
           const coachData = await coachRes.json();
@@ -81,7 +93,9 @@ const CameraQRScanner = ({ open, onClose, language = 'ar' }) => {
         } else {
           setMemberData({
             error: true,
-            message: t('رقم العضوية غير موجود', 'Member ID not found'),
+            message: serverErrorMsg
+              ? `⚠️ ${serverErrorMsg}`
+              : t('رقم العضوية غير موجود', 'Member ID not found'),
             memberCode
           });
         }

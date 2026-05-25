@@ -137,7 +137,9 @@ const GlobalScanner = ({ enabled = true, language = 'ar' }) => {
     let memberLookupErrorMsg = null;
     try {
       const API_URL = '';
-      const response = await fetch(`${API_URL}/api/public/member-card/${memberCode}`);
+      const branchId = localStorage.getItem('selectedBranchId') || '';
+      const lookupUrl = `${API_URL}/api/public/member-card/${encodeURIComponent(memberCode)}${branchId ? `?branch_id=${encodeURIComponent(branchId)}` : ''}`;
+      const response = await fetch(lookupUrl);
       
       if (!response.ok) {
         // Capture server-provided error (e.g. 409 duplicate across branches) before trying coach lookup
