@@ -2068,9 +2068,11 @@ export default function AccountingPage() {
         <div className="border rounded-lg p-6 bg-white">
           <div className="flex justify-between items-center mb-4">
             <h3 className="text-lg font-bold">📊 تقرير المبيعات</h3>
+            {isAdmin && (
             <Button onClick={() => handleExportExcel('sales')} size="sm" className="bg-green-600 hover:bg-green-700">
               📥 Excel
             </Button>
+            )}
           </div>
           
           {/* Date Filters */}
@@ -2604,9 +2606,11 @@ export default function AccountingPage() {
       <div className="mt-4 border rounded-lg p-6 bg-white">
         <div className="flex justify-between items-center">
           <h3 className="text-lg font-bold">🧾 تقرير المشتريات</h3>
+          {isAdmin && (
           <Button onClick={() => handleExportExcel('purchases')} className="bg-blue-600 hover:bg-blue-700">
             📥 Export Excel
           </Button>
+          )}
         </div>
       </div>
     </div>
@@ -2617,6 +2621,7 @@ export default function AccountingPage() {
     <div className="space-y-6">
       <div className="flex justify-between items-center flex-wrap gap-3">
         <h2 className="text-xl font-bold">🧾 إقرار ضريبة القيمة المضافة (VAT)</h2>
+        {isAdmin && (
         <div className="flex gap-2 flex-wrap">
           <Button onClick={() => handleExportExcel('sales')} className="bg-green-600 hover:bg-green-700">
             📥 تصدير فواتير المبيعات
@@ -2628,6 +2633,7 @@ export default function AccountingPage() {
             📥 تصدير الإقرار الضريبي
           </Button>
         </div>
+        )}
       </div>
       
       {/* Date Filters */}
@@ -3001,9 +3007,11 @@ export default function AccountingPage() {
           <div className="flex gap-2">
             {expensesSubView === 'expenses' ? (
               <>
+                {isAdmin && (
                 <Button onClick={handleExportInternalExpenses} variant="outline">
                   📥 تصدير Excel
                 </Button>
+                )}
                 {approvedCount > 0 && (
                   <Button onClick={handlePostExpensesToAccounting} className="bg-purple-600 hover:bg-purple-700">
                     ⬆️ ترحيل للقيود ({approvedCount})

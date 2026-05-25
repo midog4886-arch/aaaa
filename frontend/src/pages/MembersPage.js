@@ -54,7 +54,7 @@ import {
 
 export const MembersPage = () => {
   const { t, language } = useLanguage();
-  const { selectedBranchId } = useAuth();
+  const { selectedBranchId, isAdmin } = useAuth();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const [members, setMembers] = useState([]);
@@ -1436,6 +1436,7 @@ export const MembersPage = () => {
           </div>
           
           <div className="flex flex-wrap gap-2">
+            {isAdmin && (<>
             <Button 
               variant="outline"
               size="sm"
@@ -1463,6 +1464,7 @@ export const MembersPage = () => {
               <Download className="w-4 h-4 me-1" />
               PDF
             </Button>
+            </>)}
             <Button 
               variant="outline"
               size="sm"

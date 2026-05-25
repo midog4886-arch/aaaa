@@ -966,6 +966,8 @@ async def export_renewal_reminder_history(
     current_user: dict = Depends(get_current_user),
 ):
     """Excel export of the same filtered history list (no pagination)."""
+    if not current_user.get("is_admin"):
+        raise HTTPException(status_code=403, detail="غير مصرح: التصدير متاح للمدير فقط")
     from io import BytesIO
     from fastapi.responses import StreamingResponse
 

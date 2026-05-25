@@ -1258,6 +1258,8 @@ async def export_tournament(
     format: str = Query("xlsx", description="xlsx or pdf"),
     current_user: dict = Depends(require_tournaments_permission)
 ):
+    if not current_user.get("is_admin"):
+        raise HTTPException(status_code=403, detail="غير مصرح: التصدير متاح للمدير فقط")
     if format not in ("xlsx", "pdf"):
         raise HTTPException(status_code=400, detail="format must be 'xlsx' or 'pdf'")
     t = await _load_tournament_or_403(tournament_id, current_user)

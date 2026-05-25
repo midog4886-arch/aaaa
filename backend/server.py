@@ -932,6 +932,36 @@ def _enforce_tenant_match_local(payload: dict):
         raise HTTPException(status_code=403, detail="Tenant mismatch")
 
 
+def _require_export_admin_token(token: Optional[str]):
+    """Validate a query-string JWT for export endpoints and require admin.
+
+    Supervisors (is_admin=False) are blocked from data exports — only the
+    Daily Ledger (which exports client-side) remains accessible to them.
+    """
+    if not token:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    try:
+        payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+    except Exception:
+        raise HTTPException(status_code=401, detail="Invalid token")
+    _enforce_tenant_match_local(payload)
+    if not payload.get("is_admin"):
+        raise HTTPException(
+            status_code=403,
+            detail="غير مصرح: التصدير متاح للمدير فقط",
+        )
+    return payload
+
+
+def _require_admin_export_user(current_user: dict):
+    """Same guard for routes using Depends(get_current_user[_from_token])."""
+    if not current_user or not current_user.get("is_admin"):
+        raise HTTPException(
+            status_code=403,
+            detail="غير مصرح: التصدير متاح للمدير فقط",
+        )
+
+
 async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
     try:
         payload = jwt.decode(credentials.credentials, JWT_SECRET, algorithms=[JWT_ALGORITHM])
@@ -2549,13 +2579,7 @@ async def export_members(
     token: Optional[str] = None
 ):
     """Export members to Excel/CSV"""
-    # Verify token
-    if not token:
-        raise HTTPException(status_code=401, detail="Not authenticated")
-    try:
-        _enforce_tenant_match_local(jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM]))
-    except:
-        raise HTTPException(status_code=401, detail="Invalid token")
+    _require_export_admin_token(token)
     
     query = {}
     if activity_id:
@@ -2669,13 +2693,7 @@ async def export_invoices(
     token: Optional[str] = None
 ):
     """Export invoices to Excel/CSV"""
-    # Verify token
-    if not token:
-        raise HTTPException(status_code=401, detail="Not authenticated")
-    try:
-        _enforce_tenant_match_local(jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM]))
-    except:
-        raise HTTPException(status_code=401, detail="Invalid token")
+    _require_export_admin_token(token)
     
     query = {}
     if status:
@@ -2786,12 +2804,7 @@ async def export_members_pdf(
     status: Optional[str] = None,
     token: Optional[str] = None
 ):
-    if not token:
-        raise HTTPException(status_code=401, detail="Not authenticated")
-    try:
-        _enforce_tenant_match_local(jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM]))
-    except:
-        raise HTTPException(status_code=401, detail="Invalid token")
+    _require_export_admin_token(token)
 
     query = {}
     if activity_id:
@@ -2893,12 +2906,7 @@ async def export_invoices_pdf(
     end_date: Optional[str] = None,
     token: Optional[str] = None
 ):
-    if not token:
-        raise HTTPException(status_code=401, detail="Not authenticated")
-    try:
-        _enforce_tenant_match_local(jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM]))
-    except:
-        raise HTTPException(status_code=401, detail="Invalid token")
+    _require_export_admin_token(token)
 
     query = {}
     if status:
@@ -4572,12 +4580,7 @@ def start_tenant_purge_digest_scheduler():
 
 @api_router.post("/backup/create")
 async def create_backup(token: Optional[str] = None):
-    if not token:
-        raise HTTPException(status_code=401, detail="Not authenticated")
-    try:
-        _enforce_tenant_match_local(jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM]))
-    except:
-        raise HTTPException(status_code=401, detail="Invalid token")
+    _require_export_admin_token(token)
 
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
     filename = f"backup_{timestamp}.json"
@@ -4618,12 +4621,7 @@ async def create_backup(token: Optional[str] = None):
 
 @api_router.get("/backup/list")
 async def list_backups(token: Optional[str] = None):
-    if not token:
-        raise HTTPException(status_code=401, detail="Not authenticated")
-    try:
-        _enforce_tenant_match_local(jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM]))
-    except:
-        raise HTTPException(status_code=401, detail="Invalid token")
+    _require_export_admin_token(token)
 
     backups = []
     if BACKUPS_DIR.exists():
@@ -4643,12 +4641,7 @@ async def list_backups(token: Optional[str] = None):
 
 @api_router.get("/backup/download/{filename}")
 async def download_backup(filename: str, token: Optional[str] = None):
-    if not token:
-        raise HTTPException(status_code=401, detail="Not authenticated")
-    try:
-        _enforce_tenant_match_local(jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM]))
-    except:
-        raise HTTPException(status_code=401, detail="Invalid token")
+    _require_export_admin_token(token)
 
     filepath = BACKUPS_DIR / filename
     if not filepath.exists() or not filepath.is_file():
@@ -4806,13 +4799,7 @@ async def export_financial_report(
     token: Optional[str] = None
 ):
     """Export financial report to Excel/CSV"""
-    # Verify token
-    if not token:
-        raise HTTPException(status_code=401, detail="Not authenticated")
-    try:
-        _enforce_tenant_match_local(jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM]))
-    except:
-        raise HTTPException(status_code=401, detail="Invalid token")
+    _require_export_admin_token(token)
     
     query = {"status": "paid"}
 
@@ -4931,13 +4918,7 @@ async def export_financial_report(
 @api_router.get("/export/all-data")
 async def export_all_data(token: Optional[str] = None):
     """Export all data (members, invoices, activities, coaches) to Excel"""
-    # Verify token
-    if not token:
-        raise HTTPException(status_code=401, detail="Not authenticated")
-    try:
-        _enforce_tenant_match_local(jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM]))
-    except:
-        raise HTTPException(status_code=401, detail="Invalid token")
+    _require_export_admin_token(token)
     
     # Fetch all data
     members = await db.members.find({}, {"_id": 0}).to_list(10000)
@@ -7517,14 +7498,7 @@ async def export_attendance_excel(
     token: str = None
 ):
     """Export attendance summary to Excel or PDF (one row per member with session count)"""
-    if not token:
-        raise HTTPException(status_code=401, detail="Not authenticated")
-    try:
-        _enforce_tenant_match_local(jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM]))
-    except HTTPException:
-        raise
-    except Exception:
-        raise HTTPException(status_code=401, detail="Invalid token")
+    _require_export_admin_token(token)
 
     # Build date query
     date_query = {}
@@ -8548,6 +8522,7 @@ async def export_internal_expenses(
     current_user: dict = Depends(get_current_user)
 ):
     """Export internal expenses to Excel"""
+    _require_admin_export_user(current_user)
     query = {}
     
     is_admin = current_user.get("is_admin", False)
@@ -9536,6 +9511,7 @@ async def export_sales_report(
     token: Optional[str] = None
 ):
     """Export sales report to Excel"""
+    _require_export_admin_token(token)
     if not token:
         raise HTTPException(status_code=401, detail="Not authenticated")
     try:
@@ -9637,6 +9613,7 @@ async def export_purchases_report(
     token: Optional[str] = None
 ):
     """Export purchases report to Excel"""
+    _require_export_admin_token(token)
     if not token:
         raise HTTPException(status_code=401, detail="Not authenticated")
     try:
@@ -9742,6 +9719,7 @@ async def export_vat_report(
     token: Optional[str] = None
 ):
     """Export VAT declaration report to Excel"""
+    _require_export_admin_token(token)
     if not token:
         raise HTTPException(status_code=401, detail="Not authenticated")
     try:

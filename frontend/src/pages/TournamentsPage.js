@@ -1363,6 +1363,7 @@ const TournamentDetail = ({ tid, onBack }) => {
                 <FileText className="w-4 h-4" />
                 {language === 'ar' ? 'طباعة' : 'Print'}
               </Button>
+              {user?.is_admin && (<>
               <Button variant="outline" onClick={handleExportPdf} className="gap-1">
                 <FileText className="w-4 h-4" />
                 PDF
@@ -1371,6 +1372,7 @@ const TournamentDetail = ({ tid, onBack }) => {
                 <FileSpreadsheet className="w-4 h-4" />
                 Excel
               </Button>
+              </>)}
               <Button variant="outline" onClick={handleWhatsAppShare} className="gap-1 bg-green-50 hover:bg-green-100 text-green-700 border-green-300">
                 <Share2 className="w-4 h-4" />
                 {language === 'ar' ? 'واتساب' : 'WhatsApp'}

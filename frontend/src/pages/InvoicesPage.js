@@ -42,8 +42,7 @@ import { verifyOperationPassword } from '../utils/operationPassword';
 
 export const InvoicesPage = () => {
   const { t, language } = useLanguage();
-  const { user, selectedBranchId } = useAuth();
-  const isAdmin = user?.is_admin === true;
+  const { user, selectedBranchId, isAdmin } = useAuth();
   const printRef = useRef();
 
   const [invoices, setInvoices] = useState([]);
@@ -255,8 +254,10 @@ export const InvoicesPage = () => {
               <Button variant="outline" onClick={() => setShowAdvancedSearch(!showAdvancedSearch)}><Filter className="w-4 h-4" /></Button>
             </div>
             <div className="flex gap-2 flex-wrap">
+              {isAdmin && (<>
               <Button variant="outline" onClick={handleExportAllData} data-testid="export-all-btn"><FileSpreadsheet className="w-4 h-4 me-2" />{language === 'ar' ? 'تصدير Excel' : 'Export Excel'}</Button>
               <Button variant="outline" onClick={() => { const token = localStorage.getItem('token'); window.open(exportAPI.invoicesPdf() + `&token=${token}`, '_blank'); }}><FileSpreadsheet className="w-4 h-4 me-2" />{language === 'ar' ? 'تصدير PDF' : 'Export PDF'}</Button>
+              </>)}
               <Button variant="outline" onClick={() => setIsRegistrationFormDialogOpen(true)} className="bg-gray-800 text-white hover:bg-gray-900" data-testid="create-registration-form-btn"><FileText className="w-4 h-4 me-2" />{language === 'ar' ? 'استمارة تسجيل' : 'Registration Form'}</Button>
               <Button onClick={() => setIsCreateDialogOpen(true)} data-testid="create-invoice-btn"><Plus className="w-4 h-4 me-2" />{t('create_invoice')}</Button>
             </div>

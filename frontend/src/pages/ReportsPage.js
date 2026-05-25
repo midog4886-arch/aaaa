@@ -41,7 +41,7 @@ import {
 
 export const ReportsPage = () => {
   const { t, language } = useLanguage();
-  const { selectedBranchId } = useAuth();
+  const { selectedBranchId, isAdmin } = useAuth();
   const [report, setReport] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [activities, setActivities] = useState([]);
@@ -264,6 +264,7 @@ export const ReportsPage = () => {
                 <Calendar className="w-4 h-4 me-2" />
                 {t('filter')}
               </Button>
+              {isAdmin && (
               <Button 
                 variant="outline" 
                 onClick={() => {
@@ -279,6 +280,7 @@ export const ReportsPage = () => {
                 <Download className="w-4 h-4 me-2" />
                 {language === 'ar' ? 'تصدير Excel' : 'Export Excel'}
               </Button>
+              )}
               <Button 
                 variant="outline" 
                 onClick={() => {

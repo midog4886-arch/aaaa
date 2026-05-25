@@ -493,6 +493,8 @@ async def export_monthly_report(
     current_user: dict = Depends(get_current_user)
 ):
     """Export monthly coach attendance report as Excel or PDF."""
+    if not current_user.get("is_admin"):
+        raise HTTPException(status_code=403, detail="غير مصرح: التصدير متاح للمدير فقط")
     if format not in ("xlsx", "pdf"):
         raise HTTPException(status_code=400, detail="format يجب أن يكون xlsx أو pdf")
 

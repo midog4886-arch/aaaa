@@ -25,8 +25,7 @@ const Toast = ({ msg, type, onClose }) => {
 };
 
 const CoachSalariesPage = () => {
-  const { user } = useAuth();
-  const isAdmin = !!user?.is_admin;
+  const { user, isAdmin } = useAuth();
   const branchFilter = localStorage.getItem('selectedBranch') || 'all';
 
   const [tab, setTab] = useState('salaries');
@@ -551,6 +550,7 @@ const CoachSalariesPage = () => {
                 {reportLoading ? <Loader className="w-4 h-4 animate-spin" /> : <BarChart3 className="w-4 h-4" />}
                 عرض التقرير
               </button>
+              {isAdmin && (
               <div className="flex gap-2 mr-auto">
                 <button onClick={() => downloadReport('xlsx')}
                   disabled={!reportData || reportLoading}
@@ -563,6 +563,7 @@ const CoachSalariesPage = () => {
                   <Download className="w-4 h-4" /> تصدير PDF
                 </button>
               </div>
+              )}
             </div>
             {reportData && (
               <p className="text-xs text-gray-500 mt-3">

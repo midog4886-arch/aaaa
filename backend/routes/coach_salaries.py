@@ -731,6 +731,8 @@ async def salaries_report(
     await require_permission(current_user, "salaries")
     if format not in ("json", "xlsx", "pdf"):
         raise HTTPException(status_code=400, detail="format يجب أن يكون json أو xlsx أو pdf")
+    if format in ("xlsx", "pdf") and not current_user.get("is_admin"):
+        raise HTTPException(status_code=403, detail="غير مصرح: التصدير متاح للمدير فقط")
 
     months = _months_between(from_month, to_month)
     effective_branch = resolve_branch_filter(current_user, branch_filter)
