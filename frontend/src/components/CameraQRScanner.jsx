@@ -348,6 +348,21 @@ const CameraQRScanner = ({ open, onClose, language = 'ar' }) => {
               </div>
             </div>
 
+            {/* Member notes (admin-only) — shown in red as an alert */}
+            {memberData.notes && memberData.notes.trim() && (
+              <div className="bg-red-50 border-2 border-red-300 rounded-xl p-3 flex items-start gap-2">
+                <AlertTriangle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
+                <div className="min-w-0 flex-1">
+                  <p className="text-red-700 font-bold text-xs mb-1">
+                    {t('ملاحظة هامة', 'Important note')}
+                  </p>
+                  <p className="text-red-800 text-sm whitespace-pre-wrap break-words">
+                    {memberData.notes}
+                  </p>
+                </div>
+              </div>
+            )}
+
             {/* Active Activities - each with independent check-in */}
             {memberData.activeActivities?.length > 0 ? (
               <div>

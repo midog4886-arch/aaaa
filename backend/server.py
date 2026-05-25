@@ -480,6 +480,7 @@ async def get_member_card_public(search_term: str, branch_id: Optional[str] = No
         "photo": member.get("photo", ""),
         "branch_id": member_branch_id,
         "branch_phone": branch_phone,
+        "notes": member.get("notes") or "",
         "activities": activities,
         "active_activities": [a for a in activities if a.get("status") == "active"],
         "qr_data": {
