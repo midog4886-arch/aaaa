@@ -73,6 +73,7 @@ export default function DayExtensionsPage() {
   const [waQueue, setWaQueue] = useState([]);
   const [waQueueIdx, setWaQueueIdx] = useState(0);
   const [excludedMemberIds, setExcludedMemberIds] = useState([]);
+  const [showSkippedList, setShowSkippedList] = useState(false);
 
   const loadData = useCallback(async () => {
     try {
@@ -183,6 +184,7 @@ export default function DayExtensionsPage() {
     setPreviewClosure(closure);
     setPreviewResult(null);
     setExcludedMemberIds([]);
+    setShowSkippedList(false);
     setWaMessage(buildDefaultMessage(closure));
     setShowPreviewDialog(true);
     setPreviewing(true);
@@ -772,6 +774,40 @@ export default function DayExtensionsPage() {
                       )}
                     </div>
                   </div>
+
+                  {(previewResult.skipped_members || []).length > 0 && (
+                    <div className="border rounded-lg">
+                      <button
+                        type="button"
+                        className="w-full flex items-center justify-between px-3 py-2 text-sm font-medium hover:bg-muted/30"
+                        onClick={() => setShowSkippedList(v => !v)}
+                      >
+                        <span className="flex items-center gap-2">
+                          <Users className="w-4 h-4 text-orange-600" />
+                          {t('المستثنون تلقائياً', 'Auto-skipped')} ({previewResult.skipped_members.length})
+                        </span>
+                        {showSkippedList ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                      </button>
+                      {showSkippedList && (
+                        <div className="max-h-[200px] overflow-y-auto border-t divide-y">
+                          {previewResult.skipped_members.map((s, i) => (
+                            <div key={i} className="p-2 text-sm">
+                              <p className="font-medium">{s.name || '-'}</p>
+                              <p className="text-xs text-orange-700 mt-0.5">
+                                {t('السبب:', 'Reason:')} {s.reason || t('لا يوجد تقاطع مع أيام الإغلاق', 'No overlap with closure days')}
+                              </p>
+                              {s.training_days ? (
+                                <p className="text-xs text-muted-foreground mt-0.5">
+                                  {t('أيام التدريب:', 'Training days:')} {s.training_days}
+                                  {s.member_time ? ` · ${s.member_time}` : ''}
+                                </p>
+                              ) : null}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               ) : null}
 
