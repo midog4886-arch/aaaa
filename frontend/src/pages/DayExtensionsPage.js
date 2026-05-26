@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useLanguage } from '../contexts/LanguageContext';
+import { useAuth } from '../contexts/AuthContext';
 import { Layout } from '../components/Layout';
 import { Card } from '../components/ui/card';
 import { Button } from '../components/ui/button';
@@ -31,6 +32,7 @@ const REASON_COLORS = {
 
 export default function DayExtensionsPage() {
   const { language } = useLanguage();
+  const { selectedBranchId: globalBranchId } = useAuth();
   const t = (ar, en) => language === 'ar' ? ar : en;
 
   const [closures, setClosures] = useState([]);
@@ -52,7 +54,11 @@ export default function DayExtensionsPage() {
   };
   const [newClosure, setNewClosure] = useState({ ...defaultClosure });
   const [manualExt, setManualExt] = useState({ member_id: '', days: 1, reason: '', activity_id: '' });
-  const [applyBranch, setApplyBranch] = useState('all');
+  const [applyBranch, setApplyBranch] = useState(globalBranchId || 'all');
+
+  useEffect(() => {
+    if (globalBranchId) setApplyBranch(globalBranchId);
+  }, [globalBranchId]);
   const [showResultDialog, setShowResultDialog] = useState(false);
   const [applyResult, setApplyResult] = useState(null);
   const [availableTimes, setAvailableTimes] = useState([]);
