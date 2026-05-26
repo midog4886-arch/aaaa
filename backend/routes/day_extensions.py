@@ -181,8 +181,21 @@ class ManualExtension(BaseModel):
 @router.get("/closures")
 async def get_closures(user=Depends(get_current_user)):
     closures = await db.closures.find().sort("created_at", -1).to_list(500)
+    member_branch_cache = {}
     for c in closures:
         c.pop("_id", None)
+        cb = (c.get("branch_id") or "all")
+        if cb and cb != "all":
+            affected = c.get("affected_members") or []
+            if affected:
+                ids_to_lookup = [a.get("member_id") for a in affected if a.get("member_id") and a.get("member_id") not in member_branch_cache]
+                if ids_to_lookup:
+                    async for m in db.members.find({"id": {"$in": ids_to_lookup}}, {"id": 1, "branch_id": 1, "_id": 0}):
+                        member_branch_cache[m.get("id")] = m.get("branch_id") or ""
+                filtered = [a for a in affected if member_branch_cache.get(a.get("member_id"), "") == cb]
+                if len(filtered) != len(affected):
+                    c["affected_members"] = filtered
+                    c["applied_count"] = len(filtered)
     return closures
 
 @router.post("/closures")
@@ -405,7 +418,11 @@ async def apply_extension(data: ExtensionApply, user=Depends(get_current_user)):
 
     closure_start_str = closure["start_date"]
     query = {"activities": {"$elemMatch": {"end_date": {"$gte": closure_start_str}}}}
-    apply_branch = data.branch_id or closure.get("branch_id", "all")
+    closure_branch = closure.get("branch_id", "all") or "all"
+    if closure_branch and closure_branch != "all":
+        apply_branch = closure_branch
+    else:
+        apply_branch = data.branch_id or "all"
     if apply_branch and apply_branch != "all":
         query["branch_id"] = apply_branch
 
