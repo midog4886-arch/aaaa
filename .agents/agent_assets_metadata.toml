@@ -24,3 +24,9 @@ id = "HOutxgKvGHHgjb8s114yG"
 uri = "file://.local/post_deploy_checklist_ar.md"
 type = "text"
 title = "قائمة اختبار ما بعد النشر"
+
+[[outputs]]
+id = "6llU3AUC0OxL2B80f2qUK"
+uri = "file://exports/play-store-icon-512.png"
+type = "image"
+title = "أيقونة التطبيق الجديدة (512×512 لمتجر جوجل بلاي)"
