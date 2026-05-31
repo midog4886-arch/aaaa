@@ -4,8 +4,20 @@ import { Bell, BellOff, Loader2, Check, X } from 'lucide-react';
 import { Button } from './ui/button';
 import { toast } from 'sonner';
 import axios from 'axios';
-import { API_URL } from '../config/api';
+import { API_URL, getTenantSlug } from '../config/api';
 import LanguageContext from '../contexts/LanguageContext';
+
+// Dedicated axios instance for push-notification calls. The native app is
+// shared across multiple academies and ships against one fixed domain, so the
+// backend resolves the academy from the X-Tenant-Slug header. Without it, a
+// member of a non-default academy would register/unregister against the wrong
+// tenant. This instance injects the header on every request automatically.
+const pushAPI = axios.create({ baseURL: API_URL });
+pushAPI.interceptors.request.use((config) => {
+  config.headers = config.headers || {};
+  config.headers['X-Tenant-Slug'] = getTenantSlug();
+  return config;
+});
 
 // Read the user's chosen UI language. Falls back to localStorage when the
 // context is not in scope (e.g. unit tests) so push subscribe still includes
@@ -68,7 +80,7 @@ const PushNotificationManager = ({ memberId, compact = false }) => {
       await PushNotifications.removeAllListeners();
       PushNotifications.addListener('registration', async (token) => {
         try {
-          await axios.post(`${API_URL}/api/push-notifications/subscribe`, {
+          await pushAPI.post(`/api/push-notifications/subscribe`, {
             member_id: mid,
             language: getCurrentLanguage(),
             subscription: {
@@ -152,7 +164,7 @@ const PushNotificationManager = ({ memberId, compact = false }) => {
       }
 
       try {
-        const response = await axios.get(`${API_URL}/api/push-notifications/subscription-status/${memberId}`);
+        const response = await pushAPI.get(`/api/push-notifications/subscription-status/${memberId}`);
         setIsSubscribed(response.data.subscribed);
         
         if (!isNativeApp()) {
@@ -182,9 +194,9 @@ const PushNotificationManager = ({ memberId, compact = false }) => {
   useEffect(() => {
     if (!memberId || !isSubscribed) return;
     const controller = new AbortController();
-    axios
+    pushAPI
       .post(
-        `${API_URL}/api/push-notifications/language`,
+        `/api/push-notifications/language`,
         { member_id: memberId, language },
         { signal: controller.signal }
       )
@@ -253,7 +265,7 @@ const PushNotificationManager = ({ memberId, compact = false }) => {
         PushNotifications.addListener('registration', async (token) => {
           clearTimeout(timeout);
           try {
-            await axios.post(`${API_URL}/api/push-notifications/subscribe`, {
+            await pushAPI.post(`/api/push-notifications/subscribe`, {
               member_id: memberId,
               language: getCurrentLanguage(),
               subscription: {
@@ -317,7 +329,7 @@ const PushNotificationManager = ({ memberId, compact = false }) => {
         return false;
       }
 
-      const vapidResponse = await axios.get(`${API_URL}/api/push-notifications/vapid-public-key`);
+      const vapidResponse = await pushAPI.get(`/api/push-notifications/vapid-public-key`);
       const vapidPublicKey = vapidResponse.data.publicKey;
 
       const registration = await navigator.serviceWorker.ready;
@@ -326,7 +338,7 @@ const PushNotificationManager = ({ memberId, compact = false }) => {
         applicationServerKey: urlBase64ToUint8Array(vapidPublicKey)
       });
 
-      await axios.post(`${API_URL}/api/push-notifications/subscribe`, {
+      await pushAPI.post(`/api/push-notifications/subscribe`, {
         member_id: memberId,
         language: getCurrentLanguage(),
         subscription: {
@@ -377,9 +389,9 @@ const PushNotificationManager = ({ memberId, compact = false }) => {
         await PushNotifications.removeAllListeners();
       }
       
-      const response = await axios.get(`${API_URL}/api/push-notifications/subscription-status/${memberId}`);
+      const response = await pushAPI.get(`/api/push-notifications/subscription-status/${memberId}`);
       if (response.data.endpoint) {
-        await axios.post(`${API_URL}/api/push-notifications/unsubscribe`, null, {
+        await pushAPI.post(`/api/push-notifications/unsubscribe`, null, {
           params: { endpoint: response.data.endpoint }
         });
       }

@@ -29,3 +29,12 @@ fall back to `default` and either 404 on login or 403 on every API call.
   a stale wrong-tenant dashboard and then 403s.
 - The remembered member phone for one-tap login is tenant-scoped
   (`member_login_phone:<slug>`) so auto-login can't sign into the wrong academy.
+- Any member-facing component that does its OWN `axios.create()` or raw `axios`
+  calls (not routed through `memberAPI`) must inject `X-Tenant-Slug` itself.
+  Known case: `PushNotificationManager.jsx` has its own `pushAPI` instance with
+  a header interceptor. When adding new shared member components, either route
+  through `memberAPI` or add the same interceptor.
+- Still OUT of scope / known gap: the background service workers
+  (`public/sw.js`, `public/service-worker.js`) fetch `/api/advertisements/public`,
+  daily-videos, and `/api/attendance/record` with no tenant header — web-push
+  background context only; needs its own tenant-resolution approach.
