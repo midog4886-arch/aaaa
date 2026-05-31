@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import axios from 'axios';
 import { Trophy, Loader2, AlertCircle, Building2 } from 'lucide-react';
+import { setRememberedMemberPhone } from '../config/api';
 
 const PLATFORM_NAME_AR = 'أكاديميتي';
 const PLATFORM_TAGLINE_AR = 'حدّد أكاديميتك للمتابعة';
@@ -61,10 +62,22 @@ const AcademyPickerPage = () => {
 
   const confirmAcademy = (match) => {
     try {
+      const prevSlug = localStorage.getItem('tenant_slug');
+      // Switching to a different academy must drop any session cached for the
+      // old one, otherwise the member portal would redirect into a stale
+      // (wrong-tenant) dashboard and then hit 403s on every API call.
+      if (prevSlug && prevSlug !== match.tenant_slug) {
+        localStorage.removeItem('member_token');
+        localStorage.removeItem('member_data');
+        localStorage.removeItem('member_dashboard_cache_v1');
+      }
       localStorage.setItem('tenant_slug', match.tenant_slug);
       localStorage.setItem('academy_confirmed', '1');
       localStorage.setItem('academy_display_name', match.academy_name || '');
       if (match.academy_logo) localStorage.setItem('academy_display_logo', match.academy_logo);
+      // Carry the already-verified phone (scoped to the chosen tenant, which
+      // we just stored above) so the member portal can log in directly.
+      setRememberedMemberPhone(phone.trim());
     } catch (e) {}
     const next = new URLSearchParams(location.search).get('next') || '/member-login';
     navigate(next, { replace: true });

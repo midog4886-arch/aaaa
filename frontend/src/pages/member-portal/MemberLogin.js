@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
@@ -7,7 +7,7 @@ import { Input } from '../../components/ui/input';
 import { Phone, LogIn, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import axios from 'axios';
-import API_URL from '../../config/api';
+import API_URL, { getTenantSlug, getRememberedMemberPhone, setRememberedMemberPhone, clearRememberedMemberPhone } from '../../config/api';
 import { getAcademyLogoUrl, getAcademyName, loadBranding, useBrandColor } from '../../services/branding';
 
 const DEFAULT_LOGO = "/logo-new.png";
@@ -133,13 +133,18 @@ const SplashScreen = ({ onComplete, logo, academyName }) => {
 
 const MemberLogin = () => {
   const navigate = useNavigate();
-  const [phone, setPhone] = useState('');
+  const rememberedPhone = getRememberedMemberPhone();
+  const [phone, setPhone] = useState(rememberedPhone);
   const [loading, setLoading] = useState(false);
-  const [showSplash, setShowSplash] = useState(true);
-  const [formVisible, setFormVisible] = useState(false);
+  // When we already have the member's phone (from the academy picker or a
+  // previous login) we skip the splash and jump straight to an auto-login so
+  // they reach the portal without typing anything again.
+  const [showSplash, setShowSplash] = useState(!rememberedPhone);
+  const [formVisible, setFormVisible] = useState(!!rememberedPhone);
   const [logo, setLogo] = useState(resolveAcademyLogo());
   const [academyName, setAcademyName] = useState(getAcademyName());
   const primary = useBrandColor();
+  const autoTriedRef = useRef(false);
 
   useEffect(() => {
     const onUpdate = () => {
@@ -178,38 +183,67 @@ const MemberLogin = () => {
     setTimeout(() => setFormVisible(true), 100);
   };
 
-  const handleLogin = async (e) => {
-    e.preventDefault();
-    
-    if (!phone.trim()) {
-      toast.error('يرجى إدخال رقم الجوال');
-      return;
+  const doLogin = async (phoneValue, { silent = false } = {}) => {
+    const ph = (phoneValue || '').trim();
+    if (!ph) {
+      if (!silent) toast.error('يرجى إدخال رقم الجوال');
+      return false;
     }
-    
+
     setLoading(true);
-    
+
     try {
       const response = await axios.post(`${API_URL}/api/member-portal/login`, {
-        phone: phone.trim()
+        phone: ph
+      }, {
+        // The fixed native domain can't reveal the tenant via host, so bind
+        // this request to the academy the member just confirmed.
+        headers: { 'X-Tenant-Slug': getTenantSlug() }
       });
-      
+
       localStorage.setItem('member_token', response.data.access_token);
       localStorage.setItem('member_data', JSON.stringify(response.data.member));
       const savedLang = response.data.member?.language;
       localStorage.setItem('member_language', savedLang === 'en' ? 'en' : 'ar');
+      // Remember the phone (scoped to this tenant) for one-tap return logins.
+      setRememberedMemberPhone(ph);
 
       toast.success(`مرحباً ${response.data.member.name_ar}`);
       navigate('/member-dashboard');
+      return true;
     } catch (error) {
+      // A remembered phone can become invalid (member removed / phone changed).
+      // Drop it so we don't keep retrying and let the member type a new one.
       if (error.response?.status === 404) {
-        toast.error('رقم الجوال غير مسجل في النظام');
-      } else {
+        clearRememberedMemberPhone();
+        if (!silent) toast.error('رقم الجوال غير مسجل في النظام');
+      } else if (!silent) {
         toast.error('حدث خطأ في تسجيل الدخول');
       }
+      return false;
     } finally {
       setLoading(false);
     }
   };
+
+  const handleLogin = (e) => {
+    e.preventDefault();
+    doLogin(phone);
+  };
+
+  // Auto-login when we already know the member's phone (from the academy
+  // picker or a previous session). Runs once; on failure the form stays
+  // visible so they can correct the number manually.
+  useEffect(() => {
+    if (autoTriedRef.current) return;
+    autoTriedRef.current = true;
+    if (localStorage.getItem('member_token')) return;
+    const remembered = getRememberedMemberPhone();
+    if (!remembered) return;
+    setFormVisible(true);
+    doLogin(remembered, { silent: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <div className="min-h-screen relative overflow-hidden" dir="rtl">

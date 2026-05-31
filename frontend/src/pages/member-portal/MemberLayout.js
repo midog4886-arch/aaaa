@@ -8,7 +8,7 @@ import {
 import { Button } from '../../components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../../components/ui/dialog';
 import axios from 'axios';
-import API_URL from '../../config/api';
+import API_URL, { getTenantSlug, clearRememberedMemberPhone } from '../../config/api';
 import { getAcademyLogoUrl, getAcademyName, useBrandColor } from '../../services/branding';
 
 // Default member-portal logo (used when tenant has not uploaded a custom logo).
@@ -33,6 +33,8 @@ export const memberLogout = () => {
   localStorage.removeItem('member_token');
   localStorage.removeItem('member_data');
   try { localStorage.removeItem('member_dashboard_cache_v1'); } catch {}
+  // Forget the remembered phone so an explicit logout does NOT auto-login again.
+  clearRememberedMemberPhone();
 };
 
 // Dark mode helper - reads from member_data (DB-synced) first, falls back to localStorage
@@ -69,6 +71,10 @@ memberAPI.interceptors.request.use((config) => {
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }
+  // The native app shares one fixed domain across academies, so the backend
+  // relies on this header to resolve the tenant. For the default tenant this
+  // equals the existing fallback, so it changes nothing for current users.
+  config.headers['X-Tenant-Slug'] = getTenantSlug();
   return config;
 });
 

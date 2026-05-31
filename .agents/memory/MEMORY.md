@@ -1,0 +1,1 @@
+- [Member portal tenant header](member-portal-tenant.md) — native app uses ONE fixed domain, so member API + login must send X-Tenant-Slug explicitly; backend 403s on token/request tenant mismatch.
