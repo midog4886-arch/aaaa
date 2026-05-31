@@ -131,7 +131,7 @@ const DailyNewCardsPage = () => {
             ${activitiesHtml ? `<div class="activities"><div class="activities-label">${L.activities}</div>${activitiesHtml}</div>` : ''}
           </div>
           <div class="qr-container">
-            <div class="qr-section"><img src="https://api.qrserver.com/v1/create-qr-code/?size=600x600&ecc=H&margin=1&qzone=1&format=png&data=${qrData}" /></div>
+            <div class="qr-section"><img src="https://api.qrserver.com/v1/create-qr-code/?size=1000x1000&ecc=M&margin=1&qzone=1&format=png&data=${qrData}" /></div>
             <div class="qr-dates"><span>${L.from} ${startDate || '----'}</span><span>${L.to} ${endDate || '----'}</span></div>
             ${schedule ? `<div class="schedule-info">📅 ${translateSchedule(schedule, lang)}</div>` : ''}
             ${m.phone ? `<div class="phone-row">📱 ${m.phone}</div>` : ''}
@@ -222,7 +222,7 @@ const DailyNewCardsPage = () => {
         .info-section { text-align:right; flex-shrink:0; display:flex; flex-direction:column; }
         .qr-container { display:flex; flex-direction:column; align-items:center; flex-shrink:0; padding-top:0.5mm; margin-top:auto; }
         .qr-section { width:22mm; height:22mm; background:white; border:1px solid #eee; border-radius:2mm; padding:0.4mm; }
-        .qr-section img { width:100%; height:100%; }
+        .qr-section img { width:100%; height:100%; image-rendering:pixelated; image-rendering:crisp-edges; -ms-interpolation-mode:nearest-neighbor; }
         .qr-dates { text-align:center; font-size:5.5pt; color:#1f2937; margin-top:0.4mm; line-height:1.2; font-weight:700; }
         .qr-dates span { display:block; }
         .qr-label { text-align:center; font-size:6.5pt; color:#F97316; font-weight:900; margin-top:0.5mm; letter-spacing:0.3mm; }
