@@ -40,6 +40,18 @@ fall back to `default` and either 404 on login or 403 on every API call.
   request and folds it into a synthetic `?__tenant=<slug>` cache key
   (`tenantScopedRequest`); per-academy cache keeps offline fallback from leaking
   one academy's data to another. Bump `CACHE_NAME` to purge old un-scoped entries.
-- SW push display/click handlers need NO tenant logic — web-push is already
-  subscription-targeted by the server; the SW just renders the payload + opens url.
-- The SW `offline-attendance` sync path is dead (nothing writes that cache key).
+- Web-push ROUTING is already correct without any SW tenant logic — the
+  subscription lives in the academy's own tenant DB, so the server only delivers
+  a push to that academy's members. The SW only renders the payload + opens url.
+- Even so, the SW is now tenant-aware defensively: the backend stamps the
+  recipient's academy `tenant` slug onto every web-push payload
+  (`send_push_notification`), and the app posts the slug to the SW via a
+  `SET_TENANT` message (index.js on load/ready + subscribeWeb). The SW persists
+  it in Cache Storage (key `/__sw-tenant-slug`) because the SW is killed when
+  idle and JS variables don't survive between push events.
+- The SW uses this slug to (a) namespace the notification `tag` per academy so
+  one academy's push can't collapse/replace another's on a shared device, and
+  (b) attach `X-Tenant-Slug` to any SW-initiated fetch.
+- The SW `offline-attendance` sync path is dead (nothing writes that cache key),
+  but its `/api/attendance/record` POST now sends `X-Tenant-Slug` from the
+  persisted slug so it can't silently hit the default tenant if ever revived.

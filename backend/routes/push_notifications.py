@@ -334,6 +334,16 @@ async def send_push_notification(subscription: dict, payload: NotificationPayloa
         return False
     
     try:
+        # Stamp the recipient's academy (tenant) onto the web-push payload.
+        # The browser service worker has no localStorage and is shared across
+        # academies on a single fixed domain, so it cannot otherwise know which
+        # academy a push belongs to. Including the slug lets the SW namespace
+        # the notification tag per academy (so one academy's push can't replace
+        # another's on a shared device) and gives any SW-side logic an
+        # authoritative tenant for this notification. Routing itself is already
+        # guaranteed because the subscription lives in this academy's DB.
+        from utils.tenant import get_current_tenant_slug
+        tenant_slug = get_current_tenant_slug()
         notification_data = {
             "title": payload.title,
             "body": payload.body,
@@ -341,6 +351,7 @@ async def send_push_notification(subscription: dict, payload: NotificationPayloa
             "badge": payload.badge,
             "image": payload.image or None,
             "url": payload.url,
+            "tenant": tenant_slug,
             "tag": payload.tag or str(uuid.uuid4()),
             "data": payload.data or {}
         }

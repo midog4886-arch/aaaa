@@ -2,6 +2,7 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import "./index.css";
 import App from "./App";
+import { getTenantSlug } from "./config/api";
 
 // Optional Sentry error monitoring — only initialised when the deploy supplies
 // REACT_APP_SENTRY_DSN, so local/dev builds and customers who haven't opted in
@@ -36,10 +37,28 @@ if ('serviceWorker' in navigator) {
     }
   });
 
+  // Push the current academy (tenant) slug into the service worker so any
+  // SW-initiated network call and notification handling stays scoped to the
+  // member's own academy. The native/PWA app shares one fixed domain across
+  // academies, so the SW cannot infer the tenant on its own.
+  const postTenantToSW = () => {
+    try {
+      const sw = navigator.serviceWorker.controller;
+      if (sw) {
+        sw.postMessage({ type: 'SET_TENANT', slug: getTenantSlug() });
+      }
+    } catch (e) {
+      console.warn('[App] Failed to send tenant slug to Service Worker:', e);
+    }
+  };
+
+  navigator.serviceWorker.ready.then(postTenantToSW).catch(() => {});
+
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('/sw.js')
       .then((registration) => {
         console.log('[App] Service Worker registered:', registration.scope);
+        postTenantToSW();
         registration.addEventListener('updatefound', () => {
           const newWorker = registration.installing;
           if (newWorker) {

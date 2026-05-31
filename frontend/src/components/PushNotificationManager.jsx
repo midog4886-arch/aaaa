@@ -333,6 +333,18 @@ const PushNotificationManager = ({ memberId, compact = false }) => {
       const vapidPublicKey = vapidResponse.data.publicKey;
 
       const registration = await navigator.serviceWorker.ready;
+
+      // Tell the service worker which academy this subscription belongs to.
+      // The SW shares one fixed domain across academies and has no localStorage,
+      // so persisting the slug now keeps SW-initiated calls and notification
+      // handling scoped to this member's academy.
+      try {
+        const controller = navigator.serviceWorker.controller || registration.active;
+        controller?.postMessage({ type: 'SET_TENANT', slug: getTenantSlug() });
+      } catch (e) {
+        console.warn('Failed to send tenant slug to Service Worker:', e);
+      }
+
       const subscription = await registration.pushManager.subscribe({
         userVisibleOnly: true,
         applicationServerKey: urlBase64ToUint8Array(vapidPublicKey)
