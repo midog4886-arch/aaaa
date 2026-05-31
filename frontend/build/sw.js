@@ -3,7 +3,9 @@
 // fallback never serves one academy's ads / daily videos to a member of a
 // different academy. Bumping the cache name also purges any older un-scoped
 // entries on activate.
-const CACHE_NAME = 'gcsp-academy-v12';
+// v13: academy logo (/images/academy-logo.png) replaced — bump cache so the
+// precached old logo is purged and the new one is fetched on activate.
+const CACHE_NAME = 'gcsp-academy-v13';
 const OFFLINE_URL = '/offline.html';
 
 // Assets to cache immediately on install
