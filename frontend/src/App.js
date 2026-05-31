@@ -1,4 +1,5 @@
 import React, { useEffect, Suspense, lazy } from 'react';
+import { Capacitor } from '@capacitor/core';
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { LanguageProvider } from './contexts/LanguageContext';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
@@ -190,7 +191,7 @@ const SmartRedirect = () => {
     if (memberToken) {
       return <Navigate to="/member-dashboard" replace />;
     }
-    const isNativeApp = !!(window.Capacitor?.isNativePlatform?.());
+    const isNativeApp = Capacitor.isNativePlatform() || !!(window.Capacitor?.isNativePlatform?.());
     if (isNativeApp) {
       return <Navigate to="/member-login" replace />;
     }
