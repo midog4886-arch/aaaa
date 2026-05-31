@@ -34,7 +34,12 @@ fall back to `default` and either 404 on login or 403 on every API call.
   Known case: `PushNotificationManager.jsx` has its own `pushAPI` instance with
   a header interceptor. When adding new shared member components, either route
   through `memberAPI` or add the same interceptor.
-- Still OUT of scope / known gap: the background service workers
-  (`public/sw.js`, `public/service-worker.js`) fetch `/api/advertisements/public`,
-  daily-videos, and `/api/attendance/record` with no tenant header — web-push
-  background context only; needs its own tenant-resolution approach.
+- Service worker (`public/sw.js`, the only registered one — `service-worker.js`
+  is dead/unregistered) caches `/api/advertisements/public` + daily-videos. The
+  SW has no localStorage, so it reads `X-Tenant-Slug` off the intercepted member
+  request and folds it into a synthetic `?__tenant=<slug>` cache key
+  (`tenantScopedRequest`); per-academy cache keeps offline fallback from leaking
+  one academy's data to another. Bump `CACHE_NAME` to purge old un-scoped entries.
+- SW push display/click handlers need NO tenant logic — web-push is already
+  subscription-targeted by the server; the SW just renders the payload + opens url.
+- The SW `offline-attendance` sync path is dead (nothing writes that cache key).

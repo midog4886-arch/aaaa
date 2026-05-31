@@ -1,5 +1,9 @@
 // Service Worker for GCSP Academy PWA
-const CACHE_NAME = 'gcsp-academy-v11';
+// v12: API responses are now cached per academy (tenant) so an offline
+// fallback never serves one academy's ads / daily videos to a member of a
+// different academy. Bumping the cache name also purges any older un-scoped
+// entries on activate.
+const CACHE_NAME = 'gcsp-academy-v12';
 const OFFLINE_URL = '/offline.html';
 
 // Assets to cache immediately on install
@@ -19,6 +23,18 @@ const API_CACHE_ROUTES = [
   '/api/daily-videos/week',
   '/api/advertisements/public'
 ];
+
+// Build a per-academy (tenant) cache key for an API request. The SW has no
+// access to localStorage, so it reads the academy from the X-Tenant-Slug
+// header the app attaches to every member API call, and folds it into the
+// cache URL. This keeps each academy's cached responses isolated, so an
+// offline fallback can never serve another academy's data.
+function tenantScopedRequest(request) {
+  const slug = request.headers.get('X-Tenant-Slug') || 'default';
+  const url = new URL(request.url);
+  url.searchParams.set('__tenant', slug);
+  return new Request(url.toString(), { method: 'GET' });
+}
 
 // Install event - precache essential assets
 self.addEventListener('install', (event) => {
@@ -88,23 +104,26 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // API requests - Network first, then cache
+  // API requests - Network first, then cache (per academy).
+  // The cache key is scoped by the X-Tenant-Slug header so an offline fallback
+  // only ever returns the current academy's cached data, never another's.
   if (url.pathname.startsWith('/api/')) {
+    const cacheKey = tenantScopedRequest(request);
     event.respondWith(
       fetch(request)
         .then((response) => {
-          // Cache successful API responses
+          // Cache successful API responses under the academy-scoped key
           if (response.ok && API_CACHE_ROUTES.some(route => url.pathname.includes(route))) {
             const responseClone = response.clone();
             caches.open(CACHE_NAME).then((cache) => {
-              cache.put(request, responseClone);
+              cache.put(cacheKey, responseClone);
             });
           }
           return response;
         })
         .catch(() => {
-          // Return cached API response if available
-          return caches.match(request).then((cachedResponse) => {
+          // Return this academy's cached API response if available
+          return caches.match(cacheKey).then((cachedResponse) => {
             if (cachedResponse) {
               return cachedResponse;
             }
