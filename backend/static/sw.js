@@ -5,7 +5,10 @@
 // entries on activate.
 // v13: academy logo (/images/academy-logo.png) replaced — bump cache so the
 // precached old logo is purged and the new one is fetched on activate.
-const CACHE_NAME = 'gcsp-academy-v13';
+// v14: SW is now tenant-aware for push — it persists the academy slug (set via
+// the SET_TENANT message / stamped on each push payload) so SW-initiated calls
+// and notification tags are scoped to the right academy. Bump purges old caches.
+const CACHE_NAME = 'gcsp-academy-v14';
 const OFFLINE_URL = '/offline.html';
 
 // Assets to cache immediately on install
@@ -36,6 +39,42 @@ function tenantScopedRequest(request) {
   const url = new URL(request.url);
   url.searchParams.set('__tenant', slug);
   return new Request(url.toString(), { method: 'GET' });
+}
+
+// ── Tenant (academy) persistence for the service worker ───────────────────
+// The native/PWA app ships against ONE fixed domain shared by every academy,
+// and the backend resolves the academy from the X-Tenant-Slug header. The SW
+// has no localStorage AND is terminated when idle (so module-level variables
+// do NOT survive between push events). To give SW-initiated network calls a
+// reliable academy, the app posts the current slug (SET_TENANT message) and we
+// persist it inside Cache Storage, which does survive restarts. Reads fall
+// back to 'default' so a missing slug never crashes a handler.
+const TENANT_META_URL = '/__sw-tenant-slug';
+
+async function persistTenantSlug(slug) {
+  try {
+    const cache = await caches.open(CACHE_NAME);
+    await cache.put(
+      TENANT_META_URL,
+      new Response(slug || 'default', { headers: { 'Content-Type': 'text/plain' } })
+    );
+  } catch (e) {
+    console.warn('[ServiceWorker] Failed to persist tenant slug:', e);
+  }
+}
+
+async function readTenantSlug() {
+  try {
+    const cache = await caches.open(CACHE_NAME);
+    const res = await cache.match(TENANT_META_URL);
+    if (res) {
+      const slug = (await res.text()).trim();
+      if (slug) return slug;
+    }
+  } catch (e) {
+    console.warn('[ServiceWorker] Failed to read tenant slug:', e);
+  }
+  return 'default';
 }
 
 // Install event - precache essential assets
@@ -207,14 +246,30 @@ self.addEventListener('sync', (event) => {
 self.addEventListener('push', (event) => {
   console.log('[ServiceWorker] Push received');
   const data = event.data ? event.data.json() : {};
-  
+
+  // The server stamps the recipient's academy (tenant) onto the payload.
+  // Routing is already guaranteed (the subscription lives in this academy's
+  // DB, so the push is only delivered to its own members), but a single
+  // browser/origin can be shared by members of different academies over time.
+  // Namespacing the notification tag by academy prevents one academy's push
+  // from silently replacing/collapsing another's, and we persist the slug so
+  // the click handler and any SW-initiated call use the right academy.
+  const tenant = data.tenant || '';
+  const baseTag = data.tag || 'default';
+  const scopedTag = tenant ? `${tenant}:${baseTag}` : baseTag;
+
   const options = {
     body: data.body || 'لديك إشعار جديد',
-    icon: '/images/icon-192x192.png',
-    badge: '/images/icon-72x72.png',
+    icon: data.icon || '/images/icon-192x192.png',
+    badge: data.badge || '/images/icon-72x72.png',
+    image: data.image || undefined,
+    tag: scopedTag,
+    renotify: true,
     vibrate: [100, 50, 100],
     data: {
-      url: data.url || '/'
+      url: data.url || '/',
+      tenant,
+      ...(data.data || {})
     },
     actions: [
       { action: 'open', title: 'فتح' },
@@ -225,7 +280,17 @@ self.addEventListener('push', (event) => {
   };
 
   event.waitUntil(
-    self.registration.showNotification(data.title || 'أكاديمية أداء الأبطال', options)
+    (async () => {
+      // Only persist a real slug; never let an unstamped (legacy) push reset a
+      // previously stored academy back to 'default'.
+      if (tenant) {
+        await persistTenantSlug(tenant);
+      }
+      await self.registration.showNotification(
+        data.title || 'أكاديمية أداء الأبطال',
+        options
+      );
+    })()
   );
 });
 
@@ -266,11 +331,20 @@ async function syncAttendance() {
     
     if (offlineData) {
       const data = await offlineData.json();
-      
+
+      // This is a SW-initiated request (not an intercepted member call), so it
+      // carries no academy context of its own. Attach the persisted slug as the
+      // X-Tenant-Slug header so the backend records attendance against the
+      // member's own academy instead of falling back to the default tenant.
+      const tenantSlug = await readTenantSlug();
+
       for (const record of data) {
         await fetch('/api/attendance/record', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Tenant-Slug': tenantSlug
+          },
           body: JSON.stringify(record)
         });
       }
@@ -289,7 +363,14 @@ self.addEventListener('message', (event) => {
   if (event.data && event.data.type === 'SKIP_WAITING') {
     self.skipWaiting();
   }
-  
+
+  // The app knows the current academy (from localStorage); push it to the SW so
+  // SW-initiated network calls and notification handling stay tenant-aware even
+  // after the SW is restarted (Cache Storage survives, JS variables do not).
+  if (event.data && event.data.type === 'SET_TENANT') {
+    event.waitUntil(persistTenantSlug(event.data.slug));
+  }
+
   if (event.data && event.data.type === 'CACHE_VIDEO') {
     const videoId = event.data.videoId;
     // Cache video thumbnail
