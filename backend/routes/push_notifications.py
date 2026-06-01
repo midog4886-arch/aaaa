@@ -364,9 +364,27 @@ async def send_fcm_notification(token: str, payload: NotificationPayload):
 
         from firebase_admin import messaging
 
+        # Resolve a per-academy logo URL so each academy's Android members see
+        # their OWN logo in the notification instead of the single static
+        # launcher icon baked into the APK. FCM's image service fetches the URL
+        # itself (no X-Tenant-Slug header and no member session), so the academy
+        # slug is embedded in the query string of the public branding-logo
+        # endpoint. FCM can only fetch an ABSOLUTE https URL, so we only set the
+        # image when _tenant_logo_url resolved one (i.e. REACT_APP_BACKEND_URL is
+        # configured); a relative URL is dropped so we degrade to the launcher
+        # icon rather than send a broken image. An explicit payload.image (e.g.
+        # an announcement banner) still wins. The endpoint itself falls back to
+        # the default academy logo, so any absolute URL is always safe to send.
+        # The small status-bar icon stays ic_launcher because it is APK-baked
+        # and cannot be made per-tenant.
+        from utils.tenant import get_current_tenant_slug
+        tenant_slug = get_current_tenant_slug()
+        logo_url = _tenant_logo_url(tenant_slug)
+        image_url = payload.image or (logo_url if logo_url.startswith("http") else None)
+
         notif_kwargs = {"title": payload.title, "body": payload.body}
-        if payload.image:
-            notif_kwargs["image"] = payload.image
+        if image_url:
+            notif_kwargs["image"] = image_url
 
         message = messaging.Message(
             notification=messaging.Notification(**notif_kwargs),
@@ -383,6 +401,7 @@ async def send_fcm_notification(token: str, payload: NotificationPayload):
                     color="#1e40af",
                     sound="default",
                     channel_id="default",
+                    image=image_url,
                 ),
             ),
         )
