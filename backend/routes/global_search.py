@@ -12,6 +12,16 @@ def _safe_regex(q: str) -> dict:
     return {"$regex": re.escape(q), "$options": "i"}
 
 
+def _name_match(fields: list, tokens: list) -> dict:
+    """Match a multi-word name: EVERY typed word (first/second/third name…)
+    must appear in at least one of the given name fields. This lets
+    "سعد مطلق" match "سعد عبدالله مطلق" even though the words aren't adjacent."""
+    return {"$and": [
+        {"$or": [{f: _safe_regex(tok)} for f in fields]}
+        for tok in tokens
+    ]}
+
+
 @router.get("")
 async def global_search(
     q: str = Query(..., min_length=1),
@@ -25,16 +35,15 @@ async def global_search(
     branch_id = resolve_branch_filter(current_user, branch_filter)
     branch_q = {"branch_id": branch_id} if branch_id else {}
     rx = _safe_regex(q)
+    tokens = [t for t in q.split() if t]
 
+    member_name_fields = ["name_ar", "name", "guardian_name_ar", "guardian_name"]
     member_query = {
         **branch_q,
         "$or": [
-            {"name_ar": rx},
-            {"name": rx},
+            _name_match(member_name_fields, tokens),
             {"phone": rx},
             {"member_code": rx},
-            {"guardian_name_ar": rx},
-            {"guardian_name": rx},
             {"guardian_phone": rx},
         ],
     }
@@ -62,7 +71,7 @@ async def global_search(
         **branch_q,
         "$or": [
             {"invoice_number": rx},
-            {"member_name": rx},
+            _name_match(["member_name"], tokens),
             {"id": rx},
         ],
     }
@@ -83,7 +92,7 @@ async def global_search(
 
     activity_query = {
         **branch_q,
-        "$or": [{"name": rx}, {"name_ar": rx}],
+        "$or": [_name_match(["name", "name_ar"], tokens)],
     }
     activities_raw = await db.activities.find(
         activity_query,
