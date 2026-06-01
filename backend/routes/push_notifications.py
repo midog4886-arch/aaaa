@@ -99,22 +99,50 @@ class NotificationPayload(BaseModel):
     body_en: Optional[str] = None
 
 
+def _public_base_url() -> str:
+    """Resolve the app's public https origin for push-notification icon/image URLs.
+
+    Push services — FCM's image CDN especially — fetch the logo URL themselves
+    and CANNOT resolve a relative path, so the URL must be absolute. Pushes are
+    almost always sent from background tasks with NO incoming request to read the
+    host from, so we resolve the origin from environment variables in priority
+    order rather than depending on a single manually-set variable:
+
+      1. ``REACT_APP_BACKEND_URL`` — explicit override (kept first for back-compat)
+      2. ``PUBLIC_BASE_URL``       — generic public-origin override used elsewhere
+      3. ``REPLIT_DOMAINS``        — Replit-provided deployment domain (first entry)
+
+    ``REPLIT_DOMAINS`` is always present on a Replit deployment, so branding no
+    longer silently degrades just because ``REACT_APP_BACKEND_URL`` wasn't set
+    by hand. Returns "" only when none resolve, leaving the caller to fall back
+    to a relative URL (web push) or to drop the image (FCM).
+    """
+    for var in ("REACT_APP_BACKEND_URL", "PUBLIC_BASE_URL"):
+        val = (os.environ.get(var, "") or "").strip().rstrip("/")
+        if val:
+            return val
+    domain = (os.environ.get("REPLIT_DOMAINS", "") or "").split(",")[0].strip()
+    if domain:
+        return f"https://{domain.rstrip('/')}"
+    return ""
+
+
 def _tenant_logo_url(tenant_slug: Optional[str]) -> str:
     """Build the URL for an academy's web-push notification icon/badge.
 
     Points at the public ``/api/tenant/branding/logo`` endpoint with the
     academy ``slug`` in the query string (the browser fetches the icon without
     the X-Tenant-Slug header, so the academy must travel in the URL). Returns an
-    absolute URL when ``REACT_APP_BACKEND_URL`` is configured so push services
-    that can't resolve relative URLs still load the right logo; otherwise falls
-    back to a root-relative URL that the service worker resolves against its own
-    (single, fixed) origin. Returns "" only when no slug is available, leaving
-    the caller's default icon in place.
+    absolute URL whenever a public base origin can be resolved (see
+    ``_public_base_url``) so push services that can't resolve relative URLs still
+    load the right logo; otherwise falls back to a root-relative URL that the
+    service worker resolves against its own (single, fixed) origin. Returns ""
+    only when no slug is available, leaving the caller's default icon in place.
     """
     slug = (tenant_slug or "").strip().lower()
     if not slug:
         return ""
-    base = (os.environ.get("REACT_APP_BACKEND_URL", "") or "").rstrip("/")
+    base = _public_base_url()
     path = f"/api/tenant/branding/logo?slug={slug}"
     return f"{base}{path}" if base else path
 
@@ -533,17 +561,28 @@ async def send_fcm_notification(token: str, payload: NotificationPayload):
         # itself (no X-Tenant-Slug header and no member session), so the academy
         # slug is embedded in the query string of the public branding-logo
         # endpoint. FCM can only fetch an ABSOLUTE https URL, so we only set the
-        # image when _tenant_logo_url resolved one (i.e. REACT_APP_BACKEND_URL is
-        # configured); a relative URL is dropped so we degrade to the launcher
-        # icon rather than send a broken image. An explicit payload.image (e.g.
-        # an announcement banner) still wins. The endpoint itself falls back to
-        # the default academy logo, so any absolute URL is always safe to send.
-        # The small status-bar icon stays ic_launcher because it is APK-baked
-        # and cannot be made per-tenant.
+        # image when _tenant_logo_url resolved one (an absolute origin is now
+        # derived from REACT_APP_BACKEND_URL / PUBLIC_BASE_URL / REPLIT_DOMAINS,
+        # so this works on any Replit deployment without a hand-set env var); a
+        # relative URL is dropped so we degrade to the launcher icon rather than
+        # send a broken image. An explicit payload.image (e.g. an announcement
+        # banner) still wins. The endpoint itself falls back to the default
+        # academy logo, so any absolute URL is always safe to send. The small
+        # status-bar icon stays ic_launcher because it is APK-baked and cannot be
+        # made per-tenant.
         from utils.tenant import get_current_tenant_slug
         tenant_slug = get_current_tenant_slug()
         logo_url = _tenant_logo_url(tenant_slug)
         image_url = payload.image or (logo_url if logo_url.startswith("http") else None)
+        if logo_url and not logo_url.startswith("http") and not payload.image:
+            # We have a tenant logo to show but no public base URL to make it
+            # absolute, so FCM will drop it and the member sees the generic
+            # launcher icon. Warn loudly so an operator can set a base URL env
+            # var (REACT_APP_BACKEND_URL / PUBLIC_BASE_URL) to restore branding.
+            logger.warning(
+                "FCM push: tenant logo dropped (no public base URL resolved); "
+                "set REACT_APP_BACKEND_URL or PUBLIC_BASE_URL to restore per-academy branding"
+            )
 
         notif_kwargs = {"title": payload.title, "body": payload.body}
         if image_url:
