@@ -6,9 +6,12 @@ server scans all active tenants to find a match. Returns a small public
 profile (academy name, logo, member display name, branch name) so the
 app can save the tenant slug and continue.
 
-Privacy: rate-limited per IP. Only returns matches when BOTH member_code
-and a normalized phone match in the same member document. Excludes test
-tenants and inactive tenants.
+Privacy: rate-limited per IP. Only returns matches when BOTH the phone
+(normalized) AND the member_code match in the same member document. The
+member_code is matched as a case-insensitive PREFIX of the stored code, so
+a member who drops the trailing digit(s) of their code can still be routed
+to their academy as long as the phone matches. Excludes test tenants and
+inactive tenants.
 """
 import re
 import os
@@ -116,15 +119,28 @@ async def lookup_academy(payload: LookupRequest, request: Request):
         db_name = t.get("db_name") or slug_to_db_name(slug)
         try:
             db = _raw_client[db_name]
-            member = await db.members.find_one(
+            # Match the entered code as a PREFIX of the stored member_code
+            # (case-insensitive) so a member who drops the last digit(s) of
+            # their code can still be found, as long as the phone also matches.
+            # The phone is the strong identifier here; the academy is the same
+            # regardless of which sibling matched, so a prefix match is enough
+            # to route the member to the right academy.
+            candidates = await db.members.find(
                 {
-                    "member_code": {"$regex": f"^{re.escape(code)}$", "$options": "i"},
+                    "member_code": {"$regex": f"^{re.escape(code)}", "$options": "i"},
                     "phone": {"$in": phones},
                 },
-                {"_id": 0, "name_ar": 1, "name": 1, "branch_id": 1},
-            )
-            if not member:
+                {"_id": 0, "name_ar": 1, "name": 1, "branch_id": 1, "member_code": 1},
+            ).to_list(10)
+            if not candidates:
                 continue
+            # Prefer an exact (case-insensitive) code match for the displayed
+            # name/branch; otherwise fall back to the first prefix candidate.
+            member = next(
+                (c for c in candidates
+                 if (c.get("member_code") or "").strip().lower() == code.lower()),
+                candidates[0],
+            )
             academy_name = t.get("name") or slug
             logo = ""
             branch_name = ""
