@@ -50,6 +50,24 @@ class Level(BaseModel):
     coach_id: Optional[str] = None
     created_at: str
 
+def member_belongs_to_level(activities, level_id) -> bool:
+    """Return True if the member should be shown in / counted for ``level_id``.
+
+    The authoritative link between a member and a level is ``activity.level_id``.
+    A member is considered to belong to ``level_id`` when:
+      - none of their activities carry a level_id (un-backfilled legacy rows are
+        kept where they are), OR
+      - at least one activity links to this exact level (covers multi-activity
+        members who legitimately appear in more than one level).
+    They do NOT belong when their activities link only to OTHER levels — that
+    means they were reassigned and their id is just left over here (stale).
+    """
+    linked_levels = {a.get("level_id") for a in (activities or []) if a.get("level_id")}
+    if not linked_levels:
+        return True
+    return level_id in linked_levels
+
+
 # ============ ROUTES ============
 
 @router.get("")
@@ -129,10 +147,20 @@ async def get_levels(
                 for mid in level["members"]:
                     member = members_map.get(mid)
                     if member:
-                        valid_ids.append(mid)
-                        schedule = ""
                         level_id_current = level.get("id", "")
                         activities = member.get("activities", [])
+                        # Stale cross-link guard: if the member's activities link
+                        # to specific level(s) and NONE is THIS level, the member
+                        # was reassigned elsewhere and their id is just left over
+                        # here. Skip them so the card and its count reflect only
+                        # members actually assigned to this level. Members with no
+                        # level_id at all (un-backfilled legacy rows) are kept, and
+                        # a multi-activity member is kept as long as one of their
+                        # activities links to this level.
+                        if not member_belongs_to_level(activities, level_id_current):
+                            continue
+                        valid_ids.append(mid)
+                        schedule = ""
                         # Priority 1: activity that matches the current level
                         for act in activities:
                             if act.get("level_id") == level_id_current:
