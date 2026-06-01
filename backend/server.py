@@ -3759,6 +3759,27 @@ async def _run_daily_renewal_and_ads_checks(trigger: str = "scheduler") -> dict:
         errors.append(msg)
         print(f"Daily checks: {msg}")
 
+    # 9) Prune very old, switched-off push sign-ups: the cleanup above only flips
+    # duplicate/stale rows to inactive, never deletes them, so the
+    # push_subscriptions collection grows with dead rows in every academy DB.
+    # Permanently delete rows that have been inactive past the retention window
+    # (default ~90 days). Runs per active tenant; best-effort.
+    try:
+        from routes.push_notifications import prune_inactive_subscriptions
+        push_prune = await prune_inactive_subscriptions()
+        print(
+            f"Daily checks: push-subscription prune → "
+            f"deleted={push_prune.get('deleted', 0)} "
+            f"(retention_days={push_prune.get('retention_days')}, "
+            f"scanned={push_prune.get('scanned_inactive', 0)})"
+        )
+        for e in push_prune.get("errors") or []:
+            errors.append(f"push_prune: {e}")
+    except Exception as e:
+        msg = f"push-subscription prune failed: {e}"
+        errors.append(msg)
+        print(f"Daily checks: {msg}")
+
     success = len(errors) == 0
     await _persist_daily_checks_status(
         started_at=started_at,

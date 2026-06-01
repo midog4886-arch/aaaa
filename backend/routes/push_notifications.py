@@ -7,7 +7,7 @@ from fastapi import APIRouter, HTTPException, Depends
 from .common import get_current_user
 from pydantic import BaseModel
 from typing import List, Optional
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 import uuid
 import os
 import json
@@ -242,6 +242,7 @@ async def _deactivate_endpoint_in_other_tenants(
                 {"$set": {
                     "is_active": False,
                     "deactivated_reason": "claimed_by_other_academy",
+                    "deactivated_at": datetime.now(timezone.utc).isoformat(),
                     "updated_at": datetime.now(timezone.utc).isoformat(),
                 }},
             )
@@ -381,6 +382,7 @@ async def cleanup_superseded_subscriptions() -> dict:
                     {"$set": {
                         "is_active": False,
                         "deactivated_reason": "superseded_cross_tenant",
+                        "deactivated_at": now_iso,
                         "updated_at": now_iso,
                     }},
                 )
@@ -414,6 +416,140 @@ async def cleanup_superseded(current_user: dict = Depends(get_current_user)):
     if not current_user.get("is_admin"):
         raise HTTPException(status_code=403, detail="Admin access required")
     return await cleanup_superseded_subscriptions()
+
+
+# Default retention window (in days) for permanently deleting subscriptions that
+# have been deactivated (``is_active: False``). Overridable via env so an
+# academy can tune how long dead rows linger before being pruned.
+DEFAULT_INACTIVE_RETENTION_DAYS = 90
+
+
+def _inactive_retention_days(override: Optional[int] = None) -> int:
+    """Resolve the retention window for pruning inactive subscriptions.
+
+    Order of precedence: explicit ``override`` arg > ``PUSH_SUBSCRIPTION_RETENTION_DAYS``
+    env var > ``DEFAULT_INACTIVE_RETENTION_DAYS``. Always at least 1 day so a
+    misconfiguration can never delete rows that were just deactivated.
+    """
+    if override is not None:
+        try:
+            return max(1, int(override))
+        except (TypeError, ValueError):
+            pass
+    raw = os.environ.get("PUSH_SUBSCRIPTION_RETENTION_DAYS")
+    if raw:
+        try:
+            return max(1, int(raw))
+        except (TypeError, ValueError):
+            pass
+    return DEFAULT_INACTIVE_RETENTION_DAYS
+
+
+def _inactive_sub_age_ts(sub: dict) -> str:
+    """Return the timestamp used to judge how long a row has been inactive.
+
+    Prefers ``deactivated_at`` (set whenever a row is flipped inactive), falling
+    back to ``updated_at`` then ``created_at`` for legacy rows that predate the
+    ``deactivated_at`` field. Values are ISO-8601 UTC strings that sort/compare
+    correctly lexicographically (same format + ``+00:00`` offset everywhere),
+    so we compare the raw strings — no parsing needed. Missing values return an
+    empty string so such rows are treated as un-judgeable and skipped.
+    """
+    return str(
+        sub.get("deactivated_at")
+        or sub.get("updated_at")
+        or sub.get("created_at")
+        or ""
+    )
+
+
+async def prune_inactive_subscriptions(retention_days: Optional[int] = None) -> dict:
+    """Permanently delete push subscriptions inactive for longer than the window.
+
+    The cross-tenant cleanup only flips duplicate/stale sign-ups to
+    ``is_active: False`` (with a ``deactivated_reason``); it never deletes them,
+    so the ``push_subscriptions`` collection grows with dead rows over time. This
+    sweep walks every active tenant (via ``for_each_active_tenant``) and
+    permanently removes rows that have been inactive for longer than the
+    retention window (default ~90 days), judging age from ``deactivated_at`` /
+    ``updated_at`` / ``created_at``.
+
+    Best-effort: per-tenant failures are isolated and logged so one bad DB never
+    aborts the whole sweep. Rows with no usable timestamp are left untouched
+    (we can't prove they're old). Returns a summary suitable for logging.
+    """
+    import logging
+    logger = logging.getLogger(__name__)
+
+    from utils.tenant import for_each_active_tenant
+
+    days = _inactive_retention_days(retention_days)
+    cutoff_iso = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+
+    async def _prune_one_tenant(tenant: dict) -> dict:
+        scanned = 0
+        delete_ids: list = []
+        cursor = db.push_subscriptions.find(
+            {"is_active": False},
+            {"_id": 0, "id": 1, "deactivated_at": 1, "updated_at": 1, "created_at": 1},
+        )
+        async for sub in cursor:
+            scanned += 1
+            ts = _inactive_sub_age_ts(sub)
+            if not ts or ts >= cutoff_iso:
+                continue
+            sid = sub.get("id")
+            if sid:
+                delete_ids.append(sid)
+        deleted = 0
+        if delete_ids:
+            res = await db.push_subscriptions.delete_many(
+                {"is_active": False, "id": {"$in": delete_ids}}
+            )
+            deleted = int(getattr(res, "deleted_count", 0) or 0)
+        return {"scanned_inactive": scanned, "deleted": deleted}
+
+    per_tenant = await for_each_active_tenant(_prune_one_tenant, label="push_prune")
+
+    summary = {
+        "retention_days": days,
+        "cutoff": cutoff_iso,
+        "tenants_processed": per_tenant.get("processed", 0),
+        "tenants_failed": per_tenant.get("failed", 0),
+        "scanned_inactive": 0,
+        "deleted": 0,
+        "errors": [],
+    }
+    for slug, res in (per_tenant.get("results") or {}).items():
+        if isinstance(res, dict):
+            summary["scanned_inactive"] += int(res.get("scanned_inactive", 0) or 0)
+            summary["deleted"] += int(res.get("deleted", 0) or 0)
+    for slug, err in (per_tenant.get("errors") or {}).items():
+        summary["errors"].append(f"[{slug}] {err}")
+
+    logger.info(
+        "prune_inactive_subscriptions: retention_days=%s tenants=%s deleted=%s scanned=%s errors=%s",
+        days, summary["tenants_processed"], summary["deleted"],
+        summary["scanned_inactive"], len(summary["errors"]),
+    )
+    return summary
+
+
+@router.post("/prune-inactive")
+async def prune_inactive(
+    retention_days: Optional[int] = None,
+    current_user: dict = Depends(get_current_user),
+):
+    """Admin-only: permanently delete push sign-ups inactive past the retention window.
+
+    Removes ``push_subscriptions`` rows that have been ``is_active: False`` for
+    longer than ``retention_days`` (defaults to the configured window, ~90 days),
+    across every active academy. Safe to run repeatedly. Returns the sweep
+    summary.
+    """
+    if not current_user.get("is_admin"):
+        raise HTTPException(status_code=403, detail="Admin access required")
+    return await prune_inactive_subscriptions(retention_days)
 
 
 @router.post("/subscribe")
