@@ -375,8 +375,16 @@ async def check_member_session_quota(member_id: str, activity_id: str = None):
     produced_aids = set()
 
     async def _process_subscription(item_activity_id, activity_name, start_date, end_date,
-                                     schedule_text, invoice_number=""):
-        """Inner helper to build one quota result from a subscription item."""
+                                     schedule_text, invoice_number="", quota_end_date=None):
+        """Inner helper to build one quota result from a subscription item.
+
+        ``end_date`` is the (possibly extended) deadline used for display and the
+        attendance counting window. ``quota_end_date`` is the ORIGINAL purchased
+        subscription end date used to compute the paid session total, so that
+        freezes / holiday extensions only push the deadline out and never inflate
+        the number of sessions the member actually paid for. When omitted it
+        falls back to ``end_date`` (e.g. registration-form members with no
+        invoice, where the activity dates are already the original ones)."""
         if not end_date or not schedule_text:
             return
         if end_date < today_str:
@@ -397,8 +405,13 @@ async def check_member_session_quota(member_id: str, activity_id: str = None):
         effective_start = start_date or today_str
         try:
             start_dt = datetime.strptime(effective_start, "%Y-%m-%d")
-            end_dt = datetime.strptime(end_date, "%Y-%m-%d")
-            total_weeks = max(1, math.ceil((end_dt - start_dt).days / 7))
+            # The paid session total is computed from the ORIGINAL subscription
+            # window (quota_end_date) — NOT the extended deadline — so that a
+            # freeze or holiday closure only moves the end date and does not add
+            # extra sessions the member never paid for.
+            total_end = quota_end_date or end_date
+            total_end_dt = datetime.strptime(total_end, "%Y-%m-%d")
+            total_weeks = max(1, math.ceil((total_end_dt - start_dt).days / 7))
             total_allowed_sessions = total_weeks * days_per_week
         except Exception:
             return
@@ -424,9 +437,34 @@ async def check_member_session_quota(member_id: str, activity_id: str = None):
         })
         produced_aids.add(item_activity_id)
 
+    # ── Fetch paid/partial invoices up-front. They keep the ORIGINAL sale dates
+    #    (never modified by extensions), so they are the source of truth for the
+    #    paid session total. ──────────────────────────────────────────────────
+    invoices = await db.invoices.find(
+        {"member_id": member_id, "status": {"$in": ["paid", "partial"]}},
+        {"_id": 0}
+    ).to_list(100)
+
+    # Map the original (unextended) end date for each subscription so the session
+    # total can be computed from what the member actually paid for, even when
+    # member.activities holds a later (extended) deadline.
+    orig_end_by_source = {}    # (invoice_id, activity_id) -> original end_date
+    orig_end_by_activity = {}  # activity_id -> original end_date (latest seen)
+    for inv in invoices:
+        for item in inv.get("items", []):
+            if item.get("is_product"):
+                continue
+            aid = item.get("activity_id", "")
+            oend = item.get("end_date", "")
+            if not aid or not oend:
+                continue
+            orig_end_by_source[(inv.get("id", ""), aid)] = oend
+            orig_end_by_activity[aid] = oend
+
     # ── 1. member.activities FIRST — the authoritative source that reflects
-    #       day-extensions / freezes. The invoice keeps the original sale dates
-    #       and goes stale, so the activity entry wins when both exist. ─────────
+    #       day-extensions / freezes. Its end_date is the extended deadline used
+    #       for the attendance window, but the paid session total is computed
+    #       from the original invoice window via quota_end_date. ───────────────
     member_doc = await db.members.find_one({"id": member_id}, {"_id": 0, "activities": 1})
     for act in (member_doc or {}).get("activities", []):
         item_activity_id = act.get("activity_id", "")
@@ -434,24 +472,25 @@ async def check_member_session_quota(member_id: str, activity_id: str = None):
             continue
         if act.get("status", "active") != "active":
             continue
+        quota_end = None
+        if act.get("source") == "invoice" and act.get("source_id"):
+            quota_end = orig_end_by_source.get((act.get("source_id"), item_activity_id))
+        if not quota_end:
+            quota_end = orig_end_by_activity.get(item_activity_id)
         await _process_subscription(
             item_activity_id,
             act.get("activity_name", ""),
             act.get("start_date", ""),
             act.get("end_date", ""),
             act.get("schedule", ""),
-            ""
+            "",
+            quota_end_date=quota_end,
         )
 
     # ── 2. Fall back to paid/partial invoices ONLY for activities that did not
     #       already produce a card above. This prevents a duplicate quota card
     #       when the same activity exists in both sources with different
     #       (stale invoice vs extended activity) end dates. ────────────────────
-    invoices = await db.invoices.find(
-        {"member_id": member_id, "status": {"$in": ["paid", "partial"]}},
-        {"_id": 0}
-    ).to_list(100)
-
     for inv in invoices:
         for item in inv.get("items", []):
             if item.get("is_product"):
