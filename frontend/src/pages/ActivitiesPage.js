@@ -66,10 +66,13 @@ export const ActivitiesPage = () => {
     description: '',
     description_ar: '',
     monthly_fee: '',
+    tax_inclusive: false,
     color: '#F97316',
     branch_id: 'all',
     coach_id: ''
   });
+
+  const VAT_RATE = 0.15;
 
   const colorOptions = [
     { value: '#0EA5E9', label: language === 'ar' ? 'أزرق' : 'Blue' },
@@ -143,9 +146,14 @@ export const ActivitiesPage = () => {
     setSaving(true);
     
     try {
+      const enteredFee = parseFloat(formData.monthly_fee) || 0;
+      const netFee = formData.tax_inclusive
+        ? Math.round((enteredFee / (1 + VAT_RATE)) * 100) / 100
+        : enteredFee;
+      const { tax_inclusive, ...rest } = formData;
       const data = {
-        ...formData,
-        monthly_fee: parseFloat(formData.monthly_fee) || 0,
+        ...rest,
+        monthly_fee: netFee,
         branch_id: isAdmin ? formData.branch_id : undefined,
         coach_id: formData.coach_id || null
       };
@@ -186,6 +194,22 @@ export const ActivitiesPage = () => {
   const navigate = useNavigate();
   const handledViewIdRef = useRef(null);
 
+  const openCreateDialog = () => {
+    setSelectedActivity(null);
+    setFormData({
+      name: '',
+      name_ar: '',
+      description: '',
+      description_ar: '',
+      monthly_fee: '',
+      tax_inclusive: false,
+      color: '#F97316',
+      branch_id: 'all',
+      coach_id: ''
+    });
+    setIsDialogOpen(true);
+  };
+
   const openEditDialog = (activity) => {
     setSelectedActivity(activity);
     setFormData({
@@ -194,6 +218,7 @@ export const ActivitiesPage = () => {
       description: activity.description || '',
       description_ar: activity.description_ar || '',
       monthly_fee: activity.monthly_fee?.toString() || '',
+      tax_inclusive: false,
       color: activity.color || '#F97316',
       branch_id: activity.branch_id || 'all',
       coach_id: activity.coach_id || ''
@@ -216,6 +241,7 @@ export const ActivitiesPage = () => {
       description: '',
       description_ar: '',
       monthly_fee: '',
+      tax_inclusive: false,
       color: '#F97316',
       branch_id: 'all',
       coach_id: ''
@@ -510,7 +536,7 @@ export const ActivitiesPage = () => {
               ? `عرض ${filteredActivities.length} من ${activities.length} نشاط`
               : `Showing ${filteredActivities.length} of ${activities.length} activities`}
           </p>
-          <Button onClick={() => setIsDialogOpen(true)} data-testid="add-activity-btn">
+          <Button onClick={openCreateDialog} data-testid="add-activity-btn">
             <Plus className="w-4 h-4 me-2" />
             {t('add_activity')}
           </Button>
@@ -632,7 +658,7 @@ export const ActivitiesPage = () => {
         )}
 
         {/* Add/Edit Dialog */}
-        <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+        <Dialog open={isDialogOpen} onOpenChange={(open) => open ? setIsDialogOpen(true) : closeDialog()}>
           <DialogContent>
             <DialogHeader>
               <DialogTitle>
@@ -690,6 +716,64 @@ export const ActivitiesPage = () => {
                   required
                   data-testid="activity-fee"
                 />
+
+                <div className="pt-1">
+                  <Label className="text-sm">
+                    {language === 'ar' ? 'هل المبلغ شامل الضريبة؟' : 'Is the amount tax-inclusive?'}
+                  </Label>
+                  <div className="flex gap-2 mt-2">
+                    <button
+                      type="button"
+                      onClick={() => setFormData({...formData, tax_inclusive: false})}
+                      className={`flex-1 px-3 py-2 rounded-lg border text-sm transition-colors ${
+                        !formData.tax_inclusive
+                          ? 'bg-primary text-primary-foreground border-primary'
+                          : 'bg-background border-input hover:bg-accent'
+                      }`}
+                      data-testid="activity-tax-exclusive"
+                    >
+                      {language === 'ar' ? 'غير شامل الضريبة' : 'Tax-exclusive'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setFormData({...formData, tax_inclusive: true})}
+                      className={`flex-1 px-3 py-2 rounded-lg border text-sm transition-colors ${
+                        formData.tax_inclusive
+                          ? 'bg-primary text-primary-foreground border-primary'
+                          : 'bg-background border-input hover:bg-accent'
+                      }`}
+                      data-testid="activity-tax-inclusive"
+                    >
+                      {language === 'ar' ? 'شامل الضريبة (15%)' : 'Tax-inclusive (15%)'}
+                    </button>
+                  </div>
+                </div>
+
+                {formData.tax_inclusive && (parseFloat(formData.monthly_fee) || 0) > 0 && (
+                  <div className="p-3 bg-muted/50 rounded-lg text-sm space-y-1 mt-2" data-testid="activity-tax-breakdown">
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">
+                        {language === 'ar' ? 'قبل الضريبة:' : 'Before VAT:'}
+                      </span>
+                      <span className="font-medium">
+                        {(Math.round((parseFloat(formData.monthly_fee) / (1 + VAT_RATE)) * 100) / 100).toFixed(2)} {t('sar')}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">
+                        {language === 'ar' ? 'الضريبة (15%):' : 'VAT (15%):'}
+                      </span>
+                      <span className="font-medium">
+                        {(parseFloat(formData.monthly_fee) - Math.round((parseFloat(formData.monthly_fee) / (1 + VAT_RATE)) * 100) / 100).toFixed(2)} {t('sar')}
+                      </span>
+                    </div>
+                    <p className="text-xs text-muted-foreground pt-1">
+                      {language === 'ar'
+                        ? 'سيتم حفظ المبلغ قبل الضريبة كرسوم للنشاط، وتُضاف الضريبة وقت إصدار الفاتورة.'
+                        : 'The pre-tax amount will be saved as the activity fee; VAT is added at invoice time.'}
+                    </p>
+                  </div>
+                )}
               </div>
               
               <div className="space-y-2">
