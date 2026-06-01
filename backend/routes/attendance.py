@@ -241,6 +241,20 @@ async def create_attendance(
     # Hard cap on total allowed sessions for this subscription
     await enforce_session_cap(attendance.member_id, attendance.activity_id, record_date)
 
+    # Off-schedule detection: did the member attend on a day NOT in their schedule?
+    schedule_days = await get_member_schedule_days(attendance.member_id, attendance.activity_id)
+    is_off_schedule = False
+    if schedule_days:
+        try:
+            rec_day = datetime.strptime(record_date, "%Y-%m-%d").strftime("%A").lower()
+            is_off_schedule = rec_day not in schedule_days
+        except Exception:
+            is_off_schedule = False
+
+    note_text = attendance.notes
+    if is_off_schedule:
+        note_text = f"{attendance.notes} (خارج الموعد)" if attendance.notes else "خارج الموعد"
+
     record_id = str(uuid.uuid4())
     record = {
         "id": record_id,
@@ -254,12 +268,22 @@ async def create_attendance(
         "date": record_date,
         "check_in_time": check_in_time,
         "status": "present",
-        "notes": attendance.notes,
+        "notes": note_text,
         "branch_id": branch_id,
         "recorded_by": user_name,
         "created_at": datetime.now(timezone.utc).isoformat()
     }
-    
+
+    # Attending outside the schedule consumes a session out of order: pull the
+    # subscription end date earlier by one scheduled occurrence.
+    if is_off_schedule:
+        record["off_schedule"] = True
+        shift = await apply_off_schedule_end_shift(
+            attendance.member_id, attendance.activity_id, record_date, schedule_days
+        )
+        if shift:
+            record["end_shift_from"], record["end_shift_to"] = shift
+
     await db.attendance.insert_one(record)
     
     # Award loyalty points for attendance
@@ -336,6 +360,63 @@ async def get_member_schedule_days(member_id: str, activity_id: str) -> list:
                     if d not in all_days:
                         all_days.append(d)
     return all_days
+
+def _previous_scheduled_date(end_date_str: str, schedule_days_eng: list):
+    """Return the latest date strictly before `end_date_str` whose weekday is in
+    `schedule_days_eng` (english lowercase day names). Returns None if it cannot
+    be computed (missing date / no schedule days / none found within two weeks)."""
+    if not end_date_str or not schedule_days_eng:
+        return None
+    try:
+        d = datetime.strptime(end_date_str, "%Y-%m-%d")
+    except Exception:
+        return None
+    sched = set(schedule_days_eng)
+    for i in range(1, 15):
+        cand = d - timedelta(days=i)
+        if cand.strftime("%A").lower() in sched:
+            return cand.strftime("%Y-%m-%d")
+    return None
+
+async def apply_off_schedule_end_shift(member_id: str, activity_id: str,
+                                       attendance_date: str, schedule_days_eng: list):
+    """When a member attends OUTSIDE their scheduled days, pull the subscription
+    end date earlier by one scheduled occurrence (the off-day session consumes a
+    slot out of the schedule, so the subscription ends one scheduled day sooner).
+
+    Mutates the matching active entry in member.activities. Returns
+    (old_end, new_end) when the end date changed, otherwise None."""
+    if not schedule_days_eng:
+        return None
+    member = await db.members.find_one({"id": member_id}, {"_id": 0, "activities": 1})
+    if not member:
+        return None
+    activities = member.get("activities", []) or []
+    target = None
+    for a in activities:
+        if (a.get("activity_id") == activity_id
+                and a.get("status", "active") == "active"
+                and a.get("end_date")):
+            target = a
+            break
+    if not target:
+        return None
+    old_end = target.get("end_date")
+    start_date = target.get("start_date") or ""
+    prev = _previous_scheduled_date(old_end, schedule_days_eng)
+    if not prev:
+        return None
+    new_end = prev
+    # Never pull the end date before the attendance itself or the subscription start.
+    if new_end < attendance_date:
+        new_end = attendance_date
+    if start_date and new_end < start_date:
+        new_end = start_date
+    if new_end >= old_end:
+        return None
+    target["end_date"] = new_end
+    await db.members.update_one({"id": member_id}, {"$set": {"activities": activities}})
+    return (old_end, new_end)
 
 async def enforce_session_cap(member_id: str, activity_id: str, check_date: str):
     """Raise HTTPException if recording another attendance would exceed the
@@ -985,7 +1066,17 @@ async def qr_checkin(
         "recorded_by": user_name,
         "created_at": datetime.now(timezone.utc).isoformat()
     }
-    
+
+    # Attending outside the schedule consumes a session out of order: pull the
+    # subscription end date earlier by one scheduled occurrence.
+    if schedule_days and not is_scheduled_day:
+        record["off_schedule"] = True
+        shift = await apply_off_schedule_end_shift(
+            member["id"], target_activity_id, today, schedule_days
+        )
+        if shift:
+            record["end_shift_from"], record["end_shift_to"] = shift
+
     await db.attendance.insert_one(record)
     
     if loyalty_award_points:
@@ -1135,6 +1226,28 @@ async def delete_attendance(
             record_branch = (member or {}).get("branch_id")
         if user_branch and record_branch and user_branch != record_branch:
             raise HTTPException(status_code=403, detail="Not allowed to modify attendance from another branch")
+
+    # Reverse the off-schedule end-date shift, if this record applied one and the
+    # subscription end date still matches the shifted value (no later change wins).
+    shift_from = record.get("end_shift_from")
+    shift_to = record.get("end_shift_to")
+    if record.get("off_schedule") and shift_from and shift_to:
+        member_doc = await db.members.find_one(
+            {"id": record.get("member_id")}, {"_id": 0, "activities": 1}
+        )
+        if member_doc:
+            activities = member_doc.get("activities", []) or []
+            changed = False
+            for a in activities:
+                if (a.get("activity_id") == record.get("activity_id")
+                        and a.get("end_date") == shift_to):
+                    a["end_date"] = shift_from
+                    changed = True
+                    break
+            if changed:
+                await db.members.update_one(
+                    {"id": record.get("member_id")}, {"$set": {"activities": activities}}
+                )
 
     result = await db.attendance.delete_one({"id": record_id})
     if result.deleted_count == 0:
