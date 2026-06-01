@@ -475,7 +475,7 @@ export const CreateEditInvoiceDialog = ({
                                     const levelCoach = level.coach_id ? coaches.find(c => c.id === level.coach_id) : null;
                                     const coachName = levelCoach ? (levelCoach.name_ar || levelCoach.name) : null;
                                     return (
-                                      <button key={level.id} type="button" className={`w-full p-2 rounded-lg transition-colors border ${isFull ? 'bg-red-50 border-red-200 hover:bg-red-100' : 'hover:bg-green-50 border-gray-200'}`} onClick={() => updateItemLevel(idx, level.id)}>
+                                      <button key={level.id} type="button" className={`w-full p-2 rounded-lg transition-colors border ${isFull ? 'bg-red-50 border-red-200 hover:bg-red-100' : 'hover:bg-green-50 border-gray-200'}`} onClick={() => updateItemLevel(idx, level.id, { memberCount, maxCapacity, isFull })}>
                                         <div className="flex items-center justify-between mb-1">
                                           <span className={`font-bold ${isFull ? 'text-red-600' : 'text-gray-800'}`}>{level.display_name || (level.custom_name ? level.custom_name : `${language === 'ar' ? 'المستوى' : 'Level'} ${level.level_number}`)}</span>
                                           <span className={`text-sm ${isFull ? 'text-red-600' : 'text-gray-600'}`}>{memberCount}/{maxCapacity} {isFull && '⚠️'}</span>

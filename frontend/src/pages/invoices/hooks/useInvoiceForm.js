@@ -231,15 +231,20 @@ export const useInvoiceForm = ({
   };
   const resetLevelSelector = (index) => setLevelSelectorState(prev => { const n = { ...prev }; delete n[index]; return n; });
 
-  const updateItemLevel = async (index, levelId) => {
+  const updateItemLevel = async (index, levelId, capacityInfo = null) => {
     const updated = [...invoiceItems]; const level = levels.find(l => l.id === levelId);
     updated[index].level_id = levelId;
     updated[index].level_name = level ? `${level.display_name || (level.custom_name ? level.custom_name : `${language === 'ar' ? 'المستوى' : 'Level'} ${level.level_number}`)} - ${level.activity_name}` : '';
     resetLevelSelector(index);
     if (levelId) {
       try {
-        const response = await levelsAPI.getMemberCount(levelId);
-        const { is_full, member_count, max_capacity } = response.data;
+        let is_full, member_count, max_capacity;
+        if (capacityInfo && typeof capacityInfo.memberCount === 'number') {
+          member_count = capacityInfo.memberCount; max_capacity = capacityInfo.maxCapacity; is_full = capacityInfo.isFull;
+        } else {
+          const response = await levelsAPI.getMemberCount(levelId);
+          ({ is_full, member_count, max_capacity } = response.data);
+        }
         if (is_full) {
           setLevelCapacityWarnings(prev => ({ ...prev, [index]: { isFull: true, isAccepted: false, memberCount: member_count, maxCapacity: max_capacity, message: language === 'ar' ? `العدد في هذا المستوى مكتمل (${member_count}/${max_capacity} مشتركين)` : `This level is full (${member_count}/${max_capacity} members)` } }));
         } else {
