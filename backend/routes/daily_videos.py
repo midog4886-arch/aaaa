@@ -380,8 +380,16 @@ async def create_daily_video(
     if video.is_active:
         today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
         if video.scheduled_date >= today:
-            # Get all members to send individual notifications
-            members = await db.members.find({}, {"_id": 0, "id": 1}).to_list(10000)
+            # Target only members that the video actually concerns:
+            # enrolled in the video's activity AND in its branch.
+            # A video without an activity falls back to branch-only.
+            member_query = {}
+            effective_branch = video_doc.get("branch_id")
+            if effective_branch:
+                member_query["branch_id"] = effective_branch
+            if video.activity_id:
+                member_query["activities.activity_id"] = video.activity_id
+            members = await db.members.find(member_query, {"_id": 0, "id": 1}).to_list(10000)
             
             activity_text = f" - {video.activity_name}" if video.activity_name else ""
             
@@ -412,6 +420,7 @@ async def create_daily_video(
                         video_title=video.title_ar,
                         video_id=video_id,
                         branch_id=video.branch_id if video.branch_id != "all" else None,
+                        activity_id=video.activity_id or None,
                         youtube_id=youtube_id
                     )
                     print(f"Push notifications sent: {push_result}")

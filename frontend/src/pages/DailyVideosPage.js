@@ -226,6 +226,10 @@ const DailyVideosPage = () => {
   };
 
   const handleActivityChange = (activityId) => {
+    if (activityId === 'none') {
+      setFormData(prev => ({ ...prev, activity_id: '', activity_name: '' }));
+      return;
+    }
     const activity = activities.find(a => a.id === activityId);
     setFormData(prev => ({
       ...prev,
@@ -237,6 +241,10 @@ const DailyVideosPage = () => {
   const handleSubmit = async () => {
     if (!formData.title_ar || !formData.youtube_video_id || !formData.scheduled_date) {
       toast({ title: 'خطأ', description: 'يرجى ملء الحقول المطلوبة', variant: 'destructive' });
+      return;
+    }
+    if (!formData.activity_id) {
+      toast({ title: 'خطأ', description: 'يرجى اختيار النشاط حتى يصل الإشعار لأعضاء هذا النشاط فقط', variant: 'destructive' });
       return;
     }
 
@@ -743,13 +751,12 @@ const DailyVideosPage = () => {
                 />
               </div>
               <div>
-                <Label>النشاط</Label>
+                <Label>النشاط *</Label>
                 <Select value={formData.activity_id || 'none'} onValueChange={handleActivityChange}>
                   <SelectTrigger>
                     <SelectValue placeholder="اختر النشاط" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="none">بدون نشاط محدد</SelectItem>
                     {activities.map((activity) => (
                       <SelectItem key={activity.id} value={activity.id}>
                         {activity.name_ar || activity.name}

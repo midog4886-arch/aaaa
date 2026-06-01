@@ -958,14 +958,21 @@ async def send_notification_to_all_members(payload: NotificationPayload, branch_
     }
 
 
-async def notify_new_video(video_title: str, video_id: str, branch_id: Optional[str] = None, youtube_id: Optional[str] = None):
+async def notify_new_video(video_title: str, video_id: str, branch_id: Optional[str] = None, youtube_id: Optional[str] = None, activity_id: Optional[str] = None):
     from utils.i18n import t, get_member_languages_map
     thumbnail = f"https://img.youtube.com/vi/{youtube_id}/hqdefault.jpg" if youtube_id else None
 
     query = {"is_active": True}
+    # Target only members the video concerns: enrolled in its activity AND
+    # in its branch. A video without an activity falls back to branch-only.
+    member_filter = {}
     if branch_id:
+        member_filter["branch_id"] = branch_id
+    if activity_id:
+        member_filter["activities.activity_id"] = activity_id
+    if member_filter:
         members = await db.members.find(
-            {"branch_id": branch_id},
+            member_filter,
             {"_id": 0, "id": 1}
         ).to_list(10000)
         query["member_id"] = {"$in": [m["id"] for m in members]}

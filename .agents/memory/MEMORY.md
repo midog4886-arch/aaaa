@@ -2,3 +2,4 @@
 - [Android logo vs launcher icon](android-logo-and-icon.md) — native app loads from server.url (in-app logo = server+SW cache bump); launcher icon is APK-baked in mipmap-*, needs rebuild+republish.
 - [Push cross-tenant dedup](push-cross-tenant-dedup.md) — push endpoint is per-browser/device, not per-login; subscribing must deactivate that endpoint in every OTHER tenant DB to stop shared-device leaks.
 - [Push notification base URL](push-notification-base-url.md) — push logo/image URLs must be absolute (FCM can't fetch relative); sent from bg tasks so resolve from env (REACT_APP_BACKEND_URL/PUBLIC_BASE_URL/REPLIT_DOMAINS), not request.
+- [Video notification targeting](video-notification-targeting.md) — new-video notifs (in-app+push) scope to members.activities.activity_id + branch; admins tag activity in free-text title not the field, so keep upload activity required.
