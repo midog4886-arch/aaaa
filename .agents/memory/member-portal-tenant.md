@@ -55,3 +55,13 @@ fall back to `default` and either 404 on login or 403 on every API call.
 - The SW `offline-attendance` sync path is dead (nothing writes that cache key),
   but its `/api/attendance/record` POST now sends `X-Tenant-Slug` from the
   persisted slug so it can't silently hit the default tenant if ever revived.
+- Per-academy web-push ICON/badge: the browser fetches the notification icon
+  WITHOUT the X-Tenant-Slug header (and often without a session), so the academy
+  must be encoded in the icon URL itself. `send_push_notification` sets `icon`/
+  `badge` to `/api/tenant/branding/logo?slug=<slug>` (absolute when
+  `REACT_APP_BACKEND_URL` is set, else root-relative). That public endpoint
+  (branding.py) reads `logo_base64` from `control_db.tenants` by the query slug
+  and serves the decoded bytes, falling back to the static
+  `backend/static/images/academy-logo.png` when the academy has no custom logo.
+  Logo branding lives in `control_db.tenants.logo_base64` (a data: URL), NOT in
+  the per-tenant member DB.

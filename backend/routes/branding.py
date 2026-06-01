@@ -1,8 +1,11 @@
+import base64
 import logging
 import uuid
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Optional, List
 from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel
 from utils.tenant import get_current_tenant, get_current_tenant_slug, DEFAULT_TENANT_SLUG
 from utils.auth import get_current_user
@@ -133,6 +136,54 @@ async def get_branding(request: Request):
         "days_remaining": _days_remaining(end_at),
         "auto_suspend_on_expiry": bool(tenant.get("auto_suspend_on_expiry", False)) if tenant else False,
     }
+
+
+_STATIC_LOGO_PATH = Path(__file__).resolve().parent.parent / "static" / "images" / "academy-logo.png"
+
+
+@router.get("/branding/logo")
+async def get_branding_logo(slug: str = ""):
+    """Serve an academy's logo as a binary image for use as a web-push
+    notification icon / badge.
+
+    Notification icons are fetched by the browser WITHOUT the X-Tenant-Slug
+    header (and often without the member's session), so the academy is resolved
+    from the ``slug`` query param that ``send_push_notification`` embeds in the
+    icon URL. Falls back to the shared default academy logo when the academy has
+    no custom logo so non-branded academies still show a sensible icon. The
+    response is cacheable so the browser/push service does not re-fetch the logo
+    for every notification.
+    """
+    slug = (slug or "").strip().lower()
+    logo = ""
+    if slug:
+        try:
+            tenant = await control_db.tenants.find_one(
+                {"slug": slug}, {"_id": 0, "logo_base64": 1}
+            )
+        except Exception:
+            tenant = None
+        if tenant:
+            logo = _safe_logo(tenant.get("logo_base64", ""))
+    if logo:
+        try:
+            header, b64 = logo.split(";base64,", 1)
+            media_type = header[len("data:"):] or "image/png"
+            raw = base64.b64decode(b64)
+            return Response(
+                content=raw,
+                media_type=media_type,
+                headers={"Cache-Control": "public, max-age=300"},
+            )
+        except Exception:
+            logger.warning("Failed to decode tenant logo for slug=%s", slug)
+    if _STATIC_LOGO_PATH.exists():
+        return FileResponse(
+            str(_STATIC_LOGO_PATH),
+            media_type="image/png",
+            headers={"Cache-Control": "public, max-age=300"},
+        )
+    raise HTTPException(status_code=404, detail="Logo not found")
 
 
 def _require_tenant_admin(current_user: dict):

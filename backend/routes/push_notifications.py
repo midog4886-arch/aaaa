@@ -99,6 +99,26 @@ class NotificationPayload(BaseModel):
     body_en: Optional[str] = None
 
 
+def _tenant_logo_url(tenant_slug: Optional[str]) -> str:
+    """Build the URL for an academy's web-push notification icon/badge.
+
+    Points at the public ``/api/tenant/branding/logo`` endpoint with the
+    academy ``slug`` in the query string (the browser fetches the icon without
+    the X-Tenant-Slug header, so the academy must travel in the URL). Returns an
+    absolute URL when ``REACT_APP_BACKEND_URL`` is configured so push services
+    that can't resolve relative URLs still load the right logo; otherwise falls
+    back to a root-relative URL that the service worker resolves against its own
+    (single, fixed) origin. Returns "" only when no slug is available, leaving
+    the caller's default icon in place.
+    """
+    slug = (tenant_slug or "").strip().lower()
+    if not slug:
+        return ""
+    base = (os.environ.get("REACT_APP_BACKEND_URL", "") or "").rstrip("/")
+    path = f"/api/tenant/branding/logo?slug={slug}"
+    return f"{base}{path}" if base else path
+
+
 def _normalize_language(lang: Optional[str]) -> str:
     """Normalize a language code to the 'ar'/'en' set used across the app.
 
@@ -344,11 +364,21 @@ async def send_push_notification(subscription: dict, payload: NotificationPayloa
         # guaranteed because the subscription lives in this academy's DB.
         from utils.tenant import get_current_tenant_slug
         tenant_slug = get_current_tenant_slug()
+
+        # Resolve a per-academy icon/badge so each academy's members see their
+        # OWN logo in the notification instead of the single shared/default
+        # logo baked into the build. The icon points at a tenant-scoped backend
+        # endpoint (slug in the query string) because the browser fetches the
+        # notification icon WITHOUT the X-Tenant-Slug header, so the academy
+        # must be encoded in the URL itself. The endpoint falls back to the
+        # default academy logo when the academy has no custom logo, so this is
+        # always safe to send.
+        icon_url = _tenant_logo_url(tenant_slug)
         notification_data = {
             "title": payload.title,
             "body": payload.body,
-            "icon": payload.icon,
-            "badge": payload.badge,
+            "icon": icon_url or payload.icon,
+            "badge": icon_url or payload.badge,
             "image": payload.image or None,
             "url": payload.url,
             "tenant": tenant_slug,
