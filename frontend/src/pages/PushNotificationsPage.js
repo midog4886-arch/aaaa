@@ -18,7 +18,9 @@ import {
   Loader2,
   CheckCircle,
   Phone,
-  X
+  X,
+  Trash2,
+  AlertTriangle
 } from 'lucide-react';
 
 const PushNotificationsPage = () => {
@@ -35,6 +37,9 @@ const PushNotificationsPage = () => {
   const [showSubscribers, setShowSubscribers] = useState(false);
   const [subscribers, setSubscribers] = useState([]);
   const [loadingSubscribers, setLoadingSubscribers] = useState(false);
+  const [pruning, setPruning] = useState(false);
+  const [pruneResult, setPruneResult] = useState(null);
+  const [pruneRetention, setPruneRetention] = useState('');
 
   const [form, setForm] = useState({
     title: '',
@@ -75,6 +80,42 @@ const PushNotificationsPage = () => {
       toast.error(isAr ? 'فشل في تحميل المشتركين' : 'Failed to load subscribers');
     } finally {
       setLoadingSubscribers(false);
+    }
+  };
+
+  const handlePrune = async () => {
+    setPruning(true);
+    setPruneResult(null);
+    try {
+      let days;
+      const raw = pruneRetention.trim();
+      if (raw !== '') {
+        const parsed = parseInt(raw, 10);
+        if (Number.isFinite(parsed) && parsed > 0) {
+          days = parsed;
+        }
+      }
+      const res = await pushNotificationsAPI.pruneInactive(days);
+      setPruneResult(res.data);
+      const deleted = res.data?.deleted ?? 0;
+      toast.success(
+        isAr
+          ? `تم حذف ${deleted} اشتراك قديم`
+          : `Removed ${deleted} old sign-up${deleted === 1 ? '' : 's'}`
+      );
+      // Refresh the active subscriber count (pruning removes inactive rows only,
+      // but keeps the displayed number consistent after maintenance).
+      loadData();
+    } catch (error) {
+      console.error('Failed to prune:', error);
+      const status = error?.response?.status;
+      toast.error(
+        status === 403
+          ? (isAr ? 'هذا الإجراء متاح للمدير فقط' : 'Admin access required')
+          : (isAr ? 'فشل في تنظيف الاشتراكات' : 'Failed to clean up sign-ups')
+      );
+    } finally {
+      setPruning(false);
     }
   };
 
@@ -334,6 +375,102 @@ const PushNotificationsPage = () => {
                     <p className="text-gray-500">{isAr ? 'فشل' : 'Failed'}</p>
                   </div>
                 </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Trash2 className="w-5 h-5 text-amber-600" />
+              {isAr ? 'تنظيف الاشتراكات القديمة' : 'Clean Up Old Sign-ups'}
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-sm text-gray-600 mb-4">
+              {isAr
+                ? 'يحذف نهائياً اشتراكات الإشعارات المعطّلة منذ فترة طويلة (الأجهزة التي لم تعد نشطة) عبر جميع الأكاديميات. يعمل تلقائياً يومياً، ويمكنك تشغيله الآن للتنظيف فوراً. لا يؤثر على المشتركين النشطين.'
+                : 'Permanently removes notification sign-ups that have been inactive for a long time (devices that are no longer active) across all academies. This runs automatically every day; use this to run it now. Active subscribers are not affected.'}
+            </p>
+
+            <div className="flex flex-col sm:flex-row sm:items-end gap-3">
+              <div className="flex-1">
+                <label className="block text-sm font-medium mb-1">
+                  {isAr ? 'مدة الاحتفاظ بالأيام (اختياري)' : 'Retention window in days (optional)'}
+                </label>
+                <Input
+                  type="number"
+                  min="1"
+                  value={pruneRetention}
+                  onChange={(e) => setPruneRetention(e.target.value)}
+                  placeholder={isAr ? 'الافتراضي (~90 يوم)' : 'Default (~90 days)'}
+                  dir="ltr"
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  {isAr
+                    ? 'اتركه فارغاً لاستخدام المدة الافتراضية. يُحذف فقط ما كان معطّلاً لفترة أطول من هذه المدة.'
+                    : 'Leave empty to use the default. Only sign-ups inactive longer than this are deleted.'}
+                </p>
+              </div>
+              <Button
+                type="button"
+                onClick={handlePrune}
+                disabled={pruning}
+                variant="outline"
+                className="border-amber-300 text-amber-700 hover:bg-amber-50 sm:w-auto w-full"
+              >
+                {pruning ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin ml-2" />
+                    {isAr ? 'جاري التنظيف...' : 'Cleaning...'}
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="w-4 h-4 ml-2" />
+                    {isAr ? 'تنظيف الآن' : 'Clean Up Now'}
+                  </>
+                )}
+              </Button>
+            </div>
+
+            {pruneResult && (
+              <div className="mt-4 p-4 bg-amber-50 border border-amber-200 rounded-lg">
+                <div className="flex items-center gap-2 text-amber-700 font-bold mb-2">
+                  <CheckCircle className="w-5 h-5" />
+                  {isAr ? 'اكتمل التنظيف' : 'Cleanup Complete'}
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-sm text-center">
+                  <div>
+                    <p className="font-bold text-amber-700">{pruneResult.deleted ?? 0}</p>
+                    <p className="text-gray-500">{isAr ? 'تم حذفها' : 'Deleted'}</p>
+                  </div>
+                  <div>
+                    <p className="font-bold text-gray-800">{pruneResult.scanned_inactive ?? 0}</p>
+                    <p className="text-gray-500">{isAr ? 'تم فحصها' : 'Scanned'}</p>
+                  </div>
+                  <div>
+                    <p className="font-bold text-gray-800">{pruneResult.retention_days ?? '-'}</p>
+                    <p className="text-gray-500">{isAr ? 'مدة الاحتفاظ' : 'Retention (days)'}</p>
+                  </div>
+                  <div>
+                    <p className="font-bold text-gray-800">{pruneResult.tenants_processed ?? 0}</p>
+                    <p className="text-gray-500">{isAr ? 'الأكاديميات' : 'Academies'}</p>
+                  </div>
+                </div>
+                {Array.isArray(pruneResult.errors) && pruneResult.errors.length > 0 && (
+                  <div className="mt-3 pt-3 border-t border-amber-200">
+                    <div className="flex items-center gap-1 text-red-600 text-sm font-medium mb-1">
+                      <AlertTriangle className="w-4 h-4" />
+                      {isAr ? `أخطاء (${pruneResult.errors.length})` : `Errors (${pruneResult.errors.length})`}
+                    </div>
+                    <ul className="text-xs text-red-500 list-disc list-inside space-y-0.5">
+                      {pruneResult.errors.map((err, idx) => (
+                        <li key={idx} className="break-all">{err}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
               </div>
             )}
           </CardContent>

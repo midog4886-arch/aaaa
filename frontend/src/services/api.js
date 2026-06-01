@@ -558,6 +558,13 @@ export const pushNotificationsAPI = {
   getSubscribersCount: () => axios.get(`${API}/push-notifications/subscribers-count`),
   getSubscribersList: () => axios.get(`${API}/push-notifications/subscribers-list`),
   broadcast: (data) => axios.post(`${API}/push-notifications/broadcast`, data),
+  pruneInactive: (retentionDays) => axios.post(
+    `${API}/push-notifications/prune-inactive`,
+    null,
+    (retentionDays !== undefined && retentionDays !== null && retentionDays !== '')
+      ? { params: { retention_days: retentionDays } }
+      : undefined
+  ),
   createMemberNotification: (data) => axios.post(`${API}/member-notifications`, data),
   getMembersActiveStatus: (memberIds) => axios.post(`${API}/members/active-status`, { member_ids: memberIds }),
 };
