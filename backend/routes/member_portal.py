@@ -697,11 +697,22 @@ async def get_qr_card_data(member: dict = Depends(get_current_member)):
         # the level's activity_name has drifted from the member's recorded one.
         member_activities = doc.get("activities") or []
         level_id_by_aid: Dict[str, str] = {}
+        # Authoritative (live) dates per activity from the member's own
+        # activities — these reflect day-extensions / freezes, whereas the
+        # invoice item keeps the original sale dates and goes stale.
+        act_dates_by_aid: Dict[str, tuple] = {}
         for ma in member_activities:
             aid = ma.get("activity_id")
             lid = ma.get("level_id")
             if aid and lid:
                 level_id_by_aid[aid] = lid
+            if aid:
+                ma_end = str(ma.get("end_date") or "")[:10]
+                ma_start = str(ma.get("start_date") or "")[:10]
+                if ma_end:
+                    prev = act_dates_by_aid.get(aid)
+                    if not prev or ma_end > prev[1]:
+                        act_dates_by_aid[aid] = (ma_start, ma_end)
 
         active_activities = []
         seen_keys = set()
@@ -717,6 +728,11 @@ async def get_qr_card_data(member: dict = Depends(get_current_member)):
                     if len(parts) == 2:
                         start_date = start_date or parts[0].strip()
                         end_date = parts[1].strip()
+            # Prefer the live (extended) dates from the member's activity record.
+            live_dates = act_dates_by_aid.get(item.get("activity_id"))
+            if live_dates and live_dates[1]:
+                start_date = live_dates[0] or start_date
+                end_date = live_dates[1]
             if end_date and end_date >= today:
                 # Dedupe in case the same subscription appears on multiple
                 # invoices (e.g. partial + paid combinations).
@@ -849,52 +865,48 @@ async def get_member_notifications(member: dict = Depends(get_current_member)):
     
     linked_ids_list = member.get("_linked_member_ids", [member["id"]])
 
-    # Check for expiring subscriptions (within 7 days) — across all linked siblings
-    invoices = await db.invoices.find(
-        {"member_id": {"$in": linked_ids_list}, "status": {"$in": ["paid", "partial"]}},
-        {"_id": 0}
-    ).to_list(200)
-
+    # Check for expiring subscriptions (within 7 days). Driven by the member's
+    # CURRENT activity records (member.activities), which already aggregate all
+    # linked siblings and reflect day-extensions / freezes. The original invoice
+    # dates go stale after an extension, so they must NOT be used here.
     seven_days_later = (datetime.now(timezone.utc) + timedelta(days=7)).strftime('%Y-%m-%d')
-    linked_meta = {m["id"]: m for m in member.get("_linked_members", [])}
 
-    for inv in invoices:
-        owner = linked_meta.get(inv.get("member_id"))
-        owner_name = owner.get("name") if owner else ""
-        for item in inv.get("items", []):
-            if item.get("activity_id"):
-                end_date = item.get("end_date", "")
-                if not end_date and item.get("period"):
-                    period = item.get("period", "")
-                    if " - " in period:
-                        parts = period.split(" - ")
-                        if len(parts) == 2:
-                            end_date = parts[1].strip()
-
-                if end_date:
-                    name_prefix = f"{owner_name} - " if owner_name else ""
-                    if today <= end_date <= seven_days_later:
-                        notifications.append({
-                            "id": str(uuid.uuid4()),
-                            "type": "expiring_soon",
-                            "title": "اشتراك على وشك الانتهاء",
-                            "message": f"{name_prefix}اشتراك {item.get('activity_name')} سينتهي في {end_date}",
-                            "activity_name": item.get("activity_name"),
-                            "end_date": end_date,
-                            "priority": "warning",
-                            "created_at": datetime.now(timezone.utc).isoformat()
-                        })
-                    elif end_date < today:
-                        notifications.append({
-                            "id": str(uuid.uuid4()),
-                            "type": "expired",
-                            "title": "اشتراك منتهي",
-                            "message": f"{name_prefix}انتهى اشتراك {item.get('activity_name')} في {end_date}",
-                            "activity_name": item.get("activity_name"),
-                            "end_date": end_date,
-                            "priority": "danger",
-                            "created_at": datetime.now(timezone.utc).isoformat()
-                        })
+    own_name = member.get("name_ar") or member.get("name") or ""
+    seen_expiry = set()
+    for act in member.get("activities", []):
+        if not act.get("activity_id"):
+            continue
+        end_date = str(act.get("end_date") or "")[:10]
+        if not end_date:
+            continue
+        owner_name = act.get("_owner_name") or own_name
+        key = (act.get("_owner_id", ""), act.get("activity_id"), end_date)
+        if key in seen_expiry:
+            continue
+        seen_expiry.add(key)
+        name_prefix = f"{owner_name} - " if owner_name else ""
+        if today <= end_date <= seven_days_later:
+            notifications.append({
+                "id": str(uuid.uuid4()),
+                "type": "expiring_soon",
+                "title": "اشتراك على وشك الانتهاء",
+                "message": f"{name_prefix}اشتراك {act.get('activity_name')} سينتهي في {end_date}",
+                "activity_name": act.get("activity_name"),
+                "end_date": end_date,
+                "priority": "warning",
+                "created_at": datetime.now(timezone.utc).isoformat()
+            })
+        elif end_date < today:
+            notifications.append({
+                "id": str(uuid.uuid4()),
+                "type": "expired",
+                "title": "اشتراك منتهي",
+                "message": f"{name_prefix}انتهى اشتراك {act.get('activity_name')} في {end_date}",
+                "activity_name": act.get("activity_name"),
+                "end_date": end_date,
+                "priority": "danger",
+                "created_at": datetime.now(timezone.utc).isoformat()
+            })
 
     # Get general notifications/offers (broadcast to any linked sibling)
     general_notifications = await db.notifications.find(
