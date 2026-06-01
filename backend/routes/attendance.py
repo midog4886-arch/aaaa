@@ -370,6 +370,9 @@ async def check_member_session_quota(member_id: str, activity_id: str = None):
     results = []
     # Track (activity_id, start_date, end_date) combos already added to avoid duplicates
     seen_subs = set()
+    # Activity ids that already produced a card (from the authoritative
+    # member.activities source); their stale invoice duplicates are skipped.
+    produced_aids = set()
 
     async def _process_subscription(item_activity_id, activity_name, start_date, end_date,
                                      schedule_text, invoice_number=""):
@@ -419,31 +422,11 @@ async def check_member_session_quota(member_id: str, activity_id: str = None):
             "end_date": end_date,
             "invoice_number": invoice_number
         })
+        produced_aids.add(item_activity_id)
 
-    # ── 1. Check paid/partial invoices (normal registration path) ──────────────
-    invoices = await db.invoices.find(
-        {"member_id": member_id, "status": {"$in": ["paid", "partial"]}},
-        {"_id": 0}
-    ).to_list(100)
-
-    for inv in invoices:
-        for item in inv.get("items", []):
-            if item.get("is_product"):
-                continue
-            item_activity_id = item.get("activity_id", "")
-            if not item_activity_id:
-                continue
-            start = item.get("start_date", "") or inv.get("created_at", "")[:10]
-            await _process_subscription(
-                item_activity_id,
-                item.get("activity_name", ""),
-                start,
-                item.get("end_date", ""),
-                item.get("schedule", ""),
-                inv.get("invoice_number", "")
-            )
-
-    # ── 2. Check member.activities (registration form path) ────────────────────
+    # ── 1. member.activities FIRST — the authoritative source that reflects
+    #       day-extensions / freezes. The invoice keeps the original sale dates
+    #       and goes stale, so the activity entry wins when both exist. ─────────
     member_doc = await db.members.find_one({"id": member_id}, {"_id": 0, "activities": 1})
     for act in (member_doc or {}).get("activities", []):
         item_activity_id = act.get("activity_id", "")
@@ -459,6 +442,34 @@ async def check_member_session_quota(member_id: str, activity_id: str = None):
             act.get("schedule", ""),
             ""
         )
+
+    # ── 2. Fall back to paid/partial invoices ONLY for activities that did not
+    #       already produce a card above. This prevents a duplicate quota card
+    #       when the same activity exists in both sources with different
+    #       (stale invoice vs extended activity) end dates. ────────────────────
+    invoices = await db.invoices.find(
+        {"member_id": member_id, "status": {"$in": ["paid", "partial"]}},
+        {"_id": 0}
+    ).to_list(100)
+
+    for inv in invoices:
+        for item in inv.get("items", []):
+            if item.get("is_product"):
+                continue
+            item_activity_id = item.get("activity_id", "")
+            if not item_activity_id:
+                continue
+            if item_activity_id in produced_aids:
+                continue
+            start = item.get("start_date", "") or inv.get("created_at", "")[:10]
+            await _process_subscription(
+                item_activity_id,
+                item.get("activity_name", ""),
+                start,
+                item.get("end_date", ""),
+                item.get("schedule", ""),
+                inv.get("invoice_number", "")
+            )
 
     return results
 
