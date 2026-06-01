@@ -24,3 +24,13 @@ is purely by `is_active` rows in each tenant DB, so deactivation is what actuall
 - Frontend `PushNotificationManager` re-claims an EXISTING browser pushManager subscription on
   mount (web branch of checkSubscription) so the "logs in under a different academy" case also
   triggers backend dedup without requiring an explicit re-subscribe click.
+
+**Periodic sweep (complements inline dedup):** inline dedup only fires when a device is
+re-claimed; a device that never returns leaves a stale active row in the old tenant forever.
+`cleanup_superseded_subscriptions` (push_notifications.py) walks every active tenant, groups all
+`is_active` rows by device identity (FCM token for android/ios, endpoint for web), keeps the
+most-recently-updated row active per device, deactivates older cross-tenant duplicates
+(`deactivated_reason: superseded_cross_tenant`). Runs once globally inside the daily-checks run
+(NOT inside for_each_active_tenant — it needs a cross-tenant view) and via admin endpoint
+`POST /push-notifications/cleanup-superseded`. Comparison is lexicographic on the ISO
+`updated_at`/`created_at` strings — relies on them being UTC isoformat.

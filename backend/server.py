@@ -3740,6 +3740,25 @@ async def _run_daily_renewal_and_ads_checks(trigger: str = "scheduler") -> dict:
         errors.append(msg)
         print(f"Daily checks: {msg}")
 
+    # 8) Cross-tenant push-subscription cleanup: deactivate stale duplicate
+    # sign-ups left on shared browsers/devices where the same endpoint/FCM
+    # token is active under a more-recently-updated row in another academy.
+    # Runs once globally (it needs a cross-tenant view), not per-tenant.
+    try:
+        from routes.push_notifications import cleanup_superseded_subscriptions
+        push_cleanup = await cleanup_superseded_subscriptions()
+        print(
+            f"Daily checks: push-subscription cleanup → "
+            f"deactivated={push_cleanup.get('deactivated', 0)} "
+            f"dup_devices={push_cleanup.get('duplicate_devices', 0)}"
+        )
+        for e in push_cleanup.get("errors") or []:
+            errors.append(f"push_cleanup: {e}")
+    except Exception as e:
+        msg = f"push-subscription cleanup failed: {e}"
+        errors.append(msg)
+        print(f"Daily checks: {msg}")
+
     success = len(errors) == 0
     await _persist_daily_checks_status(
         started_at=started_at,

@@ -225,6 +225,169 @@ async def _deactivate_endpoint_in_other_tenants(
             reset_current_tenant(token)
 
 
+def _parse_sub_ts(sub: dict) -> str:
+    """Return a sortable timestamp string for a subscription row.
+
+    Prefers ``updated_at`` (set whenever the row is (re)claimed) and falls back
+    to ``created_at`` for legacy rows that were never updated. The stored values
+    are ISO-8601 UTC strings (``datetime.now(timezone.utc).isoformat()``), which
+    sort correctly lexicographically, so we compare the raw strings — no parsing
+    needed and unknown/missing values sort oldest (empty string)."""
+    return str(sub.get("updated_at") or sub.get("created_at") or "")
+
+
+async def cleanup_superseded_subscriptions() -> dict:
+    """Deactivate cross-tenant duplicate push subscriptions left on shared devices.
+
+    A browser web-push endpoint (and a device FCM token) is tied to the
+    browser/app install, not to whoever is logged in. On a SHARED device,
+    member of academy B subscribes (row active in B's DB), then later an academy
+    A member subscribes on the same browser (row active in A's DB). The inline
+    dedup in ``subscribe_to_push`` deactivates B's row AT THAT MOMENT, but if the
+    academy B member never returns to re-claim the endpoint, an old active row in
+    some other tenant can linger forever as a dead/duplicate that wastes send
+    attempts.
+
+    This sweep walks every active tenant, groups all ``is_active`` subscriptions
+    by the device identity (FCM token for android/ios, endpoint for web), and
+    keeps only the most-recently-updated row active per device — deactivating the
+    older duplicates in their own tenant DBs. It complements (does not replace)
+    the inline 404/410/UNREGISTERED deactivation, which only fires when a send
+    actually errors.
+
+    Returns a summary dict suitable for logging / status display. Best-effort:
+    per-tenant failures are logged and skipped so one bad DB never aborts the
+    whole sweep.
+    """
+    import logging
+    logger = logging.getLogger(__name__)
+
+    from utils.tenant import (
+        list_active_tenants,
+        set_current_tenant,
+        reset_current_tenant,
+    )
+
+    summary = {
+        "tenants_scanned": 0,
+        "active_subscriptions": 0,
+        "duplicate_devices": 0,
+        "deactivated": 0,
+        "errors": [],
+    }
+
+    try:
+        tenants = await list_active_tenants()
+    except Exception as exc:
+        logger.error(f"cleanup_superseded_subscriptions: list tenants failed: {exc}")
+        summary["errors"].append(f"list tenants failed: {exc}")
+        return summary
+
+    # device key -> list of {slug, tenant, id, ts}
+    groups: dict = {}
+
+    for tenant in tenants:
+        slug = (tenant.get("slug") or "").strip().lower()
+        if not slug:
+            continue
+        summary["tenants_scanned"] += 1
+        token = set_current_tenant(tenant)
+        try:
+            cursor = db.push_subscriptions.find(
+                {"is_active": True},
+                {"_id": 0, "id": 1, "endpoint": 1, "keys": 1, "platform": 1,
+                 "updated_at": 1, "created_at": 1},
+            )
+            async for sub in cursor:
+                summary["active_subscriptions"] += 1
+                platform = sub.get("platform", "web")
+                fcm_token = (sub.get("keys") or {}).get("fcm_token", "")
+                if platform in ("android", "ios") and fcm_token:
+                    key = ("fcm", fcm_token)
+                else:
+                    key = ("web", sub.get("endpoint", ""))
+                if not key[1]:
+                    continue
+                groups.setdefault(key, []).append({
+                    "slug": slug,
+                    "tenant": tenant,
+                    "id": sub.get("id"),
+                    "endpoint": sub.get("endpoint", ""),
+                    "ts": _parse_sub_ts(sub),
+                })
+        except Exception as exc:
+            logger.error(f"cleanup_superseded_subscriptions: scan tenant={slug} failed: {exc}")
+            summary["errors"].append(f"[{slug}] scan failed: {exc}")
+        finally:
+            reset_current_tenant(token)
+
+    # For each device seen active in more than one tenant, keep the newest row
+    # active and deactivate the rest in their own tenant DB.
+    now_iso = datetime.now(timezone.utc).isoformat()
+    for key, rows in groups.items():
+        slugs = {r["slug"] for r in rows}
+        if len(slugs) < 2:
+            # Only one tenant holds this device active — nothing superseded.
+            continue
+        summary["duplicate_devices"] += 1
+        # Newest first (lexicographic ISO compare). Ties keep an arbitrary but
+        # stable winner; the losers are still safe to deactivate because the
+        # device can only belong to one academy at a time anyway.
+        rows.sort(key=lambda r: r["ts"], reverse=True)
+        winner = rows[0]
+        for loser in rows[1:]:
+            if loser["slug"] == winner["slug"]:
+                # Same tenant as the winner — leave its (own) active row alone.
+                continue
+            token = set_current_tenant(loser["tenant"])
+            try:
+                match = {"is_active": True}
+                if loser.get("id"):
+                    match["id"] = loser["id"]
+                elif loser.get("endpoint"):
+                    match["endpoint"] = loser["endpoint"]
+                else:
+                    continue
+                res = await db.push_subscriptions.update_one(
+                    match,
+                    {"$set": {
+                        "is_active": False,
+                        "deactivated_reason": "superseded_cross_tenant",
+                        "updated_at": now_iso,
+                    }},
+                )
+                summary["deactivated"] += int(getattr(res, "modified_count", 0) or 0)
+            except Exception as exc:
+                logger.error(
+                    f"cleanup_superseded_subscriptions: deactivate "
+                    f"tenant={loser['slug']} failed: {exc}"
+                )
+                summary["errors"].append(f"[{loser['slug']}] deactivate failed: {exc}")
+            finally:
+                reset_current_tenant(token)
+
+    logger.info(
+        "cleanup_superseded_subscriptions: scanned=%s active=%s dup_devices=%s deactivated=%s errors=%s",
+        summary["tenants_scanned"], summary["active_subscriptions"],
+        summary["duplicate_devices"], summary["deactivated"], len(summary["errors"]),
+    )
+    return summary
+
+
+@router.post("/cleanup-superseded")
+async def cleanup_superseded(current_user: dict = Depends(get_current_user)):
+    """Admin-only: trigger the cross-tenant push-subscription cleanup on demand.
+
+    Deactivates stale duplicate sign-ups left on shared browsers/devices where
+    the same endpoint/FCM token is active under a more-recently-updated row in
+    another academy. Safe to run repeatedly — already-deactivated rows are
+    skipped. Returns the sweep summary.
+    """
+    if not current_user.get("is_admin"):
+        raise HTTPException(status_code=403, detail="Admin access required")
+    return await cleanup_superseded_subscriptions()
+
+
 @router.post("/subscribe")
 async def subscribe_to_push(data: SubscriptionCreate):
     try:
