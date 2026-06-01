@@ -318,9 +318,10 @@ async def get_member_card_public(search_term: str, branch_id: Optional[str] = No
     branches after a global renumber. The scanner page passes the active
     branch so a B5 reader maps ``0027`` to ``DEFA-B5-0027`` automatically.
     """
-    # Search by member_code first
+    # Search by id (deterministic), member_code, or phone first
     member = await db.members.find_one(
         {"$or": [
+            {"id": search_term},
             {"member_code": search_term},
             {"phone": search_term}
         ]},
@@ -348,14 +349,41 @@ async def get_member_card_public(search_term: str, branch_id: Optional[str] = No
                 )
 
     if not member:
-        # Try to search by name
-        member = await db.members.find_one(
-            {"$or": [
-                {"name_ar": {"$regex": search_term, "$options": "i"}},
-                {"name": {"$regex": search_term, "$options": "i"}}
-            ]},
-            {"_id": 0}
-        )
+        # Search by name. May match MULTIPLE members (e.g. same first/last
+        # name), so match each typed word against the name — "سعد مطلق" finds
+        # "سعد عبدالله مطلق" — and return the candidate list for the caller to
+        # choose from. A single match falls through to the card builder below.
+        import re as _re_name
+        name_tokens = [t for t in search_term.split() if t]
+        if name_tokens:
+            name_query = {"$and": [
+                {"$or": [
+                    {"name_ar": {"$regex": _re_name.escape(tok), "$options": "i"}},
+                    {"name": {"$regex": _re_name.escape(tok), "$options": "i"}},
+                ]}
+                for tok in name_tokens
+            ]}
+        else:
+            name_query = {"name_ar": {"$regex": _re_name.escape(search_term), "$options": "i"}}
+        name_matches = await db.members.find(
+            name_query,
+            {"_id": 0, "id": 1, "name_ar": 1, "name": 1, "member_code": 1, "phone": 1}
+        ).limit(25).to_list(25)
+        if len(name_matches) == 1:
+            member = await db.members.find_one({"id": name_matches[0]["id"]}, {"_id": 0})
+        elif len(name_matches) > 1:
+            return {
+                "multiple": True,
+                "matches": [
+                    {
+                        "id": m.get("id"),
+                        "name": m.get("name_ar") or m.get("name") or "",
+                        "member_code": m.get("member_code") or "",
+                        "phone": m.get("phone") or "",
+                    }
+                    for m in name_matches
+                ],
+            }
     
     if not member:
         raise HTTPException(status_code=404, detail="العضو غير موجود")

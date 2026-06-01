@@ -17,6 +17,7 @@ const API_URL = '';
 const MemberCardPage = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [member, setMember] = useState(null);
+  const [matches, setMatches] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [showPrintDialog, setShowPrintDialog] = useState(false);
@@ -29,11 +30,16 @@ const MemberCardPage = () => {
     setLoading(true);
     setError('');
     setMember(null);
+    setMatches([]);
     
     try {
       // Use public API (no auth required)
       const response = await axios.get(`${API_URL}/api/public/member-card/${encodeURIComponent(searchQuery.trim())}`);
-      setMember(response.data);
+      if (response.data && response.data.multiple) {
+        setMatches(response.data.matches || []);
+      } else {
+        setMember(response.data);
+      }
     } catch (err) {
       const rawDetail = err.response?.data?.detail;
       const serverMsg = typeof rawDetail === 'string'
@@ -46,6 +52,26 @@ const MemberCardPage = () => {
       } else {
         setError('حدث خطأ في البحث');
       }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const selectMatch = async (m) => {
+    setLoading(true);
+    setError('');
+    setMatches([]);
+    setMember(null);
+    try {
+      const lookup = m.member_code || m.id;
+      const response = await axios.get(`${API_URL}/api/public/member-card/${encodeURIComponent(lookup)}`);
+      if (response.data && response.data.multiple) {
+        setMatches(response.data.matches || []);
+      } else {
+        setMember(response.data);
+      }
+    } catch (err) {
+      setError('حدث خطأ في عرض البطاقة');
     } finally {
       setLoading(false);
     }
@@ -440,6 +466,35 @@ const MemberCardPage = () => {
             )}
           </CardContent>
         </Card>
+
+        {/* Multiple matches — let the user pick which member */}
+        {matches.length > 0 && (
+          <Card className="mb-6 shadow-lg">
+            <CardContent className="p-4">
+              <p className="text-gray-700 font-bold mb-3 text-center">
+                تم العثور على {matches.length} أعضاء — اختر العضو لعرض بطاقته
+              </p>
+              <div className="space-y-2">
+                {matches.map((m) => (
+                  <button
+                    key={m.id}
+                    onClick={() => selectMatch(m)}
+                    disabled={loading}
+                    className="w-full flex items-center justify-between gap-3 p-3 rounded-lg border border-gray-200 hover:bg-orange-50 hover:border-orange-300 transition text-right"
+                  >
+                    <span className="flex items-center gap-2 min-w-0">
+                      <User className="w-5 h-5 text-orange-500 shrink-0" />
+                      <span className="font-bold text-gray-800 truncate">{m.name}</span>
+                    </span>
+                    <span className="text-sm text-gray-500 shrink-0">
+                      {m.member_code}{m.phone ? ` · ${m.phone}` : ''}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Member Card */}
         {member && (
