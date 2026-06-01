@@ -281,3 +281,171 @@ def test_fcm_subscribe_deactivates_other_tenant_by_token(monkeypatch, fresh_modu
         "FCM device must be deactivated in the previous academy's DB via fcm_token match"
     )
     assert b_match[0].get("deactivated_reason") == "claimed_by_other_academy"
+
+
+# ---------------------------------------------------------------------------
+# Periodic sweep: cleanup_superseded_subscriptions (Task #333)
+#
+# Complements the inline dedup above. The inline path only fires the moment a
+# device is RE-CLAIMED. If an academy B member subscribes on a shared device and
+# then an academy A member subscribes but B never returns to re-claim, B's row
+# would linger active forever. The periodic sweep walks every active tenant,
+# groups active subs by device identity (FCM token for android/ios, endpoint for
+# web) and keeps only the most-recently-updated row active per device.
+# ---------------------------------------------------------------------------
+
+
+def test_cleanup_supersedes_web_endpoint_across_tenants(monkeypatch, fresh_modules):
+    push_mod, tenant_mod, (tenant_a, tenant_b), client = _setup(monkeypatch)
+
+    endpoint = "https://fcm.googleapis.com/web/SWEEP-WEB"
+
+    async def scenario():
+        # Academy B claimed it FIRST (older updated_at) and never re-claimed.
+        token_b = tenant_mod.set_current_tenant(tenant_b)
+        try:
+            await push_mod.db.push_subscriptions.insert_one({
+                "id": "sub-b",
+                "member_id": "member-b",
+                "endpoint": endpoint,
+                "keys": {"p256dh": "x", "auth": "y"},
+                "platform": "web",
+                "is_active": True,
+                "updated_at": "2026-01-01T00:00:00+00:00",
+            })
+        finally:
+            tenant_mod.reset_current_tenant(token_b)
+
+        # Academy A claimed it MORE RECENTLY (newer updated_at) — the winner.
+        token_a = tenant_mod.set_current_tenant(tenant_a)
+        try:
+            await push_mod.db.push_subscriptions.insert_one({
+                "id": "sub-a",
+                "member_id": "member-a",
+                "endpoint": endpoint,
+                "keys": {"p256dh": "x", "auth": "y"},
+                "platform": "web",
+                "is_active": True,
+                "updated_at": "2026-02-01T00:00:00+00:00",
+            })
+        finally:
+            tenant_mod.reset_current_tenant(token_a)
+
+        return await push_mod.cleanup_superseded_subscriptions()
+
+    summary = asyncio.run(scenario())
+
+    assert summary["duplicate_devices"] == 1
+    assert summary["deactivated"] == 1
+    assert not summary["errors"]
+
+    a_rows = _subs(client, "champions_a")
+    b_rows = _subs(client, "champions_b")
+    a_match = [r for r in a_rows if r["endpoint"] == endpoint]
+    b_match = [r for r in b_rows if r["endpoint"] == endpoint]
+
+    assert len(a_match) == 1 and a_match[0]["is_active"] is True, (
+        "newest-updated web row must stay active"
+    )
+    assert len(b_match) == 1 and b_match[0]["is_active"] is False, (
+        "older cross-tenant web duplicate must be deactivated by the sweep"
+    )
+    assert b_match[0].get("deactivated_reason") == "superseded_cross_tenant"
+
+
+def test_cleanup_supersedes_fcm_token_across_tenants(monkeypatch, fresh_modules):
+    push_mod, tenant_mod, (tenant_a, tenant_b), client = _setup(monkeypatch)
+
+    fcm_token = "SWEEP-device-token"
+    # Distinct fcm:// endpoints so the device is grouped by fcm_token, not endpoint.
+    endpoint_b = "fcm://sweep-old-b"
+    endpoint_a = "fcm://sweep-new-a"
+
+    async def scenario():
+        token_b = tenant_mod.set_current_tenant(tenant_b)
+        try:
+            await push_mod.db.push_subscriptions.insert_one({
+                "id": "sub-b",
+                "member_id": "member-b",
+                "endpoint": endpoint_b,
+                "keys": {"fcm_token": fcm_token, "platform": "android"},
+                "platform": "android",
+                "is_active": True,
+                "updated_at": "2026-01-01T00:00:00+00:00",
+            })
+        finally:
+            tenant_mod.reset_current_tenant(token_b)
+
+        token_a = tenant_mod.set_current_tenant(tenant_a)
+        try:
+            await push_mod.db.push_subscriptions.insert_one({
+                "id": "sub-a",
+                "member_id": "member-a",
+                "endpoint": endpoint_a,
+                "keys": {"fcm_token": fcm_token, "platform": "android"},
+                "platform": "android",
+                "is_active": True,
+                "updated_at": "2026-02-01T00:00:00+00:00",
+            })
+        finally:
+            tenant_mod.reset_current_tenant(token_a)
+
+        return await push_mod.cleanup_superseded_subscriptions()
+
+    summary = asyncio.run(scenario())
+
+    assert summary["duplicate_devices"] == 1
+    assert summary["deactivated"] == 1
+    assert not summary["errors"]
+
+    a_rows = _subs(client, "champions_a")
+    b_rows = _subs(client, "champions_b")
+    a_match = [r for r in a_rows if r["keys"].get("fcm_token") == fcm_token]
+    b_match = [r for r in b_rows if r["keys"].get("fcm_token") == fcm_token]
+
+    assert len(a_match) == 1 and a_match[0]["is_active"] is True, (
+        "newest-updated FCM row must stay active"
+    )
+    assert len(b_match) == 1 and b_match[0]["is_active"] is False, (
+        "older cross-tenant FCM duplicate must be deactivated via fcm_token grouping"
+    )
+    assert b_match[0].get("deactivated_reason") == "superseded_cross_tenant"
+
+
+def test_cleanup_leaves_single_tenant_device_untouched(monkeypatch, fresh_modules):
+    push_mod, tenant_mod, (tenant_a, tenant_b), client = _setup(monkeypatch)
+
+    endpoint = "https://fcm.googleapis.com/web/ONLY-A"
+
+    async def scenario():
+        # Device active in ONLY ONE tenant — the len(slugs) < 2 path: untouched.
+        token_a = tenant_mod.set_current_tenant(tenant_a)
+        try:
+            await push_mod.db.push_subscriptions.insert_one({
+                "id": "sub-a",
+                "member_id": "member-a",
+                "endpoint": endpoint,
+                "keys": {"p256dh": "x", "auth": "y"},
+                "platform": "web",
+                "is_active": True,
+                "updated_at": "2026-02-01T00:00:00+00:00",
+            })
+        finally:
+            tenant_mod.reset_current_tenant(token_a)
+
+        return await push_mod.cleanup_superseded_subscriptions()
+
+    summary = asyncio.run(scenario())
+
+    assert summary["duplicate_devices"] == 0
+    assert summary["deactivated"] == 0
+    assert not summary["errors"]
+
+    a_rows = _subs(client, "champions_a")
+    a_match = [r for r in a_rows if r["endpoint"] == endpoint]
+    assert len(a_match) == 1 and a_match[0]["is_active"] is True, (
+        "a device active in only one tenant must be left active"
+    )
+    assert "deactivated_reason" not in a_match[0], (
+        "untouched single-tenant device must not be marked superseded"
+    )
