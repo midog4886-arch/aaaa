@@ -153,6 +153,78 @@ async def get_vapid_public_key():
     return {"publicKey": VAPID_PUBLIC_KEY}
 
 
+async def _deactivate_endpoint_in_other_tenants(
+    endpoint: str,
+    fcm_token: str,
+    is_fcm: bool,
+):
+    """Deactivate this browser/device's push endpoint in EVERY other academy's DB.
+
+    A browser's web-push endpoint (and a device's FCM token) is tied to the
+    browser/app install, not to whoever is logged in. On a SHARED device a
+    member of academy B may subscribe (endpoint stored + active in academy B's
+    DB), then later an academy A member logs in on the same browser and
+    subscribes — the endpoint then also lives in academy A's DB but stays
+    ``is_active`` in academy B's DB too, so academy B can keep pushing to a
+    browser that now belongs to academy A: a real cross-tenant leak.
+
+    Whenever a subscription is (re)claimed under the current academy we walk
+    every OTHER active tenant and flip any matching endpoint/token to
+    ``is_active: False`` so only the current academy can push to it. The current
+    tenant's own row is left untouched (it was just (re)activated by the
+    caller). Best-effort: per-tenant failures are logged and skipped so a single
+    bad tenant DB never breaks the subscribe call.
+    """
+    import logging
+    logger = logging.getLogger(__name__)
+
+    from utils.tenant import (
+        get_current_tenant_slug,
+        list_active_tenants,
+        set_current_tenant,
+        reset_current_tenant,
+    )
+
+    current_slug = (get_current_tenant_slug() or "").strip().lower()
+
+    if is_fcm and fcm_token:
+        match = {
+            "$or": [
+                {"endpoint": endpoint},
+                {"keys.fcm_token": fcm_token, "platform": {"$in": ["android", "ios"]}},
+            ]
+        }
+    else:
+        match = {"endpoint": endpoint}
+
+    try:
+        tenants = await list_active_tenants()
+    except Exception as exc:
+        logger.error(f"_deactivate_endpoint_in_other_tenants: list tenants failed: {exc}")
+        return
+
+    for tenant in tenants:
+        slug = (tenant.get("slug") or "").strip().lower()
+        if not slug or slug == current_slug:
+            continue
+        token = set_current_tenant(tenant)
+        try:
+            await db.push_subscriptions.update_many(
+                {**match, "is_active": True},
+                {"$set": {
+                    "is_active": False,
+                    "deactivated_reason": "claimed_by_other_academy",
+                    "updated_at": datetime.now(timezone.utc).isoformat(),
+                }},
+            )
+        except Exception as exc:
+            logger.error(
+                f"_deactivate_endpoint_in_other_tenants: tenant={slug} failed: {exc}"
+            )
+        finally:
+            reset_current_tenant(token)
+
+
 @router.post("/subscribe")
 async def subscribe_to_push(data: SubscriptionCreate):
     try:
@@ -174,8 +246,8 @@ async def subscribe_to_push(data: SubscriptionCreate):
             "is_active": True
         }
         
+        fcm_token = data.subscription.keys.get('fcm_token', '') if is_fcm else ''
         if is_fcm:
-            fcm_token = data.subscription.keys.get('fcm_token', '')
             existing = await db.push_subscriptions.find_one({
                 "$or": [
                     {"endpoint": data.subscription.endpoint},
@@ -198,10 +270,28 @@ async def subscribe_to_push(data: SubscriptionCreate):
                     "is_active": True
                 }}
             )
-            return {"message": "تم تحديث الاشتراك بنجاح", "status": "updated"}
-        
-        await db.push_subscriptions.insert_one(subscription_data)
-        return {"message": "تم الاشتراك في الإشعارات بنجاح", "status": "created"}
+            status = "updated"
+            message = "تم تحديث الاشتراك بنجاح"
+        else:
+            await db.push_subscriptions.insert_one(subscription_data)
+            status = "created"
+            message = "تم الاشتراك في الإشعارات بنجاح"
+
+        # Now that this endpoint/token is (re)claimed for the CURRENT academy,
+        # deactivate it in every OTHER academy's DB so a previously-used academy
+        # on this same shared browser/device can no longer push to it. Wrapped so
+        # a failure here never fails the (already-persisted) subscription.
+        try:
+            await _deactivate_endpoint_in_other_tenants(
+                data.subscription.endpoint, fcm_token, is_fcm
+            )
+        except Exception as exc:
+            import logging
+            logging.getLogger(__name__).error(
+                f"subscribe_to_push: cross-tenant dedup failed: {exc}"
+            )
+
+        return {"message": message, "status": status}
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"فشل في حفظ الاشتراك: {str(e)}")

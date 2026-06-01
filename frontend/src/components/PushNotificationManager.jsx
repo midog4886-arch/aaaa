@@ -173,6 +173,38 @@ const PushNotificationManager = ({ memberId, compact = false }) => {
             const subscription = await registration.pushManager.getSubscription();
             if (!subscription && response.data.subscribed) {
               setIsSubscribed(false);
+            } else if (subscription) {
+              // This browser already holds a web-push subscription. On a SHARED
+              // browser that subscription may have been registered under a
+              // DIFFERENT academy (its endpoint is still active in that other
+              // academy's DB, so it can keep pushing here). Re-claim it under the
+              // CURRENT academy: the backend re-activates it here and deactivates
+              // the same endpoint in every other academy's DB, closing the leak.
+              // Idempotent and best-effort — failures are silent.
+              try {
+                const controller = navigator.serviceWorker.controller || registration.active;
+                controller?.postMessage({ type: 'SET_TENANT', slug: getTenantSlug() });
+              } catch (e) {}
+              try {
+                const p256dh = subscription.getKey('p256dh');
+                const auth = subscription.getKey('auth');
+                if (p256dh && auth) {
+                  await pushAPI.post(`/api/push-notifications/subscribe`, {
+                    member_id: memberId,
+                    language: getCurrentLanguage(),
+                    subscription: {
+                      endpoint: subscription.endpoint,
+                      keys: {
+                        p256dh: btoa(String.fromCharCode.apply(null, new Uint8Array(p256dh))),
+                        auth: btoa(String.fromCharCode.apply(null, new Uint8Array(auth)))
+                      }
+                    }
+                  });
+                  setIsSubscribed(true);
+                }
+              } catch (e) {
+                console.warn('Failed to re-claim push subscription for current academy:', e?.message || e);
+              }
             }
           } catch (e) {}
         }
