@@ -6,3 +6,4 @@
 - [Video notification targeting](video-notification-targeting.md) — new-video notifs (in-app+push) scope to members.activities.activity_id + branch; admins tag activity in free-text title not the field, so keep upload activity required.
 - [Off-schedule attendance end shift](off-schedule-attendance-end-shift.md) — attending a non-scheduled weekday pulls subscription end_date back one scheduled occurrence; reverse by stepping forward (order-independent); quota MUST count off_schedule records outside the window.
 - [Session quota original window](session-quota-original-window.md) — paid session TOTAL = original purchased window (invoice item dates); freeze/closure extensions extend deadline+attendance window only, never the count.
+- [Frontend build & deploy](frontend-build-deploy.md) — frontend is pre-built, served from backend/static; rebuild→copy→restart. Verify edits across ALL js chunks (code-split), use ASCII substrings (terser escapes Arabic).

@@ -779,20 +779,14 @@ export const MembersPage = () => {
         }
       }
     }
+    // Make-up ("بديل") dates are intentionally NOT generated: a closure/freeze
+    // already extends the subscription end_date to cover the lost training days,
+    // so appending extra make-up dates after the (already extended) deadline would
+    // double-compensate (real case: deadline extended 05-27→06-08 AND 3 make-up
+    // dates added after 06-08 = 11 attendable days for an 8-session sub). The
+    // transferred ("مُرحَّل") markers are still shown so the closure days stay
+    // visible inside the window.
     const replacementDates = [];
-    if (transferred.size > 0 && subEnd) {
-      const [ey, em, ed] = subEnd.split('-').map(Number);
-      const cur = new Date(ey, em - 1, ed);
-      cur.setDate(cur.getDate() + 1);
-      let guard = 0;
-      while (replacementDates.length < transferred.size && guard < 365) {
-        if (targetDays.includes(cur.getDay())) {
-          replacementDates.push(localDateStr(cur));
-        }
-        cur.setDate(cur.getDate() + 1);
-        guard++;
-      }
-    }
     return { transferredSet: transferred, transferredMeta, replacementDates };
   };
 
@@ -3172,7 +3166,7 @@ export const MembersPage = () => {
                                               }
                                             }}
                                             title={isTransferred
-                                              ? (language === 'ar' ? `مُرحَّل (${transferMeta?.title || ''}) — تم تعويضه بحصة بديلة` : `Transferred (${transferMeta?.title || ''}) — replaced with a make-up session`)
+                                              ? (language === 'ar' ? `مُرحَّل (${transferMeta?.title || ''}) — تم التعويض بمدّ تاريخ نهاية الاشتراك` : `Transferred (${transferMeta?.title || ''}) — compensated by extending the subscription end date`)
                                               : isReplacement
                                                 ? (language === 'ar' ? 'حصة بديلة (تعويض ترحيل)' : 'Replacement session (make-up)')
                                                 : attended
@@ -3224,7 +3218,6 @@ export const MembersPage = () => {
                                       <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-white border border-blue-300 inline-block"></span>{language === 'ar' ? 'غائب (اضغط للتسجيل)' : 'Missed (click to register)'}</span>
                                       <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-gray-200 inline-block"></span>{language === 'ar' ? 'مستقبلي' : 'Future'}</span>
                                       <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-orange-200 border border-orange-400 inline-block"></span>{language === 'ar' ? 'مُرحَّل' : 'Transferred'}</span>
-                                      <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-purple-200 border border-purple-400 inline-block"></span>{language === 'ar' ? 'حصة بديلة' : 'Make-up'}</span>
                                     </div>
                                   </div>
                                 )}
