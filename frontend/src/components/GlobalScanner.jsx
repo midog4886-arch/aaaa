@@ -7,7 +7,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from './ui/dialog';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
 import { toast } from 'sonner';
-import { toAsciiDigits } from '../utils/digits';
+import { normalizeScannedCode } from '../utils/digits';
 import { 
   Scan, Check, X, User, Clock, Activity, 
   Volume2, VolumeX, Loader2, Calendar, Phone, AlertTriangle
@@ -384,7 +384,7 @@ const GlobalScanner = ({ enabled = true, language = 'ar' }) => {
       }
       
       if (e.key === 'Enter') {
-        const scannedCode = toAsciiDigits(bufferRef.current.trim());
+        const scannedCode = normalizeScannedCode(bufferRef.current.trim());
         if (scannedCode.length >= 3) {
           handleScan(scannedCode);
         }
@@ -395,7 +395,7 @@ const GlobalScanner = ({ enabled = true, language = 'ar' }) => {
         
         timeoutRef.current = setTimeout(() => {
           if (!isProcessingRef.current) {
-            const code = toAsciiDigits(bufferRef.current.trim());
+            const code = normalizeScannedCode(bufferRef.current.trim());
             if (code.length >= 3) {
               handleScan(code);
             }

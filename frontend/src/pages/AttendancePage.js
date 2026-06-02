@@ -10,7 +10,7 @@ import { Badge } from '../components/ui/badge';
 import { toast } from 'sonner';
 import { activitiesAPI, attendanceAPI, branchesAPI, schedulesAPI, levelsAPI } from '../services/api';
 import { QRCodeSVG } from 'qrcode.react';
-import { toAsciiDigits } from '../utils/digits';
+import { toAsciiDigits, normalizeScannedCode } from '../utils/digits';
 import { Html5QrcodeScanner } from 'html5-qrcode';
 import { Check, X, Users, Calendar, QrCode, FileSpreadsheet, FileText, Search, Clock, UserCheck, UserX, CalendarDays, Zap, Hash, Camera, CameraOff, Scan, Volume2, VolumeX } from 'lucide-react';
 import MemberAvatar from '../components/MemberAvatar';
@@ -271,7 +271,7 @@ export default function AttendancePage() {
     }
 
     try {
-      const code = toAsciiDigits(manualMemberId).trim();
+      const code = normalizeScannedCode(manualMemberId);
       const res = await attendanceAPI.qrCheckin(code, qrActivityId);
       setQrScanResult(res.data);
       if (res.data.already_checked_in) {
@@ -513,7 +513,7 @@ export default function AttendancePage() {
 
   // Fetch member activities after QR scan
   const fetchMemberActivities = async (memberCode) => {
-    memberCode = toAsciiDigits(memberCode).trim();
+    memberCode = normalizeScannedCode(memberCode);
     setQrLoading(true);
     setQrScanResult(null);
     setQrMemberData(null);
@@ -678,7 +678,7 @@ export default function AttendancePage() {
   // Handle kiosk mode check-in (members + coaches)
   const handleKioskCheckin = useCallback(async (memberCode) => {
     if (!memberCode) return;
-    memberCode = toAsciiDigits(memberCode).trim();
+    memberCode = normalizeScannedCode(memberCode);
 
     playSound('scan');
     

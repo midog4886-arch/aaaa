@@ -318,7 +318,7 @@ async def get_member_card_public(search_term: str, branch_id: Optional[str] = No
     branches after a global renumber. The scanner page passes the active
     branch so a B5 reader maps ``0027`` to ``DEFA-B5-0027`` automatically.
     """
-    from utils.text import normalize_digits
+    from utils.text import normalize_digits, dearabize_keyboard
     # Hardware barcode scanners type via the OS keyboard layout, so on an
     # Arabic layout the scanned digits arrive as Arabic-Indic numerals that
     # never match ASCII-stored member codes. Normalize before lookup.
@@ -352,6 +352,22 @@ async def get_member_card_public(search_term: str, branch_id: Optional[str] = No
                     status_code=409,
                     detail="رقم العضوية مكرر بين فروع مختلفة — استخدم الرقم الكامل"
                 )
+
+    if not member:
+        # Hardware scanner on an Arabic keyboard layout mangles the WHOLE code
+        # (letters become Arabic letters/brackets, not just digits). Recover the
+        # Latin code and retry an exact member_code/phone match before any name
+        # search, so a mangled code never falls through to fuzzy name matching.
+        alt = dearabize_keyboard(search_term)
+        if alt and alt != search_term:
+            import re as _re_kb
+            member = await db.members.find_one(
+                {"$or": [
+                    {"member_code": {"$regex": f"^{_re_kb.escape(alt)}$", "$options": "i"}},
+                    {"phone": alt},
+                ]},
+                {"_id": 0}
+            )
 
     if not member:
         # Search by name. May match MULTIPLE members (e.g. same first/last
@@ -6921,21 +6937,33 @@ async def quick_search_member(
     current_user: dict = Depends(get_current_user)
 ):
     """Search member by member_code or name for quick attendance"""
-    from utils.text import normalize_digits
+    import re as _rk1
+    from utils.text import normalize_digits, dearabize_keyboard
     search_term = normalize_digits(search_term).strip()
     # First try to find by member_code
     member = await db.members.find_one({"member_code": search_term}, {"_id": 0})
-    
-    # If not found, search by name
+
+    if not member:
+        # Recover a code mangled by an Arabic keyboard layout (hardware scanner)
+        # BEFORE the fuzzy name search, so a mangled code never matches a name.
+        alt = dearabize_keyboard(search_term)
+        if alt and alt != search_term:
+            member = await db.members.find_one(
+                {"member_code": {"$regex": f"^{_rk1.escape(alt)}$", "$options": "i"}},
+                {"_id": 0}
+            )
+
+    # If still not found, search by name
     if not member:
         # Search in name_ar or name (case insensitive for English)
+        name_rx = _rk1.escape(search_term)
         member = await db.members.find_one({
             "$or": [
-                {"name_ar": {"$regex": search_term, "$options": "i"}},
-                {"name": {"$regex": search_term, "$options": "i"}}
+                {"name_ar": {"$regex": name_rx, "$options": "i"}},
+                {"name": {"$regex": name_rx, "$options": "i"}}
             ]
         }, {"_id": 0})
-    
+
     if not member:
         raise HTTPException(status_code=404, detail="لم يتم العثور على العضو")
     
@@ -7028,17 +7056,29 @@ async def quick_search_members_multi(
     current_user: dict = Depends(get_current_user)
 ):
     """Search multiple members by member_code or name for quick attendance"""
-    from utils.text import normalize_digits
+    import re as _rk2
+    from utils.text import normalize_digits, dearabize_keyboard
     search_term = normalize_digits(search_term).strip()
-    # Search by member_code or name
+    # Search by member_code or name (escape user input so mangled codes
+    # containing regex metacharacters like [ ] don't break the query).
+    term_rx = _rk2.escape(search_term)
     members = await db.members.find({
         "$or": [
-            {"member_code": {"$regex": search_term, "$options": "i"}},
-            {"name_ar": {"$regex": search_term, "$options": "i"}},
-            {"name": {"$regex": search_term, "$options": "i"}}
+            {"member_code": {"$regex": term_rx, "$options": "i"}},
+            {"name_ar": {"$regex": term_rx, "$options": "i"}},
+            {"name": {"$regex": term_rx, "$options": "i"}}
         ]
     }, {"_id": 0}).limit(10).to_list(10)
-    
+
+    if not members:
+        # Recover a code mangled by an Arabic keyboard layout (hardware scanner).
+        alt = dearabize_keyboard(search_term)
+        if alt and alt != search_term:
+            members = await db.members.find(
+                {"member_code": {"$regex": f"^{_rk2.escape(alt)}$", "$options": "i"}},
+                {"_id": 0}
+            ).limit(10).to_list(10)
+
     if not members:
         return []
     
@@ -7087,6 +7127,16 @@ async def quick_attendance(
     from utils.text import normalize_digits
     member_code = normalize_digits(member_code).strip()
     member = await db.members.find_one({"member_code": member_code}, {"_id": 0})
+    if not member:
+        # Recover a code mangled by an Arabic keyboard layout (hardware scanner).
+        from utils.text import dearabize_keyboard
+        alt = dearabize_keyboard(member_code)
+        if alt and alt != member_code:
+            import re as _rk3
+            member = await db.members.find_one(
+                {"member_code": {"$regex": f"^{_rk3.escape(alt)}$", "$options": "i"}},
+                {"_id": 0}
+            )
     if not member:
         raise HTTPException(status_code=404, detail="رقم العضوية غير موجود")
     

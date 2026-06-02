@@ -1015,7 +1015,7 @@ async def qr_checkin(
     """Quick check-in via QR code scan with schedule validation"""
     user_name = current_user.get("name", current_user.get("username", ""))
 
-    from utils.text import normalize_digits
+    from utils.text import normalize_digits, dearabize_keyboard
     # Hardware scanners on an Arabic keyboard layout emit Arabic-Indic digits
     # that never match ASCII member codes; normalize before lookup.
     member_code = normalize_digits(member_code).strip()
@@ -1042,6 +1042,21 @@ async def qr_checkin(
                     status_code=409,
                     detail="رقم العضوية مكرر بين فروع مختلفة — استخدم الرقم الكامل"
                 )
+
+    if not member:
+        # Arabic keyboard layout mangles the whole scanned code; recover the
+        # Latin form and retry an exact member_code/phone match.
+        alt = dearabize_keyboard(member_code)
+        if alt and alt != member_code:
+            import re as _re_kb2
+            member = await db.members.find_one(
+                {"$or": [
+                    {"member_code": {"$regex": f"^{_re_kb2.escape(alt)}$", "$options": "i"}},
+                    {"phone": alt},
+                ]},
+                {"_id": 0}
+            )
+
     if not member:
         raise HTTPException(status_code=404, detail="Member not found")
 

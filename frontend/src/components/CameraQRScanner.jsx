@@ -4,7 +4,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from './ui/dialog';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
 import { toast } from 'sonner';
-import { toAsciiDigits } from '../utils/digits';
+import { normalizeScannedCode } from '../utils/digits';
 import {
   Camera, Check, X, User, Clock, Activity,
   Loader2, Calendar, Phone, SwitchCamera, AlertTriangle
@@ -25,20 +25,20 @@ const CameraQRScanner = ({ open, onClose, language = 'ar' }) => {
 
   const extractMemberCode = (scannedData) => {
     if (!scannedData) return null;
-    let data = toAsciiDigits(scannedData.trim());
-    if (!data) return null;
+    const raw = scannedData.trim();
+    if (!raw) return null;
+    // Parse JSON on the RAW payload first; only normalize the extracted code
+    // field, so a JSON payload that happens to contain Arabic text isn't mutated
+    // before parsing.
     try {
-      const parsed = JSON.parse(data);
+      const parsed = JSON.parse(raw);
       if (parsed && typeof parsed === 'object') {
-        if (parsed.code) return parsed.code.toString();
-        if (parsed.member_code) return parsed.member_code.toString();
-        if (parsed.member_id) return parsed.member_id.toString();
-        if (parsed.id) return parsed.id.toString();
-        return null;
+        const field = parsed.code || parsed.member_code || parsed.member_id || parsed.id;
+        return field ? normalizeScannedCode(field.toString()) : null;
       }
-      return String(parsed);
+      return normalizeScannedCode(String(parsed));
     } catch (e) {}
-    return data;
+    return normalizeScannedCode(raw);
   };
 
   const stopScanner = useCallback(async () => {
