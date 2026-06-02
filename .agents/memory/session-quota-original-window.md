@@ -22,10 +22,23 @@ number of sessions paid for.
   and for the attendance counting window (so attendances during the extension
   still count as used).
 - The **total** uses the original window: look up the source invoice item's
-  unmodified `end_date` via `(source_id, activity_id)`, fallback to a by-activity
-  map. The invoice item dates are never rewritten by extensions, so they are the
-  source of truth. Registration-form members (no invoice) have no extension, so
-  their activity dates ARE original.
+  unmodified `end_date`. The invoice item dates are never rewritten by extensions,
+  so they are the source of truth. Registration-form members (no invoice) have no
+  extension, so their activity dates ARE original.
+- **`activity_id` can DIVERGE between member.activities and the invoice item.**
+  Level-based assignment writes the *level's* activity record onto
+  `member.activities[]`, whose `activity_id` differs from the invoiced item's. So
+  a pure `(source_id, activity_id)` lookup MISSES and the code wrongly fell back
+  to the extended deadline (real case: showed 10 instead of 8). Fix = join on the
+  never-rewritten `start_date` too. Lookup order: `(source_id, activity_id)` →
+  `(source_id, start_date, schedule)` → `(source_id, start_date)` → by-activity →
+  else extended end. `start_date`/`schedule` are NEVER mutated by freezes or
+  day_extensions (only `end_date` is), so they are stable join keys.
+- **Disambiguate, never guess.** A multi-item invoice can share one `start_date`
+  across items with different end dates. Key the loose `(source_id, start_date)`
+  map to `None` when two items under it disagree, so an ambiguous match falls
+  through to the extended-deadline fallback instead of silently picking a wrong
+  original end. `schedule` separates co-purchased items that share a start_date.
 - A subscription can be tracked in BOTH `member.activities` and
   `level_subscriptions`, and `day_extensions` may carry `scope_type` `activity`
   and `level_sub` with diverging base dates — don't trust the extended date as the

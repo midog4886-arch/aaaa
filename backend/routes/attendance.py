@@ -552,18 +552,41 @@ async def check_member_session_quota(member_id: str, activity_id: str = None):
     # Map the original (unextended) end date for each subscription so the session
     # total can be computed from what the member actually paid for, even when
     # member.activities holds a later (extended) deadline.
-    orig_end_by_source = {}    # (invoice_id, activity_id) -> original end_date
-    orig_end_by_activity = {}  # activity_id -> original end_date (latest seen)
+    orig_end_by_source = {}        # (invoice_id, activity_id) -> original end_date
+    orig_end_by_activity = {}      # activity_id -> original end_date (latest seen)
+    orig_end_by_src_start_sched = {}  # (invoice_id, start_date, schedule) -> end_date
+    orig_end_by_src_start = {}     # (invoice_id, start_date) -> end_date OR None if ambiguous
     for inv in invoices:
+        inv_id = inv.get("id", "")
         for item in inv.get("items", []):
             if item.get("is_product"):
                 continue
             aid = item.get("activity_id", "")
             oend = item.get("end_date", "")
-            if not aid or not oend:
+            if not oend:
                 continue
-            orig_end_by_source[(inv.get("id", ""), aid)] = oend
-            orig_end_by_activity[aid] = oend
+            if aid:
+                orig_end_by_source[(inv_id, aid)] = oend
+                orig_end_by_activity[aid] = oend
+            # Also index by (invoice, start_date). The member.activities entry is
+            # linked to its invoice via source_id, but its activity_id often does
+            # NOT match the invoiced item's activity_id (level-based assignment
+            # uses a different activity record). start_date and schedule are never
+            # rewritten by freezes / day-extensions, so they are reliable join
+            # keys back to the original invoiced window even when activity_ids
+            # diverge. schedule disambiguates multi-activity invoices that share a
+            # start_date; the looser (invoice, start_date) key is flagged ambiguous
+            # (None) when two items under it carry different end dates.
+            istart = item.get("start_date", "")
+            if not istart:
+                continue
+            isched = item.get("schedule", "")
+            orig_end_by_src_start_sched[(inv_id, istart, isched)] = oend
+            loose_key = (inv_id, istart)
+            if loose_key not in orig_end_by_src_start:
+                orig_end_by_src_start[loose_key] = oend
+            elif orig_end_by_src_start[loose_key] != oend:
+                orig_end_by_src_start[loose_key] = None  # ambiguous: do not guess
 
     # ── 1. member.activities FIRST — the authoritative source that reflects
     #       day-extensions / freezes. Its end_date is the extended deadline used
@@ -578,7 +601,23 @@ async def check_member_session_quota(member_id: str, activity_id: str = None):
             continue
         quota_end = None
         if act.get("source") == "invoice" and act.get("source_id"):
-            quota_end = orig_end_by_source.get((act.get("source_id"), item_activity_id))
+            source_id = act.get("source_id")
+            act_start = act.get("start_date", "")
+            # 1) Exact (invoice, activity_id) match.
+            quota_end = orig_end_by_source.get((source_id, item_activity_id))
+            # 2) Same invoice but activity_id diverged (level-based assignment):
+            #    join on the never-rewritten start_date + schedule so the total
+            #    still comes from the original invoiced window, not the extended
+            #    deadline (which would inflate the paid session count). schedule
+            #    keeps multi-activity invoices that share a start_date apart.
+            if not quota_end:
+                quota_end = orig_end_by_src_start_sched.get(
+                    (source_id, act_start, act.get("schedule", ""))
+                )
+            # 3) Schedule didn't match an item; use the looser (invoice, start)
+            #    key only when it is unambiguous (a lone end date under it).
+            if not quota_end:
+                quota_end = orig_end_by_src_start.get((source_id, act_start))
         if not quota_end:
             quota_end = orig_end_by_activity.get(item_activity_id)
         await _process_subscription(
