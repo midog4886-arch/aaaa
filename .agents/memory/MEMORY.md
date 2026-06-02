@@ -7,3 +7,4 @@
 - [Off-schedule attendance end shift](off-schedule-attendance-end-shift.md) — attending a non-scheduled weekday pulls subscription end_date back one scheduled occurrence; reverse by stepping forward (order-independent); quota MUST count off_schedule records outside the window.
 - [Session quota original window](session-quota-original-window.md) — paid session TOTAL = original purchased window (invoice item dates); freeze/closure extensions extend deadline+attendance window only, never the count.
 - [Frontend build & deploy](frontend-build-deploy.md) — frontend is pre-built, served from backend/static; rebuild→copy→restart. Verify edits across ALL js chunks (code-split), use ASCII substrings (terser escapes Arabic).
+- [Hardware scanner Arabic numerals](scanner-arabic-numerals.md) — physical scanner emits Arabic-Indic digits via OS keyboard layout so ASCII member-code lookup 404s (camera works); normalize digits at every lookup entry point.

@@ -10,6 +10,7 @@ import { Badge } from '../components/ui/badge';
 import { toast } from 'sonner';
 import { activitiesAPI, attendanceAPI, branchesAPI, schedulesAPI, levelsAPI } from '../services/api';
 import { QRCodeSVG } from 'qrcode.react';
+import { toAsciiDigits } from '../utils/digits';
 import { Html5QrcodeScanner } from 'html5-qrcode';
 import { Check, X, Users, Calendar, QrCode, FileSpreadsheet, FileText, Search, Clock, UserCheck, UserX, CalendarDays, Zap, Hash, Camera, CameraOff, Scan, Volume2, VolumeX } from 'lucide-react';
 import MemberAvatar from '../components/MemberAvatar';
@@ -270,7 +271,8 @@ export default function AttendancePage() {
     }
 
     try {
-      const res = await attendanceAPI.qrCheckin(manualMemberId, qrActivityId);
+      const code = toAsciiDigits(manualMemberId).trim();
+      const res = await attendanceAPI.qrCheckin(code, qrActivityId);
       setQrScanResult(res.data);
       if (res.data.already_checked_in) {
         toast.info(t('تم تسجيل الحضور مسبقاً', 'Already checked in'));
@@ -338,7 +340,7 @@ export default function AttendancePage() {
     
     try {
       // Try multi-search first
-      const res = await attendanceAPI.quickSearchMulti(quickMemberCode.trim());
+      const res = await attendanceAPI.quickSearchMulti(toAsciiDigits(quickMemberCode).trim());
       
       if (res.data && res.data.length > 0) {
         if (res.data.length === 1) {
@@ -511,6 +513,7 @@ export default function AttendancePage() {
 
   // Fetch member activities after QR scan
   const fetchMemberActivities = async (memberCode) => {
+    memberCode = toAsciiDigits(memberCode).trim();
     setQrLoading(true);
     setQrScanResult(null);
     setQrMemberData(null);
@@ -675,7 +678,8 @@ export default function AttendancePage() {
   // Handle kiosk mode check-in (members + coaches)
   const handleKioskCheckin = useCallback(async (memberCode) => {
     if (!memberCode) return;
-    
+    memberCode = toAsciiDigits(memberCode).trim();
+
     playSound('scan');
     
     // Try member first using category activities

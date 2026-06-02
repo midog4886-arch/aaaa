@@ -4,6 +4,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from './ui/dialog';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
 import { toast } from 'sonner';
+import { toAsciiDigits } from '../utils/digits';
 import {
   Camera, Check, X, User, Clock, Activity,
   Loader2, Calendar, Phone, SwitchCamera, AlertTriangle
@@ -24,7 +25,7 @@ const CameraQRScanner = ({ open, onClose, language = 'ar' }) => {
 
   const extractMemberCode = (scannedData) => {
     if (!scannedData) return null;
-    let data = scannedData.trim();
+    let data = toAsciiDigits(scannedData.trim());
     if (!data) return null;
     try {
       const parsed = JSON.parse(data);

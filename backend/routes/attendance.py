@@ -1014,7 +1014,12 @@ async def qr_checkin(
 ):
     """Quick check-in via QR code scan with schedule validation"""
     user_name = current_user.get("name", current_user.get("username", ""))
-    
+
+    from utils.text import normalize_digits
+    # Hardware scanners on an Arabic keyboard layout emit Arabic-Indic digits
+    # that never match ASCII member codes; normalize before lookup.
+    member_code = normalize_digits(member_code).strip()
+
     member = await db.members.find_one(
         {"$or": [{"member_code": member_code}, {"phone": member_code}]},
         {"_id": 0}

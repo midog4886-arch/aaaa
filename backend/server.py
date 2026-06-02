@@ -318,6 +318,11 @@ async def get_member_card_public(search_term: str, branch_id: Optional[str] = No
     branches after a global renumber. The scanner page passes the active
     branch so a B5 reader maps ``0027`` to ``DEFA-B5-0027`` automatically.
     """
+    from utils.text import normalize_digits
+    # Hardware barcode scanners type via the OS keyboard layout, so on an
+    # Arabic layout the scanned digits arrive as Arabic-Indic numerals that
+    # never match ASCII-stored member codes. Normalize before lookup.
+    search_term = normalize_digits(search_term).strip()
     # Search by id (deterministic), member_code, or phone first
     member = await db.members.find_one(
         {"$or": [
@@ -6916,6 +6921,8 @@ async def quick_search_member(
     current_user: dict = Depends(get_current_user)
 ):
     """Search member by member_code or name for quick attendance"""
+    from utils.text import normalize_digits
+    search_term = normalize_digits(search_term).strip()
     # First try to find by member_code
     member = await db.members.find_one({"member_code": search_term}, {"_id": 0})
     
@@ -7021,6 +7028,8 @@ async def quick_search_members_multi(
     current_user: dict = Depends(get_current_user)
 ):
     """Search multiple members by member_code or name for quick attendance"""
+    from utils.text import normalize_digits
+    search_term = normalize_digits(search_term).strip()
     # Search by member_code or name
     members = await db.members.find({
         "$or": [
@@ -7075,6 +7084,8 @@ async def quick_attendance(
     current_user: dict = Depends(get_current_user)
 ):
     """Quick attendance registration by member code"""
+    from utils.text import normalize_digits
+    member_code = normalize_digits(member_code).strip()
     member = await db.members.find_one({"member_code": member_code}, {"_id": 0})
     if not member:
         raise HTTPException(status_code=404, detail="رقم العضوية غير موجود")
