@@ -331,3 +331,71 @@ def test_deactivate_failure_in_one_tenant_does_not_abort_sweep(monkeypatch, fres
     assert summary["duplicate_devices"] == 2
     assert summary["deactivated"] == 1
     assert len(summary["errors"]) == 1
+
+
+def test_cleanup_endpoint_admin_guard(monkeypatch, fresh_modules):
+    """The HTTP entry point is admin-only: a non-admin caller gets 403 and the
+    sweep never runs; an admin caller runs the sweep and gets its summary back."""
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    push_mod = importlib.import_module("routes.push_notifications")
+    from routes.common import get_current_user
+
+    # Stub the sweep so the endpoint test focuses on the guard, not the DB walk,
+    # and so we can prove whether the sweep was actually invoked.
+    sentinel = {"tenants_scanned": 7, "deactivated": 3, "errors": []}
+    calls = {"n": 0}
+
+    async def fake_sweep():
+        calls["n"] += 1
+        return sentinel
+
+    monkeypatch.setattr(push_mod, "cleanup_superseded_subscriptions", fake_sweep)
+
+    app = FastAPI()
+    app.include_router(push_mod.router)
+    client = TestClient(app)
+
+    # --- non-admin -> 403, sweep NOT run ---
+    app.dependency_overrides[get_current_user] = lambda: {
+        "user_id": "u1", "username": "bob", "is_admin": False
+    }
+    r_forbidden = client.post("/push-notifications/cleanup-superseded")
+    assert r_forbidden.status_code == 403, r_forbidden.text
+    assert calls["n"] == 0, "sweep must not run for a non-admin caller"
+
+    # --- admin -> 200, sweep runs once, summary returned verbatim ---
+    app.dependency_overrides[get_current_user] = lambda: {
+        "user_id": "u2", "username": "ada", "is_admin": True
+    }
+    r_ok = client.post("/push-notifications/cleanup-superseded")
+    assert r_ok.status_code == 200, r_ok.text
+    assert r_ok.json() == sentinel
+    assert calls["n"] == 1, "sweep must run exactly once for an admin caller"
+
+    app.dependency_overrides.clear()
+
+
+def test_list_tenants_failure_records_error_and_no_deactivations(monkeypatch, fresh_modules):
+    """If the academy directory itself is unreachable, the sweep early-returns a
+    summary with the error recorded and nothing scanned/deactivated — never raises."""
+    tenant_mod = importlib.import_module("utils.tenant")
+    push_mod = importlib.import_module("routes.push_notifications")
+
+    async def _boom():
+        raise RuntimeError("control db unreachable")
+
+    # cleanup_superseded_subscriptions imports list_active_tenants from
+    # utils.tenant at call time, so patching the attribute there takes effect.
+    monkeypatch.setattr(tenant_mod, "list_active_tenants", _boom)
+
+    summary = asyncio.run(push_mod.cleanup_superseded_subscriptions())
+
+    assert summary["tenants_scanned"] == 0
+    assert summary["active_subscriptions"] == 0
+    assert summary["duplicate_devices"] == 0
+    assert summary["deactivated"] == 0
+    assert len(summary["errors"]) == 1
+    assert "list tenants failed" in summary["errors"][0]
+    assert "control db unreachable" in summary["errors"][0]
