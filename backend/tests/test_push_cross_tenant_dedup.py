@@ -21,6 +21,7 @@ import os
 import sys
 import asyncio
 import importlib
+from datetime import datetime, timezone, timedelta
 
 import pytest
 
@@ -71,9 +72,10 @@ class _FakeCursor:
 
 
 class _Result:
-    def __init__(self, modified=0, inserted_id=None):
+    def __init__(self, modified=0, inserted_id=None, deleted=0):
         self.modified_count = modified
         self.inserted_id = inserted_id
+        self.deleted_count = deleted
 
 
 class FakeCollection:
@@ -112,6 +114,11 @@ class FakeCollection:
 
     def find(self, query, projection=None):
         return _FakeCursor([dict(d) for d in self.docs if _matches(d, query)])
+
+    async def delete_many(self, query):
+        before = len(self.docs)
+        self.docs = [d for d in self.docs if not _matches(d, query)]
+        return _Result(deleted=before - len(self.docs))
 
 
 class FakeDB:
@@ -449,3 +456,123 @@ def test_cleanup_leaves_single_tenant_device_untouched(monkeypatch, fresh_module
     assert "deactivated_reason" not in a_match[0], (
         "untouched single-tenant device must not be marked superseded"
     )
+
+
+# ---------------------------------------------------------------------------
+# Retention prune: prune_inactive_subscriptions (Task #335)
+#
+# The cross-tenant sweep above only flips losers to is_active:False; it never
+# deletes them, so dead rows accumulate. prune_inactive_subscriptions walks
+# every active tenant and PERMANENTLY deletes rows that have been inactive
+# longer than the retention window (judged by deactivated_at / updated_at /
+# created_at). Active rows, recently-deactivated rows, and rows with no usable
+# timestamp must never be deleted.
+# ---------------------------------------------------------------------------
+
+
+async def _seed_prune_fixtures(push_mod, tenant_mod, tenant_a, tenant_b, now):
+    """Seed both tenants with a representative mix of subscription rows.
+
+    Returns the set of ids expected to be deleted when the retention window is
+    short enough that the ``old`` rows (200 days) fall past the cutoff but the
+    ``recent`` row (10 days) does not.
+    """
+    old_ts = (now - timedelta(days=200)).isoformat()
+    recent_ts = (now - timedelta(days=10)).isoformat()
+
+    token_a = tenant_mod.set_current_tenant(tenant_a)
+    try:
+        # Active row: filtered out of the inactive scan entirely -> never pruned.
+        await push_mod.db.push_subscriptions.insert_one({
+            "id": "a-active", "member_id": "m", "endpoint": "ep-a-active",
+            "is_active": True, "updated_at": recent_ts,
+        })
+        # Recently deactivated (inside window) -> kept.
+        await push_mod.db.push_subscriptions.insert_one({
+            "id": "a-recent", "member_id": "m", "endpoint": "ep-a-recent",
+            "is_active": False, "deactivated_at": recent_ts,
+        })
+        # Long deactivated (past window) judged by deactivated_at -> pruned.
+        await push_mod.db.push_subscriptions.insert_one({
+            "id": "a-old", "member_id": "m", "endpoint": "ep-a-old",
+            "is_active": False, "deactivated_at": old_ts,
+        })
+    finally:
+        tenant_mod.reset_current_tenant(token_a)
+
+    token_b = tenant_mod.set_current_tenant(tenant_b)
+    try:
+        # No deactivated_at -> falls back to updated_at (old) -> pruned.
+        await push_mod.db.push_subscriptions.insert_one({
+            "id": "b-old-updated", "member_id": "m", "endpoint": "ep-b-old-upd",
+            "is_active": False, "updated_at": old_ts,
+        })
+        # Only created_at (old) -> last fallback -> pruned.
+        await push_mod.db.push_subscriptions.insert_one({
+            "id": "b-old-created", "member_id": "m", "endpoint": "ep-b-old-cre",
+            "is_active": False, "created_at": old_ts,
+        })
+        # Inactive but NO timestamp -> un-judgeable -> left untouched.
+        await push_mod.db.push_subscriptions.insert_one({
+            "id": "b-no-ts", "member_id": "m", "endpoint": "ep-b-no-ts",
+            "is_active": False,
+        })
+    finally:
+        tenant_mod.reset_current_tenant(token_b)
+
+    return {"a-old", "b-old-updated", "b-old-created"}
+
+
+def _ids(client, db_name):
+    return {r["id"] for r in _subs(client, db_name)}
+
+
+def test_prune_deletes_only_rows_past_retention_window(monkeypatch, fresh_modules):
+    """Rows inactive longer than the window are deleted (across all three
+    timestamp fallbacks); active, recent, and timestamp-less rows survive."""
+    push_mod, tenant_mod, (tenant_a, tenant_b), client = _setup(monkeypatch)
+    now = datetime.now(timezone.utc)
+
+    async def scenario():
+        await _seed_prune_fixtures(push_mod, tenant_mod, tenant_a, tenant_b, now)
+        # 90-day window: the 200-day rows are past it, the 10-day row is not.
+        return await push_mod.prune_inactive_subscriptions(retention_days=90)
+
+    summary = asyncio.run(scenario())
+
+    # --- summary accounting ---
+    assert summary["retention_days"] == 90
+    assert summary["tenants_processed"] == 2
+    assert summary["tenants_failed"] == 0
+    assert summary["errors"] == []
+    # a has 2 inactive rows scanned; b has 3 inactive rows scanned.
+    assert summary["scanned_inactive"] == 5
+    assert summary["deleted"] == 3
+
+    # --- tenant a: active + recent kept, old deleted ---
+    assert _ids(client, "champions_a") == {"a-active", "a-recent"}
+    # --- tenant b: both old (updated_at/created_at) deleted, no-ts row kept ---
+    assert _ids(client, "champions_b") == {"b-no-ts"}
+
+
+def test_prune_keeps_everything_when_window_is_wide(monkeypatch, fresh_modules):
+    """With a window wider than the oldest row's age, nothing is pruned — proving
+    the retention window (not just is_active) gates deletion."""
+    push_mod, tenant_mod, (tenant_a, tenant_b), client = _setup(monkeypatch)
+    now = datetime.now(timezone.utc)
+
+    async def scenario():
+        await _seed_prune_fixtures(push_mod, tenant_mod, tenant_a, tenant_b, now)
+        # 365-day window: even the 200-day rows are still inside it.
+        return await push_mod.prune_inactive_subscriptions(retention_days=365)
+
+    summary = asyncio.run(scenario())
+
+    assert summary["retention_days"] == 365
+    assert summary["tenants_processed"] == 2
+    assert summary["deleted"] == 0
+    assert summary["scanned_inactive"] == 5
+    assert summary["errors"] == []
+
+    assert _ids(client, "champions_a") == {"a-active", "a-recent", "a-old"}
+    assert _ids(client, "champions_b") == {"b-old-updated", "b-old-created", "b-no-ts"}
