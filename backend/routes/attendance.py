@@ -1347,14 +1347,33 @@ async def get_member_attendance_report(
     # Calculate summary
     total_days = len(records)
     activities_count = {}
+    present_count = 0
+    absent_count = 0
     for record in records:
         act_name = record.get("activity_name", "Unknown")
         activities_count[act_name] = activities_count.get(act_name, 0) + 1
-    
+        status = record.get("status") or "present"
+        if status == "absent":
+            absent_count += 1
+        else:
+            # Any check-in record (status "present" or unset) counts as attended.
+            present_count += 1
+    attendance_rate = round((present_count / total_days) * 100) if total_days else 0
+
+    # `summary` is what the frontend reads for the top cards; keep the legacy
+    # top-level fields too for backward compatibility.
+    summary = {
+        "total_records": total_days,
+        "present_count": present_count,
+        "absent_count": absent_count,
+        "attendance_rate": attendance_rate,
+    }
+
     return {
         "member_id": member_id,
         "total_attendance": total_days,
         "by_activity": activities_count,
+        "summary": summary,
         "records": records
     }
 
