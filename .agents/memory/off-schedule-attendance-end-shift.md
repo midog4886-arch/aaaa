@@ -33,3 +33,22 @@ days. Applies to BOTH live QR check-in and manual date registration.
 - Total allowed sessions is still computed from the ORIGINAL invoice window
   (`quota_end`), never the shifted/extended `end_date` — so the shift changes the
   displayed deadline and remaining, not the paid total.
+
+## Off-schedule check-in now requires explicit confirmation (force=true)
+
+`qr_checkin` does NOT save an off-day attendance (or apply the end shift) on the
+first call. When `schedule_days and not is_scheduled_day and not force` it returns
+`status: "wrong_day"` and saves nothing; only a re-call with `force=true` records
+it. **Why:** members with two same-time overlapping subscriptions (e.g. swimming
+Sun–Wed + karate Mon/Wed both 5pm) had the wrong activity registered by a single
+accidental tap, which also pulled their end date earlier. The confirm gate stops
+accidental wrong-activity registration while still allowing intentional make-up
+sessions via the "تسجيل حضور رغم ذلك" button.
+
+**How to apply:** the `wrong_day` status must be handled by EVERY caller of
+`attendanceAPI.qrCheckin`, or a caller will show a false "success" / silently do
+nothing. The four callers: `CameraQRScanner.jsx`, `GlobalScanner.jsx` (both show a
+force=true confirm button), and `AttendancePage.js` manual `handleQRCheckin` +
+the kiosk category loop. The kiosk loop must DEFER a `wrong_day` (keep trying other
+activities in the category) and only deny if none succeed — otherwise a valid
+same-category activity scheduled today gets falsely denied.

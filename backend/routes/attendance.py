@@ -1113,9 +1113,27 @@ async def qr_checkin(
         is_scheduled_day = today_day_name in schedule_days
         schedule_days_arabic = [ENGLISH_TO_ARABIC_DAY.get(d, d) for d in schedule_days]
     
-    # Note: attendance is allowed on any day; only the total session cap is enforced.
-    # When today is not a scheduled day, the record is still saved with today's date
-    # and tagged in `notes` so it's visible in reports as "خارج الموعد".
+    # Attendance on a non-scheduled day requires explicit confirmation (force=True).
+    # Without it, a single accidental tap on the wrong activity would silently record
+    # an off-schedule session AND pull the subscription end date earlier. Instead we
+    # return a `wrong_day` prompt and save nothing until the operator confirms via the
+    # "تسجيل حضور رغم ذلك" button (which re-calls this endpoint with force=True).
+    if schedule_days and not is_scheduled_day and not force:
+        return {
+            "status": "wrong_day",
+            "message": "⚠️ ليس موعدك اليوم — اضغط (تسجيل حضور رغم ذلك) للتأكيد",
+            "schedule_days": schedule_days_arabic,
+            "today": ENGLISH_TO_ARABIC_DAY.get(today_day_name, today_day_name),
+            "member": {
+                "name": member.get("name_ar", member.get("name", "")),
+                "member_code": member.get("member_code", ""),
+                "photo": member.get("photo", ""),
+                "activity": activity_name
+            }
+        }
+
+    # When today is not a scheduled day (and force=True), the record is still saved
+    # with today's date and tagged in `notes` so it's visible in reports as "خارج الموعد".
 
     # Hard cap on total allowed sessions for this subscription
     try:

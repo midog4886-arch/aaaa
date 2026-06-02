@@ -274,10 +274,16 @@ export default function AttendancePage() {
       setQrScanResult(res.data);
       if (res.data.already_checked_in) {
         toast.info(t('تم تسجيل الحضور مسبقاً', 'Already checked in'));
+      } else if (res.data.status === 'wrong_day') {
+        const days = (res.data.schedule_days || []).join(' - ');
+        toast.warning(
+          t(`ليس موعد العضو اليوم. مواعيده: ${days}. لم يتم التسجيل.`,
+            `Not the member's scheduled day. Days: ${days}. Not recorded.`)
+        );
       } else {
         toast.success(t('تم تسجيل الحضور بنجاح', 'Check-in successful'));
+        setManualMemberId('');
       }
-      setManualMemberId('');
     } catch (error) {
       const errorMsg = error.response?.data?.detail;
       const message = typeof errorMsg === 'string' ? errorMsg : t('خطأ في التسجيل', 'Check-in error');
@@ -683,8 +689,12 @@ export default function AttendancePage() {
           })
         : [];
       
-      // Try each activity in category until one succeeds
+      // Try each activity in category until one succeeds. A wrong-day response for
+      // one activity must NOT stop the loop — a different activity in the same
+      // category may be scheduled today. Remember it and only surface the wrong-day
+      // denial if no activity ends up succeeding.
       let memberCheckedIn = false;
+      let pendingWrongDay = null;
       for (const activity of catActivities) {
         try {
           const res = await attendanceAPI.qrCheckin(memberCode, activity.id);
@@ -697,6 +707,15 @@ export default function AttendancePage() {
               message: t('⚠️ مسجل مسبقاً اليوم', '⚠️ Already checked in today'),
               time: new Date().toLocaleTimeString('ar-SA')
             });
+          } else if (res.data.status === 'wrong_day') {
+            // Defer: keep trying other activities in this category first.
+            const days = (res.data.schedule_days || []).join(' - ');
+            pendingWrongDay = {
+              memberName: res.data.member?.name || memberCode,
+              memberPhoto: res.data.member?.photo || '',
+              message: t(`⚠️ ليس موعدك اليوم (${days}) — راجع الاستقبال`, `⚠️ Not your day (${days}) — see reception`)
+            };
+            continue;
           } else {
             playSound('success');
             setKioskLastScan({
@@ -722,6 +741,19 @@ export default function AttendancePage() {
             return;
           }
         }
+      }
+      // No activity succeeded. If at least one was a wrong-day match, the member IS
+      // subscribed in this category (just not today) — show that instead of falling
+      // through to the coach check.
+      if (pendingWrongDay) {
+        playSound('error');
+        setKioskLastScan({
+          success: false,
+          ...pendingWrongDay,
+          time: new Date().toLocaleTimeString('ar-SA')
+        });
+        setTimeout(() => setKioskLastScan(null), 5000);
+        return;
       }
       // If tried all activities with 404 — not a member in this category, fall through to coach check
       if (memberCheckedIn) return;
