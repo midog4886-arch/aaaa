@@ -39,6 +39,17 @@ number of sessions paid for.
   map to `None` when two items under it disagree, so an ambiguous match falls
   through to the extended-deadline fallback instead of silently picking a wrong
   original end. `schedule` separates co-purchased items that share a start_date.
+- **`used_sessions` must count across ALL diverged activity_ids of the same
+  subscription, not just the current one.** When a level rename changes the
+  activity_id mid-subscription, older check-ins keep the original invoiced
+  activity_id while new ones use the level id, so counting only the current id
+  under-counts (real case: showed 1/8 when she attended karate 3× in-window).
+  Fix = count attendances with `activity_id: {$in: [...]}` over the set
+  {current id} ∪ {invoice item ids matched by the SAME `(source_id, start_date,
+  schedule)` key}. The existing `date >= start_date` window keeps a PREVIOUS
+  subscription's records (same invoiced id, earlier dates) out. Use the
+  schedule-precise key only — never the loose `(source_id, start_date)` set — so
+  a co-purchased different activity sharing a start_date is not merged in.
 - A subscription can be tracked in BOTH `member.activities` and
   `level_subscriptions`, and `day_extensions` may carry `scope_type` `activity`
   and `level_sub` with diverging base dates — don't trust the extended date as the

@@ -62,12 +62,18 @@ class _FakeAttendance:
     async def count_documents(self, query):
         mid = query.get("member_id")
         aid = query.get("activity_id")
+        # activity_id may be a scalar or a Mongo {"$in": [...]} clause when a
+        # subscription counts check-ins recorded under more than one activity_id.
+        if isinstance(aid, dict) and "$in" in aid:
+            allowed_aids = set(aid["$in"])
+        else:
+            allowed_aids = {aid}
         date_range = query.get("date", {})
         lo = date_range.get("$gte")
         hi = date_range.get("$lte")
         count = 0
         for rec in self._records:
-            if rec["member_id"] != mid or rec["activity_id"] != aid:
+            if rec["member_id"] != mid or rec["activity_id"] not in allowed_aids:
                 continue
             if lo is not None and rec["date"] < lo:
                 continue
@@ -328,6 +334,51 @@ def test_diverged_activity_id_disambiguated_by_schedule(fake_db):
 
     q = _quota()[0]
     assert q["total_allowed"] == 8             # schedule-matched item, not 12
+
+
+def test_diverged_activity_id_counts_attendance_under_both_ids(fake_db):
+    """Used-session count must include check-ins recorded under the original
+    invoiced activity_id as well as the current (level-renamed) one, as long as
+    they fall inside this subscription's window. A PREVIOUS subscription's
+    check-ins (same invoiced activity_id, dates before this window's start) must
+    stay excluded."""
+    member = {
+        "id": "M1",
+        "activities": [{
+            "activity_id": "LEVEL_ACT",          # current level-based id
+            "activity_name": "كاراتيه",
+            "start_date": "2099-05-04",
+            "end_date": "2099-06-08",            # extended deadline
+            "schedule": SCHEDULE,
+            "status": "active",
+            "source": "invoice",
+            "source_id": "INV1",
+        }],
+    }
+    invoices = [{
+        "id": "INV1",
+        "status": "paid",
+        "invoice_number": "230072",
+        "items": [{
+            "activity_id": "PRODUCT_ACT",        # diverged invoiced id
+            "activity_name": "كاراتية 2يوم في الاسبوع",
+            "start_date": "2099-05-04",
+            "end_date": "2099-05-27",            # original window = 8 sessions
+            "schedule": SCHEDULE,
+            "is_product": False,
+        }],
+    }]
+    fake_db(member=member, invoices=invoices, attendance=[
+        {"member_id": "M1", "activity_id": "LEVEL_ACT", "date": "2099-06-01"},    # current id
+        {"member_id": "M1", "activity_id": "PRODUCT_ACT", "date": "2099-05-11"},  # diverged id, in window
+        {"member_id": "M1", "activity_id": "PRODUCT_ACT", "date": "2099-05-04"},  # diverged id, in window
+        {"member_id": "M1", "activity_id": "PRODUCT_ACT", "date": "2099-04-13"},  # PREVIOUS sub, before window
+    ])
+
+    q = next(r for r in _quota() if r["activity_id"] == "LEVEL_ACT")
+    assert q["total_allowed"] == 8
+    assert q["used_sessions"] == 3              # both ids inside the window, old one excluded
+    assert q["remaining"] == 5
 
 
 def test_ambiguous_invoice_does_not_guess_original_end(fake_db):

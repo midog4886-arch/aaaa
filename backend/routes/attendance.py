@@ -472,7 +472,8 @@ async def check_member_session_quota(member_id: str, activity_id: str = None):
     produced_aids = set()
 
     async def _process_subscription(item_activity_id, activity_name, start_date, end_date,
-                                     schedule_text, invoice_number="", quota_end_date=None):
+                                     schedule_text, invoice_number="", quota_end_date=None,
+                                     count_activity_ids=None):
         """Inner helper to build one quota result from a subscription item.
 
         ``end_date`` is the (possibly extended) deadline used for display and the
@@ -516,9 +517,15 @@ async def check_member_session_quota(member_id: str, activity_id: str = None):
         # Count attendance inside the (possibly shifted) window PLUS any
         # off-schedule records from the start onward — an off-schedule session is
         # always consumed even when it pushed the end date earlier than its date.
+        # ``count_activity_ids`` lets one subscription count check-ins recorded
+        # under more than one activity_id (a mid-subscription level rename leaves
+        # older records carrying the original invoiced activity_id). The date
+        # window keeps a previous subscription's records (same activity_id, older
+        # dates) out of this count.
+        count_aids = list(count_activity_ids) if count_activity_ids else [item_activity_id]
         attendance_count = await db.attendance.count_documents({
             "member_id": member_id,
-            "activity_id": item_activity_id,
+            "activity_id": {"$in": count_aids},
             "date": {"$gte": effective_start},
             "$or": [
                 {"date": {"$lte": end_date}},
@@ -556,6 +563,7 @@ async def check_member_session_quota(member_id: str, activity_id: str = None):
     orig_end_by_activity = {}      # activity_id -> original end_date (latest seen)
     orig_end_by_src_start_sched = {}  # (invoice_id, start_date, schedule) -> end_date
     orig_end_by_src_start = {}     # (invoice_id, start_date) -> end_date OR None if ambiguous
+    aids_by_src_start_sched = {}   # (invoice_id, start_date, schedule) -> {activity_ids}
     for inv in invoices:
         inv_id = inv.get("id", "")
         for item in inv.get("items", []):
@@ -582,6 +590,8 @@ async def check_member_session_quota(member_id: str, activity_id: str = None):
                 continue
             isched = item.get("schedule", "")
             orig_end_by_src_start_sched[(inv_id, istart, isched)] = oend
+            if aid:
+                aids_by_src_start_sched.setdefault((inv_id, istart, isched), set()).add(aid)
             loose_key = (inv_id, istart)
             if loose_key not in orig_end_by_src_start:
                 orig_end_by_src_start[loose_key] = oend
@@ -620,6 +630,19 @@ async def check_member_session_quota(member_id: str, activity_id: str = None):
                 quota_end = orig_end_by_src_start.get((source_id, act_start))
         if not quota_end:
             quota_end = orig_end_by_activity.get(item_activity_id)
+        # Older check-ins for this same subscription may carry the original
+        # invoiced activity_id rather than the current (level-renamed) one. Count
+        # every activity_id mapped to the same invoiced item (matched on the
+        # never-rewritten invoice + start + schedule) so a mid-subscription rename
+        # does not under-count used sessions. The schedule key keeps other
+        # activities that merely share a start_date apart.
+        count_aids = {item_activity_id}
+        if act.get("source") == "invoice" and act.get("source_id"):
+            extra_aids = aids_by_src_start_sched.get(
+                (act.get("source_id"), act.get("start_date", ""), act.get("schedule", ""))
+            )
+            if extra_aids:
+                count_aids |= extra_aids
         await _process_subscription(
             item_activity_id,
             act.get("activity_name", ""),
@@ -628,6 +651,7 @@ async def check_member_session_quota(member_id: str, activity_id: str = None):
             act.get("schedule", ""),
             "",
             quota_end_date=quota_end,
+            count_activity_ids=count_aids,
         )
 
     # ── 2. Fall back to paid/partial invoices ONLY for activities that did not
