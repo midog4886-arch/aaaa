@@ -72,6 +72,7 @@ export const InvoicesPage = () => {
 
   const [showRegFormsPasswordDialog, setShowRegFormsPasswordDialog] = useState(false);
   const [regFormsPasswordInput, setRegFormsPasswordInput] = useState('');
+  const [regFormsPasswordAction, setRegFormsPasswordAction] = useState('forms');
 
   const loadData = async () => {
     try {
@@ -205,14 +206,20 @@ export const InvoicesPage = () => {
   } = regFormHook;
 
   const handleTabChange = (tab) => {
-    if (tab === 'forms') { setRegFormsPasswordInput(''); setShowRegFormsPasswordDialog(true); return; }
+    if (tab === 'forms') { setRegFormsPasswordAction('forms'); setRegFormsPasswordInput(''); setShowRegFormsPasswordDialog(true); return; }
     setActiveTab(tab);
+  };
+
+  const handleOpenRegistrationForm = () => {
+    setRegFormsPasswordAction('create'); setRegFormsPasswordInput(''); setShowRegFormsPasswordDialog(true);
   };
 
   const handleRegFormsPasswordConfirm = async () => {
     const ok = await verifyOperationPassword('reg_forms', regFormsPasswordInput, selectedBranchId);
     if (!ok) { toast.error(language === 'ar' ? 'كلمة المرور غير صحيحة' : 'Incorrect password'); setRegFormsPasswordInput(''); return; }
-    setShowRegFormsPasswordDialog(false); setRegFormsPasswordInput(''); setActiveTab('forms');
+    setShowRegFormsPasswordDialog(false); setRegFormsPasswordInput('');
+    if (regFormsPasswordAction === 'create') { setIsRegistrationFormDialogOpen(true); }
+    else { setActiveTab('forms'); }
   };
 
   const handleCreateMember = async () => {
@@ -258,7 +265,7 @@ export const InvoicesPage = () => {
               <Button variant="outline" onClick={handleExportAllData} data-testid="export-all-btn"><FileSpreadsheet className="w-4 h-4 me-2" />{language === 'ar' ? 'تصدير Excel' : 'Export Excel'}</Button>
               <Button variant="outline" onClick={() => { const token = localStorage.getItem('token'); window.open(exportAPI.invoicesPdf() + `&token=${token}`, '_blank'); }}><FileSpreadsheet className="w-4 h-4 me-2" />{language === 'ar' ? 'تصدير PDF' : 'Export PDF'}</Button>
               </>)}
-              <Button variant="outline" onClick={() => setIsRegistrationFormDialogOpen(true)} className="bg-gray-800 text-white hover:bg-gray-900" data-testid="create-registration-form-btn"><FileText className="w-4 h-4 me-2" />{language === 'ar' ? 'استمارة تسجيل' : 'Registration Form'}</Button>
+              <Button variant="outline" onClick={handleOpenRegistrationForm} className="bg-gray-800 text-white hover:bg-gray-900" data-testid="create-registration-form-btn"><FileText className="w-4 h-4 me-2" />{language === 'ar' ? 'استمارة تسجيل' : 'Registration Form'}</Button>
               <Button onClick={() => setIsCreateDialogOpen(true)} data-testid="create-invoice-btn"><Plus className="w-4 h-4 me-2" />{t('create_invoice')}</Button>
             </div>
           </div>
