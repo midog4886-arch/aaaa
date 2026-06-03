@@ -12,7 +12,7 @@ import { Switch } from '../components/ui/switch';
 import { Badge } from '../components/ui/badge';
 import { Calendar } from '../components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '../components/ui/popover';
-import { useToast } from '../hooks/use-toast';
+import { toast } from 'sonner';
 import { dailyVideosAPI, branchesAPI, activitiesAPI } from '../services/api';
 import { format, parseISO, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay } from 'date-fns';
 import { ar } from 'date-fns/locale';
@@ -25,7 +25,6 @@ import {
 import { extractYouTubeVideoId, generateYouTubeEmbedUrl, getYouTubeThumbnail, isValidYouTubeUrl } from '../utils/youtubeUtils';
 
 const DailyVideosPage = () => {
-  const { toast } = useToast();
   const navigate = useNavigate();
   const [videos, setVideos] = useState([]);
   const [branches, setBranches] = useState([]);
@@ -56,7 +55,7 @@ const DailyVideosPage = () => {
       const res = await dailyVideosAPI.getViewers(video.id);
       setViewersList(res.data?.viewers || []);
     } catch (err) {
-      toast({ title: 'خطأ', description: 'تعذر تحميل قائمة المشاهدين', variant: 'destructive' });
+      toast.error('تعذر تحميل قائمة المشاهدين');
     } finally {
       setViewersLoading(false);
     }
@@ -113,11 +112,11 @@ const DailyVideosPage = () => {
       });
       setCalendarData(calData);
     } catch (error) {
-      toast({ title: 'خطأ', description: 'فشل في تحميل البيانات', variant: 'destructive' });
+      toast.error('فشل في تحميل البيانات');
     } finally {
       setLoading(false);
     }
-  }, [toast, currentMonth]);
+  }, [currentMonth]);
 
   useEffect(() => {
     fetchData();
@@ -207,7 +206,7 @@ const DailyVideosPage = () => {
       if (videoId) {
         setUrlValidationStatus('valid');
         setFormData(prev => ({ ...prev, youtube_video_id: videoId, video_platform: 'tiktok' }));
-        toast({ title: '✅ تم استخراج معرف TikTok', description: `VIDEO_ID: ${videoId}` });
+        toast.success('تم استخراج معرف TikTok', { description: `VIDEO_ID: ${videoId}` });
       } else {
         setUrlValidationStatus('invalid');
         setFormData(prev => ({ ...prev, youtube_video_id: '', video_platform: 'tiktok' }));
@@ -217,7 +216,7 @@ const DailyVideosPage = () => {
       if (videoId) {
         setUrlValidationStatus('valid');
         setFormData(prev => ({ ...prev, youtube_video_id: videoId, video_platform: 'youtube' }));
-        toast({ title: '✅ تم استخراج معرف الفيديو', description: `VIDEO_ID: ${videoId}` });
+        toast.success('تم استخراج معرف الفيديو', { description: `VIDEO_ID: ${videoId}` });
       } else {
         setUrlValidationStatus('invalid');
         setFormData(prev => ({ ...prev, youtube_video_id: '', video_platform: 'youtube' }));
@@ -240,30 +239,26 @@ const DailyVideosPage = () => {
 
   const handleSubmit = async () => {
     if (!formData.title_ar || !formData.youtube_video_id || !formData.scheduled_date) {
-      toast({ title: 'خطأ', description: 'يرجى ملء الحقول المطلوبة', variant: 'destructive' });
+      toast.error('يرجى ملء الحقول المطلوبة');
       return;
     }
     if (!formData.activity_id) {
-      toast({ title: 'خطأ', description: 'يرجى اختيار النشاط حتى يصل الإشعار لأعضاء هذا النشاط فقط', variant: 'destructive' });
+      toast.error('يرجى اختيار النشاط حتى يصل الإشعار لأعضاء هذا النشاط فقط');
       return;
     }
 
     try {
       if (editingVideo) {
         await dailyVideosAPI.update(editingVideo.id, formData);
-        toast({ title: 'تم تحديث الفيديو بنجاح' });
+        toast.success('تم تحديث الفيديو بنجاح');
       } else {
         await dailyVideosAPI.create(formData);
-        toast({ title: 'تم إضافة الفيديو بنجاح' });
+        toast.success('تم إضافة الفيديو بنجاح');
       }
       setDialogOpen(false);
       fetchData();
     } catch (error) {
-      toast({ 
-        title: 'خطأ', 
-        description: error.response?.data?.detail || 'فشل في حفظ الفيديو', 
-        variant: 'destructive' 
-      });
+      toast.error(error.response?.data?.detail || 'فشل في حفظ الفيديو');
     }
   };
 
@@ -272,10 +267,10 @@ const DailyVideosPage = () => {
     
     try {
       await dailyVideosAPI.delete(video.id);
-      toast({ title: 'تم حذف الفيديو بنجاح' });
+      toast.success('تم حذف الفيديو بنجاح');
       fetchData();
     } catch (error) {
-      toast({ title: 'خطأ', description: 'فشل في حذف الفيديو', variant: 'destructive' });
+      toast.error('فشل في حذف الفيديو');
     }
   };
 
@@ -680,7 +675,7 @@ const DailyVideosPage = () => {
                         onClick={() => {
                           const embedUrl = generateYouTubeEmbedUrl(formData.youtube_video_id);
                           navigator.clipboard.writeText(embedUrl);
-                          toast({ title: 'تم نسخ رابط Embed' });
+                          toast.success('تم نسخ رابط Embed');
                         }}
                       >
                         نسخ Embed URL

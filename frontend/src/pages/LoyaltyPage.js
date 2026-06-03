@@ -10,7 +10,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
 import { Badge } from '../components/ui/badge';
 import { Switch } from '../components/ui/switch';
-import { useToast } from '../hooks/use-toast';
+import { toast } from 'sonner';
 import { 
   Trophy, Gift, Users, Star, Settings, Plus, Pencil, Trash2,
   TrendingUp, Award, Crown, Medal, Target, Percent, Package,
@@ -19,7 +19,6 @@ import {
 import api from '../services/api';
 
 const LoyaltyPage = () => {
-  const { toast } = useToast();
   const [activeTab, setActiveTab] = useState('overview');
   const [processingBirthdays, setProcessingBirthdays] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -71,11 +70,11 @@ const LoyaltyPage = () => {
       setLevelSettings(levelsRes.data);
     } catch (error) {
       console.error('Error fetching loyalty data:', error);
-      toast({ title: 'خطأ في تحميل البيانات', variant: 'destructive' });
+      toast.error('خطأ في تحميل البيانات');
     } finally {
       setLoading(false);
     }
-  }, [toast]);
+  }, []);
 
   useEffect(() => {
     fetchData();
@@ -98,16 +97,16 @@ const LoyaltyPage = () => {
     try {
       if (editingReward) {
         await api.put(`/loyalty/rewards/${editingReward.id}`, rewardForm);
-        toast({ title: 'تم تحديث المكافأة بنجاح' });
+        toast.success('تم تحديث المكافأة بنجاح');
       } else {
         await api.post('/loyalty/rewards', rewardForm);
-        toast({ title: 'تم إنشاء المكافأة بنجاح' });
+        toast.success('تم إنشاء المكافأة بنجاح');
       }
       setRewardDialogOpen(false);
       setEditingReward(null);
       fetchData();
     } catch (error) {
-      toast({ title: 'خطأ في حفظ المكافأة', variant: 'destructive' });
+      toast.error('خطأ في حفظ المكافأة');
     }
   };
 
@@ -115,10 +114,10 @@ const LoyaltyPage = () => {
     if (!window.confirm('هل أنت متأكد من حذف هذه المكافأة؟')) return;
     try {
       await api.delete(`/loyalty/rewards/${rewardId}`);
-      toast({ title: 'تم حذف المكافأة' });
+      toast.success('تم حذف المكافأة');
       fetchData();
     } catch (error) {
-      toast({ title: 'خطأ في حذف المكافأة', variant: 'destructive' });
+      toast.error('خطأ في حذف المكافأة');
     }
   };
 
@@ -131,23 +130,23 @@ const LoyaltyPage = () => {
         reason: adjustForm.reason,
         admin_notes: adjustForm.admin_notes
       });
-      toast({ title: 'تم تعديل النقاط بنجاح' });
+      toast.success('تم تعديل النقاط بنجاح');
       setAdjustPointsDialogOpen(false);
       setSelectedMember(null);
       setAdjustForm({ points: 0, reason: '', admin_notes: '' });
       fetchData();
     } catch (error) {
-      toast({ title: 'خطأ في تعديل النقاط', variant: 'destructive' });
+      toast.error('خطأ في تعديل النقاط');
     }
   };
 
   const handleUpdateRedemptionStatus = async (redemptionId, status) => {
     try {
       await api.put(`/loyalty/redemptions/${redemptionId}/status`, { status });
-      toast({ title: 'تم تحديث حالة الطلب' });
+      toast.success('تم تحديث حالة الطلب');
       fetchData();
     } catch (error) {
-      toast({ title: 'خطأ في تحديث الحالة', variant: 'destructive' });
+      toast.error('خطأ في تحديث الحالة');
     }
   };
 
@@ -157,10 +156,10 @@ const LoyaltyPage = () => {
         api.put('/loyalty/settings/points', pointsSettings),
         api.put('/loyalty/settings/levels', levelSettings)
       ]);
-      toast({ title: 'تم حفظ الإعدادات بنجاح' });
+      toast.success('تم حفظ الإعدادات بنجاح');
       setSettingsDialogOpen(false);
     } catch (error) {
-      toast({ title: 'خطأ في حفظ الإعدادات', variant: 'destructive' });
+      toast.error('خطأ في حفظ الإعدادات');
     }
   };
 
@@ -168,13 +167,12 @@ const LoyaltyPage = () => {
     try {
       setProcessingBirthdays(true);
       const response = await api.post('/loyalty/process-birthdays');
-      toast({ 
-        title: response.data.message,
+      toast.success(response.data.message, {
         description: `تم معالجة ${response.data.birthdays_processed} عيد ميلاد`
       });
       fetchData();
     } catch (error) {
-      toast({ title: 'خطأ في معالجة أعياد الميلاد', variant: 'destructive' });
+      toast.error('خطأ في معالجة أعياد الميلاد');
     } finally {
       setProcessingBirthdays(false);
     }
@@ -547,7 +545,7 @@ const LoyaltyPage = () => {
                           const updated = {...pointsSettings};
                           delete updated[key];
                           setPointsSettings(updated);
-                          toast({ title: `تم حذف "${labels[key] || key}" - اضغط حفظ لتأكيد` });
+                          toast.success(`تم حذف "${labels[key] || key}" - اضغط حفظ لتأكيد`);
                         }}>
                           <Trash2 className="w-4 h-4" />
                         </Button>
@@ -790,16 +788,16 @@ const LoyaltyPage = () => {
             <Button variant="outline" onClick={() => setNewPointItemDialog(false)}>إلغاء</Button>
             <Button onClick={() => {
               if (!newPointItem.key || !newPointItem.label) {
-                toast({ title: 'يرجى تعبئة جميع الحقول', variant: 'destructive' });
+                toast.error('يرجى تعبئة جميع الحقول');
                 return;
               }
               if (pointsSettings && pointsSettings[newPointItem.key] !== undefined) {
-                toast({ title: 'هذا المعرّف موجود مسبقاً', variant: 'destructive' });
+                toast.error('هذا المعرّف موجود مسبقاً');
                 return;
               }
               setPointsSettings({...pointsSettings, [newPointItem.key]: newPointItem.value});
               setNewPointItemDialog(false);
-              toast({ title: `تم إضافة "${newPointItem.label}" - اضغط حفظ لتأكيد التغييرات` });
+              toast.success(`تم إضافة "${newPointItem.label}" - اضغط حفظ لتأكيد التغييرات`);
             }} disabled={!newPointItem.key || !newPointItem.label}>
               إضافة
             </Button>
@@ -836,7 +834,7 @@ const LoyaltyPage = () => {
             <Button onClick={() => {
               setPointsSettings({...pointsSettings, [editPointItem.key]: editPointItem.value});
               setEditPointItemDialog(false);
-              toast({ title: `تم تعديل "${editPointItem.label}" - اضغط حفظ لتأكيد التغييرات` });
+              toast.success(`تم تعديل "${editPointItem.label}" - اضغط حفظ لتأكيد التغييرات`);
             }}>
               حفظ التعديل
             </Button>

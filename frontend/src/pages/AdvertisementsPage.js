@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '../components/ui/dialog';
 import { Switch } from '../components/ui/switch';
 import { Badge } from '../components/ui/badge';
-import { useToast } from '../hooks/use-toast';
+import { toast } from 'sonner';
 import { advertisementsAPI, branchesAPI, notificationsAPI } from '../services/api';
 import { 
   Plus, Pencil, Trash2, Eye, MousePointerClick, Image, Video, 
@@ -22,7 +22,6 @@ import {
 import { extractYouTubeVideoId, generateYouTubeEmbedUrl, getYouTubeThumbnail } from '../utils/youtubeUtils';
 
 const AdvertisementsPage = () => {
-  const { toast } = useToast();
   const navigate = useNavigate();
   const [ads, setAds] = useState([]);
   const [branches, setBranches] = useState([]);
@@ -53,8 +52,7 @@ const AdvertisementsPage = () => {
     if (videoId) {
       setUrlValidationStatus('valid');
       setFormData(prev => ({ ...prev, youtube_video_id: videoId }));
-      toast({ 
-        title: '✅ تم استخراج معرف الفيديو',
+      toast.success('تم استخراج معرف الفيديو', {
         description: `VIDEO_ID: ${videoId}`
       });
     } else {
@@ -95,11 +93,11 @@ const AdvertisementsPage = () => {
       setStats(statsRes.data);
       setAdsStatus(adsStatusRes.data);
     } catch (error) {
-      toast({ title: 'خطأ', description: 'فشل في تحميل البيانات', variant: 'destructive' });
+      toast.error('فشل في تحميل البيانات');
     } finally {
       setLoading(false);
     }
-  }, [toast]);
+  }, []);
 
   useEffect(() => {
     fetchData();
@@ -109,13 +107,12 @@ const AdvertisementsPage = () => {
     setCheckingExpiry(true);
     try {
       const res = await notificationsAPI.checkAdsExpiry();
-      toast({ 
-        title: 'تم التحقق', 
-        description: res.data.message 
+      toast.success('تم التحقق', {
+        description: res.data.message
       });
       fetchData();
     } catch (error) {
-      toast({ title: 'خطأ', description: 'فشل في التحقق', variant: 'destructive' });
+      toast.error('فشل في التحقق');
     } finally {
       setCheckingExpiry(false);
     }
@@ -180,9 +177,9 @@ const AdvertisementsPage = () => {
       const res = await advertisementsAPI.uploadBanner(formDataUpload);
       setFormData(prev => ({ ...prev, banner_image_url: res.data.url }));
       const sizeInfo = res.data.resized_to ? ` (${res.data.resized_to})` : '';
-      toast({ title: `تم رفع الصورة وضبط المقاس تلقائياً${sizeInfo}` });
+      toast.success(`تم رفع الصورة وضبط المقاس تلقائياً${sizeInfo}`);
     } catch (error) {
-      toast({ title: 'خطأ', description: 'فشل في رفع الصورة', variant: 'destructive' });
+      toast.error('فشل في رفع الصورة');
     } finally {
       setUploading(false);
     }
@@ -190,26 +187,22 @@ const AdvertisementsPage = () => {
 
   const handleSubmit = async () => {
     if (!formData.title_ar) {
-      toast({ title: 'خطأ', description: 'يرجى إدخال عنوان الإعلان', variant: 'destructive' });
+      toast.error('يرجى إدخال عنوان الإعلان');
       return;
     }
 
     try {
       if (editingAd) {
         await advertisementsAPI.update(editingAd.id, formData);
-        toast({ title: 'تم تحديث الإعلان بنجاح' });
+        toast.success('تم تحديث الإعلان بنجاح');
       } else {
         await advertisementsAPI.create(formData);
-        toast({ title: 'تم إنشاء الإعلان بنجاح' });
+        toast.success('تم إنشاء الإعلان بنجاح');
       }
       setDialogOpen(false);
       fetchData();
     } catch (error) {
-      toast({ 
-        title: 'خطأ', 
-        description: error.response?.data?.detail || 'فشل في حفظ الإعلان', 
-        variant: 'destructive' 
-      });
+      toast.error(error.response?.data?.detail || 'فشل في حفظ الإعلان');
     }
   };
 
@@ -218,20 +211,20 @@ const AdvertisementsPage = () => {
     
     try {
       await advertisementsAPI.delete(ad.id);
-      toast({ title: 'تم حذف الإعلان بنجاح' });
+      toast.success('تم حذف الإعلان بنجاح');
       fetchData();
     } catch (error) {
-      toast({ title: 'خطأ', description: 'فشل في حذف الإعلان', variant: 'destructive' });
+      toast.error('فشل في حذف الإعلان');
     }
   };
 
   const handleToggle = async (ad) => {
     try {
       await advertisementsAPI.toggle(ad.id);
-      toast({ title: ad.is_active ? 'تم إيقاف الإعلان' : 'تم تفعيل الإعلان' });
+      toast.success(ad.is_active ? 'تم إيقاف الإعلان' : 'تم تفعيل الإعلان');
       fetchData();
     } catch (error) {
-      toast({ title: 'خطأ', description: 'فشل في تغيير حالة الإعلان', variant: 'destructive' });
+      toast.error('فشل في تغيير حالة الإعلان');
     }
   };
 
@@ -818,7 +811,7 @@ const AdvertisementsPage = () => {
                         onClick={() => {
                           const embedUrl = generateYouTubeEmbedUrl(formData.youtube_video_id);
                           navigator.clipboard.writeText(embedUrl);
-                          toast({ title: 'تم نسخ رابط Embed' });
+                          toast.success('تم نسخ رابط Embed');
                         }}
                       >
                         نسخ Embed URL
