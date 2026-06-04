@@ -19,7 +19,7 @@ import LevelsScheduleBuilderDialog from '../components/levels/LevelsScheduleBuil
 import { 
   Plus, Edit, Trash2, Loader2, Layers, Users, Dumbbell, UserPlus, UserMinus, UserX, Search,
   ChevronDown, ChevronUp, ChevronRight, Clock, AlertTriangle, ArrowRight, ArrowLeft, Home,
-  GripVertical, Move, ArrowUpDown, SlidersHorizontal, TrendingUp, BarChart3, CheckCircle, Circle, UserCheck, Printer, RefreshCw, Wand2, Undo2
+  GripVertical, Move, ArrowUpDown, SlidersHorizontal, TrendingUp, BarChart3, CheckCircle, Circle, UserCheck, Printer, RefreshCw, Wand2, Undo2, Lock, Unlock
 } from 'lucide-react';
 
 const _actKey = (act) => act?.activity_id || act?.activity_name || '';
@@ -1388,6 +1388,21 @@ ${slotTables}
     }
   };
 
+  const handleToggleActive = async (level) => {
+    const closing = level.is_active !== false;
+    try {
+      await levelsAPI.setActive(level.id, !closing);
+      toast.success(
+        closing
+          ? t('تم غلق المستوى مؤقتاً — لن يظهر في الفاتورة واستمارة التسجيل', 'Level closed temporarily — hidden from invoices and registration')
+          : t('تم فتح المستوى', 'Level reopened')
+      );
+      loadData();
+    } catch (error) {
+      toast.error(t('error', 'Error'));
+    }
+  };
+
   const handleEdit = (level) => {
     const { mainActivity, timeSlot } = parseActivityName(level.activity_name);
     setSelectedLevel(level);
@@ -1807,12 +1822,14 @@ ${slotTables}
     const memberCount = levelMembers.length;
     const isFull = memberCount >= maxCapacity;
     const isDropTarget = dropTargetLevel === originalLevel.id;
+    const isClosed = originalLevel.is_active === false;
     
     return (
       <div 
         key={originalLevel.id}
         className={`border rounded-xl overflow-hidden shadow-sm hover:shadow-lg transition-all duration-300 
           ${isFull ? 'border-red-300 bg-red-50/30' : 'bg-white'}
+          ${isClosed ? 'opacity-60 grayscale' : ''}
           ${isDropTarget ? 'ring-2 ring-primary ring-offset-2 scale-[1.02]' : ''}`}
         data-testid={`level-card-${originalLevel.id}`}
         onDragOver={(e) => handleDragOver(e, originalLevel)}
@@ -1837,9 +1854,25 @@ ${slotTables}
                   </p>
                 ) : null;
               })()}
+              {isClosed && (
+                <span className="inline-flex items-center gap-1 mt-1 px-2 py-0.5 rounded-full bg-black/30 text-white text-[10px] font-semibold">
+                  <Lock className="w-3 h-3" />
+                  {t('مغلق مؤقتاً', 'Closed')}
+                </span>
+              )}
             </div>
           </div>
           <div className="flex gap-1">
+            <Button
+              size="icon"
+              variant="ghost"
+              className="h-8 w-8 text-white hover:bg-white/20"
+              onClick={() => handleToggleActive(originalLevel)}
+              title={isClosed ? t('فتح المستوى', 'Reopen level') : t('غلق مؤقت', 'Close temporarily')}
+              data-testid={`toggle-active-level-${originalLevel.id}`}
+            >
+              {isClosed ? <Unlock className="w-4 h-4" /> : <Lock className="w-4 h-4" />}
+            </Button>
             <Button
               size="icon"
               variant="ghost"

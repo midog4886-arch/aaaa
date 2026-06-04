@@ -223,6 +223,8 @@ async def get_levels(
         cn = level.get("custom_name") or ""
         level["display_name"] = cn.strip() if cn.strip() else f"المستوى {level.get('level_number', '')}"
         level["hour"] = _extract_hour_12(level.get("time_slot") or level.get("activity_name") or "")
+        # Legacy levels predate the temporary-close flag; treat them as open.
+        level["is_active"] = level.get("is_active", True)
 
     cache_set(cache_key, levels, ttl=300)  # 5 min (members can change more often)
     return levels
@@ -256,6 +258,7 @@ async def create_level(level: LevelCreate, current_user: dict = Depends(get_curr
         "capacity": int(level.capacity) if level.capacity else None,
         "days": list(level.days) if level.days else None,
         "time_slot": level.time_slot or None,
+        "is_active": True,
         "created_at": datetime.now(timezone.utc).isoformat()
     }
     await db.levels.insert_one(level_doc)
@@ -284,6 +287,34 @@ async def update_level(level_id: str, level: LevelCreate, current_user: dict = D
         {"id": level_id},
         {"$set": update_data},
         return_document=True
+    )
+    if not result:
+        raise HTTPException(status_code=404, detail="Level not found")
+    cache_invalidate("levels:")
+    return {k: v for k, v in result.items() if k != "_id"}
+
+
+class LevelActiveUpdate(BaseModel):
+    is_active: bool
+
+
+@router.patch("/{level_id}/active")
+async def set_level_active(
+    level_id: str,
+    payload: LevelActiveUpdate,
+    current_user: dict = Depends(get_current_user),
+):
+    """Temporarily open/close a level.
+
+    A closed level (is_active=False) is hidden from the invoice and
+    registration-form level selectors so no NEW members can be registered
+    onto it, while keeping its existing members and visibility in the levels
+    management page intact.
+    """
+    result = await db.levels.find_one_and_update(
+        {"id": level_id},
+        {"$set": {"is_active": payload.is_active}},
+        return_document=True,
     )
     if not result:
         raise HTTPException(status_code=404, detail="Level not found")

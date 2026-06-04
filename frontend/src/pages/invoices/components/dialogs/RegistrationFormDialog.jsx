@@ -556,7 +556,10 @@ export const RegistrationFormDialog = ({
                                               //    sibling at 5pm karate doesn't see 6pm karate.
                                               // 3) Fallback to the looser activity_name === item.activity_name
                                               //    || empty when no exact-match levels exist.
-                                              const all = (levels || []).filter(l => l.id);
+                                              // Hide temporarily-closed levels from NEW choices, but
+                                              // always keep the one already selected on this item so an
+                                              // existing/edit selection is never silently dropped.
+                                              const all = (levels || []).filter(l => l.id && (l.is_active !== false || l.id === item.level_id));
                                               const targetTime = (item.training_time || '').trim();
                                               const norm = (s) => (s || '').toString().trim();
                                               const exact = all.filter(l => norm(l.activity_name) === norm(item.activity_name));

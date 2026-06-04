@@ -91,7 +91,7 @@ export const useInvoiceForm = ({
     return grouped;
   };
 
-  const groupedLevelsForSelector = useMemo(() => buildGroupedLevels(levels), [levels]);
+  const groupedLevelsForSelector = useMemo(() => buildGroupedLevels((levels || []).filter(l => l.is_active !== false)), [levels]);
 
   const AR_TO_EN_DAY = {
     'الأحد': 'sunday',
@@ -117,7 +117,7 @@ export const useInvoiceForm = ({
   };
 
   const getGroupedLevelsForDays = (trainingDays) => {
-    return buildGroupedLevels(filterLevelsByDays(levels, trainingDays));
+    return buildGroupedLevels(filterLevelsByDays((levels || []).filter(l => l.is_active !== false), trainingDays));
   };
 
   const calculateTotals = () => {
