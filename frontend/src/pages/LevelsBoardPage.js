@@ -7,18 +7,23 @@ import { Button } from '../components/ui/button';
 import { Badge } from '../components/ui/badge';
 import { attendanceAPI } from '../services/api';
 import { toast } from 'sonner';
-import { RefreshCcw, Users, Clock, MapPin, UserCheck } from 'lucide-react';
+import { RefreshCcw, Users, Clock, MapPin, UserCheck, CalendarDays } from 'lucide-react';
 
 const REFRESH_MS = 30000;
 
 const LevelsBoardPage = () => {
   const { language } = useLanguage();
   const { selectedBranchId } = useAuth();
+  // "Today" in Saudi Arabia (Asia/Riyadh, UTC+3) to stay consistent with the backend.
+  const todayISO = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Riyadh' }).format(new Date());
+
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [lastUpdated, setLastUpdated] = useState(null);
+  const [selectedDate, setSelectedDate] = useState(todayISO());
 
   const ar = language === 'ar';
+  const isToday = selectedDate === todayISO();
 
   const hourLabel = (h) => {
     const n = parseInt(h, 10);
@@ -29,7 +34,10 @@ const LevelsBoardPage = () => {
   const load = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
     try {
-      const params = selectedBranchId && selectedBranchId !== 'all' ? { branch_filter: selectedBranchId } : {};
+      const params = {};
+      if (selectedBranchId && selectedBranchId !== 'all') params.branch_filter = selectedBranchId;
+      // Only send date for historical days; for "today" let the backend resolve Saudi-tz today.
+      if (selectedDate && selectedDate !== todayISO()) params.date = selectedDate;
       const res = await attendanceAPI.getLevelsBoard(params);
       setData(res.data);
       setLastUpdated(new Date());
@@ -38,14 +46,15 @@ const LevelsBoardPage = () => {
     } finally {
       if (!silent) setLoading(false);
     }
-  }, [selectedBranchId, ar]);
+  }, [selectedBranchId, selectedDate, ar]);
 
-  useEffect(() => { load(); /* eslint-disable-next-line */ }, [selectedBranchId]);
+  useEffect(() => { load(); /* eslint-disable-next-line */ }, [selectedBranchId, selectedDate]);
 
   useEffect(() => {
+    if (!isToday) return; // auto-refresh only makes sense for the live (today) board
     const id = setInterval(() => load(true), REFRESH_MS);
     return () => clearInterval(id);
-  }, [load]);
+  }, [load, isToday]);
 
   const MemberChip = ({ m }) => (
     <div className="flex items-center gap-2 rounded-lg border bg-card px-2 py-1.5">
@@ -116,11 +125,18 @@ const LevelsBoardPage = () => {
             </h1>
             <p className="text-sm text-muted-foreground">
               {ar
-                ? 'بورد مباشر يوزّع الأعضاء على مستوياتهم أول ما يسجّلوا حضور النهارده'
-                : "Live board placing members into their levels as they check in today"}
+                ? 'بورد يوزّع الأعضاء على مستوياتهم حسب حضورهم'
+                : "A board placing members into their levels by attendance"}
             </p>
+            {data && (
+              <div className="text-xs font-medium mt-1 flex items-center gap-1 text-primary">
+                <CalendarDays className="w-3.5 h-3.5" />
+                {data.day_name_ar || data.day_name} — {data.date}
+                {isToday && <span className="text-muted-foreground">({ar ? 'النهارده' : 'today'})</span>}
+              </div>
+            )}
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-3">
             {data && (
               <div className="text-right">
                 <div className="text-sm font-semibold flex items-center gap-1 justify-end">
@@ -134,6 +150,21 @@ const LevelsBoardPage = () => {
                 )}
               </div>
             )}
+            <div className="flex items-center gap-1.5">
+              <CalendarDays className="w-4 h-4 text-muted-foreground shrink-0" />
+              <input
+                type="date"
+                value={selectedDate}
+                max={todayISO()}
+                onChange={(e) => setSelectedDate(e.target.value || todayISO())}
+                className="h-9 rounded-md border bg-background px-2 text-sm"
+              />
+              {!isToday && (
+                <Button variant="ghost" size="sm" onClick={() => setSelectedDate(todayISO())}>
+                  {ar ? 'اليوم' : 'Today'}
+                </Button>
+              )}
+            </div>
             <Button variant="outline" size="sm" onClick={() => load()} disabled={loading}>
               <RefreshCcw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
               <span className="ml-1">{ar ? 'تحديث' : 'Refresh'}</span>
@@ -146,7 +177,9 @@ const LevelsBoardPage = () => {
         ) : !hasAnyCell ? (
           <Card>
             <CardContent className="py-12 text-center text-muted-foreground">
-              {ar ? 'لا يوجد حضور مسجّل النهارده بعد' : 'No attendance recorded today yet'}
+              {isToday
+                ? (ar ? 'لا يوجد حضور مسجّل النهارده بعد' : 'No attendance recorded today yet')
+                : (ar ? 'لا يوجد حضور مسجّل في اليوم المحدد' : 'No attendance recorded on the selected day')}
             </CardContent>
           </Card>
         ) : (

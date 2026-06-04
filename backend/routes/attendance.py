@@ -1020,6 +1020,7 @@ async def get_today_summary(
 @router.get("/levels-board")
 async def get_levels_board(
     branch_filter: Optional[str] = None,
+    date: Optional[str] = None,
     current_user: dict = Depends(get_current_user),
 ):
     """Live board for today: members who checked in are placed into their level
@@ -1038,8 +1039,18 @@ async def get_levels_board(
     """
     saudi_tz = timezone(timedelta(hours=3))
     now_saudi = datetime.now(saudi_tz)
+    # Default to today (Saudi tz); allow viewing any specific day via ?date=YYYY-MM-DD.
     today_str = now_saudi.strftime("%Y-%m-%d")
     today_day = now_saudi.strftime("%A").lower()
+    if date:
+        import re as _re_date
+        if _re_date.match(r"^\d{4}-\d{2}-\d{2}$", date):
+            try:
+                day_dt = datetime.strptime(date, "%Y-%m-%d")
+                today_str = date
+                today_day = day_dt.strftime("%A").lower()
+            except ValueError:
+                pass
     today_day_ar = ENGLISH_TO_ARABIC_DAY.get(today_day, today_day)
 
     query = {}
