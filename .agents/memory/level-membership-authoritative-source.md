@@ -33,3 +33,23 @@ anywhere) — that would lose legitimate assignments.
 `members_details`/`valid_ids`, and the existing `stale_updates` path persists the
 pruned `members[]`. Any future write path that reassigns a level should also pull
 the member from other levels' `members[]`, or rely on this on-fetch self-heal.
+
+## Deleting a level orphans the member link
+
+When a level is deleted, members keep `activities[].level_id` pointing at the now
+non-existent level. On the live board (attendance `/levels-board`) the lookup
+`(member_id, activity_id) -> level_id` then fails to resolve, so the member lands
+in "حضور بدون مستوى" (present-without-level). This is the dominant real-world cause
+of that bucket — not unassigned members.
+
+**Critical gotcha:** the `/auto-assign` tool deliberately does NOT rewrite a stale
+`level_id` (one pointing to a deleted/non-matching level) — it reports those as
+`unmatched` (`reason_key: "stale_link"`) for manual review. So to actually
+re-place such members you must FIRST blank the orphaned `level_id` (set to `""`)
+so the member becomes net-new, THEN run auto-assign.
+
+**Fix in place:** `delete_level` now clears the reference on delete via
+`update_many({"activities.level_id": id}, {"$set": {"activities.$[elem].level_id": ""}}, array_filters=[{"elem.level_id": id}])`.
+**Why:** a deleted level_id can never match again, so leaving it strands the member.
+**Note (open):** `delete_level` itself still has no branch-scope authorization
+(pre-existing) — a hardening worth doing separately.

@@ -327,6 +327,16 @@ async def delete_level(level_id: str, current_user: dict = Depends(get_current_u
     result = await db.levels.delete_one({"id": level_id})
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Level not found")
+    # Clear any dangling references to this level from member activities so the
+    # members don't end up stuck as "present without level" on the live board
+    # (a deleted level_id can never be matched again). We blank the level_id on
+    # the affected activity rows; admins can re-assign via the schedule builder
+    # or the auto-assign tool.
+    await db.members.update_many(
+        {"activities.level_id": level_id},
+        {"$set": {"activities.$[elem].level_id": ""}},
+        array_filters=[{"elem.level_id": level_id}],
+    )
     cache_invalidate("levels:")
     return {"message": "Level deleted"}
 
