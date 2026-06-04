@@ -35,6 +35,7 @@ const translations = {
     schedule: 'الجدول',
     attendance: 'الحضور',
     today_attendance: 'حضور اليوم',
+    levels_board: 'خريطة المستويات',
     member_card: 'بطاقة العضوية',
     daily_new_cards: 'كروت العضوية اليومية',
     coach_ratings: 'تقييمات المدربين',
@@ -237,6 +238,7 @@ const translations = {
     schedule: 'Schedule',
     attendance: 'Attendance',
     today_attendance: "Today's Attendance",
+    levels_board: 'Levels Map',
     accounting: 'Accounting',
     my_expenses: 'My Expenses (pending approval)',
     

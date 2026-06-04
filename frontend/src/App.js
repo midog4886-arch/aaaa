@@ -65,6 +65,7 @@ const AccountingPage = lazy(() => import('./pages/AccountingPage'));
 const MyExpensesPage = lazy(() => import('./pages/MyExpensesPage'));
 const AttendancePage = lazy(() => import('./pages/AttendancePage'));
 const TodayAttendancePage = lazy(() => import('./pages/TodayAttendancePage'));
+const LevelsBoardPage = lazy(() => import('./pages/LevelsBoardPage'));
 const SchedulePage = lazy(() => import('./pages/SchedulePage'));
 const UnauthorizedPage = lazy(() => import('./pages/UnauthorizedPage'));
 const MemberCardPage = lazy(() => import('./pages/MemberCardPage'));
@@ -459,6 +460,14 @@ function AppRoutes() {
             <TodayAttendancePage />
           </ProtectedRoute>
         } 
+      />
+      <Route
+        path="/admin/levels-board"
+        element={
+          <ProtectedRoute permission="attendance">
+            <LevelsBoardPage />
+          </ProtectedRoute>
+        }
       />
       <Route
         path="/admin/daily-new-cards"

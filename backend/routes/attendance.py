@@ -1017,6 +1017,198 @@ async def get_today_summary(
     }
 
 
+@router.get("/levels-board")
+async def get_levels_board(
+    branch_filter: Optional[str] = None,
+    current_user: dict = Depends(get_current_user),
+):
+    """Live board for today: members who checked in are placed into their level
+    cell (hour + level + coach). Only members present today appear inside cells.
+
+    Shape:
+        {
+          "date", "day_name_ar", "present_count",
+          "hours_order": ["5","6",...],
+          "hours": {"5": [<cell>, ...], ...},   # cells with a parseable hour
+          "no_hour": [<cell>, ...],             # levels without an hour
+          "unassigned": {"members": [...], "count": n}  # present, no level link
+        }
+    A <cell> is one level: {level_id, title, hour, hour_label, coach_name,
+    branch_id, members: [...], count}.
+    """
+    saudi_tz = timezone(timedelta(hours=3))
+    now_saudi = datetime.now(saudi_tz)
+    today_str = now_saudi.strftime("%Y-%m-%d")
+    today_day = now_saudi.strftime("%A").lower()
+    today_day_ar = ENGLISH_TO_ARABIC_DAY.get(today_day, today_day)
+
+    query = {}
+    effective_branch = resolve_branch_filter(current_user, branch_filter)
+    if effective_branch:
+        query["branch_id"] = effective_branch
+
+    today_records = await db.attendance.find(
+        {**query, "date": today_str}, {"_id": 0}
+    ).sort("created_at", 1).to_list(5000)
+
+    members = await db.members.find(query, {"_id": 0}).to_list(10000)
+    active_member_ids = {
+        m.get("id") for m in members
+        if m.get("id") and m.get("status", "active") == "active"
+    }
+    members_by_id = {m.get("id"): m for m in members if m.get("id")}
+
+    def _hour_12(text):
+        if not text:
+            return None
+        import re as _re
+        s = str(text).translate(str.maketrans("٠١٢٣٤٥٦٧٨٩", "0123456789"))
+        mt = _re.search(r"(\d{1,2})", s)
+        if not mt:
+            return None
+        h = int(mt.group(1))
+        if not (0 <= h <= 23):
+            return None
+        if h == 0:
+            return 12
+        return h if h <= 12 else h - 12
+
+    # Scope levels to the effective branch (levels with no branch are shared),
+    # mirroring the schedule-snapshot endpoint, so branch users never see other
+    # branches' level metadata even if a member->level link is inconsistent.
+    levels_query = {}
+    if effective_branch:
+        levels_query["$or"] = [
+            {"branch_id": effective_branch},
+            {"branch_id": None},
+            {"branch_id": {"$exists": False}},
+        ]
+    levels_docs = await db.levels.find(
+        levels_query, {"_id": 0, "id": 1, "time_slot": 1, "activity_name": 1,
+                       "custom_name": 1, "name": 1, "level_number": 1,
+                       "coach_id": 1, "branch_id": 1}
+    ).to_list(2000)
+    levels_by_id = {lv.get("id"): lv for lv in levels_docs if lv.get("id")}
+
+    coaches = await db.coaches.find(
+        {}, {"_id": 0, "id": 1, "name_ar": 1, "name": 1}
+    ).to_list(500)
+    coach_name_by_id = {
+        c.get("id"): (c.get("name_ar") or c.get("name") or "")
+        for c in coaches if c.get("id")
+    }
+
+    member_activity_levelid = {}
+    for m in members:
+        mid_m = m.get("id")
+        if not mid_m:
+            continue
+        for act in (m.get("activities") or []):
+            aid = act.get("activity_id", "")
+            lvid = act.get("level_id", "")
+            if aid and lvid:
+                member_activity_levelid[(mid_m, aid)] = lvid
+
+    def _level_title(lv):
+        custom = (lv.get("custom_name") or "").strip()
+        if custom:
+            return custom
+        act = (lv.get("activity_name") or lv.get("name") or "").strip()
+        num = lv.get("level_number")
+        if act and num:
+            return f"{act} - المستوى {num}"
+        if act:
+            return act
+        if num:
+            return f"المستوى {num}"
+        return "مستوى"
+
+    cells = {}
+    unassigned_members = []
+    unassigned_seen = set()
+
+    for r in today_records:
+        mid = r.get("member_id")
+        if not mid or mid not in active_member_ids:
+            continue
+        aid = r.get("activity_id", "")
+        lvid = member_activity_levelid.get((mid, aid))
+        m_doc = members_by_id.get(mid, {})
+        member_entry = {
+            "member_id": mid,
+            "member_name": r.get("member_name", "") or m_doc.get("name_ar", "") or m_doc.get("name", ""),
+            "member_code": r.get("member_code", "") or m_doc.get("member_code", ""),
+            "member_photo": r.get("member_photo", "") or m_doc.get("photo", ""),
+            "check_in_time": r.get("check_in_time", ""),
+            "activity_name": r.get("activity_name", ""),
+            "off_schedule": bool(r.get("off_schedule")),
+        }
+        if lvid and lvid in levels_by_id:
+            cell = cells.get(lvid)
+            if cell is None:
+                lv = levels_by_id[lvid]
+                hour = (_hour_12(lv.get("time_slot"))
+                        or _hour_12(lv.get("activity_name"))
+                        or _hour_12(lv.get("name")))
+                cell = cells[lvid] = {
+                    "level_id": lvid,
+                    "title": _level_title(lv),
+                    "hour": hour,
+                    "hour_label": (f"الساعة {hour}" if hour else ""),
+                    "coach_name": coach_name_by_id.get(lv.get("coach_id"), ""),
+                    "branch_id": lv.get("branch_id"),
+                    "members": [],
+                    "_seen": set(),
+                }
+            key = (mid, aid)
+            if key not in cell["_seen"]:
+                cell["_seen"].add(key)
+                cell["members"].append(member_entry)
+        else:
+            if mid not in unassigned_seen:
+                unassigned_seen.add(mid)
+                unassigned_members.append(member_entry)
+
+    cell_list = []
+    for c in cells.values():
+        c.pop("_seen", None)
+        c["members"].sort(key=lambda x: x.get("check_in_time") or "")
+        c["count"] = len(c["members"])
+        cell_list.append(c)
+
+    hours = {}
+    no_hour = []
+    for c in cell_list:
+        h = c.get("hour")
+        if h:
+            hours.setdefault(str(h), []).append(c)
+        else:
+            no_hour.append(c)
+    for hkey in hours:
+        hours[hkey].sort(key=lambda x: (x.get("title") or ""))
+    no_hour.sort(key=lambda x: (x.get("title") or ""))
+    hours_order = sorted(hours.keys(), key=lambda x: int(x))
+
+    total_present = len({
+        r.get("member_id") for r in today_records
+        if r.get("member_id") in active_member_ids
+    })
+
+    return {
+        "date": today_str,
+        "day_name": today_day,
+        "day_name_ar": today_day_ar,
+        "present_count": total_present,
+        "hours_order": hours_order,
+        "hours": hours,
+        "no_hour": no_hour,
+        "unassigned": {
+            "members": unassigned_members,
+            "count": len(unassigned_members),
+        },
+    }
+
+
 @router.post("/qr-checkin")
 async def qr_checkin(
     member_code: str,

@@ -474,6 +474,7 @@ export const attendanceAPI = {
     return axios.post(url);
   },
   getTodaySummary: (params = {}) => axios.get(`${API}/attendance/today-summary`, { params }),
+  getLevelsBoard: (params = {}) => axios.get(`${API}/attendance/levels-board`, { params }),
   getMemberReport: (memberId, params = {}) => axios.get(`${API}/attendance/member/${memberId}/report`, { params }),
   getActivityReport: (activityId, params = {}) => axios.get(`${API}/attendance/activity/${activityId}/report`, { params }),
   getSessionQuota: (memberId, activityId) => {
