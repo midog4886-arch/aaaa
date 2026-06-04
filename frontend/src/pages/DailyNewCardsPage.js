@@ -265,8 +265,10 @@ const DailyNewCardsPage = () => {
 
     const pagesHtml = [];
     allMembers.forEach(({ branch, member }) => {
-      pagesHtml.push(`<div class="cd-page front">${renderCardHtml(member, lang)}</div>`);
-      if (mode === 'duplex') {
+      if (mode !== 'back') {
+        pagesHtml.push(`<div class="cd-page front">${renderCardHtml(member, lang)}</div>`);
+      }
+      if (mode === 'duplex' || mode === 'back') {
         pagesHtml.push(`<div class="cd-page back">${renderLogoCardHtml(branch.branch_phone, branch.branch_name)}</div>`);
       }
     });
@@ -331,7 +333,7 @@ const DailyNewCardsPage = () => {
       <div class="toolbar">
         <button onclick="window.print()">🖨️ طباعة على Datacard CD820</button>
         <button class="secondary" onclick="window.close()">إغلاق</button>
-        <div class="meta">${allMembers.length} عضو — ${expectedPages} صفحة (${mode === 'duplex' ? 'وش + ظهر' : 'وش فقط'})</div>
+        <div class="meta">${allMembers.length} عضو — ${expectedPages} صفحة (${mode === 'duplex' ? 'وش + ظهر' : (mode === 'back' ? 'ظهر فقط' : 'وش فقط')})</div>
         <div class="hint">
           إعدادات الطابعة في حوار الطباعة:<br/>
           • Paper Size: CR-80 (54 × 85.6 mm)<br/>
@@ -455,6 +457,16 @@ const DailyNewCardsPage = () => {
                 >
                   <CreditCard className="w-4 h-4" />
                   CD820 وش فقط
+                </Button>
+                <Button
+                  onClick={() => printCD820('back')}
+                  disabled={loading || totalMembers === 0}
+                  variant="outline"
+                  className="border-blue-600 text-blue-700 hover:bg-blue-50 gap-2"
+                  title="طباعة ظهر فقط على CD820"
+                >
+                  <CreditCard className="w-4 h-4" />
+                  CD820 ظهر فقط
                 </Button>
               </div>
             </div>
