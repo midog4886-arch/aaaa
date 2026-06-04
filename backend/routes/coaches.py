@@ -31,6 +31,8 @@ class CoachBase(BaseModel):
     late_minute_rate: Optional[float] = 0
     contract_type: Optional[Literal["full_time", "part_time"]] = "full_time"
     monthly_work_days: Optional[int] = 30
+    clothing_size: Optional[str] = ""        # مقاس ملابس المدرب (e.g. S/M/L/XL)
+    clothing_received: Optional[bool] = False  # هل استلم طقم الملابس
 
     @field_validator("monthly_work_days", mode="before")
     @classmethod

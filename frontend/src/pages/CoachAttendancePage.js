@@ -16,6 +16,8 @@ import {
   PROFILE_PHOTO_HARD_CAP_BYTES,
 } from '../utils/imageCompression';
 
+const CLOTHING_SIZES = ['XS', 'S', 'M', 'L', 'XL', '2XL', '3XL', '4XL'];
+
 const CoachAttendancePage = () => {
   const [coaches, setCoaches] = useState([]);
   const [records, setRecords] = useState([]);
@@ -31,11 +33,13 @@ const CoachAttendancePage = () => {
   const [absentStatus, setAbsentStatus] = useState('absent');
   const [toast, setToast] = useState(null);
   const [showAddCoach, setShowAddCoach] = useState(false);
-  const [addCoachForm, setAddCoachForm] = useState({ name: '', phone: '', email: '', specialization: '', name_en: '', expected_checkin_time: '', photo: '', base_salary: '', daily_deduction_rate: '', late_minute_rate: '', contract_type: 'full_time', monthly_work_days: '30' });
+  const [addCoachForm, setAddCoachForm] = useState({ name: '', phone: '', email: '', specialization: '', name_en: '', expected_checkin_time: '', photo: '', base_salary: '', daily_deduction_rate: '', late_minute_rate: '', contract_type: 'full_time', monthly_work_days: '30', clothing_size: '', clothing_received: false });
   const [addingCoach, setAddingCoach] = useState(false);
   const [editingCoach, setEditingCoach] = useState(null);
-  const [editCoachForm, setEditCoachForm] = useState({ name: '', phone: '', email: '', specialization: '', name_en: '', expected_checkin_time: '', photo: '', base_salary: '', daily_deduction_rate: '', late_minute_rate: '', contract_type: 'full_time', monthly_work_days: '30' });
+  const [editCoachForm, setEditCoachForm] = useState({ name: '', phone: '', email: '', specialization: '', name_en: '', expected_checkin_time: '', photo: '', base_salary: '', daily_deduction_rate: '', late_minute_rate: '', contract_type: 'full_time', monthly_work_days: '30', clothing_size: '', clothing_received: false });
   const [savingCoach, setSavingCoach] = useState(false);
+  const [clothingReceivedFilter, setClothingReceivedFilter] = useState('all'); // all | received | not
+  const [clothingSizeFilter, setClothingSizeFilter] = useState('all');
   const [deleteConfirm, setDeleteConfirm] = useState(null);
   const [qrCoach, setQrCoach] = useState(null); // coach whose QR is being shown
   const [scanCameraOpen, setScanCameraOpen] = useState(false);
@@ -92,8 +96,8 @@ const CoachAttendancePage = () => {
   }, [selectedMonth, branchFilter, lateThreshold]);
 
   useEffect(() => {
-    if (view === 'daily') fetchData();
-    else fetchMonthlyReport();
+    if (view === 'monthly') fetchMonthlyReport();
+    else fetchData();
   }, [view, fetchData, fetchMonthlyReport]);
 
   const openCoachReport = async (coach, monthArg) => {
@@ -248,11 +252,13 @@ const CoachAttendancePage = () => {
         daily_deduction_rate: parseFloat(addCoachForm.daily_deduction_rate) || 0,
         late_minute_rate: parseFloat(addCoachForm.late_minute_rate) || 0,
         contract_type: addCoachForm.contract_type || 'full_time',
-        monthly_work_days: parseInt(addCoachForm.monthly_work_days) || 30
+        monthly_work_days: parseInt(addCoachForm.monthly_work_days) || 30,
+        clothing_size: addCoachForm.clothing_size || '',
+        clothing_received: !!addCoachForm.clothing_received
       }, { headers: { Authorization: `Bearer ${token}` } });
       showToast('تم إضافة المدرب بنجاح');
       setShowAddCoach(false);
-      setAddCoachForm({ name: '', phone: '', email: '', specialization: '', name_en: '', expected_checkin_time: '', photo: '', base_salary: '', daily_deduction_rate: '', late_minute_rate: '', contract_type: 'full_time', monthly_work_days: '30' });
+      setAddCoachForm({ name: '', phone: '', email: '', specialization: '', name_en: '', expected_checkin_time: '', photo: '', base_salary: '', daily_deduction_rate: '', late_minute_rate: '', contract_type: 'full_time', monthly_work_days: '30', clothing_size: '', clothing_received: false });
       fetchData();
     } catch (error) {
       showToast(error.response?.data?.detail || 'حدث خطأ أثناء إضافة المدرب', 'error');
@@ -275,7 +281,9 @@ const CoachAttendancePage = () => {
       daily_deduction_rate: coach.daily_deduction_rate != null ? String(coach.daily_deduction_rate) : '',
       late_minute_rate: coach.late_minute_rate != null ? String(coach.late_minute_rate) : '',
       contract_type: coach.contract_type || 'full_time',
-      monthly_work_days: coach.monthly_work_days != null ? String(coach.monthly_work_days) : '30'
+      monthly_work_days: coach.monthly_work_days != null ? String(coach.monthly_work_days) : '30',
+      clothing_size: coach.clothing_size || '',
+      clothing_received: !!coach.clothing_received
     });
   };
 
@@ -302,7 +310,9 @@ const CoachAttendancePage = () => {
         daily_deduction_rate: parseFloat(editCoachForm.daily_deduction_rate) || 0,
         late_minute_rate: parseFloat(editCoachForm.late_minute_rate) || 0,
         contract_type: editCoachForm.contract_type || 'full_time',
-        monthly_work_days: parseInt(editCoachForm.monthly_work_days) || 30
+        monthly_work_days: parseInt(editCoachForm.monthly_work_days) || 30,
+        clothing_size: editCoachForm.clothing_size || '',
+        clothing_received: !!editCoachForm.clothing_received
       }, { headers: { Authorization: `Bearer ${token}` } });
       showToast('تم تعديل بيانات المدرب بنجاح');
       setEditingCoach(null);
@@ -366,6 +376,36 @@ const CoachAttendancePage = () => {
   };
 
   const handlePrint = () => window.print();
+
+  const clothingRows = coaches
+    .filter(c => clothingReceivedFilter === 'all' || (clothingReceivedFilter === 'received' ? !!c.clothing_received : !c.clothing_received))
+    .filter(c => clothingSizeFilter === 'all' || (clothingSizeFilter === '__none__' ? !c.clothing_size : c.clothing_size === clothingSizeFilter));
+
+  const clothingReceivedCount = coaches.filter(c => c.clothing_received).length;
+  const clothingSizeCounts = CLOTHING_SIZES.reduce((acc, s) => {
+    acc[s] = coaches.filter(c => c.clothing_size === s).length;
+    return acc;
+  }, {});
+  const clothingNoSizeCount = coaches.filter(c => !c.clothing_size).length;
+
+  const exportClothingCSV = () => {
+    const headers = ['اسم المدرب', 'رقم الموظف', 'التخصص', 'مقاس الملابس', 'استلم الطقم'];
+    const lines = clothingRows.map(c => [
+      c.name_ar || c.name || '',
+      c.employee_id || '',
+      c.specialization || '',
+      c.clothing_size || 'غير محدد',
+      c.clothing_received ? 'نعم' : 'لا',
+    ].map(v => `"${String(v).replace(/"/g, '""')}"`).join(','));
+    const csv = '\uFEFF' + [headers.join(','), ...lines].join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'coach-clothing-report.csv';
+    a.click();
+    URL.revokeObjectURL(url);
+  };
 
   return (
     <Layout>
@@ -462,6 +502,30 @@ const CoachAttendancePage = () => {
                     className="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
                     placeholder="مثال: كرة قدم، سباحة، لياقة بدنية"
                   />
+                </div>
+                <div className="grid grid-cols-2 gap-3 p-3 bg-purple-50 border border-purple-200 rounded-lg">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">مقاس الملابس</label>
+                    <select
+                      value={addCoachForm.clothing_size}
+                      onChange={e => setAddCoachForm({...addCoachForm, clothing_size: e.target.value})}
+                      className="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+                    >
+                      <option value="">— غير محدد —</option>
+                      {CLOTHING_SIZES.map(s => <option key={s} value={s}>{s}</option>)}
+                    </select>
+                  </div>
+                  <div className="flex items-end">
+                    <label className="flex items-center gap-2 cursor-pointer select-none py-2">
+                      <input
+                        type="checkbox"
+                        checked={!!addCoachForm.clothing_received}
+                        onChange={e => setAddCoachForm({...addCoachForm, clothing_received: e.target.checked})}
+                        className="w-4 h-4 accent-purple-600"
+                      />
+                      <span className="text-sm font-medium text-gray-700">استلم طقم الملابس</span>
+                    </label>
+                  </div>
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -643,6 +707,30 @@ const CoachAttendancePage = () => {
                     className="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                     placeholder="مثال: كرة قدم, سباحة"
                   />
+                </div>
+                <div className="grid grid-cols-2 gap-3 p-3 bg-purple-50 border border-purple-200 rounded-lg">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">مقاس الملابس</label>
+                    <select
+                      value={editCoachForm.clothing_size}
+                      onChange={e => setEditCoachForm({...editCoachForm, clothing_size: e.target.value})}
+                      className="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    >
+                      <option value="">— غير محدد —</option>
+                      {CLOTHING_SIZES.map(s => <option key={s} value={s}>{s}</option>)}
+                    </select>
+                  </div>
+                  <div className="flex items-end">
+                    <label className="flex items-center gap-2 cursor-pointer select-none py-2">
+                      <input
+                        type="checkbox"
+                        checked={!!editCoachForm.clothing_received}
+                        onChange={e => setEditCoachForm({...editCoachForm, clothing_received: e.target.checked})}
+                        className="w-4 h-4 accent-purple-600"
+                      />
+                      <span className="text-sm font-medium text-gray-700">استلم طقم الملابس</span>
+                    </label>
+                  </div>
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -837,10 +925,141 @@ const CoachAttendancePage = () => {
               <CalendarDays className="w-4 h-4 inline ml-1" />
               تقرير شهري
             </button>
+            <button
+              onClick={() => setView('clothing')}
+              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                view === 'clothing' ? 'bg-purple-500 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+              }`}
+            >
+              <FileText className="w-4 h-4 inline ml-1" />
+              الملابس
+            </button>
           </div>
         </div>
 
-        {view === 'daily' ? (
+        {view === 'clothing' ? (
+          <div className="bg-white rounded-xl shadow-sm border p-4 md:p-6">
+            <div className="flex flex-wrap items-center justify-between gap-3 mb-5">
+              <h2 className="text-lg font-bold text-gray-800 flex items-center gap-2">
+                <FileText className="w-5 h-5 text-purple-500" />
+                تقرير مقاسات الملابس والمستلمين
+              </h2>
+              <div className="flex gap-2 print:hidden">
+                <button
+                  onClick={exportClothingCSV}
+                  className="flex items-center gap-1.5 px-3 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 transition-colors"
+                >
+                  <FileSpreadsheet className="w-4 h-4" /> تصدير CSV
+                </button>
+                <button
+                  onClick={handlePrint}
+                  className="flex items-center gap-1.5 px-3 py-2 bg-gray-700 text-white rounded-lg text-sm font-medium hover:bg-gray-800 transition-colors"
+                >
+                  <Printer className="w-4 h-4" /> طباعة
+                </button>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
+              <div className="bg-gray-50 border rounded-lg p-3 text-center">
+                <p className="text-2xl font-bold text-gray-800">{coaches.length}</p>
+                <p className="text-xs text-gray-500 mt-1">إجمالي المدربين</p>
+              </div>
+              <div className="bg-green-50 border border-green-200 rounded-lg p-3 text-center">
+                <p className="text-2xl font-bold text-green-600">{clothingReceivedCount}</p>
+                <p className="text-xs text-gray-500 mt-1">استلموا الطقم</p>
+              </div>
+              <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-center">
+                <p className="text-2xl font-bold text-red-500">{coaches.length - clothingReceivedCount}</p>
+                <p className="text-xs text-gray-500 mt-1">لم يستلموا</p>
+              </div>
+              <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-center">
+                <p className="text-2xl font-bold text-amber-600">{clothingNoSizeCount}</p>
+                <p className="text-xs text-gray-500 mt-1">بدون مقاس محدد</p>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap gap-2 mb-4">
+              {CLOTHING_SIZES.filter(s => clothingSizeCounts[s] > 0).map(s => (
+                <span key={s} className="px-2.5 py-1 bg-purple-50 border border-purple-200 rounded-full text-xs font-medium text-purple-700">
+                  مقاس {s}: {clothingSizeCounts[s]}
+                </span>
+              ))}
+            </div>
+
+            <div className="flex flex-wrap gap-3 mb-4 print:hidden">
+              <select
+                value={clothingReceivedFilter}
+                onChange={e => setClothingReceivedFilter(e.target.value)}
+                className="border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-purple-500"
+              >
+                <option value="all">كل الحالات</option>
+                <option value="received">استلم الطقم</option>
+                <option value="not">لم يستلم</option>
+              </select>
+              <select
+                value={clothingSizeFilter}
+                onChange={e => setClothingSizeFilter(e.target.value)}
+                className="border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-purple-500"
+              >
+                <option value="all">كل المقاسات</option>
+                {CLOTHING_SIZES.map(s => <option key={s} value={s}>{s}</option>)}
+                <option value="__none__">بدون مقاس</option>
+              </select>
+              <span className="flex items-center text-sm text-gray-500">عدد النتائج: {clothingRows.length}</span>
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-gray-50 text-gray-600 text-right">
+                    <th className="px-4 py-3 font-medium">المدرب</th>
+                    <th className="px-4 py-3 font-medium">رقم الموظف</th>
+                    <th className="px-4 py-3 font-medium">التخصص</th>
+                    <th className="px-4 py-3 font-medium text-center">مقاس الملابس</th>
+                    <th className="px-4 py-3 font-medium text-center">استلم الطقم</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {clothingRows.length === 0 ? (
+                    <tr><td colSpan={5} className="px-4 py-8 text-center text-gray-400">لا توجد نتائج</td></tr>
+                  ) : clothingRows.map(c => (
+                    <tr key={c.id} className="border-t hover:bg-gray-50">
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-2">
+                          {c.photo ? (
+                            <img src={c.photo} alt="" className="w-8 h-8 rounded-full object-cover border" />
+                          ) : (
+                            <div className="w-8 h-8 rounded-full bg-purple-100 flex items-center justify-center text-purple-600 text-xs font-bold">
+                              {(c.name_ar || c.name || '?').charAt(0)}
+                            </div>
+                          )}
+                          <span className="font-medium text-gray-800">{c.name_ar || c.name}</span>
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 text-gray-600">{c.employee_id || '—'}</td>
+                      <td className="px-4 py-3 text-gray-600">{c.specialization || '—'}</td>
+                      <td className="px-4 py-3 text-center">
+                        {c.clothing_size ? (
+                          <span className="px-2 py-0.5 bg-purple-100 text-purple-700 rounded-full text-xs font-bold">{c.clothing_size}</span>
+                        ) : (
+                          <span className="text-gray-400 text-xs">غير محدد</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-center">
+                        {c.clothing_received ? (
+                          <span className="inline-flex items-center gap-1 text-green-600 font-medium"><CheckCircle className="w-4 h-4" /> نعم</span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 text-red-500 font-medium"><X className="w-4 h-4" /> لا</span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        ) : view === 'daily' ? (
           <>
             <div className="flex items-center justify-center gap-3 mb-6">
               <button onClick={() => changeDate(-1)} className="p-2 rounded-lg bg-gray-100 hover:bg-gray-200">
