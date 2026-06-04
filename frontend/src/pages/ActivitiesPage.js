@@ -350,17 +350,17 @@ export const ActivitiesPage = () => {
   }, [activities, searchTerm, filterBranch, filterCategory, filterStatus, filterPriceRange, sortBy, memberCounts, language]);
 
   const stats = useMemo(() => {
-    const totalMembers = Object.values(memberCounts).reduce((s, c) => s + c, 0);
-    const fees = activities.map(a => a.monthly_fee || 0);
+    const totalMembers = filteredActivities.reduce((s, a) => s + (memberCounts[a.id] || 0), 0);
+    const fees = filteredActivities.map(a => a.monthly_fee || 0);
     const avgFee = fees.length > 0 ? Math.round(fees.reduce((s, f) => s + f, 0) / fees.length) : 0;
     const maxFee = fees.length > 0 ? Math.max(...fees) : 0;
     return {
-      total: activities.length,
+      total: filteredActivities.length,
       totalMembers,
       avgFee,
       maxFee
     };
-  }, [activities, memberCounts]);
+  }, [filteredActivities, memberCounts]);
 
   if (loading) {
     return (
