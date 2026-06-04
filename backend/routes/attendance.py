@@ -918,7 +918,19 @@ async def get_today_summary(
             days = parse_schedule_days(act.get("schedule", ""))
             lvid_act = act.get("level_id", "")
             level_days = level_days_by_id.get(lvid_act, [])
-            if today_day in days or today_day in level_days:
+            # The member's own recorded training days (from their activity
+            # schedule) are authoritative. A level's days[] is the level's full
+            # weekly timetable — frequently every day of the week, because the
+            # same level hosts different sub-groups on different days — so it
+            # must NOT widen a member's expected days beyond their personal
+            # schedule (which previously made e.g. a Sun/Wed swimmer show up as
+            # "expected" every single day). Only fall back to the level's days
+            # when the member's schedule text has no parseable day names at all.
+            if days:
+                day_match = today_day in days
+            else:
+                day_match = today_day in level_days
+            if day_match:
                 scheduled_activities.append({
                     "activity_id": aid,
                     "activity_name": act.get("activity_name", ""),
