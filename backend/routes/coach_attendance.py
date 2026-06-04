@@ -133,6 +133,8 @@ async def check_in_coach(
     coach = await db.coaches.find_one({"id": req.coach_id}, {"_id": 0})
     if not coach:
         raise HTTPException(status_code=404, detail="Coach not found")
+    if coach.get("status") == "terminated":
+        raise HTTPException(status_code=400, detail="المدرب منتهي التعاقد ولا يمكن تسجيل حضوره")
 
     # Prevent IDOR: non-admins may only check in coaches in their own branch.
     # Coaches with no branch_id (legacy) remain visible to any branch.
@@ -235,6 +237,8 @@ async def mark_absent(
     coach = await db.coaches.find_one({"id": req.coach_id}, {"_id": 0})
     if not coach:
         raise HTTPException(status_code=404, detail="Coach not found")
+    if coach.get("status") == "terminated":
+        raise HTTPException(status_code=400, detail="المدرب منتهي التعاقد ولا يمكن تسجيل غيابه/إجازته")
 
     # Prevent IDOR: non-admins may only mark coaches in their own branch.
     # Coaches with no branch_id (legacy) remain visible to any branch.
@@ -804,6 +808,8 @@ async def qr_checkin_coach_by_code(employee_id: str):
     coach = await get_coach_by_employee_id(employee_id)
     if not coach:
         raise HTTPException(status_code=404, detail="المدرب غير موجود")
+    if coach.get("status") == "terminated":
+        raise HTTPException(status_code=400, detail="المدرب منتهي التعاقد")
 
     coach_id = coach["id"]
     now = get_saudi_now()
@@ -922,6 +928,8 @@ async def qr_checkin_coach(coach_id: str):
     coach = await db.coaches.find_one({"id": coach_id}, {"_id": 0})
     if not coach:
         raise HTTPException(status_code=404, detail="المدرب غير موجود")
+    if coach.get("status") == "terminated":
+        raise HTTPException(status_code=400, detail="المدرب منتهي التعاقد")
 
     coach_name = coach.get("name_ar", coach.get("name", ""))
 

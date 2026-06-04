@@ -4,7 +4,8 @@ import {
   Clock, LogIn, LogOut, UserX, Calendar, ChevronLeft, ChevronRight,
   FileText, Download, Edit2, Trash2, Save, X, AlertCircle, CheckCircle,
   Users, Timer, CalendarDays, UserPlus, Phone, Mail, QrCode, Printer,
-  FileSpreadsheet, TrendingUp, Award, AlarmClock, List, Camera
+  FileSpreadsheet, TrendingUp, Award, AlarmClock, List, Camera,
+  ArrowRightLeft, UserMinus, Archive
 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import axios from 'axios';
@@ -41,6 +42,13 @@ const CoachAttendancePage = () => {
   const [clothingReceivedFilter, setClothingReceivedFilter] = useState('all'); // all | received | not
   const [clothingSizeFilter, setClothingSizeFilter] = useState('all');
   const [deleteConfirm, setDeleteConfirm] = useState(null);
+  const [branches, setBranches] = useState([]); // for transfer dropdown
+  const [showTerminated, setShowTerminated] = useState(false); // archive view toggle
+  const [terminateCoach, setTerminateCoach] = useState(null); // coach being terminated
+  const [terminateForm, setTerminateForm] = useState({ termination_date: new Date().toISOString().split('T')[0], termination_reason: '' });
+  const [transferTarget, setTransferTarget] = useState(null); // coach being transferred
+  const [transferForm, setTransferForm] = useState({ new_branch_id: '', transfer_date: new Date().toISOString().split('T')[0] });
+  const [lifecycleBusy, setLifecycleBusy] = useState(false);
   const [qrCoach, setQrCoach] = useState(null); // coach whose QR is being shown
   const [scanCameraOpen, setScanCameraOpen] = useState(false);
   const [lateThreshold, setLateThreshold] = useState('09:00'); // وقت الحضور المعتاد
@@ -59,20 +67,22 @@ const CoachAttendancePage = () => {
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
+      const coachParams = { branch_filter: branchFilter };
+      if (showTerminated) coachParams.only_terminated = true;
       const [coachesRes, recordsRes] = await Promise.all([
-        axios.get('/api/coaches', { params: { branch_filter: branchFilter } }),
+        axios.get('/api/coaches', { params: coachParams }),
         axios.get('/api/coach-attendance', { params: { date: selectedDate, branch_filter: branchFilter } })
       ]);
       setCoaches(coachesRes.data);
       setRecords(recordsRes.data);
 
-      // Auto-assign employee_id to coaches that don't have one
+      // Auto-assign employee_id to coaches that don't have one (active view only)
       const withoutId = coachesRes.data.filter(c => !c.employee_id);
-      if (withoutId.length > 0) {
+      if (!showTerminated && withoutId.length > 0) {
         try {
           await axios.post('/api/coaches/assign-employee-ids');
           // Re-fetch coaches to get updated employee_ids
-          const refreshed = await axios.get('/api/coaches', { params: { branch_filter: branchFilter } });
+          const refreshed = await axios.get('/api/coaches', { params: coachParams });
           setCoaches(refreshed.data);
         } catch (_) {}
       }
@@ -80,7 +90,15 @@ const CoachAttendancePage = () => {
       showToast('حدث خطأ في تحميل البيانات', 'error');
     }
     setLoading(false);
-  }, [selectedDate, branchFilter]);
+  }, [selectedDate, branchFilter, showTerminated]);
+
+  useEffect(() => {
+    let active = true;
+    axios.get('/api/branches')
+      .then(res => { if (active) setBranches(res.data || []); })
+      .catch(() => {});
+    return () => { active = false; };
+  }, []);
 
   const fetchMonthlyReport = useCallback(async () => {
     setLoading(true);
@@ -334,6 +352,61 @@ const CoachAttendancePage = () => {
     } catch (error) {
       showToast(error.response?.data?.detail || 'حدث خطأ أثناء حذف المدرب', 'error');
     }
+  };
+
+  const handleTerminateCoach = async () => {
+    if (!terminateCoach) return;
+    setLifecycleBusy(true);
+    try {
+      await axios.post(`/api/coaches/${terminateCoach.id}/terminate`, {
+        termination_date: terminateForm.termination_date || null,
+        termination_reason: terminateForm.termination_reason.trim(),
+      });
+      showToast('تم إنهاء تعاقد المدرب');
+      setTerminateCoach(null);
+      fetchData();
+    } catch (error) {
+      showToast(error.response?.data?.detail || 'حدث خطأ أثناء إنهاء التعاقد', 'error');
+    }
+    setLifecycleBusy(false);
+  };
+
+  const handleReactivateCoach = async (coach) => {
+    setLifecycleBusy(true);
+    try {
+      await axios.post(`/api/coaches/${coach.id}/reactivate`, {});
+      showToast('تمت إعادة تفعيل المدرب');
+      fetchData();
+    } catch (error) {
+      showToast(error.response?.data?.detail || 'حدث خطأ أثناء إعادة التفعيل', 'error');
+    }
+    setLifecycleBusy(false);
+  };
+
+  const handleTransferCoach = async () => {
+    if (!transferTarget) return;
+    if (!transferForm.new_branch_id) {
+      showToast('اختر الفرع الجديد', 'error');
+      return;
+    }
+    setLifecycleBusy(true);
+    try {
+      await axios.post(`/api/coaches/${transferTarget.id}/transfer`, {
+        new_branch_id: transferForm.new_branch_id,
+        transfer_date: transferForm.transfer_date || null,
+      });
+      showToast('تم نقل المدرب للفرع الجديد');
+      setTransferTarget(null);
+      fetchData();
+    } catch (error) {
+      showToast(error.response?.data?.detail || 'حدث خطأ أثناء نقل المدرب', 'error');
+    }
+    setLifecycleBusy(false);
+  };
+
+  const branchName = (id) => {
+    const b = branches.find(x => x.id === id);
+    return b ? (b.name_ar || b.name || id) : (id || '—');
   };
 
   const exportCSV = () => {
@@ -884,6 +957,112 @@ const CoachAttendancePage = () => {
           </div>
         )}
 
+        {terminateCoach && (
+          <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => !lifecycleBusy && setTerminateCoach(null)}>
+            <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm" onClick={e => e.stopPropagation()}>
+              <div className="p-6">
+                <div className="text-center mb-4">
+                  <div className="w-14 h-14 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-3">
+                    <UserMinus className="w-7 h-7 text-amber-500" />
+                  </div>
+                  <h3 className="text-lg font-bold text-gray-800 mb-1">إنهاء التعاقد</h3>
+                  <p className="font-bold text-gray-800">{terminateCoach.name_ar || terminateCoach.name}</p>
+                  <p className="text-xs text-gray-500 mt-2">سيتم أرشفة المدرب مع الاحتفاظ بكامل سجله. يمكن إعادة تفعيله لاحقاً.</p>
+                </div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">تاريخ إنهاء التعاقد</label>
+                <input
+                  type="date"
+                  value={terminateForm.termination_date}
+                  onChange={e => setTerminateForm(f => ({ ...f, termination_date: e.target.value }))}
+                  className="w-full border rounded-lg px-3 py-2 mb-3 text-sm"
+                />
+                <label className="block text-sm font-medium text-gray-700 mb-1">سبب إنهاء التعاقد (اختياري)</label>
+                <textarea
+                  value={terminateForm.termination_reason}
+                  onChange={e => setTerminateForm(f => ({ ...f, termination_reason: e.target.value }))}
+                  rows={3}
+                  className="w-full border rounded-lg px-3 py-2 mb-4 text-sm"
+                  placeholder="مثال: استقالة، انتهاء العقد..."
+                />
+                <div className="flex gap-3">
+                  <button
+                    onClick={handleTerminateCoach}
+                    disabled={lifecycleBusy}
+                    className="flex-1 bg-amber-500 text-white py-2.5 rounded-lg font-medium hover:bg-amber-600 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+                  >
+                    <UserMinus className="w-4 h-4" />
+                    {lifecycleBusy ? 'جاري...' : 'إنهاء التعاقد'}
+                  </button>
+                  <button
+                    onClick={() => setTerminateCoach(null)}
+                    disabled={lifecycleBusy}
+                    className="flex-1 bg-gray-200 text-gray-700 py-2.5 rounded-lg font-medium hover:bg-gray-300 transition-colors disabled:opacity-50"
+                  >
+                    إلغاء
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {transferTarget && (
+          <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => !lifecycleBusy && setTransferTarget(null)}>
+            <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm" onClick={e => e.stopPropagation()}>
+              <div className="p-6">
+                <div className="text-center mb-4">
+                  <div className="w-14 h-14 bg-purple-100 rounded-full flex items-center justify-center mx-auto mb-3">
+                    <ArrowRightLeft className="w-7 h-7 text-purple-500" />
+                  </div>
+                  <h3 className="text-lg font-bold text-gray-800 mb-1">نقل لفرع آخر</h3>
+                  <p className="font-bold text-gray-800">{transferTarget.name_ar || transferTarget.name}</p>
+                  <p className="text-xs text-gray-500 mt-2">الفرع الحالي: {branchName(transferTarget.branch_id)}</p>
+                </div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">الفرع الجديد</label>
+                <select
+                  value={transferForm.new_branch_id}
+                  onChange={e => setTransferForm(f => ({ ...f, new_branch_id: e.target.value }))}
+                  className="w-full border rounded-lg px-3 py-2 mb-3 text-sm"
+                >
+                  <option value="">— اختر الفرع —</option>
+                  {branches
+                    .filter(b => b.id !== transferTarget.branch_id)
+                    .map(b => (
+                      <option key={b.id} value={b.id}>{b.name_ar || b.name}</option>
+                    ))}
+                </select>
+                <label className="block text-sm font-medium text-gray-700 mb-1">تاريخ النقل</label>
+                <input
+                  type="date"
+                  value={transferForm.transfer_date}
+                  onChange={e => setTransferForm(f => ({ ...f, transfer_date: e.target.value }))}
+                  className="w-full border rounded-lg px-3 py-2 mb-3 text-sm"
+                />
+                <p className="text-xs text-amber-600 bg-amber-50 rounded-lg px-3 py-2 mb-4">
+                  راتب الشهر الحالي بالكامل سيُحتسب على الفرع الجديد. الأشهر السابقة تبقى على الفرع القديم.
+                </p>
+                <div className="flex gap-3">
+                  <button
+                    onClick={handleTransferCoach}
+                    disabled={lifecycleBusy}
+                    className="flex-1 bg-purple-500 text-white py-2.5 rounded-lg font-medium hover:bg-purple-600 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+                  >
+                    <ArrowRightLeft className="w-4 h-4" />
+                    {lifecycleBusy ? 'جاري...' : 'نقل المدرب'}
+                  </button>
+                  <button
+                    onClick={() => setTransferTarget(null)}
+                    disabled={lifecycleBusy}
+                    className="flex-1 bg-gray-200 text-gray-700 py-2.5 rounded-lg font-medium hover:bg-gray-300 transition-colors disabled:opacity-50"
+                  >
+                    إلغاء
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
           <div className="flex items-center gap-3">
             <h1 className="text-2xl font-bold text-gray-800 flex items-center gap-2">
@@ -904,6 +1083,16 @@ const CoachAttendancePage = () => {
             >
               <Camera className="w-4 h-4" />
               مسح كود المدرب
+            </button>
+            <button
+              onClick={() => setShowTerminated(v => !v)}
+              className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors flex items-center gap-1 ${
+                showTerminated ? 'bg-amber-500 text-white hover:bg-amber-600' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+              }`}
+              title="عرض المدربين منتهي تعاقدهم (الأرشيف)"
+            >
+              <Archive className="w-4 h-4" />
+              {showTerminated ? 'عرض النشطين' : 'المنتهية'}
             </button>
           </div>
           <div className="flex gap-2">
@@ -1161,6 +1350,39 @@ const CoachAttendancePage = () => {
                               >
                                 <Edit2 className="w-3.5 h-3.5" />
                               </button>
+                              {coach.status === 'terminated' ? (
+                                <button
+                                  onClick={() => handleReactivateCoach(coach)}
+                                  disabled={lifecycleBusy}
+                                  className="p-1 text-gray-400 hover:text-green-600 rounded hover:bg-green-50 disabled:opacity-50"
+                                  title="إعادة تفعيل المدرب"
+                                >
+                                  <CheckCircle className="w-3.5 h-3.5" />
+                                </button>
+                              ) : (
+                                <>
+                                  <button
+                                    onClick={() => {
+                                      setTransferTarget(coach);
+                                      setTransferForm({ new_branch_id: '', transfer_date: new Date().toISOString().split('T')[0] });
+                                    }}
+                                    className="p-1 text-gray-400 hover:text-purple-600 rounded hover:bg-purple-50"
+                                    title="نقل لفرع آخر"
+                                  >
+                                    <ArrowRightLeft className="w-3.5 h-3.5" />
+                                  </button>
+                                  <button
+                                    onClick={() => {
+                                      setTerminateCoach(coach);
+                                      setTerminateForm({ termination_date: new Date().toISOString().split('T')[0], termination_reason: '' });
+                                    }}
+                                    className="p-1 text-gray-400 hover:text-amber-600 rounded hover:bg-amber-50"
+                                    title="إنهاء التعاقد (أرشفة)"
+                                  >
+                                    <UserMinus className="w-3.5 h-3.5" />
+                                  </button>
+                                </>
+                              )}
                               <button
                                 onClick={() => setDeleteConfirm(coach)}
                                 className="p-1 text-gray-400 hover:text-red-500 rounded hover:bg-red-50"
@@ -1172,7 +1394,19 @@ const CoachAttendancePage = () => {
                           </div>
                         </div>
 
-                        {record ? (
+                        {coach.status === 'terminated' ? (
+                          <div className="flex flex-col items-end gap-1">
+                            <span className="text-xs bg-amber-100 text-amber-700 px-2 py-1 rounded-full flex items-center gap-1">
+                              <Archive className="w-3 h-3" /> منتهي التعاقد
+                            </span>
+                            {coach.termination_date && (
+                              <span className="text-[11px] text-gray-400">بتاريخ: {coach.termination_date}</span>
+                            )}
+                            {coach.termination_reason && (
+                              <span className="text-[11px] text-gray-400">السبب: {coach.termination_reason}</span>
+                            )}
+                          </div>
+                        ) : record ? (
                           <div className="flex items-center gap-2 flex-wrap">
                             {getStatusBadge(record.status)}
                             {record.check_in_time && (

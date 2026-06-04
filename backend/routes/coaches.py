@@ -51,6 +51,21 @@ class Coach(CoachBase):
     employee_id: Optional[str] = None
     branch_id: Optional[str] = None
     created_at: str
+    # Lifecycle fields — managed only by dedicated endpoints (not normal edit)
+    status: Optional[str] = "active"          # "active" | "terminated"
+    termination_date: Optional[str] = None
+    termination_reason: Optional[str] = None
+    transfers: Optional[List[dict]] = []
+
+
+class TerminateRequest(BaseModel):
+    termination_date: Optional[str] = None
+    termination_reason: Optional[str] = ""
+
+
+class TransferRequest(BaseModel):
+    new_branch_id: str
+    transfer_date: Optional[str] = None
 
 
 async def get_next_employee_id() -> str:
@@ -74,6 +89,8 @@ async def get_next_employee_id() -> str:
 @router.get("", response_model=List[Coach])
 async def get_coaches(
     branch_filter: Optional[str] = None,
+    include_terminated: bool = False,
+    only_terminated: bool = False,
     current_user: dict = Depends(get_current_user)
 ):
     is_admin = current_user.get("is_admin", False)
@@ -81,18 +98,34 @@ async def get_coaches(
     # Coaches without a branch (shared/legacy) are visible to everyone, hence the $or.
     effective_branch = resolve_branch_filter(current_user, branch_filter)
 
-    cache_key = f"coaches:{'admin' if is_admin else 'user'}:{effective_branch or 'all'}"
+    # Status scope: active-only (default), all, or terminated-only (archive view).
+    if only_terminated:
+        status_scope = "term"
+    elif include_terminated:
+        status_scope = "all"
+    else:
+        status_scope = "active"
+
+    cache_key = f"coaches:{'admin' if is_admin else 'user'}:{effective_branch or 'all'}:{status_scope}"
     cached = cache_get(cache_key)
     if cached is not None:
         return cached
 
-    if effective_branch:
-        coaches = await db.coaches.find(
-            {"$or": [{"branch_id": effective_branch}, {"branch_id": None}, {"branch_id": {"$exists": False}}]},
-            {"_id": 0}
-        ).to_list(100)
+    if only_terminated:
+        status_filter = {"status": "terminated"}
+    elif include_terminated:
+        status_filter = {}
     else:
-        coaches = await db.coaches.find({}, {"_id": 0}).to_list(100)
+        # Treat missing/null status as active (legacy docs predate the field).
+        status_filter = {"status": {"$ne": "terminated"}}
+
+    if effective_branch:
+        branch_clause = {"$or": [{"branch_id": effective_branch}, {"branch_id": None}, {"branch_id": {"$exists": False}}]}
+        query = {**status_filter, **branch_clause} if status_filter else branch_clause
+    else:
+        query = status_filter
+
+    coaches = await db.coaches.find(query, {"_id": 0}).to_list(100)
     cache_set(cache_key, coaches, ttl=600)
     return coaches
 
@@ -179,6 +212,110 @@ async def delete_coach(coach_id: str, current_user: dict = Depends(get_current_u
         raise HTTPException(status_code=404, detail="Coach not found")
     cache_invalidate("coaches:")
     return {"message": "Coach deleted"}
+
+
+async def _get_coach_scoped(coach_id: str, current_user: dict) -> dict:
+    """Fetch a coach, enforcing branch scope for non-admins.
+    Coaches with no branch_id (legacy/shared) remain accessible to any branch."""
+    coach = await db.coaches.find_one({"id": coach_id}, {"_id": 0})
+    if not coach:
+        raise HTTPException(status_code=404, detail="Coach not found")
+    if not current_user.get("is_admin", False):
+        user_branch = require_branch_scope(current_user)
+        coach_branch = coach.get("branch_id")
+        if coach_branch is not None and coach_branch != user_branch:
+            raise HTTPException(status_code=404, detail="Coach not found")
+    return coach
+
+
+@router.post("/{coach_id}/terminate")
+async def terminate_coach(
+    coach_id: str,
+    req: TerminateRequest,
+    current_user: dict = Depends(get_current_user)
+):
+    """End a coach's contract (archive). Keeps all history; hides the coach from
+    the default active list. Reversible via /reactivate."""
+    await _get_coach_scoped(coach_id, current_user)
+    term_date = (req.termination_date or "").strip() or datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    await db.coaches.update_one(
+        {"id": coach_id},
+        {"$set": {
+            "status": "terminated",
+            "termination_date": term_date,
+            "termination_reason": (req.termination_reason or "").strip(),
+        }}
+    )
+    cache_invalidate("coaches:")
+    return {"message": "تم إنهاء تعاقد المدرب", "status": "terminated", "termination_date": term_date}
+
+
+@router.post("/{coach_id}/reactivate")
+async def reactivate_coach(coach_id: str, current_user: dict = Depends(get_current_user)):
+    """Re-activate a previously terminated coach."""
+    await _get_coach_scoped(coach_id, current_user)
+    await db.coaches.update_one(
+        {"id": coach_id},
+        {
+            "$set": {"status": "active"},
+            "$unset": {"termination_date": "", "termination_reason": ""},
+        }
+    )
+    cache_invalidate("coaches:")
+    return {"message": "تمت إعادة تفعيل المدرب", "status": "active"}
+
+
+@router.post("/{coach_id}/transfer")
+async def transfer_coach(
+    coach_id: str,
+    req: TransferRequest,
+    current_user: dict = Depends(get_current_user)
+):
+    """Transfer a coach to another branch. The current month's attendance and any
+    non-disbursed salary draft move to the new branch (current-month salary →
+    new branch); earlier months stay with the old branch for history integrity."""
+    coach = await _get_coach_scoped(coach_id, current_user)
+    new_branch = (req.new_branch_id or "").strip()
+    if not new_branch or new_branch == "all":
+        raise HTTPException(status_code=400, detail="يجب اختيار الفرع الجديد")
+    old_branch = coach.get("branch_id")
+    if new_branch == old_branch:
+        raise HTTPException(status_code=400, detail="المدرب موجود بالفعل في هذا الفرع")
+    branch_exists = await db.branches.find_one({"id": new_branch}, {"_id": 1})
+    if not branch_exists:
+        raise HTTPException(status_code=400, detail="الفرع الجديد غير موجود")
+
+    transfer_date = (req.transfer_date or "").strip() or datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    month = transfer_date[:7]  # YYYY-MM
+
+    transfer_entry = {
+        "from_branch_id": old_branch,
+        "to_branch_id": new_branch,
+        "transfer_date": transfer_date,
+        "by": current_user.get("username") or current_user.get("id"),
+        "at": datetime.now(timezone.utc).isoformat(),
+    }
+    await db.coaches.update_one(
+        {"id": coach_id},
+        {"$set": {"branch_id": new_branch}, "$push": {"transfers": transfer_entry}}
+    )
+
+    # Move the current month entirely to the new branch.
+    await db.coach_attendance.update_many(
+        {"coach_id": coach_id, "date": {"$regex": f"^{month}"}},
+        {"$set": {"branch_id": new_branch}}
+    )
+    await db.coach_salaries.update_many(
+        {"coach_id": coach_id, "year_month": month, "status": {"$ne": "disbursed"}},
+        {"$set": {"branch_id": new_branch}}
+    )
+
+    cache_invalidate("coaches:")
+    return {
+        "message": "تم نقل المدرب للفرع الجديد",
+        "new_branch_id": new_branch,
+        "transfer_date": transfer_date,
+    }
 
 
 @router.post("/migrate-activities-to-specialization")
