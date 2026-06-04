@@ -324,8 +324,27 @@ async def set_level_active(
 
 @router.delete("/{level_id}")
 async def delete_level(level_id: str, current_user: dict = Depends(get_current_user)):
-    result = await db.levels.delete_one({"id": level_id})
+    # Branch-scope the destructive delete: non-admins may only delete levels in
+    # their own branch (or shared branchless levels). A foreign-branch id returns
+    # 403 (not 404) so we don't silently no-op a cross-branch deletion attempt.
+    require_branch_scope(current_user)
+    user_branch = None
+    if not (current_user or {}).get("is_admin", False):
+        user_branch = (current_user or {}).get("branch_id")
+
+    filter_doc = {"id": level_id}
+    if user_branch:
+        filter_doc["$or"] = [
+            {"branch_id": user_branch},
+            {"branch_id": None},
+            {"branch_id": {"$exists": False}},
+        ]
+
+    result = await db.levels.delete_one(filter_doc)
     if result.deleted_count == 0:
+        exists = await db.levels.find_one({"id": level_id}, {"_id": 0, "id": 1})
+        if exists:
+            raise HTTPException(status_code=403, detail="Forbidden: level belongs to another branch")
         raise HTTPException(status_code=404, detail="Level not found")
     # Clear any dangling references to this level from member activities so the
     # members don't end up stuck as "present without level" on the live board

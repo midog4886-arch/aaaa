@@ -48,8 +48,8 @@ of that bucket — not unassigned members.
 re-place such members you must FIRST blank the orphaned `level_id` (set to `""`)
 so the member becomes net-new, THEN run auto-assign.
 
-**Fix in place:** `delete_level` now clears the reference on delete via
-`update_many({"activities.level_id": id}, {"$set": {"activities.$[elem].level_id": ""}}, array_filters=[{"elem.level_id": id}])`.
-**Why:** a deleted level_id can never match again, so leaving it strands the member.
-**Note (open):** `delete_level` itself still has no branch-scope authorization
-(pre-existing) — a hardening worth doing separately.
+**Fix in place:** `delete_level` clears the orphaned reference on delete (blanks
+`activities[].level_id`). **Why:** a deleted level_id can never match again, so
+leaving it strands the member. Deleting a level is also branch-scoped (same
+fail-closed pattern as cleanup/bulk): non-admins can only delete their own-branch
+or shared-branchless levels; foreign-branch attempts are rejected.
