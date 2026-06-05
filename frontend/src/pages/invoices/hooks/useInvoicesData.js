@@ -39,7 +39,7 @@ export const useInvoicesData = (t) => {
       ] = await Promise.all([
         invoicesAPI.getAll(branchParams),
         membersAPI.getAll(branchParams),
-        activitiesAPI.getAll(),
+        activitiesAPI.getAll(branchParams),
         productsAPI.getAll(branchParams),
         branchesAPI.getAll(),
         registrationFormsAPI.getAll(branchParams),

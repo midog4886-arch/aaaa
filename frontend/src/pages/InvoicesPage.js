@@ -78,7 +78,7 @@ export const InvoicesPage = () => {
     try {
       const branchParams = selectedBranchId && selectedBranchId !== 'all' ? { branch_filter: selectedBranchId } : {};
       const [invRes, memRes, actRes, prodRes, brRes, rfRes, cnRes, lvRes, coachRes, loyPtsRes, loyLvlRes] = await Promise.all([
-        invoicesAPI.getAll(branchParams), membersAPI.getAll(branchParams), activitiesAPI.getAll(), productsAPI.getAll(branchParams),
+        invoicesAPI.getAll(branchParams), membersAPI.getAll(branchParams), activitiesAPI.getAll(branchParams), productsAPI.getAll(branchParams),
         branchesAPI.getAll(), registrationFormsAPI.getAll(branchParams), creditNotesAPI.getAll(branchParams), levelsAPI.getAll(branchParams),
         coachesAPI.getAll().catch(() => ({ data: [] })),
         fetch('/api/loyalty/settings/points').then(r => r.ok ? r.json() : null).catch(() => null),
