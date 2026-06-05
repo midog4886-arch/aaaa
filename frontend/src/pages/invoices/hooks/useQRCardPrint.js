@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { getMemberQRValue } from '../../../utils/memberQR';
+import { toWhatsAppNumber } from '../../../utils/whatsapp';
 
 export const useQRCardPrint = ({ language }) => {
   const [isQRCardDialogOpen, setIsQRCardDialogOpen] = useState(false);
@@ -37,7 +38,7 @@ export const useQRCardPrint = ({ language }) => {
 
   const handleSendQRCardWhatsApp = async () => {
     if (!qrCardMember) return;
-    const phone = qrCardMember.phone?.replace(/^0/, '966') || '';
+    const phone = toWhatsAppNumber(qrCardMember.phone);
     if (!phone) { toast.error(language === 'ar' ? 'لا يوجد رقم جوال' : 'No phone number'); return; }
     const qrData = getMemberQRValue(qrCardMember.member_code);
     try {

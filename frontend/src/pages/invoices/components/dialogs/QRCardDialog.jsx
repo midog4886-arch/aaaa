@@ -1,13 +1,23 @@
 import React from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '../../../../components/ui/dialog';
 import { Button } from '../../../../components/ui/button';
-import { MessageSquare, QrCode } from 'lucide-react';
+import { MessageSquare, MessageCircle, QrCode } from 'lucide-react';
 import { getMemberQRValue } from '../../../../utils/memberQR';
+import { whatsappChatUrl } from '../../../../utils/whatsapp';
+import { toast } from 'sonner';
 
 export const QRCardDialog = ({
   isOpen, onOpenChange, qrCardMember,
   onPrint, onSendWhatsApp, language
 }) => {
+  const openChat = () => {
+    const url = whatsappChatUrl(qrCardMember?.phone);
+    if (!url) {
+      toast.error(language === 'ar' ? 'لا يوجد رقم جوال لهذا العضو' : 'No phone number for this member');
+      return;
+    }
+    window.open(url, '_blank', 'noopener,noreferrer');
+  };
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-sm" dir="rtl">
@@ -34,9 +44,13 @@ export const QRCardDialog = ({
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             {language === 'ar' ? 'إغلاق' : 'Close'}
           </Button>
+          <Button variant="outline" className="text-green-600 border-green-400" onClick={openChat}>
+            <MessageCircle className="w-4 h-4 me-2" />
+            {language === 'ar' ? 'فتح المحادثة' : 'Open chat'}
+          </Button>
           <Button variant="outline" className="text-green-600 border-green-400" onClick={onSendWhatsApp}>
             <MessageSquare className="w-4 h-4 me-2" />
-            {language === 'ar' ? 'واتساب' : 'WhatsApp'}
+            {language === 'ar' ? 'إرسال البطاقة' : 'Send card'}
           </Button>
           <Button onClick={onPrint}>
             <QrCode className="w-4 h-4 me-2" />

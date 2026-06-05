@@ -16,6 +16,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '../components/ui/popove
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '../components/ui/command';
 import { Textarea } from '../components/ui/textarea';
 import { membersAPI, activitiesAPI, coachesAPI, exportAPI, invoicesAPI, attendanceAPI, levelsAPI, productInvoicesAPI, freezesAPI, tournamentsAPI, whatsappAPI, dayExtensionsAPI } from '../services/api';
+import { whatsappChatUrl } from '../utils/whatsapp';
 import { toast } from 'sonner';
 import { 
   Plus, 
@@ -1637,7 +1638,7 @@ export const MembersPage = () => {
                             </button>
                             {member.phone && (
                               <a
-                                href={`https://wa.me/966${member.phone?.replace(/^0/, '')}`}
+                                href={whatsappChatUrl(member.phone)}
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 className="text-green-600 hover:text-green-700 p-1 rounded hover:bg-green-50 transition-colors"
@@ -2483,7 +2484,7 @@ export const MembersPage = () => {
                           <p className="font-medium" dir="ltr">{selectedMember.phone}</p>
                           {selectedMember.phone && (
                             <a
-                              href={`https://wa.me/966${selectedMember.phone?.replace(/^0/, '')}`}
+                              href={whatsappChatUrl(selectedMember.phone)}
                               target="_blank"
                               rel="noopener noreferrer"
                               className="text-green-600 hover:text-green-700 p-1 rounded hover:bg-green-50 transition-colors"
