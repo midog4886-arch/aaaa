@@ -15,6 +15,19 @@ import { MAIN_ACTIVITIES_FOR_LEVELS } from '../../constants';
 import { membersAPI, levelsAPI } from '../../../../services/api';
 import { toast } from 'sonner';
 
+// Strict per-branch isolation for invoice activity dropdowns.
+// When the target branch has its own activities, show ONLY those and hide
+// legacy/global (no-branch) activities so each branch sees its own prices.
+// Fall back to global activities only when the branch has none of its own,
+// so single-branch tenants whose activities are all global still work.
+const scopeActivitiesToBranch = (activities, branchId) => {
+  const withId = (activities || []).filter(a => a && a.id);
+  if (!branchId) return withId;
+  const branchOnly = withId.filter(a => (a.branch_id || '') === branchId);
+  if (branchOnly.length > 0) return branchOnly;
+  return withId.filter(a => !(a.branch_id || ''));
+};
+
 const MemberCombobox = ({ members, selectedMember, handleMemberSelect, language }) => {
   const [open, setOpen] = React.useState(false);
   const list = (members || []).filter(m => m.id);
@@ -209,12 +222,7 @@ export const CreateEditInvoiceDialog = ({
                       return { dot: 'bg-gray-400', text: 'text-gray-700', icon: '📋' };
                     };
                     const memberBranch = selectedMember?.branch_id || '';
-                    const visibleActivities = (activities || []).filter(a => {
-                      if (!a.id) return false;
-                      if (!memberBranch) return true;
-                      const ab = a.branch_id || '';
-                      return !ab || ab === memberBranch;
-                    });
+                    const visibleActivities = scopeActivitiesToBranch(activities, memberBranch);
                     if (visibleActivities.length === 0) {
                       return (
                         <SelectItem value="none" disabled>
@@ -591,12 +599,7 @@ export const CreateEditInvoiceDialog = ({
                                   return { dot: 'bg-gray-400', text: 'text-gray-700', icon: '📋' };
                                 };
                                 const amBranch = am.member?.branch_id || '';
-                                const visibleActs = (activities || []).filter(a => {
-                                  if (!a.id) return false;
-                                  if (!amBranch) return true;
-                                  const ab = a.branch_id || '';
-                                  return !ab || ab === amBranch;
-                                });
+                                const visibleActs = scopeActivitiesToBranch(activities, amBranch);
                                 if (visibleActs.length === 0) {
                                   return (
                                     <SelectItem value="none" disabled>
