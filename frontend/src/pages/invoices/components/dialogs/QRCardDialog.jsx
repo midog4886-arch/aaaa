@@ -50,7 +50,7 @@ export const QRCardDialog = ({
           </Button>
           <Button variant="outline" className="text-green-600 border-green-400" onClick={onSendWhatsApp}>
             <MessageSquare className="w-4 h-4 me-2" />
-            {language === 'ar' ? 'إرسال البطاقة' : 'Send card'}
+            {language === 'ar' ? 'إرسال QR' : 'Send QR'}
           </Button>
           <Button onClick={onPrint}>
             <QrCode className="w-4 h-4 me-2" />

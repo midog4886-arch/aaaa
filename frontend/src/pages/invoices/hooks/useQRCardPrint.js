@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { getMemberQRValue } from '../../../utils/memberQR';
-import { toWhatsAppNumber } from '../../../utils/whatsapp';
+import { toWhatsAppNumber, whatsappChatUrl } from '../../../utils/whatsapp';
 
 export const useQRCardPrint = ({ language }) => {
   const [isQRCardDialogOpen, setIsQRCardDialogOpen] = useState(false);
@@ -36,74 +36,24 @@ export const useQRCardPrint = ({ language }) => {
     printWindow.document.close();
   };
 
+  // Send the QR straight to the member's WhatsApp chat. wa.me cannot attach a
+  // file, so we send a pre-filled message that includes a public link to the
+  // member's QR image — this opens the chat directly (no OS share sheet).
   const handleSendQRCardWhatsApp = async () => {
     if (!qrCardMember) return;
     const phone = toWhatsAppNumber(qrCardMember.phone);
     if (!phone) { toast.error(language === 'ar' ? 'لا يوجد رقم جوال' : 'No phone number'); return; }
     const qrData = getMemberQRValue(qrCardMember.member_code);
-    try {
-      const canvas = document.createElement('canvas');
-      canvas.width = 400; canvas.height = 500;
-      const ctx = canvas.getContext('2d');
-      ctx.fillStyle = 'white'; ctx.fillRect(0, 0, 400, 500);
-      ctx.fillStyle = '#F97316'; ctx.font = 'bold 18px Tajawal, sans-serif'; ctx.textAlign = 'center';
-      ctx.fillText('🏆 شركة اداء الابطال العالمية للرياضة', 200, 35);
-      const QRCode = await import('qrcode');
-      const qrDataUrl = await QRCode.toDataURL(qrData, { width: 280, margin: 2 });
-      const qrImg = new Image();
-      qrImg.onload = () => {
-        ctx.drawImage(qrImg, 60, 60, 280, 280);
-        ctx.fillStyle = '#1f2937'; ctx.font = 'bold 22px Tajawal, sans-serif';
-        ctx.fillText(qrCardMember.name_ar || '', 200, 380);
-        ctx.fillStyle = '#F97316'; ctx.font = 'bold 28px Tajawal, sans-serif';
-        ctx.fillText('#' + qrCardMember.member_code, 200, 420);
-        ctx.fillStyle = '#9ca3af'; ctx.font = '14px Tajawal, sans-serif';
-        ctx.fillText('امسح الكود عند الدخول لتسجيل الحضور', 200, 470);
-        canvas.toBlob(async (blob) => {
-          if (!blob) {
-            toast.error(language === 'ar' ? 'تعذّر إنشاء الصورة' : 'Failed to create image');
-            return;
-          }
-          const fileName = `qr-${qrCardMember.member_code}.png`;
-          const memberLang = qrCardMember.preferred_language === 'en' ? 'en' : 'ar';
-          const caption = memberLang === 'en'
-            ? `🏆 *Champions Academy*\n━━━━━━━━━━━━━━\n🎫 *Membership Card*\n\n👤 *Name:* ${qrCardMember.name_ar}\n🔢 *Member No.:* #${qrCardMember.member_code}\n\nScan the code at the academy entrance ✅`
-            : `🏆 *شركة اداء الابطال العالمية للرياضة*\n━━━━━━━━━━━━━━\n🎫 *بطاقة العضوية*\n\n👤 *الاسم:* ${qrCardMember.name_ar}\n🔢 *رقم العضوية:* #${qrCardMember.member_code}\n\nامسح الكود عند الدخول للأكاديمية ✅`;
-          try {
-            const file = new File([blob], fileName, { type: 'image/png' });
-            if (navigator.canShare && navigator.canShare({ files: [file] })) {
-              await navigator.share({ files: [file], text: caption, title: 'بطاقة العضوية' });
-              toast.success(language === 'ar' ? 'تمت المشاركة' : 'Shared successfully');
-              setIsQRCardDialogOpen(false);
-              return;
-            }
-          } catch (shareErr) {
-            if (shareErr && shareErr.name === 'AbortError') return;
-            console.warn('Web Share failed, falling back:', shareErr);
-          }
-          try {
-            const url = URL.createObjectURL(blob);
-            const link = document.createElement('a');
-            link.href = url; link.download = fileName; link.click();
-            setTimeout(() => URL.revokeObjectURL(url), 1000);
-            const fallbackMessage = memberLang === 'en'
-              ? `${caption}\n\n📥 The QR image was downloaded to your device as ${fileName} — please attach it manually with this message in WhatsApp.`
-              : `${caption}\n\n📥 تم تنزيل صورة QR على جهازك باسم ${fileName} — يرجى إرفاقها يدوياً مع هذه الرسالة في واتساب.`;
-            window.open(`https://wa.me/${phone}?text=${encodeURIComponent(fallbackMessage)}`, '_blank');
-            toast.success(language === 'ar' ? 'تم تنزيل الصورة - أرفقها يدوياً في واتساب' : 'Image downloaded - attach it manually in WhatsApp');
-            setIsQRCardDialogOpen(false);
-          } catch (fbErr) {
-            console.error('Fallback share failed:', fbErr);
-            toast.error(language === 'ar' ? 'تعذّر تنزيل الصورة' : 'Failed to download image');
-          }
-        }, 'image/png');
-      };
-      qrImg.src = qrDataUrl;
-    } catch (err) {
-      console.error('Error generating QR:', err);
-      toast.error(language === 'ar' ? 'خطأ في إنشاء الصورة' : 'Error creating image');
-      setIsQRCardDialogOpen(false);
-    }
+    const qrImageUrl = `https://api.qrserver.com/v1/create-qr-code/?size=400x400&margin=10&data=${encodeURIComponent(qrData)}`;
+    const memberLang = qrCardMember.preferred_language === 'en' ? 'en' : 'ar';
+    const caption = memberLang === 'en'
+      ? `🏆 *Champions Academy*\n━━━━━━━━━━━━━━\n🎫 *Membership QR Card*\n\n👤 *Name:* ${qrCardMember.name_ar}\n🔢 *Member No.:* #${qrCardMember.member_code}\n\n📲 Your QR code: ${qrImageUrl}\n\nScan it at the academy entrance to register attendance ✅`
+      : `🏆 *شركة اداء الابطال العالمية للرياضة*\n━━━━━━━━━━━━━━\n🎫 *بطاقة QR العضوية*\n\n👤 *الاسم:* ${qrCardMember.name_ar}\n🔢 *رقم العضوية:* #${qrCardMember.member_code}\n\n📲 كود الـ QR الخاص بك: ${qrImageUrl}\n\nامسح الكود عند الدخول للأكاديمية لتسجيل الحضور ✅`;
+    const url = whatsappChatUrl(qrCardMember.phone, caption);
+    if (!url) { toast.error(language === 'ar' ? 'لا يوجد رقم جوال' : 'No phone number'); return; }
+    window.open(url, '_blank', 'noopener,noreferrer');
+    toast.success(language === 'ar' ? 'تم فتح محادثة العضو — اضغط إرسال' : "Member chat opened — tap send");
+    setIsQRCardDialogOpen(false);
   };
 
   return {
