@@ -121,6 +121,8 @@ export const membersAPI = {
   addActivity: (memberId, activity) => axios.post(`${API}/members/${memberId}/activities`, activity),
   updateActivity: (memberId, activityId, activity) => axios.put(`${API}/members/${memberId}/activities/${activityId}`, activity),
   setMarked: (id, marked) => axios.patch(`${API}/members/${id}/marked`, { marked }),
+  transfer: (id, data) => axios.post(`${API}/members/${id}/transfer`, data),
+  transferBulk: (data) => axios.post(`${API}/members/transfer-bulk`, data),
   applyChangeRequest: (memberId, messageId) =>
     axios.post(`${API}/members/${memberId}/apply-change-request/${messageId}`),
   rejectChangeRequest: (memberId, messageId, reason = '') =>

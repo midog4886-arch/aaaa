@@ -15,7 +15,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { Popover, PopoverContent, PopoverTrigger } from '../components/ui/popover';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '../components/ui/command';
 import { Textarea } from '../components/ui/textarea';
-import { membersAPI, activitiesAPI, coachesAPI, exportAPI, invoicesAPI, attendanceAPI, levelsAPI, productInvoicesAPI, freezesAPI, tournamentsAPI, whatsappAPI, dayExtensionsAPI } from '../services/api';
+import { membersAPI, activitiesAPI, coachesAPI, exportAPI, invoicesAPI, attendanceAPI, levelsAPI, productInvoicesAPI, freezesAPI, tournamentsAPI, whatsappAPI, dayExtensionsAPI, branchesAPI } from '../services/api';
 import { whatsappChatUrl } from '../utils/whatsapp';
 import { toast } from 'sonner';
 import { 
@@ -50,7 +50,8 @@ import {
   CheckCircle,
   XCircle,
   Circle,
-  Bell
+  Bell,
+  ArrowRightLeft
 } from 'lucide-react';
 
 export const MembersPage = () => {
@@ -63,6 +64,11 @@ export const MembersPage = () => {
   // member row. The admin clicks the circle to mark / unmark a member;
   // the meaning of the mark is intentionally left to the admin.
   const [markedMemberIds, setMarkedMemberIds] = useState(() => new Set());
+  const [branchesList, setBranchesList] = useState([]);
+  const [transferDialog, setTransferDialog] = useState(null); // { mode:'single'|'bulk', member?, memberIds:[] }
+  const [transferBranchId, setTransferBranchId] = useState('');
+  const [transferDate, setTransferDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [transferring, setTransferring] = useState(false);
   const [activities, setActivities] = useState([]);
   const [coaches, setCoaches] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -233,22 +239,64 @@ export const MembersPage = () => {
   const loadData = async () => {
     try {
       const branchParams = selectedBranchId && selectedBranchId !== 'all' ? { branch_filter: selectedBranchId } : {};
-      const [membersRes, activitiesRes, coachesRes, levelsRes] = await Promise.all([
+      const [membersRes, activitiesRes, coachesRes, levelsRes, branchesRes] = await Promise.all([
         membersAPI.getAll(branchParams),
         activitiesAPI.getAll(),
         coachesAPI.getAll(),
-        levelsAPI.getAll()
+        levelsAPI.getAll(),
+        branchesAPI.getAll().catch(() => ({ data: [] }))
       ]);
       setMembers(membersRes.data);
       setMarkedMemberIds(new Set((membersRes.data || []).filter(m => m.marked).map(m => m.id)));
       setActivities(activitiesRes.data);
       setCoaches(coachesRes.data);
       setLevels(levelsRes.data);
+      setBranchesList(branchesRes.data || []);
     } catch (error) {
       console.error('Failed to load data:', error);
       toast.error(t('error'));
     } finally {
       setLoading(false);
+    }
+  };
+
+  const openTransferDialog = (mode, member) => {
+    setTransferDialog(mode === 'single' ? { mode, member } : { mode, memberIds: Array.from(markedMemberIds) });
+    setTransferBranchId('');
+    setTransferDate(new Date().toISOString().slice(0, 10));
+  };
+
+  const handleConfirmTransfer = async () => {
+    if (!transferDialog) return;
+    if (!transferBranchId) {
+      toast.error(language === 'ar' ? 'اختر الفرع الجديد' : 'Select target branch');
+      return;
+    }
+    setTransferring(true);
+    try {
+      if (transferDialog.mode === 'single') {
+        await membersAPI.transfer(transferDialog.member.id, { new_branch_id: transferBranchId, transfer_date: transferDate });
+        toast.success(language === 'ar' ? 'تم نقل العضو للفرع الجديد' : 'Member transferred');
+      } else {
+        const ids = transferDialog.memberIds || [];
+        if (ids.length === 0) {
+          toast.error(language === 'ar' ? 'لا يوجد أعضاء محددين' : 'No members selected');
+          setTransferring(false);
+          return;
+        }
+        const res = await membersAPI.transferBulk({ member_ids: ids, new_branch_id: transferBranchId, transfer_date: transferDate });
+        const moved = res?.data?.moved ?? ids.length;
+        const skipped = res?.data?.skipped ?? 0;
+        toast.success(language === 'ar'
+          ? `تم نقل ${moved} عضو${skipped ? ` (تم تجاهل ${skipped})` : ''}`
+          : `Transferred ${moved}${skipped ? `, skipped ${skipped}` : ''}`);
+      }
+      setTransferDialog(null);
+      await loadData();
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || t('error'));
+    } finally {
+      setTransferring(false);
     }
   };
 
@@ -1501,6 +1549,18 @@ export const MembersPage = () => {
               <Printer className="w-4 h-4 me-1" />
               {language === 'ar' ? 'طباعة' : 'Print'}
             </Button>
+            {branchesList.length > 1 && markedMemberIds.size > 0 && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-1 border-indigo-300 text-indigo-700 hover:bg-indigo-50"
+                onClick={() => openTransferDialog('bulk')}
+                data-testid="bulk-transfer-btn"
+              >
+                <ArrowRightLeft className="w-4 h-4 me-1" />
+                {language === 'ar' ? `نقل المحددين (${markedMemberIds.size})` : `Transfer Selected (${markedMemberIds.size})`}
+              </Button>
+            )}
             <Button size="sm" onClick={() => { setIsAddDialogOpen(true); loadLevels(); }} data-testid="add-member-btn">
               <Plus className="w-4 h-4 me-1" />
               {t('add_member')}
@@ -1748,6 +1808,16 @@ export const MembersPage = () => {
                             >
                               <Snowflake className="w-4 h-4 text-blue-500" />
                             </button>
+                            {branchesList.length > 1 && (
+                              <button 
+                                className="action-button"
+                                onClick={() => openTransferDialog('single', member)}
+                                data-testid={`transfer-member-${member.id}`}
+                                title={language === 'ar' ? 'نقل لفرع آخر' : 'Transfer to branch'}
+                              >
+                                <ArrowRightLeft className="w-4 h-4 text-indigo-500" />
+                              </button>
+                            )}
                             <button 
                               className="action-button danger"
                               onClick={() => handleDelete(member.id)}
@@ -1811,6 +1881,66 @@ export const MembersPage = () => {
               <Button variant="outline" onClick={() => setIsPrintRangeOpen(false)}>إلغاء</Button>
               <Button className="bg-orange-500 hover:bg-orange-600" onClick={handlePrintMembersRange}>
                 <Printer className="w-4 h-4 me-1" /> طباعة
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Transfer to Branch Dialog */}
+        <Dialog open={!!transferDialog} onOpenChange={(o) => { if (!o) setTransferDialog(null); }}>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <ArrowRightLeft className="w-5 h-5 text-indigo-600" />
+                {language === 'ar' ? 'نقل لفرع آخر' : 'Transfer to another branch'}
+              </DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4 py-2">
+              <p className="text-sm text-gray-600">
+                {transferDialog?.mode === 'bulk'
+                  ? (language === 'ar'
+                      ? `سيتم نقل ${transferDialog?.memberIds?.length || 0} عضو للفرع الجديد. سيحتفظ كل عضو بأيام ومواعيد التدريب والاشتراك، ويُعاد توزيعه على المستويات في الفرع الجديد.`
+                      : `${transferDialog?.memberIds?.length || 0} member(s) will move to the new branch. Training days/times and subscription are kept; members are re-assigned to levels at the new branch.`)
+                  : (language === 'ar'
+                      ? `سيتم نقل "${transferDialog?.member?.name_ar || transferDialog?.member?.name || ''}" للفرع الجديد مع الاحتفاظ بأيام ومواعيد التدريب والاشتراك، وإعادة التوزيع على المستويات.`
+                      : `"${transferDialog?.member?.name || transferDialog?.member?.name_ar || ''}" will move to the new branch. Training days/times and subscription are kept; level re-assignment will be needed.`)}
+              </p>
+              <div>
+                <Label>{language === 'ar' ? 'الفرع الجديد' : 'New branch'}</Label>
+                <Select value={transferBranchId} onValueChange={setTransferBranchId}>
+                  <SelectTrigger data-testid="transfer-branch-select">
+                    <SelectValue placeholder={language === 'ar' ? 'اختر الفرع' : 'Select branch'} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {branchesList
+                      .filter(b => transferDialog?.mode === 'single' ? b.id !== transferDialog?.member?.branch_id : true)
+                      .map(b => (
+                        <SelectItem key={b.id} value={b.id}>
+                          {language === 'ar' ? (b.name_ar || b.name) : (b.name || b.name_ar)}
+                        </SelectItem>
+                      ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label>{language === 'ar' ? 'تاريخ النقل' : 'Transfer date'}</Label>
+                <Input type="date" value={transferDate} onChange={(e) => setTransferDate(e.target.value)} />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setTransferDialog(null)} disabled={transferring}>
+                {language === 'ar' ? 'إلغاء' : 'Cancel'}
+              </Button>
+              <Button
+                className="bg-indigo-600 hover:bg-indigo-700"
+                onClick={handleConfirmTransfer}
+                disabled={transferring || !transferBranchId}
+                data-testid="confirm-transfer-btn"
+              >
+                {transferring
+                  ? <Loader2 className="w-4 h-4 me-1 animate-spin" />
+                  : <ArrowRightLeft className="w-4 h-4 me-1" />}
+                {language === 'ar' ? 'تأكيد النقل' : 'Confirm transfer'}
               </Button>
             </DialogFooter>
           </DialogContent>
@@ -2313,13 +2443,25 @@ export const MembersPage = () => {
                     <Button
                       size="sm"
                       variant="outline"
-                      className="gap-1 me-6"
+                      className="gap-1"
                       onClick={() => { setIsViewDialogOpen(false); openEditDialog(selectedMember); }}
                       title={language === 'ar' ? 'تعديل بيانات العضو (الاسم، الجوال، العمر...)' : 'Edit member info'}
                     >
                       <Edit className="w-4 h-4" />
                       {language === 'ar' ? 'تعديل البيانات' : 'Edit Info'}
                     </Button>
+                    {branchesList.length > 1 && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="gap-1 me-6"
+                        onClick={() => { setIsViewDialogOpen(false); openTransferDialog('single', selectedMember); }}
+                        title={language === 'ar' ? 'نقل لفرع آخر' : 'Transfer to branch'}
+                      >
+                        <ArrowRightLeft className="w-4 h-4" />
+                        {language === 'ar' ? 'نقل لفرع' : 'Transfer'}
+                      </Button>
+                    )}
                   </>
                 )}
               </DialogTitle>

@@ -9,6 +9,7 @@ from .common import db, get_current_user
 from utils.auth import require_branch_scope, resolve_branch_filter
 from utils.sequences import get_branch_seq_start
 from utils.member_code import generate_member_code
+from utils.cache import cache_invalidate
 
 router = APIRouter(prefix="/members", tags=["members"])
 
@@ -83,6 +84,15 @@ class Member(BaseModel):
     branch_id: Optional[str] = None
     created_at: str = ""
     preferred_language: Optional[str] = "ar"
+
+class MemberTransferRequest(BaseModel):
+    new_branch_id: str
+    transfer_date: Optional[str] = None
+
+class MemberBulkTransferRequest(BaseModel):
+    member_ids: List[str] = []
+    new_branch_id: str
+    transfer_date: Optional[str] = None
 
 # ============ ROUTES ============
 
@@ -298,6 +308,124 @@ async def update_member(member_id: str, member: MemberUpdate, current_user: dict
         after=result,
     )
     return Member(**{k: v for k, v in result.items() if k != "_id"})
+
+async def _transfer_member_doc(member: dict, new_branch: str, transfer_date: str, current_user: dict):
+    """Move a single member to a new branch. Levels/coaches are branch-bound, so
+    their links are cleared (training days/times kept) to let the member be
+    re-assigned at the new branch. Subscription/sessions/activity dates are kept."""
+    member_id = member["id"]
+    old_branch = member.get("branch_id")
+    activities = member.get("activities") or []
+    old_level_ids = [a.get("level_id") for a in activities if a.get("level_id")]
+    new_activities = []
+    for a in activities:
+        a = dict(a)
+        a["level_id"] = ""
+        a["coach_id"] = ""
+        new_activities.append(a)
+    transfer_entry = {
+        "from_branch_id": old_branch,
+        "to_branch_id": new_branch,
+        "transfer_date": transfer_date,
+        "by": current_user.get("username") or current_user.get("id"),
+        "at": datetime.now(timezone.utc).isoformat(),
+    }
+    await db.members.update_one(
+        {"id": member_id},
+        {"$set": {"branch_id": new_branch, "activities": new_activities},
+         "$push": {"transfers": transfer_entry}}
+    )
+    # Drop the member from the old (branch-bound) level membership caches.
+    valid_level_ids = [lid for lid in old_level_ids if lid]
+    if valid_level_ids:
+        await db.levels.update_many(
+            {"id": {"$in": valid_level_ids}},
+            {"$pull": {"members": member_id}}
+        )
+    return old_branch
+
+
+@router.post("/transfer-bulk")
+async def transfer_members_bulk(req: MemberBulkTransferRequest, current_user: dict = Depends(get_current_user)):
+    """Transfer multiple members to another branch at once."""
+    new_branch = (req.new_branch_id or "").strip()
+    if not new_branch or new_branch == "all":
+        raise HTTPException(status_code=400, detail="يجب اختيار الفرع الجديد")
+    if not req.member_ids:
+        raise HTTPException(status_code=400, detail="يجب اختيار عضو واحد على الأقل")
+    # Cross-branch transfers are admin-only: non-admins are pinned to their own
+    # branch, so moving members to a different branch would break isolation.
+    if not current_user.get("is_admin", False) and new_branch != current_user.get("branch_id"):
+        raise HTTPException(status_code=403, detail="غير مصرح بنقل الأعضاء لفرع آخر")
+    branch_exists = await db.branches.find_one({"id": new_branch}, {"_id": 1})
+    if not branch_exists:
+        raise HTTPException(status_code=400, detail="الفرع الجديد غير موجود")
+    transfer_date = (req.transfer_date or "").strip() or datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+    # Scope: non-admins can only act on members within their own branch.
+    base_query = {"id": {"$in": req.member_ids}}
+    effective_branch = resolve_branch_filter(current_user, None)
+    if effective_branch:
+        base_query["branch_id"] = effective_branch
+    members = await db.members.find(base_query, {"_id": 0}).to_list(len(req.member_ids) + 10)
+
+    moved, skipped = 0, 0
+    for m in members:
+        if m.get("branch_id") == new_branch:
+            skipped += 1
+            continue
+        await _transfer_member_doc(m, new_branch, transfer_date, current_user)
+        moved += 1
+
+    cache_invalidate("levels:")
+    from utils.audit import log_audit
+    try:
+        await log_audit(
+            actor=current_user,
+            action="member.transfer_bulk",
+            entity_type="member",
+            entity_id="",
+            entity_name=f"{moved} → {new_branch}",
+        )
+    except Exception:
+        pass
+    return {"message": "تم نقل الأعضاء للفرع الجديد", "moved": moved, "skipped": skipped,
+            "new_branch_id": new_branch, "transfer_date": transfer_date}
+
+
+@router.post("/{member_id}/transfer")
+async def transfer_member(member_id: str, req: MemberTransferRequest, current_user: dict = Depends(get_current_user)):
+    """Transfer a single member to another branch."""
+    new_branch = (req.new_branch_id or "").strip()
+    if not new_branch or new_branch == "all":
+        raise HTTPException(status_code=400, detail="يجب اختيار الفرع الجديد")
+    member = await db.members.find_one(_scoped_member_query(member_id, current_user), {"_id": 0})
+    if not member:
+        raise HTTPException(status_code=404, detail="Member not found")
+    if member.get("branch_id") == new_branch:
+        raise HTTPException(status_code=400, detail="العضو موجود بالفعل في هذا الفرع")
+    # Cross-branch transfers are admin-only (see bulk endpoint for rationale).
+    if not current_user.get("is_admin", False) and new_branch != current_user.get("branch_id"):
+        raise HTTPException(status_code=403, detail="غير مصرح بنقل الأعضاء لفرع آخر")
+    branch_exists = await db.branches.find_one({"id": new_branch}, {"_id": 1})
+    if not branch_exists:
+        raise HTTPException(status_code=400, detail="الفرع الجديد غير موجود")
+    transfer_date = (req.transfer_date or "").strip() or datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    await _transfer_member_doc(member, new_branch, transfer_date, current_user)
+    cache_invalidate("levels:")
+    from utils.audit import log_audit
+    try:
+        await log_audit(
+            actor=current_user,
+            action="member.transfer",
+            entity_type="member",
+            entity_id=member_id,
+            entity_name=(member.get("name_ar") or member.get("name") or ""),
+        )
+    except Exception:
+        pass
+    return {"message": "تم نقل العضو للفرع الجديد", "new_branch_id": new_branch, "transfer_date": transfer_date}
+
 
 @router.patch("/{member_id}/marked")
 async def set_member_marked(member_id: str, payload: dict, current_user: dict = Depends(get_current_user)):
