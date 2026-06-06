@@ -57,7 +57,7 @@ const CoachAttendancePage = () => {
   const [printLang, setPrintLangState] = useState(getPrintLang);
   const changePrintLang = (l) => { setPrintLang(l); setPrintLangState(l); };
   const qrRef = useRef(null);
-  const branchFilter = localStorage.getItem('selectedBranchId') || 'all';
+  const [branchFilter, setBranchFilter] = useState(() => localStorage.getItem('selectedBranchId') || 'all');
 
   const showToast = (message, type = 'success') => {
     setToast({ message, type });
@@ -1096,6 +1096,19 @@ const CoachAttendancePage = () => {
             </button>
           </div>
           <div className="flex gap-2">
+            {branches.length > 1 && (
+              <select
+                value={branchFilter}
+                onChange={(e) => setBranchFilter(e.target.value)}
+                className="px-3 py-2 rounded-lg text-sm font-medium bg-gray-100 text-gray-700 border border-gray-200 hover:bg-gray-200 transition-colors focus:outline-none focus:ring-2 focus:ring-orange-400"
+                title="تصفية حسب الفرع"
+              >
+                <option value="all">كل الفروع</option>
+                {branches.map(b => (
+                  <option key={b.id} value={b.id}>{b.name_ar || b.name}</option>
+                ))}
+              </select>
+            )}
             <button
               onClick={() => setView('daily')}
               className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
