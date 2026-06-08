@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Wallet, Plus, Trash2, FileText, CheckCircle, RotateCcw, Save, Loader, X, AlertTriangle, BarChart3, Download, FileSpreadsheet, ChevronDown, ChevronLeft } from 'lucide-react';
-import { coachSalariesAPI, coachAdvancesAPI, coachesAPI } from '../services/api';
+import { coachSalariesAPI, coachAdvancesAPI, coachesAPI, branchesAPI } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
 import { Layout } from '../components/Layout';
 
@@ -26,7 +26,8 @@ const Toast = ({ msg, type, onClose }) => {
 
 const CoachSalariesPage = () => {
   const { user, isAdmin } = useAuth();
-  const branchFilter = localStorage.getItem('selectedBranch') || 'all';
+  const [branchFilter, setBranchFilter] = useState(() => localStorage.getItem('selectedBranchId') || 'all');
+  const [branches, setBranches] = useState([]);
 
   const [tab, setTab] = useState('salaries');
   const [month, setMonth] = useState(todayMonth());
@@ -127,12 +128,15 @@ const CoachSalariesPage = () => {
       .catch(e => showToast(e.message || 'فشل التصدير', 'error'));
   };
 
-  useEffect(() => { fetchCoaches(); fetchAdvances(); }, []);
-  useEffect(() => { fetchSalaries(); }, [month]);
+  useEffect(() => {
+    branchesAPI.getAll().then(res => setBranches(res.data || [])).catch(() => {});
+  }, []);
+  useEffect(() => { fetchCoaches(); fetchAdvances(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [branchFilter]);
+  useEffect(() => { fetchSalaries(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [month, branchFilter]);
   useEffect(() => {
     if (tab === 'reports') fetchReport();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tab]);
+  }, [tab, branchFilter]);
 
   const openEditor = (row) => {
     setEditing({
@@ -323,6 +327,18 @@ const CoachSalariesPage = () => {
           </div>
         </div>
         <div className="flex items-center gap-2">
+          {branches.length > 1 && (
+            <select
+              value={branchFilter}
+              onChange={e => setBranchFilter(e.target.value)}
+              className="border rounded-lg px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-orange-500"
+            >
+              <option value="all">كل الفروع</option>
+              {branches.map(b => (
+                <option key={b.id} value={b.id}>{b.name_ar || b.name}</option>
+              ))}
+            </select>
+          )}
           <input type="month" value={month} onChange={e => setMonth(e.target.value)}
             className="border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-orange-500" />
           <button onClick={() => setShowAdvanceModal(true)}
