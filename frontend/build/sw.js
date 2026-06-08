@@ -8,7 +8,9 @@
 // v14: SW is now tenant-aware for push — it persists the academy slug (set via
 // the SET_TENANT message / stamped on each push payload) so SW-initiated calls
 // and notification tags are scoped to the right academy. Bump purges old caches.
-const CACHE_NAME = 'gcsp-academy-v14';
+// v15: bump to purge stale cache-first JS chunks so the latest app code (e.g.
+// the branch filter on the coach salaries page) is fetched on activate.
+const CACHE_NAME = 'gcsp-academy-v15';
 const OFFLINE_URL = '/offline.html';
 
 // Assets to cache immediately on install
