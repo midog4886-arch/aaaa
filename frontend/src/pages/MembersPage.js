@@ -1074,6 +1074,23 @@ export const MembersPage = () => {
     }
   };
 
+  // A member "needs renewal" when they have at least one subscription that is
+  // already expired OR expiring within the next 7 days (same <=7 day threshold
+  // as needsRenewal). This is a SEPARATE worklist from the "expired" filter:
+  // it catches active-but-soon subscriptions (e.g. a swimming sub ending in a
+  // few days) AND a single expired activity on an otherwise-active member
+  // (e.g. an active member whose karate ended) — cases the "expired" filter
+  // (all subscriptions ended) deliberately hides.
+  const memberNeedsRenewal = (member) => {
+    const acts = member.activities || [];
+    if (acts.length === 0) return false;
+    return acts.some(a => {
+      if (!a.end_date) return false;
+      const days = getDaysRemaining(a.end_date);
+      return days !== null && days <= 7;
+    });
+  };
+
   // Get activity status based on end date
   const getActivityStatusFromDate = (activity) => {
     if (!activity.end_date) return activity.status;
@@ -1357,7 +1374,9 @@ export const MembersPage = () => {
     // member who still has one active subscription (and just one separate
     // expired/needs-renewal activity) stays under "active", not "expired".
     const matchesStatus = filterStatus === 'all' ||
-      getMemberOverallStatus(member).status === filterStatus;
+      (filterStatus === 'needs_renewal'
+        ? memberNeedsRenewal(member)
+        : getMemberOverallStatus(member).status === filterStatus);
 
     const matchesSchedule = !filterSchedule ||
       member.activities?.some(a => (a.schedule || '') === filterSchedule);
@@ -1475,6 +1494,12 @@ export const MembersPage = () => {
                 className={`px-3 py-1 rounded-md text-xs font-medium transition-colors ${filterStatus === 'active' ? 'bg-green-600 text-white' : 'text-green-700 hover:bg-green-50'}`}
               >
                 {language === 'ar' ? 'ساري' : 'Active'}
+              </button>
+              <button
+                onClick={() => setFilterStatus('needs_renewal')}
+                className={`px-3 py-1 rounded-md text-xs font-medium transition-colors ${filterStatus === 'needs_renewal' ? 'bg-amber-500 text-white' : 'text-amber-700 hover:bg-amber-50'}`}
+              >
+                {language === 'ar' ? 'قرب ينتهي' : 'Renew Soon'}
               </button>
               <button
                 onClick={() => setFilterStatus('expired')}

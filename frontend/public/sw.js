@@ -12,7 +12,8 @@
 // the branch filter on the coach salaries page) is fetched on activate.
 // v16: bump to ship the members "expired" filter consistency fix (only members
 // whose subscriptions are ALL expired show under the expired filter).
-const CACHE_NAME = 'gcsp-academy-v16';
+// v17: bump to ship the new members "needs renewal / قرب ينتهي" filter.
+const CACHE_NAME = 'gcsp-academy-v17';
 const OFFLINE_URL = '/offline.html';
 
 // Assets to cache immediately on install
