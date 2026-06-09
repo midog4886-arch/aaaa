@@ -10,7 +10,9 @@
 // and notification tags are scoped to the right academy. Bump purges old caches.
 // v15: bump to purge stale cache-first JS chunks so the latest app code (e.g.
 // the branch filter on the coach salaries page) is fetched on activate.
-const CACHE_NAME = 'gcsp-academy-v15';
+// v16: bump to ship the members "expired" filter consistency fix (only members
+// whose subscriptions are ALL expired show under the expired filter).
+const CACHE_NAME = 'gcsp-academy-v16';
 const OFFLINE_URL = '/offline.html';
 
 // Assets to cache immediately on install

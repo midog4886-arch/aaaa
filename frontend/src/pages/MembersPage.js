@@ -1350,11 +1350,14 @@ export const MembersPage = () => {
         }) :
         member.activities?.some(a => a.activity_id === filterActivity));
     
+    // Match the filter against the member's OVERALL status (same logic as the
+    // badge shown next to the name + the red "expired" count card) instead of a
+    // per-activity "any matches" rule. This keeps the three consistent: a member
+    // counts as "expired" only when ALL of their subscriptions have ended, so a
+    // member who still has one active subscription (and just one separate
+    // expired/needs-renewal activity) stays under "active", not "expired".
     const matchesStatus = filterStatus === 'all' ||
-      member.activities?.some(a => {
-        const actStatus = a.end_date ? (new Date(a.end_date) >= new Date(new Date().setHours(0,0,0,0)) ? 'active' : 'expired') : a.status;
-        return actStatus === filterStatus;
-      });
+      getMemberOverallStatus(member).status === filterStatus;
 
     const matchesSchedule = !filterSchedule ||
       member.activities?.some(a => (a.schedule || '') === filterSchedule);
