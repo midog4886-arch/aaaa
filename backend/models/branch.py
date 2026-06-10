@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import Optional
+from typing import Optional, List
 
 class BranchBase(BaseModel):
     name: str
@@ -12,6 +12,8 @@ class BranchBase(BaseModel):
     is_active: bool = True
     code_prefix: Optional[str] = ""
     whatsapp_group_url: Optional[str] = ""
+    # Days the branch operates. None/empty = open all week (backward compatible).
+    working_days: Optional[List[str]] = None
 
 class BranchCreate(BranchBase):
     pass

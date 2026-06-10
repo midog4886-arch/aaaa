@@ -516,7 +516,10 @@ export const LevelsPage = () => {
       const [levelsRes, membersRes, branchesRes, activitiesRes, attendanceRes, coachesRes] = await Promise.all([
         levelsAPI.getAll(branchParams),
         membersAPI.getAll(branchParams),
-        isAdmin ? branchesAPI.getAll() : Promise.resolve({ data: [] }),
+        // Fetch branches for everyone (backend scopes non-admins to their own
+        // branch) so visibleWeekdays can resolve the branch's working days even
+        // for non-admin users; the branch <Select> stays admin-gated separately.
+        branchesAPI.getAll().catch(() => ({ data: [] })),
         activitiesAPI.getAll(),
         attendanceAPI.getAll({ date: today }).catch(() => ({ data: [] })),
         coachesAPI.getAll().catch(() => ({ data: [] }))
@@ -749,6 +752,17 @@ export const LevelsPage = () => {
     { id: 'thursday', name_ar: 'الخميس', name_en: 'Thursday', icon: '📅', color: 'from-teal-500 to-teal-600' },
     { id: 'friday', name_ar: 'الجمعة', name_en: 'Friday', icon: '📅', color: 'from-amber-500 to-amber-600' },
   ];
+
+  // When a single branch is selected, only show the days that branch actually
+  // operates on. A missing/empty working_days (legacy branches) or the "all
+  // branches" view falls back to the full week.
+  const visibleWeekdays = (() => {
+    if (!selectedBranchId || selectedBranchId === 'all') return WEEKDAYS;
+    const branch = branches.find(b => b.id === selectedBranchId);
+    const wd = branch?.working_days;
+    if (!Array.isArray(wd) || wd.length === 0) return WEEKDAYS;
+    return WEEKDAYS.filter(d => wd.includes(d.id));
+  })();
 
   // Navigate to activities view (after selecting day)
   const navigateToActivities = (day) => {
@@ -2354,7 +2368,7 @@ ${slotTables}
 
             {/* Weekday Cards */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-              {WEEKDAYS.map((day) => {
+              {visibleWeekdays.map((day) => {
                 const dayMembers = levels.reduce((sum, l) => {
                   if (!levelMatchesDay(l, day.id)) return sum;
                   const filtered = (l.members_details || []).filter(m => memberMatchesDay(m, day.id));

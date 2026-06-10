@@ -16,7 +16,9 @@
 // v18: bump to ship custom activities on the levels/schedule page.
 // v19: bump for custom-activity built-in prefix fix (football grouping).
 // v20: bump to ship custom-activity name validation (reserved " - " guard).
-const CACHE_NAME = 'gcsp-academy-v20';
+// v21: bump for per-branch working days (levels page shows branch's days only).
+// v22: bump so non-admins also load branches -> working-days filter applies.
+const CACHE_NAME = 'gcsp-academy-v22';
 const OFFLINE_URL = '/offline.html';
 
 // Assets to cache immediately on install

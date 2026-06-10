@@ -19,6 +19,17 @@ import {
   Loader2
 } from 'lucide-react';
 
+const WEEKDAYS = [
+  { id: 'saturday', name_ar: 'السبت', name_en: 'Saturday' },
+  { id: 'sunday', name_ar: 'الأحد', name_en: 'Sunday' },
+  { id: 'monday', name_ar: 'الاثنين', name_en: 'Monday' },
+  { id: 'tuesday', name_ar: 'الثلاثاء', name_en: 'Tuesday' },
+  { id: 'wednesday', name_ar: 'الأربعاء', name_en: 'Wednesday' },
+  { id: 'thursday', name_ar: 'الخميس', name_en: 'Thursday' },
+  { id: 'friday', name_ar: 'الجمعة', name_en: 'Friday' },
+];
+const ALL_WEEKDAY_IDS = WEEKDAYS.map(d => d.id);
+
 const BranchesPage = () => {
   const { language } = useLanguage();
   const { user } = useAuth();
@@ -32,7 +43,8 @@ const BranchesPage = () => {
     name_ar: '',
     phone: '',
     code_prefix: '',
-    whatsapp_group_url: ''
+    whatsapp_group_url: '',
+    working_days: [...ALL_WEEKDAY_IDS]
   });
 
   useEffect(() => {
@@ -56,6 +68,10 @@ const BranchesPage = () => {
       toast.error(language === 'ar' ? 'يرجى ملء الحقول المطلوبة' : 'Please fill required fields');
       return;
     }
+    if ((formData.working_days || []).length === 0) {
+      toast.error(language === 'ar' ? 'اختر يوم عمل واحد على الأقل للفرع' : 'Select at least one working day');
+      return;
+    }
 
     setSaving(true);
     try {
@@ -73,7 +89,10 @@ const BranchesPage = () => {
         address_ar: '',
         is_active: true,
         code_prefix: cleanedPrefix,
-        whatsapp_group_url: (formData.whatsapp_group_url || '').trim()
+        whatsapp_group_url: (formData.whatsapp_group_url || '').trim(),
+        working_days: WEEKDAYS
+          .map(d => d.id)
+          .filter(id => (formData.working_days || []).includes(id))
       };
       
       if (editingBranch) {
@@ -111,7 +130,12 @@ const BranchesPage = () => {
       name_ar: branch.name_ar || branch.name || '',
       phone: branch.phone || '',
       code_prefix: branch.code_prefix || '',
-      whatsapp_group_url: branch.whatsapp_group_url || ''
+      whatsapp_group_url: branch.whatsapp_group_url || '',
+      // Missing/empty working_days means the branch was created before this
+      // feature -> treat it as open all week.
+      working_days: Array.isArray(branch.working_days) && branch.working_days.length > 0
+        ? branch.working_days
+        : [...ALL_WEEKDAY_IDS]
     });
     setIsDialogOpen(true);
   };
@@ -123,7 +147,8 @@ const BranchesPage = () => {
       name_ar: '',
       phone: '',
       code_prefix: '',
-      whatsapp_group_url: ''
+      whatsapp_group_url: '',
+      working_days: [...ALL_WEEKDAY_IDS]
     });
   };
 
@@ -194,6 +219,22 @@ const BranchesPage = () => {
                       <Badge variant="outline" dir="ltr">{branch.code_prefix}-001</Badge>
                     </div>
                   )}
+                  <div className="flex items-start gap-2 text-sm">
+                    <span className="text-muted-foreground whitespace-nowrap">
+                      {language === 'ar' ? 'أيام العمل:' : 'Working days:'}
+                    </span>
+                    {(!Array.isArray(branch.working_days) || branch.working_days.length === 0 || branch.working_days.length === ALL_WEEKDAY_IDS.length) ? (
+                      <span>{language === 'ar' ? 'كل أيام الأسبوع' : 'All week'}</span>
+                    ) : (
+                      <div className="flex flex-wrap gap-1">
+                        {WEEKDAYS.filter(d => branch.working_days.includes(d.id)).map(d => (
+                          <Badge key={d.id} variant="secondary" className="text-xs">
+                            {language === 'ar' ? d.name_ar : d.name_en}
+                          </Badge>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                   <div className="flex gap-2 pt-2">
                     <Button variant="outline" size="sm" onClick={() => handleEdit(branch)} data-testid={`edit-branch-${branch.id}`}>
                       <Edit className="w-4 h-4 me-1" />
@@ -262,6 +303,42 @@ const BranchesPage = () => {
                   {language === 'ar'
                     ? `سيتم توليد أكواد الأعضاء في هذا الفرع بصيغة ${formData.code_prefix || 'PREFIX'}-001, ${formData.code_prefix || 'PREFIX'}-002 ... (اتركه فارغًا للتوليد التلقائي)`
                     : `New member codes in this branch will be ${formData.code_prefix || 'PREFIX'}-001, ${formData.code_prefix || 'PREFIX'}-002 ... (leave empty for auto)`}
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <Label>{language === 'ar' ? 'أيام عمل الفرع' : 'Branch Working Days'}</Label>
+                <div className="grid grid-cols-2 gap-2 p-2 border rounded">
+                  {WEEKDAYS.map(d => {
+                    const checked = (formData.working_days || []).includes(d.id);
+                    return (
+                      <label
+                        key={d.id}
+                        className={`flex items-center gap-2 px-2 py-1.5 rounded cursor-pointer text-sm border ${checked ? 'bg-primary/10 border-primary' : 'border-gray-200 hover:bg-gray-50'}`}
+                        data-testid={`branch-day-${d.id}`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={(e) => {
+                            const cur = new Set(formData.working_days || []);
+                            if (e.target.checked) cur.add(d.id); else cur.delete(d.id);
+                            setFormData({
+                              ...formData,
+                              working_days: WEEKDAYS.map(w => w.id).filter(id => cur.has(id))
+                            });
+                          }}
+                          className="w-4 h-4"
+                        />
+                        <span>{language === 'ar' ? d.name_ar : d.name_en}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  {language === 'ar'
+                    ? 'الأيام المختارة فقط هي اللي هتظهر في صفحة المستويات والجدول لهذا الفرع.'
+                    : 'Only the selected days will appear on the levels/schedule page for this branch.'}
                 </p>
               </div>
 

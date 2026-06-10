@@ -4,7 +4,7 @@ Handles branch/location management
 """
 from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
-from typing import Optional
+from typing import Optional, List
 from datetime import datetime, timezone
 import uuid
 
@@ -27,6 +27,8 @@ class BranchBase(BaseModel):
     is_active: bool = True
     code_prefix: Optional[str] = ""
     whatsapp_group_url: Optional[str] = ""
+    # Days the branch operates. None/empty = open all week (backward compatible).
+    working_days: Optional[List[str]] = None
 
 class BranchCreate(BranchBase):
     pass
