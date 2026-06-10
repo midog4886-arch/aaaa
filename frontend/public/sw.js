@@ -13,7 +13,10 @@
 // v16: bump to ship the members "expired" filter consistency fix (only members
 // whose subscriptions are ALL expired show under the expired filter).
 // v17: bump to ship the new members "needs renewal / قرب ينتهي" filter.
-const CACHE_NAME = 'gcsp-academy-v17';
+// v18: bump to ship custom activities on the levels/schedule page.
+// v19: bump for custom-activity built-in prefix fix (football grouping).
+// v20: bump to ship custom-activity name validation (reserved " - " guard).
+const CACHE_NAME = 'gcsp-academy-v20';
 const OFFLINE_URL = '/offline.html';
 
 // Assets to cache immediately on install
