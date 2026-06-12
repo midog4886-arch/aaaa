@@ -18,7 +18,8 @@
 // v20: bump to ship custom-activity name validation (reserved " - " guard).
 // v21: bump for per-branch working days (levels page shows branch's days only).
 // v22: bump so non-admins also load branches -> working-days filter applies.
-const CACHE_NAME = 'gcsp-academy-v22';
+// v23: bump for personalized bulk WhatsApp (name+number paste, {الاسم} token).
+const CACHE_NAME = 'gcsp-academy-v23';
 const OFFLINE_URL = '/offline.html';
 
 // Assets to cache immediately on install
