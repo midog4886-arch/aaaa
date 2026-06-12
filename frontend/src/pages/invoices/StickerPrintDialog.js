@@ -116,7 +116,7 @@ const generateCardHTML = (member, qrData, schedule) => {
         <div class="info-section">
           <div class="info-label">الاسم</div>
           <div class="member-name">${member?.name_ar || ''}</div>
-          <div class="info-row"><span class="info-label">رقم العضوية:</span><span class="member-code">#${member?.member_code || ''}</span></div>
+          <div class="info-row"><span class="info-label">رقم العضوية:</span><span class="member-code">${member?.member_code || ''}</span></div>
           <div class="info-row"><span class="info-label">رقم الجوال:</span><span>${member?.phone || '-'}</span></div>
           ${activitiesHtml ? `<div class="activities"><div class="activities-label">الأنشطة المسجلة</div>${activitiesHtml}</div>` : ''}
         </div>
@@ -213,7 +213,7 @@ const StickerPrintDialog = ({
         </DialogHeader>
         <div className="py-4">
           <p className="text-center text-gray-600 mb-2 font-bold">{member?.name_ar}</p>
-          <p className="text-center text-sm text-orange-600 mb-4 font-bold">#{member?.member_code}</p>
+          <p className="text-center text-sm text-orange-600 mb-4 font-bold">{member?.member_code}</p>
           <p className="text-center text-sm text-gray-500 mb-4">سيتم طباعة كرت العضوية + شعار الأكاديمية معاً</p>
           
           <div className="bg-gray-100 p-4 rounded-lg">

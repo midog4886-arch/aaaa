@@ -636,7 +636,7 @@ export const MembersPage = () => {
                   <div class="info-section">
                     <div class="info-label">الاسم</div>
                     <div class="member-name">${memberName}</div>
-                    <div class="info-row"><span class="info-label">رقم العضوية:</span><span class="member-code">#${memberCardData.member_code || ''}</span></div>
+                    <div class="info-row"><span class="info-label">رقم العضوية:</span><span class="member-code">${memberCardData.member_code || ''}</span></div>
                     <div class="info-row"><span class="info-label">رقم الجوال:</span><span>${memberCardData.phone || '-'}</span></div>
                     ${(memberCardData.guardian_name_ar || memberCardData.guardian_name) ? `<div class="info-row"><span class="info-label">ولي الأمر:</span><span>${memberCardData.guardian_name_ar || memberCardData.guardian_name}</span></div>` : ''}
                     ${activitiesHtml ? `<div class="activities"><div class="activities-label">الأنشطة المسجلة</div>${activitiesHtml}</div>` : ''}
@@ -678,7 +678,7 @@ export const MembersPage = () => {
                 <div class="info-section">
                   <div class="info-label">الاسم</div>
                   <div class="member-name">${memberName}</div>
-                  <div class="info-row"><span class="info-label">رقم العضوية:</span><span class="member-code">#${memberCardData.member_code || ''}</span></div>
+                  <div class="info-row"><span class="info-label">رقم العضوية:</span><span class="member-code">${memberCardData.member_code || ''}</span></div>
                   <div class="info-row"><span class="info-label">رقم الجوال:</span><span>${memberCardData.phone || '-'}</span></div>
                   ${(memberCardData.guardian_name_ar || memberCardData.guardian_name) ? `<div class="info-row"><span class="info-label">ولي الأمر:</span><span>${memberCardData.guardian_name_ar || memberCardData.guardian_name}</span></div>` : ''}
                   ${activitiesHtml ? `<div class="activities"><div class="activities-label">الأنشطة المسجلة</div>${activitiesHtml}</div>` : ''}
@@ -4139,7 +4139,7 @@ export const MembersPage = () => {
                         
                         <div className="flex items-center gap-2 mb-1">
                           <span className="text-xs text-gray-500">{language === 'ar' ? 'رقم العضوية:' : 'ID:'}</span>
-                          <span className="font-bold text-orange-600 text-lg">#{memberCardData.member_code || '---'}</span>
+                          <span className="font-bold text-orange-600 text-lg">{memberCardData.member_code || '---'}</span>
                         </div>
                         
                         <div className="flex items-center gap-2 mb-2">
@@ -4204,7 +4204,7 @@ export const MembersPage = () => {
                   </div>
                   <div>
                     <span className="text-gray-500">{language === 'ar' ? 'رقم العضوية:' : 'Member ID:'}</span>
-                    <span className="font-bold text-primary ms-2">#{memberCardData.member_code}</span>
+                    <span className="font-bold text-primary ms-2">{memberCardData.member_code}</span>
                   </div>
                   <div>
                     <span className="text-gray-500">{language === 'ar' ? 'الجوال:' : 'Phone:'}</span>

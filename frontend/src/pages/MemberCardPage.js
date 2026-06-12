@@ -190,7 +190,7 @@ const MemberCardPage = () => {
                   <div class="info-section">
                     <div class="info-label">${L.name}</div>
                     <div class="member-name">${(member?.name_ar || member?.name || '').split('+').map(n => n.trim()).filter(Boolean).join(' - ')}</div>
-                    <div class="info-row"><span class="info-label">${L.member_id}:</span><span class="member-code">#${member?.member_code || ''}</span></div>
+                    <div class="info-row"><span class="info-label">${L.member_id}:</span><span class="member-code">${member?.member_code || ''}</span></div>
                     <div class="info-row"><span class="info-label">${L.phone}:</span><span>${member?.phone || '-'}</span></div>
                     ${activitiesHtml ? `<div class="activities"><div class="activities-label">${L.activities}</div>${activitiesHtml}</div>` : ''}
                   </div>
@@ -231,7 +231,7 @@ const MemberCardPage = () => {
                 <div class="info-section">
                   <div class="info-label">${L.name}</div>
                   <div class="member-name">${(member?.name_ar || member?.name || '').split('+').map(n => n.trim()).filter(Boolean).join(' - ')}</div>
-                  <div class="info-row"><span class="info-label">${L.member_id}:</span><span class="member-code">#${member?.member_code || ''}</span></div>
+                  <div class="info-row"><span class="info-label">${L.member_id}:</span><span class="member-code">${member?.member_code || ''}</span></div>
                   <div class="info-row"><span class="info-label">${L.phone}:</span><span>${member?.phone || '-'}</span></div>
                   ${activitiesHtml ? `<div class="activities"><div class="activities-label">${L.activities}</div>${activitiesHtml}</div>` : ''}
                 </div>
@@ -301,7 +301,7 @@ const MemberCardPage = () => {
             <div class="info-section" style="text-align:${L.align};">
               <div class="info-label">${L.name}</div>
               <div class="member-name">${(member?.name_ar || member?.name || '').split('+').map(n => n.trim()).filter(Boolean).join(' - ')}</div>
-              <div class="info-row"><span class="info-label">${L.member_id}:</span><span class="member-code">#${member?.member_code || ''}</span></div>
+              <div class="info-row"><span class="info-label">${L.member_id}:</span><span class="member-code">${member?.member_code || ''}</span></div>
               ${activitiesHtml ? `<div class="activities"><div class="activities-label">${L.activities}</div>${activitiesHtml}</div>` : ''}
             </div>
             <div class="qr-container">
@@ -507,7 +507,7 @@ const MemberCardPage = () => {
                 </DialogHeader>
                 <div className="py-4">
                   <p className="text-center text-gray-600 mb-2 font-bold">{(member?.name_ar || member?.name || '').split('+').map((n, i) => <span key={i}>{i > 0 && <br/>}{n.trim()}</span>)}</p>
-                  <p className="text-center text-sm text-orange-600 mb-4 font-bold">#{member?.member_code}</p>
+                  <p className="text-center text-sm text-orange-600 mb-4 font-bold">{member?.member_code}</p>
                   <p className="text-center text-sm text-gray-500 mb-3">سيتم طباعة كرت العضوية + شعار الأكاديمية معاً</p>
                   <div className="flex justify-center mb-4">
                     <div className="inline-flex rounded-md border border-gray-300 overflow-hidden text-sm" title="لغة الطباعة">
@@ -646,7 +646,7 @@ const MemberCardPage = () => {
                     <div className="flex items-center gap-3 justify-end">
                       <div>
                         <p className="text-gray-500 text-sm">رقم العضوية</p>
-                        <p className="text-xl font-bold text-orange-600">#{member.member_code}</p>
+                        <p className="text-xl font-bold text-orange-600">{member.member_code}</p>
                       </div>
                       <CreditCard className="w-8 h-8 text-orange-400" />
                     </div>

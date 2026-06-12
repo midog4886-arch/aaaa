@@ -127,7 +127,7 @@ const DailyNewCardsPage = () => {
           <div class="info-section" style="text-align:${L.align};">
             <div class="info-label">${L.name}</div>
             <div class="member-name">${name}</div>
-            <div class="info-row"><span class="info-label">${L.member_id}:</span><span class="member-code">#${m.member_code || ''}</span></div>
+            <div class="info-row"><span class="info-label">${L.member_id}:</span><span class="member-code">${m.member_code || ''}</span></div>
             ${activitiesHtml ? `<div class="activities"><div class="activities-label">${L.activities}</div>${activitiesHtml}</div>` : ''}
           </div>
           <div class="qr-container">

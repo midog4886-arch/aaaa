@@ -131,7 +131,7 @@ const buildStickerHtml = (cardData, brand) => {
             <div class="info-section">
               <div class="info-label">الاسم</div>
               <div class="member-name">${cardData?.name_ar || ''}</div>
-              <div class="info-row"><span class="info-label">رقم العضوية:</span><span class="member-code">#${cardData?.member_code || ''}</span></div>
+              <div class="info-row"><span class="info-label">رقم العضوية:</span><span class="member-code">${cardData?.member_code || ''}</span></div>
               <div class="info-row"><span class="info-label">رقم الجوال:</span><span>${cardData?.phone || '-'}</span></div>
               ${activitiesHtml ? `<div class="activities"><div class="activities-label">الأنشطة المسجلة</div>${activitiesHtml}</div>` : ''}
             </div>
@@ -176,7 +176,7 @@ const buildStickerHtml = (cardData, brand) => {
           <div class="info-section">
             <div class="info-label">الاسم</div>
             <div class="member-name">${cardData?.name_ar || ''}</div>
-            <div class="info-row"><span class="info-label">رقم العضوية:</span><span class="member-code">#${cardData?.member_code || ''}</span></div>
+            <div class="info-row"><span class="info-label">رقم العضوية:</span><span class="member-code">${cardData?.member_code || ''}</span></div>
             <div class="info-row"><span class="info-label">رقم الجوال:</span><span>${cardData?.phone || '-'}</span></div>
             ${activitiesHtml ? `<div class="activities"><div class="activities-label">الأنشطة المسجلة</div>${activitiesHtml}</div>` : ''}
           </div>
@@ -350,7 +350,7 @@ const MemberCard = () => {
       ctx.fillText(cardData?.name_ar || '', 200, 300);
       ctx.fillStyle = brandColor;
       ctx.font = 'bold 24px Tajawal, sans-serif';
-      ctx.fillText(`#${cardData?.member_code || ''}`, 200, 340);
+      ctx.fillText(`${cardData?.member_code || ''}`, 200, 340);
       const activities = cardData?.active_activities || [];
       if (activities.length > 0) {
         ctx.strokeStyle = '#e5e7eb';
