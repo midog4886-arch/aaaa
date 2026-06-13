@@ -338,6 +338,22 @@ async def get_member_card_public(search_term: str, branch_id: Optional[str] = No
         {"_id": 0}
     )
 
+    if not member and len(search_term) > 1 and search_term[0].isascii() and search_term[0].isalpha():
+        # Some hardware scanners are configured to PREFIX every scan with a fixed
+        # character (observed: "q"/"Q") on top of the "#" terminator, so a card
+        # encoding "DEFA-B7-0025" arrives as "qDEFA-B7-0025#". The real code is
+        # what remains after dropping that leading letter. Only retried on
+        # exact-match failure, so a legitimate code (matched above) is untouched.
+        prefix_stripped = search_term[1:]
+        member = await db.members.find_one(
+            {"$or": [
+                {"id": prefix_stripped},
+                {"member_code": prefix_stripped},
+                {"phone": prefix_stripped},
+            ]},
+            {"_id": 0}
+        )
+
     if not member and search_term.isdigit():
         import re as _re
         matches = await db.members.find(
@@ -393,7 +409,21 @@ async def get_member_card_public(search_term: str, branch_id: Optional[str] = No
             if len(legacy_matches) == 1:
                 member = legacy_matches[0]
             elif len(legacy_matches) > 1:
-                if branch_id:
+                # Disambiguate first by the branch number embedded in the legacy
+                # code itself (e.g. the "7" in "QDEFA-7-0025" / "qDEFA-B7-0025"
+                # maps to "DEFA-B7-..."), which works even when the scanner sends
+                # no branch context (e.g. a super-admin scanning across branches).
+                hint_match = _re_norm.search(r"B?0*(\d+)-0*\d{3,}\s*$", search_term)
+                if hint_match:
+                    bh = hint_match.group(1)
+                    by_hint = [
+                        m for m in legacy_matches
+                        if _re_norm.search(f"-B?0*{_re_norm.escape(bh)}-", m.get("member_code", ""))
+                    ]
+                    if len(by_hint) == 1:
+                        member = by_hint[0]
+                # Then fall back to the scanner's active branch context.
+                if not member and branch_id:
                     scoped = [m for m in legacy_matches if m.get("branch_id") == branch_id]
                     if len(scoped) == 1:
                         member = scoped[0]
