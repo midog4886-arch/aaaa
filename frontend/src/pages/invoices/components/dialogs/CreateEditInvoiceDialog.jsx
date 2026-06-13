@@ -314,15 +314,15 @@ export const CreateEditInvoiceDialog = ({
                           <Label className="text-sm font-medium flex items-center gap-2">
                             {language === 'ar' ? 'تاريخ النهاية' : 'End Date'}
                             <span className="flex items-center gap-1 bg-blue-50 border border-blue-200 rounded px-1.5 py-0.5">
-                              <input type="number" min="1" max="52" value={item.weeks || 4} onChange={(e) => updateItemWeeks(idx, e.target.value)} className="w-8 text-xs text-center bg-transparent outline-none font-semibold text-blue-700" title={language === 'ar' ? 'عدد الأسابيع' : 'Weeks'} />
+                              <input type="number" min="1" max="52" onWheel={(e) => e.currentTarget.blur()} value={item.weeks || 4} onChange={(e) => updateItemWeeks(idx, e.target.value)} className="w-8 text-xs text-center bg-transparent outline-none font-semibold text-blue-700" title={language === 'ar' ? 'عدد الأسابيع' : 'Weeks'} />
                               <span className="text-xs text-blue-600">{language === 'ar' ? 'أسبوع' : 'wks'}</span>
                             </span>
                           </Label>
-                          <Input type="date" value={item.end_date} onChange={(e) => updateItemDate(idx, 'end_date', e.target.value)} className="h-14 text-lg" />
+                          <Input type="date" onWheel={(e) => e.currentTarget.blur()} value={item.end_date} onChange={(e) => updateItemDate(idx, 'end_date', e.target.value)} className="h-14 text-lg" />
                         </div>
                         <div className="space-y-1">
                           <Label className="text-xs flex items-center gap-1">{language === 'ar' ? 'المبلغ' : 'Fee'}{!feeEditUnlocked && <Lock className="w-3 h-3 text-amber-500" />}</Label>
-                          <Input type="number" value={item.fee} onChange={(e) => updateItemFee(idx, e.target.value)} className={`h-8 text-sm ${!feeEditUnlocked ? 'bg-amber-50 border-amber-200' : ''}`} onClick={() => !feeEditUnlocked && unlockFeeEdit()} />
+                          <Input type="number" onWheel={(e) => e.currentTarget.blur()} value={item.fee} onChange={(e) => updateItemFee(idx, e.target.value)} className={`h-8 text-sm ${!feeEditUnlocked ? 'bg-amber-50 border-amber-200' : ''}`} onClick={() => !feeEditUnlocked && unlockFeeEdit()} />
                         </div>
                         <div className="space-y-1 col-span-4">
                           <Label className="text-xs">{language === 'ar' ? 'أيام التدريب' : 'Training Days'}</Label>
@@ -633,7 +633,7 @@ export const CreateEditInvoiceDialog = ({
                                   <div className="flex items-center justify-between">
                                     <span className="font-medium">{item.activity_name}</span>
                                     <div className="flex items-center gap-2">
-                                      <Input type="number" value={item.fee} onChange={(e) => { const updated = [...additionalMembers]; updated[amIdx].items[itemIdx].fee = parseFloat(e.target.value) || 0; setAdditionalMembers(updated); }} className="w-20 h-7 text-sm text-center" />
+                                      <Input type="number" onWheel={(e) => e.currentTarget.blur()} value={item.fee} onChange={(e) => { const updated = [...additionalMembers]; updated[amIdx].items[itemIdx].fee = parseFloat(e.target.value) || 0; setAdditionalMembers(updated); }} className="w-20 h-7 text-sm text-center" />
                                       <span className="text-xs text-muted-foreground">{language === 'ar' ? 'ر.س' : 'SAR'}</span>
                                       <Button type="button" size="sm" variant="ghost" className="h-6 w-6 p-0 text-red-500" onClick={() => { const updated = [...additionalMembers]; updated[amIdx].items = updated[amIdx].items.filter((_, i) => i !== itemIdx); setAdditionalMembers(updated); }}><X className="w-3 h-3" /></Button>
                                     </div>
@@ -655,7 +655,7 @@ export const CreateEditInvoiceDialog = ({
                                         <div className="space-y-1">
                                           <Label className="text-xs flex items-center gap-1">{language === 'ar' ? 'تاريخ النهاية' : 'End Date'}
                                             <span className="flex items-center gap-0.5 bg-blue-50 border border-blue-200 rounded px-1 py-0.5">
-                                              <input type="number" min="1" max="52" value={item.weeks || 4} onChange={(e) => {
+                                              <input type="number" min="1" max="52" onWheel={(e) => e.currentTarget.blur()} value={item.weeks || 4} onChange={(e) => {
                                                 const updated = [...additionalMembers];
                                                 updated[amIdx].items[itemIdx].weeks = parseInt(e.target.value, 10) || 4;
                                                 if (updated[amIdx].items[itemIdx].start_date) {
@@ -667,7 +667,7 @@ export const CreateEditInvoiceDialog = ({
                                               <span className="text-xs text-blue-600">{language === 'ar' ? 'أ' : 'w'}</span>
                                             </span>
                                           </Label>
-                                          <Input type="date" value={item.end_date || ''} onChange={(e) => { const updated = [...additionalMembers]; updated[amIdx].items[itemIdx].end_date = e.target.value; updated[amIdx].items[itemIdx].period = `${updated[amIdx].items[itemIdx].start_date} - ${e.target.value}`; setAdditionalMembers(updated); }} className="h-7 text-xs" />
+                                          <Input type="date" onWheel={(e) => e.currentTarget.blur()} value={item.end_date || ''} onChange={(e) => { const updated = [...additionalMembers]; updated[amIdx].items[itemIdx].end_date = e.target.value; updated[amIdx].items[itemIdx].period = `${updated[amIdx].items[itemIdx].start_date} - ${e.target.value}`; setAdditionalMembers(updated); }} className="h-7 text-xs" />
                                         </div>
                                       </div>
                                       <div className="space-y-1">
