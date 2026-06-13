@@ -318,11 +318,16 @@ async def get_member_card_public(search_term: str, branch_id: Optional[str] = No
     branches after a global renumber. The scanner page passes the active
     branch so a B5 reader maps ``0027`` to ``DEFA-B5-0027`` automatically.
     """
+    import re as _re_norm
     from utils.text import normalize_digits, dearabize_keyboard
     # Hardware barcode scanners type via the OS keyboard layout, so on an
     # Arabic layout the scanned digits arrive as Arabic-Indic numerals that
     # never match ASCII-stored member codes. Normalize before lookup.
     search_term = normalize_digits(search_term).strip()
+    # Some hardware scanners are configured to wrap the payload with a "#"
+    # terminator (e.g. "QDEFA-7-0025#"). Member codes never contain "#", so
+    # strip any leading/trailing "#" before lookup.
+    search_term = _re_norm.sub(r"^#+|#+$", "", search_term).strip()
     # Search by id (deterministic), member_code, or phone first
     member = await db.members.find_one(
         {"$or": [
@@ -368,6 +373,35 @@ async def get_member_card_public(search_term: str, branch_id: Optional[str] = No
                 ]},
                 {"_id": 0}
             )
+
+    if not member:
+        # Legacy printed cards encode an OLD member_code format that no longer
+        # matches after the global renumber (e.g. an old "QDEFA-7-0025" card
+        # whose member is now stored as "DEFA-B7-0025"). Recover by matching the
+        # trailing numeric sequence and disambiguating with the scanner's active
+        # branch — the same strategy as the numeric-only fallback above, but for
+        # alphanumeric legacy codes. Only runs for non-numeric inputs (the pure
+        # numeric case is already handled) that carry a trailing digit group, so
+        # plain name searches below are never affected.
+        seq_match = _re_norm.search(r"(\d{3,})\s*$", search_term)
+        if seq_match and not search_term.isdigit():
+            seq = seq_match.group(1)
+            legacy_matches = await db.members.find(
+                {"member_code": {"$regex": f"-{_re_norm.escape(seq)}[^0-9]*$"}},
+                {"_id": 0}
+            ).to_list(20)
+            if len(legacy_matches) == 1:
+                member = legacy_matches[0]
+            elif len(legacy_matches) > 1:
+                if branch_id:
+                    scoped = [m for m in legacy_matches if m.get("branch_id") == branch_id]
+                    if len(scoped) == 1:
+                        member = scoped[0]
+                if not member:
+                    raise HTTPException(
+                        status_code=409,
+                        detail="رقم العضوية مكرر بين فروع مختلفة — استخدم الرقم الكامل"
+                    )
 
     if not member:
         # Search by name. May match MULTIPLE members (e.g. same first/last
