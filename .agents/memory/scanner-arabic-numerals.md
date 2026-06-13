@@ -42,3 +42,16 @@ Wiring rules that matter:
   raw text first, then normalize only the extracted code field.
 - Python `"١٠".isdigit()` is True but the literal won't regex-match ASCII — normalize
   BEFORE any `.isdigit()` suffix-matching branch.
+
+# Hardware scanner also appends a "#" terminator suffix
+
+Separate from the Arabic mangling: a hardware scanner can be configured to send a
+terminator char (commonly `#`) around the payload, so a member scan arrives as
+`QDEFA-7-0314#` and lookup 404s ("العضو غير موجود") even though the QR payload itself
+is just the trimmed member_code (no `#`, see `utils/memberQR.js`). The **camera works**
+(reads exact QR), so it's hardware-device-only — same tell as the Arabic case.
+**Fix:** strip leading/trailing `#` inside `normalizeScannedCode` (frontend
+`utils/digits.js`, `stripScannerSuffix`); member codes never contain `#`, so it's safe,
+and stripping only the trailing `#` keeps a `{...}#` JSON payload parseable. All hardware
+entry points already route through `normalizeScannedCode` (GlobalScanner buffer,
+AttendancePage kiosk/manual), so fixing it there is the central fix.

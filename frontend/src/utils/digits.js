@@ -51,13 +51,23 @@ export const deArabizeKeyboard = (value) => {
   return toAsciiDigits(out).toUpperCase().trim();
 };
 
+// Strip a scanner-appended terminator. Some hardware barcode/QR scanners are
+// configured to send a "#" (or similar) suffix/prefix around the payload, so a
+// scanned code arrives as "QDEFA-7-0314#". Member codes never contain "#", so
+// remove any leading/trailing "#" (and surrounding whitespace) before lookup.
+const stripScannerSuffix = (text) =>
+  typeof text === 'string'
+    ? text.trim().replace(/^#+/, '').replace(/#+$/, '').trim()
+    : text;
+
 // Best-effort normalization for a scanned/typed member code: digit-normalize
 // first; if the result still carries Arabic-script characters (mangled by an
-// Arabic keyboard layout), reverse the layout to recover the Latin code.
+// Arabic keyboard layout), reverse the layout to recover the Latin code; then
+// strip any scanner-added "#" terminator.
 export const normalizeScannedCode = (value) => {
   const digits = toAsciiDigits(value);
   if (typeof digits === 'string' && ARABIC_SCRIPT_RE.test(digits)) {
-    return deArabizeKeyboard(digits);
+    return stripScannerSuffix(deArabizeKeyboard(digits));
   }
-  return typeof digits === 'string' ? digits.trim() : digits;
+  return stripScannerSuffix(digits);
 };

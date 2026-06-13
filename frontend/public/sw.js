@@ -20,7 +20,8 @@
 // v22: bump so non-admins also load branches -> working-days filter applies.
 // v23: bump for personalized bulk WhatsApp (name+number paste, {الاسم} token).
 // v24: bump to drop "#" before membership number in customer prints & WhatsApp messages.
-const CACHE_NAME = 'gcsp-academy-v24';
+// v25: bump to strip scanner-added "#" terminator from scanned member codes.
+const CACHE_NAME = 'gcsp-academy-v25';
 const OFFLINE_URL = '/offline.html';
 
 // Assets to cache immediately on install
