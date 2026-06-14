@@ -68,6 +68,26 @@ def member_belongs_to_level(activities, level_id) -> bool:
     return level_id in linked_levels
 
 
+def _activity_group_name(name) -> str:
+    """Map a free-text activity name to its coarse group.
+
+    The academy names levels and member activities inconsistently (e.g. a
+    level is "سباحة - الساعة 7" while the member's subscription is named
+    "السباحة 4 ايام في الاسبوع"). Group matching lets us link the two even
+    when the exact strings differ.
+    """
+    s = (name or "").strip()
+    if not s:
+        return ""
+    if "سباحة" in s or "سباحه" in s:
+        return "swimming"
+    if "قدم" in s or "كره" in s or "كرة" in s:
+        return "football"
+    if "كارات" in s:
+        return "karate"
+    return ""
+
+
 # ============ ROUTES ============
 
 @router.get("")
@@ -471,6 +491,7 @@ async def add_member_to_level(level_id: str, member_id: str, current_user: dict 
     if member_doc:
         activities = member_doc.get("activities", []) or []
         changed = False
+        matched_any = False
         for act in activities:
             matches = False
             # Match by activity_id OR activity_name — older member records may
@@ -479,9 +500,37 @@ async def add_member_to_level(level_id: str, member_id: str, current_user: dict 
                 matches = True
             if not matches and match_aname and act.get("activity_name") == match_aname:
                 matches = True
-            if matches and act.get("level_id") != level_id:
-                act["level_id"] = level_id
-                changed = True
+            if matches:
+                matched_any = True
+                if act.get("level_id") != level_id:
+                    act["level_id"] = level_id
+                    changed = True
+        # Fallback: no activity matched by exact id/name. Without a backfilled
+        # level_id, get_levels() drops this member on the next refetch (their
+        # activities link to no/other levels) and strips them back out of
+        # level.members — so the add silently reverts. Link by activity GROUP
+        # instead (e.g. level "سباحة - الساعة 7" ↔ member "السباحة 4 ايام"),
+        # preferring an active subscription, so the membership actually sticks.
+        if not matched_any:
+            level_group = _activity_group_name(match_aname)
+            if level_group:
+                today_str = datetime.now().strftime("%Y-%m-%d")
+
+                def _is_active(a):
+                    return a.get("status") == "active" and (
+                        not a.get("end_date") or a.get("end_date") >= today_str
+                    )
+
+                candidates = [
+                    a for a in activities
+                    if _activity_group_name(a.get("activity_name")) == level_group
+                ]
+                chosen = next((a for a in candidates if _is_active(a)), None)
+                if chosen is None and candidates:
+                    chosen = candidates[0]
+                if chosen is not None and chosen.get("level_id") != level_id:
+                    chosen["level_id"] = level_id
+                    changed = True
         if changed:
             await db.members.update_one(
                 {"id": member_id},
@@ -520,15 +569,32 @@ async def remove_member_from_level(level_id: str, member_id: str, current_user: 
     if member_doc:
         activities = member_doc.get("activities", []) or []
         changed = False
+        matched_any = False
         for act in activities:
             matches = False
             if match_aid and act.get("activity_id") == match_aid:
                 matches = True
             if not matches and match_aname and act.get("activity_name") == match_aname:
                 matches = True
-            if matches and act.get("level_id") == level_id:
-                act["level_id"] = ""
-                changed = True
+            if matches:
+                matched_any = True
+                if act.get("level_id") == level_id:
+                    act["level_id"] = ""
+                    changed = True
+        # Mirror add_member_to_level's group fallback: a member can be linked to
+        # this level via same-group matching (name mismatch), so clear by group
+        # too — otherwise a stale level_id is left behind and the member never
+        # returns to the unassigned list.
+        if not matched_any:
+            level_group = _activity_group_name(match_aname)
+            if level_group:
+                for act in activities:
+                    if (
+                        act.get("level_id") == level_id
+                        and _activity_group_name(act.get("activity_name")) == level_group
+                    ):
+                        act["level_id"] = ""
+                        changed = True
         if changed:
             await db.members.update_one(
                 {"id": member_id},

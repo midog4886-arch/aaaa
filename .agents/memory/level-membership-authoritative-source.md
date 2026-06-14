@@ -53,3 +53,25 @@ so the member becomes net-new, THEN run auto-assign.
 leaving it strands the member. Deleting a level is also branch-scoped (same
 fail-closed pattern as cleanup/bulk): non-admins can only delete their own-branch
 or shared-branchless levels; foreign-branch attempts are rejected.
+
+## Manual add/remove must backfill level_id, and exact-name match is not enough
+
+Manually adding a member to a level (`add_member_to_level`) does TWO writes:
+`$addToSet` into `level.members[]` AND backfill `activity.level_id` on the member.
+If only the first happens, the very next `get_levels` refetch runs
+`member_belongs_to_level`, sees the member's activities link to no/other levels,
+and STRIPS the id back out via the `stale_updates` self-heal — so the add shows a
+success toast but silently reverts (member stays in "available", level shows 0).
+
+**The trap:** the backfill matched the member's activity to the level ONLY by exact
+`activity_id` or exact `activity_name`. Academy naming is inconsistent — a level is
+`"سباحة - الساعة 7"` while the member's subscription is `"السباحة 4 ايام في الاسبوع"`,
+so neither matches and no backfill happens → revert.
+
+**Fix:** added module-level `_activity_group_name()` (maps names → swimming/
+football/karate) and a GROUP fallback: when no exact activity matches, link the
+member's same-group activity (preferring an active, non-expired one). `remove`
+mirrors the same group fallback when clearing `level_id`, else a stale link is left
+and the member never returns to the unassigned list. **Why:** the admin's explicit
+click is unambiguous intent to assign; the link must actually stick. Keep add and
+remove symmetric on the matching strategy.
