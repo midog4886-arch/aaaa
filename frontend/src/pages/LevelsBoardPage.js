@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/AuthContext';
 import { Layout } from '../components/Layout';
@@ -12,6 +13,7 @@ import { RefreshCcw, Users, Clock, MapPin, UserCheck, CalendarDays } from 'lucid
 const REFRESH_MS = 30000;
 
 const LevelsBoardPage = () => {
+  const navigate = useNavigate();
   const { language } = useLanguage();
   const { selectedBranchId } = useAuth();
   // "Today" in Saudi Arabia (Asia/Riyadh, UTC+3) to stay consistent with the backend.
@@ -56,23 +58,32 @@ const LevelsBoardPage = () => {
     return () => clearInterval(id);
   }, [load, isToday]);
 
+  const openMember = (m) => {
+    if (m?.member_id) navigate(`/admin/members?focus=${encodeURIComponent(m.member_id)}`);
+  };
+
   const MemberChip = ({ m }) => (
-    <div className="flex items-center gap-2 rounded-lg border bg-card px-2 py-1.5">
+    <button
+      type="button"
+      onClick={() => openMember(m)}
+      title={ar ? 'عرض بيانات العضو' : 'View member'}
+      className={`w-full text-start flex items-center gap-2 rounded-lg border px-2 py-1.5 transition-colors cursor-pointer hover:bg-accent hover:border-primary/40 ${m.off_schedule ? 'border-red-300 bg-red-50' : 'bg-card'}`}
+    >
       {m.member_photo
         ? <img src={m.member_photo} alt="" className="w-8 h-8 rounded-full object-cover shrink-0" />
         : <div className="w-8 h-8 rounded-full bg-muted shrink-0 flex items-center justify-center text-muted-foreground"><Users className="w-4 h-4" /></div>}
       <div className="min-w-0 flex-1">
         <div className="text-sm font-medium truncate">{m.member_name || '—'}</div>
-        <div className="text-[11px] text-muted-foreground flex items-center gap-1">
+        <div className="text-[11px] text-muted-foreground flex items-center gap-1 flex-wrap">
           {m.check_in_time && <span className="font-mono">{m.check_in_time}</span>}
           {m.off_schedule && (
             <Badge variant="destructive" className="text-[9px] px-1 py-0">
-              {ar ? 'خارج الجدول' : 'Off-schedule'}
+              {ar ? 'حاضر في غير موعده' : 'Off-schedule'}
             </Badge>
           )}
         </div>
       </div>
-    </div>
+    </button>
   );
 
   const LevelCell = ({ cell }) => (
