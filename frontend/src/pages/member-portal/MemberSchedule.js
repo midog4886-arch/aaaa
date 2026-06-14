@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
-import { Calendar, Clock, MapPin, Loader2, CheckCircle, XCircle, FileText } from 'lucide-react';
+import { Calendar, Clock, MapPin, Loader2, CheckCircle, XCircle, FileText, Bell } from 'lucide-react';
 import MemberLayout, { memberAPI, getDarkMode } from './MemberLayout';
 
 const CoachAvatar = ({ photo, name, coachId, darkMode, size = 'md' }) => {
@@ -79,6 +79,21 @@ const MemberSchedule = () => {
     <MemberLayout>
       <div className="space-y-6 page-enter">
         <h1 className={`text-xl sm:text-2xl font-bold ${darkMode ? 'text-white' : 'text-gray-800'}`}>جدول التدريبات</h1>
+
+        {/* Schedule change banner */}
+        {scheduleData.schedule_change_notice && (
+          <div className={`rounded-lg border-2 p-4 flex items-start gap-3 ${darkMode ? 'bg-amber-900/30 border-amber-600' : 'bg-amber-50 border-amber-300'}`}>
+            <div className="w-10 h-10 rounded-full bg-amber-500 flex items-center justify-center flex-shrink-0">
+              <Bell className="w-5 h-5 text-white" />
+            </div>
+            <div className="flex-1">
+              <p className={`font-bold ${darkMode ? 'text-amber-200' : 'text-amber-800'}`}>تنبيه: تم تغيير موعد تدريبك</p>
+              <p className={`text-sm mt-1 ${darkMode ? 'text-amber-100' : 'text-amber-700'}`}>
+                {scheduleData.schedule_change_notice.message_ar}
+              </p>
+            </div>
+          </div>
+        )}
 
         {/* Stats */}
         <div className="grid grid-cols-2 gap-4">

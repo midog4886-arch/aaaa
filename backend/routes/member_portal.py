@@ -1909,11 +1909,42 @@ async def get_member_full_schedule(member: dict = Depends(get_current_member)):
     
     # Sort by status (active first) then by end_date
     schedules.sort(key=lambda x: (0 if x.get("status") == "active" else 1, x.get("end_date", "")), reverse=True)
-    
+
+    # Recent schedule-change notice (banner) — surface the latest "schedule_changed"
+    # notification raised within the last 7 days so the schedule page can alert the member.
+    schedule_change_notice = None
+    try:
+        recent = await db.member_notifications.find_one(
+            {"member_id": member["id"], "type": "schedule_changed"},
+            {"_id": 0},
+            sort=[("created_at", -1)],
+        )
+        if recent:
+            created_raw = str(recent.get("created_at") or "")
+            is_recent = True
+            try:
+                created_dt = datetime.fromisoformat(created_raw)
+                if created_dt.tzinfo is None:
+                    created_dt = created_dt.replace(tzinfo=timezone.utc)
+                is_recent = (datetime.now(timezone.utc) - created_dt).days < 7
+            except Exception:
+                is_recent = True
+            if is_recent:
+                schedule_change_notice = {
+                    "message_ar": recent.get("message_ar", ""),
+                    "message_en": recent.get("message_en", ""),
+                    "new_schedule": recent.get("new_schedule", ""),
+                    "activity_name": recent.get("activity_name", ""),
+                    "created_at": created_raw,
+                }
+    except Exception:
+        schedule_change_notice = None
+
     return {
         "schedules": schedules,
         "active_count": len([s for s in schedules if s.get("status") == "active"]),
-        "expired_count": len([s for s in schedules if s.get("status") == "expired"])
+        "expired_count": len([s for s in schedules if s.get("status") == "expired"]),
+        "schedule_change_notice": schedule_change_notice,
     }
 
 

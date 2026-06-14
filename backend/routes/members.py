@@ -756,4 +756,91 @@ async def update_member_activity(member_id: str, activity_id: str, activity: Mem
         )
     except Exception:
         pass
+
+    # Notify the member when their training schedule (الموعد) changed.
+    try:
+        await _notify_schedule_change(
+            member_id=member_id,
+            member_doc=before_member,
+            before_act=before_act,
+            after_act=activity.model_dump(),
+        )
+    except Exception:
+        pass
+
     return {"message": "Activity updated"}
+
+
+def _activity_schedule_str(act: dict) -> str:
+    """Human-readable schedule string for an activity entry.
+    Prefers the free-text ``schedule`` field, else builds it from
+    ``training_days`` + ``training_time``."""
+    if not act:
+        return ""
+    s = (act.get("schedule") or "").strip()
+    if s:
+        return s
+    days = act.get("training_days") or []
+    time = (act.get("training_time") or "").strip()
+    days_str = " و ".join([d for d in days if d]) if days else ""
+    if days_str and time:
+        return f"{days_str} - {time}"
+    return days_str or time
+
+
+async def _notify_schedule_change(member_id: str, member_doc: Optional[dict],
+                                  before_act: Optional[dict], after_act: dict) -> None:
+    """Insert an in-app notification + send a push when a member's training
+    schedule fields (schedule / training_days / training_time) changed."""
+    def _sig(a: Optional[dict]):
+        a = a or {}
+        days = a.get("training_days") or []
+        return (
+            (a.get("schedule") or "").strip(),
+            tuple(d for d in days if d),
+            (a.get("training_time") or "").strip(),
+        )
+
+    if _sig(before_act) == _sig(after_act):
+        return
+
+    new_sched = _activity_schedule_str(after_act)
+    activity_name = after_act.get("activity_name") or (before_act or {}).get("activity_name") or "التدريب"
+    now = datetime.now(timezone.utc).isoformat()
+
+    if new_sched:
+        message_ar = f"تم تغيير موعد تدريبك ({activity_name}) إلى: {new_sched}"
+        message_en = f"Your training schedule for ({activity_name}) has been changed to: {new_sched}"
+    else:
+        message_ar = f"تم تحديث موعد تدريبك ({activity_name}). يرجى مراجعة جدولك."
+        message_en = f"Your training schedule for ({activity_name}) has been updated. Please review your schedule."
+
+    notif = {
+        "id": str(uuid.uuid4()),
+        "member_id": member_id,
+        "type": "schedule_changed",
+        "title_ar": "تم تغيير موعد التدريب",
+        "title_en": "Training schedule changed",
+        "message_ar": message_ar,
+        "message_en": message_en,
+        "new_schedule": new_sched,
+        "activity_name": activity_name,
+        "is_read": False,
+        "created_at": now,
+    }
+    await db.member_notifications.insert_one(notif)
+
+    try:
+        from routes.push_notifications import send_push_to_members, NotificationPayload
+        payload = NotificationPayload(
+            title="تم تغيير موعد التدريب",
+            body=message_ar,
+            title_en="Training schedule changed",
+            body_en=message_en,
+            url="/member-schedule",
+            tag="schedule-changed",
+            data={"type": "schedule_changed"},
+        )
+        await send_push_to_members(payload, [member_id])
+    except Exception:
+        pass
