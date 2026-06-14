@@ -56,7 +56,8 @@ import {
 
 export const MembersPage = () => {
   const { t, language } = useLanguage();
-  const { selectedBranchId, isAdmin } = useAuth();
+  const { selectedBranchId, isAdmin, user } = useAuth();
+  const canAddMember = isAdmin || (user?.permissions || []).includes('members-create');
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const [members, setMembers] = useState([]);
@@ -1589,10 +1590,12 @@ export const MembersPage = () => {
                 {language === 'ar' ? `نقل المحددين (${markedMemberIds.size})` : `Transfer Selected (${markedMemberIds.size})`}
               </Button>
             )}
-            <Button size="sm" onClick={() => { setIsAddDialogOpen(true); loadLevels(); }} data-testid="add-member-btn">
-              <Plus className="w-4 h-4 me-1" />
-              {t('add_member')}
-            </Button>
+            {canAddMember && (
+              <Button size="sm" onClick={() => { setIsAddDialogOpen(true); loadLevels(); }} data-testid="add-member-btn">
+                <Plus className="w-4 h-4 me-1" />
+                {t('add_member')}
+              </Button>
+            )}
           </div>
         </div>
 

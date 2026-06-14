@@ -33,7 +33,7 @@ class UserUpdateAdmin(BaseModel):
     permissions: Optional[List[str]] = None
 
 ALL_PERMISSIONS = [
-    'dashboard', 'members', 'invoices', 'activities', 'levels', 'schedule', 'attendance',
+    'dashboard', 'members', 'members-create', 'invoices', 'activities', 'levels', 'schedule', 'attendance',
     'coach-ratings', 'coach-attendance', 'coaches', 'advertisements', 'daily-videos',
     'loyalty', 'store', 'accounting', 'reports', 'messages', 'branches', 'users',
     'settings', 'tournaments', 'social-publisher', 'renewals', 'daily-ledger',

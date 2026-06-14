@@ -1173,7 +1173,7 @@ async def login(credentials: UserLogin):
         token = create_token(user["id"], user["username"], branch_id, is_admin)
         return TokenResponse(
             access_token=token,
-            user={"id": user["id"], "username": user["username"], "name": user.get("name", user["username"]), "branch_id": branch_id, "is_admin": is_admin}
+            user={"id": user["id"], "username": user["username"], "name": user.get("name", user["username"]), "branch_id": branch_id, "is_admin": is_admin, "permissions": user.get("permissions", [])}
         )
     except HTTPException:
         raise

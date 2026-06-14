@@ -6,7 +6,7 @@ import uuid
 from datetime import datetime, timezone
 
 from .common import db, get_current_user
-from utils.auth import require_branch_scope, resolve_branch_filter
+from utils.auth import require_branch_scope, resolve_branch_filter, require_permission
 from utils.sequences import get_branch_seq_start
 from utils.member_code import generate_member_code
 from utils.cache import cache_invalidate
@@ -238,6 +238,7 @@ async def get_member(member_id: str, current_user: dict = Depends(get_current_us
 @router.post("", response_model=Member)
 async def create_member(member: MemberCreate, current_user: dict = Depends(get_current_user)):
     """Create a new member"""
+    await require_permission(current_user, "members-create")
     from utils.tenant import get_current_tenant
     tenant = get_current_tenant() or {}
     max_members = int(tenant.get("max_members") or 0)

@@ -28,6 +28,7 @@ import {
 const ALL_PERMISSIONS = [
   { key: 'dashboard', label_ar: 'لوحة التحكم', label_en: 'Dashboard' },
   { key: 'members', label_ar: 'الأعضاء', label_en: 'Members' },
+  { key: 'members-create', label_ar: 'إضافة عضو جديد', label_en: 'Add New Member' },
   { key: 'invoices', label_ar: 'الفواتير', label_en: 'Invoices' },
   { key: 'activities', label_ar: 'الأنشطة', label_en: 'Activities' },
   { key: 'levels', label_ar: 'المستويات', label_en: 'Levels' },
