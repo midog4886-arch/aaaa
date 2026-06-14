@@ -19,3 +19,4 @@
 - [Coach lifecycle (terminate/transfer)](coach-lifecycle.md) — terminate=archive (lifecycle fields off editable model; legacy=active); guard ALL check-in paths incl public QR; transfer re-tags current-month attendance+non-disbursed salary to new branch.
 - [Deploy package-firewall 403](deploy-package-firewall.md) — publish build pip-installs via firewall that 403s known-CVE pinned versions (can flip mid-day); bump to allowed version. Two dep sources (pyproject uv + backend/requirements.txt) — keep aligned.
 - [Member status consistency](member-status-consistency.md) — expired = end_date passed (not session count); freeze/closure extends end_date; badge+count+filter must all use all-expired rule, never per-activity .some().
+- [Member portal schedule source](member-portal-schedule-source.md) — portal /my-schedule reads invoices+registration_forms, NOT member.activities where admins edit الموعد; must merge activities as authoritative or schedule page is empty/stale.

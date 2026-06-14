@@ -1831,9 +1831,43 @@ async def get_member_full_schedule(member: dict = Depends(get_current_member)):
         coach_cache[cache_key] = ("", "", "")
         return ("", "", "")
 
+    # Get from the member's own activity entries. This is the authoritative
+    # source where admins edit the training schedule / time (الموعد), so it
+    # takes precedence over invoice / registration-form schedules for the same
+    # activity (those are deduped out below by activity_id).
+    activity_source_ids = set()
+    for act in member_acts:
+        sched_str = (act.get("schedule") or "").strip()
+        if not sched_str:
+            days = act.get("training_days") or []
+            time = (act.get("training_time") or "").strip()
+            days_str = " و ".join([d for d in days if d]) if days else ""
+            sched_str = f"{days_str} - {time}" if (days_str and time) else (days_str or time)
+        if not sched_str:
+            continue
+        aid = act.get("activity_id")
+        if aid:
+            activity_source_ids.add(aid)
+        end_date = act.get("end_date", "") or ""
+        start_date = act.get("start_date", "") or ""
+        status = "active" if (not end_date or end_date >= today) else "expired"
+        coach_id, coach_name, coach_photo = await get_coach_for_activity(aid or "", act.get("activity_name") or "")
+        schedules.append({
+            "source": "activity",
+            "activity_id": aid,
+            "activity_name": act.get("activity_name"),
+            "schedule": sched_str,
+            "start_date": start_date,
+            "end_date": end_date,
+            "status": status,
+            "coach_id": coach_id,
+            "coach_name": coach_name,
+            "coach_photo": coach_photo,
+        })
+
     for form in forms:
         for item in form.get("items", []):
-            if item.get("activity_id") and item.get("schedule"):
+            if item.get("activity_id") and item.get("schedule") and item.get("activity_id") not in activity_source_ids:
                 end_date = item.get("end_date", "")
                 start_date = item.get("start_date", "")
                 
@@ -1870,7 +1904,7 @@ async def get_member_full_schedule(member: dict = Depends(get_current_member)):
     
     for inv in invoices:
         for item in inv.get("items", []):
-            if item.get("activity_id") and item.get("schedule"):
+            if item.get("activity_id") and item.get("schedule") and item.get("activity_id") not in activity_source_ids:
                 end_date = item.get("end_date", "")
                 start_date = item.get("start_date", "")
                 
