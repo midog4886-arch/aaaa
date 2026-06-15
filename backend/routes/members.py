@@ -235,10 +235,16 @@ async def get_member(member_id: str, current_user: dict = Depends(get_current_us
         raise HTTPException(status_code=404, detail="Member not found")
     return member
 
-@router.post("", response_model=Member)
-async def create_member(member: MemberCreate, current_user: dict = Depends(get_current_user)):
-    """Create a new member"""
-    await require_permission(current_user, "members-create")
+async def _create_member_core(member: MemberCreate, current_user: dict) -> Member:
+    """Shared member-creation logic.
+
+    Enforces tenant plan limits and branch isolation (non-admins are pinned to
+    their own branch). The ``members-create`` PERMISSION check is intentionally
+    NOT done here so callers can decide whether to require it:
+      - ``POST /members`` (Members page) requires the permission.
+      - ``POST /members/quick-create`` (invoice flow) does not — any
+        authenticated, branch-scoped user may quick-add a member.
+    """
     from utils.tenant import get_current_tenant
     tenant = get_current_tenant() or {}
     max_members = int(tenant.get("max_members") or 0)
@@ -253,7 +259,7 @@ async def create_member(member: MemberCreate, current_user: dict = Depends(get_c
     branch_id = require_branch_scope(current_user) or current_user.get("branch_id")
 
     new_code = await generate_member_code(branch_id)
-    
+
     payload = member.model_dump()
     payload["preferred_language"] = "en" if str(payload.get("preferred_language") or "ar").lower().startswith("en") else "ar"
     member_doc = {
@@ -272,6 +278,22 @@ async def create_member(member: MemberCreate, current_user: dict = Depends(get_c
     except Exception:
         pass
     return Member(**{k: v for k, v in member_doc.items() if k != "_id"})
+
+
+@router.post("", response_model=Member)
+async def create_member(member: MemberCreate, current_user: dict = Depends(get_current_user)):
+    """Create a new member (Members page) — requires the members-create permission."""
+    await require_permission(current_user, "members-create")
+    return await _create_member_core(member, current_user)
+
+
+@router.post("/quick-create", response_model=Member)
+async def quick_create_member(member: MemberCreate, current_user: dict = Depends(get_current_user)):
+    """Quick-add a member from the invoice flow — no members-create permission required.
+
+    Still requires authentication and enforces branch isolation + plan limits.
+    """
+    return await _create_member_core(member, current_user)
 
 @router.put("/{member_id}", response_model=Member)
 async def update_member(member_id: str, member: MemberUpdate, current_user: dict = Depends(get_current_user)):

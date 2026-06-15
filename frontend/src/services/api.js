@@ -116,6 +116,7 @@ export const membersAPI = {
   getAll: (params = {}) => axios.get(`${API}/members`, { params }),
   getById: (id) => axios.get(`${API}/members/${id}`),
   create: (data) => axios.post(`${API}/members`, data),
+  quickCreate: (data) => axios.post(`${API}/members/quick-create`, data),
   update: (id, data) => axios.put(`${API}/members/${id}`, data),
   delete: (id) => axios.delete(`${API}/members/${id}`),
   addActivity: (memberId, activity) => axios.post(`${API}/members/${memberId}/activities`, activity),

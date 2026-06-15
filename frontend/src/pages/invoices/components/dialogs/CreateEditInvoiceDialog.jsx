@@ -560,7 +560,7 @@ export const CreateEditInvoiceDialog = ({
                             <Button type="button" size="sm" variant="outline" onClick={() => setAdditionalMemberNewForm({ show: false, index: -1, data: { name_ar: '', name: '', age: '', guardian_name_ar: '', guardian_name: '', phone: '' } })}>{language === 'ar' ? 'إلغاء' : 'Cancel'}</Button>
                             <Button type="button" size="sm" className="bg-green-600 hover:bg-green-700" disabled={!additionalMemberNewForm.data.name_ar} onClick={async () => {
                               try {
-                                const res = await membersAPI.create({ name_ar: additionalMemberNewForm.data.name_ar, name: additionalMemberNewForm.data.name_ar, phone: customerPhone || '', status: 'active' });
+                                const res = await membersAPI.quickCreate({ name_ar: additionalMemberNewForm.data.name_ar, name: additionalMemberNewForm.data.name_ar, phone: customerPhone || '', status: 'active' });
                                 const newMember = res.data;
                                 const updated = [...additionalMembers];
                                 updated[amIdx] = { ...updated[amIdx], member: newMember };
