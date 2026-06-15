@@ -1,12 +1,14 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import html2canvas from 'html2canvas';
 import { getMemberQRValue } from '../../utils/memberQR';
 import { Card, CardContent } from '../../components/ui/card';
 import { Button } from '../../components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../../components/ui/dialog';
 import { 
-  Download, Printer, Loader2, QrCode, 
+  Download, Printer, Loader2, QrCode, Share2, Smartphone,
   Calendar, Clock, CheckCircle, ShieldCheck, Phone
 } from 'lucide-react';
+import { toast } from 'sonner';
 import { QRCodeSVG } from 'qrcode.react';
 import MemberLayout, { memberAPI, getMemberData, getDarkMode, getLanguage } from './MemberLayout';
 import { useBrandColor } from '../../services/branding';
@@ -298,8 +300,95 @@ const MemberCard = () => {
   const language = getLanguage();
   const today = new Date().toISOString().slice(0, 10);
   const primary = useBrandColor();
+  const cardRef = useRef(null);
+  const [deferredPrompt, setDeferredPrompt] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const isIOS = typeof navigator !== 'undefined' && /iphone|ipad|ipod/i.test(navigator.userAgent);
+  const isStandalone = typeof window !== 'undefined' &&
+    (window.matchMedia?.('(display-mode: standalone)')?.matches || window.navigator.standalone === true);
 
   useEffect(() => { fetchCardData(); }, []);
+
+  useEffect(() => {
+    const handler = (e) => { e.preventDefault(); setDeferredPrompt(e); };
+    window.addEventListener('beforeinstallprompt', handler);
+    return () => window.removeEventListener('beforeinstallprompt', handler);
+  }, []);
+
+  const captureCard = async () => {
+    if (!cardRef.current) return null;
+    return await html2canvas(cardRef.current, {
+      scale: 2,
+      backgroundColor: darkMode ? '#0b1220' : '#ffffff',
+      useCORS: true,
+      logging: false,
+    });
+  };
+
+  const handleDownloadImage = async () => {
+    try {
+      setBusy(true);
+      const canvas = await captureCard();
+      if (!canvas) {
+        toast.error(language === 'ar' ? 'تعذّر تجهيز البطاقة' : 'Could not render the card');
+        return;
+      }
+      const link = document.createElement('a');
+      link.download = `card-${currentCard?.member_code || 'member'}.png`;
+      link.href = canvas.toDataURL('image/png');
+      link.click();
+      toast.success(language === 'ar' ? 'تم حفظ البطاقة على جهازك' : 'Card saved to your device');
+    } catch (e) {
+      console.error('download card failed', e);
+      toast.error(language === 'ar' ? 'تعذّر حفظ البطاقة' : 'Could not save the card');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleShareImage = async () => {
+    try {
+      setBusy(true);
+      const canvas = await captureCard();
+      if (!canvas) {
+        toast.error(language === 'ar' ? 'تعذّر تجهيز البطاقة' : 'Could not render the card');
+        return;
+      }
+      const blob = await new Promise((res) => canvas.toBlob(res, 'image/png'));
+      if (!blob) {
+        toast.error(language === 'ar' ? 'تعذّر تجهيز الصورة' : 'Could not prepare the image');
+        return;
+      }
+      const file = new File([blob], `card-${currentCard?.member_code || 'member'}.png`, { type: 'image/png' });
+      if (navigator.canShare && navigator.canShare({ files: [file] })) {
+        await navigator.share({
+          files: [file],
+          title: language === 'ar' ? 'بطاقة العضوية' : 'Membership Card',
+          text: language === 'ar' ? `بطاقة عضوية ${name}` : `Membership card - ${name}`,
+        });
+      } else {
+        const link = document.createElement('a');
+        link.download = file.name;
+        link.href = canvas.toDataURL('image/png');
+        link.click();
+        toast.info(language === 'ar' ? 'تم حفظ الصورة — شاركها من معرض الصور' : 'Image saved — share it from your gallery');
+      }
+    } catch (e) {
+      if (e?.name !== 'AbortError') {
+        console.error('share card failed', e);
+        toast.error(language === 'ar' ? 'تعذّرت المشاركة' : 'Could not share');
+      }
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleInstall = async () => {
+    if (!deferredPrompt) return;
+    deferredPrompt.prompt();
+    try { await deferredPrompt.userChoice; } catch (e) { /* ignore */ }
+    setDeferredPrompt(null);
+  };
 
   const fetchCardData = async () => {
     try {
@@ -325,70 +414,6 @@ const MemberCard = () => {
     const printWindow = window.open('', '_blank', 'width=800,height=600');
     printWindow.document.write(buildStickerHtml(currentCard, primary));
     printWindow.document.close();
-  };
-
-  const handleDownload = async () => {
-    const cardData = currentCard;
-    const qrData = getMemberQRValue(cardData?.member_code);
-    const canvas = document.createElement('canvas');
-    canvas.width = 400;
-    canvas.height = 450;
-    const ctx = canvas.getContext('2d');
-    ctx.fillStyle = 'white';
-    ctx.fillRect(0, 0, 400, 450);
-    const brandColor = primary || '#F97316';
-    ctx.fillStyle = brandColor;
-    ctx.font = 'bold 18px Tajawal, sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText('🏆 شركة اداء الابطال العالمية للرياضة', 200, 35);
-    const qrImg = new Image();
-    qrImg.crossOrigin = 'anonymous';
-    qrImg.onload = () => {
-      ctx.drawImage(qrImg, 100, 60, 200, 200);
-      ctx.fillStyle = '#1f2937';
-      ctx.font = 'bold 20px Tajawal, sans-serif';
-      ctx.fillText(cardData?.name_ar || '', 200, 300);
-      ctx.fillStyle = brandColor;
-      ctx.font = 'bold 24px Tajawal, sans-serif';
-      ctx.fillText(`${cardData?.member_code || ''}`, 200, 340);
-      const activities = cardData?.active_activities || [];
-      if (activities.length > 0) {
-        ctx.strokeStyle = '#e5e7eb';
-        ctx.lineWidth = 1;
-        ctx.beginPath();
-        ctx.moveTo(40, 358);
-        ctx.lineTo(360, 358);
-        ctx.stroke();
-        const availableHeight = 440 - 375;
-        const lineHeight = Math.max(13, Math.floor(availableHeight / activities.length));
-        const fontSize = Math.max(9, lineHeight - 4);
-        const maxTextWidth = 340;
-        const truncate = (text) => {
-          ctx.font = `bold ${fontSize}px Tajawal, sans-serif`;
-          if (ctx.measureText(text).width <= maxTextWidth) return text;
-          let truncated = text;
-          while (truncated.length > 0 && ctx.measureText(truncated + '…').width > maxTextWidth) {
-            truncated = truncated.slice(0, -1);
-          }
-          return truncated + '…';
-        };
-        activities.forEach((act, i) => {
-          const y = 375 + i * lineHeight;
-          if (y > 443) return;
-          ctx.fillStyle = '#374151';
-          ctx.font = `bold ${fontSize}px Tajawal, sans-serif`;
-          ctx.textAlign = 'center';
-          const actText = act.activity_name || '';
-          const coachText = act.coach_name ? ` · ${act.coach_name}` : '';
-          ctx.fillText(truncate(actText + coachText), 200, y);
-        });
-      }
-      const link = document.createElement('a');
-      link.download = `membership-card-${cardData?.member_code}.png`;
-      link.href = canvas.toDataURL('image/png');
-      link.click();
-    };
-    qrImg.src = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(qrData)}`;
   };
 
   if (loading) {
@@ -520,6 +545,9 @@ const MemberCard = () => {
           </DialogContent>
         </Dialog>
 
+        {/* ── Saveable card area (captured as image) ── */}
+        <div ref={cardRef} className="space-y-5">
+
         {/* ── Profile Header ── */}
         <div
           className={`relative rounded-3xl overflow-hidden border shadow-xl ${
@@ -637,20 +665,46 @@ const MemberCard = () => {
                 📱 {language === 'ar' ? 'امسح هذا الرمز عند الدخول لتسجيل الحضور' : 'Scan this code at entry to record attendance'}
               </p>
 
-              {/* Action buttons */}
-              <div className="flex gap-3 w-full justify-center">
-                <Button onClick={() => setShowPrintDialog(true)} className="flex-1 max-w-[140px] gap-2 bg-gray-900 hover:bg-gray-800 text-white">
-                  <Printer className="w-4 h-4" />
-                  {language === 'ar' ? 'طباعة' : 'Print'}
-                </Button>
-                <Button onClick={handleDownload} variant="outline" className={`flex-1 max-w-[140px] gap-2 ${darkMode ? 'border-gray-600 text-gray-300 hover:bg-gray-700' : ''}`}>
-                  <Download className="w-4 h-4" />
-                  {language === 'ar' ? 'تحميل' : 'Download'}
-                </Button>
+              {/* Action buttons (excluded from the saved card image) */}
+              <div data-html2canvas-ignore="true" className="w-full space-y-3">
+                <div className="grid grid-cols-2 gap-3 w-full">
+                  <Button onClick={handleDownloadImage} disabled={busy} className="gap-2 text-white" style={{ backgroundColor: primary || '#16a34a' }}>
+                    {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+                    {language === 'ar' ? 'تحميل البطاقة' : 'Download Card'}
+                  </Button>
+                  <Button onClick={handleShareImage} disabled={busy} className="gap-2 bg-green-600 hover:bg-green-700 text-white">
+                    <Share2 className="w-4 h-4" />
+                    {language === 'ar' ? 'مشاركة واتساب' : 'Share / WhatsApp'}
+                  </Button>
+                  <Button onClick={() => setShowPrintDialog(true)} variant="outline" className={`gap-2 ${darkMode ? 'border-gray-600 text-gray-300 hover:bg-gray-700' : ''}`}>
+                    <Printer className="w-4 h-4" />
+                    {language === 'ar' ? 'طباعة' : 'Print'}
+                  </Button>
+                  {deferredPrompt && (
+                    <Button onClick={handleInstall} variant="outline" className={`gap-2 ${darkMode ? 'border-gray-600 text-gray-300 hover:bg-gray-700' : ''}`}>
+                      <Smartphone className="w-4 h-4" />
+                      {language === 'ar' ? 'إضافة للشاشة' : 'Add to Home'}
+                    </Button>
+                  )}
+                </div>
+                <p className={`text-[11px] text-center ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                  {language === 'ar'
+                    ? 'احفظ بطاقتك كصورة أو أضِف التطبيق لشاشة هاتفك للوصول السريع'
+                    : 'Save your card as an image or add the app to your home screen for quick access'}
+                </p>
+                {isIOS && !isStandalone && (
+                  <p className={`text-[11px] text-center ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                    {language === 'ar'
+                      ? '🍎 لإضافة التطبيق على آيفون: اضغط زر المشاركة في سفاري ثم اختر «إضافة إلى الشاشة الرئيسية»'
+                      : '🍎 On iPhone: tap the Share button in Safari, then choose "Add to Home Screen"'}
+                  </p>
+                )}
               </div>
             </div>
           </CardContent>
         </Card>
+
+        </div>{/* ── end saveable card area ── */}
 
         {/* ── Active Subscriptions ── */}
         {activeActivities.length > 0 && (
