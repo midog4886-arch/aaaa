@@ -21,3 +21,4 @@
 - [Member status consistency](member-status-consistency.md) — expired = end_date passed (not session count); freeze/closure extends end_date; badge+count+filter must all use all-expired rule, never per-activity .some().
 - [Member portal schedule source](member-portal-schedule-source.md) — portal /my-schedule reads invoices+registration_forms, NOT member.activities where admins edit الموعد; must merge activities as authoritative or schedule page is empty/stale.
 - [Auth user object shape](auth-user-object-shape.md) — /auth/login returns a hand-picked user dict, /auth/me the full doc; any field used for authz/UI (e.g. permissions) must be in BOTH or it is undefined until refresh. Permission keys live in 3 synced places.
+- [member.activities dedupe](member-activities-dedupe.md) — every persisted write to member.activities must merge by activity_id (invoices did, registration-form conversion used $push → stacked dup copies); list renders the array verbatim.

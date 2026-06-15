@@ -1650,11 +1650,30 @@ async def create_registration_form(
                         upsert=True
                     )
         
-        # Update member with activities
+        # Update member with activities. Dedupe by activity_id: replace an
+        # existing entry for the same activity instead of appending a duplicate
+        # copy (re-converting a form for the same activity used to stack copies).
         if activities_to_add:
+            member_doc = await db.members.find_one({"id": member_id}, {"_id": 0, "activities": 1})
+            existing_acts = (member_doc or {}).get("activities") or []
+            for new_act in activities_to_add:
+                aid = new_act.get("activity_id")
+                replaced = False
+                if aid:
+                    for idx, ex in enumerate(existing_acts):
+                        if ex.get("activity_id") == aid:
+                            if not new_act.get("coach_id") and ex.get("coach_id"):
+                                new_act["coach_id"] = ex.get("coach_id")
+                            if not new_act.get("level_id") and ex.get("level_id"):
+                                new_act["level_id"] = ex.get("level_id")
+                            existing_acts[idx] = new_act
+                            replaced = True
+                            break
+                if not replaced:
+                    existing_acts.append(new_act)
             await db.members.update_one(
                 {"id": member_id},
-                {"$push": {"activities": {"$each": activities_to_add}}}
+                {"$set": {"activities": existing_acts}}
             )
     
     # Process additional members (siblings)
@@ -1713,9 +1732,26 @@ async def create_registration_form(
                         )
             
             if am_activities_to_add:
+                am_doc = await db.members.find_one({"id": am.member_id}, {"_id": 0, "activities": 1})
+                am_existing = (am_doc or {}).get("activities") or []
+                for new_act in am_activities_to_add:
+                    aid = new_act.get("activity_id")
+                    replaced = False
+                    if aid:
+                        for idx, ex in enumerate(am_existing):
+                            if ex.get("activity_id") == aid:
+                                if not new_act.get("coach_id") and ex.get("coach_id"):
+                                    new_act["coach_id"] = ex.get("coach_id")
+                                if not new_act.get("level_id") and ex.get("level_id"):
+                                    new_act["level_id"] = ex.get("level_id")
+                                am_existing[idx] = new_act
+                                replaced = True
+                                break
+                    if not replaced:
+                        am_existing.append(new_act)
                 await db.members.update_one(
                     {"id": am.member_id},
-                    {"$push": {"activities": {"$each": am_activities_to_add}}}
+                    {"$set": {"activities": am_existing}}
                 )
         
         if additional_members_data:
