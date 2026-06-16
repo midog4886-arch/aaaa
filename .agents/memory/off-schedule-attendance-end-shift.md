@@ -45,6 +45,27 @@ accidental tap, which also pulled their end date earlier. The confirm gate stops
 accidental wrong-activity registration while still allowing intentional make-up
 sessions via the "تسجيل حضور رغم ذلك" button.
 
+## Off-schedule DETECTION must read schedule from member.activities, not invoices
+
+`get_member_schedule_days` (the single source feeding off-schedule detection in
+record_attendance, qr_checkin, AND the delete-reversal) originally read the
+schedule only from paid/partial **invoices**. That silently misses the shift for
+two common cases: (1) the invoice item's `activity_id` DIVERGES from the
+assigned-level activity_id the attendance is recorded under (level-based
+assignment uses a different activity record), and (2) the invoice is expired
+(end_date < today) so it is skipped. Either way invoices return NO schedule →
+`is_off_schedule=False` → record saved with `off_schedule` unset, no shift —
+while the frontend chips still flag it off-day (they read the authoritative
+member.activities schedule), so the user sees "off-day" but the end date never
+moves. **Fix:** read `member.activities[]` (matched by activity_id, status
+active) FIRST and fall back to invoices only when no scheduled activity entry
+exists. Same authoritative-source rule as attendance-expected-day-source and
+member-portal-schedule-source: admins edit الموعد in member.activities, treat it
+as truth. Note: the code fix only applies going forward — pre-existing
+mis-flagged records keep `off_schedule` unset and must be repaired/backfilled
+(recompute previous scheduled occurrence, set member.activities end_date + tag
+the record's off_schedule/end_shift_from/end_shift_to) to move their end date.
+
 ## Off-schedule dates must be merged into the session-quota chips (display)
 
 The admin member view "حصص الاشتراك" chips are built from `generateScheduleDates(start,end,schedule_days)` which emits ONLY scheduled weekdays. An off-schedule attendance has a real date that is NOT in that list, so the consumed session was invisible (no green chip) even though the backend already counted it. Fix: union the schedule dates with attended dates not already present (`offScheduleDates`), render the sorted union, and tag the extra ones green with an "خارج الموعد/Off-day" badge. They auto-fall into the attended/removable branch (attended=true, isFuture/isTransferred/isReplacement=false). Deduction is purely backend — display change must NOT touch quota math.

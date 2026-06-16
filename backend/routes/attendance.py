@@ -340,14 +340,37 @@ def parse_schedule_days(schedule_text: str) -> list:
     return days_found
 
 async def get_member_schedule_days(member_id: str, activity_id: str) -> list:
+    """Return the member's scheduled weekdays (english lowercase) for an activity.
+
+    The AUTHORITATIVE schedule lives in ``member.activities`` — that is where the
+    admin edits الموعد and where level/day assignment writes the slot. Invoices are
+    only a FALLBACK because their ``activity_id`` frequently diverges from the
+    assigned-level activity_id (level-based assignment uses a different activity
+    record) and their dates may already be expired — in which case reading invoices
+    alone returns NO schedule and an off-schedule attendance is silently missed
+    (its end-date shift never applies). Read member.activities first, fall back to
+    invoices only when the member has no scheduled activity entry."""
+    today_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    all_days = []
+
+    # 1) member.activities — authoritative source.
+    member = await db.members.find_one({"id": member_id}, {"_id": 0, "activities": 1})
+    for act in (member or {}).get("activities", []):
+        if act.get("activity_id") != activity_id:
+            continue
+        if act.get("status", "active") != "active":
+            continue
+        for d in parse_schedule_days(act.get("schedule", "")):
+            if d not in all_days:
+                all_days.append(d)
+    if all_days:
+        return all_days
+
+    # 2) Fallback: paid/partial invoices (original behaviour).
     invoices = await db.invoices.find(
         {"member_id": member_id, "status": {"$in": ["paid", "partial"]}},
         {"_id": 0}
     ).to_list(100)
-    
-    all_days = []
-    today_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-    
     for inv in invoices:
         for item in inv.get("items", []):
             if item.get("activity_id") == activity_id:
