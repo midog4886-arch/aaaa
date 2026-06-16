@@ -1296,9 +1296,17 @@ async def get_credit_note(credit_note_id: str, current_user: dict = Depends(get_
 @api_router.post("/invoices/{invoice_id}/refund")
 async def refund_invoice(invoice_id: str, refund: RefundRequest, current_user: dict = Depends(get_current_user)):
     """Process a refund for a paid invoice - Creates a Credit Note"""
+    if not current_user.get("is_admin", False):
+        perms = await _load_user_permissions(current_user)
+        if "invoices-refund" not in perms:
+            raise HTTPException(status_code=403, detail="الصلاحية 'invoices-refund' مطلوبة")
     invoice = await db.invoices.find_one({"id": invoice_id}, {"_id": 0})
     if not invoice:
         raise HTTPException(status_code=404, detail="Invoice not found")
+    if not current_user.get("is_admin", False):
+        user_branch = current_user.get("branch_id")
+        if not user_branch or invoice.get("branch_id") != user_branch:
+            raise HTTPException(status_code=403, detail="No access to this invoice")
     
     if invoice["status"] != "paid":
         raise HTTPException(status_code=400, detail="Can only refund paid invoices")

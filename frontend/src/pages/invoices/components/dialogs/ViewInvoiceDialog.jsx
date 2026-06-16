@@ -10,7 +10,7 @@ export const ViewInvoiceDialog = ({
   getBranchName, getStatusBadge,
   onPrint, onShareWhatsApp, onSaveAsPdf, onSaveAsPdfOnly,
   onPrintRegistrationForm, onEdit, onMarkPaid, onRestoreInvoice,
-  onOpenRefund, onDelete,
+  onOpenRefund, onDelete, canRefund,
   sharingWhatsApp, savingPdf, saving, isAdmin,
   langOverride, setLangOverride,
   language, t
@@ -206,7 +206,7 @@ export const ViewInvoiceDialog = ({
             {selectedInvoice?.status === 'pending' && <Button variant="outline" size="sm" className="text-blue-600 border-blue-300" onClick={() => onEdit(selectedInvoice)}><Edit className="w-4 h-4 me-1" />{language === 'ar' ? 'تعديل' : 'Edit'}</Button>}
             {selectedInvoice?.status === 'pending' && <Button size="sm" onClick={() => onMarkPaid(selectedInvoice.id)}><CheckCircle className="w-4 h-4 me-1" />{language === 'ar' ? 'تم الدفع' : 'Mark Paid'}</Button>}
             {selectedInvoice?.status === 'cancelled' && <Button variant="outline" size="sm" onClick={() => onRestoreInvoice(selectedInvoice.id)}><RotateCcw className="w-4 h-4 me-1" />{language === 'ar' ? 'استرجاع' : 'Restore'}</Button>}
-            {selectedInvoice?.status === 'paid' && <Button variant="outline" size="sm" className="text-purple-600 border-purple-300" onClick={() => { onOpenChange(false); onOpenRefund(selectedInvoice); }}><RefreshCcw className="w-4 h-4 me-1" />{language === 'ar' ? 'استرجاع مبلغ' : 'Refund'}</Button>}
+            {selectedInvoice?.status === 'paid' && canRefund && <Button variant="outline" size="sm" className="text-purple-600 border-purple-300" onClick={() => { onOpenChange(false); onOpenRefund(selectedInvoice); }}><RefreshCcw className="w-4 h-4 me-1" />{language === 'ar' ? 'استرجاع مبلغ' : 'Refund'}</Button>}
             {isAdmin && <Button variant="destructive" size="sm" onClick={() => onDelete(selectedInvoice?.id, selectedInvoice?.status, selectedInvoice?.branch_id)}><Trash2 className="w-4 h-4 me-1" />{language === 'ar' ? 'حذف' : 'Delete'}</Button>}
             <Button variant="outline" size="sm" onClick={() => onOpenChange(false)}>{t('close')}</Button>
           </div>

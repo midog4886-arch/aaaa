@@ -43,6 +43,7 @@ import { verifyOperationPassword } from '../utils/operationPassword';
 export const InvoicesPage = () => {
   const { t, language } = useLanguage();
   const { user, selectedBranchId, isAdmin } = useAuth();
+  const canRefund = isAdmin || (user?.permissions || []).includes('invoices-refund');
   const printRef = useRef();
 
   const [invoices, setInvoices] = useState([]);
@@ -338,7 +339,7 @@ export const InvoicesPage = () => {
                               {inv.status === 'pending' && <Button variant="ghost" size="sm" onClick={() => handleMarkPaid(inv.id)} className="text-green-600"><CheckCircle className="w-4 h-4" /></Button>}
                               {inv.status === 'cancelled' && <Button variant="ghost" size="sm" onClick={() => handleRestoreInvoice(inv.id)} className="text-blue-600"><RotateCcw className="w-4 h-4" /></Button>}
                               {inv.status === 'pending' && <Button variant="ghost" size="sm" onClick={() => handleCancelInvoice(inv.id)} className="text-orange-500"><XCircle className="w-4 h-4" /></Button>}
-                              {inv.status === 'paid' && <Button variant="ghost" size="sm" onClick={() => openRefundDialog(inv)} className="text-purple-600"><RefreshCcw className="w-4 h-4" /></Button>}
+                              {inv.status === 'paid' && canRefund && <Button variant="ghost" size="sm" onClick={() => openRefundDialog(inv)} className="text-purple-600"><RefreshCcw className="w-4 h-4" /></Button>}
                               <Button variant="ghost" size="sm" onClick={() => handleSendWhatsApp(inv)} className="text-green-500"><MessageSquare className="w-4 h-4" /></Button>
                               <Button variant="ghost" size="sm" onClick={() => handleOpenCardPrint(inv)} className="text-blue-500"><CreditCard className="w-4 h-4" /></Button>
                               <Button variant="ghost" size="sm" onClick={() => handleOpenQRCard(inv)} className="text-indigo-500"><QrCode className="w-4 h-4" /></Button>
@@ -494,7 +495,7 @@ export const InvoicesPage = () => {
           onPrintRegistrationForm={handlePrintRegistrationForm}
           onEdit={openEditDialog} onMarkPaid={handleMarkPaid}
           onRestoreInvoice={handleRestoreInvoice} onOpenRefund={openRefundDialog}
-          onDelete={handleDeleteInvoice}
+          onDelete={handleDeleteInvoice} canRefund={canRefund}
           sharingWhatsApp={sharingWhatsApp} savingPdf={savingPdf} saving={saving} isAdmin={isAdmin}
           langOverride={langOverride} setLangOverride={setLangOverride}
           language={language} t={t}
