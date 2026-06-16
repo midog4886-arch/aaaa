@@ -3154,7 +3154,7 @@ ${slotTables}
                 {/* Current Members */}
                 <div className="border rounded-lg overflow-hidden flex flex-col">
                   <div className="bg-primary text-white p-2 text-sm font-bold">
-                    {t('أعضاء المستوى', 'Level Members')} ({getLevelMembers(selectedLevel || {}).length})
+                    {t('أعضاء المستوى', 'Level Members')} ({getLevelMembers(selectedLevel || {}).length} {t('لاعب', 'players')})
                   </div>
                   <div className="flex-1 overflow-y-auto p-2 space-y-1">
                     {getLevelMembers(selectedLevel || {}).map(member => {
