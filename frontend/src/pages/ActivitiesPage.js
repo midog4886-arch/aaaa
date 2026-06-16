@@ -704,7 +704,11 @@ export const ActivitiesPage = () => {
                     {activityMembers.length} {language === 'ar' ? 'مشترك' : 'members'}
                   </p>
                   {activityMembers.map((m) => (
-                    <div key={m.id} className="flex items-center gap-3 p-2 rounded-lg border bg-card hover:bg-accent/40 transition-colors">
+                    <div
+                      key={m.id}
+                      onClick={() => { setMembersDialog(prev => ({ ...prev, open: false })); navigate(`/admin/members?focus=${m.id}`); }}
+                      className="flex items-center gap-3 p-2 rounded-lg border bg-card hover:bg-accent/40 transition-colors cursor-pointer"
+                    >
                       <div className="w-9 h-9 rounded-full bg-muted flex items-center justify-center overflow-hidden shrink-0">
                         {m.photo
                           ? <img src={m.photo} alt="" className="w-full h-full object-cover" />
