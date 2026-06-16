@@ -113,6 +113,60 @@ async def get_activity_member_counts(current_user: dict = Depends(get_current_us
     return counts
 
 
+@router.get("/{activity_id}/members")
+async def get_activity_members(activity_id: str, current_user: dict = Depends(get_current_user)):
+    """List members subscribed to an activity.
+
+    Matches the same activity_name logic used by ``/member-counts`` so the
+    returned list lines up with the count shown on the activity card. For
+    non-admins the result is scoped to their branch (fail-closed) to avoid
+    leaking members from other branches.
+    """
+    activity = await db.activities.find_one({"id": activity_id}, {"_id": 0})
+    if not activity:
+        raise HTTPException(status_code=404, detail="Activity not found")
+
+    name_ar = activity.get("name_ar") or activity.get("name", "")
+    name_en = activity.get("name", "")
+    or_clauses = [{"activities.activity_name": name_ar}]
+    if name_en and name_en != name_ar:
+        or_clauses.append({"activities.activity_name": name_en})
+    query = {"$or": or_clauses}
+
+    effective_branch = resolve_branch_filter(current_user, None)
+    if effective_branch:
+        query["branch_id"] = effective_branch
+
+    members = await db.members.find(
+        query,
+        {"_id": 0, "id": 1, "name_ar": 1, "name": 1, "member_code": 1,
+         "phone": 1, "branch_id": 1, "photo": 1, "status": 1, "activities": 1}
+    ).sort("name_ar", 1).to_list(2000)
+
+    today_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    result = []
+    for m in members:
+        entry = None
+        for a in (m.get("activities") or []):
+            if a.get("activity_id") == activity_id or a.get("activity_name") in (name_ar, name_en):
+                entry = a
+                break
+        end_date = (entry or {}).get("end_date") or ""
+        result.append({
+            "id": m.get("id"),
+            "name_ar": m.get("name_ar") or m.get("name") or "",
+            "name": m.get("name") or "",
+            "member_code": m.get("member_code") or "",
+            "phone": m.get("phone") or "",
+            "photo": m.get("photo") or "",
+            "branch_id": m.get("branch_id") or "",
+            "start_date": (entry or {}).get("start_date") or "",
+            "end_date": end_date,
+            "active": bool(end_date and end_date >= today_str),
+        })
+    return result
+
+
 @router.delete("/{activity_id}")
 async def delete_activity(activity_id: str, current_user: dict = Depends(get_current_user)):
     result = await db.activities.delete_one({"id": activity_id})

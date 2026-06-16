@@ -37,7 +37,8 @@ import {
   Filter,
   X,
   CheckCircle2,
-  XCircle
+  XCircle,
+  Phone
 } from 'lucide-react';
 
 export const ActivitiesPage = () => {
@@ -48,6 +49,9 @@ export const ActivitiesPage = () => {
   const [branches, setBranches] = useState([]);
   const [coaches, setCoaches] = useState([]);
   const [memberCounts, setMemberCounts] = useState({});
+  const [membersDialog, setMembersDialog] = useState({ open: false, activity: null });
+  const [activityMembers, setActivityMembers] = useState([]);
+  const [loadingMembers, setLoadingMembers] = useState(false);
   const [loading, setLoading] = useState(true);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [selectedActivity, setSelectedActivity] = useState(null);
@@ -138,6 +142,21 @@ export const ActivitiesPage = () => {
       toast.error(t('error'));
     } finally {
       setLoading(false);
+    }
+  };
+
+  const openMembersDialog = async (activity) => {
+    setMembersDialog({ open: true, activity });
+    setActivityMembers([]);
+    setLoadingMembers(true);
+    try {
+      const res = await activitiesAPI.getMembers(activity.id);
+      setActivityMembers(res.data || []);
+    } catch (error) {
+      console.error('Failed to load activity members:', error);
+      toast.error(t('error'));
+    } finally {
+      setLoadingMembers(false);
     }
   };
 
@@ -551,7 +570,8 @@ export const ActivitiesPage = () => {
             return (
               <Card 
                 key={activity.id} 
-                className="overflow-hidden transition-all duration-300 hover:shadow-lg hover:-translate-y-1 group"
+                onClick={() => openMembersDialog(activity)}
+                className="overflow-hidden transition-all duration-300 hover:shadow-lg hover:-translate-y-1 group cursor-pointer"
                 data-testid={`activity-card-${activity.id}`}
               >
                 <div 
@@ -582,14 +602,14 @@ export const ActivitiesPage = () => {
                     <div className="action-buttons opacity-0 group-hover:opacity-100 transition-opacity">
                       <button 
                         className="action-button"
-                        onClick={() => openEditDialog(activity)}
+                        onClick={(e) => { e.stopPropagation(); openEditDialog(activity); }}
                         data-testid={`edit-activity-${activity.id}`}
                       >
                         <Edit className="w-3.5 h-3.5" />
                       </button>
                       <button 
                         className="action-button danger"
-                        onClick={() => handleDelete(activity.id)}
+                        onClick={(e) => { e.stopPropagation(); handleDelete(activity.id); }}
                         data-testid={`delete-activity-${activity.id}`}
                       >
                         <Trash2 className="w-3.5 h-3.5" />
@@ -656,6 +676,60 @@ export const ActivitiesPage = () => {
             )}
           </div>
         )}
+
+        {/* Activity Members Dialog */}
+        <Dialog open={membersDialog.open} onOpenChange={(open) => setMembersDialog(prev => ({ ...prev, open }))}>
+          <DialogContent className="max-w-lg max-h-[80vh] flex flex-col" dir={language === 'ar' ? 'rtl' : 'ltr'}>
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <Users className="w-5 h-5" />
+                <span>
+                  {language === 'ar' ? 'المشتركون في' : 'Subscribers in'}{' '}
+                  {membersDialog.activity ? (language === 'ar' ? membersDialog.activity.name_ar : membersDialog.activity.name) : ''}
+                </span>
+              </DialogTitle>
+            </DialogHeader>
+            <div className="flex-1 overflow-y-auto -mx-1 px-1">
+              {loadingMembers ? (
+                <div className="flex items-center justify-center py-10">
+                  <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+                </div>
+              ) : activityMembers.length === 0 ? (
+                <div className="text-center text-sm text-muted-foreground py-10">
+                  {language === 'ar' ? 'لا يوجد مشتركون في هذا النشاط' : 'No subscribers in this activity'}
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <p className="text-xs text-muted-foreground mb-1">
+                    {activityMembers.length} {language === 'ar' ? 'مشترك' : 'members'}
+                  </p>
+                  {activityMembers.map((m) => (
+                    <div key={m.id} className="flex items-center gap-3 p-2 rounded-lg border bg-card hover:bg-accent/40 transition-colors">
+                      <div className="w-9 h-9 rounded-full bg-muted flex items-center justify-center overflow-hidden shrink-0">
+                        {m.photo
+                          ? <img src={m.photo} alt="" className="w-full h-full object-cover" />
+                          : <Users className="w-4 h-4 text-muted-foreground" />}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium truncate">{language === 'ar' ? (m.name_ar || m.name) : (m.name || m.name_ar)}</p>
+                        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                          {m.member_code && <span>{m.member_code}</span>}
+                          {m.phone && <span className="flex items-center gap-0.5" dir="ltr"><Phone className="w-3 h-3" />{m.phone}</span>}
+                        </div>
+                      </div>
+                      <Badge variant="secondary" className={`text-[10px] shrink-0 ${m.active ? 'bg-green-100 text-green-700 hover:bg-green-100' : 'bg-gray-100 text-gray-500 hover:bg-gray-100'}`}>
+                        {m.active ? (language === 'ar' ? 'نشط' : 'Active') : (language === 'ar' ? 'منتهي' : 'Expired')}
+                      </Badge>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setMembersDialog(prev => ({ ...prev, open: false }))}>{t('close')}</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
 
         {/* Add/Edit Dialog */}
         <Dialog open={isDialogOpen} onOpenChange={(open) => open ? setIsDialogOpen(true) : closeDialog()}>
