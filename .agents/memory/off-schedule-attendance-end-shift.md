@@ -45,6 +45,10 @@ accidental tap, which also pulled their end date earlier. The confirm gate stops
 accidental wrong-activity registration while still allowing intentional make-up
 sessions via the "تسجيل حضور رغم ذلك" button.
 
+## Off-schedule dates must be merged into the session-quota chips (display)
+
+The admin member view "حصص الاشتراك" chips are built from `generateScheduleDates(start,end,schedule_days)` which emits ONLY scheduled weekdays. An off-schedule attendance has a real date that is NOT in that list, so the consumed session was invisible (no green chip) even though the backend already counted it. Fix: union the schedule dates with attended dates not already present (`offScheduleDates`), render the sorted union, and tag the extra ones green with an "خارج الموعد/Off-day" badge. They auto-fall into the attended/removable branch (attended=true, isFuture/isTransferred/isReplacement=false). Deduction is purely backend — display change must NOT touch quota math.
+
 **How to apply:** the `wrong_day` status must be handled by EVERY caller of
 `attendanceAPI.qrCheckin`, or a caller will show a false "success" / silently do
 nothing. The four callers: `CameraQRScanner.jsx`, `GlobalScanner.jsx` (both show a

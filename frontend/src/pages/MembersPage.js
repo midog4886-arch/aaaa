@@ -3286,6 +3286,13 @@ export const MembersPage = () => {
                             const attendedDates = new Set(attendedRecords.map(r => r.date));
                             const attendedRecordIdByDate = {};
                             attendedRecords.forEach(r => { attendedRecordIdByDate[r.date] = r.id; });
+                            // Off-schedule attendances (member attended on a day not in their
+                            // schedule) have a real date that is NOT one of the generated
+                            // schedule chips. Surface them as their own green chips so the
+                            // consumed session is visible on its actual attendance date.
+                            const offScheduleDates = [...attendedDates].filter(d => !scheduleDates.includes(d));
+                            const offScheduleSet = new Set(offScheduleDates);
+                            const displayDates = [...new Set([...scheduleDates, ...offScheduleDates])].sort();
                             const todayStr = localDateStr(new Date());
                             return (
                               <div key={idx} className={`rounded-lg border ${q.exceeded ? 'bg-red-50 border-red-300' : q.remaining <= 2 ? 'bg-amber-50 border-amber-300' : 'bg-green-50 border-green-300'}`}>
@@ -3304,7 +3311,7 @@ export const MembersPage = () => {
                                   <div className="mt-2 w-full bg-gray-200 rounded-full h-2">
                                     <div className={`h-2 rounded-full ${q.exceeded ? 'bg-red-500' : q.remaining <= 2 ? 'bg-amber-500' : 'bg-green-500'}`} style={{ width: `${Math.min(100, (q.used_sessions / q.total_allowed) * 100)}%` }}></div>
                                   </div>
-                                  {scheduleDates.length > 0 && (
+                                  {displayDates.length > 0 && (
                                     <button
                                       onClick={() => setExpandedQuotaIdx(prev => {
                                         const next = new Set(prev);
@@ -3316,7 +3323,7 @@ export const MembersPage = () => {
                                       <Calendar className="w-3 h-3" />
                                       {isExpanded
                                         ? (language === 'ar' ? 'إخفاء التواريخ' : 'Hide Dates')
-                                        : (language === 'ar' ? `عرض التواريخ (${scheduleDates.length})` : `Show Dates (${scheduleDates.length})`)}
+                                        : (language === 'ar' ? `عرض التواريخ (${displayDates.length})` : `Show Dates (${displayDates.length})`)}
                                     </button>
                                   )}
                                 </div>
@@ -3329,8 +3336,9 @@ export const MembersPage = () => {
                                         : 'Click an unregistered date to record attendance'}
                                     </p>
                                     <div className="flex flex-wrap gap-1.5">
-                                      {scheduleDates.map(date => {
+                                      {displayDates.map(date => {
                                         const attended = attendedDates.has(date);
+                                        const isOffSchedule = offScheduleSet.has(date);
                                         const isFuture = date > todayStr;
                                         const isToday = date === todayStr;
                                         const isTransferred = transferInfo.transferredSet.has(date);
@@ -3362,6 +3370,8 @@ export const MembersPage = () => {
                                               ? (language === 'ar' ? `مُرحَّل (${transferMeta?.title || ''}) — تم التعويض بمدّ تاريخ نهاية الاشتراك` : `Transferred (${transferMeta?.title || ''}) — compensated by extending the subscription end date`)
                                               : isReplacement
                                                 ? (language === 'ar' ? 'حصة بديلة (تعويض ترحيل)' : 'Replacement session (make-up)')
+                                                : isOffSchedule
+                                                  ? (language === 'ar' ? 'حضور خارج الموعد — تم خصم حصة' : 'Off-schedule attendance — session deducted')
                                                 : attended
                                                   ? (language === 'ar' ? 'تم التسجيل — اضغط لاستبدال التاريخ' : 'Attended — click to replace the date')
                                                   : isFuture
@@ -3398,6 +3408,12 @@ export const MembersPage = () => {
                                                 <span>{date}</span>
                                                 <span className="text-[10px] bg-purple-200 text-purple-900 px-1 rounded">{language === 'ar' ? 'بديل' : 'Make-up'}</span>
                                               </span>
+                                            ) : isOffSchedule ? (
+                                              <span className="inline-flex items-center gap-1">
+                                                {attended && <span>✓</span>}
+                                                <span>{date}</span>
+                                                <span className="text-[10px] bg-amber-200 text-amber-900 px-1 rounded">{language === 'ar' ? 'خارج الموعد' : 'Off-day'}</span>
+                                              </span>
                                             ) : (
                                               isRegistering ? '...' : attended ? `✓ ${date}` : date
                                             )}
@@ -3411,6 +3427,7 @@ export const MembersPage = () => {
                                       <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-white border border-blue-300 inline-block"></span>{language === 'ar' ? 'غائب (اضغط للتسجيل)' : 'Missed (click to register)'}</span>
                                       <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-gray-200 inline-block"></span>{language === 'ar' ? 'مستقبلي' : 'Future'}</span>
                                       <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-orange-200 border border-orange-400 inline-block"></span>{language === 'ar' ? 'مُرحَّل' : 'Transferred'}</span>
+                                      <span className="flex items-center gap-1"><span className="text-[10px] bg-amber-200 text-amber-900 px-1 rounded">{language === 'ar' ? 'خارج الموعد' : 'Off-day'}</span>{language === 'ar' ? 'حضور خارج الموعد (تم خصم حصة)' : 'Off-schedule (session deducted)'}</span>
                                     </div>
                                   </div>
                                 )}
