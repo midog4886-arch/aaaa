@@ -58,6 +58,7 @@ export const MembersPage = () => {
   const { t, language } = useLanguage();
   const { selectedBranchId, isAdmin, user } = useAuth();
   const canAddMember = isAdmin || (user?.permissions || []).includes('members-create');
+  const canViewPhones = isAdmin || (user?.permissions || []).includes('member-phones');
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const [members, setMembers] = useState([]);
@@ -1746,7 +1747,7 @@ export const MembersPage = () => {
                               {member.phone}
                               {isSharedPhone && <span className="ms-1 text-xs bg-amber-100 text-amber-700 rounded px-1" dir="rtl">مشترك</span>}
                             </button>
-                            {member.phone && (
+                            {member.phone && canViewPhones && (
                               <a
                                 href={whatsappChatUrl(member.phone)}
                                 target="_blank"
@@ -2674,7 +2675,7 @@ export const MembersPage = () => {
                         <p className="text-sm text-muted-foreground">{t('phone')}</p>
                         <div className="flex items-center gap-2">
                           <p className="font-medium" dir="ltr">{selectedMember.phone}</p>
-                          {selectedMember.phone && (
+                          {selectedMember.phone && canViewPhones && (
                             <a
                               href={whatsappChatUrl(selectedMember.phone)}
                               target="_blank"

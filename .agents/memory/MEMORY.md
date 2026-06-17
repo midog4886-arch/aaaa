@@ -25,3 +25,4 @@
 - [member.activities dedupe](member-activities-dedupe.md) — every persisted write to member.activities must merge by activity_id (invoices did, registration-form conversion used $push → stacked dup copies); list renders the array verbatim.
 - [Member create permission split](member-create-permission-split.md) — Members page uses POST /members (members-create gated); invoice flow uses POST /members/quick-create (no permission, still auth+branch+plan-limit). Keep ALL invoice add-member entry points on quickCreate.
 - [Invoice refund authorization](invoice-refund-authz.md) — refund (credit-note) needs `invoices-refund` perm AND non-admin branch-ownership of the invoice; UI hides button but server enforces both. credit-note READ endpoints still lack branch scope.
+- [Member phone permission masking](member-phone-masking.md) — phones gated by `member-phones` perm; EVERY member-returning endpoint (incl update_member response) must mask, or it's a bypass.

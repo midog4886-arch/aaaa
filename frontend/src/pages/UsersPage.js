@@ -29,6 +29,7 @@ const ALL_PERMISSIONS = [
   { key: 'dashboard', label_ar: 'لوحة التحكم', label_en: 'Dashboard' },
   { key: 'members', label_ar: 'الأعضاء', label_en: 'Members' },
   { key: 'members-create', label_ar: 'إضافة عضو جديد', label_en: 'Add New Member' },
+  { key: 'member-phones', label_ar: 'رؤية أرقام الجوال', label_en: 'View Member Phones' },
   { key: 'invoices', label_ar: 'الفواتير', label_en: 'Invoices' },
   { key: 'invoices-refund', label_ar: 'استرجاع الفواتير (إشعار دائن)', label_en: 'Refund Invoices (Credit Note)' },
   { key: 'activities', label_ar: 'الأنشطة', label_en: 'Activities' },

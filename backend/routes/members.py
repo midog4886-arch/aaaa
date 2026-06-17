@@ -152,6 +152,36 @@ async def get_daily_new_member_cards(
     }
 
 
+PHONE_MASK_CHAR = "•"
+
+
+def _mask_phone(phone):
+    """Mask a phone number keeping the first 3 and last 2 digits, e.g.
+    ``0551991992`` -> ``055•••••92``. Empty/short values are returned as-is
+    (nothing meaningful to hide)."""
+    if not phone:
+        return phone
+    p = str(phone).strip()
+    if len(p) <= 5:
+        return p
+    return p[:3] + PHONE_MASK_CHAR * (len(p) - 5) + p[-2:]
+
+
+async def _can_view_member_phones(current_user: dict) -> bool:
+    """True if the caller may see full member phone numbers.
+
+    Admins always can. Non-admins need the ``member-phones`` permission on
+    their user document. Fails closed (hidden) when unsure.
+    """
+    if current_user.get("is_admin", False):
+        return True
+    user_doc = await db.users.find_one(
+        {"id": current_user.get("user_id")}, {"_id": 0, "permissions": 1}
+    )
+    perms = (user_doc or {}).get("permissions") or []
+    return "member-phones" in perms
+
+
 @router.get("")
 async def get_members(
     activity_id: Optional[str] = None,
@@ -198,6 +228,8 @@ async def get_members(
     branch_docs = await db.branches.find({}, {"_id": 0, "id": 1, "phone": 1}).to_list(500)
     branch_phone_map = {b["id"]: (b.get("phone") or "") for b in branch_docs}
 
+    can_view_phones = await _can_view_member_phones(current_user)
+
     for member in members:
         member.setdefault("age", 0)
         member.setdefault("guardian_name", "")
@@ -210,6 +242,10 @@ async def get_members(
         member.setdefault("activities", [])
         member.setdefault("status", "active")
         member["branch_phone"] = branch_phone_map.get(member.get("branch_id") or "", "")
+        if not can_view_phones:
+            member["phone"] = _mask_phone(member.get("phone"))
+            if member.get("guardian_phone"):
+                member["guardian_phone"] = _mask_phone(member.get("guardian_phone"))
 
     return members
 
@@ -233,6 +269,10 @@ async def get_member(member_id: str, current_user: dict = Depends(get_current_us
     member = await db.members.find_one(_scoped_member_query(member_id, current_user), {"_id": 0})
     if not member:
         raise HTTPException(status_code=404, detail="Member not found")
+    if not await _can_view_member_phones(current_user):
+        member["phone"] = _mask_phone(member.get("phone"))
+        if member.get("guardian_phone"):
+            member["guardian_phone"] = _mask_phone(member.get("guardian_phone"))
     return member
 
 async def _create_member_core(member: MemberCreate, current_user: dict) -> Member:
@@ -299,6 +339,16 @@ async def quick_create_member(member: MemberCreate, current_user: dict = Depends
 async def update_member(member_id: str, member: MemberUpdate, current_user: dict = Depends(get_current_user)):
     """Update an existing member"""
     update_data = {k: v for k, v in member.model_dump().items() if v is not None}
+    # Phone privacy: callers without the 'member-phones' permission only ever
+    # see masked numbers, so never let a masked value overwrite the real one.
+    can_view_phones = await _can_view_member_phones(current_user)
+    if not can_view_phones:
+        update_data.pop("phone", None)
+        update_data.pop("guardian_phone", None)
+    for _pf in ("phone", "guardian_phone"):
+        _pv = update_data.get(_pf)
+        if isinstance(_pv, str) and PHONE_MASK_CHAR in _pv:
+            update_data.pop(_pf, None)
     if "preferred_language" in update_data:
         update_data["preferred_language"] = "en" if str(update_data["preferred_language"]).lower().startswith("en") else "ar"
     if not update_data:
@@ -330,6 +380,10 @@ async def update_member(member_id: str, member: MemberUpdate, current_user: dict
         before=before,
         after=result,
     )
+    if not can_view_phones:
+        result["phone"] = _mask_phone(result.get("phone"))
+        if result.get("guardian_phone"):
+            result["guardian_phone"] = _mask_phone(result.get("guardian_phone"))
     return Member(**{k: v for k, v in result.items() if k != "_id"})
 
 async def _transfer_member_doc(member: dict, new_branch: str, transfer_date: str, current_user: dict):
