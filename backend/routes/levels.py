@@ -380,13 +380,67 @@ async def delete_level(level_id: str, current_user: dict = Depends(get_current_u
     return {"message": "Level deleted"}
 
 
+async def _force_link_member_activity(member_id: str, level_id: str, activity_id: str = None, activity_name: str = None) -> bool:
+    """Force-set ``level_id`` on the member's SPECIFIC activity entry, matched by
+    activity_id first then activity_name — regardless of whether the level's own
+    activity name/group matches the activity. This is what makes manual "free"
+    placement stick: without it, assigning a member to a level whose activity
+    differs from theirs leaves no level_id on any activity, so get_levels() drops
+    the membership on the next refetch. Returns True when the target activity was
+    found (and ensured linked), False when no such activity exists on the member."""
+    member_doc = await db.members.find_one({"id": member_id}, {"_id": 0, "activities": 1})
+    if not member_doc:
+        return False
+    activities = member_doc.get("activities", []) or []
+    target = None
+    if activity_id:
+        target = next((a for a in activities if a.get("activity_id") == activity_id), None)
+    if target is None and activity_name:
+        target = next((a for a in activities if a.get("activity_name") == activity_name), None)
+    if target is None:
+        return False
+    if target.get("level_id") != level_id:
+        target["level_id"] = level_id
+        await db.members.update_one({"id": member_id}, {"$set": {"activities": activities}})
+    return True
+
+
 @router.post("/{level_id}/members/{member_id}")
-async def add_member_to_level(level_id: str, member_id: str, current_user: dict = Depends(get_current_user)):
-    """Add a member to a level"""
+async def add_member_to_level(
+    level_id: str,
+    member_id: str,
+    activity_id: str = None,
+    activity_name: str = None,
+    force: bool = False,
+    current_user: dict = Depends(get_current_user),
+):
+    """Add a member to a level.
+
+    When ``force`` is set (manual "free" placement / تسكين يدوي حر), the strict
+    same-activity duplicate guard becomes a MOVE (detach from other levels of the
+    same activity) and the same-time clash guard is skipped — the admin is making
+    a deliberate override. ``activity_id`` / ``activity_name`` identify which of
+    the member's own activities to link to this level, so placement sticks even
+    when the level's activity differs from the member's."""
     level = await db.levels.find_one({"id": level_id})
     if not level:
         raise HTTPException(status_code=404, detail="Level not found")
-    
+
+    if force and (activity_id or activity_name) and member_id in level.get("members", []):
+        # Already a member of THIS level: just ensure the explicit activity is
+        # linked and return success (no duplicate error for an override).
+        linked = await _force_link_member_activity(member_id, level_id, activity_id, activity_name)
+        if not linked:
+            # The named activity isn't on the member, so we cannot persist the
+            # link — the membership would be silently dropped as stale on the
+            # next get_levels() refetch. Fail loudly instead of faking success.
+            raise HTTPException(
+                status_code=400,
+                detail="تعذّر تسكين العضو: النشاط المحدد غير موجود في اشتراكات العضو",
+            )
+        cache_invalidate("levels:")
+        return {"message": "Member activity linked to level", "healed": True}
+
     if member_id in level.get("members", []):
         # Self-healing path: the member's id is already in level.members but
         # the corresponding entry on the member document may have lost its
@@ -442,19 +496,25 @@ async def add_member_to_level(level_id: str, member_id: str, current_user: dict 
         dup_query["activity_id"] = act_id
     elif act_name:
         dup_query["activity_name"] = act_name
-    existing = await db.levels.find_one(dup_query, {"_id": 0, "id": 1, "level_number": 1, "name": 1, "time_slot": 1})
-    if existing:
-        lvl_label = existing.get("name") or f"المستوى {existing.get('level_number', '')}"
-        slot_label = existing.get("time_slot") or ""
-        detail = f"العضو موجود بالفعل في {lvl_label}"
-        if slot_label:
-            detail += f" ({slot_label})"
-        raise HTTPException(status_code=400, detail=detail)
+    if force:
+        # Manual override: MOVE instead of blocking — detach the member from any
+        # other level of the same activity so this placement is their single one.
+        await db.levels.update_many(dup_query, {"$pull": {"members": member_id}})
+    else:
+        existing = await db.levels.find_one(dup_query, {"_id": 0, "id": 1, "level_number": 1, "name": 1, "time_slot": 1})
+        if existing:
+            lvl_label = existing.get("name") or f"المستوى {existing.get('level_number', '')}"
+            slot_label = existing.get("time_slot") or ""
+            detail = f"العضو موجود بالفعل في {lvl_label}"
+            if slot_label:
+                detail += f" ({slot_label})"
+            raise HTTPException(status_code=400, detail=detail)
 
     # Prevent the same member from being added to a DIFFERENT activity that
-    # runs at the same time slot (clash on the academy schedule).
+    # runs at the same time slot (clash on the academy schedule). Skipped on a
+    # forced manual placement, where the admin is deliberately overriding.
     slot = level.get("time_slot")
-    if slot:
+    if slot and not force:
         clash_query = {
             "id": {"$ne": level_id},
             "members": member_id,
@@ -481,6 +541,23 @@ async def add_member_to_level(level_id: str, member_id: str, current_user: dict 
         {"$addToSet": {"members": member_id}}
     )
 
+    # Explicit (free-placement) linking takes priority: when the caller named
+    # which of the member's own activities to attach, link THAT entry directly,
+    # bypassing the level's activity name/group matching below.
+    explicit_linked = False
+    if activity_id or activity_name:
+        explicit_linked = await _force_link_member_activity(member_id, level_id, activity_id, activity_name)
+        if force and not explicit_linked:
+            # Free placement but the named activity isn't on the member: the link
+            # can't persist, so the membership would be cleaned as stale on the
+            # next refetch. Roll back the addition and fail loudly.
+            await db.levels.update_one({"id": level_id}, {"$pull": {"members": member_id}})
+            cache_invalidate("levels:")
+            raise HTTPException(
+                status_code=400,
+                detail="تعذّر تسكين العضو: النشاط المحدد غير موجود في اشتراكات العضو",
+            )
+
     # Backfill level_id on the member's matching activity entry so that
     # downstream lookups (member portal, coach resolution) can find the level
     # without needing to scan levels.members[]. Match by activity_id when the
@@ -488,7 +565,7 @@ async def add_member_to_level(level_id: str, member_id: str, current_user: dict 
     match_aid = level.get("activity_id")
     match_aname = level.get("activity_name")
     member_doc = await db.members.find_one({"id": member_id}, {"_id": 0, "activities": 1})
-    if member_doc:
+    if member_doc and not explicit_linked:
         activities = member_doc.get("activities", []) or []
         changed = False
         matched_any = False

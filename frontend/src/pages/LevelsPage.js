@@ -143,6 +143,10 @@ export const LevelsPage = () => {
   const [assignPickerOpen, setAssignPickerOpen] = useState(false);
   const [assignTarget, setAssignTarget] = useState(null); // { member, activity }
   const [assigning, setAssigning] = useState(false);
+  // Free manual placement (تسكين يدوي حر): when on, the picker shows ALL levels
+  // in the member's branch (ignoring schedule/hour/activity matching) so an admin
+  // can place a stuck member anywhere. The assign call then forces the link.
+  const [showAllLevels, setShowAllLevels] = useState(false);
 
   // Auto-assign dialog
   const [isAutoAssignOpen, setIsAutoAssignOpen] = useState(false);
@@ -278,6 +282,7 @@ export const LevelsPage = () => {
 
   const openAssignPicker = (member, activity) => {
     setAssignTarget({ member, activity });
+    setShowAllLevels(false);
     setAssignPickerOpen(true);
   };
 
@@ -305,8 +310,12 @@ export const LevelsPage = () => {
     }
   };
 
-  const _doAssign = async (member, activity, level) => {
-    await levelsAPI.addMember(level.id, member.id);
+  const _doAssign = async (member, activity, level, force = false) => {
+    await levelsAPI.addMember(level.id, member.id, force ? {
+      force: true,
+      activityId: activity?.activity_id,
+      activityName: activity?.activity_name,
+    } : {});
     const key = _recentKey(member.id, activity);
     const levelName = level.activity_name
       || level.custom_name
@@ -342,7 +351,7 @@ export const LevelsPage = () => {
     if (!assignTarget) return;
     setAssigning(true);
     try {
-      await _doAssign(assignTarget.member, assignTarget.activity, level);
+      await _doAssign(assignTarget.member, assignTarget.activity, level, showAllLevels);
       setAssignPickerOpen(false);
       setAssignTarget(null);
     } catch (e) {
@@ -508,6 +517,26 @@ export const LevelsPage = () => {
       })
       .sort((a, b) => (a.level_number || 0) - (b.level_number || 0));
   }, [assignTarget, levels]);
+
+  // Free manual placement: ALL levels in the member's branch, no schedule/hour/
+  // activity matching. Used when the admin toggles "show all levels" to place a
+  // stuck member anywhere (e.g. stale link, no schedule, no matching hour).
+  const allLevelsForAssign = useMemo(() => {
+    if (!assignTarget) return [];
+    const memberBranch = assignTarget.member?.branch_id || null;
+    const branchOk = (l) =>
+      !memberBranch || !l.branch_id || l.branch_id === memberBranch;
+    return levels
+      .filter(branchOk)
+      .slice()
+      .sort((a, b) => {
+        const an = (a.activity_name || '').localeCompare(b.activity_name || '', 'ar');
+        if (an !== 0) return an;
+        return (a.level_number || 0) - (b.level_number || 0);
+      });
+  }, [assignTarget, levels]);
+
+  const displayedLevelsForAssign = showAllLevels ? allLevelsForAssign : matchingLevelsForAssign;
 
   const loadData = async () => {
     try {
@@ -3547,7 +3576,7 @@ ${slotTables}
         </Dialog>
 
         {/* Assign-to-Level Picker Dialog */}
-        <Dialog open={assignPickerOpen} onOpenChange={(o) => { setAssignPickerOpen(o); if (!o) setAssignTarget(null); }}>
+        <Dialog open={assignPickerOpen} onOpenChange={(o) => { setAssignPickerOpen(o); if (!o) { setAssignTarget(null); setShowAllLevels(false); } }}>
           <DialogContent className="max-w-md">
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
@@ -3564,12 +3593,56 @@ ${slotTables}
                     {assignTarget.activity?.schedule && <span> • ⏰ {assignTarget.activity.schedule}</span>}
                   </p>
                 </div>
+                {/* Free manual placement toggle */}
+                <div className="flex items-center justify-between gap-2 rounded-lg border border-dashed border-gray-300 p-2">
+                  <span className="text-xs text-gray-600">
+                    {showAllLevels
+                      ? t('عرض كل المستويات في الفرع', 'Showing all levels in the branch')
+                      : t('المستويات المطابقة للجدول فقط', 'Schedule-matching levels only')}
+                  </span>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant={showAllLevels ? 'default' : 'outline'}
+                    onClick={() => setShowAllLevels(v => !v)}
+                    disabled={assigning}
+                    data-testid="toggle-all-levels"
+                  >
+                    {showAllLevels
+                      ? t('عرض المطابقة فقط', 'Matching only')
+                      : t('تسكين يدوي حر', 'Free placement')}
+                  </Button>
+                </div>
+                {showAllLevels && (
+                  <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-2">
+                    {t(
+                      'وضع التسكين الحر: تقدر تسكّن العضو في أي مستوى بالفرع حتى لو الجدول أو الساعة أو النشاط مش مطابق.',
+                      'Free placement: you can assign the member to any level in the branch even if the schedule, hour, or activity does not match.'
+                    )}
+                  </p>
+                )}
                 <div className="max-h-72 overflow-y-auto space-y-2 -mx-1 px-1">
-                  {matchingLevelsForAssign.length === 0 ? (
-                    <p className="text-center text-sm text-gray-500 py-6">
-                      {t('لا توجد مستويات متاحة لهذا النشاط', 'No levels available for this activity')}
-                    </p>
-                  ) : matchingLevelsForAssign.map(level => {
+                  {displayedLevelsForAssign.length === 0 ? (
+                    <div className="text-center py-6 space-y-3">
+                      <p className="text-sm text-gray-500">
+                        {showAllLevels
+                          ? t('لا توجد مستويات في هذا الفرع', 'No levels in this branch')
+                          : t('لا توجد مستويات متاحة لهذا النشاط', 'No levels available for this activity')}
+                      </p>
+                      {!showAllLevels && (
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          onClick={() => setShowAllLevels(true)}
+                          disabled={assigning}
+                          data-testid="empty-show-all-levels"
+                        >
+                          {t('اعرض كل المستويات (تسكين حر)', 'Show all levels (free placement)')}
+                        </Button>
+                      )}
+                    </div>
+                  ) : displayedLevelsForAssign.map(level => {
                     const memberCount = (level.members || []).length;
                     const maxCap = level.activity_name?.includes('سباحة') ? 6 : (level.capacity || 10);
                     const isFull = memberCount >= maxCap;
@@ -3617,7 +3690,7 @@ ${slotTables}
               </div>
             )}
             <DialogFooter>
-              <Button variant="outline" onClick={() => { setAssignPickerOpen(false); setAssignTarget(null); }} disabled={assigning}>
+              <Button variant="outline" onClick={() => { setAssignPickerOpen(false); setAssignTarget(null); setShowAllLevels(false); }} disabled={assigning}>
                 {t('إلغاء', 'Cancel')}
               </Button>
             </DialogFooter>

@@ -74,7 +74,13 @@ export const levelsAPI = {
   create: (data) => axios.post(`${API}/levels`, data),
   update: (id, data) => axios.put(`${API}/levels/${id}`, data),
   delete: (id) => axios.delete(`${API}/levels/${id}`),
-  addMember: (levelId, memberId) => axios.post(`${API}/levels/${levelId}/members/${memberId}`),
+  addMember: (levelId, memberId, opts = {}) => {
+    const params = {};
+    if (opts.activityId) params.activity_id = opts.activityId;
+    if (opts.activityName) params.activity_name = opts.activityName;
+    if (opts.force) params.force = true;
+    return axios.post(`${API}/levels/${levelId}/members/${memberId}`, null, { params });
+  },
   removeMember: (levelId, memberId) => axios.delete(`${API}/levels/${levelId}/members/${memberId}`),
   getMemberCount: (levelId) => axios.get(`${API}/levels/${levelId}/count`),
   setActive: (levelId, isActive) => axios.patch(`${API}/levels/${levelId}/active`, { is_active: isActive }),
