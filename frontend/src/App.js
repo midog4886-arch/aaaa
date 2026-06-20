@@ -72,6 +72,7 @@ const MemberCardPage = lazy(() => import('./pages/MemberCardPage'));
 const DailyNewCardsPage = lazy(() => import('./pages/DailyNewCardsPage'));
 const CoachRatingsPage = lazy(() => import('./pages/CoachRatingsPage'));
 const CoachAttendancePage = lazy(() => import('./pages/CoachAttendancePage'));
+const CoachNotesPage = lazy(() => import('./pages/CoachNotesPage'));
 const CoachSalariesPage = lazy(() => import('./pages/CoachSalariesPage'));
 const SupervisorsPage = lazy(() => import('./pages/SupervisorsPage'));
 const AdvertisementsPage = lazy(() => import('./pages/AdvertisementsPage'));
@@ -166,7 +167,7 @@ const ProtectedRoute = ({ children, permission }) => {
 
 // Get first allowed route based on user permissions
 const getFirstAllowedRoute = (permissions) => {
-  const routeOrder = ['dashboard', 'schedule', 'attendance', 'coach-attendance', 'members', 'activities', 'levels', 'tournaments', 'invoices', 'store', 'accounting', 'reports', 'messages', 'settings'];
+  const routeOrder = ['dashboard', 'schedule', 'attendance', 'coach-attendance', 'coach-notes', 'members', 'activities', 'levels', 'tournaments', 'invoices', 'store', 'accounting', 'reports', 'messages', 'settings'];
   for (const route of routeOrder) {
     if (permissions.includes(route)) {
       return `/admin/${route}`;
@@ -498,6 +499,14 @@ function AppRoutes() {
         element={
           <ProtectedRoute permission="coach-attendance">
             <CoachAttendancePage />
+          </ProtectedRoute>
+        } 
+      />
+      <Route 
+        path="/admin/coach-notes" 
+        element={
+          <ProtectedRoute permission="coach-notes">
+            <CoachNotesPage />
           </ProtectedRoute>
         } 
       />

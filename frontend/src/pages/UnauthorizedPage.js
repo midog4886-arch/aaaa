@@ -15,7 +15,7 @@ export default function UnauthorizedPage() {
   // Get first allowed route based on user permissions
   const getFirstAllowedRoute = () => {
     const permissions = user?.permissions || [];
-    const routeOrder = ['dashboard', 'schedule', 'attendance', 'coach-attendance', 'members', 'activities', 'levels', 'tournaments', 'invoices', 'store', 'accounting', 'reports', 'messages', 'settings'];
+    const routeOrder = ['dashboard', 'schedule', 'attendance', 'coach-attendance', 'coach-notes', 'members', 'activities', 'levels', 'tournaments', 'invoices', 'store', 'accounting', 'reports', 'messages', 'settings'];
     for (const route of routeOrder) {
       if (permissions.includes(route)) {
         return `/admin/${route}`;

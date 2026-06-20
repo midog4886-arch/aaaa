@@ -99,6 +99,7 @@ from routes.daily_ledger import router as daily_ledger_router
 from routes.day_extensions import router as day_extensions_router
 from routes.freezes import router as freezes_router
 from routes.coach_attendance import router as coach_attendance_router
+from routes.coach_notes import router as coach_notes_router
 from routes.supervisors import router as supervisors_router
 from routes.payment_vouchers import router as payment_vouchers_router
 from routes.coach_advances import router as coach_advances_router
@@ -168,6 +169,7 @@ api_router.include_router(daily_ledger_router)
 api_router.include_router(day_extensions_router)
 api_router.include_router(freezes_router)
 api_router.include_router(coach_attendance_router)
+api_router.include_router(coach_notes_router)
 api_router.include_router(supervisors_router)
 api_router.include_router(payment_vouchers_router)
 api_router.include_router(coach_advances_router)

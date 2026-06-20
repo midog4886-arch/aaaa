@@ -43,6 +43,16 @@ export const coachesAPI = {
   delete: (id) => axios.delete(`${API}/coaches/${id}`),
 };
 
+// Coach Daily Notes API
+export const coachNotesAPI = {
+  getAll: (params = {}) => axios.get(`${API}/coach-notes`, { params }),
+  create: (data) => axios.post(`${API}/coach-notes`, data),
+  update: (id, data) => axios.put(`${API}/coach-notes/${id}`, data),
+  delete: (id) => axios.delete(`${API}/coach-notes/${id}`),
+  monthlyReport: (params = {}) => axios.get(`${API}/coach-notes/monthly-report`, { params }),
+  exportReport: (params = {}) => axios.get(`${API}/coach-notes/monthly-report/export`, { params, responseType: 'blob' }),
+};
+
 // Coach Advances API
 export const coachAdvancesAPI = {
   getAll: (params = {}) => axios.get(`${API}/coach-advances`, { params }),

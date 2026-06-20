@@ -170,6 +170,7 @@ export const Sidebar = ({ isOpen, onClose }) => {
         { to: '/admin/schedule', icon: CalendarDays, label: 'schedule', permission: 'schedule', feature: 'activities_levels' },
         { to: '/admin/coach-ratings', icon: Star, label: 'coach_ratings', permission: 'coach-ratings' },
         { to: '/admin/coach-attendance', icon: Clock, label: 'coach_attendance', permission: 'coach-attendance', feature: 'coach_attendance' },
+        { to: '/admin/coach-notes', icon: ClipboardList, label: 'coach_notes', permission: 'coach-notes' },
         { to: '/admin/supervisors', icon: UserCog, label: 'supervisors', permission: 'coaches' },
         { to: '/admin/tournaments', icon: Trophy, label: 'tournaments', permission: 'tournaments', feature: 'tournaments_module' },
       ]
