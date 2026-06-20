@@ -5,7 +5,7 @@ import {
   FileText, Download, Edit2, Trash2, Save, X, AlertCircle, CheckCircle,
   Users, Timer, CalendarDays, UserPlus, Phone, Mail, QrCode, Printer,
   FileSpreadsheet, TrendingUp, Award, AlarmClock, List, Camera,
-  ArrowRightLeft, UserMinus, Archive
+  ArrowRightLeft, UserMinus, Archive, ClipboardList
 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import axios from 'axios';
@@ -16,10 +16,31 @@ import {
   estimateDataUrlBytes,
   PROFILE_PHOTO_HARD_CAP_BYTES,
 } from '../utils/imageCompression';
+import { useAuth } from '../contexts/AuthContext';
+import { coachNotesAPI } from '../services/api';
 
 const CLOTHING_SIZES = ['XS', 'S', 'M', 'L', 'XL', '2XL', '3XL', '4XL'];
 
+const NOTE_CATEGORIES = [
+  { key: 'punctuality', label: 'الالتزام بالمواعيد' },
+  { key: 'member_handling', label: 'التعامل مع الأعضاء' },
+  { key: 'performance', label: 'الأداء' },
+];
+
+const computeNoteAverages = (notes) => {
+  const out = {};
+  NOTE_CATEGORIES.forEach(({ key }) => {
+    const vals = notes
+      .map((n) => (n.ratings || {})[key])
+      .filter((v) => v !== null && v !== undefined);
+    out[key] = vals.length ? Math.round((vals.reduce((a, b) => a + b, 0) / vals.length) * 10) / 10 : null;
+  });
+  return out;
+};
+
 const CoachAttendancePage = () => {
+  const { user, isAdmin } = useAuth();
+  const canViewNotes = isAdmin || (user?.permissions || []).includes('coach-notes');
   const [coaches, setCoaches] = useState([]);
   const [records, setRecords] = useState([]);
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
@@ -54,6 +75,9 @@ const CoachAttendancePage = () => {
   const [lateThreshold, setLateThreshold] = useState('09:00'); // وقت الحضور المعتاد
   const [lateDetailCoach, setLateDetailCoach] = useState(null); // popup for late details
   const [detailCoach, setDetailCoach] = useState(null); // daily breakdown modal
+  const [coachNotes, setCoachNotes] = useState([]); // monthly notes for the coach in detail modal
+  const [coachNotesLoading, setCoachNotesLoading] = useState(false);
+  const coachNotesReqRef = useRef(0); // guards against out-of-order notes responses
   const [printLang, setPrintLangState] = useState(getPrintLang);
   const changePrintLang = (l) => { setPrintLang(l); setPrintLangState(l); };
   const qrRef = useRef(null);
@@ -137,8 +161,25 @@ const CoachAttendancePage = () => {
           _coach_ref: coach
         });
       }
+      loadCoachNotes(coach.id, month);
     } catch (err) {
       showToast('حدث خطأ في تحميل تقرير المدرب', 'error');
+    }
+  };
+
+  const loadCoachNotes = async (coachId, month) => {
+    if (!canViewNotes) return;
+    const reqId = ++coachNotesReqRef.current;
+    setCoachNotes([]);
+    setCoachNotesLoading(true);
+    try {
+      const res = await coachNotesAPI.getAll({ coach_id: coachId, month });
+      if (reqId !== coachNotesReqRef.current) return; // a newer request superseded this one
+      setCoachNotes(res.data || []);
+    } catch (err) {
+      if (reqId === coachNotesReqRef.current) setCoachNotes([]);
+    } finally {
+      if (reqId === coachNotesReqRef.current) setCoachNotesLoading(false);
     }
   };
 
@@ -1859,6 +1900,55 @@ const CoachAttendancePage = () => {
                         })}
                       </tbody>
                     </table>
+                  </div>
+                )}
+
+                {canViewNotes && (
+                  <div className="mt-5 border-t pt-4">
+                    <h4 className="font-bold text-gray-800 mb-3 flex items-center gap-2">
+                      <ClipboardList className="w-4 h-4 text-orange-500" />
+                      ملاحظات المشرف الشهرية
+                    </h4>
+                    {coachNotesLoading ? (
+                      <p className="text-center text-gray-400 py-4 text-sm">جاري التحميل...</p>
+                    ) : coachNotes.length === 0 ? (
+                      <p className="text-center text-gray-400 py-4 text-sm">لا توجد ملاحظات لهذا الشهر</p>
+                    ) : (
+                      <>
+                        <div className="grid grid-cols-3 gap-2 mb-3">
+                          {NOTE_CATEGORIES.map((cat) => {
+                            const avg = computeNoteAverages(coachNotes)[cat.key];
+                            return (
+                              <div key={cat.key} className="bg-orange-50 rounded-lg p-2 text-center">
+                                <div className="text-[11px] text-gray-600">{cat.label}</div>
+                                <div className="text-base font-bold text-orange-600">
+                                  {avg === null ? '—' : `${avg} / 5`}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                        <p className="text-xs text-gray-500 mb-2">عدد الملاحظات: {coachNotes.length}</p>
+                        <div className="max-h-64 overflow-y-auto space-y-2">
+                          {[...coachNotes].sort((a, b) => a.date.localeCompare(b.date)).map((n) => (
+                            <div key={n.id} className="border rounded-lg p-2 text-sm">
+                              <div className="flex items-center justify-between gap-2 text-xs text-gray-500 mb-1">
+                                <span>{n.date}</span>
+                                <span className="flex flex-wrap gap-1">
+                                  {NOTE_CATEGORIES.map((cat) => (
+                                    <span key={cat.key} className="bg-gray-100 rounded-full px-2 py-0.5">
+                                      {cat.label}: <b className={(n.ratings || {})[cat.key] ? 'text-amber-600' : 'text-gray-400'}>{(n.ratings || {})[cat.key] ?? '—'}</b>
+                                    </span>
+                                  ))}
+                                </span>
+                              </div>
+                              {n.note_text && <p className="whitespace-pre-wrap text-gray-700">{n.note_text}</p>}
+                              {n.created_by_name && <p className="text-[11px] text-gray-400 mt-1">بواسطة: {n.created_by_name}</p>}
+                            </div>
+                          ))}
+                        </div>
+                      </>
+                    )}
                   </div>
                 )}
               </div>
