@@ -5007,6 +5007,7 @@ async def delete_backup(filename: str, token: Optional[str] = None):
 async def export_financial_report(
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
+    branch_filter: Optional[str] = None,
     format: str = "xlsx",
     token: Optional[str] = None
 ):
@@ -5014,6 +5015,8 @@ async def export_financial_report(
     _require_export_admin_token(token)
     
     query = {"status": "paid"}
+    if branch_filter and branch_filter != "all":
+        query["branch_id"] = branch_filter
 
     end_date_full = (end_date + "T23:59:59.999999") if end_date and "T" not in end_date else end_date
     start_date_full = (start_date + "T00:00:00") if start_date and "T" not in start_date else start_date

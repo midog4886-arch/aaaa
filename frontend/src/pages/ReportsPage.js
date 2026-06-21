@@ -9,7 +9,7 @@ import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Badge } from '../components/ui/badge';
-import { reportsAPI, activitiesAPI, exportAPI } from '../services/api';
+import { reportsAPI, activitiesAPI, exportAPI, branchesAPI } from '../services/api';
 import { 
   BarChart3, 
   Calendar,
@@ -45,6 +45,8 @@ export const ReportsPage = () => {
   const [report, setReport] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [activities, setActivities] = useState([]);
+  const [branches, setBranches] = useState([]);
+  const [branchFilter, setBranchFilter] = useState(selectedBranchId || 'all');
   const [loading, setLoading] = useState(true);
   const [filters, setFilters] = useState({
     start_date: '',
@@ -78,15 +80,32 @@ export const ReportsPage = () => {
   // Detail view states
   const [activeDetail, setActiveDetail] = useState(null); // 'revenue', 'refunds', 'net', 'invoices'
 
+  // Keep the page-level branch filter in sync with the global branch switcher.
+  useEffect(() => {
+    setBranchFilter(selectedBranchId || 'all');
+  }, [selectedBranchId]);
+
+  // Load the branch list once (admins get all branches; non-admins are scoped server-side).
+  useEffect(() => {
+    if (!isAdmin) return;
+    branchesAPI.getAll()
+      .then(res => setBranches(res.data || []))
+      .catch(() => setBranches([]));
+  }, [isAdmin]);
+
   useEffect(() => {
     loadData();
-  }, [selectedBranchId]);
+  }, [branchFilter]);
 
   const loadData = async () => {
     try {
-      const branchParams = selectedBranchId && selectedBranchId !== 'all' ? { branch_filter: selectedBranchId } : {};
+      const branchParams = branchFilter && branchFilter !== 'all' ? { branch_filter: branchFilter } : {};
+      const filterParams = {};
+      if (filters.start_date) filterParams.start_date = filters.start_date;
+      if (filters.end_date) filterParams.end_date = filters.end_date;
+      if (filters.activity_id !== 'all') filterParams.activity_id = filters.activity_id;
       const [reportRes, activitiesRes] = await Promise.all([
-        reportsAPI.getFinancial({ ...filters, ...branchParams }),
+        reportsAPI.getFinancial({ ...filterParams, ...branchParams }),
         activitiesAPI.getAll()
       ]);
       setReport(reportRes.data);
@@ -105,7 +124,7 @@ export const ReportsPage = () => {
       if (filters.start_date) params.start_date = filters.start_date;
       if (filters.end_date) params.end_date = filters.end_date;
       if (filters.activity_id !== 'all') params.activity_id = filters.activity_id;
-      if (selectedBranchId && selectedBranchId !== 'all') params.branch_filter = selectedBranchId;
+      if (branchFilter && branchFilter !== 'all') params.branch_filter = branchFilter;
       
       const response = await reportsAPI.getFinancial(params);
       setReport(response.data);
@@ -228,6 +247,27 @@ export const ReportsPage = () => {
                   data-testid="filter-end-date"
                 />
               </div>
+              {isAdmin && (
+              <div className="space-y-2">
+                <Label>{language === 'ar' ? 'الفرع' : 'Branch'}</Label>
+                <Select
+                  value={branchFilter}
+                  onValueChange={(value) => setBranchFilter(value)}
+                >
+                  <SelectTrigger className="w-[180px]" data-testid="filter-branch">
+                    <SelectValue placeholder={language === 'ar' ? 'الفرع' : 'Branch'} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">{language === 'ar' ? 'كل الفروع' : 'All Branches'}</SelectItem>
+                    {branches.map(branch => (
+                      <SelectItem key={branch.id} value={branch.id}>
+                        {language === 'ar' ? (branch.name_ar || branch.name) : (branch.name || branch.name_ar)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              )}
               <div className="space-y-2">
                 <Label>{t('activity_name')}</Label>
                 <Select 
@@ -272,6 +312,7 @@ export const ReportsPage = () => {
                   const params = {};
                   if (filters.start_date) params.start_date = filters.start_date;
                   if (filters.end_date) params.end_date = filters.end_date;
+                  if (branchFilter && branchFilter !== 'all') params.branch_filter = branchFilter;
                   const url = exportAPI.reports(params) + `&token=${token}`;
                   window.open(url, '_blank');
                 }}
