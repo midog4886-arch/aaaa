@@ -13,6 +13,7 @@ import {
   supplierPaymentsAPI,
   journalEntriesAPI,
   accountingReportsAPI,
+  branchesAPI,
   productsAPI,
   exportAccountingAPI,
   reportsAPI,
@@ -219,8 +220,9 @@ export default function AccountingPage() {
   const [supplierForm, setSupplierForm] = useState({
     name_ar: '', name: '', phone: '', email: '', address: '',
     tax_number: '', commercial_reg: '', contact_person: '',
-    notes: '', credit_limit: 0, payment_terms: 30
+    notes: '', credit_limit: 0, payment_terms: 30, branch_id: ''
   });
+  const [branches, setBranches] = useState([]);
   
   const [purchaseForm, setPurchaseForm] = useState({
     supplier_id: '', supplier_invoice_number: '', invoice_date: '',
@@ -272,6 +274,16 @@ export default function AccountingPage() {
       console.error('Error fetching suppliers:', error);
     }
   }, [selectedBranchId]);
+
+  const fetchBranches = useCallback(async () => {
+    if (!isAdmin) return;
+    try {
+      const res = await branchesAPI.getAll();
+      setBranches(res.data || []);
+    } catch (error) {
+      console.error('Error fetching branches:', error);
+    }
+  }, [isAdmin]);
 
   const fetchPurchaseInvoices = useCallback(async () => {
     try {
@@ -556,8 +568,8 @@ export default function AccountingPage() {
 
   useEffect(() => {
     setLoading(true);
-    Promise.all([fetchAccounts(), fetchSuppliers(), fetchProducts(), fetchExpenseTypes()]).finally(() => setLoading(false));
-  }, [fetchAccounts, fetchSuppliers, fetchProducts, fetchExpenseTypes]);
+    Promise.all([fetchAccounts(), fetchSuppliers(), fetchProducts(), fetchExpenseTypes(), fetchBranches()]).finally(() => setLoading(false));
+  }, [fetchAccounts, fetchSuppliers, fetchProducts, fetchExpenseTypes, fetchBranches]);
 
   useEffect(() => {
     if (activeTab === TABS.PURCHASES) fetchPurchaseInvoices();
@@ -658,7 +670,7 @@ export default function AccountingPage() {
       }
       setIsSupplierDialogOpen(false);
       setEditingSupplier(null);
-      setSupplierForm({ name_ar: '', name: '', phone: '', email: '', address: '', tax_number: '', commercial_reg: '', contact_person: '', notes: '', credit_limit: 0, payment_terms: 30 });
+      setSupplierForm({ name_ar: '', name: '', phone: '', email: '', address: '', tax_number: '', commercial_reg: '', contact_person: '', notes: '', credit_limit: 0, payment_terms: 30, branch_id: '' });
       fetchSuppliers();
     } catch (error) {
       toast.error(error.response?.data?.detail || 'حدث خطأ');
@@ -1676,7 +1688,7 @@ export default function AccountingPage() {
     <div className="space-y-4">
       <div className="flex justify-between items-center">
         <h2 className="text-xl font-bold">الموردين</h2>
-        <Button onClick={() => { setEditingSupplier(null); setSupplierForm({ name_ar: '', name: '', phone: '', email: '', address: '', tax_number: '', commercial_reg: '', contact_person: '', notes: '', credit_limit: 0, payment_terms: 30 }); setIsSupplierDialogOpen(true); }} className="bg-blue-600 hover:bg-blue-700">
+        <Button onClick={() => { setEditingSupplier(null); setSupplierForm({ name_ar: '', name: '', phone: '', email: '', address: '', tax_number: '', commercial_reg: '', contact_person: '', notes: '', credit_limit: 0, payment_terms: 30, branch_id: (selectedBranchId && selectedBranchId !== 'all') ? selectedBranchId : '' }); setIsSupplierDialogOpen(true); }} className="bg-blue-600 hover:bg-blue-700">
           + إضافة مورد
         </Button>
       </div>
@@ -1686,6 +1698,7 @@ export default function AccountingPage() {
           <thead className="bg-gray-100">
             <tr>
               <th className="p-3 text-right">اسم المورد</th>
+              {isAdmin && <th className="p-3 text-right">الفرع</th>}
               <th className="p-3 text-right">الجوال</th>
               <th className="p-3 text-right">الرقم الضريبي</th>
               <th className="p-3 text-right">إجمالي المشتريات</th>
@@ -1705,6 +1718,13 @@ export default function AccountingPage() {
                     {supplier.name_ar}
                   </button>
                 </td>
+                {isAdmin && (
+                  <td className="p-3">
+                    {supplier.branch_id
+                      ? (() => { const b = branches.find(x => x.id === supplier.branch_id); return b ? (b.name_ar || b.name) : 'فرع غير معروف'; })()
+                      : <span className="text-gray-500">مشترك (كل الفروع)</span>}
+                  </td>
+                )}
                 <td className="p-3" dir="ltr">{supplier.phone}</td>
                 <td className="p-3">{supplier.tax_number || '-'}</td>
                 <td className="p-3">{(supplier.total_purchases || 0).toLocaleString()} ر.س</td>
@@ -1721,7 +1741,7 @@ export default function AccountingPage() {
               </tr>
             ))}
             {suppliers.length === 0 && (
-              <tr><td colSpan="7" className="p-8 text-center text-gray-500">لا يوجد موردين</td></tr>
+              <tr><td colSpan={isAdmin ? 8 : 7} className="p-8 text-center text-gray-500">لا يوجد موردين</td></tr>
             )}
           </tbody>
         </table>
@@ -3424,6 +3444,20 @@ export default function AccountingPage() {
               <label className="text-sm font-medium">ملاحظات</label>
               <textarea value={supplierForm.notes} onChange={e => setSupplierForm(prev => ({ ...prev, notes: e.target.value }))} className="w-full border rounded p-2" rows="2" />
             </div>
+            {isAdmin && (
+              <div>
+                <label className="text-sm font-medium">الفرع</label>
+                <select
+                  value={supplierForm.branch_id || ''}
+                  onChange={e => setSupplierForm(prev => ({ ...prev, branch_id: e.target.value }))}
+                  className="w-full border rounded p-2"
+                >
+                  <option value="">مشترك (كل الفروع)</option>
+                  {branches.map(b => <option key={b.id} value={b.id}>{b.name_ar || b.name}</option>)}
+                </select>
+                <p className="text-xs text-gray-500 mt-1">اختر الفرع لو المورد خاص بفرع معيّن، أو "مشترك" لو بيتعامل مع كل الفروع.</p>
+              </div>
+            )}
             <div className="flex gap-2 justify-end">
               <Button variant="outline" onClick={() => setIsSupplierDialogOpen(false)}>إلغاء</Button>
               <Button onClick={handleSaveSupplier} className="bg-blue-600 hover:bg-blue-700">حفظ</Button>

@@ -5809,19 +5809,39 @@ async def seed_default_accounts(current_user: dict = Depends(get_current_user)):
 
 # ============ SUPPLIERS ROUTES ============
 
+def _supplier_branch_or_shared(branch_id):
+    """Match suppliers tied to the given branch OR shared (no branch_id) suppliers."""
+    return {"$or": [
+        {"branch_id": branch_id},
+        {"branch_id": None},
+        {"branch_id": ""},
+        {"branch_id": {"$exists": False}},
+    ]}
+
+
+def _can_access_supplier(current_user, supplier):
+    """Admins access any supplier; others only their own branch's or shared ones."""
+    if current_user.get("is_admin"):
+        return True
+    supplier_branch = supplier.get("branch_id")
+    if not supplier_branch:  # shared across all branches
+        return True
+    return supplier_branch == current_user.get("branch_id")
+
+
 @api_router.get("/suppliers")
 async def get_suppliers(
     branch_filter: Optional[str] = None,
     current_user: dict = Depends(get_current_user)
 ):
-    """Get all suppliers"""
+    """Get all suppliers (branch-specific + shared/all-branches)"""
     query = {}
     is_admin = current_user.get("is_admin", False)
     
     if is_admin and branch_filter and branch_filter != "all":
-        query["branch_id"] = branch_filter
+        query = _supplier_branch_or_shared(branch_filter)
     elif not is_admin and current_user.get("branch_id"):
-        query["branch_id"] = current_user["branch_id"]
+        query = _supplier_branch_or_shared(current_user["branch_id"])
     
     suppliers = await db.suppliers.find(query, {"_id": 0}).sort("created_at", -1).to_list(1000)
     return suppliers
@@ -5832,6 +5852,8 @@ async def get_supplier(supplier_id: str, current_user: dict = Depends(get_curren
     supplier = await db.suppliers.find_one({"id": supplier_id}, {"_id": 0})
     if not supplier:
         raise HTTPException(status_code=404, detail="Supplier not found")
+    if not _can_access_supplier(current_user, supplier):
+        raise HTTPException(status_code=403, detail="Not allowed to access this supplier")
     return supplier
 
 @api_router.post("/suppliers")
@@ -5839,6 +5861,8 @@ async def create_supplier(supplier: SupplierCreate, current_user: dict = Depends
     """Create a new supplier"""
     supplier_id = str(uuid.uuid4())
     branch_id = supplier.branch_id if current_user.get("is_admin") else current_user.get("branch_id")
+    if not branch_id:
+        branch_id = None  # shared across all branches
     
     supplier_doc = {
         "id": supplier_id,
@@ -5855,9 +5879,24 @@ async def create_supplier(supplier: SupplierCreate, current_user: dict = Depends
 @api_router.put("/suppliers/{supplier_id}")
 async def update_supplier(supplier_id: str, supplier: SupplierCreate, current_user: dict = Depends(get_current_user)):
     """Update a supplier"""
+    existing = await db.suppliers.find_one({"id": supplier_id}, {"_id": 0})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Supplier not found")
+    if not _can_access_supplier(current_user, existing):
+        raise HTTPException(status_code=403, detail="Not allowed to modify this supplier")
+
+    update_data = supplier.model_dump()
+    if current_user.get("is_admin"):
+        # admin may (re)assign branch; empty => shared across all branches
+        if not update_data.get("branch_id"):
+            update_data["branch_id"] = None
+    else:
+        # non-admin cannot change a supplier's branch; keep existing value
+        update_data["branch_id"] = existing.get("branch_id")
+    
     result = await db.suppliers.find_one_and_update(
         {"id": supplier_id},
-        {"$set": supplier.model_dump()},
+        {"$set": update_data},
         return_document=True
     )
     if not result:
@@ -5867,6 +5906,11 @@ async def update_supplier(supplier_id: str, supplier: SupplierCreate, current_us
 @api_router.delete("/suppliers/{supplier_id}")
 async def delete_supplier(supplier_id: str, current_user: dict = Depends(get_current_user)):
     """Delete a supplier (only if no transactions)"""
+    existing = await db.suppliers.find_one({"id": supplier_id}, {"_id": 0})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Supplier not found")
+    if not _can_access_supplier(current_user, existing):
+        raise HTTPException(status_code=403, detail="Not allowed to delete this supplier")
     # Check if supplier has purchase invoices
     invoice = await db.purchase_invoices.find_one({"supplier_id": supplier_id})
     if invoice:
@@ -5888,6 +5932,8 @@ async def get_supplier_statement(
     supplier = await db.suppliers.find_one({"id": supplier_id}, {"_id": 0})
     if not supplier:
         raise HTTPException(status_code=404, detail="Supplier not found")
+    if not _can_access_supplier(current_user, supplier):
+        raise HTTPException(status_code=403, detail="Not allowed to access this supplier")
     
     query = {"supplier_id": supplier_id}
     if start_date:
@@ -9535,11 +9581,13 @@ async def get_suppliers_balance_report(
 ):
     """Get suppliers balance report"""
     query = {}
+    is_admin = current_user.get("is_admin", False)
     
-    if branch_filter and branch_filter != "all":
-        query["branch_id"] = branch_filter
-    elif not current_user.get("is_admin") and current_user.get("branch_id"):
-        query["branch_id"] = current_user["branch_id"]
+    if is_admin and branch_filter and branch_filter != "all":
+        query = _supplier_branch_or_shared(branch_filter)
+    elif not is_admin and current_user.get("branch_id"):
+        # non-admins are always pinned to their own branch (+ shared), ignoring branch_filter
+        query = _supplier_branch_or_shared(current_user["branch_id"])
     
     suppliers = await db.suppliers.find(query, {"_id": 0}).to_list(1000)
     
