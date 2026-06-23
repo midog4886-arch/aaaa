@@ -45,6 +45,7 @@ class MemberCreate(BaseModel):
     activities: List[MemberActivity] = []
     notes: Optional[str] = ""
     preferred_language: Optional[str] = "ar"
+    branch_id: Optional[str] = None
 
 class MemberUpdate(BaseModel):
     name: Optional[str] = None
@@ -296,11 +297,20 @@ async def _create_member_core(member: MemberCreate, current_user: dict) -> Membe
                 detail=f"تم بلوغ الحد الأقصى للأعضاء ({max_members}) في خطة اشتراكك"
             )
     member_id = str(uuid.uuid4())
-    branch_id = require_branch_scope(current_user) or current_user.get("branch_id")
+    # Branch assignment mirrors the invoice flow: an admin creating a member
+    # while a branch is selected in the UI must save the member under THAT
+    # branch (sent as ``branch_id`` in the payload). Non-admins stay pinned to
+    # their own branch via ``require_branch_scope`` (fail-closed if missing).
+    if current_user.get("is_admin", False):
+        sel = getattr(member, "branch_id", None)
+        branch_id = sel if (sel and sel != "all") else current_user.get("branch_id")
+    else:
+        branch_id = require_branch_scope(current_user)
 
     new_code = await generate_member_code(branch_id)
 
     payload = member.model_dump()
+    payload.pop("branch_id", None)
     payload["preferred_language"] = "en" if str(payload.get("preferred_language") or "ar").lower().startswith("en") else "ar"
     member_doc = {
         "id": member_id,
