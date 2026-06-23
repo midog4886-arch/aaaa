@@ -19,7 +19,7 @@ import LevelsScheduleBuilderDialog from '../components/levels/LevelsScheduleBuil
 import { 
   Plus, Edit, Trash2, Loader2, Layers, Users, Dumbbell, UserPlus, UserMinus, UserX, Search,
   ChevronDown, ChevronUp, ChevronRight, Clock, AlertTriangle, ArrowRight, ArrowLeft, Home,
-  GripVertical, Move, ArrowUpDown, SlidersHorizontal, TrendingUp, BarChart3, CheckCircle, Circle, UserCheck, Printer, RefreshCw, Wand2, Undo2, Lock, Unlock
+  GripVertical, Move, ArrowUpDown, ArrowRightLeft, SlidersHorizontal, TrendingUp, BarChart3, CheckCircle, Circle, UserCheck, Printer, RefreshCw, Wand2, Undo2, Lock, Unlock
 } from 'lucide-react';
 
 const _actKey = (act) => act?.activity_id || act?.activity_name || '';
@@ -147,6 +147,14 @@ export const LevelsPage = () => {
   // in the member's branch (ignoring schedule/hour/activity matching) so an admin
   // can place a stuck member anywhere. The assign call then forces the link.
   const [showAllLevels, setShowAllLevels] = useState(false);
+
+  // Quick transfer (نقل سريع): move a level member straight to another level
+  // (e.g. a different hour) from inside the manage-members dialog — detaches
+  // them from the current level, force-links the destination, and shifts the
+  // training hour on their subscription to match the new level.
+  const [transferPickerOpen, setTransferPickerOpen] = useState(false);
+  const [transferTarget, setTransferTarget] = useState(null); // { member, activity, fromLevel }
+  const [transferring, setTransferring] = useState(false);
 
   // Auto-assign dialog
   const [isAutoAssignOpen, setIsAutoAssignOpen] = useState(false);
@@ -1657,6 +1665,180 @@ ${slotTables}
       }));
     } catch (error) {
       toast.error(t('error', 'Error'));
+    }
+  };
+
+  // --- Quick transfer (نقل سريع) -------------------------------------------
+  // Pick the member's subscription activity that belongs to the given level:
+  // prefer the one already linked by level_id, then an exact activity_name
+  // match, then the same main-activity group (preferring a live subscription).
+  const getMemberActivityForLevel = (member, level) => {
+    const acts = (member?.activities || []);
+    if (acts.length === 0) return null;
+    const byLevel = acts.find(a => a.level_id && level && a.level_id === level.id);
+    if (byLevel) return byLevel;
+    const byName = acts.find(a => a.activity_name === level?.activity_name);
+    if (byName) return byName;
+    const levelMain = parseActivityName(level?.activity_name || '').mainActivity;
+    const sameGroup = acts.filter(a => parseActivityName(a.activity_name).mainActivity === levelMain);
+    return sameGroup.find(isActivityNonExpired) || sameGroup[0] || acts.find(isActivityNonExpired) || acts[0];
+  };
+
+  // Other levels of the same main activity (different hour/level) in the
+  // member's branch — the candidate destinations for a quick transfer.
+  const getTransferTargetLevels = (fromLevel, member) => {
+    if (!fromLevel) return [];
+    const fromMain = parseActivityName(fromLevel.activity_name).mainActivity;
+    const memberBranch = member?.branch_id || null;
+    return (levels || [])
+      .filter(l => l.id !== fromLevel.id)
+      .filter(l => parseActivityName(l.activity_name).mainActivity === fromMain)
+      .filter(l => !memberBranch || !l.branch_id || l.branch_id === memberBranch)
+      .slice()
+      .sort((a, b) => {
+        const sa = (a.time_slot || '').localeCompare(b.time_slot || '', 'ar', { numeric: true });
+        if (sa !== 0) return sa;
+        return (a.level_number || 0) - (b.level_number || 0);
+      });
+  };
+
+  const openTransferPicker = (member) => {
+    if (!selectedLevel) return;
+    const activity = getMemberActivityForLevel(member, selectedLevel);
+    setTransferTarget({ member, activity, fromLevel: selectedLevel });
+    setTransferPickerOpen(true);
+  };
+
+  // Extract the numeric hour from a level time-slot / "الساعة N" string.
+  const _hourDigits = (s) => {
+    const m = String(s || '').match(/\d{1,2}/);
+    return m ? m[0] : null;
+  };
+
+  // Rewrite ONLY the hour inside the member's free-text schedule so the days
+  // and any activity prefix are preserved (e.g. "الأحد - 4:00 م" → "الأحد - 7:00 م").
+  const _shiftScheduleHour = (schedule, newHour) => {
+    if (newHour == null) return schedule || '';
+    if (!schedule) return `${newHour}:00 م`;
+    const timeRe = /(\d{1,2})([:.]\d{2})(\s*[صم])?/;
+    if (timeRe.test(schedule)) {
+      return schedule.replace(timeRe, (_m, _h, mm, mer) => `${newHour}${mm}${mer || ' م'}`);
+    }
+    const arRe = /(الساعة\s*)(\d{1,2})/;
+    if (arRe.test(schedule)) {
+      return schedule.replace(arRe, (_m, p) => `${p}${newHour}`);
+    }
+    return `${schedule} - ${newHour}:00 م`;
+  };
+
+  const handleQuickTransfer = async (targetLevel) => {
+    if (!transferTarget || !targetLevel) return;
+    const { member, activity, fromLevel } = transferTarget;
+    if (!fromLevel || targetLevel.id === fromLevel.id) return;
+
+    // Capacity guard on the destination (mirrors the add/drag checks).
+    const targetMain = parseActivityName(targetLevel.activity_name).mainActivity;
+    const targetMembers = getLevelMembers(targetLevel);
+    const targetMax = targetLevel.capacity || (targetMain === 'swimming' ? 6 : 10);
+    if (targetMembers.some(m => m.id === member.id)) {
+      toast.info(t('اللاعب موجود بالفعل في هذا المستوى', 'Player already in this level'));
+      return;
+    }
+    if (targetMembers.length >= targetMax) {
+      toast.error(t(`المستوى ممتلئ (الحد الأقصى ${targetMax})`, `Level is full (max ${targetMax})`));
+      return;
+    }
+
+    setTransferring(true);
+    try {
+      // 1) Detach from the current level.
+      await levelsAPI.removeMember(fromLevel.id, member.id);
+      // 2) Force-link to the destination (the member's schedule may not match
+      //    the new hour yet, so force + explicit activity keep the link).
+      try {
+        await levelsAPI.addMember(targetLevel.id, member.id, {
+          force: true,
+          activityId: activity?.activity_id,
+          activityName: activity?.activity_name,
+        });
+      } catch (addErr) {
+        // Roll back to the source so the member is never left orphaned. If the
+        // rollback ALSO fails the member is now detached from both levels — say
+        // so explicitly so the admin can re-add manually instead of assuming a
+        // silent generic failure.
+        let rolledBack = false;
+        try {
+          await levelsAPI.addMember(fromLevel.id, member.id, {
+            force: true,
+            activityId: activity?.activity_id,
+            activityName: activity?.activity_name,
+          });
+          rolledBack = true;
+        } catch (_) { /* rollback failed — handled below */ }
+        if (!rolledBack) {
+          loadData();
+          toast.error(t(
+            `تعذّر النقل ولم نستطع إرجاع ${member.name_ar || member.name} لمستواه السابق — أضِفه يدويًا من فضلك`,
+            `Transfer failed and ${member.name_ar || member.name} could not be returned to the previous level — please re-add manually`
+          ));
+          setTransferring(false);
+          return;
+        }
+        throw addErr;
+      }
+
+      // 3) Shift the training hour on the member's subscription to the new
+      //    level's hour (full activity replace — every field must be sent back).
+      let hourShifted = false;
+      if (activity && activity.activity_id) {
+        const newHour = _hourDigits(targetLevel.time_slot || parseActivityName(targetLevel.activity_name).timeSlot);
+        if (newHour != null) {
+          const updated = {
+            ...activity,
+            level_id: targetLevel.id,
+            training_time: `${newHour}:00 م`,
+            schedule: _shiftScheduleHour(activity.schedule || '', newHour),
+            start_date: activity.start_date || '',
+            end_date: activity.end_date || '',
+          };
+          try {
+            await membersAPI.updateActivity(member.id, activity.activity_id, updated);
+            hourShifted = true;
+          } catch (_) { /* schedule update is best-effort; the move already succeeded */ }
+        }
+      }
+
+      const targetName = _cleanLevelName(targetLevel.custom_name) || targetLevel.activity_name || `${t('المستوى', 'Level')} ${targetLevel.level_number}`;
+      toast.success(
+        hourShifted
+          ? t(`تم نقل ${member.name_ar || member.name} إلى "${targetName}" وتحديث ساعة التدريب`,
+              `Moved ${member.name_ar || member.name} to "${targetName}" and updated training time`)
+          : t(`تم نقل ${member.name_ar || member.name} إلى "${targetName}"`,
+              `Moved ${member.name_ar || member.name} to "${targetName}"`)
+      );
+
+      setTransferPickerOpen(false);
+      setTransferTarget(null);
+
+      // Refresh + re-sync the open dialog's source-level panel.
+      const branchParams = selectedBranchId && selectedBranchId !== 'all' ? { branch_filter: selectedBranchId } : {};
+      try {
+        const [levelsRes, membersRes] = await Promise.all([
+          levelsAPI.getAll(branchParams),
+          membersAPI.getAll(branchParams),
+        ]);
+        setLevels(levelsRes.data);
+        setMembers(membersRes.data);
+        const fresh = (levelsRes.data || []).find(l => l.id === fromLevel.id);
+        if (fresh) setSelectedLevel(fresh);
+      } catch (_) {
+        loadData();
+      }
+    } catch (error) {
+      toast.error(error.response?.data?.detail || t('فشل في نقل العضو', 'Failed to move member'));
+      loadData();
+    } finally {
+      setTransferring(false);
     }
   };
 
@@ -3251,6 +3433,15 @@ ${slotTables}
                         <Button
                           size="icon"
                           variant="ghost"
+                          className="h-7 w-7 text-blue-600 hover:bg-blue-50 flex-shrink-0"
+                          onClick={() => openTransferPicker(member)}
+                          title={t('نقل لمستوى آخر (ساعة مختلفة)', 'Move to another level (different hour)')}
+                        >
+                          <ArrowRightLeft className="w-4 h-4" />
+                        </Button>
+                        <Button
+                          size="icon"
+                          variant="ghost"
                           className="h-7 w-7 text-red-500 hover:bg-red-50 flex-shrink-0"
                           onClick={() => handleRemoveMember(member.id)}
                         >
@@ -3691,6 +3882,97 @@ ${slotTables}
             )}
             <DialogFooter>
               <Button variant="outline" onClick={() => { setAssignPickerOpen(false); setAssignTarget(null); setShowAllLevels(false); }} disabled={assigning}>
+                {t('إلغاء', 'Cancel')}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Quick transfer picker (نقل سريع) */}
+        <Dialog open={transferPickerOpen} onOpenChange={(o) => { setTransferPickerOpen(o); if (!o) setTransferTarget(null); }}>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <ArrowRightLeft className="w-5 h-5 text-primary" />
+                {t('نقل سريع لمستوى آخر', 'Quick transfer to another level')}
+              </DialogTitle>
+            </DialogHeader>
+            {transferTarget && (
+              <div className="space-y-3">
+                <div className="bg-gray-50 rounded-lg p-3 text-sm">
+                  <p className="font-medium">{transferTarget.member.name_ar || transferTarget.member.name}</p>
+                  <p className="text-xs text-gray-600 mt-0.5">
+                    {t('من', 'From')}: {_cleanLevelName(transferTarget.fromLevel?.custom_name) || transferTarget.fromLevel?.activity_name}
+                    {transferTarget.fromLevel?.time_slot && <span> • ⏰ {transferTarget.fromLevel.time_slot}</span>}
+                  </p>
+                  {transferTarget.activity?.schedule && (
+                    <p className="text-xs text-gray-500 mt-0.5">{t('الموعد الحالي', 'Current schedule')}: {transferTarget.activity.schedule}</p>
+                  )}
+                </div>
+                <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-2">
+                  {t('سيتم نقل اللاعب وتحديث ساعة التدريب في اشتراكه لساعة المستوى الجديد.',
+                     "The player will be moved and the training hour in their subscription updated to the new level's hour.")}
+                </p>
+                <div className="max-h-72 overflow-y-auto space-y-2 -mx-1 px-1">
+                  {(() => {
+                    const targets = getTransferTargetLevels(transferTarget.fromLevel, transferTarget.member);
+                    if (targets.length === 0) {
+                      return (
+                        <p className="text-center text-sm text-gray-500 py-6">
+                          {t('لا توجد مستويات أخرى لنفس النشاط', 'No other levels for this activity')}
+                        </p>
+                      );
+                    }
+                    return targets.map(level => {
+                      const lmain = parseActivityName(level.activity_name).mainActivity;
+                      const memberCount = getLevelMembers(level).length;
+                      const maxCap = level.capacity || (lmain === 'swimming' ? 6 : 10);
+                      const isFull = memberCount >= maxCap;
+                      return (
+                        <button
+                          key={level.id}
+                          onClick={() => !isFull && !transferring && handleQuickTransfer(level)}
+                          disabled={isFull || transferring}
+                          className={`w-full text-start p-3 rounded-lg border-2 transition-all ${
+                            isFull
+                              ? 'opacity-50 cursor-not-allowed bg-gray-50 border-gray-200'
+                              : 'hover:border-primary hover:bg-primary/5 border-gray-200'
+                          }`}
+                          data-testid={`transfer-level-${level.id}`}
+                        >
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="flex items-center gap-2 min-w-0">
+                              <Badge className={`${getLevelColor(level.level_number)} text-white`}>
+                                {t('مستوى', 'Lv')} {level.level_number}
+                              </Badge>
+                              <div className="min-w-0">
+                                <p className="font-medium text-sm truncate">{_cleanLevelName(level.custom_name) || level.activity_name}</p>
+                                {(level.time_slot || level.schedule) && (
+                                  <p className="text-xs font-bold text-amber-700 mt-1 flex items-center gap-1">
+                                    <Clock className="w-3 h-3" />
+                                    {level.time_slot || level.schedule}
+                                  </p>
+                                )}
+                              </div>
+                            </div>
+                            <div className="text-xs text-gray-600 flex-shrink-0 text-end">
+                              <div>{memberCount}/{maxCap}</div>
+                              {isFull && (
+                                <Badge variant="destructive" className="text-[10px] mt-1">
+                                  {t('ممتلئ', 'Full')}
+                                </Badge>
+                              )}
+                            </div>
+                          </div>
+                        </button>
+                      );
+                    });
+                  })()}
+                </div>
+              </div>
+            )}
+            <DialogFooter>
+              <Button variant="outline" onClick={() => { setTransferPickerOpen(false); setTransferTarget(null); }} disabled={transferring}>
                 {t('إلغاء', 'Cancel')}
               </Button>
             </DialogFooter>
