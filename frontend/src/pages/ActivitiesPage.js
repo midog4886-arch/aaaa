@@ -690,20 +690,22 @@ export const ActivitiesPage = () => {
               </DialogTitle>
             </DialogHeader>
             <div className="flex-1 overflow-y-auto -mx-1 px-1">
-              {loadingMembers ? (
+              {(() => {
+              const activeMembers = activityMembers.filter((m) => m.active);
+              return loadingMembers ? (
                 <div className="flex items-center justify-center py-10">
                   <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
                 </div>
-              ) : activityMembers.length === 0 ? (
+              ) : activeMembers.length === 0 ? (
                 <div className="text-center text-sm text-muted-foreground py-10">
-                  {language === 'ar' ? 'لا يوجد مشتركون في هذا النشاط' : 'No subscribers in this activity'}
+                  {language === 'ar' ? 'لا يوجد مشتركون ساريون في هذا النشاط' : 'No active subscribers in this activity'}
                 </div>
               ) : (
                 <div className="space-y-2">
                   <p className="text-xs text-muted-foreground mb-1">
-                    {activityMembers.length} {language === 'ar' ? 'مشترك' : 'members'}
+                    {activeMembers.length} {language === 'ar' ? 'مشترك ساري' : 'active members'}
                   </p>
-                  {activityMembers.map((m) => (
+                  {activeMembers.map((m) => (
                     <div
                       key={m.id}
                       onClick={() => { setMembersDialog(prev => ({ ...prev, open: false })); navigate(`/admin/members?focus=${m.id}`); }}
@@ -727,7 +729,8 @@ export const ActivitiesPage = () => {
                     </div>
                   ))}
                 </div>
-              )}
+              );
+              })()}
             </div>
             <DialogFooter>
               <Button variant="outline" onClick={() => setMembersDialog(prev => ({ ...prev, open: false }))}>{t('close')}</Button>
