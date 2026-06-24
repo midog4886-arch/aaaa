@@ -31,6 +31,7 @@ import {
   Calculator,
   Bell,
   RefreshCcw,
+  Inbox,
   HardDrive,
   CheckCheck,
   Clock,
@@ -151,6 +152,7 @@ export const Sidebar = ({ isOpen, onClose }) => {
       icon: Users,
       items: [
         { to: '/admin/members', icon: Users, label: 'members', permission: 'members', feature: 'members' },
+        { to: '/admin/registration-requests', icon: Inbox, label: 'registration_requests', permission: 'invoices' },
         { to: '/admin/renewals', icon: RefreshCcw, label: 'renewals', permission: 'renewals', feature: 'renewals' },
         { to: '/admin/member-card', icon: QrCode, label: 'member_card', permission: 'member-card' },
         { to: '/admin/daily-new-cards', icon: CalendarDays, label: 'daily_new_cards', permission: 'member-card' },

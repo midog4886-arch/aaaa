@@ -206,6 +206,24 @@ export const InvoicesPage = () => {
     handleToggleRegFormCheck
   } = regFormHook;
 
+  // Prefill the registration form dialog when arriving from a public registration request
+  useEffect(() => {
+    let raw = null;
+    try { raw = sessionStorage.getItem('prefill_registration'); } catch (e) { raw = null; }
+    if (!raw) return;
+    try { sessionStorage.removeItem('prefill_registration'); } catch (e) {}
+    let data;
+    try { data = JSON.parse(raw); } catch (e) { return; }
+    if (!data) return;
+    setRegFormData({ customer_name: data.customer_name || '', customer_phone: data.customer_phone || '' });
+    if (data.notes) setRegFormNotes(data.notes);
+    setIsRegistrationFormDialogOpen(true);
+    toast.info(language === 'ar'
+      ? 'تم تحميل بيانات طلب التسجيل — أكمل الفاتورة ثم احذف الطلب من قائمة طلبات التسجيل'
+      : 'Registration request loaded — complete the invoice, then delete the request from the queue');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const handleTabChange = (tab) => {
     if (tab === 'forms') { setRegFormsPasswordAction('forms'); setRegFormsPasswordInput(''); setShowRegFormsPasswordDialog(true); return; }
     setActiveTab(tab);

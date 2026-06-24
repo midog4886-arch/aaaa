@@ -341,6 +341,12 @@ export const billingAPI = {
 };
 
 // Branches API
+export const registrationRequestsAPI = {
+  getAll: (params = {}) => axios.get(`${API}/registration-requests`, { params }),
+  updateStatus: (id, status) => axios.put(`${API}/registration-requests/${id}`, { status }),
+  delete: (id) => axios.delete(`${API}/registration-requests/${id}`),
+};
+
 export const branchesAPI = {
   getAll: () => axios.get(`${API}/branches`),
   getById: (id) => axios.get(`${API}/branches/${id}`),

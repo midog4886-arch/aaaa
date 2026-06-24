@@ -51,6 +51,8 @@ const LoginPage = lazy(() => import('./pages/LoginPage'));
 const DashboardPage = lazy(() => import('./pages/DashboardPage'));
 const MembersPage = lazy(() => import('./pages/MembersPage'));
 const ActivitiesPage = lazy(() => import('./pages/ActivitiesPage'));
+const PublicRegistrationPage = lazy(() => import('./pages/PublicRegistrationPage'));
+const RegistrationRequestsPage = lazy(() => import('./pages/RegistrationRequestsPage'));
 const LevelsPage = lazy(() => import('./pages/LevelsPage'));
 const InvoicesPage = lazy(() => import('./pages/InvoicesPage'));
 const ReportsPage = lazy(() => import('./pages/ReportsPage'));
@@ -231,7 +233,7 @@ const PublicRoute = ({ children }) => {
   return children;
 };
 
-const ACADEMY_BYPASS_PREFIXES = ['/academy-picker', '/super', '/admin', '/login', '/privacy', '/terms', '/refund-policy', '/signup', '/coach-qr'];
+const ACADEMY_BYPASS_PREFIXES = ['/academy-picker', '/super', '/admin', '/login', '/privacy', '/terms', '/refund-policy', '/signup', '/coach-qr', '/register'];
 
 const AcademyGuard = ({ children }) => {
   const location = useLocation();
@@ -270,6 +272,9 @@ function AppRoutes() {
       {/* Public self-signup */}
       <Route path="/signup" element={<SignupPage />} />
       <Route path="/coach-qr/:coachId" element={<CoachQRPage />} />
+
+      {/* Public per-branch self-registration */}
+      <Route path="/register/:tenantSlug/:branchId" element={<PublicRegistrationPage />} />
 
       {/* Super-Admin (control plane) — outside main auth/permissions */}
       <Route path="/super" element={<Navigate to="/super/tenants" replace />} />
@@ -338,6 +343,14 @@ function AppRoutes() {
         element={
           <ProtectedRoute permission="activities">
             <ActivitiesPage />
+          </ProtectedRoute>
+        } 
+      />
+      <Route 
+        path="/admin/registration-requests" 
+        element={
+          <ProtectedRoute permission="invoices">
+            <RegistrationRequestsPage />
           </ProtectedRoute>
         } 
       />
