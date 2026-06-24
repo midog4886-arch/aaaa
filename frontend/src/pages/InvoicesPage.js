@@ -206,7 +206,7 @@ export const InvoicesPage = () => {
     handleToggleRegFormCheck
   } = regFormHook;
 
-  // Prefill the registration form dialog when arriving from a public registration request
+  // Prefill the invoice creation dialog when arriving from a public registration request
   useEffect(() => {
     let raw = null;
     try { raw = sessionStorage.getItem('prefill_registration'); } catch (e) { raw = null; }
@@ -215,9 +215,11 @@ export const InvoicesPage = () => {
     let data;
     try { data = JSON.parse(raw); } catch (e) { return; }
     if (!data) return;
-    setRegFormData({ customer_name: data.customer_name || '', customer_phone: data.customer_phone || '' });
-    if (data.notes) setRegFormNotes(data.notes);
-    setIsRegistrationFormDialogOpen(true);
+    setSelectedMember(null);
+    setCustomerNameAr(data.customer_name || '');
+    setCustomerPhone(data.customer_phone || '');
+    if (data.notes) setNotes(data.notes);
+    setIsCreateDialogOpen(true);
     toast.info(language === 'ar'
       ? 'تم تحميل بيانات طلب التسجيل — أكمل الفاتورة ثم احذف الطلب من قائمة طلبات التسجيل'
       : 'Registration request loaded — complete the invoice, then delete the request from the queue');
