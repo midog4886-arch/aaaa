@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import axios from 'axios';
 import { API_URL } from '../config/api';
@@ -14,31 +14,8 @@ const WEEK_DAYS = [
   { key: 'friday', label: 'الجمعة' },
 ];
 
-const ARABIC_DIGITS = '٠١٢٣٤٥٦٧٨٩';
-
-// Reduce a detailed activity name ("السباحة 2 يوم في الاسبوع") to its base sport
-// type ("السباحة") by cutting at the first digit and trimming schedule words.
-const baseActivityName = (raw) => {
-  let s = (raw || '').trim();
-  let cut = s.length;
-  for (let i = 0; i < s.length; i++) {
-    const ch = s[i];
-    if ((ch >= '0' && ch <= '9') || ARABIC_DIGITS.includes(ch)) { cut = i; break; }
-  }
-  s = s.slice(0, cut).trim();
-  s = s.replace(/\s*(في\s*الاسبوع|ايام|أيام|يوم)\s*$/u, '').trim();
-  return s || (raw || '').trim();
-};
-
-// Normalized key so Arabic spelling variants (ة/ه, أ/ا, leading ال) dedupe together.
-const dedupKey = (name) => (name || '')
-  .replace(/[أإآ]/g, 'ا')
-  .replace(/ة/g, 'ه')
-  .replace(/ى/g, 'ي')
-  .split(/\s+/)
-  .map(w => w.replace(/^ال/, ''))
-  .join(' ')
-  .trim();
+// Fixed set of high-level activity choices shown to parents on the public form.
+const ACTIVITY_OPTIONS = ['السباحة', 'كرة قدم', 'كاراتيه', 'برايفت', 'أخرى'];
 
 export const PublicRegistrationPage = () => {
   const { tenantSlug, branchId } = useParams();
@@ -51,7 +28,6 @@ export const PublicRegistrationPage = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [branch, setBranch] = useState(null);
-  const [activities, setActivities] = useState([]);
 
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
@@ -73,7 +49,6 @@ export const PublicRegistrationPage = () => {
         const res = await api.get(`/api/public/registration/${branchId}`);
         if (!active) return;
         setBranch(res.data.branch);
-        setActivities(res.data.activities || []);
       } catch (e) {
         if (!active) return;
         setError(e?.response?.status === 404
@@ -85,17 +60,6 @@ export const PublicRegistrationPage = () => {
     })();
     return () => { active = false; };
   }, [api, branchId]);
-
-  const baseActivities = useMemo(() => {
-    const seen = new Map();
-    for (const a of activities) {
-      const label = baseActivityName(a.name_ar || a.name || '');
-      if (!label) continue;
-      const key = dedupKey(label);
-      if (!seen.has(key)) seen.set(key, label);
-    }
-    return Array.from(seen.values());
-  }, [activities]);
 
   const toggleDay = (key) => {
     setDays((prev) => prev.includes(key) ? prev.filter(d => d !== key) : [...prev, key]);
@@ -175,7 +139,7 @@ export const PublicRegistrationPage = () => {
               <select value={activity} onChange={(e) => setActivity(e.target.value)}
                 className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500">
                 <option value="">اختر النشاط</option>
-                {baseActivities.map((label, i) => (
+                {ACTIVITY_OPTIONS.map((label, i) => (
                   <option key={i} value={label}>{label}</option>
                 ))}
               </select>
