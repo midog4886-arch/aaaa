@@ -14,6 +14,32 @@ const WEEK_DAYS = [
   { key: 'friday', label: 'الجمعة' },
 ];
 
+const ARABIC_DIGITS = '٠١٢٣٤٥٦٧٨٩';
+
+// Reduce a detailed activity name ("السباحة 2 يوم في الاسبوع") to its base sport
+// type ("السباحة") by cutting at the first digit and trimming schedule words.
+const baseActivityName = (raw) => {
+  let s = (raw || '').trim();
+  let cut = s.length;
+  for (let i = 0; i < s.length; i++) {
+    const ch = s[i];
+    if ((ch >= '0' && ch <= '9') || ARABIC_DIGITS.includes(ch)) { cut = i; break; }
+  }
+  s = s.slice(0, cut).trim();
+  s = s.replace(/\s*(في\s*الاسبوع|ايام|أيام|يوم)\s*$/u, '').trim();
+  return s || (raw || '').trim();
+};
+
+// Normalized key so Arabic spelling variants (ة/ه, أ/ا, leading ال) dedupe together.
+const dedupKey = (name) => (name || '')
+  .replace(/[أإآ]/g, 'ا')
+  .replace(/ة/g, 'ه')
+  .replace(/ى/g, 'ي')
+  .split(/\s+/)
+  .map(w => w.replace(/^ال/, ''))
+  .join(' ')
+  .trim();
+
 export const PublicRegistrationPage = () => {
   const { tenantSlug, branchId } = useParams();
 
@@ -29,7 +55,7 @@ export const PublicRegistrationPage = () => {
 
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
-  const [activityId, setActivityId] = useState('');
+  const [activity, setActivity] = useState('');
   const [days, setDays] = useState([]);
   const [time, setTime] = useState('');
   const [notes, setNotes] = useState('');
@@ -60,6 +86,17 @@ export const PublicRegistrationPage = () => {
     return () => { active = false; };
   }, [api, branchId]);
 
+  const baseActivities = useMemo(() => {
+    const seen = new Map();
+    for (const a of activities) {
+      const label = baseActivityName(a.name_ar || a.name || '');
+      if (!label) continue;
+      const key = dedupKey(label);
+      if (!seen.has(key)) seen.set(key, label);
+    }
+    return Array.from(seen.values());
+  }, [activities]);
+
   const toggleDay = (key) => {
     setDays((prev) => prev.includes(key) ? prev.filter(d => d !== key) : [...prev, key]);
   };
@@ -72,13 +109,12 @@ export const PublicRegistrationPage = () => {
     if (digits.length < 8) { setFormError('من فضلك اكتب رقم موبايل صحيح'); return; }
     setSubmitting(true);
     try {
-      const selectedActivity = activities.find(a => a.id === activityId);
       const selectedDays = WEEK_DAYS.filter(d => days.includes(d.key)).map(d => d.label);
       await api.post(`/api/public/registration/${branchId}`, {
         customer_name: name.trim(),
         customer_phone: phone.trim(),
-        activity_id: activityId,
-        activity_name: selectedActivity ? (selectedActivity.name_ar || selectedActivity.name) : '',
+        activity_id: '',
+        activity_name: activity,
         preferred_days: selectedDays,
         preferred_time: time.trim(),
         notes: notes.trim(),
@@ -136,11 +172,11 @@ export const PublicRegistrationPage = () => {
 
             <div className="space-y-1.5">
               <label className="text-sm font-medium text-gray-700 flex items-center gap-1.5"><Dumbbell className="w-4 h-4" /> النشاط المطلوب</label>
-              <select value={activityId} onChange={(e) => setActivityId(e.target.value)}
+              <select value={activity} onChange={(e) => setActivity(e.target.value)}
                 className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500">
                 <option value="">اختر النشاط</option>
-                {activities.map(a => (
-                  <option key={a.id} value={a.id}>{a.name_ar || a.name}</option>
+                {baseActivities.map((label, i) => (
+                  <option key={i} value={label}>{label}</option>
                 ))}
               </select>
             </div>
