@@ -8,7 +8,19 @@ import { Button } from '../components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { branchesAPI, registrationRequestsAPI } from '../services/api';
 import { toast } from 'sonner';
-import { Loader2, Phone, Calendar, Clock, Trash2, FileText, Link2, Copy, QrCode, Inbox, UserPlus } from 'lucide-react';
+import { Loader2, Phone, Calendar, Clock, Trash2, FileText, Link2, Copy, QrCode, Inbox, UserPlus, Globe, CheckCircle2 } from 'lucide-react';
+
+const STATUS_FILTERS = [
+  { value: 'pending', label: 'قيد الانتظار' },
+  { value: 'processed', label: 'تمت المعالجة' },
+  { value: 'all', label: 'الكل' },
+];
+
+const STATUS_BADGE = {
+  pending: { label: 'قيد الانتظار', cls: 'bg-amber-100 text-amber-700' },
+  processed: { label: 'تمت المعالجة', cls: 'bg-emerald-100 text-emerald-700' },
+  rejected: { label: 'مرفوض', cls: 'bg-red-100 text-red-700' },
+};
 
 export const RegistrationRequestsPage = () => {
   const { user } = useAuth();
@@ -21,6 +33,7 @@ export const RegistrationRequestsPage = () => {
   const [loading, setLoading] = useState(true);
   const [showLink, setShowLink] = useState(false);
   const [linkBranch, setLinkBranch] = useState('');
+  const [statusFilter, setStatusFilter] = useState('pending');
 
   const tenantSlug = (() => { try { return localStorage.getItem('tenant_slug') || 'default'; } catch { return 'default'; } })();
 
@@ -34,7 +47,7 @@ export const RegistrationRequestsPage = () => {
   const loadRequests = async () => {
     setLoading(true);
     try {
-      const params = { status: 'pending' };
+      const params = { status: statusFilter };
       if (isAdmin && selectedBranch !== 'all') params.branch_filter = selectedBranch;
       const res = await registrationRequestsAPI.getAll(params);
       setRequests(res.data || []);
@@ -45,7 +58,7 @@ export const RegistrationRequestsPage = () => {
     }
   };
 
-  useEffect(() => { loadRequests(); /* eslint-disable-next-line */ }, [selectedBranch]);
+  useEffect(() => { loadRequests(); /* eslint-disable-next-line */ }, [selectedBranch, statusFilter]);
 
   const branchName = (id) => {
     const b = branches.find(x => x.id === id);
@@ -89,7 +102,11 @@ export const RegistrationRequestsPage = () => {
     try { sessionStorage.setItem('prefill_registration', JSON.stringify(prefill)); } catch {}
     try {
       await registrationRequestsAPI.updateStatus(req.id, 'processed');
-      setRequests(prev => prev.filter(r => r.id !== req.id));
+      if (statusFilter === 'pending') {
+        setRequests(prev => prev.filter(r => r.id !== req.id));
+      } else {
+        setRequests(prev => prev.map(r => r.id === req.id ? { ...r, status: 'processed' } : r));
+      }
     } catch {
       toast.error('تعذّر تحديث حالة الطلب');
     }
@@ -157,24 +174,38 @@ export const RegistrationRequestsPage = () => {
           </Card>
         )}
 
-        {isAdmin && branches.length > 1 && (
-          <div className="mb-4 max-w-xs">
-            <Select value={selectedBranch} onValueChange={setSelectedBranch}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">كل الفروع</SelectItem>
-                {branches.map(b => <SelectItem key={b.id} value={b.id}>{b.name_ar || b.name}</SelectItem>)}
-              </SelectContent>
-            </Select>
+        <div className="mb-4 flex flex-wrap items-center gap-3">
+          <div className="inline-flex rounded-lg border border-gray-200 bg-gray-50 p-0.5">
+            {STATUS_FILTERS.map(f => (
+              <button
+                key={f.value}
+                onClick={() => setStatusFilter(f.value)}
+                className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${statusFilter === f.value ? 'bg-emerald-600 text-white shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}
+                data-testid={`req-status-filter-${f.value}`}
+              >
+                {f.label}
+              </button>
+            ))}
           </div>
-        )}
+          {isAdmin && branches.length > 1 && (
+            <div className="max-w-xs">
+              <Select value={selectedBranch} onValueChange={setSelectedBranch}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">كل الفروع</SelectItem>
+                  {branches.map(b => <SelectItem key={b.id} value={b.id}>{b.name_ar || b.name}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+        </div>
 
         {loading ? (
           <div className="flex items-center justify-center py-20"><Loader2 className="w-7 h-7 animate-spin text-emerald-600" /></div>
         ) : requests.length === 0 ? (
           <div className="text-center py-20 text-gray-400">
             <Inbox className="w-12 h-12 mx-auto mb-3 opacity-40" />
-            <p className="text-sm">لا توجد طلبات تسجيل جديدة</p>
+            <p className="text-sm">{statusFilter === 'processed' ? 'لا توجد طلبات تمت معالجتها' : statusFilter === 'all' ? 'لا توجد طلبات تسجيل' : 'لا توجد طلبات تسجيل جديدة'}</p>
           </div>
         ) : (
           <div className="space-y-3">
@@ -186,9 +217,13 @@ export const RegistrationRequestsPage = () => {
                       <div className="flex items-center gap-2 flex-wrap">
                         <h3 className="font-semibold text-gray-800">{req.customer_name}</h3>
                         {isAdmin && <span className="text-[11px] bg-gray-100 text-gray-500 rounded px-1.5 py-0.5">{branchName(req.branch_id)}</span>}
+                        {(() => { const b = STATUS_BADGE[req.status] || STATUS_BADGE.pending; return (
+                          <span className={`text-[11px] rounded-full px-2 py-0.5 font-medium ${b.cls}`}>{b.label}</span>
+                        ); })()}
                       </div>
                       <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-600">
                         <span className="flex items-center gap-1" dir="ltr"><Phone className="w-3.5 h-3.5" />{req.customer_phone}</span>
+                        {req.nationality && <span className="flex items-center gap-1"><Globe className="w-3.5 h-3.5" />{req.nationality}</span>}
                         {req.activity_name && <span className="flex items-center gap-1"><FileText className="w-3.5 h-3.5" />{req.activity_name}</span>}
                         {(req.preferred_days || []).length > 0 && <span className="flex items-center gap-1"><Calendar className="w-3.5 h-3.5" />{(req.preferred_days || []).join('، ')}</span>}
                         {req.preferred_time && <span className="flex items-center gap-1"><Clock className="w-3.5 h-3.5" />{req.preferred_time}</span>}
@@ -197,9 +232,15 @@ export const RegistrationRequestsPage = () => {
                       <p className="mt-2 text-[11px] text-gray-400">{new Date(req.created_at).toLocaleString('ar-EG')}</p>
                     </div>
                     <div className="flex flex-col gap-2 shrink-0">
-                      <Button size="sm" onClick={() => handleProcess(req)} className="gap-1.5 bg-emerald-600 hover:bg-emerald-700">
-                        <UserPlus className="w-3.5 h-3.5" /> معالجة وإنشاء فاتورة
-                      </Button>
+                      {req.status === 'processed' ? (
+                        <span className="inline-flex items-center gap-1.5 text-emerald-600 text-xs font-medium px-2 py-1.5">
+                          <CheckCircle2 className="w-4 h-4" /> تمت المعالجة
+                        </span>
+                      ) : (
+                        <Button size="sm" onClick={() => handleProcess(req)} className="gap-1.5 bg-emerald-600 hover:bg-emerald-700">
+                          <UserPlus className="w-3.5 h-3.5" /> معالجة وإنشاء فاتورة
+                        </Button>
+                      )}
                       <Button size="sm" variant="outline" onClick={() => handleDelete(req)} className="gap-1.5 text-red-600 border-red-200 hover:bg-red-50">
                         <Trash2 className="w-3.5 h-3.5" /> حذف
                       </Button>
