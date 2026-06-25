@@ -352,6 +352,17 @@ export const registrationRequestsAPI = {
   delete: (id) => axios.delete(`${API}/registration-requests/${id}`),
 };
 
+// Marketers (Affiliates) API
+export const marketersAPI = {
+  getAll: (params = {}) => axios.get(`${API}/marketers`, { params }),
+  getById: (id) => axios.get(`${API}/marketers/${id}`),
+  create: (data) => axios.post(`${API}/marketers`, data),
+  update: (id, data) => axios.put(`${API}/marketers/${id}`, data),
+  delete: (id) => axios.delete(`${API}/marketers/${id}`),
+  commissions: (id) => axios.get(`${API}/marketers/${id}/commissions`),
+  payout: (id, data) => axios.post(`${API}/marketers/${id}/payout`, data),
+};
+
 export const branchesAPI = {
   getAll: () => axios.get(`${API}/branches`),
   getById: (id) => axios.get(`${API}/branches/${id}`),

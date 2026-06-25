@@ -37,6 +37,7 @@ class PublicRegistrationCreate(BaseModel):
     preferred_days: List[str] = []
     preferred_time: Optional[str] = ""
     notes: Optional[str] = ""
+    referral_code: Optional[str] = ""
 
 class RegistrationRequestUpdate(BaseModel):
     status: str
@@ -108,6 +109,27 @@ async def public_create_registration(branch_id: str, payload: PublicRegistration
         "source": "public_link",
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
+
+    # Marketer (affiliate) referral: attach the marketer if the link carried a
+    # valid, active referral code so the supervisor sees it and the discount +
+    # commission flow through to the first invoice.
+    ref_code = (payload.referral_code or "").strip()
+    if ref_code:
+        marketer = await db.marketers.find_one(
+            {"referral_code": ref_code, "status": {"$ne": "inactive"}},
+            {"_id": 0, "id": 1, "name": 1, "discount_percent": 1, "commission_percent": 1, "branch_id": 1},
+        )
+        # Only attach if the marketer belongs to this branch or is shared
+        # (branch_id null/empty). Prevents cross-branch referral attribution.
+        m_branch = (marketer or {}).get("branch_id")
+        branch_ok = (not m_branch) or (m_branch == branch_id)
+        if marketer and branch_ok:
+            doc["marketer_id"] = marketer["id"]
+            doc["referral_code"] = ref_code
+            doc["marketer_name"] = marketer.get("name", "")
+            doc["marketer_discount_percent"] = marketer.get("discount_percent", 0)
+            doc["marketer_commission_percent"] = marketer.get("commission_percent", 0)
+
     await db.registration_requests.insert_one(doc)
     return {"success": True, "message": "تم استلام طلب التسجيل بنجاح"}
 

@@ -347,6 +347,10 @@ async def create_invoice(invoice: InvoiceCreate, current_user: dict = Depends(ge
     # Calculate totals from all items
     subtotal = sum(item.get("fee", 0) * (item.get("quantity") or 1) for item in all_items)
     discount = invoice.discount
+    # Marketer (affiliate) referral: apply the marketer's discount on the
+    # referred member's FIRST invoice (respects a manual discount if present).
+    from routes.marketers import resolve_marketer_discount, record_first_invoice_commission
+    discount = await resolve_marketer_discount(member, discount, subtotal)
     taxable_amount = subtotal - discount
     vat_amount = round(taxable_amount * VAT_RATE, 2)
     total = round(taxable_amount + vat_amount, 2)
@@ -389,7 +393,13 @@ async def create_invoice(invoice: InvoiceCreate, current_user: dict = Depends(ge
     }
     
     await db.invoices.insert_one(invoice_doc)
-    
+
+    # Marketer referral: record a one-time commission on the member's first invoice
+    try:
+        await record_first_invoice_commission(member, invoice_doc, subtotal, discount)
+    except Exception:
+        pass
+
     # Add members to levels if specified in invoice items
     async def process_member_levels(mid, items_list):
         for item in items_list:

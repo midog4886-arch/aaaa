@@ -206,6 +206,10 @@ export const InvoicesPage = () => {
     handleToggleRegFormCheck
   } = regFormHook;
 
+  // Marketer (affiliate) carried in from a referred registration request. Stored
+  // so the quick-created member is tagged; the discount is auto-applied server-side.
+  const [prefillMarketerId, setPrefillMarketerId] = useState('');
+
   // Prefill the invoice creation dialog when arriving from a public registration request
   useEffect(() => {
     let raw = null;
@@ -219,10 +223,16 @@ export const InvoicesPage = () => {
     setCustomerNameAr(data.customer_name || '');
     setCustomerPhone(data.customer_phone || '');
     if (data.notes) setNotes(data.notes);
+    if (data.marketer_id) setPrefillMarketerId(data.marketer_id);
     setIsCreateDialogOpen(true);
-    toast.info(language === 'ar'
+    const marketerNote = data.marketer_name
+      ? (language === 'ar'
+          ? ` — مُحال من المسوّق ${data.marketer_name}${data.marketer_discount_percent ? ` وسيُطبّق خصم ${data.marketer_discount_percent}% تلقائياً على أول فاتورة` : ''}`
+          : ` — referred by ${data.marketer_name}${data.marketer_discount_percent ? `, a ${data.marketer_discount_percent}% discount will be applied automatically on the first invoice` : ''}`)
+      : '';
+    toast.info((language === 'ar'
       ? 'تم تحميل بيانات طلب التسجيل — أكمل الفاتورة ثم احذف الطلب من قائمة طلبات التسجيل'
-      : 'Registration request loaded — complete the invoice, then delete the request from the queue');
+      : 'Registration request loaded — complete the invoice, then delete the request from the queue') + marketerNote);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -250,11 +260,12 @@ export const InvoicesPage = () => {
     try {
       const itemsToUse = addMemberSource === 'registration' ? regFormItems : invoiceItems;
       const memberActivities = itemsToUse.filter(item => !item.is_product && item.activity_id).map(item => ({ activity_id: item.activity_id, activity_name: item.activity_name, start_date: item.start_date || new Date().toISOString().split('T')[0], end_date: item.end_date || new Date(Date.now() + 30*24*60*60*1000).toISOString().split('T')[0], fee: item.fee || 0, status: 'active', coach_id: '' }));
-      const res = await membersAPI.quickCreate({ ...newMemberData, age: parseInt(newMemberData.age) || 0, activities: memberActivities, branch_id: selectedBranchId !== 'all' ? selectedBranchId : null });
+      const res = await membersAPI.quickCreate({ ...newMemberData, age: parseInt(newMemberData.age) || 0, activities: memberActivities, branch_id: selectedBranchId !== 'all' ? selectedBranchId : null, marketer_id: prefillMarketerId || '' });
       const memRes = await membersAPI.getAll(); setMembers(memRes.data);
       if (addMemberSource === 'registration') { setRegFormData({ ...regFormData, customer_name: res.data.name_ar, customer_phone: res.data.phone }); }
       else { setSelectedMember(res.data); setCustomerNameAr(res.data.name_ar); setCustomerPhone(res.data.phone); }
       setIsAddMemberDialogOpen(false); setNewMemberData({ name_ar: '', name: '', age: '', guardian_name_ar: '', guardian_name: '', phone: '', nationality: '' });
+      setPrefillMarketerId('');
       toast.success(language === 'ar' ? 'تم إضافة العضو وحفظه في قائمة الأعضاء' : 'Member added and saved to members list');
     } catch (e) {
       const detail = e?.response?.data?.detail;

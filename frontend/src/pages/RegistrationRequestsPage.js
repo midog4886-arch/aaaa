@@ -74,12 +74,16 @@ export const RegistrationRequestsPage = () => {
     if (daysTxt) noteLines.push(`الأيام المفضّلة: ${daysTxt}`);
     if (req.preferred_time) noteLines.push(`الموعد المفضّل: ${req.preferred_time}`);
     if (req.notes) noteLines.push(`ملاحظات ولي الأمر: ${req.notes}`);
+    if (req.marketer_name) noteLines.push(`إحالة من مسوّق: ${req.marketer_name}${req.marketer_discount_percent ? ` (خصم ${req.marketer_discount_percent}%)` : ''}`);
     const prefill = {
       request_id: req.id,
       customer_name: req.customer_name,
       customer_phone: req.customer_phone,
       branch_id: req.branch_id,
       notes: noteLines.join('\n'),
+      marketer_id: req.marketer_id || '',
+      marketer_name: req.marketer_name || '',
+      marketer_discount_percent: req.marketer_discount_percent || 0,
     };
     try { sessionStorage.setItem('prefill_registration', JSON.stringify(prefill)); } catch {}
     try {

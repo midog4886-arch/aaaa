@@ -22,6 +22,7 @@ class MemberBase(BaseModel):
 
 class MemberCreate(MemberBase):
     activities: List[MemberActivity] = []
+    marketer_id: Optional[str] = ""
 
 class MemberUpdate(BaseModel):
     name: Optional[str] = None

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useSearchParams } from 'react-router-dom';
 import axios from 'axios';
 import { API_URL } from '../config/api';
 import { Loader2, CheckCircle2, Calendar, Phone, User, Dumbbell } from 'lucide-react';
@@ -19,6 +19,9 @@ const ACTIVITY_OPTIONS = ['السباحة', 'كرة قدم', 'كاراتيه', '
 
 export const PublicRegistrationPage = () => {
   const { tenantSlug, branchId } = useParams();
+  const [searchParams] = useSearchParams();
+  const referralCode = (searchParams.get('ref') || '').trim();
+  const [marketer, setMarketer] = useState(null);
 
   const api = useMemo(() => axios.create({
     baseURL: API_URL || '',
@@ -61,6 +64,21 @@ export const PublicRegistrationPage = () => {
     return () => { active = false; };
   }, [api, branchId]);
 
+  // Resolve the referral code (if any) so we can show the special discount.
+  useEffect(() => {
+    if (!referralCode) { setMarketer(null); return; }
+    let active = true;
+    (async () => {
+      try {
+        const res = await api.get(`/api/public/marketers/${encodeURIComponent(referralCode)}`);
+        if (active) setMarketer(res.data);
+      } catch (e) {
+        if (active) setMarketer(null);
+      }
+    })();
+    return () => { active = false; };
+  }, [api, referralCode]);
+
   const toggleDay = (key) => {
     setDays((prev) => prev.includes(key) ? prev.filter(d => d !== key) : [...prev, key]);
   };
@@ -82,6 +100,7 @@ export const PublicRegistrationPage = () => {
         preferred_days: selectedDays,
         preferred_time: time.trim(),
         notes: notes.trim(),
+        referral_code: referralCode,
       });
       setSubmitted(true);
     } catch (e) {
@@ -119,6 +138,15 @@ export const PublicRegistrationPage = () => {
         ) : (
           <form onSubmit={handleSubmit} className="bg-white rounded-2xl shadow p-5 space-y-4">
             <p className="text-sm text-gray-600 text-center mb-2">سجّل بيانات اللاعب وهنتواصل معاك لاستكمال الاشتراك.</p>
+
+            {marketer && (
+              <div className="rounded-lg bg-emerald-50 border border-emerald-200 px-4 py-3 text-center">
+                <p className="text-sm text-emerald-800 font-medium">🎉 تم تطبيق إحالة من {marketer.name}</p>
+                {marketer.discount_percent > 0 && (
+                  <p className="text-xs text-emerald-700 mt-1">هتحصل على خصم {marketer.discount_percent}% على أول اشتراك</p>
+                )}
+              </div>
+            )}
 
             <div className="space-y-1.5">
               <label className="text-sm font-medium text-gray-700 flex items-center gap-1.5"><User className="w-4 h-4" /> اسم الطفل *</label>

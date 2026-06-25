@@ -47,6 +47,7 @@ class MemberCreate(BaseModel):
     notes: Optional[str] = ""
     preferred_language: Optional[str] = "ar"
     branch_id: Optional[str] = None
+    marketer_id: Optional[str] = ""
 
 class MemberUpdate(BaseModel):
     name: Optional[str] = None

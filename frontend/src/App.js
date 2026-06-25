@@ -68,6 +68,7 @@ const MyExpensesPage = lazy(() => import('./pages/MyExpensesPage'));
 const AttendancePage = lazy(() => import('./pages/AttendancePage'));
 const TodayAttendancePage = lazy(() => import('./pages/TodayAttendancePage'));
 const ScannerStationPage = lazy(() => import('./pages/ScannerStationPage'));
+const MarketersPage = lazy(() => import('./pages/MarketersPage'));
 const LevelsBoardPage = lazy(() => import('./pages/LevelsBoardPage'));
 const SchedulePage = lazy(() => import('./pages/SchedulePage'));
 const UnauthorizedPage = lazy(() => import('./pages/UnauthorizedPage'));
@@ -175,7 +176,7 @@ const getFirstAllowedRoute = (permissions) => {
   if (permissions.length === 1 && permissions[0] === 'scanner-station') {
     return '/admin/scanner-station';
   }
-  const routeOrder = ['dashboard', 'schedule', 'attendance', 'coach-attendance', 'coach-notes', 'members', 'activities', 'levels', 'tournaments', 'invoices', 'store', 'accounting', 'reports', 'messages', 'settings'];
+  const routeOrder = ['dashboard', 'schedule', 'attendance', 'coach-attendance', 'coach-notes', 'members', 'activities', 'levels', 'tournaments', 'invoices', 'marketers', 'store', 'accounting', 'reports', 'messages', 'settings'];
   for (const route of routeOrder) {
     if (permissions.includes(route)) {
       return `/admin/${route}`;
@@ -357,6 +358,14 @@ function AppRoutes() {
         element={
           <ProtectedRoute permission="invoices">
             <RegistrationRequestsPage />
+          </ProtectedRoute>
+        } 
+      />
+      <Route 
+        path="/admin/marketers" 
+        element={
+          <ProtectedRoute permission="marketers">
+            <MarketersPage />
           </ProtectedRoute>
         } 
       />
