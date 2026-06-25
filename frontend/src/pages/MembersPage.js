@@ -112,6 +112,86 @@ export const MembersPage = () => {
     setTimeout(() => printWindow.print(), 400);
     setIsPrintRangeOpen(false);
   };
+
+  const handlePrintMemberSubscriptions = (member) => {
+    if (!member) return;
+    const printWindow = window.open('', '', 'width=900,height=700');
+    if (!printWindow) return;
+
+    // Show only the latest subscription per activity_id (same as the view dialog)
+    const latest = {};
+    (member.activities || []).forEach(act => {
+      const existing = latest[act.activity_id];
+      if (!existing || new Date(act.end_date) > new Date(existing.end_date)) {
+        latest[act.activity_id] = act;
+      }
+    });
+    const acts = Object.values(latest);
+
+    const esc = (s) => String(s == null ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const rows = acts.map((a, i) => {
+      let statusLabel = '-';
+      if (a.end_date) {
+        const end = new Date(a.end_date); end.setHours(0, 0, 0, 0);
+        const diff = Math.ceil((end - today) / (1000 * 60 * 60 * 24));
+        statusLabel = diff <= 0
+          ? 'منتهي'
+          : `ساري (${diff} يوم متبقي)`;
+      }
+      return `<tr>
+        <td>${i + 1}</td>
+        <td>${esc(a.activity_name)}</td>
+        <td>${esc(a.start_date) || '-'}</td>
+        <td>${esc(a.end_date) || '-'}</td>
+        <td>${esc(a.schedule) || '-'}</td>
+        <td>${a.fee != null ? esc(a.fee) + ' ر.س' : '-'}</td>
+        <td>${statusLabel}</td>
+      </tr>`;
+    }).join('');
+
+    const emptyRow = `<tr><td colspan="7" style="text-align:center;color:#888;padding:16px;">لا توجد اشتراكات</td></tr>`;
+    const memberName = esc(member.name_ar || member.name || '');
+
+    printWindow.document.write(`<html><head><title>اشتراكات العضو - ${esc(member.member_code) || ''}</title>
+      <style>
+        @import url('https://fonts.googleapis.com/css2?family=Tajawal:wght@400;700&display=swap');
+        body{font-family:'Tajawal',Arial;direction:rtl;padding:24px;color:#1f2937}
+        h1{color:#F97316;text-align:center;margin:0 0 4px;font-size:20px}
+        .sub{text-align:center;color:#6b7280;font-size:13px;margin-bottom:18px}
+        .info{display:flex;flex-wrap:wrap;gap:8px 24px;background:#f9fafb;border:1px solid #eee;border-radius:8px;padding:14px 18px;margin-bottom:18px;font-size:13px}
+        .info div span{color:#6b7280}
+        table{width:100%;border-collapse:collapse}
+        th,td{border:1px solid #ddd;padding:9px;text-align:right;font-size:12px}
+        th{background:#F97316;color:white}
+        tr:nth-child(even) td{background:#fafafa}
+        .footer{text-align:center;margin-top:24px;font-size:11px;color:#888}
+      </style></head><body>
+      <h1>شركة اداء الابطال العالمية للرياضة</h1>
+      <div class="sub">كشف اشتراكات العضو</div>
+      <div class="info">
+        <div><span>الاسم:</span> ${memberName}</div>
+        <div><span>كود العضو:</span> ${esc(member.member_code) || '-'}</div>
+        <div><span>الجوال:</span> <span dir="ltr">${esc(member.phone) || '-'}</span></div>
+        <div><span>العمر:</span> ${esc(member.age) || '-'}</div>
+        <div><span>الجنسية:</span> ${esc(member.nationality) || '-'}</div>
+        <div><span>عدد الاشتراكات:</span> ${acts.length}</div>
+      </div>
+      <table>
+        <thead><tr>
+          <th>م</th><th>النشاط</th><th>تاريخ البداية</th><th>تاريخ النهاية</th>
+          <th>الموعد</th><th>الرسوم</th><th>الحالة</th>
+        </tr></thead>
+        <tbody>${rows || emptyRow}</tbody>
+      </table>
+      <div class="footer">تاريخ الطباعة: ${new Date().toLocaleDateString('ar-SA')}</div>
+      </body></html>`);
+    printWindow.document.close();
+    setTimeout(() => printWindow.print(), 400);
+  };
+
   const [activityFilterSearch, setActivityFilterSearch] = useState('');
   const [schedulePopoverOpen, setSchedulePopoverOpen] = useState(false);
   
@@ -2526,6 +2606,16 @@ export const MembersPage = () => {
                     >
                       <CreditCard className="w-4 h-4" />
                       {language === 'ar' ? 'طباعة الكارت' : 'Print Card'}
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="gap-1"
+                      onClick={() => handlePrintMemberSubscriptions(selectedMember)}
+                      title={language === 'ar' ? 'طباعة كشف بكل اشتراكات العضو' : 'Print all subscriptions'}
+                    >
+                      <Printer className="w-4 h-4" />
+                      {language === 'ar' ? 'طباعة الاشتراكات' : 'Print Subscriptions'}
                     </Button>
                     <Button
                       size="sm"
