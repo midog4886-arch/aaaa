@@ -21,6 +21,7 @@ class UserCreateAdmin(BaseModel):
     password: str
     name: str
     branch_id: Optional[str] = None
+    branch_ids: Optional[List[str]] = None
     is_admin: bool = False
     permissions: Optional[List[str]] = None
 
@@ -28,9 +29,22 @@ class UserUpdateAdmin(BaseModel):
     username: Optional[str] = None
     name: Optional[str] = None
     branch_id: Optional[str] = None
+    branch_ids: Optional[List[str]] = None
     is_admin: Optional[bool] = None
     password: Optional[str] = None
     permissions: Optional[List[str]] = None
+
+
+def _normalize_branch_ids(branch_ids, branch_id):
+    """Build the canonical (deduped, order-preserving) list of branch ids for a
+    user from the multi-select ``branch_ids`` (preferred) or the legacy single
+    ``branch_id``. ``"all"`` and empties are dropped."""
+    out = []
+    source = branch_ids if branch_ids is not None else ([branch_id] if branch_id else [])
+    for b in (source or []):
+        if b and b != "all" and b not in out:
+            out.append(b)
+    return out
 
 ALL_PERMISSIONS = [
     'dashboard', 'members', 'members-create', 'invoices', 'activities', 'levels', 'schedule', 'attendance',
@@ -57,11 +71,16 @@ async def get_users(current_user: dict = Depends(get_current_user)):
     branch_map = {b["id"]: b for b in branches}
     
     for user in users:
-        branch_id = user.get("branch_id")
-        if branch_id and branch_id in branch_map:
-            user["branch_name"] = branch_map[branch_id].get("name_ar", branch_map[branch_id].get("name", ""))
-        else:
-            user["branch_name"] = ""
+        bids = user.get("branch_ids")
+        if not bids:
+            single = user.get("branch_id")
+            bids = [single] if single else []
+        names = [
+            branch_map[b].get("name_ar", branch_map[b].get("name", ""))
+            for b in bids if b in branch_map
+        ]
+        user["branch_names"] = names
+        user["branch_name"] = names[0] if names else ""
     
     return users
 
@@ -92,12 +111,15 @@ async def create_user(user_data: UserCreateAdmin, current_user: dict = Depends(g
     if user_data.is_admin:
         permissions = ALL_PERMISSIONS.copy()
     
+    branch_ids = _normalize_branch_ids(user_data.branch_ids, user_data.branch_id)
+    primary_branch = branch_ids[0] if branch_ids else None
     user_doc = {
         "id": user_id,
         "username": user_data.username,
         "password": hash_password(user_data.password),
         "name": user_data.name,
-        "branch_id": user_data.branch_id,
+        "branch_id": primary_branch,
+        "branch_ids": branch_ids,
         "is_admin": user_data.is_admin,
         "permissions": permissions,
         "created_at": datetime.now(timezone.utc).isoformat()
@@ -123,8 +145,14 @@ async def update_user(user_id: str, user_data: UserUpdateAdmin, current_user: di
         update_data["username"] = user_data.username
     if user_data.name is not None:
         update_data["name"] = user_data.name
-    if user_data.branch_id is not None:
-        update_data["branch_id"] = user_data.branch_id
+    fields_set = user_data.model_fields_set
+    if "branch_ids" in fields_set or "branch_id" in fields_set:
+        branch_ids = _normalize_branch_ids(
+            user_data.branch_ids if "branch_ids" in fields_set else None,
+            user_data.branch_id,
+        )
+        update_data["branch_ids"] = branch_ids
+        update_data["branch_id"] = branch_ids[0] if branch_ids else None
     if user_data.is_admin is not None:
         update_data["is_admin"] = user_data.is_admin
         # If making admin, grant all permissions

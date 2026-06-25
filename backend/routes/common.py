@@ -1,5 +1,5 @@
 """Common dependencies and utilities for routes"""
-from fastapi import Depends, HTTPException
+from fastapi import Depends, HTTPException, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 import os
 import jwt
@@ -13,7 +13,7 @@ JWT_ALGORITHM = "HS256"
 
 security = HTTPBearer()
 
-async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
+async def get_current_user(request: Request, credentials: HTTPAuthorizationCredentials = Depends(security)):
     """Get current authenticated user from JWT token"""
     try:
         payload = jwt.decode(credentials.credentials, JWT_SECRET, algorithms=[JWT_ALGORITHM])
@@ -31,4 +31,9 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
         raise HTTPException(status_code=401, detail="Token missing tenant — please log in again")
     if token_tenant != (get_current_tenant_slug() or DEFAULT_TENANT_SLUG):
         raise HTTPException(status_code=403, detail="Tenant mismatch")
+    # Branch the client is currently viewing (X-Branch-Id). Only used for
+    # multi-branch users and always validated against their allowed set.
+    payload["_active_branch"] = request.headers.get("X-Branch-Id") or None
+    from utils.auth import apply_active_branch
+    apply_active_branch(payload)
     return payload

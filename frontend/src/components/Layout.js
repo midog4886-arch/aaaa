@@ -62,7 +62,7 @@ import {
 
 export const Sidebar = ({ isOpen, onClose }) => {
   const { t, language, toggleLanguage } = useLanguage();
-  const { logout, user, selectedBranchId, switchBranch, isFeatureEnabled } = useAuth();
+  const { logout, user, selectedBranchId, switchBranch, isFeatureEnabled, isMultiBranch } = useAuth();
   const navigate = useNavigate();
   const [branches, setBranches] = useState([]);
   const [unassignedCount, setUnassignedCount] = useState(0);
@@ -75,10 +75,12 @@ export const Sidebar = ({ isOpen, onClose }) => {
   const canSubmitExpenses = !isAdmin && !userPermissions.includes('accounting') && !userPermissions.includes('internal-expenses-approve') && userPermissions.includes('internal-expenses-create');
 
   useEffect(() => {
-    if (isAdmin) {
+    // Admins switch across all branches; multi-branch supervisors switch within
+    // their allowed set (server scopes the list to their branches).
+    if (isAdmin || isMultiBranch) {
       loadBranches();
     }
-  }, [isAdmin]);
+  }, [isAdmin, isMultiBranch]);
 
   useEffect(() => {
     const canSeeLevels = isAdmin || (user?.permissions || []).includes('levels');
@@ -470,8 +472,9 @@ export const Sidebar = ({ isOpen, onClose }) => {
           })}
         </nav>
 
-        {/* Branch Selector for Admin */}
-        {isAdmin && branches.length > 0 && (
+        {/* Branch Selector — admins switch across all branches (incl. "all"),
+            multi-branch supervisors switch within their allowed set only. */}
+        {(isAdmin || isMultiBranch) && branches.length > 0 && (
           <div className="px-3 py-2 border-t">
             <div className="flex items-center gap-2 text-xs text-muted-foreground mb-2">
               <GitBranch className="w-4 h-4" />
@@ -482,9 +485,11 @@ export const Sidebar = ({ isOpen, onClose }) => {
                 <SelectValue placeholder={language === 'ar' ? 'اختر الفرع' : 'Select Branch'} />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">
-                  <span className="font-medium">{language === 'ar' ? '🏢 جميع الفروع' : '🏢 All Branches'}</span>
-                </SelectItem>
+                {isAdmin && (
+                  <SelectItem value="all">
+                    <span className="font-medium">{language === 'ar' ? '🏢 جميع الفروع' : '🏢 All Branches'}</span>
+                  </SelectItem>
+                )}
                 {branches.map(branch => (
                   <SelectItem key={branch.id} value={branch.id}>
                     {branch.name_ar || branch.name}

@@ -1037,12 +1037,13 @@ def hash_password(password: str) -> str:
 def verify_password(password: str, hashed: str) -> bool:
     return bcrypt.checkpw(password.encode(), hashed.encode())
 
-def create_token(user_id: str, username: str, branch_id: str = None, is_admin: bool = False, tenant_slug: Optional[str] = None) -> str:
+def create_token(user_id: str, username: str, branch_id: str = None, is_admin: bool = False, tenant_slug: Optional[str] = None, branch_ids: Optional[list] = None) -> str:
     from utils.tenant import get_current_tenant_slug, DEFAULT_TENANT_SLUG
     payload = {
         "user_id": user_id,
         "username": username,
         "branch_id": branch_id,
+        "branch_ids": branch_ids or [],
         "is_admin": is_admin,
         "tenant_slug": tenant_slug or get_current_tenant_slug() or DEFAULT_TENANT_SLUG,
         "exp": datetime.now(timezone.utc) + timedelta(hours=JWT_EXPIRATION_HOURS)
@@ -1094,7 +1095,7 @@ def _require_admin_export_user(current_user: dict):
         )
 
 
-async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
+async def get_current_user(request: Request, credentials: HTTPAuthorizationCredentials = Depends(security)):
     try:
         payload = jwt.decode(credentials.credentials, JWT_SECRET, algorithms=[JWT_ALGORITHM])
     except jwt.ExpiredSignatureError:
@@ -1102,9 +1103,12 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
     except jwt.InvalidTokenError:
         raise HTTPException(status_code=401, detail="Invalid token")
     _enforce_tenant_match_local(payload)
+    payload["_active_branch"] = request.headers.get("X-Branch-Id") or None
+    from utils.auth import apply_active_branch
+    apply_active_branch(payload)
     return payload
 
-async def get_current_user_from_token(token: Optional[str] = None, credentials: Optional[HTTPAuthorizationCredentials] = Depends(security)):
+async def get_current_user_from_token(request: Request, token: Optional[str] = None, credentials: Optional[HTTPAuthorizationCredentials] = Depends(security)):
     """Support both Bearer token and query parameter token for exports"""
     actual_token = token
     if not actual_token and credentials:
@@ -1118,6 +1122,9 @@ async def get_current_user_from_token(token: Optional[str] = None, credentials: 
     except jwt.InvalidTokenError:
         raise HTTPException(status_code=401, detail="Invalid token")
     _enforce_tenant_match_local(payload)
+    payload["_active_branch"] = request.headers.get("X-Branch-Id") or None
+    from utils.auth import apply_active_branch
+    apply_active_branch(payload)
     return payload
 
 # ============ AUTH ROUTES ============
@@ -1174,12 +1181,15 @@ async def login(credentials: UserLogin):
 
         branch_id = user.get("branch_id")
         is_admin = user.get("is_admin", False)
+        branch_ids = user.get("branch_ids")
+        if not branch_ids:
+            branch_ids = [branch_id] if branch_id else []
 
         await log_login(username=credentials.username, success=True, user=user)
-        token = create_token(user["id"], user["username"], branch_id, is_admin)
+        token = create_token(user["id"], user["username"], branch_id, is_admin, branch_ids=branch_ids)
         return TokenResponse(
             access_token=token,
-            user={"id": user["id"], "username": user["username"], "name": user.get("name", user["username"]), "branch_id": branch_id, "is_admin": is_admin, "permissions": user.get("permissions", [])}
+            user={"id": user["id"], "username": user["username"], "name": user.get("name", user["username"]), "branch_id": branch_id, "branch_ids": branch_ids, "is_admin": is_admin, "permissions": user.get("permissions", [])}
         )
     except HTTPException:
         raise

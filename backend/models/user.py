@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 
 class UserCreate(BaseModel):
     username: str
@@ -20,11 +20,13 @@ class UserCreateAdmin(BaseModel):
     password: str
     name: str
     branch_id: Optional[str] = None
+    branch_ids: Optional[List[str]] = None
     is_admin: bool = False
 
 class UserUpdateAdmin(BaseModel):
     username: Optional[str] = None
     name: Optional[str] = None
     branch_id: Optional[str] = None
+    branch_ids: Optional[List[str]] = None
     is_admin: Optional[bool] = None
     password: Optional[str] = None

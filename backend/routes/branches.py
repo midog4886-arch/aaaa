@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 import uuid
 
 from database import db
-from utils.auth import get_current_user, resolve_branch_filter
+from utils.auth import get_current_user, resolve_branch_filter, get_allowed_branch_ids
 from utils.sequences import assign_seq_starts_for_new_branch
 from utils.cache import cache_get, cache_set, cache_invalidate
 
@@ -48,17 +48,26 @@ async def get_branches(current_user: dict = Depends(get_current_user)):
     this guard the legacy ``find({"id": None})`` would silently return an
     empty list, masking a broken account.
     """
-    effective_branch = resolve_branch_filter(current_user, None)
+    # Admins see every branch; non-admins see ALL of their assigned branches
+    # (one for single-branch staff, several for multi-branch supervisors) so the
+    # branch switcher can list them. Fail-closed if a non-admin has no branch.
+    if current_user.get("is_admin", False):
+        cache_key = "branches:all"
+        cached = cache_get(cache_key)
+        if cached is not None:
+            return cached
+        branches = await db.branches.find({}, {"_id": 0}).to_list(100)
+        cache_set(cache_key, branches, ttl=600)  # 10 min
+        return branches
 
-    cache_key = "branches:all" if effective_branch is None else f"branches:one:{effective_branch}"
+    allowed = get_allowed_branch_ids(current_user)
+    if not allowed:
+        raise HTTPException(status_code=403, detail="No branch assigned")
+    cache_key = "branches:ids:" + ",".join(sorted(allowed))
     cached = cache_get(cache_key)
     if cached is not None:
         return cached
-
-    if effective_branch:
-        branches = await db.branches.find({"id": effective_branch}, {"_id": 0}).to_list(100)
-    else:
-        branches = await db.branches.find({}, {"_id": 0}).to_list(100)
+    branches = await db.branches.find({"id": {"$in": allowed}}, {"_id": 0}).to_list(100)
     cache_set(cache_key, branches, ttl=600)  # 10 min
     return branches
 

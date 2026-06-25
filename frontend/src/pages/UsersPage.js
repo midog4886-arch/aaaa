@@ -10,6 +10,7 @@ import { Badge } from '../components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '../components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Switch } from '../components/ui/switch';
+import { Checkbox } from '../components/ui/checkbox';
 import api from '../services/api';
 import { toast } from 'sonner';
 import { 
@@ -80,7 +81,7 @@ const UsersPage = () => {
     username: '',
     password: '',
     name: '',
-    branch_id: '',
+    branch_ids: [],
     is_admin: false,
     permissions: []
   });
@@ -123,7 +124,7 @@ const UsersPage = () => {
         const updateData = {
           username: formData.username,
           name: formData.name,
-          branch_id: formData.branch_id || null,
+          branch_ids: formData.branch_ids || [],
           is_admin: formData.is_admin,
           permissions: formData.is_admin ? [] : formData.permissions
         };
@@ -137,7 +138,7 @@ const UsersPage = () => {
           username: formData.username,
           password: formData.password,
           name: formData.name,
-          branch_id: formData.branch_id || null,
+          branch_ids: formData.branch_ids || [],
           is_admin: formData.is_admin,
           permissions: formData.is_admin ? [] : formData.permissions
         });
@@ -178,7 +179,9 @@ const UsersPage = () => {
       username: user.username,
       password: '',
       name: user.name,
-      branch_id: user.branch_id || '',
+      branch_ids: Array.isArray(user.branch_ids) && user.branch_ids.length
+        ? user.branch_ids
+        : (user.branch_id ? [user.branch_id] : []),
       is_admin: user.is_admin || false,
       permissions: user.permissions || []
     });
@@ -193,7 +196,7 @@ const UsersPage = () => {
       username: '',
       password: '',
       name: '',
-      branch_id: '',
+      branch_ids: [],
       is_admin: false,
       permissions: []
     });
@@ -288,14 +291,22 @@ const UsersPage = () => {
                         </td>
                         <td className="p-4">{user.name}</td>
                         <td className="p-4">
-                          {user.branch_name ? (
-                            <div className="flex items-center gap-1 text-sm">
-                              <Building2 className="w-4 h-4 text-muted-foreground" />
-                              {user.branch_name}
-                            </div>
-                          ) : (
-                            <span className="text-muted-foreground text-sm">{language === 'ar' ? 'غير محدد' : 'Not assigned'}</span>
-                          )}
+                          {(() => {
+                            const names = (user.branch_names && user.branch_names.length)
+                              ? user.branch_names
+                              : (user.branch_name ? [user.branch_name] : []);
+                            if (names.length === 0) {
+                              return <span className="text-muted-foreground text-sm">{language === 'ar' ? 'غير محدد' : 'Not assigned'}</span>;
+                            }
+                            return (
+                              <div className="flex flex-wrap items-center gap-1 text-sm">
+                                <Building2 className="w-4 h-4 text-muted-foreground shrink-0" />
+                                {names.map((n, i) => (
+                                  <Badge key={i} variant="outline" className="text-xs font-normal">{n}</Badge>
+                                ))}
+                              </div>
+                            );
+                          })()}
                         </td>
                         <td className="p-4">
                           {user.is_admin ? (
@@ -418,23 +429,44 @@ const UsersPage = () => {
                 </div>
 
                 <div className="space-y-1">
-                  <Label className="text-sm">{language === 'ar' ? 'الفرع' : 'Branch'}</Label>
-                  <Select 
-                    value={formData.branch_id || 'none'} 
-                    onValueChange={(value) => setFormData({ ...formData, branch_id: value === 'none' ? '' : value })}
-                  >
-                    <SelectTrigger className="h-9" data-testid="user-branch-select">
-                      <SelectValue placeholder={language === 'ar' ? 'اختر' : 'Select'} />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="none">{language === 'ar' ? 'بدون فرع' : 'No branch'}</SelectItem>
-                      {branches.map((branch) => (
-                        <SelectItem key={branch.id} value={branch.id}>
-                          {branch.name_ar || branch.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <Label className="text-sm">
+                    {language === 'ar' ? 'الفروع (يمكن اختيار أكثر من فرع)' : 'Branches (you can select multiple)'}
+                  </Label>
+                  <div className="border rounded-md p-2 max-h-40 overflow-y-auto space-y-1" data-testid="user-branches-select">
+                    {branches.length === 0 ? (
+                      <p className="text-xs text-muted-foreground">{language === 'ar' ? 'لا توجد فروع' : 'No branches'}</p>
+                    ) : (
+                      branches.map((branch) => {
+                        const checked = (formData.branch_ids || []).includes(branch.id);
+                        return (
+                          <label
+                            key={branch.id}
+                            className="flex items-center gap-2 text-sm cursor-pointer rounded px-1 py-1 hover:bg-muted"
+                          >
+                            <Checkbox
+                              checked={checked}
+                              onCheckedChange={(value) => {
+                                setFormData((prev) => {
+                                  const current = prev.branch_ids || [];
+                                  const next = value
+                                    ? [...current, branch.id]
+                                    : current.filter((b) => b !== branch.id);
+                                  return { ...prev, branch_ids: next };
+                                });
+                              }}
+                              data-testid={`user-branch-checkbox-${branch.id}`}
+                            />
+                            <span>{branch.name_ar || branch.name}</span>
+                          </label>
+                        );
+                      })
+                    )}
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    {language === 'ar'
+                      ? 'عند اختيار أكثر من فرع، يستطيع المستخدم التنقل بينها فرعاً واحداً في كل مرة.'
+                      : 'When more than one branch is selected, the user can switch between them one at a time.'}
+                  </p>
                 </div>
               </div>
 

@@ -38,15 +38,32 @@ export const AuthProvider = ({ children }) => {
 
   const isFeatureEnabled = (key) => !key || !disabledFeatures.includes(key);
 
+  // Resolve the list of branches a non-admin user is allowed to view, falling
+  // back to the legacy single branch_id. Admins are not branch scoped.
+  const getAllowedBranchIds = (userData) => {
+    if (!userData || userData.is_admin === true) return [];
+    const ids = Array.isArray(userData.branch_ids) ? userData.branch_ids.filter(Boolean) : [];
+    if (ids.length) return ids;
+    return userData.branch_id ? [userData.branch_id] : [];
+  };
+
+  // Pick the active branch for a non-admin: keep the persisted choice if it's
+  // still one of their branches, otherwise default to the first allowed branch.
+  const applyBranchDefault = (userData) => {
+    const ids = getAllowedBranchIds(userData);
+    if (ids.length === 0) return;
+    const stored = localStorage.getItem('selectedBranchId');
+    const next = stored && ids.includes(stored) ? stored : ids[0];
+    setSelectedBranchId(next);
+    localStorage.setItem('selectedBranchId', next);
+  };
+
   const fetchUser = async () => {
     try {
       const response = await axios.get(`${API}/auth/me`);
       const userData = response.data;
       setUser(userData);
-      if (userData && userData.is_admin !== true && userData.branch_id) {
-        setSelectedBranchId(userData.branch_id);
-        localStorage.setItem('selectedBranchId', userData.branch_id);
-      }
+      applyBranchDefault(userData);
     } catch (error) {
       console.error('Failed to fetch user:', error);
       logout();
@@ -65,10 +82,7 @@ export const AuthProvider = ({ children }) => {
       
       setToken(access_token);
       setUser(userData);
-      if (userData && userData.is_admin !== true && userData.branch_id) {
-        setSelectedBranchId(userData.branch_id);
-        localStorage.setItem('selectedBranchId', userData.branch_id);
-      }
+      applyBranchDefault(userData);
       return { success: true };
     } catch (error) {
       console.error('Login failed:', error);
@@ -108,6 +122,8 @@ export const AuthProvider = ({ children }) => {
 
   const isAuthenticated = !!token && !!user;
   const isAdmin = user?.is_admin === true;
+  const allowedBranchIds = getAllowedBranchIds(user);
+  const isMultiBranch = !isAdmin && allowedBranchIds.length > 1;
 
   return (
     <AuthContext.Provider value={{ 
@@ -120,6 +136,8 @@ export const AuthProvider = ({ children }) => {
       isAdmin,
       selectedBranchId,
       switchBranch,
+      allowedBranchIds,
+      isMultiBranch,
       disabledFeatures,
       isFeatureEnabled
     }}>

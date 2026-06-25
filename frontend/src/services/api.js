@@ -14,6 +14,10 @@ axios.interceptors.request.use((config) => {
     if (token) config.headers.Authorization = `Bearer ${token}`;
     const tenantSlug = localStorage.getItem('tenant_slug') || 'default';
     config.headers['X-Tenant-Slug'] = tenantSlug;
+    // Active branch for multi-branch supervisors. Backend ignores it for admins
+    // and single-branch users, and validates it against the user's allowed set.
+    const branchId = localStorage.getItem('selectedBranchId');
+    if (branchId && branchId !== 'all') config.headers['X-Branch-Id'] = branchId;
   }
   return config;
 });
