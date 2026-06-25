@@ -647,15 +647,28 @@ export const MembersPage = () => {
     const schedule = latestActivity?.schedule || '';
 
     // Build activities HTML
-    const activitiesHtml = (memberCardData.activities || []).map(act => {
+    // Show the latest subscription per activity_id (avoid stacked renewals)
+    const _latestByActivity = {};
+    (memberCardData.activities || []).forEach(act => {
+      // Fall back to a composite key when activity_id is missing (legacy records)
+      // so distinct subscriptions never collapse into one.
+      const key = act.activity_id || `${act.activity_name || ''}|${act.start_date || ''}|${act.end_date || ''}`;
+      const existing = _latestByActivity[key];
+      if (!existing || new Date(act.end_date) > new Date(existing.end_date)) {
+        _latestByActivity[key] = act;
+      }
+    });
+    const activitiesHtml = Object.values(_latestByActivity).map(act => {
       const isActive = !act.end_date || new Date(act.end_date) >= new Date();
       const actSchedule = act.schedule || '';
+      const hasDates = act.start_date || act.end_date;
       return `
         <div class="activity-item ${isActive ? 'active' : 'expired'}">
           <div style="display:flex;justify-content:space-between;align-items:flex-start;">
             <div class="activity-name">${isActive ? '✓' : '✗'} ${act.activity_name || ''}</div>
             <div class="activity-status">${isActive ? 'ساري' : 'منتهي'}</div>
           </div>
+          ${hasDates ? `<div class="activity-dates">🗓️ من ${act.start_date || '----'} إلى ${act.end_date || '----'}</div>` : ''}
           ${actSchedule ? `<div class="activity-schedule">📅 ${actSchedule}</div>` : ''}
         </div>
       `;
@@ -706,6 +719,7 @@ export const MembersPage = () => {
             .activity-status { font-size: 6pt; font-weight: 700; }
             .activity-item.active .activity-status { color: #059669; }
             .activity-item.expired .activity-status { color: #DC2626; }
+            .activity-dates { font-size: 5.5pt; color: #374151; margin-top: 0.3mm; font-weight: 600; }
             .activity-schedule { font-size: 5.5pt; color: #2563EB; margin-top: 0.3mm; font-weight: 500; }
             .card-footer { text-align: right; padding: 1.5mm 2mm; background: #f9fafb; font-size: 5pt; color: #374151; border-top: 1px dashed #e5e7eb; line-height: 1.4; }
             .card-footer .terms-title { font-weight: 700; color: #1f2937; font-size: 6pt; margin-bottom: 0.5mm; }
