@@ -34,6 +34,12 @@ export const AddMemberDialog = ({
               <Input value={newMemberData.age} onChange={(e) => setNewMemberData({ ...newMemberData, age: e.target.value })} type="number" />
             </div>
           </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label>{language === 'ar' ? 'الجنسية *' : 'Nationality *'}</Label>
+              <Input value={newMemberData.nationality || ''} onChange={(e) => setNewMemberData({ ...newMemberData, nationality: e.target.value })} required />
+            </div>
+          </div>
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>{t('cancel')}</Button>

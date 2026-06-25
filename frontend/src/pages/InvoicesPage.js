@@ -69,7 +69,7 @@ export const InvoicesPage = () => {
 
   const [isAddMemberDialogOpen, setIsAddMemberDialogOpen] = useState(false);
   const [addMemberSource, setAddMemberSource] = useState('invoice');
-  const [newMemberData, setNewMemberData] = useState({ name_ar: '', name: '', age: '', guardian_name_ar: '', guardian_name: '', phone: '' });
+  const [newMemberData, setNewMemberData] = useState({ name_ar: '', name: '', age: '', guardian_name_ar: '', guardian_name: '', phone: '', nationality: '' });
 
   const [showRegFormsPasswordDialog, setShowRegFormsPasswordDialog] = useState(false);
   const [regFormsPasswordInput, setRegFormsPasswordInput] = useState('');
@@ -245,6 +245,7 @@ export const InvoicesPage = () => {
 
   const handleCreateMember = async () => {
     if (!newMemberData.name_ar || !newMemberData.phone) { toast.error(language === 'ar' ? 'أدخل الاسم ورقم الجوال' : 'Enter name and phone'); return; }
+    if (!newMemberData.nationality || !newMemberData.nationality.trim()) { toast.error(language === 'ar' ? 'أدخل الجنسية' : 'Enter nationality'); return; }
     setSaving(true);
     try {
       const itemsToUse = addMemberSource === 'registration' ? regFormItems : invoiceItems;
@@ -253,7 +254,7 @@ export const InvoicesPage = () => {
       const memRes = await membersAPI.getAll(); setMembers(memRes.data);
       if (addMemberSource === 'registration') { setRegFormData({ ...regFormData, customer_name: res.data.name_ar, customer_phone: res.data.phone }); }
       else { setSelectedMember(res.data); setCustomerNameAr(res.data.name_ar); setCustomerPhone(res.data.phone); }
-      setIsAddMemberDialogOpen(false); setNewMemberData({ name_ar: '', name: '', age: '', guardian_name_ar: '', guardian_name: '', phone: '' });
+      setIsAddMemberDialogOpen(false); setNewMemberData({ name_ar: '', name: '', age: '', guardian_name_ar: '', guardian_name: '', phone: '', nationality: '' });
       toast.success(language === 'ar' ? 'تم إضافة العضو وحفظه في قائمة الأعضاء' : 'Member added and saved to members list');
     } catch (e) {
       const detail = e?.response?.data?.detail;

@@ -42,6 +42,7 @@ class MemberCreate(BaseModel):
     guardian_name: Optional[str] = ""
     guardian_name_ar: Optional[str] = ""
     guardian_phone: Optional[str] = ""
+    nationality: Optional[str] = ""
     activities: List[MemberActivity] = []
     notes: Optional[str] = ""
     preferred_language: Optional[str] = "ar"
@@ -59,6 +60,7 @@ class MemberUpdate(BaseModel):
     guardian_name: Optional[str] = None
     guardian_name_ar: Optional[str] = None
     guardian_phone: Optional[str] = None
+    nationality: Optional[str] = None
     activities: Optional[List[MemberActivity]] = None
     notes: Optional[str] = None
     marked: Optional[bool] = None
@@ -78,6 +80,7 @@ class Member(BaseModel):
     guardian_name: Optional[str] = ""
     guardian_name_ar: Optional[str] = ""
     guardian_phone: Optional[str] = ""
+    nationality: Optional[str] = ""
     activities: List[MemberActivity] = []
     notes: Optional[str] = ""
     marked: bool = False
@@ -342,7 +345,10 @@ async def quick_create_member(member: MemberCreate, current_user: dict = Depends
     """Quick-add a member from the invoice flow — no members-create permission required.
 
     Still requires authentication and enforces branch isolation + plan limits.
+    The nationality field is mandatory for this (invoice) entry point.
     """
+    if not (member.nationality or "").strip():
+        raise HTTPException(status_code=422, detail="الجنسية مطلوبة")
     return await _create_member_core(member, current_user)
 
 @router.put("/{member_id}", response_model=Member)
