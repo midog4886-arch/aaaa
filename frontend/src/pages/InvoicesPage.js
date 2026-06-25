@@ -222,6 +222,7 @@ export const InvoicesPage = () => {
     setSelectedMember(null);
     setCustomerNameAr(data.customer_name || '');
     setCustomerPhone(data.customer_phone || '');
+    if (data.nationality) setNewMemberData((prev) => ({ ...prev, nationality: data.nationality }));
     if (data.notes) setNotes(data.notes);
     if (data.marketer_id) setPrefillMarketerId(data.marketer_id);
     setIsCreateDialogOpen(true);

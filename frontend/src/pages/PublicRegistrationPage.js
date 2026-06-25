@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
 import axios from 'axios';
 import { API_URL } from '../config/api';
-import { Loader2, CheckCircle2, Calendar, Phone, User, Dumbbell } from 'lucide-react';
+import { Loader2, CheckCircle2, Calendar, Phone, User, Dumbbell, Flag, Building2 } from 'lucide-react';
 
 const WEEK_DAYS = [
   { key: 'saturday', label: 'السبت' },
@@ -31,9 +31,12 @@ export const PublicRegistrationPage = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [branch, setBranch] = useState(null);
+  const [branches, setBranches] = useState([]);
+  const [selectedBranchId, setSelectedBranchId] = useState(branchId || '');
 
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
+  const [nationality, setNationality] = useState('');
   const [activity, setActivity] = useState('');
   const [days, setDays] = useState([]);
   const [time, setTime] = useState('');
@@ -49,7 +52,7 @@ export const PublicRegistrationPage = () => {
       setLoading(true);
       setError('');
       try {
-        const res = await api.get(`/api/public/registration/${branchId}`);
+        const res = await api.get(`/api/public/registration/${selectedBranchId}`);
         if (!active) return;
         setBranch(res.data.branch);
       } catch (e) {
@@ -62,7 +65,21 @@ export const PublicRegistrationPage = () => {
       }
     })();
     return () => { active = false; };
-  }, [api, branchId]);
+  }, [api, selectedBranchId]);
+
+  // Load all branches so the visitor can pick which branch to register at.
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      try {
+        const res = await api.get('/api/public/branches');
+        if (active) setBranches(res.data.branches || []);
+      } catch (e) {
+        if (active) setBranches([]);
+      }
+    })();
+    return () => { active = false; };
+  }, [api]);
 
   // Resolve the referral code (if any) so we can show the special discount.
   useEffect(() => {
@@ -89,12 +106,15 @@ export const PublicRegistrationPage = () => {
     if (!name.trim()) { setFormError('من فضلك اكتب اسم الطفل'); return; }
     const digits = (phone || '').replace(/\D/g, '');
     if (digits.length < 8) { setFormError('من فضلك اكتب رقم موبايل صحيح'); return; }
+    if (!nationality.trim()) { setFormError('من فضلك اكتب الجنسية'); return; }
+    if (!selectedBranchId) { setFormError('من فضلك اختر الفرع'); return; }
     setSubmitting(true);
     try {
       const selectedDays = WEEK_DAYS.filter(d => days.includes(d.key)).map(d => d.label);
-      await api.post(`/api/public/registration/${branchId}`, {
+      await api.post(`/api/public/registration/${selectedBranchId}`, {
         customer_name: name.trim(),
         customer_phone: phone.trim(),
+        nationality: nationality.trim(),
         activity_id: '',
         activity_name: activity,
         preferred_days: selectedDays,
@@ -160,6 +180,24 @@ export const PublicRegistrationPage = () => {
               <input value={phone} onChange={(e) => setPhone(e.target.value)} type="tel" dir="ltr"
                 className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm text-right focus:outline-none focus:ring-2 focus:ring-emerald-500"
                 placeholder="05xxxxxxxx" />
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium text-gray-700 flex items-center gap-1.5"><Flag className="w-4 h-4" /> الجنسية *</label>
+              <input value={nationality} onChange={(e) => setNationality(e.target.value)}
+                className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                placeholder="مثال: سعودي" />
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium text-gray-700 flex items-center gap-1.5"><Building2 className="w-4 h-4" /> الفرع *</label>
+              <select value={selectedBranchId} onChange={(e) => setSelectedBranchId(e.target.value)}
+                className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500">
+                <option value="">اختر الفرع</option>
+                {branches.map((b) => (
+                  <option key={b.id} value={b.id}>{b.name_ar || b.name}</option>
+                ))}
+              </select>
             </div>
 
             <div className="space-y-1.5">

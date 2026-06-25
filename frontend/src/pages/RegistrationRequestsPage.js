@@ -79,6 +79,7 @@ export const RegistrationRequestsPage = () => {
       request_id: req.id,
       customer_name: req.customer_name,
       customer_phone: req.customer_phone,
+      nationality: req.nationality || '',
       branch_id: req.branch_id,
       notes: noteLines.join('\n'),
       marketer_id: req.marketer_id || '',

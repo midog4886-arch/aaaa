@@ -32,6 +32,7 @@ router = APIRouter(tags=["RegistrationRequests"])
 class PublicRegistrationCreate(BaseModel):
     customer_name: str
     customer_phone: str
+    nationality: Optional[str] = ""
     activity_id: Optional[str] = ""
     activity_name: Optional[str] = ""
     preferred_days: List[str] = []
@@ -44,6 +45,17 @@ class RegistrationRequestUpdate(BaseModel):
 
 
 # ============ PUBLIC ROUTES (no auth) ============
+
+@router.get("/public/branches")
+async def public_list_branches():
+    """Return all branches for the tenant so the public form can let the
+    visitor pick a branch. Tenant is resolved by the middleware from the
+    X-Tenant-Slug header / subdomain."""
+    branches = await db.branches.find(
+        {}, {"_id": 0, "id": 1, "name": 1, "name_ar": 1}
+    ).to_list(500)
+    return {"branches": branches}
+
 
 @router.get("/public/registration/{branch_id}")
 async def public_get_registration_branch(branch_id: str):
@@ -84,6 +96,9 @@ async def public_create_registration(branch_id: str, payload: PublicRegistration
     digits = "".join(c for c in phone if c.isdigit())
     if len(digits) < 8:
         raise HTTPException(status_code=400, detail="رقم الموبايل غير صحيح")
+    nationality = (payload.nationality or "").strip()
+    if not nationality:
+        raise HTTPException(status_code=400, detail="الجنسية مطلوبة")
 
     # Light anti-spam: cap repeated submissions from the same phone+branch.
     one_hour_ago = (datetime.now(timezone.utc) - timedelta(hours=1)).isoformat()
@@ -99,6 +114,7 @@ async def public_create_registration(branch_id: str, payload: PublicRegistration
         "id": str(uuid.uuid4()),
         "customer_name": name,
         "customer_phone": phone,
+        "nationality": nationality,
         "activity_id": (payload.activity_id or "").strip(),
         "activity_name": (payload.activity_name or "").strip(),
         "preferred_days": [d for d in (payload.preferred_days or []) if d],
