@@ -22,7 +22,7 @@ const PAYMENT_METHODS = [
   { value: 'check', label: 'شيك' },
 ];
 
-const emptyForm = { name: '', phone: '', discount_percent: '', commission_percent: '', branch_id: '', notes: '' };
+const emptyForm = { name: '', phone: '', referral_code: '', discount_percent: '', commission_percent: '', branch_id: '', notes: '' };
 
 export const MarketersPage = () => {
   const { user } = useAuth();
@@ -81,6 +81,7 @@ export const MarketersPage = () => {
     setForm({
       name: m.name || '',
       phone: m.phone || '',
+      referral_code: m.referral_code || '',
       discount_percent: m.discount_percent ?? '',
       commission_percent: m.commission_percent ?? '',
       branch_id: m.branch_id || '',
@@ -94,6 +95,7 @@ export const MarketersPage = () => {
     const payload = {
       name: form.name.trim(),
       phone: form.phone.trim(),
+      referral_code: (form.referral_code || '').trim(),
       discount_percent: parseFloat(form.discount_percent) || 0,
       commission_percent: parseFloat(form.commission_percent) || 0,
       notes: form.notes.trim(),
@@ -366,6 +368,18 @@ export const MarketersPage = () => {
             <div className="space-y-1.5">
               <Label>رقم الجوال</Label>
               <Input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} placeholder="05xxxxxxxx" dir="ltr" />
+            </div>
+            <div className="space-y-1.5">
+              <Label>كود الإحالة</Label>
+              <Input
+                value={form.referral_code}
+                onChange={(e) => setForm({ ...form, referral_code: e.target.value.toUpperCase() })}
+                placeholder={editing ? '' : 'يُولّد تلقائيًا إذا تُرك فارغاً'}
+                dir="ltr"
+                className="font-mono uppercase"
+                data-testid="input-marketer-referral-code"
+              />
+              <p className="text-xs text-muted-foreground">حروف إنجليزية وأرقام فقط (3–20). اتركه فارغاً للتوليد التلقائي.</p>
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">

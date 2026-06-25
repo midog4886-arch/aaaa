@@ -52,6 +52,7 @@ ALLOWED_PAYMENT_METHODS = set(PAYMENT_METHODS.keys())
 class MarketerCreate(BaseModel):
     name: str
     phone: Optional[str] = ""
+    referral_code: Optional[str] = None
     discount_percent: float = 0
     commission_percent: float = 0
     branch_id: Optional[str] = None
@@ -61,6 +62,7 @@ class MarketerCreate(BaseModel):
 class MarketerUpdate(BaseModel):
     name: Optional[str] = None
     phone: Optional[str] = None
+    referral_code: Optional[str] = None
     discount_percent: Optional[float] = None
     commission_percent: Optional[float] = None
     status: Optional[str] = None
@@ -84,6 +86,29 @@ def _validate_percent(value, label: str) -> float:
     if v < 0 or v > 100:
         raise HTTPException(status_code=400, detail=f"{label} يجب أن تكون بين 0 و 100")
     return round(v, 2)
+
+
+def _normalize_referral_code(code: str) -> str:
+    """Normalize a manually-entered referral code: uppercase, strip, keep only
+    A-Z and 0-9. Validates length (3-20). Raises 400 on invalid input."""
+    raw = (code or "").strip().upper()
+    cleaned = "".join(c for c in raw if c in (string.ascii_uppercase + string.digits))
+    if cleaned != raw.replace(" ", ""):
+        # Reject if the user typed disallowed characters (anything beyond A-Z/0-9)
+        raise HTTPException(status_code=400, detail="كود الإحالة يجب أن يحتوي على حروف إنجليزية وأرقام فقط")
+    if len(cleaned) < 3 or len(cleaned) > 20:
+        raise HTTPException(status_code=400, detail="كود الإحالة يجب أن يكون بين 3 و 20 حرفاً/رقماً")
+    return cleaned
+
+
+async def _ensure_code_unique(code: str, exclude_id: Optional[str] = None) -> None:
+    """Raise 400 if another marketer already uses this referral code."""
+    query: dict = {"referral_code": code}
+    if exclude_id:
+        query["id"] = {"$ne": exclude_id}
+    exists = await db.marketers.find_one(query, {"_id": 1})
+    if exists:
+        raise HTTPException(status_code=400, detail="كود الإحالة مستخدم بالفعل، اختر كوداً آخر")
 
 
 async def _generate_referral_code(name: str) -> str:
@@ -191,7 +216,11 @@ async def create_marketer(
     else:
         branch_id = require_branch_scope(current_user)
 
-    code = await _generate_referral_code(name)
+    if (data.referral_code or "").strip():
+        code = _normalize_referral_code(data.referral_code)
+        await _ensure_code_unique(code)
+    else:
+        code = await _generate_referral_code(name)
     now = datetime.now(timezone.utc).isoformat()
     doc = {
         "id": str(uuid.uuid4()),
@@ -263,6 +292,11 @@ async def update_marketer(
         update_data["status"] = data.status
     if data.notes is not None:
         update_data["notes"] = data.notes.strip()
+    if (data.referral_code or "").strip():
+        code = _normalize_referral_code(data.referral_code)
+        if code != existing.get("referral_code"):
+            await _ensure_code_unique(code, exclude_id=marketer_id)
+            update_data["referral_code"] = code
 
     if not update_data:
         raise HTTPException(status_code=400, detail="لا توجد بيانات للتحديث")
