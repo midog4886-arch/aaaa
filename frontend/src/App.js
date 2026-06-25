@@ -67,6 +67,7 @@ const AccountingPage = lazy(() => import('./pages/AccountingPage'));
 const MyExpensesPage = lazy(() => import('./pages/MyExpensesPage'));
 const AttendancePage = lazy(() => import('./pages/AttendancePage'));
 const TodayAttendancePage = lazy(() => import('./pages/TodayAttendancePage'));
+const ScannerStationPage = lazy(() => import('./pages/ScannerStationPage'));
 const LevelsBoardPage = lazy(() => import('./pages/LevelsBoardPage'));
 const SchedulePage = lazy(() => import('./pages/SchedulePage'));
 const UnauthorizedPage = lazy(() => import('./pages/UnauthorizedPage'));
@@ -169,6 +170,11 @@ const ProtectedRoute = ({ children, permission }) => {
 
 // Get first allowed route based on user permissions
 const getFirstAllowedRoute = (permissions) => {
+  // Dedicated scanner-station user (scanner ONLY) → land straight on the locked kiosk.
+  // Users who also have normal permissions keep their usual landing page.
+  if (permissions.length === 1 && permissions[0] === 'scanner-station') {
+    return '/admin/scanner-station';
+  }
   const routeOrder = ['dashboard', 'schedule', 'attendance', 'coach-attendance', 'coach-notes', 'members', 'activities', 'levels', 'tournaments', 'invoices', 'store', 'accounting', 'reports', 'messages', 'settings'];
   for (const route of routeOrder) {
     if (permissions.includes(route)) {
@@ -307,7 +313,7 @@ function AppRoutes() {
       <Route
         path="/admin/onboarding"
         element={
-          <ProtectedRoute>
+          <ProtectedRoute permission="settings">
             <OnboardingPage />
           </ProtectedRoute>
         }
@@ -472,6 +478,14 @@ function AppRoutes() {
         element={
           <ProtectedRoute permission="attendance">
             <TodayAttendancePage />
+          </ProtectedRoute>
+        } 
+      />
+      <Route 
+        path="/admin/scanner-station" 
+        element={
+          <ProtectedRoute permission="scanner-station">
+            <ScannerStationPage />
           </ProtectedRoute>
         } 
       />

@@ -56,7 +56,8 @@ import {
   MessageCircle,
   UserCog,
   MapPin,
-  Search
+  Search,
+  ScanLine
 } from 'lucide-react';
 
 export const Sidebar = ({ isOpen, onClose }) => {
@@ -158,6 +159,7 @@ export const Sidebar = ({ isOpen, onClose }) => {
         { to: '/admin/daily-new-cards', icon: CalendarDays, label: 'daily_new_cards', permission: 'member-card' },
         { to: '/admin/attendance', icon: ClipboardList, label: 'attendance', permission: 'attendance', feature: 'attendance' },
         { to: '/admin/today-attendance', icon: CheckCheck, label: 'today_attendance', permission: 'attendance', feature: 'attendance' },
+        { to: '/admin/scanner-station', icon: ScanLine, label: 'scanner_station', permission: 'scanner-station', feature: 'attendance' },
       ]
     },
     {

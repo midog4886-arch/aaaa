@@ -36,6 +36,7 @@ const ALL_PERMISSIONS = [
   { key: 'levels', label_ar: 'المستويات', label_en: 'Levels' },
   { key: 'schedule', label_ar: 'الجدول', label_en: 'Schedule' },
   { key: 'attendance', label_ar: 'الحضور', label_en: 'Attendance' },
+  { key: 'scanner-station', label_ar: 'محطة المسح (تابلت)', label_en: 'Scanner Station (Tablet)' },
   { key: 'coach-ratings', label_ar: 'تقييم المدربين', label_en: 'Coach Ratings' },
   { key: 'coach-attendance', label_ar: 'حضور المدربين', label_en: 'Coach Attendance' },
   { key: 'coach-notes', label_ar: 'ملاحظات المدربين', label_en: 'Coach Notes' },
