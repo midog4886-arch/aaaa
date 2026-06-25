@@ -33,10 +33,74 @@ const GlobalScanner = ({ enabled = true, language = 'ar' }) => {
   const lastScannedCodeRef = useRef('');
   const scanLockTimeRef = useRef(0);
 
+  // Draggable floating button: position {left, top} in px, persisted.
+  const [position, setPosition] = useState(null);
+  const containerRef = useRef(null);
+  const draggingRef = useRef(false);
+  const movedRef = useRef(false);
+  const dragStartRef = useRef(null);
+  const latestPosRef = useRef(null);
+  const BTN_SIZE = 70;
+
   // Load sound setting
   useEffect(() => {
     const savedSound = localStorage.getItem('globalScanner_sound');
     if (savedSound !== null) setSoundEnabled(savedSound === 'true');
+  }, []);
+
+  // Load saved button position
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem('globalScanner_position');
+      if (saved) {
+        const p = JSON.parse(saved);
+        if (p && typeof p.left === 'number' && typeof p.top === 'number') {
+          // Clamp to current viewport in case the window got smaller
+          const left = Math.max(8, Math.min(p.left, window.innerWidth - BTN_SIZE - 8));
+          const top = Math.max(8, Math.min(p.top, window.innerHeight - BTN_SIZE - 8));
+          setPosition({ left, top });
+          latestPosRef.current = { left, top };
+        }
+      }
+    } catch (_) {}
+  }, []);
+
+  // Drag handlers (pointer-based so it works for mouse + touch)
+  const handleDragStart = useCallback((e) => {
+    const rect = containerRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    draggingRef.current = true;
+    movedRef.current = false;
+    dragStartRef.current = {
+      startX: e.clientX,
+      startY: e.clientY,
+      originLeft: rect.left,
+      originTop: rect.top,
+    };
+    try { e.currentTarget.setPointerCapture(e.pointerId); } catch (_) {}
+  }, []);
+
+  const handleDragMove = useCallback((e) => {
+    if (!draggingRef.current || !dragStartRef.current) return;
+    const dx = e.clientX - dragStartRef.current.startX;
+    const dy = e.clientY - dragStartRef.current.startY;
+    if (Math.abs(dx) > 4 || Math.abs(dy) > 4) movedRef.current = true;
+    const maxLeft = window.innerWidth - BTN_SIZE - 8;
+    const maxTop = window.innerHeight - BTN_SIZE - 8;
+    const left = Math.max(8, Math.min(dragStartRef.current.originLeft + dx, maxLeft));
+    const top = Math.max(8, Math.min(dragStartRef.current.originTop + dy, maxTop));
+    const newPos = { left, top };
+    latestPosRef.current = newPos;
+    setPosition(newPos);
+  }, []);
+
+  const handleDragEnd = useCallback((e) => {
+    if (!draggingRef.current) return;
+    draggingRef.current = false;
+    try { e.currentTarget.releasePointerCapture(e.pointerId); } catch (_) {}
+    if (movedRef.current && latestPosRef.current) {
+      try { localStorage.setItem('globalScanner_position', JSON.stringify(latestPosRef.current)); } catch (_) {}
+    }
   }, []);
 
   // Save sound setting
@@ -417,17 +481,27 @@ const GlobalScanner = ({ enabled = true, language = 'ar' }) => {
 
   return (
     <>
-      {/* Scanner Status Indicator */}
+      {/* Scanner Status Indicator (draggable) */}
       <div 
+        ref={containerRef}
         style={{
           position: 'fixed',
-          bottom: '30px',
-          right: '30px',
+          ...(position
+            ? { left: `${position.left}px`, top: `${position.top}px` }
+            : { bottom: '30px', right: '30px' }),
           zIndex: 99999,
+          touchAction: 'none',
         }}
       >
         <button 
-          onClick={() => setSoundEnabled(!soundEnabled)}
+          onPointerDown={handleDragStart}
+          onPointerMove={handleDragMove}
+          onPointerUp={handleDragEnd}
+          onPointerCancel={handleDragEnd}
+          onClick={() => {
+            if (movedRef.current) { movedRef.current = false; return; }
+            setSoundEnabled(!soundEnabled);
+          }}
           style={{
             width: '70px',
             height: '70px',
@@ -435,13 +509,14 @@ const GlobalScanner = ({ enabled = true, language = 'ar' }) => {
             background: 'linear-gradient(135deg, #22c55e 0%, #16a34a 100%)',
             border: '4px solid white',
             boxShadow: '0 4px 25px rgba(34, 197, 94, 0.6), 0 0 0 4px rgba(34, 197, 94, 0.2)',
-            cursor: 'pointer',
+            cursor: 'grab',
+            touchAction: 'none',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
             animation: 'pulse 2s infinite',
           }}
-          title={soundEnabled ? t('المسح نشط - اضغط لإيقاف الصوت', 'Scanner Active - Click to mute') : t('المسح نشط - اضغط لتفعيل الصوت', 'Scanner Active - Click to unmute')}
+          title={soundEnabled ? t('المسح نشط - اسحب للتحريك • اضغط لإيقاف الصوت', 'Scanner Active - Drag to move • Click to mute') : t('المسح نشط - اسحب للتحريك • اضغط لتفعيل الصوت', 'Scanner Active - Drag to move • Click to unmute')}
         >
           <Scan style={{ width: '32px', height: '32px', color: 'white' }} />
         </button>
