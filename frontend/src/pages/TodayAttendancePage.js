@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/AuthContext';
 import { Layout } from '../components/Layout';
@@ -13,7 +14,11 @@ import { CheckCheck, UserX, Users, Search, Phone, MessageCircle, Download, Refre
 
 const TodayAttendancePage = () => {
   const { language } = useLanguage();
+  const navigate = useNavigate();
   const { selectedBranchId, user } = useAuth();
+  const openMember = (memberId) => {
+    if (memberId) navigate(`/admin/members?focus=${encodeURIComponent(memberId)}`);
+  };
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -225,10 +230,14 @@ const TodayAttendancePage = () => {
                   )}
                   {presentList.map(r => (
                     <tr key={r.member_id} className="border-t hover:bg-muted/30">
-                      <td className="p-3 flex items-center gap-2">
+                      <td
+                        className="p-3 flex items-center gap-2 cursor-pointer group"
+                        onClick={() => openMember(r.member_id)}
+                        title={ar ? 'عرض ملف العضو' : 'View member profile'}
+                      >
                         {r.member_photo ? <img src={r.member_photo} alt="" className="w-8 h-8 rounded-full object-cover" /> : <div className="w-8 h-8 rounded-full bg-muted" />}
                         <div>
-                          <div className="font-medium">
+                          <div className="font-medium group-hover:text-primary group-hover:underline">
                             {r.member_name}
                             {r.guardian_name_ar && (
                               <span className="text-xs text-muted-foreground font-normal ms-2">
@@ -284,10 +293,14 @@ const TodayAttendancePage = () => {
                   )}
                   {absentList.map(r => (
                     <tr key={r.member_id} className="border-t hover:bg-muted/30">
-                      <td className="p-3 flex items-center gap-2">
+                      <td
+                        className="p-3 flex items-center gap-2 cursor-pointer group"
+                        onClick={() => openMember(r.member_id)}
+                        title={ar ? 'عرض ملف العضو' : 'View member profile'}
+                      >
                         {r.member_photo ? <img src={r.member_photo} alt="" className="w-8 h-8 rounded-full object-cover" /> : <div className="w-8 h-8 rounded-full bg-muted" />}
                         <div>
-                          <div className="font-medium">
+                          <div className="font-medium group-hover:text-primary group-hover:underline">
                             {r.member_name}
                             {r.guardian_name_ar && (
                               <span className="text-xs text-muted-foreground font-normal ms-2">
