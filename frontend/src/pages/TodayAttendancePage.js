@@ -8,9 +8,10 @@ import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Badge } from '../components/ui/badge';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '../components/ui/tabs';
+import { Checkbox } from '../components/ui/checkbox';
 import { attendanceAPI, branchesAPI } from '../services/api';
 import { toast } from 'sonner';
-import { CheckCheck, UserX, Users, Search, Phone, MessageCircle, Download, RefreshCcw, Clock } from 'lucide-react';
+import { CheckCheck, UserX, Users, Search, Phone, MessageCircle, Download, RefreshCcw, Clock, Loader2 } from 'lucide-react';
 
 const TodayAttendancePage = () => {
   const { language } = useLanguage();
@@ -19,6 +20,13 @@ const TodayAttendancePage = () => {
   const openMember = (memberId) => {
     if (memberId) navigate(`/admin/members?focus=${encodeURIComponent(memberId)}`);
   };
+  const [selectedIds, setSelectedIds] = useState(() => new Set());
+  const [bulkLoading, setBulkLoading] = useState(false);
+  const toggleSelect = (id) => setSelectedIds(prev => {
+    const next = new Set(prev);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    return next;
+  });
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -140,6 +148,35 @@ const TodayAttendancePage = () => {
     window.open(`https://wa.me/${p}?text=${encodeURIComponent(msg)}`, '_blank');
   };
 
+  // Bulk check-in for selected absent members. Reuses the validated qr-checkin
+  // (force=true) per member-activity, then refreshes the list.
+  const runBulkCheckin = async () => {
+    const targets = absentList.filter(r => selectedIds.has(r.member_id));
+    if (targets.length === 0) {
+      toast.error(ar ? 'لم يتم تحديد أعضاء' : 'No members selected');
+      return;
+    }
+    setBulkLoading(true);
+    let ok = 0, failed = 0;
+    for (const r of targets) {
+      const acts = (r.activities || []);
+      const ids = acts.length ? acts.map(a => a.activity_id).filter(Boolean) : [null];
+      let memberOk = false;
+      for (const aid of ids) {
+        try {
+          await attendanceAPI.qrCheckin(r.member_code || r.member_id, aid, true);
+          memberOk = true;
+        } catch (e) { /* skip this activity */ }
+      }
+      if (memberOk) ok++; else failed++;
+    }
+    setBulkLoading(false);
+    setSelectedIds(new Set());
+    if (ok) toast.success(ar ? `تم تحضير ${ok} عضو` : `Checked in ${ok} member(s)`);
+    if (failed) toast.error(ar ? `تعذّر تحضير ${failed} عضو` : `Failed for ${failed} member(s)`);
+    load();
+  };
+
   if (loading) return (
     <Layout title={ar ? 'حضور اليوم' : "Today's Attendance"}>
       <div className="flex items-center justify-center h-64"><div className="spinner" /></div>
@@ -150,6 +187,16 @@ const TodayAttendancePage = () => {
   const expectedCount = data?.expected_count || 0;
   const absentCount = data?.absent_count || 0;
   const ratio = expectedCount > 0 ? Math.round((presentCount / (expectedCount || 1)) * 100) : 0;
+  const allAbsentSelected = absentList.length > 0 && absentList.every(r => selectedIds.has(r.member_id));
+  const toggleAllAbsent = () => setSelectedIds(prev => {
+    const next = new Set(prev);
+    if (absentList.length > 0 && absentList.every(r => prev.has(r.member_id))) {
+      absentList.forEach(r => next.delete(r.member_id));
+    } else {
+      absentList.forEach(r => next.add(r.member_id));
+    }
+    return next;
+  });
 
   return (
     <Layout title={ar ? 'حضور اليوم' : "Today's Attendance"}>
@@ -275,10 +322,24 @@ const TodayAttendancePage = () => {
           </TabsContent>
 
           <TabsContent value="absent">
+            {absentList.length > 0 && (
+              <div className="flex items-center justify-between flex-wrap gap-2 mb-3">
+                <span className="text-sm text-muted-foreground">
+                  {selectedIds.size > 0
+                    ? (ar ? `تم تحديد ${selectedIds.size} عضو` : `${selectedIds.size} selected`)
+                    : (ar ? 'حدد الأعضاء لتحضيرهم دفعة واحدة' : 'Select members to check in at once')}
+                </span>
+                <Button size="sm" disabled={selectedIds.size === 0 || bulkLoading} onClick={runBulkCheckin}>
+                  {bulkLoading ? <Loader2 className="w-4 h-4 ml-1 animate-spin" /> : <CheckCheck className="w-4 h-4 ml-1" />}
+                  {ar ? `تحضير جماعي (${selectedIds.size})` : `Bulk check-in (${selectedIds.size})`}
+                </Button>
+              </div>
+            )}
             <Card><CardContent className="p-0 overflow-x-auto">
               <table className="w-full text-sm">
                 <thead className="bg-muted/50">
                   <tr>
+                    <th className="p-3 w-10"><Checkbox checked={allAbsentSelected} onCheckedChange={toggleAllAbsent} /></th>
                     <th className="text-right p-3">{ar ? 'العضو' : 'Member'}</th>
                     <th className="text-right p-3">{ar ? 'الكود' : 'Code'}</th>
                     <th className="text-right p-3">{ar ? 'الأنشطة المتوقعة' : 'Expected activities'}</th>
@@ -289,10 +350,13 @@ const TodayAttendancePage = () => {
                 </thead>
                 <tbody>
                   {absentList.length === 0 && (
-                    <tr><td colSpan={6} className="p-8 text-center text-muted-foreground">{ar ? 'لا يوجد غائبون 👍' : 'No absentees'}</td></tr>
+                    <tr><td colSpan={7} className="p-8 text-center text-muted-foreground">{ar ? 'لا يوجد غائبون 👍' : 'No absentees'}</td></tr>
                   )}
                   {absentList.map(r => (
                     <tr key={r.member_id} className="border-t hover:bg-muted/30">
+                      <td className="p-3 align-top" onClick={(e) => e.stopPropagation()}>
+                        <Checkbox checked={selectedIds.has(r.member_id)} onCheckedChange={() => toggleSelect(r.member_id)} />
+                      </td>
                       <td
                         className="p-3 flex items-center gap-2 cursor-pointer group"
                         onClick={() => openMember(r.member_id)}
