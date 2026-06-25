@@ -67,6 +67,7 @@ class MarketerUpdate(BaseModel):
     commission_percent: Optional[float] = None
     status: Optional[str] = None
     notes: Optional[str] = None
+    branch_id: Optional[str] = None
 
 
 class MarketerPayout(BaseModel):
@@ -297,6 +298,13 @@ async def update_marketer(
         if code != existing.get("referral_code"):
             await _ensure_code_unique(code, exclude_id=marketer_id)
             update_data["referral_code"] = code
+
+    # Branch reassignment is admin-only (mirrors create + the admin-gated UI field).
+    # Use fields_set so an explicit "all"/null from an admin maps to shared (None),
+    # while non-admins / omitted payloads never touch the stored branch.
+    if "branch_id" in data.model_fields_set and current_user.get("is_admin", False):
+        bid = data.branch_id
+        update_data["branch_id"] = bid if (bid and bid != "all") else None
 
     if not update_data:
         raise HTTPException(status_code=400, detail="لا توجد بيانات للتحديث")
