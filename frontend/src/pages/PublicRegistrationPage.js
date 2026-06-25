@@ -24,11 +24,16 @@ export const PublicRegistrationPage = () => {
   // Marks links shared in social-media ads so we can track their registrations.
   const source = (searchParams.get('src') || '').trim().toLowerCase();
   const [marketer, setMarketer] = useState(null);
+  const [academyName, setAcademyName] = useState('');
 
   const api = useMemo(() => axios.create({
     baseURL: API_URL || '',
     headers: { 'X-Tenant-Slug': tenantSlug || 'default' },
   }), [tenantSlug]);
+
+  // Academy logo served by the public branding endpoint (falls back to the
+  // shared default logo automatically when the academy has no custom one).
+  const logoUrl = `${API_URL || ''}/api/tenant/branding/logo?slug=${encodeURIComponent(tenantSlug || 'default')}`;
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -64,11 +69,13 @@ export const PublicRegistrationPage = () => {
           const res = await api.get(`/api/public/registration/${branchId}`);
           if (!active) return;
           setBranch(res.data.branch);
+          if (res.data.academy_name) setAcademyName(res.data.academy_name);
         } else {
           // All-branches link: load the list so the visitor can pick a branch.
           const res = await api.get('/api/public/branches');
           if (!active) return;
           setBranches(res.data.branches || []);
+          if (res.data.academy_name) setAcademyName(res.data.academy_name);
         }
       } catch (e) {
         if (!active) return;
@@ -140,11 +147,22 @@ export const PublicRegistrationPage = () => {
     <div dir="rtl" className="min-h-screen bg-gradient-to-b from-emerald-50 to-white flex flex-col items-center py-8 px-4">
       <div className="w-full max-w-md">
         <div className="text-center mb-6">
-          <div className="mx-auto w-14 h-14 rounded-2xl bg-emerald-600 flex items-center justify-center mb-3">
-            <Dumbbell className="w-7 h-7 text-white" />
+          <div className="mx-auto w-24 h-24 rounded-full bg-white shadow-lg ring-4 ring-emerald-100 flex items-center justify-center mb-4 overflow-hidden p-2">
+            <img
+              src={logoUrl}
+              onError={(e) => { if (!e.target.dataset.fb) { e.target.dataset.fb = '1'; e.target.src = '/logo-new.png'; } }}
+              alt="شعار الأكاديمية"
+              className="w-full h-full object-contain"
+            />
           </div>
-          <h1 className="text-xl font-bold text-gray-800">شركة اداء الابطال العالمية للرياضة</h1>
-          {branchName && <p className="text-sm text-emerald-700 mt-1">فرع: {branchName}</p>}
+          <h1 className="text-xl font-extrabold text-gray-800 leading-snug px-2">
+            {academyName || 'شركة اداء الابطال العالمية للرياضة'}
+          </h1>
+          {branchName && (
+            <span className="inline-flex items-center gap-1.5 mt-3 px-3 py-1 rounded-full bg-emerald-50 text-emerald-700 text-xs font-semibold border border-emerald-100">
+              <Building2 className="w-3.5 h-3.5" /> فرع: {branchName}
+            </span>
+          )}
         </div>
 
         {loading ? (
@@ -152,15 +170,17 @@ export const PublicRegistrationPage = () => {
             <Loader2 className="w-7 h-7 animate-spin text-emerald-600" />
           </div>
         ) : error ? (
-          <div className="bg-white rounded-2xl shadow p-6 text-center text-red-600 text-sm">{error}</div>
+          <div className="bg-white rounded-3xl shadow-lg border border-gray-100 p-6 text-center text-red-600 text-sm">{error}</div>
         ) : submitted ? (
-          <div className="bg-white rounded-2xl shadow p-8 text-center">
-            <CheckCircle2 className="w-14 h-14 text-emerald-600 mx-auto mb-3" />
+          <div className="bg-white rounded-3xl shadow-lg border border-gray-100 p-8 text-center">
+            <div className="mx-auto w-16 h-16 rounded-full bg-emerald-50 flex items-center justify-center mb-4">
+              <CheckCircle2 className="w-9 h-9 text-emerald-600" />
+            </div>
             <h2 className="text-lg font-bold text-gray-800 mb-2">تم استلام طلبك بنجاح</h2>
             <p className="text-sm text-gray-600">هيتم التواصل معاك قريبًا لاستكمال التسجيل. شكرًا لك.</p>
           </div>
         ) : (
-          <form onSubmit={handleSubmit} className="bg-white rounded-2xl shadow p-5 space-y-4">
+          <form onSubmit={handleSubmit} className="bg-white rounded-3xl shadow-lg border border-gray-100 p-6 space-y-4">
             <p className="text-sm text-gray-600 text-center mb-2">سجّل بيانات اللاعب وهنتواصل معاك لاستكمال الاشتراك.</p>
 
             {marketer && (
@@ -251,14 +271,14 @@ export const PublicRegistrationPage = () => {
             {formError && <div className="text-sm text-red-600 text-center">{formError}</div>}
 
             <button type="submit" disabled={submitting}
-              className="w-full rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-3 text-sm flex items-center justify-center gap-2 disabled:opacity-60">
+              className="w-full rounded-xl bg-gradient-to-l from-emerald-600 to-emerald-500 hover:from-emerald-700 hover:to-emerald-600 text-white font-semibold py-3.5 text-sm flex items-center justify-center gap-2 shadow-md shadow-emerald-200 transition-all disabled:opacity-60">
               {submitting && <Loader2 className="w-4 h-4 animate-spin" />}
               إرسال طلب التسجيل
             </button>
           </form>
         )}
 
-        <p className="text-center text-xs text-gray-400 mt-6">© شركة اداء الابطال العالمية للرياضة</p>
+        <p className="text-center text-xs text-gray-400 mt-8">© {academyName || 'شركة اداء الابطال العالمية للرياضة'}</p>
       </div>
     </div>
   );

@@ -40,6 +40,18 @@ activity, preferred days/time, notes).
   `/admin/invoices`. InvoicesPage reads + clears the sessionStorage on mount and opens the
   registration-form dialog prefilled with name/phone/notes.
 
+## Branding on the public page (logo + academy name)
+- **Logo:** `<img src="/api/tenant/branding/logo?slug=<tenant>">` with `onError` → `/logo-new.png`.
+  That logo endpoint is purpose-built for unauthenticated assets (resolves tenant by `slug`
+  query param, serves tenant logo or shared fallback) — safe to call from the public page.
+- **Academy name:** comes from the public registration responses (`/api/public/branches` and
+  `/api/public/registration/<branch_id>` both return `academy_name`), NOT from
+  `/api/tenant/branding`.
+  - **Why:** `/api/tenant/branding` is unauthenticated and returns far more than the name
+    (tax number, commercial reg, subscription metadata). Calling it from a fully public page
+    leaks that to anonymous visitors. Expose only the display name via the existing public
+    endpoints; reuse `get_current_tenant().name` server-side.
+
 ## Gotchas
 - Keep the sidebar nav `permission` and the App route `ProtectedRoute permission` in lockstep
   (both `invoices`), or staff see a menu item that the route denies.

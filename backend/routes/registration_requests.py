@@ -24,8 +24,16 @@ import uuid
 
 from database import db
 from utils.auth import get_current_user, require_branch_scope, resolve_branch_filter
+from utils.tenant import get_current_tenant
 
 router = APIRouter(tags=["RegistrationRequests"])
+
+
+def _academy_name() -> str:
+    """Public display name of the current tenant (resolved by middleware from
+    X-Tenant-Slug / subdomain). Only the name is exposed on public pages."""
+    t = get_current_tenant() or {}
+    return t.get("name", "") or ""
 
 # ============ MODELS ============
 
@@ -55,7 +63,7 @@ async def public_list_branches():
     branches = await db.branches.find(
         {}, {"_id": 0, "id": 1, "name": 1, "name_ar": 1}
     ).to_list(500)
-    return {"branches": branches}
+    return {"branches": branches, "academy_name": _academy_name()}
 
 
 @router.get("/public/registration/{branch_id}")
@@ -80,6 +88,7 @@ async def public_get_registration_branch(branch_id: str):
             "name_ar": branch.get("name_ar", ""),
         },
         "activities": activities,
+        "academy_name": _academy_name(),
     }
 
 
