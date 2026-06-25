@@ -12,15 +12,18 @@ activity, preferred days/time, notes).
 - **Branch-locked:** `/register/<tenant>/<branch_id>` — branch is FIXED to the link and
   shown read-only; the visitor cannot change it (requirement: "each link belongs to its
   branch only"). Branch is derived straight from the URL param, no local state.
-- **All-branches (social-media ad):** `/register/<tenant>?src=social` — NO branch in the
-  path, so the page fetches `/api/public/branches` and shows a required branch `<select>`
-  the visitor picks. `?src=social` is sent as `source` and the backend stores
-  `source='social_ad'` (whitelisted: only `social`/`social_ad` map to it, else `public_link`).
-  The admin RegistrationRequestsPage generates this link (copy + QR) and shows an "إعلان
-  سوشيال ميديا" badge on requests where `source==='social_ad'`.
-  - **Why:** App.js needs BOTH routes (`/register/:tenant` AND `/register/:tenant/:branchId`);
-    the branchId param is NOT optional in react-router here, so the bare-tenant route must be
-    declared explicitly or the social link 404s.
+- **All-branches (social-media ad):** short alias `/join/<tenant>` (preferred, cleaner for
+  social sharing) — legacy `/register/<tenant>?src=social` still works unchanged. NO branch in
+  the path, so the page fetches `/api/public/branches` and shows a required branch `<select>`
+  the visitor picks. Source is sent as `source`: the page detects the `/join/` pathname and
+  implicitly sets `source='social'` (no `?src` needed); the legacy link still passes `?src=social`.
+  Backend stores `source='social_ad'` (whitelisted: only `social`/`social_ad` map to it, else
+  `public_link`). The admin RegistrationRequestsPage generates the `/join/<tenant>` link
+  (copy + QR) and shows an "إعلان سوشيال ميديا" badge on requests where `source==='social_ad'`.
+  - **Why:** App.js needs ALL routes declared explicitly (`/register/:tenant`,
+    `/register/:tenant/:branchId`, AND `/join/:tenant`); params are NOT optional in
+    react-router here, so each shape must be its own `<Route>` or it 404s. `/join` must also
+    be in `ACADEMY_BYPASS_PREFIXES` (like `/register`) so the academy picker guard doesn't grab it.
 
 ## Key design decisions
 - Submissions land in collection `registration_requests` with `status=pending`. They are

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { useParams, useSearchParams } from 'react-router-dom';
+import { useParams, useSearchParams, useLocation } from 'react-router-dom';
 import axios from 'axios';
 import { API_URL } from '../config/api';
 import { Loader2, CheckCircle2, Calendar, Phone, User, Dumbbell, Flag, Building2 } from 'lucide-react';
@@ -20,9 +20,13 @@ const ACTIVITY_OPTIONS = ['السباحة', 'كرة قدم', 'كاراتيه', '
 export const PublicRegistrationPage = () => {
   const { tenantSlug, branchId } = useParams();
   const [searchParams] = useSearchParams();
+  const location = useLocation();
   const referralCode = (searchParams.get('ref') || '').trim();
   // Marks links shared in social-media ads so we can track their registrations.
-  const source = (searchParams.get('src') || '').trim().toLowerCase();
+  // The short /join/:tenant alias is implicitly a social link (no ?src needed);
+  // the legacy /register/:tenant?src=social link keeps working unchanged.
+  const isJoinRoute = location.pathname.startsWith('/join/') || location.pathname === '/join';
+  const source = (searchParams.get('src') || (isJoinRoute ? 'social' : '')).trim().toLowerCase();
   const [marketer, setMarketer] = useState(null);
   const [academyName, setAcademyName] = useState('');
 

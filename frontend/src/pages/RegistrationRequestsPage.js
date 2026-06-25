@@ -73,7 +73,7 @@ export const RegistrationRequestsPage = () => {
   // All-branches link tagged for social-media ads: the visitor picks the branch
   // and every request from it is tracked with source = "social_ad".
   const socialLink = useMemo(() => {
-    return `${window.location.origin}/register/${tenantSlug}?src=social`;
+    return `${window.location.origin}/join/${tenantSlug}`;
   }, [tenantSlug]);
 
   const copyText = async (text, emptyMsg) => {
