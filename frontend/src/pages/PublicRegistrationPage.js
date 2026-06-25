@@ -31,8 +31,9 @@ export const PublicRegistrationPage = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [branch, setBranch] = useState(null);
-  const [branches, setBranches] = useState([]);
-  const [selectedBranchId, setSelectedBranchId] = useState(branchId || '');
+  // Branch is fixed by the registration link — each link belongs to its branch only.
+  // Derived straight from the URL so it always follows the current link.
+  const selectedBranchId = branchId || '';
 
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
@@ -66,20 +67,6 @@ export const PublicRegistrationPage = () => {
     })();
     return () => { active = false; };
   }, [api, selectedBranchId]);
-
-  // Load all branches so the visitor can pick which branch to register at.
-  useEffect(() => {
-    let active = true;
-    (async () => {
-      try {
-        const res = await api.get('/api/public/branches');
-        if (active) setBranches(res.data.branches || []);
-      } catch (e) {
-        if (active) setBranches([]);
-      }
-    })();
-    return () => { active = false; };
-  }, [api]);
 
   // Resolve the referral code (if any) so we can show the special discount.
   useEffect(() => {
@@ -190,14 +177,10 @@ export const PublicRegistrationPage = () => {
             </div>
 
             <div className="space-y-1.5">
-              <label className="text-sm font-medium text-gray-700 flex items-center gap-1.5"><Building2 className="w-4 h-4" /> الفرع *</label>
-              <select value={selectedBranchId} onChange={(e) => setSelectedBranchId(e.target.value)}
-                className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500">
-                <option value="">اختر الفرع</option>
-                {branches.map((b) => (
-                  <option key={b.id} value={b.id}>{b.name_ar || b.name}</option>
-                ))}
-              </select>
+              <label className="text-sm font-medium text-gray-700 flex items-center gap-1.5"><Building2 className="w-4 h-4" /> الفرع</label>
+              <div className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm text-gray-700" data-testid="text-locked-branch">
+                {branchName || '—'}
+              </div>
             </div>
 
             <div className="space-y-1.5">

@@ -14,6 +14,8 @@ The React frontend is PRE-BUILT and served by the FastAPI backend from `backend/
 
 **Why:** without the restart the backend serves the cached old `index.html`. Without copying, the running server never sees the new build.
 
+**Do NOT poll a backgrounded build with `pgrep -f "craco build"`:** the poll loop's OWN shell command line contains the substring `craco build` (inside the pgrep pattern), so `pgrep -f` matches that shell and ALWAYS reports "running" — the loop never detects completion and you end up launching multiple concurrent builds that race and emit a STALE chunk (same content hash, edit missing). Run the build in the FOREGROUND of one bash call instead and read its exit code; the established working pattern is a single synchronous foreground `craco build` (let the bash tool time out if needed — a true foreground build survives the tool timeout, but `&`-backgrounded builds get SIGKILLed when the tool call returns normally). If you must check process liveness, track the real PID file or grep the build LOG for `Compiled`/`build folder is ready`, never `pgrep` a pattern that appears in your own command.
+
 **Verifying an edit actually landed in the bundle:**
 - Pages like `MembersPage.js` are CODE-SPLIT into hashed `chunk.js` files, NOT `main.*.js`. Grepping only `main.*.js` gives false negatives — search ALL of `build/static/js/*.js` (e.g. `grep -rl "text" build/static/js/`).
 - terser ESCAPES non-ASCII to `\uXXXX`, so Arabic string literals will NOT match a literal-Arabic grep. Verify using an ASCII substring of the edit instead.
