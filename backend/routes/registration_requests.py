@@ -147,10 +147,42 @@ async def public_create_registration(branch_id: str, payload: PublicRegistration
             doc["marketer_commission_percent"] = marketer.get("commission_percent", 0)
 
     await db.registration_requests.insert_one(doc)
+
+    # Notify admins (branch-scoped) that a new self-registration request arrived.
+    # Best-effort: a push failure must never break the public submission.
+    try:
+        from routes.push_notifications import send_push_to_admins, NotificationPayload
+        activity_txt = doc["activity_name"] or "بدون نشاط محدد"
+        payload = NotificationPayload(
+            title="طلب تسجيل جديد",
+            body=f"{name} — {activity_txt}",
+            url="/admin/registration-requests",
+            tag="registration-request",
+            title_en="New registration request",
+            body_en=f"{name} — {doc['activity_name'] or 'no activity'}",
+        )
+        await send_push_to_admins(payload, branch_id=branch_id)
+    except Exception:
+        pass
+
     return {"success": True, "message": "تم استلام طلب التسجيل بنجاح"}
 
 
 # ============ ADMIN ROUTES (auth + branch scope) ============
+
+@router.get("/registration-requests/count")
+async def count_pending_registration_requests(
+    branch_filter: Optional[str] = None,
+    current_user: dict = Depends(get_current_user),
+):
+    """Lightweight count of pending requests for the sidebar badge."""
+    query: dict = {"status": "pending"}
+    effective_branch = resolve_branch_filter(current_user, branch_filter)
+    if effective_branch:
+        query["branch_id"] = effective_branch
+    count = await db.registration_requests.count_documents(query)
+    return {"count": count}
+
 
 @router.get("/registration-requests")
 async def list_registration_requests(

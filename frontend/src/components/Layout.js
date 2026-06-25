@@ -7,7 +7,7 @@ import { useLanguage } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/AuthContext';
 import { Button } from './ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
-import { branchesAPI, notificationsAPI, levelsAPI, internalExpensesAPI } from '../services/api';
+import { branchesAPI, notificationsAPI, levelsAPI, internalExpensesAPI, registrationRequestsAPI } from '../services/api';
 import GlobalScanner from './GlobalScanner';
 import CameraQRScanner from './CameraQRScanner';
 import GlobalSearch from './GlobalSearch';
@@ -67,6 +67,7 @@ export const Sidebar = ({ isOpen, onClose }) => {
   const [branches, setBranches] = useState([]);
   const [unassignedCount, setUnassignedCount] = useState(0);
   const [pendingExpensesCount, setPendingExpensesCount] = useState(0);
+  const [pendingRequestsCount, setPendingRequestsCount] = useState(0);
 
   const isAdmin = user?.is_admin;
   const userPermissions = user?.permissions || [];
@@ -111,6 +112,23 @@ export const Sidebar = ({ isOpen, onClose }) => {
     const id = setInterval(loadPending, 60 * 1000);
     return () => clearInterval(id);
   }, [canApproveExpenses, selectedBranchId]);
+
+  useEffect(() => {
+    const canSeeRequests = isAdmin || (user?.permissions || []).includes('invoices');
+    if (!canSeeRequests) { setPendingRequestsCount(0); return; }
+    const loadRequests = async () => {
+      try {
+        const params = selectedBranchId && selectedBranchId !== 'all' ? { branch_filter: selectedBranchId } : {};
+        const res = await registrationRequestsAPI.getPendingCount(params);
+        setPendingRequestsCount(res.data?.count || 0);
+      } catch (e) {
+        // silent
+      }
+    };
+    loadRequests();
+    const id = setInterval(loadRequests, 60 * 1000);
+    return () => clearInterval(id);
+  }, [isAdmin, user?.permissions, selectedBranchId]);
 
   const loadBranches = async () => {
     try {
@@ -424,6 +442,15 @@ export const Sidebar = ({ isOpen, onClose }) => {
                           data-testid="sidebar-unassigned-badge"
                         >
                           {unassignedCount > 99 ? '99+' : unassignedCount}
+                        </span>
+                      )}
+                      {item.to === '/admin/registration-requests' && pendingRequestsCount > 0 && (
+                        <span
+                          className="ms-auto inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full bg-red-500 text-white text-[11px] font-bold"
+                          title={language === 'ar' ? 'طلبات تسجيل بانتظار المراجعة' : 'Registration requests pending review'}
+                          data-testid="sidebar-pending-requests-badge"
+                        >
+                          {pendingRequestsCount > 99 ? '99+' : pendingRequestsCount}
                         </span>
                       )}
                       {item.to === '/admin/accounting' && pendingExpensesCount > 0 && (
