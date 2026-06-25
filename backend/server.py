@@ -2441,6 +2441,72 @@ async def get_financial_report(
         "invoices": invoices[:50]  # Return last 50 invoices
     }
 
+@api_router.get("/reports/nationalities")
+async def get_nationalities_report(
+    branch_filter: Optional[str] = None,
+    current_user: dict = Depends(get_current_user)
+):
+    """Member count grouped by nationality per branch.
+
+    Admins see all branches (or a single one via ``branch_filter``); non-admins
+    are pinned to their own branch. Members without a stored nationality are
+    grouped under "غير محدد".
+    """
+    is_admin = current_user.get("is_admin", False)
+    user_branch = current_user.get("branch_id")
+
+    query = {}
+    if is_admin:
+        if branch_filter and branch_filter != "all":
+            query["branch_id"] = branch_filter
+    else:
+        # Non-admins are strictly pinned to their own branch. Fail closed if the
+        # token has no branch so it can never leak cross-branch member data.
+        if not user_branch:
+            raise HTTPException(status_code=403, detail="لا يوجد فرع مرتبط بالحساب")
+        query["branch_id"] = user_branch
+
+    members = await db.members.find(query, {"_id": 0, "nationality": 1, "branch_id": 1}).to_list(20000)
+
+    branches = await db.branches.find({}, {"_id": 0, "id": 1, "name": 1, "name_ar": 1}).to_list(1000)
+    branch_names = {b.get("id"): (b.get("name_ar") or b.get("name") or "") for b in branches}
+
+    UNSPEC = "غير محدد"
+    per_branch = {}
+    totals = {}
+    for m in members:
+        nat = (m.get("nationality") or "").strip() or UNSPEC
+        bid = m.get("branch_id") or ""
+        if bid not in per_branch:
+            per_branch[bid] = {}
+        per_branch[bid][nat] = per_branch[bid].get(nat, 0) + 1
+        totals[nat] = totals.get(nat, 0) + 1
+
+    branches_out = []
+    for bid, nat_counts in per_branch.items():
+        nat_list = sorted(
+            [{"nationality": n, "count": c} for n, c in nat_counts.items()],
+            key=lambda x: x["count"], reverse=True
+        )
+        branches_out.append({
+            "branch_id": bid,
+            "branch_name": branch_names.get(bid, "") or (UNSPEC if not bid else bid),
+            "total": sum(nat_counts.values()),
+            "nationalities": nat_list,
+        })
+    branches_out.sort(key=lambda x: x["total"], reverse=True)
+
+    totals_out = sorted(
+        [{"nationality": n, "count": c} for n, c in totals.items()],
+        key=lambda x: x["count"], reverse=True
+    )
+
+    return {
+        "branches": branches_out,
+        "totals_by_nationality": totals_out,
+        "total_members": len(members),
+    }
+
 @api_router.get("/reports/expiring-subscriptions")
 async def get_expiring_subscriptions(
     days: int = 7,
@@ -2783,7 +2849,7 @@ async def export_members(
             top=Side(style='thin'), bottom=Side(style='thin')
         )
         
-        headers = ["م", "الاسم", "العمر", "ولي الأمر", "الجوال", "البريد", "الأنشطة", "حالة الاشتراك", "تاريخ البداية", "تاريخ النهاية"]
+        headers = ["م", "الاسم", "العمر", "ولي الأمر", "الجنسية", "الجوال", "البريد", "الأنشطة", "حالة الاشتراك", "تاريخ البداية", "تاريخ النهاية"]
         for col, header in enumerate(headers, 1):
             cell = ws.cell(row=1, column=col, value=header)
             cell.fill = header_fill
@@ -2803,6 +2869,7 @@ async def export_members(
                 member.get("name_ar", ""),
                 member.get("age", ""),
                 member.get("guardian_name_ar", ""),
+                member.get("nationality", ""),
                 member.get("phone", ""),
                 member.get("email", ""),
                 activities_names,
@@ -2821,11 +2888,12 @@ async def export_members(
         ws.column_dimensions['C'].width = 8
         ws.column_dimensions['D'].width = 20
         ws.column_dimensions['E'].width = 15
-        ws.column_dimensions['F'].width = 25
+        ws.column_dimensions['F'].width = 15
         ws.column_dimensions['G'].width = 25
-        ws.column_dimensions['H'].width = 15
+        ws.column_dimensions['H'].width = 25
         ws.column_dimensions['I'].width = 15
         ws.column_dimensions['J'].width = 15
+        ws.column_dimensions['K'].width = 15
         
         # Save to bytes
         output = io.BytesIO()
@@ -2841,12 +2909,12 @@ async def export_members(
         # Create CSV
         output = io.StringIO()
         writer = csv.writer(output)
-        writer.writerow(["م", "الاسم", "العمر", "ولي الأمر", "الجوال", "البريد", "الأنشطة", "حالة الاشتراك"])
+        writer.writerow(["م", "الاسم", "العمر", "ولي الأمر", "الجنسية", "الجوال", "البريد", "الأنشطة", "حالة الاشتراك"])
         
         for idx, member in enumerate(members, 1):
             activities_list = ", ".join([a.get("activity_name", "") for a in member.get("activities", [])])
             statuses = ", ".join(["نشط" if a.get("status") == "active" else "منتهي" for a in member.get("activities", [])])
-            writer.writerow([idx, member.get("name_ar", ""), member.get("age", ""), member.get("guardian_name_ar", ""), member.get("phone", ""), member.get("email", ""), activities_list, statuses])
+            writer.writerow([idx, member.get("name_ar", ""), member.get("age", ""), member.get("guardian_name_ar", ""), member.get("nationality", ""), member.get("phone", ""), member.get("email", ""), activities_list, statuses])
         
         output.seek(0)
         response_content = '\ufeff' + output.getvalue()
@@ -3028,7 +3096,7 @@ async def export_members_pdf(
     elements.append(Paragraph("Champions Academy - Members Report", title_style))
     elements.append(Spacer(1, 10*mm))
 
-    headers = ["#", "Name", "Phone", "Activities", "Status", "Start Date", "End Date"]
+    headers = ["#", "Name", "Nationality", "Phone", "Activities", "Status", "Start Date", "End Date"]
     header_row = [Paragraph(h, header_style) for h in headers]
 
     data = [header_row]
@@ -3042,6 +3110,7 @@ async def export_members_pdf(
         row = [
             Paragraph(str(idx), cell_style),
             Paragraph(member.get("name_ar", member.get("name", "")), cell_style),
+            Paragraph(member.get("nationality", ""), cell_style),
             Paragraph(member.get("phone", ""), cell_style),
             Paragraph(activities_names, cell_style),
             Paragraph(statuses, cell_style),
@@ -3050,7 +3119,7 @@ async def export_members_pdf(
         ]
         data.append(row)
 
-    col_widths = [30, 120, 80, 150, 80, 80, 80]
+    col_widths = [30, 120, 80, 80, 140, 70, 75, 75]
     table = Table(data, colWidths=col_widths, repeatRows=1)
     table.setStyle(TableStyle([
         ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#F97316')),

@@ -269,6 +269,11 @@ export const reportsAPI = {
     if (branchFilter && branchFilter !== 'all') params.branch_filter = branchFilter;
     return axios.get(`${API}/reports/expiring-subscriptions`, { params });
   },
+  getNationalities: (branchFilter = null) => {
+    const params = {};
+    if (branchFilter && branchFilter !== 'all') params.branch_filter = branchFilter;
+    return axios.get(`${API}/reports/nationalities`, { params });
+  },
 };
 
 // Dashboard API

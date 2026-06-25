@@ -43,6 +43,7 @@ export const ReportsPage = () => {
   const { t, language } = useLanguage();
   const { selectedBranchId, isAdmin } = useAuth();
   const [report, setReport] = useState(null);
+  const [nationalitiesReport, setNationalitiesReport] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [activities, setActivities] = useState([]);
   const [branches, setBranches] = useState([]);
@@ -104,12 +105,14 @@ export const ReportsPage = () => {
       if (filters.start_date) filterParams.start_date = filters.start_date;
       if (filters.end_date) filterParams.end_date = filters.end_date;
       if (filters.activity_id !== 'all') filterParams.activity_id = filters.activity_id;
-      const [reportRes, activitiesRes] = await Promise.all([
+      const [reportRes, activitiesRes, nationalitiesRes] = await Promise.all([
         reportsAPI.getFinancial({ ...filterParams, ...branchParams }),
-        activitiesAPI.getAll()
+        activitiesAPI.getAll(),
+        reportsAPI.getNationalities(branchFilter).catch(() => ({ data: null }))
       ]);
       setReport(reportRes.data);
       setActivities(activitiesRes.data);
+      setNationalitiesReport(nationalitiesRes.data);
     } catch (error) {
       console.error('Failed to load report:', error);
     } finally {
@@ -771,6 +774,67 @@ export const ReportsPage = () => {
                 </tbody>
               </table>
             </div>
+          </CardContent>
+        </Card>
+
+        {/* Nationalities per branch */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <BarChart3 className="w-5 h-5 text-primary" />
+              {language === 'ar' ? 'الجنسيات حسب الفرع' : 'Nationalities by Branch'}
+              {nationalitiesReport && (
+                <Badge variant="secondary" className="ms-2">
+                  {language === 'ar'
+                    ? `إجمالي ${nationalitiesReport.total_members} عضو`
+                    : `${nationalitiesReport.total_members} members`}
+                </Badge>
+              )}
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {!nationalitiesReport || (nationalitiesReport.branches || []).length === 0 ? (
+              <div className="text-center py-8 text-muted-foreground">
+                {language === 'ar' ? 'لا توجد بيانات جنسيات بعد' : 'No nationality data yet'}
+              </div>
+            ) : (
+              <div className="space-y-6">
+                {nationalitiesReport.branches.map((b) => (
+                  <div key={b.branch_id || 'none'} className="border rounded-lg p-4">
+                    <div className="flex items-center justify-between mb-3">
+                      <h4 className="font-semibold text-base">
+                        {b.branch_name || (language === 'ar' ? 'غير محدد' : 'Unspecified')}
+                      </h4>
+                      <Badge variant="outline">
+                        {language === 'ar' ? `${b.total} عضو` : `${b.total} members`}
+                      </Badge>
+                    </div>
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="text-muted-foreground border-b">
+                            <th className="text-start py-2 px-2">{language === 'ar' ? 'الجنسية' : 'Nationality'}</th>
+                            <th className="text-start py-2 px-2">{language === 'ar' ? 'العدد' : 'Count'}</th>
+                            <th className="text-start py-2 px-2">{language === 'ar' ? 'النسبة' : 'Percentage'}</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {b.nationalities.map((n) => (
+                            <tr key={n.nationality} className="border-b last:border-0">
+                              <td className="py-2 px-2">{n.nationality}</td>
+                              <td className="py-2 px-2 font-medium">{n.count}</td>
+                              <td className="py-2 px-2 text-muted-foreground">
+                                {b.total ? Math.round((n.count / b.total) * 100) : 0}%
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>

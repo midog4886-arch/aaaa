@@ -78,6 +78,7 @@ export const MembersPage = () => {
   const [filterActivity, setFilterActivity] = useState('all');
   const [filterStatus, setFilterStatus] = useState('all');
   const [filterSchedule, setFilterSchedule] = useState('');
+  const [filterNationality, setFilterNationality] = useState('all');
   const [activityFilterOpen, setActivityFilterOpen] = useState(false);
   const [isPrintRangeOpen, setIsPrintRangeOpen] = useState(false);
   const [printFromDate, setPrintFromDate] = useState('');
@@ -161,6 +162,7 @@ export const MembersPage = () => {
     guardian_name_ar: '',
     phone: '',
     email: '',
+    nationality: '',
     notes: '',
     preferred_language: 'ar',
     activities: []
@@ -735,6 +737,7 @@ export const MembersPage = () => {
       guardian_name_ar: member.guardian_name_ar || '',
       phone: member.phone || '',
       email: member.email || '',
+      nationality: member.nationality || '',
       notes: member.notes || '',
       preferred_language: member.preferred_language || 'ar',
       activities: member.activities || []
@@ -972,6 +975,7 @@ export const MembersPage = () => {
       guardian_name_ar: '',
       phone: '',
       email: '',
+      nationality: '',
       notes: '',
       preferred_language: 'ar',
       activities: []
@@ -1401,9 +1405,16 @@ export const MembersPage = () => {
 
     const matchesSchedule = !filterSchedule ||
       member.activities?.some(a => (a.schedule || '') === filterSchedule);
+
+    const matchesNationality = filterNationality === 'all' ||
+      ((member.nationality || '').trim() || '__none__') === filterNationality;
     
-    return matchesSearch && matchesActivity && matchesStatus && matchesSchedule;
+    return matchesSearch && matchesActivity && matchesStatus && matchesSchedule && matchesNationality;
   });
+
+  const uniqueNationalities = [...new Set(
+    members.map(m => (m.nationality || '').trim()).filter(Boolean)
+  )].sort();
 
   if (loading) {
     return (
@@ -1557,6 +1568,20 @@ export const MembersPage = () => {
                 </Command>
               </PopoverContent>
             </Popover>
+
+            {/* Nationality filter */}
+            <select
+              value={filterNationality}
+              onChange={(e) => setFilterNationality(e.target.value)}
+              className="h-8 text-xs rounded-md border border-input bg-background px-2 max-w-[180px]"
+              data-testid="filter-nationality"
+            >
+              <option value="all">{language === 'ar' ? 'كل الجنسيات' : 'All nationalities'}</option>
+              {uniqueNationalities.map(n => (
+                <option key={n} value={n}>{n}</option>
+              ))}
+              <option value="__none__">{language === 'ar' ? 'بدون جنسية' : 'No nationality'}</option>
+            </select>
           </div>
           
           <div className="flex flex-wrap gap-2">
@@ -2078,6 +2103,17 @@ export const MembersPage = () => {
                     max="100"
                     placeholder={language === 'ar' ? 'العمر' : 'Age'}
                     data-testid="member-age-input"
+                  />
+                </div>
+                
+                {/* Nationality */}
+                <div className="space-y-2">
+                  <Label>{language === 'ar' ? 'الجنسية' : 'Nationality'}</Label>
+                  <Input
+                    value={formData.nationality || ''}
+                    onChange={(e) => setFormData({...formData, nationality: e.target.value})}
+                    placeholder={language === 'ar' ? 'الجنسية' : 'Nationality'}
+                    data-testid="member-nationality-input"
                   />
                 </div>
                 
