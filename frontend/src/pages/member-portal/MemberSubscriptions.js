@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
-import { CheckCircle, XCircle, Clock, Calendar, Loader2, ChevronLeft } from 'lucide-react';
-import MemberLayout, { memberAPI, getDarkMode } from './MemberLayout';
+import { CheckCircle, XCircle, Clock, Calendar, Loader2, ChevronLeft, Printer } from 'lucide-react';
+import MemberLayout, { memberAPI, getDarkMode, getMemberData } from './MemberLayout';
 
 const CoachCard = ({ name, photo, coachId, darkMode }) => {
   const [imgError, setImgError] = useState(false);
@@ -68,6 +68,67 @@ const MemberSubscriptions = () => {
     }
   };
 
+  const handlePrint = () => {
+    const printWindow = window.open('', '', 'width=900,height=700');
+    if (!printWindow) return;
+
+    const member = getMemberData() || {};
+    const esc = (s) => String(s == null ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+    const buildRows = (list, statusLabel, startIndex) => (list || []).map((sub, i) => `<tr>
+      <td>${startIndex + i + 1}</td>
+      <td>${esc(sub._owner_name) || esc(member.name_ar || member.name) || '-'}</td>
+      <td>${esc(sub.activity_name)}</td>
+      <td>${esc(sub.start_date) || '-'}</td>
+      <td>${esc(sub.end_date) || '-'}</td>
+      <td>${esc(sub.schedule) || '-'}</td>
+      <td>${esc(sub.coach_name) || '-'}</td>
+      <td>${statusLabel}</td>
+    </tr>`).join('');
+
+    const activeRows = buildRows(subscriptions.active, 'ساري', 0);
+    const expiredRows = buildRows(subscriptions.expired, 'منتهي', subscriptions.active?.length || 0);
+    const allRows = activeRows + expiredRows;
+    const emptyRow = `<tr><td colspan="8" style="text-align:center;color:#888;padding:16px;">لا توجد اشتراكات</td></tr>`;
+    const totalCount = (subscriptions.active?.length || 0) + (subscriptions.expired?.length || 0);
+
+    printWindow.document.write(`<html><head><title>كشف اشتراكاتي</title>
+      <style>
+        @import url('https://fonts.googleapis.com/css2?family=Tajawal:wght@400;700&display=swap');
+        body{font-family:'Tajawal',Arial;direction:rtl;padding:24px;color:#1f2937}
+        h1{color:#2563eb;text-align:center;margin:0 0 4px;font-size:20px}
+        .sub{text-align:center;color:#6b7280;font-size:13px;margin-bottom:18px}
+        .info{display:flex;flex-wrap:wrap;gap:8px 24px;background:#f9fafb;border:1px solid #eee;border-radius:8px;padding:14px 18px;margin-bottom:18px;font-size:13px}
+        .info div span{color:#6b7280}
+        table{width:100%;border-collapse:collapse}
+        th,td{border:1px solid #ddd;padding:9px;text-align:right;font-size:12px}
+        th{background:#2563eb;color:white}
+        tr:nth-child(even) td{background:#fafafa}
+        .footer{text-align:center;margin-top:24px;font-size:11px;color:#888}
+      </style></head><body>
+      <h1>شركة اداء الابطال العالمية للرياضة</h1>
+      <div class="sub">كشف اشتراكاتي</div>
+      <div class="info">
+        <div><span>الاسم:</span> ${esc(member.name_ar || member.name) || '-'}</div>
+        <div><span>كود العضو:</span> ${esc(member.member_code) || '-'}</div>
+        <div><span>الاشتراكات السارية:</span> ${subscriptions.active?.length || 0}</div>
+        <div><span>الاشتراكات المنتهية:</span> ${subscriptions.expired?.length || 0}</div>
+        <div><span>الإجمالي:</span> ${totalCount}</div>
+      </div>
+      <table>
+        <thead><tr>
+          <th>م</th><th>العضو</th><th>النشاط</th><th>تاريخ البداية</th><th>تاريخ النهاية</th>
+          <th>الموعد</th><th>المدرب</th><th>الحالة</th>
+        </tr></thead>
+        <tbody>${allRows || emptyRow}</tbody>
+      </table>
+      <div class="footer">تاريخ الطباعة: ${new Date().toLocaleDateString('ar-SA')}</div>
+      </body></html>`);
+    printWindow.document.close();
+    setTimeout(() => printWindow.print(), 400);
+  };
+
   if (loading) {
     return (
       <MemberLayout>
@@ -81,7 +142,16 @@ const MemberSubscriptions = () => {
   return (
     <MemberLayout>
       <div className="space-y-6 page-enter">
-        <h1 className={`text-xl sm:text-2xl font-bold ${darkMode ? 'text-gray-100' : 'text-gray-800'}`}>اشتراكاتي</h1>
+        <div className="flex items-center justify-between gap-3">
+          <h1 className={`text-xl sm:text-2xl font-bold ${darkMode ? 'text-gray-100' : 'text-gray-800'}`}>اشتراكاتي</h1>
+          <button
+            onClick={handlePrint}
+            className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold transition-colors ${darkMode ? 'bg-blue-900/40 text-blue-300 hover:bg-blue-900/60' : 'bg-blue-100 text-blue-700 hover:bg-blue-200'}`}
+          >
+            <Printer className="w-4 h-4" />
+            طباعة الكشف
+          </button>
+        </div>
 
         {/* Active Subscriptions */}
         <Card className={darkMode ? 'bg-gray-800 border-gray-700' : ''}>
