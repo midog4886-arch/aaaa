@@ -144,8 +144,24 @@ export const PublicRegistrationPage = () => {
     : (() => { const b = branches.find(x => x.id === pickedBranchId); return b ? (b.name_ar || b.name) : ''; })();
 
   return (
-    <div dir="rtl" className="min-h-screen bg-gradient-to-b from-emerald-50 to-white flex flex-col items-center py-8 px-4">
-      <div className="w-full max-w-md">
+    <div dir="rtl" className="relative min-h-screen overflow-hidden flex flex-col items-center py-8 px-4 bg-gradient-to-br from-emerald-50 via-white to-sky-50">
+      <style>{`
+        @keyframes pra-float-a { 0%,100% { transform: translate(0,0) scale(1); } 50% { transform: translate(24px,-30px) scale(1.08); } }
+        @keyframes pra-float-b { 0%,100% { transform: translate(0,0) scale(1); } 50% { transform: translate(-28px,26px) scale(1.1); } }
+        @keyframes pra-float-c { 0%,100% { transform: translate(0,0) scale(1); } 50% { transform: translate(18px,22px) scale(0.94); } }
+        @keyframes pra-rise { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: translateY(0); } }
+        .pra-rise { animation: pra-rise .6s ease-out both; }
+        @media (prefers-reduced-motion: reduce) {
+          .pra-blob, .pra-rise { animation: none !important; }
+        }
+      `}</style>
+      {/* Animated brand-color background (logo palette: emerald / blue / gold) */}
+      <div aria-hidden="true" className="pointer-events-none absolute inset-0 -z-0 overflow-hidden">
+        <div className="pra-blob absolute -top-24 -right-24 w-80 h-80 rounded-full bg-emerald-300/30 blur-3xl" style={{ animation: 'pra-float-a 14s ease-in-out infinite' }} />
+        <div className="pra-blob absolute top-1/3 -left-28 w-96 h-96 rounded-full bg-sky-300/25 blur-3xl" style={{ animation: 'pra-float-b 18s ease-in-out infinite' }} />
+        <div className="pra-blob absolute -bottom-28 right-1/4 w-80 h-80 rounded-full bg-amber-200/30 blur-3xl" style={{ animation: 'pra-float-c 16s ease-in-out infinite' }} />
+      </div>
+      <div className="relative z-10 w-full max-w-md pra-rise">
         <div className="text-center mb-6">
           <div className="mx-auto w-24 h-24 rounded-full bg-white shadow-lg ring-4 ring-emerald-100 flex items-center justify-center mb-4 overflow-hidden p-2">
             <img
@@ -180,7 +196,7 @@ export const PublicRegistrationPage = () => {
             <p className="text-sm text-gray-600">هيتم التواصل معاك قريبًا لاستكمال التسجيل. شكرًا لك.</p>
           </div>
         ) : (
-          <form onSubmit={handleSubmit} className="bg-white rounded-3xl shadow-lg border border-gray-100 p-6 space-y-4">
+          <form onSubmit={handleSubmit} className="bg-white/90 backdrop-blur-sm rounded-3xl shadow-lg border border-gray-100 p-6 space-y-4">
             <p className="text-sm text-gray-600 text-center mb-2">سجّل بيانات اللاعب وهنتواصل معاك لاستكمال الاشتراك.</p>
 
             {marketer && (
