@@ -8,7 +8,7 @@ import { Button } from '../components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { branchesAPI, registrationRequestsAPI } from '../services/api';
 import { toast } from 'sonner';
-import { Loader2, Phone, Calendar, Clock, Trash2, FileText, Link2, Copy, QrCode, Inbox, UserPlus, Globe, CheckCircle2 } from 'lucide-react';
+import { Loader2, Phone, Calendar, Clock, Trash2, FileText, Link2, Copy, QrCode, Inbox, UserPlus, Globe, CheckCircle2, Megaphone } from 'lucide-react';
 
 const STATUS_FILTERS = [
   { value: 'pending', label: 'قيد الانتظار' },
@@ -70,15 +70,23 @@ export const RegistrationRequestsPage = () => {
     return `${window.location.origin}/register/${tenantSlug}/${linkBranch}`;
   }, [linkBranch, tenantSlug]);
 
-  const copyLink = async () => {
-    if (!registrationLink) { toast.error('اختر الفرع أولاً'); return; }
+  // All-branches link tagged for social-media ads: the visitor picks the branch
+  // and every request from it is tracked with source = "social_ad".
+  const socialLink = useMemo(() => {
+    return `${window.location.origin}/register/${tenantSlug}?src=social`;
+  }, [tenantSlug]);
+
+  const copyText = async (text, emptyMsg) => {
+    if (!text) { toast.error(emptyMsg || 'لا يوجد رابط'); return; }
     try {
-      await navigator.clipboard.writeText(registrationLink);
+      await navigator.clipboard.writeText(text);
       toast.success('تم نسخ الرابط');
     } catch {
       toast.error('تعذّر النسخ');
     }
   };
+  const copyLink = () => copyText(registrationLink, 'اختر الفرع أولاً');
+  const copySocialLink = () => copyText(socialLink);
 
   const handleProcess = async (req) => {
     const daysTxt = (req.preferred_days || []).join('، ');
@@ -170,6 +178,28 @@ export const RegistrationRequestsPage = () => {
                   </div>
                 )}
               </div>
+
+              <div className="mt-5 pt-4 border-t border-dashed border-gray-200">
+                <div className="flex items-center gap-2 mb-1">
+                  <Megaphone className="w-4 h-4 text-indigo-600" />
+                  <h3 className="text-sm font-semibold text-indigo-700">رابط الإعلانات (سوشيال ميديا)</h3>
+                </div>
+                <p className="text-xs text-gray-500 mb-3">ضع هذا الرابط في إعلاناتك على السوشيال ميديا. يختار العميل الفرع بنفسه، وتظهر طلباته هنا بعلامة «إعلان سوشيال ميديا» لتعرف مصدرها.</p>
+                <div className="flex flex-col sm:flex-row gap-4 items-start">
+                  <div className="flex-1 w-full flex items-center gap-2">
+                    <input readOnly value={socialLink}
+                      className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-xs bg-gray-50" dir="ltr"
+                      data-testid="input-social-link" />
+                    <Button size="sm" onClick={copySocialLink} className="gap-1.5 shrink-0 bg-indigo-600 hover:bg-indigo-700" data-testid="button-copy-social-link">
+                      <Copy className="w-3.5 h-3.5" /> نسخ
+                    </Button>
+                  </div>
+                  <div className="bg-white p-3 rounded-lg border shrink-0 mx-auto">
+                    <QRCodeSVG value={socialLink} size={140} level="M" includeMargin={false} />
+                    <p className="text-[10px] text-center text-gray-400 mt-1 flex items-center justify-center gap-1"><QrCode className="w-3 h-3" /> امسح للتسجيل</p>
+                  </div>
+                </div>
+              </div>
             </CardContent>
           </Card>
         )}
@@ -220,6 +250,11 @@ export const RegistrationRequestsPage = () => {
                         {(() => { const b = STATUS_BADGE[req.status] || STATUS_BADGE.pending; return (
                           <span className={`text-[11px] rounded-full px-2 py-0.5 font-medium ${b.cls}`}>{b.label}</span>
                         ); })()}
+                        {req.source === 'social_ad' && (
+                          <span className="text-[11px] rounded-full px-2 py-0.5 font-medium bg-indigo-100 text-indigo-700 inline-flex items-center gap-1" data-testid={`badge-source-${req.id}`}>
+                            <Megaphone className="w-3 h-3" /> إعلان سوشيال ميديا
+                          </span>
+                        )}
                       </div>
                       <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-600">
                         <span className="flex items-center gap-1" dir="ltr"><Phone className="w-3.5 h-3.5" />{req.customer_phone}</span>

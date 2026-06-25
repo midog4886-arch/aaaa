@@ -5,8 +5,22 @@ description: How the public per-branch parent registration link works and why it
 
 # Public self-registration link
 
-Parents open a public, unauthenticated link `<domain>/register/<tenant_slug>/<branch_id>`
-and submit (child name, phone, requested activity, preferred days/time, notes).
+Parents open a public, unauthenticated link and submit (child name, phone, requested
+activity, preferred days/time, notes).
+
+## Two link shapes (both route to PublicRegistrationPage)
+- **Branch-locked:** `/register/<tenant>/<branch_id>` — branch is FIXED to the link and
+  shown read-only; the visitor cannot change it (requirement: "each link belongs to its
+  branch only"). Branch is derived straight from the URL param, no local state.
+- **All-branches (social-media ad):** `/register/<tenant>?src=social` — NO branch in the
+  path, so the page fetches `/api/public/branches` and shows a required branch `<select>`
+  the visitor picks. `?src=social` is sent as `source` and the backend stores
+  `source='social_ad'` (whitelisted: only `social`/`social_ad` map to it, else `public_link`).
+  The admin RegistrationRequestsPage generates this link (copy + QR) and shows an "إعلان
+  سوشيال ميديا" badge on requests where `source==='social_ad'`.
+  - **Why:** App.js needs BOTH routes (`/register/:tenant` AND `/register/:tenant/:branchId`);
+    the branchId param is NOT optional in react-router here, so the bare-tenant route must be
+    declared explicitly or the social link 404s.
 
 ## Key design decisions
 - Submissions land in collection `registration_requests` with `status=pending`. They are

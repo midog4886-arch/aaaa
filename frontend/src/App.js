@@ -281,6 +281,8 @@ function AppRoutes() {
       <Route path="/coach-qr/:coachId" element={<CoachQRPage />} />
 
       {/* Public per-branch self-registration */}
+      {/* All-branches (e.g. social-media ad) link: visitor picks the branch */}
+      <Route path="/register/:tenantSlug" element={<PublicRegistrationPage />} />
       <Route path="/register/:tenantSlug/:branchId" element={<PublicRegistrationPage />} />
 
       {/* Super-Admin (control plane) — outside main auth/permissions */}

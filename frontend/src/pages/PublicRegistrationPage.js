@@ -21,6 +21,8 @@ export const PublicRegistrationPage = () => {
   const { tenantSlug, branchId } = useParams();
   const [searchParams] = useSearchParams();
   const referralCode = (searchParams.get('ref') || '').trim();
+  // Marks links shared in social-media ads so we can track their registrations.
+  const source = (searchParams.get('src') || '').trim().toLowerCase();
   const [marketer, setMarketer] = useState(null);
 
   const api = useMemo(() => axios.create({
@@ -31,9 +33,13 @@ export const PublicRegistrationPage = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [branch, setBranch] = useState(null);
-  // Branch is fixed by the registration link — each link belongs to its branch only.
-  // Derived straight from the URL so it always follows the current link.
-  const selectedBranchId = branchId || '';
+  // When the link carries a branch (e.g. /register/:tenant/:branchId) the branch
+  // is fixed and locked to the link. When it doesn't (e.g. the all-branches
+  // social-media ad link) the visitor picks the branch from a list.
+  const hasFixedBranch = !!branchId;
+  const [branches, setBranches] = useState([]);
+  const [pickedBranchId, setPickedBranchId] = useState('');
+  const selectedBranchId = hasFixedBranch ? branchId : pickedBranchId;
 
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
@@ -53,9 +59,17 @@ export const PublicRegistrationPage = () => {
       setLoading(true);
       setError('');
       try {
-        const res = await api.get(`/api/public/registration/${selectedBranchId}`);
-        if (!active) return;
-        setBranch(res.data.branch);
+        if (hasFixedBranch) {
+          // Branch-locked link: load the single branch tied to the link.
+          const res = await api.get(`/api/public/registration/${branchId}`);
+          if (!active) return;
+          setBranch(res.data.branch);
+        } else {
+          // All-branches link: load the list so the visitor can pick a branch.
+          const res = await api.get('/api/public/branches');
+          if (!active) return;
+          setBranches(res.data.branches || []);
+        }
       } catch (e) {
         if (!active) return;
         setError(e?.response?.status === 404
@@ -66,7 +80,7 @@ export const PublicRegistrationPage = () => {
       }
     })();
     return () => { active = false; };
-  }, [api, selectedBranchId]);
+  }, [api, hasFixedBranch, branchId]);
 
   // Resolve the referral code (if any) so we can show the special discount.
   useEffect(() => {
@@ -108,6 +122,7 @@ export const PublicRegistrationPage = () => {
         preferred_time: time.trim(),
         notes: notes.trim(),
         referral_code: referralCode,
+        source,
       });
       setSubmitted(true);
     } catch (e) {
@@ -117,7 +132,9 @@ export const PublicRegistrationPage = () => {
     }
   };
 
-  const branchName = branch ? (branch.name_ar || branch.name) : '';
+  const branchName = hasFixedBranch
+    ? (branch ? (branch.name_ar || branch.name) : '')
+    : (() => { const b = branches.find(x => x.id === pickedBranchId); return b ? (b.name_ar || b.name) : ''; })();
 
   return (
     <div dir="rtl" className="min-h-screen bg-gradient-to-b from-emerald-50 to-white flex flex-col items-center py-8 px-4">
@@ -177,10 +194,21 @@ export const PublicRegistrationPage = () => {
             </div>
 
             <div className="space-y-1.5">
-              <label className="text-sm font-medium text-gray-700 flex items-center gap-1.5"><Building2 className="w-4 h-4" /> الفرع</label>
-              <div className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm text-gray-700" data-testid="text-locked-branch">
-                {branchName || '—'}
-              </div>
+              <label className="text-sm font-medium text-gray-700 flex items-center gap-1.5"><Building2 className="w-4 h-4" /> الفرع{hasFixedBranch ? '' : ' *'}</label>
+              {hasFixedBranch ? (
+                <div className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm text-gray-700" data-testid="text-locked-branch">
+                  {branchName || '—'}
+                </div>
+              ) : (
+                <select value={pickedBranchId} onChange={(e) => setPickedBranchId(e.target.value)}
+                  data-testid="select-branch"
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500">
+                  <option value="">اختر الفرع</option>
+                  {branches.map(b => (
+                    <option key={b.id} value={b.id}>{b.name_ar || b.name}</option>
+                  ))}
+                </select>
+              )}
             </div>
 
             <div className="space-y-1.5">

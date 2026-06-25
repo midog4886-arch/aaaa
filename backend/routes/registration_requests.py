@@ -39,6 +39,7 @@ class PublicRegistrationCreate(BaseModel):
     preferred_time: Optional[str] = ""
     notes: Optional[str] = ""
     referral_code: Optional[str] = ""
+    source: Optional[str] = ""
 
 class RegistrationRequestUpdate(BaseModel):
     status: str
@@ -122,7 +123,10 @@ async def public_create_registration(branch_id: str, payload: PublicRegistration
         "notes": (payload.notes or "").strip(),
         "branch_id": branch_id,
         "status": "pending",
-        "source": "public_link",
+        # Track where the request came from. "social_ad" = the all-branches
+        # link shared in social-media ads; anything else falls back to the
+        # normal public link so we never store arbitrary client-supplied values.
+        "source": "social_ad" if (payload.source or "").strip().lower() in ("social", "social_ad") else "public_link",
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
 
