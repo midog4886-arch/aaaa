@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { branchesAPI, registrationRequestsAPI } from '../services/api';
 import { getPublicBaseUrl } from '../utils/publicUrl';
 import { toast } from 'sonner';
-import { Loader2, Phone, Calendar, Clock, Trash2, FileText, Link2, Copy, QrCode, Inbox, UserPlus, Globe, CheckCircle2, Megaphone } from 'lucide-react';
+import { Loader2, Phone, Calendar, Clock, Trash2, FileText, Link2, Copy, QrCode, Inbox, UserPlus, Globe, CheckCircle2, Megaphone, Download } from 'lucide-react';
 
 const STATUS_FILTERS = [
   { value: 'pending', label: 'قيد الانتظار' },
@@ -88,6 +88,41 @@ export const RegistrationRequestsPage = () => {
   };
   const copyLink = () => copyText(registrationLink, 'اختر الفرع أولاً');
   const copySocialLink = () => copyText(socialLink);
+
+  // Render the QR SVG onto a padded white canvas and download it as a PNG so it
+  // can be dropped into printed flyers / social posts.
+  const downloadQRCode = (containerId, filename) => {
+    const svg = document.querySelector(`#${containerId} svg`);
+    if (!svg) { toast.error('تعذّر تجهيز رمز QR'); return; }
+    try {
+      const xml = new XMLSerializer().serializeToString(svg);
+      const svg64 = 'data:image/svg+xml;base64,' + window.btoa(unescape(encodeURIComponent(xml)));
+      const img = new Image();
+      const size = 140;
+      const pad = 16;
+      const scale = 4;
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        canvas.width = (size + pad * 2) * scale;
+        canvas.height = (size + pad * 2) * scale;
+        const ctx = canvas.getContext('2d');
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.drawImage(img, pad * scale, pad * scale, size * scale, size * scale);
+        const a = document.createElement('a');
+        a.href = canvas.toDataURL('image/png');
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        toast.success('تم تحميل رمز QR');
+      };
+      img.onerror = () => toast.error('تعذّر تحميل رمز QR');
+      img.src = svg64;
+    } catch {
+      toast.error('تعذّر تحميل رمز QR');
+    }
+  };
 
   const handleProcess = async (req) => {
     const daysTxt = (req.preferred_days || []).join('، ');
@@ -173,9 +208,14 @@ export const RegistrationRequestsPage = () => {
                   )}
                 </div>
                 {registrationLink && (
-                  <div className="bg-white p-3 rounded-lg border shrink-0 mx-auto">
-                    <QRCodeSVG value={registrationLink} size={140} level="M" includeMargin={false} />
+                  <div className="bg-white p-3 rounded-lg border shrink-0 mx-auto flex flex-col items-center">
+                    <div id="qr-registration">
+                      <QRCodeSVG value={registrationLink} size={140} level="M" includeMargin={false} />
+                    </div>
                     <p className="text-[10px] text-center text-gray-400 mt-1 flex items-center justify-center gap-1"><QrCode className="w-3 h-3" /> امسح للتسجيل</p>
+                    <Button size="sm" variant="outline" onClick={() => downloadQRCode('qr-registration', 'registration-qr.png')} className="gap-1.5 mt-2 w-full">
+                      <Download className="w-3.5 h-3.5" /> تحميل الرمز
+                    </Button>
                   </div>
                 )}
               </div>
@@ -195,9 +235,14 @@ export const RegistrationRequestsPage = () => {
                       <Copy className="w-3.5 h-3.5" /> نسخ
                     </Button>
                   </div>
-                  <div className="bg-white p-3 rounded-lg border shrink-0 mx-auto">
-                    <QRCodeSVG value={socialLink} size={140} level="M" includeMargin={false} />
+                  <div className="bg-white p-3 rounded-lg border shrink-0 mx-auto flex flex-col items-center">
+                    <div id="qr-social">
+                      <QRCodeSVG value={socialLink} size={140} level="M" includeMargin={false} />
+                    </div>
                     <p className="text-[10px] text-center text-gray-400 mt-1 flex items-center justify-center gap-1"><QrCode className="w-3 h-3" /> امسح للتسجيل</p>
+                    <Button size="sm" variant="outline" onClick={() => downloadQRCode('qr-social', 'social-qr.png')} className="gap-1.5 mt-2 w-full border-indigo-200 text-indigo-700 hover:bg-indigo-50">
+                      <Download className="w-3.5 h-3.5" /> تحميل الرمز
+                    </Button>
                   </div>
                 </div>
               </div>
