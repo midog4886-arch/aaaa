@@ -24,9 +24,13 @@ const cleanPhone = (raw) => {
   p = p.replace(/[\s\-()._]/g, '');
   if (p.startsWith('+')) p = p.slice(1);
   if (p.startsWith('00')) p = p.slice(2);
+  p = p.replace(/\D/g, '');
+  // Saudi: 05xxxxxxxx (10 digits) or bare 5xxxxxxxx (9) -> 9665xxxxxxxx
   if (p.startsWith('05') && p.length === 10) p = '966' + p.slice(1);
   else if (p.startsWith('5') && p.length === 9) p = '966' + p;
-  p = p.replace(/\D/g, '');
+  // Egyptian: 01xxxxxxxxx (11 digits) or bare 1xxxxxxxxx (10) -> 201xxxxxxxxx
+  else if (p.startsWith('01') && p.length === 11) p = '20' + p.slice(1);
+  else if (p.startsWith('1') && p.length === 10) p = '20' + p;
   return p;
 };
 
@@ -287,8 +291,8 @@ export default function WhatsAppBulkPage() {
           </CardHeader>
           <CardContent className="space-y-3">
             <p className="text-xs text-muted-foreground">
-              {t('انسخ عمود الأرقام (أو عمودي الاسم والرقم معًا) من إكسل والصقه هنا — يقبل الفاصل بين الأعمدة (Tab، فاصلة، فاصلة منقوطة). كل سطر = مستلم. الأرقام السعودية بصيغة 05xxxxxxxx تُحوَّل تلقائيًا إلى 9665xxxxxxxx.',
-                 'Paste a numbers column — or the name and number columns together — from Excel. Columns may be separated by Tab, comma or semicolon. Each line = one recipient. Saudi 05xxxxxxxx numbers are auto-converted to 9665xxxxxxxx.')}
+              {t('انسخ عمود الأرقام (أو عمودي الاسم والرقم معًا) من إكسل والصقه هنا — يقبل الفاصل بين الأعمدة (Tab، فاصلة، فاصلة منقوطة). كل سطر = مستلم. الأرقام السعودية بصيغة 05xxxxxxxx تُحوَّل تلقائيًا إلى 9665xxxxxxxx، والأرقام المصرية بصيغة 01xxxxxxxxx تُحوَّل إلى 201xxxxxxxxx.',
+                 'Paste a numbers column — or the name and number columns together — from Excel. Columns may be separated by Tab, comma or semicolon. Each line = one recipient. Saudi 05xxxxxxxx numbers are auto-converted to 9665xxxxxxxx, and Egyptian 01xxxxxxxxx numbers to 201xxxxxxxxx.')}
             </p>
             <Textarea
               value={pasteText}
