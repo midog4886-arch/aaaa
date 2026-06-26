@@ -21,7 +21,9 @@
 // v23: bump for personalized bulk WhatsApp (name+number paste, {الاسم} token).
 // v24: bump to drop "#" before membership number in customer prints & WhatsApp messages.
 // v25: bump to strip scanner-added "#" terminator from scanned member codes.
-const CACHE_NAME = 'gcsp-academy-v25';
+// v26: app icons (icon-*.png) regenerated from the new academy logo — bump so
+// the precached old icons are purged and the new ones are fetched on activate.
+const CACHE_NAME = 'gcsp-academy-v26';
 const OFFLINE_URL = '/offline.html';
 
 // Assets to cache immediately on install
