@@ -7,6 +7,7 @@ import { Card, CardContent } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { branchesAPI, registrationRequestsAPI } from '../services/api';
+import { getPublicBaseUrl } from '../utils/publicUrl';
 import { toast } from 'sonner';
 import { Loader2, Phone, Calendar, Clock, Trash2, FileText, Link2, Copy, QrCode, Inbox, UserPlus, Globe, CheckCircle2, Megaphone } from 'lucide-react';
 
@@ -67,13 +68,13 @@ export const RegistrationRequestsPage = () => {
 
   const registrationLink = useMemo(() => {
     if (!linkBranch) return '';
-    return `${window.location.origin}/register/${tenantSlug}/${linkBranch}`;
+    return `${getPublicBaseUrl()}/register/${tenantSlug}/${linkBranch}`;
   }, [linkBranch, tenantSlug]);
 
   // All-branches link tagged for social-media ads: the visitor picks the branch
   // and every request from it is tracked with source = "social_ad".
   const socialLink = useMemo(() => {
-    return `${window.location.origin}/join/${tenantSlug}`;
+    return `${getPublicBaseUrl()}/join/${tenantSlug}`;
   }, [tenantSlug]);
 
   const copyText = async (text, emptyMsg) => {

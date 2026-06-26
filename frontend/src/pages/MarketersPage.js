@@ -10,6 +10,7 @@ import { Badge } from '../components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '../components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { marketersAPI, branchesAPI } from '../services/api';
+import { getPublicBaseUrl } from '../utils/publicUrl';
 import { toast } from 'sonner';
 import {
   Loader2, Plus, Pencil, Trash2, Copy, Link2, Megaphone, Phone, Percent,
@@ -144,7 +145,7 @@ export const MarketersPage = () => {
   const referralLink = (m) => {
     const branchForLink = m.branch_id || linkBranchByMarketer[m.id] || (branches.length === 1 ? branches[0].id : '');
     if (!branchForLink) return '';
-    return `${window.location.origin}/register/${tenantSlug}/${branchForLink}?ref=${encodeURIComponent(m.referral_code)}`;
+    return `${getPublicBaseUrl()}/register/${tenantSlug}/${branchForLink}?ref=${encodeURIComponent(m.referral_code)}`;
   };
 
   const copyText = async (text, okMsg) => {
