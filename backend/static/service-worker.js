@@ -1,7 +1,7 @@
-const CACHE_NAME = 'gcsp-academy-v2';
-const STATIC_CACHE_NAME = 'gcsp-static-v2';
-const DYNAMIC_CACHE_NAME = 'gcsp-dynamic-v2';
-const API_CACHE_NAME = 'gcsp-api-v2';
+const CACHE_NAME = 'gcsp-academy-v3';
+const STATIC_CACHE_NAME = 'gcsp-static-v3';
+const DYNAMIC_CACHE_NAME = 'gcsp-dynamic-v3';
+const API_CACHE_NAME = 'gcsp-api-v3';
 
 // Static assets to cache on install
 const STATIC_ASSETS = [
