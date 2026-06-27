@@ -366,6 +366,8 @@ export const marketersAPI = {
   delete: (id) => axios.delete(`${API}/marketers/${id}`),
   commissions: (id) => axios.get(`${API}/marketers/${id}/commissions`),
   payout: (id, data) => axios.post(`${API}/marketers/${id}/payout`, data),
+  analytics: (params = {}) => axios.get(`${API}/marketers/analytics`, { params }),
+  portalToken: (id, regenerate = false) => axios.post(`${API}/marketers/${id}/portal-token`, null, { params: { regenerate } }),
 };
 
 export const branchesAPI = {

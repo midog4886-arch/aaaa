@@ -27,6 +27,7 @@ from typing import Optional
 from datetime import datetime, timezone
 import uuid
 import random
+import secrets
 import string
 
 from pymongo.errors import DuplicateKeyError
@@ -145,6 +146,25 @@ async def _commission_stats(marketer_ids: list) -> dict:
     return {r["_id"]: r for r in rows}
 
 
+def _generate_portal_token() -> str:
+    """A long, URL-safe random token that acts as the marketer's private portal
+    credential (the link itself is the secret)."""
+    return secrets.token_urlsafe(24)
+
+
+async def _ensure_portal_token(marketer: dict) -> str:
+    """Return the marketer's portal token, generating and persisting one the
+    first time it is needed (lazy backfill for marketers created before the
+    portal existed)."""
+    token = marketer.get("portal_token")
+    if token:
+        return token
+    token = _generate_portal_token()
+    await db.marketers.update_one({"id": marketer["id"]}, {"$set": {"portal_token": token}})
+    marketer["portal_token"] = token
+    return token
+
+
 async def _generate_voucher_number() -> str:
     year = datetime.now(timezone.utc).year
     counter_id = f"payment_vouchers_{year}"
@@ -167,6 +187,40 @@ async def public_get_marketer(code: str):
     if not marketer:
         raise HTTPException(status_code=404, detail="كود الإحالة غير صحيح")
     return marketer
+
+
+@router.get("/public/marketer-portal/{token}")
+async def public_marketer_portal(token: str):
+    """Read-only self-service portal data for a marketer, resolved by their
+    private portal token. Tenant resolved by middleware. No auth — the long
+    random token IS the credential."""
+    if not token or len(token) < 10:
+        raise HTTPException(status_code=404, detail="رابط البوابة غير صالح")
+    marketer = await db.marketers.find_one({"portal_token": token}, {"_id": 0})
+    if not marketer:
+        raise HTTPException(status_code=404, detail="رابط البوابة غير صالح")
+    stats = await _commission_stats([marketer["id"]])
+    s = stats.get(marketer["id"], {})
+    commissions = await db.marketer_commissions.find(
+        {"marketer_id": marketer["id"]}, {"_id": 0}
+    ).sort("created_at", -1).to_list(2000)
+    return {
+        "marketer": {
+            "name": marketer.get("name", ""),
+            "referral_code": marketer.get("referral_code", ""),
+            "discount_percent": marketer.get("discount_percent", 0),
+            "commission_percent": marketer.get("commission_percent", 0),
+            "status": marketer.get("status", "active"),
+            "branch_id": marketer.get("branch_id"),
+        },
+        "stats": {
+            "referrals": s.get("referrals", 0),
+            "total_commission": round(s.get("total_commission", 0), 2),
+            "due_amount": round(s.get("due_amount", 0), 2),
+            "paid_amount": round(s.get("paid_amount", 0), 2),
+        },
+        "commissions": commissions,
+    }
 
 
 # ============ ADMIN ROUTES ============
@@ -195,7 +249,104 @@ async def list_marketers(
         m["total_commission"] = round(s.get("total_commission", 0), 2)
         m["due_amount"] = round(s.get("due_amount", 0), 2)
         m["paid_amount"] = round(s.get("paid_amount", 0), 2)
+        m["portal_token"] = await _ensure_portal_token(m)
     return marketers
+
+
+@router.get("/marketers/analytics")
+async def marketers_analytics(
+    branch_filter: Optional[str] = None,
+    current_user: dict = Depends(get_current_user),
+):
+    """Aggregate marketing-performance analytics for the admin dashboard,
+    respecting the same branch scoping as the marketers list. Declared BEFORE
+    /marketers/{marketer_id} so the literal path wins the route match."""
+    await require_permission(current_user, PERMISSION_KEY)
+    query: dict = {}
+    effective_branch = resolve_branch_filter(current_user, branch_filter)
+    if effective_branch:
+        query["$or"] = [
+            {"branch_id": effective_branch},
+            {"branch_id": None},
+            {"branch_id": ""},
+            {"branch_id": {"$exists": False}},
+        ]
+
+    marketers = await db.marketers.find(query, {"_id": 0}).to_list(2000)
+    marketer_ids = [m["id"] for m in marketers]
+    active = sum(1 for m in marketers if m.get("status") != "inactive")
+    stats = await _commission_stats(marketer_ids)
+
+    total_referrals = sum(s.get("referrals", 0) for s in stats.values())
+    total_commission = round(sum(s.get("total_commission", 0) for s in stats.values()), 2)
+    total_due = round(sum(s.get("due_amount", 0) for s in stats.values()), 2)
+    total_paid = round(sum(s.get("paid_amount", 0) for s in stats.values()), 2)
+
+    top = []
+    for m in marketers:
+        s = stats.get(m["id"], {})
+        top.append({
+            "id": m["id"],
+            "name": m.get("name", ""),
+            "referral_code": m.get("referral_code", ""),
+            "referrals": s.get("referrals", 0),
+            "total_commission": round(s.get("total_commission", 0), 2),
+            "due_amount": round(s.get("due_amount", 0), 2),
+            "paid_amount": round(s.get("paid_amount", 0), 2),
+        })
+    top.sort(key=lambda x: (x["total_commission"], x["referrals"]), reverse=True)
+    top_marketers = top[:7]
+
+    # Monthly trend over the last 6 months, from commissions of in-scope marketers.
+    monthly_map = {}
+    if marketer_ids:
+        pipeline = [
+            {"$match": {"marketer_id": {"$in": marketer_ids}}},
+            {"$group": {
+                "_id": {"$substr": ["$created_at", 0, 7]},
+                "referrals": {"$sum": 1},
+                "commission": {"$sum": "$commission_amount"},
+            }},
+        ]
+        rows = await db.marketer_commissions.aggregate(pipeline).to_list(1000)
+        monthly_map = {r["_id"]: r for r in rows}
+
+    ar_months = ["", "يناير", "فبراير", "مارس", "أبريل", "مايو", "يونيو",
+                 "يوليو", "أغسطس", "سبتمبر", "أكتوبر", "نوفمبر", "ديسمبر"]
+    now = datetime.now(timezone.utc)
+    y, mo = now.year, now.month
+    seq = []
+    for _ in range(6):
+        seq.append((y, mo))
+        mo -= 1
+        if mo == 0:
+            mo = 12
+            y -= 1
+    seq.reverse()
+    monthly = []
+    for (yy, mm) in seq:
+        key = f"{yy}-{str(mm).zfill(2)}"
+        r = monthly_map.get(key, {})
+        monthly.append({
+            "month": key,
+            "label": f"{ar_months[mm]} {yy}",
+            "referrals": r.get("referrals", 0),
+            "commission": round(r.get("commission", 0), 2),
+        })
+
+    return {
+        "summary": {
+            "total_marketers": len(marketers),
+            "active_marketers": active,
+            "inactive_marketers": len(marketers) - active,
+            "total_referrals": total_referrals,
+            "total_commission": total_commission,
+            "total_due": total_due,
+            "total_paid": total_paid,
+        },
+        "top_marketers": top_marketers,
+        "monthly": monthly,
+    }
 
 
 @router.post("/marketers")
@@ -233,6 +384,7 @@ async def create_marketer(
         "status": "active",
         "notes": (data.notes or "").strip(),
         "branch_id": branch_id,
+        "portal_token": _generate_portal_token(),
         "created_by": current_user.get("name", current_user.get("username", "")),
         "created_at": now,
         "updated_at": now,
@@ -337,6 +489,29 @@ async def list_marketer_commissions(
         {"marketer_id": marketer_id}, {"_id": 0}
     ).sort("created_at", -1).to_list(5000)
     return commissions
+
+
+@router.post("/marketers/{marketer_id}/portal-token")
+async def marketer_portal_token(
+    marketer_id: str,
+    regenerate: bool = False,
+    current_user: dict = Depends(get_current_user),
+):
+    """Ensure (or rotate) the marketer's private portal token and return it.
+    Rotating invalidates any previously shared portal link."""
+    await require_permission(current_user, PERMISSION_KEY)
+    marketer = await db.marketers.find_one(_scoped_marketer_query(marketer_id, current_user), {"_id": 0})
+    if not marketer:
+        raise HTTPException(status_code=404, detail="المسوّق غير موجود")
+    if regenerate or not marketer.get("portal_token"):
+        token = _generate_portal_token()
+        await db.marketers.update_one(
+            {"id": marketer_id},
+            {"$set": {"portal_token": token, "updated_at": datetime.now(timezone.utc).isoformat()}},
+        )
+    else:
+        token = marketer["portal_token"]
+    return {"portal_token": token}
 
 
 @router.post("/marketers/{marketer_id}/payout")

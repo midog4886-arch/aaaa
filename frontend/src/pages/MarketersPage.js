@@ -14,8 +14,11 @@ import { getPublicBaseUrl } from '../utils/publicUrl';
 import { toast } from 'sonner';
 import {
   Loader2, Plus, Pencil, Trash2, Copy, Link2, Megaphone, Phone, Percent,
-  BadgeDollarSign, Wallet, Users, ChevronDown, ChevronUp, Receipt,
+  BadgeDollarSign, Wallet, Users, ChevronDown, ChevronUp, Receipt, ExternalLink,
 } from 'lucide-react';
+import {
+  ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, Legend,
+} from 'recharts';
 
 const PAYMENT_METHODS = [
   { value: 'cash', label: 'نقداً' },
@@ -24,6 +27,84 @@ const PAYMENT_METHODS = [
 ];
 
 const emptyForm = { name: '', phone: '', referral_code: '', discount_percent: '', commission_percent: '', branch_id: '', notes: '' };
+
+const AnalyticsDashboard = ({ analytics, loading }) => {
+  if (loading) return <div className="flex justify-center py-20"><Loader2 className="w-7 h-7 animate-spin text-primary" /></div>;
+  if (!analytics) return null;
+  const s = analytics.summary || {};
+  const monthly = analytics.monthly || [];
+  const top = analytics.top_marketers || [];
+  const cards = [
+    { label: 'إجمالي المسوّقين', value: s.total_marketers || 0, icon: Megaphone, color: 'text-blue-500' },
+    { label: 'المسوّقون النشطون', value: s.active_marketers || 0, icon: Users, color: 'text-emerald-500' },
+    { label: 'إجمالي الإحالات', value: s.total_referrals || 0, icon: Users, color: 'text-indigo-500' },
+    { label: 'إجمالي العمولات (ر.س)', value: (s.total_commission || 0).toFixed(2), icon: BadgeDollarSign, color: 'text-slate-500' },
+    { label: 'عمولات مستحقة (ر.س)', value: (s.total_due || 0).toFixed(2), icon: Wallet, color: 'text-amber-500' },
+    { label: 'عمولات مدفوعة (ر.س)', value: (s.total_paid || 0).toFixed(2), icon: BadgeDollarSign, color: 'text-emerald-600' },
+  ];
+  return (
+    <div className="space-y-5">
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+        {cards.map((c, i) => (
+          <Card key={i}><CardContent className="p-4 flex items-center gap-3">
+            <c.icon className={`w-7 h-7 ${c.color}`} />
+            <div><p className="text-xl font-bold">{c.value}</p><p className="text-xs text-muted-foreground">{c.label}</p></div>
+          </CardContent></Card>
+        ))}
+      </div>
+
+      <Card><CardContent className="p-4">
+        <h3 className="font-bold mb-3 text-sm">الإحالات والعمولات — آخر 6 أشهر</h3>
+        <div style={{ width: '100%', height: 280 }}>
+          <ResponsiveContainer>
+            <BarChart data={monthly} margin={{ top: 5, right: 5, left: 5, bottom: 5 }}>
+              <CartesianGrid strokeDasharray="3 3" vertical={false} />
+              <XAxis dataKey="label" tick={{ fontSize: 11 }} />
+              <YAxis yAxisId="left" tick={{ fontSize: 11 }} allowDecimals={false} />
+              <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 11 }} />
+              <Tooltip />
+              <Legend />
+              <Bar yAxisId="left" dataKey="referrals" name="الإحالات" fill="#3b82f6" radius={[4, 4, 0, 0]} />
+              <Bar yAxisId="right" dataKey="commission" name="العمولات (ر.س)" fill="#10b981" radius={[4, 4, 0, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+      </CardContent></Card>
+
+      <Card><CardContent className="p-4">
+        <h3 className="font-bold mb-3 text-sm">أفضل المسوّقين</h3>
+        {top.length === 0 ? (
+          <p className="text-sm text-muted-foreground text-center py-6">لا توجد بيانات بعد.</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead><tr className="text-muted-foreground border-b">
+                <th className="text-start py-2 font-medium">#</th>
+                <th className="text-start py-2 font-medium">المسوّق</th>
+                <th className="text-start py-2 font-medium">الإحالات</th>
+                <th className="text-start py-2 font-medium">إجمالي العمولات</th>
+                <th className="text-start py-2 font-medium">مستحق</th>
+                <th className="text-start py-2 font-medium">مدفوع</th>
+              </tr></thead>
+              <tbody>
+                {top.map((m, i) => (
+                  <tr key={m.id} className="border-b last:border-0">
+                    <td className="py-2">{i + 1}</td>
+                    <td className="py-2 font-medium">{m.name} <span className="font-mono text-xs text-muted-foreground">{m.referral_code}</span></td>
+                    <td className="py-2">{m.referrals}</td>
+                    <td className="py-2 font-semibold">{(m.total_commission || 0).toFixed(2)}</td>
+                    <td className="py-2 text-amber-600">{(m.due_amount || 0).toFixed(2)}</td>
+                    <td className="py-2 text-emerald-600">{(m.paid_amount || 0).toFixed(2)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </CardContent></Card>
+    </div>
+  );
+};
 
 export const MarketersPage = () => {
   const { user } = useAuth();
@@ -35,6 +116,11 @@ export const MarketersPage = () => {
   const [loading, setLoading] = useState(true);
   const [marketers, setMarketers] = useState([]);
   const [branches, setBranches] = useState([]);
+
+  // Tabs: list (manage marketers) | analytics (admin dashboard)
+  const [activeTab, setActiveTab] = useState('list');
+  const [analytics, setAnalytics] = useState(null);
+  const [analyticsLoading, setAnalyticsLoading] = useState(false);
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState(null);
@@ -54,6 +140,7 @@ export const MarketersPage = () => {
 
   const loadData = async () => {
     setLoading(true);
+    setAnalytics(null);
     try {
       const [mRes, bRes] = await Promise.all([
         marketersAPI.getAll(),
@@ -69,6 +156,15 @@ export const MarketersPage = () => {
   };
 
   useEffect(() => { loadData(); }, []);
+
+  useEffect(() => {
+    if (activeTab !== 'analytics' || analytics) return;
+    setAnalyticsLoading(true);
+    marketersAPI.analytics()
+      .then((res) => setAnalytics(res.data))
+      .catch(() => toast.error('تعذّر تحميل التحليلات'))
+      .finally(() => setAnalyticsLoading(false));
+  }, [activeTab, analytics]);
 
   const branchName = (id) => {
     if (!id) return 'كل الفروع';
@@ -154,6 +250,20 @@ export const MarketersPage = () => {
     catch { toast.error('تعذّر النسخ'); }
   };
 
+  const portalLink = (m) => (m.portal_token ? `${getPublicBaseUrl()}/marketer/${tenantSlug}/${m.portal_token}` : '');
+
+  const copyPortalLink = async (m) => {
+    let link = portalLink(m);
+    if (!link) {
+      try {
+        const res = await marketersAPI.portalToken(m.id);
+        link = `${getPublicBaseUrl()}/marketer/${tenantSlug}/${res.data.portal_token}`;
+        setMarketers(prev => prev.map(x => x.id === m.id ? { ...x, portal_token: res.data.portal_token } : x));
+      } catch { toast.error('تعذّر إنشاء رابط البوابة'); return; }
+    }
+    copyText(link, 'تم نسخ رابط البوابة الخاص بالمسوّق');
+  };
+
   const toggleExpand = async (m) => {
     if (expandedId === m.id) { setExpandedId(null); return; }
     setExpandedId(m.id);
@@ -215,11 +325,32 @@ export const MarketersPage = () => {
               <p className="text-sm text-muted-foreground">إدارة المسوّقين وروابط الإحالة والعمولات</p>
             </div>
           </div>
-          <Button onClick={openCreate} data-testid="button-add-marketer">
-            <Plus className="w-4 h-4 ms-1" /> إضافة مسوّق
-          </Button>
+          {activeTab === 'list' && (
+            <Button onClick={openCreate} data-testid="button-add-marketer">
+              <Plus className="w-4 h-4 ms-1" /> إضافة مسوّق
+            </Button>
+          )}
         </div>
 
+        {/* Tabs */}
+        <div className="flex items-center gap-1 bg-muted rounded-lg p-1 w-fit">
+          <button
+            onClick={() => setActiveTab('list')}
+            className={`px-4 py-1.5 rounded-md text-sm font-medium transition ${activeTab === 'list' ? 'bg-background shadow-sm' : 'text-muted-foreground'}`}
+            data-testid="tab-marketers-list"
+          >المسوّقون</button>
+          <button
+            onClick={() => setActiveTab('analytics')}
+            className={`px-4 py-1.5 rounded-md text-sm font-medium transition ${activeTab === 'analytics' ? 'bg-background shadow-sm' : 'text-muted-foreground'}`}
+            data-testid="tab-marketers-analytics"
+          >لوحة التحليلات</button>
+        </div>
+
+        {activeTab === 'analytics' && (
+          <AnalyticsDashboard analytics={analytics} loading={analyticsLoading} />
+        )}
+
+        {activeTab === 'list' && (<>
         {/* Summary cards */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <Card><CardContent className="p-4 flex items-center gap-3">
@@ -287,6 +418,9 @@ export const MarketersPage = () => {
                         <Button variant="outline" size="sm" onClick={() => copyText(referralLink(m), 'تم نسخ رابط الإحالة')}>
                           <Link2 className="w-3.5 h-3.5 ms-1" /> نسخ رابط التسجيل
                         </Button>
+                        <Button variant="outline" size="sm" onClick={() => copyPortalLink(m)} data-testid={`button-portal-${m.id}`}>
+                          <ExternalLink className="w-3.5 h-3.5 ms-1" /> رابط البوابة
+                        </Button>
                       </div>
                     </div>
 
@@ -353,6 +487,7 @@ export const MarketersPage = () => {
             ))}
           </div>
         )}
+        </>)}
       </div>
 
       {/* Create / Edit dialog */}

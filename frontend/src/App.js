@@ -69,6 +69,7 @@ const AttendancePage = lazy(() => import('./pages/AttendancePage'));
 const TodayAttendancePage = lazy(() => import('./pages/TodayAttendancePage'));
 const ScannerStationPage = lazy(() => import('./pages/ScannerStationPage'));
 const MarketersPage = lazy(() => import('./pages/MarketersPage'));
+const MarketerPortalPage = lazy(() => import('./pages/MarketerPortalPage'));
 const LevelsBoardPage = lazy(() => import('./pages/LevelsBoardPage'));
 const SchedulePage = lazy(() => import('./pages/SchedulePage'));
 const UnauthorizedPage = lazy(() => import('./pages/UnauthorizedPage'));
@@ -240,7 +241,7 @@ const PublicRoute = ({ children }) => {
   return children;
 };
 
-const ACADEMY_BYPASS_PREFIXES = ['/academy-picker', '/super', '/admin', '/login', '/privacy', '/terms', '/refund-policy', '/signup', '/coach-qr', '/register', '/join'];
+const ACADEMY_BYPASS_PREFIXES = ['/academy-picker', '/super', '/admin', '/login', '/privacy', '/terms', '/refund-policy', '/signup', '/coach-qr', '/register', '/join', '/marketer'];
 
 const AcademyGuard = ({ children }) => {
   const location = useLocation();
@@ -286,6 +287,9 @@ function AppRoutes() {
       <Route path="/register/:tenantSlug/:branchId" element={<PublicRegistrationPage />} />
       {/* Short, clean alias for the social-media link (auto-tagged source=social) */}
       <Route path="/join/:tenantSlug" element={<PublicRegistrationPage />} />
+
+      {/* Private marketer self-service portal (the token is the credential) */}
+      <Route path="/marketer/:tenantSlug/:token" element={<MarketerPortalPage />} />
 
       {/* Super-Admin (control plane) — outside main auth/permissions */}
       <Route path="/super" element={<Navigate to="/super/tenants" replace />} />
