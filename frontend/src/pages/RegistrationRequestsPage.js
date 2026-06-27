@@ -124,7 +124,7 @@ export const RegistrationRequestsPage = () => {
     }
   };
 
-  const handleProcess = async (req) => {
+  const storePrefill = (req) => {
     const daysTxt = (req.preferred_days || []).join('، ');
     const noteLines = [];
     if (req.activity_name) noteLines.push(`النشاط المطلوب: ${req.activity_name}`);
@@ -144,6 +144,10 @@ export const RegistrationRequestsPage = () => {
       marketer_discount_percent: req.marketer_discount_percent || 0,
     };
     try { sessionStorage.setItem('prefill_registration', JSON.stringify(prefill)); } catch {}
+  };
+
+  const handleProcess = async (req) => {
+    storePrefill(req);
     try {
       await registrationRequestsAPI.updateStatus(req.id, 'processed');
       if (statusFilter === 'pending') {
@@ -154,6 +158,14 @@ export const RegistrationRequestsPage = () => {
     } catch {
       toast.error('تعذّر تحديث حالة الطلب');
     }
+    navigate('/admin/invoices');
+  };
+
+  // Re-open the invoice dialog for an already-"processed" request. The status is set
+  // optimistically when the button is first clicked, so a request can be marked
+  // processed without an invoice ever being created — this lets staff complete it.
+  const handleCreateInvoice = (req) => {
+    storePrefill(req);
     navigate('/admin/invoices');
   };
 
@@ -314,9 +326,14 @@ export const RegistrationRequestsPage = () => {
                     </div>
                     <div className="flex flex-col gap-2 shrink-0">
                       {req.status === 'processed' ? (
-                        <span className="inline-flex items-center gap-1.5 text-emerald-600 text-xs font-medium px-2 py-1.5">
-                          <CheckCircle2 className="w-4 h-4" /> تمت المعالجة
-                        </span>
+                        <>
+                          <span className="inline-flex items-center gap-1.5 text-emerald-600 text-xs font-medium px-2 py-0.5">
+                            <CheckCircle2 className="w-4 h-4" /> تمت المعالجة
+                          </span>
+                          <Button size="sm" variant="outline" onClick={() => handleCreateInvoice(req)} className="gap-1.5 border-emerald-300 text-emerald-700 hover:bg-emerald-50">
+                            <UserPlus className="w-3.5 h-3.5" /> إنشاء فاتورة
+                          </Button>
+                        </>
                       ) : (
                         <Button size="sm" onClick={() => handleProcess(req)} className="gap-1.5 bg-emerald-600 hover:bg-emerald-700">
                           <UserPlus className="w-3.5 h-3.5" /> معالجة وإنشاء فاتورة
