@@ -56,6 +56,12 @@ export const useInvoiceActions = ({ loadData, language, t, isAdmin, getBranchNam
         toast.success(t('success'));
       }
       loadData();
+      // Reflect the paid status in the currently open view dialog so staff can send
+      // a "paid" WhatsApp receipt without closing and reopening the invoice.
+      setSelectedInvoice(prev => (prev && prev.id === id)
+        ? { ...prev, status: 'paid', paid_at: new Date().toISOString() }
+        : prev);
+      loadQRCode(id, 'paid');
     } catch { toast.error(t('error')); }
   };
 
