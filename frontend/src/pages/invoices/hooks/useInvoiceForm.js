@@ -57,6 +57,11 @@ export const useInvoiceForm = ({
   const [appliedCoupon, setAppliedCoupon] = useState(null);
   const [couponDiscount, setCouponDiscount] = useState(0);
   const [validatingCoupon, setValidatingCoupon] = useState(false);
+  // Marketer (affiliate) discount carried in from a referred registration. Shown
+  // and applied live in the dialog so the staff sees it BEFORE saving (the backend
+  // also resolves it, but it respects an already-sent discount so no double-apply).
+  const [marketerDiscountPercent, setMarketerDiscountPercent] = useState(0);
+  const [marketerName, setMarketerName] = useState('');
   const [itemType, setItemType] = useState('activity');
   const [feeEditUnlocked, setFeeEditUnlocked] = useState(false);
   const [additionalMembers, setAdditionalMembers] = useState([]);
@@ -126,9 +131,15 @@ export const useInvoiceForm = ({
     const subtotal = primarySubtotal + additionalSubtotal;
     const vatAmount = Math.round(subtotal * (COMPANY_INFO.vat_rate / 100) * 100) / 100;
     const totalBeforeDiscount = Math.round((subtotal + vatAmount) * 100) / 100;
-    const totalDiscount = couponDiscount;
+    // Marketer discount is computed on the subtotal (matching the backend formula)
+    // and only when no coupon is applied — the backend respects a manual/coupon
+    // discount and won't stack the marketer discount on top of it.
+    const marketerDiscount = (couponDiscount > 0 || !marketerDiscountPercent)
+      ? 0
+      : Math.round(subtotal * marketerDiscountPercent / 100 * 100) / 100;
+    const totalDiscount = Math.round((couponDiscount + marketerDiscount) * 100) / 100;
     const total = Math.max(Math.round((totalBeforeDiscount - totalDiscount) * 100) / 100, 0);
-    return { subtotal, vatAmount, totalBeforeDiscount, totalDiscount, total };
+    return { subtotal, vatAmount, totalBeforeDiscount, totalDiscount, marketerDiscount, total };
   };
 
   const handleMemberSelect = (memberId) => {
@@ -292,7 +303,7 @@ export const useInvoiceForm = ({
     const hasUnacceptedFullLevel = Object.values(levelCapacityWarnings).some(w => w.isFull && !w.isAccepted);
     if (hasUnacceptedFullLevel) { toast.error(language === 'ar' ? 'يوجد مستوى مكتمل العدد، يرجى الموافقة أو اختيار مستوى آخر.' : 'A selected level is full, please accept or choose another level.'); return; }
     setSaving(true);
-    const totalDiscount = couponDiscount;
+    const { totalDiscount } = calculateTotals();
     try {
       if (isEditMode && editingInvoiceId) {
         await invoicesAPI.update(editingInvoiceId, {
@@ -344,16 +355,17 @@ export const useInvoiceForm = ({
   const closeCreateDialog = () => {
     setIsCreateDialogOpen(false); setSelectedMember(null); setInvoiceItems([]); setDiscount(0); setNotes(''); setPaymentMethod('card');
     setCustomerNameAr(''); setCustomerPhone(''); setCustomerAddress(''); setIsEditMode(false); setEditingInvoiceId(null);
-    setCouponCode(''); setAppliedCoupon(null); setCouponDiscount(0); setItemType('activity'); setFeeEditUnlocked(false);
+    setCouponCode(''); setAppliedCoupon(null); setCouponDiscount(0); setMarketerDiscountPercent(0); setMarketerName(''); setItemType('activity'); setFeeEditUnlocked(false);
     setAdditionalMembers([]); setAdditionalMemberNewForm({ show: false, index: -1, data: { name_ar: '', name: '', age: '', guardian_name_ar: '', guardian_name: '', phone: '' } });
   };
 
-  const { subtotal, vatAmount, totalBeforeDiscount, totalDiscount, total } = calculateTotals();
+  const { subtotal, vatAmount, totalBeforeDiscount, totalDiscount, marketerDiscount, total } = calculateTotals();
 
   return {
     isCreateDialogOpen, setIsCreateDialogOpen, isEditMode, editingInvoiceId, selectedMember, setSelectedMember,
     invoiceItems, setInvoiceItems, discount, setDiscount, notes, setNotes, paymentMethod, setPaymentMethod,
     saving, setSaving, couponCode, setCouponCode, appliedCoupon, setAppliedCoupon, couponDiscount, setCouponDiscount,
+    marketerDiscountPercent, setMarketerDiscountPercent, marketerName, setMarketerName, marketerDiscount,
     validatingCoupon, itemType, setItemType, feeEditUnlocked, setFeeEditUnlocked,
     additionalMembers, setAdditionalMembers, additionalMemberNewForm, setAdditionalMemberNewForm,
     levelCapacityWarnings, setLevelCapacityWarnings, levelSelectorState, setLevelSelectorState,

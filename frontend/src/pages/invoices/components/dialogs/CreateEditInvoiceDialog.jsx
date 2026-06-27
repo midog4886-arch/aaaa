@@ -113,6 +113,7 @@ export const CreateEditInvoiceDialog = ({
   couponCode, setCouponCode,
   appliedCoupon, setAppliedCoupon,
   couponDiscount, setCouponDiscount,
+  marketerDiscount = 0, marketerDiscountPercent = 0, marketerName = '',
   validatingCoupon,
   notes, setNotes,
   subtotal, vatAmount, total,
@@ -935,6 +936,7 @@ export const CreateEditInvoiceDialog = ({
               <div className="flex justify-between text-sm mb-2"><span>{t('subtotal')}</span><span>{subtotal.toFixed(2)} {t('sar')}</span></div>
               <div className="flex justify-between text-sm mb-2 text-green-600"><span>{language === 'ar' ? `ضريبة القيمة المضافة (${COMPANY_INFO.vat_rate}%)` : `VAT (${COMPANY_INFO.vat_rate}%)`}</span><span>{vatAmount.toFixed(2)} {t('sar')}</span></div>
               {couponDiscount > 0 && <div className="flex justify-between text-sm mb-2 text-purple-600"><span className="flex items-center gap-1"><Tag className="w-3 h-3" />{language === 'ar' ? 'خصم الكوبون' : 'Coupon Discount'} ({appliedCoupon?.code})</span><span>- {couponDiscount.toFixed(2)} {t('sar')}</span></div>}
+              {marketerDiscount > 0 && <div className="flex justify-between text-sm mb-2 text-orange-600"><span className="flex items-center gap-1"><Tag className="w-3 h-3" />{language === 'ar' ? `خصم المسوّق${marketerName ? ` (${marketerName})` : ''} ${marketerDiscountPercent}%` : `Marketer Discount${marketerName ? ` (${marketerName})` : ''} ${marketerDiscountPercent}%`}</span><span>- {marketerDiscount.toFixed(2)} {t('sar')}</span></div>}
               <div className="flex justify-between text-lg font-bold border-t pt-2"><span>{t('total')}</span><span className="text-primary">{total.toFixed(2)} {t('sar')}</span></div>
             </div>
           )}

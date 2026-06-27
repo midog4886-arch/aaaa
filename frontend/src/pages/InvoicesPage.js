@@ -165,7 +165,8 @@ export const InvoicesPage = () => {
 
   const { isCreateDialogOpen, setIsCreateDialogOpen, isEditMode, selectedMember, setSelectedMember, invoiceItems, setInvoiceItems,
     notes, setNotes, paymentMethod, setPaymentMethod, saving, setSaving, couponCode, setCouponCode, appliedCoupon, setAppliedCoupon,
-    couponDiscount, setCouponDiscount, validatingCoupon, itemType, setItemType, feeEditUnlocked, additionalMembers, setAdditionalMembers,
+    couponDiscount, setCouponDiscount, marketerDiscount, marketerDiscountPercent, setMarketerDiscountPercent, marketerName, setMarketerName,
+    validatingCoupon, itemType, setItemType, feeEditUnlocked, additionalMembers, setAdditionalMembers,
     additionalMemberNewForm, setAdditionalMemberNewForm, levelCapacityWarnings, levelSelectorState, customerNameAr, setCustomerNameAr,
     customerPhone, setCustomerPhone, customerAddress, setCustomerAddress, MAIN_ACTIVITIES_FOR_LEVELS, groupedLevelsForSelector, getGroupedLevelsForDays,
     parseActivityForLevel, subtotal, vatAmount, totalBeforeDiscount, totalDiscount, total, handleMemberSelect, addProductToInvoice,
@@ -225,6 +226,8 @@ export const InvoicesPage = () => {
     if (data.nationality) setNewMemberData((prev) => ({ ...prev, nationality: data.nationality }));
     if (data.notes) setNotes(data.notes);
     if (data.marketer_id) setPrefillMarketerId(data.marketer_id);
+    if (data.marketer_discount_percent) setMarketerDiscountPercent(Number(data.marketer_discount_percent) || 0);
+    if (data.marketer_name) setMarketerName(data.marketer_name);
     setIsCreateDialogOpen(true);
     const marketerNote = data.marketer_name
       ? (language === 'ar'
@@ -502,6 +505,7 @@ export const InvoicesPage = () => {
           couponCode={couponCode} setCouponCode={setCouponCode}
           appliedCoupon={appliedCoupon} setAppliedCoupon={setAppliedCoupon}
           couponDiscount={couponDiscount} setCouponDiscount={setCouponDiscount}
+          marketerDiscount={marketerDiscount} marketerDiscountPercent={marketerDiscountPercent} marketerName={marketerName}
           validatingCoupon={validatingCoupon} notes={notes} setNotes={setNotes}
           subtotal={subtotal} vatAmount={vatAmount} total={total}
           saving={saving} additionalMembers={additionalMembers} setAdditionalMembers={setAdditionalMembers}
