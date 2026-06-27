@@ -241,6 +241,8 @@ export const MarketersPage = () => {
   const referralLink = (m) => {
     const branchForLink = m.branch_id || linkBranchByMarketer[m.id] || (branches.length === 1 ? branches[0].id : '');
     if (!branchForLink) return '';
+    // "all" → the public all-branches link where the visitor picks their own branch.
+    if (branchForLink === 'all') return `${getPublicBaseUrl()}/register/${tenantSlug}?ref=${encodeURIComponent(m.referral_code)}`;
     return `${getPublicBaseUrl()}/register/${tenantSlug}/${branchForLink}?ref=${encodeURIComponent(m.referral_code)}`;
   };
 
@@ -408,6 +410,7 @@ export const MarketersPage = () => {
                           <Select value={linkBranchByMarketer[m.id] || ''} onValueChange={(v) => setLinkBranchByMarketer(prev => ({ ...prev, [m.id]: v }))}>
                             <SelectTrigger className="h-8 w-40 text-xs"><SelectValue placeholder="اختر فرع للرابط" /></SelectTrigger>
                             <SelectContent>
+                              <SelectItem value="all">كل الفروع</SelectItem>
                               {branches.map(b => <SelectItem key={b.id} value={b.id}>{b.name_ar || b.name}</SelectItem>)}
                             </SelectContent>
                           </Select>
