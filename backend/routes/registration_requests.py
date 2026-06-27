@@ -61,9 +61,20 @@ async def public_list_branches():
     visitor pick a branch. Tenant is resolved by the middleware from the
     X-Tenant-Slug header / subdomain."""
     branches = await db.branches.find(
-        {}, {"_id": 0, "id": 1, "name": 1, "name_ar": 1}
+        {}, {"_id": 0, "id": 1, "name": 1, "name_ar": 1, "public_name": 1}
     ).to_list(500)
-    return {"branches": branches, "academy_name": _academy_name()}
+    # Only expose a public-facing label. When a branch has a custom public_name we
+    # return it as the name so the internal branch name is never sent to the public
+    # page; otherwise we fall back to the normal branch name.
+    public_branches = []
+    for b in branches:
+        label = (b.get("public_name") or "").strip()
+        public_branches.append({
+            "id": b["id"],
+            "name": label or b.get("name") or "",
+            "name_ar": label or b.get("name_ar") or b.get("name") or "",
+        })
+    return {"branches": public_branches, "academy_name": _academy_name()}
 
 
 @router.get("/public/registration/{branch_id}")
@@ -71,7 +82,7 @@ async def public_get_registration_branch(branch_id: str):
     """Return the branch name and the activities available for that branch so
     the public form can present activity choices. Tenant is resolved by the
     middleware from the X-Tenant-Slug header / subdomain."""
-    branch = await db.branches.find_one({"id": branch_id}, {"_id": 0, "id": 1, "name": 1, "name_ar": 1})
+    branch = await db.branches.find_one({"id": branch_id}, {"_id": 0, "id": 1, "name": 1, "name_ar": 1, "public_name": 1})
     if not branch:
         raise HTTPException(status_code=404, detail="Branch not found")
 
@@ -81,11 +92,14 @@ async def public_get_registration_branch(branch_id: str):
         {"_id": 0, "id": 1, "name": 1, "name_ar": 1, "monthly_fee": 1}
     ).to_list(200)
 
+    # Expose only the public-facing label so the internal branch name is never
+    # sent to the public page; fall back to the normal name when no public_name.
+    _label = (branch.get("public_name") or "").strip()
     return {
         "branch": {
             "id": branch["id"],
-            "name": branch.get("name", ""),
-            "name_ar": branch.get("name_ar", ""),
+            "name": _label or branch.get("name", ""),
+            "name_ar": _label or branch.get("name_ar", "") or branch.get("name", ""),
         },
         "activities": activities,
         "academy_name": _academy_name(),

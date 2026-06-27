@@ -4,6 +4,7 @@ from typing import Optional, List
 class BranchBase(BaseModel):
     name: str
     name_ar: str
+    public_name: Optional[str] = ""
     phone: str
     manager_name: Optional[str] = ""
     manager_name_ar: Optional[str] = ""

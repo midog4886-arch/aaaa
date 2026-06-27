@@ -41,6 +41,7 @@ const BranchesPage = () => {
   
   const [formData, setFormData] = useState({
     name_ar: '',
+    public_name: '',
     phone: '',
     code_prefix: '',
     whatsapp_group_url: '',
@@ -82,6 +83,7 @@ const BranchesPage = () => {
       const dataToSend = {
         name: formData.name_ar,
         name_ar: formData.name_ar,
+        public_name: (formData.public_name || '').trim(),
         phone: formData.phone,
         manager_name: '',
         manager_name_ar: '',
@@ -128,6 +130,7 @@ const BranchesPage = () => {
     setEditingBranch(branch);
     setFormData({
       name_ar: branch.name_ar || branch.name || '',
+      public_name: branch.public_name || '',
       phone: branch.phone || '',
       code_prefix: branch.code_prefix || '',
       whatsapp_group_url: branch.whatsapp_group_url || '',
@@ -145,6 +148,7 @@ const BranchesPage = () => {
     setEditingBranch(null);
     setFormData({
       name_ar: '',
+      public_name: '',
       phone: '',
       code_prefix: '',
       whatsapp_group_url: '',
@@ -271,6 +275,21 @@ const BranchesPage = () => {
                   placeholder={language === 'ar' ? 'مثال: الفرع الرئيسي' : 'e.g. Main Branch'}
                   data-testid="branch-name-input"
                 />
+              </div>
+
+              <div className="space-y-2">
+                <Label>{language === 'ar' ? 'اسم العرض العام (اختياري)' : 'Public display name (optional)'}</Label>
+                <Input
+                  value={formData.public_name}
+                  onChange={(e) => setFormData({ ...formData, public_name: e.target.value })}
+                  placeholder={language === 'ar' ? 'الاسم اللي هيظهر للأهالي في صفحة التسجيل' : 'Name shown to parents on the public registration page'}
+                  data-testid="branch-public-name-input"
+                />
+                <p className="text-xs text-gray-500">
+                  {language === 'ar'
+                    ? 'لو سيبته فاضي هيظهر اسم الفرع العادي للأهالي.'
+                    : 'Leave empty to show the normal branch name.'}
+                </p>
               </div>
               
               <div className="space-y-2">

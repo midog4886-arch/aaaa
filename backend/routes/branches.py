@@ -20,6 +20,9 @@ router = APIRouter(prefix="/branches", tags=["Branches"])
 class BranchBase(BaseModel):
     name: str
     name_ar: str
+    # Custom public-facing name shown to visitors on the public registration
+    # form instead of the internal branch name. Empty -> fall back to name_ar/name.
+    public_name: Optional[str] = ""
     address: Optional[str] = ""
     phone: Optional[str] = ""
     email: Optional[str] = ""

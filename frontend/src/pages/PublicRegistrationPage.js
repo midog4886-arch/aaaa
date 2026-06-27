@@ -145,8 +145,8 @@ export const PublicRegistrationPage = () => {
   };
 
   const branchName = hasFixedBranch
-    ? (branch ? (branch.name_ar || branch.name) : '')
-    : (() => { const b = branches.find(x => x.id === pickedBranchId); return b ? (b.name_ar || b.name) : ''; })();
+    ? (branch ? (branch.public_name || branch.name_ar || branch.name) : '')
+    : (() => { const b = branches.find(x => x.id === pickedBranchId); return b ? (b.public_name || b.name_ar || b.name) : ''; })();
 
   return (
     <div dir="rtl" className="relative min-h-screen overflow-hidden flex flex-col items-center py-8 px-4 bg-gradient-to-br from-emerald-50 via-white to-sky-50">
@@ -250,7 +250,7 @@ export const PublicRegistrationPage = () => {
                   className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500">
                   <option value="">اختر الفرع</option>
                   {branches.map(b => (
-                    <option key={b.id} value={b.id}>{b.name_ar || b.name}</option>
+                    <option key={b.id} value={b.id}>{b.public_name || b.name_ar || b.name}</option>
                   ))}
                 </select>
               )}
