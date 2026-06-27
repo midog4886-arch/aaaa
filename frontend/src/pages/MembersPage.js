@@ -4,6 +4,7 @@ import { useLanguage } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/AuthContext';
 import { Layout } from '../components/Layout';
 import { getMemberQRValue } from '../utils/memberQR';
+import { NATIONALITY_OPTIONS } from '../utils/nationalities';
 import { Card, CardContent } from '../components/ui/card';
 import { Button } from '../components/ui/button';
  
@@ -2203,12 +2204,20 @@ export const MembersPage = () => {
                 {/* Nationality */}
                 <div className="space-y-2">
                   <Label>{language === 'ar' ? 'الجنسية' : 'Nationality'}</Label>
-                  <Input
+                  <select
                     value={formData.nationality || ''}
                     onChange={(e) => setFormData({...formData, nationality: e.target.value})}
-                    placeholder={language === 'ar' ? 'الجنسية' : 'Nationality'}
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
                     data-testid="member-nationality-input"
-                  />
+                  >
+                    <option value="">{language === 'ar' ? 'اختر الجنسية' : 'Select nationality'}</option>
+                    {NATIONALITY_OPTIONS.map((o) => (
+                      <option key={o.value} value={o.value}>{language === 'ar' ? o.value : o.en}</option>
+                    ))}
+                    {formData.nationality && !NATIONALITY_OPTIONS.some((o) => o.value === formData.nationality) && (
+                      <option value={formData.nationality}>{formData.nationality}</option>
+                    )}
+                  </select>
                 </div>
                 
                 {/* Notes - Optional */}

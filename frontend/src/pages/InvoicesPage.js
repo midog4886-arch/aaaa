@@ -256,7 +256,7 @@ export const InvoicesPage = () => {
 
   const handleCreateMember = async () => {
     if (!newMemberData.name_ar || !newMemberData.phone) { toast.error(language === 'ar' ? 'أدخل الاسم ورقم الجوال' : 'Enter name and phone'); return; }
-    if (!newMemberData.nationality || !newMemberData.nationality.trim()) { toast.error(language === 'ar' ? 'أدخل الجنسية' : 'Enter nationality'); return; }
+    if (!newMemberData.nationality || !newMemberData.nationality.trim()) { toast.error(language === 'ar' ? 'اختر الجنسية' : 'Select nationality'); return; }
     setSaving(true);
     try {
       const itemsToUse = addMemberSource === 'registration' ? regFormItems : invoiceItems;

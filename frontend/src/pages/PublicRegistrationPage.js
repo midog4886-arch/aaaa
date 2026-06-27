@@ -3,6 +3,7 @@ import { useParams, useSearchParams, useLocation } from 'react-router-dom';
 import axios from 'axios';
 import { API_URL } from '../config/api';
 import { Loader2, CheckCircle2, Calendar, Phone, User, Dumbbell, Flag, Building2 } from 'lucide-react';
+import { NATIONALITY_OPTIONS } from '../utils/nationalities';
 
 const WEEK_DAYS = [
   { key: 'saturday', label: 'السبت' },
@@ -118,7 +119,7 @@ export const PublicRegistrationPage = () => {
     if (!name.trim()) { setFormError('من فضلك اكتب اسم الطفل'); return; }
     const digits = (phone || '').replace(/\D/g, '');
     if (digits.length < 8) { setFormError('من فضلك اكتب رقم موبايل صحيح'); return; }
-    if (!nationality.trim()) { setFormError('من فضلك اكتب الجنسية'); return; }
+    if (!nationality.trim()) { setFormError('من فضلك اختر الجنسية'); return; }
     if (!selectedBranchId) { setFormError('من فضلك اختر الفرع'); return; }
     setSubmitting(true);
     try {
@@ -228,9 +229,13 @@ export const PublicRegistrationPage = () => {
 
             <div className="space-y-1.5">
               <label className="text-sm font-medium text-gray-700 flex items-center gap-1.5"><Flag className="w-4 h-4" /> الجنسية *</label>
-              <input value={nationality} onChange={(e) => setNationality(e.target.value)}
-                className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                placeholder="مثال: سعودي" />
+              <select value={nationality} onChange={(e) => setNationality(e.target.value)}
+                className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500">
+                <option value="">اختر الجنسية</option>
+                {NATIONALITY_OPTIONS.map((o) => (
+                  <option key={o.value} value={o.value}>{o.value}</option>
+                ))}
+              </select>
             </div>
 
             <div className="space-y-1.5">
