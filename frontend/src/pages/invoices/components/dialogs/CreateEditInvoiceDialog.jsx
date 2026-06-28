@@ -165,7 +165,7 @@ export const CreateEditInvoiceDialog = ({
             </Button>
           </div>
 
-          {selectedMember && selectedMember.activities && selectedMember.activities.length > 0 && itemType === 'activity' && (
+          {isEditMode && selectedMember && selectedMember.activities && selectedMember.activities.length > 0 && itemType === 'activity' && (
             <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
               <h4 className="font-semibold text-blue-800 mb-3">📋 {language === 'ar' ? `أنشطة ${selectedMember.name_ar || selectedMember.name} الحالية` : `${selectedMember.name_ar || selectedMember.name}'s Current Activities`}</h4>
               <div className="space-y-2">
