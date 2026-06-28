@@ -3626,52 +3626,68 @@ export const MembersPage = () => {
                           </div>
                         </div>
 
-                        {/* Recent Attendance Records */}
+                        {/* Attendance Records grouped per subscription (activity) */}
                         {memberAttendance.records?.length > 0 ? (
-                          <div className="border rounded-lg overflow-hidden">
-                            <div className="bg-gray-100 px-4 py-2 font-semibold text-sm">
-                              {language === 'ar' ? 'آخر السجلات' : 'Recent Records'}
-                            </div>
-                            <div className="max-h-[300px] overflow-y-auto">
-                              {memberAttendance.records.slice(0, 20).map((record, idx) => (
-                                <div 
-                                  key={idx} 
-                                  className={`px-4 py-2 border-b last:border-b-0 flex items-center justify-between ${
-                                    (record.status === 'present' || !record.status) ? 'bg-green-50' : 'bg-red-50'
-                                  }`}
-                                >
-                                  <div className="flex items-center gap-3">
-                                    <span className={`w-2 h-2 rounded-full ${
-                                      (record.status === 'present' || !record.status) ? 'bg-green-500' : 'bg-red-500'
-                                    }`}></span>
-                                    <div>
-                                      <div className="font-medium text-sm">{record.activity_name}</div>
-                                      <div className="text-xs text-gray-500">{record.date}</div>
-                                    </div>
+                          <div className="space-y-3">
+                            {Object.entries(
+                              memberAttendance.records.reduce((groups, record) => {
+                                const key = record.activity_name || (language === 'ar' ? 'بدون نشاط' : 'No activity');
+                                (groups[key] = groups[key] || []).push(record);
+                                return groups;
+                              }, {})
+                            ).map(([activityName, records]) => {
+                              const presentCount = records.filter(r => r.status === 'present' || !r.status).length;
+                              const absentCount = records.length - presentCount;
+                              return (
+                                <div key={activityName} className="border rounded-lg overflow-hidden">
+                                  <div className="bg-gray-100 px-4 py-2 font-semibold text-sm flex items-center justify-between gap-2">
+                                    <span className="truncate">{activityName}</span>
+                                    <span className="text-xs font-normal text-gray-500 whitespace-nowrap">
+                                      {language === 'ar'
+                                        ? `${records.length} سجل · ${presentCount} حضور · ${absentCount} غياب`
+                                        : `${records.length} records · ${presentCount} present · ${absentCount} absent`}
+                                    </span>
                                   </div>
-                                  <div className="flex items-center gap-2">
-                                    {record.check_in_method === 'bulk' && (
-                                      <Badge className="bg-orange-100 text-orange-700 border border-orange-200">
-                                        {language === 'ar' ? 'تحضير جماعي' : 'Bulk'}
-                                      </Badge>
-                                    )}
-                                    {record.check_in_time && (
-                                      <span className="text-xs text-gray-500">{record.check_in_time}</span>
-                                    )}
-                                    <Badge className={
-                                      (record.status === 'present' || !record.status)
-                                        ? 'bg-green-100 text-green-700' 
-                                        : 'bg-red-100 text-red-700'
-                                    }>
-                                      {(record.status === 'present' || !record.status)
-                                        ? (language === 'ar' ? 'حاضر' : 'Present')
-                                        : (language === 'ar' ? 'غائب' : 'Absent')
-                                      }
-                                    </Badge>
+                                  <div className="max-h-[300px] overflow-y-auto">
+                                    {records.slice(0, 20).map((record, idx) => (
+                                      <div 
+                                        key={idx} 
+                                        className={`px-4 py-2 border-b last:border-b-0 flex items-center justify-between ${
+                                          (record.status === 'present' || !record.status) ? 'bg-green-50' : 'bg-red-50'
+                                        }`}
+                                      >
+                                        <div className="flex items-center gap-3">
+                                          <span className={`w-2 h-2 rounded-full ${
+                                            (record.status === 'present' || !record.status) ? 'bg-green-500' : 'bg-red-500'
+                                          }`}></span>
+                                          <div className="font-medium text-sm">{record.date}</div>
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                          {record.check_in_method === 'bulk' && (
+                                            <Badge className="bg-orange-100 text-orange-700 border border-orange-200">
+                                              {language === 'ar' ? 'تحضير جماعي' : 'Bulk'}
+                                            </Badge>
+                                          )}
+                                          {record.check_in_time && (
+                                            <span className="text-xs text-gray-500">{record.check_in_time}</span>
+                                          )}
+                                          <Badge className={
+                                            (record.status === 'present' || !record.status)
+                                              ? 'bg-green-100 text-green-700' 
+                                              : 'bg-red-100 text-red-700'
+                                          }>
+                                            {(record.status === 'present' || !record.status)
+                                              ? (language === 'ar' ? 'حاضر' : 'Present')
+                                              : (language === 'ar' ? 'غائب' : 'Absent')
+                                            }
+                                          </Badge>
+                                        </div>
+                                      </div>
+                                    ))}
                                   </div>
                                 </div>
-                              ))}
-                            </div>
+                              );
+                            })}
                           </div>
                         ) : (
                           <div className="text-center py-6 text-muted-foreground bg-gray-50 rounded-lg">
