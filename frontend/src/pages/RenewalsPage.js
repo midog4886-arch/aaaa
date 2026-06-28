@@ -11,6 +11,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Textarea } from '../components/ui/textarea';
 import { notificationsAPI, invoicesAPI, membersAPI, branchesAPI, whatsappAPI } from '../services/api';
+import { calcEndDate } from './invoices/hooks/useInvoiceForm';
 import MemberAvatar from '../components/MemberAvatar';
 import { toast } from 'sonner';
 import {
@@ -34,6 +35,23 @@ import {
 const extractSessionsPerWeek = (name) => {
   const m = (name || '').match(/(\d+)\s*(?:ايام|أيام|يوم|ساعات|ساعة|ساعه)/);
   return m ? parseInt(m[1], 10) : 0;
+};
+
+// Extract the canonical Arabic weekday names out of a schedule string so the
+// renewal end-date can snap to a real training day (mirrors the subscription form).
+const RENEWAL_DAY_NAMES = ['الأحد', 'الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'];
+const RENEWAL_DAY_VARIANTS = {
+  'الأحد': ['الأحد', 'الاحد'],
+  'الإثنين': ['الإثنين', 'الاثنين'],
+  'الثلاثاء': ['الثلاثاء'],
+  'الأربعاء': ['الأربعاء', 'الاربعاء'],
+  'الخميس': ['الخميس'],
+  'الجمعة': ['الجمعة'],
+  'السبت': ['السبت'],
+};
+const parseScheduleDays = (schedule) => {
+  if (!schedule || typeof schedule !== 'string') return [];
+  return RENEWAL_DAY_NAMES.filter(canon => RENEWAL_DAY_VARIANTS[canon].some(v => schedule.includes(v)));
 };
 
 const formatRemainingSessions = (daysRemaining, activityName, language) => {
@@ -86,6 +104,8 @@ const RenewalsPage = () => {
   const [renewalForm, setRenewalForm] = useState({
     start_date: '',
     end_date: '',
+    weeks: 4,
+    training_days: [],
     fee: 0,
     notes: '',
     payment_method: 'card'
@@ -560,13 +580,20 @@ const RenewalsPage = () => {
     const endDate = new Date(item.end_date);
     const newStartDate = new Date(endDate);
     newStartDate.setDate(newStartDate.getDate() + 1);
-    const newEndDate = new Date(newStartDate);
-    newEndDate.setMonth(newEndDate.getMonth() + 1);
+    const startStr = newStartDate.toISOString().split('T')[0];
+
+    // Mirror the subscription: pick a number of weeks and snap the end date onto a
+    // real training day derived from the member's existing schedule.
+    const weeks = 4;
+    const trainingDays = parseScheduleDays(item.schedule);
+    const endStr = calcEndDate(startStr, weeks, trainingDays);
 
     setSelectedItem(item);
     setRenewalForm({
-      start_date: newStartDate.toISOString().split('T')[0],
-      end_date: newEndDate.toISOString().split('T')[0],
+      start_date: startStr,
+      end_date: endStr,
+      weeks,
+      training_days: trainingDays,
       fee: item.fee || 0,
       notes: '',
       payment_method: 'card'
@@ -1051,12 +1078,32 @@ const RenewalsPage = () => {
                   <Input
                     type="date"
                     value={renewalForm.start_date}
-                    onChange={(e) => setRenewalForm({ ...renewalForm, start_date: e.target.value })}
+                    onChange={(e) => {
+                      const start = e.target.value;
+                      const end = start ? calcEndDate(start, renewalForm.weeks || 4, renewalForm.training_days) : renewalForm.end_date;
+                      setRenewalForm({ ...renewalForm, start_date: start, end_date: end });
+                    }}
                   />
                 </div>
                 <div>
-                  <label className="text-sm font-medium mb-1 block">
+                  <label className="text-sm font-medium mb-1 flex items-center gap-2">
                     {language === 'ar' ? 'تاريخ النهاية' : 'End Date'}
+                    <span className="flex items-center gap-1 bg-blue-50 border border-blue-200 rounded px-1.5 py-0.5">
+                      <input
+                        type="number"
+                        min="1"
+                        max="52"
+                        value={renewalForm.weeks || 4}
+                        onChange={(e) => {
+                          const weeks = parseInt(e.target.value, 10) || 4;
+                          const end = renewalForm.start_date ? calcEndDate(renewalForm.start_date, weeks, renewalForm.training_days) : renewalForm.end_date;
+                          setRenewalForm({ ...renewalForm, weeks, end_date: end });
+                        }}
+                        className="w-8 text-xs text-center bg-transparent outline-none font-semibold text-blue-700"
+                        title={language === 'ar' ? 'عدد الأسابيع' : 'Weeks'}
+                      />
+                      <span className="text-xs text-blue-600">{language === 'ar' ? 'أسبوع' : 'wks'}</span>
+                    </span>
                   </label>
                   <Input
                     type="date"
