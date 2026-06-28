@@ -98,7 +98,7 @@ export const useViewInvoiceHandlers = ({
           let line = memberLang === 'en'
             ? `${i + 1}. ${item.activity_name} - ${item.fee} SAR`
             : `${i + 1}. ${item.activity_name} - ${item.fee} ر.س`;
-          if (item.schedule) line += `\n   📅 ${item.schedule}`;
+          if (item.schedule) line += `\n   📅 ${translateSchedule(item.schedule, memberLang)}`;
           const startDate = item.start_date || ((item.period || '').split(' - ')[0] || '').trim();
           const startTs = startDate ? new Date(startDate).getTime() : NaN;
           if (!isNaN(startTs)) line += memberLang === 'en'
@@ -177,7 +177,7 @@ export const useViewInvoiceHandlers = ({
       let line = memberLang === 'en'
         ? `${i + 1}. ${item.activity_name} - ${item.fee} SAR`
         : `${i + 1}. ${item.activity_name} - ${item.fee} ر.س`;
-      if (item.schedule) line += `\n   📅 ${item.schedule}`;
+      if (item.schedule) line += `\n   📅 ${translateSchedule(item.schedule, memberLang)}`;
       const startDate = item.start_date || ((item.period || '').split(' - ')[0] || '').trim();
       const startTs = startDate ? new Date(startDate).getTime() : NaN;
       if (!isNaN(startTs)) line += memberLang === 'en'
