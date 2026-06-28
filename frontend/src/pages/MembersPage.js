@@ -3652,7 +3652,7 @@ export const MembersPage = () => {
                                     {records.slice(0, 20).map((record, idx) => (
                                       <div 
                                         key={idx} 
-                                        className={`px-4 py-2 border-b last:border-b-0 flex items-center justify-between ${
+                                        className={`px-4 py-2 border-b border-gray-300 last:border-b-0 flex items-center justify-between ${
                                           (record.status === 'present' || !record.status) ? 'bg-green-50' : 'bg-red-50'
                                         }`}
                                       >
