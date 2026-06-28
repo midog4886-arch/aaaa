@@ -1248,9 +1248,13 @@ async def qr_checkin(
     member_code: str,
     activity_id: Optional[str] = None,
     force: bool = False,
+    method: Optional[str] = None,
     current_user: dict = Depends(get_current_user)
 ):
-    """Quick check-in via QR code scan with schedule validation"""
+    """Quick check-in via QR code scan with schedule validation.
+
+    ``method="bulk"`` tags records created by the group "تحضير جماعي" action so
+    the member page can flag how the attendance was taken."""
     user_name = current_user.get("name", current_user.get("username", ""))
 
     from utils.text import normalize_digits, dearabize_keyboard
@@ -1438,6 +1442,11 @@ async def qr_checkin(
         )
         if shift:
             record["end_shift_from"], record["end_shift_to"] = shift
+
+    # Tag how the check-in was taken so the member page can show a distinctive
+    # badge on that record. Whitelist values to keep the field consistent.
+    if method == "bulk":
+        record["check_in_method"] = "bulk"
 
     await db.attendance.insert_one(record)
     

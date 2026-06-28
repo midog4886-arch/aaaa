@@ -3650,6 +3650,11 @@ export const MembersPage = () => {
                                     </div>
                                   </div>
                                   <div className="flex items-center gap-2">
+                                    {record.check_in_method === 'bulk' && (
+                                      <Badge className="bg-orange-100 text-orange-700 border border-orange-200">
+                                        {language === 'ar' ? 'تحضير جماعي' : 'Bulk'}
+                                      </Badge>
+                                    )}
                                     {record.check_in_time && (
                                       <span className="text-xs text-gray-500">{record.check_in_time}</span>
                                     )}

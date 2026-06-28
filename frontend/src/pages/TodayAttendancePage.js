@@ -164,7 +164,7 @@ const TodayAttendancePage = () => {
       let memberOk = false;
       for (const aid of ids) {
         try {
-          await attendanceAPI.qrCheckin(r.member_code || r.member_id, aid, true);
+          await attendanceAPI.qrCheckin(r.member_code || r.member_id, aid, true, 'bulk');
           memberOk = true;
         } catch (e) { /* skip this activity */ }
       }

@@ -516,10 +516,11 @@ export const attendanceAPI = {
   quickSearch: (searchTerm) => axios.get(`${API}/attendance/quick-search/${encodeURIComponent(searchTerm)}`),
   quickSearchMulti: (searchTerm) => axios.get(`${API}/attendance/quick-search-multi/${encodeURIComponent(searchTerm)}`),
   quickAttendance: (memberCode, activityId) => axios.post(`${API}/attendance/quick?member_code=${memberCode}&activity_id=${activityId}`),
-  qrCheckin: (memberCode, activityId, force = false) => {
+  qrCheckin: (memberCode, activityId, force = false, method = null) => {
     let url = `${API}/attendance/qr-checkin?member_code=${encodeURIComponent(memberCode)}`;
     if (activityId) url += `&activity_id=${encodeURIComponent(activityId)}`;
     if (force) url += `&force=true`;
+    if (method) url += `&method=${encodeURIComponent(method)}`;
     return axios.post(url);
   },
   getTodaySummary: (params = {}) => axios.get(`${API}/attendance/today-summary`, { params }),
