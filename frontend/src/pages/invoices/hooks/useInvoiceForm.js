@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { toast } from 'sonner';
 import { invoicesAPI, discountsAPI, levelsAPI, membersAPI } from '../../../services/api';
 import { COMPANY_INFO } from '../constants';
@@ -38,6 +38,36 @@ export const calcEndDate = (startDate, weeks, trainingDays = []) => {
 
 export const stripTransient = (item) => { const { weeks, ...rest } = item; return rest; };
 
+// Persisted draft so an in-progress NEW invoice survives if the dialog is closed
+// (e.g. to scan a walk-in member's attendance) instead of losing all typed data.
+const DRAFT_KEY = 'invoiceCreateDraft_v1';
+const DRAFT_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+
+const readInvoiceDraft = () => {
+  try {
+    const raw = localStorage.getItem(DRAFT_KEY);
+    if (!raw) return null;
+    const d = JSON.parse(raw);
+    if (!d || typeof d !== 'object') return null;
+    if (d.savedAt && (Date.now() - d.savedAt) > DRAFT_MAX_AGE_MS) { localStorage.removeItem(DRAFT_KEY); return null; }
+    return d;
+  } catch (_) { return null; }
+};
+
+const draftHasContent = (d) => {
+  if (!d) return false;
+  return (Array.isArray(d.invoiceItems) && d.invoiceItems.length > 0)
+    || !!(d.customerNameAr && d.customerNameAr.trim())
+    || !!d.selectedMember
+    || (Array.isArray(d.additionalMembers) && d.additionalMembers.length > 0)
+    || !!(d.notes && d.notes.trim())
+    || !!(d.customerPhone && d.customerPhone.trim())
+    || !!(d.customerAddress && d.customerAddress.trim())
+    || !!(d.couponCode && d.couponCode.trim());
+};
+
+const clearInvoiceDraft = () => { try { localStorage.removeItem(DRAFT_KEY); } catch (_) {} };
+
 export const useInvoiceForm = ({
   members, activities, products, levels,
   selectedBranchId, language, t, loadData,
@@ -71,6 +101,24 @@ export const useInvoiceForm = ({
   const [customerNameAr, setCustomerNameAr] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
   const [customerAddress, setCustomerAddress] = useState('');
+
+  // Auto-save the NEW-invoice form so it is not lost if the dialog is closed
+  // mid-entry (edit mode is never persisted — it has a server-side source).
+  useEffect(() => {
+    if (!isCreateDialogOpen || isEditMode) return;
+    const draft = {
+      selectedMember, invoiceItems, discount, notes, paymentMethod,
+      couponCode, appliedCoupon, couponDiscount,
+      marketerDiscountPercent, marketerName, itemType,
+      additionalMembers, customerNameAr, customerPhone, customerAddress,
+      savedAt: Date.now(),
+    };
+    if (draftHasContent(draft)) {
+      try { localStorage.setItem(DRAFT_KEY, JSON.stringify(draft)); } catch (_) {}
+    }
+  }, [isCreateDialogOpen, isEditMode, selectedMember, invoiceItems, discount, notes, paymentMethod,
+    couponCode, appliedCoupon, couponDiscount, marketerDiscountPercent, marketerName, itemType,
+    additionalMembers, customerNameAr, customerPhone, customerAddress]);
 
   const parseActivityForLevel = (activityName) => {
     if (!activityName) return 'other';
@@ -330,6 +378,7 @@ export const useInvoiceForm = ({
           setIsQRCardDialogOpen(true);
         }
       }
+      if (!isEditMode) clearInvoiceDraft();
       loadData();
       closeCreateDialog();
     } catch (error) { toast.error(t('error')); } finally { setSaving(false); }
@@ -352,11 +401,58 @@ export const useInvoiceForm = ({
     setIsCreateDialogOpen(true); setIsViewDialogOpen(false);
   };
 
-  const closeCreateDialog = () => {
-    setIsCreateDialogOpen(false); setSelectedMember(null); setInvoiceItems([]); setDiscount(0); setNotes(''); setPaymentMethod('card');
+  // Reset every form field WITHOUT touching the dialog open state or the saved draft.
+  const resetFormFields = () => {
+    setSelectedMember(null); setInvoiceItems([]); setDiscount(0); setNotes(''); setPaymentMethod('card');
     setCustomerNameAr(''); setCustomerPhone(''); setCustomerAddress(''); setIsEditMode(false); setEditingInvoiceId(null);
     setCouponCode(''); setAppliedCoupon(null); setCouponDiscount(0); setMarketerDiscountPercent(0); setMarketerName(''); setItemType('activity'); setFeeEditUnlocked(false);
     setAdditionalMembers([]); setAdditionalMemberNewForm({ show: false, index: -1, data: { name_ar: '', name: '', age: '', guardian_name_ar: '', guardian_name: '', phone: '' } });
+  };
+
+  // Closing the dialog only resets the in-memory form. The localStorage draft is
+  // intentionally kept so an interrupted invoice can be restored next time.
+  const closeCreateDialog = () => {
+    setIsCreateDialogOpen(false);
+    resetFormFields();
+  };
+
+  // Apply a saved draft into the form state.
+  const applyDraft = (d) => {
+    if (!d) return;
+    setSelectedMember(d.selectedMember || null);
+    setInvoiceItems(Array.isArray(d.invoiceItems) ? d.invoiceItems : []);
+    setDiscount(d.discount || 0);
+    setNotes(d.notes || '');
+    setPaymentMethod(d.paymentMethod || 'card');
+    setCouponCode(d.couponCode || '');
+    setAppliedCoupon(d.appliedCoupon || null);
+    setCouponDiscount(d.couponDiscount || 0);
+    setMarketerDiscountPercent(d.marketerDiscountPercent || 0);
+    setMarketerName(d.marketerName || '');
+    setItemType(d.itemType || 'activity');
+    setAdditionalMembers(Array.isArray(d.additionalMembers) ? d.additionalMembers : []);
+    setCustomerNameAr(d.customerNameAr || '');
+    setCustomerPhone(d.customerPhone || '');
+    setCustomerAddress(d.customerAddress || '');
+    setIsEditMode(false); setEditingInvoiceId(null);
+  };
+
+  // Discard the saved draft and clear the form, keeping the dialog open for a fresh start.
+  const discardDraftAndReset = () => { clearInvoiceDraft(); resetFormFields(); };
+
+  // Manual "New invoice" entry point: restores an unfinished draft if one exists.
+  const openCreateDialog = () => {
+    const draft = readInvoiceDraft();
+    if (draftHasContent(draft)) {
+      applyDraft(draft);
+      toast.info(
+        language === 'ar' ? 'تم استرجاع مسودة فاتورة غير مكتملة' : 'Restored an unfinished invoice draft',
+        { action: { label: language === 'ar' ? 'بدء فاتورة جديدة' : 'Start fresh', onClick: () => discardDraftAndReset() } }
+      );
+    } else {
+      resetFormFields();
+    }
+    setIsCreateDialogOpen(true);
   };
 
   const { subtotal, vatAmount, totalBeforeDiscount, totalDiscount, marketerDiscount, total } = calculateTotals();
@@ -375,6 +471,7 @@ export const useInvoiceForm = ({
     handleMemberSelect, addProductToInvoice, addActivityToInvoice, validateCoupon, removeCoupon,
     updateItemFee, updateItemDate, updateItemWeeks, removeItem, updateItemSchedule, updateItemLevel,
     handleAcceptFullLevel, handleRejectFullLevel, initLevelSelector, selectLevelActivity, selectLevelTime,
-    goBackLevelSelector, resetLevelSelector, unlockFeeEdit, handleCreateInvoice, openEditDialog, closeCreateDialog
+    goBackLevelSelector, resetLevelSelector, unlockFeeEdit, handleCreateInvoice, openEditDialog, closeCreateDialog,
+    openCreateDialog, discardDraftAndReset
   };
 };

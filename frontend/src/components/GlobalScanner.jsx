@@ -14,6 +14,41 @@ import {
 } from 'lucide-react';
 import { attendanceAPI } from '../services/api';
 
+// Inter-key gap (ms) below which keystrokes are considered a hardware-scanner burst
+// rather than human typing. Real scanners emit chars ~1-15ms apart; humans rarely
+// sustain gaps under ~40ms, so 30ms cleanly separates the two.
+const SCAN_FAST_GAP_MS = 30;
+
+// Snapshot the current value of a focused editable element (input/textarea/select
+// or a contentEditable node) before a possible scanner burst.
+const getEditableValue = (el) => {
+  if (!el) return '';
+  if (el.isContentEditable) return el.innerHTML;
+  return el.value;
+};
+
+// Restore a (possibly React-controlled) editable element to a previous value so the
+// digits a scanner leaked into a focused field get wiped after we detect the scan.
+const setNativeValue = (el, value) => {
+  try {
+    if (el.isContentEditable) {
+      el.innerHTML = value;
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+      return;
+    }
+    const proto = el instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype
+      : el instanceof HTMLSelectElement ? HTMLSelectElement.prototype
+      : HTMLInputElement.prototype;
+    const desc = Object.getOwnPropertyDescriptor(proto, 'value');
+    if (desc && desc.set) desc.set.call(el, value);
+    else el.value = value;
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+    el.dispatchEvent(new Event('change', { bubbles: true }));
+  } catch (_) {
+    try { el.value = value; } catch (__) {}
+  }
+};
+
 const GlobalScanner = ({ enabled = true, language = 'ar' }) => {
   const t = (ar, en) => language === 'ar' ? ar : en;
   
@@ -32,6 +67,15 @@ const GlobalScanner = ({ enabled = true, language = 'ar' }) => {
   const isProcessingRef = useRef(false);
   const lastScannedCodeRef = useRef('');
   const scanLockTimeRef = useRef(0);
+
+  // In-input hardware-scan detection: lets a scan fire while a text field is focused
+  // (e.g. scanning a walk-in member's card while an invoice dialog is open) without
+  // disturbing normal manual typing.
+  const inBufRef = useRef('');
+  const inFastRef = useRef(false);
+  const inSnapRef = useRef(null);
+  const inLastKeyRef = useRef(0);
+  const inTimeoutRef = useRef(null);
 
   // Draggable floating button: position {left, top} in px, persisted.
   const [position, setPosition] = useState(null);
@@ -423,12 +467,72 @@ const GlobalScanner = ({ enabled = true, language = 'ar' }) => {
   useEffect(() => {
     if (!enabled) return;
     
+    const resetInBurst = () => {
+      inBufRef.current = '';
+      inFastRef.current = false;
+      inSnapRef.current = null;
+      if (inTimeoutRef.current) { clearTimeout(inTimeoutRef.current); inTimeoutRef.current = null; }
+    };
+
+    const processInBurstScan = () => {
+      const code = normalizeScannedCode(inBufRef.current.trim());
+      const snap = inSnapRef.current;
+      // Wipe the digits the scanner leaked into the focused field.
+      if (snap && snap.el && document.contains(snap.el)) {
+        setNativeValue(snap.el, snap.value);
+      }
+      resetInBurst();
+      if (code.length >= 3) handleScan(code);
+    };
+
     const handleKeyDown = (e) => {
       const tagName = e.target.tagName;
-      if (tagName === 'INPUT' || tagName === 'TEXTAREA' || tagName === 'SELECT' || e.target.isContentEditable) {
+      const inEditable = tagName === 'INPUT' || tagName === 'TEXTAREA' || tagName === 'SELECT' || e.target.isContentEditable;
+
+      if (inEditable) {
+        // Focus is in a text field. Only intercept a genuine hardware-scanner burst
+        // (very fast keystrokes); leave normal manual typing completely untouched.
+        if (isProcessingRef.current) return;
+        const now = Date.now();
+        const gap = now - inLastKeyRef.current;
+
+        if (e.key === 'Enter') {
+          if (inFastRef.current && normalizeScannedCode(inBufRef.current.trim()).length >= 3) {
+            e.preventDefault();
+            processInBurstScan();
+          } else {
+            resetInBurst();
+          }
+          return;
+        }
+
+        if (e.key.length === 1 && !e.ctrlKey && !e.altKey && !e.metaKey) {
+          if (gap > SCAN_FAST_GAP_MS || inBufRef.current.length === 0) {
+            // A new sequence starts here (slow gap = either human or the first char
+            // of a scan). Snapshot the field so we can undo it if a burst follows.
+            inBufRef.current = e.key;
+            inFastRef.current = false;
+            inSnapRef.current = { el: e.target, value: getEditableValue(e.target) };
+          } else {
+            // Machine-speed continuation → this is a scanner burst.
+            inFastRef.current = true;
+            inBufRef.current += e.key;
+          }
+          inLastKeyRef.current = now;
+
+          if (inTimeoutRef.current) clearTimeout(inTimeoutRef.current);
+          inTimeoutRef.current = setTimeout(() => {
+            if (inFastRef.current && normalizeScannedCode(inBufRef.current.trim()).length >= 3) {
+              processInBurstScan();
+            } else {
+              resetInBurst();
+            }
+          }, 60);
+        }
         return;
       }
-      
+
+      // Focus is NOT in an editable element — original global-scan behavior.
       if (isProcessingRef.current) {
         e.preventDefault();
         bufferRef.current = '';
@@ -474,6 +578,7 @@ const GlobalScanner = ({ enabled = true, language = 'ar' }) => {
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
       if (timeoutRef.current) clearTimeout(timeoutRef.current);
+      if (inTimeoutRef.current) clearTimeout(inTimeoutRef.current);
     };
   }, [enabled, handleScan]);
 

@@ -172,7 +172,8 @@ export const InvoicesPage = () => {
     parseActivityForLevel, subtotal, vatAmount, totalBeforeDiscount, totalDiscount, total, handleMemberSelect, addProductToInvoice,
     addActivityToInvoice, validateCoupon, removeCoupon, updateItemFee, updateItemDate, updateItemWeeks, removeItem, updateItemSchedule,
     updateItemLevel, handleAcceptFullLevel, handleRejectFullLevel, initLevelSelector, selectLevelActivity, selectLevelTime,
-    goBackLevelSelector, resetLevelSelector, unlockFeeEdit, handleCreateInvoice, openEditDialog, closeCreateDialog
+    goBackLevelSelector, resetLevelSelector, unlockFeeEdit, handleCreateInvoice, openEditDialog, closeCreateDialog,
+    openCreateDialog
   } = invoiceForm;
 
   const { savingPdf, sharingWhatsApp, handleSaveAsPdfOnly, handleSaveAsPdf, handleShareWhatsApp, handleSendWhatsApp, handlePrint, handlePrintRegistrationForm } = viewHandlers;
@@ -306,7 +307,7 @@ export const InvoicesPage = () => {
               <Button variant="outline" onClick={() => { const token = localStorage.getItem('token'); window.open(exportAPI.invoicesPdf() + `&token=${token}`, '_blank'); }}><FileSpreadsheet className="w-4 h-4 me-2" />{language === 'ar' ? 'تصدير PDF' : 'Export PDF'}</Button>
               </>)}
               <Button variant="outline" onClick={handleOpenRegistrationForm} className="bg-gray-800 text-white hover:bg-gray-900" data-testid="create-registration-form-btn"><FileText className="w-4 h-4 me-2" />{language === 'ar' ? 'استمارة تسجيل' : 'Registration Form'}</Button>
-              <Button onClick={() => setIsCreateDialogOpen(true)} data-testid="create-invoice-btn"><Plus className="w-4 h-4 me-2" />{t('create_invoice')}</Button>
+              <Button onClick={() => openCreateDialog()} data-testid="create-invoice-btn"><Plus className="w-4 h-4 me-2" />{t('create_invoice')}</Button>
             </div>
           </div>
           {showAdvancedSearch && (
