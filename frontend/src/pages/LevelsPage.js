@@ -357,6 +357,14 @@ export const LevelsPage = () => {
 
   const handleAssignToLevel = async (level) => {
     if (!assignTarget) return;
+    const _count = (level.members || []).length;
+    const _max = level.activity_name?.includes('سباحة') ? 6 : (level.capacity || 10);
+    if (_count >= _max) {
+      if (!window.confirm(t(
+        `المستوى ممتلئ (${_count}/${_max}). هل تريد تسكين اللاعب رغم اكتمال العدد؟`,
+        `Level is full (${_count}/${_max}). Assign the player anyway?`
+      ))) return;
+    }
     setAssigning(true);
     try {
       await _doAssign(assignTarget.member, assignTarget.activity, level, showAllLevels);
@@ -1414,10 +1422,14 @@ ${slotTables}
     }
     
     if (currentCount >= maxCapacity) {
-      toast.error(t(`المستوى ممتلئ (الحد الأقصى ${maxCapacity})`, `Level is full (max ${maxCapacity})`));
-      setDraggedMember(null);
-      setDraggedFromLevel(null);
-      return;
+      if (!window.confirm(t(
+        `المستوى ممتلئ (${currentCount}/${maxCapacity}). هل تريد نقل اللاعب رغم اكتمال العدد؟`,
+        `Level is full (${currentCount}/${maxCapacity}). Move the player anyway?`
+      ))) {
+        setDraggedMember(null);
+        setDraggedFromLevel(null);
+        return;
+      }
     }
     
     try {
@@ -1605,8 +1617,12 @@ ${slotTables}
     const maxCapacity = selectedLevel?.capacity || (mainActivity === 'swimming' ? 6 : 10);
 
     if (currentCount >= maxCapacity) {
-      toast.error(t(`المستوى ممتلئ (الحد الأقصى ${maxCapacity} أعضاء)`, `Level is full (max ${maxCapacity} members)`));
-      return;
+      if (!window.confirm(t(
+        `المستوى ممتلئ (${currentCount}/${maxCapacity}). هل تريد إضافة اللاعب رغم اكتمال العدد؟`,
+        `Level is full (${currentCount}/${maxCapacity}). Add the player anyway?`
+      ))) {
+        return;
+      }
     }
     
     try {
@@ -1745,8 +1761,12 @@ ${slotTables}
       return;
     }
     if (targetMembers.length >= targetMax) {
-      toast.error(t(`المستوى ممتلئ (الحد الأقصى ${targetMax})`, `Level is full (max ${targetMax})`));
-      return;
+      if (!window.confirm(t(
+        `المستوى ممتلئ (${targetMembers.length}/${targetMax}). هل تريد نقل اللاعب رغم اكتمال العدد؟`,
+        `Level is full (${targetMembers.length}/${targetMax}). Move the player anyway?`
+      ))) {
+        return;
+      }
     }
 
     setTransferring(true);
@@ -3840,11 +3860,11 @@ ${slotTables}
                     return (
                       <button
                         key={level.id}
-                        onClick={() => !isFull && !assigning && handleAssignToLevel(level)}
-                        disabled={isFull || assigning}
+                        onClick={() => !assigning && handleAssignToLevel(level)}
+                        disabled={assigning}
                         className={`w-full text-start p-3 rounded-lg border-2 transition-all ${
                           isFull
-                            ? 'opacity-50 cursor-not-allowed bg-gray-50 border-gray-200'
+                            ? 'bg-amber-50 border-amber-200 hover:border-amber-400 hover:bg-amber-100'
                             : 'hover:border-primary hover:bg-primary/5 border-gray-200'
                         }`}
                         data-testid={`pick-level-${level.id}`}
@@ -3931,11 +3951,11 @@ ${slotTables}
                       return (
                         <button
                           key={level.id}
-                          onClick={() => !isFull && !transferring && handleQuickTransfer(level)}
-                          disabled={isFull || transferring}
+                          onClick={() => !transferring && handleQuickTransfer(level)}
+                          disabled={transferring}
                           className={`w-full text-start p-3 rounded-lg border-2 transition-all ${
                             isFull
-                              ? 'opacity-50 cursor-not-allowed bg-gray-50 border-gray-200'
+                              ? 'bg-amber-50 border-amber-200 hover:border-amber-400 hover:bg-amber-100'
                               : 'hover:border-primary hover:bg-primary/5 border-gray-200'
                           }`}
                           data-testid={`transfer-level-${level.id}`}
