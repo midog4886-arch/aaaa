@@ -13,6 +13,7 @@ import { CheckCircle, ChevronsUpDown, Loader2, Lock, Package, Percent, Receipt, 
 import { COMPANY_INFO } from '../../constants';
 import { MAIN_ACTIVITIES_FOR_LEVELS } from '../../constants';
 import { membersAPI, levelsAPI } from '../../../../services/api';
+import ScheduleDaysTimeEditor from '../../../../components/ScheduleDaysTimeEditor';
 import { toast } from 'sonner';
 
 // Strict per-branch isolation for invoice activity dropdowns.
@@ -325,54 +326,22 @@ export const CreateEditInvoiceDialog = ({
                           <Label className="text-xs flex items-center gap-1">{language === 'ar' ? 'المبلغ' : 'Fee'}{!feeEditUnlocked && <Lock className="w-3 h-3 text-amber-500" />}</Label>
                           <Input type="number" onWheel={(e) => e.currentTarget.blur()} value={item.fee} onChange={(e) => updateItemFee(idx, e.target.value)} className={`h-8 text-sm ${!feeEditUnlocked ? 'bg-amber-50 border-amber-200' : ''}`} onClick={() => !feeEditUnlocked && unlockFeeEdit()} />
                         </div>
-                        <div className="space-y-1 col-span-4">
-                          <Label className="text-xs">{language === 'ar' ? 'أيام التدريب' : 'Training Days'}</Label>
-                          <div className="flex flex-wrap gap-1">
-                            {['الأحد', 'الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'].map((day) => (
-                              <button key={day} type="button" onClick={() => {
-                                const currentDays = item.training_days || [];
-                                const newDays = currentDays.includes(day) ? currentDays.filter(d => d !== day) : [...currentDays, day];
-                                const updated = [...invoiceItems];
-                                updated[idx].training_days = newDays;
-                                if (!isEditMode && updated[idx].start_date) {
-                                  const w = updated[idx].weeks ?? 4;
-                                  updated[idx].end_date = calcEndDate(updated[idx].start_date, w, newDays);
-                                  updated[idx].period = `${updated[idx].start_date} - ${updated[idx].end_date}`;
-                                }
-                                const formatSchedule = (days, time) => {
-                                  if (days.length === 0) return time || '';
-                                  const dayOrder = ['الأحد', 'الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'];
-                                  const sortedDays = [...days].sort((a, b) => dayOrder.indexOf(a) - dayOrder.indexOf(b));
-                                  let daysStr;
-                                  if (sortedDays.length === 1) { daysStr = sortedDays[0]; } else { const lastDay = sortedDays.pop(); daysStr = sortedDays.join('، ') + ' و ' + lastDay; }
-                                  return time ? `${daysStr} - ${time}` : daysStr;
-                                };
-                                updated[idx].schedule = formatSchedule(newDays, item.training_time);
-                                setInvoiceItems(updated);
-                              }} className={`px-2 py-1 text-xs rounded border transition-colors ${(item.training_days || []).includes(day) ? 'bg-blue-500 text-white border-blue-500' : 'bg-white text-gray-700 border-gray-300 hover:border-blue-400'}`}>{day}</button>
-                            ))}
-                          </div>
-                        </div>
-                        <div className="space-y-1 col-span-2">
-                          <Label className="text-xs">{language === 'ar' ? 'الساعة' : 'Time'}</Label>
-                          <Input type="number" min="1" max="12" onWheel={(e) => e.currentTarget.blur()} value={item.training_time_hour || ''} onChange={(e) => {
-                            const hour = e.target.value;
-                            const updated = [...invoiceItems];
-                            updated[idx].training_time_hour = hour;
-                            const timeStr = hour ? `${hour}:00 م` : '';
-                            updated[idx].training_time = timeStr;
-                            const formatSchedule = (days, time) => {
-                              if (!days || days.length === 0) return time || '';
-                              const dayOrder = ['الأحد', 'الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'];
-                              const sortedDays = [...days].sort((a, b) => dayOrder.indexOf(a) - dayOrder.indexOf(b));
-                              let daysStr;
-                              if (sortedDays.length === 1) { daysStr = sortedDays[0]; } else { const lastDay = sortedDays.pop(); daysStr = sortedDays.join('، ') + ' و ' + lastDay; }
-                              return time ? `${daysStr} - ${time}` : daysStr;
-                            };
-                            updated[idx].schedule = formatSchedule(updated[idx].training_days, timeStr);
-                            setInvoiceItems(updated);
-                          }} className="h-8 text-sm" placeholder={language === 'ar' ? 'مثال: 4' : 'e.g. 4'} />
-                          {item.training_time && <p className="text-xs text-muted-foreground mt-1">{item.training_time}</p>}
+                        <div className="space-y-1 col-span-3">
+                          <ScheduleDaysTimeEditor
+                            language={language}
+                            value={{ training_days: item.training_days || [], training_time: item.training_time || '', day_times: item.day_times || {} }}
+                            onChange={(patch) => {
+                              const updated = [...invoiceItems];
+                              const cur = { ...updated[idx], ...patch };
+                              if (!isEditMode && cur.start_date) {
+                                const w = cur.weeks ?? 4;
+                                cur.end_date = calcEndDate(cur.start_date, w, patch.training_days);
+                                cur.period = `${cur.start_date} - ${cur.end_date}`;
+                              }
+                              updated[idx] = cur;
+                              setInvoiceItems(updated);
+                            }}
+                          />
                         </div>
                         <div className="space-y-1 col-span-3">
                           <Label className="text-xs">{language === 'ar' ? 'المستوى' : 'Level'}</Label>

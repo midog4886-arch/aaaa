@@ -1,7 +1,7 @@
 """Invoices routes"""
 from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
-from typing import List, Optional
+from typing import List, Optional, Dict
 import uuid
 import logging
 from datetime import datetime, timezone
@@ -56,6 +56,7 @@ class InvoiceItem(BaseModel):
     training_days: Optional[List[str]] = []
     training_time: Optional[str] = ""
     training_time_hour: Optional[str] = ""
+    day_times: Optional[Dict[str, str]] = {}
     is_product: Optional[bool] = False
     product_id: Optional[str] = None
     quantity: Optional[int] = 1
@@ -538,6 +539,7 @@ async def pay_invoice(invoice_id: str, current_user: dict = Depends(get_current_
                         "schedule": item.get("schedule", ""),
                         "training_days": item.get("training_days", []),
                         "training_time": item.get("training_time", ""),
+                        "day_times": item.get("day_times", {}),
                         "source": "invoice",
                         "source_id": invoice_id
                     }
@@ -557,6 +559,7 @@ async def pay_invoice(invoice_id: str, current_user: dict = Depends(get_current_
                     "schedule": item.get("schedule", ""),
                     "training_days": item.get("training_days", []),
                     "training_time": item.get("training_time", ""),
+                    "day_times": item.get("day_times", {}),
                     "source": "invoice",
                     "source_id": invoice_id
                 })

@@ -22,6 +22,15 @@ levels for the same activity. Multi-level would need a schema change. Smart
 per-day matching keeps the member in ONE level while still surfacing the right
 level for each day in the picker.
 
+**Entry points that write day_times:** the shared `ScheduleDaysTimeEditor`
+component is used in BOTH MembersPage (3 forms) AND the invoice
+create/edit dialog. The invoice flow carries day_times through invoice items →
+backend invoices.py member.activities write (update + append branches) and
+through InvoicesPage quick-create mapping. When adding a NEW schedule-entry path,
+carry day_times alongside schedule/training_days/training_time, and load it in
+any edit-dialog mapping (openEditDialog dropped it once → per-day overrides lost
+on re-save).
+
 **How to apply:** any new place that filters levels by time for a member must use
 per-day hours, never `_times_match`/first-hour-of-schedule (that helper is now
 dead code, kept only as a reference). Frontend `matchingLevelsForAssign` replicates

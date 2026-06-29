@@ -264,7 +264,7 @@ export const InvoicesPage = () => {
     setSaving(true);
     try {
       const itemsToUse = addMemberSource === 'registration' ? regFormItems : invoiceItems;
-      const memberActivities = itemsToUse.filter(item => !item.is_product && item.activity_id).map(item => ({ activity_id: item.activity_id, activity_name: item.activity_name, start_date: item.start_date || new Date().toISOString().split('T')[0], end_date: item.end_date || new Date(Date.now() + 30*24*60*60*1000).toISOString().split('T')[0], fee: item.fee || 0, status: 'active', coach_id: '' }));
+      const memberActivities = itemsToUse.filter(item => !item.is_product && item.activity_id).map(item => ({ activity_id: item.activity_id, activity_name: item.activity_name, start_date: item.start_date || new Date().toISOString().split('T')[0], end_date: item.end_date || new Date(Date.now() + 30*24*60*60*1000).toISOString().split('T')[0], fee: item.fee || 0, status: 'active', coach_id: '', schedule: item.schedule || '', training_days: item.training_days || [], training_time: item.training_time || '', day_times: item.day_times || {} }));
       const res = await membersAPI.quickCreate({ ...newMemberData, age: parseInt(newMemberData.age) || 0, activities: memberActivities, branch_id: selectedBranchId !== 'all' ? selectedBranchId : null, marketer_id: prefillMarketerId || '' });
       const memRes = await membersAPI.getAll(); setMembers(memRes.data);
       if (addMemberSource === 'registration') { setRegFormData({ ...regFormData, customer_name: res.data.name_ar, customer_phone: res.data.phone }); }

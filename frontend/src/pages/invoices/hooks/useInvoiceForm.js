@@ -242,7 +242,7 @@ export const useInvoiceForm = ({
     setInvoiceItems([...invoiceItems, {
       activity_id: activity.id, activity_name: language === 'ar' ? activity.name_ar : activity.name,
       fee: activity.monthly_fee, period: `${today} - ${endDate}`, start_date: today,
-      end_date: endDate, weeks: defaultWeeks, schedule: '', level_id: '', level_name: '', instance: existingCount + 1
+      end_date: endDate, weeks: defaultWeeks, schedule: '', training_days: [], training_time: '', day_times: {}, level_id: '', level_name: '', instance: existingCount + 1
     }]);
     toast.success(language === 'ar' ? `تم إضافة ${activity.name_ar}` : `Added ${activity.name}`);
   };
@@ -393,6 +393,7 @@ export const useInvoiceForm = ({
       schedule: item.schedule || '', start_date: item.start_date || (item.period || '').split(' - ')[0] || '',
       end_date: item.end_date || (item.period || '').split(' - ')[1] || '',
       training_days: item.training_days || [], training_time: item.training_time || '',
+      day_times: item.day_times || {},
       training_time_hour: item.training_time_hour || '', level_id: item.level_id || '', level_name: item.level_name || '',
       weeks: item.weeks ?? (() => { const sd = item.start_date || (item.period || '').split(' - ')[0] || ''; const ed = item.end_date || (item.period || '').split(' - ')[1] || ''; if (sd && ed) { const diff = Math.round((new Date(ed) - new Date(sd)) / (7 * 24 * 60 * 60 * 1000)); return diff > 0 ? diff : 4; } return 4; })()
     })));
