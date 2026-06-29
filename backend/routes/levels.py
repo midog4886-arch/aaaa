@@ -939,6 +939,55 @@ def _times_match(level_slot: str, schedule_text: str) -> bool:
     return lh == sh
 
 
+def _member_day_hours(sched: str, day_times: dict, sched_days: list) -> dict:
+    """Map each scheduled weekday (english id) to the member's 12h training
+    hour for THAT day.
+
+    Uniform-time members get the same hour on every day (parsed once from the
+    schedule string). Members with per-day times override individual days from
+    ``day_times`` ({"السبت": "5:00 م", "الجمعة": "3:00 م"}). This is what lets
+    level matching consider the RIGHT hour for the RIGHT day instead of reading
+    only the first hour of the whole schedule string."""
+    from routes.attendance import parse_schedule_days as _psd
+    common = _extract_hour_12(sched or "")
+    hours = {}
+    for d in (sched_days or []):
+        if common is not None:
+            hours[d] = common
+    for name, tval in (day_times or {}).items():
+        h = _extract_hour_12(tval or "")
+        if h is None:
+            continue
+        for did in _psd(name):
+            hours[did] = h
+    return hours
+
+
+def _level_day_time_match(level, member_day_hours: dict, sched_days: list, sched: str) -> bool:
+    """Per-day-aware replacement for the day+hour gate.
+
+    A level matches when, for at least one weekday it shares with the member,
+    the member's hour on THAT day equals the level's hour. So a member who
+    trains Sat@5 and Fri@3 matches a (Sat,5) level on Saturday AND a (Fri,3)
+    level on Friday — the old logic read only the first hour of the schedule
+    string and silently dropped the second time slot."""
+    lh = _extract_hour_12(level.get("time_slot") or "")
+    if lh is None:
+        return False
+    l_days = level.get("days") or []
+    if l_days and sched_days:
+        overlap = [d for d in l_days if d in sched_days]
+        if not overlap:
+            return False
+        return any(member_day_hours.get(d) == lh for d in overlap)
+    # Level has no day restriction (or member days unparseable): fall back to
+    # matching on any per-day hour, then on the single common schedule hour.
+    if member_day_hours:
+        return any(h == lh for h in member_day_hours.values())
+    ch = _extract_hour_12(sched or "")
+    return ch is not None and ch == lh
+
+
 def _branches_compatible(level_branch, member_branch) -> bool:
     """Levels with branch_id None are shared and match every member.
     Otherwise both must match. A member without branch_id is treated as
@@ -1542,6 +1591,7 @@ async def auto_assign_members_to_levels(
                     "activity_id": aid,
                     "activity_name": aname,
                     "schedule": a.get("schedule") or "",
+                    "day_times": a.get("day_times") or {},
                     "start_date": a.get("start_date") or "",
                     "end_date": end_d,
                     "level_id": a.get("level_id") or "",
@@ -1653,7 +1703,7 @@ async def auto_assign_members_to_levels(
         for m_id in (lvl.get("members") or []):
             member_levels_index.setdefault(m_id, set()).add(lvl["id"])
 
-    def _level_matches_subscription(lvl, _aid, _aname_l, member_branch_id, _sched_days, _sched):
+    def _level_matches_subscription(lvl, _aid, _aname_l, member_branch_id, _sched_days, _sched, _mdh):
         """Verify a given level is a valid placement for this subscription.
         Branch + day overlap + hour are REQUIRED. Activity is intentionally
         NOT checked here — many real slots host multiple activities at the
@@ -1670,7 +1720,7 @@ async def auto_assign_members_to_levels(
         if l_days and _sched_days:
             if not any(d in l_days for d in _sched_days):
                 return False
-        if not _times_match(lvl.get("time_slot") or "", _sched):
+        if not _level_day_time_match(lvl, _mdh, _sched_days, _sched):
             return False
         return True
 
@@ -1685,6 +1735,7 @@ async def auto_assign_members_to_levels(
         aname_l = aname.lower()
         sched = sub["schedule"]
         sched_days = parse_schedule_days(sched)
+        member_day_hours = _member_day_hours(sched, sub.get("day_times") or {}, sched_days)
 
         existing_lid = sub.get("level_id")
         if existing_lid:
@@ -1692,7 +1743,7 @@ async def auto_assign_members_to_levels(
             # Only treat as already_correct if the existing level actually
             # matches this subscription on activity / branch / schedule.
             # Otherwise the stale link will be ignored and re-evaluated below.
-            if _level_matches_subscription(existing_lvl, aid, aname_l, member_branch, sched_days, sched):
+            if _level_matches_subscription(existing_lvl, aid, aname_l, member_branch, sched_days, sched, member_day_hours):
                 already_correct.append({
                     "member_id": mid,
                     "member_name": member.get("name_ar") or member.get("name") or "",
@@ -1760,7 +1811,7 @@ async def auto_assign_members_to_levels(
         recovered = None
         for lvl in candidates:
             if lvl["id"] in already_in_levels and _level_matches_subscription(
-                lvl, aid, aname_l, member_branch, sched_days, sched
+                lvl, aid, aname_l, member_branch, sched_days, sched, member_day_hours
             ):
                 recovered = lvl
                 break
@@ -1817,7 +1868,7 @@ async def auto_assign_members_to_levels(
                 if not any(d in lvl_days for d in sched_days):
                     chosen_reason = chosen_reason or "days_mismatch"
                     continue
-            if not _times_match(lvl.get("time_slot") or "", sched):
+            if not _level_day_time_match(lvl, member_day_hours, sched_days, sched):
                 chosen_reason = chosen_reason or "time_mismatch"
                 continue
             cap_max = capacity_max.get(lvl["id"])

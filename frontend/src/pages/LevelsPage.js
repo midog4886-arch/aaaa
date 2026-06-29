@@ -512,8 +512,45 @@ export const LevelsPage = () => {
     // 2) Fallback: same activity group AND, when both have a schedule/time
     //    slot, those must match too — so a "Karate 5pm" activity won't show
     //    "Karate 6pm" levels by mistake.
-    const norm = (s) => (s || '').replace(/\s+/g, ' ').trim();
-    const targetSlot = norm(actSchedule);
+    // Per-day-aware hour matching. Defined inline because the shared
+    // DAY_ARABIC_MAP / _hourDigits consts are declared later in the component
+    // body and would be in the temporal dead zone when this useMemo first runs.
+    const norm12 = (s) => {
+      const m = String(s || '').match(/\d{1,2}/);
+      if (!m) return null;
+      let h = parseInt(m[0], 10);
+      if (h === 0) return 12;
+      if (h > 12 && h <= 23) return h - 12;
+      return h;
+    };
+    const DAY_AR = {
+      saturday: ['السبت', 'سبت'],
+      sunday: ['الأحد', 'الاحد', 'أحد', 'احد'],
+      monday: ['الاثنين', 'الإثنين', 'اثنين', 'إثنين'],
+      tuesday: ['الثلاثاء', 'ثلاثاء'],
+      wednesday: ['الأربعاء', 'الاربعاء', 'أربعاء', 'اربعاء'],
+      thursday: ['الخميس', 'خميس'],
+      friday: ['الجمعة', 'جمعة'],
+    };
+    const actDayTimes = assignTarget.activity?.day_times || {};
+    const commonHour = norm12(actSchedule);
+    const memberHasHour = commonHour != null || Object.values(actDayTimes).some(v => norm12(v) != null);
+    const allDayNames = Object.values(DAY_AR).flat();
+    const namesAny = allDayNames.some(n => (actSchedule || '').includes(n));
+    const memberDays = namesAny
+      ? ALL_DAY_IDS.filter(d => (DAY_AR[d] || []).some(n => (actSchedule || '').includes(n)))
+      : [...ALL_DAY_IDS];
+    // Member's 12h hour on a given weekday: per-day override first, else common.
+    const memberHourForDay = (dayId) => {
+      const names = DAY_AR[dayId] || [];
+      for (const [k, v] of Object.entries(actDayTimes)) {
+        if (names.some(n => k.includes(n) || n.includes(k))) {
+          const h = norm12(v);
+          if (h != null) return h;
+        }
+      }
+      return commonHour;
+    };
     return levels
       .filter(l => {
         if (!branchOk(l)) return false;
@@ -525,10 +562,17 @@ export const LevelsPage = () => {
           }
         }
         if (!groupMatch) return false;
-        const lvlSlot = norm(l.time_slot || l.schedule || '');
-        // If both sides expose a slot, require equality. If either is empty,
-        // accept (legacy levels without time_slot stay reachable).
-        if (targetSlot && lvlSlot && targetSlot !== lvlSlot) return false;
+        // The level matches when the member's hour on at least one of the
+        // level's days equals the level's hour. This lets a member with
+        // different times per day (Sat@5, Fri@3) see the right level for each
+        // day. Legacy levels without an hour stay reachable.
+        const lvlHour = norm12(l.time_slot || l.schedule || '');
+        if (lvlHour != null && memberHasHour) {
+          const lDays = (Array.isArray(l.days) && l.days.length) ? l.days : [...ALL_DAY_IDS];
+          const overlap = lDays.filter(d => memberDays.includes(d));
+          const checkDays = overlap.length ? overlap : memberDays;
+          if (!checkDays.some(d => memberHourForDay(d) === lvlHour)) return false;
+        }
         return true;
       })
       .sort((a, b) => (a.level_number || 0) - (b.level_number || 0));
