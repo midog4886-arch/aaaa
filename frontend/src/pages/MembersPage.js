@@ -4,7 +4,7 @@ import { useLanguage } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/AuthContext';
 import { Layout } from '../components/Layout';
 import { getMemberQRValue } from '../utils/memberQR';
-import { NATIONALITY_OPTIONS } from '../utils/nationalities';
+import { NATIONALITY_OPTIONS, nationalityLabel } from '../utils/nationalities';
 import { Card, CardContent } from '../components/ui/card';
 import { Button } from '../components/ui/button';
  
@@ -2204,20 +2204,23 @@ export const MembersPage = () => {
                 {/* Nationality */}
                 <div className="space-y-2">
                   <Label>{language === 'ar' ? 'الجنسية' : 'Nationality'}</Label>
-                  <select
-                    value={formData.nationality || ''}
-                    onChange={(e) => setFormData({...formData, nationality: e.target.value})}
+                  <input
+                    list="member-nationality-options"
+                    value={language === 'ar' ? (formData.nationality || '') : nationalityLabel(formData.nationality, 'en')}
+                    onChange={(e) => {
+                      const typed = e.target.value;
+                      const match = NATIONALITY_OPTIONS.find((o) => o.value === typed || o.en === typed);
+                      setFormData({ ...formData, nationality: match ? match.value : typed });
+                    }}
+                    placeholder={language === 'ar' ? 'ابحث واختر الجنسية' : 'Search nationality'}
                     className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
                     data-testid="member-nationality-input"
-                  >
-                    <option value="">{language === 'ar' ? 'اختر الجنسية' : 'Select nationality'}</option>
+                  />
+                  <datalist id="member-nationality-options">
                     {NATIONALITY_OPTIONS.map((o) => (
-                      <option key={o.value} value={o.value}>{language === 'ar' ? o.value : o.en}</option>
+                      <option key={o.value} value={language === 'ar' ? o.value : o.en} />
                     ))}
-                    {formData.nationality && !NATIONALITY_OPTIONS.some((o) => o.value === formData.nationality) && (
-                      <option value={formData.nationality}>{formData.nationality}</option>
-                    )}
-                  </select>
+                  </datalist>
                 </div>
                 
                 {/* Notes - Optional */}
