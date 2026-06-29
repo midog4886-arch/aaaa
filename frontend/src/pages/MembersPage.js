@@ -5,6 +5,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { Layout } from '../components/Layout';
 import { getMemberQRValue } from '../utils/memberQR';
 import { NationalitySelect } from '../components/NationalitySelect';
+import ScheduleDaysTimeEditor from '../components/ScheduleDaysTimeEditor';
 import { Card, CardContent } from '../components/ui/card';
 import { Button } from '../components/ui/button';
  
@@ -258,6 +259,7 @@ export const MembersPage = () => {
     coach_id: '',
     training_days: [],
     training_time: '',
+    day_times: {},
     level_id: '',
     schedule: ''
   });
@@ -420,7 +422,8 @@ export const MembersPage = () => {
           level_id: activityForm.level_id || '',
           schedule: activityForm.schedule || '',
           training_days: activityForm.training_days || [],
-          training_time: activityForm.training_time || ''
+          training_time: activityForm.training_time || '',
+          day_times: activityForm.day_times || {}
         }];
       }
       
@@ -457,6 +460,7 @@ export const MembersPage = () => {
         coach_id: '',
         training_days: [],
         training_time: '',
+        day_times: {},
         level_id: '',
         schedule: ''
       });
@@ -505,7 +509,8 @@ export const MembersPage = () => {
         level_id: activityForm.level_id || '',
         schedule: activityForm.schedule || '',
         training_days: activityForm.training_days || [],
-        training_time: activityForm.training_time || ''
+        training_time: activityForm.training_time || '',
+        day_times: activityForm.day_times || {}
       };
       
       await membersAPI.addActivity(selectedMember.id, activityData);
@@ -531,6 +536,7 @@ export const MembersPage = () => {
         coach_id: '',
         training_days: [],
         training_time: '',
+        day_times: {},
         level_id: '',
         schedule: ''
       });
@@ -571,7 +577,7 @@ export const MembersPage = () => {
       const payload = {
         ...editActivityForm,
         fee: parseFloat(editActivityForm.fee) || 0,
-        schedule: formatSchedule(editActivityForm.training_days || [], editActivityForm.training_time || '')
+        schedule: editActivityForm.schedule || formatSchedule(editActivityForm.training_days || [], editActivityForm.training_time || '')
       };
       await membersAPI.updateActivity(selectedMember.id, editingActivityId, payload);
 
@@ -1305,6 +1311,11 @@ export const MembersPage = () => {
         fee: parseFloat(renewalForm.fee),
         status: 'active',
         coach_id: renewalActivity.coach_id || '',
+        level_id: renewalActivity.level_id || '',
+        schedule: renewalActivity.schedule || '',
+        training_days: renewalActivity.training_days || [],
+        training_time: renewalActivity.training_time || '',
+        day_times: renewalActivity.day_times || {},
         invoice_id: invoiceRes.data.id,
         renewed_from: renewalActivity.end_date
       };
@@ -2252,10 +2263,22 @@ export const MembersPage = () => {
                         value={activityForm.activity_id || 'none'} 
                         onValueChange={(value) => {
                           const activity = activities.find(a => a.id === value);
-                          setActivityForm({
-                            ...activityForm, 
-                            activity_id: value === 'none' ? '' : value
-                          });
+                          if (value === 'none') {
+                            setActivityForm({
+                              ...activityForm,
+                              activity_id: '',
+                              training_days: [],
+                              training_time: '',
+                              day_times: {},
+                              schedule: '',
+                              level_id: ''
+                            });
+                          } else {
+                            setActivityForm({
+                              ...activityForm,
+                              activity_id: value
+                            });
+                          }
                         }}
                       >
                         <SelectTrigger>
@@ -2286,7 +2309,7 @@ export const MembersPage = () => {
                             type="button" 
                             variant="ghost" 
                             size="icon" 
-                            onClick={() => setActivityForm({...activityForm, activity_id: '', training_days: [], training_time: '', level_id: ''})} 
+                            onClick={() => setActivityForm({...activityForm, activity_id: '', training_days: [], training_time: '', day_times: {}, schedule: '', level_id: ''})} 
                             className="text-destructive h-8 w-8"
                           >
                             <Trash2 className="w-4 h-4" />
@@ -2315,94 +2338,12 @@ export const MembersPage = () => {
                           </div>
                         </div>
                         
-                        {/* Training Days - Arabic names like Invoices */}
-                        <div className="space-y-2">
-                          <Label className="text-xs">{language === 'ar' ? 'أيام التدريب' : 'Training Days'}</Label>
-                          <div className="flex flex-wrap gap-1">
-                            {['الأحد', 'الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'].map((day) => (
-                              <button
-                                key={day}
-                                type="button"
-                                onClick={() => {
-                                  const currentDays = activityForm.training_days || [];
-                                  const newDays = currentDays.includes(day)
-                                    ? currentDays.filter(d => d !== day)
-                                    : [...currentDays, day];
-                                  
-                                  // Format schedule like invoices
-                                  const formatSchedule = (days, time) => {
-                                    if (days.length === 0) return time || '';
-                                    const dayOrder = ['الأحد', 'الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'];
-                                    const sortedDays = [...days].sort((a, b) => dayOrder.indexOf(a) - dayOrder.indexOf(b));
-                                    let daysStr;
-                                    if (sortedDays.length === 1) {
-                                      daysStr = sortedDays[0];
-                                    } else {
-                                      const lastDay = sortedDays.pop();
-                                      daysStr = sortedDays.join('، ') + ' و ' + lastDay;
-                                    }
-                                    return time ? `${daysStr} - ${time}` : daysStr;
-                                  };
-                                  
-                                  setActivityForm({
-                                    ...activityForm,
-                                    training_days: newDays,
-                                    schedule: formatSchedule(newDays, activityForm.training_time)
-                                  });
-                                }}
-                                className={`px-2 py-1 text-xs rounded border transition-colors ${
-                                  (activityForm.training_days || []).includes(day)
-                                    ? 'bg-blue-500 text-white border-blue-500'
-                                    : 'bg-white text-gray-700 border-gray-300 hover:border-blue-400'
-                                }`}
-                              >
-                                {day}
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-                        
-                        {/* Training Time - Number input auto-converted to time format */}
-                        <div className="space-y-2">
-                          <Label className="text-xs">{language === 'ar' ? 'الساعة' : 'Time'}</Label>
-                          <Input 
-                            type="number"
-                            min="1"
-                            max="12"
-                            value={activityForm.training_time_hour || ''} 
-                            onChange={(e) => {
-                              const hour = e.target.value;
-                              // Auto convert to time format (e.g., 4 → 4:00 م)
-                              const timeStr = hour ? `${hour}:00 م` : '';
-                              // Format schedule like invoices
-                              const formatSchedule = (days, time) => {
-                                if (!days || days.length === 0) return time || '';
-                                const dayOrder = ['الأحد', 'الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'];
-                                const sortedDays = [...days].sort((a, b) => dayOrder.indexOf(a) - dayOrder.indexOf(b));
-                                let daysStr;
-                                if (sortedDays.length === 1) {
-                                  daysStr = sortedDays[0];
-                                } else {
-                                  const lastDay = sortedDays.pop();
-                                  daysStr = sortedDays.join('، ') + ' و ' + lastDay;
-                                }
-                                return time ? `${daysStr} - ${time}` : daysStr;
-                              };
-                              
-                              setActivityForm({
-                                ...activityForm,
-                                training_time_hour: hour,
-                                training_time: timeStr,
-                                schedule: formatSchedule(activityForm.training_days, timeStr)
-                              });
-                            }} 
-                            className="h-8 text-sm" 
-                            placeholder={language === 'ar' ? 'مثال: 4' : 'e.g. 4'}
-                          />
-                          {activityForm.training_time && (
-                            <p className="text-xs text-muted-foreground">{activityForm.training_time}</p>
-                          )}
-                        </div>
+                        {/* Training schedule: days + per-day times */}
+                        <ScheduleDaysTimeEditor
+                          value={activityForm}
+                          onChange={(patch) => setActivityForm({ ...activityForm, ...patch })}
+                          language={language}
+                        />
                         
                         {/* Level Selection - Cascading like Invoices */}
                         <div className="space-y-2">
@@ -3007,6 +2948,7 @@ export const MembersPage = () => {
                                           schedule: activity.schedule || '',
                                           training_days: activity.training_days || [],
                                           training_time: activity.training_time || '',
+                                          day_times: activity.day_times || {},
                                           source: activity.source || '',
                                           source_id: activity.source_id || ''
                                         });
@@ -3211,43 +3153,11 @@ export const MembersPage = () => {
                                       </select>
                                     </div>
                                   </div>
-                                  <div className="space-y-1">
-                                    <Label className="text-xs">{language === 'ar' ? 'أيام التدريب' : 'Training Days'}</Label>
-                                    <div className="flex flex-wrap gap-1">
-                                      {['الأحد', 'الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'].map(day => (
-                                        <button
-                                          key={day}
-                                          type="button"
-                                          onClick={() => {
-                                            const cur = editActivityForm.training_days || [];
-                                            const newDays = cur.includes(day) ? cur.filter(d => d !== day) : [...cur, day];
-                                            setEditActivityForm({...editActivityForm, training_days: newDays});
-                                          }}
-                                          className={`px-2 py-0.5 text-xs rounded border transition-colors ${
-                                            (editActivityForm.training_days || []).includes(day)
-                                              ? 'bg-blue-500 text-white border-blue-500'
-                                              : 'bg-white text-gray-700 border-gray-300 hover:border-blue-400'
-                                          }`}
-                                        >
-                                          {day}
-                                        </button>
-                                      ))}
-                                    </div>
-                                  </div>
-                                  <div className="space-y-1">
-                                    <Label className="text-xs">{language === 'ar' ? 'الساعة' : 'Time'}</Label>
-                                    <Input
-                                      type="number" min="1" max="12"
-                                      value={editActivityForm.training_time ? editActivityForm.training_time.split(':')[0] : ''}
-                                      onChange={e => {
-                                        const h = e.target.value;
-                                        setEditActivityForm({...editActivityForm, training_time: h ? `${h}:00 م` : ''});
-                                      }}
-                                      className="h-9 text-sm"
-                                      placeholder={language === 'ar' ? 'مثال: 4' : 'e.g. 4'}
-                                    />
-                                    {editActivityForm.training_time && <p className="text-xs text-muted-foreground">{editActivityForm.training_time}</p>}
-                                  </div>
+                                  <ScheduleDaysTimeEditor
+                                    value={editActivityForm}
+                                    onChange={(patch) => setEditActivityForm({ ...editActivityForm, ...patch })}
+                                    language={language}
+                                  />
                                   <div className="flex gap-2 justify-end pt-1">
                                     <Button size="sm" variant="outline" onClick={() => { setEditingActivityId(null); setEditActivityForm({}); }}>
                                       {language === 'ar' ? 'إلغاء' : 'Cancel'}
@@ -4190,7 +4100,7 @@ export const MembersPage = () => {
             setActivityForm({
               activity_id: '', start_date: '', end_date: '', fee: '',
               status: 'active', coach_id: '', training_days: [],
-              training_time: '', level_id: '', schedule: ''
+              training_time: '', day_times: {}, level_id: '', schedule: ''
             });
           }
         }}>
@@ -4247,88 +4157,12 @@ export const MembersPage = () => {
                 </div>
               </div>
               
-              {/* Training Days */}
-              <div className="space-y-2">
-                <Label className="text-xs">{language === 'ar' ? 'أيام التدريب' : 'Training Days'}</Label>
-                <div className="flex flex-wrap gap-1">
-                  {['الأحد', 'الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'].map((day) => (
-                    <button
-                      key={day}
-                      type="button"
-                      onClick={() => {
-                        const currentDays = activityForm.training_days || [];
-                        const newDays = currentDays.includes(day)
-                          ? currentDays.filter(d => d !== day)
-                          : [...currentDays, day];
-                        const formatSchedule = (days, time) => {
-                          if (days.length === 0) return time || '';
-                          const dayOrder = ['الأحد', 'الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'];
-                          const sortedDays = [...days].sort((a, b) => dayOrder.indexOf(a) - dayOrder.indexOf(b));
-                          let daysStr;
-                          if (sortedDays.length === 1) {
-                            daysStr = sortedDays[0];
-                          } else {
-                            const lastDay = sortedDays.pop();
-                            daysStr = sortedDays.join('، ') + ' و ' + lastDay;
-                          }
-                          return time ? `${daysStr} - ${time}` : daysStr;
-                        };
-                        setActivityForm({
-                          ...activityForm,
-                          training_days: newDays,
-                          schedule: formatSchedule(newDays, activityForm.training_time)
-                        });
-                      }}
-                      className={`px-2 py-1 text-xs rounded border transition-colors ${
-                        (activityForm.training_days || []).includes(day)
-                          ? 'bg-blue-500 text-white border-blue-500'
-                          : 'bg-white text-gray-700 border-gray-300 hover:border-blue-400'
-                      }`}
-                    >
-                      {day}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Training Time */}
-              <div className="space-y-2">
-                <Label className="text-xs">{language === 'ar' ? 'الساعة' : 'Time'}</Label>
-                <Input 
-                  type="number"
-                  min="1"
-                  max="12"
-                  value={activityForm.training_time_hour || ''} 
-                  onChange={(e) => {
-                    const hour = e.target.value;
-                    const timeStr = hour ? `${hour}:00 م` : '';
-                    const formatSchedule = (days, time) => {
-                      if (!days || days.length === 0) return time || '';
-                      const dayOrder = ['الأحد', 'الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'];
-                      const sortedDays = [...days].sort((a, b) => dayOrder.indexOf(a) - dayOrder.indexOf(b));
-                      let daysStr;
-                      if (sortedDays.length === 1) {
-                        daysStr = sortedDays[0];
-                      } else {
-                        const lastDay = sortedDays.pop();
-                        daysStr = sortedDays.join('، ') + ' و ' + lastDay;
-                      }
-                      return time ? `${daysStr} - ${time}` : daysStr;
-                    };
-                    setActivityForm({
-                      ...activityForm,
-                      training_time_hour: hour,
-                      training_time: timeStr,
-                      schedule: formatSchedule(activityForm.training_days, timeStr)
-                    });
-                  }} 
-                  className="h-9 text-sm" 
-                  placeholder={language === 'ar' ? 'مثال: 4' : 'e.g. 4'}
-                />
-                {activityForm.training_time && (
-                  <p className="text-xs text-muted-foreground">{activityForm.training_time}</p>
-                )}
-              </div>
+              {/* Training schedule: days + per-day times */}
+              <ScheduleDaysTimeEditor
+                value={activityForm}
+                onChange={(patch) => setActivityForm({ ...activityForm, ...patch })}
+                language={language}
+              />
 
               {/* Level Selection - Cascading */}
               <div className="space-y-2">

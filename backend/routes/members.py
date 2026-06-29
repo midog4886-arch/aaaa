@@ -27,6 +27,7 @@ class MemberActivity(BaseModel):
     schedule: Optional[str] = ""
     training_days: Optional[List[str]] = []
     training_time: Optional[str] = ""
+    day_times: Optional[Dict[str, str]] = {}
     source: Optional[str] = ""
     source_id: Optional[str] = ""
 
@@ -889,10 +890,12 @@ async def _notify_schedule_change(member_id: str, member_doc: Optional[dict],
     def _sig(a: Optional[dict]):
         a = a or {}
         days = a.get("training_days") or []
+        day_times = a.get("day_times") or {}
         return (
             (a.get("schedule") or "").strip(),
             tuple(d for d in days if d),
             (a.get("training_time") or "").strip(),
+            tuple(sorted((k, (v or "").strip()) for k, v in day_times.items())),
         )
 
     if _sig(before_act) == _sig(after_act):
