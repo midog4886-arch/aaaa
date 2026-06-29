@@ -4,7 +4,7 @@ import { Button } from '../../../../components/ui/button';
 import { Input } from '../../../../components/ui/input';
 import { Label } from '../../../../components/ui/label';
 import { Loader2 } from 'lucide-react';
-import { NATIONALITY_OPTIONS } from '../../../../utils/nationalities';
+import { NationalitySelect } from '../../../../components/NationalitySelect';
 
 export const AddMemberDialog = ({
   isOpen, onOpenChange, newMemberData, setNewMemberData,
@@ -38,17 +38,13 @@ export const AddMemberDialog = ({
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label>{language === 'ar' ? 'الجنسية *' : 'Nationality *'}</Label>
-              <select
+              <NationalitySelect
                 value={newMemberData.nationality || ''}
-                onChange={(e) => setNewMemberData({ ...newMemberData, nationality: e.target.value })}
-                required
-                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
-              >
-                <option value="">{language === 'ar' ? 'اختر الجنسية' : 'Select nationality'}</option>
-                {NATIONALITY_OPTIONS.map((o) => (
-                  <option key={o.value} value={o.value}>{language === 'ar' ? o.value : o.en}</option>
-                ))}
-              </select>
+                onChange={(val) => setNewMemberData({ ...newMemberData, nationality: val })}
+                language={language}
+                placeholder={language === 'ar' ? 'ابحث واختر الجنسية' : 'Search nationality'}
+                data-testid="invoice-member-nationality-input"
+              />
             </div>
           </div>
         </div>
