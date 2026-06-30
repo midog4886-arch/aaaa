@@ -8,6 +8,7 @@ import { Button } from '../components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { branchesAPI, registrationRequestsAPI } from '../services/api';
 import { getPublicBaseUrl } from '../utils/publicUrl';
+import { whatsappChatUrl } from '../utils/whatsapp';
 import { toast } from 'sonner';
 import { Loader2, Phone, Calendar, Clock, Trash2, FileText, Link2, Copy, QrCode, Inbox, UserPlus, Globe, CheckCircle2, Megaphone, Download } from 'lucide-react';
 
@@ -315,7 +316,21 @@ export const RegistrationRequestsPage = () => {
                         )}
                       </div>
                       <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-600">
-                        <span className="flex items-center gap-1" dir="ltr"><Phone className="w-3.5 h-3.5" />{req.customer_phone}</span>
+                        {req.customer_phone ? (
+                          <a
+                            href={whatsappChatUrl(req.customer_phone)}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="flex items-center gap-1 text-green-600 hover:text-green-700 hover:underline"
+                            dir="ltr"
+                            title="فتح محادثة واتساب"
+                            data-testid={`link-whatsapp-${req.id}`}
+                          >
+                            <Phone className="w-3.5 h-3.5" />{req.customer_phone}
+                          </a>
+                        ) : (
+                          <span className="flex items-center gap-1" dir="ltr"><Phone className="w-3.5 h-3.5" />{req.customer_phone}</span>
+                        )}
                         {req.nationality && <span className="flex items-center gap-1"><Globe className="w-3.5 h-3.5" />{req.nationality}</span>}
                         {req.activity_name && <span className="flex items-center gap-1"><FileText className="w-3.5 h-3.5" />{req.activity_name}</span>}
                         {(req.preferred_days || []).length > 0 && <span className="flex items-center gap-1"><Calendar className="w-3.5 h-3.5" />{(req.preferred_days || []).join('، ')}</span>}
