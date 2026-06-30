@@ -49,6 +49,7 @@ export default function WhatsAppPage() {
     message_template: 'مرحباً {name}،\nنذكركم بأن اشتراككم في نشاط {activity} سينتهي بعد {days} يوم/أيام.\nيرجى التواصل معنا للتجديد. 🏆',
     templates: {},
     manual_reminder_template: 'السلام عليكم {name}،\nنود تذكيركم بأن اشتراك ({activity}) في شركة اداء الابطال العالمية للرياضة قارب على الانتهاء بتاريخ {end_date}.\nنرجو التواصل معنا للتجديد.\nشكراً لكم 🏆',
+    welcome_template: 'أهلاً وسهلاً {name} 🎉\nيسعدنا انضمامك إلى شركة اداء الابطال العالمية للرياضة في نشاط ({activity}).\nنتمنى لك تجربة رياضية ممتعة ومفيدة. 🏆',
     send_hour: 9,
     push_enabled: true,
     portal_enabled: true,
@@ -1159,6 +1160,16 @@ export default function WhatsAppPage() {
                 <p className="text-xs text-muted-foreground mb-2">{t('يُستخدم عند الضغط على زر التذكير في صفحة التجديدات. المتغيرات: {name}، {activity}، {days}، {end_date}، {fee}', 'Used when sending reminders from the Renewals page. Variables: {name}, {activity}, {days}, {end_date}, {fee}')}</p>
                 <textarea value={waSettings.manual_reminder_template}
                   onChange={e => setWaSettings(s => ({ ...s, manual_reminder_template: e.target.value }))}
+                  rows={5} dir="auto"
+                  className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary resize-none" />
+              </div>
+
+              {/* Welcome template for new members (used by Members page WA button) */}
+              <div>
+                <label className="block text-sm font-medium mb-1">{t('نص رسالة الترحيب بالعضو الجديد (صفحة الأعضاء)', 'New Member Welcome Template (Members page)')}</label>
+                <p className="text-xs text-muted-foreground mb-2">{t('يُستخدم عند الضغط على زر الترحيب بجانب رقم العضو في صفحة الأعضاء. المتغيرات: {name}، {activity}، {end_date}، {fee}', 'Used when sending a welcome from the Members page WhatsApp button. Variables: {name}, {activity}, {end_date}, {fee}')}</p>
+                <textarea value={waSettings.welcome_template}
+                  onChange={e => setWaSettings(s => ({ ...s, welcome_template: e.target.value }))}
                   rows={5} dir="auto"
                   className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary resize-none" />
               </div>

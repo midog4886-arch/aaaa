@@ -5,10 +5,19 @@ description: How branch-level WhatsApp renewal/manual reminder text overrides th
 
 # Per-branch WhatsApp message templates
 
-Branches can override two WhatsApp reminder texts: renewal (automatic) and
-manual. Stored on the branch doc as `whatsapp_renewal_template` and
-`whatsapp_manual_template`. Empty/missing = use the shared global template in
-`whatsapp_settings` (backward compatible).
+Branches can override three WhatsApp texts: renewal (automatic), manual, and
+welcome (new member, first subscription). Stored on the branch doc as
+`whatsapp_renewal_template`, `whatsapp_manual_template`, `whatsapp_welcome_template`.
+Empty/missing = use the shared global template in `whatsapp_settings` (backward
+compatible). Globals: `message_template` (renewal), `manual_reminder_template`,
+`welcome_template`.
+
+**Welcome message:** there is NO automatic first-subscription send. It is sent
+MANUALLY from the Members page via a 👋 button next to the WhatsApp icon (list
+row + detail dialog) that opens `wa.me` prefilled. Frontend resolves branch
+override > global `welcome_template` (fetched via auth-only
+GET /whatsapp/welcome-template, which returns only the template, no tokens).
+Placeholders filled from the member's primary (latest end_date) activity.
 
 **Resolution rule:** branch override (if non-empty) wins over the global/
 per-offset template. Keyed by `member.branch_id` → branch doc `id`. Members with

@@ -52,6 +52,9 @@ DEFAULT_SETTINGS = {
     # Per-offset overrides keyed by stringified days; empty falls back to message_template
     "templates": {},
     "manual_reminder_template": "السلام عليكم {name}،\nنود تذكيركم بأن اشتراك ({activity}) في شركة اداء الابطال العالمية للرياضة قارب على الانتهاء بتاريخ {end_date}.\nنرجو التواصل معنا للتجديد.\nشكراً لكم 🏆",
+    # Welcome message for NEW members (first subscription) — sent manually via the
+    # Members page WhatsApp button. Empty per-branch override falls back to this.
+    "welcome_template": "أهلاً وسهلاً {name} 🎉\nيسعدنا انضمامك إلى شركة اداء الابطال العالمية للرياضة في نشاط ({activity}).\nنتمنى لك تجربة رياضية ممتعة ومفيدة. 🏆",
     "send_hour": 9,
     "push_enabled": True,
     "portal_enabled": True,
@@ -597,6 +600,7 @@ class WhatsAppSettings(BaseModel):
     # back to the shared `message_template`.
     templates: Optional[dict] = None
     manual_reminder_template: Optional[str] = None
+    welcome_template: Optional[str] = None
     send_hour: Optional[int] = None
     push_enabled: Optional[bool] = None
     portal_enabled: Optional[bool] = None
@@ -619,6 +623,8 @@ async def update_settings(data: WhatsAppSettings, current_user: dict = Depends(g
         raise HTTPException(status_code=400, detail="message_template must not exceed 1000 characters")
     if data.manual_reminder_template is not None and len(data.manual_reminder_template) > 1000:
         raise HTTPException(status_code=400, detail="manual_reminder_template must not exceed 1000 characters")
+    if data.welcome_template is not None and len(data.welcome_template) > 1000:
+        raise HTTPException(status_code=400, detail="welcome_template must not exceed 1000 characters")
     if data.templates is not None:
         cleaned_tpl: dict = {}
         for k, v in data.templates.items():
@@ -964,6 +970,22 @@ async def get_renewal_reminder_template(current_user: dict = Depends(get_current
             "message_template", DEFAULT_SETTINGS["message_template"]
         ),
         "templates": settings.get("templates") or {},
+    }
+
+
+@router.get("/welcome-template")
+async def get_welcome_template(current_user: dict = Depends(get_current_user)):
+    """Return only the global welcome template (for new members).
+
+    Used by the Members page manual welcome button. Any authenticated staff
+    member can read it — it contains no tokens or sensitive WhatsApp config.
+    Per-branch overrides live on the branch document and are resolved client-side.
+    """
+    settings = await _get_settings()
+    return {
+        "welcome_template": settings.get(
+            "welcome_template", DEFAULT_SETTINGS["welcome_template"]
+        ),
     }
 
 

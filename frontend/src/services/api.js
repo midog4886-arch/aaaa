@@ -727,6 +727,8 @@ export const whatsappAPI = {
     axios.post(`${API}/whatsapp/renewal-reminders/last`, { items: items || [] }),
   getReminderTemplate: () =>
     axios.get(`${API}/whatsapp/renewal-reminders/template`),
+  getWelcomeTemplate: () =>
+    axios.get(`${API}/whatsapp/welcome-template`),
   sendBulkReminders: (items, options = {}) => {
     const params = options.logOnly ? '?log_only=true' : '';
     return axios.post(`${API}/whatsapp/renewal-reminders/send${params}`, { items });
