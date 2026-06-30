@@ -54,7 +54,7 @@ export const PublicRegistrationPage = () => {
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [nationality, setNationality] = useState('');
-  const [activity, setActivity] = useState('');
+  const [activities, setActivities] = useState([]);
   const [days, setDays] = useState([]);
   const [time, setTime] = useState('');
   const [notes, setNotes] = useState('');
@@ -113,6 +113,10 @@ export const PublicRegistrationPage = () => {
     setDays((prev) => prev.includes(key) ? prev.filter(d => d !== key) : [...prev, key]);
   };
 
+  const toggleActivity = (label) => {
+    setActivities((prev) => prev.includes(label) ? prev.filter(a => a !== label) : [...prev, label]);
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setFormError('');
@@ -129,7 +133,7 @@ export const PublicRegistrationPage = () => {
         customer_phone: phone.trim(),
         nationality: nationality.trim(),
         activity_id: '',
-        activity_name: activity,
+        activity_name: ACTIVITY_OPTIONS.filter(a => activities.includes(a)).join('، '),
         preferred_days: selectedDays,
         preferred_time: time.trim(),
         notes: notes.trim(),
@@ -257,14 +261,15 @@ export const PublicRegistrationPage = () => {
             </div>
 
             <div className="space-y-1.5">
-              <label className="text-sm font-medium text-gray-700 flex items-center gap-1.5"><Dumbbell className="w-4 h-4" /> النشاط المطلوب</label>
-              <select value={activity} onChange={(e) => setActivity(e.target.value)}
-                className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500">
-                <option value="">اختر النشاط</option>
+              <label className="text-sm font-medium text-gray-700 flex items-center gap-1.5"><Dumbbell className="w-4 h-4" /> النشاط المطلوب <span className="text-gray-400 font-normal">(يمكن اختيار أكثر من نشاط)</span></label>
+              <div className="flex flex-wrap gap-2">
                 {ACTIVITY_OPTIONS.map((label, i) => (
-                  <option key={i} value={label}>{label}</option>
+                  <button type="button" key={i} onClick={() => toggleActivity(label)}
+                    className={`px-3 py-1.5 rounded-full text-xs border transition-colors ${activities.includes(label) ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-white text-gray-600 border-gray-300'}`}>
+                    {label}
+                  </button>
                 ))}
-              </select>
+              </div>
             </div>
 
             <div className="space-y-1.5">
