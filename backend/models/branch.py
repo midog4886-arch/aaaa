@@ -13,6 +13,10 @@ class BranchBase(BaseModel):
     is_active: bool = True
     code_prefix: Optional[str] = ""
     whatsapp_group_url: Optional[str] = ""
+    # Per-branch WhatsApp message templates. Empty -> fall back to the shared
+    # global templates in whatsapp_settings (backward compatible).
+    whatsapp_renewal_template: Optional[str] = ""
+    whatsapp_manual_template: Optional[str] = ""
     # Days the branch operates. None/empty = open all week (backward compatible).
     working_days: Optional[List[str]] = None
 

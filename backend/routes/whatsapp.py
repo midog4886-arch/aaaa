@@ -166,6 +166,42 @@ async def _get_settings() -> dict:
     return DEFAULT_SETTINGS.copy()
 
 
+async def _get_branch_templates() -> dict:
+    """Load per-branch WhatsApp template overrides keyed by branch id.
+
+    Returns {branch_id: {"renewal": str, "manual": str}} containing only
+    non-empty overrides. Branches without an override (or members without a
+    branch) fall back to the shared global templates at send time.
+    """
+    if _db is None:
+        return {}
+    out: dict = {}
+    try:
+        async for b in _db["branches"].find(
+            {}, {"_id": 0, "id": 1, "whatsapp_renewal_template": 1, "whatsapp_manual_template": 1}
+        ):
+            bid = b.get("id")
+            if not bid:
+                continue
+            entry = {}
+            renewal = (b.get("whatsapp_renewal_template") or "").strip()
+            manual = (b.get("whatsapp_manual_template") or "").strip()
+            if renewal:
+                entry["renewal"] = renewal
+            if manual:
+                entry["manual"] = manual
+            if entry:
+                out[bid] = entry
+    except Exception as e:
+        logger.error(f"Failed to load branch WhatsApp templates: {e}")
+    return out
+
+
+def _resolve_branch_template(branch_templates: dict, branch_id, kind: str, fallback: str) -> str:
+    """Pick a branch's override for `kind` ('renewal'|'manual'), else fallback."""
+    return ((branch_templates or {}).get(branch_id) or {}).get(kind) or fallback
+
+
 async def _run_daily_reminders():
     global _reminders_running
     if _reminders_running:
@@ -279,8 +315,12 @@ async def _record_renewal_reminder(
         logger.error(f"Failed to record reminder log: {e}")
 
 
-async def _send_wa_for_members(members_data: list, days_before: int, template: str, manual: bool = False) -> int:
-    """Send WhatsApp reminder messages. Returns count of successful sends."""
+async def _send_wa_for_members(members_data: list, days_before: int, template: str, manual: bool = False, branch_templates: dict = None) -> int:
+    """Send WhatsApp reminder messages. Returns count of successful sends.
+
+    `branch_templates` (from `_get_branch_templates`) lets each member's branch
+    override the renewal text; members without an override use `template`.
+    """
     sent_count = 0
     for item in members_data:
         member = item["member"]
@@ -290,8 +330,11 @@ async def _send_wa_for_members(members_data: list, days_before: int, template: s
         name = member.get("name", "")
         activity_name = item["activity_name"]
         end_date_fmt = item["end_date_fmt"]
+        member_template = _resolve_branch_template(
+            branch_templates, member.get("branch_id"), "renewal", template
+        )
         message = _render_template(
-            template,
+            member_template,
             name=name,
             activity=activity_name,
             days=days_before,
@@ -459,6 +502,7 @@ async def _do_daily_reminders():
 
     template = settings.get("message_template", DEFAULT_SETTINGS["message_template"])
     per_offset_templates = settings.get("templates") or {}
+    branch_templates = await _get_branch_templates()
 
     wa_status = await _get_wa_status()
     wa_connected = wa_status.get("connected", False)
@@ -483,7 +527,7 @@ async def _do_daily_reminders():
         if wa_connected:
             # Per-offset override falls back to the shared template.
             tpl_for_offset = per_offset_templates.get(str(days)) or template
-            total_wa += await _send_wa_for_members(members_data, days, tpl_for_offset)
+            total_wa += await _send_wa_for_members(members_data, days, tpl_for_offset, branch_templates=branch_templates)
 
         if push_enabled:
             try:
@@ -1159,6 +1203,7 @@ async def send_bulk_renewal_reminders(
     settings = await _get_settings()
     settings = {**settings, "_manual_run": True}
     template = settings.get("manual_reminder_template", DEFAULT_SETTINGS["manual_reminder_template"])
+    branch_templates = await _get_branch_templates()
     push_enabled = settings.get("push_enabled", True)
     portal_enabled = settings.get("portal_enabled", True)
 
@@ -1241,8 +1286,11 @@ async def send_bulk_renewal_reminders(
         if wa_connected and phone:
             wa_phone = _format_phone(phone)
             if wa_phone:
+                member_template = _resolve_branch_template(
+                    branch_templates, member.get("branch_id"), "manual", template
+                )
                 message = _render_template(
-                    template,
+                    member_template,
                     name=name,
                     activity=activities_text,
                     days=days_calc,

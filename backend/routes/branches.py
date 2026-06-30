@@ -30,6 +30,11 @@ class BranchBase(BaseModel):
     is_active: bool = True
     code_prefix: Optional[str] = ""
     whatsapp_group_url: Optional[str] = ""
+    # Per-branch WhatsApp message templates. Empty -> fall back to the shared
+    # global templates in whatsapp_settings (backward compatible). Placeholders:
+    # {name} {activity} {days} {end_date} {fee}.
+    whatsapp_renewal_template: Optional[str] = ""
+    whatsapp_manual_template: Optional[str] = ""
     # Days the branch operates. None/empty = open all week (backward compatible).
     working_days: Optional[List[str]] = None
 
@@ -39,6 +44,18 @@ class BranchCreate(BranchBase):
 class Branch(BranchBase):
     id: str
     created_at: str
+
+
+def _validate_branch_templates(data: dict):
+    """Cap per-branch WhatsApp templates to align with global template limits."""
+    for field in ("whatsapp_renewal_template", "whatsapp_manual_template"):
+        val = data.get(field)
+        if val and len(val) > 1000:
+            raise HTTPException(
+                status_code=400,
+                detail=f"{field} must not exceed 1000 characters",
+            )
+
 
 # ============ ROUTES ============
 
@@ -94,6 +111,7 @@ async def create_branch(branch: BranchCreate, current_user: dict = Depends(get_c
 
     branch_id = str(uuid.uuid4())
     data = branch.model_dump()
+    _validate_branch_templates(data)
     from utils.member_code import sanitize_prefix
     data["code_prefix"] = sanitize_prefix(data.get("code_prefix") or "")
     user_supplied_prefix = bool(data["code_prefix"])
@@ -172,6 +190,7 @@ async def update_branch(branch_id: str, branch: BranchCreate, current_user: dict
         raise HTTPException(status_code=404, detail="Branch not found")
 
     data = branch.model_dump()
+    _validate_branch_templates(data)
     from utils.member_code import sanitize_prefix
     data["code_prefix"] = sanitize_prefix(data.get("code_prefix") or "")
     if data["code_prefix"]:

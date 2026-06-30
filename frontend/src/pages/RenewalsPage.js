@@ -370,13 +370,17 @@ const RenewalsPage = () => {
   // Pull selected items out of the current visible list
   const getSelectedItems = (visible) => visible.filter(it => selectedKeys.has(getKey(it)));
 
-  // Build manual reminder text using the editable WhatsApp template
+  // Build manual reminder text using the editable WhatsApp template.
+  // A branch-specific manual template (if set on the member's branch) overrides
+  // the global template; otherwise fall back to the shared global text.
   const buildReminderText = (item) => {
     const endRaw = item.end_date || '';
     const endFmt = endRaw.replace(/-/g, '/');
     const feeNum = Number(item.fee ?? 0) || 0;
     const feeStr = Number.isInteger(feeNum) ? String(feeNum) : feeNum.toFixed(2);
-    return (waTemplate || '')
+    const branch = (branches || []).find(b => b.id === item.branch_id);
+    const branchTpl = (branch?.whatsapp_manual_template || '').trim();
+    return (branchTpl || waTemplate || '')
       .replace(/\{name\}/g, item.member_name || '')
       .replace(/\{activity\}/g, item.activity_name || '')
       .replace(/\{days\}/g, String(item.days_remaining ?? 0))

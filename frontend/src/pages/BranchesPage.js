@@ -45,6 +45,8 @@ const BranchesPage = () => {
     phone: '',
     code_prefix: '',
     whatsapp_group_url: '',
+    whatsapp_renewal_template: '',
+    whatsapp_manual_template: '',
     working_days: [...ALL_WEEKDAY_IDS]
   });
 
@@ -92,6 +94,8 @@ const BranchesPage = () => {
         is_active: true,
         code_prefix: cleanedPrefix,
         whatsapp_group_url: (formData.whatsapp_group_url || '').trim(),
+        whatsapp_renewal_template: (formData.whatsapp_renewal_template || '').trim(),
+        whatsapp_manual_template: (formData.whatsapp_manual_template || '').trim(),
         working_days: WEEKDAYS
           .map(d => d.id)
           .filter(id => (formData.working_days || []).includes(id))
@@ -134,6 +138,8 @@ const BranchesPage = () => {
       phone: branch.phone || '',
       code_prefix: branch.code_prefix || '',
       whatsapp_group_url: branch.whatsapp_group_url || '',
+      whatsapp_renewal_template: branch.whatsapp_renewal_template || '',
+      whatsapp_manual_template: branch.whatsapp_manual_template || '',
       // Missing/empty working_days means the branch was created before this
       // feature -> treat it as open all week.
       working_days: Array.isArray(branch.working_days) && branch.working_days.length > 0
@@ -152,6 +158,8 @@ const BranchesPage = () => {
       phone: '',
       code_prefix: '',
       whatsapp_group_url: '',
+      whatsapp_renewal_template: '',
+      whatsapp_manual_template: '',
       working_days: [...ALL_WEEKDAY_IDS]
     });
   };
@@ -375,6 +383,39 @@ const BranchesPage = () => {
                     ? 'سيتم إدراج هذا الرابط في رسائل واتساب الفواتير واستمارات التسجيل لهذا الفرع. اتركه فارغًا لإخفاء الرابط من الرسائل.'
                     : 'This link will be inserted in WhatsApp messages for invoices and registration forms of this branch. Leave empty to omit the link.'}
                 </p>
+              </div>
+
+              <div className="space-y-2 rounded-lg border p-3 bg-muted/30">
+                <Label className="font-bold">{language === 'ar' ? 'قوالب رسائل الواتساب الخاصة بالفرع' : 'Branch WhatsApp Message Templates'}</Label>
+                <p className="text-xs text-muted-foreground">
+                  {language === 'ar'
+                    ? 'متغيرات متاحة: {name} اسم العضو، {activity} النشاط، {days} الأيام المتبقية، {end_date} تاريخ الانتهاء، {fee} المبلغ. اتركه فارغًا لاستخدام النص العام الافتراضي.'
+                    : 'Available variables: {name}, {activity}, {days}, {end_date}, {fee}. Leave empty to use the global default template.'}
+                </p>
+
+                <div className="space-y-1">
+                  <Label className="text-sm">{language === 'ar' ? 'قالب التذكير بالتجديد (التلقائي)' : 'Renewal Reminder Template (automatic)'}</Label>
+                  <textarea
+                    className="w-full min-h-[90px] rounded-md border border-input bg-background px-3 py-2 text-sm"
+                    value={formData.whatsapp_renewal_template}
+                    onChange={(e) => setFormData({ ...formData, whatsapp_renewal_template: e.target.value })}
+                    placeholder={language === 'ar' ? 'مثال: أهلاً {name}، اشتراكك في {activity} بيخلص بعد {days} يوم.' : 'e.g. Hi {name}, your {activity} subscription ends in {days} days.'}
+                    dir="rtl"
+                    data-testid="branch-whatsapp-renewal-template"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <Label className="text-sm">{language === 'ar' ? 'قالب التذكير اليدوي' : 'Manual Reminder Template'}</Label>
+                  <textarea
+                    className="w-full min-h-[90px] rounded-md border border-input bg-background px-3 py-2 text-sm"
+                    value={formData.whatsapp_manual_template}
+                    onChange={(e) => setFormData({ ...formData, whatsapp_manual_template: e.target.value })}
+                    placeholder={language === 'ar' ? 'مثال: السلام عليكم {name}، اشتراك {activity} قارب على الانتهاء بتاريخ {end_date}.' : 'e.g. Hello {name}, your {activity} subscription ends on {end_date}.'}
+                    dir="rtl"
+                    data-testid="branch-whatsapp-manual-template"
+                  />
+                </div>
               </div>
 
               <DialogFooter>
