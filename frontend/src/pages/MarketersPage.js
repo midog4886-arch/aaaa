@@ -250,7 +250,8 @@ export const MarketersPage = () => {
     const bids = marketerBranchIds(m);
     let branchForLink;
     if (bids.length === 1) branchForLink = bids[0];
-    else branchForLink = linkBranchByMarketer[m.id] || (bids.length === 0 && branches.length === 1 ? branches[0].id : '');
+    else if (bids.length > 1) branchForLink = linkBranchByMarketer[m.id] || 'all';
+    else branchForLink = linkBranchByMarketer[m.id] || (branches.length === 1 ? branches[0].id : '');
     if (!branchForLink) return '';
     // "all" → the public all-branches link where the visitor picks their own branch.
     if (branchForLink === 'all') return `${getPublicBaseUrl()}/register/${tenantSlug}?ref=${encodeURIComponent(m.referral_code)}`;
@@ -421,11 +422,12 @@ export const MarketersPage = () => {
                           const bids = marketerBranchIds(m);
                           if (bids.length === 1 || branches.length <= 1) return null;
                           const opts = bids.length > 1 ? branches.filter(b => bids.includes(b.id)) : branches;
+                          const defaultVal = bids.length > 1 ? 'all' : '';
                           return (
-                            <Select value={linkBranchByMarketer[m.id] || ''} onValueChange={(v) => setLinkBranchByMarketer(prev => ({ ...prev, [m.id]: v }))}>
-                              <SelectTrigger className="h-8 w-40 text-xs"><SelectValue placeholder="اختر فرع للرابط" /></SelectTrigger>
+                            <Select value={linkBranchByMarketer[m.id] || defaultVal} onValueChange={(v) => setLinkBranchByMarketer(prev => ({ ...prev, [m.id]: v }))}>
+                              <SelectTrigger className="h-8 w-52 text-xs"><SelectValue placeholder="اختر فرع للرابط" /></SelectTrigger>
                               <SelectContent>
-                                {bids.length === 0 && <SelectItem value="all">كل الفروع</SelectItem>}
+                                <SelectItem value="all">{bids.length > 1 ? 'كل فروع المسوّق (العميل يختار)' : 'كل الفروع'}</SelectItem>
                                 {opts.map(b => <SelectItem key={b.id} value={b.id}>{b.name_ar || b.name}</SelectItem>)}
                               </SelectContent>
                             </Select>

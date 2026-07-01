@@ -184,11 +184,19 @@ async def public_get_marketer(code: str):
     page can show the special discount. Tenant resolved by middleware."""
     marketer = await db.marketers.find_one(
         {"referral_code": code, "status": {"$ne": "inactive"}},
-        {"_id": 0, "id": 1, "name": 1, "discount_percent": 1},
+        {"_id": 0, "id": 1, "name": 1, "discount_percent": 1, "branch_id": 1, "branch_ids": 1},
     )
     if not marketer:
         raise HTTPException(status_code=404, detail="كود الإحالة غير صحيح")
-    return marketer
+    # Effective branch scope for the public page: prefer branch_ids[], fall back to
+    # the legacy single branch_id. Empty => shared (visitor sees all branches).
+    b_ids = marketer.get("branch_ids") or ([marketer["branch_id"]] if marketer.get("branch_id") else [])
+    return {
+        "id": marketer["id"],
+        "name": marketer.get("name", ""),
+        "discount_percent": marketer.get("discount_percent", 0),
+        "branch_ids": b_ids,
+    }
 
 
 @router.get("/public/marketer-portal/{token}")

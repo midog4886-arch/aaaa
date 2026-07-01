@@ -109,6 +109,27 @@ export const PublicRegistrationPage = () => {
     return () => { active = false; };
   }, [api, referralCode]);
 
+  // When a referral link is scoped to specific marketer branches, limit the branch
+  // picker to those branches only (empty branch_ids => shared => show all branches).
+  const marketerBranchIds = marketer?.branch_ids || [];
+  const visibleBranches = (!hasFixedBranch && marketerBranchIds.length)
+    ? branches.filter(b => marketerBranchIds.includes(b.id))
+    : branches;
+
+  // Keep the picked branch consistent with what the visitor is allowed to see:
+  // clear an out-of-scope pick (e.g. chosen before the marketer data arrived) and
+  // auto-select when exactly one branch is available.
+  useEffect(() => {
+    if (hasFixedBranch) return;
+    const ids = marketer?.branch_ids || [];
+    const vis = ids.length ? branches.filter(b => ids.includes(b.id)) : branches;
+    if (pickedBranchId && !vis.some(b => b.id === pickedBranchId)) {
+      setPickedBranchId(vis.length === 1 ? vis[0].id : '');
+    } else if (!pickedBranchId && vis.length === 1) {
+      setPickedBranchId(vis[0].id);
+    }
+  }, [hasFixedBranch, pickedBranchId, marketer, branches]);
+
   const toggleDay = (key) => {
     setDays((prev) => prev.includes(key) ? prev.filter(d => d !== key) : [...prev, key]);
   };
@@ -125,6 +146,9 @@ export const PublicRegistrationPage = () => {
     if (digits.length < 8) { setFormError('من فضلك اكتب رقم موبايل صحيح'); return; }
     if (!nationality.trim()) { setFormError('من فضلك اختر الجنسية'); return; }
     if (!selectedBranchId) { setFormError('من فضلك اختر الفرع'); return; }
+    if (!hasFixedBranch && marketerBranchIds.length && !visibleBranches.some(b => b.id === selectedBranchId)) {
+      setFormError('من فضلك اختر فرعاً من فروع العرض'); return;
+    }
     setSubmitting(true);
     try {
       const selectedDays = WEEK_DAYS.filter(d => days.includes(d.key)).map(d => d.label);
@@ -253,7 +277,7 @@ export const PublicRegistrationPage = () => {
                   data-testid="select-branch"
                   className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500">
                   <option value="">اختر الفرع</option>
-                  {branches.map(b => (
+                  {visibleBranches.map(b => (
                     <option key={b.id} value={b.id}>{b.public_name || b.name_ar || b.name}</option>
                   ))}
                 </select>

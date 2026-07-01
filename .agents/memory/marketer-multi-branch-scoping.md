@@ -11,4 +11,6 @@ Marketers are branch-or-shared, and can now be scoped to MULTIPLE specific branc
 
 **Why:** list scoping alone leaks via a known id; and analytics is a separate query that must mirror the list scoping exactly or branch users see totals/marketers outside their branch.
 
-**How to apply:** when adding any new marketer read/query, reuse `_branch_visibility_or`; never re-hand-roll a `branch_id`-only $or. Referral link is single-branch by nature, so multi-branch marketers get a picker limited to their `branch_ids`.
+**How to apply:** when adding any new marketer read/query, reuse `_branch_visibility_or`; never re-hand-roll a `branch_id`-only $or.
+
+**Referral link for multi-branch marketers:** a referral link is single-branch by nature (`/register/<slug>/<branch>?ref=code`). For a marketer on several branches, the "one link" is the general no-branch link `/register/<slug>?ref=code`; the public page (PublicRegistrationPage) fetches `branch_ids` from `/api/public/marketers/{code}` and FILTERS its branch picker to those (empty branch_ids = shared = all branches). Guard against race/stale state: reconcile pickedBranch against the visible list (clear if out-of-scope, auto-select if one) AND block submit if picked branch not in the allowed list. Backend does NOT hard-400 an out-of-scope branch — it just drops referral attribution (registration still succeeds); this is intentional (no discount can be obtained out of scope, so it's not an exploit).
