@@ -23,7 +23,7 @@ Routes:
 """
 from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
-from typing import Optional
+from typing import Optional, List
 from datetime import datetime, timezone
 import uuid
 import random
@@ -57,6 +57,7 @@ class MarketerCreate(BaseModel):
     discount_percent: float = 0
     commission_percent: float = 0
     branch_id: Optional[str] = None
+    branch_ids: Optional[List[str]] = None
     notes: Optional[str] = ""
 
 
@@ -69,6 +70,7 @@ class MarketerUpdate(BaseModel):
     status: Optional[str] = None
     notes: Optional[str] = None
     branch_id: Optional[str] = None
+    branch_ids: Optional[List[str]] = None
 
 
 class MarketerPayout(BaseModel):
@@ -225,6 +227,36 @@ async def public_marketer_portal(token: str):
 
 # ============ ADMIN ROUTES ============
 
+def _resolve_branch_selection(raw_ids):
+    """Normalize a marketer's branch selection into (branch_ids, legacy branch_id).
+
+    Empty / ["all"] => shared across ALL branches (branch_ids=[], branch_id=None).
+    One or more specific ids => scoped to those branches; legacy branch_id is set
+    only when exactly one branch is picked (keeps single-branch legacy readers working).
+    """
+    ids = []
+    for b in (raw_ids or []):
+        if b and b != "all" and b not in ids:
+            ids.append(b)
+    if not ids:
+        return [], None
+    return ids, (ids[0] if len(ids) == 1 else None)
+
+
+def _branch_visibility_or(effective_branch: str):
+    """$or clauses making a marketer visible to `effective_branch` when it is one of
+    the marketer's branches (new branch_ids OR legacy branch_id), or when the marketer
+    is shared (no branch restriction at all)."""
+    return [
+        {"branch_ids": effective_branch},
+        {"branch_id": effective_branch},
+        {"$and": [
+            {"$or": [{"branch_ids": {"$exists": False}}, {"branch_ids": []}, {"branch_ids": None}]},
+            {"$or": [{"branch_id": None}, {"branch_id": ""}, {"branch_id": {"$exists": False}}]},
+        ]},
+    ]
+
+
 @router.get("/marketers")
 async def list_marketers(
     branch_filter: Optional[str] = None,
@@ -234,12 +266,7 @@ async def list_marketers(
     query: dict = {}
     effective_branch = resolve_branch_filter(current_user, branch_filter)
     if effective_branch:
-        query["$or"] = [
-            {"branch_id": effective_branch},
-            {"branch_id": None},
-            {"branch_id": ""},
-            {"branch_id": {"$exists": False}},
-        ]
+        query["$or"] = _branch_visibility_or(effective_branch)
 
     marketers = await db.marketers.find(query, {"_id": 0}).sort("created_at", -1).to_list(2000)
     stats = await _commission_stats([m["id"] for m in marketers])
@@ -265,12 +292,7 @@ async def marketers_analytics(
     query: dict = {}
     effective_branch = resolve_branch_filter(current_user, branch_filter)
     if effective_branch:
-        query["$or"] = [
-            {"branch_id": effective_branch},
-            {"branch_id": None},
-            {"branch_id": ""},
-            {"branch_id": {"$exists": False}},
-        ]
+        query["$or"] = _branch_visibility_or(effective_branch)
 
     marketers = await db.marketers.find(query, {"_id": 0}).to_list(2000)
     marketer_ids = [m["id"] for m in marketers]
@@ -364,9 +386,11 @@ async def create_marketer(
     # Branch assignment: non-admins pinned to their own branch; admins may pick
     # a branch or leave it shared (None).
     if current_user.get("is_admin", False):
-        branch_id = data.branch_id if (data.branch_id and data.branch_id != "all") else None
+        raw = data.branch_ids if data.branch_ids is not None else ([data.branch_id] if data.branch_id else [])
+        branch_ids, branch_id = _resolve_branch_selection(raw)
     else:
-        branch_id = require_branch_scope(current_user)
+        own = require_branch_scope(current_user)
+        branch_ids, branch_id = [own], own
 
     if (data.referral_code or "").strip():
         code = _normalize_referral_code(data.referral_code)
@@ -384,6 +408,7 @@ async def create_marketer(
         "status": "active",
         "notes": (data.notes or "").strip(),
         "branch_id": branch_id,
+        "branch_ids": branch_ids,
         "portal_token": _generate_portal_token(),
         "created_by": current_user.get("name", current_user.get("username", "")),
         "created_at": now,
@@ -399,12 +424,7 @@ def _scoped_marketer_query(marketer_id: str, current_user: dict) -> dict:
     query = {"id": marketer_id}
     effective_branch = resolve_branch_filter(current_user, None)
     if effective_branch:
-        query["$or"] = [
-            {"branch_id": effective_branch},
-            {"branch_id": None},
-            {"branch_id": ""},
-            {"branch_id": {"$exists": False}},
-        ]
+        query["$or"] = _branch_visibility_or(effective_branch)
     return query
 
 
@@ -452,11 +472,18 @@ async def update_marketer(
             update_data["referral_code"] = code
 
     # Branch reassignment is admin-only (mirrors create + the admin-gated UI field).
-    # Use fields_set so an explicit "all"/null from an admin maps to shared (None),
+    # Use fields_set so an explicit "all"/empty from an admin maps to shared,
     # while non-admins / omitted payloads never touch the stored branch.
-    if "branch_id" in data.model_fields_set and current_user.get("is_admin", False):
-        bid = data.branch_id
-        update_data["branch_id"] = bid if (bid and bid != "all") else None
+    if current_user.get("is_admin", False) and (
+        "branch_ids" in data.model_fields_set or "branch_id" in data.model_fields_set
+    ):
+        if "branch_ids" in data.model_fields_set:
+            raw = data.branch_ids or []
+        else:
+            raw = [data.branch_id] if data.branch_id else []
+        b_ids, b_id = _resolve_branch_selection(raw)
+        update_data["branch_ids"] = b_ids
+        update_data["branch_id"] = b_id
 
     if not update_data:
         raise HTTPException(status_code=400, detail="لا توجد بيانات للتحديث")

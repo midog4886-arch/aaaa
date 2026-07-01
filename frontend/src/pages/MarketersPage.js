@@ -26,7 +26,7 @@ const PAYMENT_METHODS = [
   { value: 'check', label: 'شيك' },
 ];
 
-const emptyForm = { name: '', phone: '', referral_code: '', discount_percent: '', commission_percent: '', branch_id: '', notes: '' };
+const emptyForm = { name: '', phone: '', referral_code: '', discount_percent: '', commission_percent: '', branch_ids: [], notes: '' };
 
 const AnalyticsDashboard = ({ analytics, loading }) => {
   if (loading) return <div className="flex justify-center py-20"><Loader2 className="w-7 h-7 animate-spin text-primary" /></div>;
@@ -172,6 +172,14 @@ export const MarketersPage = () => {
     return b ? (b.name_ar || b.name) : '—';
   };
 
+  // A marketer's branch list: prefer the new branch_ids[], fall back to legacy branch_id.
+  const marketerBranchIds = (m) => (m.branch_ids && m.branch_ids.length) ? m.branch_ids : (m.branch_id ? [m.branch_id] : []);
+  const branchNames = (m) => {
+    const ids = marketerBranchIds(m);
+    if (!ids.length) return 'كل الفروع';
+    return ids.map(branchName).join('، ');
+  };
+
   const openCreate = () => { setEditing(null); setForm(emptyForm); setDialogOpen(true); };
   const openEdit = (m) => {
     setEditing(m);
@@ -181,7 +189,7 @@ export const MarketersPage = () => {
       referral_code: m.referral_code || '',
       discount_percent: m.discount_percent ?? '',
       commission_percent: m.commission_percent ?? '',
-      branch_id: m.branch_id || '',
+      branch_ids: marketerBranchIds(m),
       notes: m.notes || '',
     });
     setDialogOpen(true);
@@ -197,7 +205,7 @@ export const MarketersPage = () => {
       commission_percent: parseFloat(form.commission_percent) || 0,
       notes: form.notes.trim(),
     };
-    if (isAdmin) payload.branch_id = form.branch_id || null;
+    if (isAdmin) payload.branch_ids = form.branch_ids || [];
     setSaving(true);
     try {
       if (editing) {
@@ -239,7 +247,10 @@ export const MarketersPage = () => {
   };
 
   const referralLink = (m) => {
-    const branchForLink = m.branch_id || linkBranchByMarketer[m.id] || (branches.length === 1 ? branches[0].id : '');
+    const bids = marketerBranchIds(m);
+    let branchForLink;
+    if (bids.length === 1) branchForLink = bids[0];
+    else branchForLink = linkBranchByMarketer[m.id] || (bids.length === 0 && branches.length === 1 ? branches[0].id : '');
     if (!branchForLink) return '';
     // "all" → the public all-branches link where the visitor picks their own branch.
     if (branchForLink === 'all') return `${getPublicBaseUrl()}/register/${tenantSlug}?ref=${encodeURIComponent(m.referral_code)}`;
@@ -396,7 +407,7 @@ export const MarketersPage = () => {
                         {m.phone && <span className="flex items-center gap-1"><Phone className="w-3.5 h-3.5" /> {m.phone}</span>}
                         <span className="flex items-center gap-1"><Percent className="w-3.5 h-3.5" /> خصم {m.discount_percent}%</span>
                         <span className="flex items-center gap-1"><BadgeDollarSign className="w-3.5 h-3.5" /> عمولة {m.commission_percent}%</span>
-                        <span>الفرع: {branchName(m.branch_id)}</span>
+                        <span>الفروع: {branchNames(m)}</span>
                       </div>
                       <div className="flex items-center gap-4 mt-2 text-sm flex-wrap">
                         <span className="text-blue-600">إحالات: {m.referrals || 0}</span>
@@ -406,15 +417,20 @@ export const MarketersPage = () => {
 
                       {/* Referral link */}
                       <div className="mt-3 flex items-center gap-2 flex-wrap">
-                        {!m.branch_id && branches.length > 1 && (
-                          <Select value={linkBranchByMarketer[m.id] || ''} onValueChange={(v) => setLinkBranchByMarketer(prev => ({ ...prev, [m.id]: v }))}>
-                            <SelectTrigger className="h-8 w-40 text-xs"><SelectValue placeholder="اختر فرع للرابط" /></SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="all">كل الفروع</SelectItem>
-                              {branches.map(b => <SelectItem key={b.id} value={b.id}>{b.name_ar || b.name}</SelectItem>)}
-                            </SelectContent>
-                          </Select>
-                        )}
+                        {(() => {
+                          const bids = marketerBranchIds(m);
+                          if (bids.length === 1 || branches.length <= 1) return null;
+                          const opts = bids.length > 1 ? branches.filter(b => bids.includes(b.id)) : branches;
+                          return (
+                            <Select value={linkBranchByMarketer[m.id] || ''} onValueChange={(v) => setLinkBranchByMarketer(prev => ({ ...prev, [m.id]: v }))}>
+                              <SelectTrigger className="h-8 w-40 text-xs"><SelectValue placeholder="اختر فرع للرابط" /></SelectTrigger>
+                              <SelectContent>
+                                {bids.length === 0 && <SelectItem value="all">كل الفروع</SelectItem>}
+                                {opts.map(b => <SelectItem key={b.id} value={b.id}>{b.name_ar || b.name}</SelectItem>)}
+                              </SelectContent>
+                            </Select>
+                          );
+                        })()}
                         <Button variant="outline" size="sm" onClick={() => copyText(m.referral_code, 'تم نسخ كود الإحالة')}>
                           <Copy className="w-3.5 h-3.5 ms-1" /> نسخ الكود
                         </Button>
@@ -534,14 +550,36 @@ export const MarketersPage = () => {
             </div>
             {isAdmin && (
               <div className="space-y-1.5">
-                <Label>الفرع</Label>
-                <Select value={form.branch_id || 'all'} onValueChange={(v) => setForm({ ...form, branch_id: v === 'all' ? '' : v })}>
-                  <SelectTrigger><SelectValue placeholder="كل الفروع" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">كل الفروع (مشترك)</SelectItem>
-                    {branches.map(b => <SelectItem key={b.id} value={b.id}>{b.name_ar || b.name}</SelectItem>)}
-                  </SelectContent>
-                </Select>
+                <Label>الفروع</Label>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setForm({ ...form, branch_ids: [] })}
+                    data-testid="chip-branch-all"
+                    className={`px-3 py-1.5 rounded-full text-sm border transition-colors ${(!form.branch_ids || form.branch_ids.length === 0) ? 'bg-primary text-primary-foreground border-primary' : 'bg-background hover:bg-muted'}`}
+                  >
+                    كل الفروع (مشترك)
+                  </button>
+                  {branches.map(b => {
+                    const active = (form.branch_ids || []).includes(b.id);
+                    return (
+                      <button
+                        key={b.id}
+                        type="button"
+                        onClick={() => setForm(prev => {
+                          const cur = prev.branch_ids || [];
+                          const next = cur.includes(b.id) ? cur.filter(x => x !== b.id) : [...cur, b.id];
+                          return { ...prev, branch_ids: next };
+                        })}
+                        data-testid={`chip-branch-${b.id}`}
+                        className={`px-3 py-1.5 rounded-full text-sm border transition-colors ${active ? 'bg-primary text-primary-foreground border-primary' : 'bg-background hover:bg-muted'}`}
+                      >
+                        {b.name_ar || b.name}
+                      </button>
+                    );
+                  })}
+                </div>
+                <p className="text-xs text-muted-foreground">اختر فرعاً أو أكثر، أو «كل الفروع» ليكون المسوّق مشتركاً في جميع الفروع</p>
               </div>
             )}
             <div className="space-y-1.5">

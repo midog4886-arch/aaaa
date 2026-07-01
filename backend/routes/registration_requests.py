@@ -160,12 +160,16 @@ async def public_create_registration(branch_id: str, payload: PublicRegistration
     if ref_code:
         marketer = await db.marketers.find_one(
             {"referral_code": ref_code, "status": {"$ne": "inactive"}},
-            {"_id": 0, "id": 1, "name": 1, "discount_percent": 1, "commission_percent": 1, "branch_id": 1},
+            {"_id": 0, "id": 1, "name": 1, "discount_percent": 1, "commission_percent": 1, "branch_id": 1, "branch_ids": 1},
         )
         # Only attach if the marketer belongs to this branch or is shared
-        # (branch_id null/empty). Prevents cross-branch referral attribution.
+        # (no branch restriction). Prevents cross-branch referral attribution.
+        m_branch_ids = (marketer or {}).get("branch_ids") or []
         m_branch = (marketer or {}).get("branch_id")
-        branch_ok = (not m_branch) or (m_branch == branch_id)
+        if m_branch_ids:
+            branch_ok = branch_id in m_branch_ids
+        else:
+            branch_ok = (not m_branch) or (m_branch == branch_id)
         if marketer and branch_ok:
             doc["marketer_id"] = marketer["id"]
             doc["referral_code"] = ref_code
