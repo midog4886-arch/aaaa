@@ -314,6 +314,11 @@ export const RegistrationRequestsPage = () => {
                             <Megaphone className="w-3 h-3" /> إعلان سوشيال ميديا
                           </span>
                         )}
+                        {req.marketer_name && (
+                          <span className="text-[11px] rounded-full px-2 py-0.5 font-medium bg-emerald-100 text-emerald-700 inline-flex items-center gap-1" data-testid={`badge-marketer-${req.id}`}>
+                            🎯 مسوّق: {req.marketer_name}{req.marketer_discount_percent ? ` (خصم ${req.marketer_discount_percent}%)` : ''}
+                          </span>
+                        )}
                       </div>
                       <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-600">
                         {req.customer_phone ? (
