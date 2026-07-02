@@ -10,7 +10,7 @@ import { branchesAPI, registrationRequestsAPI } from '../services/api';
 import { getPublicBaseUrl } from '../utils/publicUrl';
 import { whatsappChatUrl } from '../utils/whatsapp';
 import { toast } from 'sonner';
-import { Loader2, Phone, Calendar, Clock, Trash2, FileText, Link2, Copy, QrCode, Inbox, UserPlus, Globe, CheckCircle2, Megaphone, Download } from 'lucide-react';
+import { Loader2, Phone, Calendar, Clock, Trash2, FileText, Link2, Copy, QrCode, Inbox, UserPlus, Globe, CheckCircle2, Megaphone, Download, Search, X } from 'lucide-react';
 
 const STATUS_FILTERS = [
   { value: 'pending', label: 'قيد الانتظار' },
@@ -36,6 +36,7 @@ export const RegistrationRequestsPage = () => {
   const [showLink, setShowLink] = useState(false);
   const [linkBranch, setLinkBranch] = useState('');
   const [statusFilter, setStatusFilter] = useState('pending');
+  const [searchQuery, setSearchQuery] = useState('');
 
   const tenantSlug = (() => { try { return localStorage.getItem('tenant_slug') || 'default'; } catch { return 'default'; } })();
 
@@ -66,6 +67,23 @@ export const RegistrationRequestsPage = () => {
     const b = branches.find(x => x.id === id);
     return b ? (b.name_ar || b.name) : '—';
   };
+
+  // Client-side search over the loaded requests: name, phone (Arabic digits
+  // normalized), marketer name and requested activity.
+  const normalizeDigits = (s) => String(s ?? '').replace(/[٠-٩]/g, d => '٠١٢٣٤٥٦٧٨٩'.indexOf(d));
+  const filteredRequests = useMemo(() => {
+    const q = normalizeDigits(searchQuery.trim().toLowerCase());
+    if (!q) return requests;
+    return requests.filter(r => {
+      const name = (r.customer_name || '').toLowerCase();
+      const phone = normalizeDigits(r.customer_phone || '').replace(/\D/g, '');
+      const marketer = (r.marketer_name || '').toLowerCase();
+      const activity = (r.activity_name || '').toLowerCase();
+      const qDigits = q.replace(/\D/g, '');
+      return name.includes(q) || marketer.includes(q) || activity.includes(q) ||
+        (qDigits.length >= 3 && phone.includes(qDigits));
+    });
+  }, [requests, searchQuery]);
 
   const registrationLink = useMemo(() => {
     if (!linkBranch) return '';
@@ -287,18 +305,38 @@ export const RegistrationRequestsPage = () => {
               </Select>
             </div>
           )}
+          <div className="relative flex-1 min-w-[220px] max-w-sm">
+            <Search className="w-4 h-4 text-gray-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+            <input
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="بحث بالاسم أو رقم الموبايل..."
+              className="w-full rounded-lg border border-gray-200 bg-white pr-9 pl-8 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/40 focus:border-emerald-400"
+              data-testid="input-search-requests"
+            />
+            {searchQuery && (
+              <button
+                onClick={() => setSearchQuery('')}
+                className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                title="مسح البحث"
+                data-testid="button-clear-search"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            )}
+          </div>
         </div>
 
         {loading ? (
           <div className="flex items-center justify-center py-20"><Loader2 className="w-7 h-7 animate-spin text-emerald-600" /></div>
-        ) : requests.length === 0 ? (
+        ) : filteredRequests.length === 0 ? (
           <div className="text-center py-20 text-gray-400">
             <Inbox className="w-12 h-12 mx-auto mb-3 opacity-40" />
-            <p className="text-sm">{statusFilter === 'processed' ? 'لا توجد طلبات تمت معالجتها' : statusFilter === 'all' ? 'لا توجد طلبات تسجيل' : 'لا توجد طلبات تسجيل جديدة'}</p>
+            <p className="text-sm">{searchQuery.trim() ? 'لا توجد نتائج مطابقة للبحث' : statusFilter === 'processed' ? 'لا توجد طلبات تمت معالجتها' : statusFilter === 'all' ? 'لا توجد طلبات تسجيل' : 'لا توجد طلبات تسجيل جديدة'}</p>
           </div>
         ) : (
           <div className="space-y-3">
-            {requests.map(req => (
+            {filteredRequests.map(req => (
               <Card key={req.id} className="overflow-hidden">
                 <CardContent className="p-4">
                   <div className="flex items-start justify-between gap-3 flex-wrap">
