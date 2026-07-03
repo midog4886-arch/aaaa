@@ -54,3 +54,15 @@ number of sessions paid for.
   `level_subscriptions`, and `day_extensions` may carry `scope_type` `activity`
   and `level_sub` with diverging base dates — don't trust the extended date as the
   quota basis.
+- **`member.activities[].status` can be a STALE "expired".** A postponed/shifted
+  subscription (real case: whole window moved 06-01→24 to 07-01→24) keeps
+  `status: "expired"` while `end_date` is in the future; the quota loop must NOT
+  skip on that flag alone — treat `end_date < today` (already inside
+  `_process_subscription`) as the authoritative expiry check and skip only
+  deliberately-inactive statuses (anything not in `("active","expired")`).
+- **Postponed window: total needs the original START too.** When BOTH dates
+  shifted, pairing the new activity start with the original invoice end gives a
+  negative span → `max(1, …)` collapses the total to one week (2 instead of 8).
+  `orig_end_by_source` / `orig_end_by_activity` store `(start, end)` tuples and
+  `_process_subscription` takes `quota_start_date`; the `(source_id, start_date,
+  …)` join paths don't need it (start is the join key there, so it's unshifted).

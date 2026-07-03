@@ -496,7 +496,7 @@ async def check_member_session_quota(member_id: str, activity_id: str = None):
 
     async def _process_subscription(item_activity_id, activity_name, start_date, end_date,
                                      schedule_text, invoice_number="", quota_end_date=None,
-                                     count_activity_ids=None):
+                                     quota_start_date=None, count_activity_ids=None):
         """Inner helper to build one quota result from a subscription item.
 
         ``end_date`` is the (possibly extended) deadline used for display and the
@@ -525,14 +525,19 @@ async def check_member_session_quota(member_id: str, activity_id: str = None):
 
         effective_start = start_date or today_str
         try:
-            start_dt = datetime.strptime(effective_start, "%Y-%m-%d")
             # The paid session total is computed from the ORIGINAL subscription
-            # window (quota_end_date) — NOT the extended deadline — so that a
-            # freeze or holiday closure only moves the end date and does not add
-            # extra sessions the member never paid for.
+            # window (quota_start_date → quota_end_date) — NOT the extended /
+            # shifted deadline — so that a freeze or holiday closure only moves
+            # the end date and does not add extra sessions the member never paid
+            # for. quota_start_date matters when the WHOLE window was shifted
+            # (both start and end moved, e.g. a postponed subscription): pairing
+            # the new start with the original end would collapse the total to
+            # nearly zero. Both default to the display window when not supplied.
             total_end = quota_end_date or end_date
+            total_start = quota_start_date or effective_start
+            total_start_dt = datetime.strptime(total_start, "%Y-%m-%d")
             total_end_dt = datetime.strptime(total_end, "%Y-%m-%d")
-            total_weeks = max(1, math.ceil((total_end_dt - start_dt).days / 7))
+            total_weeks = max(1, math.ceil((total_end_dt - total_start_dt).days / 7))
             total_allowed_sessions = total_weeks * days_per_week
         except Exception:
             return
@@ -582,8 +587,8 @@ async def check_member_session_quota(member_id: str, activity_id: str = None):
     # Map the original (unextended) end date for each subscription so the session
     # total can be computed from what the member actually paid for, even when
     # member.activities holds a later (extended) deadline.
-    orig_end_by_source = {}        # (invoice_id, activity_id) -> original end_date
-    orig_end_by_activity = {}      # activity_id -> original end_date (latest seen)
+    orig_end_by_source = {}        # (invoice_id, activity_id) -> (original start_date, end_date)
+    orig_end_by_activity = {}      # activity_id -> (original start_date, end_date) (latest seen)
     orig_end_by_src_start_sched = {}  # (invoice_id, start_date, schedule) -> end_date
     orig_end_by_src_start = {}     # (invoice_id, start_date) -> end_date OR None if ambiguous
     aids_by_src_start_sched = {}   # (invoice_id, start_date, schedule) -> {activity_ids}
@@ -597,8 +602,11 @@ async def check_member_session_quota(member_id: str, activity_id: str = None):
             if not oend:
                 continue
             if aid:
-                orig_end_by_source[(inv_id, aid)] = oend
-                orig_end_by_activity[aid] = oend
+                # Keep the original START too: when a subscription is postponed
+                # (both start and end shifted), the paid total must come from the
+                # original window LENGTH, not from (new start → original end).
+                orig_end_by_source[(inv_id, aid)] = (item.get("start_date", ""), oend)
+                orig_end_by_activity[aid] = (item.get("start_date", ""), oend)
             # Also index by (invoice, start_date). The member.activities entry is
             # linked to its invoice via source_id, but its activity_id often does
             # NOT match the invoiced item's activity_id (level-based assignment
@@ -630,14 +638,23 @@ async def check_member_session_quota(member_id: str, activity_id: str = None):
         item_activity_id = act.get("activity_id", "")
         if not item_activity_id:
             continue
-        if act.get("status", "active") != "active":
+        # A stored "expired" status can be STALE: freezes / renewals / postponed
+        # subscriptions move the dates forward without always resetting the
+        # status flag. The date filter inside _process_subscription (end_date <
+        # today → skip) is the authoritative expiry check, so only skip statuses
+        # that mark the entry as deliberately inactive (cancelled, frozen, ...).
+        if act.get("status", "active") not in ("active", "expired"):
             continue
         quota_end = None
+        quota_start = None
         if act.get("source") == "invoice" and act.get("source_id"):
             source_id = act.get("source_id")
             act_start = act.get("start_date", "")
-            # 1) Exact (invoice, activity_id) match.
-            quota_end = orig_end_by_source.get((source_id, item_activity_id))
+            # 1) Exact (invoice, activity_id) match — carries the original start
+            #    too, covering postponed subscriptions where BOTH dates moved.
+            pair = orig_end_by_source.get((source_id, item_activity_id))
+            if pair:
+                quota_start, quota_end = pair[0] or None, pair[1]
             # 2) Same invoice but activity_id diverged (level-based assignment):
             #    join on the never-rewritten start_date + schedule so the total
             #    still comes from the original invoiced window, not the extended
@@ -652,7 +669,9 @@ async def check_member_session_quota(member_id: str, activity_id: str = None):
             if not quota_end:
                 quota_end = orig_end_by_src_start.get((source_id, act_start))
         if not quota_end:
-            quota_end = orig_end_by_activity.get(item_activity_id)
+            pair = orig_end_by_activity.get(item_activity_id)
+            if pair:
+                quota_start, quota_end = pair[0] or None, pair[1]
         # Older check-ins for this same subscription may carry the original
         # invoiced activity_id rather than the current (level-renamed) one. Count
         # every activity_id mapped to the same invoiced item (matched on the
@@ -674,6 +693,7 @@ async def check_member_session_quota(member_id: str, activity_id: str = None):
             act.get("schedule", ""),
             "",
             quota_end_date=quota_end,
+            quota_start_date=quota_start,
             count_activity_ids=count_aids,
         )
 
