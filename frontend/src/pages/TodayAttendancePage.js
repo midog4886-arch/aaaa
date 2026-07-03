@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/AuthContext';
@@ -34,6 +34,28 @@ const TodayAttendancePage = () => {
   const [hourFilter, setHourFilter] = useState('');
   const [branches, setBranches] = useState([]);
   const [tab, setTab] = useState('present');
+  const listsRef = useRef(null);
+
+  // Card click → open the matching tab and scroll down to the list.
+  const openTab = (t) => {
+    setTab(t);
+    setTimeout(() => listsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
+  };
+
+  // Keyboard + ARIA props so the clickable stat cards behave like real buttons.
+  const cardButtonProps = (t, label) => ({
+    role: 'button',
+    tabIndex: 0,
+    'aria-label': label,
+    'aria-pressed': tab === t,
+    onClick: () => openTab(t),
+    onKeyDown: (e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        openTab(t);
+      }
+    },
+  });
 
   const ar = language === 'ar';
 
@@ -123,18 +145,36 @@ const TodayAttendancePage = () => {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data, search, activityFilter, hourFilter]);
 
+  const presentIds = useMemo(() => new Set((data?.present || []).map(r => r.member_id)), [data]);
+
+  const expectedList = useMemo(() => {
+    if (!data) return [];
+    return (data.expected || []).filter(r =>
+      (filterText(r.member_name) || filterText(r.member_code) || filterText(r.phone)) &&
+      (!activityFilter || (r.activities || []).some(a => a.activity_name === activityFilter)) &&
+      matchHour(r)
+    );
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data, search, activityFilter, hourFilter]);
+
   const exportCSV = () => {
-    const rows = tab === 'present'
-      ? [['الكود','الاسم','الجوال','الأنشطة','الموعد','وقت الدخول','الفرع','المسجل'],
-         ...presentList.map(r => [r.member_code, r.member_name, r.phone, (r.activities||[]).map(a=>a.activity_name).join(' / '), (r.activities||[]).map(a=>hourLabel(activityHour(a)) || formatSchedule(a.schedule)).join(' / '), (r.activities||[]).map(a=>a.check_in_time).join(' / '), branchName(r.branch_id), r.recorded_by])]
-      : [['الكود','الاسم','الجوال','الأنشطة المتوقعة','الموعد','الفرع'],
-         ...absentList.map(r => [r.member_code, r.member_name, r.phone, (r.activities||[]).map(a=>a.activity_name).join(' / '), (r.activities||[]).map(a=>hourLabel(activityHour(a)) || formatSchedule(a.schedule)).join(' / '), branchName(r.branch_id)])];
+    let rows;
+    if (tab === 'present') {
+      rows = [['الكود','الاسم','الجوال','الأنشطة','الموعد','وقت الدخول','الفرع','المسجل'],
+        ...presentList.map(r => [r.member_code, r.member_name, r.phone, (r.activities||[]).map(a=>a.activity_name).join(' / '), (r.activities||[]).map(a=>hourLabel(activityHour(a)) || formatSchedule(a.schedule)).join(' / '), (r.activities||[]).map(a=>a.check_in_time).join(' / '), branchName(r.branch_id), r.recorded_by])];
+    } else if (tab === 'expected') {
+      rows = [['الكود','الاسم','الجوال','الأنشطة المتوقعة','الموعد','الفرع','الحالة'],
+        ...expectedList.map(r => [r.member_code, r.member_name, r.phone, (r.activities||[]).map(a=>a.activity_name).join(' / '), (r.activities||[]).map(a=>hourLabel(activityHour(a)) || formatSchedule(a.schedule)).join(' / '), branchName(r.branch_id), presentIds.has(r.member_id) ? 'حاضر' : 'لم يحضر'])];
+    } else {
+      rows = [['الكود','الاسم','الجوال','الأنشطة المتوقعة','الموعد','الفرع'],
+        ...absentList.map(r => [r.member_code, r.member_name, r.phone, (r.activities||[]).map(a=>a.activity_name).join(' / '), (r.activities||[]).map(a=>hourLabel(activityHour(a)) || formatSchedule(a.schedule)).join(' / '), branchName(r.branch_id)])];
+    }
     const csv = '\ufeff' + rows.map(r => r.map(c => `"${(c ?? '').toString().replace(/"/g,'""')}"`).join(',')).join('\n');
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `${tab === 'present' ? 'today_present' : 'today_absent'}_${data?.date || ''}.csv`;
+    a.download = `today_${tab}_${data?.date || ''}.csv`;
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -213,21 +253,41 @@ const TodayAttendancePage = () => {
         </div>
 
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <Card><CardContent className="p-4">
+          <Card
+            {...cardButtonProps('present', ar ? 'عرض قائمة الحاضرين اليوم' : 'View present list')}
+            className={`cursor-pointer transition-shadow hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-green-500 ${tab === 'present' ? 'ring-2 ring-green-500/60' : ''}`}
+            data-testid="card-present-today"
+          ><CardContent className="p-4">
             <div className="flex items-center justify-between"><CheckCheck className="w-6 h-6 text-green-600" /><div className="text-3xl font-bold text-green-600">{presentCount}</div></div>
             <div className="text-sm text-muted-foreground mt-1">{ar ? 'حاضر اليوم' : 'Present today'}</div>
+            <div className="text-[10px] text-green-600/70 mt-0.5">{ar ? 'اضغط لعرض القائمة' : 'Click to view list'}</div>
           </CardContent></Card>
-          <Card><CardContent className="p-4">
+          <Card
+            {...cardButtonProps('expected', ar ? 'عرض قائمة المتوقع حضورهم اليوم' : 'View expected list')}
+            className={`cursor-pointer transition-shadow hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${tab === 'expected' ? 'ring-2 ring-blue-500/60' : ''}`}
+            data-testid="card-expected-today"
+          ><CardContent className="p-4">
             <div className="flex items-center justify-between"><Users className="w-6 h-6 text-blue-600" /><div className="text-3xl font-bold text-blue-600">{expectedCount}</div></div>
             <div className="text-sm text-muted-foreground mt-1">{ar ? 'متوقع حضوره' : 'Expected'}</div>
+            <div className="text-[10px] text-blue-600/70 mt-0.5">{ar ? 'اضغط لعرض القائمة' : 'Click to view list'}</div>
           </CardContent></Card>
-          <Card><CardContent className="p-4">
+          <Card
+            {...cardButtonProps('absent', ar ? 'عرض قائمة الغائبين اليوم' : 'View absent list')}
+            className={`cursor-pointer transition-shadow hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 ${tab === 'absent' ? 'ring-2 ring-amber-500/60' : ''}`}
+            data-testid="card-absent-today"
+          ><CardContent className="p-4">
             <div className="flex items-center justify-between"><UserX className="w-6 h-6 text-amber-600" /><div className="text-3xl font-bold text-amber-600">{absentCount}</div></div>
             <div className="text-sm text-muted-foreground mt-1">{ar ? 'غائب اليوم' : 'Absent'}</div>
+            <div className="text-[10px] text-amber-600/70 mt-0.5">{ar ? 'اضغط لعرض القائمة' : 'Click to view list'}</div>
           </CardContent></Card>
-          <Card><CardContent className="p-4">
+          <Card
+            {...cardButtonProps('expected', ar ? 'عرض قائمة المتوقعين (نسبة الحضور)' : 'View expected list (attendance rate)')}
+            className="cursor-pointer transition-shadow hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500"
+            data-testid="card-attendance-rate"
+          ><CardContent className="p-4">
             <div className="flex items-center justify-between"><Clock className="w-6 h-6 text-purple-600" /><div className="text-3xl font-bold text-purple-600">{ratio}%</div></div>
             <div className="text-sm text-muted-foreground mt-1">{ar ? 'نسبة الحضور' : 'Attendance rate'}</div>
+            <div className="text-[10px] text-purple-600/70 mt-0.5">{ar ? 'من إجمالي المتوقعين' : 'Of expected total'}</div>
           </CardContent></Card>
         </div>
 
@@ -251,9 +311,11 @@ const TodayAttendancePage = () => {
           )}
         </CardContent></Card>
 
+        <div ref={listsRef}>
         <Tabs value={tab} onValueChange={setTab}>
           <TabsList>
             <TabsTrigger value="present"><CheckCheck className="w-4 h-4 ml-1" />{ar ? `الحاضرون (${presentList.length})` : `Present (${presentList.length})`}</TabsTrigger>
+            <TabsTrigger value="expected"><Users className="w-4 h-4 ml-1" />{ar ? `المتوقعون (${expectedList.length})` : `Expected (${expectedList.length})`}</TabsTrigger>
             <TabsTrigger value="absent"><UserX className="w-4 h-4 ml-1" />{ar ? `الغائبون (${absentList.length})` : `Absent (${absentList.length})`}</TabsTrigger>
           </TabsList>
 
@@ -314,6 +376,66 @@ const TodayAttendancePage = () => {
                       </td>
                       <td className="p-3 text-xs">{branchName(r.branch_id)}</td>
                       <td className="p-3 text-xs text-muted-foreground">{r.recorded_by || '-'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </CardContent></Card>
+          </TabsContent>
+
+          <TabsContent value="expected">
+            <Card><CardContent className="p-0 overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-muted/50">
+                  <tr>
+                    <th className="text-right p-3">{ar ? 'العضو' : 'Member'}</th>
+                    <th className="text-right p-3">{ar ? 'الكود' : 'Code'}</th>
+                    <th className="text-right p-3">{ar ? 'الأنشطة المتوقعة' : 'Expected activities'}</th>
+                    <th className="text-right p-3">{ar ? 'الموعد' : 'Schedule'}</th>
+                    <th className="text-right p-3">{ar ? 'الفرع' : 'Branch'}</th>
+                    <th className="text-right p-3">{ar ? 'الحالة' : 'Status'}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {expectedList.length === 0 && (
+                    <tr><td colSpan={6} className="p-8 text-center text-muted-foreground">{ar ? 'لا يوجد متوقعون اليوم' : 'No one expected today'}</td></tr>
+                  )}
+                  {expectedList.map(r => (
+                    <tr key={r.member_id} className="border-t hover:bg-muted/30">
+                      <td
+                        className="p-3 flex items-center gap-2 cursor-pointer group"
+                        onClick={() => openMember(r.member_id)}
+                        title={ar ? 'عرض ملف العضو' : 'View member profile'}
+                      >
+                        {r.member_photo ? <img src={r.member_photo} alt="" className="w-8 h-8 rounded-full object-cover" /> : <div className="w-8 h-8 rounded-full bg-muted" />}
+                        <div>
+                          <div className="font-medium group-hover:text-primary group-hover:underline">
+                            {r.member_name}
+                            {r.guardian_name_ar && (
+                              <span className="text-xs text-muted-foreground font-normal ms-2">
+                                · {ar ? 'ولي الأمر:' : 'Guardian:'} {r.guardian_name_ar}
+                              </span>
+                            )}
+                          </div>
+                          {r.phone && <div className="text-xs text-muted-foreground">{r.phone}</div>}
+                        </div>
+                      </td>
+                      <td className="p-3 font-mono text-xs">{r.member_code}</td>
+                      <td className="p-3 text-xs">{(r.activities || []).map(a => a.activity_name).join(' / ')}</td>
+                      <td className="p-3 text-xs">
+                        <div className="flex flex-wrap gap-1">
+                          {(r.activities || []).map((a, i) => {
+                            const label = hourLabel(activityHour(a)) || formatSchedule(a.schedule);
+                            return label ? <Badge key={i} variant="outline" className="bg-blue-50 text-blue-700 text-xs">{label}</Badge> : null;
+                          })}
+                        </div>
+                      </td>
+                      <td className="p-3 text-xs">{branchName(r.branch_id)}</td>
+                      <td className="p-3">
+                        {presentIds.has(r.member_id)
+                          ? <Badge variant="outline" className="bg-green-50 text-green-700 text-xs">{ar ? 'حاضر ✓' : 'Present ✓'}</Badge>
+                          : <Badge variant="outline" className="bg-amber-50 text-amber-700 text-xs">{ar ? 'لم يحضر بعد' : 'Not yet'}</Badge>}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -399,6 +521,7 @@ const TodayAttendancePage = () => {
             </CardContent></Card>
           </TabsContent>
         </Tabs>
+        </div>
       </div>
     </Layout>
   );
