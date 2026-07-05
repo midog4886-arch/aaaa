@@ -208,7 +208,7 @@ export const DailyLedgerPage = () => {
     if (!summary) return;
     const headers = [isAr ? 'النوع' : 'Type', isAr ? 'الوصف' : 'Description', isAr ? 'المبلغ' : 'Amount', isAr ? 'الوقت' : 'Time'];
     const rows = summary.transactions.map(tx => [
-      tx.type === 'invoice' ? (isAr ? 'فاتورة' : 'Invoice') : tx.type === 'refund' ? (isAr ? 'مرتجع' : 'Refund') : (isAr ? 'مصروف' : 'Expense'),
+      tx.type === 'invoice' ? (isAr ? 'فاتورة' : 'Invoice') : tx.type === 'rental' ? (isAr ? 'تأجير ساعات' : 'Rental') : tx.type === 'refund' ? (isAr ? 'مرتجع' : 'Refund') : (isAr ? 'مصروف' : 'Expense'),
       tx.description,
       tx.amount,
       tx.time
@@ -739,10 +739,12 @@ export const DailyLedgerPage = () => {
                           <td>
                             <Badge className={
                               tx.type === 'invoice' ? 'bg-green-100 text-green-700 border-green-200' :
+                              tx.type === 'rental' ? 'bg-teal-100 text-teal-700 border-teal-200' :
                               tx.type === 'refund' ? 'bg-purple-100 text-purple-700 border-purple-200' :
                               'bg-red-100 text-red-700 border-red-200'
                             }>
                               {tx.type === 'invoice' ? (isAr ? 'فاتورة' : 'Invoice') :
+                               tx.type === 'rental' ? (isAr ? 'تأجير ساعات' : 'Rental') :
                                tx.type === 'refund' ? (isAr ? 'مرتجع' : 'Refund') :
                                (isAr ? 'مصروف' : 'Expense')}
                             </Badge>
@@ -753,11 +755,12 @@ export const DailyLedgerPage = () => {
                           <td className="text-sm font-medium">{tx.description || '-'}</td>
                           <td className={`font-bold ${
                             tx.type === 'invoice' ? 'text-green-700' :
+                            tx.type === 'rental' ? 'text-teal-700' :
                             tx.type === 'refund' ? 'text-purple-700' : 'text-red-700'
                           }`}>
                             {statsUnlocked ? (
                               <>
-                                {tx.type === 'invoice' ? '+' : '-'}{tx.amount?.toLocaleString()} {isAr ? 'ر.س' : 'SAR'}
+                                {(tx.type === 'invoice' || tx.type === 'rental') ? '+' : '-'}{tx.amount?.toLocaleString()} {isAr ? 'ر.س' : 'SAR'}
                               </>
                             ) : hiddenValue}
                           </td>

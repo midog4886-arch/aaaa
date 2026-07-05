@@ -696,6 +696,21 @@ export const paymentVouchersAPI = {
   delete: (id) => axios.delete(`${API}/payment-vouchers/${id}`),
 };
 
+export const rentalsAPI = {
+  getCoaches: (params = {}) => axios.get(`${API}/rentals/coaches`, { params }),
+  createCoach: (data) => axios.post(`${API}/rentals/coaches`, data),
+  updateCoach: (id, data) => axios.put(`${API}/rentals/coaches/${id}`, data),
+  deleteCoach: (id) => axios.delete(`${API}/rentals/coaches/${id}`),
+  getBookings: (params = {}) => axios.get(`${API}/rentals/bookings`, { params }),
+  createBooking: (data) => axios.post(`${API}/rentals/bookings`, data),
+  updateBooking: (id, data) => axios.put(`${API}/rentals/bookings/${id}`, data),
+  deleteBooking: (id) => axios.delete(`${API}/rentals/bookings/${id}`),
+  getPayments: (params = {}) => axios.get(`${API}/rentals/payments`, { params }),
+  createPayment: (data) => axios.post(`${API}/rentals/payments`, data),
+  deletePayment: (id) => axios.delete(`${API}/rentals/payments/${id}`),
+  getReport: (params = {}) => axios.get(`${API}/rentals/report`, { params }),
+};
+
 export const auditAPI = {
   list: (params = {}) => axios.get(`${API}/audit`, { params }),
   listActions: () => axios.get(`${API}/audit/actions`),

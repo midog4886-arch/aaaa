@@ -52,6 +52,7 @@ async def get_daily_summary(
     inv_query = {"status": "paid", "paid_at": {"$gte": date_start, "$lte": date_end}}
     cn_query = {"created_at": {"$gte": date_start, "$lte": date_end}}
     exp_query = {"date": date}
+    rent_query = {"payment_date": date}
 
     # Branch filtering — fail-closed for non-admins without a branch_id
     effective_branch = resolve_branch_filter(current_user, branch_filter)
@@ -59,12 +60,15 @@ async def get_daily_summary(
         inv_query["branch_id"] = effective_branch
         cn_query["branch_id"] = effective_branch
         exp_query["branch_id"] = effective_branch
+        rent_query["branch_id"] = effective_branch
 
     invoices = await db.invoices.find(inv_query, {"_id": 0}).to_list(10000)
     credit_notes = await db.credit_notes.find(cn_query, {"_id": 0}).to_list(10000)
     expenses = await db.expenses.find(exp_query, {"_id": 0}).to_list(10000)
+    rental_payments = await db.rental_payments.find(rent_query, {"_id": 0}).to_list(10000)
 
-    total_income = sum(inv.get("total", 0) for inv in invoices)
+    total_rentals = sum(rp.get("amount", 0) for rp in rental_payments)
+    total_income = sum(inv.get("total", 0) for inv in invoices) + total_rentals
     total_refunds = sum(cn.get("refund_amount", 0) for cn in credit_notes)
     total_expenses = sum(exp.get("amount", 0) for exp in expenses)
     net_profit = total_income - total_refunds - total_expenses
@@ -102,6 +106,17 @@ async def get_daily_summary(
             "notes": exp.get("notes", ""),
             "time": exp.get("created_at", "")
         })
+    for rp in rental_payments:
+        transactions.append({
+            "type": "rental",
+            "id": rp.get("id", ""),
+            "number": rp.get("receipt_number", ""),
+            "description": f"تأجير ساعات - {rp.get('coach_name', '')}",
+            "amount": rp.get("amount", 0),
+            "payment_method": rp.get("payment_method", ""),
+            "notes": rp.get("notes", ""),
+            "time": rp.get("created_at", "")
+        })
 
     transactions.sort(key=lambda x: x.get("time", ""), reverse=True)
 
@@ -119,14 +134,21 @@ async def get_daily_summary(
         if method not in income_by_method:
             income_by_method[method] = 0
         income_by_method[method] += inv.get("total", 0)
+    for rp in rental_payments:
+        method = rp.get("payment_method", "cash")
+        if method not in income_by_method:
+            income_by_method[method] = 0
+        income_by_method[method] += rp.get("amount", 0)
 
     return {
         "date": date,
         "total_income": total_income,
+        "total_rentals": total_rentals,
         "total_refunds": total_refunds,
         "total_expenses": total_expenses,
         "net_profit": net_profit,
         "invoice_count": len(invoices),
+        "rental_count": len(rental_payments),
         "refund_count": len(credit_notes),
         "expense_count": len(expenses),
         "transactions": transactions,
@@ -155,17 +177,20 @@ async def get_daily_comparison(
         inv_q = {"status": "paid", "paid_at": {"$gte": d_start, "$lte": d_end}}
         cn_q = {"created_at": {"$gte": d_start, "$lte": d_end}}
         exp_q = {"date": d}
+        rent_q = {"payment_date": d}
 
         if effective_branch:
             inv_q["branch_id"] = effective_branch
             cn_q["branch_id"] = effective_branch
             exp_q["branch_id"] = effective_branch
+            rent_q["branch_id"] = effective_branch
 
         invs = await db.invoices.find(inv_q, {"total": 1, "_id": 0}).to_list(10000)
         cns = await db.credit_notes.find(cn_q, {"refund_amount": 1, "_id": 0}).to_list(10000)
         exps = await db.expenses.find(exp_q, {"amount": 1, "_id": 0}).to_list(10000)
+        rents = await db.rental_payments.find(rent_q, {"amount": 1, "_id": 0}).to_list(10000)
 
-        income = sum(i.get("total", 0) for i in invs)
+        income = sum(i.get("total", 0) for i in invs) + sum(r.get("amount", 0) for r in rents)
         refunds = sum(c.get("refund_amount", 0) for c in cns)
         expenses = sum(e.get("amount", 0) for e in exps)
         return {"date": d, "income": income, "refunds": refunds, "expenses": expenses, "net": income - refunds - expenses}
@@ -197,6 +222,7 @@ async def get_monthly_calendar(
     inv_q = {"status": "paid", "paid_at": {"$gte": month_start, "$lte": month_end}}
     cn_q = {"created_at": {"$gte": month_start, "$lte": month_end}}
     exp_q = {"date": {"$gte": f"{month}-01", "$lte": f"{month}-{days_in_month:02d}"}}
+    rent_q = {"payment_date": {"$gte": f"{month}-01", "$lte": f"{month}-{days_in_month:02d}"}}
 
     # Branch filtering — fail-closed for non-admins without a branch_id
     effective_branch = resolve_branch_filter(current_user, branch_filter)
@@ -204,10 +230,12 @@ async def get_monthly_calendar(
         inv_q["branch_id"] = effective_branch
         cn_q["branch_id"] = effective_branch
         exp_q["branch_id"] = effective_branch
+        rent_q["branch_id"] = effective_branch
 
     invoices = await db.invoices.find(inv_q, {"_id": 0, "total": 1, "paid_at": 1}).to_list(50000)
     credit_notes = await db.credit_notes.find(cn_q, {"_id": 0, "refund_amount": 1, "created_at": 1}).to_list(50000)
     expenses = await db.expenses.find(exp_q, {"_id": 0, "amount": 1, "date": 1}).to_list(50000)
+    rental_pays = await db.rental_payments.find(rent_q, {"_id": 0, "amount": 1, "payment_date": 1}).to_list(50000)
 
     days_data = {}
     for day in range(1, days_in_month + 1):
@@ -234,6 +262,12 @@ async def get_monthly_calendar(
         d = exp.get("date", "")
         if d in days_data:
             days_data[d]["expenses"] += exp.get("amount", 0)
+            days_data[d]["tx_count"] += 1
+
+    for rp in rental_pays:
+        d = rp.get("payment_date", "")
+        if d in days_data:
+            days_data[d]["income"] += rp.get("amount", 0)
             days_data[d]["tx_count"] += 1
 
     for d in days_data:

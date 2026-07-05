@@ -88,6 +88,7 @@ const RenewalsHistoryPage = lazy(() => import('./pages/RenewalsHistoryPage'));
 const BackupPage = lazy(() => import('./pages/BackupPage'));
 const PrivacyPolicyPage = lazy(() => import('./pages/PrivacyPolicyPage'));
 const DailyLedgerPage = lazy(() => import('./pages/DailyLedgerPage'));
+const RentalsPage = lazy(() => import('./pages/RentalsPage'));
 const DayExtensionsPage = lazy(() => import('./pages/DayExtensionsPage'));
 const WhatsAppPage = lazy(() => import('./pages/WhatsAppPage'));
 const WhatsAppBulkPage = lazy(() => import('./pages/WhatsAppBulkPage'));
@@ -414,6 +415,14 @@ function AppRoutes() {
         element={
           <ProtectedRoute permission="day-extensions">
             <DayExtensionsPage />
+          </ProtectedRoute>
+        } 
+      />
+      <Route 
+        path="/admin/rentals" 
+        element={
+          <ProtectedRoute permission="rentals">
+            <RentalsPage />
           </ProtectedRoute>
         } 
       />

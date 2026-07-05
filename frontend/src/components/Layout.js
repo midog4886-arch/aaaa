@@ -57,7 +57,8 @@ import {
   UserCog,
   MapPin,
   Search,
-  ScanLine
+  ScanLine,
+  KeyRound
 } from 'lucide-react';
 
 export const Sidebar = ({ isOpen, onClose }) => {
@@ -208,6 +209,7 @@ export const Sidebar = ({ isOpen, onClose }) => {
       items: [
         { to: '/admin/invoices', icon: Receipt, label: 'invoices', permission: 'invoices', feature: 'invoices' },
         { to: '/admin/daily-ledger', icon: BookOpen, label: 'daily_ledger', permission: 'daily-ledger', feature: 'daily_ledger' },
+        { to: '/admin/rentals', icon: KeyRound, label: 'rentals', permission: 'rentals' },
         { to: '/admin/day-extensions', icon: CalendarOff, label: 'day_extensions', permission: 'day-extensions', feature: 'renewals' },
         { to: '/admin/accounting', icon: Calculator, label: 'accounting', permission: 'accounting', altPermissions: ['internal-expenses-approve'], feature: 'expense_payments' },
         ...(canSubmitExpenses ? [{ to: '/admin/my-expenses', icon: Wallet, label: 'my_expenses', permission: 'internal-expenses-create' }] : []),

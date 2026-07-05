@@ -57,6 +57,7 @@ const ALL_PERMISSIONS = [
   { key: 'settings', label_ar: 'الإعدادات', label_en: 'Settings' },
   { key: 'renewals', label_ar: 'التجديدات', label_en: 'Renewals' },
   { key: 'daily-ledger', label_ar: 'اليومية المالية', label_en: 'Daily Ledger' },
+  { key: 'rentals', label_ar: 'تأجير الساعات', label_en: 'Hour Rentals' },
   { key: 'day-extensions', label_ar: 'ترحيل الأيام', label_en: 'Day Extensions' },
   { key: 'backup', label_ar: 'النسخ الاحتياطي', label_en: 'Backup' },
   { key: 'push-notifications', label_ar: 'الإشعارات', label_en: 'Push Notifications' },
