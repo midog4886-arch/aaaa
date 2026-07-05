@@ -53,6 +53,32 @@ def compute_activity_extension(activity: dict, start_date: str, end_date: str, f
     return fallback_days
 
 
+def extend_end_by_training_days(schedule_text: str, end_dt: datetime, n: int) -> datetime:
+    """Return the date of the n-th training-day occurrence AFTER end_dt.
+
+    Adding plain calendar days can land the new end date on weekdays the member
+    never trains on (e.g. +1 day onto a Tuesday for a Sun/Tue schedule ends on
+    Wednesday), silently swallowing the compensated sessions. Walking forward
+    by schedule occurrences guarantees the extension covers n real, attendable
+    sessions. Falls back to calendar days when the schedule cannot be parsed.
+    """
+    if n <= 0:
+        return end_dt
+    days = parse_schedule_days(schedule_text or "")
+    target = {WEEKDAY_INDEX[d] for d in days if d in WEEKDAY_INDEX}
+    if not target:
+        return end_dt + timedelta(days=n)
+    cur = end_dt
+    added = 0
+    guard = 0
+    while added < n and guard < 3660:
+        cur += timedelta(days=1)
+        guard += 1
+        if cur.weekday() in target:
+            added += 1
+    return cur
+
+
 class FreezeCreate(BaseModel):
     member_id: str
     start_date: str
@@ -120,13 +146,16 @@ async def create_freeze(freeze: FreezeCreate, current_user: dict = Depends(get_c
         ext_days = compute_activity_extension(act, freeze.start_date, freeze.end_date, duration_days)
         if ext_days <= 0:
             continue
-        new_end_dt = act_end_dt + timedelta(days=ext_days)
+        schedule_text = act.get("schedule", "")
+        new_end_dt = extend_end_by_training_days(schedule_text, act_end_dt, ext_days)
         activities[i]["end_date"] = new_end_dt.strftime("%Y-%m-%d")
         extension_records.append({
             "index": i,
             "activity_id": act.get("activity_id") or act.get("id") or "",
-            "schedule": act.get("schedule", ""),
+            "schedule": schedule_text,
             "days": ext_days,
+            "old_end_date": act_end,
+            "new_end_date": new_end_dt.strftime("%Y-%m-%d"),
         })
 
     await db.members.update_one(
@@ -299,7 +328,26 @@ async def cancel_freeze(freeze_id: str, current_user: dict = Depends(get_current
                 act_end_dt = datetime.strptime(act_end, "%Y-%m-%d")
             except ValueError:
                 continue
-            new_end_dt = act_end_dt - timedelta(days=restore)
+            rec_old, rec_new = rec.get("old_end_date"), rec.get("new_end_date")
+            old_dt = new_dt = None
+            if rec_old and rec_new:
+                try:
+                    old_dt = datetime.strptime(rec_old, "%Y-%m-%d")
+                    new_dt = datetime.strptime(rec_new, "%Y-%m-%d")
+                except ValueError:
+                    old_dt = new_dt = None
+            if old_dt and new_dt:
+                # Occurrence-based extension: rebuild the correct end from the
+                # recorded pre-freeze end (keeping any consumed occurrences for
+                # an ongoing freeze), then re-apply whatever drift the end_date
+                # picked up after the freeze (renewals, closures, ...).
+                consumed = max(applied - restore, 0)
+                schedule_for_calc = rec.get("schedule") or act.get("schedule", "")
+                target_dt = extend_end_by_training_days(schedule_for_calc, old_dt, consumed)
+                new_end_dt = target_dt + (act_end_dt - new_dt)
+            else:
+                # Legacy records (calendar-day extension): reverse the same way.
+                new_end_dt = act_end_dt - timedelta(days=restore)
             activities[target_idx]["end_date"] = new_end_dt.strftime("%Y-%m-%d")
         await db.members.update_one(
             {"id": freeze_doc["member_id"]},
