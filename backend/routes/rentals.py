@@ -75,6 +75,8 @@ class BookingCreate(BaseModel):
     start_hour: int                   # 0-23
     duration_hours: float = 1
     hourly_rate: float
+    persons_count: Optional[int] = 0      # per-person pricing (added on top)
+    person_rate: Optional[float] = 0      # price per person per hour
     notes: Optional[str] = ""
     force: Optional[bool] = False     # override conflicts
 
@@ -84,8 +86,14 @@ class BookingUpdate(BaseModel):
     start_hour: Optional[int] = None
     duration_hours: Optional[float] = None
     hourly_rate: Optional[float] = None
+    persons_count: Optional[int] = None
+    person_rate: Optional[float] = None
     notes: Optional[str] = None
     status: Optional[str] = None  # booked / cancelled
+
+
+def _booking_total(hourly_rate: float, duration_hours: float, persons_count: int, person_rate: float) -> float:
+    return round((hourly_rate * duration_hours) + (persons_count * person_rate * duration_hours), 2)
 
 
 class PaymentCreate(BaseModel):
@@ -277,10 +285,14 @@ async def list_bookings(
 @router.post("/bookings")
 async def create_booking(data: BookingCreate, current_user: dict = Depends(get_current_user)):
     await require_permission(current_user, "rentals")
-    if data.hourly_rate <= 0:
-        raise HTTPException(status_code=400, detail="سعر الساعة يجب أن يكون أكبر من صفر")
+    persons_count = int(data.persons_count or 0)
+    person_rate = float(data.person_rate or 0)
+    if data.hourly_rate < 0 or persons_count < 0 or person_rate < 0:
+        raise HTTPException(status_code=400, detail="قيم غير صالحة")
     if data.duration_hours <= 0 or data.duration_hours > 12:
         raise HTTPException(status_code=400, detail="مدة الحجز غير صالحة")
+    if _booking_total(data.hourly_rate, data.duration_hours, persons_count, person_rate) <= 0:
+        raise HTTPException(status_code=400, detail="يجب إدخال سعر الساعة أو سعر الفرد وعدد الأفراد")
     if not (0 <= data.start_hour <= 23):
         raise HTTPException(status_code=400, detail="ساعة البداية غير صالحة")
 
@@ -332,7 +344,7 @@ async def create_booking(data: BookingCreate, current_user: dict = Depends(get_c
 
     now = datetime.now(timezone.utc).isoformat()
     recurring_group_id = str(uuid.uuid4()) if data.recurring else None
-    total_each = round(data.hourly_rate * data.duration_hours, 2)
+    total_each = _booking_total(data.hourly_rate, data.duration_hours, persons_count, person_rate)
     docs = []
     for d in dates:
         docs.append({
@@ -345,6 +357,8 @@ async def create_booking(data: BookingCreate, current_user: dict = Depends(get_c
             "start_hour": data.start_hour,
             "duration_hours": data.duration_hours,
             "hourly_rate": data.hourly_rate,
+            "persons_count": persons_count,
+            "person_rate": person_rate,
             "total_amount": total_each,
             "status": "booked",
             "payment_status": "unpaid",
@@ -371,7 +385,10 @@ async def update_booking(booking_id: str, data: BookingUpdate, current_user: dic
     existing = await db.rental_bookings.find_one(query)
     if not existing:
         raise HTTPException(status_code=404, detail="الحجز غير موجود")
-    if existing.get("payment_status") == "paid" and (data.hourly_rate is not None or data.duration_hours is not None):
+    if existing.get("payment_status") == "paid" and (
+        data.hourly_rate is not None or data.duration_hours is not None
+        or data.persons_count is not None or data.person_rate is not None
+    ):
         raise HTTPException(status_code=400, detail="لا يمكن تعديل مبلغ حجز مدفوع؛ احذف الدفعة أولاً")
 
     update_data = {k: v for k, v in data.dict().items() if v is not None}
@@ -387,8 +404,12 @@ async def update_booking(booking_id: str, data: BookingUpdate, current_user: dic
 
     new_rate = update_data.get("hourly_rate", existing.get("hourly_rate", 0))
     new_dur = update_data.get("duration_hours", existing.get("duration_hours", 1))
-    if new_dur <= 0 or new_dur > 12 or new_rate <= 0:
+    new_persons = int(update_data.get("persons_count", existing.get("persons_count", 0)) or 0)
+    new_person_rate = float(update_data.get("person_rate", existing.get("person_rate", 0)) or 0)
+    if new_dur <= 0 or new_dur > 12 or new_rate < 0 or new_persons < 0 or new_person_rate < 0:
         raise HTTPException(status_code=400, detail="قيم غير صالحة")
+    if _booking_total(new_rate, new_dur, new_persons, new_person_rate) <= 0:
+        raise HTTPException(status_code=400, detail="يجب إدخال سعر الساعة أو سعر الفرد وعدد الأفراد")
 
     # Re-run conflict detection when scheduling fields change or a cancelled
     # booking is reactivated (self-excluded)
@@ -405,7 +426,7 @@ async def update_booking(booking_id: str, data: BookingUpdate, current_user: dic
         if conflicts:
             raise HTTPException(status_code=409, detail={"message": "توجد تعارضات في المواعيد", "conflicts": conflicts[:30]})
 
-    update_data["total_amount"] = round(new_rate * new_dur, 2)
+    update_data["total_amount"] = _booking_total(new_rate, new_dur, new_persons, new_person_rate)
     update_data["updated_at"] = datetime.now(timezone.utc).isoformat()
 
     await db.rental_bookings.update_one({"id": booking_id}, {"$set": update_data})

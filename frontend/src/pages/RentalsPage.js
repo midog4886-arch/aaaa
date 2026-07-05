@@ -71,7 +71,7 @@ export default function RentalsPage() {
   const emptyBooking = {
     coach_id: '', branch_id: '', recurring: false, date: todayStr(),
     start_date: todayStr(), end_date: '', days: [], start_hour: 17,
-    duration_hours: 1, hourly_rate: '', notes: '',
+    duration_hours: 1, hourly_rate: '', persons_count: '', person_rate: '', notes: '',
   };
   const [bk, setBk] = useState({ ...emptyBooking });
   const [conflicts, setConflicts] = useState(null); // pending conflicts requiring confirmation
@@ -142,8 +142,11 @@ export default function RentalsPage() {
   // ===== Bookings =====
   const submitBooking = async (force = false) => {
     if (!bk.coach_id) return toast.error(t('اختر المدرب', 'Select a coach'));
-    const rate = parseFloat(bk.hourly_rate);
-    if (!rate || rate <= 0) return toast.error(t('أدخل سعر الساعة', 'Enter hourly rate'));
+    const rate = parseFloat(bk.hourly_rate) || 0;
+    const persons = parseInt(bk.persons_count, 10) || 0;
+    const personRate = parseFloat(bk.person_rate) || 0;
+    if (rate <= 0 && (persons <= 0 || personRate <= 0))
+      return toast.error(t('أدخل سعر الساعة أو عدد الأفراد وسعر الفرد', 'Enter hourly rate or persons count and per-person rate'));
     if (bk.recurring && (!bk.start_date || !bk.end_date || bk.days.length === 0))
       return toast.error(t('حدد فترة التكرار وأيام الأسبوع', 'Set recurring range and weekdays'));
     setSaving(true);
@@ -159,6 +162,8 @@ export default function RentalsPage() {
         start_hour: Number(bk.start_hour),
         duration_hours: parseFloat(bk.duration_hours) || 1,
         hourly_rate: rate,
+        persons_count: persons,
+        person_rate: personRate,
         notes: bk.notes,
         force,
       };
@@ -457,7 +462,14 @@ export default function RentalsPage() {
                       <td className="p-3 font-medium">{b.coach_name}</td>
                       <td className="p-3">{hourLabel(b.start_hour, ar)}</td>
                       <td className="p-3">{b.duration_hours}</td>
-                      <td className="p-3 font-bold">{(b.total_amount || 0).toLocaleString()}</td>
+                      <td className="p-3 font-bold">
+                        {(b.total_amount || 0).toLocaleString()}
+                        {(b.persons_count || 0) > 0 && (
+                          <span className="block text-[10px] font-normal text-muted-foreground">
+                            {t(`${b.persons_count} فرد × ${b.person_rate}`, `${b.persons_count} × ${b.person_rate}/person`)}
+                          </span>
+                        )}
+                      </td>
                       {isAdmin && <td className="p-3 text-xs">{branchName(b.branch_id)}</td>}
                       <td className="p-3">
                         {b.status === 'cancelled'
@@ -748,9 +760,37 @@ export default function RentalsPage() {
                 </div>
               </div>
 
-              <div className="text-sm bg-muted/40 rounded-md p-3 flex justify-between">
-                <span>{t('إجمالي كل حجز:', 'Total per booking:')}</span>
-                <span className="font-bold">{(((parseFloat(bk.hourly_rate) || 0) * (parseFloat(bk.duration_hours) || 0)) || 0).toLocaleString()} {t('ريال', 'SAR')}</span>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <Label>{t('عدد الأفراد (اختياري)', 'Persons (optional)')}</Label>
+                  <Input type="number" min="0" step="1" value={bk.persons_count} onChange={e => setBk(prev => ({ ...prev, persons_count: e.target.value }))} data-testid="input-booking-persons" />
+                </div>
+                <div>
+                  <Label>{t('سعر الفرد / ساعة', 'Rate per person/hr')}</Label>
+                  <Input type="number" min="0" value={bk.person_rate} onChange={e => setBk(prev => ({ ...prev, person_rate: e.target.value }))} data-testid="input-booking-person-rate" />
+                </div>
+              </div>
+
+              <div className="text-sm bg-muted/40 rounded-md p-3 space-y-1">
+                {(() => {
+                  const dur = parseFloat(bk.duration_hours) || 0;
+                  const hourPart = (parseFloat(bk.hourly_rate) || 0) * dur;
+                  const personPart = (parseInt(bk.persons_count, 10) || 0) * (parseFloat(bk.person_rate) || 0) * dur;
+                  return (
+                    <>
+                      {personPart > 0 && (
+                        <div className="flex justify-between text-xs text-muted-foreground">
+                          <span>{t('الساعات:', 'Hours:')} {hourPart.toLocaleString()}</span>
+                          <span>{t('الأفراد:', 'Persons:')} {personPart.toLocaleString()}</span>
+                        </div>
+                      )}
+                      <div className="flex justify-between">
+                        <span>{t('إجمالي كل حجز:', 'Total per booking:')}</span>
+                        <span className="font-bold">{(hourPart + personPart).toLocaleString()} {t('ريال', 'SAR')}</span>
+                      </div>
+                    </>
+                  );
+                })()}
               </div>
 
               <div>
