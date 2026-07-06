@@ -2578,9 +2578,23 @@ export const MembersPage = () => {
         <Dialog open={isViewDialogOpen} onOpenChange={(open) => {
           setIsViewDialogOpen(open);
           if (!open) {
+            // When the dialog was opened via a ?focus= link from another page
+            // (today-attendance, levels board, renewals, global search, ...),
+            // closing it should land the admin back on the page they came
+            // from instead of leaving them stranded on the members list.
+            const focusParam = searchParams.get('focus');
             const fromParam = searchParams.get('from');
-            if (fromParam === 'renewals') {
-              navigate('/admin/renewals');
+            if (focusParam || fromParam) {
+              const idx = window.history.state?.idx;
+              if (typeof idx === 'number' && idx > 0) {
+                navigate(-1);
+              } else if (fromParam === 'renewals') {
+                navigate('/admin/renewals');
+              } else {
+                // Direct link with no in-app history: just clear the params
+                // so the dialog does not re-open on the next members reload.
+                navigate('/admin/members', { replace: true });
+              }
             }
           }
         }}>
