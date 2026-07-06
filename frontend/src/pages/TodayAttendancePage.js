@@ -157,6 +157,22 @@ const TodayAttendancePage = () => {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data, search, activityFilter, hourFilter]);
 
+  const expectedByHour = useMemo(() => {
+    const groups = new Map();
+    const noHour = [];
+    (expectedList || []).forEach(r => {
+      const hours = [...new Set((r.activities || []).map(a => activityHour(a)).filter(h => h !== null && !isNaN(h)))];
+      if (hours.length === 0) { noHour.push(r); return; }
+      hours.forEach(h => {
+        if (!groups.has(h)) groups.set(h, []);
+        groups.get(h).push(r);
+      });
+    });
+    const sortedHours = Array.from(groups.keys()).sort((a, b) => a - b);
+    return { sortedHours, groups, noHour };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [expectedList]);
+
   const exportCSV = () => {
     let rows;
     if (tab === 'present') {
@@ -400,43 +416,64 @@ const TodayAttendancePage = () => {
                   {expectedList.length === 0 && (
                     <tr><td colSpan={6} className="p-8 text-center text-muted-foreground">{ar ? 'لا يوجد متوقعون اليوم' : 'No one expected today'}</td></tr>
                   )}
-                  {expectedList.map(r => (
-                    <tr key={r.member_id} className="border-t hover:bg-muted/30">
-                      <td
-                        className="p-3 flex items-center gap-2 cursor-pointer group"
-                        onClick={() => openMember(r.member_id)}
-                        title={ar ? 'عرض ملف العضو' : 'View member profile'}
-                      >
-                        {r.member_photo ? <img src={r.member_photo} alt="" className="w-8 h-8 rounded-full object-cover" /> : <div className="w-8 h-8 rounded-full bg-muted" />}
-                        <div>
-                          <div className="font-medium group-hover:text-primary group-hover:underline">
-                            {r.member_name}
-                            {r.guardian_name_ar && (
-                              <span className="text-xs text-muted-foreground font-normal ms-2">
-                                · {ar ? 'ولي الأمر:' : 'Guardian:'} {r.guardian_name_ar}
-                              </span>
-                            )}
+                  {[
+                    ...expectedByHour.sortedHours.map(h => ({ key: `h-${h}`, label: hourLabel(h), rows: expectedByHour.groups.get(h) || [] })),
+                    ...(expectedByHour.noHour.length > 0 ? [{ key: 'no-hour', label: ar ? 'بدون موعد محدد' : 'No set time', rows: expectedByHour.noHour }] : []),
+                  ].map(group => (
+                    <React.Fragment key={group.key}>
+                      <tr className="border-t bg-blue-50/70" data-testid={`row-hour-group-${group.key}`}>
+                        <td colSpan={6} className="px-3 py-2">
+                          <div className="flex items-center gap-2 font-semibold text-blue-800">
+                            <Clock className="w-4 h-4" />
+                            <span>{group.label}</span>
+                            <Badge variant="outline" className="bg-white text-blue-700 text-xs">{group.rows.length}</Badge>
+                            <span className="text-xs font-normal text-green-700">
+                              {ar
+                                ? `حضر ${group.rows.filter(r => presentIds.has(r.member_id)).length}`
+                                : `${group.rows.filter(r => presentIds.has(r.member_id)).length} present`}
+                            </span>
                           </div>
-                          {r.phone && <div className="text-xs text-muted-foreground">{r.phone}</div>}
-                        </div>
-                      </td>
-                      <td className="p-3 font-mono text-xs">{r.member_code}</td>
-                      <td className="p-3 text-xs">{(r.activities || []).map(a => a.activity_name).join(' / ')}</td>
-                      <td className="p-3 text-xs">
-                        <div className="flex flex-wrap gap-1">
-                          {(r.activities || []).map((a, i) => {
-                            const label = hourLabel(activityHour(a)) || formatSchedule(a.schedule);
-                            return label ? <Badge key={i} variant="outline" className="bg-blue-50 text-blue-700 text-xs">{label}</Badge> : null;
-                          })}
-                        </div>
-                      </td>
-                      <td className="p-3 text-xs">{branchName(r.branch_id)}</td>
-                      <td className="p-3">
-                        {presentIds.has(r.member_id)
-                          ? <Badge variant="outline" className="bg-green-50 text-green-700 text-xs">{ar ? 'حاضر ✓' : 'Present ✓'}</Badge>
-                          : <Badge variant="outline" className="bg-amber-50 text-amber-700 text-xs">{ar ? 'لم يحضر بعد' : 'Not yet'}</Badge>}
-                      </td>
-                    </tr>
+                        </td>
+                      </tr>
+                      {group.rows.map(r => (
+                        <tr key={`${group.key}-${r.member_id}`} className="border-t hover:bg-muted/30">
+                          <td
+                            className="p-3 flex items-center gap-2 cursor-pointer group"
+                            onClick={() => openMember(r.member_id)}
+                            title={ar ? 'عرض ملف العضو' : 'View member profile'}
+                          >
+                            {r.member_photo ? <img src={r.member_photo} alt="" className="w-8 h-8 rounded-full object-cover" /> : <div className="w-8 h-8 rounded-full bg-muted" />}
+                            <div>
+                              <div className="font-medium group-hover:text-primary group-hover:underline">
+                                {r.member_name}
+                                {r.guardian_name_ar && (
+                                  <span className="text-xs text-muted-foreground font-normal ms-2">
+                                    · {ar ? 'ولي الأمر:' : 'Guardian:'} {r.guardian_name_ar}
+                                  </span>
+                                )}
+                              </div>
+                              {r.phone && <div className="text-xs text-muted-foreground">{r.phone}</div>}
+                            </div>
+                          </td>
+                          <td className="p-3 font-mono text-xs">{r.member_code}</td>
+                          <td className="p-3 text-xs">{(r.activities || []).map(a => a.activity_name).join(' / ')}</td>
+                          <td className="p-3 text-xs">
+                            <div className="flex flex-wrap gap-1">
+                              {(r.activities || []).map((a, i) => {
+                                const label = hourLabel(activityHour(a)) || formatSchedule(a.schedule);
+                                return label ? <Badge key={i} variant="outline" className="bg-blue-50 text-blue-700 text-xs">{label}</Badge> : null;
+                              })}
+                            </div>
+                          </td>
+                          <td className="p-3 text-xs">{branchName(r.branch_id)}</td>
+                          <td className="p-3">
+                            {presentIds.has(r.member_id)
+                              ? <Badge variant="outline" className="bg-green-50 text-green-700 text-xs">{ar ? 'حاضر ✓' : 'Present ✓'}</Badge>
+                              : <Badge variant="outline" className="bg-amber-50 text-amber-700 text-xs">{ar ? 'لم يحضر بعد' : 'Not yet'}</Badge>}
+                          </td>
+                        </tr>
+                      ))}
+                    </React.Fragment>
                   ))}
                 </tbody>
               </table>
