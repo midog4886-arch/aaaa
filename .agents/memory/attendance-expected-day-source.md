@@ -24,3 +24,12 @@ because nearly all swimming levels had all 7 weekdays in `days[]`).
 any similar per-day expectation logic) must prefer parsed personal schedule
 days; treat `level.days[]` strictly as a fallback for members whose schedule
 text lacks day names.
+
+# Expected-attendance HOUR source (same rule)
+
+The displayed/grouping hour must follow the same authority order: member's
+`day_times` entry for TODAY's weekday → hour parsed from the member's own
+`schedule` text → level `time_slot` hour (fallback only) → None. A level's
+`time_slot` describes the level's slot; a member can be placed in a level
+whose hour differs from their booked موعد (observed: موعد "8:00 م" shown as
+"expected at 7" because the linked level was "الساعه 7").

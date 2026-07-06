@@ -854,6 +854,7 @@ async def get_today_summary(
 
     member_activity_schedule = {}
     member_activity_levelid = {}
+    member_activity_daytimes = {}
     for m in members:
         mid_m = m.get("id")
         if not mid_m:
@@ -862,16 +863,32 @@ async def get_today_summary(
             aid = act.get("activity_id", "")
             sch = act.get("schedule", "")
             lvid = act.get("level_id", "")
+            dts = act.get("day_times") or {}
             if aid and sch:
                 member_activity_schedule[(mid_m, aid)] = sch
             if aid and lvid:
                 member_activity_levelid[(mid_m, aid)] = lvid
+            if aid and dts:
+                member_activity_daytimes[(mid_m, aid)] = dts
 
     def _activity_hour(mid_, aid_, sched_=""):
+        # The member's own booked موعد is authoritative for the hour shown —
+        # a level's time_slot describes the level's slot, and a member can be
+        # placed in a level whose hour differs from what they actually booked
+        # (e.g. موعد 8:00 م inside a "الساعه 7" level). Only fall back to the
+        # level's hour when the member's schedule has no parseable time.
+        for name, tval in (member_activity_daytimes.get((mid_, aid_)) or {}).items():
+            if today_day in parse_schedule_days(name or ""):
+                h = _hour_12(tval or "")
+                if h is not None:
+                    return h
+        h = _hour_12(sched_)
+        if h is not None:
+            return h
         lvid = member_activity_levelid.get((mid_, aid_))
         if lvid and lvid in level_hour_by_id:
             return level_hour_by_id[lvid]
-        return _hour_12(sched_)
+        return None
 
     present_by_member = {}
     for r in today_records:
