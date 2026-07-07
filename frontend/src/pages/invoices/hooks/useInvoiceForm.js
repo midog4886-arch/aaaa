@@ -327,6 +327,16 @@ export const useInvoiceForm = ({
   const handleCreateInvoice = async () => {
     if (invoiceItems.length === 0) { toast.error(language === 'ar' ? 'أضف نشاط واحد على الأقل' : 'Add at least one activity'); return; }
     if (!customerNameAr) { toast.error(language === 'ar' ? 'أدخل اسم العميل' : 'Enter customer name'); return; }
+    // A subscription (activity) invoice must be linked to a member record,
+    // otherwise the membership card can never be printed and attendance /
+    // renewals lose track of the subscriber. Product-only invoices may still
+    // be issued to walk-in customers without a member.
+    if (!isEditMode && !selectedMember && (invoiceItems || []).some(it => !it.is_product)) {
+      toast.error(language === 'ar'
+        ? 'فاتورة الاشتراك لازم تكون مربوطة بعضو — اختر عضواً موجوداً أو أضِف عضواً جديداً أولاً'
+        : 'A subscription invoice must be linked to a member — select an existing member or add a new one first');
+      return;
+    }
     if (!isEditMode) {
       const missingLevelMain = (invoiceItems || []).find(it => !it.is_product && !it.level_id);
       if (missingLevelMain) {

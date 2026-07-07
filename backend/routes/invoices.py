@@ -258,6 +258,22 @@ async def create_invoice(invoice: InvoiceCreate, current_user: dict = Depends(ge
     # be created with branch_id=None and visible to all branch-less users).
     require_branch_scope(current_user)
 
+    # A subscription (activity) invoice must be linked to a member record —
+    # otherwise the membership card can never be printed and attendance /
+    # renewals lose track of the subscriber. Product-only invoices may still
+    # be issued to walk-in customers without a member. Items carrying their
+    # own per-item member_id (multi-member invoices) are already linked;
+    # additional_members items always get one (AdditionalMember.member_id is
+    # required), so only unlinked primary activity items are rejected here.
+    has_activity_items = any(
+        not item.is_product and not item.member_id for item in (invoice.items or [])
+    )
+    if has_activity_items and not invoice.member_id:
+        raise HTTPException(
+            status_code=422,
+            detail="فاتورة الاشتراك يجب أن تكون مربوطة بعضو — اختر عضواً موجوداً أو أضِف عضواً جديداً أولاً",
+        )
+
     # Get supervisor name
     user_doc = await db.users.find_one({"id": current_user["user_id"]}, {"_id": 0})
     supervisor_name = user_doc.get("name", current_user.get("username", "")) if user_doc else current_user.get("username", "")
@@ -325,6 +341,19 @@ async def create_invoice(invoice: InvoiceCreate, current_user: dict = Depends(ge
     all_items = []
     for item in invoice.items:
         item_dict = item.model_dump()
+        # Never trust a client-supplied per-item member_id on primary items:
+        # validate it resolves to a real, branch-authorized member, otherwise
+        # a caller could bypass the member-link requirement above or route
+        # activities to a member from another branch at pay time.
+        item_mid = item_dict.get("member_id")
+        if item_mid and item_mid != invoice.member_id:
+            item_member = await db.members.find_one(
+                _scoped_member_filter(item_mid), {"_id": 0, "name_ar": 1, "name": 1}
+            )
+            if not item_member:
+                raise HTTPException(status_code=404, detail="Member not found for invoice item")
+            if not item_dict.get("member_name"):
+                item_dict["member_name"] = item_member.get("name_ar", item_member.get("name", ""))
         if invoice.member_id and not item_dict.get("member_id"):
             item_dict["member_id"] = invoice.member_id
             item_dict["member_name"] = member_name

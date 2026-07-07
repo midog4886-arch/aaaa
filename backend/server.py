@@ -1841,6 +1841,18 @@ async def convert_registration_form(form_id: str, current_user: dict = Depends(g
     
     if form["status"] == "converted":
         raise HTTPException(status_code=400, detail="Form already converted to invoice")
+
+    # Carry the member link from the form to the invoice. A subscription
+    # (activity) invoice must be linked to a member record — otherwise the
+    # membership card can never be printed and attendance/renewals lose track
+    # of the subscriber. Product-only forms may convert without a member.
+    form_member_id = form.get("member_id") or None
+    has_activity_items = any(not (it or {}).get("is_product") for it in (form.get("items") or []))
+    if has_activity_items and not form_member_id:
+        raise HTTPException(
+            status_code=422,
+            detail="استمارة الاشتراك يجب أن تكون مربوطة بعضو قبل تحويلها إلى فاتورة — عدّل الاستمارة واختر العضو أولاً",
+        )
     
     # Create invoice from form – unique per branch
     form_branch_id = form.get("branch_id")
@@ -1869,7 +1881,8 @@ async def convert_registration_form(form_id: str, current_user: dict = Depends(g
     invoice_doc = {
         "id": str(uuid.uuid4()),
         "invoice_number": invoice_number,
-        "member_id": None,
+        "member_id": form_member_id,
+        "member_code": form.get("member_code", ""),
         "customer_name_ar": form["customer_name"],
         "customer_phone": form["customer_phone"],
         "customer_address": "",
