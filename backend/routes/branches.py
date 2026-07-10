@@ -24,6 +24,9 @@ class BranchBase(BaseModel):
     # form instead of the internal branch name. Empty -> fall back to name_ar/name.
     public_name: Optional[str] = ""
     address: Optional[str] = ""
+    # Public Google-Maps (or similar) location link shown on the public
+    # registration page. Empty -> hidden.
+    location_url: Optional[str] = ""
     phone: Optional[str] = ""
     email: Optional[str] = ""
     manager_name: Optional[str] = ""
@@ -45,6 +48,19 @@ class BranchCreate(BranchBase):
 class Branch(BranchBase):
     id: str
     created_at: str
+
+
+def _validate_location_url(data: dict):
+    """Only allow plain web links (http/https) as the public location URL —
+    it is rendered as an <a href> on the public registration page, so schemes
+    like javascript:/data: would be a stored XSS/phishing vector."""
+    url = (data.get("location_url") or "").strip()
+    if url and not url.lower().startswith(("http://", "https://")):
+        raise HTTPException(
+            status_code=400,
+            detail="رابط اللوكيشن يجب أن يبدأ بـ http:// أو https://",
+        )
+    data["location_url"] = url
 
 
 def _validate_branch_templates(data: dict):
@@ -113,6 +129,7 @@ async def create_branch(branch: BranchCreate, current_user: dict = Depends(get_c
     branch_id = str(uuid.uuid4())
     data = branch.model_dump()
     _validate_branch_templates(data)
+    _validate_location_url(data)
     from utils.member_code import sanitize_prefix
     data["code_prefix"] = sanitize_prefix(data.get("code_prefix") or "")
     user_supplied_prefix = bool(data["code_prefix"])
@@ -192,6 +209,7 @@ async def update_branch(branch_id: str, branch: BranchCreate, current_user: dict
 
     data = branch.model_dump()
     _validate_branch_templates(data)
+    _validate_location_url(data)
     from utils.member_code import sanitize_prefix
     data["code_prefix"] = sanitize_prefix(data.get("code_prefix") or "")
     if data["code_prefix"]:

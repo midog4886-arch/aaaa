@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useParams, useSearchParams, useLocation } from 'react-router-dom';
 import axios from 'axios';
 import { API_URL } from '../config/api';
-import { Loader2, CheckCircle2, Calendar, Phone, User, Dumbbell, Flag, Building2 } from 'lucide-react';
+import { Loader2, CheckCircle2, Calendar, Phone, User, Dumbbell, Flag, Building2, MapPin } from 'lucide-react';
 import { NationalitySelect } from '../components/NationalitySelect';
 
 const WEEK_DAYS = [
@@ -176,6 +176,19 @@ export const PublicRegistrationPage = () => {
     ? (branch ? (branch.public_name || branch.name_ar || branch.name) : '')
     : (() => { const b = branches.find(x => x.id === pickedBranchId); return b ? (b.public_name || b.name_ar || b.name) : ''; })();
 
+  // Contact info (phone + maps location) of the currently relevant branch:
+  // the locked branch on branch-specific links, or the picked one otherwise.
+  const selectedBranchInfo = hasFixedBranch
+    ? branch
+    : branches.find(x => x.id === pickedBranchId) || null;
+
+  // Defensive guard: only render http(s) links (backend validates on save,
+  // this also hides any bad legacy value instead of creating a live link).
+  const safeLocationUrl = (() => {
+    const url = (selectedBranchInfo?.location_url || '').trim();
+    return /^https?:\/\//i.test(url) ? url : '';
+  })();
+
   return (
     <div dir="rtl" className="relative min-h-screen overflow-hidden flex flex-col items-center py-8 px-4 bg-gradient-to-br from-emerald-50 via-white to-sky-50">
       <style>{`
@@ -281,6 +294,24 @@ export const PublicRegistrationPage = () => {
                     <option key={b.id} value={b.id}>{b.public_name || b.name_ar || b.name}</option>
                   ))}
                 </select>
+              )}
+              {(selectedBranchInfo?.phone || safeLocationUrl) && (
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 pt-1" data-testid="branch-contact-info">
+                  {selectedBranchInfo.phone && (
+                    <a href={`tel:${selectedBranchInfo.phone}`} dir="ltr"
+                      className="inline-flex items-center gap-1.5 text-xs text-emerald-700 hover:underline"
+                      data-testid="link-branch-phone">
+                      <Phone className="w-3.5 h-3.5" /> {selectedBranchInfo.phone}
+                    </a>
+                  )}
+                  {safeLocationUrl && (
+                    <a href={safeLocationUrl} target="_blank" rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1.5 text-xs text-emerald-700 hover:underline"
+                      data-testid="link-branch-location">
+                      <MapPin className="w-3.5 h-3.5" /> اللوكيشن على الخريطة
+                    </a>
+                  )}
+                </div>
               )}
             </div>
 

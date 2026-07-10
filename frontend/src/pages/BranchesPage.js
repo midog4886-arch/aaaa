@@ -16,6 +16,7 @@ import {
   Trash2, 
   Building2,
   Phone,
+  MapPin,
   Loader2
 } from 'lucide-react';
 
@@ -43,6 +44,7 @@ const BranchesPage = () => {
     name_ar: '',
     public_name: '',
     phone: '',
+    location_url: '',
     code_prefix: '',
     whatsapp_group_url: '',
     whatsapp_renewal_template: '',
@@ -88,6 +90,7 @@ const BranchesPage = () => {
         name_ar: formData.name_ar,
         public_name: (formData.public_name || '').trim(),
         phone: formData.phone,
+        location_url: (formData.location_url || '').trim(),
         manager_name: '',
         manager_name_ar: '',
         address: '',
@@ -138,6 +141,7 @@ const BranchesPage = () => {
       name_ar: branch.name_ar || branch.name || '',
       public_name: branch.public_name || '',
       phone: branch.phone || '',
+      location_url: branch.location_url || '',
       code_prefix: branch.code_prefix || '',
       whatsapp_group_url: branch.whatsapp_group_url || '',
       whatsapp_renewal_template: branch.whatsapp_renewal_template || '',
@@ -159,6 +163,7 @@ const BranchesPage = () => {
       name_ar: '',
       public_name: '',
       phone: '',
+      location_url: '',
       code_prefix: '',
       whatsapp_group_url: '',
       whatsapp_renewal_template: '',
@@ -226,6 +231,20 @@ const BranchesPage = () => {
                     <Phone className="w-4 h-4" />
                     <span dir="ltr">{branch.phone}</span>
                   </div>
+                  {/^https?:\/\//i.test((branch.location_url || '').trim()) && (
+                    <div className="flex items-center gap-2 text-sm">
+                      <MapPin className="w-4 h-4 text-muted-foreground" />
+                      <a
+                        href={branch.location_url.trim()}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-primary hover:underline"
+                        data-testid={`branch-location-link-${branch.id}`}
+                      >
+                        {language === 'ar' ? 'اللوكيشن على الخريطة' : 'View location'}
+                      </a>
+                    </div>
+                  )}
                   {branch.code_prefix && (
                     <div className="flex items-center gap-2 text-sm">
                       <span className="text-muted-foreground">
@@ -312,6 +331,22 @@ const BranchesPage = () => {
                   dir="ltr"
                   data-testid="branch-phone-input"
                 />
+              </div>
+
+              <div className="space-y-2">
+                <Label>{language === 'ar' ? 'رابط اللوكيشن (خرائط جوجل)' : 'Location Link (Google Maps)'}</Label>
+                <Input
+                  value={formData.location_url}
+                  onChange={(e) => setFormData({ ...formData, location_url: e.target.value })}
+                  placeholder="https://maps.app.goo.gl/XXXXXXXX"
+                  dir="ltr"
+                  data-testid="branch-location-input"
+                />
+                <p className="text-xs text-muted-foreground">
+                  {language === 'ar'
+                    ? 'هيظهر رقم التواصل واللوكيشن تحت اسم الفرع في صفحة التسجيل العامة. اتركه فارغًا لإخفاء اللوكيشن.'
+                    : 'The contact number and location will appear under the branch on the public registration page. Leave empty to hide the location.'}
+                </p>
               </div>
 
               <div className="space-y-2">

@@ -10,6 +10,9 @@ class BranchBase(BaseModel):
     manager_name_ar: Optional[str] = ""
     address: Optional[str] = ""
     address_ar: Optional[str] = ""
+    # Public Google-Maps (or similar) location link shown on the public
+    # registration page. Empty -> hidden.
+    location_url: Optional[str] = ""
     is_active: bool = True
     code_prefix: Optional[str] = ""
     whatsapp_group_url: Optional[str] = ""

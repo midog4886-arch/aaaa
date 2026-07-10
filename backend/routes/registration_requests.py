@@ -29,6 +29,14 @@ from utils.tenant import get_current_tenant
 router = APIRouter(tags=["RegistrationRequests"])
 
 
+def _safe_location_url(url) -> str:
+    """Only expose http(s) links to the public page — the value is rendered
+    as an <a href>, so any other scheme (javascript:, data:, ...) is dropped
+    even if bad legacy data exists in the DB."""
+    url = (url or "").strip()
+    return url if url.lower().startswith(("http://", "https://")) else ""
+
+
 def _academy_name() -> str:
     """Public display name of the current tenant (resolved by middleware from
     X-Tenant-Slug / subdomain). Only the name is exposed on public pages."""
@@ -61,7 +69,7 @@ async def public_list_branches():
     visitor pick a branch. Tenant is resolved by the middleware from the
     X-Tenant-Slug header / subdomain."""
     branches = await db.branches.find(
-        {}, {"_id": 0, "id": 1, "name": 1, "name_ar": 1, "public_name": 1}
+        {}, {"_id": 0, "id": 1, "name": 1, "name_ar": 1, "public_name": 1, "phone": 1, "location_url": 1}
     ).to_list(500)
     # Only expose a public-facing label. When a branch has a custom public_name we
     # return it as the name so the internal branch name is never sent to the public
@@ -73,6 +81,8 @@ async def public_list_branches():
             "id": b["id"],
             "name": label or b.get("name") or "",
             "name_ar": label or b.get("name_ar") or b.get("name") or "",
+            "phone": (b.get("phone") or "").strip(),
+            "location_url": _safe_location_url(b.get("location_url")),
         })
     return {"branches": public_branches, "academy_name": _academy_name()}
 
@@ -82,7 +92,7 @@ async def public_get_registration_branch(branch_id: str):
     """Return the branch name and the activities available for that branch so
     the public form can present activity choices. Tenant is resolved by the
     middleware from the X-Tenant-Slug header / subdomain."""
-    branch = await db.branches.find_one({"id": branch_id}, {"_id": 0, "id": 1, "name": 1, "name_ar": 1, "public_name": 1})
+    branch = await db.branches.find_one({"id": branch_id}, {"_id": 0, "id": 1, "name": 1, "name_ar": 1, "public_name": 1, "phone": 1, "location_url": 1})
     if not branch:
         raise HTTPException(status_code=404, detail="Branch not found")
 
@@ -100,6 +110,8 @@ async def public_get_registration_branch(branch_id: str):
             "id": branch["id"],
             "name": _label or branch.get("name", ""),
             "name_ar": _label or branch.get("name_ar", "") or branch.get("name", ""),
+            "phone": (branch.get("phone") or "").strip(),
+            "location_url": _safe_location_url(branch.get("location_url")),
         },
         "activities": activities,
         "academy_name": _academy_name(),
