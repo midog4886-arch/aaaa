@@ -164,7 +164,7 @@ export const InvoicesPage = () => {
   });
 
   const { isCreateDialogOpen, setIsCreateDialogOpen, isEditMode, selectedMember, setSelectedMember, invoiceItems, setInvoiceItems,
-    notes, setNotes, paymentMethod, setPaymentMethod, saving, setSaving, couponCode, setCouponCode, appliedCoupon, setAppliedCoupon,
+    notes, setNotes, paymentMethod, setPaymentMethod, splitEnabled, setSplitEnabled, paymentSplit, setPaymentSplit, saving, setSaving, couponCode, setCouponCode, appliedCoupon, setAppliedCoupon,
     couponDiscount, setCouponDiscount, marketerDiscount, marketerDiscountPercent, setMarketerDiscountPercent, marketerName, setMarketerName,
     validatingCoupon, itemType, setItemType, feeEditUnlocked, additionalMembers, setAdditionalMembers,
     additionalMemberNewForm, setAdditionalMemberNewForm, levelCapacityWarnings, levelSelectorState, customerNameAr, setCustomerNameAr,
@@ -503,6 +503,8 @@ export const InvoicesPage = () => {
           invoiceItems={invoiceItems} setInvoiceItems={setInvoiceItems}
           itemType={itemType} setItemType={setItemType}
           paymentMethod={paymentMethod} setPaymentMethod={setPaymentMethod}
+          splitEnabled={splitEnabled} setSplitEnabled={setSplitEnabled}
+          paymentSplit={paymentSplit} setPaymentSplit={setPaymentSplit}
           couponCode={couponCode} setCouponCode={setCouponCode}
           appliedCoupon={appliedCoupon} setAppliedCoupon={setAppliedCoupon}
           couponDiscount={couponDiscount} setCouponDiscount={setCouponDiscount}

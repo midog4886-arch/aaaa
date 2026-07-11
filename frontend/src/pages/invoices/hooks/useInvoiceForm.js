@@ -82,6 +82,8 @@ export const useInvoiceForm = ({
   const [discount, setDiscount] = useState(0);
   const [notes, setNotes] = useState('');
   const [paymentMethod, setPaymentMethod] = useState('شبكة');
+  const [splitEnabled, setSplitEnabled] = useState(false);
+  const [paymentSplit, setPaymentSplit] = useState({ cash: '', card: '', transfer: '' });
   const [saving, setSaving] = useState(false);
   const [couponCode, setCouponCode] = useState('');
   const [appliedCoupon, setAppliedCoupon] = useState(null);
@@ -360,6 +362,13 @@ export const useInvoiceForm = ({
     }
     const hasUnacceptedFullLevel = Object.values(levelCapacityWarnings).some(w => w.isFull && !w.isAccepted);
     if (hasUnacceptedFullLevel) { toast.error(language === 'ar' ? 'يوجد مستوى مكتمل العدد، يرجى الموافقة أو اختيار مستوى آخر.' : 'A selected level is full, please accept or choose another level.'); return; }
+    // Split payment: the entered legs (cash/card/transfer) must add up to the invoice total.
+    if (!isEditMode && splitEnabled) {
+      const { total: splitTotal } = calculateTotals();
+      const splitSum = ['cash', 'card', 'transfer'].reduce((s, k) => s + (parseFloat(paymentSplit[k]) || 0), 0);
+      if (splitSum <= 0) { toast.error(language === 'ar' ? 'أدخل مبالغ الدفع المقسّم.' : 'Enter the split payment amounts.'); return; }
+      if (Math.abs(splitSum - splitTotal) > 0.5) { toast.error(language === 'ar' ? `مجموع الدفع المقسّم (${splitSum.toFixed(2)}) لا يساوي إجمالي الفاتورة (${splitTotal.toFixed(2)})` : `Split total (${splitSum.toFixed(2)}) must equal invoice total (${splitTotal.toFixed(2)})`); return; }
+    }
     setSaving(true);
     const { totalDiscount } = calculateTotals();
     try {
@@ -376,6 +385,11 @@ export const useInvoiceForm = ({
           discount: totalDiscount, discount_code: appliedCoupon?.code || null,
           notes, payment_method: paymentMethod, customer_name_ar: customerNameAr, customer_phone: customerPhone, customer_address: customerAddress, branch_id: selectedBranchId
         };
+        if (splitEnabled) {
+          const split = {};
+          ['cash', 'card', 'transfer'].forEach(k => { const v = parseFloat(paymentSplit[k]); if (v > 0) split[k] = v; });
+          if (Object.keys(split).length > 0) createPayload.payment_split = split;
+        }
         if (additionalMembers.length > 0) {
           createPayload.additional_members = additionalMembers.map(am => ({ member_id: am.member.id, member_name: am.member.name_ar || am.member.name, member_code: am.member.member_code || '', items: am.items.map(stripTransient) }));
         }
@@ -415,6 +429,7 @@ export const useInvoiceForm = ({
   // Reset every form field WITHOUT touching the dialog open state or the saved draft.
   const resetFormFields = () => {
     setSelectedMember(null); setInvoiceItems([]); setDiscount(0); setNotes(''); setPaymentMethod('card');
+    setSplitEnabled(false); setPaymentSplit({ cash: '', card: '', transfer: '' });
     setCustomerNameAr(''); setCustomerPhone(''); setCustomerAddress(''); setIsEditMode(false); setEditingInvoiceId(null);
     setCouponCode(''); setAppliedCoupon(null); setCouponDiscount(0); setMarketerDiscountPercent(0); setMarketerName(''); setItemType('activity'); setFeeEditUnlocked(false);
     setAdditionalMembers([]); setAdditionalMemberNewForm({ show: false, index: -1, data: { name_ar: '', name: '', age: '', guardian_name_ar: '', guardian_name: '', phone: '' } });
@@ -471,6 +486,7 @@ export const useInvoiceForm = ({
   return {
     isCreateDialogOpen, setIsCreateDialogOpen, isEditMode, editingInvoiceId, selectedMember, setSelectedMember,
     invoiceItems, setInvoiceItems, discount, setDiscount, notes, setNotes, paymentMethod, setPaymentMethod,
+    splitEnabled, setSplitEnabled, paymentSplit, setPaymentSplit,
     saving, setSaving, couponCode, setCouponCode, appliedCoupon, setAppliedCoupon, couponDiscount, setCouponDiscount,
     marketerDiscountPercent, setMarketerDiscountPercent, marketerName, setMarketerName, marketerDiscount,
     validatingCoupon, itemType, setItemType, feeEditUnlocked, setFeeEditUnlocked,

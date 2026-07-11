@@ -9868,9 +9868,18 @@ async def get_sales_report(
     total_vat = sum(inv.get("vat_amount", 0) for inv in invoices)
     total_amount = sum(inv.get("total", 0) for inv in invoices)
     
-    # Group by payment method
+    # Group by payment method. Split invoices distribute each leg (cash/card/
+    # transfer) to its own method so totals per method stay accurate.
     by_payment_method = {}
     for inv in invoices:
+        split = inv.get("payment_split")
+        if split:
+            for leg_method, leg_amount in split.items():
+                if leg_method not in by_payment_method:
+                    by_payment_method[leg_method] = {"count": 0, "total": 0}
+                by_payment_method[leg_method]["count"] += 1
+                by_payment_method[leg_method]["total"] += leg_amount or 0
+            continue
         pm = inv.get("payment_method", "غير محدد")
         if pm not in by_payment_method:
             by_payment_method[pm] = {"count": 0, "total": 0}

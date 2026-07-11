@@ -130,6 +130,14 @@ async def get_daily_summary(
 
     income_by_method = {}
     for inv in invoices:
+        split = inv.get("payment_split")
+        if split:
+            # Split invoice: attribute each leg (cash/card/transfer) to its method.
+            for leg_method, leg_amount in split.items():
+                if leg_method not in income_by_method:
+                    income_by_method[leg_method] = 0
+                income_by_method[leg_method] += leg_amount or 0
+            continue
         method = inv.get("payment_method", "cash")
         if method not in income_by_method:
             income_by_method[method] = 0

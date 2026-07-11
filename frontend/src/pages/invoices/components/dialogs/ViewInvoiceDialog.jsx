@@ -93,6 +93,7 @@ export const ViewInvoiceDialog = ({
                   selectedInvoice.payment_method === 'transfer' ? (isAr ? 'تحويل بنكي' : 'Transfer') :
                   selectedInvoice.payment_method === 'tabby' ? (isAr ? 'تابي' : 'Tabby') :
                   selectedInvoice.payment_method === 'tamara' ? (isAr ? 'تمارا' : 'Tamara') :
+                  selectedInvoice.payment_method === 'split' ? (isAr ? 'دفع مقسّم' : 'Split') :
                   selectedInvoice.payment_method
                 }</div>
                 <div><strong>{isAr ? 'الحالة:' : 'Status:'}</strong> {selectedInvoice.status === 'paid' ? (isAr ? '✅ مدفوعة' : '✅ Paid') : selectedInvoice.status === 'pending' ? (isAr ? '⏳ غير مدفوعة' : '⏳ Pending') : (isAr ? '❌ ملغاة' : '❌ Cancelled')}</div>
@@ -144,6 +145,16 @@ export const ViewInvoiceDialog = ({
               <p>{COMPANY_INFO.name_ar} | {COMPANY_INFO.name_en}</p>
               <p className="mt-1 font-semibold text-orange-600">🏢 {getBranchName(selectedInvoice.branch_id)}</p>
               <div className="flex justify-center gap-6 mt-2"><span>{isAr ? 'الرقم الضريبي' : 'Tax Number'}: {COMPANY_INFO.tax_number}</span><span>{isAr ? 'السجل التجاري' : 'Commercial Reg'}: {COMPANY_INFO.commercial_reg}</span></div>
+            </div>
+          </div>
+        )}
+        {selectedInvoice && selectedInvoice.payment_method === 'split' && selectedInvoice.payment_split && (
+          <div className="mt-2 p-3 bg-blue-50 border border-blue-200 rounded-lg text-sm">
+            <strong>{isAr ? '💰 تفاصيل الدفع المقسّم:' : '💰 Split Payment Breakdown:'}</strong>
+            <div className="flex flex-wrap gap-x-6 gap-y-1 mt-1">
+              {(selectedInvoice.payment_split.cash > 0) && <span>{isAr ? 'نقدي' : 'Cash'}: <strong>{Number(selectedInvoice.payment_split.cash).toFixed(2)}</strong></span>}
+              {(selectedInvoice.payment_split.card > 0) && <span>{isAr ? 'شبكة (بطاقة)' : 'Card'}: <strong>{Number(selectedInvoice.payment_split.card).toFixed(2)}</strong></span>}
+              {(selectedInvoice.payment_split.transfer > 0) && <span>{isAr ? 'تحويل' : 'Transfer'}: <strong>{Number(selectedInvoice.payment_split.transfer).toFixed(2)}</strong></span>}
             </div>
           </div>
         )}

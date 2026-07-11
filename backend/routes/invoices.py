@@ -77,6 +77,7 @@ class InvoiceCreate(BaseModel):
     discount_code: Optional[str] = None
     notes: Optional[str] = ""
     payment_method: str = "cash"
+    payment_split: Optional[Dict[str, float]] = None
     customer_name_ar: Optional[str] = ""
     customer_phone: Optional[str] = ""
     customer_address: Optional[str] = ""
@@ -95,6 +96,7 @@ class Invoice(BaseModel):
     total: float
     status: str = "pending"
     payment_method: str
+    payment_split: Optional[Dict[str, float]] = None
     notes: Optional[str] = ""
     branch_id: Optional[str] = None
     branch_name: Optional[str] = ""
@@ -394,6 +396,41 @@ async def create_invoice(invoice: InvoiceCreate, current_user: dict = Depends(ge
             all_member_names.append(am_info["member_name"])
     display_name = " & ".join(all_member_names) if all_member_names else customer_name
 
+    # Split payment: member pays part cash / part card / part transfer. Keep only
+    # the non-zero legs; when a valid split is present the invoice payment_method
+    # is marked "split" and reports distribute each leg to its own method.
+    payment_method = invoice.payment_method
+    payment_split = None
+    if invoice.payment_split:
+        allowed_split_methods = {"cash", "card", "transfer"}
+        cleaned = {}
+        for k, v in invoice.payment_split.items():
+            if k not in allowed_split_methods:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"طريقة دفع غير صالحة في الدفع المقسّم: {k}"
+                )
+            if v in (None, ""):
+                continue
+            try:
+                amount = round(float(v), 2)
+            except (TypeError, ValueError):
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"قيمة غير صالحة في الدفع المقسّم: {k}"
+                )
+            if amount > 0:
+                cleaned[k] = amount
+        if cleaned:
+            split_sum = round(sum(cleaned.values()), 2)
+            if abs(split_sum - total) > 0.5:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"مجموع الدفع المقسّم ({split_sum}) لا يساوي إجمالي الفاتورة ({total})"
+                )
+            payment_split = cleaned
+            payment_method = "split"
+
     invoice_doc = {
         "id": invoice_id,
         "invoice_number": str(next_number),
@@ -407,7 +444,8 @@ async def create_invoice(invoice: InvoiceCreate, current_user: dict = Depends(ge
         "vat_amount": vat_amount,
         "total": total,
         "status": "pending",
-        "payment_method": invoice.payment_method,
+        "payment_method": payment_method,
+        "payment_split": payment_split,
         "notes": invoice.notes,
         "branch_id": branch_id,
         "created_at": datetime.now(timezone.utc).isoformat(),

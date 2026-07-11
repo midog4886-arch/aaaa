@@ -111,6 +111,7 @@ export const CreateEditInvoiceDialog = ({
   invoiceItems, setInvoiceItems,
   itemType, setItemType,
   paymentMethod, setPaymentMethod,
+  splitEnabled, setSplitEnabled, paymentSplit, setPaymentSplit,
   couponCode, setCouponCode,
   appliedCoupon, setAppliedCoupon,
   couponDiscount, setCouponDiscount,
@@ -853,15 +854,63 @@ export const CreateEditInvoiceDialog = ({
 
           <div className="space-y-2">
             <Label>{t('payment_method')}</Label>
-            <Select value={paymentMethod} onValueChange={setPaymentMethod}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="cash">{language === 'ar' ? 'نقدي' : 'Cash'}</SelectItem>
-                <SelectItem value="card">{language === 'ar' ? 'بطاقة' : 'Card'}</SelectItem>
-                <SelectItem value="تابي">{language === 'ar' ? 'تابي' : 'Tabby'}</SelectItem>
-                <SelectItem value="تمارة">{language === 'ar' ? 'تمارا' : 'Tamara'}</SelectItem>
-              </SelectContent>
-            </Select>
+            {!splitEnabled && (
+              <Select value={paymentMethod} onValueChange={setPaymentMethod}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="cash">{language === 'ar' ? 'نقدي' : 'Cash'}</SelectItem>
+                  <SelectItem value="card">{language === 'ar' ? 'بطاقة' : 'Card'}</SelectItem>
+                  <SelectItem value="تابي">{language === 'ar' ? 'تابي' : 'Tabby'}</SelectItem>
+                  <SelectItem value="تمارة">{language === 'ar' ? 'تمارا' : 'Tamara'}</SelectItem>
+                </SelectContent>
+              </Select>
+            )}
+            {!isEditMode && (
+              <label className="flex items-center gap-2 text-sm cursor-pointer select-none pt-1" data-testid="split-payment-toggle">
+                <input
+                  type="checkbox"
+                  className="w-4 h-4 accent-orange-500"
+                  checked={!!splitEnabled}
+                  onChange={(e) => setSplitEnabled(e.target.checked)}
+                />
+                <span>{language === 'ar' ? 'دفع مقسّم (نقدي / شبكة / تحويل)' : 'Split payment (cash / card / transfer)'}</span>
+              </label>
+            )}
+            {!isEditMode && splitEnabled && (() => {
+              const legCash = parseFloat(paymentSplit?.cash) || 0;
+              const legCard = parseFloat(paymentSplit?.card) || 0;
+              const legTransfer = parseFloat(paymentSplit?.transfer) || 0;
+              const splitSum = legCash + legCard + legTransfer;
+              const remaining = (total || 0) - splitSum;
+              const matches = Math.abs(remaining) <= 0.5;
+              const setLeg = (k, v) => setPaymentSplit({ ...paymentSplit, [k]: v });
+              return (
+                <div className="mt-2 p-3 rounded-lg border border-orange-200 bg-orange-50/50 space-y-2">
+                  <div className="grid grid-cols-3 gap-2">
+                    <div>
+                      <Label className="text-xs">{language === 'ar' ? 'نقدي' : 'Cash'}</Label>
+                      <Input type="number" min="0" step="0.01" value={paymentSplit?.cash ?? ''} onChange={(e) => setLeg('cash', e.target.value)} data-testid="split-cash" />
+                    </div>
+                    <div>
+                      <Label className="text-xs">{language === 'ar' ? 'شبكة (بطاقة)' : 'Card'}</Label>
+                      <Input type="number" min="0" step="0.01" value={paymentSplit?.card ?? ''} onChange={(e) => setLeg('card', e.target.value)} data-testid="split-card" />
+                    </div>
+                    <div>
+                      <Label className="text-xs">{language === 'ar' ? 'تحويل' : 'Transfer'}</Label>
+                      <Input type="number" min="0" step="0.01" value={paymentSplit?.transfer ?? ''} onChange={(e) => setLeg('transfer', e.target.value)} data-testid="split-transfer" />
+                    </div>
+                  </div>
+                  <div className="flex justify-between text-xs">
+                    <span>{language === 'ar' ? 'مجموع المقسّم' : 'Split total'}: <strong>{splitSum.toFixed(2)}</strong> {t('sar')}</span>
+                    <span className={matches ? 'text-green-600' : 'text-red-600'}>
+                      {matches
+                        ? (language === 'ar' ? '✓ مطابق للإجمالي' : '✓ Matches total')
+                        : (language === 'ar' ? `المتبقي: ${remaining.toFixed(2)}` : `Remaining: ${remaining.toFixed(2)}`)}
+                    </span>
+                  </div>
+                </div>
+              );
+            })()}
           </div>
 
           <Card className="p-4 border-purple-200 bg-purple-50/50">
