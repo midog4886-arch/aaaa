@@ -206,8 +206,13 @@ async def create_attendance(
     if not member:
         raise HTTPException(status_code=404, detail="Member not found")
 
-    # Use member's branch first, fall back to current user's branch
-    branch_id = member.get("branch_id") or current_user.get("branch_id")
+    # VIP members may train at any branch: record the visit under the branch
+    # where they actually checked in (the scanning user's branch) so reports show
+    # where the VIP went. Regular members always record under their own branch.
+    if member.get("is_vip"):
+        branch_id = current_user.get("branch_id") or member.get("branch_id")
+    else:
+        branch_id = member.get("branch_id") or current_user.get("branch_id")
     
     # Check if member has active freeze
     saudi_tz_w = timezone(timedelta(hours=3))
@@ -820,6 +825,24 @@ async def get_today_summary(
     members_with_active_sub = {mid for mid in active_member_ids if _has_active_subscription(mid)}
     members_by_id = {m.get("id"): m for m in members if m.get("id")}
 
+    # VIP members can check in at a branch other than their own; the record is
+    # tagged to THIS branch but the member doc lives under their home branch and
+    # is absent from this branch's member set. Pull those foreign VIP visitors in
+    # so the branch summary counts and shows them as present today.
+    if effective_branch:
+        _foreign_ids = list({
+            r.get("member_id") for r in today_records
+            if r.get("member_id") and r.get("member_id") not in members_by_id
+        })
+        if _foreign_ids:
+            async for fm in db.members.find({"id": {"$in": _foreign_ids}}, {"_id": 0}):
+                fid = fm.get("id")
+                if not fid:
+                    continue
+                members_by_id[fid] = fm
+                if fm.get("status", "active") == "active":
+                    active_member_ids.add(fid)
+
     def _hour_12(text):
         if not text:
             return None
@@ -1129,6 +1152,24 @@ async def get_levels_board(
     }
     members_by_id = {m.get("id"): m for m in members if m.get("id")}
 
+    # Include VIP visitors from other branches: their attendance is tagged to
+    # THIS branch, but the member doc lives under their home branch, so pull them
+    # in to count/show them on this branch's board (they land in "unassigned"
+    # since their level is bound to their home branch).
+    if effective_branch:
+        _foreign_ids = list({
+            r.get("member_id") for r in today_records
+            if r.get("member_id") and r.get("member_id") not in members_by_id
+        })
+        if _foreign_ids:
+            async for fm in db.members.find({"id": {"$in": _foreign_ids}}, {"_id": 0}):
+                fid = fm.get("id")
+                if not fid:
+                    continue
+                members_by_id[fid] = fm
+                if fm.get("status", "active") == "active":
+                    active_member_ids.add(fid)
+
     def _hour_12(text):
         if not text:
             return None
@@ -1339,8 +1380,13 @@ async def qr_checkin(
     if not member:
         raise HTTPException(status_code=404, detail="Member not found")
 
-    # Use member's branch first, fall back to current user's branch
-    branch_id = member.get("branch_id") or current_user.get("branch_id")
+    # VIP members may train at any branch: record the visit under the scanning
+    # user's branch so reports show where the VIP went. Regular members always
+    # record under their own branch.
+    if member.get("is_vip"):
+        branch_id = current_user.get("branch_id") or member.get("branch_id")
+    else:
+        branch_id = member.get("branch_id") or current_user.get("branch_id")
     
     saudi_tz_q = timezone(timedelta(hours=3))
     today = datetime.now(saudi_tz_q).strftime("%Y-%m-%d")

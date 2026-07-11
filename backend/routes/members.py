@@ -49,6 +49,7 @@ class MemberCreate(BaseModel):
     preferred_language: Optional[str] = "ar"
     branch_id: Optional[str] = None
     marketer_id: Optional[str] = ""
+    is_vip: Optional[bool] = False
 
 class MemberUpdate(BaseModel):
     name: Optional[str] = None
@@ -67,6 +68,7 @@ class MemberUpdate(BaseModel):
     notes: Optional[str] = None
     marked: Optional[bool] = None
     preferred_language: Optional[str] = None
+    is_vip: Optional[bool] = None
 
 class Member(BaseModel):
     id: str = ""
@@ -90,6 +92,7 @@ class Member(BaseModel):
     branch_id: Optional[str] = None
     created_at: str = ""
     preferred_language: Optional[str] = "ar"
+    is_vip: bool = False
 
 class MemberTransferRequest(BaseModel):
     new_branch_id: str

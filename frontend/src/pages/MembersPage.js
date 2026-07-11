@@ -53,7 +53,8 @@ import {
   XCircle,
   Circle,
   Bell,
-  ArrowRightLeft
+  ArrowRightLeft,
+  Crown
 } from 'lucide-react';
 
 export const MembersPage = () => {
@@ -82,6 +83,7 @@ export const MembersPage = () => {
   const [filterStatus, setFilterStatus] = useState('all');
   const [filterSchedule, setFilterSchedule] = useState('');
   const [filterNationality, setFilterNationality] = useState('all');
+  const [filterVIP, setFilterVIP] = useState('all');
   const [activityFilterOpen, setActivityFilterOpen] = useState(false);
   const [isPrintRangeOpen, setIsPrintRangeOpen] = useState(false);
   const [printFromDate, setPrintFromDate] = useState('');
@@ -248,6 +250,7 @@ export const MembersPage = () => {
     nationality: '',
     notes: '',
     preferred_language: 'ar',
+    is_vip: false,
     activities: []
   });
 
@@ -869,6 +872,7 @@ export const MembersPage = () => {
       nationality: member.nationality || '',
       notes: member.notes || '',
       preferred_language: member.preferred_language || 'ar',
+      is_vip: member.is_vip || false,
       activities: member.activities || []
     });
     setIsAddDialogOpen(true);
@@ -1542,8 +1546,11 @@ export const MembersPage = () => {
 
     const matchesNationality = filterNationality === 'all' ||
       ((member.nationality || '').trim() || '__none__') === filterNationality;
+
+    const matchesVIP = filterVIP === 'all' ||
+      (filterVIP === 'vip' ? !!member.is_vip : !member.is_vip);
     
-    return matchesSearch && matchesActivity && matchesStatus && matchesSchedule && matchesNationality;
+    return matchesSearch && matchesActivity && matchesStatus && matchesSchedule && matchesNationality && matchesVIP;
   });
 
   const uniqueNationalities = [...new Set(
@@ -1716,6 +1723,18 @@ export const MembersPage = () => {
               ))}
               <option value="__none__">{language === 'ar' ? 'بدون جنسية' : 'No nationality'}</option>
             </select>
+
+            {/* VIP filter */}
+            <select
+              value={filterVIP}
+              onChange={(e) => setFilterVIP(e.target.value)}
+              className="h-8 text-xs rounded-md border border-input bg-background px-2 max-w-[180px]"
+              data-testid="filter-vip"
+            >
+              <option value="all">{language === 'ar' ? 'كل العضويات' : 'All memberships'}</option>
+              <option value="vip">{language === 'ar' ? 'VIP فقط' : 'VIP only'}</option>
+              <option value="regular">{language === 'ar' ? 'عادي فقط' : 'Regular only'}</option>
+            </select>
           </div>
           
           <div className="flex flex-wrap gap-2">
@@ -1881,7 +1900,14 @@ export const MembersPage = () => {
                             className="text-start w-full hover:text-primary transition-colors"
                             title={language === 'ar' ? 'عرض تفاصيل العضو' : 'View member details'}
                           >
-                            <div className="font-medium">{language === 'ar' ? member.name_ar : member.name}</div>
+                            <div className="font-medium flex items-center gap-1.5 flex-wrap">
+                              <span>{language === 'ar' ? member.name_ar : member.name}</span>
+                              {member.is_vip && (
+                                <span className="inline-flex items-center gap-0.5 text-[10px] font-bold bg-gradient-to-r from-amber-400 to-yellow-500 text-white rounded px-1.5 py-0.5 shadow-sm" data-testid={`vip-badge-${member.id}`}>
+                                  <Crown className="w-3 h-3" /> VIP
+                                </span>
+                              )}
+                            </div>
                             {(member.guardian_name_ar || member.guardian_name) && (
                               <div className="text-xs text-gray-500">{language === 'ar' ? member.guardian_name_ar : member.guardian_name}</div>
                             )}
@@ -2263,6 +2289,25 @@ export const MembersPage = () => {
                   />
                 </div>
                 
+                {/* VIP membership toggle */}
+                <div className="sm:col-span-2">
+                  <label className="flex items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50/60 p-3 cursor-pointer" data-testid="member-vip-toggle">
+                    <div className="flex items-center gap-2">
+                      <Crown className="w-5 h-5 text-amber-500" />
+                      <div>
+                        <div className="text-sm font-semibold text-amber-800">{language === 'ar' ? 'عضوية VIP' : 'VIP membership'}</div>
+                        <div className="text-xs text-amber-700/80">{language === 'ar' ? 'يسمح للعضو بالحضور في أي فرع' : 'Lets the member attend any branch'}</div>
+                      </div>
+                    </div>
+                    <input
+                      type="checkbox"
+                      checked={!!formData.is_vip}
+                      onChange={(e) => setFormData({ ...formData, is_vip: e.target.checked })}
+                      className="w-5 h-5 accent-amber-500"
+                    />
+                  </label>
+                </div>
+
                 {/* Notes - Optional */}
                 <div className="space-y-2 sm:col-span-2">
                   <Label>{language === 'ar' ? 'الملاحظات' : 'Notes'}</Label>

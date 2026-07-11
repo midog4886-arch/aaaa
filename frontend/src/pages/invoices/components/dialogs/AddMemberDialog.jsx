@@ -3,7 +3,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Button } from '../../../../components/ui/button';
 import { Input } from '../../../../components/ui/input';
 import { Label } from '../../../../components/ui/label';
-import { Loader2 } from 'lucide-react';
+import { Loader2, Crown } from 'lucide-react';
 import { NationalitySelect } from '../../../../components/NationalitySelect';
 
 export const AddMemberDialog = ({
@@ -47,6 +47,21 @@ export const AddMemberDialog = ({
               />
             </div>
           </div>
+          <label className="flex items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50/60 p-3 cursor-pointer" data-testid="invoice-member-vip-toggle">
+            <div className="flex items-center gap-2">
+              <Crown className="w-5 h-5 text-amber-500" />
+              <div>
+                <div className="text-sm font-semibold text-amber-800">{language === 'ar' ? 'عضوية VIP' : 'VIP membership'}</div>
+                <div className="text-xs text-amber-700/80">{language === 'ar' ? 'يسمح للعضو بالحضور في أي فرع' : 'Lets the member attend any branch'}</div>
+              </div>
+            </div>
+            <input
+              type="checkbox"
+              checked={!!newMemberData.is_vip}
+              onChange={(e) => setNewMemberData({ ...newMemberData, is_vip: e.target.checked })}
+              className="w-5 h-5 accent-amber-500"
+            />
+          </label>
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>{t('cancel')}</Button>

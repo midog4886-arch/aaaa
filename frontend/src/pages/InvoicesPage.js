@@ -69,7 +69,7 @@ export const InvoicesPage = () => {
 
   const [isAddMemberDialogOpen, setIsAddMemberDialogOpen] = useState(false);
   const [addMemberSource, setAddMemberSource] = useState('invoice');
-  const [newMemberData, setNewMemberData] = useState({ name_ar: '', name: '', age: '', guardian_name_ar: '', guardian_name: '', phone: '', nationality: '' });
+  const [newMemberData, setNewMemberData] = useState({ name_ar: '', name: '', age: '', guardian_name_ar: '', guardian_name: '', phone: '', nationality: '', is_vip: false });
 
   const [showRegFormsPasswordDialog, setShowRegFormsPasswordDialog] = useState(false);
   const [regFormsPasswordInput, setRegFormsPasswordInput] = useState('');
@@ -269,7 +269,7 @@ export const InvoicesPage = () => {
       const memRes = await membersAPI.getAll(); setMembers(memRes.data);
       if (addMemberSource === 'registration') { setRegFormData({ ...regFormData, customer_name: res.data.name_ar, customer_phone: res.data.phone }); }
       else { setSelectedMember(res.data); setCustomerNameAr(res.data.name_ar); setCustomerPhone(res.data.phone); }
-      setIsAddMemberDialogOpen(false); setNewMemberData({ name_ar: '', name: '', age: '', guardian_name_ar: '', guardian_name: '', phone: '', nationality: '' });
+      setIsAddMemberDialogOpen(false); setNewMemberData({ name_ar: '', name: '', age: '', guardian_name_ar: '', guardian_name: '', phone: '', nationality: '', is_vip: false });
       setPrefillMarketerId('');
       toast.success(language === 'ar' ? 'تم إضافة العضو وحفظه في قائمة الأعضاء' : 'Member added and saved to members list');
     } catch (e) {
