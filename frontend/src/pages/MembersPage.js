@@ -745,6 +745,7 @@ export const MembersPage = () => {
             .qr-dates span { display: block; }
             .schedule-info { text-align: center; font-size: 6pt; color: #F97316; margin-top: 1mm; font-weight: 600; background: #FFF7ED; padding: 1mm; border-radius: 2mm; }
             .member-name { font-size: 10pt; font-weight: 700; color: #1f2937; margin-bottom: 1mm; line-height: 1.4; }
+            .vip-badge { display: inline-block; background: linear-gradient(135deg, #F59E0B, #D97706); color: #fff; font-size: 6.5pt; font-weight: 700; padding: 0.4mm 2mm; border-radius: 2mm; margin-bottom: 1mm; box-shadow: 0 1px 2px rgba(0,0,0,0.15); }
             .info-label { color: #6b7280; font-size: 6pt; }
             .info-row { display: flex; align-items: center; gap: 1mm; margin-bottom: 0.8mm; font-size: 7pt; }
             .member-code { color: #F97316; font-weight: 700; font-size: 10pt; }
@@ -790,6 +791,7 @@ export const MembersPage = () => {
                   </div>
                   <div class="info-section">
                     <div class="info-label">الاسم</div>
+                    ${memberCardData.is_vip ? '<div class="vip-badge">⭐ عضو VIP</div>' : ''}
                     <div class="member-name">${memberName}</div>
                     <div class="info-row"><span class="info-label">رقم العضوية:</span><span class="member-code">${memberCardData.member_code || ''}</span></div>
                     <div class="info-row"><span class="info-label">رقم الجوال:</span><span>${memberCardData.phone || '-'}</span></div>
@@ -832,6 +834,7 @@ export const MembersPage = () => {
                 </div>
                 <div class="info-section">
                   <div class="info-label">الاسم</div>
+                  ${memberCardData.is_vip ? '<div class="vip-badge">⭐ عضو VIP</div>' : ''}
                   <div class="member-name">${memberName}</div>
                   <div class="info-row"><span class="info-label">رقم العضوية:</span><span class="member-code">${memberCardData.member_code || ''}</span></div>
                   <div class="info-row"><span class="info-label">رقم الجوال:</span><span>${memberCardData.phone || '-'}</span></div>
