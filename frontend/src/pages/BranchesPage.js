@@ -287,8 +287,8 @@ const BranchesPage = () => {
 
         {/* Add/Edit Dialog - Simplified */}
         <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-          <DialogContent className="max-w-sm">
-            <DialogHeader>
+          <DialogContent className="max-w-sm max-h-[90vh] flex flex-col p-0">
+            <DialogHeader className="px-6 pt-6 pb-2 shrink-0">
               <DialogTitle>
                 {editingBranch 
                   ? (language === 'ar' ? 'تعديل الفرع' : 'Edit Branch')
@@ -296,7 +296,8 @@ const BranchesPage = () => {
                 }
               </DialogTitle>
             </DialogHeader>
-            <form onSubmit={handleSubmit} className="space-y-4">
+            <form onSubmit={handleSubmit} className="flex flex-col flex-1 min-h-0">
+              <div className="space-y-4 overflow-y-auto px-6 py-2 flex-1 min-h-0">
               <div className="space-y-2">
                 <Label>{language === 'ar' ? 'اسم الفرع' : 'Branch Name'} *</Label>
                 <Input
@@ -468,7 +469,9 @@ const BranchesPage = () => {
                 </div>
               </div>
 
-              <DialogFooter>
+              </div>
+
+              <DialogFooter className="px-6 py-4 border-t shrink-0">
                 <Button type="button" variant="outline" onClick={handleCloseDialog}>
                   {language === 'ar' ? 'إلغاء' : 'Cancel'}
                 </Button>
