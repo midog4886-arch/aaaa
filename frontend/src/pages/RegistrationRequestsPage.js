@@ -35,6 +35,7 @@ export const RegistrationRequestsPage = () => {
   const [loading, setLoading] = useState(true);
   const [showLink, setShowLink] = useState(false);
   const [linkBranch, setLinkBranch] = useState('');
+  const [multiBranchIds, setMultiBranchIds] = useState([]);
   const [statusFilter, setStatusFilter] = useState('pending');
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -90,6 +91,18 @@ export const RegistrationRequestsPage = () => {
     return `${getPublicBaseUrl()}/register/${tenantSlug}/${linkBranch}`;
   }, [linkBranch, tenantSlug]);
 
+  // Multi-branch link: the visitor sees ONLY the hand-picked subset of branches
+  // in the picker (encoded as ?branches=id1,id2). Needs at least two branches to
+  // make sense — one branch is just the per-branch link above.
+  const multiLink = useMemo(() => {
+    if (multiBranchIds.length < 2) return '';
+    return `${getPublicBaseUrl()}/register/${tenantSlug}?branches=${multiBranchIds.join(',')}`;
+  }, [multiBranchIds, tenantSlug]);
+
+  const toggleMultiBranch = (id) => {
+    setMultiBranchIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+  };
+
   // All-branches link tagged for social-media ads: the visitor picks the branch
   // and every request from it is tracked with source = "social_ad".
   const socialLink = useMemo(() => {
@@ -106,6 +119,7 @@ export const RegistrationRequestsPage = () => {
     }
   };
   const copyLink = () => copyText(registrationLink, 'اختر الفرع أولاً');
+  const copyMultiLink = () => copyText(multiLink, 'اختر فرعين على الأقل');
   const copySocialLink = () => copyText(socialLink);
 
   // Render the QR SVG onto a padded white canvas and download it as a PNG so it
@@ -249,6 +263,53 @@ export const RegistrationRequestsPage = () => {
                     </Button>
                   </div>
                 )}
+              </div>
+
+              <div className="mt-5 pt-4 border-t border-dashed border-gray-200">
+                <div className="flex items-center gap-2 mb-1">
+                  <Link2 className="w-4 h-4 text-emerald-600" />
+                  <h3 className="text-sm font-semibold text-emerald-700">رابط لعدة فروع</h3>
+                </div>
+                <p className="text-xs text-gray-500 mb-3">اختر مجموعة فروع، ويطلع رابط واحد يعرض للعميل الفروع المختارة فقط ليختار منها (لازم فرعين على الأقل).</p>
+                <div className="flex flex-col sm:flex-row gap-4 items-start">
+                  <div className="flex-1 w-full space-y-3">
+                    <div className="flex flex-wrap gap-2">
+                      {branches.map(b => {
+                        const on = multiBranchIds.includes(b.id);
+                        return (
+                          <button type="button" key={b.id} onClick={() => toggleMultiBranch(b.id)}
+                            className={`px-3 py-1.5 rounded-full text-xs border transition-colors ${on ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-white text-gray-600 border-gray-300 hover:border-emerald-400'}`}
+                            data-testid={`multi-branch-toggle-${b.id}`}>
+                            {b.name_ar || b.name}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    {multiLink ? (
+                      <div className="flex items-center gap-2">
+                        <input readOnly value={multiLink}
+                          className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-xs bg-gray-50" dir="ltr"
+                          data-testid="input-multi-link" />
+                        <Button size="sm" onClick={copyMultiLink} className="gap-1.5 shrink-0" data-testid="button-copy-multi-link"><Copy className="w-3.5 h-3.5" /> نسخ</Button>
+                      </div>
+                    ) : (
+                      multiBranchIds.length === 1 && (
+                        <p className="text-xs text-amber-600">اختر فرعًا آخر على الأقل لإنشاء رابط متعدد الفروع.</p>
+                      )
+                    )}
+                  </div>
+                  {multiLink && (
+                    <div className="bg-white p-3 rounded-lg border shrink-0 mx-auto flex flex-col items-center">
+                      <div id="qr-multi">
+                        <QRCodeSVG value={multiLink} size={140} level="M" includeMargin={false} />
+                      </div>
+                      <p className="text-[10px] text-center text-gray-400 mt-1 flex items-center justify-center gap-1"><QrCode className="w-3 h-3" /> امسح للتسجيل</p>
+                      <Button size="sm" variant="outline" onClick={() => downloadQRCode('qr-multi', 'multi-branch-qr.png')} className="gap-1.5 mt-2 w-full">
+                        <Download className="w-3.5 h-3.5" /> تحميل الرمز
+                      </Button>
+                    </div>
+                  )}
+                </div>
               </div>
 
               <div className="mt-5 pt-4 border-t border-dashed border-gray-200">

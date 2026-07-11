@@ -109,11 +109,24 @@ export const PublicRegistrationPage = () => {
     return () => { active = false; };
   }, [api, referralCode]);
 
-  // When a referral link is scoped to specific marketer branches, limit the branch
-  // picker to those branches only (empty branch_ids => shared => show all branches).
-  const marketerBranchIds = marketer?.branch_ids || [];
-  const visibleBranches = (!hasFixedBranch && marketerBranchIds.length)
-    ? branches.filter(b => marketerBranchIds.includes(b.id))
+  // A multi-branch link (/register/:tenant?branches=id1,id2) restricts the branch
+  // picker to a hand-picked subset of branches without locking to a single one.
+  const urlBranchIds = useMemo(() => {
+    const raw = searchParams.get('branches') || '';
+    return raw.split(',').map(s => s.trim()).filter(Boolean);
+  }, [searchParams]);
+
+  // The branches the visitor is allowed to pick from. A marketer referral scope
+  // and a ?branches= subset both narrow the list; when both are present we take
+  // their intersection. Empty everywhere => show all branches.
+  const allowedBranchIds = useMemo(() => {
+    const m = marketer?.branch_ids || [];
+    if (m.length && urlBranchIds.length) return m.filter(id => urlBranchIds.includes(id));
+    return m.length ? m : urlBranchIds;
+  }, [marketer, urlBranchIds]);
+
+  const visibleBranches = (!hasFixedBranch && allowedBranchIds.length)
+    ? branches.filter(b => allowedBranchIds.includes(b.id))
     : branches;
 
   // Keep the picked branch consistent with what the visitor is allowed to see:
@@ -121,14 +134,13 @@ export const PublicRegistrationPage = () => {
   // auto-select when exactly one branch is available.
   useEffect(() => {
     if (hasFixedBranch) return;
-    const ids = marketer?.branch_ids || [];
-    const vis = ids.length ? branches.filter(b => ids.includes(b.id)) : branches;
+    const vis = allowedBranchIds.length ? branches.filter(b => allowedBranchIds.includes(b.id)) : branches;
     if (pickedBranchId && !vis.some(b => b.id === pickedBranchId)) {
       setPickedBranchId(vis.length === 1 ? vis[0].id : '');
     } else if (!pickedBranchId && vis.length === 1) {
       setPickedBranchId(vis[0].id);
     }
-  }, [hasFixedBranch, pickedBranchId, marketer, branches]);
+  }, [hasFixedBranch, pickedBranchId, allowedBranchIds, branches]);
 
   const toggleDay = (key) => {
     setDays((prev) => prev.includes(key) ? prev.filter(d => d !== key) : [...prev, key]);
@@ -146,7 +158,7 @@ export const PublicRegistrationPage = () => {
     if (digits.length < 8) { setFormError('من فضلك اكتب رقم موبايل صحيح'); return; }
     if (!nationality.trim()) { setFormError('من فضلك اختر الجنسية'); return; }
     if (!selectedBranchId) { setFormError('من فضلك اختر الفرع'); return; }
-    if (!hasFixedBranch && marketerBranchIds.length && !visibleBranches.some(b => b.id === selectedBranchId)) {
+    if (!hasFixedBranch && allowedBranchIds.length && !visibleBranches.some(b => b.id === selectedBranchId)) {
       setFormError('من فضلك اختر فرعاً من فروع العرض'); return;
     }
     setSubmitting(true);
