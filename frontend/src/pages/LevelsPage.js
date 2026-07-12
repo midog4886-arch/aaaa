@@ -51,14 +51,15 @@ const MAIN_ACTIVITIES = [
 
 // Activity groups for filtering (keyword-based matching)
 const ACTIVITY_GROUPS = [
-  { id: 'swimming', label: 'السباحة', icon: '🏊', keywords: ['سباحة', 'سباحه'] },
-  { id: 'football', label: 'كرة القدم', icon: '⚽', keywords: ['قدم', 'كره', 'كرة'] },
-  { id: 'karate',   label: 'الكاراتيه', icon: '🥋', keywords: ['كارات', 'كاراتيه', 'كارتيه'] },
+  { id: 'swimming', label: 'السباحة', icon: '🏊', keywords: ['سباحة', 'سباحه', 'swim'] },
+  { id: 'football', label: 'كرة القدم', icon: '⚽', keywords: ['قدم', 'كره', 'كرة', 'foot', 'soccer'] },
+  { id: 'karate',   label: 'الكاراتيه', icon: '🥋', keywords: ['كارات', 'كاراتيه', 'كارتيه', 'karate'] },
 ];
 const matchesGroup = (activityName, groupId) => {
   const g = ACTIVITY_GROUPS.find(g => g.id === groupId);
   if (!g) return false;
-  return g.keywords.some(k => (activityName || '').includes(k));
+  const name = (activityName || '').toLowerCase();
+  return g.keywords.some(k => name.includes(k));
 };
 
 // Time slots
@@ -1699,7 +1700,23 @@ ${slotTables}
         try { await levelsAPI.removeMember(cl.id, memberId); } catch (_) { /* ignore */ }
       }
 
-      await levelsAPI.addMember(selectedLevel.id, memberId);
+      // Manual placement from the dialog: force + the member's OWN matching
+      // activity so the backend force-links level_id on that entry. Without
+      // this, a member whose subscription name doesn't string-match the level
+      // (e.g. English "Swimming 4 days per week" vs "سباحة - الساعه 5") never
+      // gets linked and the add silently reverts on the next refetch.
+      const memberObj = members.find(m => m.id === memberId);
+      const activeActs = (memberObj?.activities || []).filter(isActivityNonExpired);
+      const matchingAct = (mainActivity && mainActivity !== 'other'
+        ? activeActs.find(a =>
+            matchesGroup(a.activity_name, mainActivity) ||
+            parseActivityName(a.activity_name).mainActivity === mainActivity)
+        : null) || (activeActs.length === 1 ? activeActs[0] : null);
+      await levelsAPI.addMember(selectedLevel.id, memberId, matchingAct ? {
+        force: true,
+        activityId: matchingAct.activity_id,
+        activityName: matchingAct.activity_name,
+      } : undefined);
       toast.success(
         conflictingLevels.length > 0
           ? t('تمت إضافة العضو ونُقل من المستوى السابق', 'Member added and moved from previous level')

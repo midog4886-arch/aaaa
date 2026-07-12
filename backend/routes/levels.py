@@ -76,14 +76,18 @@ def _activity_group_name(name) -> str:
     "السباحة 4 ايام في الاسبوع"). Group matching lets us link the two even
     when the exact strings differ.
     """
-    s = (name or "").strip()
+    s = (name or "").strip().lower()
     if not s:
         return ""
-    if "سباحة" in s or "سباحه" in s:
+    # English keywords too: subscriptions are sometimes named in English
+    # (e.g. "Swimming 4 days per week") while levels are named in Arabic —
+    # without this the group fallback fails, level_id is never backfilled,
+    # and the placement silently reverts on the next get_levels() refetch.
+    if "سباحة" in s or "سباحه" in s or "swim" in s:
         return "swimming"
-    if "قدم" in s or "كره" in s or "كرة" in s:
+    if "قدم" in s or "كره" in s or "كرة" in s or "foot" in s or "soccer" in s:
         return "football"
-    if "كارات" in s:
+    if "كارات" in s or "karate" in s:
         return "karate"
     return ""
 
