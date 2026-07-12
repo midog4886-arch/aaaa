@@ -3541,6 +3541,21 @@ export const MembersPage = () => {
                                         ? 'اضغط على تاريخ غير مسجّل لتسجيل الحضور'
                                         : 'Click an unregistered date to record attendance'}
                                     </p>
+                                    {(() => {
+                                      const availableCount = scheduleDates.filter(d => !transferInfo.transferredSet.has(d)).length;
+                                      const extraDates = availableCount - q.total_allowed;
+                                      if (extraDates <= 0) return null;
+                                      return (
+                                        <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-2 py-1.5 mb-2 flex items-start gap-1">
+                                          <span>ℹ️</span>
+                                          <span>
+                                            {language === 'ar'
+                                              ? `الاشتراك يشمل ${q.total_allowed} حصة مدفوعة، بينما المواعيد المتاحة ${availableCount} — التواريخ الزائدة (${extraDates}) مواعيد بديلة يحضر منها العضو حتى اكتمال حصصه.`
+                                              : `The subscription includes ${q.total_allowed} paid sessions while ${availableCount} dates are available — the extra ${extraDates} date(s) are alternatives the member can attend until the quota is used up.`}
+                                          </span>
+                                        </p>
+                                      );
+                                    })()}
                                     <div className="flex flex-wrap gap-1.5">
                                       {displayDates.map(date => {
                                         const attended = attendedDates.has(date);

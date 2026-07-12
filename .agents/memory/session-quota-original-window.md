@@ -60,6 +60,13 @@ number of sessions paid for.
   skip on that flag alone — treat `end_date < today` (already inside
   `_process_subscription`) as the authoritative expiry check and skip only
   deliberately-inactive statuses (anything not in `("active","expired")`).
+- **Date chips CAN legitimately outnumber the paid total.** The activity window
+  (member.activities, often start→+1 calendar month) may contain more scheduled
+  weekdays than `weeks × days/week` from the invoice window (e.g. 19 chips vs 16
+  sessions). Owner-confirmed rule: the paid count is FIXED; the surplus dates are
+  *alternatives* the member picks from. The admin quota card shows an amber note
+  (based on `scheduleDates` minus transferred — NOT off-schedule chips, which are
+  attendance history) explaining the surplus; do NOT "fix" totals to match chips.
 - **Postponed window: total needs the original START too.** When BOTH dates
   shifted, pairing the new activity start with the original invoice end gives a
   negative span → `max(1, …)` collapses the total to one week (2 instead of 8).
