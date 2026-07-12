@@ -283,9 +283,28 @@ export const MembersPage = () => {
     { id: 'karate', name_ar: 'الكاراتيه', name_en: 'Karate', icon: '🥋', color: 'bg-red-500' },
   ];
 
-  // Parse activity name to get main activity
+  // Parse activity name to get main activity. Mirrors LevelsPage identity
+  // rule: for "<activity> - <slot>" names the prefix IS the activity —
+  // built-in only on an EXACT sport-name match, otherwise the prefix is its
+  // own custom activity group (e.g. "سباحه سيدات", "جمباز", "برايفت").
+  const BUILT_IN_LEVEL_NAMES = {
+    swimming: ['سباحة', 'سباحه', 'السباحة', 'السباحه', 'swimming', 'swim'],
+    football: ['كرة القدم', 'كرة قدم', 'كره القدم', 'كره قدم', 'القدم', 'قدم', 'football'],
+    karate: ['كاراتيه', 'الكاراتيه', 'كاراتية', 'الكاراتية', 'كارتيه', 'الكارتيه', 'karate'],
+  };
+  const matchBuiltInExact = (str) => {
+    const s = (str || '').trim().toLowerCase().replace(/\s+/g, ' ');
+    for (const [id, names] of Object.entries(BUILT_IN_LEVEL_NAMES)) {
+      if (names.includes(s)) return id;
+    }
+    return null;
+  };
   const parseActivityForLevel = (activityName) => {
     if (!activityName) return 'other';
+    if (activityName.includes(' - ')) {
+      const prefix = activityName.split(' - ')[0].trim();
+      return matchBuiltInExact(prefix) || prefix || 'other';
+    }
     const name = activityName.toLowerCase();
     if (name.includes('سباح') || name.includes('swim')) return 'swimming';
     if (name.includes('كر') || name.includes('foot') || name.includes('قدم')) return 'football';
@@ -2519,6 +2538,17 @@ export const MembersPage = () => {
                                       </button>
                                     );
                                   })}
+                                  {Object.keys(groupedLevelsForSelector).filter(k => k !== 'other' && !MAIN_ACTIVITIES_FOR_LEVELS.some(a => a.id === k)).sort((a, b) => a.localeCompare(b, 'ar')).map(customKey => {
+                                    const timeCount = Object.keys(groupedLevelsForSelector[customKey] || {}).length;
+                                    if (timeCount === 0) return null;
+                                    return (
+                                      <button key={customKey} type="button" className="w-full flex items-center justify-between p-2 rounded-lg hover:bg-gray-100 transition-colors bg-purple-500 bg-opacity-10"
+                                        onClick={() => setMemberLevelSelectorState({ ...memberLevelSelectorState, step: 'time', selectedActivity: customKey })}>
+                                        <div className="flex items-center gap-2"><span className="text-xl">🎽</span><span className="font-medium">{customKey}</span></div>
+                                        <div className="flex items-center gap-1 text-gray-500"><span className="text-xs">{timeCount} {language === 'ar' ? 'أوقات' : 'times'}</span><span>{language === 'ar' ? '←' : '→'}</span></div>
+                                      </button>
+                                    );
+                                  })}
                                 </div>
                               )}
                               
@@ -3171,6 +3201,17 @@ export const MembersPage = () => {
                                                 <button key={activity.id} type="button" className={`w-full flex items-center justify-between p-2 rounded-lg hover:bg-gray-100 transition-colors ${activity.color} bg-opacity-10`}
                                                   onClick={() => setEditMemberLevelSelectorState({ ...editMemberLevelSelectorState, step: 'time', selectedActivity: activity.id })}>
                                                   <div className="flex items-center gap-2"><span className="text-xl">{activity.icon}</span><span className="font-medium">{language === 'ar' ? activity.name_ar : activity.name_en}</span></div>
+                                                  <div className="flex items-center gap-1 text-gray-500"><span className="text-xs">{timeCount} {language === 'ar' ? 'أوقات' : 'times'}</span><span>{language === 'ar' ? '←' : '→'}</span></div>
+                                                </button>
+                                              );
+                                            })}
+                                            {Object.keys(groupedLevelsForSelector).filter(k => k !== 'other' && !MAIN_ACTIVITIES_FOR_LEVELS.some(a => a.id === k)).sort((a, b) => a.localeCompare(b, 'ar')).map(customKey => {
+                                              const timeCount = Object.keys(groupedLevelsForSelector[customKey] || {}).length;
+                                              if (timeCount === 0) return null;
+                                              return (
+                                                <button key={customKey} type="button" className="w-full flex items-center justify-between p-2 rounded-lg hover:bg-gray-100 transition-colors bg-purple-500 bg-opacity-10"
+                                                  onClick={() => setEditMemberLevelSelectorState({ ...editMemberLevelSelectorState, step: 'time', selectedActivity: customKey })}>
+                                                  <div className="flex items-center gap-2"><span className="text-xl">🎽</span><span className="font-medium">{customKey}</span></div>
                                                   <div className="flex items-center gap-1 text-gray-500"><span className="text-xs">{timeCount} {language === 'ar' ? 'أوقات' : 'times'}</span><span>{language === 'ar' ? '←' : '→'}</span></div>
                                                 </button>
                                               );
@@ -4359,6 +4400,17 @@ export const MembersPage = () => {
                                 <span className="text-xs">{timeCount} {language === 'ar' ? 'أوقات' : 'times'}</span>
                                 <span>{language === 'ar' ? '←' : '→'}</span>
                               </div>
+                            </button>
+                          );
+                        })}
+                        {Object.keys(groupedLevelsForSelector).filter(k => k !== 'other' && !MAIN_ACTIVITIES_FOR_LEVELS.some(a => a.id === k)).sort((a, b) => a.localeCompare(b, 'ar')).map(customKey => {
+                          const timeCount = Object.keys(groupedLevelsForSelector[customKey] || {}).length;
+                          if (timeCount === 0) return null;
+                          return (
+                            <button key={customKey} type="button" className="w-full flex items-center justify-between p-2 rounded-lg hover:bg-gray-100 transition-colors bg-purple-500 bg-opacity-10"
+                              onClick={() => setMemberLevelSelectorState({ ...memberLevelSelectorState, step: 'time', selectedActivity: customKey })}>
+                              <div className="flex items-center gap-2"><span className="text-xl">🎽</span><span className="font-medium">{customKey}</span></div>
+                              <div className="flex items-center gap-1 text-gray-500"><span className="text-xs">{timeCount} {language === 'ar' ? 'أوقات' : 'times'}</span><span>{language === 'ar' ? '←' : '→'}</span></div>
                             </button>
                           );
                         })}

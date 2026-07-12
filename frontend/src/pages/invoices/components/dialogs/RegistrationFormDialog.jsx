@@ -294,6 +294,16 @@ export const RegistrationFormDialog = ({
                                       </button>
                                     );
                                   })}
+                                  {Object.keys(_grouped).filter(k => k !== 'other' && !MAIN_ACTIVITIES_FOR_LEVELS.some(a => a.id === k)).sort((a, b) => a.localeCompare(b, 'ar')).map(customKey => {
+                                    const timeCount = Object.keys(_grouped[customKey] || {}).length;
+                                    if (timeCount === 0) return null;
+                                    return (
+                                      <button key={customKey} type="button" className="w-full flex items-center justify-between p-2 rounded-lg hover:bg-gray-100 transition-colors bg-purple-500 bg-opacity-10 hover:bg-opacity-20" onClick={() => selectRegFormLevelActivity(idx, customKey)}>
+                                        <div className="flex items-center gap-2"><span className="text-xl">🎽</span><span className="font-medium">{customKey}</span></div>
+                                        <div className="flex items-center gap-1 text-gray-500"><span className="text-xs">{timeCount} {language === 'ar' ? 'أوقات' : 'times'}</span><span>{language === 'ar' ? '←' : '→'}</span></div>
+                                      </button>
+                                    );
+                                  })}
                                   {_grouped["other"] && Object.keys(_grouped["other"]).length > 0 && (
                                     <button type="button" className="w-full flex items-center justify-between p-2 rounded-lg hover:bg-gray-100 transition-colors bg-gray-100" onClick={() => selectRegFormLevelActivity(idx, 'other')}>
                                       <div className="flex items-center gap-2"><span className="text-xl">📋</span><span className="font-medium">{language === 'ar' ? 'أخرى' : 'Other'}</span></div>

@@ -122,8 +122,28 @@ export const useInvoiceForm = ({
     couponCode, appliedCoupon, couponDiscount, marketerDiscountPercent, marketerName, itemType,
     additionalMembers, customerNameAr, customerPhone, customerAddress]);
 
+  // Mirrors LevelsPage identity rule: for "<activity> - <slot>" names the
+  // prefix IS the activity — built-in only on an EXACT sport-name match,
+  // otherwise the prefix is its own custom activity group (e.g. "سباحه سيدات",
+  // "جمباز", "برايفت"). Separator-less legacy names keep keyword matching.
+  const BUILT_IN_LEVEL_NAMES = {
+    swimming: ['سباحة', 'سباحه', 'السباحة', 'السباحه', 'swimming', 'swim'],
+    football: ['كرة القدم', 'كرة قدم', 'كره القدم', 'كره قدم', 'القدم', 'قدم', 'football'],
+    karate: ['كاراتيه', 'الكاراتيه', 'كاراتية', 'الكاراتية', 'كارتيه', 'الكارتيه', 'karate'],
+  };
+  const matchBuiltInExact = (str) => {
+    const s = (str || '').trim().toLowerCase().replace(/\s+/g, ' ');
+    for (const [id, names] of Object.entries(BUILT_IN_LEVEL_NAMES)) {
+      if (names.includes(s)) return id;
+    }
+    return null;
+  };
   const parseActivityForLevel = (activityName) => {
     if (!activityName) return 'other';
+    if (activityName.includes(' - ')) {
+      const prefix = activityName.split(' - ')[0].trim();
+      return matchBuiltInExact(prefix) || prefix || 'other';
+    }
     const name = activityName.toLowerCase();
     if (name.includes('سباح') || name.includes('swim')) return 'swimming';
     if (name.includes('كر') || name.includes('foot') || name.includes('قدم')) return 'football';

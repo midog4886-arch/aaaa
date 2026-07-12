@@ -26,9 +26,12 @@ Legacy keyword matcher (`matchBuiltInActivity`, still used for separator-less
 names and creation's no-double-prefix check): swimming=`سباح/swim`,
 football=`قدم/foot`, karate=`كارات/karate`.
 
-The invoice level selector (`useInvoiceForm.parseActivityForLevel`) INTENTIONALLY
-still groups by keyword so ladies-swimming levels stay selectable under a
-swimming-family activity subscription — do not "sync" it to the exact matcher.
+The level pickers in the invoice dialog, registration-form dialog, and Members
+page (`useInvoiceForm.parseActivityForLevel` + `MembersPage.parseActivityForLevel`)
+now MIRROR the exact-prefix rule (user asked "أين باقي الأنشطة الخاصة بالفرع"):
+custom prefixes become their own group keys and all six activity-step render
+sites list them as extra buttons (🎽, purple) before the `أخرى` bucket. Time/level
+steps index `grouped[selectedActivity]` so arbitrary string keys work as-is.
 
 **Why bare `كرة` is NOT a football keyword:** app-generated football is always
 `"كرة قدم - ..."` (matched via `قدم`), so dropping bare `كرة` lets custom ball
