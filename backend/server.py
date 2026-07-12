@@ -2345,12 +2345,13 @@ async def update_invoice(invoice_id: str, invoice: InvoiceCreate, current_user: 
     if existing["status"] != "pending":
         raise HTTPException(status_code=400, detail="Can only edit pending invoices")
     
-    # Calculate totals
-    subtotal = sum(item.fee for item in invoice.items)
+    # Calculate totals (fee * quantity, matching the create path)
+    subtotal = sum(item.fee * (getattr(item, "quantity", None) or 1) for item in invoice.items)
     discount = invoice.discount
-    subtotal_after_discount = subtotal - discount
-    vat_amount = round(subtotal_after_discount * VAT_RATE, 2)
-    total = round(subtotal_after_discount + vat_amount, 2)
+    # Discount applied AFTER tax: VAT on full subtotal, discount off the grand
+    # total (keeps update path consistent with the create path in routes/invoices.py).
+    vat_amount = round(subtotal * VAT_RATE, 2)
+    total = max(round(subtotal + vat_amount - discount, 2), 0)
     
     update_data = {
         "items": [item.dict() for item in invoice.items],

@@ -232,11 +232,15 @@ export const printInvoice = (invoice, items) => {
     </tr>
   `).join('');
   
-  const subtotal = items.reduce((sum, item) => sum + (item.fee || 0) * (item.quantity || 1), 0);
+  // Prefer the STORED invoice totals so old invoices (created under the
+  // previous pre-tax-discount formula) print exactly what was saved; only
+  // recompute (after-tax discount: VAT on full subtotal, discount off grand
+  // total) when stored fields are missing.
+  const computedSubtotal = items.reduce((sum, item) => sum + (item.fee || 0) * (item.quantity || 1), 0);
   const discount = invoice.discount || 0;
-  const taxableAmount = subtotal - discount;
-  const vatAmount = taxableAmount * (VAT_RATE / 100);
-  const total = taxableAmount + vatAmount;
+  const subtotal = (invoice.subtotal ?? null) !== null ? invoice.subtotal : computedSubtotal;
+  const vatAmount = (invoice.vat_amount ?? null) !== null ? invoice.vat_amount : subtotal * (VAT_RATE / 100);
+  const total = (invoice.total ?? null) !== null ? invoice.total : Math.max(subtotal + vatAmount - discount, 0);
   
   printWindow.document.write(`
     <!DOCTYPE html>
@@ -288,8 +292,8 @@ export const printInvoice = (invoice, items) => {
           
           <div class="totals">
             <p>المجموع الفرعي: ${subtotal.toFixed(2)} ر.س</p>
-            ${discount > 0 ? `<p>الخصم: -${discount.toFixed(2)} ر.س</p>` : ''}
             <p>ضريبة القيمة المضافة (15%): ${vatAmount.toFixed(2)} ر.س</p>
+            ${discount > 0 ? `<p>الخصم: -${discount.toFixed(2)} ر.س</p>` : ''}
             <p class="total">الإجمالي: ${total.toFixed(2)} ر.س</p>
           </div>
           

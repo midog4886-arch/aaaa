@@ -80,8 +80,8 @@ export const ViewInvoiceDialog = ({
 
             <div className="space-y-2 text-sm">
               <div className="flex justify-between py-1 border-b"><span>{tl('subtotal')}:</span><span>{selectedInvoice.subtotal} {tl('sar')}</span></div>
-              {selectedInvoice.discount > 0 && <div className="flex justify-between py-1 border-b text-muted-foreground"><span>{tl('discount')}:</span><span>- {selectedInvoice.discount} {tl('sar')}</span></div>}
               <div className="flex justify-between py-1 border-b text-green-600"><span>{isAr ? `ضريبة القيمة المضافة (${COMPANY_INFO.vat_rate}%)` : `VAT (${COMPANY_INFO.vat_rate}%)`}:</span><span>{selectedInvoice.vat_amount || 0} {tl('sar')}</span></div>
+              {selectedInvoice.discount > 0 && <div className="flex justify-between py-1 border-b text-muted-foreground"><span>{tl('discount')}:</span><span>- {selectedInvoice.discount} {tl('sar')}</span></div>}
               <div className="flex justify-between py-2 text-xl font-bold text-primary border-t-2 border-blue-900"><span>{tl('total')}:</span><span>{selectedInvoice.total} {tl('sar')}</span></div>
             </div>
 

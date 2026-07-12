@@ -383,9 +383,11 @@ async def create_invoice(invoice: InvoiceCreate, current_user: dict = Depends(ge
     # referred member's FIRST invoice (respects a manual discount if present).
     from routes.marketers import resolve_marketer_discount, record_first_invoice_commission
     discount = await resolve_marketer_discount(member, discount, subtotal)
-    taxable_amount = subtotal - discount
-    vat_amount = round(taxable_amount * VAT_RATE, 2)
-    total = round(taxable_amount + vat_amount, 2)
+    # Discount is applied AFTER tax: VAT is computed on the full subtotal and
+    # the discount is subtracted from the grand total (e.g. 400 total incl.
+    # VAT with a 50 coupon → invoice total 350). Matches the frontend preview.
+    vat_amount = round(subtotal * VAT_RATE, 2)
+    total = max(round(subtotal + vat_amount - discount, 2), 0)
 
     # Build member names for multi-member display
     all_member_names = []

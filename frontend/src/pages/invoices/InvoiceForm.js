@@ -127,9 +127,9 @@ const InvoiceForm = ({
 
   // Calculate totals
   const subtotal = items.reduce((sum, item) => sum + (item.fee || 0) * (item.quantity || 1), 0);
-  const taxableAmount = subtotal - discount;
-  const vatAmount = taxableAmount * (VAT_RATE / 100);
-  const total = taxableAmount + vatAmount;
+  // Discount applied AFTER tax: VAT on full subtotal, discount off grand total.
+  const vatAmount = subtotal * (VAT_RATE / 100);
+  const total = Math.max(subtotal + vatAmount - discount, 0);
 
   // Handle save
   const handleSave = async () => {
