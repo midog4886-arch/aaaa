@@ -10,12 +10,25 @@ derived by string-parsing each `level.activity_name`, which is stored as
 `"<activity> - <time slot>"` (e.g. `"سباحة - الساعة 4"`).
 
 `parseActivityName` splits on the FIRST `" - "`:
-- prefix → maps to a built-in (swimming/football/karate) via keyword, OR
-- prefix → IS a custom activity id (the label itself, e.g. `"تنس"`).
-- No `" - "` separator = legacy data → keyword-match the whole string, else `other`.
+- prefix → maps to a built-in (swimming/football/karate) ONLY via EXACT name match
+  (`matchBuiltInActivityExact` against `BUILT_IN_EXACT_NAMES`: the sport name itself,
+  ± `ال`, common spellings), OR
+- prefix → IS a custom activity id (the label itself, e.g. `"تنس"`, `"سباحه سيدات"`).
+- No `" - "` separator = legacy data → OLD keyword-match the whole string, else `other`.
 
-Built-in keyword matching (`matchBuiltInActivity`): swimming=`سباح/swim`,
+**Why exact, not keyword, for the prefix:** keyword matching (`سباح` substring)
+absorbed qualified activities like `"سباحه سيدات"` into the built-in swimming card,
+so ladies-swimming never got its own card. Qualified prefix = distinct custom
+activity. Verified across tenant DBs: every existing built-in prefix (`سباحة`,
+`كرة قدم`, `كاراتيه`) is in the exact whitelist, no accidental splits.
+
+Legacy keyword matcher (`matchBuiltInActivity`, still used for separator-less
+names and creation's no-double-prefix check): swimming=`سباح/swim`,
 football=`قدم/foot`, karate=`كارات/karate`.
+
+The invoice level selector (`useInvoiceForm.parseActivityForLevel`) INTENTIONALLY
+still groups by keyword so ladies-swimming levels stay selectable under a
+swimming-family activity subscription — do not "sync" it to the exact matcher.
 
 **Why bare `كرة` is NOT a football keyword:** app-generated football is always
 `"كرة قدم - ..."` (matched via `قدم`), so dropping bare `كرة` lets custom ball

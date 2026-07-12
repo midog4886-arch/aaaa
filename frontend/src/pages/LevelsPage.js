@@ -661,6 +661,23 @@ export const LevelsPage = () => {
     return null;
   };
 
+  // Strict matching used for the "<activity> - <slot>" prefix: the prefix is a
+  // built-in ONLY when it IS the sport name itself. A qualified name like
+  // "سباحه سيدات" is a distinct custom activity and must get its own card
+  // instead of being absorbed into the built-in by keyword.
+  const BUILT_IN_EXACT_NAMES = {
+    swimming: ['سباحة', 'سباحه', 'السباحة', 'السباحه', 'swimming', 'swim'],
+    football: ['كرة القدم', 'كرة قدم', 'كره القدم', 'كره قدم', 'القدم', 'قدم', 'football'],
+    karate: ['كاراتيه', 'الكاراتيه', 'كاراتية', 'الكاراتية', 'كارتيه', 'الكارتيه', 'karate'],
+  };
+  const matchBuiltInActivityExact = (str) => {
+    const s = (str || '').trim().toLowerCase().replace(/\s+/g, ' ');
+    for (const [id, names] of Object.entries(BUILT_IN_EXACT_NAMES)) {
+      if (names.includes(s)) return id;
+    }
+    return null;
+  };
+
   const parseActivityName = (activityName) => {
     if (!activityName) return { mainActivity: 'other', timeSlot: '', original: '' };
 
@@ -673,7 +690,7 @@ export const LevelsPage = () => {
       const parts = activityName.split(' - ');
       const prefix = parts[0].trim();
       const timeSlot = parts.slice(1).join(' - ').trim() || prefix;
-      const builtIn = matchBuiltInActivity(prefix);
+      const builtIn = matchBuiltInActivityExact(prefix);
       return { mainActivity: builtIn || prefix || 'other', timeSlot, original: activityName };
     }
 
