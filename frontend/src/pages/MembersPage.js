@@ -17,7 +17,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { Popover, PopoverContent, PopoverTrigger } from '../components/ui/popover';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '../components/ui/command';
 import { Textarea } from '../components/ui/textarea';
-import { membersAPI, activitiesAPI, coachesAPI, exportAPI, invoicesAPI, attendanceAPI, levelsAPI, productInvoicesAPI, freezesAPI, tournamentsAPI, whatsappAPI, dayExtensionsAPI, branchesAPI } from '../services/api';
+import { membersAPI, activitiesAPI, coachesAPI, exportAPI, invoicesAPI, attendanceAPI, levelsAPI, productInvoicesAPI, freezesAPI, tournamentsAPI, whatsappAPI, dayExtensionsAPI, branchesAPI, discountsAPI } from '../services/api';
 import { whatsappChatUrl } from '../utils/whatsapp';
 import { toast } from 'sonner';
 import { 
@@ -238,6 +238,10 @@ export const MembersPage = () => {
     notes: '',
     payment_method: 'card'
   });
+  const [renewalCouponCode, setRenewalCouponCode] = useState('');
+  const [renewalAppliedCoupon, setRenewalAppliedCoupon] = useState(null);
+  const [renewalCouponDiscount, setRenewalCouponDiscount] = useState(0);
+  const [renewalValidatingCoupon, setRenewalValidatingCoupon] = useState(false);
 
   const [formData, setFormData] = useState({
     name: '',
@@ -1315,7 +1319,36 @@ export const MembersPage = () => {
       notes: '',
       payment_method: 'card'
     });
+    setRenewalCouponCode('');
+    setRenewalAppliedCoupon(null);
+    setRenewalCouponDiscount(0);
     setIsRenewalDialogOpen(true);
+  };
+
+  const clearRenewalCoupon = () => {
+    setRenewalAppliedCoupon(null);
+    setRenewalCouponDiscount(0);
+  };
+
+  const validateRenewalCoupon = async () => {
+    if (!renewalCouponCode.trim()) return;
+    const subtotal = parseFloat(renewalForm.fee) || 0;
+    if (subtotal <= 0) {
+      toast.error(language === 'ar' ? 'أدخل الرسوم أولاً' : 'Enter the fee first');
+      return;
+    }
+    setRenewalValidatingCoupon(true);
+    try {
+      const res = await discountsAPI.validate(renewalCouponCode, subtotal);
+      setRenewalAppliedCoupon(res.data.discount);
+      setRenewalCouponDiscount(res.data.discount_amount || 0);
+      toast.success(language === 'ar' ? 'تم تطبيق كود الخصم' : 'Coupon applied');
+    } catch (error) {
+      clearRenewalCoupon();
+      toast.error(error.response?.data?.detail || (language === 'ar' ? 'كوبون غير صالح' : 'Invalid coupon'));
+    } finally {
+      setRenewalValidatingCoupon(false);
+    }
   };
 
   // Handle renewal submission
@@ -1327,7 +1360,8 @@ export const MembersPage = () => {
       // Calculate invoice totals
       const subtotal = parseFloat(renewalForm.fee);
       const vatAmount = Math.round(subtotal * 0.15 * 100) / 100;
-      const total = Math.round((subtotal + vatAmount) * 100) / 100;
+      const discountAmount = Math.round((renewalCouponDiscount || 0) * 100) / 100;
+      const total = Math.max(Math.round((subtotal + vatAmount - discountAmount) * 100) / 100, 0);
       
       // Create invoice for renewal
       const invoiceData = {
@@ -1348,7 +1382,8 @@ export const MembersPage = () => {
         subtotal: subtotal,
         vat: vatAmount,
         total: total,
-        discount: 0,
+        discount: discountAmount,
+        discount_code: renewalAppliedCoupon?.code || null,
         status: 'paid',
         payment_method: renewalForm.payment_method,
         notes: renewalForm.notes || `تجديد اشتراك ${renewalActivity.activity_name}`
@@ -4196,9 +4231,43 @@ export const MembersPage = () => {
                   <Input
                     type="number"
                     value={renewalForm.fee}
-                    onChange={(e) => setRenewalForm({...renewalForm, fee: parseFloat(e.target.value) || 0})}
+                    onChange={(e) => {
+                      setRenewalForm({...renewalForm, fee: parseFloat(e.target.value) || 0});
+                      if (renewalAppliedCoupon) clearRenewalCoupon();
+                    }}
                     data-testid="renewal-fee"
                   />
+                </div>
+
+                <div className="p-3 bg-purple-50 border border-purple-200 rounded-lg space-y-1">
+                  <Label className="text-purple-700">{language === 'ar' ? 'كود الخصم (اختياري)' : 'Discount Coupon (optional)'}</Label>
+                  {renewalAppliedCoupon ? (
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-sm text-purple-800 font-semibold">
+                        {renewalAppliedCoupon.code} — {renewalCouponDiscount.toFixed(2)} {t('sar')} {language === 'ar' ? 'خصم' : 'off'}
+                      </span>
+                      <Button type="button" variant="ghost" size="sm" className="text-red-600 hover:text-red-700 h-7 px-2"
+                        onClick={() => { clearRenewalCoupon(); setRenewalCouponCode(''); }}>
+                        {language === 'ar' ? 'إزالة' : 'Remove'}
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="flex gap-2">
+                      <Input
+                        value={renewalCouponCode}
+                        onChange={(e) => setRenewalCouponCode(e.target.value.toUpperCase())}
+                        placeholder={language === 'ar' ? 'أدخل كود الخصم...' : 'Enter coupon code...'}
+                        className="flex-1"
+                        data-testid="renewal-coupon-input"
+                      />
+                      <Button type="button" variant="outline" onClick={validateRenewalCoupon}
+                        disabled={!renewalCouponCode.trim() || renewalValidatingCoupon}
+                        className="border-purple-400 text-purple-700 hover:bg-purple-100"
+                        data-testid="renewal-apply-coupon-btn">
+                        {renewalValidatingCoupon ? <Loader2 className="w-4 h-4 animate-spin" /> : (language === 'ar' ? 'تطبيق' : 'Apply')}
+                      </Button>
+                    </div>
+                  )}
                 </div>
 
                 <div className="space-y-2">
@@ -4240,9 +4309,15 @@ export const MembersPage = () => {
                     <span>{language === 'ar' ? 'الضريبة (15%)' : 'VAT (15%)'}</span>
                     <span>{(renewalForm.fee * 0.15).toFixed(2)} {t('sar')}</span>
                   </div>
+                  {renewalCouponDiscount > 0 && (
+                    <div className="flex justify-between text-sm mb-1 text-purple-700">
+                      <span>{language === 'ar' ? `خصم الكوبون (${renewalAppliedCoupon?.code})` : `Coupon (${renewalAppliedCoupon?.code})`}</span>
+                      <span>- {renewalCouponDiscount.toFixed(2)} {t('sar')}</span>
+                    </div>
+                  )}
                   <div className="flex justify-between font-bold text-lg border-t pt-2 mt-2">
                     <span>{language === 'ar' ? 'الإجمالي' : 'Total'}</span>
-                    <span className="text-primary">{(renewalForm.fee * 1.15).toFixed(2)} {t('sar')}</span>
+                    <span className="text-primary">{Math.max(renewalForm.fee * 1.15 - (renewalCouponDiscount || 0), 0).toFixed(2)} {t('sar')}</span>
                   </div>
                 </div>
               </div>

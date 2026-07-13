@@ -10,7 +10,7 @@ import { Badge } from '../components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '../components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Textarea } from '../components/ui/textarea';
-import { notificationsAPI, invoicesAPI, membersAPI, branchesAPI, whatsappAPI } from '../services/api';
+import { notificationsAPI, invoicesAPI, membersAPI, branchesAPI, whatsappAPI, discountsAPI } from '../services/api';
 import { calcEndDate } from './invoices/hooks/useInvoiceForm';
 import MemberAvatar from '../components/MemberAvatar';
 import { toast } from 'sonner';
@@ -110,6 +110,10 @@ const RenewalsPage = () => {
     notes: '',
     payment_method: 'card'
   });
+  const [couponCode, setCouponCode] = useState('');
+  const [appliedCoupon, setAppliedCoupon] = useState(null);
+  const [couponDiscount, setCouponDiscount] = useState(0);
+  const [validatingCoupon, setValidatingCoupon] = useState(false);
 
   // Multi-select state
   const [selectedKeys, setSelectedKeys] = useState(new Set());
@@ -606,7 +610,36 @@ const RenewalsPage = () => {
       notes: '',
       payment_method: 'card'
     });
+    setCouponCode('');
+    setAppliedCoupon(null);
+    setCouponDiscount(0);
     setIsRenewalDialogOpen(true);
+  };
+
+  const clearCoupon = () => {
+    setAppliedCoupon(null);
+    setCouponDiscount(0);
+  };
+
+  const validateRenewalCoupon = async () => {
+    if (!couponCode.trim()) return;
+    const subtotal = parseFloat(renewalForm.fee) || 0;
+    if (subtotal <= 0) {
+      toast.error(language === 'ar' ? 'أدخل الرسوم أولاً' : 'Enter the fee first');
+      return;
+    }
+    setValidatingCoupon(true);
+    try {
+      const res = await discountsAPI.validate(couponCode, subtotal);
+      setAppliedCoupon(res.data.discount);
+      setCouponDiscount(res.data.discount_amount || 0);
+      toast.success(language === 'ar' ? 'تم تطبيق كود الخصم' : 'Coupon applied');
+    } catch (error) {
+      clearCoupon();
+      toast.error(error.response?.data?.detail || (language === 'ar' ? 'كوبون غير صالح' : 'Invalid coupon'));
+    } finally {
+      setValidatingCoupon(false);
+    }
   };
 
   const handleRenewal = async () => {
@@ -616,7 +649,8 @@ const RenewalsPage = () => {
     try {
       const subtotal = parseFloat(renewalForm.fee);
       const vatAmount = Math.round(subtotal * 0.15 * 100) / 100;
-      const total = Math.round((subtotal + vatAmount) * 100) / 100;
+      const discountAmount = Math.round((couponDiscount || 0) * 100) / 100;
+      const total = Math.max(Math.round((subtotal + vatAmount - discountAmount) * 100) / 100, 0);
 
       const invoiceData = {
         member_id: selectedItem.member_id,
@@ -636,7 +670,8 @@ const RenewalsPage = () => {
         subtotal: subtotal,
         vat: vatAmount,
         total: total,
-        discount: 0,
+        discount: discountAmount,
+        discount_code: appliedCoupon?.code || null,
         status: 'paid',
         payment_method: renewalForm.payment_method,
         notes: renewalForm.notes || `تجديد اشتراك ${selectedItem.activity_name}`
@@ -1132,8 +1167,42 @@ const RenewalsPage = () => {
                 <Input
                   type="number"
                   value={renewalForm.fee}
-                  onChange={(e) => setRenewalForm({ ...renewalForm, fee: e.target.value })}
+                  onChange={(e) => {
+                    setRenewalForm({ ...renewalForm, fee: e.target.value });
+                    if (appliedCoupon) clearCoupon();
+                  }}
                 />
+              </div>
+
+              <div className="p-3 bg-purple-50 border border-purple-200 rounded-lg">
+                <label className="text-sm font-medium mb-1 block text-purple-700">
+                  {language === 'ar' ? 'كود الخصم (اختياري)' : 'Discount Coupon (optional)'}
+                </label>
+                {appliedCoupon ? (
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-sm text-purple-800 font-semibold">
+                      {appliedCoupon.code} — {couponDiscount.toFixed(2)} {language === 'ar' ? 'ر.س' : 'SAR'} {language === 'ar' ? 'خصم' : 'off'}
+                    </span>
+                    <Button type="button" variant="ghost" size="sm" className="text-red-600 hover:text-red-700 h-7 px-2"
+                      onClick={() => { clearCoupon(); setCouponCode(''); }}>
+                      {language === 'ar' ? 'إزالة' : 'Remove'}
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="flex gap-2">
+                    <Input
+                      value={couponCode}
+                      onChange={(e) => setCouponCode(e.target.value.toUpperCase())}
+                      placeholder={language === 'ar' ? 'أدخل كود الخصم...' : 'Enter coupon code...'}
+                      className="flex-1"
+                    />
+                    <Button type="button" variant="outline" onClick={validateRenewalCoupon}
+                      disabled={!couponCode.trim() || validatingCoupon}
+                      className="border-purple-400 text-purple-700 hover:bg-purple-100">
+                      {validatingCoupon ? <Loader2 className="w-4 h-4 animate-spin" /> : (language === 'ar' ? 'تطبيق' : 'Apply')}
+                    </Button>
+                  </div>
+                )}
               </div>
 
               <div>
@@ -1179,9 +1248,15 @@ const RenewalsPage = () => {
                     <span>{language === 'ar' ? 'الضريبة (15%):' : 'VAT (15%):'}</span>
                     <span>{(parseFloat(renewalForm.fee) * 0.15).toFixed(2)} {language === 'ar' ? 'ر.س' : 'SAR'}</span>
                   </div>
+                  {couponDiscount > 0 && (
+                    <div className="flex justify-between text-purple-700">
+                      <span>{language === 'ar' ? `خصم الكوبون (${appliedCoupon?.code}):` : `Coupon (${appliedCoupon?.code}):`}</span>
+                      <span>- {couponDiscount.toFixed(2)} {language === 'ar' ? 'ر.س' : 'SAR'}</span>
+                    </div>
+                  )}
                   <div className="flex justify-between font-bold border-t pt-1">
                     <span>{language === 'ar' ? 'الإجمالي:' : 'Total:'}</span>
-                    <span>{(parseFloat(renewalForm.fee) * 1.15).toFixed(2)} {language === 'ar' ? 'ر.س' : 'SAR'}</span>
+                    <span>{Math.max(parseFloat(renewalForm.fee) * 1.15 - (couponDiscount || 0), 0).toFixed(2)} {language === 'ar' ? 'ر.س' : 'SAR'}</span>
                   </div>
                 </div>
               )}
