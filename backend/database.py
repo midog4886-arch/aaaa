@@ -32,7 +32,10 @@ else:
         tlsAllowInvalidCertificates=True,
         serverSelectionTimeoutMS=30000,
         connectTimeoutMS=20000,
-        socketTimeoutMS=20000,
+        socketTimeoutMS=60000,
+        retryReads=True,
+        retryWrites=True,
+        compressors="zlib",
     )
 
 

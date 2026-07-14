@@ -686,29 +686,30 @@ async def remove_member_from_level(level_id: str, member_id: str, current_user: 
     return {"message": "Member removed from level"}
 
 
-@router.get("/unassigned-members")
-async def get_unassigned_members(
-    branch_filter: Optional[str] = None,
-    current_user: dict = Depends(get_current_user)
-):
-    """Members with active subscriptions that are NOT yet assigned to any level.
+async def _compute_unassigned_members(effective_branch):
+    """Core logic: members with active subscriptions not assigned to any level.
 
-    Each unassigned activity is enriched with `invoice_level_id` and
-    `invoice_level_name` taken from the most recent invoice item that
-    matches the activity (by `activity_id`, falling back to
-    `activity_name`) and carries a non-empty `level_id`. The UI uses this
-    to show the level the member was originally registered for so the
-    operator can confirm the assignment in one click instead of picking
-    again.
+    Returns the cleaned list (after same-activity-group dedupe) WITHOUT
+    invoice enrichment, so the count endpoint can reuse it cheaply.
     """
-    effective_branch = resolve_branch_filter(current_user, branch_filter)
-
     query = {}
     if effective_branch:
         query["$or"] = [{"branch_id": effective_branch}, {"branch_id": None}, {"branch_id": {"$exists": False}}]
 
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-    members = await db.members.find(query, {"_id": 0}).to_list(10000)
+    members = await db.members.find(
+        query,
+        {
+            "_id": 0,
+            "id": 1,
+            "name": 1,
+            "name_ar": 1,
+            "phone": 1,
+            "member_code": 1,
+            "branch_id": 1,
+            "activities": 1,
+        },
+    ).to_list(10000)
 
     pre_result = []
     for m in members:
@@ -787,7 +788,26 @@ async def get_unassigned_members(
             m["unassigned_activities"] = kept
         if m["unassigned_activities"]:
             cleaned_result.append(m)
-    pre_result = cleaned_result
+    return cleaned_result
+
+
+@router.get("/unassigned-members")
+async def get_unassigned_members(
+    branch_filter: Optional[str] = None,
+    current_user: dict = Depends(get_current_user)
+):
+    """Members with active subscriptions that are NOT yet assigned to any level.
+
+    Each unassigned activity is enriched with `invoice_level_id` and
+    `invoice_level_name` taken from the most recent invoice item that
+    matches the activity (by `activity_id`, falling back to
+    `activity_name`) and carries a non-empty `level_id`. The UI uses this
+    to show the level the member was originally registered for so the
+    operator can confirm the assignment in one click instead of picking
+    again.
+    """
+    effective_branch = resolve_branch_filter(current_user, branch_filter)
+    pre_result = await _compute_unassigned_members(effective_branch)
 
     member_ids = [m["id"] for m in pre_result if m.get("id")]
     invoices_by_member: dict = {}
@@ -850,8 +870,9 @@ async def get_unassigned_count(
     current_user: dict = Depends(get_current_user)
 ):
     """Lightweight: just the count of unassigned members for sidebar badge."""
-    data = await get_unassigned_members(branch_filter=branch_filter, current_user=current_user)
-    return {"count": data["count"]}
+    effective_branch = resolve_branch_filter(current_user, branch_filter)
+    pre_result = await _compute_unassigned_members(effective_branch)
+    return {"count": len(pre_result)}
 
 
 @router.get("/{level_id}/count")
