@@ -1667,7 +1667,10 @@ async def delete_attendance(
     record_id: str,
     current_user: dict = Depends(get_current_user)
 ):
-    """Delete an attendance record (branch-scoped for non-admins)"""
+    """Delete an attendance record (requires attendance-delete permission; branch-scoped for non-admins)"""
+    from utils.auth import require_permission
+    await require_permission(current_user, "attendance-delete")
+
     record = await db.attendance.find_one({"id": record_id})
     if not record:
         raise HTTPException(status_code=404, detail="Attendance record not found")
@@ -1714,6 +1717,30 @@ async def delete_attendance(
     result = await db.attendance.delete_one({"id": record_id})
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Attendance record not found")
+
+    # Reverse the daily-attendance loyalty points this record awarded, if any.
+    # (Streak bonuses are left untouched — they are rare and manual adjustment
+    # via the loyalty page covers them.)
+    try:
+        if (record.get("status") or "present") == "present" and record.get("member_id") and record.get("date"):
+            day_start = datetime.fromisoformat(record["date"]).replace(tzinfo=timezone.utc)
+            day_end = day_start + timedelta(days=1)
+            hist = await db.points_history.find_one({
+                "member_id": record["member_id"],
+                "action_type": "attendance",
+                "created_at": {"$gte": day_start, "$lt": day_end},
+            })
+            if hist:
+                pts = hist.get("points", 0) or 0
+                await db.points_history.delete_one({"_id": hist["_id"]})
+                if pts > 0:
+                    await db.member_points.update_one(
+                        {"member_id": record["member_id"], "total_points": {"$gte": pts}},
+                        {"$inc": {"total_points": -pts, "available_points": -pts}},
+                    )
+    except Exception:
+        pass
+
     return {"message": "Attendance record deleted"}
 
 @router.get("/member/{member_id}/report")

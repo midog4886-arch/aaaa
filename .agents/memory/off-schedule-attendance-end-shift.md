@@ -77,3 +77,5 @@ force=true confirm button), and `AttendancePage.js` manual `handleQRCheckin` +
 the kiosk category loop. The kiosk loop must DEFER a `wrong_day` (keep trying other
 activities in the category) and only deny if none succeed — otherwise a valid
 same-category activity scheduled today gets falsely denied.
+
+**Loyalty reversal:** DELETE /attendance/{id} also reverses that day's daily-attendance loyalty points (removes the points_history "attendance" entry for the record date and decrements member_points, clamped). Streak bonuses are intentionally NOT reversed. Endpoint requires the `attendance-delete` permission (admins bypass).

@@ -31,6 +31,7 @@ const ALL_PERMISSIONS = [
   { key: 'members', label_ar: 'الأعضاء', label_en: 'Members' },
   { key: 'members-create', label_ar: 'إضافة عضو جديد', label_en: 'Add New Member' },
   { key: 'members-add-activity', label_ar: 'إضافة نشاط لعضو', label_en: 'Add Activity to Member' },
+  { key: 'attendance-delete', label_ar: 'حذف سجل حضور', label_en: 'Delete Attendance Record' },
   { key: 'member-phones', label_ar: 'رؤية أرقام الجوال', label_en: 'View Member Phones' },
   { key: 'invoices', label_ar: 'الفواتير', label_en: 'Invoices' },
   { key: 'invoices-refund', label_ar: 'استرجاع الفواتير (إشعار دائن)', label_en: 'Refund Invoices (Credit Note)' },

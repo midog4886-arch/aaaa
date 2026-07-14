@@ -64,6 +64,7 @@ export const MembersPage = () => {
   const canViewPhones = isAdmin || (user?.permissions || []).includes('member-phones');
   const canAddActivity = isAdmin || (user?.permissions || []).includes('members-add-activity');
   const canRenewActivity = isAdmin || (user?.permissions || []).includes('renewals') || (user?.permissions || []).includes('members-add-activity');
+  const canDeleteAttendance = isAdmin || (user?.permissions || []).includes('attendance-delete');
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const [members, setMembers] = useState([]);
@@ -3882,16 +3883,18 @@ export const MembersPage = () => {
                                               : (language === 'ar' ? 'غائب' : 'Absent')
                                             }
                                           </Badge>
-                                          <Button
-                                            size="sm"
-                                            variant="ghost"
-                                            className="h-7 w-7 p-0 text-red-500 hover:text-red-700 hover:bg-red-100"
-                                            onClick={() => handleDeleteAttendance(record)}
-                                            title={language === 'ar' ? 'حذف سجل الحضور' : 'Delete attendance record'}
-                                            data-testid={`delete-attendance-${record.id}`}
-                                          >
-                                            <Trash2 className="w-3.5 h-3.5" />
-                                          </Button>
+                                          {canDeleteAttendance && (
+                                            <Button
+                                              size="sm"
+                                              variant="ghost"
+                                              className="h-7 w-7 p-0 text-red-500 hover:text-red-700 hover:bg-red-100"
+                                              onClick={() => handleDeleteAttendance(record)}
+                                              title={language === 'ar' ? 'حذف سجل الحضور' : 'Delete attendance record'}
+                                              data-testid={`delete-attendance-${record.id}`}
+                                            >
+                                              <Trash2 className="w-3.5 h-3.5" />
+                                            </Button>
+                                          )}
                                         </div>
                                       </div>
                                     ))}
