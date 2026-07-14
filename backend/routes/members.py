@@ -198,6 +198,7 @@ async def get_members(
     status: Optional[str] = None,
     branch_filter: Optional[str] = None,
     search: Optional[str] = None,
+    exclude_photo: bool = False,
     current_user: dict = Depends(get_current_user)
 ):
     """Get all members with optional filters"""
@@ -232,7 +233,8 @@ async def get_members(
             {"member_code": {"$regex": search, "$options": "i"}}
         ]
     
-    members = await db.members.find(query, {"_id": 0}).sort("created_at", -1).to_list(1000)
+    projection = {"_id": 0, "photo": 0} if exclude_photo else {"_id": 0}
+    members = await db.members.find(query, projection).sort("created_at", -1).to_list(1000)
 
     branch_docs = await db.branches.find({}, {"_id": 0, "id": 1, "phone": 1}).to_list(500)
     branch_phone_map = {b["id"]: (b.get("phone") or "") for b in branch_docs}

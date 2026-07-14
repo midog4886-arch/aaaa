@@ -79,9 +79,9 @@ export const InvoicesPage = () => {
     try {
       const branchParams = selectedBranchId && selectedBranchId !== 'all' ? { branch_filter: selectedBranchId } : {};
       const [invRes, memRes, actRes, prodRes, brRes, rfRes, cnRes, lvRes, coachRes, loyPtsRes, loyLvlRes] = await Promise.all([
-        invoicesAPI.getAll(branchParams), membersAPI.getAll(branchParams), activitiesAPI.getAll(branchParams), productsAPI.getAll(branchParams),
+        invoicesAPI.getAll(branchParams), membersAPI.getAll({ ...branchParams, exclude_photo: true }), activitiesAPI.getAll(branchParams), productsAPI.getAll(branchParams),
         branchesAPI.getAll(), registrationFormsAPI.getAll(branchParams), creditNotesAPI.getAll(branchParams), levelsAPI.getAll(branchParams),
-        coachesAPI.getAll().catch(() => ({ data: [] })),
+        coachesAPI.getAll({ exclude_photo: true }).catch(() => ({ data: [] })),
         fetch('/api/loyalty/settings/points').then(r => r.ok ? r.json() : null).catch(() => null),
         fetch('/api/loyalty/settings/levels').then(r => r.ok ? r.json() : null).catch(() => null)
       ]);
@@ -266,7 +266,7 @@ export const InvoicesPage = () => {
       const itemsToUse = addMemberSource === 'registration' ? regFormItems : invoiceItems;
       const memberActivities = itemsToUse.filter(item => !item.is_product && item.activity_id).map(item => ({ activity_id: item.activity_id, activity_name: item.activity_name, start_date: item.start_date || new Date().toISOString().split('T')[0], end_date: item.end_date || new Date(Date.now() + 30*24*60*60*1000).toISOString().split('T')[0], fee: item.fee || 0, status: 'active', coach_id: '', schedule: item.schedule || '', training_days: item.training_days || [], training_time: item.training_time || '', day_times: item.day_times || {} }));
       const res = await membersAPI.quickCreate({ ...newMemberData, age: parseInt(newMemberData.age) || 0, activities: memberActivities, branch_id: selectedBranchId !== 'all' ? selectedBranchId : null, marketer_id: prefillMarketerId || '' });
-      const memRes = await membersAPI.getAll(); setMembers(memRes.data);
+      const memRes = await membersAPI.getAll({ exclude_photo: true }); setMembers(memRes.data);
       if (addMemberSource === 'registration') { setRegFormData({ ...regFormData, customer_name: res.data.name_ar, customer_phone: res.data.phone }); }
       else { setSelectedMember(res.data); setCustomerNameAr(res.data.name_ar); setCustomerPhone(res.data.phone); }
       setIsAddMemberDialogOpen(false); setNewMemberData({ name_ar: '', name: '', age: '', guardian_name_ar: '', guardian_name: '', phone: '', nationality: '', is_vip: false });

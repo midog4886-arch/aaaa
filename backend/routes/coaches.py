@@ -91,6 +91,7 @@ async def get_coaches(
     branch_filter: Optional[str] = None,
     include_terminated: bool = False,
     only_terminated: bool = False,
+    exclude_photo: bool = False,
     current_user: dict = Depends(get_current_user)
 ):
     is_admin = current_user.get("is_admin", False)
@@ -106,7 +107,7 @@ async def get_coaches(
     else:
         status_scope = "active"
 
-    cache_key = f"coaches:{'admin' if is_admin else 'user'}:{effective_branch or 'all'}:{status_scope}"
+    cache_key = f"coaches:{'admin' if is_admin else 'user'}:{effective_branch or 'all'}:{status_scope}:{'nophoto' if exclude_photo else 'full'}"
     cached = cache_get(cache_key)
     if cached is not None:
         return cached
@@ -125,7 +126,8 @@ async def get_coaches(
     else:
         query = status_filter
 
-    coaches = await db.coaches.find(query, {"_id": 0}).to_list(100)
+    projection = {"_id": 0, "photo": 0} if exclude_photo else {"_id": 0}
+    coaches = await db.coaches.find(query, projection).to_list(100)
     cache_set(cache_key, coaches, ttl=600)
     return coaches
 
