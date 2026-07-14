@@ -38,14 +38,14 @@ export const useInvoicesData = (t) => {
         branchesRes, regFormsRes, creditNotesRes, levelsRes, coachesRes
       ] = await Promise.all([
         invoicesAPI.getAll(branchParams),
-        membersAPI.getAll(branchParams),
+        membersAPI.getAll({ ...branchParams, exclude_photo: true }),
         activitiesAPI.getAll(branchParams),
         productsAPI.getAll(branchParams),
         branchesAPI.getAll(),
         registrationFormsAPI.getAll(branchParams),
         creditNotesAPI.getAll(branchParams),
         levelsAPI.getAll(branchParams),
-        coachesAPI.getAll().catch(() => ({ data: [] })),
+        coachesAPI.getAll({ exclude_photo: true }).catch(() => ({ data: [] })),
       ]);
 
       setInvoices(invoicesRes.data);

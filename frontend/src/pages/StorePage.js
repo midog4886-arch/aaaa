@@ -91,7 +91,7 @@ export const StorePage = () => {
         discountsAPI.getAll(branchParams),
         productInvoicesAPI.getAll(branchParams),
         isAdmin ? branchesAPI.getAll() : Promise.resolve({ data: [] }),
-        membersAPI.getAll()
+        membersAPI.getAll({ exclude_photo: true })
       ]);
       setProducts(productsRes.data);
       setDiscounts(discountsRes.data);

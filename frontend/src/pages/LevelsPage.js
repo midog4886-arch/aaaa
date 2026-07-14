@@ -605,14 +605,14 @@ export const LevelsPage = () => {
       const today = new Date().toISOString().split('T')[0];
       const [levelsRes, membersRes, branchesRes, activitiesRes, attendanceRes, coachesRes] = await Promise.all([
         levelsAPI.getAll(branchParams),
-        membersAPI.getAll(branchParams),
+        membersAPI.getAll({ ...branchParams, exclude_photo: true }),
         // Fetch branches for everyone (backend scopes non-admins to their own
         // branch) so visibleWeekdays can resolve the branch's working days even
         // for non-admin users; the branch <Select> stays admin-gated separately.
         branchesAPI.getAll().catch(() => ({ data: [] })),
         activitiesAPI.getAll(),
         attendanceAPI.getAll({ date: today }).catch(() => ({ data: [] })),
-        coachesAPI.getAll().catch(() => ({ data: [] }))
+        coachesAPI.getAll({ exclude_photo: true }).catch(() => ({ data: [] }))
       ]);
       setLevels(levelsRes.data);
       setMembers(membersRes.data);
@@ -1729,7 +1729,7 @@ ${slotTables}
       try {
         const [levelsRes, membersRes] = await Promise.all([
           levelsAPI.getAll(branchParams),
-          membersAPI.getAll(branchParams),
+          membersAPI.getAll({ ...branchParams, exclude_photo: true }),
         ]);
         setLevels(levelsRes.data);
         setMembers(membersRes.data);
@@ -1923,7 +1923,7 @@ ${slotTables}
       try {
         const [levelsRes, membersRes] = await Promise.all([
           levelsAPI.getAll(branchParams),
-          membersAPI.getAll(branchParams),
+          membersAPI.getAll({ ...branchParams, exclude_photo: true }),
         ]);
         setLevels(levelsRes.data);
         setMembers(membersRes.data);

@@ -375,9 +375,9 @@ export const MembersPage = () => {
     try {
       const branchParams = selectedBranchId && selectedBranchId !== 'all' ? { branch_filter: selectedBranchId } : {};
       const [membersRes, activitiesRes, coachesRes, levelsRes, branchesRes, welcomeRes] = await Promise.all([
-        membersAPI.getAll(branchParams),
+        membersAPI.getAll({ ...branchParams, exclude_photo: true }),
         activitiesAPI.getAll(),
-        coachesAPI.getAll(),
+        coachesAPI.getAll({ exclude_photo: true }),
         levelsAPI.getAll(),
         branchesAPI.getAll().catch(() => ({ data: [] })),
         whatsappAPI.getWelcomeTemplate().catch(() => ({ data: {} }))

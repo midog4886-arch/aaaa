@@ -186,7 +186,7 @@ export default function WhatsAppPage() {
     try {
       const params = selectedBranchId && selectedBranchId !== 'all' ? { branch_filter: selectedBranchId } : {};
       const [mRes, aRes, bRes] = await Promise.all([
-        membersAPI.getAll(params),
+        membersAPI.getAll({ ...params, exclude_photo: true }),
         activitiesAPI.getAll({ branch_filter: 'all' }),
         isAdmin ? branchesAPI.getAll() : Promise.resolve({ data: [] })
       ]);

@@ -192,7 +192,7 @@ export const DashboardPage = () => {
       const branchParams = selectedBranchId && selectedBranchId !== 'all' ? { branch_filter: selectedBranchId } : {};
       switch (type) {
         case 'members':
-          const membersRes = await membersAPI.getAll();
+          const membersRes = await membersAPI.getAll({ exclude_photo: true });
           data = membersRes.data;
           break;
         case 'subscriptions':

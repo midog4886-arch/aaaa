@@ -5,7 +5,7 @@ description: Base64 photos embedded in member/coach docs make list endpoints hug
 
 Members and coaches store their photo as a base64 string INSIDE the document (no separate collection/URL). A branch of ~200 members ≈ 2.3 MB list response; 39 coaches ≈ 9 MB raw (~25s under Atlas latency). This caused NetworkTimeout 500s and "stuck spinner" pages (invoices page Promise.all fails if any call fails).
 
-**Rule:** GET /api/members and GET /api/coaches accept `exclude_photo=true` which projects out `photo`. Any page that only needs names/codes (pickers, invoice page, dropdowns) must pass it. Pages showing avatars (MembersPage, AttendancePage, CoachAttendancePage) keep full fetch.
+**Rule:** GET /api/members and GET /api/coaches accept `exclude_photo=true` which projects out `photo`. Any page that only needs names/codes (pickers, invoice page, dropdowns) must pass it. As of Jul 2026 ALL getAll consumers pass it EXCEPT MessagesPage (renders threadMember?.photo avatars). MembersPage itself renders no photos. Attendance/board photos come from attendance records' member_photo, not the members list.
 
 **Why:** photos can't become URLs easily — `<img>` tags can't send the JWT Authorization header, so a photo endpoint would need to be public or token-in-query.
 

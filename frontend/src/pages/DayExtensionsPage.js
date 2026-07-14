@@ -81,7 +81,7 @@ export default function DayExtensionsPage() {
       const [closuresRes, logsRes, membersRes, branchesRes, activitiesRes, timesRes] = await Promise.all([
         api.dayExtensions.getClosures(),
         api.dayExtensions.getLogs(),
-        membersAPI.getAll(),
+        membersAPI.getAll({ exclude_photo: true }),
         branchesAPI.getAll(),
         activitiesAPI.getAll(),
         api.dayExtensions.getAvailableTimes()

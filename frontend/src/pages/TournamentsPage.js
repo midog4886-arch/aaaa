@@ -883,8 +883,8 @@ const TournamentDetail = ({ tid, onBack }) => {
       const [tRes, lRes, mRes, cRes] = await Promise.all([
         tournamentsAPI.get(tid),
         levelsAPI.getAll(branchParams),
-        membersAPI.getAll(branchParams),
-        coachesAPI.getAll().catch(() => ({ data: [] })),
+        membersAPI.getAll({ ...branchParams, exclude_photo: true }),
+        coachesAPI.getAll({ exclude_photo: true }).catch(() => ({ data: [] })),
       ]);
       setTournament(tRes.data);
       setLevels(lRes.data || []);

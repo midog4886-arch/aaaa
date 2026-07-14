@@ -80,7 +80,7 @@ const CoachSalariesPage = () => {
 
   const fetchCoaches = async () => {
     try {
-      const res = await coachesAPI.getAll({ branch_filter: branchFilter });
+      const res = await coachesAPI.getAll({ branch_filter: branchFilter, exclude_photo: true });
       setCoaches(res.data || []);
     } catch (e) {}
   };

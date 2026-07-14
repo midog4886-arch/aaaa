@@ -71,7 +71,7 @@ const CoachNotesPage = () => {
 
   const loadCoaches = useCallback(async () => {
     try {
-      const res = await coachesAPI.getAll();
+      const res = await coachesAPI.getAll({ exclude_photo: true });
       setCoaches(res.data?.coaches || res.data || []);
     } catch (e) {
       toast.error('فشل في تحميل المدربين');
