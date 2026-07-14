@@ -1101,6 +1101,25 @@ export const MembersPage = () => {
     }
   };
 
+  const handleDeleteAttendance = async (record) => {
+    if (!selectedMember || !record?.id) {
+      toast.error(language === 'ar' ? 'تعذر العثور على سجل الحضور' : 'Attendance record not found');
+      return;
+    }
+    const msg = language === 'ar'
+      ? `هل أنت متأكد من حذف سجل الحضور بتاريخ ${record.date}؟\nسيتم إرجاع الحصة للعضو وتصحيح الرصيد تلقائياً.`
+      : `Delete the attendance record dated ${record.date}?\nThe session will be returned to the member automatically.`;
+    if (!window.confirm(msg)) return;
+    try {
+      await attendanceAPI.delete(record.id);
+      toast.success(language === 'ar' ? 'تم حذف سجل الحضور' : 'Attendance record deleted');
+      await refreshMemberAttendance(selectedMember.id);
+    } catch (e) {
+      const errMsg = e?.response?.data?.detail;
+      toast.error(typeof errMsg === 'string' ? errMsg : (language === 'ar' ? 'فشل حذف سجل الحضور' : 'Failed to delete attendance record'));
+    }
+  };
+
   const openViewDialog = async (member) => {
     setSelectedMember(member);
     setViewTab('info');
@@ -3863,6 +3882,16 @@ export const MembersPage = () => {
                                               : (language === 'ar' ? 'غائب' : 'Absent')
                                             }
                                           </Badge>
+                                          <Button
+                                            size="sm"
+                                            variant="ghost"
+                                            className="h-7 w-7 p-0 text-red-500 hover:text-red-700 hover:bg-red-100"
+                                            onClick={() => handleDeleteAttendance(record)}
+                                            title={language === 'ar' ? 'حذف سجل الحضور' : 'Delete attendance record'}
+                                            data-testid={`delete-attendance-${record.id}`}
+                                          >
+                                            <Trash2 className="w-3.5 h-3.5" />
+                                          </Button>
                                         </div>
                                       </div>
                                     ))}
