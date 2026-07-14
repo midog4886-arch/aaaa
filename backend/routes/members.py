@@ -575,6 +575,70 @@ async def delete_member(member_id: str, current_user: dict = Depends(get_current
     )
     return {"message": "Member deleted"}
 
+@router.post("/{member_id}/activities/delete")
+async def delete_member_activity(member_id: str, payload: dict, current_user: dict = Depends(get_current_user)):
+    """Permanently remove one activity subdoc from a member (admin only).
+
+    Matches the exact subdoc by activity_id + start_date + end_date so
+    multiple renewal periods of the same activity are not all removed.
+    """
+    if not current_user.get("is_admin"):
+        raise HTTPException(status_code=403, detail="Admin access required")
+    activity_id = payload.get("activity_id") or ""
+    start_date = payload.get("start_date") or ""
+    end_date = payload.get("end_date") or ""
+    if not activity_id:
+        raise HTTPException(status_code=400, detail="activity_id required")
+
+    member = await db.members.find_one(_scoped_member_query(member_id, current_user), {"_id": 0})
+    if not member:
+        raise HTTPException(status_code=404, detail="Member not found")
+
+    activities = member.get("activities") or []
+    target = next(
+        (a for a in activities
+         if a.get("activity_id") == activity_id
+         and (a.get("start_date") or "") == start_date
+         and (a.get("end_date") or "") == end_date),
+        None,
+    )
+    if target is None:
+        raise HTTPException(status_code=404, detail="Activity not found on member")
+
+    pull_match = {"activity_id": activity_id}
+    for field, value in (("start_date", start_date), ("end_date", end_date)):
+        if value:
+            pull_match[field] = value
+        else:
+            pull_match[field] = {"$in": [None, ""]}
+    result = await db.members.update_one(
+        _scoped_member_query(member_id, current_user),
+        {"$pull": {"activities": pull_match}}
+    )
+    if result.modified_count == 0:
+        raise HTTPException(status_code=404, detail="Activity not found on member")
+
+    # Level cache cleanup: drop the member from the level's members[] only if
+    # no remaining activity still links that level.
+    level_id = target.get("level_id")
+    if level_id:
+        after = await db.members.find_one({"id": member_id}, {"_id": 0, "activities": 1}) or {}
+        remaining = after.get("activities") or []
+        if not any((a.get("level_id") or "") == level_id for a in remaining):
+            await db.levels.update_one({"id": level_id}, {"$pull": {"members": member_id}})
+            await db.level_subscriptions.delete_many({"member_id": member_id, "level_id": level_id})
+
+    from utils.audit import log_audit
+    await log_audit(
+        actor=current_user,
+        action="subscription.delete",
+        entity_type="member",
+        entity_id=member_id,
+        entity_name=target.get("activity_name") or "",
+        before=target,
+    )
+    return {"message": "Activity deleted"}
+
 @router.post("/{member_id}/activities")
 async def add_member_activity(member_id: str, activity: MemberActivity, current_user: dict = Depends(get_current_user)):
     """Add an activity to a member"""

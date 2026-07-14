@@ -1321,6 +1321,35 @@ export const MembersPage = () => {
     return days !== null && days <= 7;
   };
 
+  // Permanently delete an activity period from the member (admin only)
+  const handleDeleteActivity = async (activity) => {
+    if (!selectedMember) return;
+    const actName = activity.activity_name || '';
+    let msg = language === 'ar'
+      ? `هل أنت متأكد من حذف نشاط "${actName}" (${activity.start_date} → ${activity.end_date}) نهائياً من ملف العضو؟\nلا يمكن التراجع عن هذه العملية.`
+      : `Permanently delete "${actName}" (${activity.start_date} → ${activity.end_date}) from this member?\nThis cannot be undone.`;
+    if (activity.invoice_id || (activity.source === 'invoice' && activity.source_id)) {
+      msg += language === 'ar'
+        ? '\n\n⚠️ تنبيه: هذا النشاط مرتبط بفاتورة. الفاتورة نفسها لن تُحذف.'
+        : '\n\n⚠️ Note: this activity is linked to an invoice. The invoice itself will NOT be deleted.';
+    }
+    if (!window.confirm(msg)) return;
+    try {
+      await membersAPI.deleteActivity(selectedMember.id, {
+        activity_id: activity.activity_id,
+        start_date: activity.start_date || '',
+        end_date: activity.end_date || ''
+      });
+      toast.success(language === 'ar' ? 'تم حذف النشاط' : 'Activity deleted');
+      const updatedMember = await membersAPI.getById(selectedMember.id);
+      setSelectedMember(updatedMember.data);
+      loadData();
+    } catch (error) {
+      const errorMsg = error.response?.data?.detail;
+      toast.error(typeof errorMsg === 'string' ? errorMsg : (language === 'ar' ? 'فشل حذف النشاط' : 'Failed to delete activity'));
+    }
+  };
+
   // Open renewal dialog
   const openRenewalDialog = (activity) => {
     const endDate = new Date(activity.end_date);
@@ -3162,6 +3191,19 @@ export const MembersPage = () => {
                                       data-testid={`renew-activity-${activity.activity_id}`}
                                     >
                                       <RefreshCcw className="w-3.5 h-3.5" />
+                                    </Button>
+                                  )}
+                                  {/* Delete button (admin only) */}
+                                  {isAdmin && !isEditing && (
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      className="border-red-400 text-red-600 hover:bg-red-50 h-8 px-2"
+                                      onClick={() => handleDeleteActivity(activity)}
+                                      title={language === 'ar' ? 'حذف النشاط نهائياً' : 'Delete activity'}
+                                      data-testid={`delete-activity-${activity.activity_id}`}
+                                    >
+                                      <Trash2 className="w-3.5 h-3.5" />
                                     </Button>
                                   )}
                                 </div>
