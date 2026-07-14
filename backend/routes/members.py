@@ -641,7 +641,17 @@ async def delete_member_activity(member_id: str, payload: dict, current_user: di
 
 @router.post("/{member_id}/activities")
 async def add_member_activity(member_id: str, activity: MemberActivity, current_user: dict = Depends(get_current_user)):
-    """Add an activity to a member"""
+    """Add an activity to a member.
+
+    Requires the ``members-add-activity`` permission, but users holding the
+    ``renewals`` permission are also allowed because the renewal flow adds a
+    new activity period through this same endpoint.
+    """
+    if not current_user.get("is_admin", False):
+        user_doc = await db.users.find_one({"id": current_user.get("user_id")}, {"_id": 0, "permissions": 1})
+        perms = (user_doc or {}).get("permissions") or []
+        if not ("members-add-activity" in perms or "renewals" in perms):
+            raise HTTPException(status_code=403, detail="تتطلب هذه العملية صلاحية 'إضافة نشاط لعضو' أو 'التجديدات'")
     result = await db.members.update_one(
         _scoped_member_query(member_id, current_user),
         {"$push": {"activities": activity.model_dump()}}

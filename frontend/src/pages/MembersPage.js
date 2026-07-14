@@ -62,6 +62,8 @@ export const MembersPage = () => {
   const { selectedBranchId, isAdmin, user } = useAuth();
   const canAddMember = isAdmin || (user?.permissions || []).includes('members-create');
   const canViewPhones = isAdmin || (user?.permissions || []).includes('member-phones');
+  const canAddActivity = isAdmin || (user?.permissions || []).includes('members-add-activity');
+  const canRenewActivity = isAdmin || (user?.permissions || []).includes('renewals') || (user?.permissions || []).includes('members-add-activity');
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const [members, setMembers] = useState([]);
@@ -3059,14 +3061,16 @@ export const MembersPage = () => {
                         <Activity className="w-5 h-5 text-primary" />
                         {t('member_activities')}
                       </h3>
-                      <Button 
-                        size="sm" 
-                        onClick={() => { setIsActivityDialogOpen(true); if (!levelsLoaded) loadLevels(); }}
-                        data-testid="add-activity-btn"
-                      >
-                        <Plus className="w-4 h-4 me-1" />
-                        {t('add_activity')}
-                      </Button>
+                      {canAddActivity && (
+                        <Button 
+                          size="sm" 
+                          onClick={() => { setIsActivityDialogOpen(true); if (!levelsLoaded) loadLevels(); }}
+                          data-testid="add-activity-btn"
+                        >
+                          <Plus className="w-4 h-4 me-1" />
+                          {t('add_activity')}
+                        </Button>
+                      )}
                     </div>
                     
                     {selectedMember.activities?.length > 0 ? (
@@ -3182,7 +3186,7 @@ export const MembersPage = () => {
                                     {isEditing ? <X className="w-3.5 h-3.5" /> : <Edit className="w-3.5 h-3.5" />}
                                   </Button>
                                   {/* Renewal button */}
-                                  {showRenewalBtn && !isEditing && (
+                                  {canRenewActivity && showRenewalBtn && !isEditing && (
                                     <Button
                                       size="sm"
                                       variant={isExpired ? "default" : "outline"}

@@ -53,7 +53,7 @@ ALL_PERMISSIONS = [
     'settings', 'tournaments', 'social-publisher', 'renewals', 'daily-ledger',
     'day-extensions', 'backup', 'push-notifications', 'member-card', 'salaries',
     'internal-expenses-create', 'internal-expenses-approve', 'scanner-station',
-    'marketers', 'rentals'
+    'marketers', 'rentals', 'members-add-activity'
 ]
 
 # ============ ROUTES ============
