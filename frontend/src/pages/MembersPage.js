@@ -287,6 +287,24 @@ export const MembersPage = () => {
     { id: 'karate', name_ar: 'الكاراتيه', name_en: 'Karate', icon: '🥋', color: 'bg-red-500' },
   ];
 
+  // Scope activities to a branch: if the branch has its own activities show
+  // ONLY those (hide globals); fall back to global (no-branch) activities only
+  // when the branch has none of its own. Mirrors CreateEditInvoiceDialog.
+  const scopeActivitiesToBranch = (acts, branchId) => {
+    const withId = (acts || []).filter(a => a && a.id);
+    if (!branchId) return withId;
+    const branchOnly = withId.filter(a => (a.branch_id || '') === branchId);
+    if (branchOnly.length > 0) return branchOnly;
+    return withId.filter(a => !(a.branch_id || ''));
+  };
+
+  // Branch context for activity pickers: the selected member's branch, else
+  // the page branch filter (admins), else the logged-in user's own branch.
+  const activityPickerBranch = selectedMember?.branch_id
+    || (selectedBranchId && selectedBranchId !== 'all' ? selectedBranchId : '')
+    || user?.branch_id
+    || '';
+
   // Parse activity name to get main activity. Mirrors LevelsPage identity
   // rule: for "<activity> - <slot>" names the prefix IS the activity —
   // built-in only on an EXACT sport-name match, otherwise the prefix is its
@@ -2427,7 +2445,7 @@ export const MembersPage = () => {
                         </SelectTrigger>
                         <SelectContent>
                           <SelectItem value="none">{language === 'ar' ? '-- بدون نشاط --' : '-- No Activity --'}</SelectItem>
-                          {activities.map(activity => (
+                          {scopeActivitiesToBranch(activities, activityPickerBranch).map(activity => (
                             <SelectItem key={activity.id} value={activity.id}>
                               {language === 'ar' ? activity.name_ar : activity.name}
                             </SelectItem>
@@ -3169,11 +3187,23 @@ export const MembersPage = () => {
                                       className="w-full h-9 text-sm border rounded-md px-2 bg-white"
                                     >
                                       <option value="">{language === 'ar' ? '-- اختر النشاط --' : '-- Select Activity --'}</option>
-                                      {activities.map(act => (
-                                        <option key={act.id} value={act.id}>
-                                          {language === 'ar' ? act.name_ar : act.name}
-                                        </option>
-                                      ))}
+                                      {(() => {
+                                        const scoped = scopeActivitiesToBranch(activities, selectedMember?.branch_id || activityPickerBranch);
+                                        const currentId = editActivityForm.activity_id;
+                                        if (currentId && !scoped.some(a => a.id === currentId)) {
+                                          const current = (activities || []).find(a => a.id === currentId);
+                                          scoped.unshift({
+                                            id: currentId,
+                                            name_ar: `${current?.name_ar || editActivityForm.activity_name || currentId} (${language === 'ar' ? 'نشاط حالي' : 'current'})`,
+                                            name: `${current?.name || editActivityForm.activity_name || currentId} (current)`
+                                          });
+                                        }
+                                        return scoped.map(act => (
+                                          <option key={act.id} value={act.id}>
+                                            {language === 'ar' ? act.name_ar : act.name}
+                                          </option>
+                                        ));
+                                      })()}
                                     </select>
                                   </div>
                                   {/* Level selector - cascading */}
@@ -4370,7 +4400,7 @@ export const MembersPage = () => {
                     <SelectValue placeholder={t('activity_name')} />
                   </SelectTrigger>
                   <SelectContent>
-                    {activities.map(activity => (
+                    {scopeActivitiesToBranch(activities, selectedMember?.branch_id || activityPickerBranch).map(activity => (
                       <SelectItem key={activity.id} value={activity.id}>
                         {language === 'ar' ? activity.name_ar : activity.name}
                       </SelectItem>
