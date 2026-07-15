@@ -2553,35 +2553,54 @@ async def get_expiring_subscriptions(
         query["branch_id"] = branch_filter
     elif not is_admin and branch_id:
         query["branch_id"] = branch_id
-    
-    members = await db.members.find(query, {"_id": 0}).to_list(10000)
-    
-    expiring = []
-    for member in members:
-        for activity in member.get("activities", []):
-            if activity.get("status") == "active":
-                end_date = activity.get("end_date", "")
-                if end_date and today <= end_date <= threshold_date:
-                    try:
-                        end_date_obj = datetime.strptime(end_date, '%Y-%m-%d')
-                        today_obj = datetime.strptime(today, '%Y-%m-%d')
-                        days_remaining = (end_date_obj - today_obj).days
-                    except:
-                        days_remaining = 0
-                    expiring.append({
-                        "member_id": member["id"],
-                        "member_code": member.get("member_code", ""),
-                        "member_name": member.get("name_ar", member.get("name", "")),
-                        "member_photo": member.get("photo", ""),
-                        "phone": member.get("phone", ""),
-                        "branch_id": member.get("branch_id", ""),
-                        "activity_name": activity.get("activity_name", ""),
-                        "activity_id": activity.get("activity_id", ""),
-                        "end_date": end_date,
-                        "days_remaining": days_remaining
-                    })
-    
-    return sorted(expiring, key=lambda x: x["end_date"])
+
+    # Pre-filter in Mongo so we only pull members that actually have an
+    # expiring active activity — previously this fetched EVERY member doc
+    # (with embedded base64 photos, ~2MB+/branch) just to filter in Python.
+    query["activities"] = {"$elemMatch": {
+        "status": "active",
+        "end_date": {"$gte": today, "$lte": threshold_date},
+    }}
+
+    async def _load_expiring():
+        members = await db.members.find(query, {"_id": 0}).to_list(10000)
+
+        expiring = []
+        for member in members:
+            for activity in member.get("activities", []):
+                if activity.get("status") == "active":
+                    end_date = activity.get("end_date", "")
+                    if end_date and today <= end_date <= threshold_date:
+                        try:
+                            end_date_obj = datetime.strptime(end_date, '%Y-%m-%d')
+                            today_obj = datetime.strptime(today, '%Y-%m-%d')
+                            days_remaining = (end_date_obj - today_obj).days
+                        except:
+                            days_remaining = 0
+                        expiring.append({
+                            "member_id": member["id"],
+                            "member_code": member.get("member_code", ""),
+                            "member_name": member.get("name_ar", member.get("name", "")),
+                            "member_photo": member.get("photo", ""),
+                            "phone": member.get("phone", ""),
+                            "branch_id": member.get("branch_id", ""),
+                            "activity_name": activity.get("activity_name", ""),
+                            "activity_id": activity.get("activity_id", ""),
+                            "end_date": end_date,
+                            "days_remaining": days_remaining
+                        })
+        
+        return sorted(expiring, key=lambda x: x["end_date"])
+
+    # Stale-while-revalidate: a renewals report tolerates ~60s staleness, and
+    # the expiring members' docs carry base64 photos over Atlas free-tier's
+    # ~100KB/s uncompressed wire, costing seconds per repeated load.
+    from utils.cache import cache_swr as _cache_swr
+    from utils.tenant import get_current_tenant_slug as _get_tslug
+    _scope = query.get("branch_id") or "all"
+    return await _cache_swr(
+        f"expiring:{_get_tslug()}:{_scope}:{days}", _load_expiring, fresh_ttl=60, stale_ttl=600
+    )
 
 @api_router.get("/company-info")
 async def get_company_info():
@@ -2717,70 +2736,99 @@ async def get_dashboard_stats(
     else:
         branch_query = {"branch_id": branch_id} if branch_id else {}
     
-    # Get counts
-    members_count = await db.members.count_documents(branch_query)
-    activities_count = await db.activities.count_documents(branch_query if branch_query else {})
-    coaches_count = await db.coaches.count_documents(branch_query if branch_query else {})
-    
-    # Get active subscriptions count
-    members = await db.members.find(branch_query, {"_id": 0}).to_list(10000)
-    active_subscriptions = sum(
-        1 for m in members 
-        for a in m.get("activities", []) 
-        if a.get("status") == "active"
+    async def _load_stats():
+        # This month's revenue query
+        start_of_month = datetime.now(timezone.utc).replace(day=1, hour=0, minute=0, second=0, microsecond=0).isoformat()
+        invoice_query = {"status": "paid", "paid_at": {"$gte": start_of_month}}
+        # Apply branch filter for invoices (admin with filter or non-admin)
+        if is_admin and branch_filter and branch_filter != "all":
+            invoice_query["branch_id"] = branch_filter
+        elif not is_admin and branch_id:
+            invoice_query["branch_id"] = branch_id
+
+        forms_query = {"status": "pending"}
+        if is_admin and branch_filter and branch_filter != "all":
+            forms_query["branch_id"] = branch_filter
+        elif not is_admin and branch_id:
+            forms_query["branch_id"] = branch_id
+
+        # Run all independent queries concurrently (lean projections — full member
+        # docs embed base64 photos and the old sequential fetches took 25s+)
+        (
+            members_count,
+            activities_count,
+            coaches_count,
+            members,
+            month_invoices,
+            pending_forms,
+        ) = await asyncio.gather(
+            db.members.count_documents(branch_query),
+            db.activities.count_documents(branch_query if branch_query else {}),
+            db.coaches.count_documents(branch_query if branch_query else {}),
+            db.members.find(
+                branch_query,
+                {"_id": 0, "activities.status": 1, "activities.end_date": 1, "activities.activity_name": 1}
+            ).to_list(10000),
+            db.invoices.find(invoice_query, {"_id": 0, "total": 1}).to_list(10000),
+            db.registration_forms.find(forms_query, {"_id": 0, "total": 1}).to_list(10000),
+        )
+
+        active_subscriptions = sum(
+            1 for m in members 
+            for a in m.get("activities", []) 
+            if a.get("status") == "active"
+        )
+        month_revenue = sum(inv.get("total", 0) for inv in month_invoices)
+        
+        # Get expiring subscriptions (next 7 days)
+        threshold_date = (datetime.now(timezone.utc) + timedelta(days=7)).isoformat()
+        today = datetime.now(timezone.utc).isoformat()
+        expiring_count = 0
+        for member in members:
+            for activity in member.get("activities", []):
+                if activity.get("status") == "active":
+                    end_date = activity.get("end_date", "")
+                    if end_date and today <= end_date <= threshold_date:
+                        expiring_count += 1
+        
+        # Get members by activity
+        activity_counts = {}
+        for member in members:
+            for activity in member.get("activities", []):
+                if activity.get("status") == "active":
+                    act_name = activity.get("activity_name", "Unknown")
+                    activity_counts[act_name] = activity_counts.get(act_name, 0) + 1
+        
+        # Pending registration forms total (fetched concurrently above)
+        pending_forms_total = sum(form.get("total", 0) for form in pending_forms)
+        pending_forms_count = len(pending_forms)
+        
+        return {
+            "members_count": members_count,
+            "activities_count": activities_count,
+            "coaches_count": coaches_count,
+            "active_subscriptions": active_subscriptions,
+            "month_revenue": month_revenue,
+            "expiring_count": expiring_count,
+            "members_by_activity": [{"name": k, "count": v} for k, v in activity_counts.items()],
+            "pending_forms_total": pending_forms_total,
+            "pending_forms_count": pending_forms_count
+        }
+
+    # Stale-while-revalidate: dashboard counters tolerate ~60s staleness, and
+    # Atlas free-tier wire throughput (~100KB/s, no compression) makes the
+    # all-branches fetch cost seconds if repeated on every load.
+    from utils.cache import cache_swr as _cache_swr
+    from utils.tenant import get_current_tenant_slug as _get_tslug
+    if is_admin and branch_filter and branch_filter != "all":
+        _scope = branch_filter
+    elif is_admin:
+        _scope = "all"
+    else:
+        _scope = branch_id or "all"
+    return await _cache_swr(
+        f"dashstats:{_get_tslug()}:{_scope}", _load_stats, fresh_ttl=60, stale_ttl=600
     )
-    
-    # Get this month's revenue
-    start_of_month = datetime.now(timezone.utc).replace(day=1, hour=0, minute=0, second=0, microsecond=0).isoformat()
-    invoice_query = {"status": "paid", "paid_at": {"$gte": start_of_month}}
-    # Apply branch filter for invoices (admin with filter or non-admin)
-    if is_admin and branch_filter and branch_filter != "all":
-        invoice_query["branch_id"] = branch_filter
-    elif not is_admin and branch_id:
-        invoice_query["branch_id"] = branch_id
-    month_invoices = await db.invoices.find(invoice_query, {"_id": 0}).to_list(10000)
-    month_revenue = sum(inv["total"] for inv in month_invoices)
-    
-    # Get expiring subscriptions (next 7 days)
-    threshold_date = (datetime.now(timezone.utc) + timedelta(days=7)).isoformat()
-    today = datetime.now(timezone.utc).isoformat()
-    expiring_count = 0
-    for member in members:
-        for activity in member.get("activities", []):
-            if activity.get("status") == "active":
-                end_date = activity.get("end_date", "")
-                if end_date and today <= end_date <= threshold_date:
-                    expiring_count += 1
-    
-    # Get members by activity
-    activity_counts = {}
-    for member in members:
-        for activity in member.get("activities", []):
-            if activity.get("status") == "active":
-                act_name = activity.get("activity_name", "Unknown")
-                activity_counts[act_name] = activity_counts.get(act_name, 0) + 1
-    
-    # Get pending registration forms total
-    forms_query = {"status": "pending"}
-    if is_admin and branch_filter and branch_filter != "all":
-        forms_query["branch_id"] = branch_filter
-    elif not is_admin and branch_id:
-        forms_query["branch_id"] = branch_id
-    pending_forms = await db.registration_forms.find(forms_query, {"_id": 0}).to_list(10000)
-    pending_forms_total = sum(form.get("total", 0) for form in pending_forms)
-    pending_forms_count = len(pending_forms)
-    
-    return {
-        "members_count": members_count,
-        "activities_count": activities_count,
-        "coaches_count": coaches_count,
-        "active_subscriptions": active_subscriptions,
-        "month_revenue": month_revenue,
-        "expiring_count": expiring_count,
-        "members_by_activity": [{"name": k, "count": v} for k, v in activity_counts.items()],
-        "pending_forms_total": pending_forms_total,
-        "pending_forms_count": pending_forms_count
-    }
 
 # ============ SEED DATA ============
 

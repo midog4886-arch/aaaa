@@ -793,22 +793,80 @@ async def get_today_summary(
     if effective_branch:
         query["branch_id"] = effective_branch
 
-    today_records = await db.attendance.find(
-        {**query, "date": today_str}, {"_id": 0}
-    ).sort("created_at", -1).to_list(5000)
+    import asyncio as _aio
+    from utils.cache import cache_swr
+    from utils.tenant import get_current_tenant_slug
 
-    members = await db.members.find(query, {"_id": 0}).to_list(10000)
+    # Today's attendance records are ALWAYS fetched fresh so check-ins show
+    # up instantly on the board.
+    _attendance_task = _aio.ensure_future(
+        db.attendance.find(
+            {**query, "date": today_str}, {"_id": 0}
+        ).sort("created_at", -1).to_list(5000)
+    )
+
+    async def _load_heavy():
+        # Lean projections + concurrent fetches — full member docs embed
+        # base64 photos (~2MB+/branch) and the old sequential full-doc fetches
+        # made this endpoint take 25s+. Photos for the expected/absent lists
+        # are batch-fetched separately below for just those members.
+        _members, _levels = await _aio.gather(
+            db.members.find(query, {
+                "_id": 0, "id": 1, "status": 1, "created_at": 1,
+                "name": 1, "name_ar": 1, "guardian_name": 1, "guardian_name_ar": 1,
+                "member_code": 1, "phone": 1, "branch_id": 1,
+                "activities.activity_id": 1, "activities.activity_name": 1,
+                "activities.status": 1, "activities.start_date": 1, "activities.end_date": 1,
+                "activities.schedule": 1, "activities.day_times": 1, "activities.level_id": 1,
+            }).to_list(10000),
+            db.levels.find(
+                {}, {"_id": 0, "id": 1, "time_slot": 1, "activity_name": 1, "name": 1, "days": 1}
+            ).to_list(2000),
+        )
+        _member_ids = [m.get("id") for m in _members if m.get("id")]
+        _inv_by_member = {}
+        _freezes = set()
+        if _member_ids:
+            _inv_docs, _freeze_docs = await _aio.gather(
+                db.invoices.find(
+                    {"member_id": {"$in": _member_ids}, "status": {"$in": ["paid", "partial"]}},
+                    {"_id": 0, "member_id": 1, "items.start_date": 1, "items.end_date": 1,
+                     "items.activity_id": 1, "items.activity_name": 1, "items.schedule": 1}
+                ).to_list(100000),
+                db.member_freezes.find(
+                    {"member_id": {"$in": _member_ids}, "status": "active",
+                     "start_date": {"$lte": today_str}, "end_date": {"$gte": today_str}},
+                    {"_id": 0, "member_id": 1}
+                ).to_list(100000),
+            )
+            for inv in _inv_docs:
+                _inv_by_member.setdefault(inv.get("member_id"), []).append(inv)
+            for f in _freeze_docs:
+                _freezes.add(f.get("member_id"))
+        return {
+            "members": _members,
+            "levels_docs": _levels,
+            "invoices_by_member": _inv_by_member,
+            "active_freezes": list(_freezes),
+        }
+
+    # The heavy, rarely-changing inputs (members' schedules, paid invoices,
+    # levels, freezes) use a stale-while-revalidate cache. Atlas free tier caps
+    # wire throughput (~100KB/s, no compression), so re-fetching ~1.2MB on
+    # every dashboard load cost 14s+ for the all-branches view. Staleness only
+    # delays NEW members/renewals appearing in the "expected" list; present
+    # members always come from the fresh attendance records above.
+    _cache_key = f"todaysum:{get_current_tenant_slug()}:{effective_branch or 'all'}:{today_str}"
+    _heavy = await cache_swr(_cache_key, _load_heavy, fresh_ttl=60, stale_ttl=600)
+    members = _heavy["members"]
+    levels_docs = _heavy["levels_docs"]
+    invoices_by_member_pre = _heavy["invoices_by_member"]
+    active_freezes = set(_heavy["active_freezes"])
+
+    today_records = await _attendance_task
     active_member_ids = {m.get("id") for m in members if m.get("id") and m.get("status", "active") == "active"}
     member_created_at = {m.get("id"): (m.get("created_at") or "") for m in members if m.get("id")}
-
     member_ids_all = [m.get("id") for m in members if m.get("id")]
-    invoices_by_member_pre = {}
-    if member_ids_all:
-        async for inv in db.invoices.find(
-            {"member_id": {"$in": member_ids_all}, "status": {"$in": ["paid", "partial"]}},
-            {"_id": 0, "member_id": 1, "items": 1}
-        ):
-            invoices_by_member_pre.setdefault(inv.get("member_id"), []).append(inv)
 
     def _has_active_subscription(mid):
         for inv in invoices_by_member_pre.get(mid, []):
@@ -825,23 +883,23 @@ async def get_today_summary(
     members_with_active_sub = {mid for mid in active_member_ids if _has_active_subscription(mid)}
     members_by_id = {m.get("id"): m for m in members if m.get("id")}
 
-    # VIP members can check in at a branch other than their own; the record is
-    # tagged to THIS branch but the member doc lives under their home branch and
-    # is absent from this branch's member set. Pull those foreign VIP visitors in
-    # so the branch summary counts and shows them as present today.
-    if effective_branch:
-        _foreign_ids = list({
-            r.get("member_id") for r in today_records
-            if r.get("member_id") and r.get("member_id") not in members_by_id
-        })
-        if _foreign_ids:
-            async for fm in db.members.find({"id": {"$in": _foreign_ids}}, {"_id": 0}):
-                fid = fm.get("id")
-                if not fid:
-                    continue
-                members_by_id[fid] = fm
-                if fm.get("status", "active") == "active":
-                    active_member_ids.add(fid)
+    # Any checked-in member missing from the member set gets fetched directly:
+    # VIP members can check in at a branch other than their own (the record is
+    # tagged to THIS branch but the member doc lives under their home branch),
+    # and a brand-new member may check in before the short-TTL member cache
+    # above refreshes. Pull those in so they count and show as present today.
+    _foreign_ids = list({
+        r.get("member_id") for r in today_records
+        if r.get("member_id") and r.get("member_id") not in members_by_id
+    })
+    if _foreign_ids:
+        async for fm in db.members.find({"id": {"$in": _foreign_ids}}, {"_id": 0}):
+            fid = fm.get("id")
+            if not fid:
+                continue
+            members_by_id[fid] = fm
+            if fm.get("status", "active") == "active":
+                active_member_ids.add(fid)
 
     def _hour_12(text):
         if not text:
@@ -861,7 +919,6 @@ async def get_today_summary(
             return h
         return h - 12
 
-    levels_docs = await db.levels.find({}, {"_id": 0, "id": 1, "time_slot": 1, "activity_name": 1, "name": 1, "days": 1}).to_list(2000)
     level_hour_by_id = {}
     level_days_by_id = {}
     for lv in levels_docs:
@@ -947,16 +1004,6 @@ async def get_today_summary(
 
     member_ids = member_ids_all
     invoices_by_member = invoices_by_member_pre
-
-    active_freezes = set()
-    if member_ids:
-        freezes_cursor = db.member_freezes.find(
-            {"member_id": {"$in": member_ids}, "status": "active",
-             "start_date": {"$lte": today_str}, "end_date": {"$gte": today_str}},
-            {"_id": 0, "member_id": 1}
-        )
-        async for f in freezes_cursor:
-            active_freezes.add(f.get("member_id"))
 
     expected = []
     for m in members:
@@ -1056,13 +1103,26 @@ async def get_today_summary(
                 "guardian_name_ar": m.get("guardian_name_ar", "") or m.get("guardian_name", ""),
                 "guardian_name": m.get("guardian_name", ""),
                 "member_code": m.get("member_code", ""),
-                "member_photo": m.get("photo", ""),
+                "member_photo": "",
                 "phone": m.get("phone", ""),
                 "branch_id": m.get("branch_id", ""),
                 "activities": unique_acts,
                 "is_present": mid in present_by_member,
                 "created_at": m.get("created_at", ""),
             })
+
+    # Batch-fetch photos only for the expected/absent members (the lean member
+    # fetch above intentionally skips the heavy base64 photo field).
+    if expected:
+        _exp_ids = [e["member_id"] for e in expected]
+        _photo_by_id = {}
+        async for pm in db.members.find(
+            {"id": {"$in": _exp_ids}, "photo": {"$exists": True, "$nin": [None, ""]}},
+            {"_id": 0, "id": 1, "photo": 1}
+        ):
+            _photo_by_id[pm.get("id")] = pm.get("photo", "")
+        for e in expected:
+            e["member_photo"] = _photo_by_id.get(e["member_id"], "")
 
     expected.sort(key=lambda e: str(e.get("created_at") or ""), reverse=True)
     absent = [e for e in expected if not e["is_present"]]

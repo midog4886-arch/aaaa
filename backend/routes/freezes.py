@@ -182,6 +182,8 @@ async def create_freeze(freeze: FreezeCreate, current_user: dict = Depends(get_c
     }
 
     await db.member_freezes.insert_one(freeze_doc)
+    from utils.cache import invalidate_dashboard_caches
+    invalidate_dashboard_caches()
     try:
         from utils.audit import log_audit
         await log_audit(
@@ -376,6 +378,8 @@ async def cancel_freeze(freeze_id: str, current_user: dict = Depends(get_current
         {"id": freeze_id},
         {"$set": {"status": "cancelled", "cancelled_at": now_str}}
     )
+    from utils.cache import invalidate_dashboard_caches
+    invalidate_dashboard_caches()
 
     notification = {
         "id": str(uuid.uuid4()),

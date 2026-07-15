@@ -714,6 +714,9 @@ async def pay_invoice(invoice_id: str, current_user: dict = Depends(get_current_
                     invoice_id, mid, e
                 )
 
+    from utils.cache import invalidate_dashboard_caches
+    invalidate_dashboard_caches()
+
     return {
         "message": "Invoice paid",
         "status": "paid",

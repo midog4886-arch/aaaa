@@ -9,7 +9,7 @@ from .common import db, get_current_user
 from utils.auth import require_branch_scope, resolve_branch_filter, require_permission
 from utils.sequences import get_branch_seq_start
 from utils.member_code import generate_member_code
-from utils.cache import cache_invalidate
+from utils.cache import cache_invalidate, invalidate_dashboard_caches
 
 router = APIRouter(prefix="/members", tags=["members"])
 
@@ -330,6 +330,7 @@ async def _create_member_core(member: MemberCreate, current_user: dict) -> Membe
         "created_at": datetime.now(timezone.utc).isoformat()
     }
     await db.members.insert_one(member_doc)
+    invalidate_dashboard_caches()
     try:
         await db.push_subscriptions.update_many(
             {"member_id": member_id, "is_active": True},
@@ -385,6 +386,7 @@ async def update_member(member_id: str, member: MemberUpdate, current_user: dict
     )
     if not result:
         raise HTTPException(status_code=404, detail="Member not found")
+    invalidate_dashboard_caches()
     if "preferred_language" in update_data:
         try:
             await db.push_subscriptions.update_many(
@@ -435,6 +437,7 @@ async def _transfer_member_doc(member: dict, new_branch: str, transfer_date: str
         {"$set": {"branch_id": new_branch, "activities": new_activities},
          "$push": {"transfers": transfer_entry}}
     )
+    invalidate_dashboard_caches()
     # Drop the member from the old (branch-bound) level membership caches.
     valid_level_ids = [lid for lid in old_level_ids if lid]
     if valid_level_ids:
@@ -566,6 +569,7 @@ async def delete_member(member_id: str, current_user: dict = Depends(get_current
     result = await db.members.delete_one(_scoped_member_query(member_id, current_user))
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Member not found")
+    invalidate_dashboard_caches()
     from utils.audit import log_audit
     await log_audit(
         actor=current_user,
@@ -619,6 +623,7 @@ async def delete_member_activity(member_id: str, payload: dict, current_user: di
     )
     if result.modified_count == 0:
         raise HTTPException(status_code=404, detail="Activity not found on member")
+    invalidate_dashboard_caches()
 
     # Level cache cleanup: drop the member from the level's members[] only if
     # no remaining activity still links that level.
@@ -660,6 +665,7 @@ async def add_member_activity(member_id: str, activity: MemberActivity, current_
     )
     if result.matched_count == 0:
         raise HTTPException(status_code=404, detail="Member not found")
+    invalidate_dashboard_caches()
     from utils.audit import log_audit
     await log_audit(
         actor=current_user,
@@ -917,6 +923,7 @@ async def update_member_activity(member_id: str, activity_id: str, activity: Mem
     )
     if result.matched_count == 0:
         raise HTTPException(status_code=404, detail="Member or activity not found")
+    invalidate_dashboard_caches()
     try:
         from utils.audit import log_audit
         await log_audit(
