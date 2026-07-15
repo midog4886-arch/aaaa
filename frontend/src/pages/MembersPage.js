@@ -341,26 +341,95 @@ export const MembersPage = () => {
   // Levels are branch-bound, so scope the picker to the member's branch
   // (else page filter / user's branch): levels of OTHER branches must not
   // appear. Levels without branch_id (legacy/global) stay visible everywhere.
-  const groupedLevelsForSelector = React.useMemo(() => {
-    const scopedLevels = activityPickerBranch
-      ? levels.filter(l => !(l.branch_id || '') || l.branch_id === activityPickerBranch)
-      : levels;
+  const buildGroupedLevels = (sourceLevels) => {
     const grouped = {};
-    scopedLevels.forEach(level => {
+    (sourceLevels || []).forEach(level => {
       const mainActivity = parseActivityForLevel(level.activity_name);
       if (!grouped[mainActivity]) grouped[mainActivity] = {};
-      
+
       let timeSlot = level.activity_name;
       if (level.activity_name.includes(' - ')) {
         timeSlot = level.activity_name.split(' - ')[1] || level.activity_name;
       }
-      
+
       if (!grouped[mainActivity][timeSlot]) grouped[mainActivity][timeSlot] = [];
       grouped[mainActivity][timeSlot].push(level);
     });
     return grouped;
+  };
+
+  const scopeLevelsToBranch = (src) => activityPickerBranch
+    ? (src || []).filter(l => !(l.branch_id || '') || l.branch_id === activityPickerBranch)
+    : (src || []);
+
+  // Day-aware grouping (mirrors the invoice level picker): when the admin has
+  // already picked training days, only levels that run on at least one of
+  // those days are offered. Levels without a days[] list stay visible.
+  const AR_TO_EN_DAY = {
+    'الأحد': 'sunday',
+    'الإثنين': 'monday',
+    'الاثنين': 'monday',
+    'الثلاثاء': 'tuesday',
+    'الأربعاء': 'wednesday',
+    'الاربعاء': 'wednesday',
+    'الخميس': 'thursday',
+    'الجمعة': 'friday',
+    'السبت': 'saturday',
+  };
+
+  const filterLevelsByDays = (sourceLevels, trainingDays) => {
+    if (!trainingDays || trainingDays.length === 0) return sourceLevels;
+    const wanted = trainingDays.map(d => AR_TO_EN_DAY[d]).filter(Boolean);
+    if (wanted.length === 0) return sourceLevels;
+    return sourceLevels.filter(level => {
+      const lvlDays = level.days;
+      if (!lvlDays || !Array.isArray(lvlDays) || lvlDays.length === 0) return true;
+      return lvlDays.some(d => wanted.includes(d));
+    });
+  };
+
+  const getGroupedLevelsForDays = (trainingDays) => {
+    return buildGroupedLevels(filterLevelsByDays(scopeLevelsToBranch(levels).filter(l => l.is_active !== false), trainingDays));
+  };
+
+  // Day-aware member count for a level (mirrors the invoice picker): only
+  // active-subscription members, deduped, still active at the form's start
+  // date, and — when training days are picked — the busiest selected day.
+  const countLevelMembersForForm = (level, trainingDays, startDate) => {
+    const isActiveAtStart = (mid) => {
+      if (!startDate) return true;
+      const mem = (members || []).find(mm => mm.id === mid);
+      if (!mem) return true;
+      const acts = mem.activities || [];
+      const levelActs = acts.filter(a => a.level_id === level.id);
+      const candidates = levelActs.length > 0 ? levelActs : acts;
+      return candidates.some(a => !a.end_date || a.end_date >= startDate);
+    };
+    let activeDet = (level.members_details || [])
+      .filter(m => m.has_active_sub !== false)
+      .filter((m, i, arr) => arr.findIndex(x => (x.id || x.member_id) === (m.id || m.member_id)) === i);
+    activeDet = activeDet.filter(m => isActiveAtStart(m.member_id || m.id));
+    const days = trainingDays || [];
+    if (days.length > 0 && activeDet.length > 0) {
+      return Math.max(...days.map(day => activeDet.filter(m => m.schedule && m.schedule.includes(day)).length), 0);
+    }
+    return activeDet.length;
+  };
+
+  const hourFromTime = (timeStr) => ((timeStr || '').match(/\d+/) || [])[0] || '';
+
+  // Grouped levels for the add/edit activity pickers, filtered like the
+  // invoice picker: branch scoping + the chosen training days.
+  const addPickerGrouped = React.useMemo(
+    () => getGroupedLevelsForDays(activityForm.training_days || []),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [levels, activityPickerBranch]);
+    [levels, activityPickerBranch, activityForm.training_days]
+  );
+  const editPickerGrouped = React.useMemo(
+    () => getGroupedLevelsForDays(editActivityForm.training_days || []),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [levels, activityPickerBranch, editActivityForm.training_days]
+  );
 
   useEffect(() => {
     loadData();
@@ -2628,7 +2697,7 @@ export const MembersPage = () => {
                               {memberLevelSelectorState.step === 'activity' && (
                                 <div className="p-2 space-y-1 max-h-48 overflow-y-auto">
                                   {MAIN_ACTIVITIES_FOR_LEVELS.map(activity => {
-                                    const activityLevels = groupedLevelsForSelector[activity.id] || {};
+                                    const activityLevels = addPickerGrouped[activity.id] || {};
                                     const timeCount = Object.keys(activityLevels).length;
                                     if (timeCount === 0) return null;
                                     return (
@@ -2649,8 +2718,8 @@ export const MembersPage = () => {
                                       </button>
                                     );
                                   })}
-                                  {Object.keys(groupedLevelsForSelector).filter(k => k !== 'other' && !MAIN_ACTIVITIES_FOR_LEVELS.some(a => a.id === k)).sort((a, b) => a.localeCompare(b, 'ar')).map(customKey => {
-                                    const timeCount = Object.keys(groupedLevelsForSelector[customKey] || {}).length;
+                                  {Object.keys(addPickerGrouped).filter(k => k !== 'other' && !MAIN_ACTIVITIES_FOR_LEVELS.some(a => a.id === k)).sort((a, b) => a.localeCompare(b, 'ar')).map(customKey => {
+                                    const timeCount = Object.keys(addPickerGrouped[customKey] || {}).length;
                                     if (timeCount === 0) return null;
                                     return (
                                       <button key={customKey} type="button" className="w-full flex items-center justify-between p-2 rounded-lg hover:bg-gray-100 transition-colors bg-purple-500 bg-opacity-10"
@@ -2665,8 +2734,8 @@ export const MembersPage = () => {
                               
                               {memberLevelSelectorState.step === 'time' && (
                                 <div className="p-2 space-y-1 max-h-48 overflow-y-auto">
-                                  {Object.entries(groupedLevelsForSelector[memberLevelSelectorState.selectedActivity] || {}).map(([timeSlot, timeLevels]) => {
-                                    const totalMembers = timeLevels.reduce((sum, l) => sum + (l.members || []).length, 0);
+                                  {Object.entries(addPickerGrouped[memberLevelSelectorState.selectedActivity] || {}).filter(([ts]) => { const h = hourFromTime(activityForm.training_time); if (!h) return true; return hourFromTime(ts) === h; }).sort(([a], [b]) => (parseInt(hourFromTime(a)) || 0) - (parseInt(hourFromTime(b)) || 0)).map(([timeSlot, timeLevels]) => {
+                                    const totalMembers = timeLevels.reduce((sum, l) => sum + countLevelMembersForForm(l, activityForm.training_days || [], activityForm.start_date || ''), 0);
                                     const totalCapacity = timeLevels.reduce((sum, l) => sum + (l.capacity || 10), 0);
                                     return (
                                       <button
@@ -2693,10 +2762,10 @@ export const MembersPage = () => {
                               
                               {memberLevelSelectorState.step === 'level' && (
                                 <div className="p-2 space-y-1 max-h-48 overflow-y-auto">
-                                  {(groupedLevelsForSelector[memberLevelSelectorState.selectedActivity]?.[memberLevelSelectorState.selectedTime] || [])
+                                  {(addPickerGrouped[memberLevelSelectorState.selectedActivity]?.[memberLevelSelectorState.selectedTime] || [])
                                     .sort((a, b) => a.level_number - b.level_number)
                                     .map(level => {
-                                      const memberCount = (level.members || []).length;
+                                      const memberCount = countLevelMembersForForm(level, activityForm.training_days || [], activityForm.start_date || '');
                                       const maxCapacity = level.capacity || 10;
                                       const isFull = memberCount >= maxCapacity;
                                       const fillPercent = Math.round((memberCount / maxCapacity) * 100);
@@ -3332,7 +3401,7 @@ export const MembersPage = () => {
                                         {editMemberLevelSelectorState.step === 'activity' && (
                                           <div className="p-2 space-y-1 max-h-48 overflow-y-auto">
                                             {MAIN_ACTIVITIES_FOR_LEVELS.map(activity => {
-                                              const activityLevels = groupedLevelsForSelector[activity.id] || {};
+                                              const activityLevels = editPickerGrouped[activity.id] || {};
                                               const timeCount = Object.keys(activityLevels).length;
                                               if (timeCount === 0) return null;
                                               return (
@@ -3343,8 +3412,8 @@ export const MembersPage = () => {
                                                 </button>
                                               );
                                             })}
-                                            {Object.keys(groupedLevelsForSelector).filter(k => k !== 'other' && !MAIN_ACTIVITIES_FOR_LEVELS.some(a => a.id === k)).sort((a, b) => a.localeCompare(b, 'ar')).map(customKey => {
-                                              const timeCount = Object.keys(groupedLevelsForSelector[customKey] || {}).length;
+                                            {Object.keys(editPickerGrouped).filter(k => k !== 'other' && !MAIN_ACTIVITIES_FOR_LEVELS.some(a => a.id === k)).sort((a, b) => a.localeCompare(b, 'ar')).map(customKey => {
+                                              const timeCount = Object.keys(editPickerGrouped[customKey] || {}).length;
                                               if (timeCount === 0) return null;
                                               return (
                                                 <button key={customKey} type="button" className="w-full flex items-center justify-between p-2 rounded-lg hover:bg-gray-100 transition-colors bg-purple-500 bg-opacity-10"
@@ -3358,8 +3427,8 @@ export const MembersPage = () => {
                                         )}
                                         {editMemberLevelSelectorState.step === 'time' && (
                                           <div className="p-2 space-y-1 max-h-48 overflow-y-auto">
-                                            {Object.entries(groupedLevelsForSelector[editMemberLevelSelectorState.selectedActivity] || {}).map(([timeSlot, timeLevels]) => {
-                                              const totalMembers = timeLevels.reduce((sum, l) => sum + (l.members || []).length, 0);
+                                            {Object.entries(editPickerGrouped[editMemberLevelSelectorState.selectedActivity] || {}).filter(([ts]) => { const h = hourFromTime(editActivityForm.training_time); if (!h) return true; return hourFromTime(ts) === h; }).sort(([a], [b]) => (parseInt(hourFromTime(a)) || 0) - (parseInt(hourFromTime(b)) || 0)).map(([timeSlot, timeLevels]) => {
+                                              const totalMembers = timeLevels.reduce((sum, l) => sum + countLevelMembersForForm(l, editActivityForm.training_days || [], editActivityForm.start_date || ''), 0);
                                               const totalCapacity = timeLevels.reduce((sum, l) => sum + (l.capacity || 10), 0);
                                               return (
                                                 <button key={timeSlot} type="button" className="w-full flex items-center justify-between p-2 rounded-lg hover:bg-blue-50 transition-colors border"
@@ -3376,10 +3445,10 @@ export const MembersPage = () => {
                                         )}
                                         {editMemberLevelSelectorState.step === 'level' && (
                                           <div className="p-2 space-y-1 max-h-48 overflow-y-auto">
-                                            {(groupedLevelsForSelector[editMemberLevelSelectorState.selectedActivity]?.[editMemberLevelSelectorState.selectedTime] || [])
+                                            {(editPickerGrouped[editMemberLevelSelectorState.selectedActivity]?.[editMemberLevelSelectorState.selectedTime] || [])
                                               .sort((a, b) => a.level_number - b.level_number)
                                               .map(level => {
-                                                const memberCount = (level.members || []).length;
+                                                const memberCount = countLevelMembersForForm(level, editActivityForm.training_days || [], editActivityForm.start_date || '');
                                                 const maxCapacity = level.capacity || 10;
                                                 const isFull = memberCount >= maxCapacity;
                                                 const fillPercent = Math.round((memberCount / maxCapacity) * 100);
@@ -4587,7 +4656,7 @@ export const MembersPage = () => {
                     {memberLevelSelectorState.step === 'activity' && (
                       <div className="p-2 space-y-1 max-h-48 overflow-y-auto">
                         {MAIN_ACTIVITIES_FOR_LEVELS.map(activity => {
-                          const activityLevels = groupedLevelsForSelector[activity.id] || {};
+                          const activityLevels = addPickerGrouped[activity.id] || {};
                           const timeCount = Object.keys(activityLevels).length;
                           if (timeCount === 0) return null;
                           return (
@@ -4608,8 +4677,8 @@ export const MembersPage = () => {
                             </button>
                           );
                         })}
-                        {Object.keys(groupedLevelsForSelector).filter(k => k !== 'other' && !MAIN_ACTIVITIES_FOR_LEVELS.some(a => a.id === k)).sort((a, b) => a.localeCompare(b, 'ar')).map(customKey => {
-                          const timeCount = Object.keys(groupedLevelsForSelector[customKey] || {}).length;
+                        {Object.keys(addPickerGrouped).filter(k => k !== 'other' && !MAIN_ACTIVITIES_FOR_LEVELS.some(a => a.id === k)).sort((a, b) => a.localeCompare(b, 'ar')).map(customKey => {
+                          const timeCount = Object.keys(addPickerGrouped[customKey] || {}).length;
                           if (timeCount === 0) return null;
                           return (
                             <button key={customKey} type="button" className="w-full flex items-center justify-between p-2 rounded-lg hover:bg-gray-100 transition-colors bg-purple-500 bg-opacity-10"
@@ -4624,8 +4693,8 @@ export const MembersPage = () => {
 
                     {memberLevelSelectorState.step === 'time' && (
                       <div className="p-2 space-y-1 max-h-48 overflow-y-auto">
-                        {Object.entries(groupedLevelsForSelector[memberLevelSelectorState.selectedActivity] || {}).map(([timeSlot, timeLevels]) => {
-                          const totalMembers = timeLevels.reduce((sum, l) => sum + (l.members || []).length, 0);
+                        {Object.entries(addPickerGrouped[memberLevelSelectorState.selectedActivity] || {}).filter(([ts]) => { const h = hourFromTime(activityForm.training_time); if (!h) return true; return hourFromTime(ts) === h; }).sort(([a], [b]) => (parseInt(hourFromTime(a)) || 0) - (parseInt(hourFromTime(b)) || 0)).map(([timeSlot, timeLevels]) => {
+                          const totalMembers = timeLevels.reduce((sum, l) => sum + countLevelMembersForForm(l, activityForm.training_days || [], activityForm.start_date || ''), 0);
                           const totalCapacity = timeLevels.reduce((sum, l) => sum + (l.capacity || 10), 0);
                           return (
                             <button
@@ -4652,10 +4721,10 @@ export const MembersPage = () => {
 
                     {memberLevelSelectorState.step === 'level' && (
                       <div className="p-2 space-y-1 max-h-48 overflow-y-auto">
-                        {(groupedLevelsForSelector[memberLevelSelectorState.selectedActivity]?.[memberLevelSelectorState.selectedTime] || [])
+                        {(addPickerGrouped[memberLevelSelectorState.selectedActivity]?.[memberLevelSelectorState.selectedTime] || [])
                           .sort((a, b) => a.level_number - b.level_number)
                           .map(level => {
-                            const memberCount = (level.members || []).length;
+                            const memberCount = countLevelMembersForForm(level, activityForm.training_days || [], activityForm.start_date || '');
                             const maxCapacity = level.capacity || 10;
                             const isFull = memberCount >= maxCapacity;
                             const fillPercent = Math.round((memberCount / maxCapacity) * 100);

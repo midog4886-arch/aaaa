@@ -38,5 +38,11 @@ level picker UI must therefore filter client-side: keep levels whose
 levels. Branch context chain: selected member's `branch_id` → page branch
 filter (if not "all") → user's own branch. Saved `level_id` display lookups
 (`levels.find`) stay UNSCOPED on purpose so a stale cross-branch link still
-renders its name. Pickers wired: MembersPage grouped selector, invoice form
-hook (grouped + by-days), registration-form sibling Select.
+renders its name. Pickers wired: THREE cascading pickers in
+MembersPage (member add/edit dialog, edit-activity inline, add-activity
+dialog — first and last share activityForm/memberLevelSelectorState), the
+invoice form hook (grouped + by-days), registration-form sibling Select.
+All member-page pickers mirror the invoice picker: day-filtered levels
+(Arabic day -> level.days), hour-filtered time slots, day-aware member
+counts (members_details + active-at-start-date). Keep them in parity —
+users compare them directly.
