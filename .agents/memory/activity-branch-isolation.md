@@ -28,3 +28,15 @@ activity picker, prefer this branch-with-global-fallback heuristic at the
 consuming UI, not a blanket backend change. Real per-branch isolation would
 require every activity to carry a real `branch_id` (data cleanup), which the
 default tenant declined — so code-side scoping is the chosen path.
+
+# Level pickers must scope by branch too
+
+Levels are branch-bound (`level.branch_id`) but `GET /levels` returns ALL
+branches for admins (non-admins get own branch + no-branch via `$or`). Any
+level picker UI must therefore filter client-side: keep levels whose
+`branch_id` matches the picker's branch context PLUS no-branch (legacy)
+levels. Branch context chain: selected member's `branch_id` → page branch
+filter (if not "all") → user's own branch. Saved `level_id` display lookups
+(`levels.find`) stay UNSCOPED on purpose so a stale cross-branch link still
+renders its name. Pickers wired: MembersPage grouped selector, invoice form
+hook (grouped + by-days), registration-form sibling Select.

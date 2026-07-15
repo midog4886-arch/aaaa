@@ -588,7 +588,7 @@ export const InvoicesPage = () => {
           handlePrintNewRegistrationForm={handlePrintNewRegistrationForm}
           calcEndDate={calcEndDate} groupedLevelsForSelector={groupedLevelsForSelector} getGroupedLevelsForDays={getGroupedLevelsForDays}
           setAddMemberSource={setAddMemberSource} setIsAddMemberDialogOpen={setIsAddMemberDialogOpen} setMembers={setMembers}
-          coaches={coaches}
+          coaches={coaches} selectedBranchId={selectedBranchId}
           language={language} t={t}
         />
 

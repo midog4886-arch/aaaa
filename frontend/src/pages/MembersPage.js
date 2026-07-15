@@ -337,10 +337,16 @@ export const MembersPage = () => {
     return 'other';
   };
 
-  // Group levels by main activity and time slot
+  // Group levels by main activity and time slot.
+  // Levels are branch-bound, so scope the picker to the member's branch
+  // (else page filter / user's branch): levels of OTHER branches must not
+  // appear. Levels without branch_id (legacy/global) stay visible everywhere.
   const groupedLevelsForSelector = React.useMemo(() => {
+    const scopedLevels = activityPickerBranch
+      ? levels.filter(l => !(l.branch_id || '') || l.branch_id === activityPickerBranch)
+      : levels;
     const grouped = {};
-    levels.forEach(level => {
+    scopedLevels.forEach(level => {
       const mainActivity = parseActivityForLevel(level.activity_name);
       if (!grouped[mainActivity]) grouped[mainActivity] = {};
       
@@ -353,7 +359,8 @@ export const MembersPage = () => {
       grouped[mainActivity][timeSlot].push(level);
     });
     return grouped;
-  }, [levels]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [levels, activityPickerBranch]);
 
   useEffect(() => {
     loadData();

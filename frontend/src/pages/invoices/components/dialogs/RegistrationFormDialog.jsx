@@ -101,8 +101,16 @@ export const RegistrationFormDialog = ({
   groupedLevelsForSelector,
   getGroupedLevelsForDays,
   setAddMemberSource, setIsAddMemberDialogOpen, setMembers,
+  selectedBranchId,
   language, t
 }) => {
+  // Levels are branch-bound: when a specific branch is selected, hide other
+  // branches' levels from the sibling level picker. Levels without branch_id
+  // (legacy/global) stay visible everywhere.
+  const levelPickerBranch = (selectedBranchId && selectedBranchId !== 'all') ? selectedBranchId : '';
+  const branchScopedLevels = levelPickerBranch
+    ? (levels || []).filter(l => !(l.branch_id || '') || l.branch_id === levelPickerBranch)
+    : (levels || []);
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
@@ -569,7 +577,7 @@ export const RegistrationFormDialog = ({
                                               // Hide temporarily-closed levels from NEW choices, but
                                               // always keep the one already selected on this item so an
                                               // existing/edit selection is never silently dropped.
-                                              const all = (levels || []).filter(l => l.id && (l.is_active !== false || l.id === item.level_id));
+                                              const all = branchScopedLevels.filter(l => l.id && (l.is_active !== false || l.id === item.level_id));
                                               const targetTime = (item.training_time || '').trim();
                                               const norm = (s) => (s || '').toString().trim();
                                               const exact = all.filter(l => norm(l.activity_name) === norm(item.activity_name));

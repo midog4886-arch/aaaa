@@ -166,7 +166,18 @@ export const useInvoiceForm = ({
     return grouped;
   };
 
-  const groupedLevelsForSelector = useMemo(() => buildGroupedLevels((levels || []).filter(l => l.is_active !== false)), [levels]);
+  // Levels are branch-bound: scope the picker to the selected member's branch
+  // (else the page branch filter) so levels of OTHER branches never show.
+  // Levels without branch_id (legacy/global) stay visible everywhere.
+  const levelPickerBranch = selectedMember?.branch_id
+    || (selectedBranchId && selectedBranchId !== 'all' ? selectedBranchId : '')
+    || '';
+  const scopeLevelsToBranch = (src) => levelPickerBranch
+    ? (src || []).filter(l => !(l.branch_id || '') || l.branch_id === levelPickerBranch)
+    : (src || []);
+
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const groupedLevelsForSelector = useMemo(() => buildGroupedLevels(scopeLevelsToBranch(levels).filter(l => l.is_active !== false)), [levels, levelPickerBranch]);
 
   const AR_TO_EN_DAY = {
     'الأحد': 'sunday',
@@ -192,7 +203,7 @@ export const useInvoiceForm = ({
   };
 
   const getGroupedLevelsForDays = (trainingDays) => {
-    return buildGroupedLevels(filterLevelsByDays((levels || []).filter(l => l.is_active !== false), trainingDays));
+    return buildGroupedLevels(filterLevelsByDays(scopeLevelsToBranch(levels).filter(l => l.is_active !== false), trainingDays));
   };
 
   const calculateTotals = () => {
