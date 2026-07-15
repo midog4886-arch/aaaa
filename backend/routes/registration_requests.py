@@ -96,11 +96,21 @@ async def public_get_registration_branch(branch_id: str):
     if not branch:
         raise HTTPException(status_code=404, detail="Branch not found")
 
-    # Branch-scoped activities + shared/legacy (branch_id null/missing)
-    activities = await db.activities.find(
-        {"$or": [{"branch_id": branch_id}, {"branch_id": None}, {"branch_id": {"$exists": False}}]},
-        {"_id": 0, "id": 1, "name": 1, "name_ar": 1, "monthly_fee": 1}
+    # Branch-scoped activities + shared/legacy (branch_id null/missing).
+    # Mirror the app's per-branch rule: when the branch has activities of its
+    # own show ONLY those; otherwise fall back to the shared/global ones.
+    # Only names are exposed to the public page (no fees or internal data).
+    acts = await db.activities.find(
+        {
+            "$or": [{"branch_id": branch_id}, {"branch_id": None}, {"branch_id": {"$exists": False}}],
+            "is_active": {"$ne": False},
+        },
+        {"_id": 0, "id": 1, "name": 1, "name_ar": 1, "branch_id": 1},
     ).to_list(200)
+    branch_own = [a for a in acts if (a.get("branch_id") or "") == branch_id]
+    activities = branch_own if branch_own else [a for a in acts if not (a.get("branch_id") or "")]
+    for a in activities:
+        a.pop("branch_id", None)
 
     # Expose only the public-facing label so the internal branch name is never
     # sent to the public page; fall back to the normal name when no public_name.

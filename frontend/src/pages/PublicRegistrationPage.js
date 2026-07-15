@@ -15,8 +15,11 @@ const WEEK_DAYS = [
   { key: 'friday', label: 'الجمعة' },
 ];
 
-// Fixed set of high-level activity choices shown to parents on the public form.
-const ACTIVITY_OPTIONS = ['السباحة', 'كرة قدم', 'كاراتيه', 'برايفت', 'أخرى'];
+// Fallback activity choices, used only when the selected branch has no
+// activities defined in the system (or they could not be loaded), so the
+// form always has something to pick. "أخرى" is always appended.
+const FALLBACK_ACTIVITY_OPTIONS = ['السباحة', 'كرة قدم', 'كاراتيه', 'برايفت'];
+const OTHER_ACTIVITY_OPTION = 'أخرى';
 
 export const PublicRegistrationPage = () => {
   const { tenantSlug, branchId } = useParams();
@@ -55,6 +58,9 @@ export const PublicRegistrationPage = () => {
   const [phone, setPhone] = useState('');
   const [nationality, setNationality] = useState('');
   const [activities, setActivities] = useState([]);
+  // Real activities of the selected branch, loaded from the system so the
+  // choices always mirror what the academy actually offers (null = not loaded).
+  const [branchActivities, setBranchActivities] = useState(null);
   const [days, setDays] = useState([]);
   const [time, setTime] = useState('');
   const [notes, setNotes] = useState('');
@@ -74,6 +80,7 @@ export const PublicRegistrationPage = () => {
           const res = await api.get(`/api/public/registration/${branchId}`);
           if (!active) return;
           setBranch(res.data.branch);
+          setBranchActivities(res.data.activities || []);
           if (res.data.academy_name) setAcademyName(res.data.academy_name);
         } else {
           // All-branches link: load the list so the visitor can pick a branch.
@@ -142,6 +149,39 @@ export const PublicRegistrationPage = () => {
     }
   }, [hasFixedBranch, pickedBranchId, allowedBranchIds, branches]);
 
+  // On all-branches links, load the real activities of whichever branch the
+  // visitor picks (branch-locked links get them with the initial load above).
+  useEffect(() => {
+    if (hasFixedBranch) return;
+    if (!selectedBranchId) { setBranchActivities(null); return; }
+    let active = true;
+    (async () => {
+      try {
+        const res = await api.get(`/api/public/registration/${selectedBranchId}`);
+        if (active) setBranchActivities(res.data.activities || []);
+      } catch (e) {
+        if (active) setBranchActivities([]); // fall back to the fixed list
+      }
+    })();
+    return () => { active = false; };
+  }, [api, hasFixedBranch, selectedBranchId]);
+
+  // The activity chips shown to the visitor: the branch's real activities
+  // (deduped by label), or the fallback list when none exist, plus "أخرى".
+  const activityOptions = useMemo(() => {
+    const labels = (branchActivities || [])
+      .map(a => ((a && (a.name_ar || a.name)) || '').trim())
+      .filter(Boolean);
+    const unique = [...new Set(labels)];
+    const base = unique.length ? unique : FALLBACK_ACTIVITY_OPTIONS;
+    return [...base, OTHER_ACTIVITY_OPTION];
+  }, [branchActivities]);
+
+  // Drop selections that no longer exist after the visitor switches branch.
+  useEffect(() => {
+    setActivities(prev => prev.filter(a => activityOptions.includes(a)));
+  }, [activityOptions]);
+
   const toggleDay = (key) => {
     setDays((prev) => prev.includes(key) ? prev.filter(d => d !== key) : [...prev, key]);
   };
@@ -169,7 +209,7 @@ export const PublicRegistrationPage = () => {
         customer_phone: phone.trim(),
         nationality: nationality.trim(),
         activity_id: '',
-        activity_name: ACTIVITY_OPTIONS.filter(a => activities.includes(a)).join('، '),
+        activity_name: activityOptions.filter(a => activities.includes(a)).join('، '),
         preferred_days: selectedDays,
         preferred_time: time.trim(),
         notes: notes.trim(),
@@ -330,8 +370,8 @@ export const PublicRegistrationPage = () => {
             <div className="space-y-1.5">
               <label className="text-sm font-medium text-gray-700 flex items-center gap-1.5"><Dumbbell className="w-4 h-4" /> النشاط المطلوب <span className="text-gray-400 font-normal">(يمكن اختيار أكثر من نشاط)</span></label>
               <div className="flex flex-wrap gap-2">
-                {ACTIVITY_OPTIONS.map((label, i) => (
-                  <button type="button" key={i} onClick={() => toggleActivity(label)}
+                {activityOptions.map((label) => (
+                  <button type="button" key={label} onClick={() => toggleActivity(label)}
                     className={`px-3 py-1.5 rounded-full text-xs border transition-colors ${activities.includes(label) ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-white text-gray-600 border-gray-300'}`}>
                     {label}
                   </button>

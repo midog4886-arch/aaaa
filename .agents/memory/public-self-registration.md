@@ -60,3 +60,11 @@ activity, preferred days/time, notes).
   (both `invoices`), or staff see a menu item that the route denies.
 - `update_registration_request` validates status against `{pending, processed, rejected}`.
 - Admin list/update/delete are branch-scoped (`resolve_branch_filter` / `require_branch_scope`).
+
+## Activity chips are the branch's real activities
+The public form's "النشاط المطلوب" chips come from GET /public/registration/{branch_id}
+(branch-own activities shadow shared/global ones, is_active filter, names only —
+no fees on the unauthenticated response). A small hardcoded list survives ONLY as
+a fallback when a branch has no activities / fetch fails; "أخرى" always appended.
+**How to apply:** don't re-hardcode activity choices on public pages; extend the
+public endpoint instead, and keep it exposure-minimal (id/name/name_ar only).
