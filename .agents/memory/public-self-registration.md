@@ -68,3 +68,11 @@ no fees on the unauthenticated response). A small hardcoded list survives ONLY a
 a fallback when a branch has no activities / fetch fails; "أخرى" always appended.
 **How to apply:** don't re-hardcode activity choices on public pages; extend the
 public endpoint instead, and keep it exposure-minimal (id/name/name_ar only).
+
+## Bilingual public form: Arabic values are canonical
+The public form has an AR/EN toggle (?lang=en pre-selects). Display strings are
+translated, but SUBMITTED values stay Arabic (activity names, preferred_days
+labels) because the supervisor review queue is read in Arabic. Selection state
+stores canonical values, not display labels, so toggling never drops picks.
+**How to apply:** when adding fields to the public form, translate the label but
+keep the stored/submitted value canonical (Arabic) and language-independent.
