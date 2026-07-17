@@ -346,6 +346,15 @@ export const StorePage = () => {
     return branch?.name_ar || branch?.name || branchId;
   };
 
+  // Activities shown in the coupon offer picker: when a specific branch is
+  // selected show ONLY that branch's activities (fall back to global ones if
+  // the branch has none); "all branches" shows everything.
+  const getCouponActivitiesForBranch = (branchId) => {
+    if (!branchId || branchId === 'all') return couponActivities;
+    const branchActs = couponActivities.filter(a => a.branch_id === branchId);
+    return branchActs.length > 0 ? branchActs : couponActivities.filter(a => !a.branch_id);
+  };
+
   const calculateInvoiceTotals = () => {
     const subtotal = invoiceItems.reduce((sum, item) => sum + item.total, 0);
     const vatAmount = Math.round(subtotal * (COMPANY_INFO.vat_rate / 100) * 100) / 100;
@@ -1032,7 +1041,14 @@ ${items}
                           <Building2 className="w-4 h-4" />
                           {language === 'ar' ? 'الفرع' : 'Branch'}
                         </Label>
-                        <Select value={discountForm.branch_id} onValueChange={(v) => setDiscountForm({...discountForm, branch_id: v})}>
+                        <Select value={discountForm.branch_id} onValueChange={(v) => {
+                          const visibleIds = new Set(getCouponActivitiesForBranch(v).map(a => a.id));
+                          setDiscountForm({
+                            ...discountForm,
+                            branch_id: v,
+                            activity_ids: (discountForm.activity_ids || []).filter(id => visibleIds.has(id))
+                          });
+                        }}>
                           <SelectTrigger data-testid="coupon-branch-select">
                             <SelectValue placeholder={language === 'ar' ? 'اختر الفرع' : 'Select Branch'} />
                           </SelectTrigger>
@@ -1064,9 +1080,9 @@ ${items}
                           : 'Optional: if activities are selected, the coupon is only accepted when ALL of them are on the invoice — ideal for two-activity bundle offers'}
                       </p>
                       <div className="flex flex-wrap gap-2 max-h-36 overflow-y-auto border rounded-md p-2" data-testid="coupon-activities-picker">
-                        {couponActivities.length === 0 ? (
+                        {getCouponActivitiesForBranch(discountForm.branch_id).length === 0 ? (
                           <span className="text-xs text-muted-foreground">{language === 'ar' ? 'لا توجد أنشطة' : 'No activities'}</span>
-                        ) : couponActivities.map(act => {
+                        ) : getCouponActivitiesForBranch(discountForm.branch_id).map(act => {
                           const selected = discountForm.activity_ids.includes(act.id);
                           return (
                             <button
