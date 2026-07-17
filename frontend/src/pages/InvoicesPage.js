@@ -170,7 +170,7 @@ export const InvoicesPage = () => {
     additionalMemberNewForm, setAdditionalMemberNewForm, levelCapacityWarnings, levelSelectorState, customerNameAr, setCustomerNameAr,
     customerPhone, setCustomerPhone, customerAddress, setCustomerAddress, MAIN_ACTIVITIES_FOR_LEVELS, groupedLevelsForSelector, getGroupedLevelsForDays,
     parseActivityForLevel, subtotal, vatAmount, totalBeforeDiscount, totalDiscount, total, handleMemberSelect, addProductToInvoice,
-    addActivityToInvoice, validateCoupon, removeCoupon, updateItemFee, updateItemDate, updateItemWeeks, removeItem, updateItemSchedule,
+    addActivityToInvoice, validateCoupon, removeCoupon, clearScopedCoupon, updateItemFee, updateItemDate, updateItemWeeks, removeItem, updateItemSchedule,
     updateItemLevel, handleAcceptFullLevel, handleRejectFullLevel, initLevelSelector, selectLevelActivity, selectLevelTime,
     goBackLevelSelector, resetLevelSelector, unlockFeeEdit, handleCreateInvoice, openEditDialog, closeCreateDialog,
     openCreateDialog
@@ -520,7 +520,7 @@ export const InvoicesPage = () => {
           initLevelSelector={initLevelSelector} goBackLevelSelector={goBackLevelSelector} resetLevelSelector={resetLevelSelector}
           selectLevelActivity={selectLevelActivity} selectLevelTime={selectLevelTime} updateItemLevel={updateItemLevel}
           handleAcceptFullLevel={handleAcceptFullLevel} handleRejectFullLevel={handleRejectFullLevel}
-          unlockFeeEdit={unlockFeeEdit} validateCoupon={validateCoupon}
+          unlockFeeEdit={unlockFeeEdit} validateCoupon={validateCoupon} clearScopedCoupon={clearScopedCoupon}
           closeCreateDialog={closeCreateDialog} handleCreateInvoice={handleCreateInvoice}
           calcEndDate={calcEndDate} parseActivityForLevel={parseActivityForLevel}
           language={language} t={t}

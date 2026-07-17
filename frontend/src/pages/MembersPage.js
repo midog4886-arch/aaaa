@@ -1484,7 +1484,7 @@ export const MembersPage = () => {
     }
     setRenewalValidatingCoupon(true);
     try {
-      const res = await discountsAPI.validate(renewalCouponCode, subtotal);
+      const res = await discountsAPI.validate(renewalCouponCode, subtotal, renewalActivity?.activity_id ? [renewalActivity.activity_id] : []);
       setRenewalAppliedCoupon(res.data.discount);
       setRenewalCouponDiscount(res.data.discount_amount || 0);
       toast.success(language === 'ar' ? 'تم تطبيق كود الخصم' : 'Coupon applied');

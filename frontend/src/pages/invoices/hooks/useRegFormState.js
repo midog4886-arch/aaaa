@@ -95,18 +95,17 @@ export const useRegFormState = ({
 
   const validateRegFormCoupon = async () => {
     if (!regFormCouponCode.trim()) return;
+    if (regFormItems.length === 0) { toast.error(language === 'ar' ? 'أضف عناصر أولاً' : 'Add items first'); return; }
     try {
-      const response = await discountsAPI.validate(regFormCouponCode.trim());
-      const coupon = response.data;
-      setRegFormAppliedCoupon(coupon);
       const subtotal = regFormItems.reduce((sum, item) => sum + ((item.fee || 0) * (item.quantity || 1)), 0);
-      let discountValue = 0;
-      if (coupon.type === 'percentage') { discountValue = (subtotal * coupon.value) / 100; if (coupon.max_discount && discountValue > coupon.max_discount) discountValue = coupon.max_discount; }
-      else { discountValue = coupon.value; }
+      const activityIds = regFormItems.filter(i => !i.is_product && !i.product_id && i.activity_id).map(i => i.activity_id);
+      const response = await discountsAPI.validate(regFormCouponCode.trim(), subtotal, activityIds);
+      setRegFormAppliedCoupon(response.data.discount);
+      const discountValue = response.data.discount_amount || 0;
       setRegFormCouponDiscount(discountValue);
       toast.success(language === 'ar' ? `تم تطبيق الكوبون: خصم ${discountValue.toFixed(2)} ر.س` : `Coupon applied: ${discountValue.toFixed(2)} SAR discount`);
     } catch (error) {
-      toast.error(language === 'ar' ? 'كوبون غير صالح' : 'Invalid coupon');
+      toast.error(error.response?.data?.detail || (language === 'ar' ? 'كوبون غير صالح' : 'Invalid coupon'));
       setRegFormAppliedCoupon(null); setRegFormCouponDiscount(0);
     }
   };

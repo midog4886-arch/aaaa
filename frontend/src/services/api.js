@@ -230,7 +230,13 @@ export const discountsAPI = {
   create: (data) => axios.post(`${API}/discounts`, data),
   update: (id, data) => axios.put(`${API}/discounts/${id}`, data),
   delete: (id) => axios.delete(`${API}/discounts/${id}`),
-  validate: (code, subtotal) => axios.post(`${API}/discounts/validate`, null, { params: { code, subtotal } }),
+  validate: (code, subtotal, activityIds) => axios.post(`${API}/discounts/validate`, null, {
+    params: {
+      code,
+      subtotal,
+      ...(Array.isArray(activityIds) && activityIds.length ? { activity_ids: activityIds.join(',') } : {}),
+    },
+  }),
 };
 
 // Product Invoices API (Store Sales)

@@ -869,6 +869,7 @@ class DiscountCreate(BaseModel):
     valid_until: Optional[str] = None
     is_active: bool = True
     branch_id: Optional[str] = None  # Admin can specify branch for coupon
+    activity_ids: Optional[List[str]] = None  # Offer coupon: required activities (all must be on invoice)
 
 class Discount(BaseModel):
     id: str
@@ -884,6 +885,7 @@ class Discount(BaseModel):
     valid_until: Optional[str] = None
     is_active: bool
     branch_id: Optional[str] = None
+    activity_ids: Optional[List[str]] = None
     created_at: str
 
 # ============ BRANCH MODELS ============
@@ -2251,6 +2253,7 @@ async def create_discount(discount: DiscountCreate, current_user: dict = Depends
         "valid_until": discount.valid_until,
         "is_active": discount.is_active,
         "branch_id": final_branch_id,
+        "activity_ids": [a for a in (discount.activity_ids or []) if a],
         "created_at": datetime.now(timezone.utc).isoformat()
     }
     
@@ -2273,7 +2276,8 @@ async def update_discount(discount_id: str, discount: DiscountCreate, current_us
         "max_uses": discount.max_uses,
         "valid_from": discount.valid_from,
         "valid_until": discount.valid_until,
-        "is_active": discount.is_active
+        "is_active": discount.is_active,
+        "activity_ids": [a for a in (discount.activity_ids or []) if a]
     }
     
     # Admin can update branch_id
@@ -2300,8 +2304,14 @@ async def delete_discount(discount_id: str, current_user: dict = Depends(get_cur
     return {"message": "Discount deleted"}
 
 @api_router.post("/discounts/validate")
-async def validate_discount(code: str, subtotal: float, current_user: dict = Depends(get_current_user)):
-    """Validate a discount code and return discount amount"""
+async def validate_discount(code: str, subtotal: float, activity_ids: Optional[str] = None, current_user: dict = Depends(get_current_user)):
+    """Validate a discount code and return discount amount.
+
+    activity_ids: optional comma-separated list of the activity ids present in
+    the current invoice. Required to satisfy activity-scoped (bundle offer)
+    coupons — the coupon is only valid when ALL of its linked activities are
+    present in the invoice.
+    """
     discount = await db.discounts.find_one({"code": code.upper(), "is_active": True}, {"_id": 0})
     if not discount:
         raise HTTPException(status_code=404, detail="Invalid discount code")
@@ -2320,6 +2330,22 @@ async def validate_discount(code: str, subtotal: float, current_user: dict = Dep
     # Check minimum purchase
     if subtotal < discount["min_purchase"]:
         raise HTTPException(status_code=400, detail=f"Minimum purchase of {discount['min_purchase']} SAR required")
+    
+    # Activity-scoped (bundle offer) coupon: every linked activity must be
+    # present in the invoice for the coupon to apply.
+    required_activities = [a for a in (discount.get("activity_ids") or []) if a]
+    if required_activities:
+        provided = {a.strip() for a in (activity_ids or "").split(",") if a.strip()}
+        if not set(required_activities).issubset(provided):
+            named = await db.activities.find(
+                {"id": {"$in": required_activities}},
+                {"_id": 0, "name_ar": 1, "name": 1}
+            ).to_list(100)
+            labels = "، ".join([n.get("name_ar") or n.get("name") or "" for n in named if (n.get("name_ar") or n.get("name"))])
+            raise HTTPException(
+                status_code=400,
+                detail=f"هذا الكوبون خاص بعرض ({labels or 'أنشطة محددة'}) ولا يُقبل إلا إذا كانت هذه الأنشطة كلها في الفاتورة معاً"
+            )
     
     # Calculate discount amount
     if discount["discount_type"] == "percentage":

@@ -630,7 +630,7 @@ const RenewalsPage = () => {
     }
     setValidatingCoupon(true);
     try {
-      const res = await discountsAPI.validate(couponCode, subtotal);
+      const res = await discountsAPI.validate(couponCode, subtotal, selectedItem?.activity_id ? [selectedItem.activity_id] : []);
       setAppliedCoupon(res.data.discount);
       setCouponDiscount(res.data.discount_amount || 0);
       toast.success(language === 'ar' ? 'تم تطبيق كود الخصم' : 'Coupon applied');

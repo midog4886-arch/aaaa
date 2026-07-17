@@ -253,10 +253,17 @@ export const useInvoiceForm = ({
     setValidatingCoupon(true);
     try {
       const subtotal = invoiceItems.reduce((sum, item) => sum + item.fee, 0);
-      const res = await discountsAPI.validate(couponCode, subtotal);
+      // Activity ids present in the invoice (primary + additional members),
+      // needed so activity-scoped (bundle offer) coupons can be validated.
+      const activityIds = [
+        ...invoiceItems,
+        ...additionalMembers.flatMap(am => am.items || []),
+      ].filter(i => !i.is_product && i.activity_id).map(i => i.activity_id);
+      const res = await discountsAPI.validate(couponCode, subtotal, activityIds);
+      const amount = res.data.discount_amount ?? res.data.discount.value;
       setAppliedCoupon(res.data.discount);
-      setCouponDiscount(res.data.discount.value);
-      toast.success(language === 'ar' ? `تم تطبيق الكوبون! خصم ${res.data.discount.value} ر.س` : `Coupon applied! Discount ${res.data.discount.value} SAR`);
+      setCouponDiscount(amount);
+      toast.success(language === 'ar' ? `تم تطبيق الكوبون! خصم ${amount} ر.س` : `Coupon applied! Discount ${amount} SAR`);
     } catch (error) {
       toast.error(error.response?.data?.detail || (language === 'ar' ? 'كوبون غير صالح' : 'Invalid coupon'));
       setAppliedCoupon(null); setCouponDiscount(0);
@@ -277,7 +284,17 @@ export const useInvoiceForm = ({
       fee: activity.monthly_fee, period: `${today} - ${endDate}`, start_date: today,
       end_date: endDate, weeks: defaultWeeks, schedule: '', training_days: [], training_time: '', day_times: {}, level_id: '', level_name: '', instance: existingCount + 1
     }]);
+    // Activity-scoped (offer) coupons depend on which activities are in the
+    // invoice, so any change to the items invalidates the applied coupon.
+    clearScopedCoupon();
     toast.success(language === 'ar' ? `تم إضافة ${activity.name_ar}` : `Added ${activity.name}`);
+  };
+
+  const clearScopedCoupon = () => {
+    if (appliedCoupon?.activity_ids?.length) {
+      setAppliedCoupon(null); setCouponDiscount(0);
+      toast.info(language === 'ar' ? 'تغيّرت عناصر الفاتورة — أعد تطبيق الكوبون' : 'Invoice items changed — re-apply the coupon');
+    }
   };
 
   const unlockFeeEdit = async () => {
@@ -307,7 +324,10 @@ export const useInvoiceForm = ({
     setInvoiceItems(updated);
   };
 
-  const removeItem = (index) => setInvoiceItems(invoiceItems.filter((_, i) => i !== index));
+  const removeItem = (index) => {
+    setInvoiceItems(invoiceItems.filter((_, i) => i !== index));
+    clearScopedCoupon();
+  };
 
   const updateItemSchedule = (index, schedule) => {
     const updated = [...invoiceItems]; updated[index].schedule = schedule; setInvoiceItems(updated);
@@ -526,7 +546,7 @@ export const useInvoiceForm = ({
     customerNameAr, setCustomerNameAr, customerPhone, setCustomerPhone, customerAddress, setCustomerAddress,
     MAIN_ACTIVITIES_FOR_LEVELS, groupedLevelsForSelector, getGroupedLevelsForDays, parseActivityForLevel,
     subtotal, vatAmount, totalBeforeDiscount, totalDiscount, total,
-    handleMemberSelect, addProductToInvoice, addActivityToInvoice, validateCoupon, removeCoupon,
+    handleMemberSelect, addProductToInvoice, addActivityToInvoice, validateCoupon, removeCoupon, clearScopedCoupon,
     updateItemFee, updateItemDate, updateItemWeeks, removeItem, updateItemSchedule, updateItemLevel,
     handleAcceptFullLevel, handleRejectFullLevel, initLevelSelector, selectLevelActivity, selectLevelTime,
     goBackLevelSelector, resetLevelSelector, unlockFeeEdit, handleCreateInvoice, openEditDialog, closeCreateDialog,

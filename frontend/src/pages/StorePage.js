@@ -10,14 +10,14 @@ import { Badge } from '../components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '../components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Textarea } from '../components/ui/textarea';
-import { productsAPI, discountsAPI, productInvoicesAPI, branchesAPI, membersAPI } from '../services/api';
+import { productsAPI, discountsAPI, productInvoicesAPI, branchesAPI, membersAPI, activitiesAPI } from '../services/api';
 import { toast } from 'sonner';
 import { QRCodeSVG } from 'qrcode.react';
 import html2pdf from 'html2pdf.js';
 import { 
   Package, Plus, Search, Edit, Trash2, AlertTriangle, 
   ShoppingBag, TrendingUp, TrendingDown, Loader2, BarChart3, X, Percent, Tag,
-  Receipt, Printer, FileText, CheckCircle, Eye, Building2, MessageSquare, Users
+  Receipt, Printer, FileText, CheckCircle, Eye, Building2, MessageSquare, Users, Dumbbell
 } from 'lucide-react';
 
 const CATEGORIES = {
@@ -78,26 +78,30 @@ export const StorePage = () => {
   
   const [discountForm, setDiscountForm] = useState({
     code: '', name_ar: '', name: '', discount_type: 'percentage',
-    value: '', min_purchase: '0', max_uses: '0', is_active: true, branch_id: 'all'
+    value: '', min_purchase: '0', max_uses: '0', is_active: true, branch_id: 'all',
+    activity_ids: []
   });
+  const [couponActivities, setCouponActivities] = useState([]);
 
   useEffect(() => { loadData(); }, [selectedBranchId]);
 
   const loadData = async () => {
     try {
       const branchParams = selectedBranchId && selectedBranchId !== 'all' ? { branch_filter: selectedBranchId } : {};
-      const [productsRes, discountsRes, invoicesRes, branchesRes, membersRes] = await Promise.all([
+      const [productsRes, discountsRes, invoicesRes, branchesRes, membersRes, activitiesRes] = await Promise.all([
         productsAPI.getAll(branchParams),
         discountsAPI.getAll(branchParams),
         productInvoicesAPI.getAll(branchParams),
         isAdmin ? branchesAPI.getAll() : Promise.resolve({ data: [] }),
-        membersAPI.getAll({ exclude_photo: true })
+        membersAPI.getAll({ exclude_photo: true }),
+        activitiesAPI.getAll().catch(() => ({ data: [] }))
       ]);
       setProducts(productsRes.data);
       setDiscounts(discountsRes.data);
       setProductInvoices(invoicesRes.data || []);
       setBranches(branchesRes.data || []);
       setAllMembers(Array.isArray(membersRes.data) ? membersRes.data : []);
+      setCouponActivities(Array.isArray(activitiesRes.data) ? activitiesRes.data.filter(a => a.is_active !== false) : []);
     } catch (error) {
       toast.error(language === 'ar' ? 'خطأ في تحميل البيانات' : 'Failed to load data');
     } finally {
@@ -211,14 +215,16 @@ export const StorePage = () => {
         discount_type: discount.discount_type, value: discount.value.toString(),
         min_purchase: discount.min_purchase.toString(), max_uses: discount.max_uses.toString(),
         is_active: discount.is_active,
-        branch_id: discount.branch_id || 'all'
+        branch_id: discount.branch_id || 'all',
+        activity_ids: discount.activity_ids || []
       });
     } else {
       setEditingDiscount(null);
       setDiscountForm({
         code: '', name_ar: '', name: '', discount_type: 'percentage',
         value: '', min_purchase: '0', max_uses: '0', is_active: true,
-        branch_id: 'all'
+        branch_id: 'all',
+        activity_ids: []
       });
     }
     setIsDiscountDialogOpen(true);
@@ -237,7 +243,8 @@ export const StorePage = () => {
         value: parseFloat(discountForm.value) || 0,
         min_purchase: parseFloat(discountForm.min_purchase) || 0,
         max_uses: parseInt(discountForm.max_uses) || 0,
-        branch_id: isAdmin ? discountForm.branch_id : undefined
+        branch_id: isAdmin ? discountForm.branch_id : undefined,
+        activity_ids: discountForm.activity_ids || []
       };
       if (editingDiscount) {
         await discountsAPI.update(editingDiscount.id, data);
@@ -945,6 +952,17 @@ ${items}
                         </span>
                       </div>
                     )}
+                    {Array.isArray(discount.activity_ids) && discount.activity_ids.length > 0 && (
+                      <div className="text-sm p-2 bg-amber-50 rounded-md" data-testid={`coupon-offer-badge-${discount.id}`}>
+                        <span className="text-amber-700 font-medium">{language === 'ar' ? '🎯 عرض مشروط بالأنشطة: ' : '🎯 Offer requires: '}</span>
+                        <span className="text-amber-800">
+                          {discount.activity_ids
+                            .map(id => couponActivities.find(a => a.id === id))
+                            .map((a, i) => a ? (a.name_ar || a.name) : (language === 'ar' ? 'نشاط محذوف' : 'Deleted activity'))
+                            .join('، ')}
+                        </span>
+                      </div>
+                    )}
                     <div className="flex justify-between text-sm">
                       <span className="text-muted-foreground">{language === 'ar' ? 'الحد الأدنى:' : 'Min Purchase:'}</span>
                       <span>{discount.min_purchase} {t('sar')}</span>
@@ -1034,6 +1052,48 @@ ${items}
                         </p>
                       </div>
                     )}
+                    {/* Activity-scoped offer: coupon only valid when ALL selected activities are on the invoice */}
+                    <div className="col-span-2">
+                      <Label className="flex items-center gap-2">
+                        <Dumbbell className="w-4 h-4" />
+                        {language === 'ar' ? 'ربط الكوبون بأنشطة محددة (عرض)' : 'Link Coupon to Activities (Offer)'}
+                      </Label>
+                      <p className="text-xs text-muted-foreground mt-1 mb-2">
+                        {language === 'ar'
+                          ? 'اختياري: لو اخترت أنشطة، لن يُقبل الكوبون إلا إذا كانت كلها موجودة معاً في الفاتورة — مناسب لعروض الاشتراك في نشاطين'
+                          : 'Optional: if activities are selected, the coupon is only accepted when ALL of them are on the invoice — ideal for two-activity bundle offers'}
+                      </p>
+                      <div className="flex flex-wrap gap-2 max-h-36 overflow-y-auto border rounded-md p-2" data-testid="coupon-activities-picker">
+                        {couponActivities.length === 0 ? (
+                          <span className="text-xs text-muted-foreground">{language === 'ar' ? 'لا توجد أنشطة' : 'No activities'}</span>
+                        ) : couponActivities.map(act => {
+                          const selected = discountForm.activity_ids.includes(act.id);
+                          return (
+                            <button
+                              key={act.id}
+                              type="button"
+                              onClick={() => setDiscountForm({
+                                ...discountForm,
+                                activity_ids: selected
+                                  ? discountForm.activity_ids.filter(id => id !== act.id)
+                                  : [...discountForm.activity_ids, act.id]
+                              })}
+                              className={`px-2 py-1 rounded-full text-xs border transition-colors ${selected ? 'bg-purple-600 text-white border-purple-600' : 'bg-white text-gray-700 border-gray-300 hover:border-purple-400'}`}
+                              data-testid={`coupon-activity-chip-${act.id}`}
+                            >
+                              {act.name_ar || act.name}
+                            </button>
+                          );
+                        })}
+                      </div>
+                      {discountForm.activity_ids.length > 0 && (
+                        <p className="text-xs text-purple-600 mt-1">
+                          {language === 'ar'
+                            ? `الكوبون مشروط بوجود ${discountForm.activity_ids.length} نشاط معاً في الفاتورة`
+                            : `Coupon requires all ${discountForm.activity_ids.length} activities together on the invoice`}
+                        </p>
+                      )}
+                    </div>
                     <div className="col-span-2 flex items-center gap-2">
                       <input type="checkbox" id="is_active" checked={discountForm.is_active} onChange={(e) => setDiscountForm({...discountForm, is_active: e.target.checked})} />
                       <Label htmlFor="is_active">{language === 'ar' ? 'كوبون نشط' : 'Active Coupon'}</Label>

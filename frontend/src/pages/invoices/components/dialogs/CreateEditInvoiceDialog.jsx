@@ -131,7 +131,7 @@ export const CreateEditInvoiceDialog = ({
   initLevelSelector, goBackLevelSelector, resetLevelSelector,
   selectLevelActivity, selectLevelTime, updateItemLevel,
   handleAcceptFullLevel, handleRejectFullLevel,
-  unlockFeeEdit, validateCoupon,
+  unlockFeeEdit, validateCoupon, clearScopedCoupon,
   closeCreateDialog, handleCreateInvoice,
   calcEndDate, parseActivityForLevel,
   language, t
@@ -516,7 +516,7 @@ export const CreateEditInvoiceDialog = ({
                     <div key={amIdx} className="p-3 bg-white rounded-lg border border-blue-200">
                       <div className="flex items-center justify-between mb-2">
                         <span className="text-sm font-bold text-blue-700">{language === 'ar' ? `العضو ${amIdx + 2}` : `Member ${amIdx + 2}`}{am.member && ` - ${am.member.name_ar || am.member.name}`}</span>
-                        <Button type="button" size="sm" variant="ghost" className="text-red-500 h-7 w-7 p-0" onClick={() => setAdditionalMembers(additionalMembers.filter((_, i) => i !== amIdx))}><Trash2 className="w-4 h-4" /></Button>
+                        <Button type="button" size="sm" variant="ghost" className="text-red-500 h-7 w-7 p-0" onClick={() => { setAdditionalMembers(additionalMembers.filter((_, i) => i !== amIdx)); clearScopedCoupon?.(); }}><Trash2 className="w-4 h-4" /></Button>
                       </div>
                       <Select value={am.member?.id || 'none'} onValueChange={(val) => {
                         if (val === 'none') return;
@@ -565,6 +565,7 @@ export const CreateEditInvoiceDialog = ({
                             const updated = [...additionalMembers];
                             updated[amIdx] = { ...updated[amIdx], items: [...updated[amIdx].items, newItem] };
                             setAdditionalMembers(updated);
+                            clearScopedCoupon?.();
                           }}>
                             <SelectTrigger className="mb-2"><SelectValue placeholder={language === 'ar' ? '+ اختر نشاط...' : '+ Select activity...'} /></SelectTrigger>
                             <SelectContent>
@@ -616,7 +617,7 @@ export const CreateEditInvoiceDialog = ({
                                     <div className="flex items-center gap-2">
                                       <Input type="number" onWheel={(e) => e.currentTarget.blur()} value={item.fee} onChange={(e) => { const updated = [...additionalMembers]; updated[amIdx].items[itemIdx].fee = parseFloat(e.target.value) || 0; setAdditionalMembers(updated); }} className="w-20 h-7 text-sm text-center" />
                                       <span className="text-xs text-muted-foreground">{language === 'ar' ? 'ر.س' : 'SAR'}</span>
-                                      <Button type="button" size="sm" variant="ghost" className="h-6 w-6 p-0 text-red-500" onClick={() => { const updated = [...additionalMembers]; updated[amIdx].items = updated[amIdx].items.filter((_, i) => i !== itemIdx); setAdditionalMembers(updated); }}><X className="w-3 h-3" /></Button>
+                                      <Button type="button" size="sm" variant="ghost" className="h-6 w-6 p-0 text-red-500" onClick={() => { const updated = [...additionalMembers]; updated[amIdx].items = updated[amIdx].items.filter((_, i) => i !== itemIdx); setAdditionalMembers(updated); clearScopedCoupon?.(); }}><X className="w-3 h-3" /></Button>
                                     </div>
                                   </div>
                                   {!item.is_product && (
