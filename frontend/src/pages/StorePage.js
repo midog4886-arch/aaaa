@@ -1102,13 +1102,47 @@ ${items}
                           );
                         })}
                       </div>
-                      {discountForm.activity_ids.length > 0 && (
-                        <p className="text-xs text-purple-600 mt-1">
-                          {language === 'ar'
-                            ? `الكوبون مشروط بوجود ${discountForm.activity_ids.length} نشاط معاً في الفاتورة`
-                            : `Coupon requires all ${discountForm.activity_ids.length} activities together on the invoice`}
-                        </p>
-                      )}
+                      {discountForm.activity_ids.length > 0 && (() => {
+                        const selectedActs = discountForm.activity_ids
+                          .map(id => couponActivities.find(a => a.id === id))
+                          .filter(Boolean);
+                        const sub = Math.round(selectedActs.reduce((s, a) => s + (parseFloat(a.monthly_fee) || 0), 0) * 100) / 100;
+                        const vat = Math.round(sub * (COMPANY_INFO.vat_rate / 100) * 100) / 100;
+                        const totalIncl = Math.round((sub + vat) * 100) / 100;
+                        const val = parseFloat(discountForm.value) || 0;
+                        const disc = val > 0
+                          ? (discountForm.discount_type === 'percentage'
+                              ? Math.round(sub * val / 100 * 100) / 100
+                              : Math.round(val * 100) / 100)
+                          : 0;
+                        const after = Math.round((totalIncl - disc) * 100) / 100;
+                        return (
+                          <div className="mt-2 p-2 rounded-md bg-purple-50 border border-purple-200 text-xs space-y-1" data-testid="coupon-offer-totals">
+                            <p className="text-purple-600">
+                              {language === 'ar'
+                                ? `الكوبون مشروط بوجود ${discountForm.activity_ids.length} نشاط معاً في الفاتورة`
+                                : `Coupon requires all ${discountForm.activity_ids.length} activities together on the invoice`}
+                            </p>
+                            <p className="font-semibold text-gray-800" data-testid="coupon-offer-subtotal">
+                              {language === 'ar'
+                                ? `مجموع رسوم الأنشطة المختارة: ${sub} ر.س`
+                                : `Selected activities total: ${sub} SAR`}
+                            </p>
+                            <p className="text-gray-600">
+                              {language === 'ar'
+                                ? `الإجمالي شامل الضريبة (${COMPANY_INFO.vat_rate}%): ${totalIncl} ر.س`
+                                : `Total incl. VAT (${COMPANY_INFO.vat_rate}%): ${totalIncl} SAR`}
+                            </p>
+                            {disc > 0 && (
+                              <p className="text-green-700 font-semibold" data-testid="coupon-offer-preview">
+                                {language === 'ar'
+                                  ? `الخصم المتوقع: ${disc} ر.س — الصافي بعد الخصم: ${after} ر.س`
+                                  : `Expected discount: ${disc} SAR — Net after discount: ${after} SAR`}
+                              </p>
+                            )}
+                          </div>
+                        );
+                      })()}
                     </div>
                     <div className="col-span-2 flex items-center gap-2">
                       <input type="checkbox" id="is_active" checked={discountForm.is_active} onChange={(e) => setDiscountForm({...discountForm, is_active: e.target.checked})} />
