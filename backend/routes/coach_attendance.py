@@ -303,6 +303,10 @@ async def update_record(
         if rec_branch and rec_branch != effective_branch:
             raise HTTPException(status_code=404, detail="Record not found")
 
+    # Only admins may edit attendance times (check-in/check-out).
+    if not current_user.get("is_admin") and (req.check_in_time is not None or req.check_out_time is not None):
+        raise HTTPException(status_code=403, detail="تعديل مواعيد الحضور والانصراف متاح للمدير فقط")
+
     updates = {}
     if req.check_in_time is not None:
         updates["check_in_time"] = req.check_in_time

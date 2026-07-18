@@ -1486,19 +1486,21 @@ const CoachAttendancePage = () => {
                                 <LogOut className="w-3 h-3" /> انصراف
                               </button>
                             )}
-                            <button
-                              onClick={() => {
-                                setEditingRecord(record.id);
-                                setEditForm({
-                                  check_in_time: record.check_in_time || '',
-                                  check_out_time: record.check_out_time || '',
-                                  notes: record.notes || ''
-                                });
-                              }}
-                              className="p-1.5 text-gray-400 hover:text-orange-500 rounded-lg hover:bg-orange-50"
-                            >
-                              <Edit2 className="w-4 h-4" />
-                            </button>
+                            {isAdmin && (
+                              <button
+                                onClick={() => {
+                                  setEditingRecord(record.id);
+                                  setEditForm({
+                                    check_in_time: record.check_in_time || '',
+                                    check_out_time: record.check_out_time || '',
+                                    notes: record.notes || ''
+                                  });
+                                }}
+                                className="p-1.5 text-gray-400 hover:text-orange-500 rounded-lg hover:bg-orange-50"
+                              >
+                                <Edit2 className="w-4 h-4" />
+                              </button>
+                            )}
                             <button
                               onClick={() => handleDeleteRecord(record.id)}
                               className="p-1.5 text-gray-400 hover:text-red-500 rounded-lg hover:bg-red-50"
