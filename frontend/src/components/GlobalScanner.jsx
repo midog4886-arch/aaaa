@@ -67,6 +67,15 @@ const GlobalScanner = ({ enabled = true, language = 'ar' }) => {
   const isProcessingRef = useRef(false);
   const lastScannedCodeRef = useRef('');
   const scanLockTimeRef = useRef(0);
+  // True while a lookup or check-in request is still in flight. While busy a
+  // new scan must NOT interrupt (a stale check-in response could bleed into
+  // the next member's dialog); once settled, scanning a DIFFERENT card takes
+  // over immediately so staff never wait for the auto-close.
+  const busyRef = useRef(false);
+
+  useEffect(() => {
+    busyRef.current = loading || Object.values(activityStates).some(s => s && s.status === 'loading');
+  }, [loading, activityStates]);
 
   // In-input hardware-scan detection: lets a scan fire while a text field is focused
   // (e.g. scanning a walk-in member's card while an invoice dialog is open) without
@@ -215,11 +224,18 @@ const GlobalScanner = ({ enabled = true, language = 'ar' }) => {
     if (!memberCode) return;
     
     if (isProcessingRef.current) {
-      bufferRef.current = '';
-      return;
+      // Requests still in flight, or the SAME card double-read → ignore.
+      // A DIFFERENT card scanned over a finished result dialog falls through
+      // and replaces it immediately (fast back-to-back check-ins).
+      if (busyRef.current || memberCode === lastScannedCodeRef.current) {
+        bufferRef.current = '';
+        return;
+      }
     }
-    
-    if (now - scanLockTimeRef.current < 2000) {
+
+    // Debounce only the SAME code (scanner double-reads); a different card
+    // may follow immediately.
+    if (now - scanLockTimeRef.current < 2000 && memberCode === lastScannedCodeRef.current) {
       bufferRef.current = '';
       return;
     }
@@ -250,6 +266,9 @@ const GlobalScanner = ({ enabled = true, language = 'ar' }) => {
       // lite=1: skip the base64 member photo (not rendered here) for a faster lookup
       const lookupUrl = `${API_URL}/api/public/member-card/${encodeURIComponent(memberCode)}?lite=1${branchId ? `&branch_id=${encodeURIComponent(branchId)}` : ''}`;
       const response = await fetch(lookupUrl);
+      
+      // A newer scan took over while this lookup was in flight → drop this response.
+      if (lastScannedCodeRef.current !== memberCode) return;
       
       if (!response.ok) {
         // Capture server-provided error (e.g. 409 duplicate across branches) before trying coach lookup
@@ -322,6 +341,9 @@ const GlobalScanner = ({ enabled = true, language = 'ar' }) => {
             act.activity_id,
             false
           );
+          // A newer scan took over while the check-in was in flight → the record
+          // is saved server-side; just don't paint stale state over the new dialog.
+          if (lastScannedCodeRef.current !== memberCode) return;
           if (res.data.status === 'already_checked_in') {
             playSound('error');
             setActivityStates({ [act.activity_id]: { status: 'recorded', message: t('مسجل مسبقاً اليوم ✓', 'Already checked in today ✓') } });
@@ -337,6 +359,7 @@ const GlobalScanner = ({ enabled = true, language = 'ar' }) => {
             setMemberData(prev => ({ ...prev, activeActivities: prev.activeActivities.map(a => a.activity_id === act.activity_id ? { ...a, recorded_today: true } : a) }));
           }
         } catch (checkinError) {
+          if (lastScannedCodeRef.current !== memberCode) return;
           playSound('error');
           const rawErr = checkinError.response?.data?.detail;
           const errorMsg = typeof rawErr === 'string' ? rawErr : (rawErr?.msg || rawErr?.message || t('خطأ في التسجيل', 'Check-in error'));
@@ -347,6 +370,7 @@ const GlobalScanner = ({ enabled = true, language = 'ar' }) => {
       }
       
     } catch (error) {
+      if (lastScannedCodeRef.current !== memberCode) return;
       playSound('error');
       setMemberData({
         error: true,
@@ -385,9 +409,13 @@ const GlobalScanner = ({ enabled = true, language = 'ar' }) => {
     const hasError = Object.values(activityStates).some(s => s && s.status === 'error');
 
     if (allRecorded && !hasWrongDay && !hasError) {
+      // Clean success closes fast (2s); keep quota/wrong-day warnings and
+      // member notes on screen longer (4s) so staff can actually read them.
+      const hasWarning = Object.values(activityStates).some(s => s && (s.sessionQuotaWarning || s.wrongDayWarning));
+      const hasNote = !!(memberData.notes && memberData.notes.trim());
       const timer = setTimeout(() => {
         handleCloseDialog();
-      }, 3000);
+      }, (hasWarning || hasNote) ? 4000 : 2000);
       return () => clearTimeout(timer);
     }
   }, [activityStates, memberData, loading, showMemberDialog, handleCloseDialog]);
@@ -535,9 +563,10 @@ const GlobalScanner = ({ enabled = true, language = 'ar' }) => {
 
       // Focus is NOT in an editable element — original global-scan behavior.
       if (isProcessingRef.current) {
+        // Keep the keystrokes off the page, but KEEP buffering: scanning the
+        // next member's card while a finished result dialog is still open
+        // must interrupt it (handleScan decides whether to allow it).
         e.preventDefault();
-        bufferRef.current = '';
-        return;
       }
       
       const now = Date.now();
@@ -563,11 +592,9 @@ const GlobalScanner = ({ enabled = true, language = 'ar' }) => {
         bufferRef.current += e.key;
         
         timeoutRef.current = setTimeout(() => {
-          if (!isProcessingRef.current) {
-            const code = normalizeScannedCode(bufferRef.current.trim());
-            if (code.length >= 3) {
-              handleScan(code);
-            }
+          const code = normalizeScannedCode(bufferRef.current.trim());
+          if (code.length >= 3) {
+            handleScan(code);
           }
           bufferRef.current = '';
         }, 50);
