@@ -77,6 +77,7 @@ class BookingCreate(BaseModel):
     hourly_rate: float
     persons_count: Optional[int] = 0      # per-person pricing (added on top)
     person_rate: Optional[float] = 0      # price per person per hour
+    day_persons: Optional[dict] = None    # recurring: per-weekday persons override {"saturday": 10, ...}
     notes: Optional[str] = ""
     force: Optional[bool] = False     # override conflicts
 
@@ -291,7 +292,22 @@ async def create_booking(data: BookingCreate, current_user: dict = Depends(get_c
         raise HTTPException(status_code=400, detail="قيم غير صالحة")
     if data.duration_hours <= 0 or data.duration_hours > 12:
         raise HTTPException(status_code=400, detail="مدة الحجز غير صالحة")
-    if _booking_total(data.hourly_rate, data.duration_hours, persons_count, person_rate) <= 0:
+
+    # Optional per-weekday persons override for recurring bookings
+    day_persons_map = {}
+    if data.recurring and data.day_persons:
+        for k, v in data.day_persons.items():
+            if k not in WEEKDAYS:
+                raise HTTPException(status_code=400, detail="أيام أسبوع غير صالحة في أعداد الأفراد")
+            try:
+                iv = int(v)
+            except (TypeError, ValueError):
+                raise HTTPException(status_code=400, detail="عدد أفراد غير صالح")
+            if iv < 0:
+                raise HTTPException(status_code=400, detail="عدد أفراد غير صالح")
+            day_persons_map[k] = iv
+
+    if not day_persons_map and _booking_total(data.hourly_rate, data.duration_hours, persons_count, person_rate) <= 0:
         raise HTTPException(status_code=400, detail="يجب إدخال سعر الساعة أو سعر الفرد وعدد الأفراد")
     if not (0 <= data.start_hour <= 23):
         raise HTTPException(status_code=400, detail="ساعة البداية غير صالحة")
@@ -344,22 +360,30 @@ async def create_booking(data: BookingCreate, current_user: dict = Depends(get_c
 
     now = datetime.now(timezone.utc).isoformat()
     recurring_group_id = str(uuid.uuid4()) if data.recurring else None
-    total_each = _booking_total(data.hourly_rate, data.duration_hours, persons_count, person_rate)
     docs = []
     for d in dates:
+        weekday = _weekday_of(d)
+        # Per-weekday persons override (recurring); falls back to the shared count
+        d_persons = day_persons_map.get(weekday, persons_count)
+        d_total = _booking_total(data.hourly_rate, data.duration_hours, d_persons, person_rate)
+        if d_total <= 0:
+            raise HTTPException(
+                status_code=400,
+                detail=f"إجمالي حجز يوم {WEEKDAY_AR.get(weekday, weekday)} صفر — أدخل سعر الساعة أو عدد أفراد لهذا اليوم",
+            )
         docs.append({
             "id": str(uuid.uuid4()),
             "coach_id": coach["id"],
             "coach_name": coach.get("name", ""),
             "branch_id": branch_id,
             "date": d,
-            "weekday": _weekday_of(d),
+            "weekday": weekday,
             "start_hour": data.start_hour,
             "duration_hours": data.duration_hours,
             "hourly_rate": data.hourly_rate,
-            "persons_count": persons_count,
+            "persons_count": d_persons,
             "person_rate": person_rate,
-            "total_amount": total_each,
+            "total_amount": d_total,
             "status": "booked",
             "payment_status": "unpaid",
             "payment_id": None,

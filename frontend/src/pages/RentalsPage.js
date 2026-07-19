@@ -14,7 +14,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs'
 import { rentalsAPI, branchesAPI } from '../services/api';
 import { toast } from 'sonner';
 import {
-  KeyRound, Plus, Trash2, CalendarDays, Users, Wallet, Printer, Ban, Loader2, Download, AlertTriangle, BarChart3
+  KeyRound, Plus, Trash2, CalendarDays, Users, Wallet, Printer, Ban, Loader2, Download, AlertTriangle, BarChart3, Pencil
 } from 'lucide-react';
 
 const WEEKDAYS = [
@@ -72,9 +72,14 @@ export default function RentalsPage() {
     coach_id: '', branch_id: '', recurring: false, date: todayStr(),
     start_date: todayStr(), end_date: '', days: [], start_hour: 17,
     duration_hours: 1, hourly_rate: '', persons_count: '', person_rate: '', notes: '',
+    day_persons: {}, // per-weekday persons override for recurring bookings
   };
   const [bk, setBk] = useState({ ...emptyBooking });
   const [conflicts, setConflicts] = useState(null); // pending conflicts requiring confirmation
+
+  // Per-booking edit (actual persons count / rates on an unpaid booking)
+  const [editBooking, setEditBooking] = useState(null);
+  const [editForm, setEditForm] = useState({ persons_count: '', person_rate: '' });
 
   // Coach dialog
   const [showCoach, setShowCoach] = useState(false);
@@ -145,10 +150,21 @@ export default function RentalsPage() {
     const rate = parseFloat(bk.hourly_rate) || 0;
     const persons = parseInt(bk.persons_count, 10) || 0;
     const personRate = parseFloat(bk.person_rate) || 0;
-    if (rate <= 0 && (persons <= 0 || personRate <= 0))
-      return toast.error(t('أدخل سعر الساعة أو عدد الأفراد وسعر الفرد', 'Enter hourly rate or persons count and per-person rate'));
     if (bk.recurring && (!bk.start_date || !bk.end_date || bk.days.length === 0))
       return toast.error(t('حدد فترة التكرار وأيام الأسبوع', 'Set recurring range and weekdays'));
+    if (rate <= 0) {
+      // No hourly rate: person pricing must yield a positive total for every day
+      // (mirrors the backend per-day check; per-day counts fall back to the shared count)
+      const effectivePersons = (day) => {
+        const raw = bk.day_persons?.[day];
+        return (raw === '' || raw == null) ? persons : (parseInt(raw, 10) || 0);
+      };
+      const allDaysCovered = bk.recurring
+        ? bk.days.every(d => effectivePersons(d) > 0)
+        : persons > 0;
+      if (personRate <= 0 || !allDaysCovered)
+        return toast.error(t('أدخل سعر الساعة أو سعر الفرد مع عدد أفراد لكل يوم', 'Enter hourly rate, or per-person rate with a persons count for every day'));
+    }
     setSaving(true);
     try {
       const payload = {
@@ -159,6 +175,13 @@ export default function RentalsPage() {
         start_date: bk.recurring ? bk.start_date : undefined,
         end_date: bk.recurring ? bk.end_date : undefined,
         days: bk.recurring ? bk.days : undefined,
+        day_persons: bk.recurring
+          ? Object.fromEntries(
+              Object.entries(bk.day_persons || {})
+                .filter(([d, v]) => bk.days.includes(d) && v !== '' && v !== null && v !== undefined)
+                .map(([d, v]) => [d, parseInt(v, 10) || 0])
+            )
+          : undefined,
         start_hour: Number(bk.start_hour),
         duration_hours: parseFloat(bk.duration_hours) || 1,
         hourly_rate: rate,
@@ -183,6 +206,32 @@ export default function RentalsPage() {
     } finally {
       setSaving(false);
     }
+  };
+
+  // ===== Per-booking edit (actual persons count) =====
+  const openEditBooking = (b) => {
+    setEditBooking(b);
+    setEditForm({
+      persons_count: b.persons_count != null ? String(b.persons_count) : '',
+      person_rate: b.person_rate != null ? String(b.person_rate) : '',
+    });
+  };
+
+  const submitEditBooking = async () => {
+    if (!editBooking) return;
+    const persons = parseInt(editForm.persons_count, 10) || 0;
+    const personRate = parseFloat(editForm.person_rate) || 0;
+    const hourPart = (editBooking.hourly_rate || 0) * (editBooking.duration_hours || 1);
+    if (hourPart <= 0 && (persons <= 0 || personRate <= 0))
+      return toast.error(t('أدخل عدد الأفراد وسعر الفرد (لا يوجد سعر ساعة لهذا الحجز)', 'Enter persons count and rate (no hourly rate on this booking)'));
+    setSaving(true);
+    try {
+      await rentalsAPI.updateBooking(editBooking.id, { persons_count: persons, person_rate: personRate });
+      toast.success(t('تم تحديث الحجز', 'Booking updated'));
+      setEditBooking(null);
+      loadAll();
+    } catch (e) { toast.error(errDetail(e)); }
+    finally { setSaving(false); }
   };
 
   const cancelBooking = async (b) => {
@@ -481,6 +530,9 @@ export default function RentalsPage() {
                       <td className="p-3">
                         <div className="flex gap-1">
                           {b.status !== 'cancelled' && b.payment_status === 'unpaid' && (
+                            <Button size="sm" variant="ghost" title={t('تعديل العدد', 'Edit persons')} onClick={() => openEditBooking(b)} data-testid={`button-edit-booking-${b.id}`}><Pencil className="w-4 h-4 text-blue-600" /></Button>
+                          )}
+                          {b.status !== 'cancelled' && b.payment_status === 'unpaid' && (
                             <Button size="sm" variant="ghost" title={t('إلغاء', 'Cancel')} onClick={() => cancelBooking(b)}><Ban className="w-4 h-4 text-amber-600" /></Button>
                           )}
                           {isAdmin && b.payment_status !== 'paid' && (
@@ -735,6 +787,28 @@ export default function RentalsPage() {
                       ))}
                     </div>
                   </div>
+                  {bk.days.length > 0 && (
+                    <div className="border rounded-md p-3 bg-muted/20">
+                      <Label className="text-xs">{t('عدد الأفراد لكل يوم (اختياري)', 'Persons per weekday (optional)')}</Label>
+                      <p className="text-[11px] text-muted-foreground mb-2">
+                        {t('اتركه فارغاً لاستخدام العدد الموحد بالأسفل', 'Leave empty to use the shared count below')}
+                      </p>
+                      <div className="grid grid-cols-3 gap-2">
+                        {WEEKDAYS.filter(w => bk.days.includes(w.key)).map(w => (
+                          <div key={w.key}>
+                            <Label className="text-xs">{ar ? w.ar : w.en}</Label>
+                            <Input
+                              type="number" min="0" step="1"
+                              placeholder={bk.persons_count || '0'}
+                              value={bk.day_persons[w.key] ?? ''}
+                              onChange={e => setBk(prev => ({ ...prev, day_persons: { ...prev.day_persons, [w.key]: e.target.value } }))}
+                              data-testid={`input-day-persons-${w.key}`}
+                            />
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </>
               )}
 
@@ -775,7 +849,31 @@ export default function RentalsPage() {
                 {(() => {
                   const dur = parseFloat(bk.duration_hours) || 0;
                   const hourPart = (parseFloat(bk.hourly_rate) || 0) * dur;
-                  const personPart = (parseInt(bk.persons_count, 10) || 0) * (parseFloat(bk.person_rate) || 0) * dur;
+                  const personRate = parseFloat(bk.person_rate) || 0;
+                  const sharedPersons = parseInt(bk.persons_count, 10) || 0;
+                  // Per-weekday overrides in play?
+                  const overrides = bk.recurring
+                    ? WEEKDAYS.filter(w => bk.days.includes(w.key) && bk.day_persons[w.key] !== '' && bk.day_persons[w.key] != null)
+                    : [];
+                  if (overrides.length > 0) {
+                    return (
+                      <>
+                        <div className="text-xs text-muted-foreground mb-1">{t('الإجمالي حسب اليوم:', 'Total per weekday:')}</div>
+                        {WEEKDAYS.filter(w => bk.days.includes(w.key)).map(w => {
+                          const raw = bk.day_persons[w.key];
+                          const p = (raw === '' || raw == null) ? sharedPersons : (parseInt(raw, 10) || 0);
+                          const total = hourPart + p * personRate * dur;
+                          return (
+                            <div key={w.key} className="flex justify-between text-xs">
+                              <span>{ar ? w.ar : w.en} ({p} {t('فرد', 'persons')})</span>
+                              <span className="font-bold">{total.toLocaleString()} {t('ريال', 'SAR')}</span>
+                            </div>
+                          );
+                        })}
+                      </>
+                    );
+                  }
+                  const personPart = sharedPersons * personRate * dur;
                   return (
                     <>
                       {personPart > 0 && (
@@ -822,6 +920,68 @@ export default function RentalsPage() {
                   {saving && <Loader2 className="w-4 h-4 animate-spin ml-1" />}{t('حفظ الحجز', 'Save booking')}
                 </Button>
               )}
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* ===== Edit booking persons dialog ===== */}
+        <Dialog open={!!editBooking} onOpenChange={(o) => { if (!o) setEditBooking(null); }}>
+          <DialogContent className="max-w-sm" dir={ar ? 'rtl' : 'ltr'}>
+            <DialogHeader><DialogTitle>{t('تعديل عدد الأفراد', 'Edit persons count')}</DialogTitle></DialogHeader>
+            {editBooking && (
+              <div className="space-y-3">
+                <div className="text-xs text-muted-foreground bg-muted/40 rounded-md p-2">
+                  {editBooking.coach_name} — {editBooking.date} ({WEEKDAY_AR[editBooking.weekday] || editBooking.weekday}) — {hourLabel(editBooking.start_hour, ar)}
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <Label>{t('عدد الأفراد', 'Persons')}</Label>
+                    <Input
+                      type="number" min="0" step="1" autoFocus
+                      value={editForm.persons_count}
+                      onChange={e => setEditForm(p => ({ ...p, persons_count: e.target.value }))}
+                      data-testid="input-edit-persons"
+                    />
+                  </div>
+                  <div>
+                    <Label>{t('سعر الفرد / ساعة', 'Rate per person/hr')}</Label>
+                    <Input
+                      type="number" min="0"
+                      value={editForm.person_rate}
+                      onChange={e => setEditForm(p => ({ ...p, person_rate: e.target.value }))}
+                      data-testid="input-edit-person-rate"
+                    />
+                  </div>
+                </div>
+                {(() => {
+                  const dur = editBooking.duration_hours || 1;
+                  const hourPart = (editBooking.hourly_rate || 0) * dur;
+                  const personPart = (parseInt(editForm.persons_count, 10) || 0) * (parseFloat(editForm.person_rate) || 0) * dur;
+                  return (
+                    <div className="text-sm bg-muted/40 rounded-md p-3 space-y-1">
+                      <div className="flex justify-between text-xs text-muted-foreground">
+                        <span>{t('الساعات:', 'Hours:')} {hourPart.toLocaleString()}</span>
+                        <span>{t('الأفراد:', 'Persons:')} {personPart.toLocaleString()}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>{t('الإجمالي الجديد:', 'New total:')}</span>
+                        <span className="font-bold">{(hourPart + personPart).toLocaleString()} {t('ريال', 'SAR')}</span>
+                      </div>
+                      {(hourPart + personPart) !== (editBooking.total_amount || 0) && (
+                        <div className="text-[11px] text-muted-foreground">
+                          {t(`الإجمالي الحالي: ${(editBooking.total_amount || 0).toLocaleString()}`, `Current total: ${(editBooking.total_amount || 0).toLocaleString()}`)}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
+              </div>
+            )}
+            <DialogFooter className="gap-2">
+              <Button variant="outline" onClick={() => setEditBooking(null)}>{t('إلغاء', 'Cancel')}</Button>
+              <Button onClick={submitEditBooking} disabled={saving} data-testid="button-save-edit-booking">
+                {saving && <Loader2 className="w-4 h-4 animate-spin ml-1" />}{t('حفظ', 'Save')}
+              </Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>
