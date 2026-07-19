@@ -318,16 +318,22 @@ async def serve_ad_image(filename: str):
 # ============ PUBLIC API - Member Card ============
 
 @api_router.get("/public/member-card/{search_term}")
-async def get_member_card_public(search_term: str, branch_id: Optional[str] = None):
+async def get_member_card_public(search_term: str, branch_id: Optional[str] = None, lite: bool = False):
     """Public API to get member card info by member_code or phone.
 
     Optional ``branch_id`` disambiguates printed-card QRs that only encode the
     numeric suffix (e.g. ``0027``) when the same suffix exists in multiple
     branches after a global renumber. The scanner page passes the active
     branch so a B5 reader maps ``0027`` to ``DEFA-B5-0027`` automatically.
+
+    Optional ``lite`` skips the (potentially large base64) member photo so
+    scanner flows that never render it get a much faster lookup.
     """
     import re as _re_norm
     from utils.text import normalize_digits, dearabize_keyboard
+    # Scanners never render the photo; excluding it in the DB projection keeps
+    # the Atlas fetch small (base64 photos can be hundreds of KB).
+    member_proj = {"_id": 0, "photo": 0} if lite else {"_id": 0}
     # Hardware barcode scanners type via the OS keyboard layout, so on an
     # Arabic layout the scanned digits arrive as Arabic-Indic numerals that
     # never match ASCII-stored member codes. Normalize before lookup.
@@ -343,7 +349,7 @@ async def get_member_card_public(search_term: str, branch_id: Optional[str] = No
             {"member_code": search_term},
             {"phone": search_term}
         ]},
-        {"_id": 0}
+        member_proj
     )
 
     if not member and len(search_term) > 1 and search_term[0].isascii() and search_term[0].isalpha():
@@ -359,14 +365,14 @@ async def get_member_card_public(search_term: str, branch_id: Optional[str] = No
                 {"member_code": prefix_stripped},
                 {"phone": prefix_stripped},
             ]},
-            {"_id": 0}
+            member_proj
         )
 
     if not member and search_term.isdigit():
         import re as _re
         matches = await db.members.find(
             {"member_code": {"$regex": f"-{_re.escape(search_term)}[^0-9]*$"}},
-            {"_id": 0}
+            member_proj
         ).to_list(20)
         if len(matches) == 1:
             member = matches[0]
@@ -395,7 +401,7 @@ async def get_member_card_public(search_term: str, branch_id: Optional[str] = No
                     {"member_code": {"$regex": f"^{_re_kb.escape(alt)}$", "$options": "i"}},
                     {"phone": alt},
                 ]},
-                {"_id": 0}
+                member_proj
             )
 
     if not member:
@@ -412,7 +418,7 @@ async def get_member_card_public(search_term: str, branch_id: Optional[str] = No
             seq = seq_match.group(1)
             legacy_matches = await db.members.find(
                 {"member_code": {"$regex": f"-{_re_norm.escape(seq)}[^0-9]*$"}},
-                {"_id": 0}
+                member_proj
             ).to_list(20)
             if len(legacy_matches) == 1:
                 member = legacy_matches[0]
@@ -463,7 +469,7 @@ async def get_member_card_public(search_term: str, branch_id: Optional[str] = No
             {"_id": 0, "id": 1, "name_ar": 1, "name": 1, "member_code": 1, "phone": 1}
         ).limit(25).to_list(25)
         if len(name_matches) == 1:
-            member = await db.members.find_one({"id": name_matches[0]["id"]}, {"_id": 0})
+            member = await db.members.find_one({"id": name_matches[0]["id"]}, member_proj)
         elif len(name_matches) > 1:
             return {
                 "multiple": True,

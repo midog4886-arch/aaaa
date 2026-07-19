@@ -20,6 +20,8 @@ const CameraQRScanner = ({ open, onClose, language = 'ar' }) => {
   // Per-activity states: { [activityId]: { status, scheduleDays, message, sessionQuotaWarning } }
   const [activityStates, setActivityStates] = useState({});
   const [facingMode, setFacingMode] = useState('environment');
+  // True while the auto "scan next member" countdown is running
+  const [autoNext, setAutoNext] = useState(false);
   const scannerRef = useRef(null);
   const containerRef = useRef(null);
 
@@ -54,6 +56,68 @@ const CameraQRScanner = ({ open, onClose, language = 'ar' }) => {
     setScanning(false);
   }, []);
 
+  const performCheckin = useCallback(async (apiCode, activityId, force = false) => {
+    if (!apiCode || !activityId) return;
+
+    setActivityStates(prev => ({
+      ...prev,
+      [activityId]: { ...prev[activityId], status: 'loading' }
+    }));
+
+    try {
+      const res = await attendanceAPI.qrCheckin(apiCode, activityId, force);
+
+      if (res.data.status === 'already_checked_in') {
+        setActivityStates(prev => ({
+          ...prev,
+          [activityId]: { status: 'recorded', message: t('مسجل مسبقاً اليوم ✓', 'Already checked in today ✓') }
+        }));
+        setMemberData(prev => prev ? ({
+          ...prev,
+          activeActivities: prev.activeActivities.map(a =>
+            a.activity_id === activityId ? { ...a, recorded_today: true } : a
+          )
+        }) : prev);
+      } else if (res.data.status === 'wrong_day') {
+        const scheduleDays = res.data.schedule_days || [];
+        setActivityStates(prev => ({
+          ...prev,
+          [activityId]: {
+            status: 'wrong_day',
+            scheduleDays,
+            today: res.data.today,
+            message: res.data.message || t('هذا ليس موعدك اليوم!', 'This is not your scheduled day!')
+          }
+        }));
+      } else {
+        const quotaWarn = res.data.session_quota_warning;
+        const wrongDayWarn = res.data.wrong_day_warning;
+        setActivityStates(prev => ({
+          ...prev,
+          [activityId]: {
+            status: 'recorded',
+            sessionQuotaWarning: quotaWarn || null,
+            wrongDayWarning: wrongDayWarn || null,
+            message: t('✅ تم تسجيل الحضور', '✅ Checked in')
+          }
+        }));
+        setMemberData(prev => prev ? ({
+          ...prev,
+          activeActivities: prev.activeActivities.map(a =>
+            a.activity_id === activityId ? { ...a, recorded_today: true } : a
+          )
+        }) : prev);
+      }
+    } catch (error) {
+      const rawErr = error.response?.data?.detail;
+      const errorMsg = typeof rawErr === 'string' ? rawErr : (rawErr?.msg || rawErr?.message || t('خطأ في التسجيل', 'Check-in error'));
+      setActivityStates(prev => ({
+        ...prev,
+        [activityId]: { status: 'error', message: `❌ ${errorMsg}` }
+      }));
+    }
+  }, [t]);
+
   const handleScanSuccess = useCallback(async (decodedText) => {
     const memberCode = extractMemberCode(decodedText);
     if (!memberCode) return;
@@ -63,7 +127,8 @@ const CameraQRScanner = ({ open, onClose, language = 'ar' }) => {
 
     try {
       const branchId = localStorage.getItem('selectedBranchId') || '';
-      const lookupUrl = `/api/public/member-card/${encodeURIComponent(memberCode)}${branchId ? `?branch_id=${encodeURIComponent(branchId)}` : ''}`;
+      // lite=1: skip the base64 member photo (not rendered here) for a faster lookup
+      const lookupUrl = `/api/public/member-card/${encodeURIComponent(memberCode)}?lite=1${branchId ? `&branch_id=${encodeURIComponent(branchId)}` : ''}`;
       const response = await fetch(lookupUrl);
       if (response.ok) {
         const data = await response.json();
@@ -76,6 +141,11 @@ const CameraQRScanner = ({ open, onClose, language = 'ar' }) => {
         });
         setActivityStates(initStates);
         setMemberData({ ...data, activeActivities, expiredActivities });
+        // Speed-up: exactly one active unrecorded subscription → check in
+        // automatically without waiting for a button press.
+        if (activeActivities.length === 1 && !activeActivities[0].recorded_today) {
+          performCheckin(data.member_code || data.id, activeActivities[0].activity_id);
+        }
       } else {
         // Capture server-provided error detail (e.g. 409 duplicate suffix across branches)
         let serverErrorMsg = null;
@@ -110,7 +180,7 @@ const CameraQRScanner = ({ open, onClose, language = 'ar' }) => {
     } finally {
       setLoading(false);
     }
-  }, [stopScanner, t]);
+  }, [stopScanner, performCheckin, t]);
 
   const startScanner = useCallback(async () => {
     setMemberData(null);
@@ -175,77 +245,50 @@ const CameraQRScanner = ({ open, onClose, language = 'ar' }) => {
     });
   }, [stopScanner, startScanner]);
 
-  const handleCheckin = useCallback(async (activityId, activityName, force = false) => {
+  const handleCheckin = useCallback((activityId, activityName, force = false) => {
     if (!memberData || !activityId) return;
-
-    setActivityStates(prev => ({
-      ...prev,
-      [activityId]: { ...prev[activityId], status: 'loading' }
-    }));
-
-    try {
-      const res = await attendanceAPI.qrCheckin(
-        memberData.member_code || memberData.id,
-        activityId,
-        force
-      );
-
-      if (res.data.status === 'already_checked_in') {
-        setActivityStates(prev => ({
-          ...prev,
-          [activityId]: { status: 'recorded', message: t('مسجل مسبقاً اليوم ✓', 'Already checked in today ✓') }
-        }));
-        setMemberData(prev => ({
-          ...prev,
-          activeActivities: prev.activeActivities.map(a =>
-            a.activity_id === activityId ? { ...a, recorded_today: true } : a
-          )
-        }));
-      } else if (res.data.status === 'wrong_day') {
-        const scheduleDays = res.data.schedule_days || [];
-        setActivityStates(prev => ({
-          ...prev,
-          [activityId]: {
-            status: 'wrong_day',
-            scheduleDays,
-            today: res.data.today,
-            message: res.data.message || t('هذا ليس موعدك اليوم!', 'This is not your scheduled day!')
-          }
-        }));
-      } else {
-        const quotaWarn = res.data.session_quota_warning;
-        const wrongDayWarn = res.data.wrong_day_warning;
-        setActivityStates(prev => ({
-          ...prev,
-          [activityId]: {
-            status: 'recorded',
-            sessionQuotaWarning: quotaWarn || null,
-            wrongDayWarning: wrongDayWarn || null,
-            message: t('✅ تم تسجيل الحضور', '✅ Checked in')
-          }
-        }));
-        setMemberData(prev => ({
-          ...prev,
-          activeActivities: prev.activeActivities.map(a =>
-            a.activity_id === activityId ? { ...a, recorded_today: true } : a
-          )
-        }));
-      }
-    } catch (error) {
-      const rawErr = error.response?.data?.detail;
-      const errorMsg = typeof rawErr === 'string' ? rawErr : (rawErr?.msg || rawErr?.message || t('خطأ في التسجيل', 'Check-in error'));
-      setActivityStates(prev => ({
-        ...prev,
-        [activityId]: { status: 'error', message: `❌ ${errorMsg}` }
-      }));
-    }
-  }, [memberData, t]);
+    performCheckin(memberData.member_code || memberData.id, activityId, force);
+  }, [memberData, performCheckin]);
 
   const handleScanAgain = useCallback(() => {
+    setAutoNext(false);
     setMemberData(null);
     setActivityStates({});
     startScanner();
   }, [startScanner]);
+
+  // Speed-up: once everything for the scanned person is recorded cleanly,
+  // automatically reopen the camera for the next member — no button press.
+  useEffect(() => {
+    if (!open || !memberData || loading || memberData.error) {
+      setAutoNext(false);
+      return;
+    }
+
+    let delay = null;
+    if (memberData.isCoach) {
+      delay = 2500;
+    } else {
+      const acts = memberData.activeActivities || [];
+      const states = Object.values(activityStates);
+      const allRecorded = acts.length > 0 && acts.every(a =>
+        a.recorded_today || activityStates[a.activity_id]?.status === 'recorded'
+      );
+      const hasPending = states.some(s => s && ['loading', 'wrong_day', 'error'].includes(s.status));
+      const hasWarning = states.some(s => s && (s.sessionQuotaWarning || s.wrongDayWarning));
+      const hasNote = !!(memberData.notes && memberData.notes.trim());
+      if (allRecorded && !hasPending && !hasWarning && !hasNote) delay = 2000;
+    }
+
+    if (delay == null) {
+      setAutoNext(false);
+      return;
+    }
+
+    setAutoNext(true);
+    const timer = setTimeout(() => handleScanAgain(), delay);
+    return () => clearTimeout(timer);
+  }, [open, memberData, activityStates, loading, handleScanAgain]);
 
   return (
     <Dialog open={open} onOpenChange={(v) => { if (!v) handleClose(); }}>
@@ -318,6 +361,12 @@ const CameraQRScanner = ({ open, onClose, language = 'ar' }) => {
                 </div>
               )}
             </div>
+            {autoNext && (
+              <div className="flex items-center justify-center gap-2 text-sm font-medium text-green-700 bg-green-50 border border-green-200 rounded-lg py-2 px-3">
+                <Loader2 className="w-4 h-4 animate-spin" />
+                {t('جاري فتح الكاميرا للمسح التالي...', 'Opening camera for next scan...')}
+              </div>
+            )}
             <Button onClick={handleScanAgain} className="gap-2">
               <Camera className="w-4 h-4" />
               {t('مسح آخر', 'Scan Another')}
@@ -560,6 +609,12 @@ const CameraQRScanner = ({ open, onClose, language = 'ar' }) => {
               </div>
             )}
 
+            {autoNext && (
+              <div className="flex items-center justify-center gap-2 text-sm font-medium text-green-700 bg-green-50 border border-green-200 rounded-lg py-2 px-3">
+                <Loader2 className="w-4 h-4 animate-spin" />
+                {t('جاري فتح الكاميرا للعضو التالي...', 'Opening camera for next member...')}
+              </div>
+            )}
             <Button onClick={handleScanAgain} variant="outline" className="w-full gap-2">
               <Camera className="w-4 h-4" />
               {t('مسح عضو آخر', 'Scan Another')}

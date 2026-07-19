@@ -247,7 +247,8 @@ const GlobalScanner = ({ enabled = true, language = 'ar' }) => {
     try {
       const API_URL = '';
       const branchId = localStorage.getItem('selectedBranchId') || '';
-      const lookupUrl = `${API_URL}/api/public/member-card/${encodeURIComponent(memberCode)}${branchId ? `?branch_id=${encodeURIComponent(branchId)}` : ''}`;
+      // lite=1: skip the base64 member photo (not rendered here) for a faster lookup
+      const lookupUrl = `${API_URL}/api/public/member-card/${encodeURIComponent(memberCode)}?lite=1${branchId ? `&branch_id=${encodeURIComponent(branchId)}` : ''}`;
       const response = await fetch(lookupUrl);
       
       if (!response.ok) {
