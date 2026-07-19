@@ -360,10 +360,18 @@ export default function AttendancePage() {
     }
   };
 
-  // Select member from multiple results
+  // Select member from multiple results (keep the list so the user can go back)
   const selectMemberFromResults = (member) => {
     setQuickSearchResult(member);
-    setQuickSearchResults([]);
+  };
+
+  // Back from the selected member to the names list
+  const backToSearchResults = () => {
+    // Refresh the list entry with any attendance recorded while it was open
+    setQuickSearchResults(prev => prev.map(m =>
+      quickSearchResult && m.member_id === quickSearchResult.member_id ? quickSearchResult : m
+    ));
+    setQuickSearchResult(null);
   };
 
   // Quick Attendance Registration
@@ -1056,8 +1064,8 @@ export default function AttendancePage() {
               </div>
             </div>
 
-            {/* Multiple Search Results */}
-            {quickSearchResults.length > 0 && (
+            {/* Multiple Search Results (hidden while a member is selected) */}
+            {quickSearchResults.length > 0 && !quickSearchResult && (
               <div className="bg-white border-2 border-blue-200 rounded-xl p-4 shadow-lg">
                 <h3 className="text-sm font-medium text-blue-700 mb-3">
                   {t(`تم العثور على ${quickSearchResults.length} نتائج - اختر العضو:`, `Found ${quickSearchResults.length} results - Select member:`)}
@@ -1087,6 +1095,16 @@ export default function AttendancePage() {
             {/* Single Search Result */}
             {quickSearchResult && (
               <div className="bg-white border-2 border-green-300 rounded-xl p-6 shadow-lg animate-in fade-in duration-300">
+                {quickSearchResults.length > 0 && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={backToSearchResults}
+                    className="mb-4 text-blue-600 border-blue-300 hover:bg-blue-50"
+                  >
+                    {t('← رجوع لقائمة الأسماء', '← Back to names list')}
+                  </Button>
+                )}
                 <div className="flex items-center justify-between mb-4">
                   <div className="flex items-center gap-4">
                     <MemberAvatar
