@@ -43,6 +43,84 @@ def _academy_name() -> str:
     t = get_current_tenant() or {}
     return t.get("name", "") or ""
 
+
+# ---- Activities derived from the Levels day pages -------------------------
+# The public form should offer the REAL activities the academy runs, exactly
+# as they appear on the Levels/Schedule day pages. There, an activity has no
+# stored id: it is the prefix of `level.activity_name`, stored as
+# "<activity> - <time slot>". These tables/functions MIRROR the frontend
+# parser in LevelsPage.js (parseActivityName / matchBuiltInActivityExact):
+# keep them in sync or the form will show different activities than the app.
+
+# A prefix is a built-in ONLY when it IS the sport name itself (exact match,
+# after whitespace-normalization). Qualified names like "سباحه سيدات" are
+# distinct custom activities and must stay their own choice.
+_BUILTIN_EXACT_NAMES = {
+    "swimming": ["سباحة", "سباحه", "السباحة", "السباحه", "swimming", "swim"],
+    "football": ["كرة القدم", "كرة قدم", "كره القدم", "كره قدم", "القدم", "قدم", "football"],
+    "karate": ["كاراتيه", "الكاراتيه", "كاراتية", "الكاراتية", "كارتيه", "الكارتيه", "karate"],
+}
+# Canonical display labels for the built-ins (what the Levels cards show).
+_BUILTIN_DISPLAY = {
+    "swimming": {"name_ar": "السباحة", "name": "Swimming"},
+    "football": {"name_ar": "كرة القدم", "name": "Football"},
+    "karate": {"name_ar": "الكاراتيه", "name": "Karate"},
+}
+
+
+def _match_builtin_exact(prefix: str):
+    s = " ".join((prefix or "").strip().lower().split())
+    for act_id, names in _BUILTIN_EXACT_NAMES.items():
+        if s in names:
+            return act_id
+    return None
+
+
+def _match_builtin_keyword(name: str):
+    """Legacy matcher for separator-less names only (mirrors the frontend)."""
+    s = (name or "").lower()
+    if "سباح" in s or "swim" in s:
+        return "swimming"
+    if "قدم" in s or "foot" in s:
+        return "football"
+    if "كارات" in s or "karate" in s:
+        return "karate"
+    return None
+
+
+def _activities_from_levels(activity_names) -> list:
+    """Distinct activities (as shown on the Levels day pages) from raw
+    level.activity_name values. Same shape the endpoint already returns for
+    db.activities entries ({id, name, name_ar}) so the frontend needs no
+    change. Separator-less legacy names only count via the keyword matcher
+    (never promoted to a custom activity, e.g. a bare "الساعة 4")."""
+    seen = set()
+    out = []
+    for raw in activity_names:
+        nm = (raw or "").strip()
+        if not nm:
+            continue
+        if " - " in nm:
+            prefix = nm.split(" - ", 1)[0].strip()
+            built_in = _match_builtin_exact(prefix)
+            if built_in:
+                key, disp = built_in, _BUILTIN_DISPLAY[built_in]
+            elif prefix:
+                key, disp = prefix, {"name_ar": prefix, "name": prefix}
+            else:
+                continue
+        else:
+            built_in = _match_builtin_keyword(nm)
+            if not built_in:
+                continue
+            key, disp = built_in, _BUILTIN_DISPLAY[built_in]
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append({"id": "", "name": disp["name"], "name_ar": disp["name_ar"]})
+    out.sort(key=lambda a: a["name_ar"])
+    return out
+
 # ============ MODELS ============
 
 class PublicRegistrationCreate(BaseModel):
@@ -96,21 +174,38 @@ async def public_get_registration_branch(branch_id: str):
     if not branch:
         raise HTTPException(status_code=404, detail="Branch not found")
 
-    # Branch-scoped activities + shared/legacy (branch_id null/missing).
-    # Mirror the app's per-branch rule: when the branch has activities of its
-    # own show ONLY those; otherwise fall back to the shared/global ones.
-    # Only names are exposed to the public page (no fees or internal data).
-    acts = await db.activities.find(
+    # Preferred source: the REAL activities the branch runs, exactly as they
+    # appear on the Levels/Schedule day pages (derived from the branch's
+    # levels). Branch-own levels win; shared/legacy (branch_id null/missing)
+    # levels are the fallback pool — mirrors the per-branch rule below.
+    level_rows = await db.levels.find(
         {
             "$or": [{"branch_id": branch_id}, {"branch_id": None}, {"branch_id": {"$exists": False}}],
+            # Closed levels don't offer registration (missing field = active).
             "is_active": {"$ne": False},
         },
-        {"_id": 0, "id": 1, "name": 1, "name_ar": 1, "branch_id": 1},
-    ).to_list(200)
-    branch_own = [a for a in acts if (a.get("branch_id") or "") == branch_id]
-    activities = branch_own if branch_own else [a for a in acts if not (a.get("branch_id") or "")]
-    for a in activities:
-        a.pop("branch_id", None)
+        {"_id": 0, "activity_name": 1, "branch_id": 1},
+    ).to_list(3000)
+    own_rows = [r for r in level_rows if (r.get("branch_id") or "") == branch_id]
+    pool = own_rows if own_rows else [r for r in level_rows if not (r.get("branch_id") or "")]
+    activities = _activities_from_levels(r.get("activity_name") for r in pool)
+
+    if not activities:
+        # Fallback (branch has no levels yet): the activities collection.
+        # Branch-scoped + shared/legacy (branch_id null/missing); when the
+        # branch has activities of its own show ONLY those. Only names are
+        # exposed to the public page (no fees or internal data).
+        acts = await db.activities.find(
+            {
+                "$or": [{"branch_id": branch_id}, {"branch_id": None}, {"branch_id": {"$exists": False}}],
+                "is_active": {"$ne": False},
+            },
+            {"_id": 0, "id": 1, "name": 1, "name_ar": 1, "branch_id": 1},
+        ).to_list(200)
+        branch_own = [a for a in acts if (a.get("branch_id") or "") == branch_id]
+        activities = branch_own if branch_own else [a for a in acts if not (a.get("branch_id") or "")]
+        for a in activities:
+            a.pop("branch_id", None)
 
     # Expose only the public-facing label so the internal branch name is never
     # sent to the public page; fall back to the normal name when no public_name.

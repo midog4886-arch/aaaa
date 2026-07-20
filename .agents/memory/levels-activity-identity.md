@@ -33,6 +33,13 @@ custom prefixes become their own group keys and all six activity-step render
 sites list them as extra buttons (🎽, purple) before the `أخرى` bucket. Time/level
 steps index `grouped[selectedActivity]` so arbitrary string keys work as-is.
 
+The BACKEND also mirrors the parser now: the public registration endpoint
+(`registration_requests.py` `_activities_from_levels` + exact/keyword matchers)
+derives the form's activity chips from the branch's ACTIVE levels — branch-own
+first, else shared/legacy — so visitors see the day-page activities, not
+db.activities plan names ("سباحه 2"); db.activities is only the zero-levels
+fallback. Any parser rule change must be applied in that Python copy too.
+
 **Why bare `كرة` is NOT a football keyword:** app-generated football is always
 `"كرة قدم - ..."` (matched via `قدم`), so dropping bare `كرة` lets custom ball
 sports (`كرة السلة`, `كرة الطائرة`) be their own activities instead of collapsing
