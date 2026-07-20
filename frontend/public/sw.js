@@ -23,7 +23,9 @@
 // v25: bump to strip scanner-added "#" terminator from scanned member codes.
 // v26: app icons (icon-*.png) regenerated from the new academy logo — bump so
 // the precached old icons are purged and the new ones are fetched on activate.
-const CACHE_NAME = 'gcsp-academy-v26';
+// v27: attendance quick check-in cards now open the member file — purge stale
+// precached index.html so the new chunks are picked up.
+const CACHE_NAME = 'gcsp-academy-v27';
 const OFFLINE_URL = '/offline.html';
 
 // Assets to cache immediately on install

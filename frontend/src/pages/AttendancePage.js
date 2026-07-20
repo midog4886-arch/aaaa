@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/AuthContext';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import Layout from '../components/Layout';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
@@ -12,7 +12,7 @@ import { activitiesAPI, attendanceAPI, branchesAPI, schedulesAPI, levelsAPI } fr
 import { QRCodeSVG } from 'qrcode.react';
 import { toAsciiDigits, normalizeScannedCode } from '../utils/digits';
 import { Html5QrcodeScanner } from 'html5-qrcode';
-import { Check, X, Users, Calendar, QrCode, FileSpreadsheet, FileText, Search, Clock, UserCheck, UserX, CalendarDays, Zap, Hash, Camera, CameraOff, Scan, Volume2, VolumeX } from 'lucide-react';
+import { Check, X, Users, Calendar, QrCode, FileSpreadsheet, FileText, Search, Clock, UserCheck, UserX, CalendarDays, Zap, Hash, Camera, CameraOff, Scan, Volume2, VolumeX, ExternalLink } from 'lucide-react';
 import MemberAvatar from '../components/MemberAvatar';
 
 const ACTIVITY_CATEGORIES = [
@@ -26,7 +26,15 @@ export default function AttendancePage() {
   const { language } = useLanguage();
   const { user } = useAuth();
   const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
   const t = (ar, en) => language === 'ar' ? ar : en;
+
+  // Open the member's full profile dialog on the Members page (same ?focus=
+  // pattern used by global search / levels board / today-attendance; closing
+  // the dialog navigates back here).
+  const openMemberFile = (memberId) => {
+    if (memberId) navigate(`/admin/members?focus=${encodeURIComponent(memberId)}`);
+  };
 
   // State
   const [activities, setActivities] = useState([]);
@@ -1086,6 +1094,16 @@ export default function AttendancePage() {
                           {t('مسجل اليوم', 'Recorded today')}
                         </Badge>
                       )}
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={(e) => { e.stopPropagation(); openMemberFile(member.member_id); }}
+                        className="ms-auto shrink-0 gap-1 text-blue-600 hover:text-blue-800 hover:bg-blue-100"
+                        title={t('فتح ملف العضو', 'Open member file')}
+                      >
+                        <ExternalLink className="w-4 h-4" />
+                        <span className="hidden sm:inline text-xs">{t('فتح الملف', 'Open file')}</span>
+                      </Button>
                     </div>
                   ))}
                 </div>
@@ -1106,7 +1124,11 @@ export default function AttendancePage() {
                   </Button>
                 )}
                 <div className="flex items-center justify-between mb-4">
-                  <div className="flex items-center gap-4">
+                  <div
+                    className="flex items-center gap-4 cursor-pointer rounded-lg -m-2 p-2 hover:bg-green-50 transition-colors group"
+                    onClick={() => openMemberFile(quickSearchResult.member_id)}
+                    title={t('فتح ملف العضو', 'Open member file')}
+                  >
                     <MemberAvatar
                       photo={quickSearchResult.photo}
                       name={quickSearchResult.name_ar || quickSearchResult.name}
@@ -1115,13 +1137,25 @@ export default function AttendancePage() {
                     />
                     <div>
                       <p className="text-sm font-bold text-green-600">#{quickSearchResult.member_code}</p>
-                      <h3 className="text-xl font-bold text-gray-800">
+                      <h3 className="text-xl font-bold text-gray-800 group-hover:text-green-700 flex items-center gap-2">
                         {quickSearchResult.name_ar || quickSearchResult.name}
+                        <ExternalLink className="w-4 h-4 text-green-500 opacity-0 group-hover:opacity-100 transition-opacity" />
                       </h3>
                       <p className="text-gray-500">{quickSearchResult.phone}</p>
                     </div>
                   </div>
-                  <UserCheck className="w-10 h-10 text-green-500" />
+                  <div className="flex flex-col items-end gap-2">
+                    <UserCheck className="w-10 h-10 text-green-500" />
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => openMemberFile(quickSearchResult.member_id)}
+                      className="gap-1 text-blue-600 border-blue-300 hover:bg-blue-50"
+                    >
+                      <ExternalLink className="w-4 h-4" />
+                      {t('فتح الملف', 'Open file')}
+                    </Button>
+                  </div>
                 </div>
 
                 {/* Today's Attendance Status */}
