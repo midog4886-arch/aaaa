@@ -25,7 +25,11 @@
 // the precached old icons are purged and the new ones are fetched on activate.
 // v27: attendance quick check-in cards now open the member file — purge stale
 // precached index.html so the new chunks are picked up.
-const CACHE_NAME = 'gcsp-academy-v27';
+// v28: registration-request processing now auto-opens the prefilled quick-add
+// member dialog so the invoice can be linked to a member.
+// v29: clear the prefilled quick-add data when that dialog is dismissed
+// without saving, so later quick-creates can't inherit the wrong person/branch.
+const CACHE_NAME = 'gcsp-academy-v29';
 const OFFLINE_URL = '/offline.html';
 
 // Assets to cache immediately on install
