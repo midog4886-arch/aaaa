@@ -150,7 +150,7 @@ export const membersAPI = {
     axios.post(`${API}/members/${memberId}/apply-change-request/${messageId}`),
   rejectChangeRequest: (memberId, messageId, reason = '') =>
     axios.post(`${API}/members/${memberId}/reject-change-request/${messageId}`, { reason }),
-  getDailyNewCards: (date) => axios.get(`${API}/members/daily-new-cards`, { params: date ? { date } : {} }),
+  getDailyNewCards: (date, search) => axios.get(`${API}/members/daily-new-cards`, { params: { ...(date ? { date } : {}), ...(search ? { search } : {}) } }),
   markPrinted: (memberIds) => axios.post(`${API}/members/mark-printed`, { member_ids: memberIds }),
 };
 

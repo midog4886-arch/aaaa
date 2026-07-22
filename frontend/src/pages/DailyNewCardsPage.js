@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Badge } from '../components/ui/badge';
-import { Printer, CalendarDays, Users, Building2, RefreshCw, CreditCard, Filter, Languages } from 'lucide-react';
+import { Printer, CalendarDays, Users, Building2, RefreshCw, CreditCard, Filter, Languages, Search, X } from 'lucide-react';
 import { membersAPI } from '../services/api';
 import { getMemberQRValue } from '../utils/memberQR';
 import { getPrintLang, setPrintLang, PRINT_LABELS, translateSchedule } from '../utils/printLang';
@@ -13,6 +13,8 @@ const todayStr = () => new Date().toISOString().split('T')[0];
 
 const DailyNewCardsPage = () => {
   const [date, setDate] = useState(todayStr());
+  const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [data, setData] = useState(null);
@@ -61,7 +63,9 @@ const DailyNewCardsPage = () => {
     if (!ids || ids.length === 0) return;
     try {
       await membersAPI.markPrinted(ids);
-      await load(date);
+      // Reload with the active search (if any) so printing while searching
+      // keeps showing the search results instead of falling back to day mode.
+      await load(date, debouncedSearch);
       setSelectedIds(new Set());
     } catch (_e) {}
   };
@@ -74,11 +78,11 @@ const DailyNewCardsPage = () => {
     } catch (_e) { return iso; }
   };
 
-  const load = useCallback(async (d) => {
+  const load = useCallback(async (d, q) => {
     setLoading(true);
     setError('');
     try {
-      const res = await membersAPI.getDailyNewCards(d);
+      const res = await membersAPI.getDailyNewCards(d, q);
       setData(res.data);
     } catch (e) {
       setError(e?.response?.data?.detail || 'فشل تحميل بطاقات اليوم');
@@ -88,9 +92,17 @@ const DailyNewCardsPage = () => {
     }
   }, []);
 
+  // Debounce the name search so we don't hit the API on every keystroke.
   useEffect(() => {
-    load(date);
-  }, [date, load]);
+    const t = setTimeout(() => setDebouncedSearch(search.trim()), 400);
+    return () => clearTimeout(t);
+  }, [search]);
+
+  useEffect(() => {
+    load(date, debouncedSearch);
+  }, [date, debouncedSearch, load]);
+
+  const isSearching = debouncedSearch.length > 0;
 
   const renderCardHtml = (m, lang = printLang) => {
     const qrData = encodeURIComponent(getMemberQRValue(m.member_code || ''));
@@ -371,13 +383,42 @@ const DailyNewCardsPage = () => {
           <CardContent className="p-4">
             <div className="flex flex-col md:flex-row gap-3 md:items-end">
               <div className="flex-1">
+                <label className="block text-sm font-semibold text-gray-700 mb-1 flex items-center gap-1">
+                  <Search className="w-3.5 h-3.5 text-orange-500" />
+                  بحث بالاسم
+                </label>
+                <div className="relative">
+                  <Input
+                    type="text"
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    placeholder="اسم العضو أو رقم العضوية أو الجوال..."
+                    className="pl-8"
+                  />
+                  {search && (
+                    <button
+                      type="button"
+                      onClick={() => setSearch('')}
+                      className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                      title="مسح البحث"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  )}
+                </div>
+                {isSearching && (
+                  <p className="text-[11px] text-orange-600 mt-1">البحث يشمل كل التواريخ — فلتر اليوم متوقف مؤقتاً.</p>
+                )}
+              </div>
+              <div className="flex-1">
                 <label className="block text-sm font-semibold text-gray-700 mb-1">اختر اليوم</label>
                 <Input
                   type="date"
                   value={date}
                   onChange={(e) => setDate(e.target.value)}
-                  className="text-lg"
+                  className={`text-lg ${isSearching ? 'opacity-50' : ''}`}
                   dir="ltr"
+                  disabled={isSearching}
                 />
               </div>
               <div className="md:w-64">
@@ -400,7 +441,7 @@ const DailyNewCardsPage = () => {
               </div>
               <div className="flex gap-2 flex-wrap">
                 <Button
-                  onClick={() => load(date)}
+                  onClick={() => load(date, debouncedSearch)}
                   variant="outline"
                   disabled={loading}
                   className="gap-2"
@@ -473,8 +514,16 @@ const DailyNewCardsPage = () => {
             <div className="flex flex-wrap gap-3 mt-4">
               <Badge variant="secondary" className="text-sm gap-1 px-3 py-1">
                 <Users className="w-3.5 h-3.5" />
-                {selectedBranchId === 'all' ? 'إجمالي الأعضاء الجدد' : 'أعضاء الفرع المختار'}: {totalMembers}
+                {isSearching ? 'نتائج البحث' : (selectedBranchId === 'all' ? 'إجمالي الأعضاء الجدد' : 'أعضاء الفرع المختار')}: {totalMembers}
               </Badge>
+              {isSearching && (
+                <Badge
+                  className="text-xs gap-1 px-3 py-1 bg-blue-100 text-blue-700 cursor-pointer hover:bg-blue-200"
+                  onClick={() => setSearch('')}
+                >
+                  ✕ إلغاء البحث: {debouncedSearch}
+                </Badge>
+              )}
               <Badge variant="secondary" className="text-sm gap-1 px-3 py-1">
                 <Building2 className="w-3.5 h-3.5" />
                 {selectedBranchId === 'all' ? `عدد الفروع: ${data?.total_branches || 0}` : `الفرع: ${totalBranchesShown}`}
@@ -533,8 +582,8 @@ const DailyNewCardsPage = () => {
           <Card className="shadow-sm">
             <CardContent className="p-10 text-center text-gray-500">
               <Users className="w-12 h-12 mx-auto mb-3 text-gray-300" />
-              <p className="text-lg">لا يوجد أعضاء جدد بهذا التاريخ</p>
-              <p className="text-sm mt-1">جرّب تاريخاً آخر من الفلتر بالأعلى.</p>
+              <p className="text-lg">{isSearching ? `لا توجد نتائج للبحث عن "${debouncedSearch}"` : 'لا يوجد أعضاء جدد بهذا التاريخ'}</p>
+              <p className="text-sm mt-1">{isSearching ? 'جرّب اسماً أو رقماً آخر.' : 'جرّب تاريخاً آخر من الفلتر بالأعلى.'}</p>
             </CardContent>
           </Card>
         )}

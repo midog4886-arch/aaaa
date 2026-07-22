@@ -29,7 +29,10 @@
 // member dialog so the invoice can be linked to a member.
 // v29: clear the prefilled quick-add data when that dialog is dismissed
 // without saving, so later quick-creates can't inherit the wrong person/branch.
-const CACHE_NAME = 'gcsp-academy-v29';
+// v30: daily membership cards page gets a name/code/phone search (spans all
+// dates) so staff can reprint any member's card without knowing the reg day.
+// v31: printing while searching keeps the search results on reload.
+const CACHE_NAME = 'gcsp-academy-v31';
 const OFFLINE_URL = '/offline.html';
 
 // Assets to cache immediately on install

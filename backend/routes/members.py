@@ -2,6 +2,7 @@
 from fastapi import APIRouter, HTTPException, Depends, Body
 from pydantic import BaseModel, Field
 from typing import List, Optional, Dict, Any
+import re
 import uuid
 from datetime import datetime, timezone
 
@@ -108,6 +109,7 @@ class MemberBulkTransferRequest(BaseModel):
 @router.get("/daily-new-cards")
 async def get_daily_new_member_cards(
     date: Optional[str] = None,
+    search: Optional[str] = None,
     current_user: dict = Depends(get_current_user),
 ):
     if not current_user.get("is_admin"):
@@ -119,11 +121,23 @@ async def get_daily_new_member_cards(
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD")
 
-    start_iso = f"{target_date}T00:00:00"
-    end_iso = f"{target_date}T23:59:59.999999"
-    query = {"created_at": {"$gte": start_iso, "$lte": end_iso}}
-
-    members = await db.members.find(query, {"_id": 0}).sort("created_at", 1).to_list(5000)
+    search_term = (search or "").strip()
+    if search_term:
+        # Name search spans ALL dates: staff often need to reprint a card
+        # without knowing the member's registration day.
+        rx = {"$regex": re.escape(search_term), "$options": "i"}
+        query = {"$or": [
+            {"name_ar": rx},
+            {"name": rx},
+            {"member_code": rx},
+            {"phone": rx},
+        ]}
+        members = await db.members.find(query, {"_id": 0, "photo": 0}).sort("created_at", -1).to_list(200)
+    else:
+        start_iso = f"{target_date}T00:00:00"
+        end_iso = f"{target_date}T23:59:59.999999"
+        query = {"created_at": {"$gte": start_iso, "$lte": end_iso}}
+        members = await db.members.find(query, {"_id": 0, "photo": 0}).sort("created_at", 1).to_list(5000)
 
     activity_ids = list({a.get("activity_id") for m in members for a in (m.get("activities") or []) if a.get("activity_id")})
     activities_en_map = {}
